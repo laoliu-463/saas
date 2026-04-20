@@ -1,0 +1,30 @@
+# Build outputs
+target/
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+
+# Docs & configs (not needed in image)
+*.md
+*.xml
+!pom.xml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test
+src/test/
+
+# Environment files (secrets should be injected via env, not copied)
+.env
+.env.*

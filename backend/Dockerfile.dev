@@ -1,0 +1,17 @@
+# ============================================================
+# Development image: hot-reload via volume mount
+# Usage: docker compose up backend
+#   - Mount backend/src as volume for source code hot-reload
+#   - Spring Boot DevTools auto-restarts on classpath changes
+# ============================================================
+FROM eclipse-temurin:17-jdk-alpine
+
+RUN apk add --no-cache maven bash
+
+WORKDIR /app
+
+# Run Spring Boot in dev mode; DevTools restarts on class file changes
+# Volume mount backend/src:/app/src enables source-level hot-reload
+ENTRYPOINT ["mvn", "spring-boot:run", "-Dspring-boot.run.jvmArguments=-Xdebug -Xrunjdwp:server=y,transport=dt_socket,suspend=n"]
+
+EXPOSE 8080 5005

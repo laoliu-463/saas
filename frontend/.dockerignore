@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+
+# Git
+.git
+.gitignore
+
+# Docs & IDE
+*.md
+.idea/
+.vscode/
+.DS_Store
+
+# Environment files (secrets via docker compose env)
+.env
+.env.*

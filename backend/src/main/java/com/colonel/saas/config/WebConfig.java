@@ -1,0 +1,54 @@
+package com.colonel.saas.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.lang.NonNull;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import com.colonel.saas.security.JwtAuthInterceptor;
+import org.springframework.beans.factory.annotation.Value;
+
+import java.util.Arrays;
+import java.util.Objects;
+
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+
+    private final JwtAuthInterceptor jwtAuthInterceptor;
+    private final @NonNull String[] allowedOriginPatterns;
+
+    public WebConfig(
+            @NonNull JwtAuthInterceptor jwtAuthInterceptor,
+            @Value("${app.cors.allowed-origin-patterns:http://localhost:*}") String allowedOriginPatterns) {
+        this.jwtAuthInterceptor = jwtAuthInterceptor;
+        this.allowedOriginPatterns = Objects.requireNonNull(Arrays.stream(allowedOriginPatterns.split(","))
+                .map(String::trim)
+                .filter(pattern -> !pattern.isBlank())
+                .toArray(String[]::new));
+    }
+
+    @Override
+    public void addCorsMappings(@NonNull CorsRegistry registry) {
+        registry.addMapping("/**")
+                .allowedOriginPatterns(allowedOriginPatterns)
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true)
+                .maxAge(3600);
+    }
+
+    @Override
+    public void addInterceptors(@NonNull InterceptorRegistry registry) {
+        registry.addInterceptor(Objects.requireNonNull(jwtAuthInterceptor))
+                .addPathPatterns("/**")
+                .excludePathPatterns(
+                        "/auth/login",
+                        "/error",
+                        "/v3/api-docs/**",
+                        "/swagger-ui/**",
+                        "/swagger-resources/**",
+                        "/doc.html",
+                        "/actuator/**"
+                );
+    }
+}

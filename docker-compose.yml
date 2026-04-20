@@ -1,0 +1,125 @@
+# ============================================================
+# Docker-first 开发环境
+# 启动命令: docker compose up -d
+# 停止命令: docker compose down
+#
+# 热重载说明:
+#   - backend:  修改 backend/src/*.java  → DevTools 自动重启
+#   - frontend: 修改 frontend/src/*.vue   → Vite HMR 页面无刷新更新
+#   - 数据库:   init-db.sql 变更需重建 postgres: docker compose up -d --force-recreate postgres
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # PostgreSQL 数据库（不变）
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: colonel-postgres
+    environment:
+      POSTGRES_DB: colonel_saas
+      POSTGRES_USER: saas
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-saas123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # 初始化脚本：首次启动时自动执行
+      - ./backend/src/main/resources/db/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saas -d colonel_saas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
+
+  # ----------------------------------------------------------
+  # Redis 缓存（不变）
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: colonel-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
+
+  # ----------------------------------------------------------
+  # Backend: Spring Boot 开发服务（Docker-first 模式）
+  #   - 源码通过 volume 挂载，修改即生效
+  #   - Spring Boot DevTools 监控 classpath 变化自动重启
+  #   - Maven 调试端口 5005 暴露到宿主机
+  # ----------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: colonel-backend
+    ports:
+      - "8080:8080"      # Spring Boot
+      - "5005:5005"      # JVM debugger
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: colonel_saas
+      DB_USER: saas
+      DB_PASSWORD: ${DB_PASSWORD:-saas123}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # DevTools 热重载配置
+      JAVA_OPTS: -Dspring.devtools.restart.enabled=true
+    volumes:
+      # 挂载整个 backend 目录（含 pom.xml 和 src）
+      # Maven 从 /app/pom.xml 读取项目配置，源码在 /app/src
+      - ./backend:/app
+      # Maven 依赖缓存（避免每次重启都重新下载）
+      - maven_cache:/root/.m2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: on-failure
+
+  # ----------------------------------------------------------
+  # Frontend: Vue 3 + Vite 开发服务（Docker-first 模式）
+  #   - Node 容器运行 Vite dev server
+  #   - 源码通过 volume 挂载，Vite HMR 实时更新
+  # ----------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: colonel-frontend
+    ports:
+      - "3000:3000"      # Vite dev server
+    environment:
+      # Vite 从 .env.development 读取（已复制到镜像中）
+      VITE_API_BASE_URL: http://localhost:8080/api
+    volumes:
+      # 挂载整个 frontend 目录
+      # pnpm dev 监听 /app/src/*.vue 变化，触发 HMR
+      - ./frontend:/app
+      # node_modules 缓存（避免每次重启都重新安装）
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  maven_cache:
+  frontend_node_modules:
