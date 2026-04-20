@@ -13,6 +13,7 @@ spring:
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
   type-aliases-package: com.colonel.saas.entity
+  type-handlers-package: com.colonel.saas.common.handler
   global-config:
     db-config:
       id-type: auto
@@ -45,3 +46,14 @@ security:
 app:
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*}
+
+douyin:
+  app:
+    base-url: ${DOUYIN_BASE_URL:https://open.douyin.com}
+    app-id: ${DOUYIN_APP_ID:}
+    client-key: ${DOUYIN_CLIENT_KEY:}
+    client-secret: ${DOUYIN_CLIENT_SECRET:}
+    sandbox: ${DOUYIN_SANDBOX:false}
+  token:
+    refresh-threshold-seconds: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:300}
+    redis-lock-minutes: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:5}

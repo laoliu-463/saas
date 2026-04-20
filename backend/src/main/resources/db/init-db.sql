@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS sys_user_role (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    UUID NOT NULL,
     role_id    UUID NOT NULL,
+    deleted    SMALLINT NOT NULL DEFAULT 0,
     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_ur_user FOREIGN KEY (user_id) REFERENCES sys_user(id) ON DELETE CASCADE,
     CONSTRAINT fk_ur_role FOREIGN KEY (role_id) REFERENCES sys_role(id) ON DELETE CASCADE,

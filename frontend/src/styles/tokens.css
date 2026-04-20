@@ -1,0 +1,9 @@
+:root {
+  --primary-color: #18a058;
+  --bg-color: #f5f7f9;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --border-radius: 12px;
+  --shadow-base: 0 4px 12px rgba(0,0,0,0.05);
+}

@@ -74,6 +74,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-saas123}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-colonel-saas-jwt-secret-key-at-least-32-chars}
       # DevTools 热重载配置
       JAVA_OPTS: -Dspring.devtools.restart.enabled=true
     volumes:
