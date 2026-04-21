@@ -1,57 +1,177 @@
 <template>
-  <div>
-    <n-card :bordered="false" style="border-radius: var(--border-radius); box-shadow: var(--shadow-base);">
-      <n-tabs type="line" animated>
-        <n-tab-pane name="selection" tab="选品（渠道）">
-          <div style="display: flex; gap: 16px; margin-bottom: 24px;">
-             <n-input placeholder="搜索宝贝名称..." style="width: 250px" />
-             <n-select placeholder="类目" :options="[]" style="width: 150px" />
-             <n-select placeholder="负责人" :options="[]" style="width: 150px" />
-             <n-button type="primary">搜索</n-button>
-          </div>
-          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px;">
-            <n-card v-for="p in mockProductList" :key="p.id" hoverable style="border-radius: var(--border-radius); overflow: hidden; box-shadow: var(--shadow-base);">
-              <template #cover>
-                <img :src="p.imageUrl" style="height: 180px; object-fit: cover; width: 100%; border-bottom: 1px solid #efefef;" />
-              </template>
-              <h3 style="font-size: 16px; margin: 0 0 8px 0; color: #333;">{{ p.name }}</h3>
-              <p style="color: #888; font-size: 13px; margin: 0 0 12px 0;">{{ p.shop }}</p>
-              <div style="display: flex; justify-content: space-between; align-items: center; background: #fafafa; padding: 8px; border-radius: 4px;">
-                 <n-tag type="success" size="small" round>佣金: {{ p.commissionRate * 100 }}%</n-tag>
-                 <span style="font-weight: 700; color: var(--primary-color); font-size: 18px;">¥{{ p.price }}</span>
-              </div>
-            </n-card>
-          </div>
-        </n-tab-pane>
-        <n-tab-pane name="audit" tab="审核（招商）">
-          <n-data-table :columns="auditColumns" :data="mockProductList" :bordered="false" striped />
-        </n-tab-pane>
-        <n-tab-pane name="manage" tab="管理（组长）">
-          <div style="margin-bottom: 16px;"><n-button type="primary">新建活动</n-button></div>
-          <n-data-table :columns="activityColumns" :data="mockActivityList" :bordered="false" striped />
-        </n-tab-pane>
-      </n-tabs>
+  <div class="product-list">
+    <n-card title="商品库 - 商品列表" :bordered="false">
+      <!-- Toolbar -->
+      <n-space style="margin-bottom: 16px;">
+        <n-input v-model:value="searchParams.productName" placeholder="请输入商品名" clearable />
+        <n-select v-model:value="searchParams.status" :options="statusOptions" placeholder="状态筛选" style="width: 150px" clearable />
+        <n-button type="primary" @click="fetchData">查询</n-button>
+      </n-space>
+
+      <!-- Table -->
+      <n-data-table
+        remote
+        :columns="columns"
+        :data="data"
+        :loading="loading"
+        :pagination="pagination"
+        @update:page="handlePageChange"
+        @update:page-size="handlePageSizeChange"
+      />
     </n-card>
+
+    <ProductDetail v-model:show="showDetail" :productId="currentProductId" @refresh="fetchData" />
+
+    <!-- 转链结果弹窗 -->
+    <n-modal v-model:show="showPromotionResult" preset="card" title="转链结果" style="width: 500px;">
+      <n-descriptions v-if="currentPromotionResult" bordered column="1">
+        <n-descriptions-item label="短链接">
+          <n-button text type="primary" @click="copyToClipboard(currentPromotionResult.shortLink)">{{ currentPromotionResult.shortLink }}</n-button>
+        </n-descriptions-item>
+        <n-descriptions-item label="推广链接">
+          <n-button text type="primary" @click="copyToClipboard(currentPromotionResult.promoteLink)">{{ currentPromotionResult.promoteLink }}</n-button>
+        </n-descriptions-item>
+      </n-descriptions>
+      <template #footer>
+        <n-button @click="showPromotionResult = false">关闭</n-button>
+      </template>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { mockProductList, mockActivityList } from '../../mock/product';
-import { NButton } from 'naive-ui';
-import { h } from 'vue';
+import { ref, reactive, h, onMounted } from 'vue';
+import { NButton, NTag, NSpace, useMessage } from 'naive-ui';
+import { getProductPage, generatePromotionLink } from '../../api/product';
+import { useAuthStore } from '../../stores/auth';
+import ProductDetail from './ProductDetail.vue';
+import type { PromotionLinkResult } from '../../types';
 
-const auditColumns = [
-    { title: '商品ID', key: 'productId' },
-    { title: '商品名', key: 'name' },
-    { title: '店铺', key: 'shop' },
-    { title: '状态', key: 'status' },
-    { title: '操作', key: 'action', render() { return h(NButton, { size: 'small', type: 'primary' }, { default: () => '审核' }); } }
+const authStore = useAuthStore();
+const message = useMessage();
+const loading = ref(false);
+const data = ref([]);
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [10, 20, 50]
+});
+
+const searchParams = reactive({
+  productName: '',
+  status: null
+});
+
+const statusOptions = [
+  { label: '待审核', value: 'PENDING' },
+  { label: '已通过', value: 'APPROVED' },
+  { label: '已下架', value: 'OFF_SHELF' }
 ];
 
-const activityColumns = [
-    { title: '活动ID', key: 'id' },
-    { title: '活动名称', key: 'name' },
-    { title: '商品数', key: 'productCount' },
-    { title: '开始时间', key: 'startTime' }
+const showDetail = ref(false);
+const currentProductId = ref('');
+
+// ---- 转链 ----
+const promotionLoading = ref<string | null>(null);
+const showPromotionResult = ref(false);
+const currentPromotionResult = ref<PromotionLinkResult | null>(null);
+
+const handlePromotionLink = async (row: any) => {
+  promotionLoading.value = row.id;
+  try {
+    const res: any = await generatePromotionLink(row.id);
+    currentPromotionResult.value = res?.data || res;
+    showPromotionResult.value = true;
+    message.success('转链成功');
+  } catch (error: any) {
+    message.error(error?.response?.data?.msg || error?.message || '转链失败');
+  } finally {
+    promotionLoading.value = null;
+  }
+};
+
+const copyToClipboard = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    message.success('已复制到剪贴板');
+  } catch {
+    message.error('复制失败，请手动复制');
+  }
+};
+
+const openDetail = (row: any) => {
+  currentProductId.value = row.id;
+  showDetail.value = true;
+};
+
+const fetchData = async () => {
+  loading.value = true;
+  try {
+    const res = await getProductPage({
+      page: pagination.page,
+      size: pagination.pageSize,
+      productName: searchParams.productName,
+      status: searchParams.status
+    });
+    const responseData = res?.data || res;
+    if (responseData?.records && Array.isArray(responseData.records)) {
+      data.value = responseData.records;
+      pagination.itemCount = responseData.total || 0;
+    } else {
+      data.value = [];
+      pagination.itemCount = 0;
+    }
+  } catch (error: any) {
+    message.error(error?.message || '获取商品列表失败');
+  } finally {
+    loading.value = false;
+  }
+};
+
+const handlePageChange = (page: number) => {
+  pagination.page = page;
+  fetchData();
+};
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.pageSize = pageSize;
+  pagination.page = 1;
+  fetchData();
+};
+
+const canBizOperate = authStore.isAdmin || authStore.roleCodes.includes('biz_leader');
+
+const columns = [
+  { title: '商品ID', key: 'id' },
+  { title: '商品名称', key: 'productName' },
+  { title: '状态', key: 'status', render(row: any) {
+    const opt = statusOptions.find(o => o.value === row.status);
+    return h(NTag, { type: row.status === 'APPROVED' ? 'success' : (row.status === 'PENDING' ? 'warning' : 'default') }, { default: () => opt ? opt.label : row.status });
+  }},
+  { title: '创建时间', key: 'createTime' },
+  {
+    title: '操作', key: 'actions', width: 240, fixed: 'right' as const, render(row: any) {
+      const btns = [
+        h(NButton, { size: 'small', type: 'primary', onClick: () => openDetail(row) }, { default: () => '详情' }),
+        h(NButton, {
+          size: 'small',
+          type: 'warning',
+          loading: promotionLoading.value === row.id,
+          onClick: () => handlePromotionLink(row)
+        }, { default: () => '一键转链' }),
+      ];
+      return h(NSpace, { size: 'small' }, { default: () => btns });
+    }
+  }
 ];
+
+onMounted(() => {
+  fetchData();
+});
 </script>
+
+<style scoped>
+.product-list { min-height: 100%; }
+</style>

@@ -1,33 +1,181 @@
 <template>
-  <div>
-    <n-card :bordered="false" style="border-radius: var(--border-radius); box-shadow: var(--shadow-base);">
-      <n-tabs type="line" animated>
-        <n-tab-pane name="pending_audit" tab="待审核">
-           <n-data-table :columns="columns" :data="mockSampleList" :bordered="false" striped />
+  <div class="sample-index">
+    <n-card title="寄样台" :bordered="false">
+      <n-space style="margin-bottom: 16px;">
+        <n-button v-if="canApply" type="primary" @click="$router.push('/sample/apply')">寄样申请</n-button>
+      </n-space>
+
+      <n-tabs v-model:value="activeTab" type="line" animated @update:value="handleTabChange">
+        <n-tab-pane v-for="tab in tabList" :key="tab.value" :name="tab.value" :tab="tab.label">
+          <n-data-table
+            remote
+            :columns="columns"
+            :data="data"
+            :loading="loading"
+            :pagination="pagination"
+            @update:page="handlePageChange"
+            @update:page-size="handlePageSizeChange"
+          />
         </n-tab-pane>
-        <n-tab-pane name="pending_ship" tab="待发货">
-           <n-empty description="没有待发货的寄样任务" />
-        </n-tab-pane>
-        <n-tab-pane name="shipping" tab="快递中"><n-empty description="无数据"/></n-tab-pane>
-        <n-tab-pane name="pending_task" tab="待交作业"><n-empty description="无数据"/></n-tab-pane>
-        <n-tab-pane name="finished" tab="已完成"><n-empty description="无数据"/></n-tab-pane>
-        <n-tab-pane name="rejected" tab="已拒绝"><n-empty description="无数据"/></n-tab-pane>
-        <n-tab-pane name="closed" tab="已关闭"><n-empty description="无数据"/></n-tab-pane>
       </n-tabs>
     </n-card>
+
+    <SampleDetail v-model:show="showDetail" :sample-id="currentSampleId" @refresh="fetchData" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { mockSampleList } from '../../mock/sample';
-import { NButton, NTag } from 'naive-ui';
-import { h } from 'vue';
+import { h, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { NButton, NPopconfirm, useMessage } from 'naive-ui';
+import { useAuthStore } from '../../stores/auth';
+import { ROLE_CODES } from '../../constants/rbac';
+import { getSamplePage, deleteSample } from '../../api/sample';
+import SampleDetail from './SampleDetail.vue';
+
+const message = useMessage();
+const authStore = useAuthStore();
+
+const canApply =
+  authStore.isAdmin ||
+  authStore.roleCodes.includes(ROLE_CODES.CHANNEL_LEADER) ||
+  authStore.roleCodes.includes(ROLE_CODES.CHANNEL_STAFF);
+
+const loading = ref(false);
+const activeTab = ref('PENDING_AUDIT');
+const data = ref<any[]>([]);
+const showDetail = ref(false);
+const currentSampleId = ref('');
+
+const tabList = [
+  { label: '待审核', value: 'PENDING_AUDIT' },
+  { label: '待发货', value: 'PENDING_SHIP' },
+  { label: '快递中', value: 'SHIPPED' },
+  { label: '待交作业', value: 'PENDING_TASK' },
+  { label: '已完成', value: 'FINISHED' },
+  { label: '已拒绝', value: 'REJECTED' },
+  { label: '已关闭', value: 'CLOSED' }
+];
+
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [10, 20, 50]
+});
+
+const openDetail = (row: any) => {
+  currentSampleId.value = row.id;
+  showDetail.value = true;
+};
+
+const fetchData = async () => {
+  loading.value = true;
+  try {
+    const res = await getSamplePage({
+      page: pagination.page,
+      size: pagination.pageSize,
+      status: activeTab.value
+    });
+    const responseData = res?.data || res;
+    if (responseData?.records && Array.isArray(responseData.records)) {
+      data.value = responseData.records;
+      pagination.itemCount = responseData.total || 0;
+    } else {
+      data.value = [];
+      pagination.itemCount = 0;
+    }
+  } catch (error: any) {
+    message.error(error?.message || '获取寄样列表失败');
+  } finally {
+    loading.value = false;
+  }
+};
+
+const handleTabChange = () => {
+  pagination.page = 1;
+  fetchData();
+};
+
+const handlePageChange = (page: number) => {
+  pagination.page = page;
+  fetchData();
+};
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.pageSize = pageSize;
+  pagination.page = 1;
+  fetchData();
+};
+
+const doDeleteSample = async (id: string) => {
+  try {
+    await deleteSample(id);
+    message.success('寄样单删除成功');
+    fetchData();
+  } catch (error: any) {
+    message.error(error?.message || '删除失败');
+  }
+};
 
 const columns = [
-    { title: '寄样编号', key: 'id' },
-    { title: '商品信息', key: 'product' },
-    { title: '申请达人', key: 'talent' },
-    { title: '当前状态', key: 'status', render(row: any) { return h(NTag, { type: 'warning' }, { default: () => '待审核' }); } },
-    { title: '操作', key: 'action', render() { return h(NButton, { size: 'small', type: 'primary' }, { default: () => '处理' }); } }
+  { title: '寄样编号', key: 'id' },
+  { title: '商品信息', key: 'productName', render: (row: any) => row.productName || row.product?.productName || '-' },
+  { title: '申请达人', key: 'talentName', render: (row: any) => row.talentNickname || row.talentName || row.talent?.talentName || '-' },
+  {
+    title: '达人粉丝',
+    key: 'talentFansCount',
+    render: (row: any) => (row.talentFansCount ? `${(row.talentFansCount / 10000).toFixed(1)}万` : '-')
+  },
+  { title: '申请数量', key: 'quantity' },
+  { title: '申请时间', key: 'createTime' },
+  {
+    title: '操作',
+    key: 'actions',
+    render(row: any) {
+      const actions = [
+        h(
+          NButton,
+          { size: 'small', type: 'info', onClick: () => openDetail(row) },
+          { default: () => '详情处理' }
+        )
+      ];
+
+      if (row.status === 'PENDING_AUDIT' || row.status === 'REJECTED') {
+        actions.push(
+          h(
+            NPopconfirm,
+            { onPositiveClick: () => doDeleteSample(row.id) },
+            {
+              trigger: () => h(NButton, { size: 'small', type: 'error' }, { default: () => '删除' }),
+              default: () => '确认要删除这条寄样记录吗？不可恢复！'
+            }
+          )
+        );
+      }
+      return h('div', { style: 'display: flex; gap: 8px;' }, actions);
+    }
+  }
 ];
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    fetchData();
+  }
+};
+
+onMounted(() => {
+  fetchData();
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+});
 </script>
+
+<style scoped>
+.sample-index {
+  min-height: 100%;
+}
+</style>

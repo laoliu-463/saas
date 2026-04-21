@@ -102,22 +102,6 @@ CREATE TABLE IF NOT EXISTS sys_user_role (
 CREATE INDEX IF NOT EXISTS idx_ur_user_id ON sys_user_role(user_id);
 CREATE INDEX IF NOT EXISTS idx_ur_role_id ON sys_user_role(role_id);
 
-CREATE TABLE IF NOT EXISTS sys_department (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    parent_id     UUID,
-    dept_name     VARCHAR(100) NOT NULL,
-    dept_type     VARCHAR(20) NOT NULL,            -- business=招商组, channel=渠道组
-    leader_user_id UUID,
-    sort_order    INT       DEFAULT 0,
-    deleted       SMALLINT  NOT NULL DEFAULT 0,
-    create_time   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    update_time   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    create_by     UUID,
-    update_by     UUID
-);
-CREATE INDEX IF NOT EXISTS idx_dept_parent ON sys_department(parent_id);
-CREATE INDEX IF NOT EXISTS idx_dept_type   ON sys_department(dept_type);
-
 -- =============================================
 -- 2. 抖音 Token
 -- =============================================

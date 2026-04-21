@@ -40,7 +40,7 @@ logging:
 
 security:
   jwt:
-    secret: ${JWT_SECRET}
+    secret: ${JWT_SECRET:dev-secret-key-replace-in-production-with-random-64-char-string}
     expire-seconds: ${JWT_EXPIRE_SECONDS:7200}
 
 app:

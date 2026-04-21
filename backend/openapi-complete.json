@@ -1,0 +1,1431 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "抖音团长 SaaS API",
+    "description": "抖音团长 SaaS 系统后端接口文档",
+    "contact": {
+      "name": "Colonel SaaS Team"
+    },
+    "license": {
+      "name": "Apache 2.0"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080/api",
+      "description": "本地开发环境"
+    }
+  ],
+  "tags": [
+    {
+      "name": "认证中心",
+      "description": "登录鉴权相关接口"
+    },
+    {
+      "name": "系统用户",
+      "description": "用户管理相关接口"
+    },
+    {
+      "name": "系统角色",
+      "description": "角色管理相关接口"
+    },
+    {
+      "name": "系统部门",
+      "description": "部门管理相关接口"
+    },
+    {
+      "name": "抖音SDK测试",
+      "description": "抖音开放平台接口测试"
+    }
+  ],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "tags": ["认证中心"],
+        "summary": "用户登录",
+        "description": "使用用户名和密码登录，返回 JWT 令牌与数据范围信息",
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultLoginResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sys/users/page": {
+      "get": {
+        "tags": ["系统用户"],
+        "summary": "分页查询用户",
+        "operationId": "pageUsers",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          {
+            "name": "deptId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultPageResultSysUserVO"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sys/users/{id}": {
+      "get": {
+        "tags": ["系统用户"],
+        "summary": "用户详情",
+        "operationId": "getUserDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultSysUserVO"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["系统用户"],
+        "summary": "更新用户",
+        "operationId": "updateUser",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SysUserUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultSysUserVO"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["系统用户"],
+        "summary": "删除用户",
+        "operationId": "deleteUser",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/sys/users": {
+      "post": {
+        "tags": ["系统用户"],
+        "summary": "新建用户",
+        "operationId": "createUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SysUserCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultSysUserVO"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sys/users/{id}/reset-password": {
+      "put": {
+        "tags": ["系统用户"],
+        "summary": "重置密码",
+        "operationId": "resetPassword",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SysUserResetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "重置成功"
+          }
+        }
+      }
+    },
+    "/sys/users/{id}/roles": {
+      "put": {
+        "tags": ["系统用户"],
+        "summary": "分配角色",
+        "operationId": "assignRoles",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SysUserAssignRolesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "分配成功"
+          }
+        }
+      }
+    },
+    "/sys/roles/page": {
+      "get": {
+        "tags": ["系统角色"],
+        "summary": "分页查询角色",
+        "operationId": "pageRoles",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultPageResultSysRoleVO"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sys/roles/{id}": {
+      "get": {
+        "tags": ["系统角色"],
+        "summary": "角色详情",
+        "operationId": "getRoleDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultSysRoleVO"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["系统角色"],
+        "summary": "更新角色",
+        "operationId": "updateRole",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SysRoleUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultSysRoleVO"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["系统角色"],
+        "summary": "删除角色",
+        "operationId": "deleteRole",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/sys/roles": {
+      "post": {
+        "tags": ["系统角色"],
+        "summary": "新建角色",
+        "operationId": "createRole",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SysRoleCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultSysRoleVO"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sys/roles/all": {
+      "get": {
+        "tags": ["系统角色"],
+        "summary": "全量角色列表",
+        "operationId": "getAllRoles",
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultListSysRoleVO"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sys/depts/tree": {
+      "get": {
+        "tags": ["系统部门"],
+        "summary": "部门树",
+        "operationId": "getDeptTree",
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultListSysDeptTreeVO"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sys/depts/{id}": {
+      "get": {
+        "tags": ["系统部门"],
+        "summary": "部门详情",
+        "operationId": "getDeptDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultSysDepartment"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["系统部门"],
+        "summary": "更新部门",
+        "operationId": "updateDept",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SysDeptUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultSysDepartment"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["系统部门"],
+        "summary": "删除部门",
+        "operationId": "deleteDept",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/sys/depts": {
+      "post": {
+        "tags": ["系统部门"],
+        "summary": "新建部门",
+        "operationId": "createDept",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SysDeptCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultSysDepartment"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/douyin/activity/test": {
+      "get": {
+        "tags": ["抖音SDK测试"],
+        "summary": "测试活动列表接口",
+        "description": "验证 M1.2 抖音 SDK 调用链路是否可用",
+        "operationId": "testActivity",
+        "responses": {
+          "200": {
+            "description": "测试成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResultMapStringObject"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "LoginRequest": {
+        "required": ["username", "password"],
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "登录用户名",
+            "example": "admin",
+            "maxLength": 50
+          },
+          "password": {
+            "type": "string",
+            "description": "登录密码",
+            "example": "admin123",
+            "maxLength": 128
+          }
+        },
+        "description": "登录请求参数"
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "JWT 访问令牌"
+          },
+          "tokenType": {
+            "type": "string",
+            "description": "令牌类型",
+            "example": "Bearer"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "description": "令牌有效期（秒）",
+            "format": "int64",
+            "example": 7200
+          },
+          "userId": {
+            "type": "string",
+            "description": "用户 ID",
+            "format": "uuid"
+          },
+          "deptId": {
+            "type": "string",
+            "description": "部门 ID",
+            "format": "uuid"
+          },
+          "dataScope": {
+            "type": "integer",
+            "description": "数据范围，1=本人，2=本组，3=全部",
+            "format": "int32",
+            "example": 3
+          },
+          "roleCodes": {
+            "type": "array",
+            "description": "角色编码列表",
+            "items": {
+              "type": "string"
+            }
+          },
+          "username": {
+            "type": "string",
+            "description": "用户名",
+            "example": "admin"
+          },
+          "realName": {
+            "type": "string",
+            "description": "真实姓名",
+            "example": "系统管理员"
+          }
+        },
+        "description": "登录响应数据"
+      },
+      "SysUserCreateRequest": {
+        "required": ["username", "password", "realName", "roleIds"],
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "用户名",
+            "example": "zhangsan",
+            "maxLength": 50
+          },
+          "password": {
+            "type": "string",
+            "description": "登录密码",
+            "example": "Passw0rd!",
+            "minLength": 6,
+            "maxLength": 128
+          },
+          "realName": {
+            "type": "string",
+            "description": "真实姓名",
+            "example": "张三",
+            "maxLength": 100
+          },
+          "deptId": {
+            "type": "string",
+            "description": "部门 ID",
+            "format": "uuid"
+          },
+          "roleIds": {
+            "type": "array",
+            "description": "角色 ID 列表",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "description": "创建用户请求"
+      },
+      "SysUserUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "realName": {
+            "type": "string",
+            "description": "真实姓名",
+            "example": "张三",
+            "maxLength": 100
+          },
+          "phone": {
+            "type": "string",
+            "description": "手机号",
+            "example": "13800138000",
+            "maxLength": 20
+          },
+          "email": {
+            "type": "string",
+            "description": "邮箱",
+            "example": "demo@example.com",
+            "maxLength": 100
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1=启用，0=禁用",
+            "format": "int32",
+            "example": 1,
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "description": "更新用户请求"
+      },
+      "SysUserResetPasswordRequest": {
+        "required": ["newPassword"],
+        "type": "object",
+        "properties": {
+          "newPassword": {
+            "type": "string",
+            "description": "新密码",
+            "minLength": 6,
+            "maxLength": 128
+          }
+        },
+        "description": "重置密码请求"
+      },
+      "SysUserAssignRolesRequest": {
+        "required": ["roleIds"],
+        "type": "object",
+        "properties": {
+          "roleIds": {
+            "type": "array",
+            "description": "角色 ID 列表",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "description": "分配角色请求"
+      },
+      "SysUserVO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "用户 ID",
+            "format": "uuid"
+          },
+          "username": {
+            "type": "string",
+            "description": "用户名"
+          },
+          "realName": {
+            "type": "string",
+            "description": "真实姓名"
+          },
+          "phone": {
+            "type": "string",
+            "description": "手机号"
+          },
+          "email": {
+            "type": "string",
+            "description": "邮箱"
+          },
+          "deptId": {
+            "type": "string",
+            "description": "部门 ID",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态",
+            "format": "int32"
+          },
+          "lastLoginAt": {
+            "type": "string",
+            "description": "最后登录时间",
+            "format": "date-time"
+          },
+          "createTime": {
+            "type": "string",
+            "description": "创建时间",
+            "format": "date-time"
+          },
+          "roleIds": {
+            "type": "array",
+            "description": "角色 ID 列表",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "description": "用户视图对象"
+      },
+      "SysRoleCreateRequest": {
+        "required": ["roleCode", "roleName"],
+        "type": "object",
+        "properties": {
+          "roleCode": {
+            "type": "string",
+            "description": "角色编码",
+            "example": "biz_staff",
+            "maxLength": 50
+          },
+          "roleName": {
+            "type": "string",
+            "description": "角色名称",
+            "example": "招商专员",
+            "maxLength": 100
+          },
+          "dataScope": {
+            "type": "integer",
+            "description": "数据范围：1=本人，2=本组，3=全部",
+            "format": "int32",
+            "example": 1,
+            "minimum": 1,
+            "maximum": 3
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1=启用，0=禁用",
+            "format": "int32",
+            "example": 1,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "remark": {
+            "type": "string",
+            "description": "备注",
+            "maxLength": 255
+          }
+        },
+        "description": "创建角色请求"
+      },
+      "SysRoleUpdateRequest": {
+        "required": ["roleCode", "roleName"],
+        "type": "object",
+        "properties": {
+          "roleCode": {
+            "type": "string",
+            "description": "角色编码",
+            "example": "biz_staff",
+            "maxLength": 50
+          },
+          "roleName": {
+            "type": "string",
+            "description": "角色名称",
+            "example": "招商专员",
+            "maxLength": 100
+          },
+          "dataScope": {
+            "type": "integer",
+            "description": "数据范围：1=本人，2=本组，3=全部",
+            "format": "int32",
+            "example": 1,
+            "minimum": 1,
+            "maximum": 3
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1=启用，0=禁用",
+            "format": "int32",
+            "example": 1,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "remark": {
+            "type": "string",
+            "description": "备注",
+            "maxLength": 255
+          }
+        },
+        "description": "更新角色请求"
+      },
+      "SysRoleVO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "角色 ID",
+            "format": "uuid"
+          },
+          "roleCode": {
+            "type": "string",
+            "description": "角色编码"
+          },
+          "roleName": {
+            "type": "string",
+            "description": "角色名称"
+          },
+          "dataScope": {
+            "type": "integer",
+            "description": "数据范围",
+            "format": "int32"
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态",
+            "format": "int32"
+          },
+          "remark": {
+            "type": "string",
+            "description": "备注"
+          }
+        },
+        "description": "角色视图对象"
+      },
+      "SysDeptCreateRequest": {
+        "required": ["deptName", "deptType"],
+        "type": "object",
+        "properties": {
+          "parentId": {
+            "type": "string",
+            "description": "父部门 ID，可为空",
+            "format": "uuid"
+          },
+          "deptName": {
+            "type": "string",
+            "description": "部门名称",
+            "example": "招商一组",
+            "maxLength": 100
+          },
+          "deptType": {
+            "type": "string",
+            "description": "部门类型",
+            "example": "business",
+            "maxLength": 20
+          },
+          "leaderUserId": {
+            "type": "string",
+            "description": "负责人用户 ID",
+            "format": "uuid"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "description": "排序，越小越靠前",
+            "format": "int32",
+            "example": 0
+          }
+        },
+        "description": "创建部门请求"
+      },
+      "SysDeptUpdateRequest": {
+        "required": ["deptName", "deptType"],
+        "type": "object",
+        "properties": {
+          "parentId": {
+            "type": "string",
+            "description": "父部门 ID，可为空",
+            "format": "uuid"
+          },
+          "deptName": {
+            "type": "string",
+            "description": "部门名称",
+            "example": "招商一组",
+            "maxLength": 100
+          },
+          "deptType": {
+            "type": "string",
+            "description": "部门类型",
+            "example": "business",
+            "maxLength": 20
+          },
+          "leaderUserId": {
+            "type": "string",
+            "description": "负责人用户 ID",
+            "format": "uuid"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "description": "排序，越小越靠前",
+            "format": "int32",
+            "example": 0
+          }
+        },
+        "description": "更新部门请求"
+      },
+      "SysDepartment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "部门 ID",
+            "format": "uuid"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "父部门 ID",
+            "format": "uuid"
+          },
+          "deptName": {
+            "type": "string",
+            "description": "部门名称"
+          },
+          "deptType": {
+            "type": "string",
+            "description": "部门类型"
+          },
+          "leaderUserId": {
+            "type": "string",
+            "description": "负责人用户 ID",
+            "format": "uuid"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "description": "排序",
+            "format": "int32"
+          }
+        },
+        "description": "部门实体"
+      },
+      "SysDeptTreeVO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "部门 ID",
+            "format": "uuid"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "父部门 ID",
+            "format": "uuid"
+          },
+          "deptName": {
+            "type": "string",
+            "description": "部门名称"
+          },
+          "deptType": {
+            "type": "string",
+            "description": "部门类型"
+          },
+          "leaderUserId": {
+            "type": "string",
+            "description": "负责人用户 ID",
+            "format": "uuid"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "description": "排序",
+            "format": "int32"
+          },
+          "children": {
+            "type": "array",
+            "description": "子部门列表",
+            "items": {
+              "$ref": "#/components/schemas/SysDeptTreeVO"
+            }
+          }
+        },
+        "description": "部门树节点"
+      },
+      "ApiResultLoginResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务状态码",
+            "format": "int32",
+            "example": 200
+          },
+          "msg": {
+            "type": "string",
+            "description": "响应消息",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/LoginResponse"
+          },
+          "timestamp": {
+            "type": "integer",
+            "description": "服务器时间戳（毫秒）",
+            "format": "int64",
+            "example": 1713628800000
+          }
+        },
+        "description": "统一响应结构"
+      },
+      "ApiResultSysUserVO": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 200
+          },
+          "msg": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SysUserVO"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ApiResultPageResultSysUserVO": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 200
+          },
+          "msg": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PageResultSysUserVO"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PageResultSysUserVO": {
+        "type": "object",
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SysUserVO"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ApiResultSysRoleVO": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 200
+          },
+          "msg": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SysRoleVO"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ApiResultPageResultSysRoleVO": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 200
+          },
+          "msg": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PageResultSysRoleVO"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PageResultSysRoleVO": {
+        "type": "object",
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SysRoleVO"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ApiResultListSysRoleVO": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 200
+          },
+          "msg": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SysRoleVO"
+            }
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ApiResultSysDepartment": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 200
+          },
+          "msg": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SysDepartment"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ApiResultListSysDeptTreeVO": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 200
+          },
+          "msg": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SysDeptTreeVO"
+            }
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ApiResultMapStringObject": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 200
+          },
+          "msg": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object"
+            }
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT Bearer Token 认证"
+      }
+    }
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ]
+}

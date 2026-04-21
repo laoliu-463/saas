@@ -65,22 +65,6 @@ CREATE TABLE IF NOT EXISTS sys_user_role (
 CREATE INDEX IF NOT EXISTS idx_ur_user_id ON sys_user_role(user_id);
 CREATE INDEX IF NOT EXISTS idx_ur_role_id ON sys_user_role(role_id);
 
-CREATE TABLE IF NOT EXISTS sys_department (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    parent_id     UUID,
-    dept_name     VARCHAR(100) NOT NULL,
-    dept_type     VARCHAR(20) NOT NULL,            -- business=招商组, channel=渠道组
-    leader_user_id UUID,
-    sort_order    INT       DEFAULT 0,
-    deleted       SMALLINT  NOT NULL DEFAULT 0,
-    create_time   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    update_time   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    create_by     UUID,
-    update_by     UUID
-);
-CREATE INDEX IF NOT EXISTS idx_dept_parent ON sys_department(parent_id);
-CREATE INDEX IF NOT EXISTS idx_dept_type   ON sys_department(dept_type);
-
 -- =============================================
 -- 2. 抖音 Token
 -- =============================================
@@ -383,6 +367,22 @@ CREATE INDEX IF NOT EXISTS idx_merchant_merchant_id ON merchant(merchant_id);
 CREATE INDEX IF NOT EXISTS idx_merchant_shop_id     ON merchant(shop_id);
 CREATE INDEX IF NOT EXISTS idx_merchant_deleted     ON merchant(deleted);
 
+CREATE TABLE IF NOT EXISTS crawler_talent_info (
+    id              BIGSERIAL PRIMARY KEY,
+    talent_id       VARCHAR(64)  NOT NULL UNIQUE,
+    nickname        VARCHAR(128),
+    avatar_url      VARCHAR(512),
+    fans_count      BIGINT       DEFAULT 0,
+    credit_score    DECIMAL(3,2) DEFAULT 0,
+    main_category   VARCHAR(64),
+    region          VARCHAR(32),
+    last_crawl_time TIMESTAMP    DEFAULT NOW(),
+    created_at      TIMESTAMP    DEFAULT NOW(),
+    updated_at      TIMESTAMP    DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_cti_fans ON crawler_talent_info(fans_count DESC);
+CREATE INDEX IF NOT EXISTS idx_cti_region ON crawler_talent_info(region);
+
 -- =============================================
 -- 6. 归因与推广
 -- =============================================
@@ -480,6 +480,11 @@ CREATE INDEX IF NOT EXISTS idx_sr_deleted       ON sample_request(deleted);
 CREATE INDEX IF NOT EXISTS idx_sr_channel_talent_product_7d
     ON sample_request(channel_user_id, talent_id, product_id, create_time DESC)
     WHERE deleted = 0;
+
+ALTER TABLE sample_request
+    ADD COLUMN IF NOT EXISTS talent_fans_count BIGINT,
+    ADD COLUMN IF NOT EXISTS talent_credit_score DECIMAL(3,2),
+    ADD COLUMN IF NOT EXISTS talent_main_category VARCHAR(64);
 
 CREATE TABLE IF NOT EXISTS sample_status_log (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -867,3 +872,56 @@ $$ LANGUAGE plpgsql;
 -- 验证种子数据
 -- SELECT config_key, config_value FROM system_config ORDER BY config_group, config_key;
 -- SELECT role_code, role_name FROM sys_role ORDER BY data_scope DESC;
+
+-- =============================================
+-- Seed extension: align user-management demo data with 6 roles
+-- Added at 2026-04-21
+-- =============================================
+
+INSERT INTO sys_role (role_code, role_name, data_scope, status)
+VALUES ('ops_staff', '运营', 1, 1)
+ON CONFLICT (role_code) DO NOTHING;
+
+INSERT INTO sys_user (username, password, real_name, channel_code, status)
+VALUES
+    ('biz_leader',     crypt('admin123', gen_salt('bf', 12)), '招商组长测试', 'bizleader',     1),
+    ('biz_staff',      crypt('admin123', gen_salt('bf', 12)), '招商专员测试', 'bizstaff',      1),
+    ('channel_leader', crypt('admin123', gen_salt('bf', 12)), '渠道组长测试', 'channelleader', 1),
+    ('channel_staff',  crypt('admin123', gen_salt('bf', 12)), '渠道专员测试', 'channelstaff',  1),
+    ('ops_staff',      crypt('admin123', gen_salt('bf', 12)), '运营测试',     'opsstaff',      1)
+ON CONFLICT (username) DO NOTHING;
+
+INSERT INTO sys_user_role (user_id, role_id)
+SELECT u.id, r.id
+FROM sys_user u
+JOIN sys_role r ON r.role_code = 'biz_leader'
+WHERE u.username = 'biz_leader'
+ON CONFLICT (user_id, role_id) DO NOTHING;
+
+INSERT INTO sys_user_role (user_id, role_id)
+SELECT u.id, r.id
+FROM sys_user u
+JOIN sys_role r ON r.role_code = 'biz_staff'
+WHERE u.username = 'biz_staff'
+ON CONFLICT (user_id, role_id) DO NOTHING;
+
+INSERT INTO sys_user_role (user_id, role_id)
+SELECT u.id, r.id
+FROM sys_user u
+JOIN sys_role r ON r.role_code = 'channel_leader'
+WHERE u.username = 'channel_leader'
+ON CONFLICT (user_id, role_id) DO NOTHING;
+
+INSERT INTO sys_user_role (user_id, role_id)
+SELECT u.id, r.id
+FROM sys_user u
+JOIN sys_role r ON r.role_code = 'channel_staff'
+WHERE u.username = 'channel_staff'
+ON CONFLICT (user_id, role_id) DO NOTHING;
+
+INSERT INTO sys_user_role (user_id, role_id)
+SELECT u.id, r.id
+FROM sys_user u
+JOIN sys_role r ON r.role_code = 'ops_staff'
+WHERE u.username = 'ops_staff'
+ON CONFLICT (user_id, role_id) DO NOTHING;

@@ -1,4 +1,24 @@
 import { defineStore } from 'pinia';
+import { ROLE_CODES } from '../constants/rbac';
+
+const LEGACY_ROLE_MAP: Record<string, string> = {
+    zs_leader: ROLE_CODES.BIZ_LEADER,
+    zs_staff: ROLE_CODES.BIZ_STAFF,
+    qd_leader: ROLE_CODES.CHANNEL_LEADER,
+    qd_staff: ROLE_CODES.CHANNEL_STAFF
+};
+
+const normalizeRoleCodes = (roleCodes: unknown): string[] => {
+    if (!Array.isArray(roleCodes)) return [];
+    return Array.from(
+        new Set(
+            roleCodes
+                .map((code) => String(code))
+                .map((code) => LEGACY_ROLE_MAP[code] || code)
+                .filter(Boolean)
+        )
+    );
+};
 
 export const useAuthStore = defineStore('auth', {
     state: () => ({
@@ -7,16 +27,23 @@ export const useAuthStore = defineStore('auth', {
     }),
     getters: {
         isLoggedIn: (state) => !!state.token,
-        isAdmin: (state) => state.userInfo?.roleCodes?.includes('admin'),
-        isLeader: (state) => ['zs_leader', 'qd_leader'].some(r => state.userInfo?.roleCodes?.includes(r)),
+        roleCodes: (state) => normalizeRoleCodes(state.userInfo?.roleCodes),
+        isAdmin: (state) => normalizeRoleCodes(state.userInfo?.roleCodes).includes(ROLE_CODES.ADMIN),
+        isLeader: (state) =>
+            [ROLE_CODES.BIZ_LEADER, ROLE_CODES.CHANNEL_LEADER].some((r) =>
+                normalizeRoleCodes(state.userInfo?.roleCodes).includes(r)
+            ),
         dataScope: (state) => state.userInfo?.dataScope
     },
     actions: {
         login(token: string, userInfo: any) {
             this.token = token;
-            this.userInfo = userInfo;
+            this.userInfo = {
+                ...(userInfo || {}),
+                roleCodes: normalizeRoleCodes(userInfo?.roleCodes)
+            };
             localStorage.setItem('token', token);
-            localStorage.setItem('userInfo', JSON.stringify(userInfo));
+            localStorage.setItem('userInfo', JSON.stringify(this.userInfo));
         },
         logout() {
             this.token = '';

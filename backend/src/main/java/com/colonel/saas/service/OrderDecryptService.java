@@ -1,0 +1,211 @@
+package com.colonel.saas.service;
+
+import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.douyin.api.OrderApi;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class OrderDecryptService {
+
+    private static final int MAX_BATCH_SIZE = 50;
+
+    private final OrderApi orderApi;
+
+    public OrderDecryptService(OrderApi orderApi) {
+        this.orderApi = orderApi;
+    }
+
+    public List<DecryptPhoneVO> decryptPhones(List<String> orderIds) {
+        List<String> normalizedOrderIds = normalizeOrderIds(orderIds);
+        Map<String, Object> response = orderApi.decryptSensitiveData(normalizedOrderIds);
+        List<Map<String, Object>> rows = extractRows(response);
+
+        long nowEpochSeconds = Instant.now().getEpochSecond();
+        List<DecryptPhoneVO> result = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            DecryptPhoneVO vo = new DecryptPhoneVO();
+            vo.setOrderId(asString(row.get("order_id")));
+            boolean virtualTel = asBoolean(row.get("is_virtual_tel"));
+            vo.setVirtualTel(virtualTel);
+            if (virtualTel) {
+                Long expireEpoch = asLongObject(row.get("expire_time"));
+                vo.setExpireTime(toDateTime(expireEpoch));
+                boolean expired = expireEpoch != null && expireEpoch <= nowEpochSeconds;
+                vo.setExpired(expired);
+                if (!expired) {
+                    vo.setPhoneNoA(asString(row.get("phone_no_a")));
+                    vo.setPhoneNoB(asString(row.get("phone_no_b")));
+                }
+            } else {
+                vo.setPhone(asString(row.get("phone")));
+                vo.setExpired(false);
+            }
+            result.add(vo);
+        }
+        return result;
+    }
+
+    private List<String> normalizeOrderIds(List<String> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            throw new BusinessException("orderIds cannot be empty");
+        }
+        List<String> normalized = orderIds.stream()
+                .map(item -> item == null ? "" : item.trim())
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+        if (normalized.isEmpty()) {
+            throw new BusinessException("orderIds cannot be empty");
+        }
+        if (normalized.size() > MAX_BATCH_SIZE) {
+            throw new BusinessException("orderIds cannot exceed 50");
+        }
+        return normalized;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> extractRows(Map<String, Object> response) {
+        if (response == null) {
+            return List.of();
+        }
+        Object data = response.get("data");
+        if (data instanceof List<?> list) {
+            return convertListRows(list);
+        }
+        if (data instanceof Map<?, ?> map) {
+            Object list = map.get("list");
+            if (list instanceof List<?> nested) {
+                return convertListRows(nested);
+            }
+            return List.of();
+        }
+        return List.of();
+    }
+
+    private List<Map<String, Object>> convertListRows(List<?> rows) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object row : rows) {
+            if (!(row instanceof Map<?, ?> source)) {
+                continue;
+            }
+            Map<String, Object> converted = new HashMap<>();
+            for (Map.Entry<?, ?> entry : source.entrySet()) {
+                if (entry.getKey() != null) {
+                    converted.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+            }
+            result.add(converted);
+        }
+        return result;
+    }
+
+    private String asString(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private boolean asBoolean(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.intValue() == 1;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private Long asLongObject(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException ignore) {
+            return null;
+        }
+    }
+
+    private LocalDateTime toDateTime(Long epochSeconds) {
+        if (epochSeconds == null || epochSeconds <= 0L) {
+            return null;
+        }
+        return LocalDateTime.ofInstant(Instant.ofEpochSecond(epochSeconds), ZoneId.systemDefault());
+    }
+
+    public static class DecryptPhoneVO {
+        private String orderId;
+        private boolean isVirtualTel;
+        private String phone;
+        private String phoneNoA;
+        private String phoneNoB;
+        private LocalDateTime expireTime;
+        private boolean expired;
+
+        public String getOrderId() {
+            return orderId;
+        }
+
+        public void setOrderId(String orderId) {
+            this.orderId = orderId;
+        }
+
+        public boolean isVirtualTel() {
+            return isVirtualTel;
+        }
+
+        public void setVirtualTel(boolean virtualTel) {
+            isVirtualTel = virtualTel;
+        }
+
+        public String getPhone() {
+            return phone;
+        }
+
+        public void setPhone(String phone) {
+            this.phone = phone;
+        }
+
+        public String getPhoneNoA() {
+            return phoneNoA;
+        }
+
+        public void setPhoneNoA(String phoneNoA) {
+            this.phoneNoA = phoneNoA;
+        }
+
+        public String getPhoneNoB() {
+            return phoneNoB;
+        }
+
+        public void setPhoneNoB(String phoneNoB) {
+            this.phoneNoB = phoneNoB;
+        }
+
+        public LocalDateTime getExpireTime() {
+            return expireTime;
+        }
+
+        public void setExpireTime(LocalDateTime expireTime) {
+            this.expireTime = expireTime;
+        }
+
+        public boolean isExpired() {
+            return expired;
+        }
+
+        public void setExpired(boolean expired) {
+            this.expired = expired;
+        }
+    }
+}

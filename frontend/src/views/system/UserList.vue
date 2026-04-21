@@ -1,0 +1,354 @@
+<template>
+  <div class="user-list">
+    <n-card title="用户管理" :bordered="false">
+      <!-- Toolbar -->
+      <n-space style="margin-bottom: 16px;">
+        <n-input v-model:value="searchParams.username" placeholder="请输入用户名" clearable />
+        <n-select v-model:value="searchParams.status" :options="statusOptions" placeholder="全部状态" style="width: 120px;" clearable />
+        <n-button type="primary" @click="fetchData">查询</n-button>
+        <n-button type="primary" @click="openModal('add')">新增用户</n-button>
+      </n-space>
+
+      <!-- Table -->
+      <n-data-table
+        remote
+        :columns="columns"
+        :data="data"
+        :loading="loading"
+        :pagination="pagination"
+        @update:page="handlePageChange"
+        @update:page-size="handlePageSizeChange"
+      />
+    </n-card>
+
+    <!-- Modal for Add/Edit -->
+    <n-modal v-model:show="showModal" preset="card" :title="modalTitle" style="width: 600px;">
+      <n-form ref="formRef" :model="formData" :rules="rules" label-placement="left" label-width="100">
+        <n-form-item label="用户名" path="username">
+          <n-input v-model:value="formData.username" placeholder="请输入" :disabled="modalType === 'edit'" />
+        </n-form-item>
+        <n-form-item v-if="modalType === 'add'" label="密码" path="password">
+          <n-input v-model:value="formData.password" type="password" placeholder="请输入密码" show-password-on="click" />
+        </n-form-item>
+        <n-form-item label="真实姓名" path="realName">
+          <n-input v-model:value="formData.realName" placeholder="请输入" />
+        </n-form-item>
+        <n-form-item label="手机" path="phone">
+          <n-input v-model:value="formData.phone" placeholder="请输入手机号" />
+        </n-form-item>
+        <n-form-item label="邮箱" path="email">
+          <n-input v-model:value="formData.email" placeholder="请输入邮箱" />
+        </n-form-item>
+        <n-form-item label="角色分配" path="roleIds">
+          <n-select v-model:value="formData.roleIds" multiple :options="roleOptions" value-field="id" label-field="roleName" clearable />
+        </n-form-item>
+        <n-form-item label="状态" path="status">
+          <n-switch v-model:value="formData.status" :checked-value="1" :unchecked-value="0" />
+        </n-form-item>
+        <div style="display: flex; justify-content: flex-end;">
+          <n-button @click="showModal = false">取消</n-button>
+          <n-button type="primary" style="margin-left: 12px;" @click="handleSubmit" :loading="submitting">确定</n-button>
+        </div>
+      </n-form>
+    </n-modal>
+
+    <!-- Modal for Reset Password -->
+    <n-modal v-model:show="showResetModal" preset="card" title="重置密码" style="width: 400px;">
+      <n-form ref="resetFormRef" :model="resetData" :rules="resetRules" label-placement="left" label-width="100">
+        <n-form-item label="新密码" path="password">
+          <n-input v-model:value="resetData.password" type="password" placeholder="请输入新密码" show-password-on="click" />
+        </n-form-item>
+        <div style="display: flex; justify-content: flex-end;">
+          <n-button @click="showResetModal = false">取消</n-button>
+          <n-button type="primary" style="margin-left: 12px;" @click="handleResetSubmit" :loading="submitting">确定</n-button>
+        </div>
+      </n-form>
+    </n-modal>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, h, onMounted, computed } from 'vue';
+import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui';
+import { getUserPage, createUser, updateUser, deleteUser, resetUserPassword, getRoleAll, assignUserRoles } from '../../api/sys';
+
+const message = useMessage();
+
+// Table state
+const loading = ref(false);
+const data = ref([]);
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [10, 20, 50]
+});
+
+// Search params
+const searchParams = reactive({
+  username: '',
+  status: null
+});
+const statusOptions = [
+  { label: '正常', value: 1 },
+  { label: '停用', value: 0 }
+];
+
+const roleOptions = ref([]);
+const roleNameMap = computed<Record<string, string>>(() => {
+  const map: Record<string, string> = {};
+  for (const role of roleOptions.value as any[]) {
+    if (role?.id) {
+      map[String(role.id)] = role.roleName || role.roleCode || String(role.id);
+    }
+  }
+  return map;
+});
+
+const fetchData = async () => {
+  loading.value = true;
+  try {
+    const res = await getUserPage({
+      page: pagination.page,
+      size: pagination.pageSize,
+      username: searchParams.username,
+      status: searchParams.status
+    });
+    // 处理多种响应格式
+    const responseData = res?.data || res;
+    if (responseData?.records && Array.isArray(responseData.records)) {
+      data.value = responseData.records;
+      pagination.itemCount = responseData.total || 0;
+    } else {
+      data.value = [];
+      pagination.itemCount = 0;
+      message.warning('未获取到用户数据');
+    }
+  } catch (error: any) {
+    message.error(error?.message || '获取用户列表失败');
+    data.value = [];
+    pagination.itemCount = 0;
+  } finally {
+    loading.value = false;
+  }
+};
+
+const handlePageChange = (page: number) => {
+  pagination.page = page;
+  fetchData();
+};
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.pageSize = pageSize;
+  pagination.page = 1;
+  fetchData();
+};
+
+// Modal State
+const showModal = ref(false);
+const modalType = ref<'add'|'edit'>('add');
+const modalTitle = ref('新增用户');
+const formRef = ref();
+const submitting = ref(false);
+
+const formData = reactive({
+  id: undefined as string | undefined,
+  username: '',
+  password: '',
+  realName: '',
+  phone: '',
+  email: '',
+  roleIds: [] as string[],
+  status: 1
+});
+
+const normalizeRoleIds = (roleIds: unknown): string[] => {
+  if (!Array.isArray(roleIds)) return [];
+  return roleIds
+    .map((id) => (id == null ? '' : String(id)))
+    .filter((id) => !!id);
+};
+
+const rules = {
+  username: { required: true, message: '请输入用户名', trigger: 'blur' },
+  password: { required: true, message: '请输入密码', trigger: 'blur' },
+  realName: { required: true, message: '请输入真实姓名', trigger: 'blur' },
+  roleIds: { type: 'array', required: true, message: '请选择角色', trigger: 'change' }
+};
+
+const openModal = async (type: 'add'|'edit', row?: any) => {
+  modalType.value = type;
+  modalTitle.value = type === 'add' ? '新增用户' : '编辑用户';
+  
+  if (type === 'add') {
+    Object.assign(formData, { id: undefined, username: '', password: '', realName: '', phone: '', email: '', roleIds: [], status: 1 });
+  } else if (row) {
+    Object.assign(formData, {
+      id: row.id,
+      username: row.username,
+      realName: row.realName,
+      phone: row.phone,
+      email: row.email,
+      roleIds: normalizeRoleIds(
+        Array.isArray(row.roleIds)
+          ? row.roleIds
+          : (Array.isArray(row.roles) ? row.roles.map((r: any) => r?.id) : [])
+      ),
+      status: row.status
+    });
+  }
+  
+  showModal.value = true;
+};
+
+const handleSubmit = () => {
+  formRef.value?.validate(async (errors: any) => {
+    if (!errors) {
+      submitting.value = true;
+      try {
+        if (modalType.value === 'add') {
+          await createUser(formData);
+          message.success('新增成功');
+          pagination.page = 1;
+          searchParams.username = '';
+          searchParams.status = null;
+        } else {
+          await updateUser(formData.id!, formData);
+          await assignUserRoles(formData.id!, { roleIds: formData.roleIds });
+          message.success('编辑成功');
+        }
+        showModal.value = false;
+        fetchData();
+      } catch (error: any) {
+        message.error(error?.message || '保存失败');
+      } finally {
+        submitting.value = false;
+      }
+    }
+  });
+};
+
+const handleDelete = async (id: string) => {
+  try {
+    await deleteUser(id);
+    message.success('删除成功');
+    fetchData();
+  } catch (error: any) {
+    message.error(error?.message || '删除失败');
+  }
+};
+
+// Reset Password
+const showResetModal = ref(false);
+const resetFormRef = ref();
+const resetData = reactive({ id: undefined as string | undefined, password: '' });
+const resetRules = {
+  password: { required: true, message: '请输入新密码', trigger: 'blur' }
+};
+
+const openResetModal = (row: any) => {
+  resetData.id = row.id;
+  resetData.password = '';
+  showResetModal.value = true;
+};
+
+const handleResetSubmit = () => {
+  resetFormRef.value?.validate(async (errors: any) => {
+    if (!errors && resetData.id) {
+      submitting.value = true;
+      try {
+        await resetUserPassword(resetData.id, { newPassword: resetData.password });
+        message.success('密码重置成功');
+        showResetModal.value = false;
+      } catch (error: any) {
+        message.error(error?.message || '重置失败');
+      } finally {
+        submitting.value = false;
+      }
+    }
+  });
+};
+
+const columns = [
+  { title: '状态', key: 'status', render(row: any) { return h(NTag, { type: row.status ? 'success' : 'error' }, { default: () => (row.status ? '正常' : '停用') }); } },
+  { title: '用户名', key: 'username' },
+  { title: '真实姓名', key: 'realName' },
+  {
+    title: '角色',
+    key: 'roleIds',
+    render(row: any) {
+      const roleIds = normalizeRoleIds(row.roleIds);
+      if (!roleIds.length) {
+        return '-';
+      }
+      return h(
+        'div',
+        { style: 'display: flex; flex-wrap: wrap; gap: 6px;' },
+        roleIds.map((id: string) =>
+          h(
+            NTag,
+            { size: 'small', type: 'info' },
+            { default: () => roleNameMap.value[id] || id }
+          )
+        )
+      );
+    }
+  },
+  { title: '手机', key: 'phone' },
+  { title: '邮箱', key: 'email' },
+  { title: '创建时间', key: 'createTime' },
+  {
+    title: '操作',
+    key: 'actions',
+    render(row: any) {
+      return h(
+        'div',
+        { style: 'display: flex; gap: 8px;' },
+        [
+          h(
+            NButton,
+            { size: 'small', onClick: () => openModal('edit', row) },
+            { default: () => '编辑' }
+          ),
+          h(
+            NButton,
+            { size: 'small', onClick: () => openResetModal(row) },
+            { default: () => '重置密码' }
+          ),
+          h(
+            NPopconfirm,
+            { onPositiveClick: () => handleDelete(row.id) },
+            {
+              trigger: () =>
+                h(
+                  NButton,
+                  { size: 'small', type: 'error' },
+                  { default: () => '删除' }
+                ),
+              default: () => '确认删除该用户吗？'
+            }
+          )
+        ]
+      );
+    }
+  }
+];
+
+onMounted(async () => {
+  try {
+    const roleRes = await getRoleAll();
+    const roleData = roleRes.data || roleRes;
+    roleOptions.value = Array.isArray(roleData) ? roleData : (roleData.records || []);
+  } catch (error: any) {
+    message.error(error?.message || '加载角色列表失败');
+  }
+  fetchData();
+});
+</script>
+
+<style scoped>
+.user-list {
+  min-height: 100%;
+}
+</style>

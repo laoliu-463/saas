@@ -1,7 +1,7 @@
 spring:
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:5432/colonel_saas
-    username: saas
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:colonel_saas}
+    username: ${DB_USER:saas}
     password: ${DB_PASSWORD:saas123}
     driver-class-name: org.postgresql.Driver
     hikari:
@@ -31,3 +31,8 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
+
+douyin:
+  crawler:
+    talent-url: ${CRAWLER_TALENT_URL:https://api.douyin.com/internal/talent/list}
+    batch-size: ${CRAWLER_BATCH_SIZE:100}

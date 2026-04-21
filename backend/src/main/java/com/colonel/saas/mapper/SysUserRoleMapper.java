@@ -17,4 +17,16 @@ public interface SysUserRoleMapper extends BaseMapper<SysUserRole> {
 
     @Select("SELECT * FROM sys_user_role WHERE role_id = #{roleId} AND deleted = 0")
     List<SysUserRole> findByRoleId(@Param("roleId") UUID roleId);
+
+    @Select({
+            "<script>",
+            "SELECT * FROM sys_user_role",
+            "WHERE deleted = 0",
+            "AND user_id IN",
+            "<foreach item='userId' collection='userIds' open='(' separator=',' close=')'>",
+            "#{userId}",
+            "</foreach>",
+            "</script>"
+    })
+    List<SysUserRole> findByUserIds(@Param("userIds") List<UUID> userIds);
 }

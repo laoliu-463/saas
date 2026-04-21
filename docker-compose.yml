@@ -89,7 +89,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/api/sys/users/page?page=1&size=1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -110,6 +110,8 @@ services:
     environment:
       # Vite 从 .env.development 读取（已复制到镜像中）
       VITE_API_BASE_URL: http://localhost:8080/api
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
     volumes:
       # 挂载整个 frontend 目录
       # pnpm dev 监听 /app/src/*.vue 变化，触发 HMR
@@ -118,6 +120,12 @@ services:
       - frontend_node_modules:/app/node_modules
     depends_on:
       - backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
 volumes:
   postgres_data:

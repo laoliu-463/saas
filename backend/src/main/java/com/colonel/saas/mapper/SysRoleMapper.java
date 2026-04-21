@@ -1,7 +1,10 @@
 package com.colonel.saas.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.SysRole;
+import com.colonel.saas.vo.SysRoleVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -20,4 +23,12 @@ public interface SysRoleMapper extends BaseMapper<SysRole> {
 
     @Select("SELECT * FROM sys_role WHERE role_code = #{roleCode} AND deleted = 0 LIMIT 1")
     Optional<SysRole> findByRoleCode(@Param("roleCode") String roleCode);
+
+    IPage<SysRoleVO> findPage(
+            Page<SysRoleVO> page,
+            @Param("keyword") String keyword,
+            @Param("status") Integer status
+    );
+
+    List<SysRoleVO> findAll(@Param("status") Integer status);
 }

@@ -1,3 +1,3 @@
-import api from './index';
+import request from '../utils/request';
 
-export const login = (data: any) => api.post('/auth/login', data);
+export const login = (data: any) => request.post('/auth/login', data);

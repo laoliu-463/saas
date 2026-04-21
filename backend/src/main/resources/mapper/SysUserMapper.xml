@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.colonel.saas.mapper.SysUserMapper">
+
+    <select id="findPage" resultType="com.colonel.saas.vo.SysUserVO">
+        SELECT
+            su.id,
+            su.username,
+            su.real_name AS realName,
+            su.phone,
+            su.email,
+            su.dept_id AS deptId,
+            su.status,
+            su.last_login_at AS lastLoginAt,
+            su.create_time AS createTime
+        FROM sys_user su
+        WHERE su.deleted = 0
+        <if test="request != null and request.keyword != null and request.keyword != ''">
+            AND (
+                su.username LIKE CONCAT('%', #{request.keyword}, '%')
+                OR su.real_name LIKE CONCAT('%', #{request.keyword}, '%')
+            )
+        </if>
+        <if test="request != null and request.status != null">
+            AND su.status = #{request.status}
+        </if>
+        <if test="request != null and request.deptId != null">
+            AND su.dept_id = #{request.deptId}
+        </if>
+        <if test="ew != null and ew.sqlSegment != null and ew.sqlSegment != ''">
+            AND ${ew.sqlSegment}
+        </if>
+        ORDER BY su.create_time DESC
+    </select>
+
+</mapper>

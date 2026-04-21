@@ -46,19 +46,27 @@ public class DouyinApiClient {
 
         Map<String, Object> response;
         try {
-            response = douyinRestTemplate.postForObject(
+            Object responseObj = douyinRestTemplate.postForObject(
                     buildMethodUrl(method),
                     new HttpEntity<>(payload, headers),
                     Map.class
             );
+            if (!(responseObj instanceof Map<?, ?> responseMap)) {
+                throw new BusinessException("抖音接口返回格式非法");
+            }
+            response = castToStringObjectMap(responseMap);
         } catch (Exception e) {
             log.error("Douyin API request failed, method={}", method, e);
-            throw new BusinessException("抖音接口请求失败");
+            throw new BusinessException("抖音接口请求失败", e);
         }
 
         int code = parseCode(response);
         if (code != 0) {
             String msg = parseMessage(response);
+            if (code == 31012) {
+                douyinTokenService.markReauthorizeRequired(appId, msg);
+                log.error("Token 已过期，需重新授权, method={}, appId={}, code={}, msg={}", method, appId, code, msg);
+            }
             log.error("Douyin API business error, method={}, code={}, msg={}", method, code, msg);
             throw new DouyinApiException(code, msg);
         }
@@ -116,5 +124,15 @@ public class DouyinApiClient {
             errMsg = response.get("message");
         }
         return errMsg == null ? "unknown error" : String.valueOf(errMsg);
+    }
+
+    private Map<String, Object> castToStringObjectMap(Map<?, ?> source) {
+        Map<String, Object> result = new HashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            if (entry.getKey() != null) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return result;
     }
 }

@@ -18,6 +18,11 @@ public class GlobalExceptionHandler {
         return ApiResult.fail(e.getMessage());
     }
 
+    @ExceptionHandler(ForbiddenException.class)
+    public ApiResult<Void> handleForbidden(ForbiddenException e) {
+        return ApiResult.of(ResultCode.FORBIDDEN.getCode(), e.getMessage(), null);
+    }
+
     @ExceptionHandler({ValidateException.class, MethodArgumentNotValidException.class,
             BindException.class, ConstraintViolationException.class})
     public ApiResult<Void> handleValidate(Exception e) {

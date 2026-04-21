@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.colonel.saas.mapper.SysRoleMapper">
+
+    <select id="findPage" resultType="com.colonel.saas.vo.SysRoleVO">
+        SELECT
+            r.id,
+            r.role_code AS roleCode,
+            r.role_name AS roleName,
+            r.data_scope AS dataScope,
+            r.status,
+            r.remark
+        FROM sys_role r
+        WHERE r.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (
+                r.role_code LIKE CONCAT('%', #{keyword}, '%')
+                OR r.role_name LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="status != null">
+            AND r.status = #{status}
+        </if>
+        ORDER BY r.create_time DESC
+    </select>
+
+    <select id="findAll" resultType="com.colonel.saas.vo.SysRoleVO">
+        SELECT
+            r.id,
+            r.role_code AS roleCode,
+            r.role_name AS roleName,
+            r.data_scope AS dataScope,
+            r.status,
+            r.remark
+        FROM sys_role r
+        WHERE r.deleted = 0
+        <if test="status != null">
+            AND r.status = #{status}
+        </if>
+        ORDER BY r.create_time DESC
+    </select>
+
+</mapper>

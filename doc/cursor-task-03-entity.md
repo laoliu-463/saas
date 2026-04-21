@@ -289,43 +289,6 @@ public class SysUserRole {
 }
 ```
 
-#### SysDepartment
-
-| Java 字段 | 类型 | 注解 |
-|-----------|------|------|
-| parentId | UUID | - |
-| deptName | String | - |
-| deptType | String | `VARCHAR(20)`：business / channel |
-| leaderUserId | UUID | - |
-| sortOrder | Integer | - |
-
-```java
-package com.colonel.saas.entity.system;
-
-import com.colonel.saas.common.base.BaseEntity;
-import com.baomidou.mybatisplus.annotation.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-
-@Data
-@EqualsAndHashCode(callSuper = true)
-@TableName("sys_department")
-public class SysDepartment extends BaseEntity {
-
-    private UUID parentId;
-    private String deptName;
-
-    /** business=业务组, channel=渠道组 */
-    private String deptType;
-
-    @TableField("leader_user_id")
-    private UUID leaderUserId;
-
-    @TableField("sort_order")
-    private Integer sortOrder;
-}
-```
-
 ---
 
 ### 5.2 权限模块 (`com.colonel.saas.entity.auth`)
@@ -2073,8 +2036,7 @@ com.colonel.saas
     ├── system
     │   ├── SysUser.java
     │   ├── SysRole.java
-    │   ├── SysUserRole.java
-    │   └── SysDepartment.java
+    │   └── SysUserRole.java
 ├── douyin
 │   └── DouyinToken.java
 ├── activity

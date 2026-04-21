@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.colonel.saas.mapper.ColonelsettlementOrderMapper">
+
+    <resultMap id="ColonelsettlementOrderMap" type="com.colonel.saas.entity.ColonelsettlementOrder">
+        <id property="id" column="id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="productId" column="product_id"/>
+        <result property="productName" column="product_name"/>
+        <result property="shopId" column="shop_id"/>
+        <result property="shopName" column="shop_name"/>
+        <result property="orderAmount" column="order_amount"/>
+        <result property="actualAmount" column="actual_amount"/>
+        <result property="settleColonelCommission" column="settle_colonel_commission"/>
+        <result property="settleColonelTechServiceFee" column="settle_colonel_tech_service_fee"/>
+        <result property="settleSecondColonelCommission" column="settle_second_colonel_commission"/>
+        <result property="orderStatus" column="order_status"/>
+        <result property="pickSource" column="pick_source"/>
+        <result property="channelUserId" column="channel_user_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="deptId" column="dept_id"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="deleted" column="deleted"/>
+    </resultMap>
+
+    <select id="findByOrderId" resultMap="ColonelsettlementOrderMap">
+        SELECT *
+        FROM colonelsettlement_order
+        WHERE order_id = #{orderId}
+        ORDER BY create_time DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insertIgnoreByOrderId" parameterType="com.colonel.saas.entity.ColonelsettlementOrder">
+        INSERT INTO colonelsettlement_order (
+            id, order_id, product_id, product_name, shop_id, shop_name,
+            order_amount, actual_amount, settle_colonel_commission, settle_colonel_tech_service_fee,
+            settle_second_colonel_commission, order_status, pick_source,
+            channel_user_id, user_id, dept_id, create_time, update_time, deleted, extra_data
+        )
+        SELECT
+            #{id}, #{orderId}, #{productId}, #{productName}, #{shopId}, #{shopName},
+            #{orderAmount}, #{actualAmount}, #{settleColonelCommission}, #{settleColonelTechServiceFee},
+            #{settleSecondColonelCommission}, #{orderStatus}, #{pickSource},
+            #{channelUserId}, #{userId}, #{deptId}, #{createTime}, #{updateTime}, #{deleted},
+            CAST(#{extraData, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB)
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM colonelsettlement_order
+            WHERE order_id = #{orderId}
+        )
+    </insert>
+
+    <select id="findPageWithScope" resultMap="ColonelsettlementOrderMap">
+        SELECT co.*
+        FROM colonelsettlement_order co
+        WHERE co.deleted = 0
+        <if test="ew != null and ew.sqlSegment != null and ew.sqlSegment != ''">
+            AND ${ew.sqlSegment}
+        </if>
+        ORDER BY co.create_time DESC
+    </select>
+</mapper>

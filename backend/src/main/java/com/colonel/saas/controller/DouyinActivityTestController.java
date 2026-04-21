@@ -1,7 +1,9 @@
 package com.colonel.saas.controller;
 
+import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.api.ActivityApi;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,7 +18,8 @@ import java.util.Map;
 @Slf4j
 @Tag(name = "抖音SDK测试")
 @RestController
-@RequestMapping("/douyin/activity")
+@RequestMapping("/douyin")
+@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER})
 public class DouyinActivityTestController extends BaseController {
 
     private final ActivityApi activityApi;
@@ -37,7 +40,7 @@ public class DouyinActivityTestController extends BaseController {
         } catch (Exception e) {
             log.error("Douyin activity test call failed", e);
             result.put("status", "failed");
-            result.put("message", e.getMessage());
+            result.put("message", "抖音SDK调用失败，请检查日志");
         }
         return ok(result);
     }
