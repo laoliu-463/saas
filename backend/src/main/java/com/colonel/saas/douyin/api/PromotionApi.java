@@ -1,6 +1,7 @@
 package com.colonel.saas.douyin.api;
 
 import com.colonel.saas.douyin.DouyinApiClient;
+import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.douyin.util.ShortCodeGenerator;
 import com.colonel.saas.service.PickSourceMappingService;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,10 @@ import java.util.UUID;
 
 @Service
 public class PromotionApi {
+
+    private static final String LEGACY_METHOD = "buyin.promotion.link.generate";
+    private static final String FALLBACK_METHOD_1 = "buyin.kolProductShare";
+    private static final String FALLBACK_METHOD_2 = "buyin.getProductShareMaterial";
 
     private final DouyinApiClient douyinApiClient;
     private final PickSourceMappingService pickSourceMappingService;
@@ -55,7 +60,7 @@ public class PromotionApi {
         extra.put("pick_source", shortId);
         params.put("extra", extra);
 
-        Map<String, Object> response = douyinApiClient.post("buyin.promotion.link.generate", params);
+        Map<String, Object> response = postWithFallback(params);
         PromotionLinkResult result = PromotionLinkResult.from(response, shortId, uuidSeed.toString());
         if (context != null && context.userId() != null) {
             pickSourceMappingService.saveOrUpdate(
@@ -71,6 +76,43 @@ public class PromotionApi {
             );
         }
         return result;
+    }
+
+    private Map<String, Object> postWithFallback(Map<String, Object> params) {
+        try {
+            return douyinApiClient.post(LEGACY_METHOD, params);
+        } catch (DouyinApiException ex) {
+            if (!isApiServiceOff(ex)) {
+                throw ex;
+            }
+            try {
+                return douyinApiClient.post(FALLBACK_METHOD_1, params);
+            } catch (DouyinApiException ex2) {
+                if (!isApiServiceOff(ex2)) {
+                    throw ex2;
+                }
+                return douyinApiClient.post(FALLBACK_METHOD_2, params);
+            }
+        }
+    }
+
+    private boolean isApiServiceOff(DouyinApiException ex) {
+        if (ex == null) {
+            return false;
+        }
+        String subCode = ex.getSubCode();
+        String errorMsg = ex.getErrorMsg();
+        return ex.getErrorCode() == 70000
+                || containsIgnoreCase(subCode, "api-service-off")
+                || containsIgnoreCase(errorMsg, "API不存在")
+                || containsIgnoreCase(errorMsg, "API已下线");
+    }
+
+    private boolean containsIgnoreCase(String source, String needle) {
+        if (source == null || needle == null) {
+            return false;
+        }
+        return source.toLowerCase().contains(needle.toLowerCase());
     }
 
     public record PromotionLinkResult(
@@ -92,8 +134,16 @@ public class PromotionApi {
                     }
                 }
             }
-            String promoteLink = data != null ? asStringOrNull(data.get("promote_link")) : null;
-            String shortLink = data != null ? asStringOrNull(data.get("short_link")) : null;
+            String promoteLink = firstNonBlank(
+                    data != null ? asStringOrNull(data.get("promote_link")) : null,
+                    data != null ? asStringOrNull(data.get("promotion_link")) : null,
+                    data != null ? asStringOrNull(data.get("share_link")) : null,
+                    data != null ? asStringOrNull(data.get("url")) : null
+            );
+            String shortLink = firstNonBlank(
+                    data != null ? asStringOrNull(data.get("short_link")) : null,
+                    data != null ? asStringOrNull(data.get("short_url")) : null
+            );
             String extractedShortId = extractShortId(
                     data != null ? asStringOrNull(data.get("pick_source")) : null,
                     promoteLink,
@@ -105,6 +155,18 @@ public class PromotionApi {
                     promoteLink,
                     uuidSeed
             );
+        }
+
+        private static String firstNonBlank(String... values) {
+            if (values == null) {
+                return null;
+            }
+            for (String value : values) {
+                if (StringUtils.hasText(value)) {
+                    return value;
+                }
+            }
+            return null;
         }
 
         private static String asStringOrNull(Object value) {

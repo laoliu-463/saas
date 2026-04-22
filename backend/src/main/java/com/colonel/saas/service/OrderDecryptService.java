@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.douyin.api.OrderApi;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -26,7 +27,15 @@ public class OrderDecryptService {
 
     public List<DecryptPhoneVO> decryptPhones(List<String> orderIds) {
         List<String> normalizedOrderIds = normalizeOrderIds(orderIds);
-        Map<String, Object> response = orderApi.decryptSensitiveData(normalizedOrderIds);
+        Map<String, Object> response;
+        try {
+            response = orderApi.decryptSensitiveData(normalizedOrderIds);
+        } catch (DouyinApiException ex) {
+            if (isCipherInfoRequired(ex)) {
+                throw new BusinessException("当前抖店解密接口已升级为 order.batchSensitive，需传 cipher_infos（加密联系方式）而非 orderIds");
+            }
+            throw ex;
+        }
         List<Map<String, Object>> rows = extractRows(response);
 
         long nowEpochSeconds = Instant.now().getEpochSecond();
@@ -141,6 +150,23 @@ public class OrderDecryptService {
             return null;
         }
         return LocalDateTime.ofInstant(Instant.ofEpochSecond(epochSeconds), ZoneId.systemDefault());
+    }
+
+    private boolean isCipherInfoRequired(DouyinApiException ex) {
+        if (ex == null) {
+            return false;
+        }
+        String message = ex.getErrorMsg();
+        String subCode = ex.getSubCode();
+        return containsIgnoreCase(subCode, "parameter-invalid")
+                && containsIgnoreCase(message, "cipher_infos");
+    }
+
+    private boolean containsIgnoreCase(String source, String keyword) {
+        if (source == null || keyword == null) {
+            return false;
+        }
+        return source.toLowerCase().contains(keyword.toLowerCase());
     }
 
     public static class DecryptPhoneVO {

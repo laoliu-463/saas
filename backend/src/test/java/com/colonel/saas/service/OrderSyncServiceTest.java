@@ -173,6 +173,53 @@ class OrderSyncServiceTest {
         assertThat(result.inserted()).isEqualTo(2);
     }
 
+    @Test
+    void syncByTimeRange_getOrderList_supportsDatasFieldAndStringCreateTime() {
+        when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
+        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(Map.of("data", Map.of(
+                        "datas", List.of(
+                                Map.of("order_id", "oid_datas_1", "product_id", "pid_1", "create_time", "2026-04-22 20:30:00")
+                        ),
+                        "has_more", false,
+                        "cursor", 0L
+                )));
+        when(attributionService.resolveAttribution(any(), any()))
+                .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
+
+        OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(100L, 200L);
+
+        assertThat(result.inserted()).isEqualTo(1);
+    }
+
+    @Test
+    void syncByTimeRange_supportsMoreAndNextCursorPagination() {
+        when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
+        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(Map.of("data", Map.of(
+                        "order_list", List.of(
+                                Map.of("order_id", "oid_page_1", "product_id", "pid_1", "create_time", 1710000000000L)
+                        ),
+                        "more", true,
+                        "next_cursor", 1L
+                )))
+                .thenReturn(Map.of("data", Map.of(
+                        "order_list", List.of(
+                                Map.of("order_id", "oid_page_2", "product_id", "pid_2", "create_time", 1710000001000L)
+                        ),
+                        "more", false,
+                        "next_cursor", 2L
+                )));
+        when(attributionService.resolveAttribution(any(), any()))
+                .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
+
+        OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(100L, 200L);
+
+        assertThat(result.pages()).isEqualTo(2);
+        verify(orderApi).listSettlement(100L, 200L, 100, "0");
+        verify(orderApi).listSettlement(100L, 200L, 100, "1");
+    }
+
     // --- mapOrder() tests ---
 
     @Test
@@ -368,21 +415,21 @@ class OrderSyncServiceTest {
     void syncByTimeRange_throwsWhenStartTimeInvalid() {
         assertThatThrownBy(() -> orderSyncService.syncByTimeRange(0L, 200L))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("非法同步时间范围");
+                .hasMessageContaining("Invalid sync time range");
     }
 
     @Test
     void syncByTimeRange_throwsWhenEndTimeInvalid() {
         assertThatThrownBy(() -> orderSyncService.syncByTimeRange(100L, 0L))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("非法同步时间范围");
+                .hasMessageContaining("Invalid sync time range");
     }
 
     @Test
     void syncByTimeRange_throwsWhenStartGteEnd() {
         assertThatThrownBy(() -> orderSyncService.syncByTimeRange(300L, 200L))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("非法同步时间范围");
+                .hasMessageContaining("Invalid sync time range");
     }
 
     // --- firstNonBlank utility tests ---

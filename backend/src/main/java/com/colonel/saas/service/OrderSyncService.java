@@ -12,6 +12,8 @@ import java.time.Instant;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,7 +70,7 @@ public class OrderSyncService {
 
     public SyncResult syncByTimeRange(long startTime, long endTime) {
         if (startTime <= 0 || endTime <= 0 || startTime >= endTime) {
-            throw new BusinessException("非法同步时间范围");
+            throw new BusinessException("Invalid sync time range");
         }
         Boolean locked = redisTemplate.opsForValue().setIfAbsent(
                 Objects.requireNonNull(SYNC_LOCK_KEY),
@@ -119,8 +121,9 @@ public class OrderSyncService {
                     log.warn("Skip order during sync, reason={}, payload={}", e.getMessage(), orderMap);
                 }
             }
-            cursor = asLong(data.get("cursor"), cursor);
-            hasMore = asBoolean(data.get("has_more"));
+            long nextCursor = resolveNextCursor(data, cursor);
+            hasMore = resolveHasMore(data, orders, count, cursor, nextCursor);
+            cursor = nextCursor;
             if (orders.isEmpty()) {
                 break;
             }
@@ -157,6 +160,9 @@ public class OrderSyncService {
             orders = data.get("orders");
             if (!(orders instanceof List<?>)) {
                 orders = data.get("list");
+                if (!(orders instanceof List<?>)) {
+                    orders = data.get("datas");
+                }
             }
         }
         if (!(orders instanceof List<?> list)) {
@@ -274,9 +280,56 @@ public class OrderSyncService {
         return Objects.equals(String.valueOf(value), "1") || Boolean.parseBoolean(String.valueOf(value));
     }
 
+    private long resolveNextCursor(Map<String, Object> data, long currentCursor) {
+        long nextCursor = asLong(data.get("next_cursor"), -1L);
+        if (nextCursor >= 0) {
+            return nextCursor;
+        }
+        nextCursor = asLong(data.get("cursor"), -1L);
+        if (nextCursor >= 0) {
+            return nextCursor;
+        }
+        nextCursor = asLong(data.get("page"), -1L);
+        if (nextCursor >= 1) {
+            return nextCursor;
+        }
+        return currentCursor + 1;
+    }
+
+    private boolean resolveHasMore(
+            Map<String, Object> data,
+            List<Map<String, Object>> orders,
+            int count,
+            long currentCursor,
+            long nextCursor) {
+        if (data.containsKey("has_more")) {
+            return asBoolean(data.get("has_more"));
+        }
+        if (data.containsKey("more")) {
+            return asBoolean(data.get("more"));
+        }
+        if (data.containsKey("is_has_more")) {
+            return asBoolean(data.get("is_has_more"));
+        }
+        if (data.containsKey("next_cursor")) {
+            return StringUtils.hasText(asString(data.get("next_cursor")));
+        }
+        if (data.containsKey("total") && data.containsKey("page")) {
+            long total = asLong(data.get("total"), -1L);
+            long page = asLong(data.get("page"), 1L);
+            if (total >= 0 && count > 0) {
+                return page * (long) count < total;
+            }
+        }
+        if (nextCursor > currentCursor) {
+            return !orders.isEmpty();
+        }
+        return orders.size() >= count;
+    }
+
     private LocalDateTime parseRequiredDateTime(Object value) {
         if (value == null) {
-            throw new com.colonel.saas.common.exception.BusinessException("订单 create_time 为空，无法写入分区表");
+            throw new com.colonel.saas.common.exception.BusinessException("Order create_time is required for partition table write");
         }
         if (value instanceof LocalDateTime time) {
             return time;
@@ -288,9 +341,38 @@ public class OrderSyncService {
             }
             return LocalDateTime.ofInstant(Instant.ofEpochSecond(timestamp), ZoneId.systemDefault());
         }
-        throw new com.colonel.saas.common.exception.BusinessException("订单 create_time 非法，无法写入分区表");
+        if (value instanceof CharSequence text) {
+            String raw = text.toString().trim();
+            if (!StringUtils.hasText(raw)) {
+                throw new com.colonel.saas.common.exception.BusinessException("Order create_time is empty and cannot be persisted");
+            }
+            if (raw.matches("^\\d{10,13}$")) {
+                long timestamp = Long.parseLong(raw);
+                if (timestamp > 1_000_000_000_000L) {
+                    return LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault());
+                }
+                return LocalDateTime.ofInstant(Instant.ofEpochSecond(timestamp), ZoneId.systemDefault());
+            }
+            try {
+                return LocalDateTime.parse(raw, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            } catch (DateTimeParseException ignore) {
+                // continue trying compatible formats
+            }
+            try {
+                return LocalDateTime.parse(raw, DateTimeFormatter.ISO_DATE_TIME);
+            } catch (DateTimeParseException ignore) {
+                // continue trying compatible formats
+            }
+            try {
+                return LocalDateTime.parse(raw + " 00:00:00", DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            } catch (DateTimeParseException ignore) {
+                throw new com.colonel.saas.common.exception.BusinessException("Order create_time format is invalid");
+            }
+        }
+        throw new com.colonel.saas.common.exception.BusinessException("Order create_time format is invalid");
     }
 
     public record SyncResult(long startTime, long endTime, int pages, int inserted, int skipped, boolean locked) {
     }
 }
+
