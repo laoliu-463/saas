@@ -20,13 +20,20 @@ const normalizeRoleCodes = (roleCodes: unknown): string[] => {
     );
 };
 
+const normalizeStoredToken = (token: unknown): string => {
+    if (typeof token !== 'string') return '';
+    const value = token.trim();
+    if (!value || value === 'undefined' || value === 'null') return '';
+    return value;
+};
+
 export const useAuthStore = defineStore('auth', {
     state: () => ({
-        token: localStorage.getItem('token') || '',
+        token: normalizeStoredToken(localStorage.getItem('token')),
         userInfo: JSON.parse(localStorage.getItem('userInfo') || 'null')
     }),
     getters: {
-        isLoggedIn: (state) => !!state.token,
+        isLoggedIn: (state) => !!normalizeStoredToken(state.token),
         roleCodes: (state) => normalizeRoleCodes(state.userInfo?.roleCodes),
         isAdmin: (state) => normalizeRoleCodes(state.userInfo?.roleCodes).includes(ROLE_CODES.ADMIN),
         isLeader: (state) =>
@@ -37,12 +44,16 @@ export const useAuthStore = defineStore('auth', {
     },
     actions: {
         login(token: string, userInfo: any) {
-            this.token = token;
+            this.token = normalizeStoredToken(token);
             this.userInfo = {
                 ...(userInfo || {}),
                 roleCodes: normalizeRoleCodes(userInfo?.roleCodes)
             };
-            localStorage.setItem('token', token);
+            if (this.token) {
+                localStorage.setItem('token', this.token);
+            } else {
+                localStorage.removeItem('token');
+            }
             localStorage.setItem('userInfo', JSON.stringify(this.userInfo));
         },
         logout() {

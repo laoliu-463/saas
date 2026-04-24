@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "订单同步任务")
 @RestController
-@RequestMapping({"/api/order/sync", "/order/sync"})
+@RequestMapping("/order-sync-jobs")
 public class OrderSyncController extends BaseController {
 
     private final OrderSyncService orderSyncService;
@@ -24,7 +24,7 @@ public class OrderSyncController extends BaseController {
 
     @Operation(summary = "手动触发订单同步")
     @RequireRoles({RoleCodes.ADMIN})
-    @PostMapping("/trigger")
+    @PostMapping
     public ApiResult<OrderSyncService.SyncResult> triggerSync() {
         return ok(orderSyncService.triggerManualSync());
     }

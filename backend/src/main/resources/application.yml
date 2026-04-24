@@ -11,7 +11,7 @@ spring:
     default-property-inclusion: non_null
 
 mybatis-plus:
-  mapper-locations: classpath*:/mapper/**/*.xml
+  mapper-locations: classpath:/mapper/**/*.xml
   type-aliases-package: com.colonel.saas.entity
   type-handlers-package: com.colonel.saas.common.handler
   global-config:
@@ -49,11 +49,24 @@ app:
 
 douyin:
   app:
-    base-url: ${DOUYIN_BASE_URL:https://open.douyin.com}
+    base-url: ${DOUYIN_BASE_URL:https://openapi-fxg.jinritemai.com}
     app-id: ${DOUYIN_APP_ID:}
     client-key: ${DOUYIN_CLIENT_KEY:}
     client-secret: ${DOUYIN_CLIENT_SECRET:}
     sandbox: ${DOUYIN_SANDBOX:false}
+  webhook:
+    verify-sign: ${DOUYIN_WEBHOOK_VERIFY_SIGN:false}
+  mock:
+    enabled: ${DOUYIN_MOCK_ENABLED:false}
   token:
     refresh-threshold-seconds: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:300}
     redis-lock-minutes: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:5}
+    auto-refresh:
+      enabled: ${DOUYIN_TOKEN_AUTO_REFRESH_ENABLED:true}
+      cron: ${DOUYIN_TOKEN_AUTO_REFRESH_CRON:0 */10 * * * ?}
+
+talent:
+  enrich:
+    mode: ${TALENT_ENRICH_MODE:real}
+  data:
+    public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}

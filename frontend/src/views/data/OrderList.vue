@@ -12,6 +12,7 @@
         />
         <n-select v-model:value="searchParams.status" :options="statusOptions" placeholder="状态筛选" style="width: 150px" clearable />
         <n-button type="primary" @click="fetchData">查询</n-button>
+        <n-button @click="handleSync" type="success" :loading="syncLoading">手动同步订单</n-button>
         <n-button @click="handleExport" type="info">导出 CSV</n-button>
         <n-button type="warning" :loading="decryptLoading" @click="handleDecrypt">批量解密（{{ checkedRowKeys.length }}）</n-button>
       </n-space>
@@ -67,8 +68,8 @@
 <script setup lang="ts">
 import { ref, reactive, h, onMounted, computed, defineComponent } from 'vue';
 import { NButton, NTag, NText, useMessage } from 'naive-ui';
-import { getOrderPage, decryptOrders } from '../../api/data';
-import { useExportCSV } from '../../composables/useExportCSV';
+import { getOrderPage, decryptOrders, exportOrders } from '../../api/data';
+import { triggerOrderSync } from '../../api/order';
 import { useAuthStore } from '../../stores/auth';
 import type { DecryptResultItem } from '../../types';
 
@@ -117,6 +118,20 @@ const authStore = useAuthStore();
 const message = useMessage();
 const loading = ref(false);
 const decryptLoading = ref(false);
+const syncLoading = ref(false);
+
+const handleSync = async () => {
+  syncLoading.value = true;
+  try {
+    await triggerOrderSync();
+    message.success('已触发同步订单');
+    fetchData();
+  } catch (error: any) {
+    message.error(error?.message || '同步失败');
+  } finally {
+    syncLoading.value = false;
+  }
+};
 
 const data = ref([]);
 const pagination = reactive({
@@ -221,7 +236,7 @@ const canExport = computed(() =>
   authStore.isAdmin || authStore.isLeader || authStore.userInfo?.roleCodes?.includes('DATA_VIEWER')
 );
 
-const handleExport = () => {
+const handleExport = async () => {
   if (!canExport.value) {
     message.warning('当前角色无权导出订单数据');
     return;
@@ -230,12 +245,24 @@ const handleExport = () => {
     message.warning('无数据可导出');
     return;
   }
-  const headers = ['订单号', '商品名称', '达人名称', '金额', '状态', '创建时间'];
-  const rows = data.value.map((r: any) => [
-    r.id, r.productName, r.talentName, r.amount, r.status, r.createTime
-  ]);
-  useExportCSV(headers, rows, `订单明细_${Date.now()}.csv`);
-  message.success('导出已开始');
+  try {
+    let startDate, endDate;
+    if (dateRange.value) {
+      startDate = new Date(dateRange.value[0]).toISOString().split('T')[0];
+      endDate = new Date(dateRange.value[1]).toISOString().split('T')[0];
+    }
+    const res: any = await exportOrders({ status: searchParams.status, startDate, endDate });
+    const url = window.URL.createObjectURL(new Blob([res]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'orders.csv');
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode?.removeChild(link);
+    message.success('导出成功');
+  } catch (error: any) {
+    message.error('导出失败');
+  }
 };
 
 const handlePageChange = (page: number) => {

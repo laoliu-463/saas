@@ -1,19 +1,4 @@
-# ============================================================
-# Docker-first 开发环境
-# 启动命令: docker compose up -d
-# 停止命令: docker compose down
-#
-# 热重载说明:
-#   - backend:  修改 backend/src/*.java  → DevTools 自动重启
-#   - frontend: 修改 frontend/src/*.vue   → Vite HMR 页面无刷新更新
-#   - 数据库:   init-db.sql 变更需重建 postgres: docker compose up -d --force-recreate postgres
-# ============================================================
-
 services:
-
-  # ----------------------------------------------------------
-  # PostgreSQL 数据库（不变）
-  # ----------------------------------------------------------
   postgres:
     image: postgres:15-alpine
     container_name: colonel-postgres
@@ -23,7 +8,6 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-saas123}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # 初始化脚本：首次启动时自动执行
       - ./backend/src/main/resources/db/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
     ports:
       - "5432:5432"
@@ -34,9 +18,6 @@ services:
       retries: 5
     restart: on-failure
 
-  # ----------------------------------------------------------
-  # Redis 缓存（不变）
-  # ----------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: colonel-redis
@@ -51,20 +32,14 @@ services:
       retries: 5
     restart: on-failure
 
-  # ----------------------------------------------------------
-  # Backend: Spring Boot 开发服务（Docker-first 模式）
-  #   - 源码通过 volume 挂载，修改即生效
-  #   - Spring Boot DevTools 监控 classpath 变化自动重启
-  #   - Maven 调试端口 5005 暴露到宿主机
-  # ----------------------------------------------------------
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
     container_name: colonel-backend
     ports:
-      - "8080:8080"      # Spring Boot
-      - "5005:5005"      # JVM debugger
+      - "8080:8080"
+      - "5005:5005"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       DB_HOST: postgres
@@ -75,13 +50,17 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET:-colonel-saas-jwt-secret-key-at-least-32-chars}
-      # DevTools 热重载配置
-      JAVA_OPTS: -Dspring.devtools.restart.enabled=true
+      DOUYIN_BASE_URL: ${DOUYIN_BASE_URL:-https://openapi-fxg.jinritemai.com}
+      DOUYIN_APP_ID: ${DOUYIN_APP_ID:-}
+      DOUYIN_CLIENT_KEY: ${DOUYIN_CLIENT_KEY:-}
+      DOUYIN_CLIENT_SECRET: ${DOUYIN_CLIENT_SECRET:-}
+      DOUYIN_SANDBOX: ${DOUYIN_SANDBOX:-false}
+      DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:-300}
+      DOUYIN_TOKEN_REDIS_LOCK_MINUTES: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:-5}
+      CRAWLER_TALENT_URL: ${CRAWLER_TALENT_URL:-https://api.douyin.com/internal/talent/list}
+      JAVA_OPTS: -Dspring.devtools.restart.enabled=false -Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=*:5005,suspend=n
     volumes:
-      # 挂载整个 backend 目录（含 pom.xml 和 src）
-      # Maven 从 /app/pom.xml 读取项目配置，源码在 /app/src
       - ./backend:/app
-      # Maven 依赖缓存（避免每次重启都重新下载）
       - maven_cache:/root/.m2
     depends_on:
       postgres:
@@ -95,28 +74,19 @@ services:
       retries: 3
     restart: on-failure
 
-  # ----------------------------------------------------------
-  # Frontend: Vue 3 + Vite 开发服务（Docker-first 模式）
-  #   - Node 容器运行 Vite dev server
-  #   - 源码通过 volume 挂载，Vite HMR 实时更新
-  # ----------------------------------------------------------
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
     container_name: colonel-frontend
     ports:
-      - "3000:3000"      # Vite dev server
+      - "3000:3000"
     environment:
-      # Vite 从 .env.development 读取（已复制到镜像中）
-      VITE_API_BASE_URL: http://localhost:8080/api
+      VITE_PROXY_TARGET: http://backend:8080
       CHOKIDAR_USEPOLLING: "true"
       CHOKIDAR_INTERVAL: "300"
     volumes:
-      # 挂载整个 frontend 目录
-      # pnpm dev 监听 /app/src/*.vue 变化，触发 HMR
       - ./frontend:/app
-      # node_modules 缓存（避免每次重启都重新安装）
       - frontend_node_modules:/app/node_modules
     depends_on:
       - backend

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <n-layout-sider
     v-model:collapsed="appStore.collapsed"
     bordered
@@ -11,6 +11,7 @@
       <span v-if="!appStore.collapsed">SAAS</span>
       <span v-else>S</span>
     </div>
+    <div v-if="envLabel && !appStore.collapsed" class="env-label">{{ envLabel }}</div>
     <n-menu v-if="menuOptions.length" :options="menuOptions" :value="route.path" @update:value="handleMenuClick" />
     <div v-else class="empty-tip">
       当前账号没有可见菜单，请联系管理员配置角色权限。
@@ -30,6 +31,7 @@ const authStore = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 const ROLE = ROLE_CODES;
+const envLabel = import.meta.env.VITE_ENV_LABEL as string | undefined;
 
 const rawMenus = [
   {
@@ -101,9 +103,25 @@ const handleMenuClick = (key: string) => {
   border-bottom: 1px solid #efefef;
 }
 
+.env-label {
+  margin: 8px 12px 4px 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  color: #8a6d00;
+  background: #fff8db;
+  border: 1px solid #f0d27a;
+  text-align: center;
+}
+
 .empty-tip {
   padding: 16px;
   color: #999;
   font-size: 12px;
 }
 </style>
+
+
+
+
+

@@ -3,7 +3,6 @@ package com.colonel.saas.entity;
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import lombok.experimental.PackagePrivate;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -14,7 +13,6 @@ import java.util.UUID;
  */
 @Data
 @EqualsAndHashCode(callSuper = false)
-@PackagePrivate
 @TableName("sys_user_role")
 public class SysUserRole {
 

@@ -1,0 +1,260 @@
+package com.colonel.saas.controller;
+
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.entity.Talent;
+import com.colonel.saas.entity.TalentEnrichTask;
+import com.colonel.saas.job.TalentWeeklyRefreshJob;
+import com.colonel.saas.service.TalentService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.util.List;
+import java.util.UUID;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@ExtendWith(MockitoExtension.class)
+class TalentControllerTest {
+
+    @Mock
+    private TalentService talentService;
+    @Mock
+    private TalentWeeklyRefreshJob talentWeeklyRefreshJob;
+
+    private MockMvc mockMvc;
+
+    @BeforeEach
+    void setUp() {
+        TalentController controller = new TalentController(talentService, talentWeeklyRefreshJob);
+        mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+    }
+
+    @Test
+    void page_returnsPagedTalents() throws Exception {
+        UUID userId = UUID.randomUUID();
+        IPage<Talent> page = new Page<>(1, 10);
+        page.setRecords(List.of(new Talent()));
+        page.setTotal(1);
+        when(talentService.page(1, 10, "alice", null, null, null, DataScope.PERSONAL, userId, null))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/talents")
+                        .param("page", "1")
+                        .param("size", "10")
+                        .param("keyword", "alice")
+                        .requestAttr("userId", userId)
+                        .requestAttr("dataScope", DataScope.PERSONAL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.total").value(1));
+    }
+
+    @Test
+    void detail_existingTalent_returnsTalent() throws Exception {
+        UUID id = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(id);
+        talent.setNickname("tester");
+        when(talentService.getById(id)).thenReturn(talent);
+
+        mockMvc.perform(get("/talents/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.nickname").value("tester"));
+    }
+
+    @Test
+    void create_validTalent_returnsCreated() throws Exception {
+        UUID id = UUID.randomUUID();
+        Talent created = new Talent();
+        created.setId(id);
+        created.setDouyinUid("uid_123");
+        created.setNickname("new talent");
+        when(talentService.create(any(Talent.class))).thenReturn(created);
+
+        String body = """
+                {"douyinUid":"uid_123","nickname":"new talent","status":1}
+                """;
+
+        mockMvc.perform(post("/talents")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.douyinUid").value("uid_123"));
+    }
+
+    @Test
+    void update_validRequest_returnsUpdated() throws Exception {
+        UUID id = UUID.randomUUID();
+        Talent updated = new Talent();
+        updated.setId(id);
+        updated.setNickname("updated");
+        when(talentService.update(any(UUID.class), any(Talent.class))).thenReturn(updated);
+
+        String body = """
+                {"nickname":"updated"}
+                """;
+
+        mockMvc.perform(put("/talents/{id}", id)
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nickname").value("updated"));
+    }
+
+    @Test
+    void delete_existingTalent_returnsOk() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(delete("/talents/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(talentService).delete(id);
+    }
+
+    @Test
+    void publicPool_returnsPublicTalents() throws Exception {
+        when(talentService.getPublicPool()).thenReturn(List.of(new Talent()));
+
+        mockMvc.perform(get("/talents/pools/public"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").isArray());
+    }
+
+    @Test
+    void privatePool_returnsPrivateTalents() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(talentService.getPrivatePool(userId)).thenReturn(List.of());
+
+        mockMvc.perform(get("/talents/pools/private")
+                        .requestAttr("userId", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
+    void claim_talent_returnsClaimedTalent() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Talent claimed = new Talent();
+        claimed.setId(talentId);
+        claimed.setOwnerId(userId);
+        when(talentService.claim(talentId, userId, null)).thenReturn(claimed);
+
+        mockMvc.perform(post("/talents/{id}/claims", talentId)
+                        .requestAttr("userId", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
+    void release_talent_returnsReleasedTalent() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Talent released = new Talent();
+        released.setId(talentId);
+        when(talentService.release(talentId, userId, null, null)).thenReturn(released);
+
+        mockMvc.perform(post("/talents/{id}/release", talentId)
+                        .requestAttr("userId", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
+    void refresh_talent_returnsRefreshedTalent() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        Talent refreshed = new Talent();
+        refreshed.setId(talentId);
+        refreshed.setNickname("crawler-updated");
+        when(talentService.refresh(talentId)).thenReturn(refreshed);
+
+        mockMvc.perform(post("/talents/{id}/refresh", talentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.nickname").value("crawler-updated"));
+    }
+
+    @Test
+    void refreshWeekly_returnsOk() throws Exception {
+        mockMvc.perform(post("/talents/refresh/weekly"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(talentWeeklyRefreshJob).weeklyRefreshActiveTalents();
+    }
+
+    @Test
+    void manualFill_talent_returnsUpdatedTalent() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        Talent updated = new Talent();
+        updated.setId(talentId);
+        updated.setNickname("manual-name");
+        when(talentService.manualFill(any(UUID.class), any(Talent.class))).thenReturn(updated);
+
+        String body = """
+                {"nickname":"manual-name","fansCount":1000}
+                """;
+
+        mockMvc.perform(put("/talents/{id}/manual-fill", talentId)
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.nickname").value("manual-name"));
+    }
+
+    @Test
+    void latestEnrichTask_returnsTask() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        TalentEnrichTask task = new TalentEnrichTask();
+        task.setTalentId(talentId);
+        task.setTaskStatus("RUNNING");
+        when(talentService.getLatestEnrichTask(talentId)).thenReturn(task);
+
+        mockMvc.perform(get("/talents/{id}/enrich-task/latest", talentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.taskStatus").value("RUNNING"));
+    }
+
+    @Test
+    void exclusiveCheck_talent_returnsCheckResult() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        TalentService.ExclusiveCheckResult result =
+                new TalentService.ExclusiveCheckResult(true, 85, 12);
+        when(talentService.evaluateExclusive(talentId, DataScope.ALL, userId, null))
+                .thenReturn(result);
+
+        mockMvc.perform(get("/talents/{id}/exclusive-status", talentId)
+                        .requestAttr("userId", userId)
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.eligible").value(true))
+                .andExpect(jsonPath("$.data.serviceFeeRatio").value(85))
+                .andExpect(jsonPath("$.data.monthlySamples").value(12));
+    }
+}

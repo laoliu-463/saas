@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.annotation.*;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import lombok.experimental.PackagePrivate;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -16,7 +15,6 @@ import java.util.UUID;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@PackagePrivate
 @TableName("sys_role")
 public class SysRole extends com.colonel.saas.common.base.BaseEntity {
 

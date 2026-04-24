@@ -29,10 +29,11 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @Validated
-@Tag(name = "Product")
+@Tag(name = "商品管理（兼容接口，已废弃）")
 @RestController
 @RequestMapping("/products")
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+@Deprecated(since = "2026-04-24", forRemoval = false)
 public class ProductController extends BaseController {
 
     private final ProductService productService;
@@ -41,8 +42,8 @@ public class ProductController extends BaseController {
         this.productService = productService;
     }
 
-    @Operation(summary = "Product page")
-    @GetMapping("/page")
+    @Operation(summary = "商品分页（Deprecated）", description = "请迁移到 /colonel/activities/{activityId}/products 主链路")
+    @GetMapping
     public ApiResult<PageResult<Product>> page(
             @RequestParam(defaultValue = "1") @Min(1) long page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
@@ -51,35 +52,35 @@ public class ProductController extends BaseController {
         return okPage(result);
     }
 
-    @Operation(summary = "Product detail")
+    @Operation(summary = "商品详情（Deprecated）", description = "请迁移到 /colonel/activities/{activityId}/products/{productId}")
     @GetMapping("/{id}")
     public ApiResult<Product> detail(@PathVariable UUID id) {
         return ok(productService.getById(id));
     }
 
-    @Operation(summary = "Bind product to activity")
+    @Operation(summary = "商品绑定活动（Deprecated）", description = "请迁移到 /colonel/activities/{activityId}/products/{productId}/bind-activity")
     @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
-    @PutMapping("/{id}/bind-activity")
+    @PutMapping("/{id}/activity")
     public ApiResult<Product> bindActivity(@PathVariable UUID id, @Valid @RequestBody BindActivityRequest request) {
         return ok(productService.bindActivity(id, request.getActivityId()));
     }
 
-    @Operation(summary = "Assign product to biz owner")
+    @Operation(summary = "商品分配招商（Deprecated）", description = "请迁移到 /colonel/activities/{activityId}/products/{productId}/assignee")
     @RequireRoles({RoleCodes.BIZ_LEADER})
-    @PutMapping("/{id}/assign")
+    @PutMapping("/{id}/assignee")
     public ApiResult<Product> assign(@PathVariable UUID id, @Valid @RequestBody AssignProductRequest request) {
         return ok(productService.assignProduct(id, request.getAssigneeId()));
     }
 
-    @Operation(summary = "Audit product approve/reject")
+    @Operation(summary = "商品审核（Deprecated）", description = "请迁移到 /colonel/activities/{activityId}/products/{productId}/audit-result")
     @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
-    @PutMapping("/{id}/audit")
+    @PutMapping("/{id}/audit-result")
     public ApiResult<Product> audit(@PathVariable UUID id, @Valid @RequestBody AuditProductRequest request) {
         return ok(productService.auditProduct(id, request.isApproved(), request.getReason()));
     }
 
-    @Operation(summary = "Generate promotion link and persist mapping")
-    @PostMapping("/{id}/promotion-link")
+    @Operation(summary = "商品转链（Deprecated）", description = "请迁移到 /colonel/activities/{activityId}/products/{productId}/promotion-links")
+    @PostMapping("/{id}/promotion-links")
     public ApiResult<PromotionApi.PromotionLinkResult> generatePromotionLink(
             @PathVariable UUID id,
             @RequestBody(required = false) PromotionLinkRequest request,
@@ -98,7 +99,7 @@ public class ProductController extends BaseController {
     }
 
     public static class BindActivityRequest {
-        @NotNull(message = "activityId is required")
+        @NotNull(message = "activityId 不能为空")
         private UUID activityId;
 
         public UUID getActivityId() {
@@ -111,7 +112,7 @@ public class ProductController extends BaseController {
     }
 
     public static class AssignProductRequest {
-        @NotNull(message = "assigneeId is required")
+        @NotNull(message = "assigneeId 不能为空")
         private UUID assigneeId;
 
         public UUID getAssigneeId() {
@@ -174,3 +175,4 @@ public class ProductController extends BaseController {
         }
     }
 }
+

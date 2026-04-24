@@ -29,3 +29,13 @@ knife4j:
 logging:
   level:
     com.colonel.saas: info
+
+talent:
+  enrich:
+    mode: ${TALENT_ENRICH_MODE:real}
+  data:
+    public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
+
+douyin:
+  mock:
+    enabled: false

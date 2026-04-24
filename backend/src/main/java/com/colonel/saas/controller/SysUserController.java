@@ -31,7 +31,7 @@ import java.util.UUID;
 
 @Tag(name = "系统用户")
 @RestController
-@RequestMapping("/sys/users")
+@RequestMapping("/users")
 @RequireRoles({RoleCodes.ADMIN})
 public class SysUserController extends BaseController {
 
@@ -42,7 +42,7 @@ public class SysUserController extends BaseController {
     }
 
     @Operation(summary = "分页查询用户")
-    @GetMapping("/page")
+    @GetMapping
     public ApiResult<PageResult<SysUserVO>> page(
             @Valid SysUserPageRequest request,
             @RequestAttribute("userId") UUID userId,
@@ -91,7 +91,7 @@ public class SysUserController extends BaseController {
     }
 
     @Operation(summary = "重置密码")
-    @PutMapping("/{id}/reset-password")
+    @PutMapping("/{id}/password")
     public ApiResult<Void> resetPassword(
             @PathVariable UUID id,
             @Valid @RequestBody SysUserResetPasswordRequest request,

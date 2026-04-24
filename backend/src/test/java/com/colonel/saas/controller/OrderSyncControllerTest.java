@@ -36,10 +36,9 @@ class OrderSyncControllerTest {
         when(orderSyncService.triggerManualSync())
                 .thenReturn(new OrderSyncService.SyncResult(100, 200, 1, 2, 0, false));
 
-        mockMvc.perform(post("/api/order/sync/trigger"))
+        mockMvc.perform(post("/order-sync-jobs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.inserted").value(2));
     }
 }
-

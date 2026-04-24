@@ -30,3 +30,4 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 }
+// Hot reload test

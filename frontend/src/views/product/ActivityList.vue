@@ -1,104 +1,156 @@
-<template>
+﻿<template>
   <div class="activity-list">
-    <n-card title="商品库 - 活动列表" :bordered="false">
-      <!-- Toolbar -->
-      <n-space style="margin-bottom: 16px;">
-        <n-input v-model:value="searchParams.activityName" placeholder="请输入活动名" clearable />
-        <n-button type="primary" @click="fetchData">查询</n-button>
-        <n-button v-if="showExportBtn" type="info" @click="handleExport">导出</n-button>
+    <n-card title="团长活动列表" :bordered="false">
+      <n-space style="margin-bottom: 16px" wrap>
+        <n-select v-model:value="filters.status" :options="statusOptions" style="width: 180px" />
+        <n-select v-model:value="filters.searchType" :options="searchTypeOptions" style="width: 180px" />
+        <n-select v-model:value="filters.sortType" :options="sortTypeOptions" style="width: 140px" />
+        <n-input
+          v-model:value="filters.activityInfo"
+          clearable
+          placeholder="活动名称或活动ID"
+          style="width: 260px"
+          @keydown.enter="handleQuery"
+        />
+        <n-button type="primary" :loading="loading" @click="handleQuery">查询</n-button>
       </n-space>
 
-      <!-- Table -->
+      <n-alert v-if="isMockData" type="warning" :show-icon="false" style="margin-bottom: 16px">
+        当前为 Mock 测试环境，活动数据来自后端 Mock 服务。
+      </n-alert>
+
       <n-data-table
-        remote
         :columns="columns"
-        :data="data"
+        :data="activityList"
         :loading="loading"
         :pagination="pagination"
+        remote
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       />
     </n-card>
-
-    <n-modal v-model:show="showDetail" preset="card" title="活动详情" style="width: 500px;">
-      <n-descriptions bordered column="1" v-if="currentActivity">
-        <n-descriptions-item label="活动名称">{{ currentActivity.activityName || '-' }}</n-descriptions-item>
-        <n-descriptions-item label="活动类型">{{ currentActivity.activityType === 'COLONEL' ? '团长活动' : '推广活动' }}</n-descriptions-item>
-        <n-descriptions-item label="开始时间">{{ currentActivity.startTime || '-' }}</n-descriptions-item>
-        <n-descriptions-item label="结束时间">{{ currentActivity.endTime || '-' }}</n-descriptions-item>
-        <n-descriptions-item label="当前状态">{{ currentActivity.status || '-' }}</n-descriptions-item>
-        <n-descriptions-item label="关联商品数">{{ currentActivity.productCount || 0 }}</n-descriptions-item>
-        <n-descriptions-item label="活动说明">{{ currentActivity.description || '无' }}</n-descriptions-item>
-      </n-descriptions>
-      <template #footer>
-        <n-button @click="showDetail = false">关闭</n-button>
-      </template>
-    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, h, computed } from 'vue';
-import { NButton, NTag, useMessage } from 'naive-ui';
-import { getActivityPage } from '../../api/product';
-import { useAuthStore } from '../../stores/auth';
+import { computed, h, onMounted, reactive, ref } from 'vue';
+import { NTag, useMessage } from 'naive-ui';
+import { getColonelActivityPage } from '../../api/product';
 
-const authStore = useAuthStore();
 const message = useMessage();
 const loading = ref(false);
-const data = ref([]);
+const isMockData = ref(false);
+const activityList = ref<any[]>([]);
+
+const filters = reactive({
+  status: 0,
+  searchType: 0,
+  sortType: 1,
+  activityInfo: ''
+});
+
 const pagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 20,
   itemCount: 0,
   showSizePicker: true,
-  pageSizes: [10, 20, 50]
+  pageSizes: [10, 20]
 });
 
-const searchParams = reactive({
-  activityName: ''
-});
+const statusOptions = [
+  { label: '任意状态', value: 0 },
+  { label: '未上线', value: 1 },
+  { label: '报名未开始', value: 2 },
+  { label: '报名中', value: 3 },
+  { label: '推广未开始', value: 4 },
+  { label: '推广中', value: 5 },
+  { label: '报名结束', value: 7 }
+];
 
-const showDetail = ref(false);
-const currentActivity = ref<any>(null);
+const searchTypeOptions = [
+  { label: '创建时间', value: 0 },
+  { label: '报名开始时间', value: 1 },
+  { label: '报名结束时间', value: 2 }
+];
 
-const openDetail = (row: any) => {
-  currentActivity.value = {
-     ...row,
-     startTime: '2026-04-01 00:00:00',
-     endTime: '2026-05-01 00:00:00',
-     productCount: row.productCount || Math.floor(Math.random() * 50)
-  };
-  showDetail.value = true;
+const sortTypeOptions = [
+  { label: '降序', value: 1 },
+  { label: '升序', value: 0 }
+];
+
+const formatCategories = (value: unknown) => {
+  if (!value) return '-';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([k, v]) => `${k}: ${String(v)}`)
+      .join(' / ');
+  }
+  return String(value);
 };
 
-const showExportBtn = computed(() => authStore.isAdmin || authStore.isLeader);
-
-const handleExport = () => {
-    message.success('导出数据功能维护中');
+const statusTagType = (status: number) => {
+  if (status === 3 || status === 5) return 'success';
+  if (status === 4 || status === 2) return 'warning';
+  if (status === 7) return 'default';
+  return 'info';
 };
+
+const columns = computed(() => [
+  { title: '活动ID', key: 'activityId', width: 120 },
+  { title: '活动名称', key: 'activityName', minWidth: 220 },
+  {
+    title: '活动状态',
+    key: 'statusText',
+    width: 120,
+    render: (row: any) => h(NTag, { type: statusTagType(Number(row.status || 0)), bordered: false }, { default: () => row.statusText || '-' })
+  },
+  { title: '报名开始时间', key: 'applicationStartTime', width: 170 },
+  { title: '报名结束时间', key: 'applicationEndTime', width: 170 },
+  { title: '活动开始时间', key: 'activityStartTime', width: 170 },
+  { title: '活动结束时间', key: 'activityEndTime', width: 170 },
+  { title: '团长百应ID', key: 'colonelBuyinId', width: 160 },
+  {
+    title: '类目限制',
+    key: 'categoriesLimit',
+    minWidth: 220,
+    render: (row: any) => formatCategories(row.categoriesLimit)
+  }
+]);
 
 const fetchData = async () => {
   loading.value = true;
   try {
-    const res = await getActivityPage({
+    const res: any = await getColonelActivityPage({
+      status: filters.status,
+      searchType: filters.searchType,
+      sortType: filters.sortType,
       page: pagination.page,
-      size: pagination.pageSize,
-      activityName: searchParams.activityName
+      pageSize: pagination.pageSize,
+      activityInfo: filters.activityInfo?.trim() || undefined
     });
-    const responseData = res?.data || res;
-    if (responseData?.records && Array.isArray(responseData.records)) {
-      data.value = responseData.records;
-      pagination.itemCount = responseData.total || 0;
-    } else {
-      data.value = [];
-      pagination.itemCount = 0;
+
+    const data = res?.data || {};
+    activityList.value = Array.isArray(data.activityList) ? data.activityList : [];
+    pagination.itemCount = Number(data.total || activityList.value.length || 0);
+    isMockData.value = Boolean(data.mock);
+
+    if (pagination.page === 1) {
+      message.success('活动调用成功');
     }
   } catch (error: any) {
-    message.error(error?.message || '获取活动列表失败');
+    activityList.value = [];
+    pagination.itemCount = 0;
+    isMockData.value = false;
+    message.error(error?.response?.data?.msg || error?.message || '活动调用失败，请稍后重试');
   } finally {
     loading.value = false;
   }
+};
+
+const handleQuery = () => {
+  pagination.page = 1;
+  fetchData();
 };
 
 const handlePageChange = (page: number) => {
@@ -112,28 +164,13 @@ const handlePageSizeChange = (pageSize: number) => {
   fetchData();
 };
 
-const columns = [
-  { title: '活动ID', key: 'id', width: 100 },
-  { title: '活动名称', key: 'activityName' },
-  { title: '活动类型', key: 'activityType', render(row: any) {
-      const map: Record<string, string> = { 'COLONEL': '团长活动', 'PROMOTION': '推广活动' };
-      return map[row.activityType] || row.activityType || '未知类型';
-  }},
-  { title: '状态', key: 'status', render(row: any) {
-      const map: Record<string, any> = { 'ACTIVE': 'success', 'INACTIVE': 'default', 'EXPIRED': 'warning' };
-      return h(NTag, { type: map[row.status] || 'default' }, { default: () => row.status === 'ACTIVE' ? '进行中' : row.status === 'INACTIVE' ? '未开始' : '已结束' });
-  }},
-  { title: '创建时间', key: 'createTime' },
-  { title: '操作', key: 'actions', width: 100, render(row: any) {
-      return h(NButton, { size: 'small', type: 'primary', onClick: () => openDetail(row) }, { default: () => '详情' });
-  }}
-];
-
 onMounted(() => {
   fetchData();
 });
 </script>
 
 <style scoped>
-.activity-list { min-height: 100%; }
+.activity-list {
+  min-height: 100%;
+}
 </style>

@@ -20,4 +20,10 @@ public interface TalentClaimMapper extends BaseMapper<TalentClaim> {
 
     @Select("SELECT * FROM talent_claim WHERE dept_id = #{deptId} AND status = 1 AND deleted = 0")
     List<TalentClaim> findActiveByDeptId(@Param("deptId") UUID deptId);
+
+    @Select("SELECT * FROM talent_claim WHERE talent_id = #{talentId} AND user_id = #{userId} AND status = 1 AND deleted = 0 LIMIT 1")
+    TalentClaim findActiveByTalentAndUser(@Param("talentId") UUID talentId, @Param("userId") UUID userId);
+
+    @Select("SELECT * FROM talent_claim WHERE talent_id = #{talentId} AND status = 1 AND deleted = 0 ORDER BY apply_time DESC")
+    List<TalentClaim> findActiveByTalentId(@Param("talentId") UUID talentId);
 }

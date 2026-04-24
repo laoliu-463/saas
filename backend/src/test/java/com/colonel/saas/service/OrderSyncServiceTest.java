@@ -77,7 +77,7 @@ class OrderSyncServiceTest {
 
         assertThat(result.locked()).isFalse();
         assertThat(result.inserted()).isZero();
-        verify(valueOperations).set("order:sync:last_time", 200L);
+        verify(valueOperations).set("order:sync:last_time", "200");
         verify(redisTemplate).delete("order:sync:lock");
     }
 

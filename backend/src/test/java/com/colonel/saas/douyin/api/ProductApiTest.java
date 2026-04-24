@@ -8,10 +8,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -26,78 +29,136 @@ class ProductApiTest {
     private ProductApi productApi;
 
     @Test
-    void listActivities_shouldCallCorrectEndpoint() {
-        when(douyinApiClient.post(eq("buyin.colonel.activity.list"), org.mockito.ArgumentMatchers.anyMap()))
-                .thenReturn(Map.of("data", List.of()));
+    void listActivities_shouldCallAllianceInstituteColonelActivityList() {
+        when(douyinApiClient.post(eq("alliance.instituteColonelActivityList"), anyMap()))
+                .thenReturn(new HashMap<>());
 
-        productApi.listActivities(null, null, null, null);
+        productApi.listActivities("app-1", null, null, null, null, null, null);
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(douyinApiClient).post(eq("buyin.colonel.activity.list"), captor.capture());
+        verify(douyinApiClient).post(eq("alliance.instituteColonelActivityList"), captor.capture());
         Map<String, Object> params = captor.getValue();
-        assertThat(params).containsKey("start_time");
-        assertThat(params).containsKey("end_time");
+        assertThat(params.get("appId")).isEqualTo("app-1");
+        assertThat(params.get("status")).isEqualTo(0);
+        assertThat(params.get("search_type")).isEqualTo(0L);
+        assertThat(params.get("sort_type")).isEqualTo(1L);
+        assertThat(params.get("page")).isEqualTo(1L);
+        assertThat(params.get("page_size")).isEqualTo(20L);
+    }
+
+    @Test
+    void listActivities_shouldRejectPageSizeOver20() {
+        assertThatThrownBy(() -> productApi.listActivities("app-1", 0, 0L, 1L, 1L, 21L, null))
+                .hasMessageContaining("page_size");
+    }
+
+    @Test
+    void listActivities_shouldRejectUnsupportedSearchType() {
+        assertThatThrownBy(() -> productApi.listActivities("app-1", 0, 3L, 1L, 1L, 20L, null))
+                .hasMessageContaining("search_type");
+    }
+
+    @Test
+    void listProductsByActivity_shouldCallAllianceColonelActivityProduct() {
+        when(douyinApiClient.post(eq("alliance.colonelActivityProduct"), anyMap()))
+                .thenReturn(new HashMap<>());
+
+        productApi.listProductsByActivity("app-1", "12345", 500, "bad");
+
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(douyinApiClient).post(eq("alliance.colonelActivityProduct"), captor.capture());
+        Map<String, Object> params = captor.getValue();
+        assertThat(params.get("appId")).isEqualTo("app-1");
+        assertThat(params.get("activity_id")).isEqualTo(12345L);
         assertThat(params.get("count")).isEqualTo(20);
-        assertThat(params.get("cursor")).isEqualTo(0L);
+        assertThat(params.get("search_type")).isEqualTo(4L);
+        assertThat(params.get("sort_type")).isEqualTo(1L);
+        assertThat(params.get("retrieve_mode")).isEqualTo(1L);
+        assertThat(params.get("cursor")).isEqualTo("bad");
     }
 
     @Test
-    void listActivities_withCustomParams_shouldPassThemThrough() {
-        when(douyinApiClient.post(eq("buyin.colonel.activity.list"), org.mockito.ArgumentMatchers.anyMap()))
-                .thenReturn(Map.of("data", List.of()));
+    void listProductsByActivity_shouldUsePagingModeWhenCursorMissing() {
+        when(douyinApiClient.post(eq("alliance.colonelActivityProduct"), anyMap()))
+                .thenReturn(new HashMap<>());
 
-        productApi.listActivities(1000L, 2000L, 50, "42");
-
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(douyinApiClient).post(eq("buyin.colonel.activity.list"), captor.capture());
-        Map<String, Object> params = captor.getValue();
-        assertThat(params.get("start_time")).isEqualTo(1000L);
-        assertThat(params.get("end_time")).isEqualTo(2000L);
-        assertThat(params.get("count")).isEqualTo(50);
-        assertThat(params.get("cursor")).isEqualTo(42L);
-    }
-
-    @Test
-    void listByActivity_shouldPassActivityIdAndUseDefaults() {
-        when(douyinApiClient.post(eq("buyin.colonel.product.list"), org.mockito.ArgumentMatchers.anyMap()))
-                .thenReturn(Map.of("data", List.of()));
-
-        productApi.listByActivity("act-123");
+        productApi.listProductsByActivity("app-1", "12345", null, null);
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(douyinApiClient).post(eq("buyin.colonel.product.list"), captor.capture());
-        Map<String, Object> params = captor.getValue();
-        assertThat(params.get("activity_id")).isEqualTo("act-123");
-        assertThat(params.get("count")).isEqualTo(20);
-        assertThat(params.get("cursor")).isEqualTo(0L);
-    }
-
-    @Test
-    void listProductsByActivity_shouldPassAllParams() {
-        when(douyinApiClient.post(eq("buyin.colonel.product.list"), org.mockito.ArgumentMatchers.anyMap()))
-                .thenReturn(Map.of("data", List.of()));
-
-        productApi.listProductsByActivity("act-100", 50, "42");
-
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(douyinApiClient).post(eq("buyin.colonel.product.list"), captor.capture());
-        Map<String, Object> params = captor.getValue();
-        assertThat(params.get("activity_id")).isEqualTo("act-100");
-        assertThat(params.get("count")).isEqualTo(50);
-        assertThat(params.get("cursor")).isEqualTo(42L);
-    }
-
-    @Test
-    void listProductsByActivity_withNullCountAndCursor_shouldUseDefaults() {
-        when(douyinApiClient.post(eq("buyin.colonel.product.list"), org.mockito.ArgumentMatchers.anyMap()))
-                .thenReturn(Map.of("data", List.of()));
-
-        productApi.listProductsByActivity("act", null, null);
-
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(douyinApiClient).post(eq("buyin.colonel.product.list"), captor.capture());
+        verify(douyinApiClient).post(eq("alliance.colonelActivityProduct"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("count")).isEqualTo(20);
-        assertThat(params.get("cursor")).isEqualTo(0L);
+        assertThat(params.get("retrieve_mode")).isEqualTo(0L);
+        assertThat(params).doesNotContainKey("cursor");
+    }
+
+    @Test
+    void listProductsByActivity_shouldRejectNonNumericActivityId() {
+        assertThatThrownBy(() -> productApi.listProductsByActivity("app-1", "abc", 20, null))
+                .hasMessageContaining("activityId");
+    }
+
+    @Test
+    void materialsProductStatus_shouldCallBuyinMaterialsProductStatusWithoutAuth() {
+        when(douyinApiClient.postWithoutAuth(eq("buyin.materialsProductStatus"), anyMap()))
+                .thenReturn(new HashMap<>());
+
+        productApi.materialsProductStatus("app-1", List.of("https://haohuo.jinritemai.com/views/product/detail?id=1"));
+
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(douyinApiClient).postWithoutAuth(eq("buyin.materialsProductStatus"), captor.capture());
+        Map<String, Object> params = captor.getValue();
+        assertThat(params.get("appId")).isEqualTo("app-1");
+        assertThat(params).containsKey("products");
+        assertThat((List<?>) params.get("products")).hasSize(1);
+    }
+
+    @Test
+    void materialsProductStatus_shouldRejectEmptyProducts() {
+        assertThatThrownBy(() -> productApi.materialsProductStatus("app-1", List.of()))
+                .hasMessageContaining("products");
+    }
+
+    @Test
+    void materialsProductStatus_shouldRejectProductsSizeOver50() {
+        List<String> products = java.util.stream.IntStream.range(0, 51)
+                .mapToObj(i -> "https://haohuo.jinritemai.com/views/product/detail?id=" + i)
+                .toList();
+
+        assertThatThrownBy(() -> productApi.materialsProductStatus("app-1", products))
+                .hasMessageContaining("50");
+    }
+
+    @Test
+    void materialsProductStatus_shouldRejectBlankProductUrl() {
+        assertThatThrownBy(() -> productApi.materialsProductStatus("app-1", List.of("  ")))
+                .hasMessageContaining("blank");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listProductsByActivity_shouldAdaptDualCommissionFields() {
+        Map<String, Object> item = new HashMap<>();
+        item.put("cos_type", "1");
+        item.put("ad_service_ratio", "10");
+        item.put("activity_ad_cos_ratio", "8");
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("data", List.of(item));
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("data", data);
+
+        when(douyinApiClient.post(eq("alliance.colonelActivityProduct"), anyMap()))
+                .thenReturn(response);
+
+        Map<String, Object> result = productApi.listProductsByActivity("app-1", "12345", 20, null);
+        Map<String, Object> resultData = (Map<String, Object>) result.get("data");
+        Map<String, Object> first = (Map<String, Object>) ((List<?>) resultData.get("data")).get(0);
+
+        assertThat(first.get("cos_type")).isEqualTo(1);
+        assertThat(first.get("dual_commission_enabled")).isEqualTo(true);
+        assertThat(first.get("ad_service_ratio")).isEqualTo("10");
+        assertThat(first.get("activity_ad_cos_ratio")).isEqualTo("8");
     }
 }

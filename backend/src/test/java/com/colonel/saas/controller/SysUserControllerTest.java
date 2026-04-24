@@ -67,7 +67,7 @@ class SysUserControllerTest {
 
         when(sysUserService.findPage(any(), any(), any())).thenReturn(page);
 
-        mockMvc.perform(get("/sys/users/page")
+        mockMvc.perform(get("/users")
                         .requestAttr("userId", userId)
                         .requestAttr("dataScope", DataScope.ALL)
                         .param("pageNo", "1")
@@ -86,7 +86,7 @@ class SysUserControllerTest {
 
         when(sysUserService.getById(any(), any(), any())).thenReturn(vo);
 
-        mockMvc.perform(get("/sys/users/{id}", testUserId)
+        mockMvc.perform(get("/users/{id}", testUserId)
                         .requestAttr("userId", userId)
                         .requestAttr("dataScope", DataScope.ALL))
                 .andExpect(status().isOk())
@@ -104,7 +104,7 @@ class SysUserControllerTest {
 
         when(sysUserService.create(any())).thenReturn(vo);
 
-        mockMvc.perform(post("/sys/users")
+        mockMvc.perform(post("/users")
                         .requestAttr("userId", userId)
                         .requestAttr("dataScope", DataScope.ALL)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -124,7 +124,7 @@ class SysUserControllerTest {
 
         when(sysUserService.update(any(), any(), any(), any())).thenReturn(vo);
 
-        mockMvc.perform(put("/sys/users/{id}", testUserId)
+        mockMvc.perform(put("/users/{id}", testUserId)
                         .requestAttr("userId", userId)
                         .requestAttr("dataScope", DataScope.ALL)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -137,7 +137,7 @@ class SysUserControllerTest {
     void delete_successfullyDeletesUser() throws Exception {
         doNothing().when(sysUserService).delete(any(), any(), any());
 
-        mockMvc.perform(delete("/sys/users/{id}", testUserId)
+        mockMvc.perform(delete("/users/{id}", testUserId)
                         .requestAttr("userId", userId)
                         .requestAttr("dataScope", DataScope.ALL))
                 .andExpect(status().isOk());
@@ -150,7 +150,7 @@ class SysUserControllerTest {
         SysUserResetPasswordRequest request = new SysUserResetPasswordRequest("NewPassword123");
         doNothing().when(sysUserService).resetPassword(any(), any(), any(), any());
 
-        mockMvc.perform(put("/sys/users/{id}/reset-password", testUserId)
+        mockMvc.perform(put("/users/{id}/password", testUserId)
                         .requestAttr("userId", userId)
                         .requestAttr("dataScope", DataScope.ALL)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -163,7 +163,7 @@ class SysUserControllerTest {
         SysUserAssignRolesRequest request = new SysUserAssignRolesRequest(List.of(UUID.randomUUID()));
         doNothing().when(sysUserService).assignRoles(any(), any(), any(), any());
 
-        mockMvc.perform(put("/sys/users/{id}/roles", testUserId)
+        mockMvc.perform(put("/users/{id}/roles", testUserId)
                         .requestAttr("userId", userId)
                         .requestAttr("dataScope", DataScope.ALL)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -171,4 +171,3 @@ class SysUserControllerTest {
                 .andExpect(status().isOk());
     }
 }
-

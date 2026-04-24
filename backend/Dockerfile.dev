@@ -6,12 +6,12 @@
 # ============================================================
 FROM eclipse-temurin:17-jdk-alpine
 
-RUN apk add --no-cache maven bash
+RUN apk add --no-cache maven bash findutils coreutils
 
 WORKDIR /app
 
-# Run Spring Boot in dev mode; DevTools restarts on class file changes
-# Volume mount backend/src:/app/src enables source-level hot-reload
-ENTRYPOINT ["mvn", "spring-boot:run", "-Dspring-boot.run.jvmArguments=-Xdebug -Xrunjdwp:server=y,transport=dt_socket,suspend=n"]
+# Use shell entrypoint so JAVA_OPTS env can be expanded.
+# /app is bind-mounted from host by docker-compose for hot-reload.
+ENTRYPOINT ["sh", "-c", "sh /app/scripts/dev-hot-reload.sh"]
 
 EXPOSE 8080 5005

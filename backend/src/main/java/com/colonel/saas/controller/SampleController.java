@@ -55,9 +55,9 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Validated
-@Tag(name = "Sample")
+@Tag(name = "寄样管理")
 @RestController
-@RequestMapping({"/samples", "/api/samples"})
+@RequestMapping("/samples")
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
 public class SampleController extends BaseController {
 
@@ -82,7 +82,7 @@ public class SampleController extends BaseController {
         this.crawlerTalentInfoService = crawlerTalentInfoService;
     }
 
-    @Operation(summary = "Create sample request")
+    @Operation(summary = "创建寄样申请")
     @PostMapping
     @Transactional(rollbackFor = Exception.class)
     public ApiResult<SampleVO> createSample(
@@ -115,8 +115,8 @@ public class SampleController extends BaseController {
         return ok(toVO(sample, product.getName(), sample.getTalentNickname()));
     }
 
-    @Operation(summary = "Sample page")
-    @GetMapping({"", "/page"})
+    @Operation(summary = "寄样分页")
+    @GetMapping
     public ApiResult<PageResult<SampleVO>> getSamplePage(
             @RequestParam(defaultValue = "1") @Min(1) long page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
@@ -147,8 +147,8 @@ public class SampleController extends BaseController {
         return okPage(voPage);
     }
 
-    @Operation(summary = "Search talents for sample apply")
-    @GetMapping("/talents")
+    @Operation(summary = "寄样达人搜索")
+    @GetMapping("/talent-candidates")
     public ApiResult<PageResult<SampleTalentVO>> searchTalents(@Valid SampleTalentQueryRequest request) {
         IPage<SampleTalentVO> page = crawlerTalentInfoService.searchTalents(
                 request.getKeyword(),
@@ -162,7 +162,7 @@ public class SampleController extends BaseController {
         return okPage(page);
     }
 
-    @Operation(summary = "Sample detail")
+    @Operation(summary = "寄样详情")
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}")
     public ApiResult<SampleVO> getSampleById(@PathVariable UUID id) {
         SampleRequest sample = requireSample(id);
@@ -173,8 +173,8 @@ public class SampleController extends BaseController {
                 sample.getTalentNickname()));
     }
 
-    @Operation(summary = "Sample status action")
-    @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/action")
+    @Operation(summary = "寄样状态流转")
+    @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/status")
     @Transactional(rollbackFor = Exception.class)
     public ApiResult<SampleVO> actionSample(
             @PathVariable UUID id,
@@ -234,7 +234,7 @@ public class SampleController extends BaseController {
                 sample.getTalentNickname()));
     }
 
-    @Operation(summary = "Delete sample")
+    @Operation(summary = "删除寄样")
     @DeleteMapping("/{id:[0-9a-fA-F\\-]{36}}")
     public ApiResult<Void> deleteSample(@PathVariable UUID id) {
         SampleRequest sample = requireSample(id);
@@ -581,4 +581,3 @@ public class SampleController extends BaseController {
         }
     }
 }
-

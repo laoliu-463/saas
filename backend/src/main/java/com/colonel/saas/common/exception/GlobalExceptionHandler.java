@@ -2,6 +2,7 @@ package com.colonel.saas.common.exception;
 
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.ResultCode;
+import com.colonel.saas.douyin.DouyinApiException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.BindException;
@@ -18,6 +19,12 @@ public class GlobalExceptionHandler {
         return ApiResult.fail(e.getMessage());
     }
 
+    @ExceptionHandler(DouyinApiException.class)
+    public ApiResult<Void> handleDouyinApi(DouyinApiException e) {
+        String msg = String.format("抖店接口错误[%s]: %s", e.getErrorCode(), e.getErrorMsg());
+        return ApiResult.fail(msg);
+    }
+
     @ExceptionHandler(ForbiddenException.class)
     public ApiResult<Void> handleForbidden(ForbiddenException e) {
         return ApiResult.of(ResultCode.FORBIDDEN.getCode(), e.getMessage(), null);
@@ -31,6 +38,11 @@ public class GlobalExceptionHandler {
             msg = ex.getBindingResult().getFieldError().getDefaultMessage();
         } else if (e instanceof BindException ex && ex.getBindingResult().getFieldError() != null) {
             msg = ex.getBindingResult().getFieldError().getDefaultMessage();
+        } else if (e instanceof ConstraintViolationException ex) {
+            var violations = ex.getConstraintViolations();
+            if (!violations.isEmpty()) {
+                msg = violations.iterator().next().getMessage();
+            }
         } else if (e.getMessage() != null && !e.getMessage().isBlank()) {
             msg = e.getMessage();
         }
@@ -40,6 +52,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ApiResult<Void> handleGeneral(Exception e) {
         log.error("系统异常", e);
-        return ApiResult.of(ResultCode.SERVER_ERROR.getCode(), ResultCode.SERVER_ERROR.getMsg(), null);
+        String detail = e.getMessage();
+        if (detail == null || detail.isBlank()) {
+            detail = e.getClass().getSimpleName();
+        }
+        return ApiResult.of(
+                ResultCode.SERVER_ERROR.getCode(),
+                ResultCode.SERVER_ERROR.getMsg() + ": " + detail,
+                null
+        );
     }
 }

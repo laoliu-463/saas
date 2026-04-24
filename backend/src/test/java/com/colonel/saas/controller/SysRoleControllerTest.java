@@ -64,7 +64,7 @@ class SysRoleControllerTest {
 
         when(sysRoleService.findPage(anyLong(), anyLong(), any(), any())).thenReturn(page);
 
-        mockMvc.perform(get("/sys/roles/page")
+        mockMvc.perform(get("/roles")
                         .requestAttr("userId", UUID.randomUUID())
                         .requestAttr("deptId", UUID.randomUUID())
                         .requestAttr("dataScope", DataScope.ALL)
@@ -83,7 +83,7 @@ class SysRoleControllerTest {
 
         when(sysRoleService.getById(roleId)).thenReturn(vo);
 
-        mockMvc.perform(get("/sys/roles/{id}", roleId)
+        mockMvc.perform(get("/roles/{id}", roleId)
                         .requestAttr("userId", UUID.randomUUID())
                         .requestAttr("dataScope", DataScope.ALL))
                 .andExpect(status().isOk())
@@ -98,7 +98,7 @@ class SysRoleControllerTest {
 
         when(sysRoleService.findAllEnabled()).thenReturn(List.of(vo));
 
-        mockMvc.perform(get("/sys/roles/all")
+        mockMvc.perform(get("/roles/enabled")
                         .requestAttr("userId", UUID.randomUUID())
                         .requestAttr("dataScope", DataScope.ALL))
                 .andExpect(status().isOk())
@@ -115,7 +115,7 @@ class SysRoleControllerTest {
 
         when(sysRoleService.create(any())).thenReturn(vo);
 
-        mockMvc.perform(post("/sys/roles")
+        mockMvc.perform(post("/roles")
                         .requestAttr("userId", UUID.randomUUID())
                         .requestAttr("dataScope", DataScope.ALL)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -134,7 +134,7 @@ class SysRoleControllerTest {
 
         when(sysRoleService.update(any(), any())).thenReturn(vo);
 
-        mockMvc.perform(put("/sys/roles/{id}", roleId)
+        mockMvc.perform(put("/roles/{id}", roleId)
                         .requestAttr("userId", UUID.randomUUID())
                         .requestAttr("dataScope", DataScope.ALL)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -147,7 +147,7 @@ class SysRoleControllerTest {
     void delete_successfullyDeletesRole() throws Exception {
         doNothing().when(sysRoleService).delete(any());
 
-        mockMvc.perform(delete("/sys/roles/{id}", roleId)
+        mockMvc.perform(delete("/roles/{id}", roleId)
                         .requestAttr("userId", UUID.randomUUID())
                         .requestAttr("dataScope", DataScope.ALL))
                 .andExpect(status().isOk());
@@ -155,4 +155,3 @@ class SysRoleControllerTest {
         verify(sysRoleService).delete(any());
     }
 }
-

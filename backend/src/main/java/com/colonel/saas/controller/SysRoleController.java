@@ -33,7 +33,7 @@ import java.util.UUID;
 @Validated
 @Tag(name = "系统角色")
 @RestController
-@RequestMapping("/sys/roles")
+@RequestMapping("/roles")
 @RequireRoles({RoleCodes.ADMIN})
 public class SysRoleController extends BaseController {
 
@@ -44,7 +44,7 @@ public class SysRoleController extends BaseController {
     }
 
     @Operation(summary = "分页查询角色")
-    @GetMapping("/page")
+    @GetMapping
     public ApiResult<PageResult<SysRoleVO>> page(
             @RequestParam(defaultValue = "1") @Min(1) long page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
@@ -67,7 +67,7 @@ public class SysRoleController extends BaseController {
     }
 
     @Operation(summary = "全量角色列表")
-    @GetMapping("/all")
+    @GetMapping("/enabled")
     public ApiResult<List<SysRoleVO>> all(
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,

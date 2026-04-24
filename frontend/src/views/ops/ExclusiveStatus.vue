@@ -38,7 +38,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
+import { useMessage } from 'naive-ui';
+import { getExclusiveTalentStatus, getExclusiveMerchantStatus } from '../../api/data';
+
+const message = useMessage();
 
 // 达人列定义
 const talentColumns = [
@@ -57,9 +61,21 @@ const merchantColumns = [
   { title: '生效状态', key: 'status' }
 ];
 
-// 后端 API 对接前，使用暂未出数据的标志
 const talentData = ref([]);
 const merchantData = ref([]);
+
+onMounted(async () => {
+  try {
+    const [tRes, mRes] = await Promise.all([
+      getExclusiveTalentStatus(),
+      getExclusiveMerchantStatus()
+    ]);
+    talentData.value = (tRes as any)?.data || tRes || [];
+    merchantData.value = (mRes as any)?.data || mRes || [];
+  } catch (error: any) {
+    message.error('加载独家状态失败');
+  }
+});
 </script>
 
 <style scoped>

@@ -10,17 +10,17 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.http.HttpEntity;
-import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
+import java.time.Instant;
 import java.util.concurrent.Executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,7 +31,7 @@ class DouyinTokenServiceTest {
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
-    private RestTemplate douyinRestTemplate;
+    private DoudianTokenGateway doudianTokenGateway;
     @Mock
     private DouyinConfig douyinConfig;
     @Mock
@@ -45,19 +45,21 @@ class DouyinTokenServiceTest {
     void setUp() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(douyinConfig.getAppId()).thenReturn("app123");
-        when(douyinConfig.getClientKey()).thenReturn("client_key");
+        when(douyinConfig.getClientKey()).thenReturn("app123");
         when(douyinConfig.getClientSecret()).thenReturn("client_secret");
         when(douyinConfig.getBaseUrl()).thenReturn("https://open.douyin.com");
         when(valueOperations.get(startsWith("douyin:token:reauthorize_required:"))).thenReturn(null);
 
         tokenService = new DouyinTokenService(
-                redisTemplate, douyinRestTemplate, douyinConfig,
+                redisTemplate, doudianTokenGateway, douyinConfig,
                 tokenRefreshExecutor, 300L, 5L);
     }
 
     @Test
     void getValidToken_shouldReturnCachedToken() {
         when(valueOperations.get("douyin:token:app123")).thenReturn("cached-token");
+        when(valueOperations.get("douyin:token:expire_at:app123"))
+                .thenReturn(Instant.now().getEpochSecond() + 3600);
 
         String token = tokenService.getValidToken(null);
 
@@ -70,16 +72,9 @@ class DouyinTokenServiceTest {
         when(valueOperations.get("douyin:refresh:app123")).thenReturn("refresh-token");
         when(valueOperations.setIfAbsent(eq("douyin:token:lock:app123"), eq("1"), any(Duration.class)))
                 .thenReturn(true);
-
-        Map<String, Object> refreshResponse = new HashMap<>();
-        refreshResponse.put("err_no", 0);
-        refreshResponse.put("data", Map.of(
-                "access_token", "new-access-token",
-                "refresh_token", "new-refresh-token",
-                "expires_in", 7200L
-        ));
-        when(douyinRestTemplate.postForObject(anyString(), any(HttpEntity.class), eq(Map.class)))
-                .thenReturn(refreshResponse);
+        when(doudianTokenGateway.refreshToken("refresh-token")).thenReturn(
+                new DoudianTokenGateway.TokenPayload("new-access-token", "new-refresh-token", 7200L, null, null, 0L)
+        );
 
         String token = tokenService.getValidToken(null);
 
@@ -104,21 +99,15 @@ class DouyinTokenServiceTest {
     }
 
     @Test
-    void refreshToken_shouldMarkReauthorizeRequiredFor31012() {
+    void refreshToken_shouldPropagate31012WithoutMarkingReauthorize() {
         when(valueOperations.setIfAbsent(eq("douyin:token:lock:app123"), eq("1"), any(Duration.class)))
                 .thenReturn(true);
         when(valueOperations.get("douyin:refresh:app123")).thenReturn("refresh-token");
-        when(douyinRestTemplate.postForObject(anyString(), any(HttpEntity.class), eq(Map.class)))
-                .thenReturn(Map.of("err_no", 31012, "err_msg", "token expired"));
+        when(doudianTokenGateway.refreshToken("refresh-token"))
+                .thenThrow(new DouyinApiException(31012, "concurrent refresh"));
 
         assertThatThrownBy(() -> tokenService.refreshToken("app123"))
-                .isInstanceOf(BusinessException.class);
-
-        verify(valueOperations).set(
-                eq("douyin:token:reauthorize_required:app123"),
-                argThat(val -> val != null && val.toString().contains("token expired")),
-                any(Duration.class)
-        );
+                .isInstanceOf(DouyinApiException.class);
     }
 
     @Test
@@ -126,5 +115,98 @@ class DouyinTokenServiceTest {
         when(valueOperations.get("douyin:token:expire_at:app123")).thenReturn(null);
 
         assertThat(tokenService.isTokenExpiringSoon("app123")).isTrue();
+    }
+
+    @Test
+    void saveRefreshToken_shouldPersistToRedis() {
+        tokenService.saveRefreshToken("app123", "refresh-123");
+
+        verify(valueOperations).set("douyin:refresh:app123", "refresh-123", Duration.ofDays(14));
+    }
+
+    @Test
+    void bootstrapWithRefreshToken_shouldOnlyPersistAfterRemoteRefreshSucceeds() {
+        when(doudianTokenGateway.refreshToken("refresh-123")).thenReturn(
+                new DoudianTokenGateway.TokenPayload("new-access-token", "new-refresh-token", 7200L, null, null, 0L)
+        );
+
+        tokenService.bootstrapWithRefreshToken("app123", "refresh-123");
+
+        verify(valueOperations).set(eq("douyin:token:app123"), eq("new-access-token"), any(Duration.class));
+        verify(valueOperations).set("douyin:refresh:app123", "new-refresh-token", Duration.ofDays(14));
+        verify(valueOperations).set(eq("douyin:token:expire_at:app123"), any(String.class), any(Duration.class));
+    }
+
+    @Test
+    void bootstrapWithRefreshToken_shouldNotPersistWhenRemoteRefreshFails() {
+        when(doudianTokenGateway.refreshToken("refresh-123"))
+                .thenThrow(new DouyinApiException(31008, "token expired"));
+
+        assertThatThrownBy(() -> tokenService.bootstrapWithRefreshToken("app123", "refresh-123"))
+                .isInstanceOf(DouyinApiException.class);
+
+        verify(valueOperations, never()).set(eq("douyin:refresh:app123"), any(), eq(Duration.ofDays(14)));
+        verify(valueOperations, never()).set(eq("douyin:token:app123"), any(), any(Duration.class));
+    }
+
+    @Test
+    void getTokenStatus_shouldReturnMaskedTokenFields() {
+        when(valueOperations.get("douyin:token:app123")).thenReturn("access-token-123456");
+        when(valueOperations.get("douyin:refresh:app123")).thenReturn("refresh-token-abcdef");
+        when(valueOperations.get("douyin:token:expire_at:app123")).thenReturn(Instant.now().getEpochSecond() + 3600);
+        when(valueOperations.get("douyin:token:reauthorize_required:app123")).thenReturn(null);
+
+        DouyinTokenService.TokenStatus status = tokenService.getTokenStatus("app123");
+
+        assertThat(status.getAppId()).isEqualTo("app123");
+        assertThat(status.isHasAccessToken()).isTrue();
+        assertThat(status.isHasRefreshToken()).isTrue();
+        assertThat(status.getMaskedAccessToken()).startsWith("acce").endsWith("3456");
+        assertThat(status.getMaskedRefreshToken()).startsWith("refr").endsWith("cdef");
+        assertThat(status.isReauthorizeRequired()).isFalse();
+    }
+
+    @Test
+    void exchangeCodeAndBootstrap_shouldCacheSelfUseTokens() {
+        when(doudianTokenGateway.createToken(any())).thenReturn(
+                new DoudianTokenGateway.TokenPayload("self-use-access", "self-use-refresh", 7200L, "auth-456", "Colonel", 1L)
+        );
+
+        tokenService.exchangeCodeAndBootstrap("app123", "", "authorization_self", "Colonel", null, "auth-456", null);
+
+        verify(valueOperations).set(eq("douyin:token:app123"), eq("self-use-access"), any(Duration.class));
+        verify(valueOperations).set(eq("douyin:refresh:app123"), eq("self-use-refresh"), eq(Duration.ofDays(14)));
+        verify(valueOperations).set(eq("douyin:token:expire_at:app123"), any(String.class), any(Duration.class));
+        verify(redisTemplate).delete("douyin:token:reauthorize_required:app123");
+    }
+
+    @Test
+    void exchangeCodeAndBootstrap_shouldRejectShopIdWhenAuthSubjectTypeProvidedForSelfUse() {
+        assertThatThrownBy(() -> tokenService.exchangeCodeAndBootstrap(
+                "app123", "", "authorization_self", "Colonel", "17239", "auth-456", "kol"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("auth_subject_type and shop_id cannot be provided at the same time");
+    }
+
+    @Test
+    void exchangeCodeAndBootstrap_shouldCacheTokens() {
+        when(doudianTokenGateway.createToken(any())).thenReturn(
+                new DoudianTokenGateway.TokenPayload("access-from-code", "refresh-from-code", 7200L, null, null, 0L)
+        );
+
+        tokenService.exchangeCodeAndBootstrap("app123", "auth-code");
+
+        verify(valueOperations).set(eq("douyin:token:app123"), eq("access-from-code"), any(Duration.class));
+        verify(valueOperations).set(eq("douyin:refresh:app123"), eq("refresh-from-code"), eq(Duration.ofDays(14)));
+        verify(valueOperations).set(eq("douyin:token:expire_at:app123"), any(String.class), any(Duration.class));
+        verify(redisTemplate).delete("douyin:token:reauthorize_required:app123");
+    }
+
+    @Test
+    void exchangeCodeAndBootstrap_shouldRejectShopIdWhenAuthSubjectTypeProvided() {
+        assertThatThrownBy(() -> tokenService.exchangeCodeAndBootstrap(
+                "app123", "auth-code", "authorization_code", null, "17239", "auth-456", "Colonel"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("auth_subject_type and shop_id cannot be provided at the same time");
     }
 }

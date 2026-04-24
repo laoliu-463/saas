@@ -1,24 +1,35 @@
 package com.colonel.saas.douyin;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.doudian.open.utils.SignUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 
 @Slf4j
 @Service
 public class DouyinApiClient {
 
+    private static final Logger log = LoggerFactory.getLogger(DouyinApiClient.class);
+
     private final DouyinTokenService douyinTokenService;
     private final RestTemplate douyinRestTemplate;
     private final DouyinConfig douyinConfig;
+    @Value("${douyin.mock.enabled:false}")
+    private boolean mockEnabled;
 
     public DouyinApiClient(
             DouyinTokenService douyinTokenService,
@@ -32,14 +43,31 @@ public class DouyinApiClient {
     public Map<String, Object> post(String method, Map<String, Object> params) {
         String appId = resolveAppId(params);
         String token = douyinTokenService.getValidToken(appId);
+        return doPost(method, params, appId, token);
+    }
 
-        Map<String, Object> payload = new HashMap<>();
+    public Map<String, Object> postWithoutAuth(String method, Map<String, Object> params) {
+        String appId = resolveAppId(params);
+        return doPost(method, params, appId, null);
+    }
+
+    private Map<String, Object> doPost(String method, Map<String, Object> params, String appId, String token) {
+        if (mockEnabled) {
+            return buildMockResponse(method, appId, params);
+        }
+        String appSecret = resolveAppSecret();
+        String urlPath = resolveUrlPath(method);
+        String methodName = urlPath.replace("/", ".");
+        String timestamp = String.valueOf(Instant.now().toEpochMilli());
+
+        Map<String, Object> payload = new TreeMap<>();
         if (params != null) {
             payload.putAll(params);
         }
-        payload.put("access_token", token);
-        payload.putIfAbsent("app_id", appId);
         payload.remove("appId");
+        String paramJson = toJson(payload);
+        String sign = SignUtil.sign(appId, appSecret, methodName, timestamp, paramJson, "2");
+        String requestUrl = buildRequestUrl(urlPath, appId, methodName, sign, timestamp, token);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -47,28 +75,31 @@ public class DouyinApiClient {
         Map<String, Object> response;
         try {
             Object responseObj = douyinRestTemplate.postForObject(
-                    buildMethodUrl(method),
-                    new HttpEntity<>(payload, headers),
+                    requestUrl,
+                    new HttpEntity<>(paramJson, headers),
                     Map.class
             );
             if (!(responseObj instanceof Map<?, ?> responseMap)) {
-                throw new BusinessException("抖音接口返回格式非法");
+                throw new BusinessException("Douyin API returned invalid response format");
             }
             response = castToStringObjectMap(responseMap);
         } catch (Exception e) {
             log.error("Douyin API request failed, method={}", method, e);
-            throw new BusinessException("抖音接口请求失败", e);
+            throw new BusinessException("Douyin API request failed", e);
         }
 
         int code = parseCode(response);
-        if (code != 0) {
+        if (!isSuccessCode(code)) {
             String msg = parseMessage(response);
+            String subCode = pickText(response, "sub_code");
+            String logId = pickText(response, "log_id");
             if (code == 31012) {
-                douyinTokenService.markReauthorizeRequired(appId, msg);
-                log.error("Token 已过期，需重新授权, method={}, appId={}, code={}, msg={}", method, appId, code, msg);
+                log.warn("Douyin API reported concurrent token operation, method={}, appId={}, code={}, msg={}",
+                        method, appId, code, msg);
             }
-            log.error("Douyin API business error, method={}, code={}, msg={}", method, code, msg);
-            throw new DouyinApiException(code, msg);
+            log.error("Douyin API business error, method={}, code={}, subCode={}, logId={}, msg={}",
+                    method, code, subCode, logId, msg);
+            throw new DouyinApiException(code, msg, subCode, logId, method);
         }
 
         log.info("Douyin API call success, method={}", method);
@@ -82,19 +113,60 @@ public class DouyinApiClient {
                 return appId;
             }
         }
-        String appId = douyinConfig.getAppId();
+        String appId = douyinConfig.getClientKey();
         if (appId == null || appId.isBlank()) {
-            throw new BusinessException("缺少 douyin.app.app-id 配置");
+            appId = douyinConfig.getAppId();
+        }
+        if (appId == null || appId.isBlank()) {
+            throw new BusinessException("missing douyin.app.app-id/client-key config");
         }
         return appId;
     }
 
-    private String buildMethodUrl(String method) {
-        if (method == null || method.isBlank()) {
-            throw new BusinessException("抖音 method 不能为空");
+    private String resolveAppSecret() {
+        String appSecret = douyinConfig.getClientSecret();
+        if (!StringUtils.hasText(appSecret)) {
+            throw new BusinessException("missing douyin.app.client-secret config");
         }
-        String baseUrl = Objects.requireNonNullElse(douyinConfig.getBaseUrl(), "https://open.douyin.com");
-        return baseUrl.endsWith("/") ? baseUrl + method : baseUrl + "/" + method;
+        return appSecret;
+    }
+
+    private String resolveUrlPath(String method) {
+        if (method == null || method.isBlank()) {
+            throw new BusinessException("Douyin method cannot be blank");
+        }
+        String normalized = method.trim();
+        if (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        if (!normalized.contains("/") && normalized.contains(".")) {
+            normalized = normalized.replace(".", "/");
+        }
+        return normalized;
+    }
+
+    private String buildRequestUrl(String urlPath, String appId, String methodName, String sign, String timestamp, String token) {
+        String baseUrl = Objects.requireNonNullElse(douyinConfig.getBaseUrl(), "https://openapi-fxg.jinritemai.com");
+        String normalizedBase = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        StringBuilder url = new StringBuilder();
+        url.append(String.format("%s/%s?app_key=%s&method=%s&v=2&sign=%s&timestamp=%s",
+                normalizedBase, urlPath, appId, methodName, sign, timestamp));
+        if (StringUtils.hasText(token)) {
+            url.append("&access_token=").append(token);
+        }
+        return url.toString();
+    }
+
+    private String toJson(Map<String, Object> payload) {
+        try {
+            return com.doudian.open.utils.JsonUtil.toJson(payload);
+        } catch (Exception e) {
+            throw new BusinessException("Douyin parameter serialization failed", e);
+        }
+    }
+
+    private boolean isSuccessCode(int code) {
+        return code == 0 || code == 10000;
     }
 
     private int parseCode(Map<String, Object> response) {
@@ -119,11 +191,32 @@ public class DouyinApiClient {
         if (response == null) {
             return "empty response";
         }
-        Object errMsg = response.get("err_msg");
-        if (errMsg == null) {
-            errMsg = response.get("message");
+        String subMsg = pickText(response, "sub_msg");
+        if (subMsg != null) {
+            return subMsg;
         }
-        return errMsg == null ? "unknown error" : String.valueOf(errMsg);
+        String errMsg = pickText(response, "err_msg");
+        if (errMsg != null) {
+            return errMsg;
+        }
+        String message = pickText(response, "message");
+        if (message != null) {
+            return message;
+        }
+        String msg = pickText(response, "msg");
+        return msg == null ? "unknown error" : msg;
+    }
+
+    private String pickText(Map<String, Object> response, String key) {
+        if (response == null || key == null) {
+            return null;
+        }
+        Object value = response.get(key);
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
     }
 
     private Map<String, Object> castToStringObjectMap(Map<?, ?> source) {
@@ -134,5 +227,40 @@ public class DouyinApiClient {
             }
         }
         return result;
+    }
+
+    private Map<String, Object> buildMockResponse(String method, String appId, Map<String, Object> params) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("err_no", 0);
+        response.put("err_msg", "success");
+        response.put("log_id", "mock-" + Instant.now().toEpochMilli());
+        response.put("mock", true);
+        response.put("mock_method", method);
+        response.put("mock_app_id", appId);
+
+        Map<String, Object> data = new HashMap<>();
+        if ("buyin.colonelMultiSettlementOrders".equals(method) || "buyin.instituteOrderColonel".equals(method)) {
+            data.put("order_list", java.util.List.of());
+            data.put("has_more", false);
+            data.put("next_cursor", "0");
+        } else if ("alliance.instituteColonelActivityList".equals(method)) {
+            data.put("data", java.util.List.of(
+                    Map.of("activity_id", 10001L, "activity_name", "Mock活动A"),
+                    Map.of("activity_id", 10002L, "activity_name", "Mock活动B")
+            ));
+            data.put("total", 2);
+        } else if ("alliance.colonelActivityProduct".equals(method)) {
+            data.put("data", java.util.List.of(
+                    Map.of("product_id", "mock_product_1", "title", "Mock商品1", "cos_type", 1),
+                    Map.of("product_id", "mock_product_2", "title", "Mock商品2", "cos_type", 0)
+            ));
+            data.put("has_more", false);
+        } else if ("buyin.materialsProductStatus".equals(method)) {
+            data.put("products", params == null ? java.util.List.of() : params.getOrDefault("products", java.util.List.of()));
+        } else {
+            data.put("ok", true);
+        }
+        response.put("data", data);
+        return response;
     }
 }

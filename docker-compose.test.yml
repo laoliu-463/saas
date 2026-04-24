@@ -1,0 +1,20 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: colonel_saas_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saas -d colonel_saas_test"]
+
+  backend:
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      DB_NAME: colonel_saas_test
+      REDIS_DATABASE: 1
+      DOUYIN_MOCK_ENABLED: "true"
+      TALENT_ENRICH_MODE: mock
+      TALENT_PUBLIC_PAGE_CRAWL_ENABLED: "false"
+      JAVA_OPTS: -Dspring.devtools.restart.enabled=true -Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=*:5005,suspend=n
+
+  frontend:
+    environment:
+      VITE_ENV_LABEL: TEST(MOCK)

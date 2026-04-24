@@ -74,4 +74,164 @@ public class ColonelsettlementOrder implements Serializable {
 
     @TableField(value = "extra_data", typeHandler = JacksonTypeHandler.class)
     private Map<String, Object> extraData;
+
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public String getOrderId() {
+        return orderId;
+    }
+
+    public void setOrderId(String orderId) {
+        this.orderId = orderId;
+    }
+
+    public String getProductId() {
+        return productId;
+    }
+
+    public void setProductId(String productId) {
+        this.productId = productId;
+    }
+
+    public String getProductName() {
+        return productName;
+    }
+
+    public void setProductName(String productName) {
+        this.productName = productName;
+    }
+
+    public Long getShopId() {
+        return shopId;
+    }
+
+    public void setShopId(Long shopId) {
+        this.shopId = shopId;
+    }
+
+    public String getShopName() {
+        return shopName;
+    }
+
+    public void setShopName(String shopName) {
+        this.shopName = shopName;
+    }
+
+    public Long getOrderAmount() {
+        return orderAmount;
+    }
+
+    public void setOrderAmount(Long orderAmount) {
+        this.orderAmount = orderAmount;
+    }
+
+    public Long getActualAmount() {
+        return actualAmount;
+    }
+
+    public void setActualAmount(Long actualAmount) {
+        this.actualAmount = actualAmount;
+    }
+
+    public Long getSettleColonelCommission() {
+        return settleColonelCommission;
+    }
+
+    public void setSettleColonelCommission(Long settleColonelCommission) {
+        this.settleColonelCommission = settleColonelCommission;
+    }
+
+    public Long getSettleColonelTechServiceFee() {
+        return settleColonelTechServiceFee;
+    }
+
+    public void setSettleColonelTechServiceFee(Long settleColonelTechServiceFee) {
+        this.settleColonelTechServiceFee = settleColonelTechServiceFee;
+    }
+
+    public Long getSettleSecondColonelCommission() {
+        return settleSecondColonelCommission;
+    }
+
+    public void setSettleSecondColonelCommission(Long settleSecondColonelCommission) {
+        this.settleSecondColonelCommission = settleSecondColonelCommission;
+    }
+
+    public Integer getOrderStatus() {
+        return orderStatus;
+    }
+
+    public void setOrderStatus(Integer orderStatus) {
+        this.orderStatus = orderStatus;
+    }
+
+    public String getPickSource() {
+        return pickSource;
+    }
+
+    public void setPickSource(String pickSource) {
+        this.pickSource = pickSource;
+    }
+
+    public UUID getChannelUserId() {
+        return channelUserId;
+    }
+
+    public void setChannelUserId(UUID channelUserId) {
+        this.channelUserId = channelUserId;
+    }
+
+    public UUID getUserId() {
+        return userId;
+    }
+
+    public void setUserId(UUID userId) {
+        this.userId = userId;
+    }
+
+    public UUID getDeptId() {
+        return deptId;
+    }
+
+    public void setDeptId(UUID deptId) {
+        this.deptId = deptId;
+    }
+
+    public LocalDateTime getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(LocalDateTime createTime) {
+        this.createTime = createTime;
+    }
+
+    public LocalDateTime getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(LocalDateTime updateTime) {
+        this.updateTime = updateTime;
+    }
+
+    public Integer getDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(Integer deleted) {
+        this.deleted = deleted;
+    }
+
+    public Map<String, Object> getExtraData() {
+        return extraData;
+    }
+
+    public void setExtraData(Map<String, Object> extraData) {
+        this.extraData = extraData;
+    }
 }

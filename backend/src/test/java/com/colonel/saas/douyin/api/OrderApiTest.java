@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -122,5 +123,110 @@ class OrderApiTest {
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("order_ids")).isEqualTo(List.of("oid1", "oid2"));
         assertThat(params.get("type")).isEqualTo(1);
+    }
+
+    @Test
+    void listColonelMultiSettlementOrders_shouldPassNormalizedParams() {
+        when(douyinApiClient.post(eq("buyin.colonelMultiSettlementOrders"), org.mockito.ArgumentMatchers.anyMap()))
+                .thenReturn(Map.of("data", Map.of("orders", List.of())));
+
+        Map<String, Object> result = orderApi.listColonelMultiSettlementOrders(
+                "test_app",
+                20,
+                "12",
+                "settle",
+                "2026-04-01 00:00:00",
+                "2026-04-20 23:59:59",
+                "4737996432465788974, 4737996432465788973");
+
+        assertThat(result).containsKey("data");
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(douyinApiClient).post(eq("buyin.colonelMultiSettlementOrders"), captor.capture());
+        Map<String, Object> params = captor.getValue();
+        assertThat(params.get("appId")).isEqualTo("test_app");
+        assertThat(params.get("size")).isEqualTo(20);
+        assertThat(params.get("cursor")).isEqualTo("12");
+        assertThat(params.get("time_type")).isEqualTo("settle");
+        assertThat(params.get("start_time")).isEqualTo("2026-04-01 00:00:00");
+        assertThat(params.get("end_time")).isEqualTo("2026-04-20 23:59:59");
+        assertThat(params.get("order_ids")).isEqualTo("4737996432465788974,4737996432465788973");
+    }
+
+    @Test
+    void listColonelMultiSettlementOrders_shouldApplyDefaults() {
+        when(douyinApiClient.post(eq("buyin.colonelMultiSettlementOrders"), org.mockito.ArgumentMatchers.anyMap()))
+                .thenReturn(Map.of("data", Map.of()));
+
+        orderApi.listColonelMultiSettlementOrders(
+                null,
+                null,
+                null,
+                null,
+                "2026-04-01 00:00:00",
+                "2026-04-02 00:00:00",
+                null);
+
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(douyinApiClient).post(eq("buyin.colonelMultiSettlementOrders"), captor.capture());
+        Map<String, Object> params = captor.getValue();
+        assertThat(params.get("size")).isEqualTo(50);
+        assertThat(params.get("cursor")).isEqualTo("0");
+        assertThat(params.get("time_type")).isEqualTo("update");
+    }
+
+    @Test
+    void listColonelMultiSettlementOrders_shouldRejectInvalidSize() {
+        assertThatThrownBy(() -> orderApi.listColonelMultiSettlementOrders(
+                null, 101, null, null, null, null, "1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("size must be between 1 and 100");
+    }
+
+    @Test
+    void listColonelMultiSettlementOrders_shouldRejectInvalidTimeType() {
+        assertThatThrownBy(() -> orderApi.listColonelMultiSettlementOrders(
+                null, null, null, "created", null, null, "1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("timeType must be settle or update");
+    }
+
+    @Test
+    void listColonelMultiSettlementOrders_shouldRejectMissingQueryCondition() {
+        assertThatThrownBy(() -> orderApi.listColonelMultiSettlementOrders(
+                null, null, null, null, null, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("time range or orderIds is required");
+    }
+
+    @Test
+    void listColonelMultiSettlementOrders_shouldRejectPartialTimeRange() {
+        assertThatThrownBy(() -> orderApi.listColonelMultiSettlementOrders(
+                null, null, null, null, "2026-04-01 00:00:00", null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("startTime and endTime must be provided together");
+    }
+
+    @Test
+    void listColonelMultiSettlementOrders_shouldRejectInvalidTimeRange() {
+        assertThatThrownBy(() -> orderApi.listColonelMultiSettlementOrders(
+                null, null, null, null, "2026-04-10 00:00:00", "2026-04-01 00:00:00", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("startTime must be earlier than or equal to endTime");
+    }
+
+    @Test
+    void listColonelMultiSettlementOrders_shouldRejectRangeOverNinetyDays() {
+        assertThatThrownBy(() -> orderApi.listColonelMultiSettlementOrders(
+                null, null, null, null, "2026-01-01 00:00:00", "2026-04-05 00:00:01", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("time range must not exceed 90 days");
+    }
+
+    @Test
+    void listColonelMultiSettlementOrders_shouldRejectInvalidCursor() {
+        assertThatThrownBy(() -> orderApi.listColonelMultiSettlementOrders(
+                null, null, "cursor-x", null, null, null, "1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("cursor must be a numeric string");
     }
 }

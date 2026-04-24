@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -40,30 +41,33 @@ class DouyinApiClientTest {
     @Test
     void post_shouldIncludeTokenAndAppId() {
         when(douyinConfig.getAppId()).thenReturn("app123");
-        when(douyinConfig.getBaseUrl()).thenReturn("https://open.douyin.com");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
         doReturn("token").when(douyinTokenService).getValidToken(any());
         when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
-                .thenReturn(Map.of("err_no", 0));
+                .thenReturn(Map.of("code", 10000));
 
         Map<String, Object> params = new HashMap<>();
         params.put("page_size", 20);
         douyinApiClient.post("buyin.colonel.activity.list", params);
 
-        ArgumentCaptor<HttpEntity> captor = ArgumentCaptor.forClass(HttpEntity.class);
-        verify(douyinRestTemplate).postForObject(eq("https://open.douyin.com/buyin.colonel.activity.list"), captor.capture(), eq(Map.class));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> sent = (Map<String, Object>) captor.getValue().getBody();
-        assertThat(sent).containsEntry("access_token", "token");
-        assertThat(sent).containsEntry("app_id", "app123");
-        assertThat(sent).containsEntry("page_size", 20);
+        ArgumentCaptor<HttpEntity> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+        ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(douyinRestTemplate).postForObject(urlCaptor.capture(), entityCaptor.capture(), eq(Map.class));
+        assertThat(urlCaptor.getValue()).startsWith("https://openapi-fxg.jinritemai.com/buyin/colonel/activity/list?");
+        assertThat(urlCaptor.getValue()).contains("app_key=app123");
+        assertThat(urlCaptor.getValue()).contains("method=buyin.colonel.activity.list");
+        assertThat(urlCaptor.getValue()).contains("access_token=token");
+        assertThat((String) entityCaptor.getValue().getBody()).contains("\"page_size\":20");
     }
 
     @Test
     void post_shouldUseOverriddenAppId() {
-        when(douyinConfig.getBaseUrl()).thenReturn("https://open.douyin.com");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
         when(douyinTokenService.getValidToken("custom-app")).thenReturn("custom-token");
         when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
-                .thenReturn(Map.of("err_no", 0));
+                .thenReturn(Map.of("code", 10000));
 
         douyinApiClient.post("test.method", Map.of("appId", "custom-app"));
 
@@ -71,9 +75,27 @@ class DouyinApiClientTest {
     }
 
     @Test
+    void postWithoutAuth_shouldNotIncludeAccessToken() {
+        when(douyinConfig.getAppId()).thenReturn("app123");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
+        when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
+                .thenReturn(Map.of("code", 10000));
+
+        douyinApiClient.postWithoutAuth("buyin.materialsProductStatus", Map.of("products", java.util.List.of("https://a.com")));
+
+        ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(douyinRestTemplate).postForObject(urlCaptor.capture(), any(HttpEntity.class), eq(Map.class));
+        assertThat(urlCaptor.getValue()).contains("method=buyin.materialsProductStatus");
+        assertThat(urlCaptor.getValue()).doesNotContain("access_token=");
+        verify(douyinTokenService, never()).getValidToken(any());
+    }
+
+    @Test
     void post_shouldThrowWhenResponseIsNull() {
         when(douyinConfig.getAppId()).thenReturn("app123");
-        when(douyinConfig.getBaseUrl()).thenReturn("https://open.douyin.com");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
         when(douyinTokenService.getValidToken("app123")).thenReturn("token");
         when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
                 .thenReturn(null);
@@ -85,7 +107,8 @@ class DouyinApiClientTest {
     @Test
     void post_shouldThrowDouyinApiExceptionWhenCodeNonZero() {
         when(douyinConfig.getAppId()).thenReturn("app123");
-        when(douyinConfig.getBaseUrl()).thenReturn("https://open.douyin.com");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
         when(douyinTokenService.getValidToken("app123")).thenReturn("token");
         when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
                 .thenReturn(Map.of("err_no", 10001, "err_msg", "bad"));
@@ -95,9 +118,10 @@ class DouyinApiClientTest {
     }
 
     @Test
-    void post_shouldMarkReauthorizeFor31012() {
-        when(douyinConfig.getAppId()).thenReturn("app123");
-        when(douyinConfig.getBaseUrl()).thenReturn("https://open.douyin.com");
+    void post_shouldNotMarkReauthorizeFor31012() {
+        when(douyinConfig.getClientKey()).thenReturn("app123");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
         when(douyinTokenService.getValidToken("app123")).thenReturn("token");
         when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
                 .thenReturn(Map.of("err_no", 31012, "err_msg", "token expired"));
@@ -105,19 +129,56 @@ class DouyinApiClientTest {
         assertThatThrownBy(() -> douyinApiClient.post("test", null))
                 .isInstanceOf(DouyinApiException.class);
 
-        verify(douyinTokenService).markReauthorizeRequired("app123", "token expired");
+        verify(douyinTokenService, never()).markReauthorizeRequired(any(), any());
+    }
+
+    @Test
+    void post_shouldPreferClientKeyWhenNoExplicitAppId() {
+        when(douyinConfig.getClientKey()).thenReturn("client-key-123");
+        when(douyinConfig.getAppId()).thenReturn("app123");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
+        when(douyinTokenService.getValidToken("client-key-123")).thenReturn("token");
+        when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
+                .thenReturn(Map.of("code", 10000));
+
+        douyinApiClient.post("test.method", Map.of());
+
+        verify(douyinTokenService).getValidToken("client-key-123");
     }
 
     @Test
     void post_shouldParseCodeFromCodeField() {
         when(douyinConfig.getAppId()).thenReturn("app123");
-        when(douyinConfig.getBaseUrl()).thenReturn("https://open.douyin.com");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
         when(douyinTokenService.getValidToken("app123")).thenReturn("token");
         when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
-                .thenReturn(Map.of("code", 0, "message", "ok"));
+                .thenReturn(Map.of("code", 10000, "message", "ok"));
 
         Map<String, Object> result = douyinApiClient.post("test", null);
 
-        assertThat(result).containsEntry("code", 0);
+        assertThat(result).containsEntry("code", 10000);
+    }
+
+    @Test
+    void post_shouldPreferSubMsgWhenPresent() {
+        when(douyinConfig.getAppId()).thenReturn("app123");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
+        when(douyinTokenService.getValidToken("app123")).thenReturn("token");
+        when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
+                .thenReturn(Map.of(
+                        "code", 40003,
+                        "msg", "unknown error",
+                        "sub_code", "isv.parameter-invalid:257",
+                        "sub_msg", "参数校验失败",
+                        "log_id", "202604220001"
+                ));
+
+        assertThatThrownBy(() -> douyinApiClient.post("test", null))
+                .isInstanceOf(DouyinApiException.class)
+                .extracting(ex -> ((DouyinApiException) ex).getErrorMsg())
+                .isEqualTo("参数校验失败");
     }
 }

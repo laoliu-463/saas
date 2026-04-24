@@ -82,7 +82,7 @@ public class OrderSyncService {
         }
         try {
             SyncResult result = syncRange(startTime, endTime, DEFAULT_COUNT);
-            redisTemplate.opsForValue().set(LAST_SYNC_TIME_KEY, endTime);
+            redisTemplate.opsForValue().set(LAST_SYNC_TIME_KEY, String.valueOf(endTime));
             return result;
         } finally {
             redisTemplate.delete(SYNC_LOCK_KEY);

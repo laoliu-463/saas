@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router';
+﻿import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { ROLE_CODES, hasAccess } from '../constants/rbac';
 
@@ -36,8 +36,8 @@ const router = createRouter({
         },
         {
           path: 'product/:id',
-          component: () => import('../views/product/ProductDetail.vue'),
-          meta: { title: '商品详情', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          redirect: '/product',
+          meta: { title: '商品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'talent',
@@ -96,7 +96,8 @@ const router = createRouter({
         },
         { path: '', redirect: '/data' }
       ]
-    }
+    },
+    { path: '/:pathMatch(.*)*', redirect: '/data' }
   ]
 });
 

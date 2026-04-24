@@ -4,7 +4,7 @@ import request from '../utils/request';
 export const getSamplePage = (params: any) => request.get('/samples', { params });
 export const getSampleById = (id: string) => request.get(`/samples/${id}`);
 export const createSample = (data: any) => request.post('/samples', data);
-export const actionSample = (id: string, data: any) => request.put(`/samples/${id}/action`, data);
+export const actionSample = (id: string, data: any) => request.put(`/samples/${id}/status`, data);
 export const deleteSample = (id: string) => request.delete(`/samples/${id}`);
 
 // 寄样台 — 达人搜索（数据源：crawler_talent_info）
@@ -16,4 +16,4 @@ export const searchSampleTalents = (params: {
   minScore?: number;
   page?: number;
   size?: number;
-}) => request.get('/samples/talents', { params });
+}) => request.get('/samples/talent-candidates', { params });

@@ -1,13 +1,15 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.entity.TalentEnrichTask;
+import com.colonel.saas.job.TalentWeeklyRefreshJob;
 import com.colonel.saas.service.TalentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -36,21 +38,26 @@ import java.util.UUID;
 public class TalentController extends BaseController {
 
     private final TalentService talentService;
+    private final TalentWeeklyRefreshJob talentWeeklyRefreshJob;
 
-    public TalentController(TalentService talentService) {
+    public TalentController(TalentService talentService, TalentWeeklyRefreshJob talentWeeklyRefreshJob) {
         this.talentService = talentService;
+        this.talentWeeklyRefreshJob = talentWeeklyRefreshJob;
     }
 
     @Operation(summary = "达人分页列表")
-    @GetMapping("/page")
+    @GetMapping
     public ApiResult<PageResult<Talent>> page(
             @RequestParam(defaultValue = "1") @Min(1) long page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String region,
+            @RequestParam(required = false) Long minFans,
+            @RequestParam(required = false) Long maxFans,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        IPage<Talent> result = talentService.page(page, size, keyword, dataScope, userId, deptId);
+        IPage<Talent> result = talentService.page(page, size, keyword, region, minFans, maxFans, dataScope, userId, deptId);
         return okPage(result);
     }
 
@@ -80,19 +87,19 @@ public class TalentController extends BaseController {
     }
 
     @Operation(summary = "公海达人列表")
-    @GetMapping("/public")
+    @GetMapping("/pools/public")
     public ApiResult<List<Talent>> publicPool() {
         return ok(talentService.getPublicPool());
     }
 
     @Operation(summary = "私海达人列表")
-    @GetMapping("/private")
+    @GetMapping("/pools/private")
     public ApiResult<List<Talent>> privatePool(@RequestAttribute("userId") UUID userId) {
         return ok(talentService.getPrivatePool(userId));
     }
 
     @Operation(summary = "认领达人")
-    @PostMapping("/{id}/claim")
+    @PostMapping("/{id}/claims")
     public ApiResult<Talent> claim(
             @PathVariable("id") UUID talentId,
             @RequestAttribute("userId") UUID userId,
@@ -100,8 +107,43 @@ public class TalentController extends BaseController {
         return ok(talentService.claim(talentId, userId, deptId));
     }
 
+    @Operation(summary = "释放达人")
+    @PostMapping("/{id}/release")
+    public ApiResult<Talent> release(
+            @PathVariable("id") UUID talentId,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        return ok(talentService.release(talentId, userId, deptId, roleCodes));
+    }
+
+    @Operation(summary = "刷新达人信息")
+    @PostMapping("/{id}/refresh")
+    public ApiResult<Talent> refresh(@PathVariable("id") UUID talentId) {
+        return ok(talentService.refresh(talentId));
+    }
+
+    @Operation(summary = "手动触发每周批量刷新")
+    @PostMapping("/refresh/weekly")
+    public ApiResult<Void> refreshWeekly() {
+        talentWeeklyRefreshJob.weeklyRefreshActiveTalents();
+        return ok();
+    }
+
+    @Operation(summary = "手动补全达人信息")
+    @PutMapping("/{id}/manual-fill")
+    public ApiResult<Talent> manualFill(@PathVariable("id") UUID talentId, @RequestBody Talent request) {
+        return ok(talentService.manualFill(talentId, request));
+    }
+
+    @Operation(summary = "获取达人最新补全任务")
+    @GetMapping("/{id}/enrich-task/latest")
+    public ApiResult<TalentEnrichTask> latestEnrichTask(@PathVariable("id") UUID talentId) {
+        return ok(talentService.getLatestEnrichTask(talentId));
+    }
+
     @Operation(summary = "独家达人判断")
-    @GetMapping("/{id}/exclusive-check")
+    @GetMapping("/{id}/exclusive-status")
     public ApiResult<TalentService.ExclusiveCheckResult> exclusiveCheck(
             @PathVariable UUID id,
             @RequestAttribute("userId") UUID userId,
