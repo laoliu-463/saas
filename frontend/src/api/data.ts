@@ -1,6 +1,6 @@
 import request from '../utils/request';
 
-export const getOrderPage = (params: any) => request.get('/orders', { params });
+export const getOrderPage = (params: any) => request.get('/data/orders', { params });
 export const getMetrics = (params?: any) => request.get('/dashboard/metrics', { params });
 
 // 订单解密

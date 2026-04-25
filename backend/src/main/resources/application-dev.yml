@@ -39,3 +39,5 @@ douyin:
   crawler:
     talent-url: ${CRAWLER_TALENT_URL:https://api.douyin.com/internal/talent/list}
     batch-size: ${CRAWLER_BATCH_SIZE:100}
+  mock:
+    enabled: true

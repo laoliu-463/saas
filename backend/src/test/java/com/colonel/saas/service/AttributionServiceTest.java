@@ -1,6 +1,5 @@
 package com.colonel.saas.service;
 
-import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.mapper.PickSourceMappingMapper;
@@ -16,7 +15,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -113,7 +111,7 @@ class AttributionServiceTest {
     }
 
     @Test
-    void resolveAttribution_shouldThrowWhenNoAttributionMatched() {
+    void resolveAttribution_shouldReturnUnattributedWhenNoAttributionMatched() {
         when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
         when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
@@ -121,8 +119,10 @@ class AttributionServiceTest {
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setPickSource("unknown");
 
-        assertThatThrownBy(() -> attributionService.resolveAttribution(order, Map.of()))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("pick_source");
+        AttributionService.AttributionResult result = attributionService.resolveAttribution(order, Map.of());
+
+        assertThat(result.attributionStatus()).isEqualTo("UNATTRIBUTED");
+        assertThat(result.attributionRemark()).contains("pick_source");
+        assertThat(result.userId()).isNull();
     }
 }

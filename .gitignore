@@ -5,6 +5,9 @@
 .idea/
 .vscode/
 backend/target/
+backend/*.log
+backend/temp-*.log
+.tmp.compose*.yml
 
 
 out/

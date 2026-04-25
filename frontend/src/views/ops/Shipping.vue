@@ -1,6 +1,6 @@
 <template>
   <div class="ops-shipping">
-    <n-card title="物流发货" :bordered="false">
+    <div class="shipping-table-card">
       <n-tabs v-model:value="activeTab" type="line" animated @update:value="handleTabChange">
         <n-tab-pane v-for="tab in tabList" :key="tab.value" :name="tab.value" :tab="tab.label">
           <n-data-table
@@ -14,7 +14,7 @@
           />
         </n-tab-pane>
       </n-tabs>
-    </n-card>
+    </div>
 
     <SampleDetail v-model:show="showDetail" :sample-id="currentSampleId" @refresh="fetchData" />
   </div>
@@ -131,6 +131,13 @@ onUnmounted(() => {
 
 <style scoped>
 .ops-shipping {
-  min-height: 100%;
+  max-width: 100%;
+}
+
+.shipping-table-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 4px 16px 16px;
+  box-shadow: var(--shadow-card);
 }
 </style>

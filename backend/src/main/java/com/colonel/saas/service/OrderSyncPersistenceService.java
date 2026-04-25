@@ -1,7 +1,9 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.SysUserMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,16 +14,23 @@ public class OrderSyncPersistenceService {
     private final PickSourceMappingService pickSourceMappingService;
     private final MerchantService merchantService;
     private final SampleLifecycleService sampleLifecycleService;
+    private final SysUserMapper sysUserMapper;
 
     public OrderSyncPersistenceService(
             ColonelsettlementOrderMapper orderMapper,
             PickSourceMappingService pickSourceMappingService,
             MerchantService merchantService,
-            SampleLifecycleService sampleLifecycleService) {
+            SampleLifecycleService sampleLifecycleService,
+            SysUserMapper sysUserMapper) {
         this.orderMapper = orderMapper;
         this.pickSourceMappingService = pickSourceMappingService;
         this.merchantService = merchantService;
         this.sampleLifecycleService = sampleLifecycleService;
+        this.sysUserMapper = sysUserMapper;
+    }
+
+    public SysUser getUser(java.util.UUID id) {
+        return sysUserMapper.selectById(id);
     }
 
     @Transactional(rollbackFor = Exception.class)

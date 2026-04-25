@@ -33,14 +33,18 @@ public class PickSourceMappingService {
     @Transactional(rollbackFor = Exception.class)
     public void saveOrUpdate(
             UUID userId,
+            String channelUserName,
             UUID deptId,
+            String talentId,
+            String talentName,
             String shortId,
             UUID uuidSeed,
             String pickSource,
             String productId,
             String activityId,
             String sourceUrl,
-            String convertedUrl) {
+            String convertedUrl,
+            UUID promotionLinkId) {
         PickSourceMapping existing = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
                 .eq(PickSourceMapping::getPickSource, pickSource)
                 .last("limit 1"));
@@ -48,7 +52,10 @@ public class PickSourceMappingService {
             try {
                 PickSourceMapping mapping = new PickSourceMapping();
                 mapping.setUserId(userId);
+                mapping.setChannelUserName(channelUserName);
                 mapping.setDeptId(deptId);
+                mapping.setTalentId(talentId);
+                mapping.setTalentName(talentName);
                 mapping.setShortId(shortId);
                 mapping.setUuidSeed(uuidSeed);
                 mapping.setPickSource(pickSource);
@@ -57,6 +64,7 @@ public class PickSourceMappingService {
                 mapping.setSourceUrl(sourceUrl);
                 mapping.setConvertedUrl(convertedUrl);
                 mapping.setPickExtra(shortId);
+                mapping.setPromotionLinkId(promotionLinkId);
                 mapping.setValidFrom(LocalDateTime.now());
                 mapping.setValidUntil(LocalDateTime.now().plusMonths(validMonths));
                 mapping.setStatus(1);
@@ -71,6 +79,10 @@ public class PickSourceMappingService {
                 }
             }
         }
+        existing.setUserId(userId);
+        existing.setChannelUserName(channelUserName);
+        existing.setTalentId(talentId);
+        existing.setTalentName(talentName);
         existing.setShortId(shortId);
         existing.setUuidSeed(uuidSeed);
         existing.setDeptId(deptId);
@@ -79,6 +91,7 @@ public class PickSourceMappingService {
         existing.setSourceUrl(sourceUrl);
         existing.setConvertedUrl(convertedUrl);
         existing.setPickExtra(shortId);
+        existing.setPromotionLinkId(promotionLinkId);
         existing.setValidUntil(LocalDateTime.now().plusMonths(validMonths));
         existing.setStatus(1);
         pickSourceMappingMapper.updateById(existing);

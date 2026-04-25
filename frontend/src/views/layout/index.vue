@@ -1,16 +1,61 @@
 <template>
-  <n-layout has-sider style="height: 100vh;">
-    <Sider />
-    <n-layout>
-      <Header />
-      <n-layout-content content-style="padding: 24px; background: var(--bg-color);">
-        <router-view />
+  <div class="app-layout">
+    <Header />
+    <n-layout has-sider class="app-body-layout">
+      <Sider />
+      <n-layout-content class="app-content">
+        <router-view v-slot="{ Component }">
+          <transition name="page-fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
       </n-layout-content>
     </n-layout>
-  </n-layout>
+  </div>
 </template>
 
 <script setup lang="ts">
-import Header from './Header.vue';
-import Sider from './Sider.vue';
+import Header from './Header.vue'
+import Sider from './Sider.vue'
 </script>
+
+<style scoped>
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-body-layout {
+  flex: 1;
+  overflow: hidden;
+}
+
+.app-body-layout :deep(.n-layout-scroll-container) {
+  overflow-y: auto;
+}
+
+.app-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-lg);
+  background: var(--bg-page);
+}
+
+/* ---- 页面过渡动画 ---- */
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+</style>

@@ -41,4 +41,15 @@ class OrderSyncControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.inserted").value(2));
     }
+
+    @Test
+    void triggerSync_shouldReturnResultForOrdersSyncAlias() throws Exception {
+        when(orderSyncService.triggerManualSync())
+                .thenReturn(new OrderSyncService.SyncResult(100, 200, 1, 3, 1, false));
+
+        mockMvc.perform(post("/orders/sync"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.inserted").value(3));
+    }
 }

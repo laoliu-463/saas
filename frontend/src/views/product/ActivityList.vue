@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="activity-list">
     <n-card title="团长活动列表" :bordered="false">
       <n-space style="margin-bottom: 16px" wrap>
@@ -34,8 +34,11 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NTag, useMessage } from 'naive-ui';
-import { getColonelActivityPage } from '../../api/product';
+import { NTag, NButton, useMessage } from 'naive-ui';
+import { useRouter } from 'vue-router';
+import { getColonelActivityPage } from '../../api/activity';
+
+const router = useRouter();
 
 const message = useMessage();
 const loading = ref(false);
@@ -115,6 +118,17 @@ const columns = computed(() => [
     key: 'categoriesLimit',
     minWidth: 220,
     render: (row: any) => formatCategories(row.categoriesLimit)
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 120,
+    render: (row: any) => h(NButton, {
+      size: 'small',
+      type: 'primary',
+      ghost: true,
+      onClick: () => router.push(`/product/activity/${row.activityId}`)
+    }, { default: () => '查看商品' })
   }
 ]);
 

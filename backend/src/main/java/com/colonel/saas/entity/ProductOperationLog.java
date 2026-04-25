@@ -22,6 +22,17 @@ public class ProductOperationLog extends BaseEntity {
     @TableField("operation_type")
     private String operationType;
 
+    @TableField("before_status")
+    private String beforeStatus;
+
+    @TableField("after_status")
+    private String afterStatus;
+
+    private Boolean success;
+
+    @TableField("error_message")
+    private String errorMessage;
+
     @TableField("operation_payload")
     private String operationPayload;
 
@@ -34,4 +45,3 @@ public class ProductOperationLog extends BaseEntity {
     @TableField("operator_dept_id")
     private UUID operatorDeptId;
 }
-

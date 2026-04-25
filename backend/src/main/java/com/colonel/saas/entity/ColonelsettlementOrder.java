@@ -58,11 +58,44 @@ public class ColonelsettlementOrder implements Serializable {
     @TableField("channel_user_id")
     private UUID channelUserId;
 
+    @TableField("channel_user_name")
+    private String channelUserName;
+
+    @TableField("colonel_user_id")
+    private UUID colonelUserId;
+
+    @TableField("colonel_user_name")
+    private String colonelUserName;
+
+    @TableField("promotion_link_id")
+    private UUID promotionLinkId;
+
+    @TableField("product_title")
+    private String productTitle;
+
+    @TableField("talent_name")
+    private String talentName;
+
+    @TableField("channel_dept_id")
+    private UUID channelDeptId;
+
     @TableField("user_id")
     private UUID userId;
 
     @TableField("dept_id")
     private UUID deptId;
+
+    @TableField("colonel_activity_id")
+    private String activityId;
+
+    @TableField("settle_time")
+    private LocalDateTime settleTime;
+
+    @TableField("attribution_status")
+    private String attributionStatus;
+
+    @TableField("attribution_remark")
+    private String attributionRemark;
 
     @TableField("create_time")
     private LocalDateTime createTime;
@@ -195,12 +228,52 @@ public class ColonelsettlementOrder implements Serializable {
         this.userId = userId;
     }
 
+    public UUID getChannelDeptId() {
+        return channelDeptId;
+    }
+
+    public void setChannelDeptId(UUID channelDeptId) {
+        this.channelDeptId = channelDeptId;
+    }
+
     public UUID getDeptId() {
         return deptId;
     }
 
     public void setDeptId(UUID deptId) {
         this.deptId = deptId;
+    }
+
+    public String getActivityId() {
+        return activityId;
+    }
+
+    public void setActivityId(String activityId) {
+        this.activityId = activityId;
+    }
+
+    public LocalDateTime getSettleTime() {
+        return settleTime;
+    }
+
+    public void setSettleTime(LocalDateTime settleTime) {
+        this.settleTime = settleTime;
+    }
+
+    public String getAttributionStatus() {
+        return attributionStatus;
+    }
+
+    public void setAttributionStatus(String attributionStatus) {
+        this.attributionStatus = attributionStatus;
+    }
+
+    public String getAttributionRemark() {
+        return attributionRemark;
+    }
+
+    public void setAttributionRemark(String attributionRemark) {
+        this.attributionRemark = attributionRemark;
     }
 
     public LocalDateTime getCreateTime() {

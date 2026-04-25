@@ -2,7 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.douyin.DouyinApiException;
-import com.colonel.saas.douyin.api.OrderApi;
+import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -19,17 +19,17 @@ public class OrderDecryptService {
 
     private static final int MAX_BATCH_SIZE = 50;
 
-    private final OrderApi orderApi;
+    private final DouyinOrderGateway douyinOrderGateway;
 
-    public OrderDecryptService(OrderApi orderApi) {
-        this.orderApi = orderApi;
+    public OrderDecryptService(DouyinOrderGateway douyinOrderGateway) {
+        this.douyinOrderGateway = douyinOrderGateway;
     }
 
     public List<DecryptPhoneVO> decryptPhones(List<String> orderIds) {
         List<String> normalizedOrderIds = normalizeOrderIds(orderIds);
         Map<String, Object> response;
         try {
-            response = orderApi.decryptSensitiveData(normalizedOrderIds);
+            response = douyinOrderGateway.decryptSensitiveData(normalizedOrderIds);
         } catch (DouyinApiException ex) {
             if (isCipherInfoRequired(ex)) {
                 throw new BusinessException("当前抖店解密接口已升级为 order.batchSensitive，需传 cipher_infos（加密联系方式）而非 orderIds");

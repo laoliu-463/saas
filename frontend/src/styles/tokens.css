@@ -1,9 +1,86 @@
+/* ============================================
+   Design Token System — 兴选官风格
+   基于珊瑚红主色调的完整 CSS 变量体系
+   ============================================ */
+
 :root {
-  --primary-color: #18a058;
-  --bg-color: #f5f7f9;
+  /* ---- 主色系 (Primary - Coral Red) ---- */
+  --color-primary: #FF4757;
+  --color-primary-hover: #FF6B81;
+  --color-primary-pressed: #E03140;
+  --color-primary-light: rgba(255, 71, 87, 0.08);
+  --color-primary-border: rgba(255, 71, 87, 0.3);
+
+  /* ---- 功能色 ---- */
+  --color-success: #07C160;
+  --color-success-light: rgba(7, 193, 96, 0.08);
+  --color-warning: #FF9500;
+  --color-warning-light: rgba(255, 149, 0, 0.08);
+  --color-danger: #FA5151;
+  --color-danger-light: rgba(250, 81, 81, 0.08);
+  --color-info: #3B82F6;
+  --color-info-light: rgba(59, 130, 246, 0.08);
+
+  /* ---- 中性色 / 背景 ---- */
+  --bg-page: #F5F6FA;
+  --bg-card: #FFFFFF;
+  --bg-sidebar: #F7F8FA;
+  --bg-hover: #F0F1F5;
+  --bg-mask: rgba(0, 0, 0, 0.45);
+
+  /* ---- 边框 ---- */
+  --border-color: #E8ECF1;
+  --border-color-light: #F0F2F5;
+
+  /* ---- 文字色 ---- */
+  --text-primary: #1A1A2E;
+  --text-secondary: #6B7280;
+  --text-muted: #9CA3AF;
+  --text-inverse: #FFFFFF;
+
+  /* ---- 间距系统 ---- */
+  --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
-  --border-radius: 12px;
-  --shadow-base: 0 4px 12px rgba(0,0,0,0.05);
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+
+  /* ---- 圆角 ---- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* ---- 阴影 ---- */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06);
+  --shadow-card-hover: 0 6px 24px rgba(0, 0, 0, 0.10);
+  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.10);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.12);
+
+  /* ---- 字体 ---- */
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+
+  /* ---- 字号 ---- */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 32px;
+
+  /* ---- 过渡 ---- */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+  --transition-slow: 0.35s ease;
+
+  /* ---- 布局 ---- */
+  --header-height: 56px;
+  --sider-width: 220px;
+  --sider-collapsed-width: 64px;
 }

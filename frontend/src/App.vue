@@ -1,5 +1,5 @@
 <template>
-  <n-config-provider :theme-overrides="themeOverrides">
+  <n-config-provider :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
     <n-message-provider>
       <n-dialog-provider>
         <router-view />
@@ -9,11 +9,23 @@
 </template>
 
 <script setup lang="ts">
+import { dateZhCN, zhCN } from 'naive-ui'
+
 const themeOverrides = {
   common: {
-    primaryColor: '#18a058',
-    primaryColorHover: '#36ad6a',
-    primaryColorPressed: '#0c7a43'
+    primaryColor: '#FF4757',
+    primaryColorHover: '#FF6B81',
+    primaryColorPressed: '#E03140',
+    borderRadius: '10px'
+  },
+  Button: {
+    borderRadiusMedium: '8px'
+  },
+  Card: {
+    borderRadius: '12px'
+  },
+  Tag: {
+    borderRadius: '4px'
   }
 }
 </script>
@@ -21,7 +33,14 @@ const themeOverrides = {
 <style>
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: var(--bg-color);
+  font-family: var(--font-family);
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  min-height: 100vh;
 }
 </style>

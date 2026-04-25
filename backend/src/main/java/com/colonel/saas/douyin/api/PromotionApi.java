@@ -65,14 +65,18 @@ public class PromotionApi {
         if (context != null && context.userId() != null) {
             pickSourceMappingService.saveOrUpdate(
                     context.userId(),
+                    null,
                     context.deptId(),
+                    null,
+                    null,
                     result.shortId(),
                     uuidSeed,
-                    result.shortId(),
+                    result.pickSource(),
                     context.productId(),
                     context.activityId(),
                     context.sourceUrl(),
-                    result.promoteLink()
+                    result.promoteLink(),
+                    null
             );
         }
         return result;
@@ -116,6 +120,8 @@ public class PromotionApi {
     }
 
     public record PromotionLinkResult(
+            String pickSource,
+            String pickExtra,
             String shortId,
             String shortLink,
             String promoteLink,
@@ -150,6 +156,8 @@ public class PromotionApi {
                     shortId
             );
             return new PromotionLinkResult(
+                    extractedShortId,
+                    extractedShortId,
                     extractedShortId,
                     shortLink,
                     promoteLink,

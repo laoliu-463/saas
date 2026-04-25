@@ -1,10 +1,10 @@
 <template>
   <div class="sample-index">
-    <n-card title="寄样台" :bordered="false">
-      <n-space style="margin-bottom: 16px;">
-        <n-button v-if="canApply" type="primary" @click="$router.push('/sample/apply')">寄样申请</n-button>
-      </n-space>
+    <div class="sample-toolbar">
+      <n-button v-if="canApply" type="primary" size="small" @click="$router.push('/sample/apply')">寄样申请</n-button>
+    </div>
 
+    <div class="sample-table-card">
       <n-tabs v-model:value="activeTab" type="line" animated @update:value="handleTabChange">
         <n-tab-pane v-for="tab in tabList" :key="tab.value" :name="tab.value" :tab="tab.label">
           <n-data-table
@@ -18,7 +18,7 @@
           />
         </n-tab-pane>
       </n-tabs>
-    </n-card>
+    </div>
 
     <SampleDetail v-model:show="showDetail" :sample-id="currentSampleId" @refresh="fetchData" />
   </div>
@@ -176,6 +176,17 @@ onUnmounted(() => {
 
 <style scoped>
 .sample-index {
-  min-height: 100%;
+  max-width: 100%;
+}
+
+.sample-toolbar {
+  margin-bottom: var(--spacing-md);
+}
+
+.sample-table-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 4px 16px 16px;
+  box-shadow: var(--shadow-card);
 }
 </style>

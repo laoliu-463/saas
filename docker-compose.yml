@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: colonel-postgres
     environment:
       POSTGRES_DB: colonel_saas
       POSTGRES_USER: saas
@@ -9,6 +8,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/src/main/resources/db/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./backend/src/main/resources/db/alter-product-main-chain.sql:/docker-entrypoint-initdb.d/02-alter-product-main-chain.sql
+      - ./backend/src/main/resources/db/alter-product-biz-status.sql:/docker-entrypoint-initdb.d/03-alter-product-biz-status.sql
+      - ./backend/src/main/resources/db/alter-product-following.sql:/docker-entrypoint-initdb.d/04-alter-product-following.sql
+      - ./backend/src/main/resources/db/alter-talent-enrich.sql:/docker-entrypoint-initdb.d/05-alter-talent-enrich.sql
+      - ./backend/src/main/resources/db/alter-talent-crm-gap-fill.sql:/docker-entrypoint-initdb.d/06-alter-talent-crm-gap-fill.sql
     ports:
       - "5432:5432"
     healthcheck:
@@ -20,7 +24,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: colonel-redis
     ports:
       - "6379:6379"
     volumes:
@@ -36,7 +39,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
-    container_name: colonel-backend
     ports:
       - "8080:8080"
       - "5005:5005"
@@ -55,6 +57,7 @@ services:
       DOUYIN_CLIENT_KEY: ${DOUYIN_CLIENT_KEY:-}
       DOUYIN_CLIENT_SECRET: ${DOUYIN_CLIENT_SECRET:-}
       DOUYIN_SANDBOX: ${DOUYIN_SANDBOX:-false}
+      DOUYIN_MOCK_ENABLED: ${DOUYIN_MOCK_ENABLED:-true}
       DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:-300}
       DOUYIN_TOKEN_REDIS_LOCK_MINUTES: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:-5}
       CRAWLER_TALENT_URL: ${CRAWLER_TALENT_URL:-https://api.douyin.com/internal/talent/list}
@@ -68,17 +71,17 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/api/sys/users/page?page=1&size=1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/actuator/health | grep -q '\"status\":\"UP\"'"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
     restart: on-failure
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
-    container_name: colonel-frontend
     ports:
       - "3000:3000"
     environment:
@@ -89,7 +92,8 @@ services:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000"]
       interval: 30s

@@ -1,15 +1,17 @@
 <template>
   <div class="user-list">
-    <n-card title="用户管理" :bordered="false">
-      <!-- Toolbar -->
-      <n-space style="margin-bottom: 16px;">
-        <n-input v-model:value="searchParams.username" placeholder="请输入用户名" clearable />
-        <n-select v-model:value="searchParams.status" :options="statusOptions" placeholder="全部状态" style="width: 120px;" clearable />
-        <n-button type="primary" @click="fetchData">查询</n-button>
-        <n-button type="primary" @click="openModal('add')">新增用户</n-button>
+    <!-- Toolbar -->
+    <div class="user-toolbar">
+      <n-space wrap :size="10">
+        <n-input v-model:value="searchParams.username" placeholder="请输入用户名" clearable style="width: 180px" />
+        <n-select v-model:value="searchParams.status" :options="statusOptions" placeholder="全部状态" style="width: 110px;" clearable />
+        <n-button type="primary" size="small" @click="fetchData">查询</n-button>
+        <n-button type="primary" size="small" @click="openModal('add')">新增用户</n-button>
       </n-space>
+    </div>
 
-      <!-- Table -->
+    <!-- Table -->
+    <div class="user-table-card">
       <n-data-table
         remote
         :columns="columns"
@@ -19,7 +21,7 @@
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       />
-    </n-card>
+    </div>
 
     <!-- Modal for Add/Edit -->
     <n-modal v-model:show="showModal" preset="card" :title="modalTitle" style="width: 600px;">
@@ -349,6 +351,21 @@ onMounted(async () => {
 
 <style scoped>
 .user-list {
-  min-height: 100%;
+  max-width: 100%;
+}
+
+.user-toolbar {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: var(--spacing-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.user-table-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  box-shadow: var(--shadow-card);
 }
 </style>

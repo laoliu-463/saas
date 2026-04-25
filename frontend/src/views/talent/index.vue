@@ -1,25 +1,32 @@
 ﻿<template>
   <div class="talent-page">
-    <n-card title="达人 CRM" :bordered="false">
-      <n-space style="margin-bottom: 16px" wrap>
-        <n-input v-model:value="query.keyword" placeholder="昵称 / 抖音 UID" clearable style="width: 220px" />
+    <!-- 工具栏 -->
+    <div class="talent-toolbar">
+      <n-space wrap :size="10">
+        <n-input v-model:value="query.keyword" placeholder="昵称 / 抖音 UID" clearable style="width: 220px">
+          <template #prefix><n-icon><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></n-icon></template>
+        </n-input>
         <n-input v-model:value="query.region" placeholder="地区" clearable style="width: 140px" />
         <n-input-number v-model:value="query.minFans" :min="0" placeholder="最低粉丝" style="width: 140px" />
         <n-input-number v-model:value="query.maxFans" :min="0" placeholder="最高粉丝" style="width: 140px" />
-        <n-button type="primary" secondary @click="openCreateModal">新增达人</n-button>
-        <n-button type="warning" secondary :loading="batchRefreshing" @click="handleRefreshWeekly">批量刷新</n-button>
-        <n-button type="primary" :loading="loading" @click="fetchTalents(1)">查询</n-button>
+        <n-button type="primary" size="small" @click="openCreateModal">新增达人</n-button>
+        <n-button type="warning" size="small" :loading="batchRefreshing" @click="handleRefreshWeekly">批量刷新</n-button>
+        <n-button type="primary" size="small" :loading="loading" @click="fetchTalents(1)">查询</n-button>
       </n-space>
+    </div>
 
+    <!-- 表格 -->
+    <div class="talent-table-card">
       <n-data-table
         remote
         :columns="columns"
         :data="rows"
         :loading="loading"
         :pagination="pagination"
+        :row-class-name="() => 'talent-row'"
         @update:page="(page:number) => fetchTalents(page)"
       />
-    </n-card>
+    </div>
 
     <n-modal v-model:show="createModalVisible" preset="card" title="新增达人" style="width: 560px;">
       <n-form :model="createForm" label-placement="left" label-width="110">
@@ -332,7 +339,7 @@ const columns = [
     title: '头像',
     key: 'avatarUrl',
     width: 80,
-    render: (row: any) => h(NAvatar, { src: row.avatarUrl, round: true, size: 36 })
+    render: (row: any) => h(NAvatar, { src: row.avatarUrl, round: true, size: 44 })
   },
   {
     title: '抖音 UID',
@@ -457,6 +464,26 @@ onMounted(() => {
 
 <style scoped>
 .talent-page {
-  min-height: 100%;
+  max-width: 100%;
+}
+
+.talent-toolbar {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: var(--spacing-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.talent-table-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  box-shadow: var(--shadow-card);
+}
+
+:deep(.talent-row td) {
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 </style>

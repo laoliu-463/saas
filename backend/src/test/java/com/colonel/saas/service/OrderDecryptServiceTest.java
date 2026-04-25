@@ -1,7 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
-import com.colonel.saas.douyin.api.OrderApi;
+import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,13 +20,13 @@ import static org.mockito.Mockito.when;
 class OrderDecryptServiceTest {
 
     @Mock
-    private OrderApi orderApi;
+    private DouyinOrderGateway douyinOrderGateway;
 
     private OrderDecryptService orderDecryptService;
 
     @BeforeEach
     void setUp() {
-        orderDecryptService = new OrderDecryptService(orderApi);
+        orderDecryptService = new OrderDecryptService(douyinOrderGateway);
     }
 
     @Test
@@ -49,7 +49,7 @@ class OrderDecryptServiceTest {
     @Test
     void decryptPhones_shouldMaskExpiredVirtualPhone() {
         long expiredEpoch = Instant.now().minusSeconds(10).getEpochSecond();
-        when(orderApi.decryptSensitiveData(List.of("oid-1"))).thenReturn(Map.of(
+        when(douyinOrderGateway.decryptSensitiveData(List.of("oid-1"))).thenReturn(Map.of(
                 "data", List.of(Map.of(
                         "order_id", "oid-1",
                         "is_virtual_tel", true,
@@ -70,7 +70,7 @@ class OrderDecryptServiceTest {
 
     @Test
     void decryptPhones_shouldReturnPlainPhoneForNonVirtual() {
-        when(orderApi.decryptSensitiveData(List.of("oid-2"))).thenReturn(Map.of(
+        when(douyinOrderGateway.decryptSensitiveData(List.of("oid-2"))).thenReturn(Map.of(
                 "data", List.of(Map.of(
                         "order_id", "oid-2",
                         "is_virtual_tel", false,

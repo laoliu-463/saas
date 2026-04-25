@@ -1,8 +1,8 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.douyin.api.PromotionApi;
 import com.colonel.saas.entity.Product;
+import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -105,8 +106,8 @@ class ProductControllerTest {
         UUID id = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
-        PromotionApi.PromotionLinkResult result =
-                new PromotionApi.PromotionLinkResult("ABC12345", "https://s.link", "https://p.link", UUID.randomUUID().toString());
+        DouyinPromotionGateway.PromotionLinkResult result =
+                new DouyinPromotionGateway.PromotionLinkResult("ABC12345", "https://s.link", "https://p.link", UUID.randomUUID().toString());
         when(productService.generatePromotionLink(eq(id), eq(userId), eq(deptId), any(), any(), anyBoolean()))
                 .thenReturn(result);
 
@@ -119,5 +120,24 @@ class ProductControllerTest {
 
         assertThat(response.getData().shortId()).isEqualTo("ABC12345");
         verify(productService).generatePromotionLink(id, userId, deptId, "ext-1", 4, true);
+    }
+
+    @Test
+    void follow_shouldCallService() {
+        UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(productService.startTalentFollow(eq(id), any(), eq("达人A"), eq("INVITED"), eq("已发送邀约"), any(), eq(userId), eq("操作人")))
+                .thenReturn(Map.of("bizStatus", "FOLLOWING"));
+
+        ProductController.TalentFollowRequest request = new ProductController.TalentFollowRequest();
+        request.setTalentName("达人A");
+        request.setFollowStatus("INVITED");
+        request.setContent("已发送邀约");
+        request.setOperatorName("操作人");
+
+        var response = productController.follow(id, request, userId);
+
+        assertThat(response.getData().get("bizStatus")).isEqualTo("FOLLOWING");
+        verify(productService).startTalentFollow(id, null, "达人A", "INVITED", "已发送邀约", null, userId, "操作人");
     }
 }

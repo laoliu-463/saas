@@ -1,6 +1,7 @@
 package com.colonel.saas.douyin;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.gateway.douyin.DouyinAuthGateway;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,23 +58,21 @@ public class DouyinTokenService {
     private static final String REAUTHORIZE_REQUIRED_KEY_PREFIX = "douyin:token:reauthorize_required:";
 
     private final RedisTemplate<String, Object> redisTemplate;
-    private final DoudianTokenGateway doudianTokenGateway;
+    private final DouyinAuthGateway douyinAuthGateway;
     private final DouyinConfig douyinConfig;
     private final long refreshThresholdSeconds;
     private final long redisLockMinutes;
     private final Executor tokenRefreshExecutor;
-    @Value("${douyin.mock.enabled:false}")
-    private boolean mockEnabled;
 
     public DouyinTokenService(
             RedisTemplate<String, Object> redisTemplate,
-            DoudianTokenGateway doudianTokenGateway,
+            DouyinAuthGateway douyinAuthGateway,
             DouyinConfig douyinConfig,
             @Qualifier("applicationTaskExecutor") Executor tokenRefreshExecutor,
             @Value("${douyin.token.refresh-threshold-seconds:300}") long refreshThresholdSeconds,
             @Value("${douyin.token.redis-lock-minutes:5}") long redisLockMinutes) {
         this.redisTemplate = redisTemplate;
-        this.doudianTokenGateway = doudianTokenGateway;
+        this.douyinAuthGateway = douyinAuthGateway;
         this.douyinConfig = douyinConfig;
         this.tokenRefreshExecutor = tokenRefreshExecutor;
         this.refreshThresholdSeconds = refreshThresholdSeconds;
@@ -81,12 +80,8 @@ public class DouyinTokenService {
     }
 
     public String getValidToken(String appId) {
-        if (mockEnabled) {
-            String finalAppId = resolveCacheKey(appId);
-            ensureMockToken(finalAppId);
-            return getTokenFromCache(finalAppId);
-        }
         String finalAppId = resolveCacheKey(appId);
+        bootstrapGatewayTokenIfAvailable(finalAppId);
         if (isReauthorizeRequired(finalAppId)) {
             throw new BusinessException("token requires re-authorization");
         }
@@ -116,11 +111,6 @@ public class DouyinTokenService {
     }
 
     public void refreshToken(String appId) {
-        if (mockEnabled) {
-            String finalAppId = resolveCacheKey(appId);
-            ensureMockToken(finalAppId);
-            return;
-        }
         String finalAppId = resolveCacheKey(appId);
         String lockKey = lockKey(finalAppId);
         Boolean locked = redisTemplate.opsForValue().setIfAbsent(lockKey, "1", Duration.ofMinutes(redisLockMinutes));
@@ -133,7 +123,7 @@ public class DouyinTokenService {
             if (refreshToken == null || refreshToken.isBlank()) {
                 throw new BusinessException("missing refresh_token, cannot refresh token");
             }
-            DoudianTokenGateway.TokenPayload payload = doudianTokenGateway.refreshToken(refreshToken);
+            DouyinAuthGateway.TokenPayload payload = douyinAuthGateway.refreshToken(finalAppId, refreshToken);
             cacheTokenPayload(finalAppId, payload);
 
             log.info("Douyin token refreshed successfully for appId={}", finalAppId);
@@ -181,14 +171,9 @@ public class DouyinTokenService {
     }
 
     public void bootstrapWithRefreshToken(String appId, String refreshToken) {
-        if (mockEnabled) {
-            String finalAppId = resolveCacheKey(appId);
-            ensureMockToken(finalAppId);
-            return;
-        }
         String finalAppId = resolveCacheKey(appId);
         String normalizedRefreshToken = normalizeRefreshToken(refreshToken);
-        DoudianTokenGateway.TokenPayload payload = doudianTokenGateway.refreshToken(normalizedRefreshToken);
+        DouyinAuthGateway.TokenPayload payload = douyinAuthGateway.refreshToken(finalAppId, normalizedRefreshToken);
         cacheTokenPayload(finalAppId, payload, normalizedRefreshToken);
     }
 
@@ -203,11 +188,6 @@ public class DouyinTokenService {
                                          String shopId,
                                          String authId,
                                          String authSubjectType) {
-        if (mockEnabled) {
-            String finalAppId = resolveCacheKey(appId);
-            ensureMockToken(finalAppId);
-            return;
-        }
         String finalAppId = resolveCacheKey(appId);
         String finalGrantType = normalizeGrantType(grantType);
         String finalAuthorizationCode = normalizeAuthorizationCode(authorizationCode, finalGrantType);
@@ -221,7 +201,7 @@ public class DouyinTokenService {
             log.warn("Token exchange appId differs from configured clientKey, appId={}, clientKey={}",
                     appId, configuredClientKey);
         }
-        DoudianTokenGateway.TokenCreateCommand command = new DoudianTokenGateway.TokenCreateCommand(
+        DouyinAuthGateway.TokenCreateCommand command = new DouyinAuthGateway.TokenCreateCommand(
                 finalAuthorizationCode,
                 finalGrantType,
                 testShop,
@@ -230,7 +210,7 @@ public class DouyinTokenService {
                 authSubjectType
         );
         try {
-            DoudianTokenGateway.TokenPayload payload = doudianTokenGateway.createToken(command);
+            DouyinAuthGateway.TokenPayload payload = douyinAuthGateway.createToken(command);
             cacheTokenPayload(finalAppId, payload);
         } catch (DouyinApiException e) {
             if (e.getErrorCode() == 31005) {
@@ -241,11 +221,8 @@ public class DouyinTokenService {
     }
 
     public TokenStatus getTokenStatus(String appId) {
-        if (mockEnabled) {
-            String finalAppId = resolveCacheKey(appId);
-            ensureMockToken(finalAppId);
-        }
         String finalAppId = resolveCacheKey(appId);
+        bootstrapGatewayTokenIfAvailable(finalAppId);
         String accessToken = getTokenFromCache(finalAppId);
         String refreshToken = getRefreshToken(finalAppId);
         Object expireAtObj = redisTemplate.opsForValue().get(expireAtKey(finalAppId));
@@ -273,11 +250,11 @@ public class DouyinTokenService {
         return value != null;
     }
 
-    private void cacheTokenPayload(String appId, DoudianTokenGateway.TokenPayload payload) {
+    private void cacheTokenPayload(String appId, DouyinAuthGateway.TokenPayload payload) {
         cacheTokenPayload(appId, payload, null);
     }
 
-    private void cacheTokenPayload(String appId, DoudianTokenGateway.TokenPayload payload, String fallbackRefreshToken) {
+    private void cacheTokenPayload(String appId, DouyinAuthGateway.TokenPayload payload, String fallbackRefreshToken) {
         if (payload == null) {
             throw new BusinessException("token payload is empty");
         }
@@ -404,15 +381,11 @@ public class DouyinTokenService {
         return REAUTHORIZE_REQUIRED_KEY_PREFIX + appId;
     }
 
-    private void ensureMockToken(String appId) {
-        String accessToken = "mock_access_token_" + appId;
-        String refreshToken = "mock_refresh_token_" + appId;
-        long expiresIn = 30L * 24 * 60 * 60;
-        long expireAt = Instant.now().getEpochSecond() + expiresIn;
-        redisTemplate.opsForValue().set(tokenKey(appId), accessToken, Duration.ofSeconds(expiresIn));
-        redisTemplate.opsForValue().set(refreshKey(appId), refreshToken, Duration.ofDays(30));
-        redisTemplate.opsForValue().set(expireAtKey(appId), String.valueOf(expireAt), Duration.ofSeconds(expiresIn));
-        redisTemplate.delete(reauthorizeRequiredKey(appId));
+    private void bootstrapGatewayTokenIfAvailable(String appId) {
+        DouyinAuthGateway.TokenPayload payload = douyinAuthGateway.ensureToken(appId);
+        if (payload != null) {
+            cacheTokenPayload(appId, payload);
+        }
     }
 
     private static class TokenRefreshInProgressException extends BusinessException {

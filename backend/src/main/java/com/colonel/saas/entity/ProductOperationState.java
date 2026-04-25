@@ -23,6 +23,9 @@ public class ProductOperationState extends BaseEntity {
     @TableField("bound_activity_id")
     private String boundActivityId;
 
+    @TableField("biz_status")
+    private String bizStatus;
+
     @TableField("assignee_id")
     private UUID assigneeId;
 
@@ -47,4 +50,3 @@ public class ProductOperationState extends BaseEntity {
     @TableField("last_operation_at")
     private LocalDateTime lastOperationAt;
 }
-

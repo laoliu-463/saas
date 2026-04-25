@@ -1,10 +1,10 @@
-﻿import { createRouter, createWebHistory } from 'vue-router';
+import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { ROLE_CODES, hasAccess } from '../constants/rbac';
 
 const ROLE = ROLE_CODES;
 
-const HOME_CANDIDATES = ['/data', '/product', '/talent', '/ops/shipping', '/sample', '/system/users'];
+const HOME_CANDIDATES = ['/dashboard', '/orders', '/data', '/product', '/talent', '/ops/shipping', '/sample', '/system/users'];
 
 const resolveHomePath = (authStore: ReturnType<typeof useAuthStore>): string => {
   const roles = authStore.roleCodes;
@@ -33,6 +33,11 @@ const router = createRouter({
           path: 'product/activity',
           component: () => import('../views/product/ActivityList.vue'),
           meta: { title: '活动列表', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
+        },
+        {
+          path: 'product/activity/:activityId',
+          component: () => import('../views/product/index.vue'),
+          meta: { title: '活动商品', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'product/:id',
@@ -94,33 +99,39 @@ const router = createRouter({
           component: () => import('../views/system/RoleList.vue'),
           meta: { title: '角色管理', roles: [ROLE.ADMIN] }
         },
-        { path: '', redirect: '/data' }
+        {
+          path: 'orders',
+          component: () => import('../views/orders/index.vue'),
+          meta: { title: '订单回流', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
+        },
+        {
+          path: 'dashboard',
+          component: () => import('../views/dashboard/index.vue'),
+          meta: { title: '归因概览', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
+        },
+        { path: '', redirect: '/dashboard' }
       ]
     },
     { path: '/:pathMatch(.*)*', redirect: '/data' }
   ]
 });
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach((to, _from) => {
   const authStore = useAuthStore();
   if (to.path !== '/login' && !authStore.isLoggedIn) {
-    next('/login');
-    return;
+    return '/login';
   }
   if (to.path === '/login' && authStore.isLoggedIn) {
-    next(resolveHomePath(authStore));
-    return;
+    return resolveHomePath(authStore);
   }
   if (to.path === '/') {
-    next(resolveHomePath(authStore));
-    return;
+    return resolveHomePath(authStore);
   }
   const requiredRoles = to.meta?.roles as string[] | undefined;
   if (!hasAccess(authStore.roleCodes, requiredRoles)) {
-    next(resolveHomePath(authStore));
-    return;
+    return resolveHomePath(authStore);
   }
-  next();
+  return true;
 });
 
 export default router;

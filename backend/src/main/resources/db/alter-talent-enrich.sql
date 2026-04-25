@@ -1,7 +1,6 @@
--- 增量脚本：达人自动补全与字段来源审计
--- 适用：已存在 colonel_saas 库的环境，手工执行
-
--- 1) talent 补充字段
+﻿-- 澧為噺鑴氭湰锛氳揪浜鸿嚜鍔ㄨˉ鍏ㄤ笌瀛楁鏉ユ簮瀹¤
+-- 閫傜敤锛氬凡瀛樺湪 colonel_saas 鏁版嵁搴撶殑鐜锛屾墜宸ユ墽琛?
+-- 1) talent 琛ュ厖瀛楁
 ALTER TABLE talent ADD COLUMN IF NOT EXISTS douyin_no VARCHAR(100);
 ALTER TABLE talent ADD COLUMN IF NOT EXISTS uid VARCHAR(100);
 ALTER TABLE talent ADD COLUMN IF NOT EXISTS sec_uid VARCHAR(255);
@@ -33,6 +32,7 @@ CREATE TABLE IF NOT EXISTS talent_enrich_task (
     update_by        UUID,
     CONSTRAINT fk_tet_talent FOREIGN KEY (talent_id) REFERENCES talent(id) ON DELETE CASCADE
 );
+
 CREATE INDEX IF NOT EXISTS idx_tet_talent_id ON talent_enrich_task(talent_id);
 CREATE INDEX IF NOT EXISTS idx_tet_task_status ON talent_enrich_task(task_status);
 CREATE INDEX IF NOT EXISTS idx_tet_next_retry_time ON talent_enrich_task(next_retry_time);
@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS talent_field_source (
     update_by        UUID,
     CONSTRAINT fk_tfs_talent FOREIGN KEY (talent_id) REFERENCES talent(id) ON DELETE CASCADE
 );
+
 CREATE INDEX IF NOT EXISTS idx_tfs_talent_id ON talent_field_source(talent_id);
 CREATE INDEX IF NOT EXISTS idx_tfs_field_name ON talent_field_source(field_name);
 CREATE INDEX IF NOT EXISTS idx_tfs_source_type ON talent_field_source(source_type);
@@ -78,8 +79,13 @@ CREATE TABLE IF NOT EXISTS talent_auth (
     update_by        UUID,
     CONSTRAINT fk_ta_talent FOREIGN KEY (talent_id) REFERENCES talent(id) ON DELETE CASCADE
 );
+
 CREATE INDEX IF NOT EXISTS idx_ta_talent_id ON talent_auth(talent_id);
 CREATE INDEX IF NOT EXISTS idx_ta_open_id ON talent_auth(open_id);
 CREATE INDEX IF NOT EXISTS idx_ta_union_id ON talent_auth(union_id);
 CREATE INDEX IF NOT EXISTS idx_ta_status ON talent_auth(status);
-CREATE UNIQUE INDEX IF NOT EXISTS uk_ta_talent_open_id ON talent_auth(talent_id, open_id) WHERE deleted = 0;
+CREATE UNIQUE INDEX IF NOT EXISTS uk_ta_talent_open_id
+    ON talent_auth(talent_id, open_id)
+    WHERE deleted = 0;
+
+

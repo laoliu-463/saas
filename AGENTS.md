@@ -9,14 +9,13 @@
 ## 1. 当前执行口径
 
 本项目采用 Harness Engineering：
-- 需求主源：`doc/requirements/*.md`
-- 规则主源：`doc/rules/*.md`
+- 文档主源：`docs/*.md`
 - 代码事实来源：`backend/src/**` + `frontend/src/**`
 
 文档优先级：
-1. `doc/requirements/` + `doc/rules/`
-2. `doc/DEVELOPMENT-PLAN.md`
-3. 其他 `doc/*.md`（历史/协作补充）
+1. `docs/README.md`
+2. `docs/00-项目总览.md` ~ `docs/06-部署与对接计划.md`
+3. 当前代码可验证事实
 
 ---
 
@@ -37,11 +36,9 @@
 
 ```
 SAAS/
-├── doc/requirements/          # 需求主源
-├── doc/rules/                 # 规则主源（CI 阻断）
 ├── backend/               # Spring Boot 后端
 ├── frontend/              # Vue3 前端
-├── doc/                   # 执行计划与协作文档
+├── docs/                  # 主文档集
 └── docker-compose.yml
 ```
 
@@ -50,39 +47,38 @@ SAAS/
 ## 4. 任务入口
 
 ### 开发新功能
-1. 先读 `doc/DEVELOPMENT-PLAN.md` 确认里程碑
-2. 再读对应 `doc/requirements/*.md`
-3. 对照 `doc/rules/*.md` 落实现
-4. 增加/更新测试并跑 `mvn test`
+1. 先读 `docs/04-开发进度.md` 确认当前阶段和里程碑
+2. 再读 `docs/01-业务闭环.md`、`docs/02-架构设计.md`
+3. 对照当前代码实现落地
+4. 增加/更新测试并完成最小验证
 
 ### 修复 Bug
 1. 定位模块
-2. 查对应规则文件
+2. 查对应主文档和代码
 3. 修复 + 回归测试
-4. 更新 `doc/DAILY-PROGRESS.md`
+4. 更新 `docs/04-开发进度.md`（如影响阶段结论）
 
 ### 文档维护
-1. 改实现后必须同步 `doc/DEVELOPMENT-PLAN.md`
-2. 涉及 SDK 时同步 `doc/DOUYIN_SDK_INTEGRATION.md`
-3. 重大里程碑完成后更新 `doc/README.md`
+1. 改实现后必须同步对应 `docs/*.md`
+2. 涉及 SDK / Gateway 时同步 `docs/03-Mock与Real网关契约.md`、`docs/06-部署与对接计划.md`
+3. 重大里程碑完成后更新 `docs/README.md` 和 `docs/04-开发进度.md`
 
 ---
 
 ## 5. 当前重点风险
 
 1. 第三方 SDK 真实联调未完成（高优先级）
-2. 数据看板真实数据口径待最终收敛
-3. V2.0 独家机制虽已落地服务层，需补真实业务验收
+2. 商品主链路状态机和操作日志仍待完全统一
+3. 达人跟进与真实数据回流尚未完全接入主链路
 
 ---
 
 ## 6. 强制规则速查
 
-1. 分区表查询必须带时间条件：`doc/rules/partition-table.md`
-2. 归因必须走映射/优先级链路：`doc/rules/attribution-logic.md`
-3. 敏感数据不得持久化：`doc/rules/api-security.md`
-4. DataScope 不可绕过：`doc/rules/data-scope-lint.md`
-5. 提成比例必须走配置：`doc/rules/exclusive-triggers.md`
+1. Mock / Real 必须共用 Gateway 契约：`docs/03-Mock与Real网关契约.md`
+2. 前端只调用内部 API：`docs/05-接口与数据模型.md`
+3. 商品主链路按统一闭环推进：`docs/01-业务闭环.md`
+4. 部署和联调按环境切换口径执行：`docs/06-部署与对接计划.md`
 
 ---
 

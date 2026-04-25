@@ -1,3 +1,5 @@
+name: saas-test
+
 services:
   postgres:
     environment:
@@ -13,7 +15,7 @@ services:
       DOUYIN_MOCK_ENABLED: "true"
       TALENT_ENRICH_MODE: mock
       TALENT_PUBLIC_PAGE_CRAWL_ENABLED: "false"
-      JAVA_OPTS: -Dspring.devtools.restart.enabled=true -Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=*:5005,suspend=n
+      JAVA_OPTS: -Dspring.devtools.restart.enabled=false -Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=*:5005,suspend=n
 
   frontend:
     environment:

@@ -1,7 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
-import com.colonel.saas.douyin.api.OrderApi;
+import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,7 +36,7 @@ import static org.mockito.Mockito.when;
 class OrderSyncServiceTest {
 
     @Mock
-    private OrderApi orderApi;
+    private DouyinOrderGateway douyinOrderGateway;
     @Mock
     private OrderSyncPersistenceService persistenceService;
     @Mock
@@ -52,7 +52,7 @@ class OrderSyncServiceTest {
     void setUp() {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(persistenceService.persistOrder(any())).thenReturn(true);
-        orderSyncService = new OrderSyncService(orderApi, persistenceService, attributionService, redisTemplate);
+        orderSyncService = new OrderSyncService(douyinOrderGateway, persistenceService, attributionService, redisTemplate);
     }
 
     // --- Original tests ---
@@ -64,14 +64,14 @@ class OrderSyncServiceTest {
         OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(100L, 200L);
 
         assertThat(result.locked()).isTrue();
-        verify(orderApi, never()).listSettlement(anyLong(), anyLong(), anyInt(), anyString());
+        verify(douyinOrderGateway, never()).listSettlement(anyLong(), anyLong(), anyInt(), anyString());
     }
 
     @Test
     void syncByTimeRange_shouldPersistLastSyncPoint() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of("order_list", List.of(), "has_more", false, "cursor", 0L)));
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of("order_list", List.of(), "has_more", false, "cursor", 0L))));
 
         OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(100L, 200L);
 
@@ -86,13 +86,13 @@ class OrderSyncServiceTest {
         long lastSyncTime = 12345L;
         when(valueOperations.get("order:sync:last_time")).thenReturn(lastSyncTime);
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of("order_list", List.of(), "has_more", false, "cursor", 0L)));
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of("order_list", List.of(), "has_more", false, "cursor", 0L))));
 
         orderSyncService.syncLatestWindow();
 
         ArgumentCaptor<Long> startCaptor = ArgumentCaptor.forClass(Long.class);
-        verify(orderApi).listSettlement(startCaptor.capture(), anyLong(), eq(100), eq("0"));
+        verify(douyinOrderGateway).listSettlement(startCaptor.capture(), anyLong(), eq(100), eq("0"));
         assertThat(startCaptor.getValue()).isEqualTo(lastSyncTime - 60);
     }
 
@@ -101,7 +101,7 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_getData_returnsEmptyMapWhenResponseIsNull() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString())).thenReturn(null);
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString())).thenReturn(new DouyinOrderGateway.OrderListResult(null));
 
         OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(100L, 200L);
 
@@ -112,8 +112,8 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_getData_returnsEmptyMapWhenDataIsNotMap() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", "not a map"));
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", "not a map")));
 
         OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(100L, 200L);
 
@@ -123,18 +123,18 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_getData_convertsMapWithMixedTypes() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(),
                         "has_more", false,
                         "cursor", 100,
                         "extra_key", 42
-                )));
+                ))));
 
         OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(100L, 200L);
 
         assertThat(result.pages()).isEqualTo(1);
-        verify(orderApi).listSettlement(100L, 200L, 100, "0");
+        verify(douyinOrderGateway).listSettlement(100L, 200L, 100, "0");
     }
 
     // --- getOrderList() tests ---
@@ -142,8 +142,8 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_getOrderList_returnsEmptyWhenNoOrderKey() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of("has_more", false, "cursor", 0L)));
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of("has_more", false, "cursor", 0L))));
 
         OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(100L, 200L);
 
@@ -154,8 +154,8 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_getOrderList_convertsOrdersWithNonMapItems() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "orders", List.of(
                                 Map.of("order_id", "oid_1", "product_id", "pid_1", "create_time", 1710000000000L),
                                 "not a map item",
@@ -163,7 +163,7 @@ class OrderSyncServiceTest {
                         ),
                         "has_more", false,
                         "cursor", 0L
-                )));
+                ))));
         when(attributionService.resolveAttribution(any(), any()))
                 .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
 
@@ -176,14 +176,14 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_getOrderList_supportsDatasFieldAndStringCreateTime() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "datas", List.of(
                                 Map.of("order_id", "oid_datas_1", "product_id", "pid_1", "create_time", "2026-04-22 20:30:00")
                         ),
                         "has_more", false,
                         "cursor", 0L
-                )));
+                ))));
         when(attributionService.resolveAttribution(any(), any()))
                 .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
 
@@ -195,29 +195,29 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_supportsMoreAndNextCursorPagination() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(
                                 Map.of("order_id", "oid_page_1", "product_id", "pid_1", "create_time", 1710000000000L)
                         ),
                         "more", true,
                         "next_cursor", 1L
-                )))
-                .thenReturn(Map.of("data", Map.of(
+                ))))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(
                                 Map.of("order_id", "oid_page_2", "product_id", "pid_2", "create_time", 1710000001000L)
                         ),
                         "more", false,
                         "next_cursor", 2L
-                )));
+                ))));
         when(attributionService.resolveAttribution(any(), any()))
                 .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
 
         OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(100L, 200L);
 
         assertThat(result.pages()).isEqualTo(2);
-        verify(orderApi).listSettlement(100L, 200L, 100, "0");
-        verify(orderApi).listSettlement(100L, 200L, 100, "1");
+        verify(douyinOrderGateway).listSettlement(100L, 200L, 100, "0");
+        verify(douyinOrderGateway).listSettlement(100L, 200L, 100, "1");
     }
 
     // --- mapOrder() tests ---
@@ -225,14 +225,14 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_mapOrder_skipsBlankOrderId() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(
                                 Map.of("order_id", "   ", "product_id", "pid", "create_time", 1710000000000L)
                         ),
                         "has_more", false,
                         "cursor", 0L
-                )));
+                ))));
         when(attributionService.resolveAttribution(any(), any()))
                 .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
 
@@ -247,14 +247,14 @@ class OrderSyncServiceTest {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
         String longPickSource = "x".repeat(200);
         ArgumentCaptor<ColonelsettlementOrder> orderCaptor = ArgumentCaptor.forClass(ColonelsettlementOrder.class);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(
                                 Map.of("order_id", "oid_trunc", "product_id", "pid", "pick_source", longPickSource, "create_time", 1710000000000L)
                         ),
                         "has_more", false,
                         "cursor", 0L
-                )));
+                ))));
         when(attributionService.resolveAttribution(any(), any()))
                 .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
 
@@ -268,14 +268,14 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_mapOrder_throwsOnNullCreateTime() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(
                                 Map.of("order_id", "oid_bad", "product_id", "pid")
                         ),
                         "has_more", false,
                         "cursor", 0L
-                )));
+                ))));
         when(attributionService.resolveAttribution(any(), any()))
                 .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
 
@@ -288,14 +288,14 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_mapOrder_throwsOnIllegalCreateTime() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(
                                 Map.of("order_id", "oid_illegal", "product_id", "pid", "create_time", "not a number")
                         ),
                         "has_more", false,
                         "cursor", 0L
-                )));
+                ))));
         when(attributionService.resolveAttribution(any(), any()))
                 .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
 
@@ -309,14 +309,14 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_mapOrder_asLongUsesDefaultForNonNumeric() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(
                                 Map.of("order_id", "oid", "product_id", "pid", "order_amount", "not_a_number", "create_time", 1710000000000L)
                         ),
                         "has_more", false,
                         "cursor", 0L
-                )));
+                ))));
         when(attributionService.resolveAttribution(any(), any()))
                 .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
 
@@ -331,14 +331,14 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_mapOrder_asLongUsesNumberDirectly() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(
                                 Map.of("order_id", "oid", "product_id", "pid", "order_amount", 5000, "create_time", 1710000000000L)
                         ),
                         "has_more", false,
                         "cursor", 0L
-                )));
+                ))));
         when(attributionService.resolveAttribution(any(), any()))
                 .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
 
@@ -353,14 +353,14 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_asBooleanFromNumber() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(
                                 Map.of("order_id", "oid", "product_id", "pid", "create_time", 1710000000000L)
                         ),
                         "has_more", 1,
                         "cursor", 100L
-                )));
+                ))));
         when(attributionService.resolveAttribution(any(), any()))
                 .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
 
@@ -374,15 +374,15 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_catchesBusinessExceptionAndSkipsOrder() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(
                                 Map.of("order_id", "oid_good", "product_id", "pid", "create_time", 1710000000000L),
                                 Map.of("order_id", "oid_bad", "product_id", "pid", "create_time", 1710000001000L)
                         ),
                         "has_more", false,
                         "cursor", 0L
-                )));
+                ))));
         when(attributionService.resolveAttribution(any(), any()))
                 .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"))
                 .thenThrow(new BusinessException("归因失败"));
@@ -396,17 +396,17 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_breaksLoopOnEmptyOrderList() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(),
                         "has_more", true,
                         "cursor", 0L
-                )));
+                ))));
 
         OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(100L, 200L);
 
         assertThat(result.pages()).isEqualTo(1);
-        verify(orderApi, never()).listSettlement(anyLong(), anyLong(), anyInt(), eq("100"));
+        verify(douyinOrderGateway, never()).listSettlement(anyLong(), anyLong(), anyInt(), eq("100"));
     }
 
     // --- syncByTimeRange parameter validation ---
@@ -437,14 +437,14 @@ class OrderSyncServiceTest {
     @Test
     void syncByTimeRange_mapOrder_firstNonBlank_usesSecondField() {
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
-        when(orderApi.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
-                .thenReturn(Map.of("data", Map.of(
+        when(douyinOrderGateway.listSettlement(anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(Map.of("data", Map.of(
                         "order_list", List.of(
                                 Map.of("order_id", "oid", "product_id", "pid", "title", "Real Title", "create_time", 1710000000000L)
                         ),
                         "has_more", false,
                         "cursor", 0L
-                )));
+                ))));
         when(attributionService.resolveAttribution(any(), any()))
                 .thenReturn(new AttributionService.AttributionResult(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "talent"));
 

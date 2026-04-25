@@ -17,8 +17,18 @@
         <result property="orderStatus" column="order_status"/>
         <result property="pickSource" column="pick_source"/>
         <result property="channelUserId" column="channel_user_id"/>
+        <result property="channelUserName" column="channel_user_name"/>
+        <result property="channelDeptId" column="channel_dept_id"/>
         <result property="userId" column="user_id"/>
         <result property="deptId" column="dept_id"/>
+        <result property="colonelUserId" column="colonel_user_id"/>
+        <result property="colonelUserName" column="colonel_user_name"/>
+        <result property="promotionLinkId" column="promotion_link_id"/>
+        <result property="productTitle" column="product_title"/>
+        <result property="activityId" column="colonel_activity_id"/>
+        <result property="settleTime" column="settle_time"/>
+        <result property="attributionStatus" column="attribution_status"/>
+        <result property="attributionRemark" column="attribution_remark"/>
         <result property="createTime" column="create_time"/>
         <result property="updateTime" column="update_time"/>
         <result property="deleted" column="deleted"/>
@@ -37,13 +47,19 @@
             id, order_id, product_id, product_name, shop_id, shop_name,
             order_amount, actual_amount, settle_colonel_commission, settle_colonel_tech_service_fee,
             settle_second_colonel_commission, order_status, pick_source,
-            channel_user_id, user_id, dept_id, create_time, update_time, deleted, extra_data
+            channel_user_id, channel_user_name, channel_dept_id,
+            user_id, dept_id, colonel_user_id, colonel_user_name, promotion_link_id, product_title,
+            colonel_activity_id, settle_time,
+            attribution_status, attribution_remark, create_time, update_time, deleted, extra_data
         )
         SELECT
             #{id}, #{orderId}, #{productId}, #{productName}, #{shopId}, #{shopName},
             #{orderAmount}, #{actualAmount}, #{settleColonelCommission}, #{settleColonelTechServiceFee},
             #{settleSecondColonelCommission}, #{orderStatus}, #{pickSource},
-            #{channelUserId}, #{userId}, #{deptId}, #{createTime}, #{updateTime}, #{deleted},
+            #{channelUserId}, #{channelUserName}, #{channelDeptId},
+            #{userId}, #{deptId}, #{colonelUserId}, #{colonelUserName}, #{promotionLinkId}, #{productTitle},
+            #{activityId}, #{settleTime},
+            #{attributionStatus}, #{attributionRemark}, #{createTime}, #{updateTime}, #{deleted},
             CAST(#{extraData, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB)
         WHERE NOT EXISTS (
             SELECT 1

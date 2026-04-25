@@ -66,7 +66,7 @@ public class DataController extends BaseController {
     }
 
     @Operation(summary = "订单分页")
-    @GetMapping("/orders")
+    @GetMapping("/data/orders")
     public ApiResult<PageResult<OrderVO>> getOrderPage(
             @RequestParam(defaultValue = "1") @Min(1) long page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,

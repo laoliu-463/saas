@@ -1,27 +1,34 @@
 <template>
   <div class="page-header">
-    <h2 class="title">{{ title }}</h2>
-    <div class="extra">
-      <slot name="extra"></slot>
+    <h2 class="page-title">{{ title }}</h2>
+    <div v-if="$slots.actions" class="page-actions">
+      <slot name="actions" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-defineProps<{title: string}>()
+defineProps<{ title: string }>()
 </script>
 
 <style scoped>
 .page-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-lg);
 }
-.title {
+
+.page-title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--text-primary);
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #1f2225;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
 }
 </style>

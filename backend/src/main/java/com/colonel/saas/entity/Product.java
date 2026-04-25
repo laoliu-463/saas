@@ -50,4 +50,10 @@ public class Product extends BaseEntity {
 
     @TableField(exist = false)
     private String shortLink;
+
+    @TableField(exist = false)
+    private String bizStatus;
+
+    @TableField(exist = false)
+    private String bizStatusLabel;
 }

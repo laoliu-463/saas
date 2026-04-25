@@ -6,8 +6,8 @@ import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.douyin.api.PromotionApi;
 import com.colonel.saas.entity.ProductOperationLog;
+import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -84,14 +85,14 @@ public class ColonelActivityProductController extends BaseController {
 
     @Operation(summary = "活动商品转链")
     @PostMapping("/{productId}/promotion-links")
-    public ApiResult<PromotionApi.PromotionLinkResult> generatePromotionLink(
+    public ApiResult<DouyinPromotionGateway.PromotionLinkResult> generatePromotionLink(
             @PathVariable String activityId,
             @PathVariable String productId,
             @RequestBody(required = false) PromotionLinkRequest request,
             @RequestAttribute(value = "userId", required = false) UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId) {
         PromotionLinkRequest safeRequest = request == null ? new PromotionLinkRequest() : request;
-        PromotionApi.PromotionLinkResult result = productService.generatePromotionLink(
+        DouyinPromotionGateway.PromotionLinkResult result = productService.generatePromotionLink(
                 activityId,
                 productId,
                 userId,
@@ -101,6 +102,26 @@ public class ColonelActivityProductController extends BaseController {
                 safeRequest.getNeedShortLink()
         );
         return ok(result);
+    }
+
+    @Operation(summary = "活动商品达人跟进")
+    @PostMapping("/{productId}/follow")
+    public ApiResult<Map<String, Object>> follow(
+            @PathVariable String activityId,
+            @PathVariable String productId,
+            @Valid @RequestBody TalentFollowRequest request,
+            @RequestAttribute(value = "userId", required = false) UUID userId) {
+        return ok(productService.startTalentFollow(
+                activityId,
+                productId,
+                request.getTalentId(),
+                request.getTalentName(),
+                request.getFollowStatus(),
+                request.getContent(),
+                request.getNextFollowTime(),
+                userId,
+                request.getOperatorName()
+        ));
     }
 
     @Operation(summary = "活动商品操作日志")
@@ -190,5 +211,62 @@ public class ColonelActivityProductController extends BaseController {
             this.needShortLink = needShortLink;
         }
     }
-}
 
+    public static class TalentFollowRequest {
+        private UUID talentId;
+        private String talentName;
+        @NotBlank(message = "followStatus 不能为空")
+        private String followStatus;
+        private String content;
+        private LocalDateTime nextFollowTime;
+        private String operatorName;
+
+        public UUID getTalentId() {
+            return talentId;
+        }
+
+        public void setTalentId(UUID talentId) {
+            this.talentId = talentId;
+        }
+
+        public String getTalentName() {
+            return talentName;
+        }
+
+        public void setTalentName(String talentName) {
+            this.talentName = talentName;
+        }
+
+        public String getFollowStatus() {
+            return followStatus;
+        }
+
+        public void setFollowStatus(String followStatus) {
+            this.followStatus = followStatus;
+        }
+
+        public String getContent() {
+            return content;
+        }
+
+        public void setContent(String content) {
+            this.content = content;
+        }
+
+        public LocalDateTime getNextFollowTime() {
+            return nextFollowTime;
+        }
+
+        public void setNextFollowTime(LocalDateTime nextFollowTime) {
+            this.nextFollowTime = nextFollowTime;
+        }
+
+        public String getOperatorName() {
+            return operatorName;
+        }
+
+        public void setOperatorName(String operatorName) {
+            this.operatorName = operatorName;
+        }
+    }
+}

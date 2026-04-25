@@ -40,7 +40,10 @@ public class MerchantService {
         merchant.setShopName(order.getShopName());
         merchant.setSourceOrderId(order.getOrderId());
         merchant.setStatus(1);
-        merchant.setExtraData(order.getExtraData());
+        // Keep merchant creation resilient during order sync. The order raw payload
+        // already lives on colonelsettlement_order.extra_data, so merchant can be
+        // created without duplicating the JSON blob here.
+        merchant.setExtraData(null);
         try {
             merchantMapper.insert(merchant);
         } catch (DuplicateKeyException ignore) {
@@ -66,7 +69,7 @@ public class MerchantService {
         merchant.setShopName(order == null ? null : order.getShopName());
         merchant.setSourceOrderId(order == null ? null : order.getOrderId());
         merchant.setStatus(0);
-        merchant.setExtraData(order == null ? null : order.getExtraData());
+        merchant.setExtraData(null);
         try {
             merchantMapper.insert(merchant);
             return merchant;

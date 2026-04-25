@@ -20,10 +20,37 @@ const isValidToken = (token: unknown): token is string => {
   return Boolean(normalized) && normalized !== 'undefined' && normalized !== 'null';
 };
 
+const normalizeServerMessage = (message: string): string => {
+  const raw = String(message || '').trim();
+  const lower = raw.toLowerCase();
+
+  if (!raw) return '请求失败，请稍后重试';
+  if (
+    lower.includes('java.time.localdatetime') ||
+    lower.includes('datetimeparseexception') ||
+    lower.includes('nextfollowtime')
+  ) {
+    return '跟进时间格式不正确，请重新选择时间';
+  }
+  if (raw.includes('AssignRequest["assigneeId"]') || raw.includes('assigneeId')) {
+    return '负责人ID格式不正确，请输入系统中的标准负责人ID';
+  }
+  if (lower.includes('cannot deserialize value of type') && lower.includes('java.util.uuid')) {
+    return '负责人ID格式不正确，请输入系统中的标准负责人ID';
+  }
+  if (lower.includes('uuid has to be represented by standard 36-char representation')) {
+    return '负责人ID格式不正确，请输入36位标准格式的负责人ID';
+  }
+  if (lower.includes('json parse error')) {
+    return '提交内容格式不正确，请检查后重试';
+  }
+  return raw;
+};
+
 const buildFriendlyErrorMessage = (error: any): string => {
   const serverMsg = error?.response?.data?.msg;
   if (serverMsg && String(serverMsg).trim()) {
-    return String(serverMsg);
+    return normalizeServerMessage(String(serverMsg));
   }
 
   const status = error?.response?.status;
@@ -88,12 +115,19 @@ request.interceptors.response.use(
       loadingBar.finish();
       return Promise.reject(new Error('资源未修改，使用缓存'));
     }
-    if (response?.data?.code === 401) {
+    const businessCode = response?.data?.code;
+    if (businessCode === 401) {
       loadingBar.finish();
       localStorage.removeItem('token');
       localStorage.removeItem('userInfo');
       discreteMessage.error('登录已过期，请重新登录');
       window.location.href = '/login';
+      return Promise.reject(response.data);
+    }
+    if (typeof businessCode === 'number' && businessCode !== 200) {
+      loadingBar.error();
+      const msg = normalizeServerMessage(String(response?.data?.msg || '请求失败，请稍后重试'));
+      discreteMessage.error(msg);
       return Promise.reject(response.data);
     }
     loadingBar.finish();

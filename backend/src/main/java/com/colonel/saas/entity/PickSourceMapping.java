@@ -44,6 +44,18 @@ public class PickSourceMapping extends BaseEntity {
     @TableField("pick_extra")
     private String pickExtra;
 
+    @TableField("promotion_link_id")
+    private UUID promotionLinkId;
+
+    @TableField("channel_user_name")
+    private String channelUserName;
+
+    @TableField("talent_id")
+    private String talentId;
+
+    @TableField("talent_name")
+    private String talentName;
+
     @TableField("valid_from")
     private LocalDateTime validFrom;
 
