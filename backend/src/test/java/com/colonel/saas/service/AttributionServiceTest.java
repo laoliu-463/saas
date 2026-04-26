@@ -2,14 +2,14 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
+import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.mapper.PickSourceMappingMapper;
+import com.colonel.saas.mapper.ProductOperationStateMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import java.util.Map;
 import java.util.UUID;
@@ -21,22 +21,24 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class AttributionServiceTest {
 
     @Mock
     private PickSourceMappingMapper pickSourceMappingMapper;
     @Mock
+    private ProductOperationStateMapper productOperationStateMapper;
+    @Mock
     private ExclusiveTalentService exclusiveTalentService;
     @Mock
     private ExclusiveMerchantService exclusiveMerchantService;
 
-    private AttributionService attributionService;
+    private AttributionService service;
 
     @BeforeEach
     void setUp() {
-        attributionService = new AttributionService(
+        service = new AttributionService(
                 pickSourceMappingMapper,
+                productOperationStateMapper,
                 exclusiveTalentService,
                 exclusiveMerchantService
         );
@@ -50,22 +52,23 @@ class AttributionServiceTest {
                 .thenReturn(new AttributionService.ExclusiveOwner(merchantOwner, merchantDept));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
-        order.setShopId(1001L);
+        order.setProductId("pid-1");
         order.setPickSource("ps_1");
 
-        AttributionService.AttributionResult result = attributionService.resolveAttribution(
+        AttributionService.AttributionResult result = service.resolveAttribution(
                 order,
                 Map.of("merchant_id", "m-1", "talent_uid", "t-1")
         );
 
         assertThat(result.userId()).isEqualTo(merchantOwner);
         assertThat(result.deptId()).isEqualTo(merchantDept);
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
         verify(exclusiveTalentService, never()).findActiveOwnerByTalentUid(any());
         verify(pickSourceMappingMapper, never()).selectOne(any());
     }
 
     @Test
-    void resolveAttribution_shouldUseExclusiveTalentWhenNoMerchantExclusive() {
+    void resolveAttribution_shouldUseExclusiveTalentWhenMerchantNotMatched() {
         UUID talentOwner = UUID.randomUUID();
         UUID talentDept = UUID.randomUUID();
         when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
@@ -73,9 +76,10 @@ class AttributionServiceTest {
                 .thenReturn(new AttributionService.ExclusiveOwner(talentOwner, talentDept));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-2");
         order.setPickSource("ps_2");
 
-        AttributionService.AttributionResult result = attributionService.resolveAttribution(
+        AttributionService.AttributionResult result = service.resolveAttribution(
                 order,
                 Map.of("talent_uid", "t-2")
         );
@@ -90,39 +94,64 @@ class AttributionServiceTest {
     void resolveAttribution_shouldFallbackToPickSourceMapping() {
         UUID mappingUser = UUID.randomUUID();
         UUID mappingDept = UUID.randomUUID();
-        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
-        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
-
         PickSourceMapping mapping = new PickSourceMapping();
         mapping.setUserId(mappingUser);
         mapping.setDeptId(mappingDept);
+        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
         when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-3");
         order.setPickSource("pick_x");
 
-        AttributionService.AttributionResult result = attributionService.resolveAttribution(
+        AttributionService.AttributionResult result = service.resolveAttribution(
                 order,
                 Map.of("pick_extra", "short_123")
         );
 
         assertThat(result.userId()).isEqualTo(mappingUser);
         assertThat(result.deptId()).isEqualTo(mappingDept);
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
     }
 
     @Test
-    void resolveAttribution_shouldReturnUnattributedWhenNoAttributionMatched() {
+    void resolveAttribution_shouldExposeColonelOwnerFromProductState() {
+        UUID colonelUserId = UUID.randomUUID();
+        ProductOperationState state = new ProductOperationState();
+        state.setAssigneeId(colonelUserId);
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(UUID.randomUUID());
+        mapping.setDeptId(UUID.randomUUID());
+        when(productOperationStateMapper.selectOne(any())).thenReturn(state);
+        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-4");
+        order.setActivityId("act-4");
+        order.setPickSource("pick_4");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(order, Map.of());
+
+        assertThat(result.colonelUserId()).isEqualTo(colonelUserId);
+    }
+
+    @Test
+    void resolveAttribution_shouldReturnUnattributedWhenMappingMissing() {
         when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
         when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-5");
         order.setPickSource("unknown");
 
-        AttributionService.AttributionResult result = attributionService.resolveAttribution(order, Map.of());
+        AttributionService.AttributionResult result = service.resolveAttribution(order, Map.of());
 
-        assertThat(result.attributionStatus()).isEqualTo("UNATTRIBUTED");
-        assertThat(result.attributionRemark()).contains("pick_source");
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
+        assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_MAPPING_NOT_FOUND);
         assertThat(result.userId()).isNull();
     }
 }

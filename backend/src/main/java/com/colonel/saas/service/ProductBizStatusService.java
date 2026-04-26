@@ -99,7 +99,7 @@ public class ProductBizStatusService {
             case APPROVED -> beforeStatus == ProductBizStatus.SYNCED || beforeStatus == ProductBizStatus.PENDING_AUDIT;
             case REJECTED -> beforeStatus == ProductBizStatus.SYNCED || beforeStatus == ProductBizStatus.PENDING_AUDIT;
             case BOUND -> beforeStatus == ProductBizStatus.APPROVED;
-            case ASSIGNED -> beforeStatus == ProductBizStatus.BOUND;
+            case ASSIGNED -> beforeStatus == ProductBizStatus.APPROVED || beforeStatus == ProductBizStatus.BOUND;
             case LINKED -> beforeStatus == ProductBizStatus.ASSIGNED;
             case FOLLOWING -> beforeStatus == ProductBizStatus.LINKED;
             case SYNCED, PENDING_AUDIT -> false;

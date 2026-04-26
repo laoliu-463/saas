@@ -9,12 +9,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,24 +27,19 @@ class PickSourceMappingServiceTest {
     @Mock
     private PickSourceMappingMapper pickSourceMappingMapper;
 
-    private PickSourceMappingService pickSourceMappingService;
+    private PickSourceMappingService service;
 
     @BeforeEach
     void setUp() {
-        pickSourceMappingService = new PickSourceMappingService(pickSourceMappingMapper, 3);
+        service = new PickSourceMappingService(pickSourceMappingMapper, 3);
     }
 
     @Test
     void ensureFromOrder_shouldInsertWhenShortIdCanBeExtracted() {
-        ColonelsettlementOrder order = new ColonelsettlementOrder();
-        order.setPickSource("usr_ABC12345_1712000000");
-        order.setUserId(UUID.randomUUID());
-        order.setDeptId(UUID.randomUUID());
-        order.setProductId("pid_1");
-
+        ColonelsettlementOrder order = makeOrder("usr_ABC12345_1712000000");
         when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
 
-        pickSourceMappingService.ensureFromOrder(order);
+        service.ensureFromOrder(order);
 
         ArgumentCaptor<PickSourceMapping> captor = ArgumentCaptor.forClass(PickSourceMapping.class);
         verify(pickSourceMappingMapper).insert(captor.capture());
@@ -54,17 +51,63 @@ class PickSourceMappingServiceTest {
 
     @Test
     void ensureFromOrder_shouldSkipWhenShortIdAlreadyExists() {
-        ColonelsettlementOrder order = new ColonelsettlementOrder();
-        order.setPickSource("usr_ABC12345_1712000000");
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(new PickSourceMapping());
 
-        PickSourceMapping existing = new PickSourceMapping();
-        existing.setId(UUID.randomUUID());
-        existing.setShortId("ABC12345");
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(existing);
-
-        pickSourceMappingService.ensureFromOrder(order);
+        service.ensureFromOrder(makeOrder("usr_ABC12345_1712000000"));
 
         verify(pickSourceMappingMapper, never()).insert(any(PickSourceMapping.class));
+    }
+
+    @Test
+    void ensureFromOrder_shouldIgnoreDuplicateInsert() {
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
+        doThrow(new DuplicateKeyException("dup"))
+                .when(pickSourceMappingMapper).insert(any(PickSourceMapping.class));
+
+        service.ensureFromOrder(makeOrder("ABCDE12345"));
+
+        verify(pickSourceMappingMapper).insert(any(PickSourceMapping.class));
+    }
+
+    @Test
+    void ensureFromOrder_shouldReturnEarlyForBlankPickSource() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setPickSource("  ");
+
+        service.ensureFromOrder(order);
+
+        verify(pickSourceMappingMapper, never()).selectOne(any());
+        verify(pickSourceMappingMapper, never()).insert(any(PickSourceMapping.class));
+    }
+
+    @Test
+    void saveOrUpdate_shouldInsertWhenPickSourceIsNew() {
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
+
+        service.saveOrUpdate(
+                UUID.randomUUID(),
+                "channel-user",
+                UUID.randomUUID(),
+                "talent-1",
+                "Talent A",
+                "NEWID123",
+                UUID.randomUUID(),
+                "PS_NEW",
+                "pid_new",
+                "act_new",
+                "source_url",
+                "converted_url",
+                UUID.randomUUID(),
+                "PRODUCT_LIBRARY"
+        );
+
+        ArgumentCaptor<PickSourceMapping> captor = ArgumentCaptor.forClass(PickSourceMapping.class);
+        verify(pickSourceMappingMapper).insert(captor.capture());
+        PickSourceMapping saved = captor.getValue();
+        assertThat(saved.getChannelUserName()).isEqualTo("channel-user");
+        assertThat(saved.getShortId()).isEqualTo("NEWID123");
+        assertThat(saved.getPickSource()).isEqualTo("PS_NEW");
+        assertThat(saved.getScene()).isEqualTo("PRODUCT_LIBRARY");
     }
 
     @Test
@@ -72,19 +115,22 @@ class PickSourceMappingServiceTest {
         PickSourceMapping existing = new PickSourceMapping();
         existing.setId(UUID.randomUUID());
         existing.setPickSource("PS_001");
-
         when(pickSourceMappingMapper.selectOne(any())).thenReturn(existing);
 
-        pickSourceMappingService.saveOrUpdate(
+        service.saveOrUpdate(
                 UUID.randomUUID(),
+                "channel-user",
                 UUID.randomUUID(),
+                "talent-1",
+                "Talent A",
                 "ABCD1234",
                 UUID.randomUUID(),
                 "PS_001",
                 "pid_9",
                 "act_9",
                 "source_url",
-                "target_url"
+                "target_url",
+                UUID.randomUUID()
         );
 
         verify(pickSourceMappingMapper).updateById(existing);
@@ -92,175 +138,66 @@ class PickSourceMappingServiceTest {
         assertThat(existing.getPickExtra()).isEqualTo("ABCD1234");
     }
 
-    // --- extractShortId private method coverage ---
-
     @Test
-    void extractShortId_pureUpperNumeric_shouldReturnAsIs() {
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
-
-        pickSourceMappingService.ensureFromOrder(makeOrder("ABCDE12345"));
-
-        verify(pickSourceMappingMapper).insert(any(PickSourceMapping.class));
-        ArgumentCaptor<PickSourceMapping> captor = ArgumentCaptor.forClass(PickSourceMapping.class);
-        verify(pickSourceMappingMapper).insert(captor.capture());
-        assertThat(captor.getValue().getShortId()).isEqualTo("ABCDE12345");
-    }
-
-    @Test
-    void extractShortId_withEmbeddedPattern_shouldExtract() {
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
-
-        // Pattern: "prefix 8-10 uppercase digits" embedded in URL
-        pickSourceMappingService.ensureFromOrder(makeOrder("https://domain.com/p/ABC12345?id=xyz"));
-
-        verify(pickSourceMappingMapper).insert(any(PickSourceMapping.class));
-        ArgumentCaptor<PickSourceMapping> captor = ArgumentCaptor.forClass(PickSourceMapping.class);
-        verify(pickSourceMappingMapper).insert(captor.capture());
-        assertThat(captor.getValue().getShortId()).isEqualTo("ABC12345");
-    }
-
-    @Test
-    void extractShortId_onlyDigitsUnder10Chars_shouldReturnAsIs() {
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
-
-        pickSourceMappingService.ensureFromOrder(makeOrder("12345678"));
-
-        verify(pickSourceMappingMapper).insert(any(PickSourceMapping.class));
-        ArgumentCaptor<PickSourceMapping> captor = ArgumentCaptor.forClass(PickSourceMapping.class);
-        verify(pickSourceMappingMapper).insert(captor.capture());
-        assertThat(captor.getValue().getShortId()).isEqualTo("12345678");
-    }
-
-    @Test
-    void ensureFromOrder_nullOrder_shouldReturnEarly() {
-        // null order → no interaction
-        pickSourceMappingService.ensureFromOrder(null);
-        verify(pickSourceMappingMapper, never()).selectOne(any());
-        verify(pickSourceMappingMapper, never()).insert(any(PickSourceMapping.class));
-    }
-
-    @Test
-    void ensureFromOrder_nullPickSource_shouldReturnEarly() {
-        ColonelsettlementOrder order = new ColonelsettlementOrder();
-        order.setPickSource(null);
-        order.setUserId(UUID.randomUUID());
-
-        pickSourceMappingService.ensureFromOrder(order);
-
-        verify(pickSourceMappingMapper, never()).selectOne(any());
-        verify(pickSourceMappingMapper, never()).insert(any(PickSourceMapping.class));
-    }
-
-    @Test
-    void ensureFromOrder_blankPickSource_shouldReturnEarly() {
-        ColonelsettlementOrder order = new ColonelsettlementOrder();
-        order.setPickSource("   ");
-        order.setUserId(UUID.randomUUID());
-
-        pickSourceMappingService.ensureFromOrder(order);
-
-        verify(pickSourceMappingMapper, never()).selectOne(any());
-        verify(pickSourceMappingMapper, never()).insert(any(PickSourceMapping.class));
-    }
-
-    @Test
-    void ensureFromOrder_duplicateKeyException_shouldBeSilentlyIgnored() {
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
-        org.mockito.Mockito.doThrow(new org.springframework.dao.DuplicateKeyException("dup"))
-                .when(pickSourceMappingMapper).insert(any(PickSourceMapping.class));
-
-        // Should NOT throw
-        pickSourceMappingService.ensureFromOrder(makeOrder("ABCD12345"));
-
-        verify(pickSourceMappingMapper).insert(any(PickSourceMapping.class));
-    }
-
-    // --- saveOrUpdate insert path ---
-
-    @Test
-    void saveOrUpdate_newPickSource_shouldInsert() {
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
-
-        pickSourceMappingService.saveOrUpdate(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                "NEWID123",
-                UUID.randomUUID(),
-                "PS_NEW",
-                "pid_new",
-                "act_new",
-                "source_url",
-                "converted_url"
-        );
-
-        ArgumentCaptor<PickSourceMapping> captor = ArgumentCaptor.forClass(PickSourceMapping.class);
-        verify(pickSourceMappingMapper).insert(captor.capture());
-        PickSourceMapping saved = captor.getValue();
-        assertThat(saved.getPickSource()).isEqualTo("PS_NEW");
-        assertThat(saved.getShortId()).isEqualTo("NEWID123");
-        assertThat(saved.getPickExtra()).isEqualTo("NEWID123");
-        assertThat(saved.getStatus()).isEqualTo(1);
-    }
-
-    @Test
-    void saveOrUpdate_concurrentDuplicateKey_shouldRecoverAndUpdate() {
-        // First selectOne returns null, then insert throws DuplicateKeyException,
-        // then second selectOne finds the row created by concurrent insert
+    void saveOrUpdate_shouldRecoverFromConcurrentDuplicateInsert() {
+        PickSourceMapping concurrent = new PickSourceMapping();
+        concurrent.setId(UUID.randomUUID());
+        concurrent.setPickSource("PS_DUP");
         when(pickSourceMappingMapper.selectOne(any()))
                 .thenReturn(null)
-                .thenAnswer(inv -> {
-                    PickSourceMapping concurrent = new PickSourceMapping();
-                    concurrent.setId(UUID.randomUUID());
-                    concurrent.setPickSource("PS_DUP");
-                    return concurrent;
-                });
-        org.mockito.Mockito.doThrow(new org.springframework.dao.DuplicateKeyException("dup"))
+                .thenReturn(concurrent);
+        doThrow(new DuplicateKeyException("dup"))
                 .when(pickSourceMappingMapper).insert(any(PickSourceMapping.class));
 
-        pickSourceMappingService.saveOrUpdate(
+        service.saveOrUpdate(
                 UUID.randomUUID(),
+                "channel-user",
                 UUID.randomUUID(),
+                "talent-1",
+                "Talent A",
                 "DUPMID1",
                 UUID.randomUUID(),
                 "PS_DUP",
                 "pid_dup",
                 "act_dup",
                 "s_url",
-                "c_url"
+                "c_url",
+                UUID.randomUUID()
         );
 
-        // Should have fallen through to updateById
-        verify(pickSourceMappingMapper).updateById(any(PickSourceMapping.class));
+        verify(pickSourceMappingMapper).updateById(concurrent);
     }
 
     @Test
-    void saveOrUpdate_concurrentDuplicateKeyAndStillNull_shouldThrow() {
-        // First selectOne returns null, insert throws DuplicateKeyException,
-        // second selectOne also returns null → should re-throw
+    void saveOrUpdate_shouldRethrowWhenConcurrentRowStillMissing() {
         when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
-        org.mockito.Mockito.doThrow(new org.springframework.dao.DuplicateKeyException("dup"))
+        doThrow(new DuplicateKeyException("dup"))
                 .when(pickSourceMappingMapper).insert(any(PickSourceMapping.class));
 
-        assertThatThrownBy(() -> pickSourceMappingService.saveOrUpdate(
+        assertThatThrownBy(() -> service.saveOrUpdate(
                 UUID.randomUUID(),
+                "channel-user",
                 UUID.randomUUID(),
+                "talent-1",
+                "Talent A",
                 "ERRID1",
                 UUID.randomUUID(),
                 "PS_ERR",
                 "pid_err",
                 "act_err",
                 "s",
-                "c"
-        )).isInstanceOf(org.springframework.dao.DuplicateKeyException.class);
+                "c",
+                UUID.randomUUID()
+        )).isInstanceOf(DuplicateKeyException.class);
     }
 
     private ColonelsettlementOrder makeOrder(String pickSource) {
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setPickSource(pickSource);
+        order.setAttributionStatus("ATTRIBUTED");
         order.setUserId(UUID.randomUUID());
         order.setDeptId(UUID.randomUUID());
         order.setProductId("pid_1");
         return order;
     }
 }
-

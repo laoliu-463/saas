@@ -7,7 +7,9 @@ import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ProductMapper;
+import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
+import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.CrawlerTalentInfoService;
@@ -42,6 +44,10 @@ class SampleControllerTest {
     @Mock
     private ProductMapper productMapper;
     @Mock
+    private ProductOperationStateMapper productOperationStateMapper;
+    @Mock
+    private SysUserMapper sysUserMapper;
+    @Mock
     private TalentMapper talentMapper;
     @Mock
     private SampleStatusLogService sampleStatusLogService;
@@ -55,6 +61,8 @@ class SampleControllerTest {
         sampleController = new SampleController(
                 sampleRequestMapper,
                 productMapper,
+                productOperationStateMapper,
+                sysUserMapper,
                 talentMapper,
                 sampleStatusLogService,
                 crawlerTalentInfoService

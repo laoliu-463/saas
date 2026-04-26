@@ -73,8 +73,7 @@
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import { NButton, useDialog, useMessage } from 'naive-ui';
 import { useRouter } from 'vue-router';
-import { createSample } from '../../api/sample';
-import { getTalentList } from '../../api/talent';
+import { createSample, searchSampleTalents } from '../../api/sample';
 import { getProducts } from '../../api/product';
 import { useAuthStore } from '../../stores/auth';
 
@@ -174,7 +173,7 @@ const fetchTalents = async (page = 1) => {
   loadingTalents.value = true;
   try {
     talentQuery.page = page;
-    const res = await getTalentList({
+    const res = await searchSampleTalents({
       keyword: talentQuery.keyword || undefined,
       region: talentQuery.region || undefined,
       minFans: talentQuery.minFans ?? undefined,

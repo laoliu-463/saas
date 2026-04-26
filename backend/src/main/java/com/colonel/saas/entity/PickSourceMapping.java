@@ -56,6 +56,9 @@ public class PickSourceMapping extends BaseEntity {
     @TableField("talent_name")
     private String talentName;
 
+    @TableField("scene")
+    private String scene;
+
     @TableField("valid_from")
     private LocalDateTime validFrom;
 

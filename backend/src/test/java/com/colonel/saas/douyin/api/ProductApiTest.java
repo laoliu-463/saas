@@ -78,7 +78,7 @@ class ProductApiTest {
     }
 
     @Test
-    void listProductsByActivity_shouldUsePagingModeWhenCursorMissing() {
+    void listProductsByActivity_shouldUseCursorModeWhenCursorMissing() {
         when(douyinApiClient.post(eq("alliance.colonelActivityProduct"), anyMap()))
                 .thenReturn(new HashMap<>());
 
@@ -88,8 +88,8 @@ class ProductApiTest {
         verify(douyinApiClient).post(eq("alliance.colonelActivityProduct"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("count")).isEqualTo(20);
-        assertThat(params.get("retrieve_mode")).isEqualTo(0L);
-        assertThat(params).doesNotContainKey("cursor");
+        assertThat(params.get("retrieve_mode")).isEqualTo(1L);
+        assertThat(params).doesNotContainKey("page");
     }
 
     @Test

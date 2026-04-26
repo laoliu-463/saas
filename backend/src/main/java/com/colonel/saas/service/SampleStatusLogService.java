@@ -1,7 +1,6 @@
 package com.colonel.saas.service;
 
-import com.colonel.saas.entity.SampleStatusLog;
-import com.colonel.saas.mapper.SampleStatusLogMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -10,20 +9,26 @@ import java.util.UUID;
 @Service
 public class SampleStatusLogService {
 
-    private final SampleStatusLogMapper sampleStatusLogMapper;
+    private final JdbcTemplate jdbcTemplate;
 
-    public SampleStatusLogService(SampleStatusLogMapper sampleStatusLogMapper) {
-        this.sampleStatusLogMapper = sampleStatusLogMapper;
+    public SampleStatusLogService(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public void log(UUID requestId, Integer fromStatus, Integer toStatus, UUID operatorId, String remark) {
-        SampleStatusLog log = new SampleStatusLog();
-        log.setRequestId(requestId);
-        log.setFromStatus(fromStatus);
-        log.setToStatus(toStatus);
-        log.setOperatorId(operatorId);
-        log.setOperateTime(LocalDateTime.now());
-        log.setRemark(remark);
-        sampleStatusLogMapper.insert(log);
+        UUID id = UUID.randomUUID();
+        LocalDateTime now = LocalDateTime.now();
+        jdbcTemplate.update("""
+                INSERT INTO sample_status_log (id, request_id, from_status, to_status, operator_id, operate_time, remark)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                id,
+                requestId,
+                fromStatus,
+                toStatus,
+                operatorId,
+                now,
+                remark
+        );
     }
 }

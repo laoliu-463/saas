@@ -77,11 +77,6 @@ class ProductBizStatusServiceTest {
     }
 
     @Test
-    void changeStatus_shouldRejectPendingAuditToBound() {
-        assertIllegal(ProductBizStatus.PENDING_AUDIT, ProductBizStatus.BOUND, "BIND_ACTIVITY");
-    }
-
-    @Test
     void changeStatus_shouldRejectPendingAuditToAssigned() {
         assertIllegal(ProductBizStatus.PENDING_AUDIT, ProductBizStatus.ASSIGNED, "ASSIGN");
     }
@@ -89,11 +84,6 @@ class ProductBizStatusServiceTest {
     @Test
     void changeStatus_shouldRejectApprovedToFollowing() {
         assertIllegal(ProductBizStatus.APPROVED, ProductBizStatus.FOLLOWING, "TALENT_FOLLOW");
-    }
-
-    @Test
-    void changeStatus_shouldRejectRejectedToBound() {
-        assertIllegal(ProductBizStatus.REJECTED, ProductBizStatus.BOUND, "BIND_ACTIVITY");
     }
 
     @Test
@@ -117,11 +107,6 @@ class ProductBizStatusServiceTest {
     }
 
     @Test
-    void changeStatus_shouldRejectLinkedRollbackToBound() {
-        assertIllegal(ProductBizStatus.LINKED, ProductBizStatus.BOUND, "BIND_ACTIVITY");
-    }
-
-    @Test
     void changeStatus_shouldRejectLinkedRollbackToAssigned() {
         assertIllegal(ProductBizStatus.LINKED, ProductBizStatus.ASSIGNED, "ASSIGN");
     }
@@ -134,11 +119,6 @@ class ProductBizStatusServiceTest {
     @Test
     void changeStatus_shouldRejectFollowingToApproved() {
         assertIllegal(ProductBizStatus.FOLLOWING, ProductBizStatus.APPROVED, "AUDIT");
-    }
-
-    @Test
-    void changeStatus_shouldRejectFollowingToBound() {
-        assertIllegal(ProductBizStatus.FOLLOWING, ProductBizStatus.BOUND, "BIND_ACTIVITY");
     }
 
     @Test
@@ -162,7 +142,26 @@ class ProductBizStatusServiceTest {
     }
 
     @Test
-    void changeStatus_shouldAllowBoundToAssigned() {
+    void changeStatus_shouldAllowApprovedToAssigned() {
+        ProductOperationState state = buildState(ProductBizStatus.APPROVED);
+
+        service.changeStatus(
+                state,
+                ProductBizStatus.ASSIGNED,
+                "ASSIGN",
+                null,
+                null,
+                Map.of("assigneeId", UUID.randomUUID()),
+                "分配招商",
+                current -> current.setAssigneeId(UUID.randomUUID())
+        );
+
+        assertThat(state.getBizStatus()).isEqualTo(ProductBizStatus.ASSIGNED.name());
+        verify(operationStateMapper).updateById(state);
+    }
+
+    @Test
+    void changeStatus_shouldAllowBoundToAssignedForLegacyData() {
         ProductOperationState state = buildState(ProductBizStatus.BOUND);
 
         service.changeStatus(

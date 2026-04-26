@@ -12,6 +12,14 @@ export function getUnattributedOrders(params: any) {
   return request.get('/orders/unattributed', { params });
 }
 
+export function getOrderStats(params?: any) {
+  return request.get('/orders/stats', { params });
+}
+
+export function getOrderFilterOptions(params?: any) {
+  return request.get('/orders/filter-options', { params });
+}
+
 /** @deprecated use syncOrders instead */
 export function triggerOrderSync() {
   const now = new Date();
@@ -22,4 +30,3 @@ export function triggerOrderSync() {
   
   return syncOrders(formatDate(start), formatDate(now));
 }
-

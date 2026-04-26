@@ -1,20 +1,10 @@
-import { createRouter, createWebHistory } from 'vue-router';
-import { useAuthStore } from '../stores/auth';
-import { ROLE_CODES, hasAccess } from '../constants/rbac';
+import { createRouter, createWebHistory } from 'vue-router'
+import { ROLE_CODES, hasAccess } from '../constants/rbac'
+import { useAuthStore } from '../stores/auth'
+import { isMockEnv } from '../utils/env'
 
-const ROLE = ROLE_CODES;
-
-const HOME_CANDIDATES = ['/dashboard', '/orders', '/data', '/product', '/talent', '/ops/shipping', '/sample', '/system/users'];
-
-const resolveHomePath = (authStore: ReturnType<typeof useAuthStore>): string => {
-  const roles = authStore.roleCodes;
-  const accessible = HOME_CANDIDATES.find((path) => {
-    const matched = router.resolve(path).matched;
-    const required = matched[matched.length - 1]?.meta?.roles as string[] | undefined;
-    return hasAccess(roles, required);
-  });
-  return accessible || '/login';
-};
+const ROLE = ROLE_CODES
+const HOME_CANDIDATES = ['/dashboard', '/orders', '/data', '/product', '/talent', '/ops/shipping', '/sample', '/system/users']
 
 const router = createRouter({
   history: createWebHistory(),
@@ -109,29 +99,49 @@ const router = createRouter({
           component: () => import('../views/dashboard/index.vue'),
           meta: { title: '归因概览', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
         },
+        {
+          path: 'dev/mock',
+          component: () => import('../views/dev/MockConsole.vue'),
+          meta: { title: 'Mock 调试', roles: [ROLE.ADMIN, ROLE.BIZ_LEADER], mockOnly: true }
+        },
         { path: '', redirect: '/dashboard' }
       ]
     },
     { path: '/:pathMatch(.*)*', redirect: '/data' }
   ]
-});
+})
 
-router.beforeEach((to, _from) => {
-  const authStore = useAuthStore();
+const resolveHomePath = (authStore: ReturnType<typeof useAuthStore>): string => {
+  const roles = authStore.roleCodes
+  const accessible = HOME_CANDIDATES.find((path) => {
+    const matched = router.resolve(path).matched
+    const required = matched[matched.length - 1]?.meta?.roles as string[] | undefined
+    return hasAccess(roles, required)
+  })
+  return accessible || '/login'
+}
+
+router.beforeEach((to) => {
+  const authStore = useAuthStore()
+
   if (to.path !== '/login' && !authStore.isLoggedIn) {
-    return '/login';
+    return '/login'
   }
   if (to.path === '/login' && authStore.isLoggedIn) {
-    return resolveHomePath(authStore);
+    return resolveHomePath(authStore)
   }
   if (to.path === '/') {
-    return resolveHomePath(authStore);
+    return resolveHomePath(authStore)
   }
-  const requiredRoles = to.meta?.roles as string[] | undefined;
-  if (!hasAccess(authStore.roleCodes, requiredRoles)) {
-    return resolveHomePath(authStore);
+  if (to.meta?.mockOnly && !isMockEnv) {
+    return resolveHomePath(authStore)
   }
-  return true;
-});
 
-export default router;
+  const requiredRoles = to.meta?.roles as string[] | undefined
+  if (!hasAccess(authStore.roleCodes, requiredRoles)) {
+    return resolveHomePath(authStore)
+  }
+  return true
+})
+
+export default router

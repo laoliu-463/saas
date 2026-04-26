@@ -13,7 +13,7 @@ import java.util.UUID;
 @TableName("sample_status_log")
 public class SampleStatusLog {
 
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(type = IdType.INPUT)
     private UUID id;
 
     @TableField("request_id")

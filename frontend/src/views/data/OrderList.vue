@@ -17,7 +17,7 @@
           clearable
         />
         <n-button type="primary" @click="fetchData">查询</n-button>
-        <n-button type="success" :loading="syncLoading" @click="handleSync">手动同步订单</n-button>
+        <n-button ghost type="primary" @click="fetchData">刷新订单</n-button>
         <n-button type="info" @click="handleExport">导出 CSV</n-button>
         <n-button type="warning" :loading="decryptLoading" @click="handleDecrypt">
           批量解密（{{ checkedRowKeys.length }}）
@@ -86,7 +86,6 @@
 import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue'
 import { NButton, NTag, NText, useMessage } from 'naive-ui'
 import { exportOrders, getOrderPage, decryptOrders } from '../../api/data'
-import { triggerOrderSync } from '../../api/order'
 import { useAuthStore } from '../../stores/auth'
 import type { DecryptResultItem } from '../../types'
 
@@ -114,7 +113,6 @@ const authStore = useAuthStore()
 const message = useMessage()
 const loading = ref(false)
 const decryptLoading = ref(false)
-const syncLoading = ref(false)
 
 const data = ref<any[]>([])
 const pagination = reactive({
@@ -175,19 +173,6 @@ const renderDecryptPhone = (orderId: string) => {
 
 const handleCheck = (keys: string[]) => {
   checkedRowKeys.value = keys
-}
-
-const handleSync = async () => {
-  syncLoading.value = true
-  try {
-    await triggerOrderSync()
-    message.success('已触发订单同步')
-    fetchData()
-  } catch (error: any) {
-    message.error(error?.message || '同步失败')
-  } finally {
-    syncLoading.value = false
-  }
 }
 
 const handleDecrypt = async () => {

@@ -6,9 +6,10 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import lombok.Data;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class DashboardService {
@@ -19,29 +20,57 @@ public class DashboardService {
         this.orderMapper = orderMapper;
     }
 
-    public Summary getSummary() {
+    public Summary getSummary(LocalDateTime startTime, LocalDateTime endTime) {
         // 总计
         QueryWrapper<ColonelsettlementOrder> totalWrapper = new QueryWrapper<ColonelsettlementOrder>()
                 .select("count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee");
+        applyRange(totalWrapper, startTime, endTime);
         Map<String, Object> totalMap = orderMapper.selectMaps(totalWrapper).get(0);
 
         // 已归因/未归因
-        Long attributedCount = orderMapper.selectCount(new QueryWrapper<ColonelsettlementOrder>().eq("attribution_status", "ATTRIBUTED"));
-        Long unattributedCount = orderMapper.selectCount(new QueryWrapper<ColonelsettlementOrder>().eq("attribution_status", "UNATTRIBUTED"));
+        QueryWrapper<ColonelsettlementOrder> attributedWrapper = new QueryWrapper<ColonelsettlementOrder>()
+                .eq("attribution_status", AttributionService.STATUS_ATTRIBUTED);
+        applyRange(attributedWrapper, startTime, endTime);
+        Long attributedCount = orderMapper.selectCount(attributedWrapper);
+        QueryWrapper<ColonelsettlementOrder> unattributedWrapper = new QueryWrapper<ColonelsettlementOrder>()
+                .eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED);
+        applyRange(unattributedWrapper, startTime, endTime);
+        Long unattributedCount = orderMapper.selectCount(unattributedWrapper);
 
         // 渠道业绩
         QueryWrapper<ColonelsettlementOrder> channelWrapper = new QueryWrapper<ColonelsettlementOrder>()
                 .select("channel_user_id as channelUserId", "channel_user_name as channelUserName", "count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee")
                 .isNotNull("channel_user_id")
                 .groupBy("channel_user_id", "channel_user_name");
-        List<PerformanceItem> channelPerformance = orderMapper.selectMaps(channelWrapper).stream().map(this::toPerformanceItem).toList();
+        applyRange(channelWrapper, startTime, endTime);
+        List<PerformanceItem> channelPerformance = orderMapper.selectMaps(channelWrapper).stream()
+                .map(this::toPerformanceItem)
+                .sorted(Comparator.comparingLong(PerformanceItem::getOrderCount).reversed())
+                .limit(10)
+                .toList();
 
         // 招商业绩
         QueryWrapper<ColonelsettlementOrder> colonelWrapper = new QueryWrapper<ColonelsettlementOrder>()
                 .select("colonel_user_id as colonelUserId", "colonel_user_name as colonelUserName", "count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee")
                 .isNotNull("colonel_user_id")
                 .groupBy("colonel_user_id", "colonel_user_name");
-        List<PerformanceItem> colonelPerformance = orderMapper.selectMaps(colonelWrapper).stream().map(this::toPerformanceItem).toList();
+        applyRange(colonelWrapper, startTime, endTime);
+        List<PerformanceItem> colonelPerformance = orderMapper.selectMaps(colonelWrapper).stream()
+                .map(this::toPerformanceItem)
+                .sorted(Comparator.comparingLong(PerformanceItem::getOrderCount).reversed())
+                .limit(10)
+                .toList();
+
+        QueryWrapper<ColonelsettlementOrder> reasonWrapper = new QueryWrapper<ColonelsettlementOrder>()
+                .select("attribution_remark as reason", "count(*) as count")
+                .eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED)
+                .isNotNull("attribution_remark")
+                .groupBy("attribution_remark");
+        applyRange(reasonWrapper, startTime, endTime);
+        List<ReasonCountItem> unattributedReasons = orderMapper.selectMaps(reasonWrapper).stream()
+                .map(this::toReasonCountItem)
+                .sorted(Comparator.comparingLong(ReasonCountItem::getCount).reversed())
+                .toList();
 
         Summary summary = new Summary();
         summary.setOrderCount(asLong(totalMap.get("ordercount")));
@@ -49,9 +78,17 @@ public class DashboardService {
         summary.setServiceFee(asLong(totalMap.get("servicefee")));
         summary.setAttributedOrderCount(attributedCount);
         summary.setUnattributedOrderCount(unattributedCount);
+        summary.setAttributionRate(summary.getOrderCount() == null || summary.getOrderCount() == 0
+                ? 0D
+                : attributedCount.doubleValue() / summary.getOrderCount().doubleValue());
         summary.setChannelPerformance(channelPerformance);
         summary.setColonelPerformance(colonelPerformance);
+        summary.setUnattributedReasons(unattributedReasons);
         return summary;
+    }
+
+    public Summary getSummary() {
+        return getSummary(null, null);
     }
 
     private PerformanceItem toPerformanceItem(Map<String, Object> map) {
@@ -64,6 +101,25 @@ public class DashboardService {
         item.setOrderAmount(asLong(map.get("orderamount")));
         item.setServiceFee(asLong(map.get("servicefee")));
         return item;
+    }
+
+    private ReasonCountItem toReasonCountItem(Map<String, Object> map) {
+        ReasonCountItem item = new ReasonCountItem();
+        item.setReason(asString(map.get("reason")));
+        item.setCount(asLong(map.get("count")));
+        return item;
+    }
+
+    private void applyRange(QueryWrapper<ColonelsettlementOrder> wrapper, LocalDateTime startTime, LocalDateTime endTime) {
+        if (wrapper == null) {
+            return;
+        }
+        if (startTime != null) {
+            wrapper.ge("create_time", startTime);
+        }
+        if (endTime != null) {
+            wrapper.le("create_time", endTime);
+        }
     }
 
     private long asLong(Object val) {
@@ -83,8 +139,10 @@ public class DashboardService {
         private Long serviceFee;
         private Long attributedOrderCount;
         private Long unattributedOrderCount;
+        private Double attributionRate;
         private List<PerformanceItem> channelPerformance;
         private List<PerformanceItem> colonelPerformance;
+        private List<ReasonCountItem> unattributedReasons;
     }
 
     @Data
@@ -96,5 +154,11 @@ public class DashboardService {
         private Long orderCount;
         private Long orderAmount;
         private Long serviceFee;
+    }
+
+    @Data
+    public static class ReasonCountItem {
+        private String reason;
+        private Long count;
     }
 }

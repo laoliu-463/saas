@@ -42,6 +42,8 @@ public class MockDouyinOrderGateway implements DouyinOrderGateway {
             raw.put("pick_source", latestMapping.getPickSource());
             raw.put("pick_extra", latestMapping.getPickExtra());
             raw.put("merchant_id", "M_001");
+            raw.put("talent_uid", latestMapping.getTalentId());
+            raw.put("author_id", latestMapping.getTalentId());
             orders.add(new DouyinOrderItem(
                     "MOCK_ORD_ATTR_" + latestMapping.getShortId(),
                     latestMapping.getProductId(),
@@ -65,6 +67,7 @@ public class MockDouyinOrderGateway implements DouyinOrderGateway {
         unknownRaw.put("merchant_id", "M_002");
         unknownRaw.put("pick_source", "UNKNOWN_PICK_SOURCE");
         unknownRaw.put("pick_extra", "UNKNOWN_PICK_SOURCE");
+        unknownRaw.put("talent_uid", "talent_mock_b");
         orders.add(new DouyinOrderItem(
                 "MOCK_ORD_UNATTR_1",
                 "EXT_P2",
@@ -85,6 +88,7 @@ public class MockDouyinOrderGateway implements DouyinOrderGateway {
         Map<String, Object> noPickRaw = new LinkedHashMap<>();
         noPickRaw.put("product_name", "Mock无归因码订单商品");
         noPickRaw.put("merchant_id", "M_003");
+        noPickRaw.put("talent_uid", "talent_mock_c");
         orders.add(new DouyinOrderItem(
                 "MOCK_ORD_UNATTR_2",
                 "EXT_P3",

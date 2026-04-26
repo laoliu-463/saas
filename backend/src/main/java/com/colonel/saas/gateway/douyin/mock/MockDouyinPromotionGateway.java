@@ -45,7 +45,8 @@ public class MockDouyinPromotionGateway implements DouyinPromotionGateway {
                     activityId,
                     command.context().sourceUrl(),
                     promoteLink,
-                    null
+                    null,
+                    command.context().scene()
             );
         }
 

@@ -39,6 +39,8 @@ ALTER TABLE pick_source_mapping ADD COLUMN IF NOT EXISTS promotion_link_id UUID;
 ALTER TABLE pick_source_mapping ADD COLUMN IF NOT EXISTS channel_user_name VARCHAR(100);
 ALTER TABLE pick_source_mapping ADD COLUMN IF NOT EXISTS talent_id VARCHAR(50);
 ALTER TABLE pick_source_mapping ADD COLUMN IF NOT EXISTS talent_name VARCHAR(200);
+ALTER TABLE pick_source_mapping ADD COLUMN IF NOT EXISTS scene VARCHAR(32) DEFAULT 'PRODUCT_LIBRARY';
+CREATE INDEX IF NOT EXISTS idx_psm_scene ON pick_source_mapping(scene);
 
 -- 3. 订单表增加负责人字段（如果还没的话）
 ALTER TABLE colonelsettlement_order ADD COLUMN IF NOT EXISTS colonel_user_id UUID;

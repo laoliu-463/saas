@@ -9,14 +9,12 @@
     @update:show="updateShow"
   >
     <n-space vertical>
-      <n-input v-model:value="promotionExternalId" placeholder="externalUniqueId（可选）" />
-      <n-select v-model:value="promotionScene" :options="promotionSceneOptions" />
+      <span class="dialog-tip">系统将根据当前登录渠道自动生成推广链接并写入归因映射。</span>
     </n-space>
   </n-modal>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { convertActivityProductLink } from '../../../api/activityProduct'
 
@@ -24,37 +22,14 @@ const props = defineProps<{ show: boolean; activityId: string | number; productI
 const emit = defineEmits(['update:show', 'success'])
 const message = useMessage()
 
-const promotionExternalId = ref('')
-const promotionScene = ref(4)
-
-const promotionSceneOptions = [
-  { label: '默认场景 (4)', value: 4 },
-  { label: '直播间场景 (2)', value: 2 },
-  { label: '橱窗场景 (1)', value: 1 }
-]
-
-watch(
-  () => props.show,
-  (val) => {
-    if (val) {
-      promotionExternalId.value = ''
-      promotionScene.value = 4
-    }
-  }
-)
-
 const updateShow = (val: boolean) => emit('update:show', val)
 
 const handleSubmit = async () => {
   try {
-    const res: any = await convertActivityProductLink(props.activityId, props.productId, {
-      externalUniqueId: promotionExternalId.value.trim() || undefined,
-      promotionScene: promotionScene.value,
-      needShortLink: true
-    })
+    const res: any = await convertActivityProductLink(props.activityId, props.productId, { scene: 'PRODUCT_DETAIL' })
     const data = res?.data || {}
     message.success(data.shortLink ? `转链成功，短链：${data.shortLink}` : '转链成功')
-    message.info('转链只会生成推广映射，订单页要更新还需要手动执行一次“同步订单”。')
+    message.info('转链完成后，后端会按同步任务自动处理后续订单回流与归因。')
     emit('success', data)
     updateShow(false)
     return true

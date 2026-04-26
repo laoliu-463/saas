@@ -4,7 +4,10 @@ import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.SysUser;
+import io.lettuce.core.RedisCommandExecutionException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -20,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Service
@@ -37,16 +41,21 @@ public class OrderSyncService {
     private final OrderSyncPersistenceService persistenceService;
     private final AttributionService attributionService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final boolean mockEnabled;
+    private final AtomicBoolean localLock = new AtomicBoolean(false);
+    private volatile long localLastSyncTime;
 
     public OrderSyncService(
             DouyinOrderGateway douyinOrderGateway,
             OrderSyncPersistenceService persistenceService,
             AttributionService attributionService,
-            RedisTemplate<String, Object> redisTemplate) {
+            RedisTemplate<String, Object> redisTemplate,
+            @Value("${app.mock.enabled:false}") boolean mockEnabled) {
         this.douyinOrderGateway = douyinOrderGateway;
         this.persistenceService = persistenceService;
         this.attributionService = attributionService;
         this.redisTemplate = redisTemplate;
+        this.mockEnabled = mockEnabled;
     }
 
     public SyncResult syncLatestWindow() {
@@ -54,8 +63,7 @@ public class OrderSyncService {
         long endTime = now - LAG_SECONDS;
         long defaultStart = endTime - WINDOW_SECONDS - OVERLAP_SECONDS;
         long startTime = defaultStart;
-        Object lastSyncRaw = redisTemplate.opsForValue().get(LAST_SYNC_TIME_KEY);
-        long lastSyncTime = asLong(lastSyncRaw, 0L);
+        long lastSyncTime = readLastSyncTime();
         if (lastSyncTime > 0L) {
             startTime = Math.max(0L, lastSyncTime - OVERLAP_SECONDS);
         }
@@ -69,24 +77,83 @@ public class OrderSyncService {
         return syncLatestWindow();
     }
 
+    public LocalDateTime getLastSyncTime() {
+        long epochSecond = readLastSyncTime();
+        if (epochSecond <= 0L) {
+            return null;
+        }
+        return LocalDateTime.ofInstant(Instant.ofEpochSecond(epochSecond), ZoneId.systemDefault());
+    }
+
     public SyncResult syncByTimeRange(long startTime, long endTime) {
         if (startTime <= 0 || endTime <= 0 || startTime >= endTime) {
             throw new BusinessException("Invalid sync time range");
         }
-        Boolean locked = redisTemplate.opsForValue().setIfAbsent(
-                Objects.requireNonNull(SYNC_LOCK_KEY),
-                "1",
-                Objects.requireNonNull(Duration.ofMinutes(10))
-        );
-        if (!Boolean.TRUE.equals(locked)) {
+        if (!acquireSyncLock()) {
             return new SyncResult(startTime, endTime, 0, 0, 0, true);
         }
         try {
             SyncResult result = syncRange(startTime, endTime, DEFAULT_COUNT);
-            redisTemplate.opsForValue().set(LAST_SYNC_TIME_KEY, String.valueOf(endTime));
+            persistLastSyncTime(endTime);
             return result;
         } finally {
+            releaseSyncLock();
+        }
+    }
+
+    private long readLastSyncTime() {
+        try {
+            Object raw = redisTemplate.opsForValue().get(LAST_SYNC_TIME_KEY);
+            return asLong(raw, localLastSyncTime);
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (mockEnabled) {
+                log.warn("Redis unavailable in mock mode when reading last sync time, fallback to local state: {}", ex.getMessage());
+                return localLastSyncTime;
+            }
+            throw ex;
+        }
+    }
+
+    private boolean acquireSyncLock() {
+        try {
+            Boolean locked = redisTemplate.opsForValue().setIfAbsent(
+                    Objects.requireNonNull(SYNC_LOCK_KEY),
+                    "1",
+                    Objects.requireNonNull(Duration.ofMinutes(10))
+            );
+            return Boolean.TRUE.equals(locked);
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (mockEnabled) {
+                log.warn("Redis unavailable in mock mode when acquiring sync lock, fallback to local lock: {}", ex.getMessage());
+                return localLock.compareAndSet(false, true);
+            }
+            throw ex;
+        }
+    }
+
+    private void persistLastSyncTime(long endTime) {
+        localLastSyncTime = endTime;
+        try {
+            redisTemplate.opsForValue().set(LAST_SYNC_TIME_KEY, String.valueOf(endTime));
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (mockEnabled) {
+                log.warn("Redis unavailable in mock mode when persisting last sync time, keep local state only: {}", ex.getMessage());
+                return;
+            }
+            throw ex;
+        }
+    }
+
+    private void releaseSyncLock() {
+        localLock.set(false);
+        try {
             redisTemplate.delete(SYNC_LOCK_KEY);
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (mockEnabled) {
+                log.warn("Redis unavailable in mock mode when releasing sync lock, local lock already released: {}", ex.getMessage());
+                return;
+            }
+            throw ex;
         }
     }
 
@@ -98,6 +165,7 @@ public class OrderSyncService {
         int updated = 0;
         int attributedCount = 0;
         int unattributedCount = 0;
+        int failedCount = 0;
         int pages = 0;
 
         while (hasMore) {
@@ -152,6 +220,7 @@ public class OrderSyncService {
                         updated++;
                     }
                 } catch (Exception e) {
+                    failedCount++;
                     log.warn("Skip order during sync, reason={}, orderId={}", e.getMessage(), item.externalOrderId());
                 }
             }
@@ -163,7 +232,7 @@ public class OrderSyncService {
         log.info("Order sync completed, range=[{}, {}], pages={}, fetched={}, created={}, updated={}, attributed={}",
                 startTime, endTime, pages, totalFetched, created, updated, attributedCount);
 
-        return new SyncResult(startTime, endTime, pages, totalFetched, created, updated, attributedCount, unattributedCount, false);
+        return new SyncResult(startTime, endTime, pages, totalFetched, created, updated, attributedCount, unattributedCount, failedCount, false);
     }
 
     private ColonelsettlementOrder mapOrder(DouyinOrderGateway.DouyinOrderItem item) {
@@ -364,10 +433,11 @@ public class OrderSyncService {
             int updated,
             int attributed,
             int unattributed,
+            int failed,
             boolean locked) {
 
         public SyncResult(long startTime, long endTime, int pages, int inserted, int skipped, boolean locked) {
-            this(startTime, endTime, pages, inserted + skipped, inserted, 0, 0, skipped, locked);
+            this(startTime, endTime, pages, inserted + skipped, inserted, 0, 0, skipped, 0, locked);
         }
 
         public int inserted() {

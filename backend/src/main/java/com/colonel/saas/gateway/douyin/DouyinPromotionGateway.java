@@ -20,7 +20,9 @@ public interface DouyinPromotionGateway {
             UUID deptId,
             String productId,
             String activityId,
-            String sourceUrl) {
+            String sourceUrl,
+            String scene,
+            String talentId) {
     }
 
     record PromotionLinkResult(

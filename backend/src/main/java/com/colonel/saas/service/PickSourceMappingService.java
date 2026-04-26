@@ -45,6 +45,40 @@ public class PickSourceMappingService {
             String sourceUrl,
             String convertedUrl,
             UUID promotionLinkId) {
+        saveOrUpdate(
+                userId,
+                channelUserName,
+                deptId,
+                talentId,
+                talentName,
+                shortId,
+                uuidSeed,
+                pickSource,
+                productId,
+                activityId,
+                sourceUrl,
+                convertedUrl,
+                promotionLinkId,
+                null
+        );
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void saveOrUpdate(
+            UUID userId,
+            String channelUserName,
+            UUID deptId,
+            String talentId,
+            String talentName,
+            String shortId,
+            UUID uuidSeed,
+            String pickSource,
+            String productId,
+            String activityId,
+            String sourceUrl,
+            String convertedUrl,
+            UUID promotionLinkId,
+            String scene) {
         PickSourceMapping existing = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
                 .eq(PickSourceMapping::getPickSource, pickSource)
                 .last("limit 1"));
@@ -65,6 +99,7 @@ public class PickSourceMappingService {
                 mapping.setConvertedUrl(convertedUrl);
                 mapping.setPickExtra(shortId);
                 mapping.setPromotionLinkId(promotionLinkId);
+                mapping.setScene(scene);
                 mapping.setValidFrom(LocalDateTime.now());
                 mapping.setValidUntil(LocalDateTime.now().plusMonths(validMonths));
                 mapping.setStatus(1);
@@ -92,6 +127,7 @@ public class PickSourceMappingService {
         existing.setConvertedUrl(convertedUrl);
         existing.setPickExtra(shortId);
         existing.setPromotionLinkId(promotionLinkId);
+        existing.setScene(scene);
         existing.setValidUntil(LocalDateTime.now().plusMonths(validMonths));
         existing.setStatus(1);
         pickSourceMappingMapper.updateById(existing);
@@ -99,7 +135,11 @@ public class PickSourceMappingService {
 
     @Transactional(rollbackFor = Exception.class)
     public void ensureFromOrder(ColonelsettlementOrder order) {
-        if (order == null || !StringUtils.hasText(order.getPickSource())) {
+        if (order == null
+                || !StringUtils.hasText(order.getPickSource())
+                || !StringUtils.hasText(order.getAttributionStatus())
+                || !"ATTRIBUTED".equalsIgnoreCase(order.getAttributionStatus())
+                || order.getUserId() == null) {
             return;
         }
         String shortId = extractShortId(order.getPickSource());

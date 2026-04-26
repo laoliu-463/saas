@@ -28,20 +28,19 @@
         :indent="18"
         @update:value="handleMenuClick"
       />
-      <div v-else class="empty-tip">
-        当前账号没有可见菜单
-      </div>
+      <div v-else class="empty-tip">当前账号没有可见菜单</div>
     </div>
   </aside>
 </template>
 
 <script setup lang="ts">
 import { computed, h } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { NIcon } from 'naive-ui'
+import { ROLE_CODES, hasAccess } from '../../constants/rbac'
 import { useAppStore } from '../../stores/app'
 import { useAuthStore } from '../../stores/auth'
-import { ROLE_CODES, hasAccess } from '../../constants/rbac'
+import { isMockEnv } from '../../utils/env'
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
@@ -83,10 +82,11 @@ interface MenuItem {
   label: string
   key: string
   icon?: () => any
+  roles?: string[]
   children?: MenuItem[]
 }
 
-const rawMenus: (MenuItem & { roles: string[] })[] = [
+const rawMenus: MenuItem[] = [
   {
     label: '归因工作台',
     key: 'attribution-group',
@@ -146,15 +146,28 @@ const rawMenus: (MenuItem & { roles: string[] })[] = [
   }
 ]
 
+if (isMockEnv) {
+  rawMenus.push({
+    label: '开发调试',
+    key: 'dev-group',
+    icon: icons.settings,
+    roles: [ROLE.ADMIN, ROLE.BIZ_LEADER],
+    children: [{ label: 'Mock 调试', key: '/dev/mock', icon: icons.settings }]
+  })
+}
+
 const menuOptions = computed(() => {
   const roles = authStore.roleCodes
   return rawMenus
     .filter((menu) => hasAccess(roles, menu.roles))
-    .map(({ roles: _r, children, ...menu }) => {
-      if (!Array.isArray(children)) return menu
-      const filtered = children.filter((child: any) => hasAccess(roles, child.roles))
-      return filtered.length ? { ...menu, children: filtered } : menu
+    .map(({ roles: _roles, children, ...menu }) => {
+      if (!children?.length) return menu
+      return {
+        ...menu,
+        children: children.filter((child) => hasAccess(roles, child.roles))
+      }
     })
+    .filter((menu) => !('children' in menu) || !Array.isArray(menu.children) || menu.children.length > 0)
 })
 
 const activeMenuKey = computed(() => {
@@ -164,7 +177,7 @@ const activeMenuKey = computed(() => {
   return route.path
 })
 
-const handleMenuClick = (key: string) => {
+function handleMenuClick(key: string) {
   router.push(key)
 }
 </script>

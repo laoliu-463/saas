@@ -14,6 +14,16 @@ import java.util.UUID;
 @Service
 public class AttributionService {
 
+    public static final String STATUS_ATTRIBUTED = "ATTRIBUTED";
+    public static final String STATUS_UNATTRIBUTED = "UNATTRIBUTED";
+    public static final String REASON_ATTRIBUTED = "ATTRIBUTED";
+    public static final String REASON_NO_PICK_SOURCE = "NO_PICK_SOURCE";
+    public static final String REASON_MAPPING_NOT_FOUND = "MAPPING_NOT_FOUND";
+    public static final String REASON_PRODUCT_NOT_FOUND = "PRODUCT_NOT_FOUND";
+    public static final String REASON_ACTIVITY_NOT_FOUND = "ACTIVITY_NOT_FOUND";
+    public static final String REASON_CHANNEL_NOT_FOUND = "CHANNEL_NOT_FOUND";
+    public static final String REASON_SYNC_FAILED = "SYNC_FAILED";
+
     private final PickSourceMappingMapper pickSourceMappingMapper;
     private final ProductOperationStateMapper operationStateMapper;
     private final ExclusiveTalentService exclusiveTalentService;
@@ -37,9 +47,21 @@ public class AttributionService {
                 order.getActivityId()
         );
         String productId = order.getProductId();
-        
+        String pickSource = order.getPickSource();
+        String pickExtra = asString(source.get("pick_extra"));
+
+        if (!StringUtils.hasText(productId)) {
+            return AttributionResult.unattributed(
+                    talentUid(source),
+                    activityId,
+                    null,
+                    REASON_PRODUCT_NOT_FOUND
+            );
+        }
+
         // 招商归因：查找该商品的负责人
         UUID colonelUserId = null;
+        boolean activityStateMissing = false;
         if (StringUtils.hasText(activityId) && StringUtils.hasText(productId)) {
             ProductOperationState state = operationStateMapper.selectOne(new LambdaQueryWrapper<ProductOperationState>()
                     .eq(ProductOperationState::getActivityId, activityId)
@@ -47,6 +69,8 @@ public class AttributionService {
                     .last("limit 1"));
             if (state != null) {
                 colonelUserId = state.getAssigneeId();
+            } else {
+                activityStateMissing = true;
             }
         }
 
@@ -66,11 +90,11 @@ public class AttributionService {
                     null,
                     activityId,
                     colonelUserId,
-                    "商家独家归因"
+                    REASON_ATTRIBUTED
             );
         }
 
-        String talentUid = firstNonBlank(asString(source.get("talent_uid")), asString(source.get("author_id")));
+        String talentUid = talentUid(source);
         
         // 达人独家归因
         ExclusiveOwner exclusiveOwner = findExclusiveTalentOwner(talentUid);
@@ -82,21 +106,37 @@ public class AttributionService {
                     talentUid,
                     activityId,
                     colonelUserId,
-                    "达人独家归因"
+                    REASON_ATTRIBUTED
             );
         }
 
         // 渠道归因 (PickSource)
-        PickSourceMapping mapping = findPickSourceMapping(order.getPickSource(), asString(source.get("pick_extra")));
-        if (mapping == null || mapping.getUserId() == null) {
+        if (!StringUtils.hasText(pickSource) && !StringUtils.hasText(pickExtra)) {
             return AttributionResult.unattributed(
                     talentUid,
                     activityId,
                     colonelUserId,
-                    "pick_source 未匹配到有效归因映射"
+                    REASON_NO_PICK_SOURCE
             );
         }
-        
+        PickSourceMapping mapping = findPickSourceMapping(pickSource, pickExtra);
+        if (mapping == null) {
+            return AttributionResult.unattributed(
+                    talentUid,
+                    activityId,
+                    colonelUserId,
+                    activityStateMissing ? REASON_ACTIVITY_NOT_FOUND : REASON_MAPPING_NOT_FOUND
+            );
+        }
+        if (mapping.getUserId() == null) {
+            return AttributionResult.unattributed(
+                    talentUid,
+                    activityId,
+                    colonelUserId,
+                    REASON_CHANNEL_NOT_FOUND
+            );
+        }
+
         return AttributionResult.attributed(
                 mapping.getUserId(),
                 mapping.getDeptId(),
@@ -104,7 +144,7 @@ public class AttributionService {
                 talentUid,
                 firstNonBlank(mapping.getActivityId(), activityId),
                 colonelUserId,
-                "pick_source 归因成功"
+                REASON_ATTRIBUTED
         );
     }
 
@@ -143,6 +183,10 @@ public class AttributionService {
         return raw == null ? null : String.valueOf(raw);
     }
 
+    private String talentUid(java.util.Map<String, Object> source) {
+        return firstNonBlank(asString(source.get("talent_uid")), asString(source.get("author_id")));
+    }
+
     private String firstNonBlank(String... values) {
         if (values == null) {
             return null;
@@ -176,7 +220,7 @@ public class AttributionService {
                 String activityId,
                 UUID colonelUserId,
                 String remark) {
-            return new AttributionResult(channelUserId, deptId, userId, talentUid, activityId, colonelUserId, "ATTRIBUTED", remark);
+            return new AttributionResult(channelUserId, deptId, userId, talentUid, activityId, colonelUserId, STATUS_ATTRIBUTED, remark);
         }
 
         public static AttributionResult unattributed(
@@ -184,7 +228,7 @@ public class AttributionService {
                 String activityId,
                 UUID colonelUserId,
                 String remark) {
-            return new AttributionResult(null, null, null, talentUid, activityId, colonelUserId, "UNATTRIBUTED", remark);
+            return new AttributionResult(null, null, null, talentUid, activityId, colonelUserId, STATUS_UNATTRIBUTED, remark);
         }
     }
 }

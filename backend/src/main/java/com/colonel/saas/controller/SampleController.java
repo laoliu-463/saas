@@ -16,10 +16,14 @@ import com.colonel.saas.dto.SampleApplyRequest;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Product;
+import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.SampleRequest;
+import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ProductMapper;
+import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
+import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.service.SampleStatusLogService;
@@ -65,6 +69,8 @@ public class SampleController extends BaseController {
 
     private final SampleRequestMapper sampleRequestMapper;
     private final ProductMapper productMapper;
+    private final ProductOperationStateMapper productOperationStateMapper;
+    private final SysUserMapper sysUserMapper;
     private final TalentMapper talentMapper;
     private final SampleStatusLogService sampleStatusLogService;
     private final CrawlerTalentInfoService crawlerTalentInfoService;
@@ -72,11 +78,15 @@ public class SampleController extends BaseController {
     public SampleController(
             SampleRequestMapper sampleRequestMapper,
             ProductMapper productMapper,
+            ProductOperationStateMapper productOperationStateMapper,
+            SysUserMapper sysUserMapper,
             TalentMapper talentMapper,
             SampleStatusLogService sampleStatusLogService,
             CrawlerTalentInfoService crawlerTalentInfoService) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productMapper = productMapper;
+        this.productOperationStateMapper = productOperationStateMapper;
+        this.sysUserMapper = sysUserMapper;
         this.talentMapper = talentMapper;
         this.sampleStatusLogService = sampleStatusLogService;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
@@ -358,6 +368,8 @@ public class SampleController extends BaseController {
     }
 
     private SampleVO toVO(SampleRequest sample, String productName, String talentName) {
+        Product product = sample.getProductId() == null ? null : productMapper.selectById(sample.getProductId());
+        UUID colonelUserId = resolveColonelUserId(product);
         SampleVO vo = new SampleVO();
         vo.setId(sample.getId());
         vo.setRequestNo(sample.getRequestNo());
@@ -366,12 +378,52 @@ public class SampleController extends BaseController {
         vo.setProductId(sample.getProductId());
         vo.setProductName(productName);
         vo.setQuantity(sample.getExpectedSampleNum() == null ? 1 : sample.getExpectedSampleNum());
+        vo.setChannelUserId(sample.getChannelUserId());
+        vo.setChannelUserName(resolveUserDisplayName(sample.getChannelUserId()));
+        vo.setColonelUserId(colonelUserId);
+        vo.setColonelUserName(resolveUserDisplayName(colonelUserId));
         vo.setTrackingNo(sample.getTrackingNo());
         vo.setRejectReason(sample.getRejectReason());
+        vo.setCloseReason(sample.getCloseReason());
         vo.setRemark(sample.getRemark());
         vo.setCreateTime(sample.getCreateTime());
+        vo.setUpdateTime(sample.getUpdateTime());
+        vo.setCompleteTime(sample.getCompleteTime());
         vo.setStatus(toLegacyStatus(SampleStatus.fromCode(sample.getStatus())));
         return vo;
+    }
+
+    private UUID resolveColonelUserId(Product product) {
+        if (product == null || !StringUtils.hasText(product.getProductId()) || product.getActivityId() == null) {
+            return null;
+        }
+        ProductOperationState state = productOperationStateMapper.selectOne(new LambdaQueryWrapper<ProductOperationState>()
+                .eq(ProductOperationState::getActivityId, String.valueOf(product.getActivityId()))
+                .eq(ProductOperationState::getProductId, product.getProductId())
+                .last("limit 1"));
+        return state == null ? null : state.getAssigneeId();
+    }
+
+    private String resolveUserDisplayName(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            return null;
+        }
+        String realName = StringUtils.trimWhitespace(user.getRealName());
+        String username = StringUtils.trimWhitespace(user.getUsername());
+        if (StringUtils.hasText(realName) && StringUtils.hasText(username)) {
+            return realName + " (" + username + ")";
+        }
+        if (StringUtils.hasText(realName)) {
+            return realName;
+        }
+        if (StringUtils.hasText(username)) {
+            return username;
+        }
+        return null;
     }
 
     private SampleStatus parseStatus(String status) {
@@ -478,11 +530,18 @@ public class SampleController extends BaseController {
         private UUID productId;
         private String productName;
         private Integer quantity;
+        private UUID channelUserId;
+        private String channelUserName;
+        private UUID colonelUserId;
+        private String colonelUserName;
         private String trackingNo;
         private String rejectReason;
+        private String closeReason;
         private String remark;
         private String status;
         private LocalDateTime createTime;
+        private LocalDateTime updateTime;
+        private LocalDateTime completeTime;
 
         public UUID getId() {
             return id;
@@ -540,6 +599,38 @@ public class SampleController extends BaseController {
             this.quantity = quantity;
         }
 
+        public UUID getChannelUserId() {
+            return channelUserId;
+        }
+
+        public void setChannelUserId(UUID channelUserId) {
+            this.channelUserId = channelUserId;
+        }
+
+        public String getChannelUserName() {
+            return channelUserName;
+        }
+
+        public void setChannelUserName(String channelUserName) {
+            this.channelUserName = channelUserName;
+        }
+
+        public UUID getColonelUserId() {
+            return colonelUserId;
+        }
+
+        public void setColonelUserId(UUID colonelUserId) {
+            this.colonelUserId = colonelUserId;
+        }
+
+        public String getColonelUserName() {
+            return colonelUserName;
+        }
+
+        public void setColonelUserName(String colonelUserName) {
+            this.colonelUserName = colonelUserName;
+        }
+
         public String getTrackingNo() {
             return trackingNo;
         }
@@ -554,6 +645,14 @@ public class SampleController extends BaseController {
 
         public void setRejectReason(String rejectReason) {
             this.rejectReason = rejectReason;
+        }
+
+        public String getCloseReason() {
+            return closeReason;
+        }
+
+        public void setCloseReason(String closeReason) {
+            this.closeReason = closeReason;
         }
 
         public String getRemark() {
@@ -578,6 +677,22 @@ public class SampleController extends BaseController {
 
         public void setCreateTime(LocalDateTime createTime) {
             this.createTime = createTime;
+        }
+
+        public LocalDateTime getUpdateTime() {
+            return updateTime;
+        }
+
+        public void setUpdateTime(LocalDateTime updateTime) {
+            this.updateTime = updateTime;
+        }
+
+        public LocalDateTime getCompleteTime() {
+            return completeTime;
+        }
+
+        public void setCompleteTime(LocalDateTime completeTime) {
+            this.completeTime = completeTime;
         }
     }
 }

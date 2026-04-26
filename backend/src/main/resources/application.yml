@@ -45,7 +45,15 @@ security:
 
 app:
   cors:
-    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*}
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
+  mock:
+    enabled: ${APP_MOCK_ENABLED:false}
+    seed-on-startup: ${APP_MOCK_SEED_ON_STARTUP:false}
+    douyin: ${APP_MOCK_DOUYIN_ENABLED:false}
+    promotion: ${APP_MOCK_PROMOTION_ENABLED:false}
+    order: ${APP_MOCK_ORDER_ENABLED:false}
+    talent: ${APP_MOCK_TALENT_ENABLED:false}
+    logistics: ${APP_MOCK_LOGISTICS_ENABLED:false}
 
 douyin:
   app:

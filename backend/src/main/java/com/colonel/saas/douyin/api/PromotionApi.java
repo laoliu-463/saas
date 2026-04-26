@@ -76,7 +76,8 @@ public class PromotionApi {
                     context.activityId(),
                     context.sourceUrl(),
                     result.promoteLink(),
-                    null
+                    null,
+                    context.scene()
             );
         }
         return result;
@@ -213,7 +214,8 @@ public class PromotionApi {
             UUID deptId,
             String productId,
             String activityId,
-            String sourceUrl
+            String sourceUrl,
+            String scene
     ) {
     }
 }

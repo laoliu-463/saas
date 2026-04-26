@@ -1,12 +1,14 @@
 package com.colonel.saas.service;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.exception.ValidateException;
 import com.colonel.saas.crawler.DouyinTalentCrawler;
 import com.colonel.saas.entity.CrawlerTalentInfo;
+import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.CrawlerTalentInfoMapper;
+import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.vo.SampleTalentVO;
-import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,7 +18,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,12 +32,14 @@ class CrawlerTalentInfoServiceTest {
     private DouyinTalentCrawler crawler;
     @Mock
     private CrawlerTalentInfoMapper mapper;
+    @Mock
+    private TalentMapper talentMapper;
 
     private CrawlerTalentInfoService service;
 
     @BeforeEach
     void setUp() {
-        service = new CrawlerTalentInfoService(crawler, mapper);
+        service = new CrawlerTalentInfoService(crawler, mapper, talentMapper);
     }
 
     @Test
@@ -106,8 +109,45 @@ class CrawlerTalentInfoServiceTest {
     }
 
     @Test
+    void searchTalents_shouldFallbackToTalentTableWhenCrawlerDataEmpty() {
+        Page<CrawlerTalentInfo> page = new Page<>(1, 20);
+        page.setRecords(List.of());
+        page.setTotal(0);
+        when(mapper.searchTalents(any(), any(), any(), any(), any(), any())).thenReturn(page);
+
+        Talent talent = new Talent();
+        talent.setDouyinUid("talent_mock_a");
+        talent.setNickname("Mock达人A");
+        talent.setFans(186000L);
+        talent.setIpLocation("四川成都");
+        talent.setStatus(1);
+        when(talentMapper.selectList(any())).thenReturn(List.of(talent));
+
+        IPage<SampleTalentVO> result = service.searchTalents("Mock", null, null, null, null, 1, 20);
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getRecords().get(0).getTalentId()).isEqualTo("talent_mock_a");
+    }
+
+    @Test
     void findByTalentId_nullInput_returnsNull() {
         assertThat(service.findByTalentId(null)).isNull();
         assertThat(service.findByTalentId("  ")).isNull();
+    }
+
+    @Test
+    void findByTalentId_shouldFallbackToTalentTableWhenCrawlerDataMissing() {
+        when(mapper.selectOne(any())).thenReturn(null);
+        Talent talent = new Talent();
+        talent.setDouyinUid("talent_mock_a");
+        talent.setNickname("Mock达人A");
+        talent.setFans(186000L);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+
+        CrawlerTalentInfo result = service.findByTalentId("talent_mock_a");
+
+        assertThat(result).isNotNull();
+        assertThat(result.getTalentId()).isEqualTo("talent_mock_a");
+        assertThat(result.getNickname()).isEqualTo("Mock达人A");
     }
 }

@@ -84,6 +84,7 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     @Operation(summary = "活动商品转链")
+    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @PostMapping("/{productId}/promotion-links")
     public ApiResult<DouyinPromotionGateway.PromotionLinkResult> generatePromotionLink(
             @PathVariable String activityId,
@@ -99,7 +100,9 @@ public class ColonelActivityProductController extends BaseController {
                 deptId,
                 safeRequest.getExternalUniqueId(),
                 safeRequest.getPromotionScene(),
-                safeRequest.getNeedShortLink()
+                safeRequest.getNeedShortLink(),
+                safeRequest.getScene(),
+                safeRequest.getTalentId()
         );
         return ok(result);
     }
@@ -186,6 +189,8 @@ public class ColonelActivityProductController extends BaseController {
         private String externalUniqueId;
         private Integer promotionScene = 4;
         private Boolean needShortLink = Boolean.TRUE;
+        private String scene = "PRODUCT_LIBRARY";
+        private String talentId;
 
         public String getExternalUniqueId() {
             return externalUniqueId;
@@ -209,6 +214,22 @@ public class ColonelActivityProductController extends BaseController {
 
         public void setNeedShortLink(Boolean needShortLink) {
             this.needShortLink = needShortLink;
+        }
+
+        public String getScene() {
+            return scene;
+        }
+
+        public void setScene(String scene) {
+            this.scene = scene;
+        }
+
+        public String getTalentId() {
+            return talentId;
+        }
+
+        public void setTalentId(String talentId) {
+            this.talentId = talentId;
         }
     }
 

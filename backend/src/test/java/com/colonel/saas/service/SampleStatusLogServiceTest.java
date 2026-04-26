@@ -1,61 +1,97 @@
 package com.colonel.saas.service;
 
-import com.colonel.saas.entity.SampleStatusLog;
-import com.colonel.saas.mapper.SampleStatusLogMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class SampleStatusLogServiceTest {
 
+    private static final String INSERT_SQL = """
+            INSERT INTO sample_status_log (id, request_id, from_status, to_status, operator_id, operate_time, remark)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """;
+
     @Mock
-    private SampleStatusLogMapper sampleStatusLogMapper;
+    private JdbcTemplate jdbcTemplate;
 
     private SampleStatusLogService sampleStatusLogService;
 
     @BeforeEach
     void setUp() {
-        sampleStatusLogService = new SampleStatusLogService(sampleStatusLogMapper);
+        sampleStatusLogService = new SampleStatusLogService(jdbcTemplate);
     }
 
     @Test
     void log_shouldInsertWithCorrectFields() {
         UUID requestId = UUID.randomUUID();
         UUID operatorId = UUID.randomUUID();
-        String remark = "样品已发出";
+        String remark = "sample shipped";
 
         sampleStatusLogService.log(requestId, 1, 2, operatorId, remark);
 
-        ArgumentCaptor<SampleStatusLog> captor = ArgumentCaptor.forClass(SampleStatusLog.class);
-        verify(sampleStatusLogMapper).insert(captor.capture());
-        SampleStatusLog saved = captor.getValue();
+        ArgumentCaptor<UUID> idCaptor = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<UUID> requestCaptor = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<Integer> fromCaptor = ArgumentCaptor.forClass(Integer.class);
+        ArgumentCaptor<Integer> toCaptor = ArgumentCaptor.forClass(Integer.class);
+        ArgumentCaptor<UUID> operatorCaptor = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<LocalDateTime> timeCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<String> remarkCaptor = ArgumentCaptor.forClass(String.class);
 
-        assertThat(saved.getRequestId()).isEqualTo(requestId);
-        assertThat(saved.getFromStatus()).isEqualTo(1);
-        assertThat(saved.getToStatus()).isEqualTo(2);
-        assertThat(saved.getOperatorId()).isEqualTo(operatorId);
-        assertThat(saved.getRemark()).isEqualTo(remark);
-        assertThat(saved.getOperateTime()).isNotNull();
+        verify(jdbcTemplate).update(
+                eq(INSERT_SQL),
+                idCaptor.capture(),
+                requestCaptor.capture(),
+                fromCaptor.capture(),
+                toCaptor.capture(),
+                operatorCaptor.capture(),
+                timeCaptor.capture(),
+                remarkCaptor.capture()
+        );
+
+        assertThat(idCaptor.getValue()).isNotNull();
+        assertThat(requestCaptor.getValue()).isEqualTo(requestId);
+        assertThat(fromCaptor.getValue()).isEqualTo(1);
+        assertThat(toCaptor.getValue()).isEqualTo(2);
+        assertThat(operatorCaptor.getValue()).isEqualTo(operatorId);
+        assertThat(timeCaptor.getValue()).isNotNull();
+        assertThat(remarkCaptor.getValue()).isEqualTo(remark);
     }
 
     @Test
-    void log_nullRemarkAndOperator_shouldNotThrow() {
-        sampleStatusLogService.log(UUID.randomUUID(), 0, 1, null, null);
+    void log_shouldAllowNullOperatorAndRemark() {
+        UUID requestId = UUID.randomUUID();
 
-        ArgumentCaptor<SampleStatusLog> captor = ArgumentCaptor.forClass(SampleStatusLog.class);
-        verify(sampleStatusLogMapper).insert(captor.capture());
-        assertThat(captor.getValue().getRemark()).isNull();
-        assertThat(captor.getValue().getOperatorId()).isNull();
+        sampleStatusLogService.log(requestId, 0, 1, null, null);
+
+        ArgumentCaptor<UUID> requestCaptor = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<UUID> operatorCaptor = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<String> remarkCaptor = ArgumentCaptor.forClass(String.class);
+
+        verify(jdbcTemplate).update(
+                eq(INSERT_SQL),
+                org.mockito.ArgumentMatchers.any(UUID.class),
+                requestCaptor.capture(),
+                eq(0),
+                eq(1),
+                operatorCaptor.capture(),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class),
+                remarkCaptor.capture()
+        );
+
+        assertThat(requestCaptor.getValue()).isEqualTo(requestId);
+        assertThat(operatorCaptor.getValue()).isNull();
+        assertThat(remarkCaptor.getValue()).isNull();
     }
 }

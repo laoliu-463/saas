@@ -6,6 +6,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.enums.TalentFollowStatus;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.entity.ProductOperationState;
@@ -15,7 +17,8 @@ import com.colonel.saas.entity.PromotionLink;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
-import com.colonel.saas.mapper.PickSourceMappingMapper;
+import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.MerchantMapper;
 import com.colonel.saas.mapper.ProductOperationLogMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
@@ -26,7 +29,16 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,6 +57,8 @@ public class ProductService {
     private final ProductOperationStateMapper operationStateMapper;
     private final ProductOperationLogMapper operationLogMapper;
     private final PromotionLinkMapper promotionLinkMapper;
+    private final ColonelsettlementOrderMapper orderMapper;
+    private final MerchantMapper merchantMapper;
     private final SysUserMapper sysUserMapper;
     private final PickSourceMappingService pickSourceMappingService;
     private final ProductBizStatusService productBizStatusService;
@@ -57,6 +71,8 @@ public class ProductService {
             ProductOperationStateMapper operationStateMapper,
             ProductOperationLogMapper operationLogMapper,
             PromotionLinkMapper promotionLinkMapper,
+            ColonelsettlementOrderMapper orderMapper,
+            MerchantMapper merchantMapper,
             SysUserMapper sysUserMapper,
             PickSourceMappingService pickSourceMappingService,
             ProductBizStatusService productBizStatusService,
@@ -67,6 +83,8 @@ public class ProductService {
         this.operationStateMapper = operationStateMapper;
         this.operationLogMapper = operationLogMapper;
         this.promotionLinkMapper = promotionLinkMapper;
+        this.orderMapper = orderMapper;
+        this.merchantMapper = merchantMapper;
         this.sysUserMapper = sysUserMapper;
         this.pickSourceMappingService = pickSourceMappingService;
         this.productBizStatusService = productBizStatusService;
@@ -123,6 +141,19 @@ public class ProductService {
             String externalUniqueId,
             Integer promotionScene,
             boolean needShortLink) {
+        return generatePromotionLink(id, userId, deptId, externalUniqueId, promotionScene, needShortLink, null, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public DouyinPromotionGateway.PromotionLinkResult generatePromotionLink(
+            UUID id,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId) {
         ProductSnapshot snapshot = getSnapshotById(id);
         return generatePromotionLink(
                 snapshot.getActivityId(),
@@ -131,7 +162,9 @@ public class ProductService {
                 deptId,
                 externalUniqueId,
                 promotionScene,
-                needShortLink
+                needShortLink,
+                scene,
+                talentId
         );
     }
 
@@ -260,9 +293,19 @@ public class ProductService {
                                 .in(ProductOperationState::getProductId, productIds))
                 .stream()
                 .collect(Collectors.toMap(ProductOperationState::getProductId, Function.identity(), (left, right) -> left));
+        Map<String, OrderSummary> orderSummaryMap = buildOrderSummaryMap(activityId, productIds);
+        Map<String, PromotionSummary> promotionSummaryMap = buildPromotionSummaryMap(activityId, productIds);
+        Map<Long, Merchant> merchantMap = buildMerchantMap(snapshots.stream()
+                .map(ProductSnapshot::getShopId)
+                .collect(Collectors.toCollection(HashSet::new)));
 
         List<Map<String, Object>> items = snapshots.stream()
-                .map(snapshot -> toActivityProductView(snapshot, stateMap.get(snapshot.getProductId())))
+                .map(snapshot -> toActivityProductView(
+                        snapshot,
+                        stateMap.get(snapshot.getProductId()),
+                        orderSummaryMap.get(snapshot.getProductId()),
+                        promotionSummaryMap.get(snapshot.getProductId()),
+                        merchantMap.get(snapshot.getShopId())))
                 .filter(item -> !StringUtils.hasText(bizStatus) || bizStatus.equals(item.get("bizStatus")))
                 .toList();
 
@@ -283,48 +326,18 @@ public class ProductService {
     public Map<String, Object> getActivityProductDetail(String activityId, String productId) {
         ProductSnapshot snapshot = getSnapshot(activityId, productId);
         ProductOperationState state = getOperationState(activityId, productId);
+        OrderSummary orderSummary = buildOrderSummaryMap(activityId, Set.of(productId)).get(productId);
+        PromotionSummary promotionSummary = buildPromotionSummaryMap(activityId, Set.of(productId)).get(productId);
+        Merchant merchant = buildMerchantMap(Set.of(snapshot.getShopId())).get(snapshot.getShopId());
 
-        Map<String, Object> detail = new LinkedHashMap<>();
-        detail.put("id", snapshot.getId());
-        detail.put("activityId", snapshot.getActivityId());
-        detail.put("productId", snapshot.getProductId());
-        detail.put("title", snapshot.getTitle());
-        detail.put("cover", snapshot.getCover());
-        detail.put("price", snapshot.getPrice());
-        detail.put("priceText", snapshot.getPriceText());
-        detail.put("shopId", snapshot.getShopId());
-        detail.put("shopName", snapshot.getShopName());
-        detail.put("status", snapshot.getStatus());
-        detail.put("statusText", snapshot.getStatusText());
-        detail.put("categoryName", snapshot.getCategoryName());
-        detail.put("productStock", snapshot.getProductStock());
-        detail.put("sales", snapshot.getSales());
-        detail.put("detailUrl", snapshot.getDetailUrl());
-        detail.put("promotionStartTime", snapshot.getPromotionStartTime());
-        detail.put("promotionEndTime", snapshot.getPromotionEndTime());
-        detail.put("activityCosRatio", snapshot.getActivityCosRatio());
-        detail.put("activityCosRatioText", snapshot.getActivityCosRatioText());
-        detail.put("cosType", snapshot.getCosType());
-        detail.put("cosTypeText", snapshot.getCosTypeText());
-        detail.put("adServiceRatio", snapshot.getAdServiceRatio());
-        detail.put("activityAdCosRatio", snapshot.getActivityAdCosRatio());
-        detail.put("hasDouinGoodsTag", snapshot.getHasDouinGoodsTag());
-        detail.put("syncTime", snapshot.getSyncTime());
-
+        Map<String, Object> detail = toActivityProductView(snapshot, state, orderSummary, promotionSummary, merchant);
         if (state != null) {
-            ProductBizStatus bizStatus = productBizStatusService.readBizStatus(state);
-            detail.put("boundActivityId", state.getBoundActivityId());
-            detail.put("bizStatus", bizStatus.name());
-            detail.put("bizStatusLabel", bizStatus.getLabel());
-            detail.put("assigneeId", state.getAssigneeId());
-            detail.put("auditStatus", state.getAuditStatus());
-            detail.put("auditRemark", state.getAuditRemark());
-            detail.put("promoteLink", state.getPromoteLink());
-            detail.put("shortLink", state.getShortLink());
             detail.put("promotionScene", state.getPromotionScene());
             detail.put("externalUniqueId", state.getExternalUniqueId());
             detail.put("lastOperationAt", state.getLastOperationAt());
         }
+        detail.put("promotionLinks", promotionSummary == null ? List.of() : promotionSummary.linkRecords());
+        detail.put("promotionMaterialPack", buildPromotionMaterialPack(snapshot, state, merchant));
         detail.put("followRecords", talentFollowService.listByProduct(activityId, productId));
         return detail;
     }
@@ -421,9 +434,24 @@ public class ProductService {
             String externalUniqueId,
             Integer promotionScene,
             boolean needShortLink) {
+        return generatePromotionLink(activityId, productId, userId, deptId, externalUniqueId, promotionScene, needShortLink, null, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public DouyinPromotionGateway.PromotionLinkResult generatePromotionLink(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId) {
         ProductSnapshot snapshot = ensureSnapshotExists(activityId, productId);
         String finalExternalId = StringUtils.hasText(externalUniqueId) ? externalUniqueId : String.valueOf(userId);
         int finalPromotionScene = promotionScene == null ? 4 : promotionScene;
+        String finalScene = normalizePromotionScene(scene);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
         ProductBizStatus beforeStatus = productBizStatusService.readBizStatus(state);
 
@@ -439,7 +467,9 @@ public class ProductService {
                                     deptId,
                                     snapshot.getProductId(),
                                     snapshot.getActivityId(),
-                                    snapshot.getDetailUrl()
+                                    snapshot.getDetailUrl(),
+                                    finalScene,
+                                    talentId
                             )
                     )
             );
@@ -450,6 +480,7 @@ public class ProductService {
             link.setId(UUID.randomUUID());
             link.setProductId(snapshot.getProductId());
             link.setActivityId(snapshot.getActivityId());
+            link.setTalentId(talentId);
             link.setChannelUserId(userId);
             link.setChannelUserName(user != null ? user.getRealName() : "unknown");
             link.setOriginalProductUrl(snapshot.getDetailUrl());
@@ -469,7 +500,7 @@ public class ProductService {
                     userId,
                     user != null ? user.getRealName() : "unknown",
                     deptId,
-                    null, // talentId currently null for general links
+                    talentId,
                     null,
                     result.pickExtra(), // shortId
                     null,
@@ -478,13 +509,16 @@ public class ProductService {
                     snapshot.getActivityId(),
                     snapshot.getDetailUrl(),
                     result.promoteLink(),
-                    link.getId()
+                    link.getId(),
+                    finalScene
             );
 
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("promotionScene", finalPromotionScene);
             payload.put("needShortLink", needShortLink);
             payload.put("externalUniqueId", finalExternalId);
+            payload.put("scene", finalScene);
+            payload.put("talentId", talentId);
             payload.put("shortLink", result.shortLink());
             payload.put("promoteLink", result.promoteLink());
             payload.put("pickSource", result.pickSource());
@@ -509,6 +543,8 @@ public class ProductService {
             payload.put("promotionScene", finalPromotionScene);
             payload.put("needShortLink", needShortLink);
             payload.put("externalUniqueId", finalExternalId);
+            payload.put("scene", finalScene);
+            payload.put("talentId", talentId);
             productBizStatusService.logFailure(
                     activityId,
                     productId,
@@ -522,6 +558,17 @@ public class ProductService {
             );
             throw ex;
         }
+    }
+
+    private String normalizePromotionScene(String scene) {
+        if (!StringUtils.hasText(scene)) {
+            return "PRODUCT_LIBRARY";
+        }
+        String normalized = scene.trim().toUpperCase();
+        return switch (normalized) {
+            case "PRODUCT_LIBRARY", "PRODUCT_DETAIL", "TALENT_SHARE", "SAMPLE_DESK" -> normalized;
+            default -> "PRODUCT_LIBRARY";
+        };
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -731,7 +778,12 @@ public class ProductService {
         }
     }
 
-    private Map<String, Object> toActivityProductView(ProductSnapshot snapshot, ProductOperationState state) {
+    private Map<String, Object> toActivityProductView(
+            ProductSnapshot snapshot,
+            ProductOperationState state,
+            OrderSummary orderSummary,
+            PromotionSummary promotionSummary,
+            Merchant merchant) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", snapshot.getId());
         view.put("activityId", snapshot.getActivityId());
@@ -768,12 +820,112 @@ public class ProductService {
         if (state != null) {
             view.put("boundActivityId", state.getBoundActivityId());
             view.put("assigneeId", state.getAssigneeId());
+            view.put("assigneeName", resolveUserDisplayName(state.getAssigneeId()));
             view.put("auditStatus", state.getAuditStatus());
             view.put("auditRemark", state.getAuditRemark());
             view.put("shortLink", state.getShortLink());
             view.put("promoteLink", state.getPromoteLink());
         }
+
+        BigDecimal commissionRate = resolveCommissionRate(snapshot);
+        BigDecimal serviceFeeRate = resolveServiceFeeRate(snapshot);
+        BigDecimal estimatedCommission = estimateFee(snapshot.getPrice(), commissionRate);
+        BigDecimal estimatedServiceFee = estimateFee(snapshot.getPrice(), serviceFeeRate);
+        LocalDateTime promotionEndTime = parseDateTime(snapshot.getPromotionEndTime());
+        long remainingDays = calculateRemainingDays(promotionEndTime);
+        boolean activityExpired = promotionEndTime != null && promotionEndTime.isBefore(LocalDateTime.now());
+        boolean promotionAvailable = !activityExpired && StringUtils.hasText(snapshot.getDetailUrl());
+        boolean hasMaterial = StringUtils.hasText(snapshot.getTitle()) && StringUtils.hasText(snapshot.getDetailUrl());
+        boolean hasSampleRule = !activityExpired && StringUtils.hasText(snapshot.getStatusText());
+        long platformSales = snapshot.getSales() == null ? 0L : snapshot.getSales();
+        long orderCount = orderSummary == null ? 0L : orderSummary.orderCount();
+        long attributedCount = orderSummary == null ? 0L : orderSummary.attributedCount();
+        long unattributedCount = orderSummary == null ? 0L : orderSummary.unattributedCount();
+        BigDecimal gmv = orderSummary == null ? yuan(0L) : yuan(orderSummary.gmvCent());
+        BigDecimal serviceFee = orderSummary == null ? yuan(0L) : yuan(orderSummary.serviceFeeCent());
+
+        view.put("commissionRate", commissionRate);
+        view.put("serviceFeeRate", serviceFeeRate);
+        view.put("estimatedCommission", estimatedCommission.toPlainString());
+        view.put("estimatedCommissionAmount", estimatedCommission.toPlainString());
+        view.put("estimatedServiceFee", estimatedServiceFee.toPlainString());
+        view.put("estimatedServiceFeeAmount", estimatedServiceFee.toPlainString());
+        view.put("activityExpired", activityExpired);
+        view.put("activityRemainingDays", Math.max(remainingDays, 0));
+        view.put("timeLeft", formatTimeLeft(promotionEndTime));
+        view.put("promotionAvailable", promotionAvailable);
+        view.put("hasMaterial", hasMaterial);
+        view.put("hasSampleRule", hasSampleRule);
+        view.put("sales30d", platformSales);
+        view.put("promotionLinkCount", promotionSummary == null ? 0 : promotionSummary.linkCount());
+        view.put("orderCount", orderCount);
+        view.put("attributedCount", attributedCount);
+        view.put("attributedOrderCount", attributedCount);
+        view.put("unattributedCount", unattributedCount);
+        view.put("unattributedOrderCount", unattributedCount);
+        view.put("gmv", gmv.toPlainString());
+        view.put("gmv30d", gmv.toPlainString());
+        view.put("serviceFee", serviceFee.toPlainString());
+        view.put("lastOrderTime", orderSummary == null ? null : orderSummary.lastOrderTime());
+        view.put("attributionRate", formatRate(orderCount == 0 ? BigDecimal.ZERO
+                : BigDecimal.valueOf(attributedCount)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(orderCount), 2, RoundingMode.HALF_UP)));
+
+        if (merchant != null) {
+            view.put("merchantId", merchant.getMerchantId());
+            view.put("merchantName", merchant.getMerchantName());
+            view.put("merchantShopName", merchant.getShopName());
+            view.put("merchantStatus", merchant.getStatus());
+        } else {
+            view.put("merchantId", snapshot.getShopId() == null ? null : String.valueOf(snapshot.getShopId()));
+            view.put("merchantName", snapshot.getShopName());
+            view.put("merchantShopName", snapshot.getShopName());
+            view.put("merchantStatus", null);
+        }
+
+        PromotionView promotionView = buildPromotionView(currentStatus, state, promotionSummary);
+        view.put("promotionLinkStatus", promotionView.status());
+        view.put("promotionLinkStatusLabel", promotionView.statusLabel());
+        view.put("promotionLink", promotionView.link());
+        view.put("promotionLinkGeneratedAt", promotionView.generatedAt());
+        view.put("promotionLinkExpireAt", promotionView.expireAt());
+        view.put("promotionLinkFailReason", promotionView.failReason());
+        Map<String, Object> promotion = new LinkedHashMap<>();
+        promotion.put("status", promotionView.status());
+        promotion.put("statusLabel", promotionView.statusLabel());
+        promotion.put("link", promotionView.link());
+        promotion.put("generatedAt", promotionView.generatedAt());
+        promotion.put("expireAt", promotionView.expireAt());
+        promotion.put("failReason", promotionView.failReason());
+        promotion.put("copyEnabled", StringUtils.hasText(promotionView.link()));
+        view.put("promotion", promotion);
+
+        view.put("systemTags", buildSystemTags(snapshot, state, commissionRate, serviceFeeRate, platformSales, promotionSummary, activityExpired, remainingDays));
+        view.put("alertTags", buildAlertTags(snapshot, state, commissionRate, serviceFeeRate, activityExpired));
         return view;
+    }
+
+    private String resolveUserDisplayName(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            return null;
+        }
+        String realName = StringUtils.trimWhitespace(user.getRealName());
+        String username = StringUtils.trimWhitespace(user.getUsername());
+        if (StringUtils.hasText(realName) && StringUtils.hasText(username)) {
+            return realName + " (" + username + ")";
+        }
+        if (StringUtils.hasText(realName)) {
+            return realName;
+        }
+        if (StringUtils.hasText(username)) {
+            return username;
+        }
+        return null;
     }
 
     private int parseCursor(String cursor) {
@@ -790,5 +942,447 @@ public class ProductService {
     private TalentFollowStatus normalizeFollowStatus(String rawStatus) {
         TalentFollowStatus status = TalentFollowStatus.fromCode(rawStatus);
         return status == null ? TalentFollowStatus.NOT_CONTACTED : status;
+    }
+
+    private Map<String, OrderSummary> buildOrderSummaryMap(String activityId, Set<String> productIds) {
+        if (!StringUtils.hasText(activityId) || productIds == null || productIds.isEmpty()) {
+            return Map.of();
+        }
+        List<ColonelsettlementOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
+                .eq(ColonelsettlementOrder::getActivityId, activityId)
+                .in(ColonelsettlementOrder::getProductId, productIds)
+                .orderByDesc(ColonelsettlementOrder::getCreateTime));
+        if (orders == null || orders.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, MutableOrderSummary> mutableMap = new LinkedHashMap<>();
+        for (ColonelsettlementOrder order : orders) {
+            if (!StringUtils.hasText(order.getProductId())) {
+                continue;
+            }
+            MutableOrderSummary summary = mutableMap.computeIfAbsent(order.getProductId(), key -> new MutableOrderSummary());
+            summary.orderCount++;
+            if ("ATTRIBUTED".equalsIgnoreCase(order.getAttributionStatus())) {
+                summary.attributedCount++;
+            } else {
+                summary.unattributedCount++;
+            }
+            summary.gmvCent += safeLong(order.getOrderAmount());
+            summary.serviceFeeCent += safeLong(order.getSettleColonelCommission());
+            LocalDateTime candidateTime = order.getSettleTime() != null ? order.getSettleTime() : order.getCreateTime();
+            if (candidateTime != null && (summary.lastOrderTime == null || candidateTime.isAfter(summary.lastOrderTime))) {
+                summary.lastOrderTime = candidateTime;
+            }
+        }
+        return mutableMap.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> entry.getValue().freeze(),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+    }
+
+    private Map<String, PromotionSummary> buildPromotionSummaryMap(String activityId, Set<String> productIds) {
+        if (!StringUtils.hasText(activityId) || productIds == null || productIds.isEmpty()) {
+            return Map.of();
+        }
+        List<PromotionLink> links = promotionLinkMapper.selectList(new LambdaQueryWrapper<PromotionLink>()
+                .eq(PromotionLink::getActivityId, activityId)
+                .in(PromotionLink::getProductId, productIds)
+                .orderByDesc(PromotionLink::getCreatedAt));
+        if (links == null || links.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, MutablePromotionSummary> mutableMap = new LinkedHashMap<>();
+        for (PromotionLink link : links) {
+            if (!StringUtils.hasText(link.getProductId())) {
+                continue;
+            }
+            MutablePromotionSummary summary = mutableMap.computeIfAbsent(link.getProductId(), key -> new MutablePromotionSummary());
+            summary.linkCount++;
+            if (link.getCreatedAt() != null && (summary.lastLinkTime == null || link.getCreatedAt().isAfter(summary.lastLinkTime))) {
+                summary.lastLinkTime = link.getCreatedAt();
+            }
+            if (summary.linkRecords.size() < 10) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("id", link.getId());
+                item.put("channelUserId", link.getChannelUserId());
+                item.put("channelUserName", link.getChannelUserName());
+                item.put("pickSource", link.getPickSource());
+                item.put("promotionUrl", link.getPromotionUrl());
+                item.put("promoteLink", link.getPromotionUrl());
+                item.put("shortUrl", link.getShortUrl());
+                item.put("shortLink", link.getShortUrl());
+                item.put("linkStatus", link.getLinkStatus());
+                item.put("createdAt", link.getCreatedAt());
+                item.put("expireTime", link.getExpireTime());
+                summary.linkRecords.add(item);
+            }
+        }
+        return mutableMap.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> entry.getValue().freeze(),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+    }
+
+    private Map<Long, Merchant> buildMerchantMap(Set<Long> shopIds) {
+        if (shopIds == null || shopIds.isEmpty()) {
+            return Map.of();
+        }
+        Set<Long> validShopIds = shopIds.stream()
+                .filter(id -> id != null && id > 0)
+                .collect(Collectors.toCollection(HashSet::new));
+        if (validShopIds.isEmpty()) {
+            return Map.of();
+        }
+        return merchantMapper.selectList(new LambdaQueryWrapper<Merchant>()
+                        .in(Merchant::getShopId, validShopIds))
+                .stream()
+                .filter(merchant -> merchant.getShopId() != null)
+                .collect(Collectors.toMap(
+                        Merchant::getShopId,
+                        Function.identity(),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+    }
+
+    private Map<String, Object> buildPromotionMaterialPack(ProductSnapshot snapshot, ProductOperationState state, Merchant merchant) {
+        Map<String, Object> pack = new LinkedHashMap<>();
+        List<String> sellingPoints = new ArrayList<>();
+        sellingPoints.add(snapshot.getTitle() + " 已进入活动商品库，可直接用于渠道选品。");
+        if (StringUtils.hasText(snapshot.getActivityCosRatioText())) {
+            sellingPoints.add("当前活动佣金率 " + snapshot.getActivityCosRatioText() + "，可直接作为达人沟通收益点。");
+        }
+        if (StringUtils.hasText(snapshot.getAdServiceRatio())) {
+            sellingPoints.add("服务费率 " + normalizePercentText(snapshot.getAdServiceRatio()) + "，方便预估单品收益。");
+        }
+        if (Boolean.TRUE.equals(snapshot.getHasDouinGoodsTag())) {
+            sellingPoints.add("商品带有抖音商品标识，适合放入优先推广池。");
+        }
+
+        String merchantName = merchant != null && StringUtils.hasText(merchant.getMerchantName())
+                ? merchant.getMerchantName()
+                : snapshot.getShopName();
+        String commissionText = StringUtils.hasText(snapshot.getActivityCosRatioText())
+                ? snapshot.getActivityCosRatioText()
+                : formatRate(resolveCommissionRate(snapshot));
+        String serviceFeeText = formatRate(resolveServiceFeeRate(snapshot));
+
+        pack.put("sellingPoints", sellingPoints);
+        pack.put("outreachScript", "你好，我这边是 " + safeText(merchantName, "品牌方")
+                + " 的商品合作负责人。当前这款【" + safeText(snapshot.getTitle(), "活动商品")
+                + "】已经进入团长活动商品库，佣金 " + commissionText
+                + "，服务费率 " + serviceFeeText + "，如果你有短视频或直播档期，可以直接沟通合作。");
+        pack.put("shortVideoScript", "短视频脚本建议：开场点出【" + safeText(snapshot.getTitle(), "活动商品")
+                + "】核心使用场景，中段突出价格 " + safeText(snapshot.getPriceText(), "以页面为准")
+                + " 和佣金优势，结尾引导点击专属推广链接下单。");
+        pack.put("liveScript", "直播讲品建议：先讲痛点，再讲【" + safeText(snapshot.getTitle(), "活动商品")
+                + "】卖点，补充价格 " + safeText(snapshot.getPriceText(), "以页面为准")
+                + "、佣金 " + commissionText + "，并提醒使用专属链接下单。");
+        pack.put("hasMaterial", StringUtils.hasText(snapshot.getTitle()) && StringUtils.hasText(snapshot.getDetailUrl()));
+        pack.put("cover", snapshot.getCover());
+        pack.put("detailUrl", snapshot.getDetailUrl());
+        pack.put("promoteLink", state == null ? null : state.getPromoteLink());
+        pack.put("shortLink", state == null ? null : state.getShortLink());
+        return pack;
+    }
+
+    private PromotionView buildPromotionView(
+            ProductBizStatus currentStatus,
+            ProductOperationState state,
+            PromotionSummary promotionSummary) {
+        String link = state == null ? null : state.getPromoteLink();
+        String generatedAt = promotionSummary == null || promotionSummary.lastLinkTime() == null
+                ? null
+                : promotionSummary.lastLinkTime().toString();
+        String expireAt = null;
+        if (StringUtils.hasText(link)) {
+            return new PromotionView("READY", "已生成", link, generatedAt, expireAt, null);
+        }
+        if (currentStatus == ProductBizStatus.LINKED || currentStatus == ProductBizStatus.FOLLOWING) {
+            return new PromotionView("FAILED", "生成失败", null, generatedAt, expireAt, "推广链接缺失，请后台重试");
+        }
+        if (currentStatus == ProductBizStatus.ASSIGNED) {
+            return new PromotionView("PENDING", "生成中", null, generatedAt, expireAt, null);
+        }
+        return new PromotionView("PENDING", "未生成", null, generatedAt, expireAt, null);
+    }
+
+    private List<String> buildSystemTags(
+            ProductSnapshot snapshot,
+            ProductOperationState state,
+            BigDecimal commissionRate,
+            BigDecimal serviceFeeRate,
+            long platformSales,
+            PromotionSummary promotionSummary,
+            boolean activityExpired,
+            long remainingDays) {
+        List<String> tags = new ArrayList<>();
+        if (commissionRate.compareTo(BigDecimal.valueOf(20)) >= 0) {
+            tags.add("高佣");
+        }
+        if (serviceFeeRate.compareTo(BigDecimal.TEN) >= 0) {
+            tags.add("高服务费");
+        }
+        if (platformSales >= 1_000) {
+            tags.add("高销量");
+        }
+        if (Boolean.TRUE.equals(snapshot.getHasDouinGoodsTag())) {
+            tags.add("抖音商品标");
+        }
+        if (!activityExpired && remainingDays >= 0 && remainingDays <= 3) {
+            tags.add("活动临期");
+        }
+        if (state != null && StringUtils.hasText(state.getPromoteLink())) {
+            tags.add("已转链");
+        }
+        if (promotionSummary != null && promotionSummary.linkCount() > 0) {
+            tags.add("已有推广记录");
+        }
+        return tags;
+    }
+
+    private List<String> buildAlertTags(
+            ProductSnapshot snapshot,
+            ProductOperationState state,
+            BigDecimal commissionRate,
+            BigDecimal serviceFeeRate,
+            boolean activityExpired) {
+        List<String> tags = new ArrayList<>();
+        if (!StringUtils.hasText(snapshot.getDetailUrl())) {
+            tags.add("无商品链接");
+        }
+        if (activityExpired) {
+            tags.add("活动过期");
+        }
+        Integer stock = parseInteger(snapshot.getProductStock());
+        if (stock != null && stock <= 10) {
+            tags.add("库存不足");
+        }
+        if (commissionRate.compareTo(BigDecimal.ZERO) <= 0) {
+            tags.add("佣金异常");
+        }
+        if (serviceFeeRate.compareTo(BigDecimal.ZERO) <= 0) {
+            tags.add("服务费异常");
+        }
+        if (state == null || state.getAssigneeId() == null) {
+            tags.add("未分配负责人");
+        }
+        return tags;
+    }
+
+    private BigDecimal resolveCommissionRate(ProductSnapshot snapshot) {
+        BigDecimal fromText = parsePercentValue(snapshot.getActivityCosRatioText());
+        if (fromText.compareTo(BigDecimal.ZERO) > 0) {
+            return fromText;
+        }
+        return normalizeRatioNumber(snapshot.getActivityCosRatio());
+    }
+
+    private BigDecimal resolveServiceFeeRate(ProductSnapshot snapshot) {
+        BigDecimal rate = parsePercentValue(snapshot.getAdServiceRatio());
+        if (rate.compareTo(BigDecimal.ZERO) > 0) {
+            return rate;
+        }
+        return normalizeRatioNumber(snapshot.getActivityAdCosRatio());
+    }
+
+    private BigDecimal normalizeRatioNumber(Long raw) {
+        if (raw == null || raw <= 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal value = BigDecimal.valueOf(raw);
+        if (raw >= 1000) {
+            return value.divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        }
+        return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal parsePercentValue(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return BigDecimal.ZERO;
+        }
+        String normalized = raw.trim()
+                .replace("%", "")
+                .replace("％", "")
+                .replace(",", "")
+                .replace(" ", "");
+        try {
+            return new BigDecimal(normalized).setScale(2, RoundingMode.HALF_UP);
+        } catch (NumberFormatException ex) {
+            return BigDecimal.ZERO;
+        }
+    }
+
+    private BigDecimal estimateFee(Long priceCent, BigDecimal ratePercent) {
+        if (priceCent == null || priceCent <= 0 || ratePercent == null || ratePercent.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return BigDecimal.valueOf(priceCent)
+                .multiply(ratePercent)
+                .divide(BigDecimal.valueOf(10000), 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal yuan(Long cent) {
+        long value = cent == null ? 0L : cent;
+        return BigDecimal.valueOf(value).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    }
+
+    private long safeLong(Long value) {
+        return value == null ? 0L : value;
+    }
+
+    private Integer parseInteger(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String digits = raw.replaceAll("[^0-9]", "");
+        if (!StringUtils.hasText(digits)) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(digits);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private LocalDateTime parseDateTime(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String value = raw.trim();
+        if (value.matches("^\\d{13}$")) {
+            return LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.parseLong(value)), ZoneId.systemDefault());
+        }
+        if (value.matches("^\\d{10}$")) {
+            return LocalDateTime.ofInstant(Instant.ofEpochSecond(Long.parseLong(value)), ZoneId.systemDefault());
+        }
+        List<DateTimeFormatter> formatters = List.of(
+                DateTimeFormatter.ISO_LOCAL_DATE_TIME,
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+                DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss"),
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
+                DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm"),
+                DateTimeFormatter.ofPattern("yyyy-MM-dd")
+        );
+        for (DateTimeFormatter formatter : formatters) {
+            try {
+                if (formatter == formatters.get(formatters.size() - 1)) {
+                    return LocalDate.parse(value, formatter).atStartOfDay();
+                }
+                return LocalDateTime.parse(value, formatter);
+            } catch (DateTimeParseException ignore) {
+                // try next
+            }
+        }
+        try {
+            return LocalDate.parse(value, DateTimeFormatter.ofPattern("yyyy-MM-dd")).atStartOfDay();
+        } catch (DateTimeParseException ignore) {
+            return null;
+        }
+    }
+
+    private long calculateRemainingDays(LocalDateTime endTime) {
+        if (endTime == null) {
+            return -1;
+        }
+        long days = java.time.Duration.between(LocalDateTime.now(), endTime).toDays();
+        if (days < 0) {
+            return 0;
+        }
+        return days;
+    }
+
+    private String formatTimeLeft(LocalDateTime endTime) {
+        if (endTime == null) {
+            return "长期";
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (endTime.isBefore(now)) {
+            return "已结束";
+        }
+        java.time.Duration duration = java.time.Duration.between(now, endTime);
+        long days = duration.toDays();
+        long hours = duration.minusDays(days).toHours();
+        if (days > 0) {
+            return days + "天 " + hours + "小时";
+        }
+        long minutes = duration.minusHours(duration.toHours()).toMinutes();
+        if (hours > 0) {
+            return hours + "小时 " + minutes + "分钟";
+        }
+        return Math.max(minutes, 1) + "分钟";
+    }
+
+    private String formatRate(BigDecimal rate) {
+        BigDecimal value = rate == null ? BigDecimal.ZERO : rate.setScale(2, RoundingMode.HALF_UP);
+        return value.stripTrailingZeros().toPlainString() + "%";
+    }
+
+    private String normalizePercentText(String raw) {
+        BigDecimal value = parsePercentValue(raw);
+        return formatRate(value);
+    }
+
+    private String safeText(String value, String fallback) {
+        return StringUtils.hasText(value) ? value : fallback;
+    }
+
+    private static final class MutableOrderSummary {
+        private long orderCount;
+        private long attributedCount;
+        private long unattributedCount;
+        private long gmvCent;
+        private long serviceFeeCent;
+        private LocalDateTime lastOrderTime;
+
+        private OrderSummary freeze() {
+            return new OrderSummary(orderCount, attributedCount, unattributedCount, gmvCent, serviceFeeCent, lastOrderTime);
+        }
+    }
+
+    private static final class MutablePromotionSummary {
+        private int linkCount;
+        private LocalDateTime lastLinkTime;
+        private final List<Map<String, Object>> linkRecords = new ArrayList<>();
+
+        private PromotionSummary freeze() {
+            linkRecords.sort(Comparator.comparing(
+                    record -> (LocalDateTime) record.getOrDefault("createdAt", LocalDateTime.MIN),
+                    Comparator.reverseOrder()
+            ));
+            return new PromotionSummary(linkCount, lastLinkTime, List.copyOf(linkRecords));
+        }
+    }
+
+    private record OrderSummary(
+            long orderCount,
+            long attributedCount,
+            long unattributedCount,
+            long gmvCent,
+            long serviceFeeCent,
+            LocalDateTime lastOrderTime) {
+    }
+
+    private record PromotionSummary(
+            int linkCount,
+            LocalDateTime lastLinkTime,
+            List<Map<String, Object>> linkRecords) {
+    }
+
+    private record PromotionView(
+            String status,
+            String statusLabel,
+            String link,
+            String generatedAt,
+            String expireAt,
+            String failReason) {
     }
 }

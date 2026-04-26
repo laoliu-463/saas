@@ -81,6 +81,7 @@ public class ProductController extends BaseController {
     }
 
     @Operation(summary = "商品转链（Deprecated）", description = "请迁移到 /colonel/activities/{activityId}/products/{productId}/promotion-links")
+    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @PostMapping("/{id}/promotion-links")
     public ApiResult<DouyinPromotionGateway.PromotionLinkResult> generatePromotionLink(
             @PathVariable UUID id,
@@ -94,7 +95,9 @@ public class ProductController extends BaseController {
                 deptId,
                 safeRequest.getExternalUniqueId(),
                 safeRequest.getPromotionScene(),
-                safeRequest.getNeedShortLink()
+                safeRequest.getNeedShortLink(),
+                safeRequest.getScene(),
+                safeRequest.getTalentId()
         );
         return ok(result);
     }
@@ -168,6 +171,8 @@ public class ProductController extends BaseController {
         private String externalUniqueId;
         private Integer promotionScene = 4;
         private Boolean needShortLink = Boolean.TRUE;
+        private String scene = "PRODUCT_LIBRARY";
+        private String talentId;
 
         public String getExternalUniqueId() {
             return externalUniqueId;
@@ -191,6 +196,22 @@ public class ProductController extends BaseController {
 
         public void setNeedShortLink(Boolean needShortLink) {
             this.needShortLink = needShortLink;
+        }
+
+        public String getScene() {
+            return scene;
+        }
+
+        public void setScene(String scene) {
+            this.scene = scene;
+        }
+
+        public String getTalentId() {
+            return talentId;
+        }
+
+        public void setTalentId(String talentId) {
+            this.talentId = talentId;
         }
     }
 

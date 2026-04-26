@@ -22,7 +22,8 @@ public class RealDouyinPromotionGateway implements DouyinPromotionGateway {
                 command.context().deptId(),
                 command.context().productId(),
                 command.context().activityId(),
-                command.context().sourceUrl()
+                command.context().sourceUrl(),
+                command.context().scene()
         );
         PromotionApi.PromotionLinkResult result = promotionApi.generateLink(
                 command.externalUniqueId(),

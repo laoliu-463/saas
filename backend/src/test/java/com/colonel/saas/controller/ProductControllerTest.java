@@ -93,7 +93,6 @@ class ProductControllerTest {
 
         ProductController.AuditProductRequest request = new ProductController.AuditProductRequest();
         request.setApproved(true);
-        request.setReason(null);
 
         var response = productController.audit(id, request);
 
@@ -107,8 +106,15 @@ class ProductControllerTest {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
         DouyinPromotionGateway.PromotionLinkResult result =
-                new DouyinPromotionGateway.PromotionLinkResult("ABC12345", "https://s.link", "https://p.link", UUID.randomUUID().toString());
-        when(productService.generatePromotionLink(eq(id), eq(userId), eq(deptId), any(), any(), anyBoolean()))
+                new DouyinPromotionGateway.PromotionLinkResult(
+                        "ABC12345",
+                        "ABC12345",
+                        "ABC12345",
+                        "https://s.link",
+                        "https://p.link",
+                        UUID.randomUUID().toString()
+                );
+        when(productService.generatePromotionLink(eq(id), eq(userId), eq(deptId), any(), any(), anyBoolean(), any(), any()))
                 .thenReturn(result);
 
         ProductController.PromotionLinkRequest request = new ProductController.PromotionLinkRequest();
@@ -119,7 +125,7 @@ class ProductControllerTest {
         var response = productController.generatePromotionLink(id, request, userId, deptId);
 
         assertThat(response.getData().shortId()).isEqualTo("ABC12345");
-        verify(productService).generatePromotionLink(id, userId, deptId, "ext-1", 4, true);
+        verify(productService).generatePromotionLink(id, userId, deptId, "ext-1", 4, true, "PRODUCT_LIBRARY", null);
     }
 
     @Test

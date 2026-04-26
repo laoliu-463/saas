@@ -402,6 +402,7 @@ CREATE TABLE IF NOT EXISTS pick_source_mapping (
     order_count      INT       DEFAULT 0,
     order_amount     BIGINT    DEFAULT 0,
     pick_extra       VARCHAR(10),                         -- [V1.3] 实际透传值=short_id（≤10字符）
+    scene            VARCHAR(32) DEFAULT 'PRODUCT_LIBRARY',
     valid_from       TIMESTAMP NOT NULL,
     valid_until      TIMESTAMP NOT NULL,
     status           SMALLINT NOT NULL DEFAULT 1,
@@ -417,6 +418,7 @@ CREATE INDEX IF NOT EXISTS idx_psm_short_id     ON pick_source_mapping(short_id)
 CREATE INDEX IF NOT EXISTS idx_psm_uuid_seed    ON pick_source_mapping(uuid_seed);       -- [V1.3] 方案B UUID反查
 CREATE INDEX IF NOT EXISTS idx_psm_dept_id      ON pick_source_mapping(dept_id);
 CREATE INDEX IF NOT EXISTS idx_psm_product_id   ON pick_source_mapping(product_id);
+CREATE INDEX IF NOT EXISTS idx_psm_scene        ON pick_source_mapping(scene);
 CREATE INDEX IF NOT EXISTS idx_psm_valid_until  ON pick_source_mapping(valid_until);
 CREATE INDEX IF NOT EXISTS idx_psm_status       ON pick_source_mapping(status);
 CREATE INDEX IF NOT EXISTS idx_psm_deleted      ON pick_source_mapping(deleted);

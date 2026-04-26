@@ -12,12 +12,6 @@ export const auditActivityProduct = (
   data: { approved: boolean; reason?: string }
 ) => request.put(`/colonel/activities/${activityId}/products/${productId}/audit-result`, data);
 
-export const bindActivityProduct = (
-  activityId: string | number,
-  productId: string | number,
-  data: { boundActivityId: string | number }
-) => request.put(`/colonel/activities/${activityId}/products/${productId}/bind-activity`, data);
-
 export const assignActivityProduct = (
   activityId: string | number,
   productId: string | number,
@@ -27,8 +21,8 @@ export const assignActivityProduct = (
 export const convertActivityProductLink = (
   activityId: string | number,
   productId: string | number,
-  data?: { externalUniqueId?: string; promotionScene?: number; needShortLink?: boolean }
-) => request.post(`/colonel/activities/${activityId}/products/${productId}/promotion-links`, data || {});
+  data?: { scene?: 'PRODUCT_LIBRARY' | 'PRODUCT_DETAIL' | 'TALENT_SHARE' | 'SAMPLE_DESK'; talentId?: string }
+) => request.post(`/colonel/activities/${activityId}/products/${productId}/promotion-links`, data || { scene: 'PRODUCT_LIBRARY' });
 
 export const followActivityProduct = (
   activityId: string | number,

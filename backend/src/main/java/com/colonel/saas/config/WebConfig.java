@@ -19,7 +19,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     public WebConfig(
             @NonNull JwtAuthInterceptor jwtAuthInterceptor,
-            @Value("${app.cors.allowed-origin-patterns:http://localhost:*}") String allowedOriginPatterns) {
+            @Value("${app.cors.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*}") String allowedOriginPatterns) {
         this.jwtAuthInterceptor = jwtAuthInterceptor;
         this.allowedOriginPatterns = Objects.requireNonNull(Arrays.stream(allowedOriginPatterns.split(","))
                 .map(String::trim)

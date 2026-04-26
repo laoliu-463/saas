@@ -97,6 +97,9 @@ public class ColonelsettlementOrder implements Serializable {
     @TableField("attribution_remark")
     private String attributionRemark;
 
+    @TableField(exist = false)
+    private String unattributedReason;
+
     @TableField("create_time")
     private LocalDateTime createTime;
 
