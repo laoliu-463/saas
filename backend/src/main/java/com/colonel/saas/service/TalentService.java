@@ -205,6 +205,18 @@ public class TalentService {
             throw new BusinessException("达人 douyinUid 已存在");
         }
         request.setStatus(1);
+        if (StringUtils.hasText(request.getNickname())) {
+            request.setNickname(request.getNickname().trim());
+        }
+        if (StringUtils.hasText(request.getContactPhone())) {
+            request.setContactPhone(request.getContactPhone().trim());
+        }
+        if (StringUtils.hasText(request.getContactWechat())) {
+            request.setContactWechat(request.getContactWechat().trim());
+        }
+        if (StringUtils.hasText(request.getIntro())) {
+            request.setIntro(request.getIntro().trim());
+        }
         talentMapper.insert(request);
         TalentEnrichTask task = createEnrichTask(request, ENRICH_TASK_STATUS_PENDING, null);
         markEnrichTask(task, ENRICH_TASK_STATUS_RUNNING, null);
@@ -241,6 +253,15 @@ public class TalentService {
         }
         if (request.getStatus() != null) {
             talent.setStatus(request.getStatus());
+        }
+        if (StringUtils.hasText(request.getContactPhone())) {
+            talent.setContactPhone(request.getContactPhone().trim());
+        }
+        if (StringUtils.hasText(request.getContactWechat())) {
+            talent.setContactWechat(request.getContactWechat().trim());
+        }
+        if (StringUtils.hasText(request.getIntro())) {
+            talent.setIntro(request.getIntro().trim());
         }
         talentMapper.updateById(talent);
         return talent;
@@ -378,6 +399,15 @@ public class TalentService {
         }
         if (StringUtils.hasText(request.getIpLocation())) {
             talent.setIpLocation(request.getIpLocation().trim());
+        }
+        if (StringUtils.hasText(request.getContactPhone())) {
+            talent.setContactPhone(request.getContactPhone().trim());
+        }
+        if (StringUtils.hasText(request.getContactWechat())) {
+            talent.setContactWechat(request.getContactWechat().trim());
+        }
+        if (StringUtils.hasText(request.getIntro())) {
+            talent.setIntro(request.getIntro().trim());
         }
         talent.setDataSource("MANUAL");
         talent.setEnrichStatus(ENRICH_TASK_STATUS_SUCCESS);

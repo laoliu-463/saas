@@ -29,6 +29,7 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
+@SuppressWarnings("unchecked")
 class ExclusiveMerchantServiceTest {
 
     @Mock
@@ -193,7 +194,6 @@ class ExclusiveMerchantServiceTest {
                 .thenReturn(List.of());
     }
 
-    @SuppressWarnings("unchecked")
     private void stubUserTotalFeeWithEntry(LocalDateTime start, LocalDateTime end,
                                             UUID userId, long totalFee) throws SQLException {
         ResultSet rs = mock(ResultSet.class);
@@ -214,7 +214,6 @@ class ExclusiveMerchantServiceTest {
                 });
     }
 
-    @SuppressWarnings("unchecked")
     private void stubMerchantUserFeeWithEntry(LocalDateTime start, LocalDateTime end,
                                                String merchantId, UUID userId,
                                                UUID deptId, long merchantFee) throws SQLException {

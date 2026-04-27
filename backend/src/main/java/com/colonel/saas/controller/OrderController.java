@@ -5,9 +5,11 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
+import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.AttributionService;
+import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderSyncService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,10 +32,15 @@ public class OrderController extends BaseController {
 
     private final OrderSyncService orderSyncService;
     private final ColonelsettlementOrderMapper orderMapper;
+    private final OrderQueryService orderQueryService;
 
-    public OrderController(OrderSyncService orderSyncService, ColonelsettlementOrderMapper orderMapper) {
+    public OrderController(
+            OrderSyncService orderSyncService,
+            ColonelsettlementOrderMapper orderMapper,
+            OrderQueryService orderQueryService) {
         this.orderSyncService = orderSyncService;
         this.orderMapper = orderMapper;
+        this.orderQueryService = orderQueryService;
     }
 
     @Operation(summary = "手动同步订单")
@@ -88,6 +95,12 @@ public class OrderController extends BaseController {
             @RequestParam(required = false) String startTime,
             @RequestParam(required = false) String endTime) {
         return getOrders(page, pageSize, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, productId, channelKeyword, colonelKeyword, orderStatus, startTime, endTime);
+    }
+
+    @Operation(summary = "获取订单详情")
+    @GetMapping("/{orderId}")
+    public ApiResult<OrderDetailResponse> getOrderDetail(@PathVariable String orderId) {
+        return ok(orderQueryService.getOrderDetail(orderId));
     }
 
     @Operation(summary = "获取订单统计")

@@ -1,12 +1,12 @@
-package com.colonel.saas.gateway.douyin.mock;
+package com.colonel.saas.gateway.douyin.test;
 
 import com.colonel.saas.gateway.douyin.DouyinAuthGateway;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(name = "douyin.mock.enabled", havingValue = "true")
-public class MockDouyinAuthGateway implements DouyinAuthGateway {
+@ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "true")
+public class TestDouyinAuthGateway implements DouyinAuthGateway {
 
     @Override
     public TokenPayload ensureToken(String appId) {
@@ -20,7 +20,7 @@ public class MockDouyinAuthGateway implements DouyinAuthGateway {
 
     @Override
     public TokenPayload createToken(TokenCreateCommand command) {
-        String appId = "mock-app";
+        String appId = "test-app";
         String authSubjectType = command.authSubjectType() == null || command.authSubjectType().isBlank()
                 ? "COLONEL"
                 : command.authSubjectType().trim();
@@ -28,14 +28,16 @@ public class MockDouyinAuthGateway implements DouyinAuthGateway {
     }
 
     private TokenPayload buildPayload(String appId, String authSubjectType) {
-        String finalAppId = appId == null || appId.isBlank() ? "mock-app" : appId.trim();
+        String finalAppId = appId == null || appId.isBlank() ? "test-app" : appId.trim();
         return new TokenPayload(
-                "mock_access_token_" + finalAppId,
-                "mock_refresh_token_" + finalAppId,
+                "test_access_token_" + finalAppId,
+                "test_refresh_token_" + finalAppId,
                 30L * 24 * 60 * 60,
-                "mock-auth-" + finalAppId,
+                "test-auth-" + finalAppId,
                 authSubjectType,
                 1L
         );
     }
 }
+
+

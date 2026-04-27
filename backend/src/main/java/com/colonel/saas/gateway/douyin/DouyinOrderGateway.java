@@ -7,7 +7,7 @@ import java.util.Map;
  * 抖店订单 Gateway 接口。
  * <p>
  * 业务层（OrderSyncService / OrderDecryptService）只依赖此接口，
- * 不感知底层是 Mock 还是真实 SDK 调用。
+ * 不感知底层是 Test 还是真实 SDK 调用。
  */
 public interface DouyinOrderGateway {
 

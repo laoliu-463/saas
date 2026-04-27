@@ -412,8 +412,8 @@ public class SampleController extends BaseController {
         if (user == null) {
             return null;
         }
-        String realName = StringUtils.trimWhitespace(user.getRealName());
-        String username = StringUtils.trimWhitespace(user.getUsername());
+        String realName = normalizeDisplayText(user.getRealName());
+        String username = normalizeDisplayText(user.getUsername());
         if (StringUtils.hasText(realName) && StringUtils.hasText(username)) {
             return realName + " (" + username + ")";
         }
@@ -424,6 +424,10 @@ public class SampleController extends BaseController {
             return username;
         }
         return null;
+    }
+
+    private String normalizeDisplayText(String value) {
+        return value == null ? null : value.trim();
     }
 
     private SampleStatus parseStatus(String status) {

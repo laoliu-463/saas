@@ -7,9 +7,11 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.dto.talent.TalentDetailResponse;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.job.TalentWeeklyRefreshJob;
+import com.colonel.saas.service.TalentQueryService;
 import com.colonel.saas.service.TalentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,10 +40,15 @@ import java.util.UUID;
 public class TalentController extends BaseController {
 
     private final TalentService talentService;
+    private final TalentQueryService talentQueryService;
     private final TalentWeeklyRefreshJob talentWeeklyRefreshJob;
 
-    public TalentController(TalentService talentService, TalentWeeklyRefreshJob talentWeeklyRefreshJob) {
+    public TalentController(
+            TalentService talentService,
+            TalentQueryService talentQueryService,
+            TalentWeeklyRefreshJob talentWeeklyRefreshJob) {
         this.talentService = talentService;
+        this.talentQueryService = talentQueryService;
         this.talentWeeklyRefreshJob = talentWeeklyRefreshJob;
     }
 
@@ -52,19 +59,22 @@ public class TalentController extends BaseController {
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String region,
+            @RequestParam(required = false) String poolStatus,
+            @RequestParam(required = false) String ownerKeyword,
             @RequestParam(required = false) Long minFans,
             @RequestParam(required = false) Long maxFans,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        IPage<Talent> result = talentService.page(page, size, keyword, region, minFans, maxFans, dataScope, userId, deptId);
+        IPage<Talent> result = talentQueryService.page(
+                page, size, keyword, region, poolStatus, ownerKeyword, minFans, maxFans, dataScope, userId, deptId);
         return okPage(result);
     }
 
     @Operation(summary = "达人详情")
     @GetMapping("/{id}")
-    public ApiResult<Talent> detail(@PathVariable UUID id) {
-        return ok(talentService.getById(id));
+    public ApiResult<TalentDetailResponse> detail(@PathVariable UUID id) {
+        return ok(talentQueryService.detail(id));
     }
 
     @Operation(summary = "新增达人")

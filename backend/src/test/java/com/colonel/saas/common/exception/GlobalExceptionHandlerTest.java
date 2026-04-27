@@ -1,10 +1,15 @@
 package com.colonel.saas.common.exception;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.douyin.DouyinApiException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.validation.BindException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
@@ -20,6 +25,19 @@ import static org.mockito.Mockito.when;
 class GlobalExceptionHandlerTest {
 
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
+    private final Logger handlerLogger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private Level originalLevel;
+
+    @BeforeEach
+    void muteHandlerLogger() {
+        originalLevel = handlerLogger.getLevel();
+        handlerLogger.setLevel(Level.OFF);
+    }
+
+    @AfterEach
+    void restoreHandlerLogger() {
+        handlerLogger.setLevel(originalLevel);
+    }
 
     @Test
     void handleBusiness_returnsFailResult() {

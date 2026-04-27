@@ -4,8 +4,6 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.douyin.DouyinTokenService;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -13,8 +11,6 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 public class DouyinTokenRefreshJob {
-
-    private static final Logger log = LoggerFactory.getLogger(DouyinTokenRefreshJob.class);
 
     private final DouyinTokenService douyinTokenService;
     private final boolean autoRefreshEnabled;

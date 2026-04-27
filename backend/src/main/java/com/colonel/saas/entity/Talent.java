@@ -42,6 +42,15 @@ public class Talent extends BaseEntity {
     @TableField("avatar_url")
     private String avatarUrl;
 
+    @TableField("intro")
+    private String intro;
+
+    @TableField("contact_phone")
+    private String contactPhone;
+
+    @TableField("contact_wechat")
+    private String contactWechat;
+
     @TableField("likes_count")
     private Long likesCount;
 
@@ -82,4 +91,22 @@ public class Talent extends BaseEntity {
 
     @TableField(exist = false)
     private LocalDateTime claimedAt;
+
+    @TableField(exist = false)
+    private String poolStatus;
+
+    @TableField(exist = false)
+    private String ownerName;
+
+    @TableField(exist = false)
+    private LocalDateTime protectedUntil;
+
+    @TableField(exist = false)
+    private Long sampleCount;
+
+    @TableField(exist = false)
+    private Long orderCount;
+
+    @TableField(exist = false)
+    private Long serviceFeeContribution;
 }

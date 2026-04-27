@@ -1,4 +1,4 @@
-spring:
+﻿spring:
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:colonel_saas}
     username: ${DB_USER:saas}
@@ -37,5 +37,6 @@ talent:
     public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
 
 douyin:
-  mock:
+  test:
     enabled: false
+

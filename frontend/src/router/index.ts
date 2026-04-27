@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { ROLE_CODES, hasAccess } from '../constants/rbac'
 import { useAuthStore } from '../stores/auth'
-import { isMockEnv } from '../utils/env'
+import { isTestEnv } from '../utils/env'
 
 const ROLE = ROLE_CODES
 const HOME_CANDIDATES = ['/dashboard', '/orders', '/data', '/product', '/talent', '/ops/shipping', '/sample', '/system/users']
@@ -38,11 +38,6 @@ const router = createRouter({
           path: 'talent',
           component: () => import('../views/talent/index.vue'),
           meta: { title: '达人 CRM', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
-        },
-        {
-          path: 'talent/:id',
-          component: () => import('../views/talent/TalentDetail.vue'),
-          meta: { title: '达人详情', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'sample',
@@ -92,7 +87,7 @@ const router = createRouter({
         {
           path: 'orders',
           component: () => import('../views/orders/index.vue'),
-          meta: { title: '订单回流', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
+          meta: { title: '订单工作台', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
         },
         {
           path: 'dashboard',
@@ -100,9 +95,9 @@ const router = createRouter({
           meta: { title: '归因概览', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
         },
         {
-          path: 'dev/mock',
-          component: () => import('../views/dev/MockConsole.vue'),
-          meta: { title: 'Mock 调试', roles: [ROLE.ADMIN, ROLE.BIZ_LEADER], mockOnly: true }
+          path: 'dev/test',
+          component: () => import('../views/dev/TestConsole.vue'),
+          meta: { title: '测试调试台', roles: [ROLE.ADMIN, ROLE.BIZ_LEADER], testOnly: true }
         },
         { path: '', redirect: '/dashboard' }
       ]
@@ -133,7 +128,7 @@ router.beforeEach((to) => {
   if (to.path === '/') {
     return resolveHomePath(authStore)
   }
-  if (to.meta?.mockOnly && !isMockEnv) {
+  if (to.meta?.testOnly && !isTestEnv) {
     return resolveHomePath(authStore)
   }
 

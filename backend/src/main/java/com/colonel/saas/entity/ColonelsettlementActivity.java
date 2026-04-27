@@ -8,7 +8,7 @@ import lombok.EqualsAndHashCode;
 import java.time.LocalDateTime;
 
 /**
- * 团长活动（Mock 阶段）。
+ * 团长活动（Test 阶段）。
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -26,3 +26,4 @@ public class ColonelsettlementActivity extends BaseEntity {
      */
     private Integer status;
 }
+

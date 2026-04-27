@@ -1,190 +1,154 @@
 <template>
-  <div class="activity-list">
-    <n-card title="团长活动列表" :bordered="false">
-      <n-space style="margin-bottom: 16px" wrap>
-        <n-select v-model:value="filters.status" :options="statusOptions" style="width: 180px" />
-        <n-select v-model:value="filters.searchType" :options="searchTypeOptions" style="width: 180px" />
-        <n-select v-model:value="filters.sortType" :options="sortTypeOptions" style="width: 140px" />
-        <n-input
-          v-model:value="filters.activityInfo"
+  <div class="activity-page">
+    <PageHeader
+      title="团长活动"
+      description="同步并查看抖音官方报名的团长活动，作为商品引入的基础。"
+    />
+
+    <div class="toolbar">
+      <n-space>
+        <n-input-group>
+          <n-input v-model:value="filters.activityId" placeholder="活动 ID" style="width: 200px" />
+          <n-input v-model:value="filters.activityName" placeholder="活动名称" style="width: 240px" />
+        </n-input-group>
+        <n-select
+          v-model:value="filters.status"
+          :options="statusOptions"
+          placeholder="活动状态"
           clearable
-          placeholder="活动名称或活动ID"
-          style="width: 260px"
-          @keydown.enter="handleQuery"
+          style="width: 160px"
         />
-        <n-button type="primary" :loading="loading" @click="handleQuery">查询</n-button>
+        <n-button type="primary" @click="fetchData">查询</n-button>
+        <n-button @click="resetFilters">重置</n-button>
       </n-space>
+    </div>
 
-      <n-alert v-if="isMockData" type="warning" :show-icon="false" style="margin-bottom: 16px">
-        当前为 Mock 测试环境，活动数据来自后端 Mock 服务。
-      </n-alert>
+    <n-alert type="warning" style="margin-bottom: 16px;">
+      当前为 Test 测试环境，活动数据来自后端 Test 服务。联调 Real 环境时将实时请求抖店开放平台。
+    </n-alert>
 
+    <n-card :bordered="false" class="main-card">
       <n-data-table
+        remote
         :columns="columns"
-        :data="activityList"
+        :data="data"
         :loading="loading"
         :pagination="pagination"
-        remote
+        :row-key="(row: any) => row.activityId"
         @update:page="handlePageChange"
-        @update:page-size="handlePageSizeChange"
       />
     </n-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue';
-import { NTag, NButton, useMessage } from 'naive-ui';
-import { useRouter } from 'vue-router';
-import { getColonelActivityPage } from '../../api/activity';
+import { h, onMounted, reactive, ref } from 'vue'
+import { NButton, NTag, useMessage } from 'naive-ui'
+import { useRouter } from 'vue-router'
+import PageHeader from '../../components/PageHeader.vue'
+import { getColonelActivityPage } from '../../api/activity'
 
-const router = useRouter();
-
-const message = useMessage();
-const loading = ref(false);
-const isMockData = ref(false);
-const activityList = ref<any[]>([]);
+const message = useMessage()
+const router = useRouter()
+const loading = ref(false)
+const data = ref([])
 
 const filters = reactive({
-  status: 0,
-  searchType: 0,
-  sortType: 1,
-  activityInfo: ''
-});
+  activityId: '',
+  activityName: '',
+  status: null
+})
 
 const pagination = reactive({
   page: 1,
-  pageSize: 20,
+  pageSize: 10,
   itemCount: 0,
   showSizePicker: true,
-  pageSizes: [10, 20]
-});
+  pageSizes: [10, 20, 50]
+})
 
 const statusOptions = [
-  { label: '任意状态', value: 0 },
-  { label: '未上线', value: 1 },
-  { label: '报名未开始', value: 2 },
+  { label: '未开始', value: 1 },
+  { label: '进行中', value: 2 },
   { label: '报名中', value: 3 },
   { label: '推广未开始', value: 4 },
   { label: '推广中', value: 5 },
-  { label: '报名结束', value: 7 }
-];
+  { label: '已结束', value: 6 }
+]
 
-const searchTypeOptions = [
-  { label: '创建时间', value: 0 },
-  { label: '报名开始时间', value: 1 },
-  { label: '报名结束时间', value: 2 }
-];
-
-const sortTypeOptions = [
-  { label: '降序', value: 1 },
-  { label: '升序', value: 0 }
-];
-
-const formatCategories = (value: unknown) => {
-  if (!value) return '-';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'object') {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([k, v]) => `${k}: ${String(v)}`)
-      .join(' / ');
-  }
-  return String(value);
-};
-
-const statusTagType = (status: number) => {
-  if (status === 3 || status === 5) return 'success';
-  if (status === 4 || status === 2) return 'warning';
-  if (status === 7) return 'default';
-  return 'info';
-};
-
-const columns = computed(() => [
-  { title: '活动ID', key: 'activityId', width: 120 },
-  { title: '活动名称', key: 'activityName', minWidth: 220 },
+const columns = [
+  { title: '活动 ID', key: 'activityId', width: 180 },
+  { title: '活动名称', key: 'activityName', minWidth: 240 },
   {
-    title: '活动状态',
-    key: 'statusText',
+    title: '状态',
+    key: 'activityStatus',
     width: 120,
-    render: (row: any) => h(NTag, { type: statusTagType(Number(row.status || 0)), bordered: false }, { default: () => row.statusText || '-' })
+    render: (row: any) => {
+      const option = statusOptions.find(o => o.value === row.activityStatus)
+      const type = row.activityStatus === 2 || row.activityStatus === 5 ? 'success' : 'default'
+      return h(NTag, { type, size: 'small', round: true }, { default: () => option?.label || '未知' })
+    }
   },
-  { title: '报名开始时间', key: 'applicationStartTime', width: 170 },
-  { title: '报名结束时间', key: 'applicationEndTime', width: 170 },
-  { title: '活动开始时间', key: 'activityStartTime', width: 170 },
-  { title: '活动结束时间', key: 'activityEndTime', width: 170 },
-  { title: '团长百应ID', key: 'colonelBuyinId', width: 160 },
-  {
-    title: '类目限制',
-    key: 'categoriesLimit',
-    minWidth: 220,
-    render: (row: any) => formatCategories(row.categoriesLimit)
-  },
+  { title: '起止时间', key: 'timeRange', width: 320, render: (row: any) => `${row.startTime || '-'} 至 ${row.endTime || '-'}` },
+  { title: '同步时间', key: 'createTime', width: 160 },
   {
     title: '操作',
     key: 'actions',
     width: 120,
-    render: (row: any) => h(NButton, {
-      size: 'small',
-      type: 'primary',
-      ghost: true,
-      onClick: () => router.push(`/product/activity/${row.activityId}`)
-    }, { default: () => '查看商品' })
+    fixed: 'right',
+    render: (row: any) => {
+      return h(NButton, {
+        size: 'small',
+        type: 'primary',
+        quaternary: true,
+        onClick: () => {
+          router.push({
+            name: 'ProductLibrary',
+            params: { activityId: row.activityId }
+          })
+        }
+      }, { default: () => '查看商品' })
+    }
   }
-]);
+]
 
 const fetchData = async () => {
-  loading.value = true;
+  loading.value = true
   try {
     const res: any = await getColonelActivityPage({
-      status: filters.status,
-      searchType: filters.searchType,
-      sortType: filters.sortType,
       page: pagination.page,
       pageSize: pagination.pageSize,
-      activityInfo: filters.activityInfo?.trim() || undefined
-    });
-
-    const data = res?.data || {};
-    activityList.value = Array.isArray(data.activityList) ? data.activityList : [];
-    pagination.itemCount = Number(data.total || activityList.value.length || 0);
-    isMockData.value = Boolean(data.mock);
-
-    if (pagination.page === 1) {
-      message.success('活动调用成功');
-    }
-  } catch (error: any) {
-    activityList.value = [];
-    pagination.itemCount = 0;
-    isMockData.value = false;
-    message.error(error?.response?.data?.msg || error?.message || '活动调用失败，请稍后重试');
+      activityId: filters.activityId || undefined,
+      activityName: filters.activityName || undefined,
+      status: filters.status || undefined
+    })
+    const result = res.data || {}
+    data.value = result.activityList || []
+    pagination.itemCount = result.total || 0
+  } catch (err: any) {
+    message.error('加载活动列表失败')
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
-
-const handleQuery = () => {
-  pagination.page = 1;
-  fetchData();
-};
+}
 
 const handlePageChange = (page: number) => {
-  pagination.page = page;
-  fetchData();
-};
+  pagination.page = page
+  fetchData()
+}
 
-const handlePageSizeChange = (pageSize: number) => {
-  pagination.pageSize = pageSize;
-  pagination.page = 1;
-  fetchData();
-};
+const resetFilters = () => {
+  filters.activityId = ''
+  filters.activityName = ''
+  filters.status = null
+  fetchData()
+}
 
-onMounted(() => {
-  fetchData();
-});
+onMounted(fetchData)
 </script>
 
 <style scoped>
-.activity-list {
-  min-height: 100%;
-}
+.activity-page { padding: 24px; }
+.toolbar { margin-bottom: 16px; background: #fff; padding: 16px; border-radius: 8px; }
+.main-card { border-radius: 8px; }
 </style>

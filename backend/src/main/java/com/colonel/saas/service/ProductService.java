@@ -273,7 +273,7 @@ public class ProductService {
 
         if (snapshots.isEmpty()) {
             Map<String, Object> empty = new LinkedHashMap<>();
-            empty.put("mock", true);
+            empty.put("test", true);
             empty.put("activityId", activityId);
             empty.put("institutionId", 0);
             empty.put("total", total == null ? 0 : total);
@@ -313,7 +313,7 @@ public class ProductService {
         boolean hasMore = total != null && nextOffset < total;
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("mock", true);
+        result.put("test", true);
         result.put("activityId", activityId);
         result.put("institutionId", 0);
         result.put("total", total == null ? items.size() : total);
@@ -914,8 +914,8 @@ public class ProductService {
         if (user == null) {
             return null;
         }
-        String realName = StringUtils.trimWhitespace(user.getRealName());
-        String username = StringUtils.trimWhitespace(user.getUsername());
+        String realName = normalizeDisplayText(user.getRealName());
+        String username = normalizeDisplayText(user.getUsername());
         if (StringUtils.hasText(realName) && StringUtils.hasText(username)) {
             return realName + " (" + username + ")";
         }
@@ -1335,6 +1335,10 @@ public class ProductService {
         return StringUtils.hasText(value) ? value : fallback;
     }
 
+    private String normalizeDisplayText(String value) {
+        return value == null ? null : value.trim();
+    }
+
     private static final class MutableOrderSummary {
         private long orderCount;
         private long attributedCount;
@@ -1386,3 +1390,4 @@ public class ProductService {
             String failReason) {
     }
 }
+

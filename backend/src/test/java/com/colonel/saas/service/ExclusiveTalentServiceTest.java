@@ -30,6 +30,7 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
+@SuppressWarnings("unchecked")
 class ExclusiveTalentServiceTest {
 
     @Mock
@@ -47,7 +48,6 @@ class ExclusiveTalentServiceTest {
     private static final String KEY_RATIO = "talent.exclusive.service_fee_ratio";
     private static final String KEY_SAMPLES = "talent.exclusive.monthly_samples";
 
-    @SuppressWarnings("unchecked")
     private void stubConfig(String ratioValue, String samplesValue) {
         doReturn(ratioValue).when(jdbcTemplate)
                 .query(anyString(), any(ResultSetExtractor.class), eq(KEY_RATIO));
@@ -245,7 +245,6 @@ class ExclusiveTalentServiceTest {
                 .thenReturn(List.of());
     }
 
-    @SuppressWarnings("unchecked")
     private void stubTotalFeeWithEntry(LocalDateTime start, LocalDateTime end,
                                         String talentUid, long totalFee) throws SQLException {
         ResultSet rs = mock(ResultSet.class);
@@ -261,7 +260,6 @@ class ExclusiveTalentServiceTest {
                 .query(contains("total_fee"), any(RowCallbackHandler.class), any(Object[].class));
     }
 
-    @SuppressWarnings("unchecked")
     private void stubChannelFeeWithEntry(LocalDateTime start, LocalDateTime end,
                                           String talentUid, UUID channelUserId,
                                           UUID deptId, long channelFee) throws SQLException {
@@ -279,7 +277,6 @@ class ExclusiveTalentServiceTest {
                 });
     }
 
-    @SuppressWarnings("unchecked")
     private void stubSampleCountWithEntry(LocalDateTime start, LocalDateTime end,
                                           UUID channelUserId, String talentUid,
                                           int sampleCount) throws SQLException {

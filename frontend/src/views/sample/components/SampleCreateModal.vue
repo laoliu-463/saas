@@ -79,7 +79,7 @@ import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { getProducts } from '../../../api/product'
 import { createSample, getSamplePage, searchSampleTalents } from '../../../api/sample'
-import { isMockEnv } from '../../../utils/env'
+import { isTestEnv } from '../../../utils/env'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{
@@ -177,7 +177,7 @@ async function handleSearchProduct(keyword: string) {
         value: item.id
       }))
     } catch (error) {
-      if (!isMockEnv) {
+      if (!isTestEnv) {
         throw error
       }
       const fallback = await getSamplePage({ page: 1, size: 100 })

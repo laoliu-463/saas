@@ -3,8 +3,6 @@ package com.colonel.saas.douyin;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.gateway.douyin.DouyinAuthGateway;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -38,7 +36,7 @@ import java.util.Locale;
  * douyin:token:reauthorize_required:<appId> — 重新授权标记，TTL = 1天
  * </pre>
  *
- * <p>Mock 模式：{@code douyin.mock.enabled=true} 时，所有 Token 操作均使用模拟数据，
+ * <p>Test 模式：{@code douyin.test.enabled=true} 时，所有 Token 操作均使用模拟数据，
  * 不会真实请求抖音 API，便于本地调试和集成测试。
  *
  * @see DoudianTokenGateway
@@ -48,8 +46,6 @@ import java.util.Locale;
 @Slf4j
 @Service
 public class DouyinTokenService {
-
-    private static final Logger log = LoggerFactory.getLogger(DouyinTokenService.class);
 
     private static final String TOKEN_KEY_PREFIX = "douyin:token:";
     private static final String REFRESH_KEY_PREFIX = "douyin:refresh:";
@@ -100,7 +96,7 @@ public class DouyinTokenService {
             }
             String refreshedToken = getTokenFromCache(finalAppId);
             if (refreshedToken == null || refreshedToken.isBlank()) {
-                throw new BusinessException("闂佸憡甯￠弨閬嶅蓟婵犲洤绠柡宥庡幘閸?token 闂佸憡鑹剧€涒晛锕㈤銏″殧鐎瑰嫭婢樼徊鍧楁煕閹烘柨顣兼繝鈧笟鈧?access_token");
+                throw new BusinessException("获取 Access Token 失败: API 返回结果中未包含有效 access_token");
             }
             return refreshedToken;
         }
@@ -159,7 +155,7 @@ public class DouyinTokenService {
                 String.format("required_at=%s, reason=%s", LocalDateTime.now(), reason == null ? "" : reason),
                 Duration.ofDays(1)
         );
-        log.error("Token 閻庤鐡曠亸顏嗘崲閸愵喖瀚夐柣鏇炲€荤粈澶愭⒒閸ワ絽浜鹃梻浣瑰絻缁夌敻寮绘繝鍥х闁割偆鍠愮紞鈧? appId={}, reason={}", finalAppId, reason);
+        log.error("Token 标记为需要重新授权, appId={}, reason={}", finalAppId, reason);
     }
 
     public void saveRefreshToken(String appId, String refreshToken) {
@@ -259,18 +255,18 @@ public class DouyinTokenService {
             throw new BusinessException("token payload is empty");
         }
         String newAccessToken = payload.accessToken();
+        String normalizedAccessToken = trimToNull(newAccessToken);
+        if (normalizedAccessToken == null) {
+            throw new BusinessException("token payload missing access_token");
+        }
         String newRefreshToken = normalizeRefreshToken(payload.refreshToken(), fallbackRefreshToken);
         long expiresIn = payload.expiresIn() == null ? 7200L : payload.expiresIn();
-        if (newAccessToken == null || newAccessToken.isBlank()) {
-            throw new BusinessException("闂佺鍩栭悧鐘绘偂?token 闂佸憡绻傜粔瀵歌姳閼碱剛纾介柛婵嗗濮?access_token");
-        }
-        if (newRefreshToken == null || newRefreshToken.isBlank()) {
-            throw new BusinessException("闂佺鍩栭悧鐘绘偂?token 闂佸憡绻傜粔瀵歌姳閼碱剛纾介柛婵嗗濮?refresh_token");
+        if (expiresIn <= 0L) {
+            expiresIn = 7200L;
         }
         long expireAt = Instant.now().getEpochSecond() + expiresIn;
 
-        redisTemplate.opsForValue().set(tokenKey(appId), newAccessToken, Duration.ofSeconds(expiresIn));
-        // refresh_token 闁哄牆顦伴弲銉╁嫉?14 濠㈠灈鏅槐婵堢磽閹惧磭鎽?TTL 濞戞挸楠搁柦鈺呭矗妫颁胶绠介柟闀愭缁旀挳鎳?
+        redisTemplate.opsForValue().set(tokenKey(appId), normalizedAccessToken, Duration.ofSeconds(expiresIn));
         redisTemplate.opsForValue().set(refreshKey(appId), newRefreshToken, Duration.ofDays(14));
         redisTemplate.opsForValue().set(expireAtKey(appId), String.valueOf(expireAt), Duration.ofSeconds(expiresIn));
         redisTemplate.delete(reauthorizeRequiredKey(appId));
@@ -278,7 +274,7 @@ public class DouyinTokenService {
 
     private void triggerAsyncRefresh(String appId) {
         CompletableFuture.runAsync(() -> {
-            log.info("閻庢鍠掗崑鎾斥攽椤旂⒈鍎忛柛鈺傜洴瀵?Token, appId={}", appId);
+            log.info("Triggering async token refresh, appId={}", appId);
             try {
                 refreshToken(appId);
             } catch (TokenRefreshInProgressException e) {
@@ -425,7 +421,7 @@ public class DouyinTokenService {
         }
         String normalized = grantType.trim().toLowerCase(Locale.ROOT);
         if (!"authorization_code".equals(normalized) && !"authorization_self".equals(normalized)) {
-            throw new BusinessException("grant_type 婵炲濮撮幊蹇涘极椤曗偓楠?authorization_code / authorization_self");
+            throw new BusinessException("grant_type 格式非法, 必须为 authorization_code 或 authorization_self");
         }
         return normalized;
     }
@@ -462,9 +458,9 @@ public class DouyinTokenService {
      * {
      *   "appId": "36",
      *   "hasAccessToken": true,
-     *   "maskedAccessToken": "mock...n_36",   // 仅展示前4位 + "..." + 后4位
+     *   "maskedAccessToken": "test...n_36",   // 仅展示前4位 + "..." + 后4位
      *   "hasRefreshToken": true,
-     *   "maskedRefreshToken": "mock...n_36",
+     *   "maskedRefreshToken": "test...n_36",
      *   "tokenExpireAtEpochSeconds": 1779614841,  // Unix 秒级时间戳
      *   "tokenExpiringSoon": false,               // 距离过期是否不足阈值（默认5分钟）
      *   "reauthorizeRequired": false              // 是否需重新授权（Redis 标记）
@@ -594,3 +590,4 @@ public class DouyinTokenService {
         }
     }
 }
+

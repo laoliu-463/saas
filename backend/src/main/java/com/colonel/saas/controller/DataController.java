@@ -223,11 +223,11 @@ public class DataController extends BaseController {
     @Operation(summary = "独家状态监控 - 达人")
     @GetMapping("/operations/exclusive-talents")
     public ApiResult<List<Map<String, Object>>> getExclusiveTalentStatus() {
-        // Mock data to provide real interface endpoint
+        // Test data to provide real interface endpoint
         List<Map<String, Object>> mockTalents = new ArrayList<>();
         Map<String, Object> t1 = new HashMap<>();
-        t1.put("talentName", "测试达人1");
-        t1.put("channelName", "渠道A");
+        t1.put("talentName", "达人A-独家合作演示");
+        t1.put("channelName", "渠道负责人-华东组");
         t1.put("feeRatio", "10%");
         t1.put("sampleCount", 5);
         t1.put("status", "ACTIVE");
@@ -238,11 +238,11 @@ public class DataController extends BaseController {
     @Operation(summary = "独家状态监控 - 商家")
     @GetMapping("/operations/exclusive-merchants")
     public ApiResult<List<Map<String, Object>>> getExclusiveMerchantStatus() {
-        // Mock data to provide real interface endpoint
+        // Test data to provide real interface endpoint
         List<Map<String, Object>> mockMerchants = new ArrayList<>();
         Map<String, Object> m1 = new HashMap<>();
-        m1.put("merchantName", "测试商家1");
-        m1.put("zsName", "招商A");
+        m1.put("merchantName", "商家A-独家合作演示");
+        m1.put("zsName", "招商负责人-美妆组");
         m1.put("feeRatio", "20%");
         m1.put("status", "ACTIVE");
         mockMerchants.add(m1);
@@ -258,13 +258,13 @@ public class DataController extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             HttpServletResponse response) throws IOException {
 
-        // mock return simple CSV
+        // test return simple CSV
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"activities.csv\"");
         PrintWriter writer = response.getWriter();
         writer.write('\ufeff'); // BOM
         writer.println("活动ID,活动名称,活动类型,状态,创建时间");
-        writer.println("1,测试活动,团长活动,ACTIVE,2026-04-01 12:00:00");
+        writer.println("1,主链路演示活动,团长活动,ACTIVE,2026-04-01 12:00:00");
         writer.flush();
     }
 
@@ -642,3 +642,4 @@ public class DataController extends BaseController {
         }
     }
 }
+

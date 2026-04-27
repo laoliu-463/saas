@@ -22,6 +22,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ActivityApiTest {
 
+    @SuppressWarnings("unchecked")
+    private static ArgumentCaptor<Map<String, Object>> mapCaptor() {
+        return (ArgumentCaptor<Map<String, Object>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Map.class);
+    }
+
     @Mock
     private DouyinApiClient douyinApiClient;
 
@@ -37,7 +42,7 @@ class ActivityApiTest {
 
         Map<String, Object> result = activityApi.detail("app-1", "54321");
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.colonelActivityDetail"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("appId")).isEqualTo("app-1");
@@ -59,7 +64,7 @@ class ActivityApiTest {
 
         activityApi.detail(null, "12345");
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.colonelActivityDetail"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params).doesNotContainKey("appId");
@@ -73,7 +78,7 @@ class ActivityApiTest {
 
         activityApi.list("app-1");
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("alliance.instituteColonelActivityList"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("appId")).isEqualTo("app-1");
@@ -91,7 +96,7 @@ class ActivityApiTest {
 
         activityApi.listActivities("app-2", 3, 1L, 0L, 2L, 20L, "keyword");
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("alliance.instituteColonelActivityList"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("appId")).isEqualTo("app-2");
@@ -152,7 +157,7 @@ class ActivityApiTest {
 
         activityApi.createOrUpdate(command);
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("alliance.colonelActivityCreateOrUpdate"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("appId")).isEqualTo("app-key-1");

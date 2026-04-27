@@ -30,7 +30,7 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldUseConfigRatios() {
-        when(jdbcTemplate.query(anyString(), any(org.springframework.jdbc.core.ResultSetExtractor.class), any()))
+        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.ResultSetExtractor<String>>any(), any()))
                 .thenReturn("0.10")
                 .thenReturn("0.20");
 
@@ -52,7 +52,7 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldFallbackWhenConfigMissing() {
-        when(jdbcTemplate.query(anyString(), any(org.springframework.jdbc.core.ResultSetExtractor.class), any()))
+        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.ResultSetExtractor<String>>any(), any()))
                 .thenReturn(null)
                 .thenReturn(null);
 

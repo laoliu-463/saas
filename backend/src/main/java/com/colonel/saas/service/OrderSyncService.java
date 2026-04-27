@@ -41,7 +41,7 @@ public class OrderSyncService {
     private final OrderSyncPersistenceService persistenceService;
     private final AttributionService attributionService;
     private final RedisTemplate<String, Object> redisTemplate;
-    private final boolean mockEnabled;
+    private final boolean testEnabled;
     private final AtomicBoolean localLock = new AtomicBoolean(false);
     private volatile long localLastSyncTime;
 
@@ -50,12 +50,12 @@ public class OrderSyncService {
             OrderSyncPersistenceService persistenceService,
             AttributionService attributionService,
             RedisTemplate<String, Object> redisTemplate,
-            @Value("${app.mock.enabled:false}") boolean mockEnabled) {
+            @Value("${app.test.enabled:false}") boolean testEnabled) {
         this.douyinOrderGateway = douyinOrderGateway;
         this.persistenceService = persistenceService;
         this.attributionService = attributionService;
         this.redisTemplate = redisTemplate;
-        this.mockEnabled = mockEnabled;
+        this.testEnabled = testEnabled;
     }
 
     public SyncResult syncLatestWindow() {
@@ -106,8 +106,8 @@ public class OrderSyncService {
             Object raw = redisTemplate.opsForValue().get(LAST_SYNC_TIME_KEY);
             return asLong(raw, localLastSyncTime);
         } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (mockEnabled) {
-                log.warn("Redis unavailable in mock mode when reading last sync time, fallback to local state: {}", ex.getMessage());
+            if (testEnabled) {
+                log.warn("Redis unavailable in test mode when reading last sync time, fallback to local state: {}", ex.getMessage());
                 return localLastSyncTime;
             }
             throw ex;
@@ -123,8 +123,8 @@ public class OrderSyncService {
             );
             return Boolean.TRUE.equals(locked);
         } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (mockEnabled) {
-                log.warn("Redis unavailable in mock mode when acquiring sync lock, fallback to local lock: {}", ex.getMessage());
+            if (testEnabled) {
+                log.warn("Redis unavailable in test mode when acquiring sync lock, fallback to local lock: {}", ex.getMessage());
                 return localLock.compareAndSet(false, true);
             }
             throw ex;
@@ -136,8 +136,8 @@ public class OrderSyncService {
         try {
             redisTemplate.opsForValue().set(LAST_SYNC_TIME_KEY, String.valueOf(endTime));
         } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (mockEnabled) {
-                log.warn("Redis unavailable in mock mode when persisting last sync time, keep local state only: {}", ex.getMessage());
+            if (testEnabled) {
+                log.warn("Redis unavailable in test mode when persisting last sync time, keep local state only: {}", ex.getMessage());
                 return;
             }
             throw ex;
@@ -149,8 +149,8 @@ public class OrderSyncService {
         try {
             redisTemplate.delete(SYNC_LOCK_KEY);
         } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (mockEnabled) {
-                log.warn("Redis unavailable in mock mode when releasing sync lock, local lock already released: {}", ex.getMessage());
+            if (testEnabled) {
+                log.warn("Redis unavailable in test mode when releasing sync lock, local lock already released: {}", ex.getMessage());
                 return;
             }
             throw ex;
@@ -449,4 +449,5 @@ public class OrderSyncService {
         }
     }
 }
+
 

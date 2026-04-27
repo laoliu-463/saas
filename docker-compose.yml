@@ -1,4 +1,4 @@
-services:
+﻿services:
   postgres:
     image: postgres:15-alpine
     environment:
@@ -13,6 +13,9 @@ services:
       - ./backend/src/main/resources/db/alter-product-following.sql:/docker-entrypoint-initdb.d/04-alter-product-following.sql
       - ./backend/src/main/resources/db/alter-talent-enrich.sql:/docker-entrypoint-initdb.d/05-alter-talent-enrich.sql
       - ./backend/src/main/resources/db/alter-talent-crm-gap-fill.sql:/docker-entrypoint-initdb.d/06-alter-talent-crm-gap-fill.sql
+      - ./backend/src/main/resources/db/alter-product-test-columns.sql:/docker-entrypoint-initdb.d/07-alter-product-test-columns.sql
+      - ./backend/src/main/resources/db/alter-order-attribution-mvp.sql:/docker-entrypoint-initdb.d/08-alter-order-attribution-mvp.sql
+      - ./backend/src/main/resources/db/alter-order-attribution-mvp-v2.sql:/docker-entrypoint-initdb.d/09-alter-order-attribution-mvp-v2.sql
     ports:
       - "5432:5432"
     healthcheck:

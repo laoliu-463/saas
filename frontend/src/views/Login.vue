@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="login-wrapper">
     <!-- 左侧品牌展示区 -->
     <div class="login-brand">

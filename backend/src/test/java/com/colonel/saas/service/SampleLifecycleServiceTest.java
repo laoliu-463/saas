@@ -51,7 +51,12 @@ class SampleLifecycleServiceTest {
         order.setChannelUserId(channelUserId);
         order.setExtraData(Map.of("talent_uid", "talent-1"));
 
-        when(jdbcTemplate.query(anyString(), any(org.springframework.jdbc.core.RowMapper.class), any(), any(), any()))
+        when(jdbcTemplate.query(
+                anyString(),
+                org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<UUID>>any(),
+                any(),
+                any(),
+                any()))
                 .thenReturn(List.of(requestId));
 
         SampleRequest sample = new SampleRequest();
@@ -84,7 +89,10 @@ class SampleLifecycleServiceTest {
     @Test
     void autoCloseTimeoutPendingHomework_shouldCloseTimedOutRequests() {
         UUID requestId = UUID.randomUUID();
-        when(jdbcTemplate.query(anyString(), any(org.springframework.jdbc.core.RowMapper.class), any(LocalDateTime.class)))
+        when(jdbcTemplate.query(
+                anyString(),
+                org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<UUID>>any(),
+                any(LocalDateTime.class)))
                 .thenReturn(List.of(requestId));
 
         SampleRequest sample = new SampleRequest();

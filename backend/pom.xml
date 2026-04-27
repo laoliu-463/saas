@@ -30,6 +30,14 @@
         <lombok.version>1.18.32</lombok.version>
     </properties>
 
+    <repositories>
+        <repository>
+            <id>project-local-lib</id>
+            <name>Project Local Lib Repository</name>
+            <url>file://${project.basedir}/lib/maven-repo</url>
+        </repository>
+    </repositories>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -147,8 +155,6 @@
             <groupId>com.doudian</groupId>
             <artifactId>open-sdk</artifactId>
             <version>1.1.0</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/lib/doudian-sdk-java-1.1.0-20260420214713.jar</systemPath>
         </dependency>
     </dependencies>
 
@@ -187,7 +193,6 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <includeSystemScope>true</includeSystemScope>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>
@@ -215,7 +220,7 @@
                         <goals><goal>check</goal></goals>
                         <configuration>
                             <rules>
-                                <!-- 婵炴垶鎸婚懝鐐叏閻斿摜顩烽柨婵嗘川閸ㄦ娊鏌涢弽褎瀚呯紒鍙樺嵆閹嫰顢欓悾灞界伇 80% -->
+                                <!-- 单元测试覆盖率检查规则：LINE 覆盖率需达到 80% -->
                                 <rule>
                                     <element>CLASS</element>
                                     <includes>

@@ -36,14 +36,14 @@ public interface DouyinColonelActivityGateway {
     }
 
     record ActivityListResult(
-            boolean mock,
+            boolean test,
             long institutionId,
             long total,
             List<ActivityItem> activityList) {
 
         public Map<String, Object> toMap() {
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("mock", mock);
+            result.put("test", test);
             result.put("institutionId", institutionId);
             result.put("total", total);
             result.put("activityList", activityList.stream().map(ActivityItem::toMap).toList());
@@ -80,7 +80,7 @@ public interface DouyinColonelActivityGateway {
     }
 
     record ActivityProductListResult(
-            boolean mock,
+            boolean test,
             long activityId,
             long institutionId,
             Long total,
@@ -89,7 +89,7 @@ public interface DouyinColonelActivityGateway {
 
         public Map<String, Object> toMap() {
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("mock", mock);
+            result.put("test", test);
             result.put("activityId", activityId);
             result.put("institutionId", institutionId);
             result.put("total", total);

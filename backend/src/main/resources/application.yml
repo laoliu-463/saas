@@ -1,4 +1,4 @@
-spring:
+﻿spring:
   application:
     name: colonel-saas
   profiles:
@@ -46,14 +46,14 @@ security:
 app:
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
-  mock:
-    enabled: ${APP_MOCK_ENABLED:false}
-    seed-on-startup: ${APP_MOCK_SEED_ON_STARTUP:false}
-    douyin: ${APP_MOCK_DOUYIN_ENABLED:false}
-    promotion: ${APP_MOCK_PROMOTION_ENABLED:false}
-    order: ${APP_MOCK_ORDER_ENABLED:false}
-    talent: ${APP_MOCK_TALENT_ENABLED:false}
-    logistics: ${APP_MOCK_LOGISTICS_ENABLED:false}
+  test:
+    enabled: ${APP_TEST_ENABLED:false}
+    seed-on-startup: ${APP_TEST_SEED_ON_STARTUP:false}
+    douyin: ${APP_TEST_DOUYIN_ENABLED:false}
+    promotion: ${APP_TEST_PROMOTION_ENABLED:false}
+    order: ${APP_TEST_ORDER_ENABLED:false}
+    talent: ${APP_TEST_TALENT_ENABLED:false}
+    logistics: ${APP_TEST_LOGISTICS_ENABLED:false}
 
 douyin:
   app:
@@ -64,8 +64,8 @@ douyin:
     sandbox: ${DOUYIN_SANDBOX:false}
   webhook:
     verify-sign: ${DOUYIN_WEBHOOK_VERIFY_SIGN:false}
-  mock:
-    enabled: ${DOUYIN_MOCK_ENABLED:false}
+  test:
+    enabled: ${DOUYIN_TEST_ENABLED:false}
   token:
     refresh-threshold-seconds: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:300}
     redis-lock-minutes: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:5}
@@ -78,3 +78,5 @@ talent:
     mode: ${TALENT_ENRICH_MODE:real}
   data:
     public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
+
+

@@ -1,6 +1,8 @@
-﻿-- 澧為噺鑴氭湰锛氳揪浜?CRM 琛ㄧ粨鏋勫樊寮傝ˉ榻?-- 鎵ц鍓嶇疆锛歩nit-db.sql銆乤lter-talent-enrich.sql
--- 璇存槑锛?-- 1) 浠呭仛鍚戝悗鍏煎鏂板锛屼笉鐮村潖鐜版湁瀛楁
--- 2) 涓婚敭/澶栭敭缁熶竴娌跨敤鐜扮綉 UUID 浣撶郴
+-- 增量脚本：达人 CRM 表结构差异补齐
+-- 执行前置：init-db.sql、alter-talent-enrich.sql
+-- 说明：
+-- 1) 仅做向后兼容新增，不破坏现有字段
+-- 2) 主键/外键统一沿用现网 UUID 体系
 
 -- 1) 达人联系方式（支持多条联系方式 + 可见范围）
 CREATE TABLE IF NOT EXISTS talent_contact (
@@ -27,7 +29,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_talent_contact_unique
     ON talent_contact(talent_id, contact_type, contact_value)
     WHERE deleted = 0;
 
--- 2) 杈句汉鏍囩
+-- 2) 达人标签
 CREATE TABLE IF NOT EXISTS talent_tag (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tag_name         VARCHAR(50) NOT NULL,
@@ -45,7 +47,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_talent_tag_name_type
     ON talent_tag(tag_name, tag_type)
     WHERE deleted = 0;
 
--- 3) 杈句汉鏍囩鍏崇郴
+-- 3) 达人标签关系
 CREATE TABLE IF NOT EXISTS talent_tag_relation (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     talent_id        UUID NOT NULL,
@@ -66,7 +68,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_ttr_unique
     ON talent_tag_relation(talent_id, tag_id)
     WHERE deleted = 0;
 
--- 4) 杈句汉閲囬泦鏃ュ織
+-- 4) 达人采集日志
 CREATE TABLE IF NOT EXISTS talent_crawl_log (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     talent_id        UUID,
@@ -87,8 +89,6 @@ CREATE INDEX IF NOT EXISTS idx_tcl_talent_id ON talent_crawl_log(talent_id);
 CREATE INDEX IF NOT EXISTS idx_tcl_status ON talent_crawl_log(status);
 CREATE INDEX IF NOT EXISTS idx_tcl_create_time ON talent_crawl_log(create_time);
 
--- 5) talent 甯哥敤鏌ヨ绱㈠紩
+-- 5) talent 常用查询索引
 CREATE INDEX IF NOT EXISTS idx_talent_douyin_no ON talent(douyin_no);
 CREATE INDEX IF NOT EXISTS idx_talent_last_enrich_time ON talent(last_enrich_time);
-
-

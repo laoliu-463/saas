@@ -9,7 +9,7 @@ import lombok.EqualsAndHashCode;
 import java.util.UUID;
 
 /**
- * 商品库（Mock 阶段）。
+ * 商品库（Test 阶段）。
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -24,6 +24,7 @@ public class Product extends BaseEntity {
     /**
      * 单位：分。
      */
+    @TableField("discount_price")
     private Long price;
 
     /**
@@ -31,9 +32,10 @@ public class Product extends BaseEntity {
      */
     private Integer status;
 
+    @TableField(exist = false)
     private String category;
 
-    @TableField("activity_id")
+    @TableField(exist = false)
     private UUID activityId;
 
     @TableField("check_status")
@@ -57,3 +59,4 @@ public class Product extends BaseEntity {
     @TableField(exist = false)
     private String bizStatusLabel;
 }
+

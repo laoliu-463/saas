@@ -13,7 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 
 @Component
-@ConditionalOnProperty(name = "douyin.mock.enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "false", matchIfMissing = true)
 public class RealDouyinColonelActivityGateway implements DouyinColonelActivityGateway {
 
     private final ActivityApi activityApi;
@@ -209,3 +209,4 @@ public class RealDouyinColonelActivityGateway implements DouyinColonelActivityGa
         return text.isEmpty() ? null : text;
     }
 }
+

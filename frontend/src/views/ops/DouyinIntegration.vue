@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="douyin-integration">
     <n-card title="抖店联调" :bordered="false">
       <n-tabs type="line" animated>

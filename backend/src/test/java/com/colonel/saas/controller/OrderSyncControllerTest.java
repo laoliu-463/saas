@@ -2,6 +2,7 @@ package com.colonel.saas.controller;
 
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderSyncService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,13 +26,15 @@ class OrderSyncControllerTest {
     private OrderSyncService orderSyncService;
     @Mock
     private ColonelsettlementOrderMapper orderMapper;
+    @Mock
+    private OrderQueryService orderQueryService;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new OrderController(orderSyncService, orderMapper))
+                .standaloneSetup(new OrderController(orderSyncService, orderMapper, orderQueryService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

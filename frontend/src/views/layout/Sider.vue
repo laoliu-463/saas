@@ -4,7 +4,7 @@
       <button
         type="button"
         class="collapse-trigger"
-        :aria-label="appStore.collapsed ? '展开侧栏' : '收起侧栏'"
+        :aria-label="appStore.collapsed ? '展开侧边栏' : '收起侧边栏'"
         @click="appStore.toggle"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -40,7 +40,7 @@ import { NIcon } from 'naive-ui'
 import { ROLE_CODES, hasAccess } from '../../constants/rbac'
 import { useAppStore } from '../../stores/app'
 import { useAuthStore } from '../../stores/auth'
-import { isMockEnv } from '../../utils/env'
+import { isTestEnv } from '../../utils/env'
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
@@ -94,7 +94,7 @@ const rawMenus: MenuItem[] = [
     roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN],
     children: [
       { label: '归因概览', key: '/dashboard', icon: icons.chart },
-      { label: '订单回流', key: '/orders', icon: icons.truck }
+      { label: '订单工作台', key: '/orders', icon: icons.truck }
     ]
   },
   {
@@ -146,13 +146,13 @@ const rawMenus: MenuItem[] = [
   }
 ]
 
-if (isMockEnv) {
+if (isTestEnv) {
   rawMenus.push({
     label: '开发调试',
     key: 'dev-group',
     icon: icons.settings,
     roles: [ROLE.ADMIN, ROLE.BIZ_LEADER],
-    children: [{ label: 'Mock 调试', key: '/dev/mock', icon: icons.settings }]
+    children: [{ label: '测试调试台', key: '/dev/test', icon: icons.settings }]
   })
 }
 
@@ -234,6 +234,12 @@ function handleMenuClick(key: string) {
   overflow-y: auto;
 }
 
+.empty-tip {
+  padding: 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
 .app-sider :deep(.n-menu) {
   padding: 8px 0;
   background: transparent;
@@ -256,12 +262,5 @@ function handleMenuClick(key: string) {
 
 .app-sider :deep(.n-menu .n-menu-item-content:hover) {
   background: var(--bg-hover);
-}
-
-.empty-tip {
-  padding: 24px 16px;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  text-align: center;
 }
 </style>

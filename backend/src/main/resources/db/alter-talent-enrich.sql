@@ -1,6 +1,6 @@
-﻿-- 澧為噺鑴氭湰锛氳揪浜鸿嚜鍔ㄨˉ鍏ㄤ笌瀛楁鏉ユ簮瀹¤
--- 閫傜敤锛氬凡瀛樺湪 colonel_saas 鏁版嵁搴撶殑鐜锛屾墜宸ユ墽琛?
--- 1) talent 琛ュ厖瀛楁
+-- 增量脚本：达人自动补全与字段来源审计
+-- 适用：已存在 colonel_saas 数据库的环境，手工执行
+-- 1) talent 补充字段
 ALTER TABLE talent ADD COLUMN IF NOT EXISTS douyin_no VARCHAR(100);
 ALTER TABLE talent ADD COLUMN IF NOT EXISTS uid VARCHAR(100);
 ALTER TABLE talent ADD COLUMN IF NOT EXISTS sec_uid VARCHAR(255);

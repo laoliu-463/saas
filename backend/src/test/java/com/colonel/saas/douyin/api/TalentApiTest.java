@@ -18,6 +18,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TalentApiTest {
 
+    @SuppressWarnings("unchecked")
+    private static ArgumentCaptor<Map<String, Object>> mapCaptor() {
+        return (ArgumentCaptor<Map<String, Object>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Map.class);
+    }
+
     @Mock
     private DouyinApiClient douyinApiClient;
 
@@ -35,7 +40,7 @@ class TalentApiTest {
         );
 
         assertThat(result).containsKey("data");
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instPickSourceConvert"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("product_url")).isEqualTo("https://example.com/abc");
@@ -43,27 +48,25 @@ class TalentApiTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void convertLink_withNullPickExtra_shouldPassNull() {
         when(douyinApiClient.post(eq("buyin.instPickSourceConvert"), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(Map.of("data", Map.of()));
 
         talentApi.convertLink("https://example.com/abc", null);
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instPickSourceConvert"), captor.capture());
         assertThat(captor.getValue().get("pick_extra")).isNull();
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void convertLink_withTooLongPickExtra_shouldTruncateLast20Chars() {
         when(douyinApiClient.post(eq("buyin.instPickSourceConvert"), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(Map.of("data", Map.of()));
 
         talentApi.convertLink("https://example.com", "123456789012345678901");
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instPickSourceConvert"), captor.capture());
         Object pickExtra = captor.getValue().get("pick_extra");
         assertThat(pickExtra).isInstanceOf(String.class);
@@ -73,14 +76,13 @@ class TalentApiTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void convertLink_with20CharPickExtra_shouldKeepAsIs() {
         when(douyinApiClient.post(eq("buyin.instPickSourceConvert"), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(Map.of("data", Map.of()));
 
         talentApi.convertLink("https://example.com", "12345678901234567890");
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instPickSourceConvert"), captor.capture());
         Object pickExtra = captor.getValue().get("pick_extra");
         assertThat(pickExtra).isInstanceOf(String.class);

@@ -1,5 +1,7 @@
 package com.colonel.saas.controller;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.douyin.DouyinApiException;
@@ -8,11 +10,13 @@ import com.colonel.saas.douyin.api.ActivityApi;
 import com.colonel.saas.douyin.api.OrderApi;
 import com.colonel.saas.douyin.api.ProductApi;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -47,6 +51,8 @@ class DouyinControllerTest {
     private DouyinController controller;
     private MockMvc mockMvc;
     private ObjectMapper objectMapper;
+    private Logger controllerLogger;
+    private Level originalLevel;
 
     @BeforeEach
     void setUp() {
@@ -55,6 +61,14 @@ class DouyinControllerTest {
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
         objectMapper = new ObjectMapper();
+        controllerLogger = (Logger) LoggerFactory.getLogger(DouyinController.class);
+        originalLevel = controllerLogger.getLevel();
+        controllerLogger.setLevel(Level.OFF);
+    }
+
+    @AfterEach
+    void restoreLogger() {
+        controllerLogger.setLevel(originalLevel);
     }
 
     @Test

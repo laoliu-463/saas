@@ -1,4 +1,4 @@
-package com.colonel.saas.gateway.douyin.mock;
+package com.colonel.saas.gateway.douyin.test;
 
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.PickSourceMappingService;
@@ -8,12 +8,12 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 @Component
-@ConditionalOnProperty(name = "douyin.mock.enabled", havingValue = "true")
-public class MockDouyinPromotionGateway implements DouyinPromotionGateway {
+@ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "true")
+public class TestDouyinPromotionGateway implements DouyinPromotionGateway {
 
     private final PickSourceMappingService pickSourceMappingService;
 
-    public MockDouyinPromotionGateway(PickSourceMappingService pickSourceMappingService) {
+    public TestDouyinPromotionGateway(PickSourceMappingService pickSourceMappingService) {
         this.pickSourceMappingService = pickSourceMappingService;
     }
 
@@ -28,8 +28,8 @@ public class MockDouyinPromotionGateway implements DouyinPromotionGateway {
         String shortId = "MOCK" + suffix.substring(0, Math.min(6, suffix.length()));
         String pickSource = shortId;
         String pickExtra = shortId;
-        String shortLink = "https://mock.short.link/" + shortId;
-        String promoteLink = "https://mock.promote.link/activity/" + activityId + "/product/" + productId + "?pick_source=" + pickSource;
+        String shortLink = "https://test.short.link/" + shortId;
+        String promoteLink = "https://test.promote.link/activity/" + activityId + "/product/" + productId + "?pick_source=" + pickSource;
 
         if (command.context() != null && command.context().userId() != null) {
             pickSourceMappingService.saveOrUpdate(
@@ -60,3 +60,5 @@ public class MockDouyinPromotionGateway implements DouyinPromotionGateway {
         );
     }
 }
+
+

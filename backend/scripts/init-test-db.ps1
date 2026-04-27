@@ -1,9 +1,9 @@
-param(
+﻿param(
     [string]$DbHost = "localhost",
     [int]$DbPort = 5432,
     [string]$DbUser = "saas",
     [string]$DbPassword = "saas123",
-    [string]$DbName = "colonel_saas_mock",
+    [string]$DbName = "colonel_saas_test",
     [switch]$Recreate
 )
 
@@ -29,6 +29,6 @@ if (-not $exists) {
 }
 
 & $psql -h $DbHost -p $DbPort -U $DbUser -d $DbName -v ON_ERROR_STOP=1 -f (Join-Path $root "src\main\resources\db\init-db.sql")
-& $psql -h $DbHost -p $DbPort -U $DbUser -d $DbName -v ON_ERROR_STOP=1 -f (Join-Path $root "src\main\resources\db\local-mock\schema.sql")
+& $psql -h $DbHost -p $DbPort -U $DbUser -d $DbName -v ON_ERROR_STOP=1 -f (Join-Path $root "src\main\resources\db\test\schema.sql")
 
-Write-Host "local-mock database ready:" $DbName
+Write-Host "test database ready:" $DbName

@@ -1,4 +1,4 @@
-package com.colonel.saas.gateway.douyin.mock;
+package com.colonel.saas.gateway.douyin.test;
 
 import com.colonel.saas.gateway.douyin.DouyinColonelActivityGateway;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -10,12 +10,12 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-@ConditionalOnProperty(name = "douyin.mock.enabled", havingValue = "true")
-public class MockDouyinColonelActivityGateway implements DouyinColonelActivityGateway {
+@ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "true")
+public class TestDouyinColonelActivityGateway implements DouyinColonelActivityGateway {
 
     @Override
     public ActivityListResult listActivities(ActivityListQuery query) {
-        List<ActivityItem> source = buildMockActivities();
+        List<ActivityItem> source = buildTestActivities();
         List<ActivityItem> filtered = source.stream()
                 .filter(item -> query.status() == null || query.status() == 0 || item.status() == query.status())
                 .filter(item -> matchesKeyword(item, query.activityInfo()))
@@ -50,8 +50,8 @@ public class MockDouyinColonelActivityGateway implements DouyinColonelActivityGa
             int shopIndex = (rank + shopOffset) % 9;
             all.add(new ActivityProductItem(
                     productId,
-                    "Mock活动商品-" + i,
-                    "https://example.com/mock-product-" + i + ".png",
+                    buildProductTitle(i, rank),
+                    "https://example.com/test-product-" + i + ".png",
                     price,
                     String.format(java.util.Locale.ROOT, "%.2f", price / 100.0),
                     10L + (rank % 20),
@@ -59,25 +59,25 @@ public class MockDouyinColonelActivityGateway implements DouyinColonelActivityGa
                     1000L + (rank % 20) * 100L,
                     (10 + (rank % 20)) + "%",
                     rank % 2,
-                    rank % 2 == 1 ? "双佣金" : "固定佣金",
+                    rank % 2 == 1 ? "阶梯佣金" : "固定服务费率",
                     rank % 2 == 1 ? String.valueOf(8 + (seedOffset % 4)) : null,
                     rank % 2 == 1 ? Long.valueOf(6 + (seedOffset % 5)) : null,
                     rank % 3 == 0,
                     rank % 5 != 0,
                     200L + rank * 3L + seedOffset * 5L,
                     800000L + shopIndex,
-                    "Mock店铺-" + shopIndex,
+                    buildShopName(shopIndex),
                     "4." + (70 + (rank % 20)),
                     itemStatus,
                     productStatusText(itemStatus),
-                    rank % 2 == 0 ? "美妆个护" : "女装",
+                    rank % 2 == 0 ? "美妆个护" : "女装穿搭",
                     String.valueOf(Math.max(1000 - rank, 0)),
-                    i % 2 == 0 ? "满100减20" : "满200减40",
+                    i % 2 == 0 ? "满199减20" : "满299减40",
                     String.format("2026-04-%02d", 1 + (seedOffset % 9)),
                     String.format("2026-05-%02d", 10 + (seedOffset % 9)),
                     String.format("2026-04-%02d", 1 + (seedOffset % 9)),
                     String.format("2026-05-%02d", 10 + (seedOffset % 9)),
-                    "https://example.com/mock-detail/" + productId
+                    "https://example.com/test-detail/" + productId
             ));
         }
         List<ActivityProductItem> filtered = all.stream()
@@ -103,10 +103,10 @@ public class MockDouyinColonelActivityGateway implements DouyinColonelActivityGa
                 mode == 0L ? Long.valueOf(filtered.size()) : null, nextCursor, items);
     }
 
-    private List<ActivityItem> buildMockActivities() {
+    private List<ActivityItem> buildTestActivities() {
         List<ActivityItem> activities = new ArrayList<>();
         int[] statusCycle = {1, 2, 3, 4, 5, 7};
-        String[] categoryCycle = {"美妆个护", "女装", "家用电器", "食品饮料", "母婴用品", "运动户外"};
+        String[] categoryCycle = {"美妆个护", "女装穿搭", "家用电器", "食品饮料", "母婴用品", "运动户外"};
         String[] nameCycle = {"春季上新", "夏季爆款", "秋季清仓", "双11预热", "年货节", "新品招商"};
         for (int i = 1; i <= 36; i++) {
             int status = statusCycle[(i - 1) % statusCycle.length];
@@ -114,7 +114,7 @@ public class MockDouyinColonelActivityGateway implements DouyinColonelActivityGa
             int day = ((i - 1) % 20) + 1;
             activities.add(new ActivityItem(
                     100000L + i,
-                    nameCycle[(i - 1) % nameCycle.length] + "活动-" + i,
+                    nameCycle[(i - 1) % nameCycle.length] + "-渠道演示活动-" + i,
                     String.format("2026-%02d-%02d 00:00:00", month, day),
                     String.format("2026-%02d-%02d 23:59:59", month, Math.min(day + 10, 28)),
                     status,
@@ -147,6 +147,27 @@ public class MockDouyinColonelActivityGateway implements DouyinColonelActivityGa
             comparator = Comparator.comparing(ActivityItem::activityStartTime, Comparator.nullsLast(String::compareTo));
         }
         return sortType != null && sortType == 0L ? comparator : comparator.reversed();
+    }
+
+    private String buildProductTitle(int index, int rank) {
+        String[] prefixes = {"活动演示商品", "招商主推商品", "寄样联动商品", "订单归因商品"};
+        String[] suffixes = {"高佣款", "基础款", "冲量款", "复购款"};
+        return prefixes[index % prefixes.length] + "-" + suffixes[rank % suffixes.length] + "-" + index;
+    }
+
+    private String buildShopName(int shopIndex) {
+        String[] shopNames = {
+                "活动店铺-美妆馆",
+                "活动店铺-女装馆",
+                "活动店铺-母婴馆",
+                "活动店铺-数码馆",
+                "活动店铺-食品馆",
+                "活动店铺-家清馆",
+                "活动店铺-家电馆",
+                "活动店铺-日用馆",
+                "活动店铺-运动馆"
+        };
+        return shopNames[Math.floorMod(shopIndex, shopNames.length)];
     }
 
     private int parseCursor(String cursor) {
@@ -195,3 +216,5 @@ public class MockDouyinColonelActivityGateway implements DouyinColonelActivityGa
         };
     }
 }
+
+

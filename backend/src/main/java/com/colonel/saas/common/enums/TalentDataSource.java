@@ -5,10 +5,11 @@ package com.colonel.saas.common.enums;
  * OFFICIAL_API > MANUAL > INTERNAL_BUSINESS > THIRD_PARTY > PUBLIC_PAGE
  */
 public enum TalentDataSource {
-    MOCK,
+    TEST,
     OFFICIAL_API,
     MANUAL,
     INTERNAL_BUSINESS,
     THIRD_PARTY,
     PUBLIC_PAGE
 }
+

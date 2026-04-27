@@ -1,5 +1,61 @@
 import request from '../utils/request';
 
+export interface OrderDetail {
+  orderId: string
+  orderStatus?: number | null
+  orderStatusText?: string | null
+  attributionStatus?: string | null
+  attributionStatusText?: string | null
+  attributionRemark?: string | null
+  pickSource?: string | null
+  product?: {
+    productId?: string | null
+    productName?: string | null
+    activityId?: string | null
+    activityName?: string | null
+    colonelUserId?: string | null
+    colonelName?: string | null
+  }
+  channel?: {
+    channelUserId?: string | null
+    channelName?: string | null
+  }
+  talent?: {
+    talentId?: string | null
+    talentUid?: string | null
+    authorId?: string | null
+    talentName?: string | null
+  }
+  amount?: {
+    orderAmount?: number | null
+    serviceFee?: number | null
+  }
+  promotion?: {
+    matched: boolean
+    pickSource?: string | null
+    promotionUrl?: string | null
+    mappingId?: string | null
+    createdAt?: string | null
+  }
+  sample?: {
+    matched: boolean
+    sampleRequestId?: string | null
+    sampleStatus?: string | null
+    sampleStatusText?: string | null
+    completedByOrderRule?: boolean
+  }
+  diagnosis?: {
+    reasonCode?: string | null
+    reasonText?: string | null
+    suggestion?: string | null
+  }
+  time?: {
+    createTime?: string | null
+    settleTime?: string | null
+    syncTime?: string | null
+  }
+}
+
 export function syncOrders(startTime: string, endTime: string) {
   return request.post('/orders/sync', { startTime, endTime });
 }
@@ -18,6 +74,10 @@ export function getOrderStats(params?: any) {
 
 export function getOrderFilterOptions(params?: any) {
   return request.get('/orders/filter-options', { params });
+}
+
+export function getOrderDetail(orderId: string): Promise<OrderDetail> {
+  return request.get(`/orders/${orderId}`).then((res: any) => res.data as OrderDetail)
 }
 
 /** @deprecated use syncOrders instead */

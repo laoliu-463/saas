@@ -25,16 +25,16 @@ public class DoudianTokenGateway {
     private static final Logger log = LoggerFactory.getLogger(DoudianTokenGateway.class);
 
     private final DouyinConfig douyinConfig;
-    @Value("${douyin.mock.enabled:false}")
-    private boolean mockEnabled;
+    @Value("${douyin.test.enabled:false}")
+    private boolean testEnabled;
 
     public DoudianTokenGateway(DouyinConfig douyinConfig) {
         this.douyinConfig = douyinConfig;
     }
 
     public TokenPayload createToken(TokenCreateCommand command) {
-        if (mockEnabled) {
-            throw new BusinessException("mock mode enabled: token gateway external call is blocked");
+        if (testEnabled) {
+            throw new BusinessException("test mode enabled: token gateway external call is blocked");
         }
         initSdkConfig();
         TokenCreateRequest request = new TokenCreateRequest();
@@ -83,8 +83,8 @@ public class DoudianTokenGateway {
     }
 
     public TokenPayload refreshToken(String refreshToken) {
-        if (mockEnabled) {
-            throw new BusinessException("mock mode enabled: token gateway external call is blocked");
+        if (testEnabled) {
+            throw new BusinessException("test mode enabled: token gateway external call is blocked");
         }
         initSdkConfig();
         TokenRefreshRequest request = new TokenRefreshRequest();
@@ -216,3 +216,4 @@ public class DoudianTokenGateway {
         }
     }
 }
+

@@ -15,12 +15,12 @@ import java.util.Map;
 
 @Component
 @Order(1)
-@ConditionalOnProperty(prefix = "talent.enrich", name = "mode", havingValue = "mock")
-public class MockTalentProvider implements TalentDataProvider {
+@ConditionalOnProperty(prefix = "talent.enrich", name = "mode", havingValue = "test")
+public class TestTalentProvider implements TalentDataProvider {
 
     @Override
     public TalentDataSource source() {
-        return TalentDataSource.MOCK;
+        return TalentDataSource.TEST;
     }
 
     @Override
@@ -38,29 +38,29 @@ public class MockTalentProvider implements TalentDataProvider {
         Talent talent = context.talent();
         String input = resolveInput(talent).toLowerCase();
 
-        if (input.contains("mock_fail")) {
-            throw new IllegalStateException("mock provider simulated failure");
+        if (input.contains("test_fail")) {
+            throw new IllegalStateException("test provider simulated failure");
         }
-        if (input.contains("mock_empty")) {
-            return TalentEnrichResult.empty(source(), "mock provider returns empty data");
+        if (input.contains("test_empty")) {
+            return TalentEnrichResult.empty(source(), "test provider returns empty data");
         }
 
         Map<String, Object> fields = new LinkedHashMap<>();
         long seed = Math.abs(resolveInput(talent).hashCode());
-        fields.put("nickname", "Mock达人" + (seed % 1000));
-        fields.put("avatarUrl", "https://mock.local/avatar/" + (seed % 100) + ".png");
+        fields.put("nickname", "演示达人-" + (seed % 1000));
+        fields.put("avatarUrl", "https://test.local/avatar/" + (seed % 100) + ".png");
         fields.put("fans", 10_000L + (seed % 900_000L));
         fields.put("likesCount", 100_000L + (seed % 9_000_000L));
         fields.put("followingCount", 100L + (seed % 2000L));
         fields.put("worksCount", 10L + (seed % 500L));
-        fields.put("ipLocation", mockRegion(seed));
+        fields.put("ipLocation", testRegion(seed));
 
-        if (input.contains("mock_partial")) {
+        if (input.contains("test_partial")) {
             fields.remove("ipLocation");
             fields.remove("followingCount");
         }
 
-        return TalentEnrichResult.of(source(), fields, "mock provider data generated");
+        return TalentEnrichResult.of(source(), fields, "test provider generated demo talent data");
     }
 
     private String resolveInput(Talent talent) {
@@ -79,12 +79,13 @@ public class MockTalentProvider implements TalentDataProvider {
         if (StringUtils.hasText(talent.getProfileUrl())) {
             return talent.getProfileUrl().trim();
         }
-        return "mock_default";
+        return "test_default";
     }
 
-    private String mockRegion(long seed) {
-        String[] regions = {"广东", "浙江", "江苏", "上海", "北京", "山东"};
+    private String testRegion(long seed) {
+        String[] regions = {"广东深圳", "浙江杭州", "江苏南京", "上海浦东", "北京朝阳", "山东青岛"};
         return regions[(int) (seed % regions.length)];
     }
 }
+
 

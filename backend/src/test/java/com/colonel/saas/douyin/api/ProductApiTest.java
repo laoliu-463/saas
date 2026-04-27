@@ -22,6 +22,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ProductApiTest {
 
+    @SuppressWarnings("unchecked")
+    private static ArgumentCaptor<Map<String, Object>> mapCaptor() {
+        return (ArgumentCaptor<Map<String, Object>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Map.class);
+    }
+
     @Mock
     private DouyinApiClient douyinApiClient;
 
@@ -35,7 +40,7 @@ class ProductApiTest {
 
         productApi.listActivities("app-1", null, null, null, null, null, null);
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("alliance.instituteColonelActivityList"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("appId")).isEqualTo("app-1");
@@ -65,7 +70,7 @@ class ProductApiTest {
 
         productApi.listProductsByActivity("app-1", "12345", 500, "bad");
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("alliance.colonelActivityProduct"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("appId")).isEqualTo("app-1");
@@ -84,7 +89,7 @@ class ProductApiTest {
 
         productApi.listProductsByActivity("app-1", "12345", null, null);
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("alliance.colonelActivityProduct"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("count")).isEqualTo(20);
@@ -105,7 +110,7 @@ class ProductApiTest {
 
         productApi.materialsProductStatus("app-1", List.of("https://haohuo.jinritemai.com/views/product/detail?id=1"));
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).postWithoutAuth(eq("buyin.materialsProductStatus"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("appId")).isEqualTo("app-1");

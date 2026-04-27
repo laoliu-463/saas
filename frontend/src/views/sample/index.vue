@@ -1,72 +1,83 @@
 <template>
-  <div class="sample-index">
-    <div class="sample-toolbar">
+  <div class="sample-page">
+    <PageHeader title="寄样台" description="跟踪寄样申请、审核、发货、签收和交作业完成状态。">
+      <template #actions>
+        <n-button :loading="loading" type="primary" @click="fetchData">刷新列表</n-button>
+      </template>
+    </PageHeader>
+
+    <div class="filter-bar">
       <n-space>
-        <n-button v-if="canApply" type="primary" size="small" @click="showCreateModal = true">新建寄样申请</n-button>
-        <n-button size="small" :loading="loading" @click="fetchData">刷新寄样</n-button>
+        <n-input v-model:value="filters.keyword" placeholder="搜达人 / 商品" style="width: 240px" />
+        <n-select
+          v-model:value="filters.status"
+          :options="statusOptions"
+          placeholder="寄样状态"
+          clearable
+          style="width: 160px"
+        />
+        <n-button type="primary" @click="fetchData">搜索</n-button>
       </n-space>
     </div>
 
-    <div class="sample-table-card">
-      <n-tabs v-model:value="activeTab" type="line" animated @update:value="handleTabChange">
-        <n-tab-pane v-for="tab in tabList" :key="tab.value" :name="tab.value" :tab="tab.label">
-          <n-data-table
-            remote
-            :columns="columns"
-            :data="data"
-            :loading="loading"
-            :pagination="pagination"
-            @update:page="handlePageChange"
-            @update:page-size="handlePageSizeChange"
-          />
-        </n-tab-pane>
-      </n-tabs>
-    </div>
+    <n-card :bordered="false" class="main-card">
+      <n-data-table
+        remote
+        :columns="columns"
+        :data="data"
+        :loading="loading"
+        :pagination="pagination"
+        :row-key="(row: any) => row.id"
+        @update:page="handlePageChange"
+      />
+    </n-card>
 
-    <SampleCreateModal v-model:show="showCreateModal" @success="handleCreateSuccess" />
-    <SampleDetail v-model:show="showDetail" :sample-id="currentSampleId" @refresh="fetchData" />
+    <n-modal v-model:show="showLogistics" preset="dialog" title="填写物流单号">
+      <n-form-item label="快递公司" required>
+        <n-select
+          v-model:value="logisticsForm.company"
+          :options="[
+            { label: '顺丰速运', value: 'SF' },
+            { label: '中通快递', value: 'ZTO' },
+            { label: '圆通速递', value: 'YTO' }
+          ]"
+        />
+      </n-form-item>
+      <n-form-item label="快递单号" required>
+        <n-input v-model:value="logisticsForm.no" placeholder="输入真实单号或测试单号" />
+      </n-form-item>
+      <template #action>
+        <n-button @click="showLogistics = false">取消</n-button>
+        <n-button type="primary" :loading="submitLoading" @click="submitLogistics">确认发货</n-button>
+      </template>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { h, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { NButton, NPopconfirm, NTag, useDialog, useMessage } from 'naive-ui'
-import { actionSample, deleteSample, getSamplePage } from '../../api/sample'
-import { mockShipSample, mockSignSample } from '../../api/mock'
-import { ROLE_CODES } from '../../constants/rbac'
-import { getSampleStatusText, getSampleStatusType } from '../../constants/sampleStatus'
-import { useAuthStore } from '../../stores/auth'
-import { isMockEnv } from '../../utils/env'
-import SampleCreateModal from './components/SampleCreateModal.vue'
-import SampleDetail from './SampleDetail.vue'
+import { h, onMounted, reactive, ref } from 'vue'
+import { NButton, NSpace, useMessage } from 'naive-ui'
+import PageHeader from '../../components/PageHeader.vue'
+import StatusTag from '../../components/StatusTag.vue'
+import request from '../../utils/request'
+import { testShipSample, testSignSample } from '../../api/test'
 
 const message = useMessage()
-const dialog = useDialog()
-const authStore = useAuthStore()
-
-const canApply =
-  authStore.isAdmin ||
-  authStore.roleCodes.includes(ROLE_CODES.CHANNEL_LEADER) ||
-  authStore.roleCodes.includes(ROLE_CODES.CHANNEL_STAFF)
-
-const canAudit = authStore.isAdmin || authStore.isLeader
-
 const loading = ref(false)
-const activeTab = ref('PENDING_AUDIT')
-const data = ref<any[]>([])
-const showDetail = ref(false)
-const showCreateModal = ref(false)
-const currentSampleId = ref('')
+const submitLoading = ref(false)
+const showLogistics = ref(false)
+const data = ref([])
+const currentId = ref<string | null>(null)
 
-const tabList = [
-  { label: '待审核', value: 'PENDING_AUDIT' },
-  { label: '待发货', value: 'PENDING_SHIP' },
-  { label: '快递中', value: 'SHIPPED' },
-  { label: '待交作业', value: 'PENDING_TASK' },
-  { label: '已完成', value: 'FINISHED' },
-  { label: '已拒绝', value: 'REJECTED' },
-  { label: '已关闭', value: 'CLOSED' }
-]
+const filters = reactive({
+  keyword: '',
+  status: null
+})
+
+const logisticsForm = reactive({
+  company: 'SF',
+  no: ''
+})
 
 const pagination = reactive({
   page: 1,
@@ -76,260 +87,120 @@ const pagination = reactive({
   pageSizes: [10, 20, 50]
 })
 
-function formatDateTime(value?: string) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN', { hour12: false })
-}
+const statusOptions = [
+  { label: '待审核', value: 'PENDING_AUDIT' },
+  { label: '待发货', value: 'PENDING_SHIP' },
+  { label: '快递中', value: 'SHIPPED' },
+  { label: '待交作业', value: 'PENDING_TASK' },
+  { label: '已完成', value: 'FINISHED' },
+  { label: '已拒绝', value: 'REJECTED' }
+]
 
-function openDetail(row: any) {
-  currentSampleId.value = row.id
-  showDetail.value = true
-}
-
-async function handleMockLogistics(id: string, type: 'ship' | 'sign') {
-  try {
-    if (type === 'ship') {
-      await mockShipSample(id)
-      message.success('模拟发货成功')
-    } else {
-      await mockSignSample(id)
-      message.success('模拟签收成功')
+const columns = [
+  { title: '申请时间', key: 'createTime', width: 160 },
+  { title: '商品名称', key: 'productName', minWidth: 180, render: (row: any) => row.productName || '-' },
+  { title: '达人名称', key: 'talentName', width: 140 },
+  {
+    title: '状态',
+    key: 'status',
+    width: 120,
+    render: (row: any) => h(StatusTag, { status: row.status, scene: 'sample' })
+  },
+  {
+    title: '物流单号',
+    key: 'trackingNo',
+    width: 180,
+    render: (row: any) => (row.trackingNo ? `${row.logisticsCompany || ''} ${row.trackingNo}` : '-')
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 240,
+    fixed: 'right',
+    render: (row: any) => {
+      return h(NSpace, null, {
+        default: () => [
+          row.status === 'PENDING_AUDIT' && h(NButton, { size: 'small', quaternary: true, type: 'primary', onClick: () => handleAudit(row, 'APPROVED') }, { default: () => '通过' }),
+          row.status === 'PENDING_AUDIT' && h(NButton, { size: 'small', quaternary: true, type: 'error', onClick: () => handleAudit(row, 'REJECTED') }, { default: () => '拒绝' }),
+          row.status === 'PENDING_SHIP' && h(NButton, { size: 'small', quaternary: true, type: 'info', onClick: () => openLogistics(row) }, { default: () => '填写单号' }),
+          row.status === 'SHIPPED' && h(NButton, { size: 'small', quaternary: true, type: 'success', onClick: () => handleSign(row) }, { default: () => '模拟签收' })
+        ]
+      })
     }
-    await fetchData()
-  } catch (error: any) {
-    message.error(error?.message || '操作失败')
   }
-}
+]
 
-async function handleApprove(id: string) {
-  try {
-    await actionSample(id, { action: 'APPROVED' })
-    message.success('审核通过，寄样单已进入待发货')
-    await fetchData()
-  } catch (error: any) {
-    message.error(error?.message || '审核通过失败')
-  }
-}
-
-function handleReject(id: string) {
-  let reason = ''
-  dialog.warning({
-    title: '拒绝寄样申请',
-    content: () =>
-      h('div', { style: 'display: flex; flex-direction: column; gap: 8px;' }, [
-        h('div', null, '请填写拒绝原因'),
-        h('input', {
-          style: 'padding: 8px 10px; border: 1px solid #d9d9d9; border-radius: 6px;',
-          placeholder: '例如：商品不符合当前合作计划',
-          onInput: (event: any) => {
-            reason = event?.target?.value || ''
-          }
-        })
-      ]),
-    positiveText: '确认拒绝',
-    negativeText: '取消',
-    positiveButtonProps: { type: 'error' },
-    async onPositiveClick() {
-      if (!reason.trim()) {
-        message.warning('请先填写拒绝原因')
-        throw new Error('missing reason')
-      }
-      try {
-        await actionSample(id, { action: 'REJECTED', reason: reason.trim() })
-        message.success('寄样单已拒绝')
-        await fetchData()
-      } catch (error: any) {
-        message.error(error?.message || '拒绝操作失败')
-        throw error
-      }
-    }
-  })
-}
-
-async function fetchData() {
+const fetchData = async () => {
   loading.value = true
   try {
-    const res = await getSamplePage({
-      page: pagination.page,
-      size: pagination.pageSize,
-      status: activeTab.value
+    const res: any = await request.get('/samples', {
+      params: {
+        page: pagination.page,
+        size: pagination.pageSize,
+        keyword: filters.keyword || undefined,
+        status: filters.status || undefined
+      }
     })
-    const responseData = res?.data || res
-    data.value = Array.isArray(responseData?.records) ? responseData.records : []
-    pagination.itemCount = Number(responseData?.total || 0)
-  } catch (error: any) {
-    data.value = []
-    pagination.itemCount = 0
-    message.error(error?.message || '获取寄样列表失败')
+    data.value = res.data.records || []
+    pagination.itemCount = res.data.total || 0
+  } catch (err: any) {
+    message.error('加载数据失败')
   } finally {
     loading.value = false
   }
 }
 
-function handleTabChange() {
-  pagination.page = 1
-  fetchData()
-}
-
-function handlePageChange(page: number) {
+const handlePageChange = (page: number) => {
   pagination.page = page
   fetchData()
 }
 
-function handlePageSizeChange(pageSize: number) {
-  pagination.pageSize = pageSize
-  pagination.page = 1
-  fetchData()
-}
-
-async function doDeleteSample(id: string) {
+const handleAudit = async (row: any, status: string) => {
   try {
-    await deleteSample(id)
-    message.success('寄样单删除成功')
-    await fetchData()
-  } catch (error: any) {
-    message.error(error?.message || '删除失败')
-  }
-}
-
-function handleCreateSuccess() {
-  activeTab.value = 'PENDING_AUDIT'
-  pagination.page = 1
-  fetchData()
-}
-
-const columns = [
-  { title: '寄样单 ID', key: 'id', width: 240 },
-  { title: '寄样编号', key: 'requestNo', width: 180, render: (row: any) => row.requestNo || '-' },
-  { title: '商品名称', key: 'productName', minWidth: 180, render: (row: any) => row.productName || '-' },
-  { title: '达人昵称', key: 'talentName', minWidth: 140, render: (row: any) => row.talentName || '-' },
-  { title: '渠道名称', key: 'channelUserName', minWidth: 150, render: (row: any) => row.channelUserName || '-' },
-  { title: '招商负责人', key: 'colonelUserName', minWidth: 150, render: (row: any) => row.colonelUserName || '-' },
-  {
-    title: '当前状态',
-    key: 'status',
-    width: 120,
-    render: (row: any) => h(NTag, { type: getSampleStatusType(row.status) }, { default: () => getSampleStatusText(row.status) })
-  },
-  { title: '物流单号', key: 'trackingNo', minWidth: 180, render: (row: any) => row.trackingNo || '-' },
-  { title: '申请时间', key: 'createTime', width: 180, render: (row: any) => formatDateTime(row.createTime) },
-  { title: '更新时间', key: 'updateTime', width: 180, render: (row: any) => formatDateTime(row.updateTime || row.createTime) },
-  { title: '完成时间', key: 'completeTime', width: 180, render: (row: any) => formatDateTime(row.completeTime) },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 360,
-    render(row: any) {
-      const actions = [
-        h(
-          NButton,
-          { size: 'small', type: 'info', onClick: () => openDetail(row) },
-          { default: () => '详情' }
-        )
-      ]
-
-      if (canAudit && row.status === 'PENDING_AUDIT') {
-        actions.push(
-          h(NButton, { size: 'small', type: 'success', onClick: () => handleApprove(row.id) }, { default: () => '审核通过' }),
-          h(NButton, { size: 'small', type: 'error', ghost: true, onClick: () => handleReject(row.id) }, { default: () => '拒绝' })
-        )
-      }
-
-      if (isMockEnv && row.status === 'PENDING_SHIP') {
-        actions.push(
-          h(
-            NButton,
-            { size: 'small', type: 'primary', ghost: true, onClick: () => handleMockLogistics(row.id, 'ship') },
-            { default: () => '模拟发货' }
-          )
-        )
-      }
-
-      if (isMockEnv && row.status === 'SHIPPED') {
-        actions.push(
-          h(
-            NButton,
-            { size: 'small', type: 'success', ghost: true, onClick: () => handleMockLogistics(row.id, 'sign') },
-            { default: () => '模拟签收' }
-          )
-        )
-      }
-
-      if (row.status === 'PENDING_TASK') {
-        actions.push(h(NTag, { type: 'info', bordered: false }, { default: () => '等待出单' }))
-      }
-
-      if (row.status === 'FINISHED') {
-        actions.push(h(NTag, { type: 'success', bordered: false }, { default: () => '已完成' }))
-      }
-
-      if (row.status === 'REJECTED') {
-        actions.push(
-          h(
-            NButton,
-            {
-              size: 'small',
-              quaternary: true,
-              onClick: () => message.info(row.rejectReason || '未填写拒绝原因')
-            },
-            { default: () => '查看拒绝原因' }
-          )
-        )
-      }
-
-      if (row.status === 'CLOSED') {
-        actions.push(h(NTag, { bordered: false }, { default: () => '已关闭' }))
-      }
-
-      if (row.status === 'PENDING_AUDIT' || row.status === 'REJECTED') {
-        actions.push(
-          h(
-            NPopconfirm,
-            { onPositiveClick: () => doDeleteSample(row.id) },
-            {
-              trigger: () => h(NButton, { size: 'small', type: 'error' }, { default: () => '删除' }),
-              default: () => '确认删除这条寄样记录？'
-            }
-          )
-        )
-      }
-
-      return h('div', { style: 'display: flex; gap: 8px; flex-wrap: wrap;' }, actions)
-    }
-  }
-]
-
-function handleVisibilityChange() {
-  if (document.visibilityState === 'visible') {
+    await request.put(`/samples/${row.id}/status`, { status })
+    message.success('操作成功')
     fetchData()
+  } catch (err: any) {
+    message.error('操作失败')
   }
 }
 
-onMounted(() => {
-  fetchData()
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-})
+const openLogistics = (row: any) => {
+  currentId.value = row.id
+  logisticsForm.no = `TEST${Date.now()}`
+  showLogistics.value = true
+}
 
-onUnmounted(() => {
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
-})
+const submitLogistics = async () => {
+  if (!currentId.value) return
+  submitLoading.value = true
+  try {
+    await testShipSample(currentId.value)
+    message.success('已模拟发货')
+    showLogistics.value = false
+    fetchData()
+  } catch (err: any) {
+    message.error('发货失败')
+  } finally {
+    submitLoading.value = false
+  }
+}
+
+const handleSign = async (row: any) => {
+  try {
+    await testSignSample(row.id)
+    message.success('已模拟签收')
+    fetchData()
+  } catch (err: any) {
+    message.error('操作失败')
+  }
+}
+
+onMounted(fetchData)
 </script>
 
 <style scoped>
-.sample-index {
-  max-width: 100%;
-}
-
-.sample-toolbar {
-  margin-bottom: var(--spacing-md);
-}
-
-.sample-table-card {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 4px 16px 16px;
-  box-shadow: var(--shadow-card);
-}
+.sample-page { padding: 24px; }
+.filter-bar { margin-bottom: 16px; background: #fff; padding: 16px; border-radius: 8px; }
+.main-card { border-radius: 8px; }
 </style>

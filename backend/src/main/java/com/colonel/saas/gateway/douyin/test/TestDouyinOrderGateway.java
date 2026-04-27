@@ -1,4 +1,4 @@
-package com.colonel.saas.gateway.douyin.mock;
+package com.colonel.saas.gateway.douyin.test;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.entity.PickSourceMapping;
@@ -14,12 +14,12 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-@ConditionalOnProperty(name = "douyin.mock.enabled", havingValue = "true")
-public class MockDouyinOrderGateway implements DouyinOrderGateway {
+@ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "true")
+public class TestDouyinOrderGateway implements DouyinOrderGateway {
 
     private final PickSourceMappingMapper pickSourceMappingMapper;
 
-    public MockDouyinOrderGateway(PickSourceMappingMapper pickSourceMappingMapper) {
+    public TestDouyinOrderGateway(PickSourceMappingMapper pickSourceMappingMapper) {
         this.pickSourceMappingMapper = pickSourceMappingMapper;
     }
 
@@ -37,7 +37,7 @@ public class MockDouyinOrderGateway implements DouyinOrderGateway {
 
         if (latestMapping != null) {
             Map<String, Object> raw = new LinkedHashMap<>();
-            raw.put("product_name", "Mock归因订单商品");
+            raw.put("product_name", "主演示商品-已转链出单");
             raw.put("colonel_activity_id", latestMapping.getActivityId());
             raw.put("pick_source", latestMapping.getPickSource());
             raw.put("pick_extra", latestMapping.getPickExtra());
@@ -49,7 +49,7 @@ public class MockDouyinOrderGateway implements DouyinOrderGateway {
                     latestMapping.getProductId(),
                     latestMapping.getProductId(),
                     "800001",
-                    "Mock商家A",
+                    "主演示商家-归因成功",
                     latestMapping.getTalentId(),
                     latestMapping.getTalentName(),
                     latestMapping.getPickSource(),
@@ -63,19 +63,19 @@ public class MockDouyinOrderGateway implements DouyinOrderGateway {
         }
 
         Map<String, Object> unknownRaw = new LinkedHashMap<>();
-        unknownRaw.put("product_name", "Mock未归因订单商品");
+        unknownRaw.put("product_name", "排查演示商品-推广映射缺失");
         unknownRaw.put("merchant_id", "M_002");
         unknownRaw.put("pick_source", "UNKNOWN_PICK_SOURCE");
         unknownRaw.put("pick_extra", "UNKNOWN_PICK_SOURCE");
-        unknownRaw.put("talent_uid", "talent_mock_b");
+        unknownRaw.put("talent_uid", "talent_test_b");
         orders.add(new DouyinOrderItem(
                 "MOCK_ORD_UNATTR_1",
                 "EXT_P2",
                 latestMapping != null ? latestMapping.getProductId() : "1002",
                 "800002",
-                "Mock商家B",
+                "排查演示商家-映射缺失",
                 "T_002",
-                "达人小王",
+                "达人B-映射缺失订单",
                 "UNKNOWN_PICK_SOURCE",
                 5900L,
                 800L,
@@ -86,17 +86,17 @@ public class MockDouyinOrderGateway implements DouyinOrderGateway {
         ));
 
         Map<String, Object> noPickRaw = new LinkedHashMap<>();
-        noPickRaw.put("product_name", "Mock无归因码订单商品");
+        noPickRaw.put("product_name", "排查演示商品-未带推广参数");
         noPickRaw.put("merchant_id", "M_003");
-        noPickRaw.put("talent_uid", "talent_mock_c");
+        noPickRaw.put("talent_uid", "talent_test_c");
         orders.add(new DouyinOrderItem(
                 "MOCK_ORD_UNATTR_2",
                 "EXT_P3",
                 latestMapping != null ? latestMapping.getProductId() : "1003",
                 "800003",
-                "Mock商家C",
+                "排查演示商家-未带推广参数",
                 "T_003",
-                "达人小李",
+                "达人C-他人已认领",
                 null,
                 12900L,
                 2000L,
@@ -110,7 +110,7 @@ public class MockDouyinOrderGateway implements DouyinOrderGateway {
                 orders,
                 false,
                 "0",
-                Map.of("mock", true, "order_count", orders.size())
+                Map.of("test", true, "order_count", orders.size())
         );
     }
 
@@ -125,3 +125,5 @@ public class MockDouyinOrderGateway implements DouyinOrderGateway {
         return Map.of("err_no", 0, "data", Map.of("list", List.of()));
     }
 }
+
+

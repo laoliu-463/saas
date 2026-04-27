@@ -1,4 +1,4 @@
-package com.colonel.saas.gateway.logistics.mock;
+package com.colonel.saas.gateway.logistics.test;
 
 import com.colonel.saas.gateway.logistics.LogisticsGateway;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -8,8 +8,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 @Component
-@ConditionalOnProperty(prefix = "app.mock", name = "enabled", havingValue = "true")
-public class MockLogisticsGateway implements LogisticsGateway {
+@ConditionalOnProperty(prefix = "app.test", name = "enabled", havingValue = "true")
+public class TestLogisticsGateway implements LogisticsGateway {
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
 
@@ -17,18 +17,20 @@ public class MockLogisticsGateway implements LogisticsGateway {
     public LogisticsResult createShipment(LogisticsCommand command) {
         LocalDateTime now = LocalDateTime.now();
         String suffix = String.format("%04d", Math.abs(command.sampleRequestId().hashCode()) % 10_000);
-        String trackingNo = "MOCK-SF-" + now.format(DATE) + "-" + suffix;
-        return new LogisticsResult(trackingNo, "MockExpress", "SHIPPING", now);
+        String trackingNo = "TEST-SF-" + now.format(DATE) + "-" + suffix;
+        return new LogisticsResult(trackingNo, "演示物流-顺丰模拟", "SHIPPING", now);
     }
 
     @Override
     public LogisticsStatusResult queryStatus(String trackingNo) {
         return new LogisticsStatusResult(
                 trackingNo,
-                "MockExpress",
+                "演示物流-顺丰模拟",
                 "DELIVERED",
-                "mock logistics status ready",
+                "演示物流状态已更新",
                 LocalDateTime.now()
         );
     }
 }
+
+

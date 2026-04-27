@@ -1,15 +1,15 @@
 export const attributionStatusTextMap: Record<string, string> = {
   ATTRIBUTED: '已确认业绩',
-  UNATTRIBUTED: '待排查',
+  UNATTRIBUTED: '待排查订单',
   PARTIAL: '部分归因',
-  FAILED: '同步/归因失败'
+  FAILED: '同步失败'
 }
 
 export const attributionReasonTextMap: Record<string, string> = {
   ATTRIBUTED: '已确认业绩',
   NO_PICK_SOURCE: '订单未携带推广参数',
   MAPPING_NOT_FOUND: '未找到对应推广链接',
-  PRODUCT_NOT_FOUND: '未匹配到本地商品库',
+  PRODUCT_NOT_FOUND: '未匹配到本地商品',
   ACTIVITY_NOT_FOUND: '商品未关联活动',
   CHANNEL_NOT_FOUND: '未匹配到渠道负责人',
   SYNC_FAILED: '订单同步失败',
@@ -19,15 +19,15 @@ export const attributionReasonTextMap: Record<string, string> = {
 }
 
 export const attributionReasonSuggestionMap: Record<string, string> = {
-  NO_PICK_SOURCE: '检查订单是否来自有效推广链路',
-  MAPPING_NOT_FOUND: '检查转链记录和 pick_source 映射是否写入成功',
-  PRODUCT_NOT_FOUND: '检查商品主链路是否已同步入库',
-  ACTIVITY_NOT_FOUND: '检查商品状态和活动绑定信息',
-  CHANNEL_NOT_FOUND: '检查渠道负责人是否已完成分配',
-  SYNC_FAILED: '查看同步日志和第三方回流结果',
-  'pick_source 未匹配到有效归因映射': '检查转链记录和 pick_source 映射是否写入成功',
-  '订单未携带推广参数': '检查订单是否来自有效推广链路',
-  '订单同步失败': '查看同步日志和第三方回流结果'
+  NO_PICK_SOURCE: '请确认达人是否使用系统生成的推广链接。',
+  MAPPING_NOT_FOUND: '请检查该 pick_source 是否由系统转链生成，或是否未成功落库。',
+  PRODUCT_NOT_FOUND: '请检查商品主链路是否已经同步入库。',
+  ACTIVITY_NOT_FOUND: '请检查商品活动绑定关系是否完整。',
+  CHANNEL_NOT_FOUND: '请检查渠道负责人是否已完成分配。',
+  SYNC_FAILED: '请查看订单同步日志和第三方回流结果。',
+  'pick_source 未匹配到有效归因映射': '请检查该 pick_source 是否由系统转链生成，或是否未成功落库。',
+  '订单未携带推广参数': '请确认达人是否使用系统生成的推广链接。',
+  '订单同步失败': '请查看订单同步日志和第三方回流结果。'
 }
 
 export const attributionReasonOptions = Object.entries(attributionReasonTextMap)
@@ -40,8 +40,8 @@ export function getAttributionReasonText(reason?: string | null) {
 }
 
 export function getAttributionReasonSuggestion(reason?: string | null) {
-  if (!reason) return '请检查该商品转链情况或达人渠道'
-  return attributionReasonSuggestionMap[reason] || '请检查该商品转链情况或达人渠道'
+  if (!reason) return '请检查商品转链、达人渠道和订单回流情况。'
+  return attributionReasonSuggestionMap[reason] || '请检查商品转链、达人渠道和订单回流情况。'
 }
 
 export function getAttributionStatusText(status?: string | null) {

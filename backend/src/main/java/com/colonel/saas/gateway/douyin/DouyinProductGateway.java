@@ -28,7 +28,7 @@ public interface DouyinProductGateway {
     }
 
     record ActivityProductListResult(
-            boolean mock,
+            boolean test,
             long activityId,
             long institutionId,
             Long total,
@@ -37,7 +37,7 @@ public interface DouyinProductGateway {
 
         public Map<String, Object> toMap() {
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("mock", mock);
+            result.put("test", test);
             result.put("activityId", activityId);
             result.put("institutionId", institutionId);
             result.put("total", total);

@@ -1,9 +1,9 @@
-package com.colonel.saas.mock;
+package com.colonel.saas.testsupport;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.entity.Product;
-import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
@@ -17,8 +17,8 @@ import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.AttributionService;
-import com.colonel.saas.service.OrderSyncService;
 import com.colonel.saas.service.OrderSyncPersistenceService;
+import com.colonel.saas.service.OrderSyncService;
 import com.colonel.saas.service.PickSourceMappingService;
 import com.colonel.saas.service.SampleStatusLogService;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,26 +33,31 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
-@ConditionalOnProperty(prefix = "app.mock", name = "enabled", havingValue = "true")
-public class LocalMockDataService implements ApplicationRunner {
+@ConditionalOnProperty(prefix = "app.test", name = "enabled", havingValue = "true")
+public class TestDataService implements ApplicationRunner {
 
     private static final String CHANNEL_USERNAME = "channel_leader";
     private static final String BIZ_USERNAME = "biz_leader";
-    private static final String ACTIVITY_ID = "MOCK_ACTIVITY_A";
+    private static final String ACTIVITY_ID = "TEST_ACTIVITY_A";
     private static final String PRODUCT_ID = "10901825";
     private static final String SECOND_PRODUCT_ID = "10901826";
     private static final String THIRD_PRODUCT_ID = "10901827";
-    private static final String MAPPING_PICK_SOURCE = "MOCKPS01";
-    private static final String MAPPING_SHORT_ID = "MOCKPS01";
-    private static final String TALENT_UID_A = "talent_mock_a";
-    private static final String TALENT_UID_B = "talent_mock_b";
-    private static final String TALENT_UID_C = "talent_mock_c";
-    private static final String TALENT_UID_D = "talent_mock_d";
+    private static final String MAPPING_PICK_SOURCE = "TESTPS01";
+    private static final String MAPPING_SHORT_ID = "TESTPS01";
+    private static final String TALENT_UID_A = "talent_test_a";
+    private static final String TALENT_UID_B = "talent_test_b";
+    private static final String TALENT_UID_C = "talent_test_c";
+    private static final String TALENT_UID_D = "talent_test_d";
+    private static final String TALENT_UID_E = "talent_test_e";
+    private static final String TALENT_UID_F = "talent_test_f";
+    private static final String TALENT_UID_G = "talent_test_g";
+    private static final String MAPPING_PICK_SOURCE_D = "TESTPS04";
+    private static final String MAPPING_SHORT_ID_D = "TESTPS04";
 
     private final ProductMapper productMapper;
     private final ProductSnapshotMapper productSnapshotMapper;
@@ -70,7 +75,7 @@ public class LocalMockDataService implements ApplicationRunner {
     private final JdbcTemplate jdbcTemplate;
     private final boolean seedOnStartup;
 
-    public LocalMockDataService(
+    public TestDataService(
             ProductMapper productMapper,
             ProductSnapshotMapper productSnapshotMapper,
             TalentMapper talentMapper,
@@ -85,7 +90,7 @@ public class LocalMockDataService implements ApplicationRunner {
             SampleStatusLogService sampleStatusLogService,
             LogisticsGateway logisticsGateway,
             JdbcTemplate jdbcTemplate,
-            @Value("${app.mock.seed-on-startup:false}") boolean seedOnStartup) {
+            @Value("${app.test.seed-on-startup:false}") boolean seedOnStartup) {
         this.productMapper = productMapper;
         this.productSnapshotMapper = productSnapshotMapper;
         this.talentMapper = talentMapper;
@@ -114,28 +119,33 @@ public class LocalMockDataService implements ApplicationRunner {
     public Map<String, Object> seedAll(boolean syncOrders) {
         UUID channelUserId = requireUserId(CHANNEL_USERNAME);
         UUID channelDeptId = findDeptId(channelUserId);
+        UUID channelStaffUserId = requireUserId("channel_staff");
+        UUID channelStaffDeptId = findDeptId(channelStaffUserId);
         UUID bizUserId = requireUserId(BIZ_USERNAME);
 
-        Product mainProduct = upsertProduct(PRODUCT_ID, "Mock归因订单商品", 9900L, 1, 1);
-        Product secondProduct = upsertProduct(SECOND_PRODUCT_ID, "Mock未归因订单商品", 5900L, 1, 1);
-        Product thirdProduct = upsertProduct(THIRD_PRODUCT_ID, "Mock无归因码订单商品", 12900L, 1, 1);
+        Product mainProduct = upsertProduct(PRODUCT_ID, "主演示商品-已转链可出单", 9900L, 1, 1);
+        Product secondProduct = upsertProduct(SECOND_PRODUCT_ID, "排查演示商品-推广映射缺失", 5900L, 1, 1);
+        Product thirdProduct = upsertProduct(THIRD_PRODUCT_ID, "排查演示商品-未带推广参数", 12900L, 1, 1);
 
-        Talent talentA = upsertTalent(TALENT_UID_A, "Mock达人A", 186_000L, "四川成都", "符合寄样条件");
-        Talent talentB = upsertTalent(TALENT_UID_B, "Mock达人B", 96_000L, "浙江杭州", "不符合寄样条件");
-        Talent talentC = upsertTalent(TALENT_UID_C, "Mock达人C", 320_000L, "广东深圳", "已认领达人");
-        Talent talentD = upsertTalent(TALENT_UID_D, "Mock达人D", 42_000L, "江苏南京", "公海达人");
+        Talent talentA = upsertTalent(TALENT_UID_A, "达人A-寄样待交作业", 186_000L, "四川成都", "寄样闭环演示");
+        Talent talentB = upsertTalent(TALENT_UID_B, "达人B-映射缺失订单", 96_000L, "浙江杭州", "订单排查演示");
+        Talent talentC = upsertTalent(TALENT_UID_C, "达人C-他人已认领", 320_000L, "广东深圳", "达人归属演示");
+        Talent talentD = upsertTalent(TALENT_UID_D, "达人D-已有订单产出", 42_000L, "江苏南京", "转链出单演示");
+        Talent talentE = upsertTalent(TALENT_UID_E, "达人E-保护期到期回公海", 158_000L, "湖北武汉", "达人过期释放演示");
+        Talent talentF = upsertTalent(TALENT_UID_F, "达人F-寄样已拒绝", 54_000L, "福建厦门", "寄样拒绝演示");
+        Talent talentG = upsertTalent(TALENT_UID_G, "达人G-寄样已关闭", 133_000L, "河南郑州", "寄样关闭演示");
 
-        upsertProductSnapshot(mainProduct, 1, "ON_SHELF", 32560L, "189", "https://mock.local/product/" + mainProduct.getProductId());
-        upsertProductSnapshot(secondProduct, 0, "PENDING_AUDIT", 8420L, "64", "https://mock.local/product/" + secondProduct.getProductId());
-        upsertProductSnapshot(thirdProduct, 2, "OFFLINE", 1280L, "12", "https://mock.local/product/" + thirdProduct.getProductId());
+        upsertProductSnapshot(mainProduct, 1, "ON_SHELF", 32560L, "189", "https://test.local/product/" + mainProduct.getProductId());
+        upsertProductSnapshot(secondProduct, 0, "PENDING_AUDIT", 8420L, "64", "https://test.local/product/" + secondProduct.getProductId());
+        upsertProductSnapshot(thirdProduct, 2, "OFFLINE", 1280L, "12", "https://test.local/product/" + thirdProduct.getProductId());
 
-        upsertOperationState(mainProduct.getProductId(), bizUserId, "ASSIGNED", 2, "local-mock assigned");
-        upsertOperationState(secondProduct.getProductId(), null, "PENDING_AUDIT", 1, "local-mock pending audit");
-        upsertOperationState(thirdProduct.getProductId(), null, "REJECTED", 3, "local-mock rejected");
+        upsertOperationState(mainProduct.getProductId(), bizUserId, "ASSIGNED", 2, "test assigned");
+        upsertOperationState(secondProduct.getProductId(), null, "PENDING_AUDIT", 1, "test pending audit");
+        upsertOperationState(thirdProduct.getProductId(), null, "REJECTED", 3, "test rejected");
 
         pickSourceMappingService.saveOrUpdate(
                 channelUserId,
-                "渠道组长测试",
+                "渠道负责人-主链路演示",
                 channelDeptId,
                 TALENT_UID_A,
                 talentA.getNickname(),
@@ -144,39 +154,73 @@ public class LocalMockDataService implements ApplicationRunner {
                 MAPPING_PICK_SOURCE,
                 mainProduct.getProductId(),
                 ACTIVITY_ID,
-                "https://mock.source.local/product/" + mainProduct.getProductId(),
-                "https://mock.promote.link/activity/" + ACTIVITY_ID + "/product/" + mainProduct.getProductId() + "?pick_source=" + MAPPING_PICK_SOURCE,
+                "https://test.source.local/product/" + mainProduct.getProductId(),
+                "https://test.promote.link/activity/" + ACTIVITY_ID + "/product/" + mainProduct.getProductId() + "?pick_source=" + MAPPING_PICK_SOURCE,
+                null,
+                "PRODUCT_LIBRARY"
+        );
+        pickSourceMappingService.saveOrUpdate(
+                channelUserId,
+                "渠道负责人-主链路演示",
+                channelDeptId,
+                TALENT_UID_D,
+                talentD.getNickname(),
+                MAPPING_SHORT_ID_D,
+                UUID.nameUUIDFromBytes(MAPPING_PICK_SOURCE_D.getBytes()),
+                MAPPING_PICK_SOURCE_D,
+                mainProduct.getProductId(),
+                ACTIVITY_ID,
+                "https://test.source.local/product/" + mainProduct.getProductId(),
+                "https://test.promote.link/activity/" + ACTIVITY_ID + "/product/" + mainProduct.getProductId() + "?pick_source=" + MAPPING_PICK_SOURCE_D,
                 null,
                 "PRODUCT_LIBRARY"
         );
 
-        SampleRequest sampleRequest = upsertPendingHomeworkSample(
-                mainProduct,
-                talentA,
-                bizUserId,
+        SampleRequest sampleRequest = upsertPendingHomeworkSample(mainProduct, talentA, bizUserId, channelUserId, channelDeptId);
+        SampleRequest sampleForOrders = upsertFinishedSample(mainProduct, talentD, bizUserId, channelUserId, channelDeptId);
+        SampleRequest rejectedSample = upsertRejectedSample(secondProduct, talentF, bizUserId, channelUserId, channelDeptId);
+        SampleRequest closedSample = upsertClosedSample(thirdProduct, talentG, bizUserId, channelUserId, channelDeptId);
+        SampleRequest shippingSample = upsertPendingShipSample(secondProduct, talentB, bizUserId, channelUserId, channelDeptId);
+
+        upsertCrawlerTalent("talent_test_a", "达人A-寄样待交作业", 186_000L, 4.9, "四川成都", "美妆个护");
+        upsertCrawlerTalent("talent_test_b", "达人B-映射缺失订单", 96_000L, 4.2, "浙江杭州", "服饰穿搭");
+        upsertCrawlerTalent("talent_test_c", "达人C-他人已认领", 320_000L, 4.8, "广东深圳", "母婴用品");
+        upsertCrawlerTalent("talent_test_d", "达人D-已有订单产出", 42_000L, 4.5, "江苏南京", "数码家电");
+        upsertCrawlerTalent("talent_test_e", "达人E-保护期到期回公海", 158_000L, 4.6, "湖北武汉", "家居日用");
+        upsertCrawlerTalent("talent_test_f", "达人F-寄样已拒绝", 54_000L, 4.1, "福建厦门", "零食饮品");
+        upsertCrawlerTalent("talent_test_g", "达人G-寄样已关闭", 133_000L, 4.7, "河南郑州", "个护家清");
+
+        resetTalentClaims();
+        upsertTalentClaim(talentB.getId(), talentB.getDouyinUid(), channelUserId, channelDeptId, LocalDateTime.now().minusDays(2));
+        upsertTalentClaim(talentC.getId(), talentC.getDouyinUid(), channelStaffUserId, channelStaffDeptId, LocalDateTime.now().minusDays(4));
+        upsertExpiredTalentClaim(
+                talentE.getId(),
+                talentE.getDouyinUid(),
                 channelUserId,
-                channelDeptId
-        );
-        SampleRequest shippingSample = upsertPendingShipSample(
-                secondProduct,
-                talentB,
-                bizUserId,
-                channelUserId,
-                channelDeptId
+                channelDeptId,
+                LocalDateTime.now().minusDays(45),
+                LocalDateTime.now().minusDays(15)
         );
 
-        // Seed Crawler Talent Info for Sample Apply candidates
-        upsertCrawlerTalent("talent_mock_a", "Mock达人A", 186_000L, 4.9, "四川成都", "美妆个护");
-        upsertCrawlerTalent("talent_mock_b", "Mock达人B", 96_000L, 4.2, "浙江杭州", "服饰穿搭");
-        upsertCrawlerTalent("talent_mock_c", "Mock达人C", 320_000L, 4.8, "广东深圳", "母婴用品");
-        upsertCrawlerTalent("talent_mock_d", "Mock达人D", 42_000L, 4.5, "江苏南京", "数码家电");
+        seedAttributedOrder("MOCK_SEED_TALENT_D_ORDER", mainProduct, talentD, MAPPING_PICK_SOURCE_D, "M_TALENT_D", "主演示商家-达人D转化");
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("products", List.of(mainProduct.getProductId(), secondProduct.getProductId(), thirdProduct.getProductId()));
-        result.put("talents", List.of(talentA.getDouyinUid(), talentB.getDouyinUid(), talentC.getDouyinUid(), talentD.getDouyinUid()));
+        result.put("talents", List.of(
+                talentA.getDouyinUid(),
+                talentB.getDouyinUid(),
+                talentC.getDouyinUid(),
+                talentD.getDouyinUid(),
+                talentE.getDouyinUid(),
+                talentF.getDouyinUid(),
+                talentG.getDouyinUid()));
         result.put("pickSource", MAPPING_PICK_SOURCE);
         result.put("sampleRequestNo", sampleRequest.getRequestNo());
+        result.put("orderSampleRequestNo", sampleForOrders.getRequestNo());
+        result.put("rejectedSampleRequestNo", rejectedSample.getRequestNo());
+        result.put("closedSampleRequestNo", closedSample.getRequestNo());
         result.put("shippingSampleRequestNo", shippingSample.getRequestNo());
+        result.put("expiredClaimTalentUid", talentE.getDouyinUid());
 
         if (syncOrders) {
             long now = System.currentTimeMillis() / 1000;
@@ -187,6 +231,7 @@ public class LocalMockDataService implements ApplicationRunner {
 
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> resetAll() {
+        jdbcTemplate.update("DELETE FROM talent_claim");
         jdbcTemplate.update("DELETE FROM sample_status_log");
         jdbcTemplate.update("DELETE FROM sample_request");
         jdbcTemplate.update("DELETE FROM colonelsettlement_order");
@@ -205,10 +250,11 @@ public class LocalMockDataService implements ApplicationRunner {
         result.put("orders", 0);
         result.put("pickSourceMappings", 0);
         result.put("sampleRequests", 0);
+        result.put("talentClaims", 0);
         return result;
     }
 
-    public OrderSyncService.SyncResult syncMockOrders() {
+    public OrderSyncService.SyncResult syncTestOrders() {
         long now = System.currentTimeMillis() / 1000;
         return orderSyncService.syncByTimeRange(now - 7200, now + 60);
     }
@@ -217,40 +263,40 @@ public class LocalMockDataService implements ApplicationRunner {
     public Map<String, Object> generateAttributedOrder() {
         Product product = requireProduct(PRODUCT_ID);
         PickSourceMapping mapping = requireMapping(MAPPING_PICK_SOURCE);
-        ColonelsettlementOrder order = buildMockOrder(
+        ColonelsettlementOrder order = buildTestOrder(
                 "MOCK_GEN_ATTR_" + System.currentTimeMillis(),
                 product,
-                "Mock归因订单商品",
+                "主演示商品-已转链可出单",
                 19900L,
                 2600L,
                 mapping.getPickSource(),
                 mapping.getTalentId(),
                 mapping.getActivityId(),
                 "M_ATTR",
-                "Mock归因商家"
+                "主演示商家-归因成功"
         );
         Map<String, Object> source = new LinkedHashMap<>(order.getExtraData());
         AttributionService.AttributionResult attribution = attributionService.resolveAttribution(order, source);
         applyAttribution(order, attribution);
         boolean inserted = orderSyncPersistenceService.persistOrder(order);
-        SampleRequest sample = findSampleByRequestNo("MOCK-SAMPLE-001");
+        SampleRequest sample = findSampleByRequestNo("TEST-SAMPLE-001");
         return orderResult("attributed", order, inserted, sample);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> generateNoPickSourceOrder() {
         Product product = requireProduct(THIRD_PRODUCT_ID);
-        ColonelsettlementOrder order = buildMockOrder(
+        ColonelsettlementOrder order = buildTestOrder(
                 "MOCK_GEN_NOPICK_" + System.currentTimeMillis(),
                 product,
-                "Mock无归因码订单商品",
+                "排查演示商品-未带推广参数",
                 12900L,
                 2000L,
                 null,
                 TALENT_UID_C,
                 ACTIVITY_ID,
                 "M_NOPICK",
-                "Mock无归因码商家"
+                "排查演示商家-未带推广参数"
         );
         Map<String, Object> source = new LinkedHashMap<>(order.getExtraData());
         AttributionService.AttributionResult attribution = attributionService.resolveAttribution(order, source);
@@ -262,17 +308,17 @@ public class LocalMockDataService implements ApplicationRunner {
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> generateMissingMappingOrder() {
         Product product = requireProduct(SECOND_PRODUCT_ID);
-        ColonelsettlementOrder order = buildMockOrder(
+        ColonelsettlementOrder order = buildTestOrder(
                 "MOCK_GEN_NOMAP_" + System.currentTimeMillis(),
                 product,
-                "Mock映射缺失订单商品",
+                "排查演示商品-推广映射缺失",
                 9900L,
                 1200L,
                 "UPS" + (System.currentTimeMillis() % 10_000),
                 TALENT_UID_B,
                 ACTIVITY_ID,
                 "M_NOMAP",
-                "Mock映射缺失商家"
+                "排查演示商家-映射缺失"
         );
         Map<String, Object> source = new LinkedHashMap<>(order.getExtraData());
         AttributionService.AttributionResult attribution = attributionService.resolveAttribution(order, source);
@@ -289,16 +335,16 @@ public class LocalMockDataService implements ApplicationRunner {
         LogisticsGateway.LogisticsResult shipment = logisticsGateway.createShipment(new LogisticsGateway.LogisticsCommand(
                 sample.getId(),
                 product == null ? null : product.getProductId(),
-                "Mock收件人",
+                "演示收件人-主链路",
                 "13800000000",
-                "Mock地址-成都市高新区全链路演示仓"
+                "成都市高新区主链路演示仓"
         ));
         int fromStatus = sample.getStatus();
         sample.setStatus(3);
         sample.setTrackingNo(shipment.trackingNo());
         sample.setShipTime(shipment.shipTime());
         sampleRequestMapper.updateById(sample);
-        sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), sample.getUserId(), "mock logistics ship");
+        sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), sample.getUserId(), "test logistics ship");
         return sampleResult(sample, "shipping", shipment.trackingNo());
     }
 
@@ -311,8 +357,8 @@ public class LocalMockDataService implements ApplicationRunner {
         sample.setStatus(5);
         sample.setDeliverTime(LocalDateTime.now());
         sampleRequestMapper.updateById(sample);
-        sampleStatusLogService.log(sample.getId(), fromStatus, 4, sample.getUserId(), "mock logistics delivered");
-        sampleStatusLogService.log(sample.getId(), 4, sample.getStatus(), sample.getUserId(), "mock logistics sign -> pending homework");
+        sampleStatusLogService.log(sample.getId(), fromStatus, 4, sample.getUserId(), "test logistics delivered");
+        sampleStatusLogService.log(sample.getId(), 4, sample.getStatus(), sample.getUserId(), "test logistics sign -> pending homework");
         return sampleResult(sample, logisticsStatus.status().toLowerCase(Locale.ROOT), logisticsStatus.trackingNo());
     }
 
@@ -330,7 +376,7 @@ public class LocalMockDataService implements ApplicationRunner {
         product.setPrice(price);
         product.setStatus(status);
         product.setCheckStatus(checkStatus);
-        product.setCategory("全链路Mock");
+        product.setCategory("本地演示商品");
         if (product.getCreateTime() == null) {
             productMapper.insert(product);
         } else {
@@ -350,7 +396,7 @@ public class LocalMockDataService implements ApplicationRunner {
         }
         talent.setDouyinUid(douyinUid);
         talent.setUid(douyinUid);
-        talent.setDouyinNo("douyin_" + douyinUid);
+        talent.setDouyinNo("douyin-demo-" + douyinUid);
         talent.setNickname(nickname);
         talent.setFans(fans);
         talent.setLevel(fans > 100_000 ? "A" : "B");
@@ -358,10 +404,10 @@ public class LocalMockDataService implements ApplicationRunner {
         talent.setFollowingCount(321L);
         talent.setWorksCount(87L);
         talent.setIpLocation(ipLocation);
-        talent.setAvatarUrl("https://mock.local/avatar/" + douyinUid + ".png");
+        talent.setAvatarUrl("https://test.local/avatar/" + douyinUid + ".png");
         talent.setStatus(1);
         talent.setCrawlStatus(1);
-        talent.setCrawlMessage("mock data ready: " + sourceTag);
+        talent.setCrawlMessage("演示资料已准备: " + sourceTag);
         talent.setLastCrawlAt(LocalDateTime.now());
         if (talent.getCreateTime() == null) {
             talentMapper.insert(talent);
@@ -424,14 +470,14 @@ public class LocalMockDataService implements ApplicationRunner {
             snapshot.setProductId(product.getProductId());
         }
         snapshot.setTitle(product.getName());
-        snapshot.setCover("https://mock.local/product/" + product.getProductId() + ".png");
+        snapshot.setCover("https://test.local/product/" + product.getProductId() + ".png");
         snapshot.setPrice(product.getPrice());
         snapshot.setPriceText(formatPriceText(product.getPrice()));
         snapshot.setShopId(1000L + Long.parseLong(product.getProductId()));
-        snapshot.setShopName("MockShop-" + product.getProductId());
+        snapshot.setShopName("演示店铺-" + product.getProductId());
         snapshot.setStatus(status);
         snapshot.setStatusText(statusText);
-        snapshot.setCategoryName("LOCAL_MOCK");
+        snapshot.setCategoryName("本地演示");
         snapshot.setProductStock(stock);
         snapshot.setSales(sales);
         snapshot.setDetailUrl(detailUrl);
@@ -440,11 +486,11 @@ public class LocalMockDataService implements ApplicationRunner {
         snapshot.setActivityCosRatio(2500L);
         snapshot.setActivityCosRatioText("25%");
         snapshot.setCosType(1);
-        snapshot.setCosTypeText("RATIO");
+        snapshot.setCosTypeText("佣金比例");
         snapshot.setAdServiceRatio("8%");
         snapshot.setActivityAdCosRatio(800L);
         snapshot.setHasDouinGoodsTag(Boolean.TRUE);
-        snapshot.setRawPayload("{\"mock\":true,\"activityId\":\"" + ACTIVITY_ID + "\",\"productId\":\"" + product.getProductId() + "\"}");
+        snapshot.setRawPayload("{\"test\":true,\"activityId\":\"" + ACTIVITY_ID + "\",\"productId\":\"" + product.getProductId() + "\"}");
         snapshot.setSyncTime(LocalDateTime.now());
         if (snapshot.getCreateTime() == null) {
             productSnapshotMapper.insert(snapshot);
@@ -460,7 +506,7 @@ public class LocalMockDataService implements ApplicationRunner {
             UUID userId,
             UUID channelUserId,
             UUID channelDeptId) {
-        String requestNo = "MOCK-SAMPLE-001";
+        String requestNo = "TEST-SAMPLE-001";
         SampleRequest sample = sampleRequestMapper.selectOne(new LambdaQueryWrapper<SampleRequest>()
                 .eq(SampleRequest::getRequestNo, requestNo)
                 .last("limit 1"));
@@ -481,12 +527,12 @@ public class LocalMockDataService implements ApplicationRunner {
         sample.setChannelUserId(channelUserId);
         sample.setExpectedSampleNum(1);
         sample.setActualSampleNum(1);
-        sample.setTrackingNo("MOCK-TRACK-001");
+        sample.setTrackingNo("TEST-TRACK-001");
         sample.setStatus(5);
         sample.setAuditTime(LocalDateTime.now().minusDays(3));
         sample.setShipTime(LocalDateTime.now().minusDays(2));
         sample.setDeliverTime(LocalDateTime.now().minusDays(1));
-        sample.setRemark("local-mock auto seeded");
+        sample.setRemark("本地演示数据自动准备");
         if (sample.getCreateTime() == null) {
             jdbcTemplate.update("""
                     INSERT INTO sample_request (
@@ -531,12 +577,12 @@ public class LocalMockDataService implements ApplicationRunner {
                     channelDeptId,
                     channelUserId,
                     channelDeptId,
-                    "Mock收件人",
+                    "演示收件人-主链路",
                     "13800000000",
-                    "Mock地址-成都市高新区全链路演示仓",
+                    "成都市高新区主链路演示仓",
                     sample.getExpectedSampleNum(),
                     sample.getActualSampleNum(),
-                    "MockExpress",
+                    "演示物流-顺丰模拟",
                     sample.getTrackingNo(),
                     sample.getStatus(),
                     0L,
@@ -561,7 +607,7 @@ public class LocalMockDataService implements ApplicationRunner {
             UUID userId,
             UUID channelUserId,
             UUID channelDeptId) {
-        String requestNo = "MOCK-SAMPLE-SHIP-001";
+        String requestNo = "TEST-SAMPLE-SHIP-001";
         SampleRequest sample = sampleRequestMapper.selectOne(new LambdaQueryWrapper<SampleRequest>()
                 .eq(SampleRequest::getRequestNo, requestNo)
                 .last("limit 1"));
@@ -584,7 +630,7 @@ public class LocalMockDataService implements ApplicationRunner {
         sample.setActualSampleNum(0);
         sample.setStatus(2);
         sample.setAuditTime(LocalDateTime.now().minusHours(6));
-        sample.setRemark("local-mock pending ship");
+        sample.setRemark("test pending ship");
         jdbcTemplate.update("""
                 INSERT INTO sample_request (
                     id, request_no, talent_id, talent_uid, talent_nickname, product_id, user_id, dept_id,
@@ -624,9 +670,9 @@ public class LocalMockDataService implements ApplicationRunner {
                 channelDeptId,
                 channelUserId,
                 channelDeptId,
-                "Mock收件人",
+                "演示收件人-订单排查",
                 "13800000001",
-                "Mock地址-杭州市余杭区物流演示仓",
+                "杭州市余杭区物流演示仓",
                 sample.getExpectedSampleNum(),
                 sample.getActualSampleNum(),
                 sample.getStatus(),
@@ -640,6 +686,372 @@ public class LocalMockDataService implements ApplicationRunner {
         return sampleRequestMapper.selectById(sample.getId());
     }
 
+    private SampleRequest upsertFinishedSample(
+            Product product,
+            Talent talent,
+            UUID userId,
+            UUID channelUserId,
+            UUID channelDeptId) {
+        String requestNo = "TEST-SAMPLE-ORDER-001";
+        SampleRequest sample = sampleRequestMapper.selectOne(new LambdaQueryWrapper<SampleRequest>()
+                .eq(SampleRequest::getRequestNo, requestNo)
+                .last("limit 1"));
+        if (sample == null) {
+            sample = new SampleRequest();
+            sample.setId(UUID.randomUUID());
+            sample.setDeleted(0);
+        }
+        sample.setRequestNo(requestNo);
+        sample.setTalentId(talent.getId());
+        sample.setTalentUid(talent.getDouyinUid());
+        sample.setTalentNickname(talent.getNickname());
+        sample.setTalentFansCount(talent.getFans());
+        sample.setTalentCreditScore(BigDecimal.valueOf(8.60));
+        sample.setTalentMainCategory("数码家电");
+        sample.setProductId(product.getId());
+        sample.setUserId(userId);
+        sample.setChannelUserId(channelUserId);
+        sample.setExpectedSampleNum(1);
+        sample.setActualSampleNum(1);
+        sample.setTrackingNo("TEST-TRACK-ORDER-001");
+        sample.setStatus(6);
+        sample.setAuditTime(LocalDateTime.now().minusDays(8));
+        sample.setShipTime(LocalDateTime.now().minusDays(7));
+        sample.setDeliverTime(LocalDateTime.now().minusDays(6));
+        sample.setCompleteTime(LocalDateTime.now().minusDays(2));
+        sample.setRemark("test finished sample with order output");
+        jdbcTemplate.update("""
+                INSERT INTO sample_request (
+                    id, request_no, talent_id, talent_uid, talent_nickname, product_id, user_id, dept_id,
+                    channel_user_id, channel_dept_id, recipient_name, recipient_phone, recipient_address,
+                    expected_sample_num, actual_sample_num, logistics_company, tracking_no, status,
+                    sample_fee, audit_time, ship_time, deliver_time, complete_time, deleted,
+                    create_time, update_time, create_by, update_by, remark
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?)
+                ON CONFLICT (request_no) DO UPDATE SET
+                    talent_id = EXCLUDED.talent_id,
+                    talent_uid = EXCLUDED.talent_uid,
+                    talent_nickname = EXCLUDED.talent_nickname,
+                    product_id = EXCLUDED.product_id,
+                    user_id = EXCLUDED.user_id,
+                    dept_id = EXCLUDED.dept_id,
+                    channel_user_id = EXCLUDED.channel_user_id,
+                    channel_dept_id = EXCLUDED.channel_dept_id,
+                    recipient_name = EXCLUDED.recipient_name,
+                    recipient_phone = EXCLUDED.recipient_phone,
+                    recipient_address = EXCLUDED.recipient_address,
+                    expected_sample_num = EXCLUDED.expected_sample_num,
+                    actual_sample_num = EXCLUDED.actual_sample_num,
+                    logistics_company = EXCLUDED.logistics_company,
+                    tracking_no = EXCLUDED.tracking_no,
+                    status = EXCLUDED.status,
+                    sample_fee = EXCLUDED.sample_fee,
+                    audit_time = EXCLUDED.audit_time,
+                    ship_time = EXCLUDED.ship_time,
+                    deliver_time = EXCLUDED.deliver_time,
+                    complete_time = EXCLUDED.complete_time,
+                    deleted = EXCLUDED.deleted,
+                    update_time = CURRENT_TIMESTAMP,
+                    update_by = EXCLUDED.update_by,
+                    remark = EXCLUDED.remark
+                """,
+                sample.getId(),
+                requestNo,
+                talent.getId(),
+                sample.getTalentUid(),
+                sample.getTalentNickname(),
+                product.getId(),
+                userId,
+                channelDeptId,
+                channelUserId,
+                channelDeptId,
+                "演示收件人-达人转化",
+                "13800000004",
+                "南京市秦淮区转化演示点",
+                sample.getExpectedSampleNum(),
+                sample.getActualSampleNum(),
+                "SF",
+                sample.getTrackingNo(),
+                sample.getStatus(),
+                0L,
+                sample.getAuditTime(),
+                sample.getShipTime(),
+                sample.getDeliverTime(),
+                sample.getCompleteTime(),
+                0,
+                userId,
+                userId,
+                sample.getRemark()
+        );
+        return sampleRequestMapper.selectById(sample.getId());
+    }
+
+    private SampleRequest upsertRejectedSample(
+            Product product,
+            Talent talent,
+            UUID userId,
+            UUID channelUserId,
+            UUID channelDeptId) {
+        String requestNo = "TEST-SAMPLE-REJECT-001";
+        SampleRequest sample = sampleRequestMapper.selectOne(new LambdaQueryWrapper<SampleRequest>()
+                .eq(SampleRequest::getRequestNo, requestNo)
+                .last("limit 1"));
+        if (sample == null) {
+            sample = new SampleRequest();
+            sample.setId(UUID.randomUUID());
+            sample.setDeleted(0);
+        }
+        sample.setRequestNo(requestNo);
+        sample.setTalentId(talent.getId());
+        sample.setTalentUid(talent.getDouyinUid());
+        sample.setTalentNickname(talent.getNickname());
+        sample.setTalentFansCount(talent.getFans());
+        sample.setTalentCreditScore(BigDecimal.valueOf(7.80));
+        sample.setTalentMainCategory("零食饮品");
+        sample.setProductId(product.getId());
+        sample.setUserId(userId);
+        sample.setChannelUserId(channelUserId);
+        sample.setExpectedSampleNum(1);
+        sample.setActualSampleNum(0);
+        sample.setStatus(7);
+        sample.setRejectReason("达人近期档期已满，暂不接受新寄样");
+        sample.setAuditTime(LocalDateTime.now().minusDays(1));
+        sample.setRemark("演示样例：招商已拒绝寄样申请");
+        jdbcTemplate.update("""
+                INSERT INTO sample_request (
+                    id, request_no, talent_id, talent_uid, talent_nickname, product_id, user_id, dept_id,
+                    channel_user_id, channel_dept_id, recipient_name, recipient_phone, recipient_address,
+                    expected_sample_num, actual_sample_num, status, reject_reason, sample_fee, audit_time, deleted,
+                    create_time, update_time, create_by, update_by, remark
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?)
+                ON CONFLICT (request_no) DO UPDATE SET
+                    talent_id = EXCLUDED.talent_id,
+                    talent_uid = EXCLUDED.talent_uid,
+                    talent_nickname = EXCLUDED.talent_nickname,
+                    product_id = EXCLUDED.product_id,
+                    user_id = EXCLUDED.user_id,
+                    dept_id = EXCLUDED.dept_id,
+                    channel_user_id = EXCLUDED.channel_user_id,
+                    channel_dept_id = EXCLUDED.channel_dept_id,
+                    recipient_name = EXCLUDED.recipient_name,
+                    recipient_phone = EXCLUDED.recipient_phone,
+                    recipient_address = EXCLUDED.recipient_address,
+                    expected_sample_num = EXCLUDED.expected_sample_num,
+                    actual_sample_num = EXCLUDED.actual_sample_num,
+                    status = EXCLUDED.status,
+                    reject_reason = EXCLUDED.reject_reason,
+                    sample_fee = EXCLUDED.sample_fee,
+                    audit_time = EXCLUDED.audit_time,
+                    deleted = EXCLUDED.deleted,
+                    update_time = CURRENT_TIMESTAMP,
+                    update_by = EXCLUDED.update_by,
+                    remark = EXCLUDED.remark
+                """,
+                sample.getId(),
+                requestNo,
+                talent.getId(),
+                sample.getTalentUid(),
+                sample.getTalentNickname(),
+                product.getId(),
+                userId,
+                channelDeptId,
+                channelUserId,
+                channelDeptId,
+                "演示收件人-拒绝样例",
+                "13800000005",
+                "厦门市思明区寄样拒绝演示点",
+                sample.getExpectedSampleNum(),
+                sample.getActualSampleNum(),
+                sample.getStatus(),
+                sample.getRejectReason(),
+                0L,
+                sample.getAuditTime(),
+                0,
+                userId,
+                userId,
+                sample.getRemark()
+        );
+        return sampleRequestMapper.selectById(sample.getId());
+    }
+
+    private SampleRequest upsertClosedSample(
+            Product product,
+            Talent talent,
+            UUID userId,
+            UUID channelUserId,
+            UUID channelDeptId) {
+        String requestNo = "TEST-SAMPLE-CLOSED-001";
+        SampleRequest sample = sampleRequestMapper.selectOne(new LambdaQueryWrapper<SampleRequest>()
+                .eq(SampleRequest::getRequestNo, requestNo)
+                .last("limit 1"));
+        if (sample == null) {
+            sample = new SampleRequest();
+            sample.setId(UUID.randomUUID());
+            sample.setDeleted(0);
+        }
+        sample.setRequestNo(requestNo);
+        sample.setTalentId(talent.getId());
+        sample.setTalentUid(talent.getDouyinUid());
+        sample.setTalentNickname(talent.getNickname());
+        sample.setTalentFansCount(talent.getFans());
+        sample.setTalentCreditScore(BigDecimal.valueOf(8.30));
+        sample.setTalentMainCategory("个护家清");
+        sample.setProductId(product.getId());
+        sample.setUserId(userId);
+        sample.setChannelUserId(channelUserId);
+        sample.setExpectedSampleNum(1);
+        sample.setActualSampleNum(1);
+        sample.setTrackingNo("TEST-TRACK-CLOSED-001");
+        sample.setStatus(8);
+        sample.setAuditTime(LocalDateTime.now().minusDays(40));
+        sample.setShipTime(LocalDateTime.now().minusDays(39));
+        sample.setDeliverTime(LocalDateTime.now().minusDays(37));
+        sample.setCloseTime(LocalDateTime.now().minusDays(5));
+        sample.setCloseReason("样品签收后 30 天未出单，系统自动关闭");
+        sample.setRemark("演示样例：待交作业超时自动关闭");
+        jdbcTemplate.update("""
+                INSERT INTO sample_request (
+                    id, request_no, talent_id, talent_uid, talent_nickname, product_id, user_id, dept_id,
+                    channel_user_id, channel_dept_id, recipient_name, recipient_phone, recipient_address,
+                    expected_sample_num, actual_sample_num, logistics_company, tracking_no, status,
+                    sample_fee, audit_time, ship_time, deliver_time, close_time, close_reason, deleted,
+                    create_time, update_time, create_by, update_by, remark
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?)
+                ON CONFLICT (request_no) DO UPDATE SET
+                    talent_id = EXCLUDED.talent_id,
+                    talent_uid = EXCLUDED.talent_uid,
+                    talent_nickname = EXCLUDED.talent_nickname,
+                    product_id = EXCLUDED.product_id,
+                    user_id = EXCLUDED.user_id,
+                    dept_id = EXCLUDED.dept_id,
+                    channel_user_id = EXCLUDED.channel_user_id,
+                    channel_dept_id = EXCLUDED.channel_dept_id,
+                    recipient_name = EXCLUDED.recipient_name,
+                    recipient_phone = EXCLUDED.recipient_phone,
+                    recipient_address = EXCLUDED.recipient_address,
+                    expected_sample_num = EXCLUDED.expected_sample_num,
+                    actual_sample_num = EXCLUDED.actual_sample_num,
+                    logistics_company = EXCLUDED.logistics_company,
+                    tracking_no = EXCLUDED.tracking_no,
+                    status = EXCLUDED.status,
+                    sample_fee = EXCLUDED.sample_fee,
+                    audit_time = EXCLUDED.audit_time,
+                    ship_time = EXCLUDED.ship_time,
+                    deliver_time = EXCLUDED.deliver_time,
+                    close_time = EXCLUDED.close_time,
+                    close_reason = EXCLUDED.close_reason,
+                    deleted = EXCLUDED.deleted,
+                    update_time = CURRENT_TIMESTAMP,
+                    update_by = EXCLUDED.update_by,
+                    remark = EXCLUDED.remark
+                """,
+                sample.getId(),
+                requestNo,
+                talent.getId(),
+                sample.getTalentUid(),
+                sample.getTalentNickname(),
+                product.getId(),
+                userId,
+                channelDeptId,
+                channelUserId,
+                channelDeptId,
+                "演示收件人-关闭样例",
+                "13800000006",
+                "郑州市高新区寄样关闭演示点",
+                sample.getExpectedSampleNum(),
+                sample.getActualSampleNum(),
+                "演示物流-顺丰模拟",
+                sample.getTrackingNo(),
+                sample.getStatus(),
+                0L,
+                sample.getAuditTime(),
+                sample.getShipTime(),
+                sample.getDeliverTime(),
+                sample.getCloseTime(),
+                sample.getCloseReason(),
+                0,
+                userId,
+                userId,
+                sample.getRemark()
+        );
+        return sampleRequestMapper.selectById(sample.getId());
+    }
+
+    private void resetTalentClaims() {
+        jdbcTemplate.update("DELETE FROM talent_claim");
+    }
+
+    private void upsertTalentClaim(UUID talentId, String talentUid, UUID userId, UUID deptId, LocalDateTime claimedAt) {
+        upsertTalentClaim(talentId, talentUid, userId, deptId, claimedAt, claimedAt.plusDays(30), 1);
+    }
+
+    private void upsertExpiredTalentClaim(
+            UUID talentId,
+            String talentUid,
+            UUID userId,
+            UUID deptId,
+            LocalDateTime claimedAt,
+            LocalDateTime expiredAt) {
+        upsertTalentClaim(talentId, talentUid, userId, deptId, claimedAt, expiredAt, 2);
+    }
+
+    private void upsertTalentClaim(
+            UUID talentId,
+            String talentUid,
+            UUID userId,
+            UUID deptId,
+            LocalDateTime claimedAt,
+            LocalDateTime protectedUntil,
+            int status) {
+        jdbcTemplate.update("""
+                INSERT INTO talent_claim (
+                    id, talent_id, talent_uid, user_id, dept_id, claim_type, status, apply_time, confirm_time, expire_time,
+                    deleted, create_time, update_time, create_by, update_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?)
+                """,
+                UUID.randomUUID(),
+                talentId,
+                talentUid,
+                userId,
+                deptId,
+                1,
+                status,
+                claimedAt,
+                claimedAt,
+                protectedUntil,
+                userId,
+                userId
+        );
+    }
+
+    private void seedAttributedOrder(
+            String orderId,
+            Product product,
+            Talent talent,
+            String pickSource,
+            String merchantId,
+            String shopName) {
+        ColonelsettlementOrder exists = orderMapper.findByOrderId(orderId);
+        if (exists != null) {
+            return;
+        }
+        ColonelsettlementOrder order = buildTestOrder(
+                orderId,
+                product,
+                product.getName(),
+                25900L,
+                3600L,
+                pickSource,
+                talent.getDouyinUid(),
+                ACTIVITY_ID,
+                merchantId,
+                shopName
+        );
+        AttributionService.AttributionResult attribution = attributionService.resolveAttribution(order, new LinkedHashMap<>(order.getExtraData()));
+        applyAttribution(order, attribution);
+        orderSyncPersistenceService.persistOrder(order);
+    }
+
     private UUID requireUserId(String username) {
         UUID userId = jdbcTemplate.query(
                 "SELECT id FROM sys_user WHERE username = ? AND deleted = 0 LIMIT 1",
@@ -647,7 +1059,7 @@ public class LocalMockDataService implements ApplicationRunner {
                 username
         );
         if (userId == null) {
-            throw new IllegalStateException("mock seed user not found: " + username);
+            throw new IllegalStateException("test seed user not found: " + username);
         }
         return userId;
     }
@@ -671,7 +1083,7 @@ public class LocalMockDataService implements ApplicationRunner {
                 .eq(Product::getProductId, productId)
                 .last("limit 1"));
         if (product == null) {
-            throw new IllegalStateException("mock product not found: " + productId);
+            throw new IllegalStateException("test product not found: " + productId);
         }
         return product;
     }
@@ -682,7 +1094,7 @@ public class LocalMockDataService implements ApplicationRunner {
                 .eq(PickSourceMapping::getStatus, 1)
                 .last("limit 1"));
         if (mapping == null) {
-            throw new IllegalStateException("mock pick_source_mapping not found: " + pickSource);
+            throw new IllegalStateException("test pick_source_mapping not found: " + pickSource);
         }
         return mapping;
     }
@@ -707,7 +1119,7 @@ public class LocalMockDataService implements ApplicationRunner {
         }
     }
 
-    private ColonelsettlementOrder buildMockOrder(
+    private ColonelsettlementOrder buildTestOrder(
             String orderId,
             Product product,
             String productName,
@@ -821,8 +1233,8 @@ public class LocalMockDataService implements ApplicationRunner {
         jdbcTemplate.update("""
                 INSERT INTO crawler_talent_info (
                     talent_id, nickname, fans_count, credit_score, region, main_category,
-                    avatar_url, crawl_status, last_crawl_time, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    avatar_url, last_crawl_time, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (talent_id) DO UPDATE SET
                     nickname = EXCLUDED.nickname,
                     fans_count = EXCLUDED.fans_count,
@@ -830,12 +1242,13 @@ public class LocalMockDataService implements ApplicationRunner {
                     region = EXCLUDED.region,
                     main_category = EXCLUDED.main_category,
                     avatar_url = EXCLUDED.avatar_url,
-                    crawl_status = EXCLUDED.crawl_status,
                     last_crawl_time = EXCLUDED.last_crawl_time,
                     updated_at = CURRENT_TIMESTAMP
                 """,
                 talentId, nickname, fans, BigDecimal.valueOf(score), region, category,
-                "https://mock.local/avatar/" + talentId + ".png"
+                "https://test.local/avatar/" + talentId + ".png"
         );
     }
 }
+
+

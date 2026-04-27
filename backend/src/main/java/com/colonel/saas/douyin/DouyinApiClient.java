@@ -3,8 +3,6 @@ package com.colonel.saas.douyin;
 import com.colonel.saas.common.exception.BusinessException;
 import com.doudian.open.utils.SignUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -23,13 +21,11 @@ import java.util.TreeMap;
 @Service
 public class DouyinApiClient {
 
-    private static final Logger log = LoggerFactory.getLogger(DouyinApiClient.class);
-
     private final DouyinTokenService douyinTokenService;
     private final RestTemplate douyinRestTemplate;
     private final DouyinConfig douyinConfig;
-    @Value("${douyin.mock.enabled:false}")
-    private boolean mockEnabled;
+    @Value("${douyin.test.enabled:false}")
+    private boolean testEnabled;
 
     public DouyinApiClient(
             DouyinTokenService douyinTokenService,
@@ -52,8 +48,8 @@ public class DouyinApiClient {
     }
 
     private Map<String, Object> doPost(String method, Map<String, Object> params, String appId, String token) {
-        if (mockEnabled) {
-            return buildMockResponse(method, appId, params);
+        if (testEnabled) {
+            return buildTestResponse(method, appId, params);
         }
         String appSecret = resolveAppSecret();
         String urlPath = resolveUrlPath(method);
@@ -229,14 +225,14 @@ public class DouyinApiClient {
         return result;
     }
 
-    private Map<String, Object> buildMockResponse(String method, String appId, Map<String, Object> params) {
+    private Map<String, Object> buildTestResponse(String method, String appId, Map<String, Object> params) {
         Map<String, Object> response = new HashMap<>();
         response.put("err_no", 0);
         response.put("err_msg", "success");
-        response.put("log_id", "mock-" + Instant.now().toEpochMilli());
-        response.put("mock", true);
-        response.put("mock_method", method);
-        response.put("mock_app_id", appId);
+        response.put("log_id", "test-" + Instant.now().toEpochMilli());
+        response.put("test", true);
+        response.put("test_method", method);
+        response.put("test_app_id", appId);
 
         Map<String, Object> data = new HashMap<>();
         if ("buyin.colonelMultiSettlementOrders".equals(method) || "buyin.instituteOrderColonel".equals(method)) {
@@ -245,14 +241,14 @@ public class DouyinApiClient {
             data.put("next_cursor", "0");
         } else if ("alliance.instituteColonelActivityList".equals(method)) {
             data.put("data", java.util.List.of(
-                    Map.of("activity_id", 10001L, "activity_name", "Mock活动A"),
-                    Map.of("activity_id", 10002L, "activity_name", "Mock活动B")
+                    Map.of("activity_id", 10001L, "activity_name", "Test活动A"),
+                    Map.of("activity_id", 10002L, "activity_name", "Test活动B")
             ));
             data.put("total", 2);
         } else if ("alliance.colonelActivityProduct".equals(method)) {
             data.put("data", java.util.List.of(
-                    Map.of("product_id", "mock_product_1", "title", "Mock商品1", "cos_type", 1),
-                    Map.of("product_id", "mock_product_2", "title", "Mock商品2", "cos_type", 0)
+                    Map.of("product_id", "test_product_1", "title", "Test商品1", "cos_type", 1),
+                    Map.of("product_id", "test_product_2", "title", "Test商品2", "cos_type", 0)
             ));
             data.put("has_more", false);
         } else if ("buyin.materialsProductStatus".equals(method)) {
@@ -264,3 +260,5 @@ public class DouyinApiClient {
         return response;
     }
 }
+
+

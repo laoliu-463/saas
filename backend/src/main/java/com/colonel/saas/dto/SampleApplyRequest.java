@@ -11,7 +11,7 @@ import java.util.UUID;
 
 @Data
 public class SampleApplyRequest {
-    @NotBlank(message = "talentId 涓嶈兘涓虹┖")
+    @NotBlank(message = "talentId 不能为空")
     private String talentId;
 
     private String talentNickname;
@@ -19,14 +19,13 @@ public class SampleApplyRequest {
     private BigDecimal talentCreditScore;
     private String talentMainCategory;
 
-    @NotNull(message = "productId 涓嶈兘涓虹┖")
+    @NotNull(message = "productId 不能为空")
     private UUID productId;
 
-    @NotNull(message = "quantity 涓嶈兘涓虹┖")
-    @Min(value = 1, message = "quantity 鑷冲皯涓?1")
-    @Max(value = 100, message = "quantity 涓嶈兘瓒呰繃 100")
+    @NotNull(message = "quantity 不能为空")
+    @Min(value = 1, message = "quantity 至少为 1")
+    @Max(value = 100, message = "quantity 不能超过 100")
     private Integer quantity;
 
     private String remark;
 }
-

@@ -1,4 +1,4 @@
-package com.colonel.saas.gateway.douyin.mock;
+package com.colonel.saas.gateway.douyin.test;
 
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -9,8 +9,8 @@ import java.util.List;
 import java.util.Locale;
 
 @Component
-@ConditionalOnProperty(name = "douyin.mock.enabled", havingValue = "true")
-public class MockDouyinProductGateway implements DouyinProductGateway {
+@ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "true")
+public class TestDouyinProductGateway implements DouyinProductGateway {
 
     @Override
     public ActivityProductListResult queryActivityProducts(ActivityProductQueryRequest request) {
@@ -33,8 +33,8 @@ public class MockDouyinProductGateway implements DouyinProductGateway {
             int shopIndex = (rank + shopOffset) % 9;
             all.add(new ActivityProductItem(
                     productId,
-                    "Mock活动商品-" + i,
-                    "https://example.com/mock-product-" + i + ".png",
+                    buildProductTitle(i, rank),
+                    "https://example.com/test-product-" + i + ".png",
                     price,
                     String.format(Locale.ROOT, "%.2f", price / 100.0),
                     10L + (rank % 20),
@@ -42,25 +42,25 @@ public class MockDouyinProductGateway implements DouyinProductGateway {
                     1000L + (rank % 20) * 100L,
                     (10 + (rank % 20)) + "%",
                     rank % 2,
-                    rank % 2 == 1 ? "双佣金" : "固定佣金",
+                    rank % 2 == 1 ? "阶梯佣金" : "固定服务费率",
                     rank % 2 == 1 ? String.valueOf(8 + (seedOffset % 4)) : null,
                     rank % 2 == 1 ? Long.valueOf(6 + (seedOffset % 5)) : null,
                     rank % 3 == 0,
                     rank % 5 != 0,
                     200L + rank * 3L + seedOffset * 5L,
                     800000L + shopIndex,
-                    "Mock店铺-" + shopIndex,
+                    buildShopName(shopIndex),
                     "4." + (70 + (rank % 20)),
                     itemStatus,
                     productStatusText(itemStatus),
-                    rank % 2 == 0 ? "美妆个护" : "女装",
+                    rank % 2 == 0 ? "美妆个护" : "女装穿搭",
                     String.valueOf(Math.max(1000 - rank, 0)),
-                    i % 2 == 0 ? "满100减10" : "满200减20",
+                    i % 2 == 0 ? "满199减20" : "满299减40",
                     String.format("2026-04-%02d", 1 + (seedOffset % 9)),
                     String.format("2026-05-%02d", 10 + (seedOffset % 9)),
                     String.format("2026-04-%02d", 1 + (seedOffset % 9)),
                     String.format("2026-05-%02d", 10 + (seedOffset % 9)),
-                    "https://example.com/mock-detail/" + productId
+                    "https://example.com/test-detail/" + productId
             ));
         }
         List<ActivityProductItem> filtered = all.stream()
@@ -92,13 +92,13 @@ public class MockDouyinProductGateway implements DouyinProductGateway {
         long price = 9900L + (productSeed % 5000);
         return new ProductDetailResult(
                 productId,
-                "Mock商品详情-" + productId,
-                "https://example.com/mock-product-detail-" + productId + ".png",
+                "商品详情演示-" + productId,
+                "https://example.com/test-product-detail-" + productId + ".png",
                 price,
                 String.format(Locale.ROOT, "%.2f", price / 100.0),
-                "https://example.com/mock-detail/" + productId,
-                "Mock店铺-" + (productSeed % 9),
-                productSeed % 2 == 0 ? "美妆个护" : "女装",
+                "https://example.com/test-detail/" + productId,
+                buildShopName((int) (productSeed % 9)),
+                productSeed % 2 == 0 ? "美妆个护" : "女装穿搭",
                 queryProductSkus(productId)
         );
     }
@@ -107,9 +107,30 @@ public class MockDouyinProductGateway implements DouyinProductGateway {
     public List<ProductSkuResult> queryProductSkus(String productId) {
         long productSeed = asLong(productId, 0L);
         return List.of(
-                new ProductSkuResult(productId + "-SKU1", "默认款", 9900L + (productSeed % 1000), 99, "https://example.com/mock-sku-1.png"),
-                new ProductSkuResult(productId + "-SKU2", "加量款", 12900L + (productSeed % 1000), 48, "https://example.com/mock-sku-2.png")
+                new ProductSkuResult(productId + "-SKU1", "标准装", 9900L + (productSeed % 1000), 99, "https://example.com/test-sku-1.png"),
+                new ProductSkuResult(productId + "-SKU2", "加量装", 12900L + (productSeed % 1000), 48, "https://example.com/test-sku-2.png")
         );
+    }
+
+    private String buildProductTitle(int index, int rank) {
+        String[] prefixes = {"主演示商品", "寄样演示商品", "新客拉新商品", "订单排查商品"};
+        String[] suffixes = {"高佣款", "基础款", "冲量款", "复购款"};
+        return prefixes[index % prefixes.length] + "-" + suffixes[rank % suffixes.length] + "-" + index;
+    }
+
+    private String buildShopName(int shopIndex) {
+        String[] shopNames = {
+                "演示店铺-美妆馆",
+                "演示店铺-女装馆",
+                "演示店铺-母婴馆",
+                "演示店铺-数码馆",
+                "演示店铺-食品馆",
+                "演示店铺-家清馆",
+                "演示店铺-家电馆",
+                "演示店铺-日用馆",
+                "演示店铺-运动馆"
+        };
+        return shopNames[Math.floorMod(shopIndex, shopNames.length)];
     }
 
     private int parseCursor(String cursor) {
@@ -146,3 +167,5 @@ public class MockDouyinProductGateway implements DouyinProductGateway {
         };
     }
 }
+
+

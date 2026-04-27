@@ -1,4 +1,4 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 import { createDiscreteApi } from 'naive-ui';
 
 const { loadingBar, message: discreteMessage } = createDiscreteApi(['loadingBar', 'message']);

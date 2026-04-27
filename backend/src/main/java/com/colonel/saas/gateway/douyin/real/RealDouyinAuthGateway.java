@@ -6,7 +6,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(name = "douyin.mock.enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "false", matchIfMissing = true)
 public class RealDouyinAuthGateway implements DouyinAuthGateway {
 
     private final DoudianTokenGateway doudianTokenGateway;
@@ -55,3 +55,4 @@ public class RealDouyinAuthGateway implements DouyinAuthGateway {
         );
     }
 }
+

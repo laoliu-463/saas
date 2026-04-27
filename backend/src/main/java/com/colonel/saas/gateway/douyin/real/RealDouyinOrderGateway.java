@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-@ConditionalOnProperty(name = "douyin.mock.enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "false", matchIfMissing = true)
 public class RealDouyinOrderGateway implements DouyinOrderGateway {
 
     private final OrderApi orderApi;
@@ -40,3 +40,4 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
         return orderApi.decryptSensitiveData(orderIds);
     }
 }
+

@@ -4,9 +4,11 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.dto.talent.TalentDetailResponse;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.job.TalentWeeklyRefreshJob;
+import com.colonel.saas.service.TalentQueryService;
 import com.colonel.saas.service.TalentService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,13 +37,15 @@ class TalentControllerTest {
     @Mock
     private TalentService talentService;
     @Mock
+    private TalentQueryService talentQueryService;
+    @Mock
     private TalentWeeklyRefreshJob talentWeeklyRefreshJob;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        TalentController controller = new TalentController(talentService, talentWeeklyRefreshJob);
+        TalentController controller = new TalentController(talentService, talentQueryService, talentWeeklyRefreshJob);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -53,7 +57,7 @@ class TalentControllerTest {
         IPage<Talent> page = new Page<>(1, 10);
         page.setRecords(List.of(new Talent()));
         page.setTotal(1);
-        when(talentService.page(1, 10, "alice", null, null, null, DataScope.PERSONAL, userId, null))
+        when(talentQueryService.page(1, 10, "alice", null, null, null, null, null, DataScope.PERSONAL, userId, null))
                 .thenReturn(page);
 
         mockMvc.perform(get("/talents")
@@ -70,15 +74,17 @@ class TalentControllerTest {
     @Test
     void detail_existingTalent_returnsTalent() throws Exception {
         UUID id = UUID.randomUUID();
-        Talent talent = new Talent();
-        talent.setId(id);
-        talent.setNickname("tester");
-        when(talentService.getById(id)).thenReturn(talent);
+        TalentDetailResponse response = new TalentDetailResponse();
+        TalentDetailResponse.TalentInfo info = new TalentDetailResponse.TalentInfo();
+        info.setId(id.toString());
+        info.setNickname("tester");
+        response.setTalent(info);
+        when(talentQueryService.detail(id)).thenReturn(response);
 
         mockMvc.perform(get("/talents/{id}", id))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.nickname").value("tester"));
+                .andExpect(jsonPath("$.data.talent.nickname").value("tester"));
     }
 
     @Test

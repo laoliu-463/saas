@@ -31,16 +31,18 @@ export interface DouyinDebugResult<T = any> {
 }
 
 const unwrap = <T>(response: any): T => response?.data ?? response;
-const isMockEnv = String(import.meta.env.VITE_ENV_LABEL || '').toUpperCase().includes('MOCK');
+const isTestEnv = ['MOCK', 'TEST'].some((keyword) =>
+  String(import.meta.env.VITE_ENV_LABEL || '').toUpperCase().includes(keyword)
+);
 
 export function getDouyinTokenStatus(appId?: string) {
-  if (isMockEnv) {
+  if (isTestEnv) {
     return Promise.resolve({
-      appId: appId || 'mock-app-id',
+      appId: appId || 'test-app-id',
       hasAccessToken: true,
-      maskedAccessToken: 'mock_access_token_****',
+      maskedAccessToken: 'test_access_token_****',
       hasRefreshToken: true,
-      maskedRefreshToken: 'mock_refresh_token_****',
+      maskedRefreshToken: 'test_refresh_token_****',
       tokenExpireAtEpochSeconds: Math.floor(Date.now() / 1000) + 7200,
       tokenExpiringSoon: false,
       reauthorizeRequired: false
@@ -50,13 +52,13 @@ export function getDouyinTokenStatus(appId?: string) {
 }
 
 export function refreshDouyinToken(appId?: string) {
-  if (isMockEnv) {
+  if (isTestEnv) {
     return Promise.resolve({
-      appId: appId || 'mock-app-id',
+      appId: appId || 'test-app-id',
       hasAccessToken: true,
-      maskedAccessToken: 'mock_access_token_refreshed_****',
+      maskedAccessToken: 'test_access_token_refreshed_****',
       hasRefreshToken: true,
-      maskedRefreshToken: 'mock_refresh_token_****',
+      maskedRefreshToken: 'test_refresh_token_****',
       tokenExpireAtEpochSeconds: Math.floor(Date.now() / 1000) + 7200,
       tokenExpiringSoon: false,
       reauthorizeRequired: false
@@ -66,13 +68,13 @@ export function refreshDouyinToken(appId?: string) {
 }
 
 export function createDouyinToken(data: DouyinTokenCreateRequest) {
-  if (isMockEnv) {
+  if (isTestEnv) {
     return Promise.resolve({
-      appId: data?.appId || 'mock-app-id',
+      appId: data?.appId || 'test-app-id',
       hasAccessToken: true,
-      maskedAccessToken: 'mock_access_token_created_****',
+      maskedAccessToken: 'test_access_token_created_****',
       hasRefreshToken: true,
-      maskedRefreshToken: 'mock_refresh_token_created_****',
+      maskedRefreshToken: 'test_refresh_token_created_****',
       tokenExpireAtEpochSeconds: Math.floor(Date.now() / 1000) + 7200,
       tokenExpiringSoon: false,
       reauthorizeRequired: false
@@ -82,15 +84,15 @@ export function createDouyinToken(data: DouyinTokenCreateRequest) {
 }
 
 export function getDouyinActivityTest(appId?: string) {
-  if (isMockEnv) {
+  if (isTestEnv) {
     return Promise.resolve({
       status: 'success',
-      message: '活动调用成功（Mock）',
-      appId: appId || 'mock-app-id',
+      message: '活动调用成功（Test）',
+      appId: appId || 'test-app-id',
       endpoint: '/douyin/activities',
       remoteResponse: {
         total: 1,
-        activities: [{ activityId: 'mock_activity_001', title: 'Mock活动' }]
+        activities: [{ activityId: 'test_activity_001', title: 'Test活动' }]
       }
     } as DouyinDebugResult);
   }
@@ -98,15 +100,15 @@ export function getDouyinActivityTest(appId?: string) {
 }
 
 export function getDouyinActivityDetail(appId: string | undefined, activityId: string) {
-  if (isMockEnv) {
+  if (isTestEnv) {
     return Promise.resolve({
       status: 'success',
-      message: '活动详情调用成功（Mock）',
-      appId: appId || 'mock-app-id',
+      message: '活动详情调用成功（Test）',
+      appId: appId || 'test-app-id',
       endpoint: `/douyin/activities/${activityId}`,
       remoteResponse: {
         activityId,
-        title: 'Mock活动详情'
+        title: 'Test活动详情'
       }
     } as DouyinDebugResult);
   }
@@ -114,15 +116,15 @@ export function getDouyinActivityDetail(appId: string | undefined, activityId: s
 }
 
 export function getDouyinProductActivities(params: Record<string, any>) {
-  if (isMockEnv) {
+  if (isTestEnv) {
     return Promise.resolve({
       status: 'success',
-      message: '活动商品调用成功（Mock）',
-      appId: params?.appId || 'mock-app-id',
+      message: '活动商品调用成功（Test）',
+      appId: params?.appId || 'test-app-id',
       endpoint: '/douyin/activity-products',
       remoteResponse: {
         total: 1,
-        list: [{ activityId: 'mock_activity_001', productId: 'mock_product_001' }]
+        list: [{ activityId: 'test_activity_001', productId: 'test_product_001' }]
       }
     } as DouyinDebugResult);
   }
@@ -130,15 +132,15 @@ export function getDouyinProductActivities(params: Record<string, any>) {
 }
 
 export function getDouyinProductsByActivity(params: { appId?: string; activityId: string; count?: number; cursor?: string }) {
-  if (isMockEnv) {
+  if (isTestEnv) {
     return Promise.resolve({
       status: 'success',
-      message: '按活动查询商品成功（Mock）',
-      appId: params?.appId || 'mock-app-id',
+      message: '按活动查询商品成功（Test）',
+      appId: params?.appId || 'test-app-id',
       endpoint: `/douyin/activities/${params.activityId}/products`,
       remoteResponse: {
         total: 1,
-        list: [{ productId: 'mock_product_001', title: 'Mock商品' }]
+        list: [{ productId: 'test_product_001', title: 'Test商品' }]
       }
     } as DouyinDebugResult);
   }
@@ -147,14 +149,14 @@ export function getDouyinProductsByActivity(params: { appId?: string; activityId
 }
 
 export function createOrUpdateDouyinActivity(data: Record<string, any>) {
-  if (isMockEnv) {
+  if (isTestEnv) {
     return Promise.resolve({
       status: 'success',
-      message: data?.activityId ? '活动更新成功（Mock）' : '活动创建成功（Mock）',
-      appId: data?.appId || 'mock-app-id',
+      message: data?.activityId ? '活动更新成功（Test）' : '活动创建成功（Test）',
+      appId: data?.appId || 'test-app-id',
       endpoint: data?.activityId ? `/douyin/activities/${data.activityId}` : '/douyin/activities',
       remoteResponse: {
-        activityId: data?.activityId || 'mock_activity_created_001'
+        activityId: data?.activityId || 'test_activity_created_001'
       }
     } as DouyinDebugResult);
   }

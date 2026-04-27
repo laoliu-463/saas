@@ -20,10 +20,11 @@ public class TalentEnrichModeGuard {
     @PostConstruct
     public void validate() {
         for (String profile : environment.getActiveProfiles()) {
-            if ("prod".equalsIgnoreCase(profile) && "mock".equalsIgnoreCase(enrichMode)) {
-                throw new IllegalStateException("prod profile does not allow talent.enrich.mode=mock");
+            if ("prod".equalsIgnoreCase(profile) && "test".equalsIgnoreCase(enrichMode)) {
+                throw new IllegalStateException("prod profile does not allow talent.enrich.mode=test");
             }
         }
     }
 }
+
 

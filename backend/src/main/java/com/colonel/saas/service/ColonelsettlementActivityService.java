@@ -14,14 +14,14 @@ import java.util.UUID;
 @Service
 public class ColonelsettlementActivityService {
 
-    private final List<ColonelsettlementActivity> mockActivities = new ArrayList<>();
+    private final List<ColonelsettlementActivity> testActivities = new ArrayList<>();
 
     public ColonelsettlementActivityService() {
-        initMockData();
+        initTestData();
     }
 
     public IPage<ColonelsettlementActivity> getPage(long page, long size, Integer status) {
-        List<ColonelsettlementActivity> filtered = mockActivities.stream()
+        List<ColonelsettlementActivity> filtered = testActivities.stream()
                 .filter(activity -> status == null || status.equals(activity.getStatus()))
                 .sorted(Comparator.comparing(ColonelsettlementActivity::getStartTime).reversed())
                 .toList();
@@ -41,17 +41,18 @@ public class ColonelsettlementActivityService {
         return result;
     }
 
-    private void initMockData() {
+    private void initTestData() {
         LocalDateTime now = LocalDateTime.now();
         for (int i = 1; i <= 5; i++) {
             ColonelsettlementActivity activity = new ColonelsettlementActivity();
             activity.setId(UUID.nameUUIDFromBytes(("activity-" + i).getBytes()));
-            activity.setName("测试活动-" + i);
+            activity.setName("主链路演示活动-" + i);
             activity.setStartTime(now.minusDays(i * 2L));
             activity.setEndTime(now.plusDays(15L - i));
             activity.setStatus(i % 2 == 0 ? 0 : 1);
             activity.setCreateTime(now.minusDays(i * 2L));
-            mockActivities.add(activity);
+            testActivities.add(activity);
         }
     }
 }
+

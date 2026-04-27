@@ -22,6 +22,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class OrderApiTest {
 
+    @SuppressWarnings("unchecked")
+    private static ArgumentCaptor<Map<String, Object>> mapCaptor() {
+        return (ArgumentCaptor<Map<String, Object>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Map.class);
+    }
+
     @Mock
     private DouyinApiClient douyinApiClient;
 
@@ -36,7 +41,7 @@ class OrderApiTest {
         Map<String, Object> result = orderApi.listSettlement(1000L, 2000L, 50, "50");
 
         assertThat(result).containsKey("data");
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instituteOrderColonel"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("start_time")).isEqualTo(1000L);
@@ -52,7 +57,7 @@ class OrderApiTest {
 
         orderApi.listSettlement(1000L, 2000L, 0, null);
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instituteOrderColonel"), captor.capture());
         assertThat(captor.getValue().get("count")).isEqualTo(100);
     }
@@ -64,7 +69,7 @@ class OrderApiTest {
 
         orderApi.listSettlement(1000L, 2000L, 10, "not_a_number");
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instituteOrderColonel"), captor.capture());
         assertThat(captor.getValue().get("page")).isEqualTo(1L);
     }
@@ -76,7 +81,7 @@ class OrderApiTest {
 
         orderApi.listSettlementWindow(null, null);
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instituteOrderColonel"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params).containsKey("start_time");
@@ -92,7 +97,7 @@ class OrderApiTest {
 
         orderApi.listSettlementWindow("0", 25);
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instituteOrderColonel"), captor.capture());
         assertThat(captor.getValue().get("count")).isEqualTo(25);
     }
@@ -105,7 +110,7 @@ class OrderApiTest {
 
         orderApi.listSettlement(1000L, 2000L, 20, "3");
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient, times(2)).post(eq("buyin.instituteOrderColonel"), captor.capture());
         assertThat(captor.getAllValues().get(0)).containsEntry("page", 4L);
         assertThat(captor.getAllValues().get(1)).containsEntry("cursor", 3L);
@@ -118,7 +123,7 @@ class OrderApiTest {
 
         orderApi.decryptSensitiveData(List.of("oid1", "oid2"));
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("order.batchSensitiveDataRequest"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("order_ids")).isEqualTo(List.of("oid1", "oid2"));
@@ -140,7 +145,7 @@ class OrderApiTest {
                 "4737996432465788974, 4737996432465788973");
 
         assertThat(result).containsKey("data");
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.colonelMultiSettlementOrders"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("appId")).isEqualTo("test_app");
@@ -166,7 +171,7 @@ class OrderApiTest {
                 "2026-04-02 00:00:00",
                 null);
 
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.colonelMultiSettlementOrders"), captor.capture());
         Map<String, Object> params = captor.getValue();
         assertThat(params.get("size")).isEqualTo(50);

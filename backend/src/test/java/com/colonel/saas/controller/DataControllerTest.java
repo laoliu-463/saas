@@ -4,8 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
-import com.colonel.saas.common.exception.BusinessException;
-import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.CommissionService;
@@ -28,6 +26,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@SuppressWarnings("unchecked")
 class DataControllerTest {
 
     @Mock
@@ -38,6 +37,10 @@ class DataControllerTest {
     private CommissionService commissionService;
 
     private DataController dataController;
+
+    private static ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> queryWrapperCaptor() {
+        return (ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(QueryWrapper.class);
+    }
 
     @BeforeEach
     void setUp() {
@@ -60,9 +63,7 @@ class DataControllerTest {
                 DataScope.ALL
         );
 
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor =
-                (ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(QueryWrapper.class);
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
         verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.create_time");
@@ -109,7 +110,7 @@ class DataControllerTest {
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25));
         when(commissionService.calculate(any())).thenReturn(summary);
 
-        var response = dataController.getMetrics(userId, null, com.colonel.saas.common.enums.DataScope.ALL);
+        var response = dataController.getMetrics(userId, null, DataScope.ALL);
 
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData()).isNotNull();
@@ -126,8 +127,7 @@ class DataControllerTest {
                 new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
 
-        var response = dataController.getMetrics(userId, UUID.randomUUID(),
-                com.colonel.saas.common.enums.DataScope.PERSONAL);
+        var response = dataController.getMetrics(userId, UUID.randomUUID(), DataScope.PERSONAL);
 
         assertThat(response.getCode()).isEqualTo(200);
     }
@@ -141,8 +141,7 @@ class DataControllerTest {
                 new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
 
-        var response = dataController.getMetrics(userId, deptId,
-                com.colonel.saas.common.enums.DataScope.DEPT);
+        var response = dataController.getMetrics(userId, deptId, DataScope.DEPT);
 
         assertThat(response.getCode()).isEqualTo(200);
     }
@@ -152,7 +151,7 @@ class DataControllerTest {
         var response = dataController.getExclusiveTalentStatus();
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData()).isNotEmpty();
-        assertThat(response.getData().get(0).get("talentName")).isEqualTo("测试达人1");
+        assertThat(response.getData().get(0).get("talentName")).isEqualTo("达人A-独家合作演示");
     }
 
     @Test
@@ -160,7 +159,7 @@ class DataControllerTest {
         var response = dataController.getExclusiveMerchantStatus();
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData()).isNotEmpty();
-        assertThat(response.getData().get(0).get("merchantName")).isEqualTo("测试商家1");
+        assertThat(response.getData().get(0).get("merchantName")).isEqualTo("商家A-独家合作演示");
     }
 
     @Test
@@ -169,11 +168,9 @@ class DataControllerTest {
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
         dataController.getOrderPage(1, 10, "SHIPPED", null, null,
-                UUID.randomUUID(), UUID.randomUUID(), com.colonel.saas.common.enums.DataScope.ALL);
+                UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
 
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor =
-                (ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(QueryWrapper.class);
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
         verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.order_status");

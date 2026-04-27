@@ -8,11 +8,11 @@ export const sampleStatusTextMap: Record<string, string> = {
   CLOSED: '已关闭'
 }
 
-export const sampleStatusTypeMap: Record<string, 'default' | 'warning' | 'info' | 'success' | 'error'> = {
-  PENDING_AUDIT: 'warning',
-  PENDING_SHIP: 'info',
-  SHIPPED: 'success',
-  PENDING_TASK: 'info',
+export const sampleStatusTypeMap: Record<string, 'default' | 'warning' | 'info' | 'success' | 'error' | 'primary'> = {
+  PENDING_AUDIT: 'info',
+  PENDING_SHIP: 'primary',
+  SHIPPED: 'info',
+  PENDING_TASK: 'warning',
   FINISHED: 'success',
   REJECTED: 'error',
   CLOSED: 'default'
