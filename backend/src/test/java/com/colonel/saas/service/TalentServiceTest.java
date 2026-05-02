@@ -14,6 +14,7 @@ import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -108,7 +109,9 @@ class TalentServiceTest {
         Talent claimed = talentService.claim(talentId, userId, UUID.randomUUID());
 
         assertThat(claimed.getOwnerId()).isEqualTo(userId);
-        verify(talentClaimMapper).insert(any(TalentClaim.class));
+        ArgumentCaptor<TalentClaim> claimCaptor = ArgumentCaptor.forClass(TalentClaim.class);
+        verify(talentClaimMapper).insert(claimCaptor.capture());
+        assertThat(claimCaptor.getValue().getClaimType()).isEqualTo(1);
         verify(redisTemplate).delete("talent:claim:lock:" + talentId);
     }
 

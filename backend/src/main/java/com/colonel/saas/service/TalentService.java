@@ -44,6 +44,7 @@ public class TalentService {
     private static final int CLAIM_STATUS_ACTIVE = 1;
     private static final int CLAIM_STATUS_EXPIRED = 2;
     private static final int CLAIM_STATUS_RELEASED = 3;
+    private static final int CLAIM_TYPE_MANUAL = 1;
     private static final long EXCLUSIVE_SERVICE_FEE_RATIO_THRESHOLD = 70L;
     private static final long EXCLUSIVE_MONTHLY_SAMPLE_THRESHOLD = 10L;
 
@@ -313,6 +314,7 @@ public class TalentService {
             claim.setTalentUid(talent.getDouyinUid());
             claim.setUserId(userId);
             claim.setDeptId(deptId);
+            claim.setClaimType(CLAIM_TYPE_MANUAL);
             claim.setClaimedAt(now);
             claim.setProtectedUntil(now.plusDays(protectDays));
             claim.setStatus(CLAIM_STATUS_ACTIVE);

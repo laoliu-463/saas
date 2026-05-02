@@ -2,6 +2,8 @@ package com.colonel.saas.douyin.api;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.douyin.DouyinApiClient;
+import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
+import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -16,9 +18,16 @@ public class ProductApi {
     private static final int MAX_PRODUCTS_SIZE = 50;
 
     private final DouyinApiClient douyinApiClient;
+    private final DouyinUpstreamModeSupport upstreamModeSupport;
+    private final DouyinContractFixtureProvider contractFixtureProvider;
 
-    public ProductApi(DouyinApiClient douyinApiClient) {
+    public ProductApi(
+            DouyinApiClient douyinApiClient,
+            DouyinUpstreamModeSupport upstreamModeSupport,
+            DouyinContractFixtureProvider contractFixtureProvider) {
         this.douyinApiClient = douyinApiClient;
+        this.upstreamModeSupport = upstreamModeSupport;
+        this.contractFixtureProvider = contractFixtureProvider;
     }
 
     public Map<String, Object> listActivities(
@@ -29,6 +38,9 @@ public class ProductApi {
             Long page,
             Long pageSize,
             String activityInfo) {
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildActivityListResponse(appId, status, searchType, sortType, page, pageSize, activityInfo);
+        }
         Map<String, Object> params = new HashMap<>();
         putIfNotBlank(params, "appId", appId);
         params.put("status", normalizeStatus(status));
@@ -74,6 +86,9 @@ public class ProductApi {
             Long retrieveMode,
             String cursor,
             Long page) {
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildProductListResponse(appId, activityId, count, cursor, productInfo, status, retrieveMode, page);
+        }
         Map<String, Object> params = new HashMap<>();
         putIfNotBlank(params, "appId", appId);
         params.put("activity_id", parseActivityId(activityId));

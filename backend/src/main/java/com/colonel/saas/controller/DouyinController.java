@@ -1,16 +1,25 @@
 package com.colonel.saas.controller;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.douyin.DoudianTokenGateway;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.douyin.DouyinTokenService;
 import com.colonel.saas.douyin.api.ActivityApi;
+import com.colonel.saas.douyin.api.InstitutionApi;
 import com.colonel.saas.douyin.api.OrderApi;
 import com.colonel.saas.douyin.api.ProductApi;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -37,24 +46,36 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/douyin")
 @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER})
+@Tag(name = "抖音联调")
+@SecurityRequirement(name = "bearerAuth")
 public class DouyinController extends BaseController {
 
     private final ActivityApi activityApi;
     private final ProductApi productApi;
     private final OrderApi orderApi;
+    private final InstitutionApi institutionApi;
     private final DouyinTokenService douyinTokenService;
+    private final DoudianTokenGateway doudianTokenGateway;
 
-    public DouyinController(ActivityApi activityApi, ProductApi productApi, OrderApi orderApi, DouyinTokenService douyinTokenService) {
+    public DouyinController(
+            ActivityApi activityApi,
+            ProductApi productApi,
+            OrderApi orderApi,
+            InstitutionApi institutionApi,
+            DouyinTokenService douyinTokenService,
+            DoudianTokenGateway doudianTokenGateway) {
         this.activityApi = activityApi;
         this.productApi = productApi;
         this.orderApi = orderApi;
+        this.institutionApi = institutionApi;
         this.douyinTokenService = douyinTokenService;
+        this.doudianTokenGateway = doudianTokenGateway;
     }
 
-    @Tag(name = "抖音接口")
-    @Operation(summary = "活动列表", description = "验证 alliance.instituteColonelActivityList 调用链路")
+    @Operation(summary = "[联调] 查询活动列表", description = "验证上游 alliance.instituteColonelActivityList 能力是否可用，检查当前 appId 下团长活动列表查询链路。")
     @GetMapping("/activities")
-    public ApiResult<Map<String, Object>> huodongLiebiao(@RequestParam(required = false) String appId) {
+    public ApiResult<Map<String, Object>> huodongLiebiao(
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
         result.put("endpoint", "alliance.instituteColonelActivityList");
@@ -69,11 +90,11 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
-    @Operation(summary = "活动详情", description = "验证 buyin.colonelActivityDetail 调用链路")
+    @Operation(summary = "[联调] 查询活动详情", description = "验证上游 buyin.colonelActivityDetail 能力是否可用，检查指定活动详情查询链路。")
     @GetMapping("/activities/{activityId}")
     public ApiResult<Map<String, Object>> huodongXiangqing(
-            @RequestParam(required = false) String appId,
-            @PathVariable String activityId) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
+            @Parameter(description = "团长活动 ID。") @PathVariable String activityId) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
         result.put("endpoint", "buyin.colonelActivityDetail");
@@ -89,16 +110,16 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
-    @Operation(summary = "活动商品", description = "验证活动关联的商品列表")
+    @Operation(summary = "[联调] 查询活动商品活动列表", description = "验证上游 alliance.instituteColonelActivityList 活动商品查询链路。该接口保留 pageSize 命名以对齐上游 SDK 参数。")
     @GetMapping("/activity-products")
     public ApiResult<Map<String, Object>> huodongShangpin(
-            @RequestParam(required = false) String appId,
-            @RequestParam(required = false) Integer status,
-            @RequestParam(required = false) Long searchType,
-            @RequestParam(required = false) Long sortType,
-            @RequestParam(required = false) Long page,
-            @RequestParam(required = false) Long pageSize,
-            @RequestParam(required = false) String activityInfo) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
+            @Parameter(description = "活动状态。待确认：取值含义请联系产品或上游 SDK 文档。") @RequestParam(required = false) Integer status,
+            @Parameter(description = "搜索类型。待确认：取值含义请联系产品或上游 SDK 文档。") @RequestParam(required = false) Long searchType,
+            @Parameter(description = "排序类型。待确认：取值含义请联系产品或上游 SDK 文档。") @RequestParam(required = false) Long sortType,
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(required = false) Long page,
+            @Parameter(description = "每页条数。联调接口保留 pageSize 命名以对齐上游 SDK。") @RequestParam(required = false) Long pageSize,
+            @Parameter(description = "活动信息关键字，用于按活动名称或信息筛选。") @RequestParam(required = false) String activityInfo) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
         result.put("endpoint", "alliance.instituteColonelActivityList");
@@ -114,13 +135,13 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
-    @Operation(summary = "商品列表", description = "验证 alliance.colonelActivityProduct 按活动查询商品")
-    @GetMapping("/activities/{activityId}/products")
+    @Operation(summary = "[联调] 查询活动商品列表", description = "验证上游 alliance.colonelActivityProduct 按活动查询商品的能力。该接口主要用于联调上游返回结构，不等同于本地商品主链路接口。")
+    @GetMapping("/activity-product-list")
     public ApiResult<Map<String, Object>> shangpinLiebiao(
-            @RequestParam(required = false) String appId,
-            @PathVariable String activityId,
-            @RequestParam(required = false) Integer count,
-            @RequestParam(required = false) String cursor) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
+            @Parameter(description = "团长活动 ID。") @RequestParam String activityId,
+            @Parameter(description = "每次拉取商品数量。") @RequestParam(required = false) Integer count,
+            @Parameter(description = "游标，继续翻页时使用。") @RequestParam(required = false) String cursor) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
         result.put("endpoint", "alliance.colonelActivityProduct");
@@ -136,9 +157,14 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
-    @Operation(summary = "商品素材状态", description = "验证 buyin.materialsProductStatus 商品素材状态查询")
+    @Operation(summary = "[联调] 查询商品素材状态", description = "验证上游 buyin.materialsProductStatus 商品素材状态查询能力。")
     @PostMapping("/product-material-status-checks")
     public ApiResult<Map<String, Object>> shangpinSucaiZhuangtai(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "商品素材状态查询请求体。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"products\":[\"101\",\"102\"]}"))
+            )
             @Valid @RequestBody ProductMaterialStatusRequest request) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
@@ -154,15 +180,15 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
-    @Operation(summary = "订单结算", description = "验证 buyin.colonelMultiSettlementOrders 团长多结算订单")
+    @Operation(summary = "[联调] 查询订单结算", description = "验证上游 buyin.colonelMultiSettlementOrders 团长多结算订单查询能力。")
     @GetMapping("/order-settlements")
     public ApiResult<Map<String, Object>> dingdanJiesuan(
-            @RequestParam(required = false) String appId,
-            @RequestParam(required = false, defaultValue = "20") Integer size,
-            @RequestParam(required = false, defaultValue = "0") String cursor,
-            @RequestParam(required = false, defaultValue = "update") String timeType,
-            @RequestParam(required = false) String startTime,
-            @RequestParam(required = false) String endTime) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
+            @Parameter(description = "每次拉取条数。") @RequestParam(required = false, defaultValue = "20") Integer size,
+            @Parameter(description = "游标，继续翻页时使用。") @RequestParam(required = false, defaultValue = "0") String cursor,
+            @Parameter(description = "时间类型，如 update。待确认：更多取值请参考上游 SDK 文档。") @RequestParam(required = false, defaultValue = "update") String timeType,
+            @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
+            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
         result.put("endpoint", "buyin.colonelMultiSettlementOrders");
@@ -179,9 +205,14 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
-    @Operation(summary = "活动商品取消", description = "调用 alliance.colonelActivityProductCancel 终止合作")
+    @Operation(summary = "[联调] 取消活动商品", description = "验证上游 alliance.colonelActivityProductCancel 终止合作能力。")
     @PostMapping("/activity-product-cancellations")
     public ApiResult<Map<String, Object>> quxiaoHuodongShangpin(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "活动商品取消请求体。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"activityId\":123,\"productIds\":[\"1001\"],\"reason\":\"终止合作\"}"))
+            )
             @Valid @RequestBody ActivityProductCancelRequest request) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
@@ -199,8 +230,14 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
+    @Operation(summary = "[联调] 取消活动商品（原始请求）", description = "使用原始 JSON 直接调用 alliance.colonelActivityProductCancel，便于联调阶段快速验证不同 payload。")
     @PostMapping("/activity-product-cancellations/raw")
     public ApiResult<Map<String, Object>> quxiaoHuodongShangpinYuanshi(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "原始取消请求体，需包含 appId，其他字段按上游接口要求传入。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"activity_id\":123,\"product_ids\":[\"1001\"]}"))
+            )
             @RequestBody Map<String, Object> request) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
@@ -223,52 +260,128 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
-    @Operation(summary = "活动创建更新", description = "调用 alliance.colonelActivityCreateOrUpdate 创建或编辑团长活动")
+    @Operation(summary = "[联调] 创建活动", description = "验证上游 alliance.colonelActivityCreateOrUpdate 创建团长活动能力。")
     @RequireRoles({RoleCodes.ADMIN})
     @PostMapping("/activities")
     public ApiResult<Map<String, Object>> chuangjianHuodong(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "创建或更新团长活动请求体。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"applicationLimited\":false,\"activityName\":\"测试活动\",\"activityDesc\":\"联调用活动\",\"applyStartTime\":\"2026-04-28 10:00:00\",\"applyEndTime\":\"2026-04-29 10:00:00\",\"commissionRate\":\"10\",\"serviceRate\":\"5\",\"estimatedSingleSale\":\"1000\",\"activityType\":1,\"online\":true}"))
+            )
             @Valid @RequestBody ActivityCreateOrUpdateRequest request) {
         return ok(activityApi.createOrUpdate(buildActivityCommand(request, request.getActivityId())));
     }
 
-    @Operation(summary = "活动更新", description = "调用 alliance.colonelActivityCreateOrUpdate 编辑团长活动")
+    @Operation(summary = "[联调] 更新活动", description = "验证上游 alliance.colonelActivityCreateOrUpdate 更新团长活动能力。")
     @RequireRoles({RoleCodes.ADMIN})
     @PutMapping("/activities/{activityId}")
     public ApiResult<Map<String, Object>> gengxinHuodong(
-            @PathVariable Long activityId,
+            @Parameter(description = "团长活动 ID。") @PathVariable Long activityId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "更新团长活动请求体。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"applicationLimited\":false,\"activityName\":\"测试活动-更新\",\"activityDesc\":\"联调用活动\",\"applyStartTime\":\"2026-04-28 10:00:00\",\"applyEndTime\":\"2026-04-29 10:00:00\",\"commissionRate\":\"10\",\"serviceRate\":\"5\",\"estimatedSingleSale\":\"1000\",\"activityType\":1,\"online\":true}"))
+            )
             @Valid @RequestBody ActivityCreateOrUpdateRequest request) {
         return ok(activityApi.createOrUpdate(buildActivityCommand(request, activityId)));
     }
 
-    @Operation(summary = "Token状态", description = "查看当前 appId 的 Token 状态")
+    @Operation(summary = "[联调] 查询 Token 状态", description = "查看当前 appId 的 Token 缓存状态，用于确认真实联调前授权是否准备完毕。")
     @RequireRoles({RoleCodes.ADMIN})
     @GetMapping("/tokens")
     public ApiResult<DouyinTokenService.TokenStatus> tokenZhuangtai(
-            @RequestParam(required = false) String appId) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId) {
         return ok(douyinTokenService.getTokenStatus(appId));
     }
 
-    @Operation(summary = "Token刷新", description = "使用缓存 refresh_token 刷新 Token")
+    @Operation(summary = "[联调] 刷新 Token", description = "使用缓存中的 refresh_token 刷新 Token，用于验证 Token 刷新链路。")
     @RequireRoles({RoleCodes.ADMIN})
     @PostMapping("/token-refreshes")
     public ApiResult<DouyinTokenService.TokenStatus> tokenShuaxin(
-            @RequestParam(required = false) String appId) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId) {
         douyinTokenService.refreshToken(appId);
         return ok(douyinTokenService.getTokenStatus(appId));
     }
 
-    @Operation(summary = "Token创建", description = "初始化 Token（refresh_token 或 authorization_self）")
+    @Operation(summary = "[联调] 查询授权机构身份", description = "调用 buyin.institutionInfo 验证当前 Token 对应的授权主体、百应身份与角色信息。")
     @RequireRoles({RoleCodes.ADMIN})
+    @GetMapping("/institution-info")
+    public ApiResult<Map<String, Object>> jigouShenfen(
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("module", "M1.2 Douyin SDK");
+        result.put("endpoint", "buyin.institutionInfo");
+        result.put("appId", appId);
+        try {
+            result.put("remoteResponse", institutionApi.info(appId));
+            result.put("status", "success");
+        } catch (Throwable e) {
+            log.error("Douyin institution info call failed", e);
+            fillError(result, e);
+        }
+        return ok(result);
+    }
+
+    @Operation(summary = "[联调] 初始化 Token", description = "使用 authorization code 或 refresh_token 初始化 Token，适用于真实联调前的授权准备。联调接口，无需角色校验。")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Token 初始化成功")
+    })
     @PostMapping("/tokens")
     public ApiResult<DouyinTokenService.TokenStatus> tokenChuangjian(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Token 初始化请求体。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"code\":\"\",\"grantType\":\"authorization_self\",\"shopId\":\"123456789\"}"))
+            )
             @Valid @RequestBody TokenCreateRequest request) {
         douyinTokenService.exchangeCodeAndBootstrap(
                 request.getAppId(),
                 request.getCode(),
                 request.getGrantType(),
-                null, null, null, null
+                request.getTestShop(),
+                request.getShopId(),
+                request.getAuthId(),
+                request.getAuthSubjectType()
         );
         return ok(douyinTokenService.getTokenStatus(request.getAppId()));
+    }
+
+    @Operation(summary = "[联调] TokenCreate SDK 裸调探针", description = "直接调用抖店 SDK 的 token.create，不写入 Redis，不走业务缓存。仅返回脱敏后的请求快照与上游原始响应摘要，用于平台提单取证。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/token-create-probes")
+    public ApiResult<Map<String, Object>> tokenCreateProbe(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "TokenCreateRequest 探针请求体。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"7623665273727387199\",\"grantType\":\"authorization_self\",\"authId\":\"7351155267604218149\"}"))
+            )
+            @Valid @RequestBody TokenCreateRequest request) {
+        DoudianTokenGateway.TokenCreateProbeResult probe = doudianTokenGateway.probeCreateToken(
+                new DoudianTokenGateway.TokenCreateCommand(
+                        request.getCode(),
+                        request.getGrantType(),
+                        request.getTestShop(),
+                        request.getShopId(),
+                        request.getAuthId(),
+                        request.getAuthSubjectType()
+                )
+        );
+        Map<String, Object> result = new HashMap<>();
+        Map<String, Object> requestSnapshot = new HashMap<>();
+        requestSnapshot.put("grantType", probe.grantType());
+        requestSnapshot.put("codeState", probe.codeState());
+        requestSnapshot.put("testShop", probe.testShop());
+        requestSnapshot.put("shopId", probe.shopId());
+        requestSnapshot.put("authIdPresent", probe.authIdPresent());
+        requestSnapshot.put("authSubjectType", probe.authSubjectType());
+        result.put("module", "M1.3 Real SDK Probe");
+        result.put("endpoint", "token.create");
+        result.put("appId", request.getAppId());
+        result.put("status", "completed");
+        result.put("requestSnapshot", requestSnapshot);
+        result.put("response", probe.responseView());
+        return ok(result);
     }
 
     private ActivityApi.ActivityCreateOrUpdateCommand buildActivityCommand(
@@ -325,12 +438,32 @@ public class DouyinController extends BaseController {
     }
 
     public static class TokenCreateRequest {
+        @Schema(description = "抖音应用 appId。", example = "test-app")
         @JsonAlias({"app_id"})
         private String appId;
+
+        @Schema(description = "授权码。工具型应用传回调得到的 code；自用型应用传空字符串 \"\"。", example = "")
         @JsonAlias({"authorizationCode", "authorization_code"})
         private String code;
+
+        @Schema(description = "授权类型。工具型为 authorization_code；自用型为 authorization_self。", example = "authorization_self")
         @JsonAlias({"grant_type"})
         private String grantType;
+
+        @JsonAlias({"test_shop", "testShop"})
+        private String testShop;
+
+        @Schema(description = "店铺 ID（自用型授权时使用，与 authId 互斥二选一）。", example = "123456789")
+        @JsonAlias({"shop_id", "shopId"})
+        private String shopId;
+
+        @Schema(description = "授权 ID（自用型授权时使用，与 shopId 互斥二选一）。", example = "auth_xxx")
+        @JsonAlias({"auth_id", "authId"})
+        private String authId;
+
+        @Schema(description = "授权主体类型（自用型授权时配合 authId 使用）。待确认：取值请参考抖店开放平台文档。", example = "1")
+        @JsonAlias({"auth_subject_type", "authSubjectType", "auth_type", "type"})
+        private String authSubjectType;
 
         public String getAppId() { return appId; }
         public void setAppId(String appId) { this.appId = appId; }
@@ -338,10 +471,21 @@ public class DouyinController extends BaseController {
         public void setCode(String code) { this.code = code; }
         public String getGrantType() { return grantType; }
         public void setGrantType(String grantType) { this.grantType = grantType; }
+        public String getTestShop() { return testShop; }
+        public void setTestShop(String testShop) { this.testShop = testShop; }
+        public String getShopId() { return shopId; }
+        public void setShopId(String shopId) { this.shopId = shopId; }
+        public String getAuthId() { return authId; }
+        public void setAuthId(String authId) { this.authId = authId; }
+        public String getAuthSubjectType() { return authSubjectType; }
+        public void setAuthSubjectType(String authSubjectType) { this.authSubjectType = authSubjectType; }
     }
 
     public static class ProductMaterialStatusRequest {
+        @Schema(description = "抖音应用 appId。", example = "test-app")
         private String appId;
+
+        @Schema(description = "商品 ID 列表。", example = "[\"101\",\"102\"]")
         @NotEmpty(message = "products cannot be empty")
         private List<String> products;
 
@@ -352,11 +496,22 @@ public class DouyinController extends BaseController {
     }
 
     public static class ActivityProductCancelRequest {
+        @Schema(description = "抖音应用 appId。", example = "test-app")
         private String appId;
+
+        @Schema(description = "活动 ID。", example = "123")
         private Long activityId;
+
+        @Schema(description = "申请单 ID 列表。", example = "[1,2]")
         private List<Long> applyIds;
+
+        @Schema(description = "商品 ID 列表。", example = "[\"1001\",\"1002\"]")
         private List<String> productIds;
+
+        @Schema(description = "原始商品对象列表。", example = "[{\"product_id\":\"1001\"}]")
         private List<Map<String, Object>> products;
+
+        @Schema(description = "取消原因。", example = "终止合作")
         private String reason;
 
         public String getAppId() { return appId; }
@@ -401,40 +556,65 @@ public class DouyinController extends BaseController {
     }
 
     public static class ActivityCreateOrUpdateRequest {
+        @Schema(description = "抖音应用 appId。", example = "test-app")
         private String appId;
+        @Schema(description = "活动 ID；创建时可为空。", example = "123")
         private Long activityId;
+        @Schema(description = "是否限制报名。", example = "false")
         @NotNull(message = "applicationLimited cannot be empty")
         private Boolean applicationLimited;
+        @Schema(description = "是否新店。", example = "false")
         private Boolean isNewShop;
+        @Schema(description = "店铺类型。待确认：取值含义请参考上游 SDK 文档。", example = "normal")
         private String shopType;
+        @Schema(description = "活动名称。", example = "测试活动")
         @NotBlank(message = "activityName cannot be empty")
         private String activityName;
+        @Schema(description = "活动说明。", example = "联调用活动")
         @NotBlank(message = "activityDesc cannot be empty")
         private String activityDesc;
+        @Schema(description = "报名开始时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-04-28 10:00:00")
         @NotBlank(message = "applyStartTime cannot be empty")
         private String applyStartTime;
+        @Schema(description = "报名结束时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-04-29 10:00:00")
         @NotBlank(message = "applyEndTime cannot be empty")
         private String applyEndTime;
+        @Schema(description = "佣金率。", example = "10")
         @NotBlank(message = "commissionRate cannot be empty")
         private String commissionRate;
+        @Schema(description = "服务费率。", example = "5")
         @NotBlank(message = "serviceRate cannot be empty")
         private String serviceRate;
+        @Schema(description = "微信号。", example = "wechat-demo")
         private String wechatId;
+        @Schema(description = "手机号。", example = "13800000000")
         private String phoneNum;
+        @Schema(description = "预估单场销售额。", example = "1000")
         @NotBlank(message = "estimatedSingleSale cannot be empty")
         private String estimatedSingleSale;
+        @Schema(description = "活动类型。待确认：取值含义请参考上游 SDK 文档。", example = "1")
         @NotNull(message = "activityType cannot be empty")
         private Integer activityType;
+        @Schema(description = "指定店铺 ID 列表字符串。", example = "1001,1002")
         private String specifiedShopIds;
+        @Schema(description = "是否上线。", example = "true")
         @NotNull(message = "online cannot be empty")
         private Boolean online;
+        @Schema(description = "类目配置。", example = "服饰")
         private String categories;
+        @Schema(description = "店铺评分。", example = "90")
         private Integer shopScore;
+        @Schema(description = "最小推广天数。", example = "7")
         private Integer minPromotionDays;
+        @Schema(description = "跨境阈值。", example = "0")
         private Integer thresholdCrossBorder;
+        @Schema(description = "最小排除时长。", example = "0")
         private Integer minExclusionDuration;
+        @Schema(description = "广告佣金率。", example = "0")
         private String adCommissionRate;
+        @Schema(description = "广告服务费率。", example = "0")
         private String adServiceRate;
+        @Schema(description = "COS 限制类型。待确认：取值含义请参考上游 SDK 文档。", example = "0")
         private Integer cosLimitType;
 
         public String getAppId() { return appId; }

@@ -4,7 +4,7 @@
 
 当前默认运行口径：
 
-- 环境：`test`
+- 环境：`local-mock`
 - 后端端口：`8080`
 - 前端接口前缀：`/api`
 - 调试台页面：`/dev/test`
@@ -33,10 +33,10 @@
 
 ## 快速上手
 
-1. 启动数据库：`docker-compose up -d db`
-2. 启动后端 (Test)：`cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=test`
-3. 启动前端：`cd frontend && npm run dev`
-4. 演示数据：登录后访问 `/dev/test` 进行一键铺数。
+1. 本地 Mock 联调：`docker compose up -d`
+2. 自动化 / 隔离测试环境：`docker compose -f docker-compose.yml -f docker-compose.test.yml up -d`
+3. 打开前端：`http://localhost:3000`
+4. 登录后访问 `/dev/test` 进行 reset / seed / 造数调试。
 
 当前基线：
 
@@ -47,6 +47,21 @@
 
 - 抖店 SDK 依赖不再使用 `systemPath`
 - 项目通过 `backend/lib/maven-repo/` 加载 `com.doudian:open-sdk:1.1.0`
+
+## Environment Secret Policy
+
+- Real credentials must not be stored in tracked repository files.
+- Repository example files may contain field names and placeholders only, never live values.
+- Local real-integration credentials must live in untracked env files, CI/CD secrets, or server environment variables.
+- If a real Douyin secret was ever shared in a working tree, screenshots, or prior commits, rotate `DOUYIN_CLIENT_SECRET` and related credentials.
+
+## Local Startup Checklist
+
+1. Use `docker compose up -d` for `local-mock`.
+2. Use `docker compose -f docker-compose.yml -f docker-compose.test.yml up -d` for isolated `test`.
+3. Do not use `dev` as the default local walkthrough profile.
+4. Do not store real Douyin credentials in tracked files.
+5. Use `/api/test/**` only in `local-mock` or `test`.
 
 ## 开发规范
 

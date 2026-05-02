@@ -2,7 +2,10 @@ package com.colonel.saas.gateway.douyin.real;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.douyin.api.ProductApi;
+import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
+import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -12,18 +15,30 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+@Slf4j
 @Component
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "false", matchIfMissing = true)
 public class RealDouyinProductGateway implements DouyinProductGateway {
 
     private final ProductApi productApi;
+    private final DouyinUpstreamModeSupport upstreamModeSupport;
+    private final DouyinContractFixtureProvider contractFixtureProvider;
 
-    public RealDouyinProductGateway(ProductApi productApi) {
+    public RealDouyinProductGateway(
+            ProductApi productApi,
+            DouyinUpstreamModeSupport upstreamModeSupport,
+            DouyinContractFixtureProvider contractFixtureProvider) {
         this.productApi = productApi;
+        this.upstreamModeSupport = upstreamModeSupport;
+        this.contractFixtureProvider = contractFixtureProvider;
     }
 
     @Override
     public ActivityProductListResult queryActivityProducts(ActivityProductQueryRequest request) {
+        logGateway(request.appId());
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildProductListResult(request);
+        }
         Map<String, Object> remote = productApi.listProductsByActivity(
                 request.appId(),
                 request.activityId(),
@@ -51,11 +66,19 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
 
     @Override
     public ProductDetailResult queryProductDetail(String productId) {
+        logGateway(null);
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildProductDetailResult(productId);
+        }
         throw new BusinessException("真实抖店商品详情接口暂未接入");
     }
 
     @Override
     public List<ProductSkuResult> queryProductSkus(String productId) {
+        logGateway(null);
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildProductSkus(productId);
+        }
         throw new BusinessException("真实抖店商品 SKU 接口暂未接入");
     }
 
@@ -178,5 +201,25 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
         String text = String.valueOf(value).trim();
         return text.isEmpty() ? null : text;
     }
-}
 
+    private void logGateway(String appId) {
+        log.info(
+                "gateway=RealDouyinProductGateway, upstreamMode={}, appKey={}, shopId={}, authId={}",
+                upstreamModeSupport.value(),
+                mask(appId == null ? contractFixtureProvider.appKey() : appId),
+                contractFixtureProvider.shopId(),
+                contractFixtureProvider.authId()
+        );
+    }
+
+    private String mask(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = value.trim();
+        if (normalized.length() <= 8) {
+            return normalized;
+        }
+        return normalized.substring(0, 4) + "****" + normalized.substring(normalized.length() - 4);
+    }
+}

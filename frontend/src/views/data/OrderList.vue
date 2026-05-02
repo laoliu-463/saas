@@ -39,7 +39,7 @@
     </n-card>
 
     <n-modal v-model:show="showDetail" preset="card" title="订单详情" style="width: 600px">
-      <n-descriptions v-if="currentOrder" bordered column="1">
+      <n-descriptions v-if="currentOrder" bordered :column="1">
         <n-descriptions-item label="订单号">{{ currentOrder.id }}</n-descriptions-item>
         <n-descriptions-item label="商品信息">{{ currentOrder.productName || '未知商品' }}</n-descriptions-item>
         <n-descriptions-item label="达人信息">{{ currentOrder.talentName || '未知达人' }}</n-descriptions-item>

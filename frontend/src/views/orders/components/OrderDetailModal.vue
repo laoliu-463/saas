@@ -3,14 +3,35 @@
     <n-spin :show="loading">
       <div v-if="detail" class="detail-body">
         <n-alert
-          v-if="detail.attributionStatus !== 'ATTRIBUTED'"
-          type="warning"
-          title="当前订单待排查"
+          :type="caseSummary.type"
+          :title="caseSummary.title"
         >
-          原因：{{ getAttributionReasonText(detail.diagnosis?.reasonCode || detail.attributionRemark) }}
-          <br />
-          建议：{{ getAttributionReasonSuggestion(detail.diagnosis?.reasonCode || detail.attributionRemark) }}
+          <div class="case-summary-content">
+            <div>{{ caseSummary.description }}</div>
+            <ul v-if="caseSummary.actions.length" class="case-summary-actions">
+              <li v-for="action in caseSummary.actions" :key="action">{{ action }}</li>
+            </ul>
+          </div>
         </n-alert>
+
+        <section class="detail-section">
+          <h3 class="section-title">排查路径</h3>
+          <div class="trace-grid">
+            <div
+              v-for="step in traceSteps"
+              :key="step.key"
+              class="trace-card"
+              :class="step.tone"
+            >
+              <div class="trace-header">
+                <span class="trace-step">{{ step.step }}</span>
+                <span class="trace-title">{{ step.title }}</span>
+              </div>
+              <div class="trace-status">{{ step.status }}</div>
+              <div class="trace-desc">{{ step.description }}</div>
+            </div>
+          </div>
+        </section>
 
         <section class="detail-section">
           <h3 class="section-title">订单基础信息</h3>
@@ -113,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { getOrderDetail, type OrderDetail } from '../../../api/order'
 import StatusTag from '../../../components/StatusTag.vue'
@@ -134,6 +155,97 @@ const emit = defineEmits<{
 const message = useMessage()
 const loading = ref(false)
 const detail = ref<OrderDetail | null>(null)
+
+const diagnosisCode = computed(() => detail.value?.diagnosis?.reasonCode || detail.value?.attributionRemark || '')
+
+const caseSummary = computed(() => {
+  if (!detail.value) {
+    return {
+      type: 'info' as const,
+      title: '订单详情',
+      description: '-',
+      actions: [] as string[]
+    }
+  }
+
+  if (detail.value.attributionStatus === 'ATTRIBUTED') {
+    return {
+      type: 'success' as const,
+      title: '当前订单已完成归因',
+      description: `系统已把这笔订单归到 ${detail.value.channel?.channelName || '对应渠道'}，可继续结合商品、达人和寄样信息做结果复盘。`,
+      actions: [
+        '先确认 pick_source、推广链接和渠道负责人是否与预期一致',
+        '再核对商品负责人、达人信息和寄样记录，判断本次成交是自然转化还是有明确前置动作支撑'
+      ]
+    }
+  }
+
+  return {
+    type: 'warning' as const,
+    title: '当前订单待排查',
+    description: `原因：${getAttributionReasonText(diagnosisCode.value)}。建议先顺着下方排查路径定位卡点。`,
+    actions: [
+      getAttributionReasonSuggestion(diagnosisCode.value),
+      '优先核对订单是否携带 pick_source，再确认系统内是否存在对应推广映射',
+      '如果链路字段都正常，再回看商品活动绑定、招商负责人和达人使用链路是否一致'
+    ]
+  }
+})
+
+const traceSteps = computed(() => {
+  if (!detail.value) return []
+
+  const hasPickSource = Boolean(detail.value.pickSource || detail.value.promotion?.pickSource)
+  const matchedPromotion = Boolean(detail.value.promotion?.matched)
+  const attributed = detail.value.attributionStatus === 'ATTRIBUTED'
+  const hasProduct = Boolean(detail.value.product?.productId)
+  const hasChannel = Boolean(detail.value.channel?.channelUserId || detail.value.channel?.channelName)
+
+  return [
+    {
+      key: 'sync',
+      step: '01',
+      title: '订单回流',
+      status: detail.value.time?.syncTime ? '已回流到系统' : '等待确认同步',
+      description: detail.value.time?.syncTime
+        ? `最近同步时间：${formatDateTime(detail.value.time?.syncTime)}`
+        : '先确认这笔订单是否已经完成回流同步。',
+      tone: detail.value.time?.syncTime ? 'success' : 'warning'
+    },
+    {
+      key: 'pick-source',
+      step: '02',
+      title: '推广参数识别',
+      status: hasPickSource ? '已识别 pick_source' : '缺少推广参数',
+      description: hasPickSource
+        ? `当前 pick_source：${detail.value.pickSource || detail.value.promotion?.pickSource}`
+        : '订单里没有有效 pick_source，通常无法继续做渠道归因。',
+      tone: hasPickSource ? 'success' : 'error'
+    },
+    {
+      key: 'mapping',
+      step: '03',
+      title: '系统推广映射',
+      status: matchedPromotion ? '已匹配系统推广链接' : '未匹配到推广映射',
+      description: matchedPromotion
+        ? `mappingId：${detail.value.promotion?.mappingId || '-'}`
+        : '请回看商品是否通过系统转链，以及映射是否成功落库。',
+      tone: matchedPromotion ? 'success' : hasPickSource ? 'warning' : 'default'
+    },
+    {
+      key: 'attribution',
+      step: '04',
+      title: '业务归因结果',
+      status: attributed ? '已归到渠道负责人' : '归因尚未完成',
+      description: attributed
+        ? `渠道：${detail.value.channel?.channelName || '-'}；招商：${detail.value.product?.colonelName || '-'}`
+        : hasProduct || hasChannel
+          ? '商品、活动或负责人信息仍需继续补齐后再判断归因结果。'
+          : '当前还缺少商品或渠道负责人关联信息，建议优先补主链路。 ',
+      tone: attributed ? 'success' : 'warning'
+    }
+  ]
+})
 
 function closeModal() {
   emit('update:show', false)
@@ -196,6 +308,80 @@ watch(
   gap: 10px;
 }
 
+.case-summary-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  line-height: 1.7;
+}
+
+.case-summary-actions {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+}
+
+.trace-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.trace-card {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trace-card.success {
+  border-color: rgba(24, 160, 88, 0.28);
+  background: rgba(24, 160, 88, 0.06);
+}
+
+.trace-card.warning {
+  border-color: rgba(240, 160, 32, 0.28);
+  background: rgba(240, 160, 32, 0.06);
+}
+
+.trace-card.error {
+  border-color: rgba(208, 48, 80, 0.28);
+  background: rgba(208, 48, 80, 0.06);
+}
+
+.trace-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trace-step {
+  min-width: 32px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.trace-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.trace-status {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.trace-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
 .section-title {
   margin: 0;
   font-size: 15px;
@@ -209,5 +395,11 @@ watch(
 .footer-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .trace-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

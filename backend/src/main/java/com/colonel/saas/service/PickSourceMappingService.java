@@ -142,6 +142,12 @@ public class PickSourceMappingService {
                 || order.getUserId() == null) {
             return;
         }
+        PickSourceMapping existingByPickSource = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                .eq(PickSourceMapping::getPickSource, order.getPickSource())
+                .last("limit 1"));
+        if (existingByPickSource != null) {
+            return;
+        }
         String shortId = extractShortId(order.getPickSource());
         if (!StringUtils.hasText(shortId)) {
             return;

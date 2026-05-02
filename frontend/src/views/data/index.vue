@@ -1,14 +1,15 @@
 <template>
   <div class="dashboard">
-    <!-- 顶部工具栏 -->
-    <div class="dashboard-toolbar">
-      <h2 class="page-title">核心看板</h2>
-      <div class="toolbar-actions">
+    <PageHeader
+      title="数据看板"
+      description="核心经营指标一览，快速了解订单、收入与利润趋势。"
+    >
+      <template #actions>
         <n-button type="primary" size="small" @click="$router.push('/data/orders')">
           查看完整明细
         </n-button>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
     <!-- 主指标卡片 -->
     <n-spin :show="loading">
@@ -101,9 +102,17 @@
       <div class="quick-links">
         <n-card size="small" class="quick-link-card" @click="$router.push('/data/orders')">
           <div class="quick-link-content">
-            <span class="quick-link-icon">&#128202;</span>
+            <span class="quick-link-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                <path d="M18 20V10M12 20V4M6 20v-6"/>
+              </svg>
+            </span>
             <span class="quick-link-text">订单明细管理</span>
-            <span class="quick-link-arrow">&#8594;</span>
+            <span class="quick-link-arrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            </span>
           </div>
         </n-card>
       </div>
@@ -114,6 +123,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useMessage } from 'naive-ui'
+import PageHeader from '../../components/PageHeader.vue'
 import { getMetrics } from '../../api/data'
 
 const message = useMessage()
@@ -140,21 +150,7 @@ onMounted(() => {
 <style scoped>
 .dashboard {
   max-width: 1200px;
-}
-
-/* ---- 工具栏 ---- */
-.dashboard-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--spacing-lg);
-}
-
-.page-title {
-  font-size: var(--text-xl);
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
+  padding: var(--spacing-xl);
 }
 
 /* ---- 主指标卡片 ---- */

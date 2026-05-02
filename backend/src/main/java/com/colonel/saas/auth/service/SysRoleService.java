@@ -61,7 +61,7 @@ public class SysRoleService {
 
     public void delete(UUID id) {
         requireRole(id);
-        sysRoleMapper.deleteById(id);
+        sysRoleMapper.softDeleteById(id);
     }
 
     private SysRole requireRole(UUID id) {

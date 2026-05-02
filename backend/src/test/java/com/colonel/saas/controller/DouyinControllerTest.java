@@ -4,9 +4,11 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.common.result.ApiResult;
+import com.colonel.saas.douyin.DoudianTokenGateway;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.douyin.DouyinTokenService;
 import com.colonel.saas.douyin.api.ActivityApi;
+import com.colonel.saas.douyin.api.InstitutionApi;
 import com.colonel.saas.douyin.api.OrderApi;
 import com.colonel.saas.douyin.api.ProductApi;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -47,6 +49,10 @@ class DouyinControllerTest {
     private OrderApi orderApi;
     @Mock
     private DouyinTokenService douyinTokenService;
+    @Mock
+    private InstitutionApi institutionApi;
+    @Mock
+    private DoudianTokenGateway doudianTokenGateway;
 
     private DouyinController controller;
     private MockMvc mockMvc;
@@ -56,7 +62,7 @@ class DouyinControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new DouyinController(activityApi, productApi, orderApi, douyinTokenService);
+        controller = new DouyinController(activityApi, productApi, orderApi, institutionApi, douyinTokenService, doudianTokenGateway);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -333,6 +339,34 @@ class DouyinControllerTest {
     }
 
     @Test
+    void jigouShenfen_success_returnsInstitutionInfo() {
+        when(institutionApi.info("test_app")).thenReturn(Map.of("data", Map.of("institution_id", "by_1")));
+
+        ApiResult<Map<String, Object>> result = controller.jigouShenfen("test_app");
+
+        assertThat(result.getCode()).isEqualTo(200);
+        assertThat(result.getData()).containsEntry("endpoint", "buyin.institutionInfo");
+        assertThat(result.getData()).containsEntry("appId", "test_app");
+        assertThat(result.getData()).containsEntry("status", "success");
+        assertThat(result.getData()).containsKey("remoteResponse");
+    }
+
+    @Test
+    void jigouShenfen_standardRestPath_returnsInstitutionInfo() throws Exception {
+        when(institutionApi.info("test_app")).thenReturn(Map.of("data", Map.of("institution_id", "by_1")));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/douyin/institution-info")
+                        .queryParam("appId", "test_app"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("success"))
+                .andExpect(jsonPath("$.data.endpoint").value("buyin.institutionInfo"))
+                .andExpect(jsonPath("$.data.remoteResponse.data.institution_id").value("by_1"));
+
+        verify(institutionApi).info("test_app");
+    }
+
+    @Test
     void tokenChuangjian_returnsTokenStatus() {
         DouyinController.TokenCreateRequest request = new DouyinController.TokenCreateRequest();
         request.setAppId("test_app");
@@ -390,5 +424,50 @@ class DouyinControllerTest {
 
         verify(douyinTokenService).exchangeCodeAndBootstrap(
                 "test_app", null, "authorization_self", null, null, null, null);
+    }
+
+    @Test
+    void tokenCreateProbe_returnsSanitizedRawSdkResponse() throws Exception {
+        DoudianTokenGateway.TokenCreateProbeResult probeResult = new DoudianTokenGateway.TokenCreateProbeResult(
+                "authorization_self",
+                "absent",
+                null,
+                null,
+                true,
+                "Colonel",
+                null,
+                new DoudianTokenGateway.TokenCreateResponseView(
+                        "50002",
+                        "业务处理失败",
+                        "isv.business-failed:4",
+                        "非自用型应用code不能为空",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                )
+        );
+        when(doudianTokenGateway.probeCreateToken(any())).thenReturn(probeResult);
+
+        mockMvc.perform(post("/douyin/token-create-probes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "appId", "test_app",
+                                "grantType", "authorization_self",
+                                "authId", "7351155267604218149",
+                                "authSubjectType", "Colonel"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.module").value("M1.3 Real SDK Probe"))
+                .andExpect(jsonPath("$.data.endpoint").value("token.create"))
+                .andExpect(jsonPath("$.data.requestSnapshot.grantType").value("authorization_self"))
+                .andExpect(jsonPath("$.data.requestSnapshot.authIdPresent").value(true))
+                .andExpect(jsonPath("$.data.response.code").value("50002"))
+                .andExpect(jsonPath("$.data.response.subMsg").value("非自用型应用code不能为空"));
+
+        verify(doudianTokenGateway).probeCreateToken(any());
     }
 }

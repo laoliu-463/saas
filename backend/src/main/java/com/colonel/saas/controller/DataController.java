@@ -1,10 +1,10 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
@@ -16,7 +16,12 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderDecryptService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -24,13 +29,12 @@ import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.math.BigDecimal;
@@ -46,7 +50,7 @@ import java.util.UUID;
 import java.util.function.Function;
 
 @Validated
-@Tag(name = "数据平台")
+@Tag(name = "数据平台", description = "数据页专用接口，包括订单数据页、核心指标、手机号解密、导出与运营监控。")
 @RestController
 @RequestMapping
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
@@ -65,14 +69,14 @@ public class DataController extends BaseController {
         this.commissionService = commissionService;
     }
 
-    @Operation(summary = "订单分页")
+    @Operation(summary = "订单分页", description = "分页查询数据页订单列表。该接口服务于数据分析页面，不等同于订单主链路接口。")
     @GetMapping("/data/orders")
     public ApiResult<PageResult<OrderVO>> getOrderPage(
-            @RequestParam(defaultValue = "1") @Min(1) long page,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,
+            @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
+            @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
@@ -96,7 +100,7 @@ public class DataController extends BaseController {
         return okPage(voPage);
     }
 
-    @Operation(summary = "核心指标")
+    @Operation(summary = "核心指标", description = "查询数据页首页核心指标与近 7 天趋势。该接口面向数据看板展示，不承担订单归因主逻辑。")
     @GetMapping("/dashboard/metrics")
     public ApiResult<MetricsVO> getMetrics(
             @RequestAttribute("userId") UUID userId,
@@ -113,6 +117,7 @@ public class DataController extends BaseController {
         List<ColonelsettlementOrder> todayRows = orderMapper.selectList(todayWrapper);
         Long todayOrders = (long) todayRows.size();
         Long todayGmvCent = sumField(todayRows, ColonelsettlementOrder::getOrderAmount);
+
         LambdaQueryWrapper<ColonelsettlementOrder> pendingWrapper = new LambdaQueryWrapper<ColonelsettlementOrder>()
                 .eq(ColonelsettlementOrder::getOrderStatus, toOrderStatusCode("ORDERED"))
                 .between(ColonelsettlementOrder::getCreateTime, rollingStart, tomorrowStart);
@@ -162,9 +167,14 @@ public class DataController extends BaseController {
         return ok(metrics);
     }
 
-    @Operation(summary = "订单手机号解密（仅展示，不落库）")
+    @Operation(summary = "订单手机号解密（仅展示，不落库）", description = "按订单 ID 列表解密手机号，仅返回展示结果，不写回数据库。")
     @PostMapping("/orders/phone-decryptions")
     public ApiResult<List<OrderDecryptService.DecryptPhoneVO>> decryptOrderPhones(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "手机号解密请求体。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"orderIds\":[\"ORDER_001\",\"ORDER_002\"]}"))
+            )
             @RequestBody DecryptOrderRequest request) {
         if (request == null || request.getOrderIds() == null) {
             throw new BusinessException("orderIds cannot be empty");
@@ -172,17 +182,17 @@ public class DataController extends BaseController {
         return ok(orderDecryptService.decryptPhones(request.getOrderIds()));
     }
 
-    @Operation(summary = "导出订单CSV")
+    @Operation(summary = "导出订单CSV", description = "按筛选条件导出订单数据页 CSV。")
     @GetMapping("/orders/exports")
     public void exportOrders(
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
+            @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             HttpServletResponse response) throws IOException {
-        
+
         LocalDateTime start = startDate == null
                 ? LocalDate.now().minusDays(30).atStartOfDay()
                 : startDate.atStartOfDay();
@@ -202,28 +212,26 @@ public class DataController extends BaseController {
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"orders.csv\"");
         PrintWriter writer = response.getWriter();
-        writer.write('\ufeff'); // BOM
+        writer.write('\ufeff');
         writer.println("订单号,商品名称,达人名称,金额,归因来源,状态,创建时间");
-        
+
         for (ColonelsettlementOrder order : orders) {
             OrderVO vo = toOrderVO(order);
-            writer.printf("%s,%s,%s,%s,%s,%s,%s\n",
+            writer.printf("%s,%s,%s,%s,%s,%s,%s%n",
                     vo.getId(),
                     vo.getProductName(),
                     vo.getTalentName(),
                     vo.getAmount(),
                     vo.getAttributionSource() == null ? "默认归属" : vo.getAttributionSource(),
                     vo.getStatus(),
-                    vo.getCreateTime()
-            );
+                    vo.getCreateTime());
         }
         writer.flush();
     }
 
-    @Operation(summary = "独家状态监控 - 达人")
+    @Operation(summary = "独家状态监控 - 达人", description = "查询达人独家状态监控数据，当前为测试演示数据接口。")
     @GetMapping("/operations/exclusive-talents")
     public ApiResult<List<Map<String, Object>>> getExclusiveTalentStatus() {
-        // Test data to provide real interface endpoint
         List<Map<String, Object>> mockTalents = new ArrayList<>();
         Map<String, Object> t1 = new HashMap<>();
         t1.put("talentName", "达人A-独家合作演示");
@@ -235,10 +243,9 @@ public class DataController extends BaseController {
         return ok(mockTalents);
     }
 
-    @Operation(summary = "独家状态监控 - 商家")
+    @Operation(summary = "独家状态监控 - 商家", description = "查询商家独家状态监控数据，当前为测试演示数据接口。")
     @GetMapping("/operations/exclusive-merchants")
     public ApiResult<List<Map<String, Object>>> getExclusiveMerchantStatus() {
-        // Test data to provide real interface endpoint
         List<Map<String, Object>> mockMerchants = new ArrayList<>();
         Map<String, Object> m1 = new HashMap<>();
         m1.put("merchantName", "商家A-独家合作演示");
@@ -249,20 +256,19 @@ public class DataController extends BaseController {
         return ok(mockMerchants);
     }
 
-    @Operation(summary = "导出活动列表CSV")
+    @Operation(summary = "导出活动列表CSV", description = "导出活动列表 CSV，当前为测试演示数据导出接口。")
     @GetMapping("/activities/exports")
     public void exportActivities(
-            @RequestParam(required = false) String activityName,
+            @Parameter(description = "活动名称关键字。") @RequestParam(required = false) String activityName,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             HttpServletResponse response) throws IOException {
 
-        // test return simple CSV
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"activities.csv\"");
         PrintWriter writer = response.getWriter();
-        writer.write('\ufeff'); // BOM
+        writer.write('\ufeff');
         writer.println("活动ID,活动名称,活动类型,状态,创建时间");
         writer.println("1,主链路演示活动,团长活动,ACTIVE,2026-04-01 12:00:00");
         writer.flush();
@@ -279,7 +285,7 @@ public class DataController extends BaseController {
         vo.setFreight(centToYuan(0L));
         vo.setStatus(fromOrderStatusCode(order.getOrderStatus()));
         vo.setCreateTime(order.getCreateTime());
-        
+
         String source = order.getPickSource();
         if (order.getExtraData() != null && order.getExtraData().containsKey("attributionSource")) {
             source = String.valueOf(order.getExtraData().get("attributionSource"));
@@ -631,6 +637,7 @@ public class DataController extends BaseController {
     }
 
     public static class DecryptOrderRequest {
+        @Schema(description = "订单 ID 列表。", example = "[\"ORDER_001\",\"ORDER_002\"]")
         private List<String> orderIds;
 
         public List<String> getOrderIds() {
@@ -642,4 +649,3 @@ public class DataController extends BaseController {
         }
     }
 }
-

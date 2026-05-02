@@ -2,7 +2,6 @@ package com.colonel.saas.auth.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.auth.dto.SysUserAssignRolesRequest;
@@ -84,6 +83,8 @@ public class SysUserService {
         user.setUsername(request.username());
         user.setPassword(passwordEncoder.encode(request.password()));
         user.setRealName(request.realName());
+        user.setPhone(request.phone());
+        user.setEmail(request.email());
         user.setDeptId(request.deptId());
         user.setStatus(1);
         user.setChannelCode(generateUniqueChannelCode(request.username()));
@@ -116,10 +117,8 @@ public class SysUserService {
         }
         SysUser user = requireUser(id);
         assertCanAccess(user, currentUserId, dataScope);
-        LambdaUpdateWrapper<SysUserRole> deleteWrapper = new LambdaUpdateWrapper<>();
-        deleteWrapper.eq(SysUserRole::getUserId, id);
-        sysUserRoleMapper.delete(deleteWrapper);
-        sysUserMapper.deleteById(id);
+        sysUserRoleMapper.deleteByUserIdPhysical(id);
+        sysUserMapper.softDeleteById(id);
     }
 
     public void resetPassword(
@@ -194,9 +193,7 @@ public class SysUserService {
     }
 
     private void replaceUserRoles(UUID userId, List<UUID> roleIds) {
-        LambdaUpdateWrapper<SysUserRole> deleteWrapper = new LambdaUpdateWrapper<>();
-        deleteWrapper.eq(SysUserRole::getUserId, userId);
-        sysUserRoleMapper.delete(deleteWrapper);
+        sysUserRoleMapper.deleteByUserIdPhysical(userId);
 
         for (UUID roleId : roleIds) {
             SysUserRole relation = new SysUserRole();

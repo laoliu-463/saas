@@ -1,8 +1,8 @@
-﻿spring:
+spring:
   application:
     name: colonel-saas
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:dev}
+    active: ${SPRING_PROFILES_ACTIVE:local-mock}
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
@@ -38,6 +38,13 @@ logging:
     com.colonel.saas: debug
     com.baomidou.mybatisplus: info
 
+server:
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
 security:
   jwt:
     secret: ${JWT_SECRET:dev-secret-key-replace-in-production-with-random-64-char-string}
@@ -66,12 +73,18 @@ douyin:
     verify-sign: ${DOUYIN_WEBHOOK_VERIFY_SIGN:false}
   test:
     enabled: ${DOUYIN_TEST_ENABLED:false}
+  real:
+    upstream-mode: ${DOUYIN_REAL_UPSTREAM_MODE:live}
   token:
     refresh-threshold-seconds: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:300}
     redis-lock-minutes: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:5}
     auto-refresh:
       enabled: ${DOUYIN_TOKEN_AUTO_REFRESH_ENABLED:true}
       cron: ${DOUYIN_TOKEN_AUTO_REFRESH_CRON:0 */10 * * * ?}
+
+order:
+  sync:
+    enabled: ${ORDER_SYNC_ENABLED:true}
 
 talent:
   enrich:

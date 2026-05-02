@@ -25,6 +25,14 @@ public record SysUserCreateRequest(
         @Size(max = 100, message = "真实姓名长度不能超过100字符")
         String realName,
 
+        @Schema(description = "手机号", example = "13800138000")
+        @Size(max = 20, message = "手机号长度不能超过20字符")
+        String phone,
+
+        @Schema(description = "邮箱", example = "demo@example.com")
+        @Size(max = 100, message = "邮箱长度不能超过100字符")
+        String email,
+
         @Schema(description = "部门 ID")
         UUID deptId,
 

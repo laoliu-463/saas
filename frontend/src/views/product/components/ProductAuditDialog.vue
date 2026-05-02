@@ -21,7 +21,7 @@ import { ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
 import { auditActivityProduct } from '../../../api/activityProduct';
 
-const props = defineProps<{ show: boolean; activityId: string | number; productId: string | number }>();
+const props = defineProps<{ show: boolean; activityId: string | number | null; productId: string | number | null }>();
 const emit = defineEmits(['update:show', 'success']);
 const message = useMessage();
 
@@ -40,6 +40,10 @@ const updateShow = (val: boolean) => {
 };
 
 const handleSubmit = async () => {
+  if (!props.activityId || !props.productId) {
+    message.warning('商品信息不完整，暂不可提交审核');
+    return false;
+  }
   if (!auditApproved.value && !auditReason.value.trim()) {
     message.warning('驳回时必须填写原因');
     return false;

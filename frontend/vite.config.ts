@@ -8,11 +8,6 @@ function resolveProxyTarget() {
     return explicit.trim()
   }
 
-  const apiBase = process.env.VITE_API_BASE_URL
-  if (apiBase && apiBase.trim()) {
-    return apiBase.trim().replace(/\/api\/?$/, '')
-  }
-
   return 'http://localhost:8080'
 }
 

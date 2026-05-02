@@ -2,7 +2,6 @@ package com.colonel.saas.auth.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.colonel.saas.auth.dto.*;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.entity.SysRole;
@@ -115,13 +114,15 @@ class SysUserServiceTest {
         when(sysUserRoleMapper.findByUserId(any())).thenReturn(Collections.emptyList());
 
         SysUserCreateRequest request = new SysUserCreateRequest(
-                "newuser", "PlainPassword123", "新用户", deptId, List.of(roleId));
+                "newuser", "PlainPassword123", "新用户", "13800138000", "newuser@test.com", deptId, List.of(roleId));
 
         SysUserVO result = sysUserService.create(request);
 
         ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
         verify(sysUserMapper).insert(captor.capture());
         assertThat(captor.getValue().getPassword()).isEqualTo("$2a$10$encoded");
+        assertThat(captor.getValue().getPhone()).isEqualTo("13800138000");
+        assertThat(captor.getValue().getEmail()).isEqualTo("newuser@test.com");
         assertThat(result.getUsername()).isEqualTo("newuser");
     }
 
@@ -130,7 +131,7 @@ class SysUserServiceTest {
         when(sysUserMapper.findByUsername("existing")).thenReturn(Optional.of(testUser));
 
         SysUserCreateRequest request = new SysUserCreateRequest(
-                "existing", "password123", "测试", deptId, List.of(roleId));
+                "existing", "password123", "测试", null, null, deptId, List.of(roleId));
 
         assertThatThrownBy(() -> sysUserService.create(request))
                 .isInstanceOf(RuntimeException.class)
@@ -183,8 +184,8 @@ class SysUserServiceTest {
 
         sysUserService.delete(otherUserId, userId, DataScope.ALL);
 
-        verify(sysUserRoleMapper).delete(org.mockito.ArgumentMatchers.<Wrapper<com.colonel.saas.entity.SysUserRole>>any());
-        verify(sysUserMapper).deleteById(otherUserId);
+        verify(sysUserRoleMapper).deleteByUserIdPhysical(otherUserId);
+        verify(sysUserMapper).softDeleteById(otherUserId);
     }
 
     @Test
@@ -203,7 +204,7 @@ class SysUserServiceTest {
 
         sysUserService.assignRoles(userId, request, userId, DataScope.ALL);
 
-        verify(sysUserRoleMapper).delete(org.mockito.ArgumentMatchers.<Wrapper<com.colonel.saas.entity.SysUserRole>>any());
+        verify(sysUserRoleMapper).deleteByUserIdPhysical(userId);
         verify(sysUserRoleMapper, times(1)).insert(any());
     }
 }

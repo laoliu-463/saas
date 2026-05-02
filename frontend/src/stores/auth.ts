@@ -27,10 +27,22 @@ const normalizeStoredToken = (token: unknown): string => {
     return value;
 };
 
+const normalizeUserInfo = (userInfo: any): any => {
+    if (!userInfo || typeof userInfo !== 'object') return null;
+    const normalized = userInfo as Record<string, any>;
+    const normalizedId = normalized.id || normalized.userId || '';
+    return {
+        ...normalized,
+        id: normalizedId,
+        userId: normalized.userId || normalizedId,
+        roleCodes: normalizeRoleCodes(normalized.roleCodes)
+    };
+};
+
 export const useAuthStore = defineStore('auth', {
     state: () => ({
         token: normalizeStoredToken(localStorage.getItem('token')),
-        userInfo: JSON.parse(localStorage.getItem('userInfo') || 'null')
+        userInfo: normalizeUserInfo(JSON.parse(localStorage.getItem('userInfo') || 'null'))
     }),
     getters: {
         isLoggedIn: (state) => !!normalizeStoredToken(state.token),
@@ -45,10 +57,7 @@ export const useAuthStore = defineStore('auth', {
     actions: {
         login(token: string, userInfo: any) {
             this.token = normalizeStoredToken(token);
-            this.userInfo = {
-                ...(userInfo || {}),
-                roleCodes: normalizeRoleCodes(userInfo?.roleCodes)
-            };
+            this.userInfo = normalizeUserInfo(userInfo);
             if (this.token) {
                 localStorage.setItem('token', this.token);
             } else {

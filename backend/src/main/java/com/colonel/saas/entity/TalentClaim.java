@@ -26,6 +26,9 @@ public class TalentClaim extends BaseEntity {
     @TableField("dept_id")
     private UUID deptId;
 
+    @TableField("claim_type")
+    private Integer claimType;
+
     @TableField("apply_time")
     private LocalDateTime claimedAt;
 

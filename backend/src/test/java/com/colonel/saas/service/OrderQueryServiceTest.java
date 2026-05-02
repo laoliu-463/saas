@@ -63,7 +63,7 @@ class OrderQueryServiceTest {
                         Map.entry("mapping_talent_uid", "MOCK_TALENT_001"),
                         Map.entry("mapping_talent_name", "达人A-已产出合作")
                 )));
-        when(jdbcTemplate.queryForList(anyString(), eq("10901825"), eq("MOCK_TALENT_001"), eq(channelUserId), eq(channelUserId)))
+        when(jdbcTemplate.queryForList(anyString(), eq("10901825"), eq("MOCK_TALENT_001"), eq(channelUserId)))
                 .thenReturn(List.of(Map.of(
                         "id", UUID.randomUUID(),
                         "request_no", "MOCK-SAMPLE-001",
@@ -99,7 +99,7 @@ class OrderQueryServiceTest {
                         Map.entry("create_time", Timestamp.valueOf(LocalDateTime.of(2026, 4, 27, 12, 0, 0))),
                         Map.entry("update_time", Timestamp.valueOf(LocalDateTime.of(2026, 4, 27, 12, 1, 0)))
                 )));
-        when(jdbcTemplate.queryForList(anyString(), eq("10901826"), isNull(), isNull()))
+        when(jdbcTemplate.queryForList(anyString(), eq("10901826")))
                 .thenReturn(List.of());
 
         OrderDetailResponse detail = service.getOrderDetail("mock-order-2");

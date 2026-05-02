@@ -5,9 +5,7 @@ import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * 系统角色
@@ -17,9 +15,6 @@ import java.util.UUID;
 @EqualsAndHashCode(callSuper = true)
 @TableName("sys_role")
 public class SysRole extends com.colonel.saas.common.base.BaseEntity {
-
-    @TableId(type = IdType.AUTO)
-    private UUID id;
 
     /** 角色代码（唯一） */
     private String roleCode;
@@ -42,26 +37,6 @@ public class SysRole extends com.colonel.saas.common.base.BaseEntity {
     /** 状态：1=启用, 0=禁用 */
     @TableField("status")
     private Integer status = 1;
-
-    /** 逻辑删除标记 */
-    @TableLogic
-    private Integer deleted = 0;
-
-    /** 创建时间 */
-    @TableField(fill = FieldFill.INSERT)
-    private LocalDateTime createTime;
-
-    /** 更新时间 */
-    @TableField(fill = FieldFill.INSERT_UPDATE)
-    private LocalDateTime updateTime;
-
-    /** 创建人 */
-    @TableField(fill = FieldFill.INSERT)
-    private UUID createBy;
-
-    /** 更新人 */
-    @TableField(fill = FieldFill.INSERT_UPDATE)
-    private UUID updateBy;
 
     /** 备注 */
     private String remark;

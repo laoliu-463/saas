@@ -1,4 +1,7 @@
-﻿spring:
+# Legacy compatibility profile.
+# Do not use as the default local business walkthrough entrypoint.
+# Preferred local profile: local-mock
+spring:
   devtools:
     restart:
       enabled: false
@@ -41,4 +44,12 @@ douyin:
     batch-size: ${CRAWLER_BATCH_SIZE:100}
   test:
     enabled: true
+  token:
+    auto-refresh:
+      enabled: false
 
+talent:
+  enrich:
+    mode: test
+  data:
+    public-page-crawl-enabled: false

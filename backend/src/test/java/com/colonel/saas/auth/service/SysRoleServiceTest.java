@@ -146,7 +146,7 @@ class SysRoleServiceTest {
 
         sysRoleService.delete(roleId);
 
-        verify(sysRoleMapper).deleteById(roleId);
+        verify(sysRoleMapper).softDeleteById(roleId);
     }
 
     @Test

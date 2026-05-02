@@ -5,8 +5,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,5 +49,15 @@ class OrderSyncJobTest {
         job.syncOrders();
 
         verify(orderSyncService).syncLatestWindow();
+    }
+
+    @Test
+    void syncOrders_shouldSkipWhenDisabled() {
+        OrderSyncJob job = new OrderSyncJob(orderSyncService);
+        ReflectionTestUtils.setField(job, "enabled", false);
+
+        job.syncOrders();
+
+        verifyNoInteractions(orderSyncService);
     }
 }

@@ -3,6 +3,9 @@ package com.colonel.saas.gateway.douyin.real;
 import com.colonel.saas.douyin.api.ActivityApi;
 import com.colonel.saas.douyin.api.ProductApi;
 import com.colonel.saas.gateway.douyin.DouyinColonelActivityGateway;
+import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
+import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -12,20 +15,33 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+@Slf4j
 @Component
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "false", matchIfMissing = true)
 public class RealDouyinColonelActivityGateway implements DouyinColonelActivityGateway {
 
     private final ActivityApi activityApi;
     private final ProductApi productApi;
+    private final DouyinUpstreamModeSupport upstreamModeSupport;
+    private final DouyinContractFixtureProvider contractFixtureProvider;
 
-    public RealDouyinColonelActivityGateway(ActivityApi activityApi, ProductApi productApi) {
+    public RealDouyinColonelActivityGateway(
+            ActivityApi activityApi,
+            ProductApi productApi,
+            DouyinUpstreamModeSupport upstreamModeSupport,
+            DouyinContractFixtureProvider contractFixtureProvider) {
         this.activityApi = activityApi;
         this.productApi = productApi;
+        this.upstreamModeSupport = upstreamModeSupport;
+        this.contractFixtureProvider = contractFixtureProvider;
     }
 
     @Override
     public ActivityListResult listActivities(ActivityListQuery query) {
+        logGateway("RealDouyinColonelActivityGateway", query.appId());
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildActivityListResult(query);
+        }
         Map<String, Object> remote = activityApi.listActivities(
                 query.appId(), query.status(), query.searchType(), query.sortType(),
                 query.page(), query.pageSize(), query.activityInfo()
@@ -45,6 +61,10 @@ public class RealDouyinColonelActivityGateway implements DouyinColonelActivityGa
 
     @Override
     public ActivityProductListResult listActivityProducts(ActivityProductListQuery query) {
+        logGateway("RealDouyinColonelActivityGateway", query.appId());
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildActivityProductListResult(query);
+        }
         Map<String, Object> remote = productApi.listProductsByActivity(
                 query.appId(), query.activityId(), query.searchType(), query.sortType(), query.count(),
                 query.cooperationInfo(), query.cooperationType(), query.productInfo(), query.status(),
@@ -208,5 +228,26 @@ public class RealDouyinColonelActivityGateway implements DouyinColonelActivityGa
         String text = String.valueOf(value).trim();
         return text.isEmpty() ? null : text;
     }
-}
 
+    private void logGateway(String gatewayName, String appId) {
+        log.info(
+                "gateway={}, upstreamMode={}, appKey={}, shopId={}, authId={}",
+                gatewayName,
+                upstreamModeSupport.value(),
+                mask(appId == null ? contractFixtureProvider.appKey() : appId),
+                contractFixtureProvider.shopId(),
+                contractFixtureProvider.authId()
+        );
+    }
+
+    private String mask(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = value.trim();
+        if (normalized.length() <= 8) {
+            return normalized;
+        }
+        return normalized.substring(0, 4) + "****" + normalized.substring(normalized.length() - 4);
+    }
+}

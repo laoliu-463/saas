@@ -8,6 +8,7 @@ import com.colonel.saas.vo.SysRoleVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 import java.util.Optional;
@@ -23,6 +24,9 @@ public interface SysRoleMapper extends BaseMapper<SysRole> {
 
     @Select("SELECT * FROM sys_role WHERE role_code = #{roleCode} AND deleted = 0 LIMIT 1")
     Optional<SysRole> findByRoleCode(@Param("roleCode") String roleCode);
+
+    @Update("UPDATE sys_role SET deleted = 1, update_time = CURRENT_TIMESTAMP WHERE id = #{id} AND deleted = 0")
+    int softDeleteById(@Param("id") UUID id);
 
     IPage<SysRoleVO> findPage(
             Page<SysRoleVO> page,

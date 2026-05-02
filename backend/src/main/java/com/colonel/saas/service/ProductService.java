@@ -216,10 +216,12 @@ public class ProductService {
                                 .in(ProductOperationState::getProductId, productIds))
                 .stream()
                 .collect(Collectors.toMap(ProductOperationState::getProductId, Function.identity(), (left, right) -> left));
+        Map<String, DecisionSummary> decisionSummaryMap = buildDecisionSummaryMap(String.valueOf(result.activityId()), productIds);
 
         data.put("items", items.stream().map(item -> {
             Map<String, Object> view = new LinkedHashMap<>(item.toMap());
             ProductOperationState state = stateMap.get(String.valueOf(item.productId()));
+            DecisionSummary decisionSummary = decisionSummaryMap.get(String.valueOf(item.productId()));
             if (state != null) {
                 ProductBizStatus bizStatus = productBizStatusService.readBizStatus(state);
                 view.put("bizStatus", bizStatus.name());
@@ -235,6 +237,7 @@ public class ProductService {
                 view.put("bizStatus", bizStatus.name());
                 view.put("bizStatusLabel", bizStatus.getLabel());
             }
+            applyDecisionSummary(view, decisionSummary);
             return view;
         }).toList());
         return data;
@@ -293,6 +296,7 @@ public class ProductService {
                                 .in(ProductOperationState::getProductId, productIds))
                 .stream()
                 .collect(Collectors.toMap(ProductOperationState::getProductId, Function.identity(), (left, right) -> left));
+        Map<String, DecisionSummary> decisionSummaryMap = buildDecisionSummaryMap(activityId, productIds);
         Map<String, OrderSummary> orderSummaryMap = buildOrderSummaryMap(activityId, productIds);
         Map<String, PromotionSummary> promotionSummaryMap = buildPromotionSummaryMap(activityId, productIds);
         Map<Long, Merchant> merchantMap = buildMerchantMap(snapshots.stream()
@@ -303,6 +307,7 @@ public class ProductService {
                 .map(snapshot -> toActivityProductView(
                         snapshot,
                         stateMap.get(snapshot.getProductId()),
+                        decisionSummaryMap.get(snapshot.getProductId()),
                         orderSummaryMap.get(snapshot.getProductId()),
                         promotionSummaryMap.get(snapshot.getProductId()),
                         merchantMap.get(snapshot.getShopId())))
@@ -326,11 +331,12 @@ public class ProductService {
     public Map<String, Object> getActivityProductDetail(String activityId, String productId) {
         ProductSnapshot snapshot = getSnapshot(activityId, productId);
         ProductOperationState state = getOperationState(activityId, productId);
+        DecisionSummary decisionSummary = buildDecisionSummaryMap(activityId, Set.of(productId)).get(productId);
         OrderSummary orderSummary = buildOrderSummaryMap(activityId, Set.of(productId)).get(productId);
         PromotionSummary promotionSummary = buildPromotionSummaryMap(activityId, Set.of(productId)).get(productId);
         Merchant merchant = buildMerchantMap(Set.of(snapshot.getShopId())).get(snapshot.getShopId());
 
-        Map<String, Object> detail = toActivityProductView(snapshot, state, orderSummary, promotionSummary, merchant);
+        Map<String, Object> detail = toActivityProductView(snapshot, state, decisionSummary, orderSummary, promotionSummary, merchant);
         if (state != null) {
             detail.put("promotionScene", state.getPromotionScene());
             detail.put("externalUniqueId", state.getExternalUniqueId());
@@ -380,6 +386,10 @@ public class ProductService {
         ProductOperationState state = getOrInitOperationState(activityId, productId);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("assigneeId", assigneeId);
+        payload.put("assigneeName", resolveUserDisplayName(assigneeId));
+        payload.put("operatorId", operatorId);
+        payload.put("operatorName", resolveUserDisplayName(operatorId));
+        payload.put("eventLabel", "商品已分配给招商负责人");
         productBizStatusService.changeStatus(
                 state,
                 ProductBizStatus.ASSIGNED,
@@ -422,6 +432,51 @@ public class ProductService {
                     current.setAuditRemark(approved ? null : reason);
                 }
         );
+        return getActivityProductDetail(activityId, productId);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> recordProductDecision(
+            String activityId,
+            String productId,
+            String decisionLevel,
+            String reason,
+            UUID operatorId,
+            UUID operatorDeptId) {
+        String normalizedLevel = normalizeDecisionLevel(decisionLevel);
+        if (!StringUtils.hasText(reason)) {
+            throw new BusinessException("推进判断原因不能为空");
+        }
+        ensureSnapshotExists(activityId, productId);
+        ProductOperationState state = getOrInitOperationState(activityId, productId);
+        ProductBizStatus currentStatus = productBizStatusService.readBizStatus(state);
+        state.setLastOperationAt(LocalDateTime.now());
+        if (state.getId() == null) {
+            operationStateMapper.insert(state);
+        } else {
+            operationStateMapper.updateById(state);
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("decisionLevel", normalizedLevel);
+        payload.put("decisionLabel", decisionLabel(normalizedLevel));
+        payload.put("operatorId", operatorId);
+        payload.put("operatorName", resolveUserDisplayName(operatorId));
+        payload.put("eventLabel", "商品推进判断已更新");
+
+        ProductOperationLog log = new ProductOperationLog();
+        log.setActivityId(activityId);
+        log.setProductId(productId);
+        log.setOperationType("DECISION");
+        log.setBeforeStatus(currentStatus.name());
+        log.setAfterStatus(currentStatus.name());
+        log.setSuccess(true);
+        log.setOperatorId(operatorId);
+        log.setOperatorDeptId(operatorDeptId);
+        log.setOperationPayload(String.valueOf(payload));
+        log.setOperationRemark(reason.trim());
+        operationLogMapper.insert(log);
+
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -781,6 +836,7 @@ public class ProductService {
     private Map<String, Object> toActivityProductView(
             ProductSnapshot snapshot,
             ProductOperationState state,
+            DecisionSummary decisionSummary,
             OrderSummary orderSummary,
             PromotionSummary promotionSummary,
             Merchant merchant) {
@@ -826,6 +882,7 @@ public class ProductService {
             view.put("shortLink", state.getShortLink());
             view.put("promoteLink", state.getPromoteLink());
         }
+        applyDecisionSummary(view, decisionSummary);
 
         BigDecimal commissionRate = resolveCommissionRate(snapshot);
         BigDecimal serviceFeeRate = resolveServiceFeeRate(snapshot);
@@ -906,6 +963,20 @@ public class ProductService {
         return view;
     }
 
+    private void applyDecisionSummary(Map<String, Object> view, DecisionSummary decisionSummary) {
+        if (decisionSummary == null) {
+            view.put("latestDecisionLevel", null);
+            view.put("latestDecisionLabel", null);
+            view.put("latestDecisionReason", null);
+            view.put("latestDecisionAt", null);
+            return;
+        }
+        view.put("latestDecisionLevel", decisionSummary.level());
+        view.put("latestDecisionLabel", decisionSummary.label());
+        view.put("latestDecisionReason", decisionSummary.reason());
+        view.put("latestDecisionAt", decisionSummary.time());
+    }
+
     private String resolveUserDisplayName(UUID userId) {
         if (userId == null) {
             return null;
@@ -942,6 +1013,75 @@ public class ProductService {
     private TalentFollowStatus normalizeFollowStatus(String rawStatus) {
         TalentFollowStatus status = TalentFollowStatus.fromCode(rawStatus);
         return status == null ? TalentFollowStatus.NOT_CONTACTED : status;
+    }
+
+    private Map<String, DecisionSummary> buildDecisionSummaryMap(String activityId, Set<String> productIds) {
+        if (!StringUtils.hasText(activityId) || productIds == null || productIds.isEmpty()) {
+            return Map.of();
+        }
+        return operationLogMapper.selectList(new LambdaQueryWrapper<ProductOperationLog>()
+                        .eq(ProductOperationLog::getActivityId, activityId)
+                        .eq(ProductOperationLog::getOperationType, "DECISION")
+                        .in(ProductOperationLog::getProductId, productIds)
+                        .orderByDesc(ProductOperationLog::getCreateTime))
+                .stream()
+                .collect(Collectors.toMap(
+                        ProductOperationLog::getProductId,
+                        log -> {
+                            Map<String, String> payload = parseOperationPayloadText(log.getOperationPayload());
+                            String level = payload.get("decisionLevel");
+                            return new DecisionSummary(
+                                    level,
+                                    payload.getOrDefault("decisionLabel", decisionLabel(level)),
+                                    normalizeFreeText(log.getOperationRemark()),
+                                    log.getCreateTime() == null ? null : log.getCreateTime().toString()
+                            );
+                        },
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+    }
+
+    private Map<String, String> parseOperationPayloadText(String raw) {
+        String text = normalizeFreeText(raw);
+        if (!StringUtils.hasText(text)) {
+            return Map.of();
+        }
+        String trimmed = text.startsWith("{") && text.endsWith("}") ? text.substring(1, text.length() - 1) : text;
+        Map<String, String> payload = new LinkedHashMap<>();
+        for (String pair : trimmed.split(", ")) {
+            int index = pair.indexOf('=');
+            if (index <= 0) {
+                continue;
+            }
+            String key = pair.substring(0, index).trim();
+            String value = pair.substring(index + 1).trim();
+            if (StringUtils.hasText(key)) {
+                payload.put(key, value);
+            }
+        }
+        return payload;
+    }
+
+    private String normalizeDecisionLevel(String decisionLevel) {
+        if (!StringUtils.hasText(decisionLevel)) {
+            throw new BusinessException("推进判断不能为空");
+        }
+        String normalized = decisionLevel.trim().toUpperCase();
+        if (!Set.of("MAIN", "SECONDARY", "PAUSE", "DROP").contains(normalized)) {
+            throw new BusinessException("未知推进判断：" + decisionLevel);
+        }
+        return normalized;
+    }
+
+    private String decisionLabel(String decisionLevel) {
+        return switch (decisionLevel) {
+            case "MAIN" -> "主推";
+            case "SECONDARY" -> "次推";
+            case "PAUSE" -> "暂缓";
+            case "DROP" -> "放弃";
+            default -> decisionLevel;
+        };
     }
 
     private Map<String, OrderSummary> buildOrderSummaryMap(String activityId, Set<String> productIds) {
@@ -1331,6 +1471,14 @@ public class ProductService {
         return formatRate(value);
     }
 
+    private String normalizeFreeText(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        String text = value.trim();
+        return ("null".equalsIgnoreCase(text) || "undefined".equalsIgnoreCase(text)) ? "" : text;
+    }
+
     private String safeText(String value, String fallback) {
         return StringUtils.hasText(value) ? value : fallback;
     }
@@ -1379,6 +1527,13 @@ public class ProductService {
             int linkCount,
             LocalDateTime lastLinkTime,
             List<Map<String, Object>> linkRecords) {
+    }
+
+    private record DecisionSummary(
+            String level,
+            String label,
+            String reason,
+            String time) {
     }
 
     private record PromotionView(

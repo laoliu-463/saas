@@ -64,6 +64,17 @@ const dataScopeOptions = [
   { label: '仅本人数据', value: 1 }
 ];
 
+const removeRowLocally = (id: string) => {
+  const nextRows = (data.value as any[]).filter((row) => row?.id !== id);
+  if (nextRows.length !== (data.value as any[]).length) {
+    data.value = nextRows as never[];
+    pagination.itemCount = Math.max(0, pagination.itemCount - 1);
+    if (!nextRows.length && pagination.page > 1) {
+      pagination.page -= 1;
+    }
+  }
+};
+
 const fetchData = async () => {
   loading.value = true;
   try {
@@ -116,6 +127,8 @@ const formData = reactive({
   remark: ''
 });
 
+const isValidationFailure = (error: unknown): boolean => Array.isArray(error);
+
 const rules = {
   roleCode: { required: true, message: '请输入角色编码', trigger: 'blur' },
   roleName: { required: true, message: '请输入角色名称', trigger: 'blur' },
@@ -142,34 +155,43 @@ const openModal = (type: 'add'|'edit', row?: any) => {
   showModal.value = true;
 };
 
-const handleSubmit = () => {
-  formRef.value?.validate(async (errors: any) => {
-    if (!errors) {
-      submitting.value = true;
-      try {
-        if (modalType.value === 'add') {
-          await createRole(formData);
-          message.success('新增成功');
-        } else {
-          await updateRole(formData.id!, formData);
-          message.success('编辑成功');
-        }
-        showModal.value = false;
-        fetchData();
-      } catch (error: any) {
-        message.error(error?.message || '保存失败');
-      } finally {
-        submitting.value = false;
-      }
+const handleSubmit = async () => {
+  if (!formRef.value || submitting.value) return;
+  try {
+    await formRef.value.validate();
+  } catch (error) {
+    if (!isValidationFailure(error)) {
+      message.error((error as any)?.message || '表单校验失败');
     }
-  });
+    return;
+  }
+
+  submitting.value = true;
+  try {
+    if (modalType.value === 'add') {
+      await createRole(formData);
+      message.success('新增成功');
+    } else {
+      await updateRole(formData.id!, formData);
+      message.success('编辑成功');
+    }
+    showModal.value = false;
+    await fetchData();
+  } catch (error: any) {
+    if (!error?.response?.data?.msg && !error?.msg) {
+      message.error(error?.message || '保存失败');
+    }
+  } finally {
+    submitting.value = false;
+  }
 };
 
 const handleDelete = async (id: string) => {
   try {
     await deleteRole(id);
+    removeRowLocally(id);
     message.success('删除成功');
-    fetchData();
+    await fetchData();
   } catch (error: any) {
     message.error(error?.message || '删除失败');
   }

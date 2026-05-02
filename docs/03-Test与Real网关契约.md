@@ -45,4 +45,43 @@ Test 实现不应只是简单的静态返回，应支持：
 - **关联性**：模拟订单中的商品 ID 必须能在商品池中找到。
 - **时效性**：模拟物流单号的状态应随时间推进而变化。
 
+## 五、Real/Pre 最小落地口径
+
+为避免把真实抖店联调和现有 `test` 基线混在一起，当前项目新增统一执行口径：
+
+- `test` 环境继续承担演示、回归、调试台验证
+- `real/pre` 环境只承担真实第三方接口联调
+- 两边必须独立隔离数据库、Redis、Webhook 地址
+
+当前推荐最小口径如下：
+
+| 项目 | `test` | `real/pre` |
+| :--- | :--- | :--- |
+| `SPRING_PROFILES_ACTIVE` | `test` | `prod` |
+| `DOUYIN_TEST_ENABLED` | `true` | `false` |
+| `DB_NAME` | `colonel_saas_test` | `colonel_saas_real` |
+| `REDIS_DATABASE` | `1` | `2` |
+| 后端端口 | `8080` | `8081` |
+| Token 自动刷新 | 可开 | 首轮联调建议关闭 |
+| Webhook 验签 | 可关 | 建议开启 |
+
+执行约束：
+
+1. 不允许把真实 `access_token`、真实订单、真实回调写进 `test` 环境
+2. 不允许为了真实联调临时修改 `test` 的 DTO、页面字段和调试台口径
+3. `real/pre` 首轮联调优先使用命令行和后端日志，不强依赖第二套前端
+4. 所有真实联调记录统一回写到 `docs/14-抖店SDK全量梳理与逐接口联调规划.md`
+5. `real/pre` 日志必须关闭 Spring Boot DEBUG、`RestTemplate` DEBUG 与抖店 SDK INFO 原始报文日志，避免 `access_token`、`refresh_token`、签名或 JWT 出现在日志中
+6. 首轮 Token 联调期间建议设置 `ORDER_SYNC_ENABLED=false`，避免订单定时同步在 Token 未创建前反复触发 RealGateway
+
+当前已知代码缺口：
+
+1. `RealDouyinAuthGateway.ensureToken` 当前返回 `null`
+2. `RealDouyinOrderGateway` 尚未完成订单字段映射
+3. `RealDouyinProductGateway.queryProductDetail` 未实现
+4. `RealDouyinProductGateway.queryProductSkus` 未实现
+5. Webhook 当前只接收、验签、记日志，未接业务消费
+
+上述缺口不阻塞认证、身份、活动、商品、转链等前置接口联调，但会阻塞订单主链路闭环验收。
+
 

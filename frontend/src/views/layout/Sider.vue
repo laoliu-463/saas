@@ -171,8 +171,10 @@ const menuOptions = computed(() => {
 })
 
 const activeMenuKey = computed(() => {
-  if (route.path.startsWith('/ops')) return '/ops/exclusive'
-  if (route.path.startsWith('/system')) return '/system/users'
+  if (route.path.startsWith('/ops/shipping')) return '/ops/shipping'
+  if (route.path.startsWith('/ops/exclusive')) return '/ops/exclusive'
+  if (route.path.startsWith('/system/roles')) return '/system/roles'
+  if (route.path.startsWith('/system/users')) return '/system/users'
   if (route.path === '/data/orders') return '/data/orders'
   return route.path
 })

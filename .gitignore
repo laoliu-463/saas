@@ -1,6 +1,10 @@
 .env
 .env.*
 !.env.example
+!.env.local-mock.example
+!.env.test.example
+!.env.real.example
+!.env.prod.example
 
 .idea/
 .vscode/

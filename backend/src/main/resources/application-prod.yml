@@ -15,7 +15,7 @@
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
-      database: 0
+      database: ${REDIS_DATABASE:0}
       timeout: 5000ms
 
 server:
@@ -29,6 +29,10 @@ knife4j:
 logging:
   level:
     com.colonel.saas: info
+    com.doudian.open.core: warn
+    org.springframework.web.client.RestTemplate: info
+
+debug: false
 
 talent:
   enrich:

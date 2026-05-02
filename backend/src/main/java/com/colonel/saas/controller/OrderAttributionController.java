@@ -13,6 +13,7 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,11 +27,10 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 
-@Tag(name = "订单回流与归因")
+@Tag(name = "订单回流与归因", description = "订单回流摘要与未归因订单排查接口。")
 @RestController
 @RequestMapping
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
@@ -42,13 +42,13 @@ public class OrderAttributionController extends BaseController {
         this.orderMapper = orderMapper;
     }
 
-    @Operation(summary = "未归因订单分页")
+    @Operation(summary = "未归因订单分页", description = "分页查询未归因订单，用于订单回流与归因排查页。")
     @GetMapping("/orders/order-attribution-unattributed")
     public ApiResult<PageResult<OrderRowVO>> getUnattributedOrders(
-            @RequestParam(defaultValue = "1") long page,
-            @RequestParam(defaultValue = "10") long size,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") long page,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") long size,
+            @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         LocalDateTime start = startDate == null
                 ? LocalDate.now().minusDays(30).atStartOfDay()
                 : startDate.atStartOfDay();
@@ -67,7 +67,7 @@ public class OrderAttributionController extends BaseController {
         return okPage(result);
     }
 
-    @Operation(summary = "订单回流摘要")
+    @Operation(summary = "订单回流摘要", description = "汇总近 30 天订单回流与归因结果，输出订单量、金额、服务费及渠道/团长业绩分布。")
     @GetMapping("/dashboard/order-attribution-summary")
     public ApiResult<SummaryVO> getSummary(
             @RequestAttribute("userId") UUID userId,

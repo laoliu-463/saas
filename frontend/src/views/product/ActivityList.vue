@@ -102,10 +102,7 @@ const columns = [
         type: 'primary',
         quaternary: true,
         onClick: () => {
-          router.push({
-            name: 'ProductLibrary',
-            params: { activityId: row.activityId }
-          })
+          router.push(`/product/activity/${row.activityId}`)
         }
       }, { default: () => '查看商品' })
     }

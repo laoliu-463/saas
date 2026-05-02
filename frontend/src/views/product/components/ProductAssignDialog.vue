@@ -30,7 +30,7 @@ import { useMessage } from 'naive-ui';
 import { assignActivityProduct } from '../../../api/activityProduct';
 import { getUserPage } from '../../../api/sys';
 
-const props = defineProps<{ show: boolean; activityId: string | number; productId: string | number }>();
+const props = defineProps<{ show: boolean; activityId: string | number | null; productId: string | number | null }>();
 const emit = defineEmits(['update:show', 'success']);
 const message = useMessage();
 
@@ -84,6 +84,10 @@ const handleSearch = async (keyword: string) => {
 };
 
 const handleSubmit = async () => {
+  if (!props.activityId || !props.productId) {
+    message.warning('商品信息不完整，暂不可分配');
+    return false;
+  }
   if (!assigneeId.value) {
     message.warning('请选择负责人');
     return false;

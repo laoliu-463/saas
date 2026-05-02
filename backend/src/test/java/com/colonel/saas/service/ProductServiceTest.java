@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.ProductBizStatus;
+import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.PromotionLink;
@@ -29,6 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -165,6 +167,79 @@ class ProductServiceTest {
     }
 
     @Test
+    void assignProduct_shouldSendBusinessFriendlyPayload() {
+        UUID assigneeId = UUID.randomUUID();
+        UUID operatorId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+        snapshot.setShopId(3001L);
+        ProductOperationState state = buildState("APPROVED");
+        SysUser assignee = new SysUser();
+        assignee.setRealName("招商李四");
+        assignee.setUsername("lisi");
+        SysUser operator = new SysUser();
+        operator.setRealName("组长张三");
+        operator.setUsername("zhangsan");
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(sysUserMapper.selectById(assigneeId)).thenReturn(assignee);
+        when(sysUserMapper.selectById(operatorId)).thenReturn(operator);
+        when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.ASSIGNED);
+
+        service.assignProduct("10001", "9001", assigneeId, operatorId, deptId);
+
+        ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(productBizStatusService).changeStatus(
+                eq(state),
+                eq(ProductBizStatus.ASSIGNED),
+                eq("ASSIGN"),
+                eq(operatorId),
+                eq(deptId),
+                payloadCaptor.capture(),
+                eq("分配招商成功"),
+                any()
+        );
+        assertThat(payloadCaptor.getValue())
+                .containsEntry("assigneeId", assigneeId)
+                .containsEntry("assigneeName", "招商李四 (lisi)")
+                .containsEntry("operatorId", operatorId)
+                .containsEntry("operatorName", "组长张三 (zhangsan)")
+                .containsEntry("eventLabel", "商品已分配给招商负责人");
+    }
+
+    @Test
+    void recordProductDecision_shouldInsertDecisionLog() {
+        UUID operatorId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+        snapshot.setShopId(3001L);
+        ProductOperationState state = buildState("ASSIGNED");
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.ASSIGNED);
+
+        service.recordProductDecision("10001", "9001", "MAIN", "佣金高，适合优先推", operatorId, deptId);
+
+        ArgumentCaptor<ProductOperationLog> logCaptor = ArgumentCaptor.forClass(ProductOperationLog.class);
+        verify(operationLogMapper).insert(logCaptor.capture());
+        ProductOperationLog log = logCaptor.getValue();
+        assertThat(log.getOperationType()).isEqualTo("DECISION");
+        assertThat(log.getBeforeStatus()).isEqualTo("ASSIGNED");
+        assertThat(log.getAfterStatus()).isEqualTo("ASSIGNED");
+        assertThat(log.getOperationPayload())
+                .contains("decisionLevel=MAIN")
+                .contains("decisionLabel=主推")
+                .contains("eventLabel=商品推进判断已更新");
+        assertThat(log.getOperationRemark()).isEqualTo("佣金高，适合优先推");
+        assertThat(log.getOperatorId()).isEqualTo(operatorId);
+        assertThat(log.getOperatorDeptId()).isEqualTo(deptId);
+    }
+
+    @Test
     void startTalentFollow_shouldChangeStatusFromLinked() {
         UUID productId = UUID.randomUUID();
         ProductSnapshot snapshot = buildSnapshot(productId);
@@ -199,6 +274,13 @@ class ProductServiceTest {
         state.setShortLink("https://s.link");
         state.setPromoteLink("https://p.link");
         when(operationStateMapper.selectList(any())).thenReturn(List.of(state));
+        ProductOperationLog decisionLog = new ProductOperationLog();
+        decisionLog.setActivityId("10001");
+        decisionLog.setProductId("9001");
+        decisionLog.setOperationType("DECISION");
+        decisionLog.setOperationPayload("{decisionLevel=MAIN, decisionLabel=主推, eventLabel=商品推进判断已更新}");
+        decisionLog.setOperationRemark("佣金高，优先推进");
+        when(operationLogMapper.selectList(any())).thenReturn(List.of(decisionLog));
         when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.LINKED);
 
         DouyinProductGateway.ActivityProductListResult result = new DouyinProductGateway.ActivityProductListResult(
@@ -219,6 +301,9 @@ class ProductServiceTest {
         assertThat(first.get("bizStatusLabel")).isEqualTo(ProductBizStatus.LINKED.getLabel());
         assertThat(first.get("shortLink")).isEqualTo("https://s.link");
         assertThat(first.get("promoteLink")).isEqualTo("https://p.link");
+        assertThat(first.get("latestDecisionLevel")).isEqualTo("MAIN");
+        assertThat(first.get("latestDecisionLabel")).isEqualTo("主推");
+        assertThat(first.get("latestDecisionReason")).isEqualTo("佣金高，优先推进");
     }
 
     private ProductSnapshot buildSnapshot(UUID productId) {

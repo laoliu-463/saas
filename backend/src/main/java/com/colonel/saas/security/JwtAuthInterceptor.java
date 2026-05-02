@@ -29,9 +29,13 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     @Override
     @SuppressWarnings("unchecked")
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
+
         String authorization = request.getHeader("Authorization");
         if (authorization == null || !authorization.startsWith("Bearer ")) {
-            writeUnauthorized(response, "缺少或非法的 Authorization 头");
+            writeUnauthorized(response, "缺少或非法的 Authorization 头，请使用格式：Authorization: Bearer <token>");
             return false;
         }
 

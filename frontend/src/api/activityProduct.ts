@@ -18,6 +18,12 @@ export const assignActivityProduct = (
   data: { assigneeId: string }
 ) => request.put(`/colonel/activities/${activityId}/products/${productId}/assignee`, data);
 
+export const updateActivityProductDecision = (
+  activityId: string | number,
+  productId: string | number,
+  data: { decisionLevel: 'MAIN' | 'SECONDARY' | 'PAUSE' | 'DROP'; reason: string }
+) => request.put(`/colonel/activities/${activityId}/products/${productId}/decision`, data);
+
 export const convertActivityProductLink = (
   activityId: string | number,
   productId: string | number,

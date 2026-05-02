@@ -11,6 +11,9 @@ import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.vo.SysRoleVO;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -31,7 +34,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Validated
-@Tag(name = "系统角色")
+@Tag(name = "系统角色", description = "系统角色管理接口，包括分页、详情、启用列表、新增、编辑与删除。")
 @RestController
 @RequestMapping("/roles")
 @RequireRoles({RoleCodes.ADMIN})
@@ -43,30 +46,30 @@ public class SysRoleController extends BaseController {
         this.sysRoleService = sysRoleService;
     }
 
-    @Operation(summary = "分页查询角色")
+    @Operation(summary = "分页查询角色", description = "按关键字与状态分页查询角色列表。")
     @GetMapping
     public ApiResult<PageResult<SysRoleVO>> page(
-            @RequestParam(defaultValue = "1") @Min(1) long page,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Integer status,
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
+            @Parameter(description = "角色关键字。") @RequestParam(required = false) String keyword,
+            @Parameter(description = "角色状态。待确认：取值含义请联系产品。") @RequestParam(required = false) Integer status,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
         return okPage(sysRoleService.findPage(page, size, keyword, status));
     }
 
-    @Operation(summary = "角色详情")
+    @Operation(summary = "角色详情", description = "查询单个角色详情。")
     @GetMapping("/{id}")
     public ApiResult<SysRoleVO> detail(
-            @PathVariable UUID id,
+            @Parameter(description = "角色主键 ID，使用 UUID 格式。") @PathVariable UUID id,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
         return ok(sysRoleService.getById(id));
     }
 
-    @Operation(summary = "全量角色列表")
+    @Operation(summary = "全量角色列表", description = "查询当前启用的全部角色，用于用户分配角色下拉框。")
     @GetMapping("/enabled")
     public ApiResult<List<SysRoleVO>> all(
             @RequestAttribute("userId") UUID userId,
@@ -75,9 +78,14 @@ public class SysRoleController extends BaseController {
         return ok(sysRoleService.findAllEnabled());
     }
 
-    @Operation(summary = "新建角色")
+    @Operation(summary = "新建角色", description = "创建系统角色。")
     @PostMapping
     public ApiResult<SysRoleVO> create(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "角色创建请求体。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"name\":\"渠道专员\",\"code\":\"channel_staff\"}"))
+            )
             @Valid @RequestBody SysRoleCreateRequest request,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
@@ -85,10 +93,15 @@ public class SysRoleController extends BaseController {
         return ok(sysRoleService.create(request));
     }
 
-    @Operation(summary = "更新角色")
+    @Operation(summary = "更新角色", description = "更新系统角色信息。")
     @PutMapping("/{id}")
     public ApiResult<SysRoleVO> update(
-            @PathVariable UUID id,
+            @Parameter(description = "角色主键 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "角色更新请求体。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"name\":\"渠道专员-更新\"}"))
+            )
             @Valid @RequestBody SysRoleUpdateRequest request,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
@@ -96,10 +109,10 @@ public class SysRoleController extends BaseController {
         return ok(sysRoleService.update(id, request));
     }
 
-    @Operation(summary = "删除角色")
+    @Operation(summary = "删除角色", description = "删除指定角色。")
     @DeleteMapping("/{id}")
     public ApiResult<Void> delete(
-            @PathVariable UUID id,
+            @Parameter(description = "角色主键 ID，使用 UUID 格式。") @PathVariable UUID id,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {

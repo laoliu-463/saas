@@ -1,5 +1,5 @@
 <template>
-  <n-modal :show="show" preset="card" title="寄样详情" style="width: 760px" @update:show="closeDetail">
+  <n-modal :show="effectiveShow" preset="card" title="寄样详情" style="width: 760px" @update:show="closeDetail">
     <n-spin :show="loading || actionLoading">
       <div v-if="detail" class="detail-body">
         <section class="detail-section">
@@ -72,22 +72,36 @@
 
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { NInput, useDialog, useMessage } from 'naive-ui'
 import { actionSample, getSampleById } from '../../api/sample'
 import StatusTag from '../../components/StatusTag.vue'
 import { ROLE_CODES } from '../../constants/rbac'
 import { useAuthStore } from '../../stores/auth'
 
-const props = defineProps<{ show: boolean; sampleId: string }>()
+const props = withDefaults(defineProps<{ show?: boolean; sampleId?: string }>(), {
+  show: true,
+  sampleId: ''
+})
 const emit = defineEmits(['update:show', 'refresh'])
 
 const message = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
+const route = useRoute()
+const router = useRouter()
 
 const loading = ref(false)
 const actionLoading = ref(false)
 const detail = ref<any>(null)
+
+const routeSampleId = computed(() => {
+  const value = route.params.id
+  return Array.isArray(value) ? value[0] : value
+})
+const isRouteMode = computed(() => Boolean(routeSampleId.value))
+const effectiveShow = computed(() => isRouteMode.value || props.show)
+const effectiveSampleId = computed(() => routeSampleId.value || props.sampleId)
 
 const canAudit = authStore.isAdmin || authStore.isLeader
 const canShip = canAudit || authStore.roleCodes.includes(ROLE_CODES.OPS_STAFF)
@@ -125,13 +139,21 @@ function formatDateTime(value?: string) {
 }
 
 function closeDetail() {
+  if (isRouteMode.value) {
+    router.push('/sample')
+    return
+  }
   emit('update:show', false)
 }
 
 async function loadDetail() {
+  if (!effectiveSampleId.value) {
+    detail.value = null
+    return
+  }
   loading.value = true
   try {
-    const res = await getSampleById(props.sampleId)
+    const res = await getSampleById(effectiveSampleId.value)
     detail.value = res?.data || res
   } catch (error: any) {
     detail.value = null
@@ -142,9 +164,10 @@ async function loadDetail() {
 }
 
 async function doActionSample(payload: any) {
+  if (!effectiveSampleId.value) return
   actionLoading.value = true
   try {
-    await actionSample(props.sampleId, payload)
+    await actionSample(effectiveSampleId.value, payload)
     message.success('状态流转成功')
     emit('refresh')
     await loadDetail()
@@ -219,14 +242,15 @@ async function handleAction(action: string) {
 }
 
 watch(
-  () => props.show,
-  (show) => {
-    if (show && props.sampleId) {
+  () => [effectiveShow.value, effectiveSampleId.value],
+  ([show, sampleId]) => {
+    if (show && sampleId) {
       loadDetail()
       return
     }
     detail.value = null
-  }
+  },
+  { immediate: true }
 )
 </script>
 

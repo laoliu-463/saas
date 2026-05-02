@@ -2,6 +2,7 @@ package com.colonel.saas.job;
 
 import com.colonel.saas.service.OrderSyncService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -10,6 +11,8 @@ import org.springframework.stereotype.Component;
 public class OrderSyncJob {
 
     private final OrderSyncService orderSyncService;
+    @Value("${order.sync.enabled:true}")
+    private boolean enabled = true;
 
     public OrderSyncJob(OrderSyncService orderSyncService) {
         this.orderSyncService = orderSyncService;
@@ -17,6 +20,10 @@ public class OrderSyncJob {
 
     @Scheduled(cron = "0 */10 * * * ?")
     public void syncOrders() {
+        if (!enabled) {
+            log.info("OrderSyncJob skipped: order.sync.enabled=false");
+            return;
+        }
         try {
             OrderSyncService.SyncResult result = orderSyncService.syncLatestWindow();
             if (result.locked()) {

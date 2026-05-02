@@ -1,6 +1,11 @@
 package com.colonel.saas.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -22,6 +27,7 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/douyin/webhooks")
+@Tag(name = "抖音联调")
 public class DouyinWebhookController {
 
     private final ObjectMapper objectMapper;
@@ -37,15 +43,23 @@ public class DouyinWebhookController {
         this.verifySign = verifySign;
     }
 
+    @Operation(
+            summary = "[联调] 接收团长开放事件回调",
+            description = "接收抖店联盟团长开放事件回调。该接口用于验证 webhook 回调链路与签名校验逻辑，默认快速返回 success 以避免上游重复重试。"
+    )
     @PostMapping(
             value = "/colonel-open-events",
             consumes = MediaType.ALL_VALUE,
             produces = MediaType.TEXT_PLAIN_VALUE
     )
     public ResponseEntity<String> colonelOpenEvent(
-            @RequestHeader(value = "x-doudian-sign", required = false) String xDoudianSign,
-            @RequestHeader(value = "sign", required = false) String sign,
-            @RequestHeader(value = "x-sign", required = false) String xSign,
+            @Parameter(description = "抖店回调签名头 x-doudian-sign。") @RequestHeader(value = "x-doudian-sign", required = false) String xDoudianSign,
+            @Parameter(description = "兼容签名头 sign。") @RequestHeader(value = "sign", required = false) String sign,
+            @Parameter(description = "兼容签名头 x-sign。") @RequestHeader(value = "x-sign", required = false) String xSign,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "抖店回调原始请求体。",
+                    content = @Content(examples = @ExampleObject(value = "{\"event\":\"doudian_alliance_colonelOpenEvent\",\"data\":{}}"))
+            )
             @RequestBody(required = false) String rawBody) {
         String body = rawBody == null ? "" : rawBody;
         String providedSign = firstNonBlank(xDoudianSign, sign, xSign);
@@ -59,7 +73,7 @@ public class DouyinWebhookController {
         } catch (Exception e) {
             log.warn("Douyin webhook payload parse failed, body={}", body);
         }
-        // 抖店消息回调通常要求快速返回成功文案，避免重复重试
+        // 抖店回调通常要求快速返回 success，避免上游重复重试。
         return ResponseEntity.ok("success");
     }
 

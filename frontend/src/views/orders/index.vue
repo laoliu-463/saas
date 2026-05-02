@@ -10,6 +10,15 @@
       </template>
     </PageHeader>
 
+    <div v-if="summaryReady" class="attribution-summary">
+      <n-space :size="16" align="center">
+        <span class="summary-label">归因概览</span>
+        <n-tag type="success" size="small" round>已归因: {{ attributionSummary.attributed }} 单 ({{ attributionSummary.attributedPercent }}%)</n-tag>
+        <n-tag type="error" size="small" round>待排查: {{ attributionSummary.unattributed }} 单</n-tag>
+        <n-tag type="info" size="small" round>部分归因: {{ attributionSummary.partial }} 单</n-tag>
+      </n-space>
+    </div>
+
     <div class="toolbar">
       <n-space wrap>
         <n-input v-model:value="filters.orderId" placeholder="订单 ID" style="width: 200px" />
@@ -41,19 +50,43 @@
         @update:page="handlePageChange"
       />
     </n-card>
+
+    <OrderDetailModal v-model:show="showDetail" :order-id="activeOrderId" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { h, onMounted, reactive, ref } from 'vue'
-import { NButton, NSpace, NTag, useMessage } from 'naive-ui'
+import { h, computed, onMounted, reactive, ref, watch } from 'vue'
+import { NButton, NSpace, NTag, NText, useMessage } from 'naive-ui'
+import { useRoute } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
-import request from '../../utils/request'
+import OrderDetailModal from './components/OrderDetailModal.vue'
+import { getOrders, syncOrders } from '../../api/order'
+import { getAttributionReasonText } from '../../constants/orderAttribution'
 
 const message = useMessage()
+const route = useRoute()
 const loading = ref(false)
 const syncLoading = ref(false)
 const data = ref([])
+const showDetail = ref(false)
+const activeOrderId = ref('')
+
+const attributionSummary = computed(() => {
+  const list = data.value as any[]
+  const attributed = list.filter((r: any) => r.attributionStatus === 'ATTRIBUTED').length
+  const unattributed = list.filter((r: any) => (r.attributionStatus || 'UNATTRIBUTED') === 'UNATTRIBUTED').length
+  const partial = list.filter((r: any) => r.attributionStatus === 'PARTIAL').length
+  const total = list.length
+  return {
+    attributed,
+    unattributed,
+    partial,
+    attributedPercent: total ? Math.round((attributed / total) * 100) : 0
+  }
+})
+
+const summaryReady = computed(() => (data.value as any[]).length > 0)
 
 const filters = reactive({
   orderId: '',
@@ -68,10 +101,50 @@ const pagination = reactive({
   itemCount: 0
 })
 
+const applyRouteFilters = () => {
+  filters.orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
+  filters.productId = typeof route.query.productId === 'string' ? route.query.productId : ''
+}
+
+function getDiagnosticSummary(row: any) {
+  const status = row.attributionStatus || 'UNATTRIBUTED'
+  const reason = row.unattributedReason || row.attributionRemark
+
+  if (status === 'ATTRIBUTED') {
+    return {
+      tag: '可复盘',
+      type: 'success' as const,
+      text: row.pickSource ? `已通过 ${row.pickSource} 完成归因` : '已完成渠道归因'
+    }
+  }
+
+  if (reason === 'NO_PICK_SOURCE' || !row.pickSource) {
+    return {
+      tag: '先查推广参数',
+      type: 'error' as const,
+      text: '订单未携带 pick_source'
+    }
+  }
+
+  if (reason === 'MAPPING_NOT_FOUND') {
+    return {
+      tag: '先查转链映射',
+      type: 'warning' as const,
+      text: `未找到 ${row.pickSource} 对应映射`
+    }
+  }
+
+  return {
+    tag: '待排查',
+    type: 'warning' as const,
+    text: getAttributionReasonText(reason) || '等待补充排查原因'
+  }
+}
+
 const columns = [
   { title: '订单号/结算时间', key: 'orderInfo', width: 220, render: (row: any) => h('div', null, [
     h('div', { style: 'font-weight: 600' }, row.orderId),
-    h('div', { style: 'font-size: 12px; color: #999' }, row.settleTime || '-')
+    h('div', { style: 'font-size: 12px; color: var(--text-tertiary)' }, row.settleTime || '-')
   ]) },
   { title: '商品信息', key: 'productTitle', minWidth: 200, ellipsis: true },
   { title: '订单金额', key: 'orderAmount', width: 100, render: (row: any) => `¥${row.orderAmount || 0}` },
@@ -86,6 +159,18 @@ const columns = [
       return h(NTag, { type, size: 'small' }, { default: () => labels[status] || status })
     }
   },
+  {
+    title: '排查摘要',
+    key: 'diagnosticSummary',
+    minWidth: 220,
+    render: (row: any) => {
+      const summary = getDiagnosticSummary(row)
+      return h('div', { class: 'diagnostic-summary' }, [
+        h(NTag, { type: summary.type, size: 'small', round: true }, { default: () => summary.tag }),
+        h(NText, { depth: 3, class: 'diagnostic-summary-text' }, { default: () => summary.text })
+      ])
+    }
+  },
   { title: '渠道负责人', key: 'channelUserName', width: 120, render: (row: any) => row.channelUserName || '-' },
   { title: '归因标识 (pick_source)', key: 'pickSource', width: 180, ellipsis: true },
   {
@@ -93,23 +178,57 @@ const columns = [
     key: 'actions',
     width: 120,
     fixed: 'right',
-    render: () => {
-      return h(NButton, { size: 'small', quaternary: true, onClick: () => message.info('详情功能开发中') }, { default: () => '查看详情' })
+    render: (row: any) => {
+      return h(
+        NButton,
+        {
+          size: 'small',
+          quaternary: true,
+          onClick: () => openDetail(row)
+        },
+        { default: () => '查看详情' }
+      )
     }
   }
 ]
 
+function openDetail(row: any) {
+  activeOrderId.value = String(row.orderId || '')
+  showDetail.value = true
+}
+
+function formatDateTime(value: number, endOfDay = false) {
+  const date = new Date(value)
+  if (endOfDay) {
+    date.setHours(23, 59, 59, 0)
+  } else {
+    date.setHours(0, 0, 0, 0)
+  }
+  const pad = (num: number) => String(num).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+function resolveDateRange() {
+  if (!filters.dateRange) {
+    return {}
+  }
+  const [start, end] = filters.dateRange
+  return {
+    startTime: formatDateTime(start),
+    endTime: formatDateTime(end, true)
+  }
+}
+
 const fetchData = async () => {
   loading.value = true
   try {
-    const res: any = await request.get('/orders', {
-      params: {
-        page: pagination.page,
-        size: pagination.pageSize,
-        orderId: filters.orderId || undefined,
-        productId: filters.productId || undefined,
-        attributionStatus: filters.attributionStatus || undefined
-      }
+    const res: any = await getOrders({
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      orderId: filters.orderId || undefined,
+      productId: filters.productId || undefined,
+      attributionStatus: filters.attributionStatus || undefined,
+      ...resolveDateRange()
     })
     data.value = res.data.records || []
     pagination.itemCount = res.data.total || 0
@@ -128,7 +247,19 @@ const handlePageChange = (page: number) => {
 const handleSync = async () => {
   syncLoading.value = true
   try {
-    await request.post('/orders/sync')
+    const now = new Date()
+    const start = new Date()
+    start.setDate(now.getDate() - 30)
+    const range = filters.dateRange
+      ? {
+          startTime: formatDateTime(filters.dateRange[0]),
+          endTime: formatDateTime(filters.dateRange[1], true)
+        }
+      : {
+          startTime: formatDateTime(start.getTime()),
+          endTime: formatDateTime(now.getTime(), true)
+        }
+    await syncOrders(range.startTime, range.endTime)
     message.success('已触发同步，订单回流中...')
     setTimeout(fetchData, 1000)
   } catch (err: any) {
@@ -146,11 +277,50 @@ const resetFilters = () => {
   fetchData()
 }
 
-onMounted(fetchData)
+watch(
+  () => [route.query.orderId, route.query.productId],
+  () => {
+    applyRouteFilters()
+    pagination.page = 1
+    fetchData()
+  }
+)
+
+onMounted(() => {
+  applyRouteFilters()
+  fetchData()
+})
 </script>
 
 <style scoped>
-.orders-page { padding: 24px; }
-.toolbar { margin-bottom: 16px; background: #fff; padding: 16px; border-radius: 8px; }
-.main-card { border-radius: 8px; }
+.orders-page { padding: var(--spacing-xl); }
+
+.attribution-summary {
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+}
+
+.summary-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.toolbar { margin-bottom: var(--spacing-md); background: var(--bg-card); padding: var(--spacing-md); border-radius: var(--radius-md); }
+.main-card { border-radius: var(--radius-md); }
+.diagnostic-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.diagnostic-summary-text {
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+}
 </style>

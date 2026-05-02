@@ -1,10 +1,10 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
@@ -17,11 +17,13 @@ import com.colonel.saas.dto.SampleTalentQueryRequest;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationState;
+import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
+import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.TalentMapper;
@@ -29,6 +31,10 @@ import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.service.SampleStatusLogService;
 import com.colonel.saas.vo.SampleTalentVO;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -50,16 +56,19 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Validated
-@Tag(name = "寄样管理")
+@Tag(name = "寄样管理", description = "寄样申请、寄样列表、达人候选搜索、状态流转与删除接口。")
 @RestController
 @RequestMapping("/samples")
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
@@ -70,6 +79,7 @@ public class SampleController extends BaseController {
     private final SampleRequestMapper sampleRequestMapper;
     private final ProductMapper productMapper;
     private final ProductOperationStateMapper productOperationStateMapper;
+    private final ProductSnapshotMapper productSnapshotMapper;
     private final SysUserMapper sysUserMapper;
     private final TalentMapper talentMapper;
     private final SampleStatusLogService sampleStatusLogService;
@@ -79,6 +89,7 @@ public class SampleController extends BaseController {
             SampleRequestMapper sampleRequestMapper,
             ProductMapper productMapper,
             ProductOperationStateMapper productOperationStateMapper,
+            ProductSnapshotMapper productSnapshotMapper,
             SysUserMapper sysUserMapper,
             TalentMapper talentMapper,
             SampleStatusLogService sampleStatusLogService,
@@ -86,23 +97,29 @@ public class SampleController extends BaseController {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productMapper = productMapper;
         this.productOperationStateMapper = productOperationStateMapper;
+        this.productSnapshotMapper = productSnapshotMapper;
         this.sysUserMapper = sysUserMapper;
         this.talentMapper = talentMapper;
         this.sampleStatusLogService = sampleStatusLogService;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
     }
 
-    @Operation(summary = "创建寄样申请")
+    @Operation(summary = "创建寄样申请", description = "发起寄样申请并初始化寄样状态，用于达人寄样闭环的起点。")
     @PostMapping
     @Transactional(rollbackFor = Exception.class)
     public ApiResult<SampleVO> createSample(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "寄样申请请求体。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"productId\":\"11111111-1111-1111-1111-111111111111\",\"talentId\":\"test_talent_001\",\"quantity\":1,\"remark\":\"优先安排发货\"}"))
+            )
             @Valid @RequestBody SampleApplyRequest request,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         Product product = requireProduct(request.getProductId());
         CrawlerTalentInfo talentInfo = requireCrawlerTalent(request.getTalentId());
         Talent talent = findOrCreateTalentFromCrawler(talentInfo);
-        checkSevenDaysLimit(userId, talent.getId(), request.getProductId(), roleCodes);
+        checkSevenDaysLimit(userId, talent.getId(), product.getId(), roleCodes);
 
         SampleRequest sample = new SampleRequest();
         sample.setRequestNo(generateRequestNo());
@@ -112,7 +129,7 @@ public class SampleController extends BaseController {
         sample.setTalentFansCount(request.getTalentFansCount() != null ? request.getTalentFansCount() : talentInfo.getFansCount());
         sample.setTalentCreditScore(request.getTalentCreditScore() != null ? request.getTalentCreditScore() : talentInfo.getCreditScore());
         sample.setTalentMainCategory(StringUtils.hasText(request.getTalentMainCategory()) ? request.getTalentMainCategory() : talentInfo.getMainCategory());
-        sample.setProductId(request.getProductId());
+        sample.setProductId(product.getId());
         sample.setUserId(userId);
         sample.setChannelUserId(userId);
         sample.setExpectedSampleNum(request.getQuantity());
@@ -125,12 +142,13 @@ public class SampleController extends BaseController {
         return ok(toVO(sample, product.getName(), sample.getTalentNickname()));
     }
 
-    @Operation(summary = "寄样分页")
+    @Operation(summary = "寄样分页", description = "分页查询寄样申请列表，用于寄样业务页面。")
     @GetMapping
     public ApiResult<PageResult<SampleVO>> getSamplePage(
-            @RequestParam(defaultValue = "1") @Min(1) long page,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
-            @RequestParam(required = false) String status,
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
+            @Parameter(description = "关键字，可匹配达人昵称、达人 UID、寄样单号或商品名称。") @RequestParam(required = false) String keyword,
+            @Parameter(description = "寄样状态。可用值包括 PENDING_AUDIT、PENDING_SHIP、SHIPPING、DELIVERED、PENDING_HOMEWORK、COMPLETED、REJECTED、CLOSED。") @RequestParam(required = false) String status,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
@@ -138,6 +156,23 @@ public class SampleController extends BaseController {
         QueryWrapper<SampleRequest> wrapper = new QueryWrapper<>();
         if (StringUtils.hasText(status)) {
             wrapper.eq("status", parseStatus(status).code);
+        }
+        if (StringUtils.hasText(keyword)) {
+            Set<UUID> matchedProductIds = new HashSet<>(productMapper.selectList(
+                    new QueryWrapper<Product>()
+                            .select("id")
+                            .like("name", keyword.trim())
+            ).stream().map(Product::getId).toList());
+            wrapper.and(query -> {
+                query.like("talent_nickname", keyword.trim())
+                        .or()
+                        .like("talent_uid", keyword.trim())
+                        .or()
+                        .like("request_no", keyword.trim());
+                if (!matchedProductIds.isEmpty()) {
+                    query.or().in("product_id", matchedProductIds);
+                }
+            });
         }
 
         IPage<SampleRequest> samplePage = sampleRequestMapper.findPageWithScope(pageReq, wrapper);
@@ -157,7 +192,7 @@ public class SampleController extends BaseController {
         return okPage(voPage);
     }
 
-    @Operation(summary = "寄样达人搜索")
+    @Operation(summary = "寄样达人搜索", description = "搜索可用于寄样申请的达人候选数据，数据来源于达人抓取结果。")
     @GetMapping("/talent-candidates")
     public ApiResult<PageResult<SampleTalentVO>> searchTalents(@Valid SampleTalentQueryRequest request) {
         IPage<SampleTalentVO> page = crawlerTalentInfoService.searchTalents(
@@ -172,9 +207,60 @@ public class SampleController extends BaseController {
         return okPage(page);
     }
 
-    @Operation(summary = "寄样详情")
+    @Operation(summary = "寄样商品搜索", description = "搜索可用于寄样申请的商品候选数据，返回可直接用于创建寄样申请的商品主键。")
+    @GetMapping("/product-candidates")
+    public ApiResult<PageResult<SampleProductVO>> searchProducts(
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") @Min(1) @Max(100) long size,
+            @Parameter(description = "商品名称或商品 ID。") @RequestParam(required = false) String keyword) {
+        Page<Product> pageReq = new Page<>(page, size);
+        QueryWrapper<Product> wrapper = new QueryWrapper<Product>().orderByDesc("create_time");
+        if (StringUtils.hasText(keyword)) {
+            String value = keyword.trim();
+            wrapper.and(query -> query.like("name", value).or().like("product_id", value));
+        }
+        IPage<Product> productPage = productMapper.selectPage(pageReq, wrapper);
+        Page<SampleProductVO> result = new Page<>(productPage.getCurrent(), productPage.getSize(), productPage.getTotal());
+        result.setRecords(productPage.getRecords().stream()
+                .map(product -> new SampleProductVO(product.getId(), product.getProductId(), product.getName()))
+                .toList());
+        return okPage(result);
+    }
+
+    @Operation(summary = "寄样看板", description = "按状态分组返回全量寄样单，用于看板视图。")
+    @GetMapping("/board")
+    public ApiResult<Map<String, List<SampleBoardCard>>> getSampleBoard(
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        LambdaQueryWrapper<SampleRequest> wrapper = new LambdaQueryWrapper<>();
+        wrapper.orderByDesc(SampleRequest::getCreateTime);
+        List<SampleRequest> allSamples = sampleRequestMapper.selectList(wrapper);
+
+        Map<UUID, Product> productMap = loadProducts(allSamples.stream()
+                .map(SampleRequest::getProductId)
+                .collect(Collectors.toSet()));
+
+        Map<String, List<SampleBoardCard>> board = new HashMap<>();
+        for (SampleStatus s : SampleStatus.values()) {
+            String key = toLegacyStatus(s);
+            board.putIfAbsent(key, new ArrayList<>());
+        }
+
+        for (SampleRequest sample : allSamples) {
+            SampleStatus internalStatus = SampleStatus.fromCode(sample.getStatus());
+            String legacyStatus = toLegacyStatus(internalStatus);
+            Product product = productMap.get(sample.getProductId());
+            board.get(legacyStatus).add(toBoardCard(sample, product, internalStatus));
+        }
+
+        return ok(board);
+    }
+
+    @Operation(summary = "寄样详情", description = "查询单个寄样申请详情。")
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}")
-    public ApiResult<SampleVO> getSampleById(@PathVariable UUID id) {
+    public ApiResult<SampleVO> getSampleById(
+            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id) {
         SampleRequest sample = requireSample(id);
         Product product = productMapper.selectById(sample.getProductId());
         return ok(toVO(
@@ -183,11 +269,16 @@ public class SampleController extends BaseController {
                 sample.getTalentNickname()));
     }
 
-    @Operation(summary = "寄样状态流转")
+    @Operation(summary = "寄样状态流转", description = "推进寄样申请状态机。动作值必须符合当前状态允许的流转规则。")
     @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/status")
     @Transactional(rollbackFor = Exception.class)
     public ApiResult<SampleVO> actionSample(
-            @PathVariable UUID id,
+            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "寄样状态流转请求体。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"action\":\"SHIPPING\",\"trackingNo\":\"SF1234567890\",\"reason\":\"顺丰发出\"}"))
+            )
             @Valid @RequestBody SampleActionRequest request,
             @RequestAttribute("userId") UUID userId) {
         SampleRequest sample = requireSample(id);
@@ -244,9 +335,10 @@ public class SampleController extends BaseController {
                 sample.getTalentNickname()));
     }
 
-    @Operation(summary = "删除寄样")
+    @Operation(summary = "删除寄样", description = "删除寄样申请。仅待审核或已拒绝的寄样单允许删除。")
     @DeleteMapping("/{id:[0-9a-fA-F\\-]{36}}")
-    public ApiResult<Void> deleteSample(@PathVariable UUID id) {
+    public ApiResult<Void> deleteSample(
+            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id) {
         SampleRequest sample = requireSample(id);
         SampleStatus status = SampleStatus.fromCode(sample.getStatus());
         if (status != SampleStatus.PENDING_AUDIT && status != SampleStatus.REJECTED) {
@@ -272,6 +364,16 @@ public class SampleController extends BaseController {
 
     private Product requireProduct(UUID productId) {
         Product product = productMapper.selectById(productId);
+        if (product != null) {
+            return product;
+        }
+
+        ProductSnapshot snapshot = productSnapshotMapper.selectById(productId);
+        if (snapshot != null && StringUtils.hasText(snapshot.getProductId())) {
+            product = productMapper.selectOne(new LambdaQueryWrapper<Product>()
+                    .eq(Product::getProductId, snapshot.getProductId())
+                    .last("LIMIT 1"));
+        }
         if (product == null) {
             throw new ValidateException("Selected product does not exist");
         }
@@ -443,6 +545,7 @@ public class SampleController extends BaseController {
         return switch (normalized) {
             case "APPROVED" -> "PENDING_SHIP";
             case "SHIPPED" -> "SHIPPING";
+            case "SIGNED" -> "DELIVERED";
             case "PENDING_TASK" -> "PENDING_HOMEWORK";
             case "FINISHED" -> "COMPLETED";
             default -> normalized;
@@ -456,6 +559,37 @@ public class SampleController extends BaseController {
             case COMPLETED -> "FINISHED";
             default -> status.apiStatus;
         };
+    }
+
+    private LocalDateTime resolveStateEnterTime(SampleRequest sample, SampleStatus status) {
+        return switch (status) {
+            case PENDING_AUDIT -> sample.getCreateTime();
+            case PENDING_SHIP -> sample.getAuditTime();
+            case SHIPPING -> sample.getShipTime();
+            case DELIVERED -> sample.getDeliverTime();
+            case PENDING_HOMEWORK -> sample.getDeliverTime();
+            case COMPLETED -> sample.getCompleteTime();
+            case REJECTED -> sample.getAuditTime();
+            case CLOSED -> sample.getCloseTime();
+        };
+    }
+
+    private SampleBoardCard toBoardCard(SampleRequest sample, Product product, SampleStatus internalStatus) {
+        SampleBoardCard card = new SampleBoardCard();
+        card.setId(sample.getId());
+        card.setRequestNo(sample.getRequestNo());
+        card.setTalentName(sample.getTalentNickname());
+        card.setProductId(sample.getProductId());
+        card.setProductName(product == null ? null : product.getName());
+        card.setQuantity(sample.getExpectedSampleNum() == null ? 1 : sample.getExpectedSampleNum());
+        card.setChannelUserName(resolveUserDisplayName(sample.getChannelUserId()));
+        card.setTrackingNo(sample.getTrackingNo());
+        card.setRejectReason(sample.getRejectReason());
+        card.setRemark(sample.getRemark());
+        card.setStatus(toLegacyStatus(internalStatus));
+        card.setCreateTime(sample.getCreateTime());
+        card.setStateEnterTime(resolveStateEnterTime(sample, internalStatus));
+        return card;
     }
 
     private enum SampleStatus {
@@ -496,9 +630,14 @@ public class SampleController extends BaseController {
     }
 
     public static class SampleActionRequest {
+        @Schema(description = "状态流转动作。可用值包括 PENDING_SHIP、REJECTED、SHIPPING、DELIVERED、PENDING_HOMEWORK、COMPLETED、CLOSED；兼容值包括 APPROVED、SHIPPED、PENDING_TASK、FINISHED。", example = "SHIPPING")
         @NotBlank(message = "action cannot be empty")
         private String action;
+
+        @Schema(description = "原因说明。驳回、关闭等场景建议填写。", example = "顺丰发出")
         private String reason;
+
+        @Schema(description = "物流单号。发货时必填。", example = "SF1234567890")
         private String trackingNo;
 
         public String getAction() {
@@ -698,5 +837,84 @@ public class SampleController extends BaseController {
         public void setCompleteTime(LocalDateTime completeTime) {
             this.completeTime = completeTime;
         }
+    }
+
+    public static class SampleProductVO {
+        private UUID id;
+        private String productId;
+        private String productName;
+
+        public SampleProductVO(UUID id, String productId, String productName) {
+            this.id = id;
+            this.productId = productId;
+            this.productName = productName;
+        }
+
+        public UUID getId() {
+            return id;
+        }
+
+        public void setId(UUID id) {
+            this.id = id;
+        }
+
+        public String getProductId() {
+            return productId;
+        }
+
+        public void setProductId(String productId) {
+            this.productId = productId;
+        }
+
+        public String getProductName() {
+            return productName;
+        }
+
+        public void setProductName(String productName) {
+            this.productName = productName;
+        }
+    }
+
+    public static class SampleBoardCard {
+        private UUID id;
+        private String requestNo;
+        private String talentName;
+        private UUID productId;
+        private String productName;
+        private Integer quantity;
+        private String channelUserName;
+        private String trackingNo;
+        private String rejectReason;
+        private String remark;
+        private String status;
+        private LocalDateTime createTime;
+        private LocalDateTime stateEnterTime;
+
+        public UUID getId() { return id; }
+        public void setId(UUID id) { this.id = id; }
+        public String getRequestNo() { return requestNo; }
+        public void setRequestNo(String requestNo) { this.requestNo = requestNo; }
+        public String getTalentName() { return talentName; }
+        public void setTalentName(String talentName) { this.talentName = talentName; }
+        public UUID getProductId() { return productId; }
+        public void setProductId(UUID productId) { this.productId = productId; }
+        public String getProductName() { return productName; }
+        public void setProductName(String productName) { this.productName = productName; }
+        public Integer getQuantity() { return quantity; }
+        public void setQuantity(Integer quantity) { this.quantity = quantity; }
+        public String getChannelUserName() { return channelUserName; }
+        public void setChannelUserName(String channelUserName) { this.channelUserName = channelUserName; }
+        public String getTrackingNo() { return trackingNo; }
+        public void setTrackingNo(String trackingNo) { this.trackingNo = trackingNo; }
+        public String getRejectReason() { return rejectReason; }
+        public void setRejectReason(String rejectReason) { this.rejectReason = rejectReason; }
+        public String getRemark() { return remark; }
+        public void setRemark(String remark) { this.remark = remark; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        public LocalDateTime getCreateTime() { return createTime; }
+        public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
+        public LocalDateTime getStateEnterTime() { return stateEnterTime; }
+        public void setStateEnterTime(LocalDateTime stateEnterTime) { this.stateEnterTime = stateEnterTime; }
     }
 }

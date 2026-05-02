@@ -2,6 +2,8 @@ package com.colonel.saas.douyin.api;
 
 import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.douyin.DouyinApiException;
+import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
+import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -30,12 +32,22 @@ public class OrderApi {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final DouyinApiClient douyinApiClient;
+    private final DouyinUpstreamModeSupport upstreamModeSupport;
+    private final DouyinContractFixtureProvider contractFixtureProvider;
 
-    public OrderApi(DouyinApiClient douyinApiClient) {
+    public OrderApi(
+            DouyinApiClient douyinApiClient,
+            DouyinUpstreamModeSupport upstreamModeSupport,
+            DouyinContractFixtureProvider contractFixtureProvider) {
         this.douyinApiClient = douyinApiClient;
+        this.upstreamModeSupport = upstreamModeSupport;
+        this.contractFixtureProvider = contractFixtureProvider;
     }
 
     public Map<String, Object> listSettlement(long startTime, long endTime, int count, String cursor) {
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildOrderSettlementResponse(null, count, cursor, "update", null, null, null);
+        }
         int normalizedCount = normalizeCount(count);
         long normalizedCursor = normalizeCursor(cursor);
         long page = normalizedCursor + 1;
@@ -75,6 +87,9 @@ public class OrderApi {
             String startTime,
             String endTime,
             String orderIds) {
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildOrderSettlementResponse(appId, size, cursor, timeType, startTime, endTime, orderIds);
+        }
         String normalizedOrderIds = normalizeOrderIds(orderIds);
         LocalDateTime normalizedStartTime = parseDateTime(startTime, "startTime");
         LocalDateTime normalizedEndTime = parseDateTime(endTime, "endTime");
@@ -100,6 +115,9 @@ public class OrderApi {
     }
 
     public Map<String, Object> decryptSensitiveData(java.util.List<String> orderIds) {
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildDecryptSensitiveResponse(orderIds);
+        }
         Map<String, Object> params = new HashMap<>();
         params.put("order_ids", orderIds);
         params.put("type", 1);

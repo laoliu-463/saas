@@ -41,10 +41,10 @@
             <n-tab-pane name="progress" tab="业务推进">
               <div class="pane-content">
                 <n-steps :current="currentStep" status="process" size="small" class="biz-steps">
-                  <n-step title="待审核" description="系统同步" />
-                  <n-step title="审核通过" description="商品初筛" />
-                  <n-step title="已分配" description="指定招商" />
-                  <n-step title="推广就绪" description="后台准备链接" />
+                  <n-step title="待审核" />
+                  <n-step title="审核通过" />
+                  <n-step title="已分配招商" />
+                  <n-step title="推广就绪" />
                 </n-steps>
 
                 <div v-if="detail.bizStatus === 'REJECTED'" class="status-alert">
@@ -64,6 +64,74 @@
                     <n-descriptions-item label="招商负责人">{{ detail.assigneeName || '未分配' }}</n-descriptions-item>
                     <n-descriptions-item label="来源活动">{{ detail.activityId || '-' }}</n-descriptions-item>
                   </n-descriptions>
+                </n-card>
+
+                <n-card title="推进判断" size="small" style="margin-top: 16px;">
+                  <div class="decision-card">
+                    <div class="decision-current">
+                      <n-tag :type="decisionTagType(latestDecision?.level)" size="small" round>
+                        {{ latestDecision?.label || '暂无判断' }}
+                      </n-tag>
+                      <span class="decision-reason">{{ latestDecision?.reason || '还没有留下主推、暂缓或放弃原因' }}</span>
+                    </div>
+                    <n-alert
+                      v-if="decisionRiskSummary"
+                      :type="decisionRiskSummary.type"
+                      :title="decisionRiskSummary.title"
+                      bordered
+                    >
+                      <div class="decision-risk-content">
+                        <div>{{ decisionRiskSummary.content }}</div>
+                        <ul class="decision-risk-actions">
+                          <li v-for="action in decisionRiskSummary.actions" :key="action">{{ action }}</li>
+                        </ul>
+                        <div v-if="decisionRiskSummary.closingNote" class="decision-risk-note">
+                          {{ decisionRiskSummary.closingNote }}
+                        </div>
+                      </div>
+                    </n-alert>
+                    <div class="decision-form">
+                      <n-radio-group v-model:value="decisionForm.level" size="small">
+                        <n-radio-button value="MAIN">主推</n-radio-button>
+                        <n-radio-button value="SECONDARY">次推</n-radio-button>
+                        <n-radio-button value="PAUSE">暂缓</n-radio-button>
+                        <n-radio-button value="DROP">放弃</n-radio-button>
+                      </n-radio-group>
+                      <n-input
+                        v-model:value="decisionForm.reason"
+                        type="textarea"
+                        :autosize="{ minRows: 2, maxRows: 4 }"
+                        placeholder="填写判断原因，例如：佣金高且库存稳定，适合优先找达人"
+                      />
+                      <div class="decision-actions">
+                        <n-button
+                          type="primary"
+                          size="small"
+                          :loading="decisionSaving"
+                          @click="saveDecision"
+                        >
+                          保存判断
+                        </n-button>
+                      </div>
+                    </div>
+                  </div>
+                </n-card>
+
+                <n-card title="最近推进时间线" size="small" style="margin-top: 16px;">
+                  <div v-if="timelineEvents.length" class="timeline-list">
+                    <div v-for="event in timelineEvents" :key="event.key" class="timeline-item">
+                      <div class="timeline-marker" :class="event.markerClass"></div>
+                      <div class="timeline-body">
+                        <div class="timeline-title-row">
+                          <span class="timeline-title">{{ event.title }}</span>
+                          <span class="timeline-time">{{ event.time }}</span>
+                        </div>
+                        <div class="timeline-meta">{{ event.meta }}</div>
+                        <div v-if="event.remark" class="timeline-remark">{{ event.remark }}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <n-empty v-else description="暂无推进记录" />
                 </n-card>
               </div>
             </n-tab-pane>
@@ -183,7 +251,7 @@
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useMessage } from 'naive-ui';
-import { convertActivityProductLink, getActivityProductDetail, getActivityProductOperationLogs } from '../../api/activityProduct';
+import { convertActivityProductLink, getActivityProductDetail, getActivityProductOperationLogs, updateActivityProductDecision } from '../../api/activityProduct';
 import { useAuthStore } from '../../stores/auth';
 import { hasAccess } from '../../constants/rbac';
 
@@ -210,16 +278,21 @@ const canDo = (action: string) => {
 
 const loading = ref(false);
 const promotionGenerating = ref(false);
+const decisionSaving = ref(false);
 const detail = ref<any>(null);
 const operationLogs = ref<any[]>([]);
+const decisionForm = ref<{ level: 'MAIN' | 'SECONDARY' | 'PAUSE' | 'DROP'; reason: string }>({
+  level: 'MAIN',
+  reason: ''
+});
 
 const statusMap: Record<string, number> = {
-  PENDING_AUDIT: 0,
-  APPROVED: 1,
-  BOUND: 1,
-  ASSIGNED: 2,
-  LINKED: 3,
-  FOLLOWING: 3
+  PENDING_AUDIT: 1,
+  APPROVED: 2,
+  BOUND: 2,
+  ASSIGNED: 3,
+  LINKED: 4,
+  FOLLOWING: 4
 };
 
 const currentStep = computed(() => statusMap[detail.value?.bizStatus || 'PENDING_AUDIT'] ?? 0);
@@ -250,13 +323,84 @@ const promotionLinks = computed(() => {
   return [];
 });
 
+const latestDecision = computed(() => {
+  const log = operationLogs.value.find((item: any) => item?.operationType === 'DECISION');
+  if (!log) return null;
+  const payload = parseOperationPayload(log.operationPayload);
+  return {
+    level: payload.decisionLevel || '',
+    label: payload.decisionLabel || decisionLabel(payload.decisionLevel),
+    reason: normalizeText(log.operationRemark),
+    operatorName: formatOperatorDisplay(log),
+    time: log.createTime || '-'
+  };
+});
+
+const decisionRiskSummary = computed(() => {
+  const level = latestDecision.value?.level;
+  const reason = latestDecision.value?.reason || '未填写原因';
+  if (level === 'PAUSE') {
+    return {
+      type: 'warning' as const,
+      title: '当前已标记为暂缓',
+      content: `本轮不建议继续强推，建议先处理这条原因：${reason}`,
+      actions: [
+        '先补库存、佣金、素材或活动信息，再决定是否恢复推进',
+        '暂时不要继续催达人或重复分发，避免无效消耗',
+        '处理完成后重新保存一次判断，确认是否转回主推或次推'
+      ]
+    };
+  }
+  if (level === 'DROP') {
+    return {
+      type: 'error' as const,
+      title: '当前已标记为放弃',
+      content: `这款商品本轮建议停止投入，核心原因：${reason}`,
+      actions: [
+        '停止继续转链、催跟进或追加沟通，避免继续投入时间',
+        '如已占用达人或招商精力，优先把资源切回更值得推进的商品',
+        '如果后续条件发生明显变化，再重新进入详情页补一次新判断'
+      ],
+      closingNote: '当前建议按“停止继续推进、保留历史记录、等待条件变化后再重新评估”的方式收口。'
+    };
+  }
+  return null;
+});
+
+const timelineEvents = computed(() => {
+  return operationLogs.value.slice(0, 5).map((log: any, index: number) => {
+    const payload = parseOperationPayload(log?.operationPayload);
+    const type = String(log?.operationType || '');
+    const assigneeName = payload.assigneeName || detail.value?.assigneeName || '未识别负责人';
+    const operatorName = formatOperatorDisplay(log);
+    const titles: Record<string, string> = {
+      ASSIGN: `商品已分配给 ${assigneeName}`,
+      AUDIT: log?.afterStatus === 'REJECTED' ? '商品审核被拒绝' : '商品审核通过',
+      DECISION: payload.eventLabel || '商品推进判断已更新',
+      LINK: '商品推广链接已准备',
+      PROMOTION_LINK: '商品推广链接已准备',
+      TALENT_FOLLOW: '商品进入达人跟进',
+      TALENT_FOLLOW_APPEND: '商品追加达人跟进',
+      SYNC: '商品进入本地商品池'
+    };
+    return {
+      key: `${log?.id || type}-${index}`,
+      title: titles[type] || log?.operationRemark || '记录了新的推进动作',
+      time: log?.createTime || '-',
+      meta: buildTimelineMeta(type, operatorName, assigneeName),
+      remark: normalizeText(log?.operationRemark),
+      markerClass: `marker-${String(type || 'default').toLowerCase()}`
+    };
+  });
+});
+
 const logColumns = [
   { title: '时间', key: 'createTime', width: 160 },
-  { title: '类型', key: 'operationType', width: 100 },
-  { title: '状态流转', key: 'statusFlow', width: 180, render: (row: any) => `${row.beforeStatus || '-'} -> ${row.afterStatus || '-'}` },
+  { title: '事件', key: 'operationTypeLabel', width: 160, render: (row: any) => mapOperationTypeLabel(row?.operationType) },
+  { title: '状态流转', key: 'statusFlow', width: 180, render: (row: any) => formatStatusFlow(row?.beforeStatus, row?.afterStatus) },
   { title: '结果', key: 'success', width: 80, render: (row: any) => (row.success ? '成功' : '失败') },
-  { title: '操作人', key: 'operatorId', width: 100 },
-  { title: '备注', key: 'operationRemark', minWidth: 150 }
+  { title: '操作人', key: 'operatorName', width: 140, render: (row: any) => formatOperatorDisplay(row) },
+  { title: '说明', key: 'operationRemark', minWidth: 220, render: (row: any) => buildOperationSummary(row) }
 ];
 
 const promotionColumns = [
@@ -308,6 +452,106 @@ const getStatusLabel = (status?: string) => {
   return map[status || ''] || status || '未知';
 };
 
+const mapOperationTypeLabel = (type?: string) => {
+  const map: Record<string, string> = {
+    ASSIGN: '分配招商',
+    AUDIT: '商品审核',
+    DECISION: '推进判断',
+    SYNC: '同步商品',
+    LINK: '生成推广链接',
+    PROMOTION_LINK: '生成推广链接',
+    TALENT_FOLLOW: '达人跟进',
+    TALENT_FOLLOW_APPEND: '追加跟进'
+  };
+  return map[type || ''] || type || '未知事件';
+};
+
+const normalizeText = (value?: string | null) => {
+  if (!value) return '';
+  const text = String(value).trim();
+  return text && text !== 'null' && text !== 'undefined' ? text : '';
+};
+
+const isUuidLike = (value?: string | null) => {
+  const text = normalizeText(value);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text);
+};
+
+const formatStatusFlow = (beforeStatus?: string | null, afterStatus?: string | null) => {
+  return `${getStatusLabel(beforeStatus || '')} -> ${getStatusLabel(afterStatus || '')}`;
+};
+
+const simplifyUserDisplay = (value?: string | null) => {
+  const text = normalizeText(value);
+  return text || '';
+};
+
+const formatOperatorDisplay = (row: any) => {
+  const payload = parseOperationPayload(row?.operationPayload);
+  if (payload.operatorName) return payload.operatorName;
+  if (row?.operationType === 'SYNC') return '系统';
+  if (isUuidLike(row?.operatorId)) return '历史记录';
+  return simplifyUserDisplay(row?.operatorId) || '-';
+};
+
+const parseOperationPayload = (raw?: string | null) => {
+  const payload: Record<string, string> = {};
+  const text = normalizeText(raw);
+  if (!text) return payload;
+  const trimmed = text.startsWith('{') && text.endsWith('}') ? text.slice(1, -1) : text;
+  trimmed.split(', ').forEach((pair) => {
+    const index = pair.indexOf('=');
+    if (index <= 0) return;
+    const key = pair.slice(0, index).trim();
+    const value = pair.slice(index + 1).trim();
+    if (key) payload[key] = value;
+  });
+  return payload;
+};
+
+const buildTimelineMeta = (type: string, operatorName: string, assigneeName: string) => {
+  if (type === 'DECISION') {
+    return `${operatorName} 更新了商品推进判断`;
+  }
+  if (type === 'ASSIGN') {
+    return `${operatorName} 完成分配，当前负责人：${assigneeName}`;
+  }
+  if (type === 'AUDIT') {
+    return `${operatorName} 完成审核判断`;
+  }
+  if (type === 'TALENT_FOLLOW' || type === 'TALENT_FOLLOW_APPEND') {
+    return `${operatorName} 更新了达人推进动作`;
+  }
+  if (type === 'PROMOTION_LINK' || type === 'LINK') {
+    return `${operatorName} 完成推广链接准备`;
+  }
+  return `${operatorName} 记录了一次业务动作`;
+};
+
+const buildOperationSummary = (row: any) => {
+  const payload = parseOperationPayload(row?.operationPayload);
+  const type = String(row?.operationType || '');
+  if (type === 'DECISION') {
+    return row?.operationRemark || `${payload.decisionLabel || '推进判断'}：未填写原因`;
+  }
+  if (type === 'ASSIGN') {
+    return row?.operationRemark || `已分配给 ${payload.assigneeName || detail.value?.assigneeName || '负责人'}`;
+  }
+  if (type === 'AUDIT' && row?.afterStatus === 'REJECTED') {
+    return row?.operationRemark || '审核拒绝';
+  }
+  if (type === 'AUDIT') {
+    return row?.operationRemark || '审核通过';
+  }
+  if (type === 'PROMOTION_LINK' || type === 'LINK') {
+    return row?.operationRemark || '已生成推广链接';
+  }
+  if (type === 'TALENT_FOLLOW' || type === 'TALENT_FOLLOW_APPEND') {
+    return row?.operationRemark || '已更新达人跟进';
+  }
+  return row?.operationRemark || normalizeText(row?.operationPayload) || '-';
+};
+
 const statusBadgeClass = (status?: string) => {
   if (status === 'PENDING_AUDIT') return 'warning';
   if (['LINKED', 'FOLLOWING'].includes(status || '')) return 'success';
@@ -321,8 +565,52 @@ const promotionTagType = (status?: string) => {
   return 'warning';
 };
 
+const decisionLabel = (level?: string) => {
+  const map: Record<string, string> = {
+    MAIN: '主推',
+    SECONDARY: '次推',
+    PAUSE: '暂缓',
+    DROP: '放弃'
+  };
+  return map[level || ''] || '暂无判断';
+};
+
+const decisionTagType = (level?: string) => {
+  if (level === 'MAIN') return 'success';
+  if (level === 'SECONDARY') return 'info';
+  if (level === 'PAUSE') return 'warning';
+  if (level === 'DROP') return 'error';
+  return 'default';
+};
+
 const handleAction = (action: string) => {
   emit('action', { action, row: detail.value });
+};
+
+const saveDecision = async () => {
+  if (!props.activityId || !props.productId) {
+    message.warning('商品信息不完整，暂不可保存判断');
+    return;
+  }
+  const reason = decisionForm.value.reason.trim();
+  if (!reason) {
+    message.warning('请填写推进判断原因');
+    return;
+  }
+  decisionSaving.value = true;
+  try {
+    await updateActivityProductDecision(props.activityId, props.productId, {
+      decisionLevel: decisionForm.value.level,
+      reason
+    });
+    message.success('推进判断已保存');
+    decisionForm.value.reason = '';
+    await fetchData();
+  } catch (error: any) {
+    message.error(error?.response?.data?.msg || error?.message || '推进判断保存失败，请稍后重试');
+  } finally {
+    decisionSaving.value = false;
+  }
 };
 
 const goToOrders = (productId: string) => {
@@ -340,13 +628,17 @@ const copyText = async (text?: string) => {
     await navigator.clipboard.writeText(text);
     message.success('复制成功');
   } catch {
-    message.error('复制失败');
+    message.warning('内容已生成，但浏览器未允许写入剪贴板，请手动复制');
   }
 };
 
 const copyPromotionLink = async () => {
   if (!props.activityId || !props.productId) {
     message.warning('商品信息不完整，暂不可生成推广链接');
+    return;
+  }
+  if (promotion.value?.link) {
+    await copyText(promotion.value.link);
     return;
   }
   promotionGenerating.value = true;
@@ -356,10 +648,30 @@ const copyPromotionLink = async () => {
     const link = data.promoteLink || data.promotionUrl || data.shortLink;
     if (!link) {
       message.warning('推广链接生成成功，但未返回可复制链接');
+      await fetchData();
       return;
     }
-    await navigator.clipboard.writeText(link);
-    message.success('推广链接已复制');
+    detail.value = {
+      ...(detail.value || {}),
+      promotion: {
+        ...(detail.value?.promotion || {}),
+        ...data,
+        status: 'READY',
+        statusLabel: data.statusLabel || '已生成',
+        link,
+        failReason: null
+      },
+      promotionLink: link,
+      promotionLinkStatus: 'READY',
+      promotionLinkStatusLabel: data.statusLabel || '已生成',
+      promotionLinkFailReason: null
+    };
+    try {
+      await navigator.clipboard.writeText(link);
+      message.success('推广链接已复制');
+    } catch {
+      message.warning('推广链接已生成，但浏览器未允许写入剪贴板，请手动复制');
+    }
     await fetchData();
   } catch (error: any) {
     message.error(error?.response?.data?.msg || error?.message || '推广链接生成失败，请稍后重试');
@@ -381,14 +693,67 @@ const formatPercent = (value?: number | string | null) => {
 .detail-container { display: flex; flex-direction: column; gap: 16px; }
 .action-bar { padding: 12px; background: #f8f9fb; border-radius: 8px; border: 1px dashed #dcdfe6; }
 .pane-content { padding: 16px 4px; }
-.biz-steps { margin: 20px 0 32px; }
+.biz-steps { margin: 20px 0 32px; padding: 4px 2px 0; }
+.biz-steps :deep(.n-step) {
+  transition: opacity .2s ease, transform .2s ease;
+}
+.biz-steps :deep(.n-step .n-step-content-header__title) {
+  transition: color .2s ease, font-weight .2s ease;
+}
+.biz-steps :deep(.n-step--finish-status .n-step-splitor) {
+  background-color: rgba(255, 92, 109, 0.42);
+}
+.biz-steps :deep(.n-step--process-status .n-step-indicator) {
+  transform: scale(1.06);
+  box-shadow:
+    0 0 0 1px rgba(255, 92, 109, 0.95),
+    0 0 0 6px rgba(255, 92, 109, 0.12);
+}
+.biz-steps :deep(.n-step--process-status .n-step-indicator-slot__index) {
+  font-weight: 700;
+}
+.biz-steps :deep(.n-step--process-status .n-step-content-header__title) {
+  color: #1f2937;
+  font-weight: 700;
+}
+.biz-steps :deep(.n-step--wait-status .n-step-content-header__title) {
+  color: #c0c4cc;
+}
+.biz-steps :deep(.n-step--wait-status .n-step-splitor) {
+  background-color: rgba(192, 196, 204, 0.5);
+}
 .status-alert { margin-bottom: 20px; }
+.decision-card { display: flex; flex-direction: column; gap: 14px; }
+.decision-current { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.decision-reason { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.decision-risk-content { display: flex; flex-direction: column; gap: 8px; }
+.decision-risk-actions { margin: 0; padding-left: 18px; color: var(--text-secondary); line-height: 1.6; }
+.decision-risk-note { color: var(--text-primary); font-weight: 600; line-height: 1.6; }
+.decision-form { display: flex; flex-direction: column; gap: 10px; }
+.decision-actions { display: flex; justify-content: flex-end; }
 .basic-info-grid { display: flex; gap: 24px; }
 .info-image { flex-shrink: 0; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; padding: 4px; background: #fff; }
 .info-main { flex: 1; }
 .product-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0; line-height: 1.4; }
 .highlight-text { color: var(--color-primary); font-weight: 600; }
 .summary-panel { margin-top: 16px; padding: 16px; background: #f8f9fb; border-radius: 8px; }
+.timeline-list { display: flex; flex-direction: column; gap: 14px; }
+.timeline-item { display: flex; gap: 12px; align-items: flex-start; }
+.timeline-marker { width: 10px; height: 10px; border-radius: 999px; margin-top: 6px; background: #94a3b8; flex-shrink: 0; }
+.marker-assign { background: #2563eb; }
+.marker-audit { background: #f59e0b; }
+.marker-decision { background: #0f766e; }
+.marker-promotion_link,
+.marker-link { background: #16a34a; }
+.marker-talent_follow,
+.marker-talent_follow_append { background: #7c3aed; }
+.marker-sync { background: #64748b; }
+.timeline-body { flex: 1; min-width: 0; }
+.timeline-title-row { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+.timeline-title { font-weight: 600; color: var(--text-primary); }
+.timeline-time { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.timeline-meta { color: var(--text-secondary); margin-top: 2px; font-size: 13px; }
+.timeline-remark { color: var(--text-muted); margin-top: 4px; font-size: 12px; }
 .promotion-link-box { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .promotion-link-text { word-break: break-all; color: var(--text-primary); }
 .section-title { margin: 16px 0 12px; }

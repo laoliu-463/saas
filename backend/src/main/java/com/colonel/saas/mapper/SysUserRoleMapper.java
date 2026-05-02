@@ -3,6 +3,7 @@ package com.colonel.saas.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.colonel.saas.entity.SysUserRole;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -11,6 +12,9 @@ import java.util.UUID;
 
 @Mapper
 public interface SysUserRoleMapper extends BaseMapper<SysUserRole> {
+
+    @Delete("DELETE FROM sys_user_role WHERE user_id = #{userId}")
+    int deleteByUserIdPhysical(@Param("userId") UUID userId);
 
     @Select("SELECT * FROM sys_user_role WHERE user_id = #{userId} AND deleted = 0")
     List<SysUserRole> findByUserId(@Param("userId") UUID userId);

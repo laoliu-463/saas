@@ -8,6 +8,10 @@ import './styles/tokens.css'
 
 const app = createApp(App)
 
+app.config.errorHandler = (err, instance, info) => {
+  console.error('[Vue Error]', err, info, instance)
+}
+
 app.use(createPinia())
 app.use(router)
 app.use(naive)

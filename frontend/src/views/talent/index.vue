@@ -10,6 +10,15 @@
       </template>
     </PageHeader>
 
+    <div v-if="pagination.itemCount > 0" class="talent-summary">
+      <n-space :size="16" align="center">
+        <span class="summary-label">达人概览</span>
+        <n-tag type="primary" size="small" round>总达人数: {{ pagination.itemCount }}</n-tag>
+        <n-tag type="warning" size="small" round>公海: {{ poolSummary.public }} 人</n-tag>
+        <n-tag type="success" size="small" round>私海: {{ poolSummary.private }} 人</n-tag>
+      </n-space>
+    </div>
+
     <div class="toolbar">
       <n-space wrap>
         <n-input
@@ -64,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { h, onMounted, reactive, ref } from 'vue'
+import { h, computed, onMounted, reactive, ref } from 'vue'
 import { NButton, NSpace, NTag, useDialog, useMessage, type DataTableColumns } from 'naive-ui'
 import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
@@ -87,6 +96,14 @@ const showCreate = ref(false)
 const showDetail = ref(false)
 const activeTalentId = ref('')
 const data = ref<TalentListItem[]>([])
+
+const poolSummary = computed(() => {
+  const list = data.value
+  return {
+    public: list.filter((r) => r.poolStatus !== 'PRIVATE').length,
+    private: list.filter((r) => r.poolStatus === 'PRIVATE').length
+  }
+})
 
 const filters = reactive<{
   keyword: string
@@ -336,24 +353,37 @@ onMounted(fetchData)
 
 <style scoped>
 .talent-page {
-  padding: 24px;
+  padding: var(--spacing-xl);
+}
+
+.talent-summary {
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+}
+
+.summary-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .toolbar {
-  margin-bottom: 16px;
-  padding: 16px;
-  border-radius: 8px;
-  background: #fff;
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
 }
 
 .main-card {
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .talent-main {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-xs);
 }
 
 .talent-name {

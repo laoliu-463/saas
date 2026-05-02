@@ -77,9 +77,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
-import { getProducts } from '../../../api/product'
-import { createSample, getSamplePage, searchSampleTalents } from '../../../api/sample'
-import { isTestEnv } from '../../../utils/env'
+import { createSample, searchSampleProducts, searchSampleTalents } from '../../../api/sample'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{
@@ -168,34 +166,13 @@ function formatFans(fans?: number) {
 async function handleSearchProduct(keyword: string) {
   loadingProducts.value = true
   try {
-    try {
-      const res = await getProducts({ productName: keyword || undefined, size: 20 })
-      const payload: any = (res as any)?.data ?? res
-      const records = payload?.records || []
-      productOptions.value = records.map((item: any) => ({
-        label: item.productName || item.name || item.title || item.productId || item.id,
-        value: item.id
-      }))
-    } catch (error) {
-      if (!isTestEnv) {
-        throw error
-      }
-      const fallback = await getSamplePage({ page: 1, size: 100 })
-      const payload: any = (fallback as any)?.data ?? fallback
-      const records = Array.isArray(payload?.records) ? payload.records : []
-      const uniqueProducts = new Map<string, { label: string; value: string }>()
-      records.forEach((item: any) => {
-        if (!item?.productId || uniqueProducts.has(item.productId)) {
-          return
-        }
-        const label = item.productName || item.productId
-        if (keyword && !String(label).toLowerCase().includes(keyword.toLowerCase())) {
-          return
-        }
-        uniqueProducts.set(item.productId, { label, value: item.productId })
-      })
-      productOptions.value = Array.from(uniqueProducts.values())
-    }
+    const res = await searchSampleProducts({ keyword: keyword || undefined, size: 20 })
+    const payload: any = (res as any)?.data ?? res
+    const records = payload?.records || []
+    productOptions.value = records.map((item: any) => ({
+      label: item.productName || item.name || item.title || item.productId || item.id,
+      value: item.id
+    }))
   } finally {
     loadingProducts.value = false
   }

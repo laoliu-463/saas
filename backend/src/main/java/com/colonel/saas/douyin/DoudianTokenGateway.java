@@ -36,26 +36,8 @@ public class DoudianTokenGateway {
         if (testEnabled) {
             throw new BusinessException("test mode enabled: token gateway external call is blocked");
         }
-        initSdkConfig();
-        TokenCreateRequest request = new TokenCreateRequest();
-        TokenCreateParam param = request.getParam();
-        param.setCode(command.authorizationCode());
-        param.setGrantType(command.grantType());
-        if (StringUtils.hasText(command.testShop())) {
-            param.setTestShop(command.testShop());
-        }
-        if (StringUtils.hasText(command.shopId())) {
-            param.setShopId(command.shopId());
-        }
-        if (StringUtils.hasText(command.authId())) {
-            param.setAuthId(command.authId());
-        }
-        if (StringUtils.hasText(command.authSubjectType())) {
-            param.setAuthSubjectType(command.authSubjectType());
-        }
-
-        log.info("Executing TokenCreateRequest...");
-        TokenCreateResponse response = request.execute(AccessToken.wrap("", null));
+        TokenCreateProbeResult probeResult = executeCreateToken(command);
+        TokenCreateResponse response = probeResult.rawResponse();
         log.info("TokenCreateResponse received: code={}, msg={}, subCode={}, subMsg={}",
                 response.getCode(), response.getMsg(), response.getSubCode(), response.getSubMsg());
         ensureSuccess(response.getCode(), response.getMsg(), response.getSubCode(), response.getSubMsg());
@@ -69,7 +51,7 @@ public class DoudianTokenGateway {
         String authSubjectType = safeText(data::getAuthSubjectType);
         Long tokenType = safeLong(data::getTokenType);
         log.info("TokenCreateData: accessToken={}, refreshToken={}, expiresIn={}, authorityId={}, authSubjectType={}, tokenType={}",
-                data.getAccessToken(), data.getRefreshToken(), data.getExpiresIn(),
+                maskSecret(data.getAccessToken()), maskSecret(data.getRefreshToken()), data.getExpiresIn(),
                 authorityId, authSubjectType, tokenType);
 
         return new TokenPayload(
@@ -80,6 +62,17 @@ public class DoudianTokenGateway {
                 authSubjectType,
                 tokenType
         );
+    }
+
+    public TokenCreateProbeResult probeCreateToken(TokenCreateCommand command) {
+        if (testEnabled) {
+            throw new BusinessException("test mode enabled: token gateway external call is blocked");
+        }
+        TokenCreateProbeResult result = executeCreateToken(command);
+        TokenCreateResponse response = result.rawResponse();
+        log.info("TokenCreateProbe response: code={}, msg={}, subCode={}, subMsg={}",
+                response.getCode(), response.getMsg(), response.getSubCode(), response.getSubMsg());
+        return result;
     }
 
     public TokenPayload refreshToken(String refreshToken) {
@@ -106,7 +99,7 @@ public class DoudianTokenGateway {
         String authorityId = safeText(data::getAuthorityId);
         String authSubjectType = safeText(data::getAuthSubjectType);
         log.info("TokenRefreshData: accessToken={}, refreshToken={}, expiresIn={}, authorityId={}, authSubjectType={}",
-                data.getAccessToken(), data.getRefreshToken(), data.getExpiresIn(),
+                maskSecret(data.getAccessToken()), maskSecret(data.getRefreshToken()), data.getExpiresIn(),
                 authorityId, authSubjectType);
 
         return new TokenPayload(
@@ -174,6 +167,30 @@ public class DoudianTokenGateway {
             String authSubjectType) {
     }
 
+    public record TokenCreateProbeResult(
+            String grantType,
+            String codeState,
+            String testShop,
+            String shopId,
+            boolean authIdPresent,
+            String authSubjectType,
+            TokenCreateResponse rawResponse,
+            TokenCreateResponseView responseView) {
+    }
+
+    public record TokenCreateResponseView(
+            String code,
+            String msg,
+            String subCode,
+            String subMsg,
+            String maskedAccessToken,
+            String maskedRefreshToken,
+            Long expiresIn,
+            String authorityId,
+            String authSubjectType,
+            Long tokenType) {
+    }
+
     public record TokenPayload(
             String accessToken,
             String refreshToken,
@@ -215,5 +232,89 @@ public class DoudianTokenGateway {
             return null;
         }
     }
-}
 
+    private String maskSecret(String secret) {
+        if (secret == null || secret.isBlank()) {
+            return "";
+        }
+        String normalized = secret.trim();
+        if (normalized.length() <= 8) {
+            return "****";
+        }
+        return normalized.substring(0, 4) + "..." + normalized.substring(normalized.length() - 4);
+    }
+
+    private TokenCreateProbeResult executeCreateToken(TokenCreateCommand command) {
+        initSdkConfig();
+        TokenCreateRequest request = new TokenCreateRequest();
+        TokenCreateParam param = request.getParam();
+        if (command.authorizationCode() != null) {
+            param.setCode(command.authorizationCode());
+        }
+        param.setGrantType(command.grantType());
+        if (StringUtils.hasText(command.testShop())) {
+            param.setTestShop(command.testShop());
+        }
+        if (StringUtils.hasText(command.shopId())) {
+            param.setShopId(command.shopId());
+        }
+        if (StringUtils.hasText(command.authId())) {
+            param.setAuthId(command.authId());
+        }
+        if (StringUtils.hasText(command.authSubjectType())) {
+            param.setAuthSubjectType(command.authSubjectType());
+        }
+
+        String codeState = param.getCode() == null ? "absent" : (param.getCode().isEmpty() ? "empty" : "present");
+        log.info("Executing TokenCreateRequest with SDK params: grantType={}, shopId={}, testShop={}, authIdPresent={}, authSubjectType={}, codeState={}",
+                param.getGrantType(),
+                param.getShopId(),
+                param.getTestShop(),
+                StringUtils.hasText(param.getAuthId()),
+                param.getAuthSubjectType(),
+                codeState);
+
+        log.info("Executing TokenCreateRequest...");
+        TokenCreateResponse response = request.execute(AccessToken.wrap("", null));
+        return new TokenCreateProbeResult(
+                param.getGrantType(),
+                codeState,
+                param.getTestShop(),
+                param.getShopId(),
+                StringUtils.hasText(param.getAuthId()),
+                param.getAuthSubjectType(),
+                response,
+                toResponseView(response)
+        );
+    }
+
+    private TokenCreateResponseView toResponseView(TokenCreateResponse response) {
+        TokenCreateData data = response.getData();
+        if (data == null) {
+            return new TokenCreateResponseView(
+                    response.getCode(),
+                    response.getMsg(),
+                    response.getSubCode(),
+                    response.getSubMsg(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+            );
+        }
+        return new TokenCreateResponseView(
+                response.getCode(),
+                response.getMsg(),
+                response.getSubCode(),
+                response.getSubMsg(),
+                maskSecret(data.getAccessToken()),
+                maskSecret(data.getRefreshToken()),
+                data.getExpiresIn(),
+                safeText(data::getAuthorityId),
+                safeText(data::getAuthSubjectType),
+                safeLong(data::getTokenType)
+        );
+    }
+}

@@ -266,7 +266,7 @@ public class OrderQueryService {
     }
 
     private Map<String, Object> findSampleByProductAndTalent(String sourceProductId, String talentUid, UUID channelUserId) {
-        String sql = """
+        StringBuilder sql = new StringBuilder("""
                 SELECT sr.id, sr.request_no, sr.status
                 FROM sample_request sr
                 JOIN product p ON p.id = sr.product_id
@@ -274,27 +274,35 @@ public class OrderQueryService {
                   AND p.deleted = 0
                   AND p.product_id = ?
                   AND sr.talent_uid = ?
-                  AND (? IS NULL OR sr.channel_user_id = ?)
                 ORDER BY sr.create_time DESC
                 LIMIT 1
-                """;
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, sourceProductId, talentUid, channelUserId, channelUserId);
+                """);
+        if (channelUserId != null) {
+            sql.insert(sql.indexOf("ORDER BY"), "  AND sr.channel_user_id = ?\n");
+        }
+        List<Map<String, Object>> rows = channelUserId == null
+                ? jdbcTemplate.queryForList(sql.toString(), sourceProductId, talentUid)
+                : jdbcTemplate.queryForList(sql.toString(), sourceProductId, talentUid, channelUserId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
     private Map<String, Object> findSampleByProduct(String sourceProductId, UUID channelUserId) {
-        String sql = """
+        StringBuilder sql = new StringBuilder("""
                 SELECT sr.id, sr.request_no, sr.status
                 FROM sample_request sr
                 JOIN product p ON p.id = sr.product_id
                 WHERE sr.deleted = 0
                   AND p.deleted = 0
                   AND p.product_id = ?
-                  AND (? IS NULL OR sr.channel_user_id = ?)
                 ORDER BY sr.create_time DESC
                 LIMIT 1
-                """;
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, sourceProductId, channelUserId, channelUserId);
+                """);
+        if (channelUserId != null) {
+            sql.insert(sql.indexOf("ORDER BY"), "  AND sr.channel_user_id = ?\n");
+        }
+        List<Map<String, Object>> rows = channelUserId == null
+                ? jdbcTemplate.queryForList(sql.toString(), sourceProductId)
+                : jdbcTemplate.queryForList(sql.toString(), sourceProductId, channelUserId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 

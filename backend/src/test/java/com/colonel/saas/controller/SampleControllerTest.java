@@ -1,13 +1,17 @@
 package com.colonel.saas.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.dto.SampleApplyRequest;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
+import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Product;
+import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
+import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.TalentMapper;
@@ -32,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,6 +50,8 @@ class SampleControllerTest {
     private ProductMapper productMapper;
     @Mock
     private ProductOperationStateMapper productOperationStateMapper;
+    @Mock
+    private ProductSnapshotMapper productSnapshotMapper;
     @Mock
     private SysUserMapper sysUserMapper;
     @Mock
@@ -62,6 +69,7 @@ class SampleControllerTest {
                 sampleRequestMapper,
                 productMapper,
                 productOperationStateMapper,
+                productSnapshotMapper,
                 sysUserMapper,
                 talentMapper,
                 sampleStatusLogService,
@@ -153,6 +161,49 @@ class SampleControllerTest {
     }
 
     @Test
+    void createSample_shouldResolveSnapshotProductIdToCanonicalProduct() {
+        UUID snapshotId = UUID.randomUUID();
+        UUID canonicalProductId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID talentUuid = UUID.randomUUID();
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(snapshotId);
+        snapshot.setProductId("10901827");
+
+        Product product = new Product();
+        product.setId(canonicalProductId);
+        product.setProductId("10901827");
+        product.setName("snapshot product");
+
+        CrawlerTalentInfo crawlerTalentInfo = new CrawlerTalentInfo();
+        crawlerTalentInfo.setTalentId("talent_snapshot_001");
+        crawlerTalentInfo.setNickname("snapshot talent");
+
+        Talent talent = new Talent();
+        talent.setId(talentUuid);
+        talent.setDouyinUid("talent_snapshot_001");
+
+        SampleApplyRequest request = new SampleApplyRequest();
+        request.setTalentId("talent_snapshot_001");
+        request.setProductId(snapshotId);
+        request.setQuantity(1);
+
+        when(productMapper.selectById(snapshotId)).thenReturn(null);
+        when(productSnapshotMapper.selectById(snapshotId)).thenReturn(snapshot);
+        when(productMapper.selectOne(any())).thenReturn(product);
+        when(crawlerTalentInfoService.findByTalentId("talent_snapshot_001")).thenReturn(crawlerTalentInfo);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
+
+        sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
+
+        ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
+        verify(sampleRequestMapper).insert(captor.capture());
+        assertThat(captor.getValue().getProductId()).isEqualTo(canonicalProductId);
+    }
+
+    @Test
     void createSample_shouldAllowLeaderBypassSevenDaysLimit() {
         UUID productId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -220,6 +271,68 @@ class SampleControllerTest {
         assertThat(response.getData().getTotal()).isEqualTo(1L);
         assertThat(response.getData().getRecords()).hasSize(1);
         assertThat(response.getData().getRecords().get(0).getNickname()).isEqualTo("老铁好物");
+    }
+
+    @Test
+    void searchProducts_shouldReturnCanonicalProductIds() {
+        UUID productId = UUID.randomUUID();
+        Product product = new Product();
+        product.setId(productId);
+        product.setProductId("10901825");
+        product.setName("主演示商品-已转链可出单");
+
+        Page<Product> productPage = new Page<>(1, 20);
+        productPage.setRecords(List.of(product));
+        productPage.setTotal(1);
+
+        when(productMapper.selectPage(any(Page.class), any(QueryWrapper.class))).thenReturn(productPage);
+
+        var response = sampleController.searchProducts(1, 20, "主演示");
+
+        assertThat(response.getData().getTotal()).isEqualTo(1L);
+        assertThat(response.getData().getRecords()).hasSize(1);
+        assertThat(response.getData().getRecords().get(0).getId()).isEqualTo(productId);
+        assertThat(response.getData().getRecords().get(0).getProductName()).isEqualTo("主演示商品-已转链可出单");
+    }
+
+    @Test
+    void getSamplePage_shouldPassKeywordAndStatusFilters() {
+        UUID productId = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("排查演示商品-推广映射缺失");
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(UUID.randomUUID());
+        sample.setProductId(productId);
+        sample.setTalentNickname("达人B-映射缺失订单");
+        sample.setTalentUid("talent_test_b");
+        sample.setRequestNo("TEST-SAMPLE-SHIP-001");
+        sample.setStatus(5);
+
+        IPage<SampleRequest> page = new Page<>(1, 10);
+        page.setRecords(List.of(sample));
+        page.setTotal(1);
+
+        when(productMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(product));
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
+
+        var response = sampleController.getSamplePage(
+                1,
+                10,
+                "映射缺失",
+                "PENDING_HOMEWORK",
+                UUID.randomUUID(),
+                null,
+                mock(DataScope.class)
+        );
+
+        assertThat(response.getData().getTotal()).isEqualTo(1L);
+        assertThat(response.getData().getRecords()).hasSize(1);
+        assertThat(response.getData().getRecords().get(0).getTalentName()).isEqualTo("达人B-映射缺失订单");
+        verify(productMapper).selectList(any(QueryWrapper.class));
+        verify(sampleRequestMapper).findPageWithScope(any(Page.class), any(QueryWrapper.class));
     }
 
     @Test

@@ -96,7 +96,7 @@ class SysUserControllerTest {
     @Test
     void create_returnsCreatedUser() throws Exception {
         SysUserCreateRequest request = new SysUserCreateRequest(
-                "newuser", "password123", "新用户", deptId, List.of(UUID.randomUUID()));
+                "newuser", "password123", "新用户", "13800138000", "newuser@test.com", deptId, List.of(UUID.randomUUID()));
 
         SysUserVO vo = new SysUserVO();
         vo.setId(UUID.randomUUID());

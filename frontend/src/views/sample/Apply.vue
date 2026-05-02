@@ -73,8 +73,7 @@
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import { NButton, useDialog, useMessage } from 'naive-ui';
 import { useRouter } from 'vue-router';
-import { createSample, searchSampleTalents } from '../../api/sample';
-import { getProducts } from '../../api/product';
+import { createSample, searchSampleProducts, searchSampleTalents } from '../../api/sample';
 import { useAuthStore } from '../../stores/auth';
 
 const message = useMessage();
@@ -160,10 +159,13 @@ const loadingProducts = ref(false);
 const handleSearchProduct = async (query: string) => {
   loadingProducts.value = true;
   try {
-    const res = await getProducts({ productName: query || undefined, size: 20 });
+    const res = await searchSampleProducts({ keyword: query || undefined, size: 20 });
     const payload: any = (res as any)?.data ?? (res as any);
     const records = payload?.records || [];
-    productOptions.value = records.map((p: any) => ({ label: p.productName, value: p.id }));
+    productOptions.value = records.map((p: any) => ({
+      label: p.productName || p.name || p.title || p.productId || p.id,
+      value: p.id
+    }));
   } finally {
     loadingProducts.value = false;
   }

@@ -12,14 +12,19 @@ import com.colonel.saas.vo.SysUserVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Mapper
 public interface SysUserMapper extends BaseMapper<SysUser> {
 
     @Select("SELECT * FROM sys_user WHERE username = #{username} AND deleted = 0 LIMIT 1")
     Optional<SysUser> findByUsername(@Param("username") String username);
+
+    @Update("UPDATE sys_user SET deleted = 1, update_time = CURRENT_TIMESTAMP WHERE id = #{id} AND deleted = 0")
+    int softDeleteById(@Param("id") UUID id);
 
     @DataScope(userField = "su.id")
     IPage<SysUserVO> findPage(

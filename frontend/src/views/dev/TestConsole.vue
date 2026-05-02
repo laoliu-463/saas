@@ -6,13 +6,13 @@
       <n-gi>
         <n-card title="演示准备" size="small">
           <p class="desc">初始化活动、商品、达人及基础映射关系，为演示全链路做准备。</p>
-          <n-button block type="primary" :loading="loading" @click="handleAction('seed')">一键铺设演示数据</n-button>
+          <n-button block type="primary" :loading="seedLoading" @click="handleAction('seed')">一键铺设演示数据</n-button>
         </n-card>
       </n-gi>
       <n-gi>
         <n-card title="数据重置" size="small">
           <p class="desc">清空所有业务数据（订单、寄样、归因记录），将系统恢复至初始状态。</p>
-          <n-button block type="error" ghost :loading="loading" @click="handleAction('reset')">清空业务数据</n-button>
+          <n-button block type="error" ghost :loading="resetLoading" @click="handleAction('reset')">清空业务数据</n-button>
         </n-card>
       </n-gi>
       <n-gi>
@@ -47,10 +47,12 @@ import PageHeader from '../../components/PageHeader.vue'
 import { seedTestData, resetTestData, generateAttributedOrder, generateNoPickSourceOrder, generateMissingMappingOrder } from '../../api/test'
 
 const message = useMessage()
-const loading = ref(false)
+const seedLoading = ref(false)
+const resetLoading = ref(false)
 
 const handleAction = async (action: string) => {
-  loading.value = true
+  const loadingRef = action === 'seed' ? seedLoading : action === 'reset' ? resetLoading : null
+  if (loadingRef) loadingRef.value = true
   try {
     if (action === 'seed') {
       await seedTestData()
@@ -68,10 +70,10 @@ const handleAction = async (action: string) => {
       await generateMissingMappingOrder()
       message.success('已模拟生成一条 Mapping 丢失订单')
     }
-  } catch (err) {
-    message.error('操作失败')
+  } catch (err: any) {
+    message.error(err?.response?.data?.msg || err?.message || '操作失败')
   } finally {
-    loading.value = false
+    if (loadingRef) loadingRef.value = false
   }
 }
 </script>

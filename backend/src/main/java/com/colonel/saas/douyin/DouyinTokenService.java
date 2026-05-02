@@ -197,6 +197,14 @@ public class DouyinTokenService {
             log.warn("Token exchange appId differs from configured clientKey, appId={}, clientKey={}",
                     appId, configuredClientKey);
         }
+        log.info("Douyin token bootstrap normalized request: appId={}, grantType={}, shopId={}, authIdPresent={}, authSubjectType={}, codeState={}",
+                maskAppId(finalAppId),
+                finalGrantType,
+                shopId,
+                hasText(authId),
+                authSubjectType,
+                finalAuthorizationCode == null ? "absent" : (finalAuthorizationCode.isEmpty() ? "empty" : "present"));
+
         DouyinAuthGateway.TokenCreateCommand command = new DouyinAuthGateway.TokenCreateCommand(
                 finalAuthorizationCode,
                 finalGrantType,
@@ -428,7 +436,7 @@ public class DouyinTokenService {
 
     private String normalizeAuthorizationCode(String authorizationCode, String grantType) {
         if ("authorization_self".equals(grantType)) {
-            return authorizationCode == null ? "" : authorizationCode.trim();
+            return trimToNull(authorizationCode);
         }
         if (authorizationCode == null || authorizationCode.isBlank()) {
             throw new BusinessException("authorization_code cannot be blank");
@@ -444,6 +452,13 @@ public class DouyinTokenService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private String maskAppId(String appId) {
+        if (appId == null || appId.length() <= 6) {
+            return appId;
+        }
+        return appId.substring(0, 3) + "***" + appId.substring(appId.length() - 3);
     }
     /**
      * 抖音 Access Token 状态查询结果.

@@ -10,6 +10,7 @@ import com.colonel.saas.gateway.douyin.DouyinColonelActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -24,7 +25,7 @@ import java.util.Map;
 
 @Validated
 @RestController
-@Tag(name = "团长活动管理")
+@Tag(name = "团长活动管理", description = "团长活动列表及活动下商品查询接口。")
 @RequestMapping("/colonel/activities")
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
 public class ColonelActivityController extends BaseController {
@@ -42,16 +43,16 @@ public class ColonelActivityController extends BaseController {
         this.productService = productService;
     }
 
-    @Operation(summary = "团长活动列表", description = "查询机构创建的团长活动列表")
+    @Operation(summary = "团长活动列表", description = "查询机构创建的团长活动列表。该接口服务于业务页活动筛选，不是原始联调接口。")
     @GetMapping
     public ApiResult<Map<String, Object>> list(
-            @RequestParam(defaultValue = "0") Integer status,
-            @RequestParam(defaultValue = "0") Long searchType,
-            @RequestParam(defaultValue = "1") Long sortType,
-            @RequestParam(defaultValue = "1") @Min(1) Long page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(20) Long pageSize,
-            @RequestParam(required = false) String activityInfo,
-            @RequestParam(required = false) String appId) {
+            @Parameter(description = "活动状态。待确认：取值含义请联系产品或参考上游 SDK 文档。") @RequestParam(defaultValue = "0") Integer status,
+            @Parameter(description = "搜索类型。待确认：取值含义请联系产品或参考上游 SDK 文档。") @RequestParam(defaultValue = "0") Long searchType,
+            @Parameter(description = "排序类型。待确认：取值含义请联系产品或参考上游 SDK 文档。") @RequestParam(defaultValue = "1") Long sortType,
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) Long page,
+            @Parameter(description = "每页条数。当前仍保留 pageSize 命名，后续是否统一为 size 需单独决策。") @RequestParam(defaultValue = "20") @Min(1) @Max(20) Long pageSize,
+            @Parameter(description = "活动信息关键字。") @RequestParam(required = false) String activityInfo,
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId) {
         try {
             return ok(douyinColonelActivityGateway.listActivities(
                     new DouyinColonelActivityGateway.ActivityListQuery(
@@ -63,21 +64,21 @@ public class ColonelActivityController extends BaseController {
         }
     }
 
-    @Operation(summary = "活动商品列表", description = "查询团长活动下的商品列表，默认游标模式")
+    @Operation(summary = "活动商品列表", description = "查询团长活动下的商品列表。优先使用本地快照构造业务视图，未命中时回退到上游接口后再落库。")
     @GetMapping("/{activityId}/products")
     public ApiResult<Map<String, Object>> listProducts(
-            @PathVariable String activityId,
-            @RequestParam(defaultValue = "4") Long searchType,
-            @RequestParam(defaultValue = "1") Long sortType,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(20) Integer count,
-            @RequestParam(required = false) String cooperationInfo,
-            @RequestParam(defaultValue = "0") Integer cooperationType,
-            @RequestParam(required = false) String productInfo,
-            @RequestParam(required = false) Integer status,
-            @RequestParam(defaultValue = "1") Long retrieveMode,
-            @RequestParam(required = false) String cursor,
-            @RequestParam(required = false) @Min(1) Long page,
-            @RequestParam(required = false) String appId) {
+            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
+            @Parameter(description = "搜索类型。待确认：取值含义请联系产品或参考上游 SDK 文档。") @RequestParam(defaultValue = "4") Long searchType,
+            @Parameter(description = "排序类型。待确认：取值含义请联系产品或参考上游 SDK 文档。") @RequestParam(defaultValue = "1") Long sortType,
+            @Parameter(description = "每次查询条数，最大 20。") @RequestParam(defaultValue = "20") @Min(1) @Max(20) Integer count,
+            @Parameter(description = "合作信息关键字。") @RequestParam(required = false) String cooperationInfo,
+            @Parameter(description = "合作类型。待确认：取值含义请联系产品或参考上游 SDK 文档。") @RequestParam(defaultValue = "0") Integer cooperationType,
+            @Parameter(description = "商品信息关键字。") @RequestParam(required = false) String productInfo,
+            @Parameter(description = "商品状态。待确认：取值含义请联系产品或参考上游 SDK 文档。") @RequestParam(required = false) Integer status,
+            @Parameter(description = "拉取模式。待确认：取值含义请联系产品或参考上游 SDK 文档。") @RequestParam(defaultValue = "1") Long retrieveMode,
+            @Parameter(description = "游标，继续翻页时使用。") @RequestParam(required = false) String cursor,
+            @Parameter(description = "页码。当前仅在部分上游模式下使用。") @RequestParam(required = false) @Min(1) Long page,
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId) {
         try {
             if (productService.hasActivitySnapshots(activityId)) {
                 return ok(productService.buildActivityProductListViewFromDb(

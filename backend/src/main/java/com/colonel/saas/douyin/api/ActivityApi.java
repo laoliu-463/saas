@@ -2,6 +2,8 @@ package com.colonel.saas.douyin.api;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.douyin.DouyinApiClient;
+import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
+import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -20,9 +22,16 @@ public class ActivityApi {
     private static final BigDecimal MAX_SERVICE_RATE = new BigDecimal("40");
 
     private final DouyinApiClient douyinApiClient;
+    private final DouyinUpstreamModeSupport upstreamModeSupport;
+    private final DouyinContractFixtureProvider contractFixtureProvider;
 
-    public ActivityApi(DouyinApiClient douyinApiClient) {
+    public ActivityApi(
+            DouyinApiClient douyinApiClient,
+            DouyinUpstreamModeSupport upstreamModeSupport,
+            DouyinContractFixtureProvider contractFixtureProvider) {
         this.douyinApiClient = douyinApiClient;
+        this.upstreamModeSupport = upstreamModeSupport;
+        this.contractFixtureProvider = contractFixtureProvider;
     }
 
     public Map<String, Object> list(String appId) {
@@ -37,6 +46,9 @@ public class ActivityApi {
             Long page,
             Long pageSize,
             String activityInfo) {
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildActivityListResponse(appId, status, searchType, sortType, page, pageSize, activityInfo);
+        }
         Map<String, Object> params = new HashMap<>();
         putIfNotBlank(params, "appId", appId);
         params.put("status", normalizeStatus(status));
@@ -49,6 +61,9 @@ public class ActivityApi {
     }
 
     public Map<String, Object> detail(String appId, String activityId) {
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildActivityDetailResponse(appId, activityId);
+        }
         Map<String, Object> params = new HashMap<>();
         putIfNotBlank(params, "appId", appId);
         params.put("activity_id", parseActivityId(activityId));
