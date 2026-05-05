@@ -9,7 +9,19 @@ export const getActivityProductDetail = (activityId: string | number, productId:
 export const auditActivityProduct = (
   activityId: string | number,
   productId: string | number,
-  data: { approved: boolean; reason?: string }
+  data: {
+    approved: boolean;
+    reason?: string;
+    exclusivePriceRemark?: string;
+    shippingInfo?: string;
+    sellingPoints?: string[];
+    promotionScript?: string;
+    supportsAds?: boolean;
+    rewardRemark?: string;
+    participationRequirements?: string;
+    campaignTimeRemark?: string;
+    materialFiles?: string[];
+  }
 ) => request.put(`/colonel/activities/${activityId}/products/${productId}/audit-result`, data);
 
 export const assignActivityProduct = (
@@ -29,6 +41,9 @@ export const convertActivityProductLink = (
   productId: string | number,
   data?: { scene?: 'PRODUCT_LIBRARY' | 'PRODUCT_DETAIL' | 'TALENT_SHARE' | 'SAMPLE_DESK'; talentId?: string }
 ) => request.post(`/colonel/activities/${activityId}/products/${productId}/promotion-links`, data || { scene: 'PRODUCT_LIBRARY' });
+
+export const putActivityProductIntoLibrary = (activityId: string | number, productId: string | number) =>
+  request.post(`/colonel/activities/${activityId}/products/${productId}/library-entry`);
 
 export const followActivityProduct = (
   activityId: string | number,

@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -87,5 +88,66 @@ class ColonelActivityProductControllerTest {
         assertThat(response.getData().get("bizStatus")).isEqualTo("ASSIGNED");
         assertThat(response.getData().get("assigneeId")).isEqualTo(assigneeId);
         verify(productService).assignProduct("10001", "9001", assigneeId, null, null);
+    }
+
+    @Test
+    void audit_shouldPassSupplementFields() {
+        when(productService.auditProduct(
+                eq("10001"),
+                eq("9001"),
+                eq(true),
+                eq(null),
+                any(),
+                eq(null),
+                eq(null)
+        )).thenReturn(Map.of("bizStatus", "APPROVED"));
+
+        ColonelActivityProductController.AuditRequest request = new ColonelActivityProductController.AuditRequest();
+        request.setApproved(true);
+        request.setExclusivePriceRemark("专属价 129");
+        request.setShippingInfo("48 小时发货");
+        request.setSellingPoints(List.of("高复购", "场景强"));
+        request.setPromotionScript("主打复购场景");
+        request.setSupportsAds(true);
+        request.setRewardRemark("破峰值有奖励");
+        request.setParticipationRequirements("食品饮料达人优先");
+        request.setCampaignTimeRemark("4 月第一波活动");
+        request.setMaterialFiles(List.of("https://example.com/material.png"));
+
+        var response = controller.audit("10001", "9001", request, null, null);
+
+        assertThat(response.getData().get("bizStatus")).isEqualTo("APPROVED");
+        verify(productService).auditProduct(
+                eq("10001"),
+                eq("9001"),
+                eq(true),
+                eq(null),
+                eq(Map.of(
+                        "exclusivePriceRemark", "专属价 129",
+                        "shippingInfo", "48 小时发货",
+                        "sellingPoints", List.of("高复购", "场景强"),
+                        "promotionScript", "主打复购场景",
+                        "supportsAds", true,
+                        "rewardRemark", "破峰值有奖励",
+                        "participationRequirements", "食品饮料达人优先",
+                        "campaignTimeRemark", "4 月第一波活动",
+                        "materialFiles", List.of("https://example.com/material.png")
+                )),
+                eq(null),
+                eq(null)
+        );
+    }
+
+    @Test
+    void putIntoLibrary_shouldCallProductService() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        when(productService.putIntoLibrary("10001", "9001", userId, deptId))
+                .thenReturn(Map.of("selectedToLibrary", true, "libraryVisible", true));
+
+        var response = controller.putIntoLibrary("10001", "9001", userId, deptId);
+
+        assertThat(response.getData().get("selectedToLibrary")).isEqualTo(true);
+        verify(productService).putIntoLibrary("10001", "9001", userId, deptId);
     }
 }

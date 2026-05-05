@@ -28,7 +28,7 @@
 import { ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
 import { assignActivityProduct } from '../../../api/activityProduct';
-import { getUserPage } from '../../../api/sys';
+import { getAssignableUserOptions } from '../../../api/sys';
 
 const props = defineProps<{ show: boolean; activityId: string | number | null; productId: string | number | null }>();
 const emit = defineEmits(['update:show', 'success']);
@@ -62,13 +62,10 @@ const buildUserOption = (user: any) => {
 const fetchUsers = async (keyword: string) => {
   loadingUsers.value = true;
   try {
-    const res: any = await getUserPage({
-      page: 1,
-      size: 20,
-      username: keyword || undefined,
-      realName: keyword || undefined
+    const res: any = await getAssignableUserOptions({
+      keyword: keyword || undefined
     });
-    const records = res?.data?.records || res?.data?.list || [];
+    const records = res?.data || [];
     userOptions.value = records
       .map(buildUserOption)
       .filter((item: { label: string; value: string }) => Boolean(item.value));

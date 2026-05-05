@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS product_operation_state (
     assignee_id        UUID,
     audit_status       INTEGER DEFAULT 0,
     audit_remark       TEXT,
+    audit_payload      TEXT,
     promote_link       TEXT,
     short_link         TEXT,
     promotion_scene    INTEGER,
@@ -93,4 +94,3 @@ CREATE INDEX IF NOT EXISTS idx_product_op_log_operator
     ON product_operation_log(operator_id);
 CREATE INDEX IF NOT EXISTS idx_product_op_log_deleted
     ON product_operation_log(deleted);
-

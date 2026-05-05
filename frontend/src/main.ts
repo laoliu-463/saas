@@ -17,3 +17,12 @@ app.use(router)
 app.use(naive)
 
 app.mount('#app')
+
+router.isReady().finally(() => {
+  window.requestAnimationFrame(() => {
+    document.body.classList.add('app-ready')
+    window.setTimeout(() => {
+      document.getElementById('boot-loading')?.remove()
+    }, 220)
+  })
+})

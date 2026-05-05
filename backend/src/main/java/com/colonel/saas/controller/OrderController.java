@@ -1,10 +1,14 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
+import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -23,6 +27,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,12 +35,15 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 @Tag(name = "订单管理", description = "订单同步、列表、统计、筛选项与详情查询接口。")
+@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
 @RestController
 @RequestMapping("/orders")
 public class OrderController extends BaseController {
@@ -54,6 +62,7 @@ public class OrderController extends BaseController {
     }
 
     @Operation(summary = "手动同步订单", description = "按时间范围触发订单同步，用于补拉订单或联调真实网关回流数据。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.ADMIN})
     @PostMapping("/sync")
     public ApiResult<OrderSyncService.SyncResult> syncOrders(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -68,11 +77,11 @@ public class OrderController extends BaseController {
         return ok(orderSyncService.syncByTimeRange(start, end));
     }
 
-    @Operation(summary = "获取订单列表", description = "分页查询订单归因列表，用于订单主页面。当前仍保留 pageSize 命名，后续是否统一为 size 需单独决策。")
+    @Operation(summary = "获取订单列表", description = "分页查询订单归因列表，用于订单主页面。")
     @GetMapping
     public ApiResult<IPage<ColonelsettlementOrder>> getOrders(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") long page,
-            @Parameter(description = "每页条数。当前仍保留 pageSize 命名，后续是否统一为 size 需单独决策。") @RequestParam(defaultValue = "20") long pageSize,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") long size,
             @Parameter(description = "订单 ID。") @RequestParam(required = false) String orderId,
             @Parameter(description = "归因状态，例如 ATTRIBUTED、UNATTRIBUTED。完整取值以代码常量为准。") @RequestParam(required = false) String attributionStatus,
             @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(required = false) String unattributedReason,
@@ -81,8 +90,11 @@ public class OrderController extends BaseController {
             @Parameter(description = "团长关键字，可匹配团长名称或团长 ID。") @RequestParam(required = false) String colonelKeyword,
             @Parameter(description = "订单状态。完整映射以代码标签函数为准。") @RequestParam(required = false) Integer orderStatus,
             @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
-            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime) {
-        Page<ColonelsettlementOrder> query = new Page<>(page, pageSize);
+            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
+            @RequestAttribute(name = "userId", required = false) UUID userId,
+            @RequestAttribute(name = "deptId", required = false) UUID deptId,
+            @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        Page<ColonelsettlementOrder> query = new Page<>(page, size);
         LambdaQueryWrapper<ColonelsettlementOrder> wrapper = buildWrapper(
                 orderId,
                 attributionStatus,
@@ -93,8 +105,9 @@ public class OrderController extends BaseController {
                 orderStatus,
                 startTime,
                 endTime
-        )
-                .orderByDesc(ColonelsettlementOrder::getUpdateTime)
+        );
+        applyDataScope(wrapper, userId, deptId, dataScope);
+        wrapper.orderByDesc(ColonelsettlementOrder::getUpdateTime)
                 .orderByDesc(ColonelsettlementOrder::getCreateTime);
         IPage<ColonelsettlementOrder> result = orderMapper.selectPage(query, wrapper);
         result.getRecords().forEach(this::normalizeOrderRow);
@@ -105,7 +118,7 @@ public class OrderController extends BaseController {
     @GetMapping("/unattributed")
     public ApiResult<IPage<ColonelsettlementOrder>> getUnattributedOrders(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") long page,
-            @Parameter(description = "每页条数。当前仍保留 pageSize 命名，后续是否统一为 size 需单独决策。") @RequestParam(defaultValue = "20") long pageSize,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") long size,
             @Parameter(description = "订单 ID。") @RequestParam(required = false) String orderId,
             @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(required = false) String unattributedReason,
             @Parameter(description = "商品 ID。") @RequestParam(required = false) String productId,
@@ -113,20 +126,27 @@ public class OrderController extends BaseController {
             @Parameter(description = "团长关键字，可匹配团长名称或团长 ID。") @RequestParam(required = false) String colonelKeyword,
             @Parameter(description = "订单状态。完整映射以代码标签函数为准。") @RequestParam(required = false) Integer orderStatus,
             @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
-            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime) {
-        return getOrders(page, pageSize, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, productId, channelKeyword, colonelKeyword, orderStatus, startTime, endTime);
+            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
+            @RequestAttribute(name = "userId", required = false) UUID userId,
+            @RequestAttribute(name = "deptId", required = false) UUID deptId,
+            @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        return getOrders(page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, productId, channelKeyword, colonelKeyword, orderStatus, startTime, endTime, userId, deptId, dataScope);
     }
 
     @Operation(summary = "获取订单详情", description = "查询单个订单详情，返回订单基础信息、归因结果、推广映射、达人与寄样关联信息。")
     @GetMapping("/{orderId}")
     public ApiResult<OrderDetailResponse> getOrderDetail(
-            @Parameter(description = "订单 ID。") @PathVariable String orderId) {
-        return ok(orderQueryService.getOrderDetail(orderId));
+            @Parameter(description = "订单 ID。") @PathVariable String orderId,
+            @RequestAttribute(name = "userId", required = false) UUID userId,
+            @RequestAttribute(name = "deptId", required = false) UUID deptId,
+            @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        return ok(orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope));
     }
 
     @Operation(summary = "获取订单统计", description = "按当前筛选条件统计订单总量、已归因数、未归因数与未归因原因分布。")
     @GetMapping("/stats")
     public ApiResult<OrderStats> getStats(
+            @Parameter(description = "订单 ID。") @RequestParam(required = false) String orderId,
             @Parameter(description = "归因状态，例如 ATTRIBUTED、UNATTRIBUTED。完整取值以代码常量为准。") @RequestParam(required = false) String attributionStatus,
             @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(required = false) String unattributedReason,
             @Parameter(description = "商品 ID。") @RequestParam(required = false) String productId,
@@ -134,9 +154,12 @@ public class OrderController extends BaseController {
             @Parameter(description = "团长关键字，可匹配团长名称或团长 ID。") @RequestParam(required = false) String colonelKeyword,
             @Parameter(description = "订单状态。完整映射以代码标签函数为准。") @RequestParam(required = false) Integer orderStatus,
             @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
-            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime) {
-        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = buildWrapper(
-                null,
+            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
+            @RequestAttribute(name = "userId", required = false) UUID userId,
+            @RequestAttribute(name = "deptId", required = false) UUID deptId,
+            @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        QueryWrapper<ColonelsettlementOrder> statusWrapper = buildStatsWrapper(
+                orderId,
                 attributionStatus,
                 unattributedReason,
                 productId,
@@ -146,21 +169,68 @@ public class OrderController extends BaseController {
                 startTime,
                 endTime
         );
-        List<ColonelsettlementOrder> rows = orderMapper.selectList(wrapper);
+        applyQueryDataScope(statusWrapper, userId, deptId, dataScope);
         OrderStats stats = new OrderStats();
-        stats.setTotalOrders((long) rows.size());
-        stats.setAttributedOrders(rows.stream().filter(row -> AttributionService.STATUS_ATTRIBUTED.equals(row.getAttributionStatus())).count());
-        stats.setUnattributedOrders(rows.stream().filter(row -> AttributionService.STATUS_UNATTRIBUTED.equals(row.getAttributionStatus())).count());
-        stats.setSyncFailedOrders(rows.stream().filter(row -> AttributionService.REASON_SYNC_FAILED.equals(row.getAttributionRemark())).count());
         stats.setLastSyncTime(orderSyncService.getLastSyncTime());
-        stats.setUnattributedReasons(rows.stream()
-                .filter(row -> AttributionService.STATUS_UNATTRIBUTED.equals(row.getAttributionStatus()))
-                .map(ColonelsettlementOrder::getAttributionRemark)
-                .filter(StringUtils::hasText)
-                .collect(java.util.stream.Collectors.groupingBy(reason -> reason, java.util.stream.Collectors.counting()))
-                .entrySet()
-                .stream()
-                .map(entry -> new ReasonCount(entry.getKey(), entry.getValue()))
+        statusWrapper.select("attribution_status AS attributionStatus", "COUNT(*) AS total")
+                .groupBy("attribution_status");
+
+        long totalOrders = 0L;
+        long attributedOrders = 0L;
+        long unattributedOrders = 0L;
+        long partialOrders = 0L;
+        for (Map<String, Object> row : orderMapper.selectMaps(statusWrapper)) {
+            String status = asText(readValue(row, "attributionStatus"));
+            long count = asLong(readValue(row, "total"));
+            totalOrders += count;
+            if (AttributionService.STATUS_ATTRIBUTED.equals(status)) {
+                attributedOrders += count;
+            }
+            if (AttributionService.STATUS_UNATTRIBUTED.equals(status)) {
+                unattributedOrders += count;
+            }
+            if ("PARTIAL".equals(status)) {
+                partialOrders += count;
+            }
+        }
+
+        QueryWrapper<ColonelsettlementOrder> reasonWrapper = buildStatsWrapper(
+                orderId,
+                attributionStatus,
+                unattributedReason,
+                productId,
+                channelKeyword,
+                colonelKeyword,
+                orderStatus,
+                startTime,
+                endTime
+        );
+        applyQueryDataScope(reasonWrapper, userId, deptId, dataScope);
+        reasonWrapper.eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED)
+                .isNotNull("attribution_remark")
+                .select("attribution_remark AS reason", "COUNT(*) AS total")
+                .groupBy("attribution_remark");
+
+        List<ReasonCount> reasonCounts = new ArrayList<>();
+        long syncFailedOrders = 0L;
+        for (Map<String, Object> row : orderMapper.selectMaps(reasonWrapper)) {
+            String reason = asText(readValue(row, "reason"));
+            long count = asLong(readValue(row, "total"));
+            if (!StringUtils.hasText(reason)) {
+                continue;
+            }
+            reasonCounts.add(new ReasonCount(reason, count));
+            if (AttributionService.REASON_SYNC_FAILED.equals(reason)) {
+                syncFailedOrders += count;
+            }
+        }
+
+        stats.setTotalOrders(totalOrders);
+        stats.setAttributedOrders(attributedOrders);
+        stats.setUnattributedOrders(unattributedOrders);
+        stats.setPartialOrders(partialOrders);
+        stats.setSyncFailedOrders(syncFailedOrders);
+        stats.setUnattributedReasons(reasonCounts.stream()
                 .sorted(Comparator.comparingLong(ReasonCount::count).reversed())
                 .toList());
         return ok(stats);
@@ -169,63 +239,84 @@ public class OrderController extends BaseController {
     @Operation(summary = "获取订单筛选选项", description = "返回订单页所需的筛选项候选值，包括状态、未归因原因、商品、渠道与团长。")
     @GetMapping("/filter-options")
     public ApiResult<OrderFilterOptions> getFilterOptions(
-            @Parameter(description = "筛选项检索关键字。") @RequestParam(required = false) String keyword) {
+            @Parameter(description = "筛选项检索关键字。") @RequestParam(required = false) String keyword,
+            @RequestAttribute(name = "userId", required = false) UUID userId,
+            @RequestAttribute(name = "deptId", required = false) UUID deptId,
+            @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
         QueryConditions conditions = new QueryConditions(keyword);
         OrderFilterOptions options = new OrderFilterOptions();
-        options.setOrderStatuses(orderMapper.selectMaps(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder>()
-                        .select("distinct order_status as value")
-                        .isNotNull("order_status")
-                        .orderByAsc("order_status")
-                        .last("limit 20"))
+
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder> statusWrapper = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder>()
+                .select("distinct order_status as value")
+                .isNotNull("order_status")
+                .orderByAsc("order_status")
+                .last("limit 20");
+        applyQueryDataScope(statusWrapper, userId, deptId, dataScope);
+        options.setOrderStatuses(orderMapper.selectMaps(statusWrapper)
                 .stream()
                 .map(row -> toOrderStatusOption(row.get("value")))
                 .filter(Objects::nonNull)
                 .toList());
-        options.setAttributionStatuses(orderMapper.selectMaps(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder>()
-                        .select("distinct attribution_status as value")
-                        .isNotNull("attribution_status")
-                        .orderByAsc("attribution_status")
-                        .last("limit 20"))
+
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder> attrStatusWrapper = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder>()
+                .select("distinct attribution_status as value")
+                .isNotNull("attribution_status")
+                .orderByAsc("attribution_status")
+                .last("limit 20");
+        applyQueryDataScope(attrStatusWrapper, userId, deptId, dataScope);
+        options.setAttributionStatuses(orderMapper.selectMaps(attrStatusWrapper)
                 .stream()
                 .map(row -> toStatusOption(asText(row.get("value"))))
                 .filter(Objects::nonNull)
                 .toList());
-        options.setUnattributedReasons(orderMapper.selectMaps(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder>()
-                        .select("distinct attribution_remark as value")
-                        .eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED)
-                        .isNotNull("attribution_remark")
-                        .orderByAsc("attribution_remark")
-                        .last("limit 50"))
+
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder> reasonWrapper = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder>()
+                .select("distinct attribution_remark as value")
+                .eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED)
+                .isNotNull("attribution_remark")
+                .orderByAsc("attribution_remark")
+                .last("limit 50");
+        applyQueryDataScope(reasonWrapper, userId, deptId, dataScope);
+        options.setUnattributedReasons(orderMapper.selectMaps(reasonWrapper)
                 .stream()
                 .map(row -> toReasonOption(asText(row.get("value"))))
                 .filter(Objects::nonNull)
                 .toList());
-        options.setProducts(orderMapper.selectMaps(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder>()
-                        .select("distinct product_id as value", "product_name as label")
-                        .isNotNull("product_id")
-                        .and(conditions.hasKeyword(), wrapper -> wrapper
-                                .like("product_name", conditions.keyword())
-                                .or()
-                                .like("product_id", conditions.keyword()))
-                        .last("limit 100"))
+
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder> productWrapper = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder>()
+                .select("distinct product_id as value", "product_name as label")
+                .isNotNull("product_id")
+                .and(conditions.hasKeyword(), wrapper -> wrapper
+                        .like("product_name", conditions.keyword())
+                        .or()
+                        .like("product_id", conditions.keyword()))
+                .last("limit 100");
+        applyQueryDataScope(productWrapper, userId, deptId, dataScope);
+        options.setProducts(orderMapper.selectMaps(productWrapper)
                 .stream()
                 .map(this::toOptionItem)
                 .filter(item -> StringUtils.hasText(item.value()))
                 .toList());
-        options.setChannels(orderMapper.selectMaps(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder>()
-                        .select("distinct channel_user_name as value", "channel_user_name as label")
-                        .isNotNull("channel_user_name")
-                        .and(conditions.hasKeyword(), wrapper -> wrapper.like("channel_user_name", conditions.keyword()))
-                        .last("limit 100"))
+
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder> channelWrapper = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder>()
+                .select("distinct channel_user_name as value", "channel_user_name as label")
+                .isNotNull("channel_user_name")
+                .and(conditions.hasKeyword(), wrapper -> wrapper.like("channel_user_name", conditions.keyword()))
+                .last("limit 100");
+        applyQueryDataScope(channelWrapper, userId, deptId, dataScope);
+        options.setChannels(orderMapper.selectMaps(channelWrapper)
                 .stream()
                 .map(this::toOptionItem)
                 .filter(item -> StringUtils.hasText(item.value()))
                 .toList());
-        options.setColonels(orderMapper.selectMaps(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder>()
-                        .select("distinct colonel_user_name as value", "colonel_user_name as label")
-                        .isNotNull("colonel_user_name")
-                        .and(conditions.hasKeyword(), wrapper -> wrapper.like("colonel_user_name", conditions.keyword()))
-                        .last("limit 100"))
+
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder> colonelWrapper = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder>()
+                .select("distinct colonel_user_name as value", "colonel_user_name as label")
+                .isNotNull("colonel_user_name")
+                .and(conditions.hasKeyword(), wrapper -> wrapper.like("colonel_user_name", conditions.keyword()))
+                .last("limit 100");
+        applyQueryDataScope(colonelWrapper, userId, deptId, dataScope);
+        options.setColonels(orderMapper.selectMaps(colonelWrapper)
                 .stream()
                 .map(this::toOptionItem)
                 .filter(item -> StringUtils.hasText(item.value()))
@@ -261,6 +352,87 @@ public class OrderController extends BaseController {
                         .like(ColonelsettlementOrder::getColonelUserId, colonelKeyword))
                 .ge(start != null, ColonelsettlementOrder::getCreateTime, start)
                 .le(end != null, ColonelsettlementOrder::getCreateTime, end);
+    }
+
+    private QueryWrapper<ColonelsettlementOrder> buildStatsWrapper(
+            String orderId,
+            String attributionStatus,
+            String unattributedReason,
+            String productId,
+            String channelKeyword,
+            String colonelKeyword,
+            Integer orderStatus,
+            String startTime,
+            String endTime) {
+        LocalDateTime start = parseLocalDateTime(startTime);
+        LocalDateTime end = parseLocalDateTime(endTime);
+        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
+        wrapper.eq(StringUtils.hasText(orderId), "order_id", orderId)
+                .eq(StringUtils.hasText(attributionStatus), "attribution_status", attributionStatus)
+                .eq(StringUtils.hasText(unattributedReason), "attribution_remark", unattributedReason)
+                .eq(StringUtils.hasText(productId), "product_id", productId)
+                .eq(orderStatus != null, "order_status", orderStatus)
+                .and(StringUtils.hasText(channelKeyword), nested -> nested
+                        .like("channel_user_name", channelKeyword)
+                        .or()
+                        .like("channel_user_id", channelKeyword))
+                .and(StringUtils.hasText(colonelKeyword), nested -> nested
+                        .like("colonel_user_name", colonelKeyword)
+                        .or()
+                        .like("colonel_user_id", colonelKeyword))
+                .ge(start != null, "create_time", start)
+                .le(end != null, "create_time", end);
+        return wrapper;
+    }
+
+    private void applyDataScope(
+            LambdaQueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        switch (dataScope) {
+            case PERSONAL -> {
+                if (userId != null) {
+                    wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+                }
+            }
+            case DEPT -> {
+                if (deptId != null) {
+                    wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
+                }
+            }
+            case ALL -> {
+                // no filter
+            }
+        }
+    }
+
+    private void applyQueryDataScope(
+            com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        switch (dataScope) {
+            case PERSONAL -> {
+                if (userId != null) {
+                    wrapper.eq("user_id", userId);
+                }
+            }
+            case DEPT -> {
+                if (deptId != null) {
+                    wrapper.eq("dept_id", deptId);
+                }
+            }
+            case ALL -> {
+                // no filter
+            }
+        }
     }
 
     private void normalizeOrderRow(ColonelsettlementOrder order) {
@@ -306,6 +478,35 @@ public class OrderController extends BaseController {
 
     private String asText(Object raw) {
         return raw == null ? null : String.valueOf(raw);
+    }
+
+    private Object readValue(Map<String, Object> row, String key) {
+        if (row == null || row.isEmpty() || key == null) {
+            return null;
+        }
+        if (row.containsKey(key)) {
+            return row.get(key);
+        }
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            if (key.equalsIgnoreCase(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private long asLong(Object raw) {
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        if (raw == null) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(String.valueOf(raw));
+        } catch (NumberFormatException ex) {
+            return 0L;
+        }
     }
 
     private String orderStatusLabel(Integer value) {
@@ -387,6 +588,7 @@ public class OrderController extends BaseController {
         private Long totalOrders;
         private Long attributedOrders;
         private Long unattributedOrders;
+        private Long partialOrders;
         private Long syncFailedOrders;
         private LocalDateTime lastSyncTime;
         private List<ReasonCount> unattributedReasons;

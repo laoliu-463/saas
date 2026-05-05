@@ -26,9 +26,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
 
 @Tag(name = "订单回流与归因", description = "订单回流摘要与未归因订单排查接口。")
 @RestController
@@ -48,7 +49,10 @@ public class OrderAttributionController extends BaseController {
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") long page,
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") long size,
             @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
         LocalDateTime start = startDate == null
                 ? LocalDate.now().minusDays(30).atStartOfDay()
                 : startDate.atStartOfDay();
@@ -57,9 +61,10 @@ public class OrderAttributionController extends BaseController {
                 : endDate.plusDays(1).atStartOfDay();
 
         QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
-        wrapper.ge("co.create_time", start)
-                .lt("co.create_time", end)
+        wrapper.ge("co.settle_time", start)
+                .lt("co.settle_time", end)
                 .and(q -> q.eq("co.attribution_status", "UNATTRIBUTED").or().isNull("co.attribution_status"));
+        applyPageDataScope(wrapper, userId, deptId, dataScope);
 
         IPage<ColonelsettlementOrder> rows = orderMapper.findPageWithScope(new Page<>(Math.max(page, 1), Math.max(size, 1)), wrapper);
         Page<OrderRowVO> result = new Page<>(rows.getCurrent(), rows.getSize(), rows.getTotal());
@@ -77,23 +82,52 @@ public class OrderAttributionController extends BaseController {
         LocalDateTime start = today.minusDays(29).atStartOfDay();
         LocalDateTime end = today.plusDays(1).atStartOfDay();
 
-        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = new LambdaQueryWrapper<ColonelsettlementOrder>()
-                .between(ColonelsettlementOrder::getCreateTime, start, end);
-        applyDataScope(wrapper, userId, deptId, dataScope);
+        QueryWrapper<ColonelsettlementOrder> totalWrapper = buildScopedQuery(userId, deptId, dataScope)
+                .select(
+                        "COUNT(*) AS order_count",
+                        "COALESCE(SUM(order_amount), 0) AS order_amount_cent",
+                        "COALESCE(SUM(settle_colonel_commission), 0) AS service_fee_cent",
+                        "COALESCE(SUM(CASE WHEN attribution_status = 'ATTRIBUTED' THEN 1 ELSE 0 END), 0) AS attributed_order_count",
+                        "COALESCE(SUM(CASE WHEN attribution_status = 'ATTRIBUTED' THEN 0 ELSE 1 END), 0) AS unattributed_order_count"
+                )
+                .ge("settle_time", start)
+                .lt("settle_time", end);
 
-        List<ColonelsettlementOrder> rows = orderMapper.selectList(wrapper);
         SummaryVO summary = new SummaryVO();
-        summary.setOrderCount((long) rows.size());
-        summary.setOrderAmount(centToYuan(sumField(rows, ColonelsettlementOrder::getOrderAmount)));
-        summary.setServiceFee(centToYuan(sumField(rows, ColonelsettlementOrder::getSettleColonelCommission)));
-        summary.setAttributedOrderCount(rows.stream()
-                .filter(row -> "ATTRIBUTED".equalsIgnoreCase(row.getAttributionStatus()))
-                .count());
-        summary.setUnattributedOrderCount(rows.stream()
-                .filter(row -> !"ATTRIBUTED".equalsIgnoreCase(row.getAttributionStatus()))
-                .count());
-        summary.setChannelPerformance(buildPerformance(rows, true));
-        summary.setColonelPerformance(buildPerformance(rows, false));
+        Map<String, Object> totalRow = getSingleAggregate(totalWrapper);
+        summary.setOrderCount(asLong(totalRow, "order_count"));
+        summary.setOrderAmount(centToYuan(asLong(totalRow, "order_amount_cent")));
+        summary.setServiceFee(centToYuan(asLong(totalRow, "service_fee_cent")));
+        summary.setAttributedOrderCount(asLong(totalRow, "attributed_order_count"));
+        summary.setUnattributedOrderCount(asLong(totalRow, "unattributed_order_count"));
+
+        QueryWrapper<ColonelsettlementOrder> channelWrapper = buildScopedQuery(userId, deptId, dataScope)
+                .select(
+                        "channel_user_id AS owner_id",
+                        "COUNT(*) AS order_count",
+                        "COALESCE(SUM(order_amount), 0) AS order_amount_cent",
+                        "COALESCE(SUM(settle_colonel_commission), 0) AS service_fee_cent"
+                )
+                .eq("attribution_status", "ATTRIBUTED")
+                .isNotNull("channel_user_id")
+                .ge("settle_time", start)
+                .lt("settle_time", end)
+                .groupBy("channel_user_id");
+        summary.setChannelPerformance(toPerformanceList(orderMapper.selectMaps(channelWrapper)));
+
+        QueryWrapper<ColonelsettlementOrder> colonelWrapper = buildScopedQuery(userId, deptId, dataScope)
+                .select(
+                        "colonel_user_id AS owner_id",
+                        "COUNT(*) AS order_count",
+                        "COALESCE(SUM(order_amount), 0) AS order_amount_cent",
+                        "COALESCE(SUM(settle_colonel_commission), 0) AS service_fee_cent"
+                )
+                .eq("attribution_status", "ATTRIBUTED")
+                .isNotNull("colonel_user_id")
+                .ge("settle_time", start)
+                .lt("settle_time", end)
+                .groupBy("colonel_user_id");
+        summary.setColonelPerformance(toPerformanceList(orderMapper.selectMaps(colonelWrapper)));
         return ok(summary);
     }
 
@@ -111,34 +145,42 @@ public class OrderAttributionController extends BaseController {
         return row;
     }
 
-    private List<PerformanceVO> buildPerformance(List<ColonelsettlementOrder> rows, boolean channel) {
-        return rows.stream()
-                .filter(row -> "ATTRIBUTED".equalsIgnoreCase(row.getAttributionStatus()))
-                .collect(java.util.stream.Collectors.groupingBy(row -> channel ? row.getChannelUserId() : row.getUserId()))
-                .entrySet()
-                .stream()
-                .filter(entry -> entry.getKey() != null)
-                .map(entry -> new PerformanceVO(
-                        String.valueOf(entry.getKey()),
-                        (long) entry.getValue().size(),
-                        centToYuan(sumField(entry.getValue(), ColonelsettlementOrder::getOrderAmount)),
-                        centToYuan(sumField(entry.getValue(), ColonelsettlementOrder::getSettleColonelCommission))
-                ))
-                .toList();
-    }
-
-    private Long sumField(List<ColonelsettlementOrder> rows, Function<ColonelsettlementOrder, Long> getter) {
-        long sum = 0L;
-        for (ColonelsettlementOrder row : rows) {
-            Long value = getter.apply(row);
-            sum += value == null ? 0L : value;
-        }
-        return sum;
-    }
-
     private BigDecimal centToYuan(Long cent) {
         long value = cent == null ? 0L : cent;
         return BigDecimal.valueOf(value).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    }
+
+    private QueryWrapper<ColonelsettlementOrder> buildScopedQuery(
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
+        wrapper.eq("deleted", 0);
+        applyScopedQueryDataScope(wrapper, userId, deptId, dataScope);
+        return wrapper;
+    }
+
+    private Map<String, Object> getSingleAggregate(QueryWrapper<ColonelsettlementOrder> wrapper) {
+        List<Map<String, Object>> rows = orderMapper.selectMaps(wrapper);
+        if (rows == null || rows.isEmpty()) {
+            return Map.of();
+        }
+        return rows.get(0);
+    }
+
+    private List<PerformanceVO> toPerformanceList(List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        return rows.stream()
+                .map(row -> new PerformanceVO(
+                        asString(row, "owner_id"),
+                        asLong(row, "order_count"),
+                        centToYuan(asLong(row, "order_amount_cent")),
+                        centToYuan(asLong(row, "service_fee_cent"))
+                ))
+                .sorted(Comparator.comparing(PerformanceVO::orderCount).reversed())
+                .toList();
     }
 
     private void applyDataScope(
@@ -163,6 +205,89 @@ public class OrderAttributionController extends BaseController {
             case ALL -> {
             }
         }
+    }
+
+    private void applyPageDataScope(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        switch (dataScope) {
+            case PERSONAL -> {
+                if (userId != null) {
+                    wrapper.eq("co.user_id", userId);
+                }
+            }
+            case DEPT -> {
+                if (deptId != null) {
+                    wrapper.eq("co.dept_id", deptId);
+                }
+            }
+            case ALL -> {
+            }
+        }
+    }
+
+    private void applyScopedQueryDataScope(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        switch (dataScope) {
+            case PERSONAL -> {
+                if (userId != null) {
+                    wrapper.eq("user_id", userId);
+                }
+            }
+            case DEPT -> {
+                if (deptId != null) {
+                    wrapper.eq("dept_id", deptId);
+                }
+            }
+            case ALL -> {
+            }
+        }
+    }
+
+    private Long asLong(Map<String, Object> row, String key) {
+        Object value = readValue(row, key);
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value == null) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException ignore) {
+            return 0L;
+        }
+    }
+
+    private String asString(Map<String, Object> row, String key) {
+        Object value = readValue(row, key);
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private Object readValue(Map<String, Object> row, String key) {
+        if (row == null || row.isEmpty() || key == null) {
+            return null;
+        }
+        if (row.containsKey(key)) {
+            return row.get(key);
+        }
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            if (key.equalsIgnoreCase(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     public static class OrderRowVO {

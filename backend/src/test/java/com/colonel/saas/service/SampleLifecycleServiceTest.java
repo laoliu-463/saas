@@ -32,12 +32,14 @@ class SampleLifecycleServiceTest {
     private SampleRequestMapper sampleRequestMapper;
     @Mock
     private SampleStatusLogService sampleStatusLogService;
+    @Mock
+    private BusinessRuleConfigService businessRuleConfigService;
 
     private SampleLifecycleService service;
 
     @BeforeEach
     void setUp() {
-        service = new SampleLifecycleService(jdbcTemplate, sampleRequestMapper, sampleStatusLogService);
+        service = new SampleLifecycleService(jdbcTemplate, sampleRequestMapper, sampleStatusLogService, businessRuleConfigService);
     }
 
     @Test
@@ -108,5 +110,43 @@ class SampleLifecycleServiceTest {
         assertThat(captor.getValue().getStatus()).isEqualTo(8);
         assertThat(captor.getValue().getCloseReason()).contains("30天");
         verify(sampleStatusLogService).log(requestId, 5, 8, null, "超时30天未出单自动关闭");
+    }
+
+    @Test
+    void autoCloseTimeoutPendingHomework_shouldUseConfiguredTimeout() {
+        when(businessRuleConfigService.getSampleTimeoutHomeworkDays()).thenReturn(12);
+        when(jdbcTemplate.query(
+                anyString(),
+                org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<UUID>>any(),
+                any(LocalDateTime.class)))
+                .thenReturn(List.of());
+
+        int closed = service.autoCloseTimeoutPendingHomework();
+
+        assertThat(closed).isZero();
+        verify(businessRuleConfigService).getSampleTimeoutHomeworkDays();
+    }
+
+    @Test
+    void autoCloseTimeoutPendingShip_shouldUseDynamicCloseReason() {
+        UUID requestId = UUID.randomUUID();
+        when(jdbcTemplate.query(
+                anyString(),
+                org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<UUID>>any(),
+                any(LocalDateTime.class)))
+                .thenReturn(List.of(requestId));
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(requestId);
+        sample.setStatus(2);
+        when(sampleRequestMapper.selectById(requestId)).thenReturn(sample);
+
+        int closed = service.autoCloseTimeoutPendingShip(7);
+
+        assertThat(closed).isEqualTo(1);
+        ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
+        verify(sampleRequestMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getCloseReason()).isEqualTo("超时7天未发货自动关闭");
+        verify(sampleStatusLogService).log(requestId, 2, 8, null, "超时7天未发货自动关闭");
     }
 }

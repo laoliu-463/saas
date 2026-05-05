@@ -117,44 +117,9 @@ public class CrawlerTalentInfoService {
             Long maxFans,
             int page,
             int size) {
-        List<Talent> talents = talentMapper.selectList(new LambdaQueryWrapper<Talent>()
-                .eq(Talent::getStatus, 1)
-                .orderByDesc(Talent::getFans));
-
-        List<SampleTalentVO> filtered = talents.stream()
-                .filter(talent -> matchTalent(talent, keyword, region, minFans, maxFans))
-                .map(this::toSampleTalentVO)
-                .collect(Collectors.toList());
-
-        int fromIndex = Math.max((page - 1) * size, 0);
-        int toIndex = Math.min(fromIndex + size, filtered.size());
-        List<SampleTalentVO> records = fromIndex >= filtered.size() ? List.of() : filtered.subList(fromIndex, toIndex);
-
-        Page<SampleTalentVO> result = new Page<>(page, size, filtered.size());
-        result.setRecords(records);
-        return result;
-    }
-
-    private boolean matchTalent(Talent talent, String keyword, String region, Long minFans, Long maxFans) {
-        if (StringUtils.hasText(keyword)) {
-            String normalized = keyword.trim().toLowerCase();
-            String nickname = String.valueOf(talent.getNickname()).toLowerCase();
-            String douyinUid = String.valueOf(talent.getDouyinUid()).toLowerCase();
-            if (!nickname.contains(normalized) && !douyinUid.contains(normalized)) {
-                return false;
-            }
-        }
-        if (StringUtils.hasText(region) && !String.valueOf(talent.getIpLocation()).contains(region.trim())) {
-            return false;
-        }
-        long fans = talent.getFans() == null ? 0L : talent.getFans();
-        if (minFans != null && fans < minFans) {
-            return false;
-        }
-        if (maxFans != null && fans > maxFans) {
-            return false;
-        }
-        return true;
+        Page<Talent> pager = new Page<>(page, size);
+        IPage<Talent> talentPage = talentMapper.searchActiveTalents(pager, keyword, region, minFans, maxFans);
+        return talentPage.convert(this::toSampleTalentVO);
     }
 
     private SampleTalentVO toSampleTalentVO(Talent talent) {

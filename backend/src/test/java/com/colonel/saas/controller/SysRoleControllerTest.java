@@ -113,7 +113,7 @@ class SysRoleControllerTest {
         vo.setId(UUID.randomUUID());
         vo.setRoleCode("NEW_ROLE");
 
-        when(sysRoleService.create(any())).thenReturn(vo);
+        when(sysRoleService.create(any(), any())).thenReturn(vo);
 
         mockMvc.perform(post("/roles")
                         .requestAttr("userId", UUID.randomUUID())
@@ -132,7 +132,7 @@ class SysRoleControllerTest {
         vo.setId(roleId);
         vo.setRoleName("更新角色");
 
-        when(sysRoleService.update(any(), any())).thenReturn(vo);
+        when(sysRoleService.update(any(), any(), any())).thenReturn(vo);
 
         mockMvc.perform(put("/roles/{id}", roleId)
                         .requestAttr("userId", UUID.randomUUID())
@@ -145,13 +145,13 @@ class SysRoleControllerTest {
 
     @Test
     void delete_successfullyDeletesRole() throws Exception {
-        doNothing().when(sysRoleService).delete(any());
+        doNothing().when(sysRoleService).delete(any(), any());
 
         mockMvc.perform(delete("/roles/{id}", roleId)
                         .requestAttr("userId", UUID.randomUUID())
                         .requestAttr("dataScope", DataScope.ALL))
                 .andExpect(status().isOk());
 
-        verify(sysRoleService).delete(any());
+        verify(sysRoleService).delete(any(), any());
     }
 }

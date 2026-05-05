@@ -4,14 +4,17 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.auth.dto.SysRoleCreateRequest;
 import com.colonel.saas.auth.dto.SysRoleUpdateRequest;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.mapper.SysRoleMapper;
+import com.colonel.saas.mapper.SysUserRoleMapper;
+import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.vo.SysRoleVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -27,13 +30,17 @@ import static org.mockito.Mockito.*;
 class SysRoleServiceTest {
 
     @Spy private SysRoleMapper sysRoleMapper;
-    @InjectMocks private SysRoleService sysRoleService;
+    @Spy private SysUserRoleMapper sysUserRoleMapper;
+    @Mock private OperationLogService operationLogService;
+
+    private SysRoleService sysRoleService;
 
     private SysRole testRole;
     private final UUID roleId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
+        sysRoleService = new SysRoleService(sysRoleMapper, sysUserRoleMapper, operationLogService);
         testRole = new SysRole();
         testRole.setId(roleId);
         testRole.setRoleCode("TEST_ROLE");
@@ -92,7 +99,7 @@ class SysRoleServiceTest {
         SysRoleCreateRequest request = new SysRoleCreateRequest(
                 "NEW_ROLE", "新角色", 1, 1, "新角色备注");
 
-        SysRoleVO result = sysRoleService.create(request);
+        SysRoleVO result = sysRoleService.create(request, UUID.randomUUID());
 
         ArgumentCaptor<SysRole> captor = ArgumentCaptor.forClass(SysRole.class);
         verify(sysRoleMapper).insert(captor.capture());
@@ -108,7 +115,7 @@ class SysRoleServiceTest {
         SysRoleCreateRequest request = new SysRoleCreateRequest(
                 "EXISTING", "重复角色", 1, 1, null);
 
-        assertThatThrownBy(() -> sysRoleService.create(request))
+        assertThatThrownBy(() -> sysRoleService.create(request, UUID.randomUUID()))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("角色编码已存在");
     }
@@ -121,7 +128,7 @@ class SysRoleServiceTest {
         SysRoleUpdateRequest request = new SysRoleUpdateRequest(
                 "UPDATED_ROLE", "更新角色", 2, 1, "更新备注");
 
-        SysRoleVO result = sysRoleService.update(roleId, request);
+        SysRoleVO result = sysRoleService.update(roleId, request, UUID.randomUUID());
 
         verify(sysRoleMapper).updateById(any());
         assertThat(result.getRoleName()).isEqualTo("更新角色");
@@ -135,7 +142,7 @@ class SysRoleServiceTest {
         SysRoleUpdateRequest request = new SysRoleUpdateRequest(
                 "CODE", "名称", 1, 1, null);
 
-        assertThatThrownBy(() -> sysRoleService.update(roleId, request))
+        assertThatThrownBy(() -> sysRoleService.update(roleId, request, UUID.randomUUID()))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("角色不存在");
     }
@@ -143,8 +150,9 @@ class SysRoleServiceTest {
     @Test
     void delete_successfullyDeletesRole() {
         when(sysRoleMapper.selectById(roleId)).thenReturn(testRole);
+        when(sysUserRoleMapper.findByRoleId(roleId)).thenReturn(List.of());
 
-        sysRoleService.delete(roleId);
+        sysRoleService.delete(roleId, UUID.randomUUID());
 
         verify(sysRoleMapper).softDeleteById(roleId);
     }
@@ -153,9 +161,29 @@ class SysRoleServiceTest {
     void delete_throwsWhenRoleNotFound() {
         when(sysRoleMapper.selectById(roleId)).thenReturn(null);
 
-        assertThatThrownBy(() -> sysRoleService.delete(roleId))
+        assertThatThrownBy(() -> sysRoleService.delete(roleId, UUID.randomUUID()))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("角色不存在");
+    }
+
+    @Test
+    void delete_throwsWhenRoleIsSystemRole() {
+        testRole.setRoleCode(RoleCodes.ADMIN);
+        when(sysRoleMapper.selectById(roleId)).thenReturn(testRole);
+
+        assertThatThrownBy(() -> sysRoleService.delete(roleId, UUID.randomUUID()))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("系统内置角色不允许删除");
+    }
+
+    @Test
+    void delete_throwsWhenRoleStillAssigned() {
+        when(sysRoleMapper.selectById(roleId)).thenReturn(testRole);
+        when(sysUserRoleMapper.findByRoleId(roleId)).thenReturn(List.of(new com.colonel.saas.entity.SysUserRole()));
+
+        assertThatThrownBy(() -> sysRoleService.delete(roleId, UUID.randomUUID()))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("角色仍被用户使用");
     }
 
     @Test

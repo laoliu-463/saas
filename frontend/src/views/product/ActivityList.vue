@@ -146,6 +146,6 @@ onMounted(fetchData)
 
 <style scoped>
 .activity-page { padding: 24px; }
-.toolbar { margin-bottom: 16px; background: #fff; padding: 16px; border-radius: 8px; }
-.main-card { border-radius: 8px; }
+.toolbar { margin-bottom: 16px; background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); }
+.main-card { border-radius: var(--radius-md); }
 </style>

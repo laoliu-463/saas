@@ -167,6 +167,13 @@ public class AttributionService {
             }
         }
         if (StringUtils.hasText(pickExtra)) {
+            PickSourceMapping byPickExtra = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                    .eq(PickSourceMapping::getPickExtra, pickExtra)
+                    .eq(PickSourceMapping::getStatus, 1)
+                    .last("limit 1"));
+            if (byPickExtra != null) {
+                return byPickExtra;
+            }
             String normalized = pickExtra.length() > 20 ? pickExtra.substring(pickExtra.length() - 20) : pickExtra;
             PickSourceMapping byShortId = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
                     .eq(PickSourceMapping::getShortId, normalized)

@@ -46,13 +46,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { NIcon } from 'naive-ui'
+import { NIcon, useMessage } from 'naive-ui'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES, hasAccess } from '../../constants/rbac'
+import { logout as logoutApi } from '../../api/auth'
 
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
+const message = useMessage()
 const ROLE = ROLE_CODES
 const envLabel = import.meta.env.VITE_ENV_LABEL as string | undefined
 
@@ -94,10 +96,23 @@ const userInitial = computed(() => {
 
 const userMenuOptions = [{ label: '退出登录', key: 'logout' }]
 
-const handleUserMenu = (key: string) => {
+const handleUserMenu = async (key: string) => {
   if (key === 'logout') {
-    authStore.logout()
-    router.push('/login')
+    const accessToken = authStore.token || localStorage.getItem('token') || ''
+    const refreshToken = authStore.refreshToken || localStorage.getItem('refreshToken') || ''
+    try {
+      if (accessToken) {
+        await logoutApi({
+          accessToken,
+          refreshToken: refreshToken || undefined
+        })
+      }
+    } catch (_error) {
+      message.warning('登出接口执行失败，已清除本地登录态')
+    } finally {
+      authStore.logout()
+      router.push('/login')
+    }
   }
 }
 </script>
@@ -107,11 +122,13 @@ const handleUserMenu = (key: string) => {
   display: flex;
   align-items: center;
   padding: 0 20px;
-  background: linear-gradient(135deg, #ff4757 0%, #ff3b4a 100%);
+  background: linear-gradient(135deg, rgba(255, 71, 87, 0.95) 0%, rgba(255, 107, 129, 0.95) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: white;
   flex-shrink: 0;
   z-index: 100;
-  box-shadow: 0 2px 8px rgba(255, 71, 87, 0.25);
+  box-shadow: var(--shadow-sm);
 }
 
 .header-left {
@@ -126,7 +143,7 @@ const handleUserMenu = (key: string) => {
 }
 
 .logo-text {
-  font-size: 17px;
+  font-size: var(--text-lg);
   font-weight: 700;
   letter-spacing: 0.5px;
 }
@@ -141,24 +158,31 @@ const handleUserMenu = (key: string) => {
 
 .nav-tab {
   padding: 8px 18px;
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 500;
   border-radius: var(--radius-md);
   cursor: pointer;
   white-space: nowrap;
-  transition: background var(--transition-fast);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   color: rgba(255, 255, 255, 0.75);
+  transform: translateY(0);
 }
 
 .nav-tab:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.15);
   color: white;
+  transform: translateY(-1px);
+}
+
+.nav-tab:active {
+  transform: translateY(1px);
 }
 
 .nav-tab.active {
   background: rgba(255, 255, 255, 0.2);
   color: white;
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .header-right {
@@ -171,7 +195,7 @@ const handleUserMenu = (key: string) => {
 .env-badge {
   padding: 2px 10px;
   border-radius: var(--radius-sm);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   background: rgba(255, 255, 255, 0.2);
   color: white;
@@ -183,17 +207,22 @@ const handleUserMenu = (key: string) => {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: var(--radius-md);
-  transition: background var(--transition-fast);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .user-info:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.user-info:active {
+  transform: translateY(1px);
 }
 
 .user-name {
-  font-size: 14px;
+  font-size: var(--text-base);
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;

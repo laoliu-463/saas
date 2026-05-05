@@ -42,7 +42,13 @@ import java.util.UUID;
 public class TestDataService implements ApplicationRunner {
 
     private static final String CHANNEL_USERNAME = "channel_leader";
+    private static final String CHANNEL_STAFF_USERNAME = "channel_staff";
     private static final String BIZ_USERNAME = "biz_leader";
+    private static final String BIZ_STAFF_USERNAME = "biz_staff";
+    private static final String OPS_USERNAME = "ops_staff";
+    private static final UUID BIZ_DEPT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID CHANNEL_DEPT_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    private static final UUID OPS_DEPT_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
     private static final String ACTIVITY_ID = "TEST_ACTIVITY_A";
     private static final String PRODUCT_ID = "10901825";
     private static final String SECOND_PRODUCT_ID = "10901826";
@@ -110,16 +116,77 @@ public class TestDataService implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        ensureSchema();
+        ensureDemoUserDeptIds();
         if (seedOnStartup) {
             seedAll(false);
         }
+    }
+
+    private void ensureSchema() {
+        jdbcTemplate.execute("""
+                DO $$ BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'product_operation_state' AND column_name = 'biz_status') THEN
+                    ALTER TABLE product_operation_state ADD COLUMN biz_status VARCHAR(64);
+                  END IF;
+                END $$""");
+        jdbcTemplate.execute("""
+                DO $$ BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'product_operation_state' AND column_name = 'selected_to_library') THEN
+                    ALTER TABLE product_operation_state ADD COLUMN selected_to_library BOOLEAN DEFAULT FALSE;
+                  END IF;
+                END $$""");
+        jdbcTemplate.execute("""
+                DO $$ BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'product_operation_state' AND column_name = 'selected_at') THEN
+                    ALTER TABLE product_operation_state ADD COLUMN selected_at TIMESTAMP;
+                  END IF;
+                END $$""");
+        jdbcTemplate.execute("""
+                DO $$ BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'product_operation_state' AND column_name = 'selected_by') THEN
+                    ALTER TABLE product_operation_state ADD COLUMN selected_by UUID;
+                  END IF;
+                END $$""");
+        jdbcTemplate.execute("""
+                DO $$ BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'product_operation_log' AND column_name = 'before_status') THEN
+                    ALTER TABLE product_operation_log ADD COLUMN before_status VARCHAR(64);
+                  END IF;
+                END $$""");
+        jdbcTemplate.execute("""
+                DO $$ BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'product_operation_log' AND column_name = 'after_status') THEN
+                    ALTER TABLE product_operation_log ADD COLUMN after_status VARCHAR(64);
+                  END IF;
+                END $$""");
+        jdbcTemplate.execute("""
+                DO $$ BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'product_operation_log' AND column_name = 'success') THEN
+                    ALTER TABLE product_operation_log ADD COLUMN success BOOLEAN DEFAULT TRUE;
+                  END IF;
+                END $$""");
+        jdbcTemplate.execute("""
+                DO $$ BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'product_operation_log' AND column_name = 'error_message') THEN
+                    ALTER TABLE product_operation_log ADD COLUMN error_message TEXT;
+                  END IF;
+                END $$""");
     }
 
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> seedAll(boolean syncOrders) {
         UUID channelUserId = requireUserId(CHANNEL_USERNAME);
         UUID channelDeptId = findDeptId(channelUserId);
-        UUID channelStaffUserId = requireUserId("channel_staff");
+        UUID channelStaffUserId = requireUserId(CHANNEL_STAFF_USERNAME);
         UUID channelStaffDeptId = findDeptId(channelStaffUserId);
         UUID bizUserId = requireUserId(BIZ_USERNAME);
 
@@ -220,6 +287,7 @@ public class TestDataService implements ApplicationRunner {
         result.put("rejectedSampleRequestNo", rejectedSample.getRequestNo());
         result.put("closedSampleRequestNo", closedSample.getRequestNo());
         result.put("shippingSampleRequestNo", shippingSample.getRequestNo());
+        result.put("shippingSampleId", shippingSample.getId());
         result.put("expiredClaimTalentUid", talentE.getDouyinUid());
 
         if (syncOrders) {
@@ -492,11 +560,7 @@ public class TestDataService implements ApplicationRunner {
         snapshot.setHasDouinGoodsTag(Boolean.TRUE);
         snapshot.setRawPayload("{\"test\":true,\"activityId\":\"" + ACTIVITY_ID + "\",\"productId\":\"" + product.getProductId() + "\"}");
         snapshot.setSyncTime(LocalDateTime.now());
-        if (snapshot.getCreateTime() == null) {
-            productSnapshotMapper.insert(snapshot);
-        } else {
-            productSnapshotMapper.updateById(snapshot);
-        }
+        productSnapshotMapper.upsert(snapshot);
         return snapshot;
     }
 
@@ -1078,6 +1142,25 @@ public class TestDataService implements ApplicationRunner {
         );
     }
 
+    private void ensureDemoUserDeptIds() {
+        assignDeptIdIfMissing(BIZ_USERNAME, BIZ_DEPT_ID);
+        assignDeptIdIfMissing(BIZ_STAFF_USERNAME, BIZ_DEPT_ID);
+        assignDeptIdIfMissing(CHANNEL_USERNAME, CHANNEL_DEPT_ID);
+        assignDeptIdIfMissing(CHANNEL_STAFF_USERNAME, CHANNEL_DEPT_ID);
+        assignDeptIdIfMissing(OPS_USERNAME, OPS_DEPT_ID);
+    }
+
+    private void assignDeptIdIfMissing(String username, UUID deptId) {
+        jdbcTemplate.update("""
+                UPDATE sys_user
+                SET dept_id = ?, update_time = CURRENT_TIMESTAMP
+                WHERE username = ? AND deleted = 0 AND dept_id IS NULL
+                """,
+                deptId,
+                username
+        );
+    }
+
     private Product requireProduct(String productId) {
         Product product = productMapper.selectOne(new LambdaQueryWrapper<Product>()
                 .eq(Product::getProductId, productId)
@@ -1250,5 +1333,3 @@ public class TestDataService implements ApplicationRunner {
         );
     }
 }
-
-

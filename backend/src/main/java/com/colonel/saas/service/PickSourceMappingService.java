@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.mapper.PickSourceMappingMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+@Slf4j
 @Service
 public class PickSourceMappingService {
     private static final Pattern SHORT_ID_PATTERN = Pattern.compile("([0-9A-Z]{8,10})");
@@ -79,12 +81,49 @@ public class PickSourceMappingService {
             String convertedUrl,
             UUID promotionLinkId,
             String scene) {
+        saveOrUpdate(
+                userId,
+                channelUserName,
+                deptId,
+                talentId,
+                talentName,
+                shortId,
+                uuidSeed,
+                pickSource,
+                productId,
+                activityId,
+                sourceUrl,
+                convertedUrl,
+                promotionLinkId,
+                scene,
+                shortId
+        );
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void saveOrUpdate(
+            UUID userId,
+            String channelUserName,
+            UUID deptId,
+            String talentId,
+            String talentName,
+            String shortId,
+            UUID uuidSeed,
+            String pickSource,
+            String productId,
+            String activityId,
+            String sourceUrl,
+            String convertedUrl,
+            UUID promotionLinkId,
+            String scene,
+            String pickExtra) {
         PickSourceMapping existing = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
                 .eq(PickSourceMapping::getPickSource, pickSource)
                 .last("limit 1"));
         if (existing == null) {
             try {
                 PickSourceMapping mapping = new PickSourceMapping();
+                mapping.setId(UUID.randomUUID());
                 mapping.setUserId(userId);
                 mapping.setChannelUserName(channelUserName);
                 mapping.setDeptId(deptId);
@@ -97,7 +136,7 @@ public class PickSourceMappingService {
                 mapping.setActivityId(activityId);
                 mapping.setSourceUrl(sourceUrl);
                 mapping.setConvertedUrl(convertedUrl);
-                mapping.setPickExtra(shortId);
+                mapping.setPickExtra(resolvePickExtra(pickExtra));
                 mapping.setPromotionLinkId(promotionLinkId);
                 mapping.setScene(scene);
                 mapping.setValidFrom(LocalDateTime.now());
@@ -105,12 +144,13 @@ public class PickSourceMappingService {
                 mapping.setStatus(1);
                 pickSourceMappingMapper.insert(mapping);
                 return;
-            } catch (DuplicateKeyException ignore) {
+            } catch (DuplicateKeyException ex) {
+                log.debug("Concurrent insert detected for pickSource={}, attempting recovery", pickSource);
                 existing = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
                         .eq(PickSourceMapping::getPickSource, pickSource)
                         .last("limit 1"));
                 if (existing == null) {
-                    throw ignore;
+                    throw ex;
                 }
             }
         }
@@ -125,7 +165,7 @@ public class PickSourceMappingService {
         existing.setActivityId(activityId);
         existing.setSourceUrl(sourceUrl);
         existing.setConvertedUrl(convertedUrl);
-        existing.setPickExtra(shortId);
+        existing.setPickExtra(resolvePickExtra(pickExtra));
         existing.setPromotionLinkId(promotionLinkId);
         existing.setScene(scene);
         existing.setValidUntil(LocalDateTime.now().plusMonths(validMonths));
@@ -159,9 +199,10 @@ public class PickSourceMappingService {
             return;
         }
         PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setId(UUID.randomUUID());
         mapping.setShortId(shortId);
         mapping.setPickSource(order.getPickSource());
-        mapping.setPickExtra(shortId);
+        mapping.setPickExtra(resolveOrderPickExtra(order));
         mapping.setUserId(order.getUserId());
         mapping.setDeptId(order.getDeptId());
         mapping.setProductId(order.getProductId());
@@ -173,9 +214,26 @@ public class PickSourceMappingService {
         mapping.setUuidSeed(UUID.nameUUIDFromBytes(shortId.getBytes(StandardCharsets.UTF_8)));
         try {
             pickSourceMappingMapper.insert(mapping);
-        } catch (DuplicateKeyException ignore) {
-            // concurrent insert is acceptable
+        } catch (DuplicateKeyException ex) {
+            log.debug("Concurrent insert detected for pickSource={}, skipping", order.getPickSource());
         }
+    }
+
+    private String resolvePickExtra(String pickExtra) {
+        if (StringUtils.hasText(pickExtra)) {
+            return pickExtra.trim();
+        }
+        return null;
+    }
+
+    private String resolveOrderPickExtra(ColonelsettlementOrder order) {
+        if (order != null && order.getExtraData() != null) {
+            Object pickExtra = order.getExtraData().get("pick_extra");
+            if (pickExtra != null && StringUtils.hasText(String.valueOf(pickExtra))) {
+                return String.valueOf(pickExtra).trim();
+            }
+        }
+        return null;
     }
 
     private String extractShortId(String pickSource) {

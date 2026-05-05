@@ -61,7 +61,12 @@ public class PromotionApi {
         params.put("extra", extra);
 
         Map<String, Object> response = postWithFallback(params);
-        PromotionLinkResult result = PromotionLinkResult.from(response, shortId, uuidSeed.toString());
+        PromotionLinkResult result = PromotionLinkResult.from(
+                response,
+                shortId,
+                uuidSeed.toString(),
+                context == null ? null : context.pickExtra()
+        );
         if (context != null && context.userId() != null) {
             pickSourceMappingService.saveOrUpdate(
                     context.userId(),
@@ -77,7 +82,8 @@ public class PromotionApi {
                     context.sourceUrl(),
                     result.promoteLink(),
                     null,
-                    context.scene()
+                    context.scene(),
+                    result.pickExtra()
             );
         }
         return result;
@@ -129,6 +135,14 @@ public class PromotionApi {
             String uuidSeed
     ) {
         public static PromotionLinkResult from(Map<String, Object> response, String shortId, String uuidSeed) {
+            return from(response, shortId, uuidSeed, null);
+        }
+
+        public static PromotionLinkResult from(
+                Map<String, Object> response,
+                String shortId,
+                String uuidSeed,
+                String desiredPickExtra) {
             Map<String, Object> data = null;
             if (response != null) {
                 Object dataObj = response.get("data");
@@ -151,14 +165,20 @@ public class PromotionApi {
                     data != null ? asStringOrNull(data.get("short_link")) : null,
                     data != null ? asStringOrNull(data.get("short_url")) : null
             );
+            String responsePickExtra = data != null ? asStringOrNull(data.get("pick_extra")) : null;
             String extractedShortId = extractShortId(
                     data != null ? asStringOrNull(data.get("pick_source")) : null,
                     promoteLink,
                     shortId
             );
+            String finalPickExtra = firstNonBlank(
+                    responsePickExtra,
+                    extractPickExtra(promoteLink),
+                    desiredPickExtra
+            );
             return new PromotionLinkResult(
                     extractedShortId,
-                    extractedShortId,
+                    finalPickExtra,
                     extractedShortId,
                     shortLink,
                     promoteLink,
@@ -207,6 +227,28 @@ public class PromotionApi {
             }
             return fallback;
         }
+
+        private static String extractPickExtra(String promoteLink) {
+            if (!StringUtils.hasText(promoteLink)) {
+                return null;
+            }
+            try {
+                String query = URI.create(promoteLink).getQuery();
+                if (query == null) {
+                    return null;
+                }
+                String[] parts = query.split("&");
+                for (String part : parts) {
+                    String[] kv = part.split("=", 2);
+                    if (kv.length == 2 && "pick_extra".equals(kv[0])) {
+                        return URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
+                    }
+                }
+            } catch (Exception ignore) {
+                return null;
+            }
+            return null;
+        }
     }
 
     public record PromotionContext(
@@ -215,7 +257,8 @@ public class PromotionApi {
             String productId,
             String activityId,
             String sourceUrl,
-            String scene
+            String scene,
+            String pickExtra
     ) {
     }
 }

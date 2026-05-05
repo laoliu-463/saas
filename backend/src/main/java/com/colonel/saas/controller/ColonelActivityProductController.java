@@ -19,6 +19,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,6 +31,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -55,6 +59,7 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     @Operation(summary = "活动商品绑定活动", description = "为活动商品补绑或修正关联活动。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PutMapping("/{productId}/bind-activity")
     public ApiResult<Map<String, Object>> bindActivity(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -71,6 +76,7 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     @Operation(summary = "活动商品分配招商", description = "为活动商品指定招商负责人。")
+    @RequireRoles({RoleCodes.BIZ_LEADER})
     @PutMapping("/{productId}/assignee")
     public ApiResult<Map<String, Object>> assign(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -87,6 +93,7 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     @Operation(summary = "活动商品审核", description = "提交活动商品审核结果。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PutMapping("/{productId}/audit-result")
     public ApiResult<Map<String, Object>> audit(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -99,10 +106,19 @@ public class ColonelActivityProductController extends BaseController {
             @Valid @RequestBody AuditRequest request,
             @RequestAttribute(value = "userId", required = false) UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId) {
-        return ok(productService.auditProduct(activityId, productId, request.isApproved(), request.getReason(), userId, deptId));
+        return ok(productService.auditProduct(
+                activityId,
+                productId,
+                request.isApproved(),
+                request.getReason(),
+                request.toSupplementMap(),
+                userId,
+                deptId
+        ));
     }
 
     @Operation(summary = "活动商品推进判断", description = "记录商品主推、次推、暂缓或放弃等人工推进判断，不改变商品主状态。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PutMapping("/{productId}/decision")
     public ApiResult<Map<String, Object>> decision(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -154,6 +170,7 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     @Operation(summary = "活动商品达人跟进", description = "记录活动商品的达人跟进信息，用于达人侧协作与后续回访。")
+    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @PostMapping("/{productId}/follow")
     public ApiResult<Map<String, Object>> follow(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -187,6 +204,16 @@ public class ColonelActivityProductController extends BaseController {
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") long size) {
         IPage<ProductOperationLog> result = productService.getOperationLogs(activityId, productId, page, size);
         return okPage(result);
+    }
+
+    @Operation(summary = "加入商品库", description = "将当前选品结果沉淀到共享商品库，供全员查看。")
+    @PostMapping("/{productId}/library-entry")
+    public ApiResult<Map<String, Object>> putIntoLibrary(
+            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
+            @Parameter(description = "商品 ID。") @PathVariable String productId,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId) {
+        return ok(productService.putIntoLibrary(activityId, productId, userId, deptId));
     }
 
     public static class BindActivityRequest {
@@ -224,6 +251,33 @@ public class ColonelActivityProductController extends BaseController {
         @Schema(description = "审核备注。", example = "素材完整，允许推进")
         private String reason;
 
+        @Schema(description = "专属价说明。", example = "直播间专属价 129 元，日常到手价 149 元。")
+        private String exclusivePriceRemark;
+
+        @Schema(description = "发货信息。", example = "48 小时内发货，江浙沪次日达。")
+        private String shippingInfo;
+
+        @Schema(description = "商品卖点列表。", example = "[\"高复购刚需品\", \"夏季场景强\", \"赠品感知明显\"]")
+        private List<String> sellingPoints;
+
+        @Schema(description = "推广话术。", example = "可主打复购和夏季囤货场景。")
+        private String promotionScript;
+
+        @Schema(description = "是否支持投流。", example = "true")
+        private Boolean supportsAds;
+
+        @Schema(description = "奖励说明。", example = "破 3 万 GMV 额外返 2 个点。")
+        private String rewardRemark;
+
+        @Schema(description = "参与要求。", example = "近 30 天食品饮料类目有成交。")
+        private String participationRequirements;
+
+        @Schema(description = "活动时间说明。", example = "4 月 1 日至 4 月 15 日，分两波开团。")
+        private String campaignTimeRemark;
+
+        @Schema(description = "手卡或素材文件列表。", example = "[\"https://example.com/material-1.png\"]")
+        private List<String> materialFiles;
+
         public boolean isApproved() {
             return approved;
         }
@@ -238,6 +292,119 @@ public class ColonelActivityProductController extends BaseController {
 
         public void setReason(String reason) {
             this.reason = reason;
+        }
+
+        public String getExclusivePriceRemark() {
+            return exclusivePriceRemark;
+        }
+
+        public void setExclusivePriceRemark(String exclusivePriceRemark) {
+            this.exclusivePriceRemark = exclusivePriceRemark;
+        }
+
+        public String getShippingInfo() {
+            return shippingInfo;
+        }
+
+        public void setShippingInfo(String shippingInfo) {
+            this.shippingInfo = shippingInfo;
+        }
+
+        public List<String> getSellingPoints() {
+            return sellingPoints;
+        }
+
+        public void setSellingPoints(List<String> sellingPoints) {
+            this.sellingPoints = sellingPoints;
+        }
+
+        public String getPromotionScript() {
+            return promotionScript;
+        }
+
+        public void setPromotionScript(String promotionScript) {
+            this.promotionScript = promotionScript;
+        }
+
+        public Boolean getSupportsAds() {
+            return supportsAds;
+        }
+
+        public void setSupportsAds(Boolean supportsAds) {
+            this.supportsAds = supportsAds;
+        }
+
+        public String getRewardRemark() {
+            return rewardRemark;
+        }
+
+        public void setRewardRemark(String rewardRemark) {
+            this.rewardRemark = rewardRemark;
+        }
+
+        public String getParticipationRequirements() {
+            return participationRequirements;
+        }
+
+        public void setParticipationRequirements(String participationRequirements) {
+            this.participationRequirements = participationRequirements;
+        }
+
+        public String getCampaignTimeRemark() {
+            return campaignTimeRemark;
+        }
+
+        public void setCampaignTimeRemark(String campaignTimeRemark) {
+            this.campaignTimeRemark = campaignTimeRemark;
+        }
+
+        public List<String> getMaterialFiles() {
+            return materialFiles;
+        }
+
+        public void setMaterialFiles(List<String> materialFiles) {
+            this.materialFiles = materialFiles;
+        }
+
+        public Map<String, Object> toSupplementMap() {
+            Map<String, Object> supplement = new LinkedHashMap<>();
+            putText(supplement, "exclusivePriceRemark", exclusivePriceRemark);
+            putText(supplement, "shippingInfo", shippingInfo);
+            putText(supplement, "promotionScript", promotionScript);
+            putText(supplement, "rewardRemark", rewardRemark);
+            putText(supplement, "participationRequirements", participationRequirements);
+            putText(supplement, "campaignTimeRemark", campaignTimeRemark);
+            if (supportsAds != null) {
+                supplement.put("supportsAds", supportsAds);
+            }
+            List<String> normalizedSellingPoints = normalizeList(sellingPoints);
+            if (!normalizedSellingPoints.isEmpty()) {
+                supplement.put("sellingPoints", normalizedSellingPoints);
+            }
+            List<String> normalizedMaterialFiles = normalizeList(materialFiles);
+            if (!normalizedMaterialFiles.isEmpty()) {
+                supplement.put("materialFiles", normalizedMaterialFiles);
+            }
+            return supplement;
+        }
+
+        private void putText(Map<String, Object> supplement, String key, String value) {
+            if (StringUtils.hasText(value)) {
+                supplement.put(key, value.trim());
+            }
+        }
+
+        private List<String> normalizeList(List<String> values) {
+            if (values == null || values.isEmpty()) {
+                return List.of();
+            }
+            List<String> normalized = new ArrayList<>();
+            for (String value : values) {
+                if (StringUtils.hasText(value)) {
+                    normalized.add(value.trim());
+                }
+            }
+            return normalized;
         }
     }
 

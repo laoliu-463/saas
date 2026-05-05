@@ -1,6 +1,8 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -22,11 +24,12 @@ public class OrderQueryService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public OrderDetailResponse getOrderDetail(String orderId) {
+    public OrderDetailResponse getOrderDetail(String orderId, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
         Map<String, Object> row = findOrderDetailRow(orderId);
         if (row == null || row.isEmpty()) {
             throw new BusinessException("订单不存在");
         }
+        assertCanAccess(row, currentUserId, currentDeptId, dataScope);
 
         String attributionStatus = asText(row.get("attribution_status"));
         String attributionRemark = asText(row.get("attribution_remark"));
@@ -153,6 +156,23 @@ public class OrderQueryService {
         return response;
     }
 
+    private void assertCanAccess(Map<String, Object> row, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
+        if (row == null || dataScope == null || dataScope == DataScope.ALL) {
+            return;
+        }
+        UUID orderUserId = uuidValue(asText(row.get("order_user_id")));
+        UUID orderDeptId = uuidValue(asText(row.get("order_dept_id")));
+        if (dataScope == DataScope.PERSONAL) {
+            if (currentUserId == null || !currentUserId.equals(orderUserId)) {
+                throw new ForbiddenException("无权查看该订单详情");
+            }
+            return;
+        }
+        if (currentDeptId == null || !currentDeptId.equals(orderDeptId)) {
+            throw new ForbiddenException("无权查看该订单详情");
+        }
+    }
+
     private Map<String, Object> findOrderDetailRow(String orderId) {
         String sql = """
                 SELECT
@@ -165,6 +185,8 @@ public class OrderQueryService {
                     co.product_name,
                     co.product_title,
                     co.colonel_activity_id AS activity_id,
+                    co.user_id AS order_user_id,
+                    co.dept_id AS order_dept_id,
                     co.channel_user_id,
                     co.channel_user_name,
                     co.colonel_user_id,

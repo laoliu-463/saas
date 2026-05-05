@@ -16,7 +16,7 @@ mybatis-plus:
   type-handlers-package: com.colonel.saas.common.handler
   global-config:
     db-config:
-      id-type: auto
+      id-type: assign_uuid
       logic-delete-field: deleted
       logic-delete-value: 1
       logic-not-delete-value: 0

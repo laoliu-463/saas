@@ -121,7 +121,10 @@ class CrawlerTalentInfoServiceTest {
         talent.setFans(186000L);
         talent.setIpLocation("四川成都");
         talent.setStatus(1);
-        when(talentMapper.selectList(any())).thenReturn(List.of(talent));
+        Page<Talent> fallbackPage = new Page<>(1, 20);
+        fallbackPage.setRecords(List.of(talent));
+        fallbackPage.setTotal(1);
+        when(talentMapper.searchActiveTalents(any(), any(), any(), any(), any())).thenReturn(fallbackPage);
 
         IPage<SampleTalentVO> result = service.searchTalents("Mock", null, null, null, null, 1, 20);
 

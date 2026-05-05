@@ -17,6 +17,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -113,6 +114,33 @@ class AttributionServiceTest {
         assertThat(result.userId()).isEqualTo(mappingUser);
         assertThat(result.deptId()).isEqualTo(mappingDept);
         assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+    }
+
+    @Test
+    void resolveAttribution_shouldPreferExactPickExtraBeforeLegacyShortIdFallback() {
+        UUID mappingUser = UUID.randomUUID();
+        UUID mappingDept = UUID.randomUUID();
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(mappingUser);
+        mapping.setDeptId(mappingDept);
+        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        when(pickSourceMappingMapper.selectOne(any()))
+                .thenReturn(null)
+                .thenReturn(mapping);
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-3");
+        order.setPickSource("pick_x");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of("pick_extra", "channel_user-1")
+        );
+
+        assertThat(result.userId()).isEqualTo(mappingUser);
+        assertThat(result.deptId()).isEqualTo(mappingDept);
+        verify(pickSourceMappingMapper, times(2)).selectOne(any());
     }
 
     @Test

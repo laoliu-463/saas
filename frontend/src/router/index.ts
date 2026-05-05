@@ -17,6 +17,11 @@ const router = createRouter({
         {
           path: 'product',
           component: () => import('../views/product/index.vue'),
+          meta: { title: '选品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+        },
+        {
+          path: 'product/library',
+          component: () => import('../views/product/index.vue'),
           meta: { title: '商品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
@@ -32,12 +37,12 @@ const router = createRouter({
         {
           path: 'product/:id',
           redirect: '/product',
-          meta: { title: '商品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '选品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'talent',
           component: () => import('../views/talent/index.vue'),
-          meta: { title: '达人 CRM', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '达人经营台', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'sample',
@@ -85,6 +90,16 @@ const router = createRouter({
           meta: { title: '角色管理', roles: [ROLE.ADMIN] }
         },
         {
+          path: 'system/config',
+          component: () => import('../views/system/ConfigList.vue'),
+          meta: { title: '系统配置', roles: [ROLE.ADMIN] }
+        },
+        {
+          path: 'system/operation-logs',
+          component: () => import('../views/system/OperationLogList.vue'),
+          meta: { title: '操作日志', roles: [ROLE.ADMIN] }
+        },
+        {
           path: 'orders',
           component: () => import('../views/orders/index.vue'),
           meta: { title: '订单工作台', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
@@ -97,7 +112,7 @@ const router = createRouter({
         {
           path: 'dev/test',
           component: () => import('../views/dev/TestConsole.vue'),
-          meta: { title: '测试调试台', roles: [ROLE.ADMIN, ROLE.BIZ_LEADER], testOnly: true }
+          meta: { title: '测试调试台', roles: [ROLE.ADMIN], testOnly: true }
         },
         { path: '', redirect: '/dashboard' }
       ]

@@ -7,6 +7,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -14,12 +15,16 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class OrderSyncJobTest {
 
+    private com.colonel.saas.job.OrderSyncJob newJob() {
+        return new com.colonel.saas.job.OrderSyncJob(orderSyncService);
+    }
+
     @Mock
     private OrderSyncService orderSyncService;
 
     @Test
     void syncOrders_shouldSkipWhenLocked() {
-        OrderSyncJob job = new OrderSyncJob(orderSyncService);
+        com.colonel.saas.job.OrderSyncJob job = newJob();
         when(orderSyncService.syncLatestWindow()).thenReturn(
                 new OrderSyncService.SyncResult(0, 0, 0, 0, 0, true)
         );
@@ -31,7 +36,7 @@ class OrderSyncJobTest {
 
     @Test
     void syncOrders_shouldLogResultWhenNotLocked() {
-        OrderSyncJob job = new OrderSyncJob(orderSyncService);
+        com.colonel.saas.job.OrderSyncJob job = newJob();
         when(orderSyncService.syncLatestWindow()).thenReturn(
                 new OrderSyncService.SyncResult(1000L, 2000L, 5, 10, 2, false)
         );
@@ -42,18 +47,20 @@ class OrderSyncJobTest {
     }
 
     @Test
-    void syncOrders_shouldCatchException() {
-        OrderSyncJob job = new OrderSyncJob(orderSyncService);
+    void syncOrders_shouldRethrowException() {
+        com.colonel.saas.job.OrderSyncJob job = newJob();
         when(orderSyncService.syncLatestWindow()).thenThrow(new RuntimeException("sync failed"));
 
-        job.syncOrders();
+        assertThatThrownBy(job::syncOrders)
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("sync failed");
 
         verify(orderSyncService).syncLatestWindow();
     }
 
     @Test
     void syncOrders_shouldSkipWhenDisabled() {
-        OrderSyncJob job = new OrderSyncJob(orderSyncService);
+        com.colonel.saas.job.OrderSyncJob job = newJob();
         ReflectionTestUtils.setField(job, "enabled", false);
 
         job.syncOrders();

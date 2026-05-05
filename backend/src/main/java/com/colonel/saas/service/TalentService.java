@@ -30,6 +30,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -39,14 +40,12 @@ import java.util.stream.Collectors;
 @Service
 public class TalentService {
 
-    private static final int DEFAULT_PROTECT_DAYS = 30;
     private static final int PUBLIC_POOL_LIMIT = 500;
+    private static final long ORDER_BATCH_SIZE = 2000L;
     private static final int CLAIM_STATUS_ACTIVE = 1;
     private static final int CLAIM_STATUS_EXPIRED = 2;
     private static final int CLAIM_STATUS_RELEASED = 3;
     private static final int CLAIM_TYPE_MANUAL = 1;
-    private static final long EXCLUSIVE_SERVICE_FEE_RATIO_THRESHOLD = 70L;
-    private static final long EXCLUSIVE_MONTHLY_SAMPLE_THRESHOLD = 10L;
 
     private static final String ENRICH_TASK_STATUS_PENDING = "PENDING";
     private static final String ENRICH_TASK_STATUS_RUNNING = "RUNNING";
@@ -64,6 +63,7 @@ public class TalentService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final CrawlerTalentInfoService crawlerTalentInfoService;
     private final boolean publicPageCrawlEnabled;
+    private final BusinessRuleConfigService businessRuleConfigService;
 
     public TalentService(
             TalentMapper talentMapper,
@@ -74,7 +74,8 @@ public class TalentService {
             SampleRequestMapper sampleRequestMapper,
             RedisTemplate<String, Object> redisTemplate,
             CrawlerTalentInfoService crawlerTalentInfoService,
-            @Value("${talent.data.public-page-crawl-enabled:false}") boolean publicPageCrawlEnabled) {
+            @Value("${talent.data.public-page-crawl-enabled:false}") boolean publicPageCrawlEnabled,
+            BusinessRuleConfigService businessRuleConfigService) {
         this.talentMapper = talentMapper;
         this.talentClaimMapper = talentClaimMapper;
         this.talentEnrichTaskMapper = talentEnrichTaskMapper;
@@ -84,17 +85,19 @@ public class TalentService {
         this.redisTemplate = redisTemplate;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
         this.publicPageCrawlEnabled = publicPageCrawlEnabled;
+        this.businessRuleConfigService = businessRuleConfigService;
     }
 
     private int getProtectDays() {
-        return DEFAULT_PROTECT_DAYS;
+        return businessRuleConfigService.getTalentProtectionDays();
     }
 
     public List<Talent> getPublicPool() {
         Set<UUID> claimedTalentIds = getClaimedTalentIds();
         return talentMapper.selectList(new LambdaQueryWrapper<Talent>()
                         .eq(Talent::getDeleted, 0)
-                        .eq(Talent::getStatus, 1))
+                        .eq(Talent::getStatus, 1)
+                        .ne(Talent::getBlacklisted, true))
                 .stream()
                 .filter(talent -> !claimedTalentIds.contains(talent.getId()))
                 .sorted(Comparator.comparing(Talent::getFans, Comparator.nullsLast(Comparator.reverseOrder())))
@@ -218,6 +221,7 @@ public class TalentService {
         if (StringUtils.hasText(request.getIntro())) {
             request.setIntro(request.getIntro().trim());
         }
+        request.setId(UUID.randomUUID());
         talentMapper.insert(request);
         TalentEnrichTask task = createEnrichTask(request, ENRICH_TASK_STATUS_PENDING, null);
         markEnrichTask(task, ENRICH_TASK_STATUS_RUNNING, null);
@@ -299,29 +303,29 @@ public class TalentService {
             }
 
             LocalDateTime now = LocalDateTime.now();
-            TalentClaim lastClaim = talentClaimMapper.findLastClaim(talentId);
-            if (lastClaim != null && lastClaim.getUserId() != null && !userId.equals(lastClaim.getUserId())) {
-                LocalDateTime protectedUntil = lastClaim.getProtectedUntil() == null
-                        ? lastClaim.getClaimedAt().plusDays(protectDays)
-                        : lastClaim.getProtectedUntil();
-                if (protectedUntil != null && protectedUntil.isAfter(now)) {
-                    throw new BusinessException("达人处于保护期，暂不可认领");
-                }
+            TalentClaim claim = findLatestClaimByTalentAndUser(talentId, userId);
+            boolean newClaim = claim == null;
+            if (newClaim) {
+                claim = new TalentClaim();
+                claim.setId(UUID.randomUUID());
+                claim.setTalentId(talentId);
+                claim.setTalentUid(talent.getDouyinUid());
+                claim.setUserId(userId);
             }
-
-            TalentClaim claim = new TalentClaim();
-            claim.setTalentId(talentId);
-            claim.setTalentUid(talent.getDouyinUid());
-            claim.setUserId(userId);
             claim.setDeptId(deptId);
             claim.setClaimType(CLAIM_TYPE_MANUAL);
             claim.setClaimedAt(now);
             claim.setProtectedUntil(now.plusDays(protectDays));
             claim.setStatus(CLAIM_STATUS_ACTIVE);
-            talentClaimMapper.insert(claim);
+            if (newClaim) {
+                talentClaimMapper.insert(claim);
+            } else {
+                talentClaimMapper.updateById(claim);
+            }
 
             talent.setOwnerId(userId);
             talent.setClaimedAt(now);
+            talentMapper.updateById(talent);
             return talent;
         } finally {
             redisTemplate.delete(lockKey);
@@ -342,6 +346,8 @@ public class TalentService {
 
         boolean isAdmin = hasRole(roleCodes, "admin");
         TalentClaim releaseTarget = activeClaims.stream()
+                .sorted(Comparator.comparing((TalentClaim claim) -> !userId.equals(claim.getUserId()))
+                        .thenComparing(TalentClaim::getClaimedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .filter(claim -> canRelease(claim, userId, deptId, isAdmin))
                 .findFirst()
                 .orElseThrow(() -> new BusinessException("仅认领人、同组组长或管理员可以释放达人"));
@@ -350,7 +356,28 @@ public class TalentService {
         releaseTarget.setProtectedUntil(LocalDateTime.now());
         talentClaimMapper.updateById(releaseTarget);
 
-        return getById(talentId);
+        Talent talent = getById(talentId);
+        talent.setOwnerId(null);
+        talentMapper.updateById(talent);
+        return talent;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Talent blacklist(UUID talentId, String reason) {
+        Talent talent = getById(talentId);
+        talent.setBlacklisted(true);
+        talent.setBlacklistReason(StringUtils.hasText(reason) ? reason.trim() : "手动拉黑");
+        talentMapper.updateById(talent);
+        return talent;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Talent unblacklist(UUID talentId) {
+        Talent talent = getById(talentId);
+        talent.setBlacklisted(false);
+        talent.setBlacklistReason(null);
+        talentMapper.updateById(talent);
+        return talent;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -440,10 +467,36 @@ public class TalentService {
                 .eq(TalentClaim::getStatus, CLAIM_STATUS_ACTIVE)
                 .eq(TalentClaim::getDeleted, 0)
                 .lt(TalentClaim::getProtectedUntil, now));
+        if (activeClaims.isEmpty()) {
+            return;
+        }
+        Set<UUID> talentIds = activeClaims.stream()
+                .map(TalentClaim::getTalentId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, Talent> talentMap = talentMapper.selectBatchIds(talentIds).stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toMap(Talent::getId, talent -> talent, (left, right) -> left));
         for (TalentClaim claim : activeClaims) {
+            Talent talent = talentMap.get(claim.getTalentId());
+            if (talent != null && hasOutputSinceClaim(talent, claim)) {
+                continue;
+            }
             claim.setStatus(CLAIM_STATUS_EXPIRED);
             talentClaimMapper.updateById(claim);
         }
+    }
+
+    private boolean hasOutputSinceClaim(Talent talent, TalentClaim claim) {
+        if (talent == null || claim == null || !StringUtils.hasText(talent.getDouyinUid())) {
+            return false;
+        }
+        LocalDateTime since = claim.getClaimedAt() == null ? LocalDateTime.now().minusDays(getProtectDays()) : claim.getClaimedAt();
+        LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper =
+                new LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder>()
+                        .ge(com.colonel.saas.entity.ColonelsettlementOrder::getCreateTime, since);
+        return loadOrdersInBatches(wrapper).stream()
+                .anyMatch(order -> matchesTalent(order, talent.getDouyinUid()));
     }
 
     public ExclusiveCheckResult evaluateExclusive(UUID talentId, DataScope dataScope, UUID userId, UUID deptId) {
@@ -451,13 +504,13 @@ public class TalentService {
         LocalDateTime start = LocalDateTime.now().minusDays(30);
         LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper =
                 new LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder>()
-                        .ge(com.colonel.saas.entity.ColonelsettlementOrder::getCreateTime, start);
+                        .ge(com.colonel.saas.entity.ColonelsettlementOrder::getSettleTime, start);
         if (dataScope == DataScope.PERSONAL && userId != null) {
             wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getUserId, userId);
         } else if (dataScope == DataScope.DEPT && deptId != null) {
             wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getDeptId, deptId);
         }
-        List<com.colonel.saas.entity.ColonelsettlementOrder> monthOrders = orderMapper.selectList(wrapper);
+        List<com.colonel.saas.entity.ColonelsettlementOrder> monthOrders = loadOrdersInBatches(wrapper);
 
         long totalServiceFee = 0L;
         long talentServiceFee = 0L;
@@ -474,9 +527,29 @@ public class TalentService {
                 .ge(com.colonel.saas.entity.SampleRequest::getCreateTime, start));
         long monthlySamples = sampleCount == null ? 0L : sampleCount;
 
-        boolean eligible = serviceRatio >= EXCLUSIVE_SERVICE_FEE_RATIO_THRESHOLD
-                && monthlySamples >= EXCLUSIVE_MONTHLY_SAMPLE_THRESHOLD;
+        boolean eligible = serviceRatio >= businessRuleConfigService.getTalentExclusiveRatioThreshold().longValue()
+                && monthlySamples >= businessRuleConfigService.getTalentExclusiveMonthlySamples();
         return new ExclusiveCheckResult(eligible, serviceRatio, monthlySamples);
+    }
+
+    private List<com.colonel.saas.entity.ColonelsettlementOrder> loadOrdersInBatches(
+            LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper) {
+        List<com.colonel.saas.entity.ColonelsettlementOrder> result = new java.util.ArrayList<>();
+        long current = 1L;
+        while (true) {
+            Page<com.colonel.saas.entity.ColonelsettlementOrder> page = new Page<>(current, ORDER_BATCH_SIZE);
+            IPage<com.colonel.saas.entity.ColonelsettlementOrder> batch = orderMapper.selectPage(page, wrapper);
+            List<com.colonel.saas.entity.ColonelsettlementOrder> records = batch.getRecords();
+            if (records == null || records.isEmpty()) {
+                break;
+            }
+            result.addAll(records);
+            if (current >= batch.getPages()) {
+                break;
+            }
+            current++;
+        }
+        return result;
     }
 
     private boolean matchesTalent(com.colonel.saas.entity.ColonelsettlementOrder order, String douyinUid) {
@@ -492,6 +565,15 @@ public class TalentService {
         }
         Object talentUid = order.getExtraData().get("talent_uid");
         return talentUid != null && douyinUid.equals(String.valueOf(talentUid));
+    }
+
+    private TalentClaim findLatestClaimByTalentAndUser(UUID talentId, UUID userId) {
+        return talentClaimMapper.selectOne(new LambdaQueryWrapper<TalentClaim>()
+                .eq(TalentClaim::getTalentId, talentId)
+                .eq(TalentClaim::getUserId, userId)
+                .eq(TalentClaim::getDeleted, 0)
+                .orderByDesc(TalentClaim::getClaimedAt)
+                .last("limit 1"));
     }
 
     private Set<UUID> getClaimedTalentIds() {
@@ -580,6 +662,7 @@ public class TalentService {
         task.setTaskStatus(status);
         task.setRetryCount(0);
         task.setErrorMsg(errorMsg);
+        task.setId(UUID.randomUUID());
         talentEnrichTaskMapper.insert(task);
         return task;
     }

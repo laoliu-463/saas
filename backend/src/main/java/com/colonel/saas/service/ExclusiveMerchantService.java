@@ -114,6 +114,7 @@ public class ExclusiveMerchantService {
         target.setDeleted(0);
 
         if (existing == null) {
+            target.setId(UUID.randomUUID());
             exclusiveMerchantMapper.insert(target);
         } else {
             exclusiveMerchantMapper.updateById(target);
@@ -125,8 +126,8 @@ public class ExclusiveMerchantService {
                 SELECT user_id, SUM(COALESCE(settle_colonel_commission, 0)) AS total_fee
                 FROM colonelsettlement_order
                 WHERE deleted = 0
-                  AND create_time >= ?
-                  AND create_time < ?
+                  AND settle_time >= ?
+                  AND settle_time < ?
                   AND user_id IS NOT NULL
                 GROUP BY user_id
                 """;
@@ -146,8 +147,8 @@ public class ExclusiveMerchantService {
                        SUM(COALESCE(settle_colonel_commission, 0)) AS merchant_fee
                 FROM colonelsettlement_order
                 WHERE deleted = 0
-                  AND create_time >= ?
-                  AND create_time < ?
+                  AND settle_time >= ?
+                  AND settle_time < ?
                   AND user_id IS NOT NULL
                   AND COALESCE(extra_data->>'merchant_id', CAST(shop_id AS TEXT)) IS NOT NULL
                 GROUP BY COALESCE(extra_data->>'merchant_id', CAST(shop_id AS TEXT)), shop_id, shop_name, user_id, dept_id

@@ -42,7 +42,20 @@
           <n-input v-model:value="formData.email" placeholder="请输入邮箱" />
         </n-form-item>
         <n-form-item label="角色分配" path="roleIds">
-          <n-select v-model:value="formData.roleIds" multiple :options="roleOptions" value-field="id" label-field="roleName" clearable />
+          <n-select
+            v-model:value="selectedRoleId"
+            :options="visibleRoleSelectOptions"
+            value-field="value"
+            label-field="label"
+            placeholder="请选择身份"
+            filterable
+            clearable
+          />
+          <div class="role-picker__footer">
+            <n-tag v-if="selectedRoleLabel" type="success" size="small" round>
+              已选身份：{{ selectedRoleLabel }}
+            </n-tag>
+          </div>
         </n-form-item>
         <n-form-item label="状态" path="status">
           <n-switch v-model:value="formData.status" :checked-value="1" :unchecked-value="0" />
@@ -70,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, h, onMounted, computed } from 'vue';
+import { ref, reactive, h, onMounted, computed, watch } from 'vue';
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui';
 import { getUserPage, createUser, updateUser, deleteUser, resetUserPassword, getRoleAll, assignUserRoles } from '../../api/sys';
 
@@ -106,6 +119,33 @@ const roleNameMap = computed<Record<string, string>>(() => {
     }
   }
   return map;
+});
+const roleDescriptionMap: Record<string, string> = {
+  admin: '可访问全部菜单与系统管理能力',
+  biz_leader: '落地首页 /dashboard，可看归因与订单工作台',
+  biz_staff: '落地首页 /data，可看数据平台与商品寄样',
+  channel_leader: '落地首页 /dashboard，可看归因、达人与寄样',
+  channel_staff: '落地首页 /data，可看达人、数据与寄样',
+  ops_staff: '落地首页 /ops/shipping，可处理物流与独家状态'
+};
+const roleSelectOptions = computed(() =>
+  (roleOptions.value as any[]).map((role) => ({
+    value: String(role.id),
+    label: String(role.roleName || role.roleCode || ''),
+    roleCode: String(role.roleCode || ''),
+    description: roleDescriptionMap[String(role.roleCode || '')] || '用于控制菜单与首页落地路径'
+  }))
+);
+const visibleRoleSelectOptions = computed(() =>
+  roleSelectOptions.value.filter((role) => role.roleCode !== 'admin' || selectedRoleId.value === role.value)
+);
+const selectedRoleId = ref<string | null>(null);
+const selectedRole = computed(() =>
+  roleSelectOptions.value.find((role) => role.value === selectedRoleId.value) || null
+);
+const selectedRoleLabel = computed(() => selectedRole.value?.label || '');
+watch(selectedRoleId, (value) => {
+  formData.roleIds = value ? [value] : [];
 });
 
 const removeRowLocally = (id: string) => {
@@ -184,7 +224,6 @@ const normalizeRoleIds = (roleIds: unknown): string[] => {
     .map((id) => (id == null ? '' : String(id)))
     .filter((id) => !!id);
 };
-
 const rules = {
   username: { required: true, message: '请输入用户名', trigger: 'blur' },
   password: { required: true, message: '请输入密码', trigger: 'blur' },
@@ -198,20 +237,23 @@ const openModal = async (type: 'add'|'edit', row?: any) => {
   
   if (type === 'add') {
     Object.assign(formData, { id: undefined, username: '', password: '', realName: '', phone: '', email: '', roleIds: [], status: 1 });
+    selectedRoleId.value = null;
   } else if (row) {
+    const normalizedRoleIds = normalizeRoleIds(
+      Array.isArray(row.roleIds)
+        ? row.roleIds
+        : (Array.isArray(row.roles) ? row.roles.map((r: any) => r?.id) : [])
+    );
     Object.assign(formData, {
       id: row.id,
       username: row.username,
       realName: row.realName,
       phone: row.phone,
       email: row.email,
-      roleIds: normalizeRoleIds(
-        Array.isArray(row.roleIds)
-          ? row.roleIds
-          : (Array.isArray(row.roles) ? row.roles.map((r: any) => r?.id) : [])
-      ),
+      roleIds: normalizedRoleIds.slice(0, 1),
       status: row.status
     });
+    selectedRoleId.value = normalizedRoleIds[0] || null;
   }
   
   showModal.value = true;
@@ -230,19 +272,25 @@ const handleSubmit = async () => {
 
   submitting.value = true;
   try {
+    const targetUsername = formData.username;
+    const roleLabel = selectedRoleLabel.value;
     if (modalType.value === 'add') {
       await createUser(formData);
-      message.success('新增成功');
       pagination.page = 1;
-      searchParams.username = '';
+      searchParams.username = targetUsername;
       searchParams.status = null;
     } else {
       await updateUser(formData.id!, formData);
       await assignUserRoles(formData.id!, { roleIds: formData.roleIds });
-      message.success('编辑成功');
+      searchParams.username = targetUsername;
     }
-    showModal.value = false;
     await fetchData();
+    showModal.value = false;
+    if (modalType.value === 'add') {
+      message.success(`用户 ${targetUsername} 已创建${roleLabel ? `，身份：${roleLabel}` : ''}`);
+    } else {
+      message.success(`用户 ${targetUsername} 已更新${roleLabel ? `，身份：${roleLabel}` : ''}`);
+    }
   } catch (error: any) {
     if (!error?.response?.data?.msg && !error?.msg) {
       message.error(error?.message || '保存失败');
@@ -397,5 +445,17 @@ onMounted(async () => {
   border-radius: var(--radius-md);
   padding: 4px;
   box-shadow: var(--shadow-card);
+}
+
+.role-picker {
+  width: 100%;
+}
+
+.role-picker__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
 }
 </style>

@@ -2,6 +2,8 @@ package com.colonel.saas.controller;
 
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
+import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.OrderSyncService;
 import com.colonel.saas.testsupport.TestDataService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -9,7 +11,6 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,8 +22,8 @@ import java.util.UUID;
 @Slf4j
 @RestController
 @RequestMapping("/test")
-@Profile({"local-mock", "test"})
 @ConditionalOnProperty(prefix = "app.test", name = "enabled", havingValue = "true")
+@RequireRoles({RoleCodes.ADMIN})
 @Tag(name = "测试工具", description = "仅用于测试环境的数据初始化、链路回放与状态推进工具")
 public class TestController extends BaseController {
 
@@ -83,4 +84,3 @@ public class TestController extends BaseController {
         return ok(testDataService.signSample(sampleRequestId));
     }
 }
-

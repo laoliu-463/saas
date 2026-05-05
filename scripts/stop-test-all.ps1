@@ -30,7 +30,6 @@ Assert-DockerAvailable
 $composeArgs = @(
     "compose",
     "--project-name", "saas-test",
-    "-f", (Join-Path $repoRoot "docker-compose.yml"),
     "-f", (Join-Path $repoRoot "docker-compose.test.yml"),
     "down"
 )

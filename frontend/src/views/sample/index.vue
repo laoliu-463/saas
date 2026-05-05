@@ -1,210 +1,152 @@
 <template>
   <div class="sample-kanban-page">
-    <PageHeader title="寄样台" description="拖拽式管理寄样全流程：审核 → 发货 → 签收 → 交作业。">
-      <template #meta>
-        <n-tag v-if="totalCount >= 0" size="small" round type="info">共 {{ totalCount }} 单</n-tag>
-      </template>
+    <PageHeader title="寄样台" description="管理寄样全流程：审核 → 发货 → 签收 → 交作业。">
       <template #actions>
-        <n-button :loading="loading" type="primary" @click="loadBoard">刷新看板</n-button>
+        <n-button type="primary" @click="$router.push('/sample/apply')">申请寄样</n-button>
+        <n-button :loading="loading" @click="fetchData">刷新数据</n-button>
       </template>
     </PageHeader>
 
-    <div class="board-container" v-if="!loading || boardData">
-      <KanbanColumn
-        v-for="col in columns"
-        :key="col.status"
-        :status="col.status"
-        :title="col.title"
-        :dot-color="col.dotColor"
-        :cards="boardData?.[col.status] || []"
-      >
-        <template #default="{ card }">
-          <SampleCard
-            :card="card"
-            @approve="handleAction($event, 'APPROVED')"
-            @reject="handleAction($event, 'REJECTED')"
-            @ship="openLogistics($event)"
-            @sign="handleAction($event, 'SIGNED')"
+    <div class="shipping-table-card">
+      <n-tabs v-model:value="activeTab" type="line" animated @update:value="handleTabChange">
+        <n-tab-pane v-for="tab in tabList" :key="tab.value" :name="tab.value" :tab="tab.label">
+          <n-data-table
+            remote
+            :columns="columns"
+            :data="data"
+            :loading="loading"
+            :pagination="pagination"
+            @update:page="handlePageChange"
+            @update:page-size="handlePageSizeChange"
           />
-        </template>
-      </KanbanColumn>
+        </n-tab-pane>
+      </n-tabs>
     </div>
 
-    <div v-else class="loading-placeholder">
-      <n-spin size="large" />
-    </div>
-
-    <n-modal v-model:show="showLogistics" preset="dialog" title="填写物流单号">
-      <n-form-item label="快递公司" required>
-        <n-select
-          v-model:value="logisticsForm.company"
-          :options="[
-            { label: '顺丰速运', value: 'SF' },
-            { label: '中通快递', value: 'ZTO' },
-            { label: '圆通速递', value: 'YTO' }
-          ]"
-        />
-      </n-form-item>
-      <n-form-item label="快递单号" required>
-        <n-input v-model:value="logisticsForm.no" placeholder="输入真实单号或测试单号" />
-      </n-form-item>
-      <template #action>
-        <n-button @click="showLogistics = false">取消</n-button>
-        <n-button type="primary" :loading="actionLoading" @click="submitLogistics">确认发货</n-button>
-      </template>
-    </n-modal>
+    <SampleDetail v-model:show="showDetail" :sample-id="currentSampleId" @refresh="fetchData" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useMessage } from 'naive-ui'
-import PageHeader from '../../components/PageHeader.vue'
-import KanbanColumn from '../../components/KanbanColumn.vue'
-import SampleCard from '../../components/SampleCard.vue'
-import type { SampleBoardCard } from '../../components/SampleCard.vue'
-import { getSampleBoard } from '../../api/sample'
-import { testShipSample } from '../../api/test'
-import request from '../../utils/request'
+import { h, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { NButton, useMessage } from 'naive-ui';
+import { getSamplePage } from '../../api/sample';
+import PageHeader from '../../components/PageHeader.vue';
+import SampleDetail from './SampleDetail.vue';
 
-const message = useMessage()
-const loading = ref(false)
-const actionLoading = ref(false)
-const showLogistics = ref(false)
-const currentCard = ref<SampleBoardCard | null>(null)
-const boardData = ref<Record<string, SampleBoardCard[]> | null>(null)
+const message = useMessage();
+const loading = ref(false);
+const activeTab = ref('PENDING_AUDIT');
+const data = ref<any[]>([]);
 
-const logisticsForm = reactive({
-  company: 'SF',
-  no: ''
-})
+const tabList = [
+  { label: '待审核', value: 'PENDING_AUDIT' },
+  { label: '待发货', value: 'PENDING_SHIP' },
+  { label: '快递中', value: 'SHIPPED' },
+  { label: '待交作业', value: 'PENDING_TASK' },
+  { label: '已完成', value: 'FINISHED' }
+];
+
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [10, 20, 50]
+});
+
+const showDetail = ref(false);
+const currentSampleId = ref('');
+
+const openDetail = (row: any) => {
+  currentSampleId.value = row.id || row.sampleRequestId;
+  showDetail.value = true;
+};
+
+const fetchData = async () => {
+  loading.value = true;
+  try {
+    const res: any = await getSamplePage({
+      page: pagination.page,
+      size: pagination.pageSize,
+      status: activeTab.value
+    });
+    const responseData = res?.data || res;
+    if (responseData?.records && Array.isArray(responseData.records)) {
+      data.value = responseData.records;
+      pagination.itemCount = responseData.total || 0;
+    } else {
+      data.value = [];
+      pagination.itemCount = 0;
+    }
+  } catch (error: any) {
+    message.error(error?.message || '获取寄样列表失败');
+  } finally {
+    loading.value = false;
+  }
+};
+
+const handleTabChange = () => {
+  pagination.page = 1;
+  fetchData();
+};
+
+const handlePageChange = (page: number) => {
+  pagination.page = page;
+  fetchData();
+};
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.pageSize = pageSize;
+  pagination.page = 1;
+  fetchData();
+};
 
 const columns = [
-  { status: 'PENDING_AUDIT', title: '待审核', dotColor: 'var(--color-info)' },
-  { status: 'PENDING_SHIP', title: '待发货', dotColor: 'var(--color-primary)' },
-  { status: 'SHIPPED', title: '快递中', dotColor: 'var(--color-info)' },
-  { status: 'PENDING_TASK', title: '待交作业', dotColor: 'var(--color-warning)' },
-  { status: 'FINISHED', title: '已完成', dotColor: 'var(--color-success)' }
-]
-
-const totalCount = computed(() => {
-  if (!boardData.value) return 0
-  return Object.values(boardData.value).reduce((sum, list) => sum + list.length, 0)
-})
-
-async function loadBoard() {
-  loading.value = true
-  try {
-    const res: any = await getSampleBoard()
-    boardData.value = res.data || {}
-  } catch {
-    message.error('加载看板数据失败')
-  } finally {
-    loading.value = false
+  { title: '寄样编号', key: 'id', render: (row: any) => row.id || row.sampleRequestId },
+  { title: '商品', key: 'productName', render: (row: any) => row.productName || row.product?.productName || '-' },
+  { title: '达人', key: 'talentName', render: (row: any) => row.talentNickname || row.talentName || row.talent?.talentName || '-' },
+  { title: '数量', key: 'quantity' },
+  { title: '快递单号', key: 'trackingNo', render: (row: any) => row.trackingNo || '-' },
+  { title: '申请时间', key: 'createTime' },
+  {
+    title: '操作',
+    key: 'actions',
+    render(row: any) {
+      return h(
+        NButton,
+        { size: 'small', type: 'info', onClick: () => openDetail(row) },
+        { default: () => '查看处理' }
+      );
+    }
   }
-}
+];
 
-function optimisticRemove(card: SampleBoardCard) {
-  if (!boardData.value) return
-  const list = boardData.value[card.status]
-  if (!list) return
-  const idx = list.findIndex(c => c.id === card.id)
-  if (idx !== -1) list.splice(idx, 1)
-}
-
-function optimisticAdd(card: SampleBoardCard, newStatus: string) {
-  if (!boardData.value) return
-  if (!boardData.value[newStatus]) boardData.value[newStatus] = []
-  boardData.value[newStatus].unshift({ ...card, status: newStatus })
-}
-
-async function handleAction(card: SampleBoardCard, action: string) {
-  const statusMap: Record<string, string> = {
-    APPROVED: 'PENDING_SHIP',
-    REJECTED: 'REJECTED',
-    SIGNED: 'SHIPPED'
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    fetchData();
   }
-  const newStatus = statusMap[action]
-  if (!newStatus) return
+};
 
-  optimisticRemove(card)
-  if (action !== 'REJECTED') {
-    optimisticAdd(card, newStatus)
-  }
+onMounted(() => {
+  fetchData();
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+});
 
-  try {
-    await request.put(`/samples/${card.id}/status`, {
-      action,
-      reason: action === 'REJECTED' ? '看板操作拒绝' : undefined
-    })
-    message.success(action === 'APPROVED' ? '已通过' : action === 'REJECTED' ? '已拒绝' : '已签收')
-    await loadBoard()
-  } catch {
-    message.error('操作失败')
-    await loadBoard()
-  }
-}
-
-function openLogistics(card: SampleBoardCard) {
-  currentCard.value = card
-  logisticsForm.no = `TEST${Date.now()}`
-  showLogistics.value = true
-}
-
-async function submitLogistics() {
-  if (!currentCard.value) return
-  actionLoading.value = true
-  const card = currentCard.value
-
-  optimisticRemove(card)
-  optimisticAdd(card, 'SHIPPED')
-
-  try {
-    await testShipSample(card.id)
-    message.success('已模拟发货')
-    showLogistics.value = false
-    await loadBoard()
-  } catch {
-    message.error('发货失败')
-    await loadBoard()
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-onMounted(loadBoard)
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+});
 </script>
 
 <style scoped>
 .sample-kanban-page {
-  padding: var(--spacing-lg);
-  min-height: calc(100vh - var(--header-height));
+  padding: var(--spacing-xl);
 }
 
-.board-container {
-  display: flex;
-  gap: 16px;
-  overflow-x: auto;
-  padding-bottom: 16px;
-}
-
-.board-container::-webkit-scrollbar {
-  height: 6px;
-}
-
-.board-container::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.board-container::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 3px;
-}
-
-.loading-placeholder {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 400px;
+.shipping-table-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 4px 16px 16px;
+  box-shadow: var(--shadow-card);
 }
 </style>

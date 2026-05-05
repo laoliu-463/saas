@@ -23,6 +23,9 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
     @Select("SELECT * FROM sys_user WHERE username = #{username} AND deleted = 0 LIMIT 1")
     Optional<SysUser> findByUsername(@Param("username") String username);
 
+    @Select("SELECT COUNT(1) > 0 FROM sys_user WHERE channel_code = #{channelCode}")
+    boolean existsByChannelCodeIncludingDeleted(@Param("channelCode") String channelCode);
+
     @Update("UPDATE sys_user SET deleted = 1, update_time = CURRENT_TIMESTAMP WHERE id = #{id} AND deleted = 0")
     int softDeleteById(@Param("id") UUID id);
 

@@ -28,6 +28,18 @@ public class TalentDetailResponse {
         private String ipLocation;
         private String level;
         private Long monthlySales;
+        private String mainCategory;
+        private String liveSalesBand;
+        private String liveViewBand;
+        private String liveGpmBand;
+        private String videoSalesBand;
+        private String videoPlayBand;
+        private String videoGpmBand;
+        private Boolean blacklisted;
+        private String blacklistReason;
+        private Long orderCount;
+        private Long sampleCount;
+        private Long serviceFeeContribution;
         private String contactPhone;
         private String remark;
         private String avatarUrl;
@@ -37,6 +49,16 @@ public class TalentDetailResponse {
     public static class ClaimInfo {
         private String poolStatus;
         private String ownerId;
+        private String ownerName;
+        private LocalDateTime claimedAt;
+        private LocalDateTime protectedUntil;
+        private Integer activeClaimCount;
+        private List<ClaimOwnerItem> activeClaimOwners;
+    }
+
+    @Data
+    public static class ClaimOwnerItem {
+        private String userId;
         private String ownerName;
         private LocalDateTime claimedAt;
         private LocalDateTime protectedUntil;

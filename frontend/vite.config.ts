@@ -40,8 +40,6 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 3000,
     watch: {
-      // Docker Desktop on Windows sometimes misses fs events from bind mounts.
-      // Polling makes HMR deterministic for mounted source files.
       usePolling: true,
       interval: 300
     },
@@ -52,4 +50,18 @@ export default defineConfig({
       })
     }
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/naive-ui')) {
+            return 'naive-ui'
+          }
+          if (id.includes('node_modules/vue') || id.includes('node_modules/@vue') || id.includes('node_modules/pinia') || id.includes('node_modules/vue-router')) {
+            return 'vue-vendor'
+          }
+        }
+      }
+    }
+  }
 })

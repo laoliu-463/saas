@@ -45,7 +45,7 @@ class PickSourceMappingServiceTest {
         verify(pickSourceMappingMapper).insert(captor.capture());
         PickSourceMapping saved = captor.getValue();
         assertThat(saved.getShortId()).isEqualTo("ABC12345");
-        assertThat(saved.getPickExtra()).isEqualTo("ABC12345");
+        assertThat(saved.getPickExtra()).isNull();
         assertThat(saved.getPickSource()).isEqualTo(order.getPickSource());
     }
 
@@ -108,6 +108,34 @@ class PickSourceMappingServiceTest {
         assertThat(saved.getShortId()).isEqualTo("NEWID123");
         assertThat(saved.getPickSource()).isEqualTo("PS_NEW");
         assertThat(saved.getScene()).isEqualTo("PRODUCT_LIBRARY");
+    }
+
+    @Test
+    void saveOrUpdate_shouldPersistExplicitPickExtra() {
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
+
+        service.saveOrUpdate(
+                UUID.randomUUID(),
+                "channel-user",
+                UUID.randomUUID(),
+                "talent-2",
+                "Talent B",
+                "NEWID999",
+                UUID.randomUUID(),
+                "PS_EXPLICIT",
+                "pid_explicit",
+                "act_explicit",
+                "source_url",
+                "converted_url",
+                UUID.randomUUID(),
+                "PRODUCT_LIBRARY",
+                "channel_user-1"
+        );
+
+        ArgumentCaptor<PickSourceMapping> captor = ArgumentCaptor.forClass(PickSourceMapping.class);
+        verify(pickSourceMappingMapper).insert(captor.capture());
+        assertThat(captor.getValue().getPickExtra()).isEqualTo("channel_user-1");
+        assertThat(captor.getValue().getShortId()).isEqualTo("NEWID999");
     }
 
     @Test

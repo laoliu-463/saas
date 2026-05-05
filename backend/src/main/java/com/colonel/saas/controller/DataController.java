@@ -42,12 +42,10 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
 
 @Validated
 @Tag(name = "数据平台", description = "数据页专用接口，包括订单数据页、核心指标、手机号解密、导出与运营监控。")
@@ -55,6 +53,8 @@ import java.util.function.Function;
 @RequestMapping
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
 public class DataController extends BaseController {
+
+    private static final long EXPORT_BATCH_SIZE = 2000L;
 
     private final ColonelsettlementOrderMapper orderMapper;
     private final OrderDecryptService orderDecryptService;
@@ -74,6 +74,7 @@ public class DataController extends BaseController {
     public ApiResult<PageResult<OrderVO>> getOrderPage(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,
+            @Parameter(description = "订单号，支持模糊匹配。") @RequestParam(required = false) String orderId,
             @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
             @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
@@ -88,8 +89,12 @@ public class DataController extends BaseController {
                 : endDate.plusDays(1).atStartOfDay();
 
         QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
-        wrapper.ge("co.create_time", start)
-                .lt("co.create_time", end);
+        wrapper.ge("co.settle_time", start)
+                .lt("co.settle_time", end);
+        applyPageDataScope(wrapper, userId, deptId, dataScope);
+        if (StringUtils.hasText(orderId)) {
+            wrapper.like("co.order_id", orderId.trim());
+        }
         if (StringUtils.hasText(status)) {
             wrapper.eq("co.order_status", toOrderStatusCode(status));
         }
@@ -111,39 +116,64 @@ public class DataController extends BaseController {
         LocalDateTime tomorrowStart = today.plusDays(1).atStartOfDay();
         LocalDateTime rollingStart = today.minusDays(29).atStartOfDay();
 
-        LambdaQueryWrapper<ColonelsettlementOrder> todayWrapper = new LambdaQueryWrapper<ColonelsettlementOrder>()
-                .between(ColonelsettlementOrder::getCreateTime, todayStart, tomorrowStart);
-        applyDataScope(todayWrapper, userId, deptId, dataScope);
-        List<ColonelsettlementOrder> todayRows = orderMapper.selectList(todayWrapper);
-        Long todayOrders = (long) todayRows.size();
-        Long todayGmvCent = sumField(todayRows, ColonelsettlementOrder::getOrderAmount);
+        QueryWrapper<ColonelsettlementOrder> todayAggregateWrapper = buildScopedQuery(userId, deptId, dataScope)
+                .select(
+                        "COUNT(*) AS order_count",
+                        "COALESCE(SUM(order_amount), 0) AS order_amount_cent"
+                )
+                .ge("settle_time", todayStart)
+                .lt("settle_time", tomorrowStart);
+        Map<String, Object> todayAggregate = getSingleAggregate(todayAggregateWrapper);
+        Long todayOrders = asLong(todayAggregate, "order_count");
+        Long todayGmvCent = asLong(todayAggregate, "order_amount_cent");
 
         LambdaQueryWrapper<ColonelsettlementOrder> pendingWrapper = new LambdaQueryWrapper<ColonelsettlementOrder>()
                 .eq(ColonelsettlementOrder::getOrderStatus, toOrderStatusCode("ORDERED"))
-                .between(ColonelsettlementOrder::getCreateTime, rollingStart, tomorrowStart);
+                .between(ColonelsettlementOrder::getSettleTime, rollingStart, tomorrowStart);
         applyDataScope(pendingWrapper, userId, deptId, dataScope);
         Long pendingShipCount = safeCount(pendingWrapper);
-        CommissionService.CommissionSummary commissionSummary = commissionService.calculate(todayRows);
+        QueryWrapper<ColonelsettlementOrder> commissionWrapper = buildScopedQuery(userId, deptId, dataScope)
+                .select(
+                        "COALESCE(colonel_activity_id, '') AS activity_id",
+                        "COALESCE(SUM(settle_colonel_commission), 0) AS service_fee_income",
+                        "COALESCE(SUM(settle_colonel_tech_service_fee), 0) AS tech_service_fee",
+                        "COALESCE(SUM(settle_second_colonel_commission), 0) AS talent_commission"
+                )
+                .ge("settle_time", todayStart)
+                .lt("settle_time", tomorrowStart)
+                .groupBy("colonel_activity_id");
+        CommissionService.CommissionSummary commissionSummary = commissionService.calculateByActivityBuckets(
+                orderMapper.selectMaps(commissionWrapper).stream()
+                        .map(row -> new CommissionService.ActivityCommissionBucket(
+                                asString(row, "activity_id"),
+                                asLong(row, "service_fee_income"),
+                                asLong(row, "tech_service_fee"),
+                                asLong(row, "talent_commission")
+                        ))
+                        .toList()
+        );
 
         LocalDateTime weekStart = today.minusDays(6).atStartOfDay();
-        LambdaQueryWrapper<ColonelsettlementOrder> weekWrapper = new LambdaQueryWrapper<ColonelsettlementOrder>()
-                .between(ColonelsettlementOrder::getCreateTime, weekStart, tomorrowStart);
-        applyDataScope(weekWrapper, userId, deptId, dataScope);
-        List<ColonelsettlementOrder> weekRows = orderMapper.selectList(weekWrapper);
-        Map<LocalDate, List<ColonelsettlementOrder>> weekBuckets = new HashMap<>();
-        for (ColonelsettlementOrder row : weekRows) {
-            if (row.getCreateTime() == null) {
-                continue;
-            }
-            LocalDate day = row.getCreateTime().toLocalDate();
-            weekBuckets.computeIfAbsent(day, key -> new ArrayList<>()).add(row);
-        }
+        QueryWrapper<ColonelsettlementOrder> trendWrapper = buildScopedQuery(userId, deptId, dataScope)
+                .select(
+                        "DATE(settle_time) AS settle_date",
+                        "COUNT(*) AS order_count",
+                        "COALESCE(SUM(order_amount), 0) AS order_amount_cent"
+                )
+                .ge("settle_time", weekStart)
+                .lt("settle_time", tomorrowStart)
+                .groupBy("DATE(settle_time)");
+        Map<LocalDate, Map<String, Object>> trendMap = orderMapper.selectMaps(trendWrapper).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        row -> LocalDate.parse(asString(row, "settle_date")),
+                        row -> row
+                ));
         List<TrendPointVO> trend7d = new ArrayList<>();
         for (int i = 6; i >= 0; i--) {
             LocalDate day = today.minusDays(i);
-            List<ColonelsettlementOrder> dayRows = weekBuckets.getOrDefault(day, List.of());
-            Long dayOrders = (long) dayRows.size();
-            Long dayGmvCent = sumField(dayRows, ColonelsettlementOrder::getOrderAmount);
+            Map<String, Object> dayAggregate = trendMap.get(day);
+            Long dayOrders = asLong(dayAggregate, "order_count");
+            Long dayGmvCent = asLong(dayAggregate, "order_amount_cent");
             trend7d.add(new TrendPointVO(day.toString(), dayOrders, centToYuan(dayGmvCent)));
         }
 
@@ -175,15 +205,18 @@ public class DataController extends BaseController {
                     required = true,
                     content = @Content(examples = @ExampleObject(value = "{\"orderIds\":[\"ORDER_001\",\"ORDER_002\"]}"))
             )
-            @RequestBody DecryptOrderRequest request) {
+            @RequestBody DecryptOrderRequest request,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "username", required = false) String username) {
         if (request == null || request.getOrderIds() == null) {
             throw new BusinessException("orderIds cannot be empty");
         }
-        return ok(orderDecryptService.decryptPhones(request.getOrderIds()));
+        return ok(orderDecryptService.decryptPhones(request.getOrderIds(), userId, username));
     }
 
     @Operation(summary = "导出订单CSV", description = "按筛选条件导出订单数据页 CSV。")
     @GetMapping("/orders/exports")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public void exportOrders(
             @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
             @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -201,13 +234,12 @@ public class DataController extends BaseController {
                 : endDate.plusDays(1).atStartOfDay();
 
         QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
-        wrapper.ge("co.create_time", start)
-                .lt("co.create_time", end);
+        wrapper.ge("co.settle_time", start)
+                .lt("co.settle_time", end);
+        applyPageDataScope(wrapper, userId, deptId, dataScope);
         if (StringUtils.hasText(status)) {
             wrapper.eq("co.order_status", toOrderStatusCode(status));
         }
-
-        List<ColonelsettlementOrder> orders = orderMapper.findPageWithScope(new Page<>(1, 10000), wrapper).getRecords();
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"orders.csv\"");
@@ -215,63 +247,56 @@ public class DataController extends BaseController {
         writer.write('\ufeff');
         writer.println("订单号,商品名称,达人名称,金额,归因来源,状态,创建时间");
 
-        for (ColonelsettlementOrder order : orders) {
-            OrderVO vo = toOrderVO(order);
-            writer.printf("%s,%s,%s,%s,%s,%s,%s%n",
-                    vo.getId(),
-                    vo.getProductName(),
-                    vo.getTalentName(),
-                    vo.getAmount(),
-                    vo.getAttributionSource() == null ? "默认归属" : vo.getAttributionSource(),
-                    vo.getStatus(),
-                    vo.getCreateTime());
+        long current = 1L;
+        while (true) {
+            IPage<ColonelsettlementOrder> pageResult = orderMapper.findPageWithScope(new Page<>(current, EXPORT_BATCH_SIZE), wrapper);
+            List<ColonelsettlementOrder> orders = pageResult.getRecords();
+            if (orders == null || orders.isEmpty()) {
+                break;
+            }
+            for (ColonelsettlementOrder order : orders) {
+                OrderVO vo = toOrderVO(order);
+                writer.printf("%s,%s,%s,%s,%s,%s,%s%n",
+                        vo.getId(),
+                        vo.getProductName(),
+                        vo.getTalentName(),
+                        vo.getAmount(),
+                        vo.getAttributionSource() == null ? "默认归属" : vo.getAttributionSource(),
+                        vo.getStatus(),
+                        vo.getCreateTime());
+            }
+            if (current >= pageResult.getPages()) {
+                break;
+            }
+            current++;
         }
         writer.flush();
     }
 
-    @Operation(summary = "独家状态监控 - 达人", description = "查询达人独家状态监控数据，当前为测试演示数据接口。")
+    @Operation(summary = "独家状态监控 - 达人", description = "查询达人独家状态监控数据。当前本地 Mock 阶段未接入真实独家计算，默认返回空列表。")
     @GetMapping("/operations/exclusive-talents")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public ApiResult<List<Map<String, Object>>> getExclusiveTalentStatus() {
-        List<Map<String, Object>> mockTalents = new ArrayList<>();
-        Map<String, Object> t1 = new HashMap<>();
-        t1.put("talentName", "达人A-独家合作演示");
-        t1.put("channelName", "渠道负责人-华东组");
-        t1.put("feeRatio", "10%");
-        t1.put("sampleCount", 5);
-        t1.put("status", "ACTIVE");
-        mockTalents.add(t1);
-        return ok(mockTalents);
+        return ok(List.of());
     }
 
-    @Operation(summary = "独家状态监控 - 商家", description = "查询商家独家状态监控数据，当前为测试演示数据接口。")
+    @Operation(summary = "独家状态监控 - 商家", description = "查询商家独家状态监控数据。当前本地 Mock 阶段未接入真实独家计算，默认返回空列表。")
     @GetMapping("/operations/exclusive-merchants")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public ApiResult<List<Map<String, Object>>> getExclusiveMerchantStatus() {
-        List<Map<String, Object>> mockMerchants = new ArrayList<>();
-        Map<String, Object> m1 = new HashMap<>();
-        m1.put("merchantName", "商家A-独家合作演示");
-        m1.put("zsName", "招商负责人-美妆组");
-        m1.put("feeRatio", "20%");
-        m1.put("status", "ACTIVE");
-        mockMerchants.add(m1);
-        return ok(mockMerchants);
+        return ok(List.of());
     }
 
-    @Operation(summary = "导出活动列表CSV", description = "导出活动列表 CSV，当前为测试演示数据导出接口。")
+    @Operation(summary = "导出活动列表CSV", description = "导出活动列表 CSV。当前阶段未开放活动导出。")
     @GetMapping("/activities/exports")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public void exportActivities(
             @Parameter(description = "活动名称关键字。") @RequestParam(required = false) String activityName,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             HttpServletResponse response) throws IOException {
-
-        response.setContentType("text/csv; charset=UTF-8");
-        response.setHeader("Content-Disposition", "attachment; filename=\"activities.csv\"");
-        PrintWriter writer = response.getWriter();
-        writer.write('\ufeff');
-        writer.println("活动ID,活动名称,活动类型,状态,创建时间");
-        writer.println("1,主链路演示活动,团长活动,ACTIVE,2026-04-01 12:00:00");
-        writer.flush();
+        throw new BusinessException("活动导出暂未开放");
     }
 
     private OrderVO toOrderVO(ColonelsettlementOrder order) {
@@ -312,17 +337,6 @@ public class DataController extends BaseController {
         return count == null ? 0L : count;
     }
 
-    private Long sumField(
-            List<ColonelsettlementOrder> rows,
-            Function<ColonelsettlementOrder, Long> getter) {
-        long sum = 0L;
-        for (ColonelsettlementOrder row : rows) {
-            Long value = getter.apply(row);
-            sum += value == null ? 0L : value;
-        }
-        return sum;
-    }
-
     private Integer toOrderStatusCode(String status) {
         String normalized = status.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
@@ -352,6 +366,59 @@ public class DataController extends BaseController {
         return BigDecimal.valueOf(value).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
+    private QueryWrapper<ColonelsettlementOrder> buildScopedQuery(
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
+        wrapper.eq("deleted", 0);
+        applyScopedQueryDataScope(wrapper, userId, deptId, dataScope);
+        return wrapper;
+    }
+
+    private Map<String, Object> getSingleAggregate(QueryWrapper<ColonelsettlementOrder> wrapper) {
+        List<Map<String, Object>> rows = orderMapper.selectMaps(wrapper);
+        if (rows == null || rows.isEmpty()) {
+            return Map.of();
+        }
+        return rows.get(0);
+    }
+
+    private Long asLong(Map<String, Object> row, String key) {
+        Object value = readValue(row, key);
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value == null) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException ignore) {
+            return 0L;
+        }
+    }
+
+    private String asString(Map<String, Object> row, String key) {
+        Object value = readValue(row, key);
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private Object readValue(Map<String, Object> row, String key) {
+        if (row == null || row.isEmpty() || key == null) {
+            return null;
+        }
+        if (row.containsKey(key)) {
+            return row.get(key);
+        }
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            if (key.equalsIgnoreCase(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
     private void applyDataScope(
             LambdaQueryWrapper<ColonelsettlementOrder> wrapper,
             UUID userId,
@@ -369,6 +436,56 @@ public class DataController extends BaseController {
             case DEPT -> {
                 if (deptId != null) {
                     wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
+                }
+            }
+            case ALL -> {
+                // no filter
+            }
+        }
+    }
+
+    private void applyPageDataScope(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        switch (dataScope) {
+            case PERSONAL -> {
+                if (userId != null) {
+                    wrapper.eq("co.user_id", userId);
+                }
+            }
+            case DEPT -> {
+                if (deptId != null) {
+                    wrapper.eq("co.dept_id", deptId);
+                }
+            }
+            case ALL -> {
+                // no filter
+            }
+        }
+    }
+
+    private void applyScopedQueryDataScope(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        switch (dataScope) {
+            case PERSONAL -> {
+                if (userId != null) {
+                    wrapper.eq("user_id", userId);
+                }
+            }
+            case DEPT -> {
+                if (deptId != null) {
+                    wrapper.eq("dept_id", deptId);
                 }
             }
             case ALL -> {

@@ -16,11 +16,7 @@ import java.time.Instant;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -195,7 +191,7 @@ public class OrderSyncService {
                     order.setAttributionStatus(attribution.attributionStatus());
                     order.setAttributionRemark(attribution.attributionRemark());
                     order.setProductTitle(order.getProductName());
-                    order.setTalentName(attribution.talentUid()); // Fallback or mapping
+                    // talent_name 应由达人信息补全，此处不写入不可靠的uid值
 
                     // 补全人名
                     if (order.getChannelUserId() != null) {
@@ -219,9 +215,12 @@ public class OrderSyncService {
                     } else {
                         updated++;
                     }
-                } catch (Exception e) {
+                } catch (BusinessException e) {
                     failedCount++;
                     log.warn("Skip order during sync, reason={}, orderId={}", e.getMessage(), item.externalOrderId());
+                } catch (Exception e) {
+                    failedCount++;
+                    log.error("Unexpected error processing order, orderId={}, type={}", item.externalOrderId(), e.getClass().getSimpleName(), e);
                 }
             }
 
@@ -241,10 +240,10 @@ public class OrderSyncService {
         order.setOrderId(item.externalOrderId());
         order.setProductId(item.productId());
         order.setProductName(item.rawPayload() != null ? asString(item.rawPayload().get("product_name")) : null);
-        order.setShopId(item.merchantId() != null ? Long.parseLong(item.merchantId().replaceAll("\\D", "")) : null);
+        order.setShopId(parseMerchantId(item.merchantId()));
         order.setShopName(item.merchantName());
         order.setOrderAmount(item.orderAmount());
-        order.setActualAmount(item.orderAmount()); // Fallback
+        order.setActualAmount(resolveActualAmount(item));
         order.setSettleColonelCommission(item.serviceFee());
         order.setOrderStatus(item.orderStatus());
         order.setPickSource(item.pickSource());
@@ -257,6 +256,27 @@ public class OrderSyncService {
         order.setDeleted(0);
         order.setExtraData(item.rawPayload());
         return order;
+    }
+
+    private Long parseMerchantId(String merchantId) {
+        if (merchantId == null) {
+            return null;
+        }
+        String digits = merchantId.replaceAll("\\D", "");
+        if (digits.isEmpty()) {
+            return null;
+        }
+        return Long.parseLong(digits);
+    }
+
+    private Long resolveActualAmount(DouyinOrderGateway.DouyinOrderItem item) {
+        if (item.rawPayload() != null) {
+            Object actual = item.rawPayload().get("actual_amount");
+            if (actual instanceof Number number) {
+                return number.longValue();
+            }
+        }
+        return item.orderAmount();
     }
 
     private String firstNonBlank(String... values) {
@@ -286,141 +306,6 @@ public class OrderSyncService {
             return Long.parseLong(String.valueOf(value));
         } catch (NumberFormatException ignore) {
             return defaultValue;
-        }
-    }
-
-    private Long asLongObject(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        try {
-            return Long.parseLong(String.valueOf(value));
-        } catch (NumberFormatException ignore) {
-            return null;
-        }
-    }
-
-    private int asInt(Object value, int defaultValue) {
-        if (value == null) {
-            return defaultValue;
-        }
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        try {
-            return Integer.parseInt(String.valueOf(value));
-        } catch (NumberFormatException ignore) {
-            return defaultValue;
-        }
-    }
-
-    private boolean asBoolean(Object value) {
-        if (value instanceof Boolean bool) {
-            return bool;
-        }
-        if (value instanceof Number number) {
-            return number.intValue() == 1;
-        }
-        return Objects.equals(String.valueOf(value), "1") || Boolean.parseBoolean(String.valueOf(value));
-    }
-
-    private long resolveNextCursor(Map<String, Object> data, long currentCursor) {
-        long nextCursor = asLong(data.get("next_cursor"), -1L);
-        if (nextCursor >= 0) {
-            return nextCursor;
-        }
-        nextCursor = asLong(data.get("cursor"), -1L);
-        if (nextCursor >= 0) {
-            return nextCursor;
-        }
-        nextCursor = asLong(data.get("page"), -1L);
-        if (nextCursor >= 1) {
-            return nextCursor;
-        }
-        return currentCursor + 1;
-    }
-
-    private boolean resolveHasMore(
-            Map<String, Object> data,
-            List<Map<String, Object>> orders,
-            int count,
-            long currentCursor,
-            long nextCursor) {
-        if (data.containsKey("has_more")) {
-            return asBoolean(data.get("has_more"));
-        }
-        if (data.containsKey("more")) {
-            return asBoolean(data.get("more"));
-        }
-        if (data.containsKey("is_has_more")) {
-            return asBoolean(data.get("is_has_more"));
-        }
-        if (data.containsKey("next_cursor")) {
-            return StringUtils.hasText(asString(data.get("next_cursor")));
-        }
-        if (data.containsKey("total") && data.containsKey("page")) {
-            long total = asLong(data.get("total"), -1L);
-            long page = asLong(data.get("page"), 1L);
-            if (total >= 0 && count > 0) {
-                return page * (long) count < total;
-            }
-        }
-        if (nextCursor > currentCursor) {
-            return !orders.isEmpty();
-        }
-        return orders.size() >= count;
-    }
-
-    private LocalDateTime parseRequiredDateTime(Object value) {
-        if (value instanceof Number number) {
-            long timestamp = number.longValue();
-            if (timestamp > 1_000_000_000_000L) {
-                return LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault());
-            }
-            return LocalDateTime.ofInstant(Instant.ofEpochSecond(timestamp), ZoneId.systemDefault());
-        }
-        if (value instanceof CharSequence text) {
-            String raw = text.toString().trim();
-            if (!StringUtils.hasText(raw)) {
-                throw new com.colonel.saas.common.exception.BusinessException("Order create_time is empty and cannot be persisted");
-            }
-            if (raw.matches("^\\d{10,13}$")) {
-                long timestamp = Long.parseLong(raw);
-                if (timestamp > 1_000_000_000_000L) {
-                    return LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault());
-                }
-                return LocalDateTime.ofInstant(Instant.ofEpochSecond(timestamp), ZoneId.systemDefault());
-            }
-            try {
-                return LocalDateTime.parse(raw, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-            } catch (DateTimeParseException ignore) {
-                // continue trying compatible formats
-            }
-            try {
-                return LocalDateTime.parse(raw, DateTimeFormatter.ISO_DATE_TIME);
-            } catch (DateTimeParseException ignore) {
-                // continue trying compatible formats
-            }
-            try {
-                return LocalDateTime.parse(raw + " 00:00:00", DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-            } catch (DateTimeParseException ignore) {
-                throw new com.colonel.saas.common.exception.BusinessException("Order create_time format is invalid");
-            }
-        }
-        throw new com.colonel.saas.common.exception.BusinessException("Order create_time format is invalid");
-    }
-
-    private LocalDateTime parseOptionalDateTime(Object value) {
-        if (value == null) {
-            return null;
-        }
-        try {
-            return parseRequiredDateTime(value);
-        } catch (BusinessException ex) {
-            return null;
         }
     }
 

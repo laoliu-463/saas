@@ -4,6 +4,7 @@ import request from '../utils/request';
 export const getSamplePage = (params: any) => request.get('/samples', { params });
 export const getSampleById = (id: string) => request.get(`/samples/${id}`);
 export const createSample = (data: any) => request.post('/samples', data);
+export const checkSampleEligibility = (data: any) => request.post('/samples/eligibility-check', data);
 export const actionSample = (id: string, data: any) => request.put(`/samples/${id}/status`, data);
 export const deleteSample = (id: string) => request.delete(`/samples/${id}`);
 export const searchSampleProducts = (params: any) => request.get('/samples/product-candidates', { params });
@@ -21,3 +22,6 @@ export const searchSampleTalents = (params: {
 
 // 寄样看板
 export const getSampleBoard = () => request.get('/samples/board');
+
+// 寄样状态日志
+export const getSampleStatusLogs = (id: string) => request.get(`/samples/${id}/status-logs`);

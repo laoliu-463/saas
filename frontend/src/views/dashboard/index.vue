@@ -122,11 +122,27 @@ const applySummary = (data: any) => {
   if (!data) return
 
   if (Array.isArray(data.stats) && data.stats.length) {
+    // 后端返回标准 stats 数组格式
     stats.value = data.stats.map((s: any) => ({
       label: String(s.label || ''),
       value: String(s.value || '-'),
       trend: typeof s.trend === 'number' ? s.trend : null
     }))
+  } else {
+    // 兼容后端实际返回的 Summary 字段格式
+    const gmv = typeof data.orderAmount === 'number'
+      ? `¥${(data.orderAmount / 100).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
+      : '-'
+    const unattributed = data.unattributedOrderCount != null ? String(data.unattributedOrderCount) : '-'
+    const rate = typeof data.attributionRate === 'number'
+      ? `${(data.attributionRate * 100).toFixed(1)}%`
+      : '-'
+    stats.value = [
+      { label: '今日 GMV', value: gmv, trend: null },
+      { label: '待处理订单', value: unattributed, trend: null },
+      { label: '归因成功率', value: rate, trend: null },
+      { label: '活跃达人数', value: '-', trend: null }
+    ]
   }
 
   if (Array.isArray(data.trend) && data.trend.length) {
@@ -141,6 +157,18 @@ const applySummary = (data: any) => {
     ranking.value = data.ranking.map((r: any) => ({
       name: String(r.name || ''),
       amount: String(r.amount || '0')
+    }))
+  } else if (Array.isArray(data.colonelPerformance) && data.colonelPerformance.length) {
+    // 兼容 colonelPerformance 字段
+    ranking.value = data.colonelPerformance.map((r: any) => ({
+      name: String(r.colonelUserName || r.name || ''),
+      amount: String(r.orderAmount != null ? (r.orderAmount / 100).toFixed(0) : '0')
+    }))
+  } else if (Array.isArray(data.channelPerformance) && data.channelPerformance.length) {
+    // 兼容 channelPerformance 字段
+    ranking.value = data.channelPerformance.map((r: any) => ({
+      name: String(r.channelUserName || r.name || ''),
+      amount: String(r.orderAmount != null ? (r.orderAmount / 100).toFixed(0) : '0')
     }))
   }
 }

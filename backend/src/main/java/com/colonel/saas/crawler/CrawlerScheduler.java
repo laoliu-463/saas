@@ -21,19 +21,27 @@ public class CrawlerScheduler {
     private final CrawlerTalentInfoMapper crawlerTalentInfoMapper;
     private final int batchSize;
 
+    private final boolean crawlEnabled;
+
     public CrawlerScheduler(
             CrawlerTalentInfoService crawlerService,
             TalentMapper talentMapper,
             CrawlerTalentInfoMapper crawlerTalentInfoMapper,
-            @Value("${douyin.crawler.batch-size:100}") int batchSize) {
+            @Value("${douyin.crawler.batch-size:100}") int batchSize,
+            @Value("${talent.data.public-page-crawl-enabled:false}") boolean crawlEnabled) {
         this.crawlerService = crawlerService;
         this.talentMapper = talentMapper;
         this.crawlerTalentInfoMapper = crawlerTalentInfoMapper;
         this.batchSize = batchSize;
+        this.crawlEnabled = crawlEnabled;
     }
 
     @org.springframework.scheduling.annotation.Scheduled(cron = "0 */30 * * * *")
     public void crawlTalentInfo() {
+        if (!crawlEnabled) {
+            log.debug("Scheduled crawler skipped: public-page-crawl-enabled=false");
+            return;
+        }
         log.info("Scheduled crawler start");
         long start = System.currentTimeMillis();
         List<String> targetIds = loadTargetTalentIds();
@@ -53,6 +61,10 @@ public class CrawlerScheduler {
 
     @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 */2 * * *")
     public void updateTalentStats() {
+        if (!crawlEnabled) {
+            log.debug("Scheduled stats update skipped: public-page-crawl-enabled=false");
+            return;
+        }
         log.info("Scheduled stats update start");
         long start = System.currentTimeMillis();
         try {

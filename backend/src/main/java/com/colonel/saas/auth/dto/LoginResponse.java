@@ -125,4 +125,13 @@ public class LoginResponse {
      */
     @Schema(description = "真实姓名", example = "系统管理员")
     private String realName;
+
+    @Schema(description = "Refresh Token，用于无感刷新 Access Token")
+    private String refreshToken;
+
+    @Schema(description = "Refresh Token 有效期（秒）", example = "604800")
+    private Long refreshExpiresIn;
+
+    @Schema(description = "Access Token 有效期（秒）", example = "7200")
+    private Long accessTokenExpiresIn;
 }

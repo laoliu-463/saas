@@ -90,7 +90,7 @@ public class SysRoleController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        return ok(sysRoleService.create(request));
+        return ok(sysRoleService.create(request, userId));
     }
 
     @Operation(summary = "更新角色", description = "更新系统角色信息。")
@@ -106,7 +106,7 @@ public class SysRoleController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        return ok(sysRoleService.update(id, request));
+        return ok(sysRoleService.update(id, request, userId));
     }
 
     @Operation(summary = "删除角色", description = "删除指定角色。")
@@ -116,7 +116,7 @@ public class SysRoleController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        sysRoleService.delete(id);
+        sysRoleService.delete(id, userId);
         return ok();
     }
 }

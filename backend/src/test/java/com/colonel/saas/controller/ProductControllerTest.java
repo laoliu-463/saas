@@ -42,7 +42,7 @@ class ProductControllerTest {
         page.setTotal(1);
         when(productService.getPage(1, 10, 1)).thenReturn(page);
 
-        var response = productController.page(1, 10, 1);
+        var response = productController.pickPage(1, 10, 1);
 
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData().getTotal()).isEqualTo(1);
@@ -146,5 +146,21 @@ class ProductControllerTest {
 
         assertThat(response.getData().get("bizStatus")).isEqualTo("FOLLOWING");
         verify(productService).startTalentFollow(id, null, "达人A", "INVITED", "已发送邀约", null, userId, "操作人");
+    }
+
+    @Test
+    void page_shouldReturnSelectedLibraryProducts() {
+        Page<Product> page = new Page<>(1, 10);
+        Product product = new Product();
+        product.setName("共享商品");
+        page.setRecords(List.of(product));
+        page.setTotal(1);
+        when(productService.getSelectedLibraryPage(1, 10, "共享", null)).thenReturn(page);
+
+        var response = productController.page(1, 10, null, "共享");
+
+        assertThat(response.getData().getTotal()).isEqualTo(1);
+        assertThat(response.getData().getRecords().get(0).getName()).isEqualTo("共享商品");
+        verify(productService).getSelectedLibraryPage(1, 10, "共享", null);
     }
 }

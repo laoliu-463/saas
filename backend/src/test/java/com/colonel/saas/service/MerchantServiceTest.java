@@ -10,7 +10,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.UUID;
 
@@ -32,6 +35,16 @@ class MerchantServiceTest {
     }
 
     @Test
+    void ensureMerchantFromOrder_shouldUseDefaultTransactionPropagation() throws NoSuchMethodException {
+        Method method = MerchantService.class.getMethod("ensureMerchantFromOrder", ColonelsettlementOrder.class);
+
+        Transactional transactional = method.getAnnotation(Transactional.class);
+
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.propagation()).isEqualTo(Propagation.REQUIRED);
+    }
+
+    @Test
     void ensureMerchantFromOrder_shouldSkipWhenMerchantIdBlank() {
         ColonelsettlementOrder order = new OrderBuilder()
                 .extraData(Map.of())
@@ -50,7 +63,7 @@ class MerchantServiceTest {
         when(merchantMapper.selectOne(any())).thenReturn(existing);
 
         ColonelsettlementOrder order = new OrderBuilder()
-                .extraData(Map.of("author_id", merchantId.toString()))
+                .extraData(Map.of("merchant_id", merchantId.toString()))
                 .build();
 
         service.ensureMerchantFromOrder(order);
@@ -59,7 +72,7 @@ class MerchantServiceTest {
     }
 
     @Test
-    void ensureMerchantFromOrder_shouldInsertFromAuthorId() {
+    void ensureMerchantFromOrder_shouldInsertFromMerchantId() {
         UUID merchantId = UUID.randomUUID();
         when(merchantMapper.selectOne(any())).thenReturn(null);
 
@@ -67,7 +80,7 @@ class MerchantServiceTest {
                 .shopId(1L)
                 .shopName("Shop One")
                 .orderId("order-1")
-                .extraData(Map.of("author_id", merchantId.toString(), "author_name", "Author A"))
+                .extraData(Map.of("merchant_id", merchantId.toString(), "merchant_name", "Merchant A"))
                 .build();
 
         service.ensureMerchantFromOrder(order);
@@ -76,7 +89,7 @@ class MerchantServiceTest {
         verify(merchantMapper).insert(captor.capture());
         Merchant saved = captor.getValue();
         assertThat(saved.getMerchantId()).isEqualTo(merchantId.toString());
-        assertThat(saved.getMerchantName()).isEqualTo("Author A");
+        assertThat(saved.getMerchantName()).isEqualTo("Merchant A");
         assertThat(saved.getShopId()).isEqualTo(1L);
         assertThat(saved.getShopName()).isEqualTo("Shop One");
         assertThat(saved.getSourceOrderId()).isEqualTo("order-1");
@@ -84,14 +97,14 @@ class MerchantServiceTest {
     }
 
     @Test
-    void ensureMerchantFromOrder_shouldInsertFromMerchantIdWhenAuthorIdAbsent() {
+    void ensureMerchantFromOrder_shouldFallbackToShopIdWhenMerchantIdAbsent() {
         UUID merchantId = UUID.randomUUID();
         when(merchantMapper.selectOne(any())).thenReturn(null);
 
         ColonelsettlementOrder order = new OrderBuilder()
                 .shopId(2L)
                 .shopName("Shop Two")
-                .extraData(Map.of("merchant_id", merchantId.toString(), "merchant_name", "Merchant B"))
+                .extraData(Map.of("author_id", merchantId.toString(), "author_name", "Author B"))
                 .build();
 
         service.ensureMerchantFromOrder(order);
@@ -99,8 +112,8 @@ class MerchantServiceTest {
         ArgumentCaptor<Merchant> captor = ArgumentCaptor.forClass(Merchant.class);
         verify(merchantMapper).insert(captor.capture());
         Merchant saved = captor.getValue();
-        assertThat(saved.getMerchantId()).isEqualTo(merchantId.toString());
-        assertThat(saved.getMerchantName()).isEqualTo("Merchant B");
+        assertThat(saved.getMerchantId()).isEqualTo("2");
+        assertThat(saved.getMerchantName()).isEqualTo("Shop Two");
     }
 
     @Test
@@ -126,7 +139,7 @@ class MerchantServiceTest {
         when(merchantMapper.selectOne(any())).thenReturn(null);
 
         ColonelsettlementOrder order = new OrderBuilder()
-                .extraData(Map.of("author_id", UUID.randomUUID().toString()))
+                .extraData(Map.of("merchant_id", UUID.randomUUID().toString()))
                 .build();
 
         doThrow(new DuplicateKeyException("duplicate")).when(merchantMapper).insert(any(Merchant.class));

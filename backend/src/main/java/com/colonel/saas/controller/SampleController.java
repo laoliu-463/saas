@@ -8,6 +8,7 @@ import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.common.exception.ValidateException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
@@ -19,16 +20,20 @@ import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
+import com.colonel.saas.entity.SampleStatusLog;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
+import com.colonel.saas.mapper.SampleStatusLogMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.CrawlerTalentInfoService;
+import com.colonel.saas.service.BusinessRuleConfigService;
 import com.colonel.saas.service.SampleStatusLogService;
+import com.colonel.saas.service.SampleEligibilityService;
 import com.colonel.saas.vo.SampleTalentVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -75,6 +80,8 @@ import java.util.stream.Collectors;
 public class SampleController extends BaseController {
 
     private static final DateTimeFormatter REQUEST_NO_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final long BOARD_BATCH_SIZE = 2000L;
+    private static final long PRODUCT_KEYWORD_BATCH_SIZE = 500L;
 
     private final SampleRequestMapper sampleRequestMapper;
     private final ProductMapper productMapper;
@@ -83,7 +90,10 @@ public class SampleController extends BaseController {
     private final SysUserMapper sysUserMapper;
     private final TalentMapper talentMapper;
     private final SampleStatusLogService sampleStatusLogService;
+    private final SampleStatusLogMapper sampleStatusLogMapper;
     private final CrawlerTalentInfoService crawlerTalentInfoService;
+    private final BusinessRuleConfigService businessRuleConfigService;
+    private final SampleEligibilityService sampleEligibilityService;
 
     public SampleController(
             SampleRequestMapper sampleRequestMapper,
@@ -93,7 +103,10 @@ public class SampleController extends BaseController {
             SysUserMapper sysUserMapper,
             TalentMapper talentMapper,
             SampleStatusLogService sampleStatusLogService,
-            CrawlerTalentInfoService crawlerTalentInfoService) {
+            SampleStatusLogMapper sampleStatusLogMapper,
+            CrawlerTalentInfoService crawlerTalentInfoService,
+            BusinessRuleConfigService businessRuleConfigService,
+            SampleEligibilityService sampleEligibilityService) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productMapper = productMapper;
         this.productOperationStateMapper = productOperationStateMapper;
@@ -101,7 +114,10 @@ public class SampleController extends BaseController {
         this.sysUserMapper = sysUserMapper;
         this.talentMapper = talentMapper;
         this.sampleStatusLogService = sampleStatusLogService;
+        this.sampleStatusLogMapper = sampleStatusLogMapper;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
+        this.businessRuleConfigService = businessRuleConfigService;
+        this.sampleEligibilityService = sampleEligibilityService;
     }
 
     @Operation(summary = "创建寄样申请", description = "发起寄样申请并初始化寄样状态，用于达人寄样闭环的起点。")
@@ -120,8 +136,11 @@ public class SampleController extends BaseController {
         CrawlerTalentInfo talentInfo = requireCrawlerTalent(request.getTalentId());
         Talent talent = findOrCreateTalentFromCrawler(talentInfo);
         checkSevenDaysLimit(userId, talent.getId(), product.getId(), roleCodes);
+        ensureEligibilityReasonIfNeeded(request, talent, talentInfo);
 
         SampleRequest sample = new SampleRequest();
+        UUID currentDeptId = resolveUserDeptId(userId);
+        sample.setId(UUID.randomUUID());
         sample.setRequestNo(generateRequestNo());
         sample.setTalentId(talent.getId());
         sample.setTalentUid(talentInfo.getTalentId());
@@ -131,7 +150,9 @@ public class SampleController extends BaseController {
         sample.setTalentMainCategory(StringUtils.hasText(request.getTalentMainCategory()) ? request.getTalentMainCategory() : talentInfo.getMainCategory());
         sample.setProductId(product.getId());
         sample.setUserId(userId);
+        sample.setDeptId(currentDeptId);
         sample.setChannelUserId(userId);
+        sample.setChannelDeptId(currentDeptId);
         sample.setExpectedSampleNum(request.getQuantity());
         sample.setActualSampleNum(0);
         sample.setStatus(SampleStatus.PENDING_AUDIT.code);
@@ -139,7 +160,16 @@ public class SampleController extends BaseController {
         sampleRequestMapper.insert(sample);
         sampleStatusLogService.log(sample.getId(), null, sample.getStatus(), userId, "create sample request");
 
-        return ok(toVO(sample, product.getName(), sample.getTalentNickname()));
+        return ok(toVO(sample, product, product.getName(), sample.getTalentNickname()));
+    }
+
+    @Operation(summary = "寄样资格预检", description = "按当前寄样默认标准检查达人是否满足要求；不满足时前端需提醒并要求填写申请原因。")
+    @PostMapping("/eligibility-check")
+    public ApiResult<SampleEligibilityCheckVO> checkEligibility(
+            @Valid @RequestBody SampleApplyRequest request) {
+        CrawlerTalentInfo talentInfo = requireCrawlerTalent(request.getTalentId());
+        Talent talent = findOrCreateTalentFromCrawler(talentInfo);
+        return ok(toEligibilityVO(sampleEligibilityService.evaluate(talent, talentInfo)));
     }
 
     @Operation(summary = "寄样分页", description = "分页查询寄样申请列表，用于寄样业务页面。")
@@ -158,11 +188,7 @@ public class SampleController extends BaseController {
             wrapper.eq("status", parseStatus(status).code);
         }
         if (StringUtils.hasText(keyword)) {
-            Set<UUID> matchedProductIds = new HashSet<>(productMapper.selectList(
-                    new QueryWrapper<Product>()
-                            .select("id")
-                            .like("name", keyword.trim())
-            ).stream().map(Product::getId).toList());
+            Set<UUID> matchedProductIds = loadMatchedProductIds(keyword.trim());
             wrapper.and(query -> {
                 query.like("talent_nickname", keyword.trim())
                         .or()
@@ -183,6 +209,7 @@ public class SampleController extends BaseController {
         List<SampleVO> records = samplePage.getRecords().stream()
                 .map(item -> toVO(
                         item,
+                        productMap.get(item.getProductId()),
                         productMap.get(item.getProductId()) == null ? null : productMap.get(item.getProductId()).getName(),
                         item.getTalentNickname()))
                 .toList();
@@ -233,9 +260,8 @@ public class SampleController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        LambdaQueryWrapper<SampleRequest> wrapper = new LambdaQueryWrapper<>();
-        wrapper.orderByDesc(SampleRequest::getCreateTime);
-        List<SampleRequest> allSamples = sampleRequestMapper.selectList(wrapper);
+        QueryWrapper<SampleRequest> wrapper = new QueryWrapper<>();
+        List<SampleRequest> allSamples = loadBoardSamples(wrapper);
 
         Map<UUID, Product> productMap = loadProducts(allSamples.stream()
                 .map(SampleRequest::getProductId)
@@ -257,16 +283,63 @@ public class SampleController extends BaseController {
         return ok(board);
     }
 
+    private List<SampleRequest> loadBoardSamples(QueryWrapper<SampleRequest> wrapper) {
+        List<SampleRequest> result = new ArrayList<>();
+        long current = 1L;
+        while (true) {
+            IPage<SampleRequest> scopedPage = sampleRequestMapper.findPageWithScope(new Page<>(current, BOARD_BATCH_SIZE), wrapper);
+            List<SampleRequest> records = scopedPage.getRecords();
+            if (records == null || records.isEmpty()) {
+                break;
+            }
+            result.addAll(records);
+            if (current >= scopedPage.getPages()) {
+                break;
+            }
+            current++;
+        }
+        return result;
+    }
+
     @Operation(summary = "寄样详情", description = "查询单个寄样申请详情。")
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}")
     public ApiResult<SampleVO> getSampleById(
-            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id) {
-        SampleRequest sample = requireSample(id);
+            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        SampleRequest sample = requireSample(id, userId, deptId, dataScope);
         Product product = productMapper.selectById(sample.getProductId());
         return ok(toVO(
                 sample,
+                product,
                 product == null ? null : product.getName(),
                 sample.getTalentNickname()));
+    }
+
+    @Operation(summary = "寄样状态日志", description = "查询寄样申请的状态变更历史记录。")
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/status-logs")
+    public ApiResult<List<StatusLogVO>> getStatusLogs(
+            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        requireSample(id, userId, deptId, dataScope);
+        List<SampleStatusLog> logs = sampleStatusLogMapper.selectList(
+                new LambdaQueryWrapper<SampleStatusLog>()
+                        .eq(SampleStatusLog::getRequestId, id)
+                        .orderByDesc(SampleStatusLog::getOperateTime));
+        List<StatusLogVO> voList = logs.stream().map(log -> {
+            StatusLogVO vo = new StatusLogVO();
+            vo.setId(log.getId());
+            vo.setFromStatus(log.getFromStatus() == null ? null : SampleStatus.fromCode(log.getFromStatus()).apiStatus);
+            vo.setToStatus(log.getToStatus() == null ? null : SampleStatus.fromCode(log.getToStatus()).apiStatus);
+            vo.setOperatorName(resolveUserDisplayName(log.getOperatorId()));
+            vo.setOperateTime(log.getOperateTime());
+            vo.setRemark(log.getRemark());
+            return vo;
+        }).toList();
+        return ok(voList);
     }
 
     @Operation(summary = "寄样状态流转", description = "推进寄样申请状态机。动作值必须符合当前状态允许的流转规则。")
@@ -280,12 +353,16 @@ public class SampleController extends BaseController {
                     content = @Content(examples = @ExampleObject(value = "{\"action\":\"SHIPPING\",\"trackingNo\":\"SF1234567890\",\"reason\":\"顺丰发出\"}"))
             )
             @Valid @RequestBody SampleActionRequest request,
-            @RequestAttribute("userId") UUID userId) {
-        SampleRequest sample = requireSample(id);
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        SampleRequest sample = requireSample(id, userId, deptId, dataScope);
         LocalDateTime now = LocalDateTime.now();
         int fromStatus = sample.getStatus();
         SampleStatus current = SampleStatus.fromCode(fromStatus);
         String action = normalizeAction(request.getAction());
+        ensureActionRolePermission(action, roleCodes);
 
         if ("PENDING_SHIP".equals(action)) {
             ensureTransition(current, SampleStatus.PENDING_AUDIT);
@@ -331,6 +408,7 @@ public class SampleController extends BaseController {
         Product product = productMapper.selectById(sample.getProductId());
         return ok(toVO(
                 sample,
+                product,
                 product == null ? null : product.getName(),
                 sample.getTalentNickname()));
     }
@@ -338,8 +416,11 @@ public class SampleController extends BaseController {
     @Operation(summary = "删除寄样", description = "删除寄样申请。仅待审核或已拒绝的寄样单允许删除。")
     @DeleteMapping("/{id:[0-9a-fA-F\\-]{36}}")
     public ApiResult<Void> deleteSample(
-            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id) {
-        SampleRequest sample = requireSample(id);
+            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        SampleRequest sample = requireSample(id, userId, deptId, dataScope);
         SampleStatus status = SampleStatus.fromCode(sample.getStatus());
         if (status != SampleStatus.PENDING_AUDIT && status != SampleStatus.REJECTED) {
             throw new BusinessException("Only pending/rejected sample can be deleted");
@@ -354,12 +435,57 @@ public class SampleController extends BaseController {
         }
     }
 
-    private SampleRequest requireSample(UUID id) {
+    private SampleRequest requireSample(UUID id, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
         SampleRequest sample = sampleRequestMapper.selectById(id);
         if (sample == null) {
             throw new BusinessException("Sample request not found");
         }
+        assertCanAccessSample(sample, currentUserId, currentDeptId, dataScope);
         return sample;
+    }
+
+    private void assertCanAccessSample(SampleRequest sample, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
+        if (sample == null || dataScope == null || dataScope == DataScope.ALL) {
+            return;
+        }
+        if (dataScope == DataScope.PERSONAL) {
+            if (currentUserId == null || !currentUserId.equals(sample.getChannelUserId())) {
+                throw new ForbiddenException("无权访问该寄样单");
+            }
+            return;
+        }
+        UUID ownerDeptId = sample.getDeptId();
+        if (ownerDeptId == null) {
+            ownerDeptId = resolveUserDeptId(sample.getChannelUserId());
+        }
+        if (currentDeptId == null || ownerDeptId == null || !currentDeptId.equals(ownerDeptId)) {
+            throw new ForbiddenException("无权访问该寄样单");
+        }
+    }
+
+    private UUID resolveUserDeptId(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        SysUser user = sysUserMapper.selectById(userId);
+        return user == null ? null : user.getDeptId();
+    }
+
+    private void ensureActionRolePermission(String action, Object roleCodes) {
+        switch (action) {
+            case "PENDING_SHIP", "REJECTED" -> {
+                if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF)) {
+                    throw new ForbiddenException("仅招商角色可以审核寄样");
+                }
+            }
+            case "SHIPPING", "DELIVERED", "PENDING_HOMEWORK", "COMPLETED", "CLOSED" -> {
+                if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
+                    throw new ForbiddenException("仅运营角色可以推进物流与完结状态");
+                }
+            }
+            default -> {
+            }
+        }
     }
 
     private Product requireProduct(UUID productId) {
@@ -408,7 +534,11 @@ public class SampleController extends BaseController {
         if (isExemptFromSevenDaysLimit(roleCodes)) {
             return;
         }
-        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
+        if (!businessRuleConfigService.isSampleRestrictEnabled()) {
+            return;
+        }
+        int restrictDays = businessRuleConfigService.getSampleRestrictDays();
+        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(restrictDays);
         Long count = sampleRequestMapper.selectCount(new LambdaQueryWrapper<SampleRequest>()
                 .eq(SampleRequest::getChannelUserId, userId)
                 .eq(SampleRequest::getTalentId, talentId)
@@ -416,7 +546,7 @@ public class SampleController extends BaseController {
                 .ne(SampleRequest::getStatus, SampleStatus.REJECTED.code)
                 .ge(SampleRequest::getCreateTime, sevenDaysAgo));
         if (count != null && count > 0) {
-            throw new BusinessException("Duplicate sample request is blocked within 7 days");
+            throw new BusinessException("Duplicate sample request is blocked within " + restrictDays + " days");
         }
     }
 
@@ -451,6 +581,56 @@ public class SampleController extends BaseController {
                 || RoleCodes.CHANNEL_LEADER.equals(roleCode);
     }
 
+    private boolean hasAnyRole(Object roleCodes, String... expectedRoles) {
+        if (roleCodes == null || expectedRoles == null || expectedRoles.length == 0) {
+            return false;
+        }
+        Set<String> expected = java.util.Arrays.stream(expectedRoles)
+                .map(role -> role == null ? "" : role.trim().toLowerCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+        if (roleCodes instanceof Collection<?> collection) {
+            return collection.stream()
+                    .map(item -> item == null ? "" : item.toString().trim().toLowerCase(Locale.ROOT))
+                    .anyMatch(expected::contains);
+        }
+        String raw = roleCodes.toString();
+        if (!StringUtils.hasText(raw)) {
+            return false;
+        }
+        String normalized = raw.trim().toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("[") && normalized.endsWith("]")) {
+            normalized = normalized.substring(1, normalized.length() - 1);
+        }
+        for (String role : normalized.split(",")) {
+            if (expected.contains(role.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void ensureEligibilityReasonIfNeeded(SampleApplyRequest request, Talent talent, CrawlerTalentInfo talentInfo) {
+        SampleEligibilityService.EligibilityResult result = sampleEligibilityService.evaluate(talent, talentInfo);
+        if (result.eligible()) {
+            return;
+        }
+        if (!StringUtils.hasText(request.getRemark())) {
+            throw new BusinessException("达人未满足默认寄样标准，请先填写申请原因后再提交");
+        }
+    }
+
+    private SampleEligibilityCheckVO toEligibilityVO(SampleEligibilityService.EligibilityResult result) {
+        SampleEligibilityCheckVO vo = new SampleEligibilityCheckVO();
+        vo.setEligible(result.eligible());
+        vo.setNeedReason(!result.eligible());
+        vo.setReasons(result.reasons());
+        vo.setMin30DaySales(result.standard().min30DaySales());
+        vo.setMinLevel(result.standard().minLevel());
+        vo.setCurrent30DaySales(result.actual().monthlySales());
+        vo.setCurrentLevel(result.actual().level());
+        return vo;
+    }
+
     private String generateRequestNo() {
         String date = LocalDateTime.now().format(REQUEST_NO_DATE);
         String unique = UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
@@ -469,9 +649,41 @@ public class SampleController extends BaseController {
         return map;
     }
 
-    private SampleVO toVO(SampleRequest sample, String productName, String talentName) {
-        Product product = sample.getProductId() == null ? null : productMapper.selectById(sample.getProductId());
-        UUID colonelUserId = resolveColonelUserId(product);
+    private Set<UUID> loadMatchedProductIds(String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return Set.of();
+        }
+        Set<UUID> matched = new HashSet<>();
+        long current = 1L;
+        while (true) {
+            Page<Product> page = new Page<>(current, PRODUCT_KEYWORD_BATCH_SIZE);
+            QueryWrapper<Product> wrapper = new QueryWrapper<Product>()
+                    .select("id")
+                    .and(query -> query.like("name", keyword).or().like("product_id", keyword));
+            IPage<Product> result = productMapper.selectPage(page, wrapper);
+            List<Product> records = result.getRecords();
+            if (records == null || records.isEmpty()) {
+                break;
+            }
+            for (Product product : records) {
+                if (product.getId() != null) {
+                    matched.add(product.getId());
+                }
+            }
+            if (current >= result.getPages()) {
+                break;
+            }
+            current++;
+        }
+        return matched;
+    }
+
+    private SampleVO toVO(SampleRequest sample, Product product, String productName, String talentName) {
+        Product resolvedProduct = product;
+        if (resolvedProduct == null && sample.getProductId() != null) {
+            resolvedProduct = productMapper.selectById(sample.getProductId());
+        }
+        UUID colonelUserId = resolveColonelUserId(resolvedProduct);
         SampleVO vo = new SampleVO();
         vo.setId(sample.getId());
         vo.setRequestNo(sample.getRequestNo());
@@ -875,6 +1087,31 @@ public class SampleController extends BaseController {
         }
     }
 
+    public static class SampleEligibilityCheckVO {
+        private boolean eligible;
+        private boolean needReason;
+        private List<String> reasons;
+        private Long min30DaySales;
+        private String minLevel;
+        private Long current30DaySales;
+        private String currentLevel;
+
+        public boolean isEligible() { return eligible; }
+        public void setEligible(boolean eligible) { this.eligible = eligible; }
+        public boolean isNeedReason() { return needReason; }
+        public void setNeedReason(boolean needReason) { this.needReason = needReason; }
+        public List<String> getReasons() { return reasons; }
+        public void setReasons(List<String> reasons) { this.reasons = reasons; }
+        public Long getMin30DaySales() { return min30DaySales; }
+        public void setMin30DaySales(Long min30DaySales) { this.min30DaySales = min30DaySales; }
+        public String getMinLevel() { return minLevel; }
+        public void setMinLevel(String minLevel) { this.minLevel = minLevel; }
+        public Long getCurrent30DaySales() { return current30DaySales; }
+        public void setCurrent30DaySales(Long current30DaySales) { this.current30DaySales = current30DaySales; }
+        public String getCurrentLevel() { return currentLevel; }
+        public void setCurrentLevel(String currentLevel) { this.currentLevel = currentLevel; }
+    }
+
     public static class SampleBoardCard {
         private UUID id;
         private String requestNo;
@@ -916,5 +1153,27 @@ public class SampleController extends BaseController {
         public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
         public LocalDateTime getStateEnterTime() { return stateEnterTime; }
         public void setStateEnterTime(LocalDateTime stateEnterTime) { this.stateEnterTime = stateEnterTime; }
+    }
+
+    public static class StatusLogVO {
+        private UUID id;
+        private String fromStatus;
+        private String toStatus;
+        private String operatorName;
+        private LocalDateTime operateTime;
+        private String remark;
+
+        public UUID getId() { return id; }
+        public void setId(UUID id) { this.id = id; }
+        public String getFromStatus() { return fromStatus; }
+        public void setFromStatus(String fromStatus) { this.fromStatus = fromStatus; }
+        public String getToStatus() { return toStatus; }
+        public void setToStatus(String toStatus) { this.toStatus = toStatus; }
+        public String getOperatorName() { return operatorName; }
+        public void setOperatorName(String operatorName) { this.operatorName = operatorName; }
+        public LocalDateTime getOperateTime() { return operateTime; }
+        public void setOperateTime(LocalDateTime operateTime) { this.operateTime = operateTime; }
+        public String getRemark() { return remark; }
+        public void setRemark(String remark) { this.remark = remark; }
     }
 }

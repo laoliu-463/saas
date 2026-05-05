@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 @Tag(name = "系统用户", description = "系统后台用户管理接口，包括分页、详情、新增、编辑、删除、重置密码与分配角色。")
@@ -53,6 +54,16 @@ public class SysUserController extends BaseController {
         return okPage(sysUserService.findPage(userId, dataScope, request));
     }
 
+    @Operation(summary = "查询可分配负责人候选", description = "返回可用于商品分配招商弹窗的负责人候选，仅暴露最小必要字段。")
+    @GetMapping("/assignable")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    public ApiResult<List<SysUserVO>> assignable(
+            @Parameter(description = "负责人关键字，匹配用户名或姓名。") String keyword,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId) {
+        return ok(sysUserService.findAssignableUsers(keyword, roleCodes, deptId));
+    }
+
     @Operation(summary = "用户详情", description = "查询单个系统用户详情。")
     @GetMapping("/{id}")
     public ApiResult<SysUserVO> detail(
@@ -73,7 +84,7 @@ public class SysUserController extends BaseController {
             @Valid @RequestBody SysUserCreateRequest request,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        return ok(sysUserService.create(request));
+        return ok(sysUserService.create(request, userId));
     }
 
     @Operation(summary = "更新用户", description = "更新系统用户的基础资料。")

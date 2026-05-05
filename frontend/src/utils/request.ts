@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { createDiscreteApi } from 'naive-ui';
+import { useAuthStore } from '../stores/auth';
 
 const { loadingBar, message: discreteMessage } = createDiscreteApi(['loadingBar', 'message']);
 
@@ -13,6 +14,23 @@ const request = axios.create({
   baseURL: '/api',
   timeout: 10000,
 });
+
+const refreshClient = axios.create({
+  baseURL: '/api',
+  timeout: 10000,
+});
+
+let refreshPromise: Promise<string | null> | null = null;
+
+const isAuthLoginRequest = (configOrError: any): boolean => {
+  const url = String(configOrError?.url || configOrError?.config?.url || '');
+  return url.includes('/auth/login');
+};
+
+const isAuthRefreshRequest = (configOrError: any): boolean => {
+  const url = String(configOrError?.url || configOrError?.config?.url || '');
+  return url.includes('/auth/refresh');
+};
 
 const isValidToken = (token: unknown): token is string => {
   if (typeof token !== 'string') return false;
@@ -81,6 +99,64 @@ const buildFriendlyErrorMessage = (error: any): string => {
   return '请求失败，请稍后重试';
 };
 
+const clearStoredAuth = () => {
+  try {
+    useAuthStore().clearAuth();
+  } catch (_error) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('refreshExpiresIn');
+    localStorage.removeItem('accessTokenExpiresIn');
+    localStorage.removeItem('userInfo');
+  }
+};
+
+const redirectToLogin = () => {
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login';
+  }
+};
+
+const performTokenRefresh = async (): Promise<string | null> => {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!isValidToken(refreshToken)) {
+    return null;
+  }
+  if (!refreshPromise) {
+    refreshPromise = refreshClient
+      .post('/auth/refresh', { refreshToken })
+      .then((response) => {
+        const payload = response?.data?.data;
+        const accessToken = String(payload?.accessToken || '').trim();
+        if (!accessToken) {
+          throw new Error('刷新接口未返回 access token');
+        }
+        useAuthStore().updateTokens({
+          token: accessToken,
+          refreshToken: payload?.refreshToken || refreshToken,
+          refreshExpiresIn: payload?.refreshExpiresIn ?? null,
+          accessTokenExpiresIn: payload?.accessTokenExpiresIn ?? null
+        });
+        return accessToken;
+      })
+      .catch((error) => {
+        clearStoredAuth();
+        throw error;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+};
+
+const shouldTryRefresh = (configOrError: any): boolean => {
+  if (isAuthLoginRequest(configOrError) || isAuthRefreshRequest(configOrError)) {
+    return false;
+  }
+  return isValidToken(localStorage.getItem('refreshToken'));
+};
+
 request.interceptors.request.use(
   (config) => {
     loadingBar.start();
@@ -91,6 +167,12 @@ request.interceptors.request.use(
       headers['Authorization'] = `Bearer ${token}`;
     } else {
       delete headers['Authorization'];
+      if (!isAuthLoginRequest(config)) {
+        loadingBar.error();
+        clearStoredAuth();
+        redirectToLogin();
+        return Promise.reject(new axios.Cancel('缺少登录态，已阻止未授权请求'));
+      }
     }
     if (config.method?.toUpperCase() === 'GET') {
       config.params = {
@@ -117,12 +199,15 @@ request.interceptors.response.use(
     }
     const businessCode = response?.data?.code;
     if (businessCode === 401) {
-      loadingBar.finish();
-      localStorage.removeItem('token');
-      localStorage.removeItem('userInfo');
-      discreteMessage.error('登录已过期，请重新登录');
-      window.location.href = '/login';
-      return Promise.reject(response.data);
+      return Promise.reject({
+        __business401: true,
+        response: {
+          ...response,
+          status: 401
+        },
+        config: response.config,
+        data: response.data
+      });
     }
     if (typeof businessCode === 'number' && businessCode !== 200) {
       loadingBar.error();
@@ -133,13 +218,38 @@ request.interceptors.response.use(
     loadingBar.finish();
     return response.data;
   },
-  (error) => {
+  async (error) => {
+    if (axios.isCancel(error)) {
+      return Promise.reject(error);
+    }
+    const originalRequest = error?.config;
+    const isUnauthorized = error?.response?.status === 401 || error?.__business401 === true;
+    if (isUnauthorized && originalRequest && !originalRequest.__isRetryRequest && shouldTryRefresh(error)) {
+      originalRequest.__isRetryRequest = true;
+      try {
+        const nextToken = await performTokenRefresh();
+        if (isValidToken(nextToken)) {
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${nextToken}`;
+          return request(originalRequest);
+        }
+      } catch (_refreshError) {
+        loadingBar.error();
+        if (!isAuthLoginRequest(error)) {
+          discreteMessage.error('登录已过期，请重新登录');
+          redirectToLogin();
+        }
+        return Promise.reject(_refreshError);
+      }
+    }
     loadingBar.error();
     const msg = buildFriendlyErrorMessage(error);
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      discreteMessage.error('登录失效或未授权，请重新登录');
-      window.location.href = '/login';
+    if (isUnauthorized) {
+      clearStoredAuth();
+      if (!isAuthLoginRequest(error)) {
+        discreteMessage.error('登录失效或未授权，请重新登录');
+        redirectToLogin();
+      }
     } else {
       discreteMessage.error(msg);
     }

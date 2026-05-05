@@ -17,7 +17,7 @@
           <div class="action-bar">
             <n-space>
               <n-button
-                v-if="detail.bizStatus === 'PENDING_AUDIT' && canDo('audit')"
+                v-if="!libraryMode && detail.bizStatus === 'PENDING_AUDIT' && canDo('audit')"
                 type="warning"
                 size="small"
                 secondary
@@ -26,7 +26,7 @@
                 审核商品
               </n-button>
               <n-button
-                v-if="['APPROVED', 'BOUND'].includes(detail.bizStatus) && canDo('assign')"
+                v-if="!libraryMode && ['APPROVED', 'BOUND'].includes(detail.bizStatus) && canDo('assign')"
                 type="info"
                 size="small"
                 secondary
@@ -34,6 +34,18 @@
               >
                 分配招商
               </n-button>
+              <n-button
+                v-if="pickMode && canPutIntoLibrary && hasLibraryEntrySource(detail) && !detail.selectedToLibrary"
+                type="success"
+                size="small"
+                secondary
+                @click="handleAction('putIntoLibrary')"
+              >
+                加入商品库
+              </n-button>
+              <n-tag v-else-if="detail.selectedToLibrary" type="success" size="small" round>
+                已入商品库
+              </n-tag>
             </n-space>
           </div>
 
@@ -220,6 +232,34 @@
                 </div>
 
                 <n-descriptions label-placement="top" :column="1" bordered size="small">
+                  <n-descriptions-item label="审核补充信息">
+                    <n-descriptions label-placement="left" :column="2" size="small">
+                      <n-descriptions-item label="专属价说明">
+                        {{ auditSupplement.exclusivePriceRemark || '-' }}
+                      </n-descriptions-item>
+                      <n-descriptions-item label="发货信息">
+                        {{ auditSupplement.shippingInfo || '-' }}
+                      </n-descriptions-item>
+                      <n-descriptions-item label="是否支持投流">
+                        {{ auditSupplement.supportsAds === true ? '支持' : auditSupplement.supportsAds === false ? '不支持' : '-' }}
+                      </n-descriptions-item>
+                      <n-descriptions-item label="活动时间">
+                        {{ auditSupplement.campaignTimeRemark || '-' }}
+                      </n-descriptions-item>
+                      <n-descriptions-item label="奖励说明" :span="2">
+                        {{ auditSupplement.rewardRemark || '-' }}
+                      </n-descriptions-item>
+                      <n-descriptions-item label="参与要求" :span="2">
+                        {{ auditSupplement.participationRequirements || '-' }}
+                      </n-descriptions-item>
+                      <n-descriptions-item label="手卡素材" :span="2">
+                        <div v-if="auditMaterialFiles.length" class="material-file-list">
+                          <div v-for="file in auditMaterialFiles" :key="file">{{ file }}</div>
+                        </div>
+                        <span v-else>-</span>
+                      </n-descriptions-item>
+                    </n-descriptions>
+                  </n-descriptions-item>
                   <n-descriptions-item label="核心卖点">
                     <ul class="material-list">
                       <li v-for="point in materialSellingPoints" :key="point">{{ point }}</li>
@@ -260,6 +300,9 @@ const props = defineProps<{
   activityId: string | number | null;
   productId: string | number | null;
   refreshKey?: number;
+  pickMode?: boolean;
+  libraryMode?: boolean;
+  canPutIntoLibrary?: boolean;
 }>();
 
 const emit = defineEmits(['update:show', 'action']);
@@ -309,6 +352,13 @@ const promotion = computed(() => detail.value?.promotion || {
 const materialSellingPoints = computed(() => {
   const points = detail.value?.promotionMaterialPack?.sellingPoints;
   return Array.isArray(points) && points.length ? points : ['暂无可展示的推广卖点'];
+});
+
+const auditSupplement = computed(() => detail.value?.auditSupplement || {});
+
+const auditMaterialFiles = computed(() => {
+  const files = auditSupplement.value?.materialFiles;
+  return Array.isArray(files) && files.length ? files : [];
 });
 
 const promotionLinks = computed(() => {
@@ -587,6 +637,8 @@ const handleAction = (action: string) => {
   emit('action', { action, row: detail.value });
 };
 
+const hasLibraryEntrySource = (row: any) => Boolean(row?.sourceActivityId || row?.activityId)
+
 const saveDecision = async () => {
   if (!props.activityId || !props.productId) {
     message.warning('商品信息不完整，暂不可保存判断');
@@ -689,9 +741,9 @@ const formatPercent = (value?: number | string | null) => {
 
 <style scoped>
 .drawer-header { padding-bottom: 8px; border-bottom: 1px solid var(--border-color); }
-.drawer-title { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+.drawer-title { font-size: var(--text-xl); font-weight: 600; color: var(--text-primary); }
 .detail-container { display: flex; flex-direction: column; gap: 16px; }
-.action-bar { padding: 12px; background: #f8f9fb; border-radius: 8px; border: 1px dashed #dcdfe6; }
+.action-bar { padding: 12px; background: var(--bg-sidebar); border-radius: var(--radius-md); border: 1px dashed var(--border-color); }
 .pane-content { padding: 16px 4px; }
 .biz-steps { margin: 20px 0 32px; padding: 4px 2px 0; }
 .biz-steps :deep(.n-step) {
@@ -725,38 +777,39 @@ const formatPercent = (value?: number | string | null) => {
 .status-alert { margin-bottom: 20px; }
 .decision-card { display: flex; flex-direction: column; gap: 14px; }
 .decision-current { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.decision-reason { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.decision-reason { color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.5; }
 .decision-risk-content { display: flex; flex-direction: column; gap: 8px; }
 .decision-risk-actions { margin: 0; padding-left: 18px; color: var(--text-secondary); line-height: 1.6; }
 .decision-risk-note { color: var(--text-primary); font-weight: 600; line-height: 1.6; }
 .decision-form { display: flex; flex-direction: column; gap: 10px; }
 .decision-actions { display: flex; justify-content: flex-end; }
 .basic-info-grid { display: flex; gap: 24px; }
-.info-image { flex-shrink: 0; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; padding: 4px; background: #fff; }
+.info-image { flex-shrink: 0; border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; padding: 4px; background: var(--bg-card); }
 .info-main { flex: 1; }
-.product-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0; line-height: 1.4; }
+.product-title { font-size: var(--text-base); font-weight: 600; color: var(--text-primary); margin: 0; line-height: 1.4; }
 .highlight-text { color: var(--color-primary); font-weight: 600; }
-.summary-panel { margin-top: 16px; padding: 16px; background: #f8f9fb; border-radius: 8px; }
+.summary-panel { margin-top: 16px; padding: 16px; background: var(--bg-sidebar); border-radius: var(--radius-md); }
 .timeline-list { display: flex; flex-direction: column; gap: 14px; }
 .timeline-item { display: flex; gap: 12px; align-items: flex-start; }
-.timeline-marker { width: 10px; height: 10px; border-radius: 999px; margin-top: 6px; background: #94a3b8; flex-shrink: 0; }
-.marker-assign { background: #2563eb; }
-.marker-audit { background: #f59e0b; }
-.marker-decision { background: #0f766e; }
+.timeline-marker { width: 10px; height: 10px; border-radius: var(--radius-full); margin-top: 6px; background: var(--text-muted); flex-shrink: 0; }
+.marker-assign { background: var(--color-info); }
+.marker-audit { background: var(--color-warning); }
+.marker-decision { background: var(--color-success); }
 .marker-promotion_link,
-.marker-link { background: #16a34a; }
+.marker-link { background: var(--color-success); }
 .marker-talent_follow,
-.marker-talent_follow_append { background: #7c3aed; }
-.marker-sync { background: #64748b; }
+.marker-talent_follow_append { background: var(--color-primary); }
+.marker-sync { background: var(--text-secondary); }
 .timeline-body { flex: 1; min-width: 0; }
 .timeline-title-row { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
 .timeline-title { font-weight: 600; color: var(--text-primary); }
-.timeline-time { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
-.timeline-meta { color: var(--text-secondary); margin-top: 2px; font-size: 13px; }
-.timeline-remark { color: var(--text-muted); margin-top: 4px; font-size: 12px; }
+.timeline-time { color: var(--text-muted); font-size: var(--text-xs); white-space: nowrap; }
+.timeline-meta { color: var(--text-secondary); margin-top: 2px; font-size: var(--text-sm); }
+.timeline-remark { color: var(--text-muted); margin-top: 4px; font-size: var(--text-xs); }
 .promotion-link-box { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .promotion-link-text { word-break: break-all; color: var(--text-primary); }
 .section-title { margin: 16px 0 12px; }
 .material-actions { margin-bottom: 16px; }
 .material-list { margin: 0; padding-left: 18px; }
+.material-file-list { display: flex; flex-direction: column; gap: 6px; word-break: break-all; }
 </style>

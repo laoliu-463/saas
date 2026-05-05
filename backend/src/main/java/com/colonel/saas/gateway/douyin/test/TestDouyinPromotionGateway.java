@@ -27,7 +27,9 @@ public class TestDouyinPromotionGateway implements DouyinPromotionGateway {
         String suffix = String.valueOf(Math.abs((activityId + "-" + productId + "-" + uuidSeed).hashCode()));
         String shortId = "MOCK" + suffix.substring(0, Math.min(6, suffix.length()));
         String pickSource = shortId;
-        String pickExtra = shortId;
+        String pickExtra = command.context() != null && org.springframework.util.StringUtils.hasText(command.context().pickExtra())
+                ? command.context().pickExtra()
+                : shortId;
         String shortLink = "https://test.short.link/" + shortId;
         String promoteLink = "https://test.promote.link/activity/" + activityId + "/product/" + productId + "?pick_source=" + pickSource;
 
@@ -46,7 +48,8 @@ public class TestDouyinPromotionGateway implements DouyinPromotionGateway {
                     command.context().sourceUrl(),
                     promoteLink,
                     null,
-                    command.context().scene()
+                    command.context().scene(),
+                    pickExtra
             );
         }
 

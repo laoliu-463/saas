@@ -177,6 +177,22 @@ class ExclusiveMerchantServiceTest {
         assertThat(result).isZero();
     }
 
+    @Test
+    void evaluateMonth_shouldQueryBySettleTime() {
+        YearMonth stats = YearMonth.of(2024, 6);
+        YearMonth apply = YearMonth.of(2024, 7);
+        LocalDateTime start = stats.atDay(1).atStartOfDay();
+        LocalDateTime end = stats.plusMonths(1).atDay(1).atStartOfDay();
+
+        stubConfig("70");
+        stubUserTotalFeeEmpty(start, end);
+        stubMerchantUserFeeEmpty(start, end);
+
+        service.evaluateMonth(stats, apply);
+
+        verify(jdbcTemplate, times(2)).query(contains("settle_time >= ?"), any(RowMapper.class), eq(start), eq(end));
+    }
+
     // ─── Helper stubs ──────────────────────────────────────────────────────
 
     private void stubConfig(String value) {

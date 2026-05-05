@@ -19,6 +19,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -161,6 +162,23 @@ class ProductBizStatusServiceTest {
     }
 
     @Test
+    void changeStatus_shouldRejectApprovedToBound() {
+        ProductOperationState state = buildState(ProductBizStatus.APPROVED);
+
+        assertThatThrownBy(() -> service.changeStatus(
+                state,
+                ProductBizStatus.BOUND,
+                "BIND_ACTIVITY",
+                null,
+                null,
+                Map.of("activityId", "10001"),
+                "绑定活动",
+                current -> {
+                }
+        )).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
     void changeStatus_shouldAllowBoundToAssignedForLegacyData() {
         ProductOperationState state = buildState(ProductBizStatus.BOUND);
 
@@ -177,6 +195,79 @@ class ProductBizStatusServiceTest {
 
         assertThat(state.getBizStatus()).isEqualTo(ProductBizStatus.ASSIGNED.name());
         verify(operationStateMapper).updateById(state);
+    }
+
+    @Test
+    void changeStatus_shouldAllowAssignedToLinked() {
+        ProductOperationState state = buildState(ProductBizStatus.ASSIGNED);
+
+        service.changeStatus(
+                state,
+                ProductBizStatus.LINKED,
+                "PROMOTION_LINK",
+                null,
+                null,
+                Map.of("linkId", "L001"),
+                "生成推广链接",
+                current -> current.setPromoteLink("https://link.example.com/abc")
+        );
+
+        assertThat(state.getBizStatus()).isEqualTo(ProductBizStatus.LINKED.name());
+        verify(operationStateMapper).updateById(state);
+    }
+
+    @Test
+    void readBizStatus_shouldReturnDefaultForNull() {
+        assertThat(service.readBizStatus(null)).isEqualTo(ProductBizStatus.PENDING_AUDIT);
+    }
+
+    @Test
+    void readBizStatus_shouldReturnDefaultForBlankCode() {
+        ProductOperationState state = new ProductOperationState();
+        state.setBizStatus("  ");
+
+        assertThat(service.readBizStatus(state)).isEqualTo(ProductBizStatus.PENDING_AUDIT);
+    }
+
+    @Test
+    void readBizStatus_shouldParseKnownCode() {
+        ProductOperationState state = new ProductOperationState();
+        state.setBizStatus("APPROVED");
+
+        assertThat(service.readBizStatus(state)).isEqualTo(ProductBizStatus.APPROVED);
+    }
+
+    @Test
+    void initStateIfAbsent_shouldReturnExistingWhenPresent() {
+        ProductOperationState existing = buildState(ProductBizStatus.APPROVED);
+
+        ProductOperationState result = service.initStateIfAbsent(existing, "10001", "9001", null, null, "同步商品");
+
+        assertThat(result).isSameAs(existing);
+        verify(operationStateMapper, never()).insert(any(ProductOperationState.class));
+    }
+
+    @Test
+    void logFailure_shouldWriteLogWithoutStateChange() {
+        service.logFailure(
+                "10001",
+                "9001",
+                ProductBizStatus.PENDING_AUDIT,
+                "SYNC",
+                null,
+                null,
+                Map.of("error", "timeout"),
+                "同步失败",
+                "连接超时"
+        );
+
+        ArgumentCaptor<ProductOperationLog> captor = ArgumentCaptor.forClass(ProductOperationLog.class);
+        verify(operationLogMapper).insert(captor.capture());
+        ProductOperationLog log = captor.getValue();
+        assertThat(log.getSuccess()).isFalse();
+        assertThat(log.getErrorMessage()).isEqualTo("连接超时");
+        assertThat(log.getBeforeStatus()).isEqualTo(ProductBizStatus.PENDING_AUDIT.name());
+        assertThat(log.getAfterStatus()).isEqualTo(ProductBizStatus.PENDING_AUDIT.name());
     }
 
     private void assertIllegal(ProductBizStatus from, ProductBizStatus to, String operationType) {

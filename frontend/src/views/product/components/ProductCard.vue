@@ -82,6 +82,23 @@
               >
                 分配
               </n-button>
+              <n-button
+                v-if="pickMode && canPutIntoLibrary && hasLibraryEntrySource(product) && !product.selectedToLibrary"
+                size="small"
+                quaternary
+                type="success"
+                @click.stop="$emit('putIntoLibrary', product)"
+              >
+                加入商品库
+              </n-button>
+              <n-tag
+                v-else-if="product.selectedToLibrary"
+                size="small"
+                type="success"
+                bordered
+              >
+                已入商品库
+              </n-tag>
               <n-button size="small" quaternary @click.stop="$emit('detail', product)">详情</n-button>
             </div>
           </div>
@@ -142,6 +159,16 @@
           <div class="qv-section">
             <div class="section-label">快速操作</div>
             <n-space vertical :size="8">
+              <n-button
+                v-if="pickMode && canPutIntoLibrary && hasLibraryEntrySource(product) && !product.selectedToLibrary"
+                block
+                size="small"
+                type="success"
+                secondary
+                @click.stop="$emit('putIntoLibrary', product)"
+              >
+                加入商品库
+              </n-button>
               <n-button block size="small" type="primary" secondary @click.stop="$emit('copyLink', product)">
                 复制推广链接 (Pick Source)
               </n-button>
@@ -165,6 +192,9 @@ defineProps<{
   expanded: boolean
   canAudit: boolean
   canAssign: boolean
+  pickMode: boolean
+  libraryMode: boolean
+  canPutIntoLibrary: boolean
 }>()
 
 defineEmits<{
@@ -172,6 +202,7 @@ defineEmits<{
   detail: [product: any]
   audit: [product: any]
   assign: [product: any]
+  putIntoLibrary: [product: any]
   copyLink: [product: any]
   showLogs: [product: any]
 }>()
@@ -236,8 +267,11 @@ const cardTags = (item: any) => {
   if (!item.hasMaterial) tags.push({ text: '缺少话术素材', type: 'warning' })
   if (!item.hasSampleRule) tags.push({ text: '暂无寄样要求', type: 'warning' })
   if (!item.assigneeName) tags.push({ text: '待分配负责人', type: 'error' })
+  if (item.selectedToLibrary) tags.push({ text: '商品库可见', type: 'success' })
   return tags
 }
+
+const hasLibraryEntrySource = (item: any) => Boolean(item?.sourceActivityId || item?.activityId)
 
 const handleImageError = (event: Event) => {
   ;(event.target as HTMLImageElement).style.display = 'none'
@@ -249,10 +283,6 @@ const handleImageError = (event: Event) => {
   min-width: 0;
 }
 
-.product-card-shell.expanded {
-  grid-column: span 2;
-}
-
 .product-card {
   background: var(--bg-card);
   border-radius: var(--radius-md);
@@ -260,17 +290,13 @@ const handleImageError = (event: Event) => {
   box-shadow: var(--shadow-card);
   transition: box-shadow 0.3s ease, transform 0.3s ease;
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
 }
 
 .product-card:hover {
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-card-hover);
   transform: translateY(-6px);
-}
-
-.product-card-shell.expanded .product-card {
-  grid-template-columns: minmax(0, 1fr) 320px;
 }
 
 .card-main {
@@ -281,7 +307,7 @@ const handleImageError = (event: Event) => {
   position: relative;
   width: 100%;
   padding-top: 56.25%;
-  background: linear-gradient(135deg, #f8f9fb 0%, #eef0f4 100%);
+  background: linear-gradient(135deg, var(--bg-sidebar) 0%, var(--border-color-light) 100%);
   overflow: hidden;
 }
 
@@ -315,7 +341,7 @@ const handleImageError = (event: Event) => {
   border-radius: var(--radius-sm);
   font-size: var(--text-xs);
   font-weight: 600;
-  color: #fff;
+  color: var(--text-inverse);
   z-index: 2;
 }
 
@@ -341,7 +367,7 @@ const handleImageError = (event: Event) => {
 
 .card-subtitle {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
@@ -426,9 +452,9 @@ const handleImageError = (event: Event) => {
 /* Quick View Panel */
 .quick-view-panel {
   background: var(--bg-card);
-  width: 320px;
+  width: 100%;
   display: none;
-  border-left: 1px solid var(--border-color-light);
+  border-top: 1px solid var(--border-color-light);
 }
 
 .product-card-shell.expanded .quick-view-panel {
@@ -438,7 +464,7 @@ const handleImageError = (event: Event) => {
 
 .qv-header {
   padding: var(--spacing-sm) var(--spacing-lg);
-  background: var(--color-bg-secondary, #f8fafc);
+  background: var(--bg-sidebar);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -464,7 +490,7 @@ const handleImageError = (event: Event) => {
 }
 
 .section-label {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-tertiary);
   margin-bottom: 8px;
@@ -474,18 +500,18 @@ const handleImageError = (event: Event) => {
 
 .qv-stat {
   padding: 8px;
-  background: var(--color-bg-secondary, #f1f5f9);
+  background: var(--bg-sidebar);
   border-radius: var(--radius-sm);
   text-align: center;
 }
 
 .qv-stat-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-tertiary);
 }
 
 .qv-stat-val {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -497,15 +523,15 @@ const handleImageError = (event: Event) => {
 }
 
 .qv-step {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-tertiary);
   padding: 4px 8px;
   border-radius: var(--radius-sm);
-  background: var(--color-bg-secondary, #f8fafc);
+  background: var(--bg-sidebar);
 }
 
 .qv-step.active {
-  color: #fff;
+  color: var(--text-inverse);
   background: var(--color-info);
 }
 
@@ -523,7 +549,7 @@ const handleImageError = (event: Event) => {
   gap: 6px;
   padding: 10px 12px;
   border-radius: var(--radius-md);
-  background: var(--color-bg-secondary, #f8fafc);
+  background: var(--bg-sidebar);
   border: 1px solid var(--border-color-light);
 }
 
@@ -531,7 +557,7 @@ const handleImageError = (event: Event) => {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .qv-summary-label {
@@ -546,30 +572,16 @@ const handleImageError = (event: Event) => {
 .qv-footer {
   padding: 10px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-info);
-  background: var(--color-bg-secondary, #eff6ff);
+  background: var(--color-info-light);
   cursor: pointer;
   border-top: 1px solid var(--border-color-light);
 }
 
 .qv-footer:hover {
-  background: var(--color-primary-bg, #dbeafe);
+  background: var(--color-primary-light);
 }
 
-@media (max-width: 960px) {
-  .product-card-shell.expanded {
-    grid-column: span 1;
-  }
 
-  .product-card-shell.expanded .product-card {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .quick-view-panel {
-    width: 100%;
-    border-left: none;
-    border-top: 1px solid var(--border-color-light);
-  }
-}
 </style>

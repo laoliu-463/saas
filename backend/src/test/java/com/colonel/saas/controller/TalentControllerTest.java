@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
+import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.job.TalentWeeklyRefreshJob;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -57,7 +59,7 @@ class TalentControllerTest {
         IPage<Talent> page = new Page<>(1, 10);
         page.setRecords(List.of(new Talent()));
         page.setTotal(1);
-        when(talentQueryService.page(1, 10, "alice", null, null, null, null, null, DataScope.PERSONAL, userId, null))
+        when(talentQueryService.page(any(TalentPageQuery.class)))
                 .thenReturn(page);
 
         mockMvc.perform(get("/talents")
@@ -69,19 +71,50 @@ class TalentControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.total").value(1));
+
+        verify(talentQueryService).page(argThat(query ->
+                query.getPage() == 1
+                        && query.getSize() == 10
+                        && "alice".equals(query.getKeyword())
+                        && query.getDataScope() == DataScope.PERSONAL
+                        && userId.equals(query.getUserId())));
+    }
+
+    @Test
+    void page_shouldAcceptViewAndMetricFilters() throws Exception {
+        when(talentQueryService.page(any(TalentPageQuery.class))).thenReturn(new Page<>(1, 10, 0));
+
+        mockMvc.perform(get("/talents")
+                        .param("view", "TEAM_PUBLIC")
+                        .param("category", "食品饮料")
+                        .param("claimStatus", "UNCLAIMED")
+                        .param("minFans", "10000")
+                        .requestAttr("userId", UUID.randomUUID()))
+                .andExpect(status().isOk());
+
+        verify(talentQueryService).page(argThat(query ->
+                "TEAM_PUBLIC".equals(query.getView())
+                        && "食品饮料".equals(query.getCategory())
+                        && "UNCLAIMED".equals(query.getClaimStatus())
+                        && Long.valueOf(10000).equals(query.getMinFans())));
     }
 
     @Test
     void detail_existingTalent_returnsTalent() throws Exception {
         UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
         TalentDetailResponse response = new TalentDetailResponse();
         TalentDetailResponse.TalentInfo info = new TalentDetailResponse.TalentInfo();
         info.setId(id.toString());
         info.setNickname("tester");
         response.setTalent(info);
-        when(talentQueryService.detail(id)).thenReturn(response);
+        when(talentQueryService.detail(id, userId, deptId, DataScope.ALL)).thenReturn(response);
 
-        mockMvc.perform(get("/talents/{id}", id))
+        mockMvc.perform(get("/talents/{id}", id)
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("dataScope", DataScope.ALL))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.talent.nickname").value("tester"));
@@ -200,6 +233,36 @@ class TalentControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.nickname").value("crawler-updated"));
+    }
+
+    @Test
+    void blacklist_talent_returnsUpdatedTalent() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        Talent updated = new Talent();
+        updated.setId(talentId);
+        updated.setBlacklisted(true);
+        updated.setBlacklistReason("重复违约");
+        when(talentService.blacklist(talentId, "重复违约")).thenReturn(updated);
+
+        mockMvc.perform(post("/talents/{id}/blacklist", talentId)
+                        .contentType("application/json")
+                        .content("{\"reason\":\"重复违约\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.blacklisted").value(true))
+                .andExpect(jsonPath("$.data.blacklistReason").value("重复违约"));
+    }
+
+    @Test
+    void unblacklist_talent_returnsUpdatedTalent() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        Talent updated = new Talent();
+        updated.setId(talentId);
+        updated.setBlacklisted(false);
+        when(talentService.unblacklist(talentId)).thenReturn(updated);
+
+        mockMvc.perform(post("/talents/{id}/unblacklist", talentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.blacklisted").value(false));
     }
 
     @Test

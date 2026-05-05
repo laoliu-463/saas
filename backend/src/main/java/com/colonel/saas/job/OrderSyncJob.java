@@ -34,6 +34,7 @@ public class OrderSyncJob {
                     result.startTime(), result.endTime(), result.pages(), result.inserted(), result.skipped());
         } catch (Exception e) {
             log.error("OrderSyncJob failed", e);
+            throw e;
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.colonel.saas.security;
 
+import com.colonel.saas.auth.service.AuthService;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.ResultCode;
@@ -8,6 +9,7 @@ import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.MediaType;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -19,16 +21,18 @@ import java.util.UUID;
 public class JwtAuthInterceptor implements HandlerInterceptor {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final AuthService authService;
     private final ObjectMapper objectMapper;
 
-    public JwtAuthInterceptor(JwtTokenProvider jwtTokenProvider, ObjectMapper objectMapper) {
+    public JwtAuthInterceptor(JwtTokenProvider jwtTokenProvider, AuthService authService, ObjectMapper objectMapper) {
         this.jwtTokenProvider = jwtTokenProvider;
+        this.authService = authService;
         this.objectMapper = objectMapper;
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+    public boolean preHandle(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull Object handler) throws Exception {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
         }
@@ -47,6 +51,19 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
 
         try {
             Claims claims = jwtTokenProvider.parseClaims(token);
+
+            String tokenType = claims.get("type", String.class);
+            if (tokenType != null && !"access".equals(tokenType)) {
+                writeUnauthorized(response, "Token 类型错误，请使用 access token");
+                return false;
+            }
+
+            String tokenHash = jwtTokenProvider.getTokenHash(token);
+            if (authService.isTokenBlacklisted(tokenHash)) {
+                writeUnauthorized(response, "Token 已吊销");
+                return false;
+            }
+
             UUID userId = UUID.fromString(claims.getSubject());
 
             Object deptIdRaw = claims.get("deptId");

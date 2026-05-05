@@ -45,6 +45,9 @@ public class Talent extends BaseEntity {
     @TableField("intro")
     private String intro;
 
+    @TableField("categories")
+    private String categories;
+
     @TableField("contact_phone")
     private String contactPhone;
 
@@ -81,6 +84,12 @@ public class Talent extends BaseEntity {
     @TableField("data_source")
     private String dataSource;
 
+    @TableField("blacklisted")
+    private Boolean blacklisted;
+
+    @TableField("blacklist_reason")
+    private String blacklistReason;
+
     private Integer status;
 
     @TableField(exist = false)
@@ -102,6 +111,9 @@ public class Talent extends BaseEntity {
     private LocalDateTime protectedUntil;
 
     @TableField(exist = false)
+    private Integer activeClaimCount;
+
+    @TableField(exist = false)
     private Long sampleCount;
 
     @TableField(exist = false)
@@ -109,4 +121,28 @@ public class Talent extends BaseEntity {
 
     @TableField(exist = false)
     private Long serviceFeeContribution;
+
+    @TableField(exist = false)
+    private Boolean naturalOrderTalent;
+
+    @TableField(exist = false)
+    private String mainCategory;
+
+    @TableField(exist = false)
+    private String liveSalesBand;
+
+    @TableField(exist = false)
+    private String liveViewBand;
+
+    @TableField(exist = false)
+    private String liveGpmBand;
+
+    @TableField(exist = false)
+    private String videoSalesBand;
+
+    @TableField(exist = false)
+    private String videoPlayBand;
+
+    @TableField(exist = false)
+    private String videoGpmBand;
 }

@@ -1,3 +1,7 @@
+security:
+  jwt:
+    secret: test-jwt-secret-for-unit-testing-only-32+chars
+
 spring:
   main:
     banner-mode: off

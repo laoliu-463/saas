@@ -1,15 +1,15 @@
 <template>
   <div class="product-page">
     <PageHeader
-      title="商品库"
-      description="渠道选品、查看商品详情、复制推广链接，作为本地演示链路的业务入口。"
+      :title="pageTitle"
+      :description="pageDescription"
     >
       <template #actions>
         <n-button :loading="loading" type="primary" @click="refreshProducts">刷新商品</n-button>
       </template>
     </PageHeader>
 
-    <n-alert v-if="resolvedActivityId" type="info" style="margin-bottom: var(--spacing-md);">
+    <n-alert v-if="hasExplicitActivityRoute" type="info" style="margin-bottom: var(--spacing-md);">
       当前正在查看活动下的商品，可直接做选品、转链和寄样前置准备。
       <template #action>
         <n-button size="small" @click="$router.push('/product/activity')">返回活动列表</n-button>
@@ -40,10 +40,14 @@
           :expanded="expandedProductId === item.productId"
           :can-audit="canDo('audit')"
           :can-assign="canDo('assign')"
+          :pick-mode="isPickLibraryMode"
+          :library-mode="isSharedLibraryMode"
+          :can-put-into-library="canDo('libraryEntry')"
           @toggle="expandedProductId = $event"
           @detail="openDetail"
           @audit="openDialog('audit', $event)"
           @assign="openDialog('assign', $event)"
+          @put-into-library="handlePutIntoLibrary"
           @copy-link="copyPromotionLink"
           @show-logs="openDialog('logs', $event)"
         />
@@ -52,7 +56,7 @@
       <PageEmpty
         v-else-if="!loading"
         title="暂无商品数据"
-        description="可先前往 /dev/test 初始化演示数据，或切换到有商品的活动后再查看。"
+        :description="emptyDescription"
       >
         <template #icon>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36">
@@ -70,26 +74,29 @@
     <ProductDetail
       v-model:show="showDetail"
       :product-id="currentRow?.productId ?? null"
-      :activity-id="resolvedActivityId || null"
+      :activity-id="detailActivityId"
+      :pick-mode="isPickLibraryMode"
+      :library-mode="isSharedLibraryMode"
+      :can-put-into-library="canDo('libraryEntry')"
       :refresh-key="detailRefreshKey"
       @action="handleDetailAction"
     />
     <ProductAuditDialog
       v-model:show="dialogs.audit"
       :product-id="currentRow?.productId ?? null"
-      :activity-id="resolvedActivityId || null"
+      :activity-id="detailActivityId"
       @success="(payload: any) => handleActionSuccess('audit', payload)"
     />
     <ProductAssignDialog
       v-model:show="dialogs.assign"
       :product-id="currentRow?.productId ?? null"
-      :activity-id="resolvedActivityId || null"
+      :activity-id="detailActivityId"
       @success="(payload: any) => handleActionSuccess('assign', payload)"
     />
     <ProductOperationLogDrawer
       v-model:show="dialogs.logs"
       :product-id="currentRow?.productId ?? null"
-      :activity-id="resolvedActivityId || null"
+      :activity-id="detailActivityId"
     />
   </div>
 </template>
@@ -102,8 +109,9 @@ import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
 import { useAuthStore } from '../../stores/auth'
 import { hasAccess } from '../../constants/rbac'
-import { convertActivityProductLink, getActivityProducts } from '../../api/activityProduct'
+import { convertActivityProductLink, getActivityProducts, putActivityProductIntoLibrary } from '../../api/activityProduct'
 import { getColonelActivityPage } from '../../api/activity'
+import { getProductPickPage, getProducts } from '../../api/product'
 
 import ProductFilters from './components/ProductFilters.vue'
 import ProductCard from './components/ProductCard.vue'
@@ -160,10 +168,33 @@ const canDo = (action: string) => {
   if (action === 'audit') return hasAccess(roles, ['biz_leader', 'biz_staff'])
   if (action === 'assign') return hasAccess(roles, ['biz_leader', 'channel_leader'])
   if (action === 'promotion') return hasAccess(roles, ['channel_leader', 'channel_staff'])
+  if (action === 'libraryEntry') return hasAccess(roles, ['biz_leader', 'biz_staff', 'channel_leader', 'channel_staff', 'admin'])
   return true
 }
 
 const resolvedActivityId = computed(() => String(route.params.activityId || fallbackActivityId.value || ''))
+const hasExplicitActivityRoute = computed(() => Boolean(route.params.activityId))
+const isSharedLibraryMode = computed(() => route.path.startsWith('/product/library'))
+const isActivityProductMode = computed(() => Boolean(route.params.activityId))
+const isPickLibraryMode = computed(() => !isSharedLibraryMode.value)
+const pageTitle = computed(() => {
+  if (isActivityProductMode.value) return '活动商品'
+  if (isSharedLibraryMode.value) return '商品库'
+  return '选品库'
+})
+const pageDescription = computed(() => {
+  if (isActivityProductMode.value) return '查看当前活动下的商品，支持选品、转链和寄样前置准备。'
+  if (isSharedLibraryMode.value) return '沉淀完成的共享商品库，对全员可见，可直接复用历史选品结果。'
+  return '渠道选品工作台，支持活动选品、本地候选浏览和入商品库沉淀。'
+})
+const emptyDescription = computed(() => {
+  if (isSharedLibraryMode.value) return '当前还没有加入商品库的商品，可先在选品库完成选品并加入商品库。'
+  return '可先前往 /dev/test 初始化演示数据，或切换到有商品的活动后再查看。'
+})
+const detailActivityId = computed(() => {
+  const rowActivityId = currentRow.value?.sourceActivityId || currentRow.value?.activityId
+  return String(rowActivityId || resolvedActivityId.value || '') || null
+})
 
 const getStatusLabel = (statusCode?: string) => {
   const map: Record<string, string> = {
@@ -179,23 +210,30 @@ const getStatusLabel = (statusCode?: string) => {
 }
 
 const ensureActivityId = async () => {
+  if (isSharedLibraryMode.value) return ''
   if (route.params.activityId) {
     fallbackActivityId.value = ''
     return String(route.params.activityId)
   }
   if (fallbackActivityId.value) return fallbackActivityId.value
 
-  const res: any = await getColonelActivityPage({
-    page: 1,
-    pageSize: 1,
-    status: 0,
-    searchType: 0,
-    sortType: 1
-  })
-  const activity = res?.data?.activityList?.[0]
-  if (!activity?.activityId) throw new Error('暂无可用活动')
-  fallbackActivityId.value = String(activity.activityId)
-  return fallbackActivityId.value
+  try {
+    const res: any = await getColonelActivityPage({
+      page: 1,
+      pageSize: 1,
+      status: 0,
+      searchType: 0,
+      sortType: 1
+    })
+    const activity = res?.data?.activityList?.[0]
+    if (activity?.activityId) {
+      fallbackActivityId.value = String(activity.activityId)
+      return fallbackActivityId.value
+    }
+  } catch {
+    // 抖音 Token 未配置，降级使用本地商品库
+  }
+  return '' // 返回空字符串，触发本地商品库降级
 }
 
 const normalizeItem = (item: any) => ({
@@ -203,12 +241,15 @@ const normalizeItem = (item: any) => ({
   bizStatus: item?.bizStatus || 'PENDING_AUDIT',
   bizStatusLabel: item?.bizStatusLabel || getStatusLabel(item?.bizStatus),
   productId: String(item?.productId ?? ''),
+  activityId: item?.activityId ? String(item.activityId) : '',
+  sourceActivityId: item?.sourceActivityId ? String(item.sourceActivityId) : item?.activityId ? String(item.activityId) : '',
   sales30d: item?.sales30d ?? item?.sales ?? 0,
   gmv30d: item?.gmv30d ?? '0.00',
   estimatedServiceFee: item?.estimatedServiceFee ?? item?.estimatedServiceFeeAmount ?? '0.00',
   hasMaterial: item?.hasMaterial ?? false,
   hasSampleRule: item?.hasSampleRule ?? true,
   activityExpired: Boolean(item?.activityExpired),
+  selectedToLibrary: Boolean(item?.selectedToLibrary || item?.libraryVisible),
   systemTags: Array.isArray(item?.systemTags) ? item.systemTags : [],
   alertTags: Array.isArray(item?.alertTags) ? item.alertTags : [],
   promotion: item?.promotion || {
@@ -282,25 +323,77 @@ const fetchProducts = async (reset: boolean) => {
   else loadingMore.value = true
 
   try {
-    const activityId = await ensureActivityId()
-    const res: any = await getActivityProducts(activityId, {
-      count: 20,
-      cursor: reset ? undefined : nextCursor.value,
-      productInfo: selectedProduct.value || productKeyword.value.trim() || undefined,
-      retrieveMode: 1
-    })
+    if (isSharedLibraryMode.value) {
+      const page = reset ? 1 : Math.floor(products.value.length / 20) + 1
+      const res: any = await getProducts({
+        page,
+        size: 20,
+        keyword: selectedProduct.value || productKeyword.value.trim() || undefined
+      })
+      const data = res?.data || {}
+      const records = Array.isArray(data.records) ? data.records : []
+      const items = applyFilters(records.map((p: any) => normalizeItem({
+        ...p,
+        title: p.title || p.name || '未命名商品',
+        productId: String(p.productId || '')
+      })))
+      products.value = reset ? items : products.value.concat(items)
+      const currentPage = Number(data.page || page || 1)
+      const pageSize = Number(data.size || 20)
+      const total = Number(data.total || 0)
+      hasMore.value = currentPage * pageSize < total
+      nextCursor.value = ''
+      return
+    }
 
-    const data = res?.data || {}
-    const items = applyFilters((Array.isArray(data.items) ? data.items : []).map(normalizeItem))
-    products.value = reset ? items : products.value.concat(items)
-    nextCursor.value = String(data.nextCursor || '')
-    hasMore.value = Boolean(data.hasMore || data.nextCursor)
+    const activityId = await ensureActivityId()
+    if (activityId) {
+      const res: any = await getActivityProducts(activityId, {
+        count: 20,
+        cursor: reset ? undefined : nextCursor.value,
+        productInfo: selectedProduct.value || productKeyword.value.trim() || undefined,
+        retrieveMode: 1
+      })
+      const data = res?.data || {}
+      const items = applyFilters((Array.isArray(data.items) ? data.items : []).map(normalizeItem))
+      products.value = reset ? items : products.value.concat(items)
+      nextCursor.value = String(data.nextCursor || '')
+      hasMore.value = Boolean(data.hasMore || data.nextCursor)
+    } else {
+      const page = reset ? 1 : Math.floor(products.value.length / 20) + 1
+      const res: any = await getProductPickPage({ page, size: 20 })
+      const data = res?.data || {}
+      const records = Array.isArray(data.records) ? data.records : []
+      const items = applyFilters(records.map((p: any) => normalizeItem({
+        ...p,
+        title: p.title || p.name || '未命名商品',
+        productId: String(p.productId || ''),
+        bizStatus: p.bizStatus || 'PENDING_AUDIT',
+        hasSampleRule: p.hasSampleRule ?? true,
+        hasMaterial: p.hasMaterial ?? false,
+        systemTags: Array.isArray(p.systemTags) ? p.systemTags : [],
+        alertTags: Array.isArray(p.alertTags) ? p.alertTags : [],
+      })))
+      products.value = reset ? items : products.value.concat(items)
+      const currentPage = Number(data.page || page || 1)
+      const pageSize = Number(data.size || 20)
+      const total = Number(data.total || 0)
+      hasMore.value = currentPage * pageSize < total
+      nextCursor.value = ''
+    }
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '商品查询失败')
-    if (reset) {
+    if (hasExplicitActivityRoute.value) {
+      // 无效活动 ID 或当前活动下暂无可用商品时，降级为空态而不是报错打断页面。
       products.value = []
       nextCursor.value = ''
       hasMore.value = false
+    } else {
+      message.error(error?.response?.data?.msg || error?.message || '商品查询失败')
+      if (reset) {
+        products.value = []
+        nextCursor.value = ''
+        hasMore.value = false
+      }
     }
   } finally {
     loading.value = false
@@ -321,14 +414,35 @@ const buildProductOption = (item: any) => {
 const loadProductOptions = async (keyword: string) => {
   productOptionsLoading.value = true
   try {
+    if (isSharedLibraryMode.value) {
+      const res: any = await getProducts({ size: 20, keyword: keyword || undefined })
+      const records = Array.isArray(res?.data?.records) ? res.data.records : []
+      productOptions.value = records
+        .map((p: any) => buildProductOption({
+          ...p,
+          title: p.title || p.name || '未命名商品',
+          productId: String(p.productId || '')
+        }))
+        .filter((item: { label: string; value: string }) => Boolean(item.value))
+      return
+    }
+
     const activityId = await ensureActivityId()
-    const res: any = await getActivityProducts(activityId, {
-      count: 20,
-      productInfo: keyword || undefined,
-      retrieveMode: 1
-    })
-    const items = Array.isArray(res?.data?.items) ? res.data.items : []
-    productOptions.value = items.map(buildProductOption).filter((item: { label: string; value: string }) => Boolean(item.value))
+    if (activityId) {
+      const res: any = await getActivityProducts(activityId, {
+        count: 20,
+        productInfo: keyword || undefined,
+        retrieveMode: 1
+      })
+      const items = Array.isArray(res?.data?.items) ? res.data.items : []
+      productOptions.value = items.map(buildProductOption).filter((item: { label: string; value: string }) => Boolean(item.value))
+    } else {
+      const res: any = await getProductPickPage({ size: 20 })
+      const records = Array.isArray(res?.data?.records) ? res.data.records : []
+      productOptions.value = records
+        .map((p: any) => ({ label: String(p.name || p.title || ''), value: String(p.productId || '') }))
+        .filter((o: { label: string; value: string }) => Boolean(o.value))
+    }
   } catch (error: any) {
     message.warning(error?.response?.data?.msg || '商品搜索暂不可用')
     productOptions.value = []
@@ -349,8 +463,8 @@ const resetFilters = () => {
   refreshProducts()
 }
 
-const refreshProducts = () => {
-  fetchProducts(true)
+const refreshProducts = async () => {
+  await fetchProducts(true)
 }
 
 const loadMore = () => {
@@ -393,12 +507,46 @@ const handleActionSuccess = (action: ProductAction, payload?: any) => {
 }
 
 const handleDetailAction = (payload: { action: string; row: any }) => {
+  if (payload.action === 'putIntoLibrary') {
+    handlePutIntoLibrary(payload.row)
+    return
+  }
   openDialog(payload.action as keyof typeof dialogs.value, payload.row)
+}
+
+const resolveRowActivityId = (item: any) => String(item?.sourceActivityId || item?.activityId || resolvedActivityId.value || '')
+
+const handlePutIntoLibrary = async (item: any) => {
+  const productId = String(item?.productId || '')
+  const activityId = resolveRowActivityId(item)
+  if (!productId || !activityId) {
+    message.warning('缺少来源活动信息，暂时无法加入商品库')
+    return
+  }
+  try {
+    const res: any = await putActivityProductIntoLibrary(activityId, productId)
+    const data = res?.data || {}
+    const merged = normalizeItem({
+      ...item,
+      ...data,
+      selectedToLibrary: true,
+      libraryVisible: true,
+      sourceActivityId: activityId
+    })
+    products.value = products.value.map((row: any) => (String(row.productId) === productId ? { ...row, ...merged } : row))
+    if (String(currentRow.value?.productId || '') === productId) {
+      currentRow.value = { ...currentRow.value, ...merged }
+    }
+    detailRefreshKey.value += 1
+    message.success('已加入商品库，当前商品对全员可见')
+  } catch (error: any) {
+    message.error(error?.response?.data?.msg || error?.message || '加入商品库失败，请稍后重试')
+  }
 }
 
 const copyPromotionLink = async (item: any) => {
   const productId = String(item?.productId || '')
-  const activityId = resolvedActivityId.value
+  const activityId = resolveRowActivityId(item)
   if (!productId || !activityId) {
     message.warning('商品信息不完整，暂时无法生成推广链接')
     return
@@ -462,18 +610,19 @@ const copyPromotionLink = async (item: any) => {
 
 onMounted(async () => {
   try {
-    await ensureActivityId()
-    await Promise.all([loadProductOptions(''), refreshProducts()])
+    await refreshProducts()
+    await loadProductOptions('')
   } catch (error: any) {
     message.error(error?.response?.data?.msg || error?.message || '页面初始化失败')
   }
 })
 
 watch(
-  () => route.params.activityId,
-  () => {
+  () => [route.path, route.params.activityId],
+  async () => {
     nextCursor.value = ''
-    refreshProducts()
+    await refreshProducts()
+    await loadProductOptions(productKeyword.value)
   }
 )
 </script>

@@ -3,6 +3,7 @@ package com.colonel.saas.common.exception;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import com.colonel.saas.common.result.ApiResult;
+import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.douyin.DouyinApiException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -10,6 +11,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
@@ -42,9 +45,21 @@ class GlobalExceptionHandlerTest {
     @Test
     void handleBusiness_returnsFailResult() {
         BusinessException ex = new BusinessException("用户名已存在");
-        ApiResult<Void> result = handler.handleBusiness(ex);
+        ResponseEntity<ApiResult<Void>> response = handler.handleBusiness(ex);
+        ApiResult<Void> result = response.getBody();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(result.getCode()).isEqualTo(460);
         assertThat(result.getMsg()).isEqualTo("用户名已存在");
+    }
+
+    @Test
+    void handleBusiness_withUnauthorizedCode_returns401Status() {
+        BusinessException ex = new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "用户名或密码错误");
+        ResponseEntity<ApiResult<Void>> response = handler.handleBusiness(ex);
+        ApiResult<Void> result = response.getBody();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(result.getCode()).isEqualTo(401);
+        assertThat(result.getMsg()).isEqualTo("用户名或密码错误");
     }
 
     @Test
@@ -116,26 +131,27 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void handleGeneral_withExceptionMessage_usesMessage() {
+    void handleGeneral_withExceptionMessage_returnsGenericMessage() {
         RuntimeException ex = new RuntimeException("连接数据库超时");
         ApiResult<Void> result = handler.handleGeneral(ex);
         assertThat(result.getCode()).isEqualTo(500);
-        assertThat(result.getMsg()).contains("连接数据库超时");
+        assertThat(result.getMsg()).isEqualTo("服务器异常");
+        assertThat(result.getMsg()).doesNotContain("连接数据库超时");
     }
 
     @Test
-    void handleGeneral_withNullMessage_usesClassName() {
+    void handleGeneral_withNullMessage_returnsGenericMessage() {
         RuntimeException ex = new RuntimeException();
         ApiResult<Void> result = handler.handleGeneral(ex);
         assertThat(result.getCode()).isEqualTo(500);
-        assertThat(result.getMsg()).contains("RuntimeException");
+        assertThat(result.getMsg()).isEqualTo("服务器异常");
     }
 
     @Test
-    void handleGeneral_withBlankMessage_usesClassName() {
+    void handleGeneral_withBlankMessage_returnsGenericMessage() {
         RuntimeException ex = new RuntimeException("   ");
         ApiResult<Void> result = handler.handleGeneral(ex);
         assertThat(result.getCode()).isEqualTo(500);
-        assertThat(result.getMsg()).contains("RuntimeException");
+        assertThat(result.getMsg()).isEqualTo("服务器异常");
     }
 }

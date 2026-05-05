@@ -5,15 +5,18 @@ import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -21,12 +24,14 @@ class OrderDecryptServiceTest {
 
     @Mock
     private DouyinOrderGateway douyinOrderGateway;
+    @Mock
+    private OperationLogService operationLogService;
 
     private OrderDecryptService orderDecryptService;
 
     @BeforeEach
     void setUp() {
-        orderDecryptService = new OrderDecryptService(douyinOrderGateway);
+        orderDecryptService = new OrderDecryptService(douyinOrderGateway, operationLogService);
     }
 
     @Test
@@ -84,5 +89,27 @@ class OrderDecryptServiceTest {
         assertThat(vo.isVirtualTel()).isFalse();
         assertThat(vo.getPhone()).isEqualTo("13812345678");
         assertThat(vo.isExpired()).isFalse();
+    }
+
+    @Test
+    void decryptPhones_shouldRecordAuditLogWithoutSensitiveResult() {
+        when(douyinOrderGateway.decryptSensitiveData(List.of("oid-3"))).thenReturn(Map.of(
+                "data", List.of(Map.of(
+                        "order_id", "oid-3",
+                        "is_virtual_tel", false,
+                        "phone", "13812345678"
+                ))
+        ));
+
+        orderDecryptService.decryptPhones(List.of("oid-3"), UUID.randomUUID(), "auditor");
+
+        ArgumentCaptor<com.colonel.saas.entity.OperationLog> captor =
+                ArgumentCaptor.forClass(com.colonel.saas.entity.OperationLog.class);
+        verify(operationLogService).record(captor.capture());
+        com.colonel.saas.entity.OperationLog log = captor.getValue();
+        assertThat(log.getModule()).isEqualTo("订单明细");
+        assertThat(log.getAction()).isEqualTo("解密手机号");
+        assertThat(log.getRequestBody()).containsEntry("count", 1);
+        assertThat(String.valueOf(log.getRequestBody())).doesNotContain("13812345678");
     }
 }

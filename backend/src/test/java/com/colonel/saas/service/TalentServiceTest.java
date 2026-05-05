@@ -12,6 +12,7 @@ import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -38,6 +39,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -61,6 +64,8 @@ class TalentServiceTest {
     @Mock
     private TalentEnrichOrchestrator talentEnrichOrchestrator;
     @Mock
+    private BusinessRuleConfigService businessRuleConfigService;
+    @Mock
     private ValueOperations<String, Object> valueOperations;
 
     private TalentService talentService;
@@ -76,8 +81,12 @@ class TalentServiceTest {
                 sampleRequestMapper,
                 redisTemplate,
                 crawlerTalentInfoService,
-                true
+                true,
+                businessRuleConfigService
         );
+        when(businessRuleConfigService.getTalentProtectionDays()).thenReturn(30);
+        when(businessRuleConfigService.getTalentExclusiveRatioThreshold()).thenReturn(new java.math.BigDecimal("70"));
+        when(businessRuleConfigService.getTalentExclusiveMonthlySamples()).thenReturn(10);
         when(talentEnrichTaskMapper.insert(any(TalentEnrichTask.class))).thenAnswer(invocation -> {
             TalentEnrichTask task = invocation.getArgument(0);
             if (task.getId() == null) {
@@ -111,35 +120,102 @@ class TalentServiceTest {
         assertThat(claimed.getOwnerId()).isEqualTo(userId);
         ArgumentCaptor<TalentClaim> claimCaptor = ArgumentCaptor.forClass(TalentClaim.class);
         verify(talentClaimMapper).insert(claimCaptor.capture());
+        assertThat(claimCaptor.getValue().getId()).isNotNull();
         assertThat(claimCaptor.getValue().getClaimType()).isEqualTo(1);
         verify(redisTemplate).delete("talent:claim:lock:" + talentId);
     }
 
     @Test
-    void claim_shouldRejectWhenInProtectedPeriod() {
+    void claim_shouldUseConfiguredProtectDays() {
         UUID talentId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("dy_cfg");
+        talent.setDeleted(0);
+
+        when(businessRuleConfigService.getTalentProtectionDays()).thenReturn(15);
+        when(valueOperations.setIfAbsent(any(String.class), any(String.class), anyLong(), eq(TimeUnit.SECONDS)))
+                .thenReturn(true);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentAndUser(talentId, userId)).thenReturn(null);
+        when(talentClaimMapper.findLastClaim(talentId)).thenReturn(null);
+
+        LocalDateTime before = LocalDateTime.now();
+        talentService.claim(talentId, userId, UUID.randomUUID());
+
+        ArgumentCaptor<TalentClaim> claimCaptor = ArgumentCaptor.forClass(TalentClaim.class);
+        verify(talentClaimMapper).insert(claimCaptor.capture());
+        assertThat(claimCaptor.getValue().getProtectedUntil()).isAfterOrEqualTo(before.plusDays(15).minusSeconds(1));
+    }
+
+    @Test
+    void claim_shouldAllowOtherUserDuringProtectedPeriod() {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
 
         Talent talent = new Talent();
         talent.setId(talentId);
         talent.setDouyinUid("dy_002");
         talent.setDeleted(0);
 
-        TalentClaim lastClaim = new TalentClaim();
-        lastClaim.setTalentId(talentId);
-        lastClaim.setUserId(UUID.randomUUID());
-        lastClaim.setClaimedAt(LocalDateTime.now());
-        lastClaim.setProtectedUntil(LocalDateTime.now().plusDays(1));
+        TalentClaim activeClaim = new TalentClaim();
+        activeClaim.setTalentId(talentId);
+        activeClaim.setUserId(otherUserId);
+        activeClaim.setClaimedAt(LocalDateTime.now());
+        activeClaim.setProtectedUntil(LocalDateTime.now().plusDays(1));
+        activeClaim.setStatus(1);
 
         when(valueOperations.setIfAbsent(any(String.class), any(String.class), anyLong(), eq(TimeUnit.SECONDS)))
                 .thenReturn(true);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(talentMapper.selectById(talentId)).thenReturn(talent);
         when(talentClaimMapper.findActiveByTalentAndUser(talentId, userId)).thenReturn(null);
-        when(talentClaimMapper.findLastClaim(talentId)).thenReturn(lastClaim);
+        when(talentClaimMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
 
-        assertThatThrownBy(() -> talentService.claim(talentId, userId, UUID.randomUUID()))
-                .isInstanceOf(RuntimeException.class);
+        Talent claimed = talentService.claim(talentId, userId, UUID.randomUUID());
+
+        assertThat(claimed.getOwnerId()).isEqualTo(userId);
+        verify(talentClaimMapper).insert(any(TalentClaim.class));
+    }
+
+    @Test
+    void claim_shouldReuseExpiredClaimOfSameUser() {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("dy_reclaim");
+        talent.setDeleted(0);
+
+        TalentClaim expiredClaim = new TalentClaim();
+        expiredClaim.setId(UUID.randomUUID());
+        expiredClaim.setTalentId(talentId);
+        expiredClaim.setUserId(userId);
+        expiredClaim.setStatus(2);
+        expiredClaim.setClaimedAt(LocalDateTime.now().minusDays(45));
+        expiredClaim.setProtectedUntil(LocalDateTime.now().minusDays(15));
+
+        when(valueOperations.setIfAbsent(any(String.class), any(String.class), anyLong(), eq(TimeUnit.SECONDS)))
+                .thenReturn(true);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentAndUser(talentId, userId)).thenReturn(null);
+        when(talentClaimMapper.findLastClaim(talentId)).thenReturn(expiredClaim);
+        when(talentClaimMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(expiredClaim);
+
+        Talent claimed = talentService.claim(talentId, userId, deptId);
+
+        assertThat(claimed.getOwnerId()).isEqualTo(userId);
+        assertThat(expiredClaim.getStatus()).isEqualTo(1);
+        assertThat(expiredClaim.getDeptId()).isEqualTo(deptId);
+        verify(talentClaimMapper, never()).insert(any(TalentClaim.class));
+        verify(talentClaimMapper, times(1)).updateById(expiredClaim);
     }
 
     @Test
@@ -199,7 +275,8 @@ class TalentServiceTest {
                 sampleRequestMapper,
                 redisTemplate,
                 crawlerTalentInfoService,
-                false
+                false,
+                businessRuleConfigService
         );
 
         UUID talentId = UUID.randomUUID();
@@ -214,6 +291,61 @@ class TalentServiceTest {
         verify(talentEnrichTaskMapper).insert(any(TalentEnrichTask.class));
         verify(talentEnrichTaskMapper).updateById(any(TalentEnrichTask.class));
         verify(crawlerTalentInfoService, never()).crawlAndSave(any());
+    }
+
+    @Test
+    void releaseExpiredClaims_shouldKeepClaimsWithOutput() {
+        UUID talentId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("dy_output");
+
+        TalentClaim expiredWindowClaim = new TalentClaim();
+        expiredWindowClaim.setId(UUID.randomUUID());
+        expiredWindowClaim.setTalentId(talentId);
+        expiredWindowClaim.setStatus(1);
+        expiredWindowClaim.setClaimedAt(LocalDateTime.now().minusDays(35));
+        expiredWindowClaim.setProtectedUntil(LocalDateTime.now().minusDays(1));
+
+        com.colonel.saas.entity.ColonelsettlementOrder outputOrder = new com.colonel.saas.entity.ColonelsettlementOrder();
+        outputOrder.setCreateTime(LocalDateTime.now().minusDays(3));
+        outputOrder.setExtraData(Map.of("talent_uid", "dy_output"));
+
+        when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(expiredWindowClaim));
+        when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
+        Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 1);
+        orderPage.setRecords(List.of(outputOrder));
+        when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
+
+        talentService.releaseExpiredClaims(LocalDateTime.now());
+
+        verify(talentClaimMapper, never()).updateById(any(TalentClaim.class));
+    }
+
+    @Test
+    void releaseExpiredClaims_shouldExpireClaimsWithoutOutput() {
+        UUID talentId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("dy_no_output");
+
+        TalentClaim expiredWindowClaim = new TalentClaim();
+        expiredWindowClaim.setId(UUID.randomUUID());
+        expiredWindowClaim.setTalentId(talentId);
+        expiredWindowClaim.setStatus(1);
+        expiredWindowClaim.setClaimedAt(LocalDateTime.now().minusDays(35));
+        expiredWindowClaim.setProtectedUntil(LocalDateTime.now().minusDays(1));
+
+        when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(expiredWindowClaim));
+        when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
+        Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 0);
+        orderPage.setRecords(List.of());
+        when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
+
+        talentService.releaseExpiredClaims(LocalDateTime.now());
+
+        assertThat(expiredWindowClaim.getStatus()).isEqualTo(2);
+        verify(talentClaimMapper).updateById(expiredWindowClaim);
     }
 
     @Test
@@ -243,7 +375,9 @@ class TalentServiceTest {
         order2.setExtraData(Map.of("author_id", "dy_other"));
 
         when(talentMapper.selectById(talentId)).thenReturn(talent);
-        when(orderMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(order1, order2));
+        Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 2);
+        orderPage.setRecords(List.of(order1, order2));
+        when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
         when(sampleRequestMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(15L);
 
         TalentService.ExclusiveCheckResult result = talentService.evaluateExclusive(
@@ -311,5 +445,37 @@ class TalentServiceTest {
         assertThat(result.getDataSource()).isEqualTo("MANUAL");
         assertThat(result.getEnrichStatus()).isEqualTo("SUCCESS");
         verify(talentMapper).updateById(any(Talent.class));
+    }
+
+    @Test
+    void blacklist_shouldMarkTalent() {
+        UUID talentId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDeleted(0);
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+
+        Talent result = talentService.blacklist(talentId, "重复违约");
+
+        assertThat(result.getBlacklisted()).isTrue();
+        assertThat(result.getBlacklistReason()).isEqualTo("重复违约");
+        verify(talentMapper).updateById(talent);
+    }
+
+    @Test
+    void unblacklist_shouldClearStatus() {
+        UUID talentId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDeleted(0);
+        talent.setBlacklisted(true);
+        talent.setBlacklistReason("重复违约");
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+
+        Talent result = talentService.unblacklist(talentId);
+
+        assertThat(result.getBlacklisted()).isFalse();
+        assertThat(result.getBlacklistReason()).isNull();
+        verify(talentMapper).updateById(talent);
     }
 }

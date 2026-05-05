@@ -1,5 +1,6 @@
 package com.colonel.saas.security;
 
+import com.colonel.saas.auth.service.AuthService;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.ResultCode;
@@ -35,6 +36,9 @@ class JwtAuthInterceptorTest {
     private JwtTokenProvider jwtTokenProvider;
 
     @Mock
+    private AuthService authService;
+
+    @Mock
     private HttpServletRequest request;
 
     @Mock
@@ -47,7 +51,8 @@ class JwtAuthInterceptorTest {
     @BeforeEach
     void setUp() throws Exception {
         objectMapper = new ObjectMapper();
-        interceptor = new JwtAuthInterceptor(jwtTokenProvider, objectMapper);
+        interceptor = new JwtAuthInterceptor(jwtTokenProvider, authService, objectMapper);
+        when(authService.isTokenBlacklisted(any())).thenReturn(false);
         responseWriter = new StringWriter();
         when(response.getWriter()).thenReturn(new PrintWriter(responseWriter));
     }

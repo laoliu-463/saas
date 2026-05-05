@@ -35,6 +35,9 @@ public class ProductOperationState extends BaseEntity {
     @TableField("audit_remark")
     private String auditRemark;
 
+    @TableField("audit_payload")
+    private String auditPayload;
+
     @TableField("promote_link")
     private String promoteLink;
 
@@ -46,6 +49,15 @@ public class ProductOperationState extends BaseEntity {
 
     @TableField("external_unique_id")
     private String externalUniqueId;
+
+    @TableField("selected_to_library")
+    private Boolean selectedToLibrary;
+
+    @TableField("selected_at")
+    private LocalDateTime selectedAt;
+
+    @TableField("selected_by")
+    private UUID selectedBy;
 
     @TableField("last_operation_at")
     private LocalDateTime lastOperationAt;

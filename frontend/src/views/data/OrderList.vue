@@ -9,14 +9,20 @@
           placeholder="选择日期范围"
           style="width: 250px"
         />
-        <n-select
-          v-model:value="searchParams.status"
-          :options="statusOptions"
-          placeholder="状态筛选"
-          style="width: 150px"
-          clearable
-        />
-        <n-button type="primary" @click="fetchData">查询</n-button>
+      <n-select
+        v-model:value="searchParams.status"
+        :options="statusOptions"
+        placeholder="状态筛选"
+        style="width: 150px"
+        clearable
+      />
+      <n-input
+        v-model:value="searchParams.orderId"
+        placeholder="订单号筛选"
+        style="width: 220px"
+        clearable
+      />
+      <n-button type="primary" @click="fetchData">查询</n-button>
         <n-button ghost type="primary" @click="fetchData">刷新订单</n-button>
         <n-button type="info" @click="handleExport">导出 CSV</n-button>
         <n-button type="warning" :loading="decryptLoading" @click="handleDecrypt">
@@ -123,9 +129,18 @@ const pagination = reactive({
   pageSizes: [10, 20, 50]
 })
 
-const dateRange = ref<[number, number] | null>(null)
+const buildTodayRange = (): [number, number] => {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  return [start.getTime(), end.getTime()]
+}
+
+const dateRange = ref<[number, number] | null>(buildTodayRange())
 
 const searchParams = reactive({
+  orderId: '',
   status: null as string | null
 })
 
@@ -219,6 +234,7 @@ const fetchData = async () => {
     const res = await getOrderPage({
       page: pagination.page,
       size: pagination.pageSize,
+      orderId: searchParams.orderId || undefined,
       status: searchParams.status,
       startDate,
       endDate

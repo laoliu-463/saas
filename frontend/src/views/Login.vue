@@ -7,7 +7,7 @@
           <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
             <rect width="48" height="48" rx="12" fill="rgba(255,255,255,0.2)"/>
             <path d="M14 34L24 14L34 34H14Z" fill="white" opacity="0.9"/>
-            <circle cx="24" cy="26" r="3" fill="#FF4757"/>
+            <circle cx="24" cy="26" r="3" fill="var(--color-primary)"/>
           </svg>
         </div>
         <h1 class="brand-title">抖音团长 SaaS</h1>
@@ -132,7 +132,7 @@ const handleLogin = () => {
         message.error(res.msg || '登录失败')
       }
     } catch (error: any) {
-      message.error(error?.response?.data?.msg || '登录失败，请检查账号密码')
+      message.error(error?.response?.data?.msg || error?.msg || '登录失败，请检查账号密码')
     } finally {
       loading.value = false
     }
@@ -149,7 +149,7 @@ const handleLogin = () => {
 /* ---- 左侧品牌区 ---- */
 .login-brand {
   flex: 1;
-  background: linear-gradient(135deg, #FF4757 0%, #FF6B81 50%, #FF8A9E 100%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 50%, var(--color-primary-light) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -192,7 +192,7 @@ const handleLogin = () => {
 }
 
 .brand-title {
-  font-size: 32px;
+  font-size: var(--text-3xl);
   font-weight: 700;
   margin: 0 0 12px;
   color: white;
@@ -200,7 +200,7 @@ const handleLogin = () => {
 }
 
 .brand-desc {
-  font-size: 16px;
+  font-size: var(--text-lg);
   opacity: 0.85;
   margin: 0 0 40px;
   line-height: 1.6;
@@ -216,7 +216,7 @@ const handleLogin = () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 15px;
+  font-size: var(--text-base);
   opacity: 0.9;
 }
 
@@ -234,7 +234,7 @@ const handleLogin = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-page);
+  background: transparent;
   padding: 48px;
 }
 
@@ -242,9 +242,12 @@ const handleLogin = () => {
   width: 100%;
   max-width: 400px;
   background: var(--bg-card);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: var(--radius-lg);
   padding: 40px 36px;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-modal);
 }
 
 .login-header {
@@ -268,7 +271,7 @@ const handleLogin = () => {
 .login-btn {
   margin-top: 8px;
   height: 44px;
-  font-size: 16px;
+  font-size: var(--text-lg);
   font-weight: 600;
   border-radius: var(--radius-md);
   letter-spacing: 4px;

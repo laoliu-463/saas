@@ -249,6 +249,14 @@ CREATE INDEX IF NOT EXISTS idx_talent_fans_count ON talent(fans_count);
 CREATE INDEX IF NOT EXISTS idx_talent_crawl_status ON talent(crawl_status);
 CREATE INDEX IF NOT EXISTS idx_talent_status     ON talent(status);
 CREATE INDEX IF NOT EXISTS idx_talent_deleted    ON talent(deleted);
+ALTER TABLE talent ADD COLUMN IF NOT EXISTS blacklisted BOOLEAN DEFAULT FALSE;
+ALTER TABLE talent ADD COLUMN IF NOT EXISTS blacklist_reason VARCHAR(255);
+CREATE INDEX IF NOT EXISTS idx_talent_blacklisted ON talent(blacklisted);
+ALTER TABLE product_operation_state ADD COLUMN IF NOT EXISTS selected_to_library BOOLEAN DEFAULT FALSE;
+ALTER TABLE product_operation_state ADD COLUMN IF NOT EXISTS selected_at TIMESTAMP;
+ALTER TABLE product_operation_state ADD COLUMN IF NOT EXISTS selected_by UUID;
+ALTER TABLE product_operation_state ADD COLUMN IF NOT EXISTS audit_payload TEXT;
+CREATE INDEX IF NOT EXISTS idx_product_operation_state_selected_library ON product_operation_state(selected_to_library);
 CREATE INDEX IF NOT EXISTS idx_talent_crawl_src  ON talent(crawl_source);
 
 CREATE TABLE IF NOT EXISTS talent_claim (
@@ -401,7 +409,7 @@ CREATE TABLE IF NOT EXISTS pick_source_mapping (
     click_count      INT       DEFAULT 0,
     order_count      INT       DEFAULT 0,
     order_amount     BIGINT    DEFAULT 0,
-    pick_extra       VARCHAR(10),                         -- [V1.3] 实际透传值=short_id（≤10字符）
+    pick_extra       VARCHAR(128),                        -- [V2.2] 实际透传值，当前口径为 channel_{userId}
     scene            VARCHAR(32) DEFAULT 'PRODUCT_LIBRARY',
     valid_from       TIMESTAMP NOT NULL,
     valid_until      TIMESTAMP NOT NULL,
@@ -673,6 +681,8 @@ VALUES
     ('sample.claim.expire_hours',         '72',       'int',     'sample',     '认领有效期小时数',          1),
     ('sample.restrict_days',              '7',        'int',     'sample',     '寄样限制天数',             1),
     ('sample.restrict_enabled',           'true',     'boolean', 'sample',     '寄样限制开关',             1),
+    ('sample.timeout_homework_days',      '30',       'int',     'sample',     '寄样待交作业自动关闭天数',   1),
+    ('sample.timeout_pending_ship_days',  '15',       'int',     'sample',     '寄样待发货自动关闭天数',     1),
     ('sample.default_standard',
      '{"min_30day_sales":30000,"min_level":"LV1"}', 'json', 'sample', '寄样默认标准', 1),
     ('commission.business_default_ratio', '0.15',     'numeric', 'commission', '招商默认提成比例',          1),
@@ -884,14 +894,26 @@ INSERT INTO sys_role (role_code, role_name, data_scope, status)
 VALUES ('ops_staff', '运营', 1, 1)
 ON CONFLICT (role_code) DO NOTHING;
 
-INSERT INTO sys_user (username, password, real_name, channel_code, status)
+INSERT INTO sys_user (username, password, real_name, channel_code, dept_id, status)
 VALUES
-    ('biz_leader',     crypt('admin123', gen_salt('bf', 12)), '招商组长测试', 'bizleader',     1),
-    ('biz_staff',      crypt('admin123', gen_salt('bf', 12)), '招商专员测试', 'bizstaff',      1),
-    ('channel_leader', crypt('admin123', gen_salt('bf', 12)), '渠道组长测试', 'channelleader', 1),
-    ('channel_staff',  crypt('admin123', gen_salt('bf', 12)), '渠道专员测试', 'channelstaff',  1),
-    ('ops_staff',      crypt('admin123', gen_salt('bf', 12)), '运营测试',     'opsstaff',      1)
+    ('biz_leader',     crypt('admin123', gen_salt('bf', 12)), '招商组长测试', 'bizleader',     '11111111-1111-1111-1111-111111111111', 1),
+    ('biz_staff',      crypt('admin123', gen_salt('bf', 12)), '招商专员测试', 'bizstaff',      '11111111-1111-1111-1111-111111111111', 1),
+    ('channel_leader', crypt('admin123', gen_salt('bf', 12)), '渠道组长测试', 'channelleader', '22222222-2222-2222-2222-222222222222', 1),
+    ('channel_staff',  crypt('admin123', gen_salt('bf', 12)), '渠道专员测试', 'channelstaff',  '22222222-2222-2222-2222-222222222222', 1),
+    ('ops_staff',      crypt('admin123', gen_salt('bf', 12)), '运营测试',     'opsstaff',      '33333333-3333-3333-3333-333333333333', 1)
 ON CONFLICT (username) DO NOTHING;
+
+UPDATE sys_user
+SET dept_id = '11111111-1111-1111-1111-111111111111'
+WHERE username IN ('biz_leader', 'biz_staff') AND deleted = 0 AND dept_id IS NULL;
+
+UPDATE sys_user
+SET dept_id = '22222222-2222-2222-2222-222222222222'
+WHERE username IN ('channel_leader', 'channel_staff') AND deleted = 0 AND dept_id IS NULL;
+
+UPDATE sys_user
+SET dept_id = '33333333-3333-3333-3333-333333333333'
+WHERE username = 'ops_staff' AND deleted = 0 AND dept_id IS NULL;
 
 INSERT INTO sys_user_role (user_id, role_id)
 SELECT u.id, r.id

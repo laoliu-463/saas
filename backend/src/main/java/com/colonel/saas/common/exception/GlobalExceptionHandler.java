@@ -5,8 +5,11 @@ import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.douyin.DouyinApiException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -15,8 +18,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
-    public ApiResult<Void> handleBusiness(BusinessException e) {
-        return ApiResult.fail(e.getMessage());
+    public ResponseEntity<ApiResult<Void>> handleBusiness(BusinessException e) {
+        HttpStatus status = e.getCode() == ResultCode.UNAUTHORIZED.getCode()
+                ? HttpStatus.UNAUTHORIZED
+                : HttpStatus.OK;
+        return ResponseEntity.status(status)
+                .body(ApiResult.of(e.getCode(), e.getMessage(), null));
     }
 
     @ExceptionHandler(DouyinApiException.class)
@@ -49,17 +56,15 @@ public class GlobalExceptionHandler {
         return ApiResult.of(ResultCode.PARAM_ERROR.getCode(), msg, null);
     }
 
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ApiResult<Void> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        String name = e.getName() == null ? "参数" : e.getName();
+        return ApiResult.of(ResultCode.PARAM_ERROR.getCode(), name + " 格式不正确", null);
+    }
+
     @ExceptionHandler(Exception.class)
     public ApiResult<Void> handleGeneral(Exception e) {
         log.error("系统异常", e);
-        String detail = e.getMessage();
-        if (detail == null || detail.isBlank()) {
-            detail = e.getClass().getSimpleName();
-        }
-        return ApiResult.of(
-                ResultCode.SERVER_ERROR.getCode(),
-                ResultCode.SERVER_ERROR.getMsg() + ": " + detail,
-                null
-        );
+        return ApiResult.of(ResultCode.SERVER_ERROR, null);
     }
 }

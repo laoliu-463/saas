@@ -32,7 +32,7 @@ class CrawlerSchedulerTest {
 
     @BeforeEach
     void setUp() {
-        scheduler = new CrawlerScheduler(crawlerService, talentMapper, crawlerTalentInfoMapper, 100);
+        scheduler = new CrawlerScheduler(crawlerService, talentMapper, crawlerTalentInfoMapper, 100, true);
     }
 
     @Test
@@ -114,6 +114,28 @@ class CrawlerSchedulerTest {
 
         verify(crawlerService).crawlAndSave(argThat(list ->
                 list.size() == 1 && list.contains("valid-uid")));
+    }
+
+    @Test
+    void crawlTalentInfo_whenDisabled_skipsExecution() {
+        CrawlerScheduler disabledScheduler = new CrawlerScheduler(
+                crawlerService, talentMapper, crawlerTalentInfoMapper, 100, false);
+
+        disabledScheduler.crawlTalentInfo();
+
+        verify(talentMapper, never()).selectList(any());
+        verify(crawlerService, never()).crawlAndSave(anyList());
+    }
+
+    @Test
+    void updateTalentStats_whenDisabled_skipsExecution() {
+        CrawlerScheduler disabledScheduler = new CrawlerScheduler(
+                crawlerService, talentMapper, crawlerTalentInfoMapper, 100, false);
+
+        disabledScheduler.updateTalentStats();
+
+        verify(crawlerTalentInfoMapper, never()).selectList(any());
+        verify(crawlerService, never()).crawlAndSave(anyList());
     }
 
     private Talent createTalent(String douyinUid) {

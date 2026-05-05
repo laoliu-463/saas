@@ -2,4 +2,74 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.colonel.saas.mapper.ColonelsettlementActivityMapper">
 
+    <sql id="StatusCodeExpr">
+        CASE
+            WHEN end_time IS NOT NULL AND end_time &lt; #{now} THEN 0
+            WHEN status IN ('已结束', '结束', 'CLOSED', 'ENDED', 'FINISHED', '0') THEN 0
+            ELSE 1
+        END
+    </sql>
+
+    <select id="countLocalActivities" resultType="long">
+        SELECT COUNT(1)
+        FROM colonel_activity
+        WHERE deleted = 0
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(1)
+        FROM colonel_activity
+        WHERE deleted = 0
+        <if test="status != null">
+            AND <include refid="StatusCodeExpr"/> = #{status}
+        </if>
+    </select>
+
+    <select id="selectPage" resultType="com.colonel.saas.entity.ColonelsettlementActivity">
+        SELECT
+            id,
+            activity_id AS activityId,
+            activity_name AS name,
+            start_time AS startTime,
+            end_time AS endTime,
+            <include refid="StatusCodeExpr"/> AS status,
+            create_time AS createTime,
+            update_time AS updateTime,
+            create_by AS createBy,
+            update_by AS updateBy,
+            deleted
+        FROM colonel_activity
+        WHERE deleted = 0
+        <if test="status != null">
+            AND <include refid="StatusCodeExpr"/> = #{status}
+        </if>
+        ORDER BY start_time DESC NULLS LAST, create_time DESC NULLS LAST
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <insert id="insertSeedActivity">
+        INSERT INTO colonel_activity (
+            id,
+            activity_id,
+            activity_name,
+            start_time,
+            end_time,
+            status,
+            deleted,
+            create_time,
+            update_time
+        ) VALUES (
+            #{id},
+            #{activityId},
+            #{activityName},
+            #{startTime},
+            #{endTime},
+            #{statusText},
+            0,
+            #{createTime},
+            #{createTime}
+        )
+        ON CONFLICT (activity_id) DO NOTHING
+    </insert>
+
 </mapper>

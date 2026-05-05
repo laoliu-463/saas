@@ -1,7 +1,7 @@
 # AGENTS.md — 抖音团长 SaaS V2.2 开发地图
 
 **版本**：V2.2 维护版  
-**最后更新**：2026-04-28  
+**最后更新**：2026-05-03  
 **适用对象**：AI 智能体 / 开发者
 
 ---
@@ -21,11 +21,12 @@
 文档优先级：
 1. `docs/README.md`
 2. `docs/00-项目总览.md` ~ `docs/06-部署与对接计划.md`
-3. 当前阶段直接相关的专项文档：`docs/07-*.md` ~ `docs/12-*.md`
-4. 当前代码可验证事实
+3. 当前阶段直接相关的主干文档：`docs/09-真实SDK联调准备清单.md`、`docs/10-V2.2场景覆盖矩阵.md`
+4. 归档与专项记录：`docs/archive/*.md`
+5. 当前代码可验证事实
 
 补充要求：
-- 进入真实 SDK 联调、P0 验收、乱码治理等专项任务时，必须同时阅读对应专项文档，不能只按 `00~06` 执行。
+- 进入真实 SDK 联调、P0 验收、乱码治理等专项任务时，必须同时阅读对应主干文档或 `docs/archive/` 中对应专项记录，不能只按 `00~06` 执行。
 - 当前打开中的任务文档、当前里程碑引用的补充文档，默认视为本次任务约束的一部分。
 
 ---
@@ -34,12 +35,17 @@
 
 - 已完成：V0.5（M0.1~M0.8）
 - 已完成：V1.0 到 M1.5（SDK 封装、订单同步、爬虫、寄样真实数据接入、寄样自动闭环）
-- 进行中：M1.3 真数据联调验收（第三方 SDK 真实环境）
-- 待完成：M1.6 数据看板真实化、M1.7 部署验证、V2.0 高级能力
+- 已完成：P0/P1 本地 Mock 收口（环境口径统一、数据基线固化、日志降噪、SOP 文档化）
+- 已完成：real-pre 环境浏览器 E2E 全路径自动化联调（2026-05-02 首轮 10/10 PASS；2026-05-03 全量 45/45 PASS）
+- 进行中：P2 工程治理（权限注解口径统一）
+- 待完成：M1.6 数据看板真实化、M1.7 部署验证、真实 SDK 联调（依赖外部 Token）
 
 关键说明：
-- 当前 `mvn test` 全绿（本地 Test 链路）
+- 当前 `mvn test` 全绿（`410 tests, 0 failures, 0 errors`，本地 Test 链路）
+- real-pre 环境（APP_TEST_ENABLED=true，DOUYIN_TEST_ENABLED=true，profile 仍为 `local-mock`）E2E 全路径已验收通过
 - 第三方 SDK 真实环境联调尚未完成（Token / 真实接口返回 / 限流分支待验证）
+- 商品页已实现抖音 Token 缺失时降级本地商品库；Dashboard 已兼容后端实际 Summary 字段格式
+- 当前本机标准启动格局已固定为：`3000/8080` 一组、`3001/8081` 一组；执行时不得混起第二个 `3001` 本机 Vite 或额外 `8080` 手工后端
 
 ---
 
@@ -49,7 +55,7 @@
 SAAS/
 ├── backend/                    # Spring Boot 后端
 ├── frontend/                   # Vue3 前端
-├── docs/                       # 项目主文档与专项执行文档
+├── docs/                       # 项目主文档（根目录收敛为 10 个）
 │   ├── README.md
 │   ├── 00-项目总览.md
 │   ├── 01-业务闭环.md
@@ -58,14 +64,11 @@ SAAS/
 │   ├── 04-开发进度.md
 │   ├── 05-接口与数据模型.md
 │   ├── 06-部署与对接计划.md
-│   ├── 07-Test全链路验收.md
-│   ├── 08-test-演示脚本.md
 │   ├── 09-真实SDK联调准备清单.md
 │   ├── 10-V2.2场景覆盖矩阵.md
-│   ├── 11-P0测试数据收口清单.md
-│   └── 12-文档编码乱码问题分析报告.md
+│   └── archive/
 ├── scripts/
-└── docker-compose.yml
+└── docker-compose.test.yml
 ```
 
 ---
@@ -76,7 +79,7 @@ SAAS/
 1. 先读 `docs/04-开发进度.md` 确认当前阶段和里程碑
 2. 再读 `docs/01-业务闭环.md`、`docs/02-架构设计.md`
 3. 如涉及接口、环境、联调，再补读 `docs/03`、`docs/05`、`docs/06`
-4. 如涉及专项任务，再补读对应专项文档（`docs/07` ~ `docs/12`）
+4. 如涉及专项任务，再补读 `docs/09`、`docs/10` 或 `docs/archive/` 中对应专项文档
 5. 对照当前代码实现落地
 6. 增加 / 更新测试并完成最小验证
 
@@ -90,18 +93,20 @@ SAAS/
 1. 改实现后必须同步对应 `docs/*.md`
 2. 涉及 SDK / Gateway 时同步 `docs/03-Test与Real网关契约.md`、`docs/06-部署与对接计划.md`
 3. 涉及真实联调时同步 `docs/09-真实SDK联调准备清单.md`
-4. 涉及场景覆盖与验收口径时同步 `docs/10-V2.2场景覆盖矩阵.md`、`docs/11-P0测试数据收口清单.md`
-5. 涉及乱码、编码、文档可读性治理时同步 `docs/12-文档编码乱码问题分析报告.md`
+4. 涉及场景覆盖与验收口径时同步 `docs/10-V2.2场景覆盖矩阵.md`，必要时补记 `docs/archive/runbooks/11-P0测试数据收口清单.md`
+5. 涉及乱码、编码、文档可读性治理时同步 `docs/archive/audits/12-文档编码乱码问题分析报告.md`
 6. 重大里程碑完成后更新 `docs/README.md` 和 `docs/04-开发进度.md`
 
 ---
 
 ## 5. 当前重点风险
 
-1. 第三方 SDK 真实联调未完成（高优先级）
-2. 商品主链路状态机和操作日志仍待完全统一
-3. 达人跟进与真实数据回流尚未完全接入主链路
-4. 部分补充文档曾出现编码 / 乱码问题，修改文档时需确认文件编码一致且可读
+1. 第三方 SDK 真实联调未完成（高优先级，依赖外部 Token 配置）
+2. 权限注解口径不统一（`@RequiresRole` / `@DataScope` 覆盖未完整审计）
+3. 商品主链路状态机和操作日志仍待完全统一
+4. 达人跟进与真实数据回流尚未完全接入主链路
+5. `CrawlerScheduler` 的 Java 变更已编译，需容器重启后完全生效（`spring.devtools.restart.enabled=false`）
+6. 部分补充文档曾出现编码 / 乱码问题，修改文档时需确认文件编码一致且可读
 
 ---
 
@@ -112,8 +117,8 @@ SAAS/
 3. 商品主链路按统一闭环推进：`docs/01-业务闭环.md`
 4. 部署和联调按环境切换路径执行：`docs/06-部署与对接计划.md`
 5. 真实 SDK 联调前先过准备清单：`docs/09-真实SDK联调准备清单.md`
-6. P0 / 场景验收以覆盖矩阵和收口清单为准：`docs/10-V2.2场景覆盖矩阵.md`、`docs/11-P0测试数据收口清单.md`
-7. 文档修改需避免乱码回归，必要时对照：`docs/12-文档编码乱码问题分析报告.md`
+6. P0 / 场景验收以覆盖矩阵和收口清单为准：`docs/10-V2.2场景覆盖矩阵.md`、`docs/archive/runbooks/11-P0测试数据收口清单.md`
+7. 文档修改需避免乱码回归，必要时对照：`docs/archive/audits/12-文档编码乱码问题分析报告.md`
 
 ---
 
@@ -181,7 +186,7 @@ npm run build
 本项目典型用法：
 
 - `用 systematic-debugging 排查 RealDouyinAuthGateway token 获取失败，先按 docs/03、docs/09`
-- `用 systematic-debugging 排查订单真实回流未入库，先读 docs/03、docs/14`
+- `用 systematic-debugging 排查订单真实回流未入库，先读 docs/03、docs/archive/records/14`
 
 #### 3. `verification-before-completion`
 
@@ -194,7 +199,7 @@ npm run build
 本项目典型用法：
 
 - `用 verification-before-completion 检查这次 Gateway 改动是否满足 docs/03 契约`
-- `用 verification-before-completion 检查这次改动能否进入 P0 验收，重点对照 docs/10、docs/11`
+- `用 verification-before-completion 检查这次改动能否进入 P0 验收，重点对照 docs/10、docs/archive/runbooks/11`
 
 #### 4. `test-driven-development`
 
@@ -233,8 +238,8 @@ npm run build
 - 新功能 / 新阶段任务：至少先读 `docs/04`、`docs/01`、`docs/02`
 - 接口 / 环境 / 联调：补读 `docs/03`、`docs/05`、`docs/06`
 - 真实 SDK 联调：必须补读 `docs/09`
-- P0 / 场景验收：必须补读 `docs/10`、`docs/11`
-- 文档编码 / 乱码治理：必须补读 `docs/12`
+- P0 / 场景验收：必须补读 `docs/10`、`docs/archive/runbooks/11`
+- 文档编码 / 乱码治理：必须补读 `docs/archive/audits/12`
 
 ### 8.5 推荐提问模板
 

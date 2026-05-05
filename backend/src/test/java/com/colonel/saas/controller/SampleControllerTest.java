@@ -4,19 +4,24 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.dto.SampleApplyRequest;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
+import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
+import com.colonel.saas.mapper.SampleStatusLogMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.CrawlerTalentInfoService;
+import com.colonel.saas.service.BusinessRuleConfigService;
+import com.colonel.saas.service.SampleEligibilityService;
 import com.colonel.saas.service.SampleStatusLogService;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -36,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -59,7 +65,13 @@ class SampleControllerTest {
     @Mock
     private SampleStatusLogService sampleStatusLogService;
     @Mock
+    private SampleStatusLogMapper sampleStatusLogMapper;
+    @Mock
     private CrawlerTalentInfoService crawlerTalentInfoService;
+    @Mock
+    private BusinessRuleConfigService businessRuleConfigService;
+    @Mock
+    private SampleEligibilityService sampleEligibilityService;
 
     private SampleController sampleController;
 
@@ -73,8 +85,20 @@ class SampleControllerTest {
                 sysUserMapper,
                 talentMapper,
                 sampleStatusLogService,
-                crawlerTalentInfoService
+                sampleStatusLogMapper,
+                crawlerTalentInfoService,
+                businessRuleConfigService,
+                sampleEligibilityService
         );
+        lenient().when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(true);
+        lenient().when(businessRuleConfigService.getSampleRestrictDays()).thenReturn(7);
+        lenient().when(sampleEligibilityService.evaluate(any(), any()))
+                .thenReturn(new SampleEligibilityService.EligibilityResult(
+                        true,
+                        java.util.List.of(),
+                        new SampleEligibilityService.SampleDefaultStandard(30000L, "LV1", java.util.Map.of()),
+                        new SampleEligibilityService.TalentSnapshot(50000L, "LV2")
+                ));
     }
 
     @Test
@@ -152,6 +176,7 @@ class SampleControllerTest {
         ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
         verify(sampleRequestMapper).insert(captor.capture());
         SampleRequest saved = captor.getValue();
+        assertThat(saved.getId()).isNotNull();
         assertThat(saved.getTalentUid()).isEqualTo("talent_002");
         assertThat(saved.getTalentNickname()).isEqualTo("crawler talent");
         assertThat(saved.getTalentFansCount()).isEqualTo(120000L);
@@ -237,6 +262,193 @@ class SampleControllerTest {
     }
 
     @Test
+    void getSampleById_shouldRejectCrossUserAccessInPersonalScope() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setChannelUserId(ownerId);
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        assertThatThrownBy(() -> sampleController.getSampleById(sampleId, viewerId, null, DataScope.PERSONAL))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权访问");
+    }
+
+    @Test
+    void getSampleById_shouldUseStoredDeptForDeptScope() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID storedDeptId = UUID.randomUUID();
+        UUID movedDeptId = UUID.randomUUID();
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setChannelUserId(ownerId);
+        sample.setDeptId(storedDeptId);
+        sample.setStatus(1);
+
+        SysUser owner = new SysUser();
+        owner.setId(ownerId);
+        owner.setDeptId(movedDeptId);
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productMapper.selectById(null)).thenReturn(null);
+        when(sysUserMapper.selectById(ownerId)).thenReturn(owner);
+
+        var response = sampleController.getSampleById(sampleId, viewerId, storedDeptId, DataScope.DEPT);
+
+        assertThat(response.getData().getId()).isEqualTo(sampleId);
+    }
+
+    @Test
+    void createSample_shouldPopulateDeptFields() {
+        UUID talentUuid = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("test product");
+
+        CrawlerTalentInfo crawlerTalentInfo = new CrawlerTalentInfo();
+        crawlerTalentInfo.setTalentId("talent_001");
+        crawlerTalentInfo.setNickname("test talent");
+
+        Talent talent = new Talent();
+        talent.setId(talentUuid);
+        talent.setDouyinUid("talent_001");
+        talent.setNickname("test talent");
+
+        SysUser operator = new SysUser();
+        operator.setId(userId);
+        operator.setDeptId(deptId);
+
+        SampleApplyRequest request = new SampleApplyRequest();
+        request.setProductId(productId);
+        request.setTalentId("talent_001");
+        request.setQuantity(1);
+
+        when(productMapper.selectById(productId)).thenReturn(product);
+        when(crawlerTalentInfoService.findByTalentId("talent_001")).thenReturn(crawlerTalentInfo);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
+        when(sysUserMapper.selectById(userId)).thenReturn(operator);
+
+        sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
+
+        ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
+        verify(sampleRequestMapper).insert(captor.capture());
+        assertThat(captor.getValue().getDeptId()).isEqualTo(deptId);
+        assertThat(captor.getValue().getChannelDeptId()).isEqualTo(deptId);
+    }
+
+    @Test
+    void actionSample_shouldRejectChannelStaffAuditAction() {
+        UUID sampleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setChannelUserId(userId);
+        sample.setStatus(1);
+
+        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        request.setAction("PENDING_SHIP");
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        assertThatThrownBy(() -> sampleController.actionSample(
+                sampleId,
+                request,
+                userId,
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.CHANNEL_STAFF)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("招商角色");
+    }
+
+    @Test
+    void createSample_shouldSkipRestrictionWhenDisabled() {
+        UUID productId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID talentUuid = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("test product");
+
+        CrawlerTalentInfo crawlerTalentInfo = new CrawlerTalentInfo();
+        crawlerTalentInfo.setTalentId("talent_disabled_001");
+        crawlerTalentInfo.setNickname("disabled talent");
+
+        Talent talent = new Talent();
+        talent.setId(talentUuid);
+        talent.setDouyinUid("talent_disabled_001");
+
+        SampleApplyRequest request = new SampleApplyRequest();
+        request.setTalentId("talent_disabled_001");
+        request.setProductId(productId);
+        request.setQuantity(1);
+
+        when(productMapper.selectById(productId)).thenReturn(product);
+        when(crawlerTalentInfoService.findByTalentId("talent_disabled_001")).thenReturn(crawlerTalentInfo);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+
+        sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
+
+        verify(sampleRequestMapper).insert(any(SampleRequest.class));
+        verify(sampleRequestMapper, never()).selectCount(any());
+    }
+
+    @Test
+    void createSample_shouldRequireRemarkWhenEligibilityFailed() {
+        UUID productId = UUID.randomUUID();
+        UUID talentUuid = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("test product");
+
+        CrawlerTalentInfo crawlerTalentInfo = new CrawlerTalentInfo();
+        crawlerTalentInfo.setTalentId("talent_not_fit");
+        crawlerTalentInfo.setNickname("talent not fit");
+
+        Talent talent = new Talent();
+        talent.setId(talentUuid);
+        talent.setDouyinUid("talent_not_fit");
+
+        SampleApplyRequest request = new SampleApplyRequest();
+        request.setTalentId("talent_not_fit");
+        request.setProductId(productId);
+        request.setQuantity(1);
+        request.setRemark("");
+
+        when(productMapper.selectById(productId)).thenReturn(product);
+        when(crawlerTalentInfoService.findByTalentId("talent_not_fit")).thenReturn(crawlerTalentInfo);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
+        when(sampleEligibilityService.evaluate(any(), any()))
+                .thenReturn(new SampleEligibilityService.EligibilityResult(
+                        false,
+                        java.util.List.of("达人等级未达到 LV1"),
+                        new SampleEligibilityService.SampleDefaultStandard(30000L, "LV1", java.util.Map.of()),
+                        new SampleEligibilityService.TalentSnapshot(1000L, "LV0")
+                ));
+
+        assertThatThrownBy(() -> sampleController.createSample(request, UUID.randomUUID(), java.util.List.of(RoleCodes.CHANNEL_STAFF)))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("请先填写申请原因");
+    }
+
+    @Test
     void searchTalents_shouldReturnPagedResults() {
         SampleTalentVO vo = new SampleTalentVO();
         vo.setTalentId("talent_001");
@@ -315,7 +527,10 @@ class SampleControllerTest {
         page.setRecords(List.of(sample));
         page.setTotal(1);
 
-        when(productMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(product));
+        Page<Product> productKeywordPage = new Page<>(1, 500, 1);
+        productKeywordPage.setRecords(List.of(product));
+        when(productMapper.selectPage(any(Page.class), any(QueryWrapper.class))).thenReturn(productKeywordPage);
+        when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
 
         var response = sampleController.getSamplePage(
@@ -331,8 +546,44 @@ class SampleControllerTest {
         assertThat(response.getData().getTotal()).isEqualTo(1L);
         assertThat(response.getData().getRecords()).hasSize(1);
         assertThat(response.getData().getRecords().get(0).getTalentName()).isEqualTo("达人B-映射缺失订单");
-        verify(productMapper).selectList(any(QueryWrapper.class));
+        verify(productMapper).selectPage(any(Page.class), any(QueryWrapper.class));
         verify(sampleRequestMapper).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+    }
+
+    @Test
+    void getSampleBoard_shouldTraverseMultiplePages() {
+        UUID productId = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("分页寄样商品");
+
+        SampleRequest first = new SampleRequest();
+        first.setId(UUID.randomUUID());
+        first.setProductId(productId);
+        first.setTalentNickname("达人A");
+        first.setStatus(1);
+
+        SampleRequest second = new SampleRequest();
+        second.setId(UUID.randomUUID());
+        second.setProductId(productId);
+        second.setTalentNickname("达人B");
+        second.setStatus(2);
+
+        IPage<SampleRequest> firstPage = new Page<>(1, 2000, 2001);
+        firstPage.setRecords(List.of(first));
+        IPage<SampleRequest> secondPage = new Page<>(2, 2000, 2001);
+        secondPage.setRecords(List.of(second));
+
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(firstPage)
+                .thenReturn(secondPage);
+        when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
+
+        var response = sampleController.getSampleBoard(UUID.randomUUID(), null, DataScope.ALL);
+
+        assertThat(response.getData().get("PENDING_AUDIT")).hasSize(1);
+        assertThat(response.getData().get("PENDING_SHIP")).hasSize(1);
     }
 
     @Test
@@ -361,7 +612,13 @@ class SampleControllerTest {
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(productMapper.selectById(productId)).thenReturn(product);
 
-        var response = sampleController.actionSample(sampleId, request, userId);
+        var response = sampleController.actionSample(
+                sampleId,
+                request,
+                userId,
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.BIZ_STAFF));
 
         assertThat(response.getData().getStatus()).isEqualTo("PENDING_SHIP");
         verify(sampleRequestMapper).updateById(sample);
@@ -395,7 +652,13 @@ class SampleControllerTest {
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(productMapper.selectById(productId)).thenReturn(product);
 
-        var response = sampleController.actionSample(sampleId, request, userId);
+        var response = sampleController.actionSample(
+                sampleId,
+                request,
+                userId,
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF));
 
         assertThat(response.getData().getStatus()).isEqualTo("SHIPPED");
         assertThat(response.getData().getTrackingNo()).isEqualTo("YT123456");
@@ -426,7 +689,13 @@ class SampleControllerTest {
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(productMapper.selectById(productId)).thenReturn(product);
 
-        var response = sampleController.actionSample(sampleId, request, userId);
+        var response = sampleController.actionSample(
+                sampleId,
+                request,
+                userId,
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.BIZ_STAFF));
 
         assertThat(response.getData().getStatus()).isEqualTo("REJECTED");
         assertThat(response.getData().getRejectReason()).isEqualTo("not matched");
@@ -445,7 +714,13 @@ class SampleControllerTest {
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
 
-        assertThatThrownBy(() -> sampleController.actionSample(sampleId, request, UUID.randomUUID()))
+        assertThatThrownBy(() -> sampleController.actionSample(
+                sampleId,
+                request,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF)))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Current status does not allow this action");
 

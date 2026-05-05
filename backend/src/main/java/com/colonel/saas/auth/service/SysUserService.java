@@ -1,6 +1,5 @@
 package com.colonel.saas.auth.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -11,12 +10,14 @@ import com.colonel.saas.auth.dto.SysUserResetPasswordRequest;
 import com.colonel.saas.auth.dto.SysUserUpdateRequest;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.SysUserRole;
 import com.colonel.saas.mapper.SysRoleMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.SysUserRoleMapper;
+import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.vo.SysUserVO;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -36,21 +38,30 @@ import java.util.stream.Collectors;
 public class SysUserService {
 
     private static final int MAX_CHANNEL_CODE_LEN = 16;
+    private static final Set<String> ASSIGNABLE_BIZ_ROLE_CODES = Set.of(
+            RoleCodes.BIZ_LEADER,
+            RoleCodes.BIZ_STAFF,
+            RoleCodes.CHANNEL_LEADER,
+            RoleCodes.CHANNEL_STAFF
+    );
 
     private final SysUserMapper sysUserMapper;
     private final SysRoleMapper sysRoleMapper;
     private final SysUserRoleMapper sysUserRoleMapper;
     private final PasswordEncoder passwordEncoder;
+    private final OperationLogService operationLogService;
 
     public SysUserService(
             SysUserMapper sysUserMapper,
             SysRoleMapper sysRoleMapper,
             SysUserRoleMapper sysUserRoleMapper,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            OperationLogService operationLogService) {
         this.sysUserMapper = sysUserMapper;
         this.sysRoleMapper = sysRoleMapper;
         this.sysUserRoleMapper = sysUserRoleMapper;
         this.passwordEncoder = passwordEncoder;
+        this.operationLogService = operationLogService;
     }
 
     public IPage<SysUserVO> findPage(
@@ -64,6 +75,49 @@ public class SysUserService {
         return result;
     }
 
+    public List<SysUserVO> findAssignableUsers(String keyword, List<String> currentRoleCodes, UUID currentDeptId) {
+        QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
+        wrapper.eq("deleted", 0)
+                .eq("status", 1)
+                .orderByAsc("real_name")
+                .orderByAsc("username")
+                .last("limit 20");
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            String safeKeyword = keyword.trim();
+            wrapper.and(query -> query.like("username", safeKeyword).or().like("real_name", safeKeyword));
+        }
+
+        List<SysUser> users = sysUserMapper.selectList(wrapper);
+        if (users.isEmpty()) {
+            return Collections.emptyList();
+        }
+        AssignableScope scope = resolveAssignableScope(currentRoleCodes, currentDeptId);
+        Set<String> allowedRoleCodes = scope.allowedRoleCodes();
+        if (allowedRoleCodes.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<UUID, List<SysUserRole>> relationMap = users.stream()
+                .collect(Collectors.toMap(
+                        SysUser::getId,
+                        user -> sysUserRoleMapper.findByUserId(user.getId())
+                ));
+        Set<UUID> roleIds = relationMap.values().stream()
+                .flatMap(List::stream)
+                .map(SysUserRole::getRoleId)
+                .filter(roleId -> roleId != null)
+                .collect(Collectors.toSet());
+        Map<UUID, SysRole> roleMap = roleIds.isEmpty()
+                ? Collections.emptyMap()
+                : sysRoleMapper.selectBatchIds(roleIds).stream()
+                .collect(Collectors.toMap(SysRole::getId, role -> role));
+
+        return users.stream()
+                .filter(user -> scope.deptId() == null || scope.allowCrossDept() || Objects.equals(scope.deptId(), user.getDeptId()))
+                .filter(user -> matchesAssignableRole(user.getId(), relationMap, roleMap, allowedRoleCodes))
+                .map(this::toVO)
+                .toList();
+    }
+
     public SysUserVO getById(UUID id, UUID currentUserId, DataScope dataScope) {
         SysUser user = requireUser(id);
         assertCanAccess(user, currentUserId, dataScope);
@@ -71,15 +125,16 @@ public class SysUserService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public SysUserVO create(SysUserCreateRequest request) {
+    public SysUserVO create(SysUserCreateRequest request, UUID currentUserId) {
         sysUserMapper.findByUsername(request.username()).ifPresent(existing -> {
             throw new BusinessException("用户名已存在");
         });
 
         List<UUID> roleIds = normalizeRoleIds(request.roleIds());
-        validateRoleIds(roleIds);
+        validateRoleIds(roleIds, null);
 
         SysUser user = new SysUser();
+        user.setId(UUID.randomUUID());
         user.setUsername(request.username());
         user.setPassword(passwordEncoder.encode(request.password()));
         user.setRealName(request.realName());
@@ -91,6 +146,16 @@ public class SysUserService {
         sysUserMapper.insert(user);
 
         replaceUserRoles(user.getId(), roleIds);
+        operationLogService.recordSystemAction(
+                currentUserId,
+                "用户管理",
+                "新建用户",
+                "POST",
+                "SysUser",
+                user.getId() == null ? null : user.getId().toString(),
+                user.getUsername(),
+                "新建用户: " + user.getUsername()
+        );
         return toVO(user);
     }
 
@@ -107,6 +172,16 @@ public class SysUserService {
         user.setEmail(request.email());
         user.setStatus(request.status());
         sysUserMapper.updateById(user);
+        operationLogService.recordSystemAction(
+                currentUserId,
+                "用户管理",
+                "更新用户",
+                "PUT",
+                "SysUser",
+                user.getId() == null ? null : user.getId().toString(),
+                user.getUsername(),
+                "更新用户: " + user.getUsername()
+        );
         return toVO(user);
     }
 
@@ -119,6 +194,16 @@ public class SysUserService {
         assertCanAccess(user, currentUserId, dataScope);
         sysUserRoleMapper.deleteByUserIdPhysical(id);
         sysUserMapper.softDeleteById(id);
+        operationLogService.recordSystemAction(
+                currentUserId,
+                "用户管理",
+                "删除用户",
+                "DELETE",
+                "SysUser",
+                user.getId() == null ? null : user.getId().toString(),
+                user.getUsername(),
+                "删除用户: " + user.getUsername()
+        );
     }
 
     public void resetPassword(
@@ -132,6 +217,16 @@ public class SysUserService {
         update.setId(id);
         update.setPassword(passwordEncoder.encode(request.newPassword()));
         sysUserMapper.updateById(update);
+        operationLogService.recordSystemAction(
+                currentUserId,
+                "用户管理",
+                "重置密码",
+                "PUT",
+                "SysUser",
+                user.getId() == null ? null : user.getId().toString(),
+                user.getUsername(),
+                "重置用户密码: " + user.getUsername()
+        );
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -143,8 +238,18 @@ public class SysUserService {
         SysUser user = requireUser(id);
         assertCanAccess(user, currentUserId, dataScope);
         List<UUID> roleIds = normalizeRoleIds(request.roleIds());
-        validateRoleIds(roleIds);
+        validateRoleIds(roleIds, id);
         replaceUserRoles(id, roleIds);
+        operationLogService.recordSystemAction(
+                currentUserId,
+                "用户管理",
+                "分配角色",
+                "PUT",
+                "SysUser",
+                user.getId() == null ? null : user.getId().toString(),
+                user.getUsername(),
+                "更新用户角色: " + user.getUsername()
+        );
     }
 
     private SysUser requireUser(UUID id) {
@@ -177,7 +282,7 @@ public class SysUserService {
         return new ArrayList<>(distinct);
     }
 
-    private void validateRoleIds(List<UUID> roleIds) {
+    private void validateRoleIds(List<UUID> roleIds, UUID targetUserId) {
         if (roleIds.isEmpty()) {
             return;
         }
@@ -190,6 +295,39 @@ public class SysUserService {
         if (hasDisabledRole) {
             throw new BusinessException("不能分配已禁用角色");
         }
+        assertSingleAdminUser(roles, targetUserId);
+    }
+
+    private void assertSingleAdminUser(List<SysRole> roles, UUID targetUserId) {
+        SysRole adminRole = roles.stream()
+                .filter(role -> RoleCodes.ADMIN.equals(role.getRoleCode()))
+                .findFirst()
+                .orElse(null);
+        if (adminRole == null || adminRole.getId() == null) {
+            return;
+        }
+        if (targetUserId != null) {
+            boolean targetAlreadyAdmin = sysUserRoleMapper.findByUserId(targetUserId).stream()
+                    .anyMatch(relation -> adminRole.getId().equals(relation.getRoleId()));
+            if (targetAlreadyAdmin) {
+                return;
+            }
+        }
+
+        List<UUID> adminUserIds = sysUserRoleMapper.findByRoleId(adminRole.getId()).stream()
+                .map(SysUserRole::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (adminUserIds.isEmpty()) {
+            return;
+        }
+        boolean hasExistingAdmin = sysUserMapper.selectBatchIds(adminUserIds).stream()
+                .filter(Objects::nonNull)
+                .anyMatch(user -> user.getDeleted() == null || user.getDeleted() == 0);
+        if (hasExistingAdmin) {
+            throw new BusinessException("管理员账号已存在，不能新增或转配第二个管理员");
+        }
     }
 
     private void replaceUserRoles(UUID userId, List<UUID> roleIds) {
@@ -197,6 +335,7 @@ public class SysUserService {
 
         for (UUID roleId : roleIds) {
             SysUserRole relation = new SysUserRole();
+            relation.setId(UUID.randomUUID());
             relation.setUserId(userId);
             relation.setRoleId(roleId);
             sysUserRoleMapper.insert(relation);
@@ -243,6 +382,52 @@ public class SysUserService {
         }
     }
 
+    private AssignableScope resolveAssignableScope(List<String> currentRoleCodes, UUID currentDeptId) {
+        if (currentRoleCodes == null || currentRoleCodes.isEmpty()) {
+            return AssignableScope.empty();
+        }
+        LinkedHashSet<String> normalized = currentRoleCodes.stream()
+                .filter(code -> code != null && !code.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (normalized.contains(RoleCodes.ADMIN)) {
+            return new AssignableScope(ASSIGNABLE_BIZ_ROLE_CODES, null, true);
+        }
+        if (normalized.contains(RoleCodes.BIZ_LEADER)) {
+            return new AssignableScope(Set.of(RoleCodes.BIZ_STAFF), currentDeptId, false);
+        }
+        if (normalized.contains(RoleCodes.CHANNEL_LEADER)) {
+            return new AssignableScope(Set.of(RoleCodes.CHANNEL_STAFF), currentDeptId, false);
+        }
+        return AssignableScope.empty();
+    }
+
+    private boolean matchesAssignableRole(
+            UUID userId,
+            Map<UUID, List<SysUserRole>> relationMap,
+            Map<UUID, SysRole> roleMap,
+            Set<String> allowedRoleCodes) {
+        List<SysUserRole> relations = relationMap.getOrDefault(userId, Collections.emptyList());
+        if (relations.isEmpty()) {
+            return false;
+        }
+        for (SysUserRole relation : relations) {
+            SysRole role = roleMap.get(relation.getRoleId());
+            if (role == null || role.getStatus() == null || role.getStatus() != 1) {
+                continue;
+            }
+            if (allowedRoleCodes.contains(role.getRoleCode())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private record AssignableScope(Set<String> allowedRoleCodes, UUID deptId, boolean allowCrossDept) {
+        private static AssignableScope empty() {
+            return new AssignableScope(Collections.emptySet(), null, false);
+        }
+    }
+
     private String generateUniqueChannelCode(String username) {
         String base = normalizeChannelCode(username);
         if (base.isBlank()) {
@@ -271,8 +456,6 @@ public class SysUserService {
     }
 
     private boolean channelCodeExists(String channelCode) {
-        LambdaQueryWrapper<SysUser> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysUser::getChannelCode, channelCode);
-        return sysUserMapper.selectCount(wrapper) > 0;
+        return sysUserMapper.existsByChannelCodeIncludingDeleted(channelCode);
     }
 }

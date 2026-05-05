@@ -1,7 +1,11 @@
 package com.colonel.saas.controller;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.dto.order.OrderDetailResponse;
+import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderSyncService;
@@ -16,7 +20,13 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.List;
+
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -46,15 +56,20 @@ class OrderControllerTest {
 
     @Test
     void getOrderDetail_shouldReturnAggregatedDetail() throws Exception {
+        java.util.UUID userId = java.util.UUID.randomUUID();
+        java.util.UUID deptId = java.util.UUID.randomUUID();
         OrderDetailResponse response = new OrderDetailResponse();
         response.setOrderId("mock-order-1");
         response.setAttributionStatus("ATTRIBUTED");
         OrderDetailResponse.PromotionInfo promotion = new OrderDetailResponse.PromotionInfo();
         promotion.setMatched(true);
         response.setPromotion(promotion);
-        when(orderQueryService.getOrderDetail("mock-order-1")).thenReturn(response);
+        when(orderQueryService.getOrderDetail("mock-order-1", userId, deptId, DataScope.ALL)).thenReturn(response);
 
-        mockMvc.perform(get("/orders/mock-order-1"))
+        mockMvc.perform(get("/orders/mock-order-1")
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("dataScope", DataScope.ALL))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.orderId").value("mock-order-1"))
@@ -91,5 +106,34 @@ class OrderControllerTest {
         ArgumentCaptor<Long> endCaptor = ArgumentCaptor.forClass(Long.class);
         verify(orderSyncService).syncByTimeRange(startCaptor.capture(), endCaptor.capture());
         Assertions.assertTrue(endCaptor.getValue() >= startCaptor.getValue());
+    }
+
+    @Test
+    void getStats_shouldAggregateViaSqlGroupedMaps() throws Exception {
+        when(orderMapper.selectMaps(any())).thenReturn(
+                List.of(
+                        Map.of("attributionStatus", "ATTRIBUTED", "total", 1L),
+                        Map.of("attributionStatus", "UNATTRIBUTED", "total", 2L),
+                        Map.of("attributionStatus", "PARTIAL", "total", 1L)
+                ),
+                List.of(
+                        Map.of("reason", "pick_source 未匹配", "total", 1L),
+                        Map.of("reason", "SYNC_FAILED", "total", 1L)
+                )
+        );
+
+        mockMvc.perform(get("/orders/stats")
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.totalOrders").value(4))
+                .andExpect(jsonPath("$.data.attributedOrders").value(1))
+                .andExpect(jsonPath("$.data.unattributedOrders").value(2))
+                .andExpect(jsonPath("$.data.partialOrders").value(1))
+                .andExpect(jsonPath("$.data.syncFailedOrders").value(1))
+                .andExpect(jsonPath("$.data.unattributedReasons[0].reason").value("pick_source 未匹配"));
+
+        verify(orderMapper, times(2)).selectMaps(any());
     }
 }

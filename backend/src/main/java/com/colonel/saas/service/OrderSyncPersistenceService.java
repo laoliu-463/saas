@@ -40,10 +40,7 @@ public class OrderSyncPersistenceService {
             return false;
         }
         pickSourceMappingService.ensureFromOrder(order);
-        merchantService.findOrCreateByChannel(
-                order.getChannelUserId() == null ? null : order.getChannelUserId().toString(),
-                order
-        );
+        merchantService.ensureMerchantFromOrder(order);
         sampleLifecycleService.completePendingHomeworkByOrder(order);
         return true;
     }

@@ -4,7 +4,7 @@
 
 当前默认运行口径：
 
-- 环境：`local-mock`
+- 环境：`test`
 - 后端端口：`8080`
 - 前端接口前缀：`/api`
 - 调试台页面：`/dev/test`
@@ -20,6 +20,7 @@
 
 ## 目录导航
 
+- [docs/README](./docs/README.md)
 - [00-项目总览](./docs/00-项目总览.md)
 - [01-业务闭环](./docs/01-业务闭环.md)
 - [02-架构设计](./docs/02-架构设计.md)
@@ -27,21 +28,51 @@
 - [04-开发进度](./docs/04-开发进度.md)
 - [05-接口与数据模型](./docs/05-接口与数据模型.md)
 - [06-部署与对接计划](./docs/06-部署与对接计划.md)
-- [07-Test全链路验收](./docs/07-Test全链路验收.md)
-- [08-test-演示脚本](./docs/08-test-演示脚本.md)
-- [12-文档编码乱码问题分析报告](./docs/12-文档编码乱码问题分析报告.md)
+- [09-真实SDK联调准备清单](./docs/09-真实SDK联调准备清单.md)
+- [10-V2.2场景覆盖矩阵](./docs/10-V2.2场景覆盖矩阵.md)
+- [archive/README](./docs/archive/README.md)
 
 ## 快速上手
 
-1. 本地 Mock 联调：`docker compose up -d`
-2. 自动化 / 隔离测试环境：`docker compose -f docker-compose.yml -f docker-compose.test.yml up -d`
-3. 打开前端：`http://localhost:3000`
-4. 登录后访问 `/dev/test` 进行 reset / seed / 造数调试。
+1. 测试环境：`docker compose -f docker-compose.test.yml up -d`
+2. 打开前端：`http://localhost:3000`
+3. 登录后访问 `/dev/test` 进行 reset / seed / 造数调试。
+
+## 当前标准启动格局
+
+以后本机启动统一按下面这套执行，不再接受混合占用：
+
+| 用途 | 前端 | 后端 | 数据库 | Redis | 启动来源 |
+| --- | --- | --- | --- | --- | --- |
+| `test` 人工联调 / 自动化基线 | `3000` | `8080` | `5432` | `6379` | `test` compose + 本机单前端 |
+| `real-pre` 浏览器回归 | `3001` | `8081` | `5433` | `6380` | `real-pre` compose |
+
+强制要求：
+
+- `3000` 只保留一个本机前端进程
+- `3001` 只保留 `real-pre` 前端来源，不允许本机再起第二个 `vite --port 3001`
+- `8080` 只对应 `test` backend
+- `8081` 只对应 `real-pre` backend
+- 非明确需要时，不单独启动本机 `redis-server` 占用 `6379`
+
+real-pre 回归口径：
+
+- 后端：`http://localhost:8081/api`
+- 前端：`http://localhost:3001`
+- 适用于页面级 E2E 回归、权限验收、部署形态验证和 `/api/actuator/health` 健康检查
+- 当前 `real-pre` 是独立端口/容器拓扑，不等于“已接真实 SDK”
+- 截至 2026-05-03，`.env.real-pre` 实际仍使用 `SPRING_PROFILES_ACTIVE=local-mock` 与 `DOUYIN_TEST_ENABLED=true`
 
 当前基线：
 
-- `backend mvn test`：`394 tests, 0 failures, 0 errors`
+- `backend mvn test`：`410 tests, 0 failures, 0 errors`
 - `frontend npm.cmd run build`：通过
+- real-pre 浏览器回归报告：`runtime/qa/out/e2e-20260503-1353/report.md`，2026-05-03 全路径回归 `45/45` 通过
+- local-mock 补充验收报告：`runtime/qa/out/local-mock-supplement-20260503-1430/report.md`，2026-05-03 交互级补充验收 `5/5` 通过
+- QA 脚本入口：`runtime/qa/full-browser-e2e.cjs`、`runtime/qa/local-mock-supplement.cjs`
+- QA 一键命令：`powershell -ExecutionPolicy Bypass -File .\scripts\run-real-pre-e2e.ps1`、`powershell -ExecutionPolicy Bypass -File .\scripts\run-local-mock-supplement.ps1`
+- QA 串行总入口：`powershell -ExecutionPolicy Bypass -File .\scripts\run-qa-all.ps1`
+- 拓扑检查命令：`powershell -ExecutionPolicy Bypass -File .\scripts\check-env-topology.ps1`
 
 补充说明：
 
@@ -57,11 +88,14 @@
 
 ## Local Startup Checklist
 
-1. Use `docker compose up -d` for `local-mock`.
-2. Use `docker compose -f docker-compose.yml -f docker-compose.test.yml up -d` for isolated `test`.
-3. Do not use `dev` as the default local walkthrough profile.
-4. Do not store real Douyin credentials in tracked files.
-5. Use `/api/test/**` only in `local-mock` or `test`.
+1. Use `docker compose -f docker-compose.test.yml up -d` for isolated `test`.
+2. Start only one local frontend for `3000`; do not start another local Vite on `3001`.
+3. Use `docker compose --env-file .env.real-pre -f docker-compose.real-pre.yml up -d --build backend-real-pre frontend-real-pre` for `real-pre` browser regression.
+4. Do not use `dev` as the default local walkthrough profile.
+5. Do not store real Douyin credentials in tracked files.
+6. Use `/api/test/**` only in `test` or `real-pre`.
+7. If `3001` is already occupied by a local Node/Vite process, stop it before starting `real-pre`.
+8. If `6379` is already occupied by a standalone local Redis, stop it unless you explicitly need it.
 
 ## 开发规范
 

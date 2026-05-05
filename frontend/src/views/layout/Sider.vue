@@ -84,13 +84,51 @@ interface MenuItem {
   icon?: () => any
   roles?: string[]
   children?: MenuItem[]
+  _section?: string
 }
+
+/** 路由前缀 → 侧边栏分组 key 的映射（按长度降序匹配） */
+const SECTION_MAP: [string, string][] = [
+  ['/ops/shipping', 'ops'],
+  ['/ops/exclusive', 'ops'],
+  ['/system/operation-logs', 'system'],
+  ['/system/config', 'system'],
+  ['/system/roles', 'system'],
+  ['/system/users', 'system'],
+  ['/product/library', 'product'],
+  ['/product/activity', 'product'],
+  ['/product', 'product'],
+  ['/data/orders', 'data'],
+  ['/data', 'data'],
+  ['/dashboard', 'attribution'],
+  ['/orders', 'attribution'],
+  ['/talent', 'talent'],
+  ['/sample', 'sample'],
+  ['/dev', 'dev']
+]
+
+const TALENT_MENU_KEYS = {
+  teamPublic: '/talent?view=TEAM_PUBLIC',
+  myTalents: '/talent?view=MY_TALENTS',
+  naturalOrders: '/talent?view=NATURAL_ORDERS',
+  blacklist: '/talent?view=BLACKLIST'
+} as const
+
+/** 根据当前路由确定应展示的侧边栏分组 */
+const activeSection = computed(() => {
+  const path = route.path
+  for (const [prefix, section] of SECTION_MAP) {
+    if (path.startsWith(prefix)) return section
+  }
+  return null
+})
 
 const rawMenus: MenuItem[] = [
   {
     label: '归因工作台',
     key: 'attribution-group',
     icon: icons.shield,
+    _section: 'attribution',
     roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN],
     children: [
       { label: '归因概览', key: '/dashboard', icon: icons.chart },
@@ -101,6 +139,7 @@ const rawMenus: MenuItem[] = [
     label: '数据平台',
     key: 'data-group',
     icon: icons.chart,
+    _section: 'data',
     roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
     children: [
       { label: '核心看板', key: '/data', icon: icons.chart },
@@ -108,26 +147,42 @@ const rawMenus: MenuItem[] = [
     ]
   },
   {
-    label: '商品库',
+    label: '商品中心',
     key: 'product-group',
     icon: icons.bag,
+    _section: 'product',
     roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
     children: [
-      { label: '商品列表', key: '/product', icon: icons.bag },
+      { label: '选品库', key: '/product', icon: icons.bag },
+      { label: '商品库', key: '/product/library', icon: icons.list },
       { label: '活动列表', key: '/product/activity', icon: icons.list }
     ]
   },
-  { label: '达人 CRM', key: '/talent', icon: icons.user, roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
+  {
+    label: '达人 CRM',
+    key: 'talent-group',
+    icon: icons.user,
+    _section: 'talent',
+    roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
+    children: [
+      { label: '团队公海', key: TALENT_MENU_KEYS.teamPublic, icon: icons.user },
+      { label: '我的达人', key: TALENT_MENU_KEYS.myTalents, icon: icons.user },
+      { label: '自然出单达人', key: TALENT_MENU_KEYS.naturalOrders, icon: icons.chart },
+      { label: '达人黑名单', key: TALENT_MENU_KEYS.blacklist, icon: icons.shield }
+    ]
+  },
   {
     label: '寄样台',
     key: '/sample',
     icon: icons.gift,
+    _section: 'sample',
     roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.OPS_STAFF]
   },
   {
     label: '运营中心',
     key: 'ops-group',
     icon: icons.truck,
+    _section: 'ops',
     roles: [ROLE.OPS_STAFF, ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER],
     children: [
       { label: '独家状态', key: '/ops/exclusive', icon: icons.shield },
@@ -138,10 +193,13 @@ const rawMenus: MenuItem[] = [
     label: '系统管理',
     key: 'system',
     icon: icons.settings,
+    _section: 'system',
     roles: [ROLE.ADMIN],
     children: [
       { label: '用户管理', key: '/system/users', icon: icons.user },
-      { label: '角色管理', key: '/system/roles', icon: icons.shield }
+      { label: '角色管理', key: '/system/roles', icon: icons.shield },
+      { label: '系统配置', key: '/system/config', icon: icons.settings },
+      { label: '操作日志', key: '/system/operation-logs', icon: icons.list }
     ]
   }
 ]
@@ -151,16 +209,22 @@ if (isTestEnv) {
     label: '开发调试',
     key: 'dev-group',
     icon: icons.settings,
-    roles: [ROLE.ADMIN, ROLE.BIZ_LEADER],
+    _section: 'dev',
+    roles: [ROLE.ADMIN],
     children: [{ label: '测试调试台', key: '/dev/test', icon: icons.settings }]
   })
 }
 
 const menuOptions = computed(() => {
   const roles = authStore.roleCodes
+  const section = activeSection.value
   return rawMenus
-    .filter((menu) => hasAccess(roles, menu.roles))
-    .map(({ roles: _roles, children, ...menu }) => {
+    .filter((menu) => {
+      // 按当前活跃的顶部导航分组过滤
+      if (section && menu._section && menu._section !== section) return false
+      return hasAccess(roles, menu.roles)
+    })
+    .map(({ roles: _roles, _section: _s, children, ...menu }) => {
       if (!children?.length) return menu
       return {
         ...menu,
@@ -173,13 +237,28 @@ const menuOptions = computed(() => {
 const activeMenuKey = computed(() => {
   if (route.path.startsWith('/ops/shipping')) return '/ops/shipping'
   if (route.path.startsWith('/ops/exclusive')) return '/ops/exclusive'
+  if (route.path.startsWith('/system/config')) return '/system/config'
+  if (route.path.startsWith('/system/operation-logs')) return '/system/operation-logs'
   if (route.path.startsWith('/system/roles')) return '/system/roles'
   if (route.path.startsWith('/system/users')) return '/system/users'
   if (route.path === '/data/orders') return '/data/orders'
+  if (route.path.startsWith('/product/library')) return '/product/library'
+  if (route.path.startsWith('/talent')) {
+    const view = typeof route.query.view === 'string' ? route.query.view : 'TEAM_PUBLIC'
+    if (view === 'MY_TALENTS') return TALENT_MENU_KEYS.myTalents
+    if (view === 'NATURAL_ORDERS') return TALENT_MENU_KEYS.naturalOrders
+    if (view === 'BLACKLIST') return TALENT_MENU_KEYS.blacklist
+    return TALENT_MENU_KEYS.teamPublic
+  }
   return route.path
 })
 
 function handleMenuClick(key: string) {
+  if (key.startsWith('/talent?view=')) {
+    const view = key.replace('/talent?view=', '')
+    router.push({ path: '/talent', query: { view } })
+    return
+  }
   router.push(key)
 }
 </script>
@@ -191,6 +270,8 @@ function handleMenuClick(key: string) {
   flex-direction: column;
   flex-shrink: 0;
   background: var(--bg-sidebar);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-right: 1px solid var(--border-color);
   transition: width var(--transition-normal);
   overflow: hidden;
@@ -218,12 +299,17 @@ function handleMenuClick(key: string) {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .collapse-trigger:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+  transform: scale(1.05);
+}
+
+.collapse-trigger:active {
+  transform: scale(0.95);
 }
 
 .collapse-trigger svg {
@@ -250,6 +336,7 @@ function handleMenuClick(key: string) {
 .app-sider :deep(.n-menu .n-menu-item-content) {
   margin: 2px 8px;
   border-radius: var(--radius-md);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .app-sider :deep(.n-menu .n-menu-item-content--selected) {
@@ -262,7 +349,8 @@ function handleMenuClick(key: string) {
   display: none;
 }
 
-.app-sider :deep(.n-menu .n-menu-item-content:hover) {
+.app-sider :deep(.n-menu .n-menu-item-content:not(.n-menu-item-content--selected):hover) {
   background: var(--bg-hover);
+  transform: translateX(4px);
 }
 </style>

@@ -4,7 +4,6 @@ import java.util.Arrays;
 
 public enum ProductBizStatus {
 
-    SYNCED("已同步"),
     PENDING_AUDIT("待审核"),
     APPROVED("审核通过"),
     REJECTED("审核拒绝"),
@@ -26,6 +25,9 @@ public enum ProductBizStatus {
     public static ProductBizStatus fromCode(String code) {
         if (code == null || code.isBlank()) {
             return null;
+        }
+        if ("SYNCED".equalsIgnoreCase(code.trim())) {
+            return PENDING_AUDIT;
         }
         return Arrays.stream(values())
                 .filter(item -> item.name().equalsIgnoreCase(code))

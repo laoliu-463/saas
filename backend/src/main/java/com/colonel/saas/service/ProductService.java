@@ -24,6 +24,8 @@ import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.PromotionLinkMapper;
 import com.colonel.saas.mapper.SysUserMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -38,10 +40,13 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -50,6 +55,9 @@ import java.util.stream.Collectors;
 
 @Service
 public class ProductService {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final long SELECTED_LIBRARY_BATCH_SIZE = 200L;
 
     private final DouyinPromotionGateway douyinPromotionGateway;
     private final DouyinProductGateway douyinProductGateway;
@@ -100,11 +108,152 @@ public class ProductService {
             wrapper.eq(ProductSnapshot::getStatus, status);
         }
         IPage<ProductSnapshot> snapshotPage = snapshotMapper.selectPage(query, wrapper);
+        List<ProductSnapshot> snapshots = snapshotPage.getRecords();
+        Map<String, ProductOperationState> stateMap = loadOperationStatesForSnapshots(snapshots);
+        Map<UUID, String> assigneeNameMap = loadUserDisplayNames(stateMap.values().stream()
+                .map(ProductOperationState::getAssigneeId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
 
         Page<Product> result = new Page<>(snapshotPage.getCurrent(), snapshotPage.getSize());
         result.setTotal(snapshotPage.getTotal());
-        result.setRecords(snapshotPage.getRecords().stream().map(this::toLegacyProduct).toList());
+        result.setRecords(snapshots.stream()
+                .map(snapshot -> toLegacyProduct(
+                        snapshot,
+                        stateMap.get(stateBatchKey(snapshot.getActivityId(), snapshot.getProductId())),
+                        assigneeNameMap))
+                .toList());
         return result;
+    }
+
+    public IPage<Product> getSelectedLibraryPage(long page, long size, String keyword, Integer status) {
+        long currentPage = Math.max(page, 1);
+        long pageSize = Math.max(size, 1);
+        long fromIndex = (currentPage - 1) * pageSize;
+        List<Product> pageRecords = new ArrayList<>();
+        long matchedTotal = 0L;
+
+        long statePageNo = 1L;
+        boolean hasMore = true;
+        while (hasMore) {
+            Page<ProductOperationState> requestPage = new Page<>(statePageNo, SELECTED_LIBRARY_BATCH_SIZE);
+            Page<ProductOperationState> statePage = (Page<ProductOperationState>) operationStateMapper.selectPage(
+                    requestPage,
+                    new LambdaQueryWrapper<ProductOperationState>()
+                            .eq(ProductOperationState::getSelectedToLibrary, true)
+                            .orderByDesc(ProductOperationState::getSelectedAt)
+                            .orderByDesc(ProductOperationState::getUpdateTime)
+            );
+            List<ProductOperationState> stateBatch = statePage.getRecords();
+            if (stateBatch == null || stateBatch.isEmpty()) {
+                break;
+            }
+            Map<String, ProductSnapshot> snapshotMap = loadSnapshotsForStateBatch(stateBatch);
+            Map<UUID, String> assigneeNameMap = loadUserDisplayNames(stateBatch.stream()
+                    .map(ProductOperationState::getAssigneeId)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(Collectors.toCollection(LinkedHashSet::new)));
+            for (ProductOperationState state : stateBatch) {
+                ProductSnapshot snapshot = snapshotMap.get(stateBatchKey(state.getActivityId(), state.getProductId()));
+                if (snapshot == null) {
+                    continue;
+                }
+                Product product = toLegacyProduct(snapshot, state, assigneeNameMap);
+                if (!matchesSelectedLibraryFilters(product, keyword, status)) {
+                    continue;
+                }
+                if (matchedTotal >= fromIndex && pageRecords.size() < pageSize) {
+                    pageRecords.add(product);
+                }
+                matchedTotal++;
+            }
+            hasMore = statePage.getTotal() > statePageNo * SELECTED_LIBRARY_BATCH_SIZE;
+            statePageNo++;
+        }
+
+        Page<Product> result = new Page<>(currentPage, pageSize, matchedTotal);
+        result.setRecords(pageRecords);
+        return result;
+    }
+
+    private Map<String, ProductSnapshot> loadSnapshotsForStateBatch(List<ProductOperationState> stateBatch) {
+        if (stateBatch == null || stateBatch.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> snapshotIds = stateBatch.stream()
+                .filter(state -> StringUtils.hasText(state.getActivityId()) && StringUtils.hasText(state.getProductId()))
+                .map(state -> buildSnapshotId(state.getActivityId(), state.getProductId()))
+                .toList();
+        if (snapshotIds.isEmpty()) {
+            return Map.of();
+        }
+        return snapshotMapper.selectBatchIds(snapshotIds).stream()
+                .filter(snapshot -> StringUtils.hasText(snapshot.getActivityId()) && StringUtils.hasText(snapshot.getProductId()))
+                .collect(Collectors.toMap(
+                        snapshot -> stateBatchKey(snapshot.getActivityId(), snapshot.getProductId()),
+                        Function.identity(),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+    }
+
+    private Map<String, ProductOperationState> loadOperationStatesForSnapshots(List<ProductSnapshot> snapshots) {
+        if (snapshots == null || snapshots.isEmpty()) {
+            return Map.of();
+        }
+        Set<String> activityIds = snapshots.stream()
+                .map(ProductSnapshot::getActivityId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> productIds = snapshots.stream()
+                .map(ProductSnapshot::getProductId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (activityIds.isEmpty() || productIds.isEmpty()) {
+            return Map.of();
+        }
+        return operationStateMapper.selectList(new LambdaQueryWrapper<ProductOperationState>()
+                        .in(ProductOperationState::getActivityId, activityIds)
+                        .in(ProductOperationState::getProductId, productIds))
+                .stream()
+                .filter(state -> StringUtils.hasText(state.getActivityId()) && StringUtils.hasText(state.getProductId()))
+                .collect(Collectors.toMap(
+                        state -> stateBatchKey(state.getActivityId(), state.getProductId()),
+                        Function.identity(),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+    }
+
+    private Map<UUID, String> loadUserDisplayNames(Set<UUID> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        return sysUserMapper.selectBatchIds(userIds).stream()
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toMap(
+                        SysUser::getId,
+                        this::formatUserDisplayName,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+    }
+
+    private String stateBatchKey(String activityId, String productId) {
+        return activityId + "::" + productId;
+    }
+
+    private boolean matchesSelectedLibraryFilters(Product product, String keyword, Integer status) {
+        if (product == null) {
+            return false;
+        }
+        if (StringUtils.hasText(keyword)) {
+            String trimmed = keyword.trim();
+            if (!StringUtils.hasText(product.getName()) || !product.getName().contains(trimmed)) {
+                return false;
+            }
+        }
+        return status == null || java.util.Objects.equals(product.getStatus(), status);
     }
 
     public Product getById(UUID id) {
@@ -129,7 +278,7 @@ public class ProductService {
     @Transactional(rollbackFor = Exception.class)
     public Product auditProduct(UUID id, boolean approved, String reason) {
         ProductSnapshot snapshot = getSnapshotById(id);
-        auditProduct(snapshot.getActivityId(), snapshot.getProductId(), approved, reason, null, null);
+        auditProduct(snapshot.getActivityId(), snapshot.getProductId(), approved, reason, null, null, null);
         return getById(id);
     }
 
@@ -187,11 +336,7 @@ public class ProductService {
                 snapshot.setProductId(productId);
             }
             fillSnapshot(snapshot, item);
-            if (snapshot.getCreateTime() == null) {
-                snapshotMapper.insert(snapshot);
-            } else {
-                snapshotMapper.updateById(snapshot);
-            }
+            snapshotMapper.upsert(snapshot);
             ProductOperationState existingState = getOperationState(activityId, productId);
             productBizStatusService.initStateIfAbsent(existingState, activityId, productId, null, null, "活动商品同步");
         }
@@ -200,6 +345,7 @@ public class ProductService {
     public Map<String, Object> buildActivityProductListView(
             DouyinProductGateway.ActivityProductListResult result) {
         Map<String, Object> data = new LinkedHashMap<>(result.toMap());
+        data.remove("test");
         List<DouyinProductGateway.ActivityProductItem> items = result.items();
         if (items == null || items.isEmpty()) {
             data.put("items", List.of());
@@ -216,6 +362,10 @@ public class ProductService {
                                 .in(ProductOperationState::getProductId, productIds))
                 .stream()
                 .collect(Collectors.toMap(ProductOperationState::getProductId, Function.identity(), (left, right) -> left));
+        Map<UUID, String> assigneeNameMap = loadUserDisplayNames(stateMap.values().stream()
+                .map(ProductOperationState::getAssigneeId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
         Map<String, DecisionSummary> decisionSummaryMap = buildDecisionSummaryMap(String.valueOf(result.activityId()), productIds);
 
         data.put("items", items.stream().map(item -> {
@@ -228,6 +378,7 @@ public class ProductService {
                 view.put("bizStatusLabel", bizStatus.getLabel());
                 view.put("boundActivityId", state.getBoundActivityId());
                 view.put("assigneeId", state.getAssigneeId());
+                view.put("assigneeName", resolveUserDisplayName(state.getAssigneeId(), assigneeNameMap));
                 view.put("auditStatus", state.getAuditStatus());
                 view.put("auditRemark", state.getAuditRemark());
                 view.put("shortLink", state.getShortLink());
@@ -257,33 +408,32 @@ public class ProductService {
             String bizStatus) {
         int pageSize = Math.min(Math.max(count == null ? 20 : count, 1), 20);
         int offset = parseCursor(cursor);
+        BizStatusFilter bizStatusFilter = resolveBizStatusFilter(activityId, bizStatus);
+        if (bizStatusFilter.isEmptyFilter()) {
+            return emptyActivityProductListView(activityId);
+        }
 
         LambdaQueryWrapper<ProductSnapshot> countWrapper = new LambdaQueryWrapper<ProductSnapshot>()
                 .eq(ProductSnapshot::getActivityId, activityId)
                 .and(StringUtils.hasText(productInfo), w -> w.like(ProductSnapshot::getTitle, productInfo.trim())
                         .or()
                         .like(ProductSnapshot::getProductId, productInfo.trim()));
+        applyBizStatusFilter(countWrapper, bizStatusFilter);
         Long total = snapshotMapper.selectCount(countWrapper);
 
-        List<ProductSnapshot> snapshots = snapshotMapper.selectList(new LambdaQueryWrapper<ProductSnapshot>()
+        Page<ProductSnapshot> snapshotPage = new Page<>(offset / pageSize + 1, pageSize);
+        LambdaQueryWrapper<ProductSnapshot> queryWrapper = new LambdaQueryWrapper<ProductSnapshot>()
                 .eq(ProductSnapshot::getActivityId, activityId)
                 .and(StringUtils.hasText(productInfo), w -> w.like(ProductSnapshot::getTitle, productInfo.trim())
                         .or()
                         .like(ProductSnapshot::getProductId, productInfo.trim()))
                 .orderByDesc(ProductSnapshot::getSyncTime)
-                .orderByDesc(ProductSnapshot::getCreateTime)
-                .last("limit " + pageSize + " offset " + offset));
+                .orderByDesc(ProductSnapshot::getCreateTime);
+        applyBizStatusFilter(queryWrapper, bizStatusFilter);
+        List<ProductSnapshot> snapshots = snapshotMapper.selectPage(snapshotPage, queryWrapper).getRecords();
 
         if (snapshots.isEmpty()) {
-            Map<String, Object> empty = new LinkedHashMap<>();
-            empty.put("test", true);
-            empty.put("activityId", activityId);
-            empty.put("institutionId", 0);
-            empty.put("total", total == null ? 0 : total);
-            empty.put("nextCursor", "");
-            empty.put("hasMore", false);
-            empty.put("items", List.of());
-            return empty;
+            return emptyActivityProductListView(activityId, total == null ? 0 : total);
         }
 
         Set<String> productIds = snapshots.stream()
@@ -299,6 +449,10 @@ public class ProductService {
         Map<String, DecisionSummary> decisionSummaryMap = buildDecisionSummaryMap(activityId, productIds);
         Map<String, OrderSummary> orderSummaryMap = buildOrderSummaryMap(activityId, productIds);
         Map<String, PromotionSummary> promotionSummaryMap = buildPromotionSummaryMap(activityId, productIds);
+        Map<UUID, String> assigneeNameMap = loadUserDisplayNames(stateMap.values().stream()
+                .map(ProductOperationState::getAssigneeId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
         Map<Long, Merchant> merchantMap = buildMerchantMap(snapshots.stream()
                 .map(ProductSnapshot::getShopId)
                 .collect(Collectors.toCollection(HashSet::new)));
@@ -310,15 +464,14 @@ public class ProductService {
                         decisionSummaryMap.get(snapshot.getProductId()),
                         orderSummaryMap.get(snapshot.getProductId()),
                         promotionSummaryMap.get(snapshot.getProductId()),
-                        merchantMap.get(snapshot.getShopId())))
-                .filter(item -> !StringUtils.hasText(bizStatus) || bizStatus.equals(item.get("bizStatus")))
+                        merchantMap.get(snapshot.getShopId()),
+                        assigneeNameMap))
                 .toList();
 
         int nextOffset = offset + snapshots.size();
         boolean hasMore = total != null && nextOffset < total;
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("test", true);
         result.put("activityId", activityId);
         result.put("institutionId", 0);
         result.put("total", total == null ? items.size() : total);
@@ -328,23 +481,77 @@ public class ProductService {
         return result;
     }
 
+    private Map<String, Object> emptyActivityProductListView(String activityId) {
+        return emptyActivityProductListView(activityId, 0L);
+    }
+
+    private Map<String, Object> emptyActivityProductListView(String activityId, long total) {
+        Map<String, Object> empty = new LinkedHashMap<>();
+        empty.put("activityId", activityId);
+        empty.put("institutionId", 0);
+        empty.put("total", total);
+        empty.put("nextCursor", "");
+        empty.put("hasMore", false);
+        empty.put("items", List.of());
+        return empty;
+    }
+
     public Map<String, Object> getActivityProductDetail(String activityId, String productId) {
         ProductSnapshot snapshot = getSnapshot(activityId, productId);
         ProductOperationState state = getOperationState(activityId, productId);
-        DecisionSummary decisionSummary = buildDecisionSummaryMap(activityId, Set.of(productId)).get(productId);
-        OrderSummary orderSummary = buildOrderSummaryMap(activityId, Set.of(productId)).get(productId);
-        PromotionSummary promotionSummary = buildPromotionSummaryMap(activityId, Set.of(productId)).get(productId);
-        Merchant merchant = buildMerchantMap(Set.of(snapshot.getShopId())).get(snapshot.getShopId());
+        DecisionSummary decisionSummary = findDecisionSummary(activityId, productId);
+        OrderSummary orderSummary = findOrderSummary(activityId, productId);
+        PromotionSummary promotionSummary = findPromotionSummary(activityId, productId);
+        Merchant merchant = findMerchant(snapshot.getShopId());
 
         Map<String, Object> detail = toActivityProductView(snapshot, state, decisionSummary, orderSummary, promotionSummary, merchant);
+        Map<String, Object> auditSupplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
         if (state != null) {
             detail.put("promotionScene", state.getPromotionScene());
             detail.put("externalUniqueId", state.getExternalUniqueId());
             detail.put("lastOperationAt", state.getLastOperationAt());
         }
+        detail.put("auditSupplement", auditSupplement);
         detail.put("promotionLinks", promotionSummary == null ? List.of() : promotionSummary.linkRecords());
-        detail.put("promotionMaterialPack", buildPromotionMaterialPack(snapshot, state, merchant));
+        detail.put("promotionMaterialPack", buildPromotionMaterialPack(snapshot, state, merchant, auditSupplement));
         detail.put("followRecords", talentFollowService.listByProduct(activityId, productId));
+        return detail;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> putIntoLibrary(
+            String activityId,
+            String productId,
+            UUID operatorId,
+            UUID operatorDeptId) {
+        ProductSnapshot snapshot = ensureSnapshotExists(activityId, productId);
+        ProductOperationState state = getOrInitOperationState(activityId, productId);
+        state.setSelectedToLibrary(true);
+        state.setSelectedAt(LocalDateTime.now());
+        state.setSelectedBy(operatorId);
+        state.setLastOperationAt(LocalDateTime.now());
+        if (state.getId() == null) {
+            operationStateMapper.insert(state);
+        } else {
+            operationStateMapper.updateById(state);
+        }
+
+        ProductOperationLog log = new ProductOperationLog();
+        log.setActivityId(activityId);
+        log.setProductId(productId);
+        log.setBeforeStatus(state.getBizStatus());
+        log.setAfterStatus(state.getBizStatus());
+        log.setSuccess(true);
+        log.setOperationType("LIBRARY_ENTRY");
+        log.setOperatorId(operatorId);
+        log.setOperatorDeptId(operatorDeptId);
+        log.setOperationRemark("已加入商品库，对全员可见");
+        log.setOperationPayload("{eventLabel=加入商品库, productTitle=" + safeText(snapshot.getTitle(), "活动商品") + "}");
+        operationLogMapper.insert(log);
+
+        Map<String, Object> detail = getActivityProductDetail(activityId, productId);
+        detail.put("selectedToLibrary", true);
+        detail.put("libraryVisible", true);
         return detail;
     }
 
@@ -357,18 +564,33 @@ public class ProductService {
             UUID operatorDeptId) {
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
+        ProductBizStatus currentStatus = productBizStatusService.readBizStatus(state);
+        state.setBoundActivityId(StringUtils.hasText(boundActivityId) ? boundActivityId.trim() : null);
+        state.setLastOperationAt(LocalDateTime.now());
+        if (state.getId() == null) {
+            state.setId(UUID.randomUUID());
+            operationStateMapper.insert(state);
+        } else {
+            operationStateMapper.updateById(state);
+        }
+
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("boundActivityId", boundActivityId);
-        productBizStatusService.changeStatus(
-                state,
-                ProductBizStatus.BOUND,
-                "BIND_ACTIVITY",
-                operatorId,
-                operatorDeptId,
-                payload,
-                "绑定活动成功",
-                current -> current.setBoundActivityId(boundActivityId)
-        );
+        payload.put("boundActivityId", state.getBoundActivityId());
+        payload.put("eventLabel", "商品活动绑定已更新");
+
+        ProductOperationLog log = new ProductOperationLog();
+        log.setId(UUID.randomUUID());
+        log.setActivityId(activityId);
+        log.setProductId(productId);
+        log.setOperationType("BIND_ACTIVITY");
+        log.setBeforeStatus(currentStatus.name());
+        log.setAfterStatus(currentStatus.name());
+        log.setSuccess(true);
+        log.setOperatorId(operatorId);
+        log.setOperatorDeptId(operatorDeptId);
+        log.setOperationPayload(String.valueOf(payload));
+        log.setOperationRemark("绑定活动成功");
+        operationLogMapper.insert(log);
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -411,14 +633,32 @@ public class ProductService {
             String reason,
             UUID operatorId,
             UUID operatorDeptId) {
+        return auditProduct(activityId, productId, approved, reason, null, operatorId, operatorDeptId);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> auditProduct(
+            String activityId,
+            String productId,
+            boolean approved,
+            String reason,
+            Map<String, Object> supplement,
+            UUID operatorId,
+            UUID operatorDeptId) {
         if (!approved && !StringUtils.hasText(reason)) {
             throw new BusinessException("审核拒绝时必须填写原因");
+        }
+        if (approved) {
+            validateAuditSupplement(supplement);
         }
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("approved", approved);
         payload.put("reason", reason);
+        if (approved) {
+            payload.put("supplement", normalizeAuditSupplement(supplement));
+        }
         productBizStatusService.changeStatus(
                 state,
                 approved ? ProductBizStatus.APPROVED : ProductBizStatus.REJECTED,
@@ -430,6 +670,7 @@ public class ProductService {
                 current -> {
                     current.setAuditStatus(approved ? 2 : 3);
                     current.setAuditRemark(approved ? null : reason);
+                    current.setAuditPayload(approved ? writeAuditPayload(supplement) : null);
                 }
         );
         return getActivityProductDetail(activityId, productId);
@@ -509,6 +750,8 @@ public class ProductService {
         String finalScene = normalizePromotionScene(scene);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
         ProductBizStatus beforeStatus = productBizStatusService.readBizStatus(state);
+        SysUser user = sysUserMapper.selectById(userId);
+        String desiredPickExtra = buildPickExtra(userId);
 
         try {
             DouyinPromotionGateway.PromotionLinkResult result = douyinPromotionGateway.generateLink(
@@ -524,13 +767,13 @@ public class ProductService {
                                     snapshot.getActivityId(),
                                     snapshot.getDetailUrl(),
                                     finalScene,
-                                    talentId
+                                    talentId,
+                                    desiredPickExtra
                             )
                     )
             );
 
             // 1. 保存 PromotionLink
-            SysUser user = sysUserMapper.selectById(userId);
             PromotionLink link = new PromotionLink();
             link.setId(UUID.randomUUID());
             link.setProductId(snapshot.getProductId());
@@ -557,7 +800,7 @@ public class ProductService {
                     deptId,
                     talentId,
                     null,
-                    result.pickExtra(), // shortId
+                    result.shortId(),
                     null,
                     result.pickSource(),
                     snapshot.getProductId(),
@@ -565,7 +808,8 @@ public class ProductService {
                     snapshot.getDetailUrl(),
                     result.promoteLink(),
                     link.getId(),
-                    finalScene
+                    finalScene,
+                    result.pickExtra()
             );
 
             Map<String, Object> payload = new LinkedHashMap<>();
@@ -613,6 +857,13 @@ public class ProductService {
             );
             throw ex;
         }
+    }
+
+    private String buildPickExtra(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        return "channel_" + userId;
     }
 
     private String normalizePromotionScene(String scene) {
@@ -793,6 +1044,17 @@ public class ProductService {
     }
 
     private Product toLegacyProduct(ProductSnapshot snapshot) {
+        return toLegacyProduct(snapshot, null);
+    }
+
+    private Product toLegacyProduct(ProductSnapshot snapshot, ProductOperationState providedState) {
+        return toLegacyProduct(snapshot, providedState, null);
+    }
+
+    private Product toLegacyProduct(
+            ProductSnapshot snapshot,
+            ProductOperationState providedState,
+            Map<UUID, String> userDisplayNames) {
         Product product = new Product();
         product.setId(snapshot.getId());
         product.setProductId(snapshot.getProductId());
@@ -801,17 +1063,30 @@ public class ProductService {
         product.setStatus(snapshot.getStatus());
         product.setCategory(snapshot.getCategoryName());
         product.setActivityId(toUuid(snapshot.getActivityId()));
+        product.setSourceActivityId(snapshot.getActivityId());
+        product.setCover(snapshot.getCover());
+        product.setShopName(snapshot.getShopName());
+        product.setPriceText(snapshot.getPriceText());
+        product.setActivityCosRatioText(snapshot.getActivityCosRatioText());
+        product.setEstimatedServiceFee(estimateFee(snapshot.getPrice(), resolveServiceFeeRate(snapshot)).toPlainString());
         product.setCreateTime(snapshot.getCreateTime());
         product.setUpdateTime(snapshot.getUpdateTime());
 
-        ProductOperationState state = getOperationState(snapshot.getActivityId(), snapshot.getProductId());
+        ProductOperationState state = providedState != null
+                ? providedState
+                : getOperationState(snapshot.getActivityId(), snapshot.getProductId());
         if (state != null) {
             product.setCheckStatus(state.getAuditStatus());
             product.setAuditRemark(state.getAuditRemark());
             product.setAssigneeId(state.getAssigneeId());
             product.setPromoteLink(state.getPromoteLink());
             product.setShortLink(state.getShortLink());
+            product.setSelectedToLibrary(Boolean.TRUE.equals(state.getSelectedToLibrary()));
+            product.setAssigneeName(resolveUserDisplayName(state.getAssigneeId(), userDisplayNames));
             ProductBizStatus bizStatus = productBizStatusService.readBizStatus(state);
+            if (bizStatus == null) {
+                bizStatus = ProductBizStatus.PENDING_AUDIT;
+            }
             product.setBizStatus(bizStatus.name());
             product.setBizStatusLabel(bizStatus.getLabel());
         }
@@ -840,6 +1115,17 @@ public class ProductService {
             OrderSummary orderSummary,
             PromotionSummary promotionSummary,
             Merchant merchant) {
+        return toActivityProductView(snapshot, state, decisionSummary, orderSummary, promotionSummary, merchant, null);
+    }
+
+    private Map<String, Object> toActivityProductView(
+            ProductSnapshot snapshot,
+            ProductOperationState state,
+            DecisionSummary decisionSummary,
+            OrderSummary orderSummary,
+            PromotionSummary promotionSummary,
+            Merchant merchant,
+            Map<UUID, String> assigneeNameMap) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", snapshot.getId());
         view.put("activityId", snapshot.getActivityId());
@@ -867,20 +1153,27 @@ public class ProductService {
         view.put("hasDouinGoodsTag", snapshot.getHasDouinGoodsTag());
         view.put("syncTime", snapshot.getSyncTime());
 
-        ProductBizStatus currentStatus = state == null
-                ? ProductBizStatus.PENDING_AUDIT
-                : productBizStatusService.readBizStatus(state);
+        ProductBizStatus currentStatus = ProductBizStatus.PENDING_AUDIT;
+        if (state != null) {
+            ProductBizStatus resolvedStatus = productBizStatusService.readBizStatus(state);
+            if (resolvedStatus != null) {
+                currentStatus = resolvedStatus;
+            }
+        }
         view.put("bizStatus", currentStatus.name());
         view.put("bizStatusLabel", currentStatus.getLabel());
 
         if (state != null) {
             view.put("boundActivityId", state.getBoundActivityId());
             view.put("assigneeId", state.getAssigneeId());
-            view.put("assigneeName", resolveUserDisplayName(state.getAssigneeId()));
+            view.put("assigneeName", resolveUserDisplayName(state.getAssigneeId(), assigneeNameMap));
             view.put("auditStatus", state.getAuditStatus());
             view.put("auditRemark", state.getAuditRemark());
             view.put("shortLink", state.getShortLink());
             view.put("promoteLink", state.getPromoteLink());
+            view.put("selectedToLibrary", Boolean.TRUE.equals(state.getSelectedToLibrary()));
+            view.put("libraryVisible", Boolean.TRUE.equals(state.getSelectedToLibrary()));
+            view.put("selectedAt", state.getSelectedAt());
         }
         applyDecisionSummary(view, decisionSummary);
 
@@ -981,7 +1274,24 @@ public class ProductService {
         if (userId == null) {
             return null;
         }
+        return resolveUserDisplayName(userId, null);
+    }
+
+    private String resolveUserDisplayName(UUID userId, Map<UUID, String> userDisplayNames) {
+        if (userId == null) {
+            return null;
+        }
+        if (userDisplayNames != null) {
+            return userDisplayNames.get(userId);
+        }
         SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            return null;
+        }
+        return formatUserDisplayName(user);
+    }
+
+    private String formatUserDisplayName(SysUser user) {
         if (user == null) {
             return null;
         }
@@ -1007,6 +1317,64 @@ public class ProductService {
             return Math.max(Integer.parseInt(cursor.trim()), 0);
         } catch (Exception e) {
             return 0;
+        }
+    }
+
+    private BizStatusFilter resolveBizStatusFilter(String activityId, String bizStatus) {
+        if (!StringUtils.hasText(activityId) || !StringUtils.hasText(bizStatus)) {
+            return BizStatusFilter.none();
+        }
+        String normalizedStatus = bizStatus.trim().toUpperCase(Locale.ROOT);
+        List<ProductOperationState> states = operationStateMapper.selectList(
+                new LambdaQueryWrapper<ProductOperationState>()
+                        .eq(ProductOperationState::getActivityId, activityId)
+        );
+        if (states == null || states.isEmpty()) {
+            return ProductBizStatus.PENDING_AUDIT.name().equals(normalizedStatus)
+                    ? BizStatusFilter.none()
+                    : BizStatusFilter.empty();
+        }
+        Set<String> knownProductIds = states.stream()
+                .map(ProductOperationState::getProductId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> matchedProductIds = states.stream()
+                .filter(state -> normalizedStatus.equalsIgnoreCase(state.getBizStatus()))
+                .map(ProductOperationState::getProductId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (ProductBizStatus.PENDING_AUDIT.name().equals(normalizedStatus)) {
+            return BizStatusFilter.pendingAudit(knownProductIds, matchedProductIds);
+        }
+        return matchedProductIds.isEmpty()
+                ? BizStatusFilter.empty()
+                : BizStatusFilter.includeOnly(matchedProductIds);
+    }
+
+    private void applyBizStatusFilter(LambdaQueryWrapper<ProductSnapshot> wrapper, BizStatusFilter filter) {
+        if (wrapper == null || filter == null || filter.mode() == BizStatusFilterMode.NONE) {
+            return;
+        }
+        if (filter.mode() == BizStatusFilterMode.EMPTY) {
+            wrapper.apply("1 = 0");
+            return;
+        }
+        if (filter.mode() == BizStatusFilterMode.INCLUDE_ONLY) {
+            wrapper.in(ProductSnapshot::getProductId, filter.includeProductIds());
+            return;
+        }
+        if (filter.mode() == BizStatusFilterMode.PENDING_AUDIT) {
+            Set<String> includeIds = filter.includeProductIds();
+            Set<String> excludeIds = filter.excludeProductIds();
+            if (!includeIds.isEmpty() && !excludeIds.isEmpty()) {
+                wrapper.and(w -> w.in(ProductSnapshot::getProductId, includeIds)
+                        .or()
+                        .notIn(ProductSnapshot::getProductId, excludeIds));
+            } else if (!includeIds.isEmpty()) {
+                wrapper.in(ProductSnapshot::getProductId, includeIds);
+            } else if (!excludeIds.isEmpty()) {
+                wrapper.notIn(ProductSnapshot::getProductId, excludeIds);
+            }
         }
     }
 
@@ -1040,6 +1408,29 @@ public class ProductService {
                         (left, right) -> left,
                         LinkedHashMap::new
                 ));
+    }
+
+    private DecisionSummary findDecisionSummary(String activityId, String productId) {
+        if (!StringUtils.hasText(activityId) || !StringUtils.hasText(productId)) {
+            return null;
+        }
+        ProductOperationLog log = operationLogMapper.selectOne(new LambdaQueryWrapper<ProductOperationLog>()
+                .eq(ProductOperationLog::getActivityId, activityId)
+                .eq(ProductOperationLog::getProductId, productId)
+                .eq(ProductOperationLog::getOperationType, "DECISION")
+                .orderByDesc(ProductOperationLog::getCreateTime)
+                .last("limit 1"));
+        if (log == null) {
+            return null;
+        }
+        Map<String, String> payload = parseOperationPayloadText(log.getOperationPayload());
+        String level = payload.get("decisionLevel");
+        return new DecisionSummary(
+                level,
+                payload.getOrDefault("decisionLabel", decisionLabel(level)),
+                normalizeFreeText(log.getOperationRemark()),
+                log.getCreateTime() == null ? null : log.getCreateTime().toString()
+        );
     }
 
     private Map<String, String> parseOperationPayloadText(String raw) {
@@ -1124,6 +1515,35 @@ public class ProductService {
                 ));
     }
 
+    private OrderSummary findOrderSummary(String activityId, String productId) {
+        if (!StringUtils.hasText(activityId) || !StringUtils.hasText(productId)) {
+            return null;
+        }
+        List<ColonelsettlementOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
+                .eq(ColonelsettlementOrder::getActivityId, activityId)
+                .eq(ColonelsettlementOrder::getProductId, productId)
+                .orderByDesc(ColonelsettlementOrder::getCreateTime));
+        if (orders == null || orders.isEmpty()) {
+            return null;
+        }
+        MutableOrderSummary summary = new MutableOrderSummary();
+        for (ColonelsettlementOrder order : orders) {
+            summary.orderCount++;
+            if ("ATTRIBUTED".equalsIgnoreCase(order.getAttributionStatus())) {
+                summary.attributedCount++;
+            } else {
+                summary.unattributedCount++;
+            }
+            summary.gmvCent += safeLong(order.getOrderAmount());
+            summary.serviceFeeCent += safeLong(order.getSettleColonelCommission());
+            LocalDateTime candidateTime = order.getSettleTime() != null ? order.getSettleTime() : order.getCreateTime();
+            if (candidateTime != null && (summary.lastOrderTime == null || candidateTime.isAfter(summary.lastOrderTime))) {
+                summary.lastOrderTime = candidateTime;
+            }
+        }
+        return summary.freeze();
+    }
+
     private Map<String, PromotionSummary> buildPromotionSummaryMap(String activityId, Set<String> productIds) {
         if (!StringUtils.hasText(activityId) || productIds == null || productIds.isEmpty()) {
             return Map.of();
@@ -1170,6 +1590,42 @@ public class ProductService {
                 ));
     }
 
+    private PromotionSummary findPromotionSummary(String activityId, String productId) {
+        if (!StringUtils.hasText(activityId) || !StringUtils.hasText(productId)) {
+            return null;
+        }
+        List<PromotionLink> links = promotionLinkMapper.selectList(new LambdaQueryWrapper<PromotionLink>()
+                .eq(PromotionLink::getActivityId, activityId)
+                .eq(PromotionLink::getProductId, productId)
+                .orderByDesc(PromotionLink::getCreatedAt));
+        if (links == null || links.isEmpty()) {
+            return null;
+        }
+        MutablePromotionSummary summary = new MutablePromotionSummary();
+        for (PromotionLink link : links) {
+            summary.linkCount++;
+            if (link.getCreatedAt() != null && (summary.lastLinkTime == null || link.getCreatedAt().isAfter(summary.lastLinkTime))) {
+                summary.lastLinkTime = link.getCreatedAt();
+            }
+            if (summary.linkRecords.size() < 10) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("id", link.getId());
+                item.put("channelUserId", link.getChannelUserId());
+                item.put("channelUserName", link.getChannelUserName());
+                item.put("pickSource", link.getPickSource());
+                item.put("promotionUrl", link.getPromotionUrl());
+                item.put("promoteLink", link.getPromotionUrl());
+                item.put("shortUrl", link.getShortUrl());
+                item.put("shortLink", link.getShortUrl());
+                item.put("linkStatus", link.getLinkStatus());
+                item.put("createdAt", link.getCreatedAt());
+                item.put("expireTime", link.getExpireTime());
+                summary.linkRecords.add(item);
+            }
+        }
+        return summary.freeze();
+    }
+
     private Map<Long, Merchant> buildMerchantMap(Set<Long> shopIds) {
         if (shopIds == null || shopIds.isEmpty()) {
             return Map.of();
@@ -1192,18 +1648,34 @@ public class ProductService {
                 ));
     }
 
-    private Map<String, Object> buildPromotionMaterialPack(ProductSnapshot snapshot, ProductOperationState state, Merchant merchant) {
+    private Merchant findMerchant(Long shopId) {
+        if (shopId == null || shopId <= 0) {
+            return null;
+        }
+        return merchantMapper.selectOne(new LambdaQueryWrapper<Merchant>()
+                .eq(Merchant::getShopId, shopId)
+                .last("limit 1"));
+    }
+
+    private Map<String, Object> buildPromotionMaterialPack(
+            ProductSnapshot snapshot,
+            ProductOperationState state,
+            Merchant merchant,
+            Map<String, Object> auditSupplement) {
         Map<String, Object> pack = new LinkedHashMap<>();
-        List<String> sellingPoints = new ArrayList<>();
-        sellingPoints.add(snapshot.getTitle() + " 已进入活动商品库，可直接用于渠道选品。");
-        if (StringUtils.hasText(snapshot.getActivityCosRatioText())) {
-            sellingPoints.add("当前活动佣金率 " + snapshot.getActivityCosRatioText() + "，可直接作为达人沟通收益点。");
-        }
-        if (StringUtils.hasText(snapshot.getAdServiceRatio())) {
-            sellingPoints.add("服务费率 " + normalizePercentText(snapshot.getAdServiceRatio()) + "，方便预估单品收益。");
-        }
-        if (Boolean.TRUE.equals(snapshot.getHasDouinGoodsTag())) {
-            sellingPoints.add("商品带有抖音商品标识，适合放入优先推广池。");
+        List<String> sellingPoints = readStringList(auditSupplement, "sellingPoints");
+        if (sellingPoints.isEmpty()) {
+            sellingPoints = new ArrayList<>();
+            sellingPoints.add(snapshot.getTitle() + " 已进入活动商品库，可直接用于渠道选品。");
+            if (StringUtils.hasText(snapshot.getActivityCosRatioText())) {
+                sellingPoints.add("当前活动佣金率 " + snapshot.getActivityCosRatioText() + "，可直接作为达人沟通收益点。");
+            }
+            if (StringUtils.hasText(snapshot.getAdServiceRatio())) {
+                sellingPoints.add("服务费率 " + normalizePercentText(snapshot.getAdServiceRatio()) + "，方便预估单品收益。");
+            }
+            if (Boolean.TRUE.equals(snapshot.getHasDouinGoodsTag())) {
+                sellingPoints.add("商品带有抖音商品标识，适合放入优先推广池。");
+            }
         }
 
         String merchantName = merchant != null && StringUtils.hasText(merchant.getMerchantName())
@@ -1213,13 +1685,18 @@ public class ProductService {
                 ? snapshot.getActivityCosRatioText()
                 : formatRate(resolveCommissionRate(snapshot));
         String serviceFeeText = formatRate(resolveServiceFeeRate(snapshot));
+        String promotionScript = readString(auditSupplement, "promotionScript");
 
         pack.put("sellingPoints", sellingPoints);
-        pack.put("outreachScript", "你好，我这边是 " + safeText(merchantName, "品牌方")
+        pack.put("outreachScript", StringUtils.hasText(promotionScript)
+                ? promotionScript
+                : "你好，我这边是 " + safeText(merchantName, "品牌方")
                 + " 的商品合作负责人。当前这款【" + safeText(snapshot.getTitle(), "活动商品")
                 + "】已经进入团长活动商品库，佣金 " + commissionText
                 + "，服务费率 " + serviceFeeText + "，如果你有短视频或直播档期，可以直接沟通合作。");
-        pack.put("shortVideoScript", "短视频脚本建议：开场点出【" + safeText(snapshot.getTitle(), "活动商品")
+        pack.put("shortVideoScript", StringUtils.hasText(promotionScript)
+                ? promotionScript
+                : "短视频脚本建议：开场点出【" + safeText(snapshot.getTitle(), "活动商品")
                 + "】核心使用场景，中段突出价格 " + safeText(snapshot.getPriceText(), "以页面为准")
                 + " 和佣金优势，结尾引导点击专属推广链接下单。");
         pack.put("liveScript", "直播讲品建议：先讲痛点，再讲【" + safeText(snapshot.getTitle(), "活动商品")
@@ -1230,7 +1707,137 @@ public class ProductService {
         pack.put("detailUrl", snapshot.getDetailUrl());
         pack.put("promoteLink", state == null ? null : state.getPromoteLink());
         pack.put("shortLink", state == null ? null : state.getShortLink());
+        pack.put("supportsAds", readBoolean(auditSupplement, "supportsAds"));
+        pack.put("materialFiles", readStringList(auditSupplement, "materialFiles"));
         return pack;
+    }
+
+    private void validateAuditSupplement(Map<String, Object> supplement) {
+        Map<String, Object> normalized = normalizeAuditSupplement(supplement);
+        List<String> missing = new ArrayList<>();
+        requireText(normalized, "exclusivePriceRemark", "专属价说明", missing);
+        requireText(normalized, "shippingInfo", "发货信息", missing);
+        requireList(normalized, "sellingPoints", "商品卖点", missing);
+        requireText(normalized, "promotionScript", "推广话术", missing);
+        if (!normalized.containsKey("supportsAds")) {
+            missing.add("是否支持投流");
+        }
+        requireText(normalized, "rewardRemark", "奖励说明", missing);
+        requireText(normalized, "participationRequirements", "参与要求", missing);
+        requireText(normalized, "campaignTimeRemark", "活动时间", missing);
+        requireList(normalized, "materialFiles", "手卡素材", missing);
+        if (!missing.isEmpty()) {
+            throw new BusinessException("审核通过前请补充：" + String.join("、", missing));
+        }
+    }
+
+    private void requireText(Map<String, Object> payload, String key, String label, List<String> missing) {
+        if (!StringUtils.hasText(readString(payload, key))) {
+            missing.add(label);
+        }
+    }
+
+    private void requireList(Map<String, Object> payload, String key, String label, List<String> missing) {
+        if (readStringList(payload, key).isEmpty()) {
+            missing.add(label);
+        }
+    }
+
+    private String writeAuditPayload(Map<String, Object> supplement) {
+        Map<String, Object> normalized = normalizeAuditSupplement(supplement);
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        try {
+            return OBJECT_MAPPER.writeValueAsString(normalized);
+        } catch (Exception ex) {
+            throw new BusinessException("审核补充信息保存失败");
+        }
+    }
+
+    private Map<String, Object> parseAuditPayload(String rawPayload) {
+        if (!StringUtils.hasText(rawPayload)) {
+            return Map.of();
+        }
+        try {
+            return normalizeAuditSupplement(OBJECT_MAPPER.readValue(rawPayload, new TypeReference<Map<String, Object>>() {}));
+        } catch (Exception ex) {
+            return Map.of();
+        }
+    }
+
+    private Map<String, Object> normalizeAuditSupplement(Map<String, Object> supplement) {
+        if (supplement == null || supplement.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        putNormalizedText(normalized, "exclusivePriceRemark", supplement.get("exclusivePriceRemark"));
+        putNormalizedText(normalized, "shippingInfo", supplement.get("shippingInfo"));
+        putNormalizedText(normalized, "promotionScript", supplement.get("promotionScript"));
+        putNormalizedText(normalized, "rewardRemark", supplement.get("rewardRemark"));
+        putNormalizedText(normalized, "participationRequirements", supplement.get("participationRequirements"));
+        putNormalizedText(normalized, "campaignTimeRemark", supplement.get("campaignTimeRemark"));
+        List<String> sellingPoints = normalizeStringList(supplement.get("sellingPoints"));
+        if (!sellingPoints.isEmpty()) {
+            normalized.put("sellingPoints", sellingPoints);
+        }
+        List<String> materialFiles = normalizeStringList(supplement.get("materialFiles"));
+        if (!materialFiles.isEmpty()) {
+            normalized.put("materialFiles", materialFiles);
+        }
+        if (supplement.containsKey("supportsAds") && supplement.get("supportsAds") != null) {
+            normalized.put("supportsAds", Boolean.parseBoolean(String.valueOf(supplement.get("supportsAds"))));
+        }
+        return normalized;
+    }
+
+    private void putNormalizedText(Map<String, Object> payload, String key, Object rawValue) {
+        String value = rawValue == null ? null : String.valueOf(rawValue).trim();
+        if (StringUtils.hasText(value)) {
+            payload.put(key, value);
+        }
+    }
+
+    private String readString(Map<String, Object> payload, String key) {
+        if (payload == null || payload.isEmpty()) {
+            return null;
+        }
+        Object value = payload.get(key);
+        return value == null ? null : String.valueOf(value).trim();
+    }
+
+    private Boolean readBoolean(Map<String, Object> payload, String key) {
+        if (payload == null || payload.isEmpty() || !payload.containsKey(key) || payload.get(key) == null) {
+            return null;
+        }
+        return Boolean.parseBoolean(String.valueOf(payload.get(key)));
+    }
+
+    private List<String> readStringList(Map<String, Object> payload, String key) {
+        if (payload == null || payload.isEmpty()) {
+            return List.of();
+        }
+        return normalizeStringList(payload.get(key));
+    }
+
+    private List<String> normalizeStringList(Object rawValue) {
+        if (rawValue == null) {
+            return List.of();
+        }
+        List<String> normalized = new ArrayList<>();
+        if (rawValue instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                if (item != null && StringUtils.hasText(String.valueOf(item))) {
+                    normalized.add(String.valueOf(item).trim());
+                }
+            }
+            return normalized;
+        }
+        String text = String.valueOf(rawValue).trim();
+        if (StringUtils.hasText(text)) {
+            normalized.add(text);
+        }
+        return normalized;
     }
 
     private PromotionView buildPromotionView(
@@ -1529,6 +2136,43 @@ public class ProductService {
             List<Map<String, Object>> linkRecords) {
     }
 
+    private record BizStatusFilter(
+            BizStatusFilterMode mode,
+            Set<String> includeProductIds,
+            Set<String> excludeProductIds
+    ) {
+        static BizStatusFilter none() {
+            return new BizStatusFilter(BizStatusFilterMode.NONE, Set.of(), Set.of());
+        }
+
+        static BizStatusFilter empty() {
+            return new BizStatusFilter(BizStatusFilterMode.EMPTY, Set.of(), Set.of());
+        }
+
+        static BizStatusFilter includeOnly(Set<String> includeProductIds) {
+            return new BizStatusFilter(BizStatusFilterMode.INCLUDE_ONLY, Set.copyOf(includeProductIds), Set.of());
+        }
+
+        static BizStatusFilter pendingAudit(Set<String> knownProductIds, Set<String> pendingAuditProductIds) {
+            return new BizStatusFilter(
+                    BizStatusFilterMode.PENDING_AUDIT,
+                    Set.copyOf(pendingAuditProductIds),
+                    Set.copyOf(knownProductIds)
+            );
+        }
+
+        boolean isEmptyFilter() {
+            return mode == BizStatusFilterMode.EMPTY;
+        }
+    }
+
+    private enum BizStatusFilterMode {
+        NONE,
+        EMPTY,
+        INCLUDE_ONLY,
+        PENDING_AUDIT
+    }
+
     private record DecisionSummary(
             String level,
             String label,
@@ -1545,4 +2189,3 @@ public class ProductService {
             String failReason) {
     }
 }
-

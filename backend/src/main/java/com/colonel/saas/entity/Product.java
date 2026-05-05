@@ -6,6 +6,7 @@ import com.colonel.saas.common.base.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -58,5 +59,35 @@ public class Product extends BaseEntity {
 
     @TableField(exist = false)
     private String bizStatusLabel;
+
+    @TableField(exist = false)
+    private String cover;
+
+    @TableField(exist = false)
+    private String shopName;
+
+    @TableField(exist = false)
+    private String priceText;
+
+    @TableField(exist = false)
+    private String activityCosRatioText;
+
+    @TableField(exist = false)
+    private String estimatedServiceFee;
+
+    @TableField(exist = false)
+    private String assigneeName;
+
+    @TableField(exist = false)
+    private String sourceActivityId;
+
+    @TableField(exist = false)
+    private Boolean selectedToLibrary;
+
+    @TableField(exist = false)
+    private List<String> systemTags;
+
+    @TableField(exist = false)
+    private List<String> alertTags;
 }
 

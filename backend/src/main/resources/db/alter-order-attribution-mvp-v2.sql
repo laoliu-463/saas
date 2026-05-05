@@ -40,6 +40,7 @@ ALTER TABLE pick_source_mapping ADD COLUMN IF NOT EXISTS channel_user_name VARCH
 ALTER TABLE pick_source_mapping ADD COLUMN IF NOT EXISTS talent_id VARCHAR(50);
 ALTER TABLE pick_source_mapping ADD COLUMN IF NOT EXISTS talent_name VARCHAR(200);
 ALTER TABLE pick_source_mapping ADD COLUMN IF NOT EXISTS scene VARCHAR(32) DEFAULT 'PRODUCT_LIBRARY';
+ALTER TABLE pick_source_mapping ALTER COLUMN pick_extra TYPE VARCHAR(128);
 CREATE INDEX IF NOT EXISTS idx_psm_scene ON pick_source_mapping(scene);
 
 -- 3. 订单表增加负责人字段（如果还没的话）

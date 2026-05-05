@@ -29,8 +29,6 @@ public class ExclusiveTalentService {
     private static final BigDecimal DEFAULT_RATIO_THRESHOLD = new BigDecimal("70");
     private static final int DEFAULT_SAMPLE_THRESHOLD = 10;
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
-    private static final List<Integer> EFFECTIVE_SAMPLE_STATUSES = List.of(2, 3, 4, 5, 6);
-
     private final JdbcTemplate jdbcTemplate;
     private final ExclusiveTalentMapper exclusiveTalentMapper;
 
@@ -130,6 +128,7 @@ public class ExclusiveTalentService {
         target.setDeleted(0);
 
         if (existing == null) {
+            target.setId(UUID.randomUUID());
             exclusiveTalentMapper.insert(target);
         } else {
             exclusiveTalentMapper.updateById(target);
@@ -142,8 +141,8 @@ public class ExclusiveTalentService {
                        SUM(COALESCE(settle_colonel_commission, 0)) AS total_fee
                 FROM colonelsettlement_order
                 WHERE deleted = 0
-                  AND create_time >= ?
-                  AND create_time < ?
+                  AND settle_time >= ?
+                  AND settle_time < ?
                   AND COALESCE(extra_data->>'talent_uid', extra_data->>'author_id') IS NOT NULL
                 GROUP BY COALESCE(extra_data->>'talent_uid', extra_data->>'author_id')
                 """;
@@ -166,8 +165,8 @@ public class ExclusiveTalentService {
                        SUM(COALESCE(settle_colonel_commission, 0)) AS channel_fee
                 FROM colonelsettlement_order
                 WHERE deleted = 0
-                  AND create_time >= ?
-                  AND create_time < ?
+                  AND settle_time >= ?
+                  AND settle_time < ?
                   AND channel_user_id IS NOT NULL
                   AND COALESCE(extra_data->>'talent_uid', extra_data->>'author_id') IS NOT NULL
                 GROUP BY COALESCE(extra_data->>'talent_uid', extra_data->>'author_id'), channel_user_id, dept_id
@@ -188,9 +187,9 @@ public class ExclusiveTalentService {
                        COUNT(1) AS sample_count
                 FROM sample_request
                 WHERE deleted = 0
-                  AND create_time >= ?
-                  AND create_time < ?
-                  AND status IN (2, 3, 4, 5, 6)
+                  AND ship_time IS NOT NULL
+                  AND ship_time >= ?
+                  AND ship_time < ?
                   AND channel_user_id IS NOT NULL
                   AND talent_uid IS NOT NULL
                 GROUP BY channel_user_id, talent_uid

@@ -1,5 +1,19 @@
 import request from '../utils/request';
 
+export interface TalentQueryParams {
+  page?: number
+  size?: number
+  keyword?: string
+  view?: string
+  category?: string
+  claimStatus?: string
+  minFans?: number
+  maxFans?: number
+  region?: string
+  poolStatus?: string
+  ownerKeyword?: string
+}
+
 export interface TalentListItem {
   id: string
   nickname?: string | null
@@ -19,6 +33,21 @@ export interface TalentListItem {
   sampleCount?: number | null
   orderCount?: number | null
   serviceFeeContribution?: number | null
+  mainCategory?: string | null
+  liveSalesBand?: string | null
+  liveViewBand?: string | null
+  liveGpmBand?: string | null
+  videoSalesBand?: string | null
+  videoPlayBand?: string | null
+  videoGpmBand?: string | null
+  blacklistReason?: string | null
+  contactPhone?: string | null
+  remark?: string | null
+  avatarUrl?: string | null
+  claimedAt?: string | null
+  blacklisted?: boolean | null
+  naturalOrderTalent?: boolean | null
+  activeClaimCount?: number | null
 }
 
 export interface TalentDetailResponse {
@@ -36,15 +65,36 @@ export interface TalentDetailResponse {
     ipLocation?: string | null
     level?: string | null
     monthlySales?: number | null
+    mainCategory?: string | null
+    liveSalesBand?: string | null
+    liveViewBand?: string | null
+    liveGpmBand?: string | null
+    videoSalesBand?: string | null
+    videoPlayBand?: string | null
+    videoGpmBand?: string | null
+    blacklisted?: boolean | null
+    blacklistReason?: string | null
+    orderCount?: number | null
+    sampleCount?: number | null
+    serviceFeeContribution?: number | null
     contactPhone?: string | null
     remark?: string | null
+    avatarUrl?: string | null
   }
   claim?: {
     poolStatus?: string | null
     ownerId?: string | null
     ownerName?: string | null
     claimedAt?: string | null
+  protectedUntil?: string | null
+  activeClaimCount?: number | null
+  activeClaimOwners?: Array<{
+    userId?: string | null
+    ownerName?: string | null
+    claimedAt?: string | null
     protectedUntil?: string | null
+  }>
+  claimStatus?: string | null
   }
   samples?: Array<{
     sampleRequestId?: string | null
@@ -65,7 +115,7 @@ export interface TalentDetailResponse {
 }
 
 // CRM talents
-export const getTalentPage = (params: any) => request.get('/talents', { params });
+export const getTalentPage = (params: TalentQueryParams) => request.get('/talents', { params });
 export const getTalentList = (params: any) => getTalentPage(params);
 export const getTalentPublic = (params: any) => request.get('/talents/pools/public', { params });
 export const getTalentPrivate = (params: any) => request.get('/talents/pools/private', { params });
@@ -76,6 +126,8 @@ export const updateTalent = (id: string, data: any) => request.put(`/talents/${i
 export const deleteTalent = (id: string) => request.delete(`/talents/${id}`);
 export const claimTalent = (id: string) => request.post(`/talents/${id}/claims`);
 export const releaseTalent = (id: string) => request.post(`/talents/${id}/release`);
+export const blacklistTalent = (id: string, data?: { reason?: string }) => request.post(`/talents/${id}/blacklist`, data || {});
+export const unblacklistTalent = (id: string) => request.post(`/talents/${id}/unblacklist`);
 export const refreshTalent = (id: string) => request.post(`/talents/${id}/refresh`);
 export const refreshWeeklyTalents = () => request.post('/talents/refresh/weekly');
 export const manualFillTalent = (id: string, data: any) => request.put(`/talents/${id}/manual-fill`, data);

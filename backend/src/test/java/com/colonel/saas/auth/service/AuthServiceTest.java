@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -35,6 +36,8 @@ class AuthServiceTest {
     private SysRoleMapper sysRoleMapper;
     @Mock
     private JwtTokenProvider jwtTokenProvider;
+    @Mock
+    private RedisTemplate<String, Object> redisTemplate;
 
     private PasswordEncoder passwordEncoder;
     private AuthService authService;
@@ -42,7 +45,7 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
-        authService = new AuthService(sysUserMapper, sysRoleMapper, jwtTokenProvider, passwordEncoder);
+        authService = new AuthService(sysUserMapper, sysRoleMapper, jwtTokenProvider, passwordEncoder, redisTemplate);
     }
 
     @Test
@@ -66,8 +69,10 @@ class AuthServiceTest {
 
         when(sysUserMapper.findByUsername("alice")).thenReturn(Optional.of(user));
         when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of(role));
-        when(jwtTokenProvider.generateToken(any(), any(), any(Integer.class), any(), any())).thenReturn("jwt.token.here");
+        when(jwtTokenProvider.generateAccessToken(any(), any(), any(Integer.class), any(), any())).thenReturn("jwt.token.here");
+        when(jwtTokenProvider.generateRefreshToken(any())).thenReturn("refresh.token.here");
         when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
+        when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
 
         LoginRequest request = new LoginRequest();
         request.setUsername("alice");
@@ -129,6 +134,35 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("用户名或密码错误");
+                .hasMessageContaining("账号已停用");
+    }
+
+    @Test
+    void login_opsStaff_shouldEscalateDataScopeToAll() {
+        UUID userId = UUID.randomUUID();
+        SysUser user = new SysUser();
+        user.setId(userId);
+        user.setUsername("ops");
+        user.setPassword(passwordEncoder.encode("password"));
+        user.setStatus(1);
+
+        SysRole role = new SysRole();
+        role.setRoleCode("ops_staff");
+        role.setDataScope(1);
+
+        when(sysUserMapper.findByUsername("ops")).thenReturn(Optional.of(user));
+        when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of(role));
+        when(jwtTokenProvider.generateAccessToken(any(), any(), any(Integer.class), any(), any())).thenReturn("jwt.token.here");
+        when(jwtTokenProvider.generateRefreshToken(any())).thenReturn("refresh.token.here");
+        when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
+        when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername("ops");
+        request.setPassword("password");
+
+        LoginResponse response = authService.login(request);
+
+        assertThat(response.getDataScope()).isEqualTo(3);
     }
 }

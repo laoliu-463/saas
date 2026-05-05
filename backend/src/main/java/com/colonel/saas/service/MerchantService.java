@@ -6,11 +6,11 @@ import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.mapper.MerchantMapper;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class MerchantService {
@@ -21,7 +21,7 @@ public class MerchantService {
         this.merchantMapper = merchantMapper;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class)
     public void ensureMerchantFromOrder(ColonelsettlementOrder order) {
         String merchantId = resolveMerchantId(order);
         if (!StringUtils.hasText(merchantId)) {
@@ -44,6 +44,7 @@ public class MerchantService {
         // already lives on colonelsettlement_order.extra_data, so merchant can be
         // created without duplicating the JSON blob here.
         merchant.setExtraData(null);
+        merchant.setId(UUID.randomUUID());
         try {
             merchantMapper.insert(merchant);
         } catch (DuplicateKeyException ignore) {
@@ -51,7 +52,7 @@ public class MerchantService {
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class)
     public Merchant findOrCreateByChannel(String channelId, ColonelsettlementOrder order) {
         if (!StringUtils.hasText(channelId)) {
             return null;
@@ -70,6 +71,7 @@ public class MerchantService {
         merchant.setSourceOrderId(order == null ? null : order.getOrderId());
         merchant.setStatus(0);
         merchant.setExtraData(null);
+        merchant.setId(UUID.randomUUID());
         try {
             merchantMapper.insert(merchant);
             return merchant;
@@ -82,10 +84,6 @@ public class MerchantService {
 
     private String resolveMerchantId(ColonelsettlementOrder order) {
         if (order.getExtraData() != null) {
-            Object authorId = order.getExtraData().get("author_id");
-            if (authorId != null && StringUtils.hasText(authorId.toString())) {
-                return authorId.toString();
-            }
             Object merchantId = order.getExtraData().get("merchant_id");
             if (merchantId != null && StringUtils.hasText(merchantId.toString())) {
                 return merchantId.toString();
@@ -97,10 +95,6 @@ public class MerchantService {
     private String resolveMerchantName(ColonelsettlementOrder order) {
         Map<String, Object> extra = order.getExtraData();
         if (extra != null) {
-            Object authorName = extra.get("author_name");
-            if (authorName != null && StringUtils.hasText(authorName.toString())) {
-                return authorName.toString();
-            }
             Object merchantName = extra.get("merchant_name");
             if (merchantName != null && StringUtils.hasText(merchantName.toString())) {
                 return merchantName.toString();

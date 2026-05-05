@@ -8,6 +8,7 @@ import com.colonel.saas.auth.dto.SysUserUpdateRequest;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.vo.SysUserVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -94,6 +95,24 @@ class SysUserControllerTest {
     }
 
     @Test
+    void assignable_returnsUserOptions() throws Exception {
+        SysUserVO vo = new SysUserVO();
+        vo.setId(testUserId);
+        vo.setUsername("bizstaff");
+        vo.setRealName("招商专员");
+
+        when(sysUserService.findAssignableUsers("招商", List.of(RoleCodes.BIZ_LEADER), deptId)).thenReturn(List.of(vo));
+
+        mockMvc.perform(get("/users/assignable")
+                        .param("keyword", "招商")
+                        .requestAttr("roleCodes", List.of(RoleCodes.BIZ_LEADER))
+                        .requestAttr("deptId", deptId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].username").value("bizstaff"))
+                .andExpect(jsonPath("$.data[0].realName").value("招商专员"));
+    }
+
+    @Test
     void create_returnsCreatedUser() throws Exception {
         SysUserCreateRequest request = new SysUserCreateRequest(
                 "newuser", "password123", "新用户", "13800138000", "newuser@test.com", deptId, List.of(UUID.randomUUID()));
@@ -102,7 +121,7 @@ class SysUserControllerTest {
         vo.setId(UUID.randomUUID());
         vo.setUsername("newuser");
 
-        when(sysUserService.create(any())).thenReturn(vo);
+        when(sysUserService.create(any(), any())).thenReturn(vo);
 
         mockMvc.perform(post("/users")
                         .requestAttr("userId", userId)

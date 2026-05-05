@@ -22,7 +22,8 @@ public interface DouyinPromotionGateway {
             String activityId,
             String sourceUrl,
             String scene,
-            String talentId) {
+            String talentId,
+            String pickExtra) {
     }
 
     record PromotionLinkResult(

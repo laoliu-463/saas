@@ -218,6 +218,23 @@ class ExclusiveTalentServiceTest {
         assertThat(result).isZero();
     }
 
+    @Test
+    void evaluateMonth_shouldQueryOrdersBySettleTimeAndSamplesByShipTime() {
+        YearMonth stats = YearMonth.of(2024, 6);
+        YearMonth apply = YearMonth.of(2024, 7);
+        LocalDateTime start = stats.atDay(1).atStartOfDay();
+        LocalDateTime end = stats.plusMonths(1).atDay(1).atStartOfDay();
+
+        stubConfig("70", "10");
+        stubDataQuery(start, end);
+
+        service.evaluateMonth(stats, apply);
+
+        verify(jdbcTemplate).query(contains("settle_time >= ?"), any(RowCallbackHandler.class), any(Object[].class));
+        verify(jdbcTemplate).query(contains("settle_time >= ?"), any(RowMapper.class), any(Object[].class));
+        verify(jdbcTemplate).query(contains("ship_time >= ?"), any(RowCallbackHandler.class), any(Object[].class));
+    }
+
     // ─── Helper stubs ──────────────────────────────────────────────────────
 
     // Catch-all: stub ALL query overloads to return empty (no rows).

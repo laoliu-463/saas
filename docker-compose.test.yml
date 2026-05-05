@@ -1,23 +1,125 @@
-﻿name: saas-test
+name: saas-test
 
 services:
   postgres:
+    image: postgres:15-alpine
     environment:
       POSTGRES_DB: colonel_saas_test
+      POSTGRES_USER: saas
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-saas123}
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./backend/src/main/resources/db/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./backend/src/main/resources/db/alter-product-main-chain.sql:/docker-entrypoint-initdb.d/02-alter-product-main-chain.sql
+      - ./backend/src/main/resources/db/alter-product-biz-status.sql:/docker-entrypoint-initdb.d/03-alter-product-biz-status.sql
+      - ./backend/src/main/resources/db/alter-product-following.sql:/docker-entrypoint-initdb.d/04-alter-product-following.sql
+      - ./backend/src/main/resources/db/alter-talent-enrich.sql:/docker-entrypoint-initdb.d/05-alter-talent-enrich.sql
+      - ./backend/src/main/resources/db/alter-talent-crm-gap-fill.sql:/docker-entrypoint-initdb.d/06-alter-talent-crm-gap-fill.sql
+      - ./backend/src/main/resources/db/alter-product-test-columns.sql:/docker-entrypoint-initdb.d/07-alter-product-test-columns.sql
+      - ./backend/src/main/resources/db/alter-order-attribution-mvp.sql:/docker-entrypoint-initdb.d/08-alter-order-attribution-mvp.sql
+      - ./backend/src/main/resources/db/alter-order-attribution-mvp-v2.sql:/docker-entrypoint-initdb.d/09-alter-order-attribution-mvp-v2.sql
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U saas -d colonel_saas_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
 
   backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+      - "5005:5005"
     environment:
       SPRING_PROFILES_ACTIVE: test
+      DB_HOST: postgres
+      DB_PORT: 5432
       DB_NAME: colonel_saas_test
-      REDIS_DATABASE: 1
+      DB_USER: saas
+      DB_PASSWORD: ${DB_PASSWORD:-saas123}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-colonel-saas-jwt-secret-key-at-least-32-chars}
+      DOUYIN_BASE_URL: ${DOUYIN_BASE_URL:-https://openapi-fxg.jinritemai.com}
+      DOUYIN_APP_ID: ${DOUYIN_APP_ID:-}
+      DOUYIN_CLIENT_KEY: ${DOUYIN_CLIENT_KEY:-}
+      DOUYIN_CLIENT_SECRET: ${DOUYIN_CLIENT_SECRET:-}
+      DOUYIN_SANDBOX: ${DOUYIN_SANDBOX:-false}
       DOUYIN_TEST_ENABLED: "true"
+      DOUYIN_TOKEN_AUTO_REFRESH_ENABLED: ${DOUYIN_TOKEN_AUTO_REFRESH_ENABLED:-false}
+      DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:-300}
+      DOUYIN_TOKEN_REDIS_LOCK_MINUTES: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:-5}
+      CRAWLER_TALENT_URL: ${CRAWLER_TALENT_URL:-https://api.douyin.com/internal/talent/list}
       TALENT_ENRICH_MODE: test
       TALENT_PUBLIC_PAGE_CRAWL_ENABLED: "false"
+      APP_TEST_ENABLED: ${APP_TEST_ENABLED:-true}
+      APP_TEST_SEED_ON_STARTUP: ${APP_TEST_SEED_ON_STARTUP:-true}
+      APP_TEST_DOUYIN_ENABLED: ${APP_TEST_DOUYIN_ENABLED:-true}
+      APP_TEST_PROMOTION_ENABLED: ${APP_TEST_PROMOTION_ENABLED:-true}
+      APP_TEST_ORDER_ENABLED: ${APP_TEST_ORDER_ENABLED:-true}
+      APP_TEST_TALENT_ENABLED: ${APP_TEST_TALENT_ENABLED:-true}
+      APP_TEST_LOGISTICS_ENABLED: ${APP_TEST_LOGISTICS_ENABLED:-true}
+      REDIS_DATABASE: 1
       JAVA_OPTS: -Dspring.devtools.restart.enabled=false -Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=*:5005,suspend=n
+    volumes:
+      - ./backend:/app
+      - maven_test_cache:/root/.m2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: on-failure
 
   frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
     environment:
+      VITE_PROXY_TARGET: http://backend:8080
       VITE_ENV_LABEL: TEST
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
+    volumes:
+      - ./frontend:/app
+      - frontend_test_node_modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
+volumes:
+  postgres_test_data:
+  redis_test_data:
+  maven_test_cache:
+  frontend_test_node_modules:

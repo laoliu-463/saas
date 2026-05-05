@@ -49,13 +49,12 @@ class OrderSyncPersistenceServiceTest {
     void persistOrder_shouldReturnTrueAndTriggerFollowUpsWhenInserted() {
         ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
         when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(1);
-        when(merchantService.findOrCreateByChannel(any(), any())).thenReturn(new Merchant());
 
         boolean result = service.persistOrder(order);
 
         assertThat(result).isTrue();
         verify(pickSourceMappingService).ensureFromOrder(order);
-        verify(merchantService).findOrCreateByChannel(order.getChannelUserId().toString(), order);
+        verify(merchantService).ensureMerchantFromOrder(order);
         verify(sampleLifecycleService).completePendingHomeworkByOrder(order);
     }
 
@@ -68,19 +67,19 @@ class OrderSyncPersistenceServiceTest {
 
         assertThat(result).isFalse();
         verify(pickSourceMappingService, never()).ensureFromOrder(any());
-        verify(merchantService, never()).findOrCreateByChannel(any(), any());
+        verify(merchantService, never()).ensureMerchantFromOrder(any());
         verify(sampleLifecycleService, never()).completePendingHomeworkByOrder(any());
     }
 
     @Test
-    void persistOrder_shouldPassNullChannelIdToMerchantService() {
+    void persistOrder_shouldStillEnsureMerchantWhenChannelIdMissing() {
         ColonelsettlementOrder order = makeOrder(null);
         when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(1);
 
         boolean result = service.persistOrder(order);
 
         assertThat(result).isTrue();
-        verify(merchantService).findOrCreateByChannel(null, order);
+        verify(merchantService).ensureMerchantFromOrder(order);
     }
 
     private ColonelsettlementOrder makeOrder(UUID channelUserId) {

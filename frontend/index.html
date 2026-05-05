@@ -5,8 +5,144 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>frontend-tmp</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+        background: #f7f9fc;
+        color: #1f2937;
+      }
+
+      body {
+        margin: 0;
+        background: #f7f9fc;
+      }
+
+      #boot-loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(180deg, #fff6f8 0%, #f7f9fc 24%, #f7f9fc 100%);
+        z-index: 9999;
+        transition: opacity 0.2s ease;
+      }
+
+      body.app-ready #boot-loading {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .boot-shell {
+        width: min(480px, calc(100vw - 32px));
+        display: grid;
+        gap: 16px;
+      }
+
+      .boot-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #ff5c75;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .boot-logo {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #ff7a91, #ff4d6d);
+        position: relative;
+        box-shadow: 0 12px 28px rgba(255, 92, 117, 0.18);
+      }
+
+      .boot-logo::after {
+        content: "";
+        position: absolute;
+        inset: 9px 11px 11px 9px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.94);
+        transform: rotate(45deg);
+      }
+
+      .boot-card {
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(255, 92, 117, 0.08);
+        border-radius: 20px;
+        padding: 24px;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+      }
+
+      .boot-copy {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 18px;
+      }
+
+      .boot-title {
+        font-size: 22px;
+        font-weight: 700;
+      }
+
+      .boot-desc {
+        font-size: 14px;
+        line-height: 1.6;
+        color: #6b7280;
+      }
+
+      .boot-progress {
+        height: 10px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: #ffe2e8;
+      }
+
+      .boot-progress::after {
+        content: "";
+        display: block;
+        width: 42%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #ff8fa3, #ff5c75);
+        animation: boot-progress 1.15s ease-in-out infinite;
+      }
+
+      .boot-hint {
+        margin-top: 14px;
+        font-size: 13px;
+        color: #94a3b8;
+      }
+
+      @keyframes boot-progress {
+        0% {
+          transform: translateX(-100%);
+        }
+
+        100% {
+          transform: translateX(340%);
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-loading" aria-live="polite">
+      <div class="boot-shell">
+        <div class="boot-brand">
+          <div class="boot-logo" aria-hidden="true"></div>
+          <span>Colonel SaaS</span>
+        </div>
+        <div class="boot-card">
+          <div class="boot-copy">
+            <div class="boot-title">正在加载业务看板</div>
+            <div class="boot-desc">初始化菜单、权限和实时数据，请稍候片刻。</div>
+          </div>
+          <div class="boot-progress" aria-hidden="true"></div>
+          <div class="boot-hint">慢网环境下会优先显示此加载层，避免白屏等待。</div>
+        </div>
+      </div>
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

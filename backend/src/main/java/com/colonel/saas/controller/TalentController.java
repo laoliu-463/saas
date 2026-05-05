@@ -8,6 +8,8 @@ import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
+import com.colonel.saas.dto.talent.TalentOperateRequest;
+import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.job.TalentWeeklyRefreshJob;
@@ -29,7 +31,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -56,29 +57,29 @@ public class TalentController extends BaseController {
     }
 
     @Operation(summary = "达人分页列表", description = "按关键字、地区、粉丝量与池状态分页查询达人列表，用于达人 CRM 主页面。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @GetMapping
     public ApiResult<PageResult<Talent>> page(
-            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
-            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
-            @Parameter(description = "达人关键字，可匹配昵称等信息。") @RequestParam(required = false) String keyword,
-            @Parameter(description = "地区筛选。") @RequestParam(required = false) String region,
-            @Parameter(description = "达人池状态，例如公海、私海。待确认：取值含义请联系产品。") @RequestParam(required = false) String poolStatus,
-            @Parameter(description = "负责人关键字。") @RequestParam(required = false) String ownerKeyword,
-            @Parameter(description = "最小粉丝数。") @RequestParam(required = false) Long minFans,
-            @Parameter(description = "最大粉丝数。") @RequestParam(required = false) Long maxFans,
+            @Parameter(description = "达人分页查询参数。") TalentPageQuery query,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        IPage<Talent> result = talentQueryService.page(
-                page, size, keyword, region, poolStatus, ownerKeyword, minFans, maxFans, dataScope, userId, deptId);
+        query.setUserId(userId);
+        query.setDeptId(deptId);
+        query.setDataScope(dataScope);
+        IPage<Talent> result = talentQueryService.page(query);
         return okPage(result);
     }
 
     @Operation(summary = "达人详情", description = "查询单个达人的详情、关联信息与补全结果，用于达人侧边栏或详情弹窗。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @GetMapping("/{id}")
     public ApiResult<TalentDetailResponse> detail(
-            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable UUID id) {
-        return ok(talentQueryService.detail(id));
+            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        return ok(talentQueryService.detail(id, userId, deptId, dataScope));
     }
 
     @Operation(summary = "新增达人", description = "手动新增达人基础资料，用于 CRM 人工补录。")
@@ -115,12 +116,14 @@ public class TalentController extends BaseController {
     }
 
     @Operation(summary = "公海达人列表", description = "查询当前可被认领的公海达人列表。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @GetMapping("/pools/public")
     public ApiResult<List<Talent>> publicPool() {
         return ok(talentService.getPublicPool());
     }
 
     @Operation(summary = "私海达人列表", description = "查询当前登录用户已认领的私海达人列表。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @GetMapping("/pools/private")
     public ApiResult<List<Talent>> privatePool(@RequestAttribute("userId") UUID userId) {
         return ok(talentService.getPrivatePool(userId));
@@ -143,6 +146,21 @@ public class TalentController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
         return ok(talentService.release(talentId, userId, deptId, roleCodes));
+    }
+
+    @Operation(summary = "拉黑达人", description = "将达人标记为黑名单，避免继续进入公海与合作流转。")
+    @PostMapping("/{id}/blacklist")
+    public ApiResult<Talent> blacklist(
+            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId,
+            @RequestBody(required = false) TalentOperateRequest request) {
+        return ok(talentService.blacklist(talentId, request == null ? null : request.getReason()));
+    }
+
+    @Operation(summary = "解除达人黑名单", description = "取消达人黑名单标记，恢复达人正常经营状态。")
+    @PostMapping("/{id}/unblacklist")
+    public ApiResult<Talent> unblacklist(
+            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId) {
+        return ok(talentService.unblacklist(talentId));
     }
 
     @Operation(summary = "刷新达人信息", description = "立即触发单个达人信息刷新，适用于需要同步最新达人资料的场景。")
@@ -173,6 +191,7 @@ public class TalentController extends BaseController {
     }
 
     @Operation(summary = "获取最新补全任务", description = "查询指定达人最近一次补全任务记录，用于排查补全链路。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @GetMapping("/{id}/enrich-task/latest")
     public ApiResult<TalentEnrichTask> latestEnrichTask(
             @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId) {
@@ -180,6 +199,7 @@ public class TalentController extends BaseController {
     }
 
     @Operation(summary = "独家达人判断", description = "判断指定达人是否满足独家条件，用于业务分配与跟进决策。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @GetMapping("/{id}/exclusive-status")
     public ApiResult<TalentService.ExclusiveCheckResult> exclusiveCheck(
             @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable UUID id,

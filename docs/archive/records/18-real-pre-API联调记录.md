@@ -1,9 +1,11 @@
 # 18-Real-Pre 真实 SDK 联调记录
 
-> 更新时间：2026-05-02 09:55
+> 更新时间：2026-05-03 10:00
 > 环境：real-pre (port 8081)
 > 分支：feature/auth-system
 > Context Path: `/api`（所有接口需加 `/api` 前缀）
+
+> 2026-05-03 事实复核补充：`backend-real-pre`、`postgres-real-pre`、`redis-real-pre` 当前仍 healthy；`3001` 前端可由本机 Node 进程承载页面回归，不再默认要求 `saas-frontend-real-pre-1` 常驻。
 
 ## 联调原则
 

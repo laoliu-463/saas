@@ -39,7 +39,7 @@
 
         <n-form-item-gi :span="24" v-if="selectedTalent" label="已选达人">
           <n-space align="center">
-            <n-avatar round :src="selectedTalent.avatarUrl" :size="42" />
+            <n-avatar round :src="resolveSafeAvatarUrl(selectedTalent.avatarUrl)" :size="42" />
             <div>
               <div style="font-weight: 600">{{ selectedTalent.nickname }}</div>
               <div style="color: #666; font-size: 12px">
@@ -78,6 +78,7 @@
 import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { createSample, searchSampleProducts, searchSampleTalents } from '../../../api/sample'
+import { resolveSafeAvatarUrl } from '../../../utils/media'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{

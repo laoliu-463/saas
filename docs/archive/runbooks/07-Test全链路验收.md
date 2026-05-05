@@ -1,6 +1,6 @@
 # 07-Test 全链路验收
 
-更新时间：2026-04-29
+更新时间：2026-05-03
 
 ## 一、验收目标
 
@@ -22,7 +22,7 @@
 - 调试台页面：`/dev/test`
 - 接口统一前缀：`/api`
 
-联调实录见 [16-local-mock业务联调记录](./16-local-mock业务联调记录.md)。
+联调实录见 [16-local-mock业务联调记录](../records/16-local-mock业务联调记录.md)。
 
 ## 三、推荐验收路径
 
@@ -107,4 +107,14 @@
 
 - `/api/test/*` 需要登录态，未登录返回 `401` 属于正常行为
 - 本地 Mock / `test` 基线是当前演示、回归和联调前基线，不应被真实 SDK 联调改坏
-- 如需查看已经完成的联调结论，优先查 [16-local-mock业务联调记录](./16-local-mock业务联调记录.md)
+- 如需查看已经完成的联调结论，优先查 [16-local-mock业务联调记录](../records/16-local-mock业务联调记录.md)
+
+## 六、2026-05-03 事实复核结果
+
+本次按当前代码与运行环境复核：
+
+- `backend mvn test`：`410 tests, 0 failures, 0 errors`
+- `frontend npm.cmd run build`：通过
+- real-pre 浏览器全系统 E2E：`45/45` 通过
+- `/dev/test` 本轮实测 `reset=200`、`seed=200`
+- `channel_staff` 访问 `/system/users` 时被重定向到 `/login`，未出现 403 报错页

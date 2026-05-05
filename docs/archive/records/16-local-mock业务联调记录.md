@@ -1095,7 +1095,7 @@ TEST-SAMPLE-001: 5 -> 6 auto complete by order: MOCK_GEN_ATTR_1777465486371
 
 P1-1 下一小步建议：
 
-1. 继续清理文档中残留的 `dev + mock enabled` 旧结论。
+1. 继续清理文档中残留的 `dev + mock enabled` 旧结论。（2026-05-03 复核：主干文档已完成本轮清理，此处保留为当时待办记录）
 2. 保留 `docker-compose.test.yml` 给自动化测试使用。
 3. 继续收口前端 API 口径，统一使用 `/api/**`。
 4. 在 `local-mock` 下继续治理真实达人爬虫外呼、真实 Douyin SDK 请求和 token 自动刷新噪音。

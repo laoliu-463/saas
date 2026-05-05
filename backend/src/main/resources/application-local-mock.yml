@@ -19,9 +19,6 @@ spring:
       password: ${REDIS_PASSWORD:}
       database: ${REDIS_DATABASE:0}
       timeout: 5000ms
-  task:
-    scheduling:
-      enabled: false
 
 mybatis-plus:
   configuration:
@@ -38,6 +35,8 @@ knife4j:
     language: zh_cn
 
 app:
+  activities:
+    seed-demo-on-empty: true
   test:
     enabled: true
     seed-on-startup: true
@@ -52,6 +51,10 @@ talent:
     mode: test
   data:
     public-page-crawl-enabled: false
+
+order:
+  sync:
+    enabled: false
 
 douyin:
   test:

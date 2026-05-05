@@ -11,8 +11,24 @@
       </template>
     </PageHeader>
 
+    <div v-if="showSkeleton" class="loading-state" aria-live="polite">
+      <div class="loading-copy">加载中...</div>
+      <div class="metric-cards">
+        <div v-for="item in 4" :key="item" class="metric-card skeleton-card">
+          <n-skeleton height="88px" :sharp="false" />
+        </div>
+      </div>
+      <div class="breakdown-section">
+        <n-skeleton text :repeat="2" />
+      </div>
+      <div class="quick-links">
+        <n-skeleton height="56px" :sharp="false" />
+      </div>
+    </div>
+
     <!-- 主指标卡片 -->
-    <n-spin :show="loading">
+    <n-spin :show="loading && initialized">
+      <template v-if="!showSkeleton">
       <div class="metric-cards">
         <div class="metric-card">
           <div class="metric-icon orders">
@@ -21,7 +37,7 @@
             </svg>
           </div>
           <div class="metric-body">
-            <div class="metric-label">总订单数</div>
+            <div class="metric-label">今日订单数</div>
             <div class="metric-value">{{ metrics.totalOrders ?? 0 }}</div>
             <div class="metric-trend up">较上周 +12.5%</div>
           </div>
@@ -34,7 +50,7 @@
             </svg>
           </div>
           <div class="metric-body">
-            <div class="metric-label">订单总额</div>
+            <div class="metric-label">今日订单总额</div>
             <div class="metric-value">¥{{ metrics.totalAmount || '0.00' }}</div>
             <div class="metric-trend up">较上周 +8.3%</div>
           </div>
@@ -47,7 +63,7 @@
             </svg>
           </div>
           <div class="metric-body">
-            <div class="metric-label">服务费净收</div>
+            <div class="metric-label">今日服务费净收</div>
             <div class="metric-value">¥{{ metrics.serviceFee || '0.00' }}</div>
             <div class="metric-trend up">较上周 +5.7%</div>
           </div>
@@ -60,7 +76,7 @@
             </svg>
           </div>
           <div class="metric-body">
-            <div class="metric-label">毛利</div>
+            <div class="metric-label">今日毛利</div>
             <div class="metric-value">¥{{ metrics.grossProfit || '0.00' }}</div>
             <div class="metric-trend down">较上周 -2.1%</div>
           </div>
@@ -116,21 +132,26 @@
           </div>
         </n-card>
       </div>
+      </template>
     </n-spin>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import PageHeader from '../../components/PageHeader.vue'
 import { getMetrics } from '../../api/data'
 
 const message = useMessage()
 const loading = ref(false)
+const initialized = ref(false)
 const metrics = ref<any>({})
+const showSkeleton = computed(() => loading.value && !initialized.value)
+const INITIAL_SKELETON_MIN_MS = 1200
 
 const loadMetrics = async () => {
+  const startedAt = Date.now()
   loading.value = true
   try {
     const res = await getMetrics()
@@ -138,6 +159,12 @@ const loadMetrics = async () => {
   } catch (error: any) {
     message.warning(error?.message || '获取指标异常')
   } finally {
+    const elapsed = Date.now() - startedAt
+    const remaining = INITIAL_SKELETON_MIN_MS - elapsed
+    if (remaining > 0) {
+      await new Promise((resolve) => setTimeout(resolve, remaining))
+    }
+    initialized.value = true
     loading.value = false
   }
 }
@@ -151,6 +178,20 @@ onMounted(() => {
 .dashboard {
   max-width: 1200px;
   padding: var(--spacing-xl);
+}
+
+.loading-state {
+  display: grid;
+  gap: var(--spacing-md);
+}
+
+.loading-copy {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.skeleton-card :deep(.n-skeleton) {
+  width: 100%;
 }
 
 /* ---- 主指标卡片 ---- */
@@ -310,7 +351,7 @@ onMounted(() => {
 }
 
 .quick-link-icon {
-  font-size: 20px;
+  font-size: var(--text-xl);
 }
 
 .quick-link-text {
@@ -322,6 +363,6 @@ onMounted(() => {
 
 .quick-link-arrow {
   color: var(--text-muted);
-  font-size: 16px;
+  font-size: var(--text-base);
 }
 </style>

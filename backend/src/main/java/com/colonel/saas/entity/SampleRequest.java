@@ -42,8 +42,14 @@ public class SampleRequest extends BaseEntity {
     @TableField("user_id")
     private UUID userId;
 
+    @TableField("dept_id")
+    private UUID deptId;
+
     @TableField("channel_user_id")
     private UUID channelUserId;
+
+    @TableField("channel_dept_id")
+    private UUID channelDeptId;
 
     @TableField("expected_sample_num")
     private Integer expectedSampleNum;

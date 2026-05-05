@@ -14,7 +14,7 @@ class JwtTokenProviderTest {
     @Test
     void shouldParseClaimsWithValidToken() {
         // Arrange
-        JwtTokenProvider provider = new JwtTokenProvider("unit-test-secret", 300);
+        JwtTokenProvider provider = new JwtTokenProvider("unit-test-secret-long-enough-for-32-chars-minimum", 300L, 604800L);
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
 
@@ -31,7 +31,7 @@ class JwtTokenProviderTest {
     @Test
     void shouldFailWithTamperedToken() {
         // Arrange
-        JwtTokenProvider provider = new JwtTokenProvider("unit-test-secret", 300);
+        JwtTokenProvider provider = new JwtTokenProvider("unit-test-secret-long-enough-for-32-chars-minimum", 300L, 604800L);
         String valid = provider.generateToken(UUID.randomUUID(), UUID.randomUUID(), 1, List.of("zs_staff"), "tester");
         String tampered = valid.substring(0, valid.length() - 2) + "xx";
 
@@ -43,7 +43,7 @@ class JwtTokenProviderTest {
     @Test
     void shouldFailWhenTokenExpired() {
         // Arrange
-        JwtTokenProvider provider = new JwtTokenProvider("unit-test-secret", -1);
+        JwtTokenProvider provider = new JwtTokenProvider("unit-test-secret-long-enough-for-32-chars-minimum", -1L, 604800L);
         String token = provider.generateToken(UUID.randomUUID(), UUID.randomUUID(), 1, List.of("zs_staff"), "tester");
 
         // Act + Assert

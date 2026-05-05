@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.colonel.saas.mapper.ProductSnapshotMapper">
+
+    <insert id="upsert" parameterType="com.colonel.saas.entity.ProductSnapshot">
+        INSERT INTO product_snapshot (
+            id, activity_id, product_id, title, cover, price, price_text, shop_id, shop_name,
+            status, status_text, category_name, product_stock, sales, detail_url,
+            promotion_start_time, promotion_end_time, activity_cos_ratio, activity_cos_ratio_text,
+            cos_type, cos_type_text, ad_service_ratio, activity_ad_cos_ratio, has_douin_goods_tag,
+            raw_payload, sync_time, create_time, update_time, create_by, update_by, deleted
+        ) VALUES (
+            #{snapshot.id}, #{snapshot.activityId}, #{snapshot.productId}, #{snapshot.title}, #{snapshot.cover},
+            #{snapshot.price}, #{snapshot.priceText}, #{snapshot.shopId}, #{snapshot.shopName},
+            #{snapshot.status}, #{snapshot.statusText}, #{snapshot.categoryName}, #{snapshot.productStock},
+            #{snapshot.sales}, #{snapshot.detailUrl}, #{snapshot.promotionStartTime}, #{snapshot.promotionEndTime},
+            #{snapshot.activityCosRatio}, #{snapshot.activityCosRatioText}, #{snapshot.cosType}, #{snapshot.cosTypeText},
+            #{snapshot.adServiceRatio}, #{snapshot.activityAdCosRatio}, #{snapshot.hasDouinGoodsTag},
+            #{snapshot.rawPayload}, #{snapshot.syncTime}, #{snapshot.createTime}, #{snapshot.updateTime},
+            #{snapshot.createBy}, #{snapshot.updateBy}, #{snapshot.deleted}
+        )
+        ON CONFLICT (activity_id, product_id) DO UPDATE SET
+            activity_id = EXCLUDED.activity_id,
+            product_id = EXCLUDED.product_id,
+            title = EXCLUDED.title,
+            cover = EXCLUDED.cover,
+            price = EXCLUDED.price,
+            price_text = EXCLUDED.price_text,
+            shop_id = EXCLUDED.shop_id,
+            shop_name = EXCLUDED.shop_name,
+            status = EXCLUDED.status,
+            status_text = EXCLUDED.status_text,
+            category_name = EXCLUDED.category_name,
+            product_stock = EXCLUDED.product_stock,
+            sales = EXCLUDED.sales,
+            detail_url = EXCLUDED.detail_url,
+            promotion_start_time = EXCLUDED.promotion_start_time,
+            promotion_end_time = EXCLUDED.promotion_end_time,
+            activity_cos_ratio = EXCLUDED.activity_cos_ratio,
+            activity_cos_ratio_text = EXCLUDED.activity_cos_ratio_text,
+            cos_type = EXCLUDED.cos_type,
+            cos_type_text = EXCLUDED.cos_type_text,
+            ad_service_ratio = EXCLUDED.ad_service_ratio,
+            activity_ad_cos_ratio = EXCLUDED.activity_ad_cos_ratio,
+            has_douin_goods_tag = EXCLUDED.has_douin_goods_tag,
+            raw_payload = EXCLUDED.raw_payload,
+            sync_time = EXCLUDED.sync_time,
+            update_time = EXCLUDED.update_time,
+            update_by = EXCLUDED.update_by,
+            deleted = EXCLUDED.deleted
+    </insert>
+</mapper>

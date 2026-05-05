@@ -27,8 +27,12 @@ public class ProductBizStatusService {
     }
 
     public ProductBizStatus readBizStatus(ProductOperationState state) {
-        ProductBizStatus bizStatus = ProductBizStatus.fromCode(state == null ? null : state.getBizStatus());
-        return bizStatus == null ? ProductBizStatus.PENDING_AUDIT : bizStatus;
+        try {
+            ProductBizStatus bizStatus = ProductBizStatus.fromCode(state == null ? null : state.getBizStatus());
+            return bizStatus == null ? ProductBizStatus.PENDING_AUDIT : bizStatus;
+        } catch (IllegalArgumentException ex) {
+            return ProductBizStatus.PENDING_AUDIT;
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -48,6 +52,7 @@ public class ProductBizStatusService {
         state.setBizStatus(ProductBizStatus.PENDING_AUDIT.name());
         state.setAuditStatus(1);
         state.setLastOperationAt(LocalDateTime.now());
+        state.setId(UUID.randomUUID());
         operationStateMapper.insert(state);
         writeLog(activityId, productId, "SYNC", null, ProductBizStatus.PENDING_AUDIT,
                 operatorId, operatorDeptId, Map.of("bizStatus", ProductBizStatus.PENDING_AUDIT.name()), remark, true, null);
@@ -70,6 +75,7 @@ public class ProductBizStatusService {
         state.setBizStatus(targetStatus.name());
         state.setLastOperationAt(LocalDateTime.now());
         if (state.getId() == null) {
+            state.setId(UUID.randomUUID());
             operationStateMapper.insert(state);
         } else {
             operationStateMapper.updateById(state);
@@ -96,13 +102,13 @@ public class ProductBizStatusService {
 
     private void ensureAllowed(ProductBizStatus beforeStatus, ProductBizStatus targetStatus, String operationType) {
         boolean allowed = switch (targetStatus) {
-            case APPROVED -> beforeStatus == ProductBizStatus.SYNCED || beforeStatus == ProductBizStatus.PENDING_AUDIT;
-            case REJECTED -> beforeStatus == ProductBizStatus.SYNCED || beforeStatus == ProductBizStatus.PENDING_AUDIT;
-            case BOUND -> beforeStatus == ProductBizStatus.APPROVED;
+            case APPROVED -> beforeStatus == ProductBizStatus.PENDING_AUDIT;
+            case REJECTED -> beforeStatus == ProductBizStatus.PENDING_AUDIT;
+            case BOUND -> false;
             case ASSIGNED -> beforeStatus == ProductBizStatus.APPROVED || beforeStatus == ProductBizStatus.BOUND;
             case LINKED -> beforeStatus == ProductBizStatus.ASSIGNED;
             case FOLLOWING -> beforeStatus == ProductBizStatus.LINKED;
-            case SYNCED, PENDING_AUDIT -> false;
+            case PENDING_AUDIT -> false;
         };
         if (!allowed) {
             throw new BusinessException("当前状态不允许执行" + operationType + "，当前状态：" + beforeStatus.name());
@@ -133,6 +139,7 @@ public class ProductBizStatusService {
         log.setOperatorDeptId(operatorDeptId);
         log.setOperationPayload(String.valueOf(payload));
         log.setOperationRemark(remark);
+        log.setId(UUID.randomUUID());
         operationLogMapper.insert(log);
     }
 

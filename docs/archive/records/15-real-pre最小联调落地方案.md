@@ -1,10 +1,14 @@
 # 15-Real/Pre 最小联调落地方案
 
-更新时间：2026-04-28
+更新时间：2026-05-03
 
 ## 1. 文档目标
 
 本文用于把当前项目的真实抖店接口联调，从“概念讨论”落到“可执行动作”。
+
+但需要先明确一条当前事实：
+
+> 截至 2026-05-03，仓库中的 `real-pre` 已经是独立端口 / 容器的浏览器回归环境，**还不是**真实 SDK 已接通的最终联调环境。
 
 本方案坚持两个原则：
 
@@ -21,14 +25,18 @@
 | `test` 后端 profile | `test` |
 | `test` 数据库 | `colonel_saas_test` |
 | `test` Redis DB | `1` |
-| 当前 `saas-backend-1` 状态 | `Created`，未作为真实联调运行环境使用 |
-| 当前真实联调阻塞点 | 尚未拉起显式 `DOUYIN_TEST_ENABLED=false` 的独立后端实例 |
+| 当前 real-pre 后端状态 | `saas-backend-real-pre-1` healthy，对外 `8081->8080` |
+| 当前 real-pre PostgreSQL / Redis | `saas-postgres-real-pre-1`、`saas-redis-real-pre-1` healthy |
+| 当前前端口径 | `3001` 可由 `start-real-pre.ps1` 或本机 `npm run dev -- --port 3001` 提供 |
+| 当前 real-pre profile | `.env.real-pre` 实际为 `SPRING_PROFILES_ACTIVE=local-mock` |
+| 当前 real-pre 三方开关 | `APP_TEST_ENABLED=true`、`DOUYIN_TEST_ENABLED=true` |
+| 当前真实联调阻塞点 | Token 建立、真实订单映射、部署链路继续收口 |
 
 结论：
 
-- 当前运行中的系统仍是 `test` 基线
-- 下一步不能直接在 `test` 上切真实抖店接口
-- 应先拉起一套 `real/pre` 后端实例
+- 当前 `real-pre` 独立后端已经落地
+- `test` 与 `real-pre` 已形成双轨口径，但当前 `real-pre` 仍是“回归环境”而非“真实 SDK 环境”
+- 下一步重点不再是“先拉起实例”，而是“决定是否把当前 real-pre 继续演进成真实 SDK pre，还是另起一套更纯粹的 real-gateway 环境”
 
 ## 3. 最小成本方案
 
@@ -46,9 +54,9 @@
 2. 第二个 PostgreSQL 容器
 3. 第二个 Redis 容器
 
-### 3.2 推荐口径
+### 3.2 目标口径（未来真实 SDK pre）
 
-| 配置项 | `test` | `real/pre` 建议值 |
+| 配置项 | `test` | 未来真实 SDK pre 建议值 |
 | :--- | :--- | :--- |
 | `SPRING_PROFILES_ACTIVE` | `test` | `prod` |
 | `DOUYIN_TEST_ENABLED` | `true` | `false` |
@@ -58,9 +66,19 @@
 | `DOUYIN_TOKEN_AUTO_REFRESH_ENABLED` | `true` | `false` |
 | `DOUYIN_WEBHOOK_VERIFY_SIGN` | `false` | `true` |
 
+### 3.3 当前 real-pre 与未来 real SDK pre 的区别
+
+| 维度 | 当前 real-pre | 未来真实 SDK pre |
+| :--- | :--- | :--- |
+| 主要用途 | 浏览器回归 / 权限验收 / 部署形态验证 | 真实 Token / 活动 / 商品 / 订单接口联调 |
+| profile | `local-mock` | 建议 `prod` |
+| `DOUYIN_TEST_ENABLED` | `true` | `false` |
+| `/dev/test` 与 `/api/test/*` | 允许 | 原则上关闭 |
+| 是否已落地 | 是 | 否 |
+
 ## 4. 环境变量模板
 
-请使用根目录新增的 `.env.real.example` 复制出本地专用的 `.env.real`，并填入真实联调值。
+以下模板用于“未来真实 SDK pre”，不是当前仓库内 `.env.real-pre` 的实际值。
 
 关键变量如下：
 
@@ -146,7 +164,7 @@ $env:DB_NAME="colonel_saas_real"
 $env:DB_USER="saas"
 $env:DB_PASSWORD="请替换"
 $env:REDIS_HOST="localhost"
-$env:REDIS_PORT="6379"
+$env:REDIS_PORT="6380"
 $env:REDIS_DATABASE="2"
 $env:DOUYIN_BASE_URL="https://openapi-fxg.jinritemai.com"
 $env:DOUYIN_APP_ID="请替换"
@@ -268,7 +286,7 @@ docker inspect <container> --format "{{range .Config.Env}}{{println .}}{{end}}"
 
 从现在开始，所有真实联调记录统一回写到：
 
-- `docs/14-抖店SDK全量梳理与逐接口联调规划.md`
+- `docs/archive/records/14-抖店SDK全量梳理与逐接口联调规划.md`
 
 回写格式必须包含：
 
@@ -286,8 +304,6 @@ docker inspect <container> --format "{{range .Config.Env}}{{println .}}{{end}}"
 
 本轮正式开始动作定义为：
 
-1. 完成文档固化
-2. 完成 `.env.real.example` 模板落地
-3. 下一步开始创建 `colonel_saas_real` 并拉起 `8081` 后端
-
-在未完成第 3 步前，不进入真实抖店业务接口联调。
+1. `real/pre` 独立环境已经具备启动与健康检查能力
+2. 当前进入 token 建立、真实接口样本采集与订单映射补全阶段
+3. 后续继续收口 `3001` 前端承载方式、部署验证与全链路真实联调

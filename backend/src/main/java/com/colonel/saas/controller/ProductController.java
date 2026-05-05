@@ -48,14 +48,24 @@ public class ProductController extends BaseController {
         this.productService = productService;
     }
 
-    @Operation(summary = "[已废弃] 商品分页", description = "兼容旧版商品分页列表。请迁移到 /colonel/activities/{activityId}/products 主链路接口。")
+    @Operation(summary = "商品库分页", description = "查询已从选品库沉淀到共享商品库的商品列表，对全员可见。")
     @GetMapping
     public ApiResult<PageResult<Product>> page(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
-            @Parameter(description = "商品状态。待确认：取值含义请联系产品。") @RequestParam(required = false) Integer status) {
-        IPage<Product> result = productService.getPage(page, size, status);
+            @Parameter(description = "商品状态。待确认：取值含义请联系产品。") @RequestParam(required = false) Integer status,
+            @Parameter(description = "商品关键字，可匹配商品名称。") @RequestParam(required = false) String keyword) {
+        IPage<Product> result = productService.getSelectedLibraryPage(page, size, keyword, status);
         return okPage(result);
+    }
+
+    @Operation(summary = "[已废弃] 选品候选分页", description = "兼容 Token 缺失场景下的本地选品候选列表。")
+    @GetMapping("/picks")
+    public ApiResult<PageResult<Product>> pickPage(
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
+            @Parameter(description = "商品状态。待确认：取值含义请联系产品。") @RequestParam(required = false) Integer status) {
+        return okPage(productService.getPage(page, size, status));
     }
 
     @Operation(summary = "[已废弃] 商品详情", description = "兼容旧版商品详情查询。请迁移到 /colonel/activities/{activityId}/products/{productId}。")

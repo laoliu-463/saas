@@ -18,22 +18,24 @@ import java.util.UUID;
 @Service
 public class SampleLifecycleService {
 
+    private static final int STATUS_PENDING_SHIP = 2;
     private static final int STATUS_PENDING_HOMEWORK = 5;
     private static final int STATUS_COMPLETED = 6;
     private static final int STATUS_CLOSED = 8;
-    private static final String CLOSE_REASON_TIMEOUT = "超时30天未出单自动关闭";
-
     private final JdbcTemplate jdbcTemplate;
     private final SampleRequestMapper sampleRequestMapper;
     private final SampleStatusLogService sampleStatusLogService;
+    private final BusinessRuleConfigService businessRuleConfigService;
 
     public SampleLifecycleService(
             JdbcTemplate jdbcTemplate,
             SampleRequestMapper sampleRequestMapper,
-            SampleStatusLogService sampleStatusLogService) {
+            SampleStatusLogService sampleStatusLogService,
+            BusinessRuleConfigService businessRuleConfigService) {
         this.jdbcTemplate = jdbcTemplate;
         this.sampleRequestMapper = sampleRequestMapper;
         this.sampleStatusLogService = sampleStatusLogService;
+        this.businessRuleConfigService = businessRuleConfigService;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -75,6 +77,7 @@ public class SampleLifecycleService {
     public int autoCloseTimeoutPendingHomework(int timeoutDays) {
         LocalDateTime deadline = LocalDateTime.now().minusDays(timeoutDays);
         List<UUID> requestIds = findTimeoutPendingHomeworkRequestIds(deadline);
+        String closeReason = "超时" + timeoutDays + "天未出单自动关闭";
         int closed = 0;
         for (UUID requestId : requestIds) {
             SampleRequest sample = sampleRequestMapper.selectById(requestId);
@@ -83,18 +86,55 @@ public class SampleLifecycleService {
             }
             sample.setStatus(STATUS_CLOSED);
             sample.setCloseTime(LocalDateTime.now());
-            sample.setCloseReason(CLOSE_REASON_TIMEOUT);
+            sample.setCloseReason(closeReason);
             sampleRequestMapper.updateById(sample);
             sampleStatusLogService.log(
                     requestId,
                     STATUS_PENDING_HOMEWORK,
                     STATUS_CLOSED,
                     null,
-                    CLOSE_REASON_TIMEOUT
+                    closeReason
             );
             closed++;
         }
         return closed;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public int autoCloseTimeoutPendingShip(int timeoutDays) {
+        LocalDateTime deadline = LocalDateTime.now().minusDays(timeoutDays);
+        List<UUID> requestIds = findTimeoutPendingShipRequestIds(deadline);
+        String closeReason = "超时" + timeoutDays + "天未发货自动关闭";
+        int closed = 0;
+        for (UUID requestId : requestIds) {
+            SampleRequest sample = sampleRequestMapper.selectById(requestId);
+            if (sample == null || sample.getStatus() == null || sample.getStatus() != STATUS_PENDING_SHIP) {
+                continue;
+            }
+            sample.setStatus(STATUS_CLOSED);
+            sample.setCloseTime(LocalDateTime.now());
+            sample.setCloseReason(closeReason);
+            sampleRequestMapper.updateById(sample);
+            sampleStatusLogService.log(
+                    requestId,
+                    STATUS_PENDING_SHIP,
+                    STATUS_CLOSED,
+                    null,
+                    closeReason
+            );
+            closed++;
+        }
+        return closed;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public int autoCloseTimeoutPendingHomework() {
+        return autoCloseTimeoutPendingHomework(businessRuleConfigService.getSampleTimeoutHomeworkDays());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public int autoCloseTimeoutPendingShip() {
+        return autoCloseTimeoutPendingShip(businessRuleConfigService.getSampleTimeoutPendingShipDays());
     }
 
     private List<UUID> findPendingHomeworkRequestIds(UUID channelUserId, String talentUid, String sourceProductId) {
@@ -123,6 +163,21 @@ public class SampleLifecycleService {
                 WHERE sr.deleted = 0
                   AND sr.status = 5
                   AND COALESCE(sr.deliver_time, sr.update_time, sr.create_time) < ?
+                ORDER BY sr.create_time ASC
+                """;
+        return jdbcTemplate.query(sql, (rs, rowNum) -> parseUuid(rs.getString("id")), deadline)
+                .stream()
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    private List<UUID> findTimeoutPendingShipRequestIds(LocalDateTime deadline) {
+        String sql = """
+                SELECT sr.id
+                FROM sample_request sr
+                WHERE sr.deleted = 0
+                  AND sr.status = 2
+                  AND COALESCE(sr.audit_time, sr.update_time, sr.create_time) < ?
                 ORDER BY sr.create_time ASC
                 """;
         return jdbcTemplate.query(sql, (rs, rowNum) -> parseUuid(rs.getString("id")), deadline)

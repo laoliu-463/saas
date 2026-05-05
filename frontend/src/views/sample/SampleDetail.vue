@@ -55,8 +55,34 @@
             <n-button v-if="canShip && detail.status === 'PENDING_SHIP'" type="primary" @click="handleAction('SHIPPED')">
               发货
             </n-button>
+            <n-button v-if="canShip && detail.status === 'SHIPPED'" type="success" @click="handleAction('SIGNED')">
+              签收
+            </n-button>
             <n-tag v-if="detail.status === 'PENDING_TASK'" type="warning" round>等待订单完成交作业</n-tag>
           </n-space>
+        </section>
+
+        <section class="detail-section">
+          <h3 class="section-title">操作日志</h3>
+          <div v-if="statusLogs.length" class="log-timeline">
+            <div v-for="log in statusLogs" :key="log.id" class="log-item">
+              <div class="log-dot" />
+              <div class="log-content">
+                <div class="log-action">
+                  <span v-if="log.fromStatus">{{ statusLabel(log.fromStatus) }}</span>
+                  <span v-if="log.fromStatus" class="log-arrow">→</span>
+                  <span class="log-target">{{ statusLabel(log.toStatus) }}</span>
+                </div>
+                <div class="log-meta">
+                  <span>{{ log.operatorName || '-' }}</span>
+                  <span class="log-sep">·</span>
+                  <span>{{ formatDateTime(log.operateTime) }}</span>
+                </div>
+                <div v-if="log.remark" class="log-remark">{{ log.remark }}</div>
+              </div>
+            </div>
+          </div>
+          <n-empty v-else description="暂无操作日志" />
         </section>
       </div>
       <n-empty v-else description="暂无寄样数据" />
@@ -74,7 +100,8 @@
 import { computed, h, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NInput, useDialog, useMessage } from 'naive-ui'
-import { actionSample, getSampleById } from '../../api/sample'
+import { actionSample, getSampleById, getSampleStatusLogs } from '../../api/sample'
+import { testSignSample } from '../../api/test'
 import StatusTag from '../../components/StatusTag.vue'
 import { ROLE_CODES } from '../../constants/rbac'
 import { useAuthStore } from '../../stores/auth'
@@ -94,11 +121,15 @@ const router = useRouter()
 const loading = ref(false)
 const actionLoading = ref(false)
 const detail = ref<any>(null)
+const statusLogs = ref<any[]>([])
+const shippingDraft = ref('')
+const shippingError = ref('')
 
 const routeSampleId = computed(() => {
   const value = route.params.id
   return Array.isArray(value) ? value[0] : value
 })
+const isUuid = (value?: string) => /^[0-9a-fA-F-]{36}$/.test(value || '')
 const isRouteMode = computed(() => Boolean(routeSampleId.value))
 const effectiveShow = computed(() => isRouteMode.value || props.show)
 const effectiveSampleId = computed(() => routeSampleId.value || props.sampleId)
@@ -146,8 +177,41 @@ function closeDetail() {
   emit('update:show', false)
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  PENDING_AUDIT: '待审核',
+  PENDING_SHIP: '待发货',
+  SHIPPED: '快递中',
+  SIGNED: '已签收',
+  PENDING_TASK: '待交作业',
+  FINISHED: '已完成',
+  REJECTED: '已拒绝',
+  CLOSED: '已关闭'
+}
+
+function statusLabel(status?: string) {
+  if (!status) return '-'
+  return STATUS_LABELS[status] || status
+}
+
+async function loadStatusLogs() {
+  if (!effectiveSampleId.value || !isUuid(effectiveSampleId.value)) {
+    statusLogs.value = []
+    return
+  }
+  try {
+    const res = await getSampleStatusLogs(effectiveSampleId.value)
+    statusLogs.value = res?.data || res || []
+  } catch {
+    statusLogs.value = []
+  }
+}
+
 async function loadDetail() {
   if (!effectiveSampleId.value) {
+    detail.value = null
+    return
+  }
+  if (!isUuid(effectiveSampleId.value)) {
     detail.value = null
     return
   }
@@ -155,6 +219,7 @@ async function loadDetail() {
   try {
     const res = await getSampleById(effectiveSampleId.value)
     detail.value = res?.data || res
+    await loadStatusLogs()
   } catch (error: any) {
     detail.value = null
     message.error(error?.message || '无法获取寄样详情')
@@ -202,7 +267,8 @@ function askReason() {
 
 function askTrackingNo() {
   return new Promise<string>((resolve) => {
-    let value = ''
+    shippingDraft.value = ''
+    shippingError.value = ''
     dialog.warning({
       title: '填写物流单号',
       content: () =>
@@ -210,14 +276,30 @@ function askTrackingNo() {
           h('div', { style: 'margin-bottom: 8px;' }, '物流单号：'),
           h(NInput, {
             placeholder: 'SF1234567890',
+            status: shippingError.value ? 'error' : undefined,
+            value: shippingDraft.value,
             onUpdateValue: (nextValue) => {
-              value = nextValue
+              shippingDraft.value = nextValue
+              if (shippingError.value && nextValue.trim()) {
+                shippingError.value = ''
+              }
             }
-          })
+          }),
+          shippingError.value
+            ? h('div', { style: 'margin-top: 6px; color: var(--color-danger); font-size: var(--text-xs);' }, shippingError.value)
+            : null
         ]),
       positiveText: '确认发货',
       negativeText: '取消',
-      onPositiveClick: () => resolve(value || ''),
+      onPositiveClick: () => {
+        const value = shippingDraft.value.trim()
+        if (!value) {
+          shippingError.value = '请先填写物流单号'
+          return false
+        }
+        resolve(value)
+        return true
+      },
       onNegativeClick: () => resolve('')
     })
   })
@@ -235,6 +317,22 @@ async function handleAction(action: string) {
     const trackingNo = await askTrackingNo()
     if (!trackingNo) return
     await doActionSample({ action, trackingNo })
+    return
+  }
+
+  if (action === 'SIGNED') {
+    if (!effectiveSampleId.value) return
+    actionLoading.value = true
+    try {
+      await testSignSample(effectiveSampleId.value)
+      message.success('状态流转成功')
+      emit('refresh')
+      await loadDetail()
+    } catch (error: any) {
+      message.error(error?.message || '操作失败')
+    } finally {
+      actionLoading.value = false
+    }
     return
   }
 
@@ -269,7 +367,7 @@ watch(
 
 .section-title {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-base);
   font-weight: 600;
 }
 
@@ -282,7 +380,7 @@ watch(
 .flow-step {
   padding: 10px 12px;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   text-align: center;
 }
 
@@ -309,7 +407,7 @@ watch(
 }
 
 .flow-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
@@ -322,5 +420,73 @@ watch(
 .footer-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.log-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-left: 4px;
+}
+
+.log-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-left: 2px solid var(--border-color);
+  padding-left: 16px;
+  position: relative;
+}
+
+.log-item:last-child {
+  border-left-color: transparent;
+}
+
+.log-dot {
+  position: absolute;
+  left: -5px;
+  top: 14px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+
+.log-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.log-action {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.log-arrow {
+  margin: 0 4px;
+  color: var(--text-muted);
+}
+
+.log-target {
+  color: var(--color-primary);
+}
+
+.log-meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.log-sep {
+  margin: 0 4px;
+}
+
+.log-remark {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  background: var(--hover-color);
+  border-radius: var(--radius-sm);
 }
 </style>

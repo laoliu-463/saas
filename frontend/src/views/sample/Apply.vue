@@ -27,10 +27,10 @@
 
           <n-form-item-gi :span="24" v-if="selectedTalent" label="已选达人">
             <n-space align="center">
-              <n-avatar :src="selectedTalent.avatarUrl" round :size="48" />
+              <n-avatar :src="resolveSafeAvatarUrl(selectedTalent.avatarUrl)" round :size="48" />
               <div>
                 <div style="font-weight: 600">{{ selectedTalent.nickname }}</div>
-                <div style="color: #666; font-size: 12px;">
+                <div style="color: var(--text-secondary); font-size: var(--text-xs);">
                   粉丝 {{ formatFans(selectedTalent.fansCount) }} · 评分 {{ selectedTalent.creditScore ?? '-' }} · {{ selectedTalent.region || '-' }}
                 </div>
               </div>
@@ -73,8 +73,9 @@
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import { NButton, useDialog, useMessage } from 'naive-ui';
 import { useRouter } from 'vue-router';
-import { createSample, searchSampleProducts, searchSampleTalents } from '../../api/sample';
+import { checkSampleEligibility, createSample, searchSampleProducts, searchSampleTalents } from '../../api/sample';
 import { useAuthStore } from '../../stores/auth';
+import { resolveSafeAvatarUrl } from '../../utils/media';
 
 const message = useMessage();
 const router = useRouter();
@@ -231,22 +232,56 @@ const doSubmit = async () => {
   }
 };
 
-const handleSubmit = () => {
+const openEligibilityWarning = (eligibility: any) => {
+  const reasons = Array.isArray(eligibility?.reasons) ? eligibility.reasons : []
+  dialog.warning({
+    title: '达人暂未满足默认寄样标准',
+    content: `当前校验结果：${reasons.join('；')}。请先在备注中填写申请原因，再重新提交。`,
+    positiveText: '我知道了'
+  })
+}
+
+const handleSubmit = async () => {
   if (!canSubmit.value) {
     message.warning('当前角色无权提交寄样申请');
     return;
   }
-  formRef.value?.validate((errors: any) => {
-    if (!errors) {
-      dialog.warning({
-        title: '确认提交',
-        content: `确认向达人 ${formData.talentNickname} 寄样？`,
-        positiveText: '确认',
-        negativeText: '取消',
-        onPositiveClick: doSubmit
-      });
-    }
-  });
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
+
+  let eligibility: any = null
+  try {
+    const eligibilityResponse = await checkSampleEligibility({
+      talentId: formData.talentId,
+      talentNickname: formData.talentNickname,
+      talentFansCount: formData.talentFansCount,
+      talentCreditScore: formData.talentCreditScore,
+      talentMainCategory: formData.talentMainCategory,
+      productId: formData.productId,
+      quantity: formData.quantity,
+      remark: formData.remark
+    })
+    eligibility = eligibilityResponse?.data || eligibilityResponse
+  } catch (error: any) {
+    message.error(error?.message || '寄样资格检查失败')
+    return
+  }
+
+  if (eligibility?.needReason && !String(formData.remark || '').trim()) {
+    openEligibilityWarning(eligibility)
+    return
+  }
+
+  dialog.warning({
+    title: '确认提交',
+    content: `确认向达人 ${formData.talentNickname} 寄样？`,
+    positiveText: '确认',
+    negativeText: '取消',
+    onPositiveClick: doSubmit
+  })
 };
 
 const formatFans = (fans?: number) => {

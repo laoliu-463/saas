@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,7 +71,7 @@ class OrderQueryServiceTest {
                         "status", 6
                 )));
 
-        OrderDetailResponse detail = service.getOrderDetail("mock-order-1");
+        OrderDetailResponse detail = service.getOrderDetail("mock-order-1", null, null, DataScope.ALL);
 
         assertThat(detail.getOrderId()).isEqualTo("mock-order-1");
         assertThat(detail.getAttributionStatus()).isEqualTo("ATTRIBUTED");
@@ -102,7 +103,7 @@ class OrderQueryServiceTest {
         when(jdbcTemplate.queryForList(anyString(), eq("10901826")))
                 .thenReturn(List.of());
 
-        OrderDetailResponse detail = service.getOrderDetail("mock-order-2");
+        OrderDetailResponse detail = service.getOrderDetail("mock-order-2", null, null, DataScope.ALL);
 
         assertThat(detail.getAttributionStatus()).isEqualTo("UNATTRIBUTED");
         assertThat(detail.getDiagnosis().getReasonCode()).isEqualTo("MAPPING_NOT_FOUND");
@@ -115,7 +116,7 @@ class OrderQueryServiceTest {
     void getOrderDetail_shouldThrowWhenMissing() {
         when(jdbcTemplate.queryForList(anyString(), eq("missing-order"))).thenReturn(List.of());
 
-        assertThatThrownBy(() -> service.getOrderDetail("missing-order"))
+        assertThatThrownBy(() -> service.getOrderDetail("missing-order", null, null, DataScope.ALL))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("订单不存在");
     }

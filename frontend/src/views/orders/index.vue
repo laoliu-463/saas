@@ -61,7 +61,7 @@ import { NButton, NSpace, NTag, NText, useMessage } from 'naive-ui'
 import { useRoute } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import OrderDetailModal from './components/OrderDetailModal.vue'
-import { getOrders, syncOrders } from '../../api/order'
+import { getOrders, getOrderStats, syncOrders } from '../../api/order'
 import { getAttributionReasonText } from '../../constants/orderAttribution'
 
 const message = useMessage()
@@ -69,15 +69,15 @@ const route = useRoute()
 const loading = ref(false)
 const syncLoading = ref(false)
 const data = ref([])
+const stats = ref<{ totalOrders?: number; attributedOrders?: number; unattributedOrders?: number; partialOrders?: number } | null>(null)
 const showDetail = ref(false)
 const activeOrderId = ref('')
 
 const attributionSummary = computed(() => {
-  const list = data.value as any[]
-  const attributed = list.filter((r: any) => r.attributionStatus === 'ATTRIBUTED').length
-  const unattributed = list.filter((r: any) => (r.attributionStatus || 'UNATTRIBUTED') === 'UNATTRIBUTED').length
-  const partial = list.filter((r: any) => r.attributionStatus === 'PARTIAL').length
-  const total = list.length
+  const total = Number(stats.value?.totalOrders || 0)
+  const attributed = Number(stats.value?.attributedOrders || 0)
+  const unattributed = Number(stats.value?.unattributedOrders || 0)
+  const partial = Number(stats.value?.partialOrders ?? Math.max(total - attributed - unattributed, 0))
   return {
     attributed,
     unattributed,
@@ -86,7 +86,7 @@ const attributionSummary = computed(() => {
   }
 })
 
-const summaryReady = computed(() => (data.value as any[]).length > 0)
+const summaryReady = computed(() => Number(stats.value?.totalOrders || 0) > 0)
 
 const filters = reactive({
   orderId: '',
@@ -144,7 +144,7 @@ function getDiagnosticSummary(row: any) {
 const columns = [
   { title: '订单号/结算时间', key: 'orderInfo', width: 220, render: (row: any) => h('div', null, [
     h('div', { style: 'font-weight: 600' }, row.orderId),
-    h('div', { style: 'font-size: 12px; color: var(--text-tertiary)' }, row.settleTime || '-')
+    h('div', { style: 'font-size: var(--text-xs); color: var(--text-tertiary)' }, row.settleTime || '-')
   ]) },
   { title: '商品信息', key: 'productTitle', minWidth: 200, ellipsis: true },
   { title: '订单金额', key: 'orderAmount', width: 100, render: (row: any) => `¥${row.orderAmount || 0}` },
@@ -219,20 +219,36 @@ function resolveDateRange() {
   }
 }
 
+function buildQueryParams() {
+  return {
+    page: pagination.page,
+    size: pagination.pageSize,
+    orderId: filters.orderId || undefined,
+    productId: filters.productId || undefined,
+    attributionStatus: filters.attributionStatus || undefined,
+    ...resolveDateRange()
+  }
+}
+
 const fetchData = async () => {
   loading.value = true
   try {
-    const res: any = await getOrders({
-      page: pagination.page,
-      pageSize: pagination.pageSize,
-      orderId: filters.orderId || undefined,
-      productId: filters.productId || undefined,
-      attributionStatus: filters.attributionStatus || undefined,
-      ...resolveDateRange()
-    })
-    data.value = res.data.records || []
-    pagination.itemCount = res.data.total || 0
+    const params = buildQueryParams()
+    const [listRes, statsRes]: any = await Promise.all([
+      getOrders(params),
+      getOrderStats({
+        orderId: params.orderId,
+        attributionStatus: params.attributionStatus,
+        productId: params.productId,
+        startTime: params.startTime,
+        endTime: params.endTime
+      })
+    ])
+    data.value = listRes.data.records || []
+    pagination.itemCount = listRes.data.total || 0
+    stats.value = statsRes.data || null
   } catch (err: any) {
+    stats.value = null
     message.error('加载订单列表失败')
   } finally {
     loading.value = false
@@ -274,6 +290,7 @@ const resetFilters = () => {
   filters.productId = ''
   filters.attributionStatus = null
   filters.dateRange = null
+  stats.value = null
   fetchData()
 }
 
@@ -319,7 +336,7 @@ onMounted(() => {
 }
 
 .diagnostic-summary-text {
-  font-size: 12px;
+  font-size: var(--text-xs);
   line-height: 1.5;
   word-break: break-all;
 }

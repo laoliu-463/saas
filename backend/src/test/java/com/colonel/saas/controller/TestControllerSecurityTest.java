@@ -1,5 +1,8 @@
 package com.colonel.saas.controller;
 
+import com.colonel.saas.auth.service.AuthService;
+import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.security.JwtAuthInterceptor;
 import com.colonel.saas.security.JwtTokenProvider;
 import com.colonel.saas.testsupport.TestDataService;
@@ -23,7 +26,8 @@ class TestControllerSecurityTest {
     void optionsOnTestSeed_shouldNotReturn401_inLocalMock() throws Exception {
         TestDataService testDataService = Mockito.mock(TestDataService.class);
         JwtTokenProvider jwtTokenProvider = Mockito.mock(JwtTokenProvider.class);
-        JwtAuthInterceptor interceptor = new JwtAuthInterceptor(jwtTokenProvider, new ObjectMapper());
+        AuthService authService = Mockito.mock(AuthService.class);
+        JwtAuthInterceptor interceptor = new JwtAuthInterceptor(jwtTokenProvider, authService, new ObjectMapper());
 
         MockMvc mockMvc = MockMvcBuilders
                 .standaloneSetup(new TestController(testDataService))
@@ -44,6 +48,13 @@ class TestControllerSecurityTest {
                 )
                 .withUserConfiguration(TestController.class, TestSupportConfig.class)
                 .run(context -> assertThat(context).doesNotHaveBean(TestController.class));
+    }
+
+    @Test
+    void testController_shouldRequireAdminRole() {
+        RequireRoles requireRoles = TestController.class.getAnnotation(RequireRoles.class);
+        assertThat(requireRoles).isNotNull();
+        assertThat(requireRoles.value()).containsExactly(RoleCodes.ADMIN);
     }
 
     @Configuration

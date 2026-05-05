@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import lombok.Data;
@@ -10,6 +11,7 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class DashboardService {
@@ -20,21 +22,26 @@ public class DashboardService {
         this.orderMapper = orderMapper;
     }
 
-    public Summary getSummary(LocalDateTime startTime, LocalDateTime endTime) {
+    public Summary getSummary(LocalDateTime startTime, LocalDateTime endTime, UUID userId, UUID deptId, DataScope dataScope) {
         // 总计
         QueryWrapper<ColonelsettlementOrder> totalWrapper = new QueryWrapper<ColonelsettlementOrder>()
                 .select("count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee");
         applyRange(totalWrapper, startTime, endTime);
-        Map<String, Object> totalMap = orderMapper.selectMaps(totalWrapper).get(0);
+        applyScope(totalWrapper, userId, deptId, dataScope);
+        Map<String, Object> totalMap = orderMapper.selectMaps(totalWrapper).stream()
+                .findFirst()
+                .orElse(Map.of());
 
         // 已归因/未归因
         QueryWrapper<ColonelsettlementOrder> attributedWrapper = new QueryWrapper<ColonelsettlementOrder>()
                 .eq("attribution_status", AttributionService.STATUS_ATTRIBUTED);
         applyRange(attributedWrapper, startTime, endTime);
+        applyScope(attributedWrapper, userId, deptId, dataScope);
         Long attributedCount = orderMapper.selectCount(attributedWrapper);
         QueryWrapper<ColonelsettlementOrder> unattributedWrapper = new QueryWrapper<ColonelsettlementOrder>()
                 .eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED);
         applyRange(unattributedWrapper, startTime, endTime);
+        applyScope(unattributedWrapper, userId, deptId, dataScope);
         Long unattributedCount = orderMapper.selectCount(unattributedWrapper);
 
         // 渠道业绩
@@ -43,6 +50,7 @@ public class DashboardService {
                 .isNotNull("channel_user_id")
                 .groupBy("channel_user_id", "channel_user_name");
         applyRange(channelWrapper, startTime, endTime);
+        applyScope(channelWrapper, userId, deptId, dataScope);
         List<PerformanceItem> channelPerformance = orderMapper.selectMaps(channelWrapper).stream()
                 .map(this::toPerformanceItem)
                 .sorted(Comparator.comparingLong(PerformanceItem::getOrderCount).reversed())
@@ -55,6 +63,7 @@ public class DashboardService {
                 .isNotNull("colonel_user_id")
                 .groupBy("colonel_user_id", "colonel_user_name");
         applyRange(colonelWrapper, startTime, endTime);
+        applyScope(colonelWrapper, userId, deptId, dataScope);
         List<PerformanceItem> colonelPerformance = orderMapper.selectMaps(colonelWrapper).stream()
                 .map(this::toPerformanceItem)
                 .sorted(Comparator.comparingLong(PerformanceItem::getOrderCount).reversed())
@@ -67,6 +76,7 @@ public class DashboardService {
                 .isNotNull("attribution_remark")
                 .groupBy("attribution_remark");
         applyRange(reasonWrapper, startTime, endTime);
+        applyScope(reasonWrapper, userId, deptId, dataScope);
         List<ReasonCountItem> unattributedReasons = orderMapper.selectMaps(reasonWrapper).stream()
                 .map(this::toReasonCountItem)
                 .sorted(Comparator.comparingLong(ReasonCountItem::getCount).reversed())
@@ -88,7 +98,7 @@ public class DashboardService {
     }
 
     public Summary getSummary() {
-        return getSummary(null, null);
+        return getSummary(null, null, null, null, null);
     }
 
     private PerformanceItem toPerformanceItem(Map<String, Object> map) {
@@ -115,10 +125,21 @@ public class DashboardService {
             return;
         }
         if (startTime != null) {
-            wrapper.ge("create_time", startTime);
+            wrapper.ge("settle_time", startTime);
         }
         if (endTime != null) {
-            wrapper.le("create_time", endTime);
+            wrapper.le("settle_time", endTime);
+        }
+    }
+
+    private void applyScope(QueryWrapper<ColonelsettlementOrder> wrapper, UUID userId, UUID deptId, DataScope dataScope) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        switch (dataScope) {
+            case PERSONAL -> { if (userId != null) { wrapper.eq("user_id", userId); } }
+            case DEPT -> { if (deptId != null) { wrapper.eq("dept_id", deptId); } }
+            case ALL -> { /* no filter */ }
         }
     }
 

@@ -2,6 +2,7 @@ import request from '../utils/request';
 
 // 商品列表 / 详情
 export const getProducts = (params: any) => request.get('/products', { params });
+export const getProductPickPage = (params: any) => request.get('/products/picks', { params });
 export const getProductDetail = (id: string | number) => request.get(`/products/${id}`);
 
 // 业务主链路操作

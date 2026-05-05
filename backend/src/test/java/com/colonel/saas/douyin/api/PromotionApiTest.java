@@ -86,16 +86,26 @@ class PromotionApiTest {
         when(douyinApiClient.post(eq("buyin.promotion.link.generate"), any())).thenReturn(response);
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
+        String desiredPickExtra = "channel_" + userId;
 
         PromotionApi.PromotionLinkResult result = promotionApi.generateLink(
                 "ext_ctx",
                 1,
                 List.of("pid_1"),
                 false,
-                new PromotionApi.PromotionContext(userId, deptId, "product_x", "act_y", "https://src.url", "PRODUCT_LIBRARY")
+                new PromotionApi.PromotionContext(
+                        userId,
+                        deptId,
+                        "product_x",
+                        "act_y",
+                        "https://src.url",
+                        "PRODUCT_LIBRARY",
+                        desiredPickExtra
+                )
         );
 
         assertThat(result.promoteLink()).contains("pick_source");
+        assertThat(result.pickExtra()).isEqualTo(desiredPickExtra);
         verify(pickSourceMappingService).saveOrUpdate(
                 eq(userId),
                 eq(null),
@@ -110,7 +120,8 @@ class PromotionApiTest {
                 eq("https://src.url"),
                 eq(result.promoteLink()),
                 eq(null),
-                eq("PRODUCT_LIBRARY")
+                eq("PRODUCT_LIBRARY"),
+                eq(desiredPickExtra)
         );
     }
 
@@ -134,6 +145,20 @@ class PromotionApiTest {
 
         assertThat(result.shortId()).isEqualTo("ABCDE");
         assertThat(result.pickSource()).isEqualTo("ABCDE");
+    }
+
+    @Test
+    void promotionLinkResultFrom_shouldPreferDesiredPickExtraWhenResponseLacksIt() {
+        PromotionApi.PromotionLinkResult result = PromotionApi.PromotionLinkResult.from(
+                Map.of("data", Map.of("promote_link", "https://x.com?pick_source=ABCDE")),
+                "fallback",
+                "seed",
+                "channel_user-1"
+        );
+
+        assertThat(result.shortId()).isEqualTo("ABCDE");
+        assertThat(result.pickSource()).isEqualTo("ABCDE");
+        assertThat(result.pickExtra()).isEqualTo("channel_user-1");
     }
 
     @Test

@@ -1,6 +1,7 @@
 param(
     [switch]$Detach,
     [switch]$SkipHealthChecks,
+    [switch]$SkipDbPatches,
     [int]$BackendHealthTimeoutSeconds = 180,
     [int]$FrontendHealthTimeoutSeconds = 90
 )
@@ -99,7 +100,6 @@ function Wait-BackendHealth {
 $repoRoot = Get-RepoRoot
 Assert-DockerAvailable
 $composeFiles = @(
-    "-f", (Join-Path $repoRoot "docker-compose.yml"),
     "-f", (Join-Path $repoRoot "docker-compose.test.yml")
 )
 
@@ -119,6 +119,12 @@ Invoke-Compose -RepoRoot $repoRoot -ComposeArgs $composeArgs
 
 if (-not $Detach) {
     return
+}
+
+if (-not $SkipDbPatches) {
+    Write-Host ""
+    Write-Host "Applying idempotent test DB patches for existing volumes..." -ForegroundColor Cyan
+    & (Join-Path $repoRoot "scripts\apply-test-db-patches.ps1")
 }
 
 if ($SkipHealthChecks) {

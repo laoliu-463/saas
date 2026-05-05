@@ -16,13 +16,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RedisProbeControllerTest {
 
     @Test
-    void redisProbe_returnsConfiguredValuesAndPing() throws Exception {
+    void redisProbe_returnsSuccessAndPing() throws Exception {
         RedisConnectionFactory factory = mock(RedisConnectionFactory.class);
         RedisConnection connection = mock(RedisConnection.class);
         when(factory.getConnection()).thenReturn(connection);
         when(connection.ping()).thenReturn("PONG");
 
-        RedisProbeController controller = new RedisProbeController(factory, "127.0.0.1", 6379, 2, "");
+        RedisProbeController controller = new RedisProbeController(factory);
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -30,10 +30,6 @@ class RedisProbeControllerTest {
         mockMvc.perform(get("/ops/redis-probe"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.host").value("127.0.0.1"))
-                .andExpect(jsonPath("$.data.port").value(6379))
-                .andExpect(jsonPath("$.data.database").value(2))
-                .andExpect(jsonPath("$.data.passwordPresent").value(false))
                 .andExpect(jsonPath("$.data.status").value("success"))
                 .andExpect(jsonPath("$.data.ping").value("PONG"));
     }
