@@ -3,6 +3,7 @@ package com.colonel.saas.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.auth.dto.SysRoleCreateRequest;
 import com.colonel.saas.auth.dto.SysRoleUpdateRequest;
+import com.colonel.saas.auth.service.SysMenuService;
 import com.colonel.saas.auth.service.SysRoleService;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
@@ -38,6 +39,9 @@ class SysRoleControllerTest {
     @Mock
     private SysRoleService sysRoleService;
 
+    @Mock
+    private SysMenuService sysMenuService;
+
     private MockMvc mockMvc;
     private ObjectMapper objectMapper;
 
@@ -46,7 +50,7 @@ class SysRoleControllerTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        SysRoleController controller = new SysRoleController(sysRoleService);
+        SysRoleController controller = new SysRoleController(sysRoleService, sysMenuService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

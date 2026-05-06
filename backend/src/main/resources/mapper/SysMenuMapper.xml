@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.colonel.saas.mapper.SysMenuMapper">
+
+    <select id="findAllAsTree" resultType="com.colonel.saas.vo.SysMenuVO">
+        SELECT
+            m.id,
+            m.menu_name   AS menuName,
+            m.menu_type   AS menuType,
+            m.parent_id   AS parentId,
+            m.path,
+            m.component,
+            m.icon,
+            m.sort_order  AS sortOrder,
+            m.permission_code AS permissionCode,
+            m.visible,
+            m.status
+        FROM sys_menu m
+        WHERE m.deleted = 0
+        <if test="status != null">
+            AND m.status = #{status}
+        </if>
+        ORDER BY m.sort_order ASC, m.create_time ASC
+    </select>
+
+</mapper>

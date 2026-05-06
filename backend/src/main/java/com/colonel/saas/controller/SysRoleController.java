@@ -3,6 +3,7 @@ package com.colonel.saas.controller;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.auth.dto.SysRoleCreateRequest;
 import com.colonel.saas.auth.dto.SysRoleUpdateRequest;
+import com.colonel.saas.auth.service.SysMenuService;
 import com.colonel.saas.auth.service.SysRoleService;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
@@ -41,9 +42,11 @@ import java.util.UUID;
 public class SysRoleController extends BaseController {
 
     private final SysRoleService sysRoleService;
+    private final SysMenuService sysMenuService;
 
-    public SysRoleController(SysRoleService sysRoleService) {
+    public SysRoleController(SysRoleService sysRoleService, SysMenuService sysMenuService) {
         this.sysRoleService = sysRoleService;
+        this.sysMenuService = sysMenuService;
     }
 
     @Operation(summary = "分页查询角色", description = "按关键字与状态分页查询角色列表。")
@@ -117,6 +120,28 @@ public class SysRoleController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
         sysRoleService.delete(id, userId);
+        return ok();
+    }
+
+    @Operation(summary = "查询角色菜单ID列表", description = "查询指定角色绑定的菜单ID列表。")
+    @GetMapping("/{id}/menus")
+    public ApiResult<List<UUID>> getRoleMenus(
+            @Parameter(description = "角色主键 ID") @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        return ok(sysMenuService.getMenuIdsByRoleId(id));
+    }
+
+    @Operation(summary = "分配角色菜单", description = "为指定角色分配菜单权限，会覆盖原有菜单关联。")
+    @PutMapping("/{id}/menus")
+    public ApiResult<Void> assignRoleMenus(
+            @Parameter(description = "角色主键 ID") @PathVariable UUID id,
+            @RequestBody List<UUID> menuIds,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        sysMenuService.assignMenusToRole(id, menuIds, userId);
         return ok();
     }
 }
