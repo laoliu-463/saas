@@ -9,10 +9,12 @@ import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
+import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
+import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
 import com.colonel.saas.service.talent.TalentInputParseResult;
@@ -64,6 +66,8 @@ public class TalentService {
     private final CrawlerTalentInfoService crawlerTalentInfoService;
     private final boolean publicPageCrawlEnabled;
     private final BusinessRuleConfigService businessRuleConfigService;
+    private final OperationLogService operationLogService;
+    private final SysUserMapper sysUserMapper;
 
     public TalentService(
             TalentMapper talentMapper,
@@ -75,7 +79,9 @@ public class TalentService {
             RedisTemplate<String, Object> redisTemplate,
             CrawlerTalentInfoService crawlerTalentInfoService,
             @Value("${talent.data.public-page-crawl-enabled:false}") boolean publicPageCrawlEnabled,
-            BusinessRuleConfigService businessRuleConfigService) {
+            BusinessRuleConfigService businessRuleConfigService,
+            OperationLogService operationLogService,
+            SysUserMapper sysUserMapper) {
         this.talentMapper = talentMapper;
         this.talentClaimMapper = talentClaimMapper;
         this.talentEnrichTaskMapper = talentEnrichTaskMapper;
@@ -86,6 +92,8 @@ public class TalentService {
         this.crawlerTalentInfoService = crawlerTalentInfoService;
         this.publicPageCrawlEnabled = publicPageCrawlEnabled;
         this.businessRuleConfigService = businessRuleConfigService;
+        this.operationLogService = operationLogService;
+        this.sysUserMapper = sysUserMapper;
     }
 
     private int getProtectDays() {
@@ -359,6 +367,56 @@ public class TalentService {
         Talent talent = getById(talentId);
         talent.setOwnerId(null);
         talentMapper.updateById(talent);
+        return talent;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Talent overrideTalentAssignment(UUID talentId, UUID newUserId, String reason, UUID currentUserId) {
+        if (newUserId == null) {
+            throw new BusinessException("新负责人ID不能为空");
+        }
+        SysUser targetUser = sysUserMapper.selectById(newUserId);
+        if (targetUser == null || targetUser.getDeleted() == 1) {
+            throw new BusinessException("目标负责人不存在");
+        }
+        Talent talent = getById(talentId);
+
+        // Expire all active claims for this talent
+        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
+        LocalDateTime now = LocalDateTime.now();
+        for (TalentClaim claim : activeClaims) {
+            claim.setStatus(CLAIM_STATUS_EXPIRED);
+            claim.setProtectedUntil(now);
+            talentClaimMapper.updateById(claim);
+        }
+
+        // Create a new manual claim for the new user
+        TalentClaim newClaim = new TalentClaim();
+        newClaim.setId(UUID.randomUUID());
+        newClaim.setTalentId(talentId);
+        newClaim.setTalentUid(talent.getDouyinUid());
+        newClaim.setUserId(newUserId);
+        newClaim.setDeptId(null);
+        newClaim.setClaimType(CLAIM_TYPE_MANUAL);
+        newClaim.setClaimedAt(now);
+        newClaim.setProtectedUntil(now.plusDays(getProtectDays()));
+        newClaim.setStatus(CLAIM_STATUS_ACTIVE);
+        talentClaimMapper.insert(newClaim);
+
+        talent.setOwnerId(newUserId);
+        talent.setClaimedAt(now);
+        talentMapper.updateById(talent);
+
+        operationLogService.recordSystemAction(
+                currentUserId,
+                "达人管理",
+                "归属覆盖",
+                "POST",
+                "talent",
+                talentId.toString(),
+                talent.getNickname(),
+                String.format("归属覆盖: 新负责人=%s, 原因=%s", newUserId, reason));
+
         return talent;
     }
 

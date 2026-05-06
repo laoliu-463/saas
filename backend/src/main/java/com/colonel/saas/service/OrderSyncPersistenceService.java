@@ -37,6 +37,16 @@ public class OrderSyncPersistenceService {
     public boolean persistOrder(ColonelsettlementOrder order) {
         int effect = orderMapper.insertIgnoreByOrderId(order);
         if (effect <= 0) {
+            ColonelsettlementOrder existing = orderMapper.findByOrderId(order.getOrderId());
+            if (existing == null) {
+                return false;
+            }
+            order.setId(existing.getId());
+            order.setCreateTime(existing.getCreateTime());
+            orderMapper.updateById(order);
+            pickSourceMappingService.ensureFromOrder(order);
+            merchantService.ensureMerchantFromOrder(order);
+            sampleLifecycleService.completePendingHomeworkByOrder(order);
             return false;
         }
         pickSourceMappingService.ensureFromOrder(order);

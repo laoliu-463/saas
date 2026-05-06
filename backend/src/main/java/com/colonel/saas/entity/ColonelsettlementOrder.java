@@ -55,6 +55,9 @@ public class ColonelsettlementOrder implements Serializable {
     @TableField("pick_source")
     private String pickSource;
 
+    @TableField("talent_id")
+    private UUID talentId;
+
     @TableField("channel_user_id")
     private UUID channelUserId;
 

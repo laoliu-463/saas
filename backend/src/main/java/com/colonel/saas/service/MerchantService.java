@@ -1,9 +1,12 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Merchant;
+import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.MerchantMapper;
+import com.colonel.saas.mapper.SysUserMapper;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,9 +19,13 @@ import java.util.UUID;
 public class MerchantService {
 
     private final MerchantMapper merchantMapper;
+    private final OperationLogService operationLogService;
+    private final SysUserMapper sysUserMapper;
 
-    public MerchantService(MerchantMapper merchantMapper) {
+    public MerchantService(MerchantMapper merchantMapper, OperationLogService operationLogService, SysUserMapper sysUserMapper) {
         this.merchantMapper = merchantMapper;
+        this.operationLogService = operationLogService;
+        this.sysUserMapper = sysUserMapper;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -80,6 +87,38 @@ public class MerchantService {
                     .eq(Merchant::getMerchantId, channelId)
                     .last("limit 1"));
         }
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Merchant overrideMerchantAssignment(String merchantId, UUID newUserId, String reason, UUID currentUserId) {
+        if (newUserId == null) {
+            throw new BusinessException("新负责人ID不能为空");
+        }
+        SysUser targetUser = sysUserMapper.selectById(newUserId);
+        if (targetUser == null || targetUser.getDeleted() == 1) {
+            throw new BusinessException("目标负责人不存在");
+        }
+        Merchant merchant = merchantMapper.selectOne(new LambdaQueryWrapper<Merchant>()
+                .eq(Merchant::getMerchantId, merchantId)
+                .last("limit 1"));
+        if (merchant == null) {
+            throw new BusinessException("商家不存在");
+        }
+        merchant.setOwnerId(newUserId);
+        merchant.setOwnerDeptId(targetUser.getDeptId());
+        merchantMapper.updateById(merchant);
+
+        operationLogService.recordSystemAction(
+                currentUserId,
+                "商家管理",
+                "归属覆盖",
+                "POST",
+                "merchant",
+                merchantId,
+                merchant.getMerchantName(),
+                String.format("归属覆盖: 新负责人=%s, 原因=%s", newUserId, reason));
+
+        return merchant;
     }
 
     private String resolveMerchantId(ColonelsettlementOrder order) {

@@ -6,6 +6,7 @@ import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.mapper.PickSourceMappingMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
+import com.colonel.saas.mapper.TalentMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -26,16 +27,19 @@ public class AttributionService {
 
     private final PickSourceMappingMapper pickSourceMappingMapper;
     private final ProductOperationStateMapper operationStateMapper;
+    private final TalentMapper talentMapper;
     private final ExclusiveTalentService exclusiveTalentService;
     private final ExclusiveMerchantService exclusiveMerchantService;
 
     public AttributionService(
             PickSourceMappingMapper pickSourceMappingMapper,
             ProductOperationStateMapper operationStateMapper,
+            TalentMapper talentMapper,
             ExclusiveTalentService exclusiveTalentService,
             ExclusiveMerchantService exclusiveMerchantService) {
         this.pickSourceMappingMapper = pickSourceMappingMapper;
         this.operationStateMapper = operationStateMapper;
+        this.talentMapper = talentMapper;
         this.exclusiveTalentService = exclusiveTalentService;
         this.exclusiveMerchantService = exclusiveMerchantService;
     }
@@ -49,10 +53,13 @@ public class AttributionService {
         String productId = order.getProductId();
         String pickSource = order.getPickSource();
         String pickExtra = asString(source.get("pick_extra"));
+        String talentUid = talentUid(source);
+        UUID talentId = resolveTalentId(talentUid);
 
         if (!StringUtils.hasText(productId)) {
             return AttributionResult.unattributed(
-                    talentUid(source),
+                    talentId,
+                    talentUid,
                     activityId,
                     null,
                     REASON_PRODUCT_NOT_FOUND
@@ -87,15 +94,13 @@ public class AttributionService {
                     merchantExclusiveOwner.userId(),
                     merchantExclusiveOwner.deptId(),
                     merchantExclusiveOwner.userId(),
+                    talentId,
                     null,
                     activityId,
                     colonelUserId,
                     REASON_ATTRIBUTED
             );
         }
-
-        String talentUid = talentUid(source);
-        
         // 达人独家归因
         ExclusiveOwner exclusiveOwner = findExclusiveTalentOwner(talentUid);
         if (exclusiveOwner != null) {
@@ -103,6 +108,7 @@ public class AttributionService {
                     exclusiveOwner.userId(),
                     exclusiveOwner.deptId(),
                     exclusiveOwner.userId(),
+                    talentId,
                     talentUid,
                     activityId,
                     colonelUserId,
@@ -113,6 +119,7 @@ public class AttributionService {
         // 渠道归因 (PickSource)
         if (!StringUtils.hasText(pickSource) && !StringUtils.hasText(pickExtra)) {
             return AttributionResult.unattributed(
+                    talentId,
                     talentUid,
                     activityId,
                     colonelUserId,
@@ -122,6 +129,7 @@ public class AttributionService {
         PickSourceMapping mapping = findPickSourceMapping(pickSource, pickExtra);
         if (mapping == null) {
             return AttributionResult.unattributed(
+                    talentId,
                     talentUid,
                     activityId,
                     colonelUserId,
@@ -130,6 +138,7 @@ public class AttributionService {
         }
         if (mapping.getUserId() == null) {
             return AttributionResult.unattributed(
+                    talentId,
                     talentUid,
                     activityId,
                     colonelUserId,
@@ -141,6 +150,7 @@ public class AttributionService {
                 mapping.getUserId(),
                 mapping.getDeptId(),
                 mapping.getUserId(),
+                talentId,
                 talentUid,
                 firstNonBlank(mapping.getActivityId(), activityId),
                 colonelUserId,
@@ -194,6 +204,17 @@ public class AttributionService {
         return firstNonBlank(asString(source.get("talent_uid")), asString(source.get("author_id")));
     }
 
+    private UUID resolveTalentId(String talentUid) {
+        if (!StringUtils.hasText(talentUid)) {
+            return null;
+        }
+        com.colonel.saas.entity.Talent talent = talentMapper.selectOne(new LambdaQueryWrapper<com.colonel.saas.entity.Talent>()
+                .eq(com.colonel.saas.entity.Talent::getDouyinUid, talentUid)
+                .eq(com.colonel.saas.entity.Talent::getDeleted, 0)
+                .last("limit 1"));
+        return talent == null ? null : talent.getId();
+    }
+
     private String firstNonBlank(String... values) {
         if (values == null) {
             return null;
@@ -213,6 +234,7 @@ public class AttributionService {
             UUID channelUserId,
             UUID deptId,
             UUID userId,
+            UUID talentId,
             String talentUid,
             String activityId,
             UUID colonelUserId,
@@ -223,19 +245,21 @@ public class AttributionService {
                 UUID channelUserId,
                 UUID deptId,
                 UUID userId,
+                UUID talentId,
                 String talentUid,
                 String activityId,
                 UUID colonelUserId,
                 String remark) {
-            return new AttributionResult(channelUserId, deptId, userId, talentUid, activityId, colonelUserId, STATUS_ATTRIBUTED, remark);
+            return new AttributionResult(channelUserId, deptId, userId, talentId, talentUid, activityId, colonelUserId, STATUS_ATTRIBUTED, remark);
         }
 
         public static AttributionResult unattributed(
+                UUID talentId,
                 String talentUid,
                 String activityId,
                 UUID colonelUserId,
                 String remark) {
-            return new AttributionResult(null, null, null, talentUid, activityId, colonelUserId, STATUS_UNATTRIBUTED, remark);
+            return new AttributionResult(null, null, null, talentId, talentUid, activityId, colonelUserId, STATUS_UNATTRIBUTED, remark);
         }
     }
 }

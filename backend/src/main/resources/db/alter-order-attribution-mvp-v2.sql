@@ -50,3 +50,5 @@ ALTER TABLE colonelsettlement_order ADD COLUMN IF NOT EXISTS channel_user_name V
 ALTER TABLE colonelsettlement_order ADD COLUMN IF NOT EXISTS promotion_link_id UUID;
 ALTER TABLE colonelsettlement_order ADD COLUMN IF NOT EXISTS product_title VARCHAR(500);
 ALTER TABLE colonelsettlement_order ADD COLUMN IF NOT EXISTS talent_name VARCHAR(200);
+ALTER TABLE colonelsettlement_order ADD COLUMN IF NOT EXISTS talent_id UUID;
+CREATE INDEX IF NOT EXISTS idx_cso_talent_id ON colonelsettlement_order(talent_id);

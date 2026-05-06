@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -11,7 +13,9 @@ import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.mapper.TalentMapper;
+import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
+import com.colonel.saas.service.OperationLogService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -66,6 +70,10 @@ class TalentServiceTest {
     @Mock
     private BusinessRuleConfigService businessRuleConfigService;
     @Mock
+    private OperationLogService operationLogService;
+    @Mock
+    private SysUserMapper sysUserMapper;
+    @Mock
     private ValueOperations<String, Object> valueOperations;
 
     private TalentService talentService;
@@ -82,7 +90,9 @@ class TalentServiceTest {
                 redisTemplate,
                 crawlerTalentInfoService,
                 true,
-                businessRuleConfigService
+                businessRuleConfigService,
+                operationLogService,
+                sysUserMapper
         );
         when(businessRuleConfigService.getTalentProtectionDays()).thenReturn(30);
         when(businessRuleConfigService.getTalentExclusiveRatioThreshold()).thenReturn(new java.math.BigDecimal("70"));
@@ -276,7 +286,9 @@ class TalentServiceTest {
                 redisTemplate,
                 crawlerTalentInfoService,
                 false,
-                businessRuleConfigService
+                businessRuleConfigService,
+                operationLogService,
+                sysUserMapper
         );
 
         UUID talentId = UUID.randomUUID();
@@ -477,5 +489,73 @@ class TalentServiceTest {
         assertThat(result.getBlacklisted()).isFalse();
         assertThat(result.getBlacklistReason()).isNull();
         verify(talentMapper).updateById(talent);
+    }
+
+    @Test
+    void overrideTalentAssignment_shouldThrowWhenNewUserIdNull() {
+        assertThatThrownBy(
+                () -> talentService.overrideTalentAssignment(UUID.randomUUID(), null, "reason", UUID.randomUUID()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("新负责人ID不能为空");
+    }
+
+    @Test
+    void overrideTalentAssignment_shouldThrowWhenUserNotFound() {
+        UUID userId = UUID.randomUUID();
+        when(sysUserMapper.selectById(userId)).thenReturn(null);
+
+        assertThatThrownBy(
+                () -> talentService.overrideTalentAssignment(UUID.randomUUID(), userId, "reason", UUID.randomUUID()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("目标负责人不存在");
+    }
+
+    @Test
+    void overrideTalentAssignment_shouldThrowWhenUserDeleted() {
+        UUID userId = UUID.randomUUID();
+        SysUser deletedUser = new SysUser();
+        deletedUser.setDeleted(1);
+        when(sysUserMapper.selectById(userId)).thenReturn(deletedUser);
+
+        assertThatThrownBy(
+                () -> talentService.overrideTalentAssignment(UUID.randomUUID(), userId, "reason", UUID.randomUUID()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("目标负责人不存在");
+    }
+
+    @Test
+    void overrideTalentAssignment_shouldExpireClaimsAndCreateNewManualClaim() {
+        UUID talentId = UUID.randomUUID();
+        UUID newUserId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+
+        SysUser user = new SysUser();
+        user.setDeleted(0);
+        user.setDeptId(UUID.randomUUID());
+        when(sysUserMapper.selectById(newUserId)).thenReturn(user);
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("dy_override");
+        talent.setNickname("test-nickname");
+        talent.setDeleted(0);
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+
+        TalentClaim activeClaim = new TalentClaim();
+        activeClaim.setId(UUID.randomUUID());
+        activeClaim.setStatus(1);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(activeClaim));
+
+        Talent result = talentService.overrideTalentAssignment(talentId, newUserId, "测试覆盖", currentUserId);
+
+        assertThat(result.getOwnerId()).isEqualTo(newUserId);
+        assertThat(activeClaim.getStatus()).isEqualTo(2); // EXPIRED
+        verify(talentClaimMapper).updateById(activeClaim);
+        verify(talentClaimMapper).insert(any(TalentClaim.class));
+        verify(talentMapper).updateById(talent);
+        verify(operationLogService).recordSystemAction(
+                eq(currentUserId), eq("达人管理"), eq("归属覆盖"), eq("POST"),
+                eq("talent"), eq(talentId.toString()), eq("test-nickname"),
+                eq(String.format("归属覆盖: 新负责人=%s, 原因=%s", newUserId, "测试覆盖")));
     }
 }

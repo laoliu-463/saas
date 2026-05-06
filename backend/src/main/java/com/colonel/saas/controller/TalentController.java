@@ -7,6 +7,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.dto.talent.OverrideAssigneeRequest;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
 import com.colonel.saas.dto.talent.TalentOperateRequest;
 import com.colonel.saas.dto.talent.TalentPageQuery;
@@ -146,6 +147,16 @@ public class TalentController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
         return ok(talentService.release(talentId, userId, deptId, roleCodes));
+    }
+
+    @Operation(summary = "归属覆盖", description = "组长级别手动覆盖达人的当前归属人，同时记录覆盖原因。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    @PostMapping("/{id}/override-assignee")
+    public ApiResult<Talent> overrideAssignee(
+            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId,
+            @RequestBody @jakarta.validation.Valid OverrideAssigneeRequest request,
+            @RequestAttribute("userId") UUID userId) {
+        return ok(talentService.overrideTalentAssignment(talentId, request.newUserId(), request.reason(), userId));
     }
 
     @Operation(summary = "拉黑达人", description = "将达人标记为黑名单，避免继续进入公海与合作流转。")

@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -33,6 +34,12 @@ public class Merchant extends BaseEntity {
 
     @TableField(value = "extra_data", typeHandler = JacksonTypeHandler.class)
     private Map<String, Object> extraData;
+
+    @TableField("owner_id")
+    private UUID ownerId;
+
+    @TableField("owner_dept_id")
+    private UUID ownerDeptId;
 
     public String getMerchantId() {
         return merchantId;
