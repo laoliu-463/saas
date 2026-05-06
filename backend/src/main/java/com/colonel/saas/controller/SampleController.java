@@ -41,10 +41,14 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
@@ -59,12 +63,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -74,6 +81,7 @@ import java.util.stream.Collectors;
 
 @Validated
 @Tag(name = "寄样管理", description = "寄样申请、寄样列表、达人候选搜索、状态流转与删除接口。")
+@Slf4j
 @RestController
 @RequestMapping("/samples")
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
@@ -82,6 +90,7 @@ public class SampleController extends BaseController {
     private static final DateTimeFormatter REQUEST_NO_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final long BOARD_BATCH_SIZE = 2000L;
     private static final long PRODUCT_KEYWORD_BATCH_SIZE = 500L;
+    private static final long EXPORT_BATCH_SIZE = 2000L;
 
     private final SampleRequestMapper sampleRequestMapper;
     private final ProductMapper productMapper;
@@ -136,7 +145,7 @@ public class SampleController extends BaseController {
         CrawlerTalentInfo talentInfo = requireCrawlerTalent(request.getTalentId());
         Talent talent = findOrCreateTalentFromCrawler(talentInfo);
         checkSevenDaysLimit(userId, talent.getId(), product.getId(), roleCodes);
-        ensureEligibilityReasonIfNeeded(request, talent, talentInfo);
+        SampleEligibilityService.EligibilityResult eligibility = ensureEligibilityReasonIfNeeded(request, talent, talentInfo);
 
         SampleRequest sample = new SampleRequest();
         UUID currentDeptId = resolveUserDeptId(userId);
@@ -157,6 +166,7 @@ public class SampleController extends BaseController {
         sample.setActualSampleNum(0);
         sample.setStatus(SampleStatus.PENDING_AUDIT.code);
         sample.setRemark(request.getRemark());
+        sample.setExtraData(buildSampleExtraData(request, eligibility));
         sampleRequestMapper.insert(sample);
         sampleStatusLogService.log(sample.getId(), null, sample.getStatus(), userId, "create sample request");
 
@@ -429,6 +439,178 @@ public class SampleController extends BaseController {
         return ok();
     }
 
+    @Operation(summary = "批量审批通过", description = "批量将 PENDING_AUDIT 的寄样申请审批为待发货。仅招商角色可操作。")
+    @PostMapping("/batch-approve")
+    @Transactional(rollbackFor = Exception.class)
+    public ApiResult<Map<String, Integer>> batchApprove(
+            @Valid @RequestBody SampleBatchActionRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        ensureActionRolePermission("PENDING_SHIP", roleCodes);
+        LocalDateTime now = LocalDateTime.now();
+        int success = 0;
+        int fail = 0;
+        for (String requestNo : request.getRequestNos()) {
+            try {
+                SampleRequest sample = requireSampleByRequestNo(requestNo, userId, deptId, dataScope);
+                SampleStatus current = SampleStatus.fromCode(sample.getStatus());
+                ensureTransition(current, SampleStatus.PENDING_AUDIT);
+                int fromStatus = sample.getStatus();
+                sample.setStatus(SampleStatus.PENDING_SHIP.code);
+                sample.setAuditTime(now);
+                sampleRequestMapper.updateById(sample);
+                sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, request.getRemark());
+                success++;
+            } catch (BusinessException | ForbiddenException e) {
+                log.warn("Batch approve failed for requestNo={}: {}", requestNo, e.getMessage());
+                fail++;
+            }
+        }
+        return ok(Map.of("success", success, "fail", fail));
+    }
+
+    @Operation(summary = "批量驳回", description = "批量将 PENDING_AUDIT 的寄样申请驳回。仅招商角色可操作，驳回原因必填。")
+    @PostMapping("/batch-reject")
+    @Transactional(rollbackFor = Exception.class)
+    public ApiResult<Map<String, Integer>> batchReject(
+            @Valid @RequestBody SampleBatchActionRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        if (!StringUtils.hasText(request.getRemark())) {
+            throw new BusinessException("remark is required when batch reject");
+        }
+        ensureActionRolePermission("REJECTED", roleCodes);
+        LocalDateTime now = LocalDateTime.now();
+        int success = 0;
+        int fail = 0;
+        for (String requestNo : request.getRequestNos()) {
+            try {
+                SampleRequest sample = requireSampleByRequestNo(requestNo, userId, deptId, dataScope);
+                SampleStatus current = SampleStatus.fromCode(sample.getStatus());
+                ensureTransition(current, SampleStatus.PENDING_AUDIT);
+                int fromStatus = sample.getStatus();
+                sample.setStatus(SampleStatus.REJECTED.code);
+                sample.setRejectReason(request.getRemark());
+                sample.setAuditTime(now);
+                sampleRequestMapper.updateById(sample);
+                sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, request.getRemark());
+                success++;
+            } catch (BusinessException | ForbiddenException e) {
+                log.warn("Batch reject failed for requestNo={}: {}", requestNo, e.getMessage());
+                fail++;
+            }
+        }
+        return ok(Map.of("success", success, "fail", fail));
+    }
+
+    @Operation(summary = "寄样导出 CSV", description = "导出寄样申请列表为 CSV 文件，支持状态筛选和关键字搜索。")
+    @GetMapping("/exports")
+    public void exportSamples(
+            @Parameter(description = "寄样状态。") @RequestParam(required = false) String status,
+            @Parameter(description = "关键字。") @RequestParam(required = false) String keyword,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            HttpServletResponse response) throws IOException {
+        // Validate status early, before committing response headers
+        if (StringUtils.hasText(status)) {
+            parseStatus(status);
+        }
+
+        QueryWrapper<SampleRequest> wrapper = new QueryWrapper<>();
+        if (StringUtils.hasText(status)) {
+            wrapper.eq("status", SampleStatus.fromApiStatus(status).code);
+        }
+        if (StringUtils.hasText(keyword)) {
+            Set<UUID> matchedProductIds = loadMatchedProductIds(keyword.trim());
+            wrapper.and(query -> {
+                query.like("talent_nickname", keyword.trim())
+                        .or()
+                        .like("talent_uid", keyword.trim())
+                        .or()
+                        .like("request_no", keyword.trim());
+                if (!matchedProductIds.isEmpty()) {
+                    query.or().in("product_id", matchedProductIds);
+                }
+            });
+        }
+
+        response.setContentType("text/csv; charset=UTF-8");
+        response.setHeader("Content-Disposition", "attachment; filename=\"samples.csv\"");
+        PrintWriter writer = response.getWriter();
+        try {
+            writer.write('\ufeff');
+            writer.println("寄样单号,达人昵称,商品名称,状态,招商负责人,物流单号,驳回原因,备注,创建时间");
+
+            Map<UUID, Product> productCache = new HashMap<>();
+            long current = 1L;
+            while (true) {
+                IPage<SampleRequest> pageResult = sampleRequestMapper.findPageWithScope(
+                        new Page<>(current, EXPORT_BATCH_SIZE), wrapper);
+                List<SampleRequest> records = pageResult.getRecords();
+                if (records == null || records.isEmpty()) {
+                    break;
+                }
+                Set<UUID> productIds = records.stream().map(SampleRequest::getProductId).collect(Collectors.toSet());
+                productIds.removeAll(productCache.keySet());
+                if (!productIds.isEmpty()) {
+                    productCache.putAll(loadProducts(productIds));
+                }
+                for (SampleRequest sample : records) {
+                    Product product = productCache.get(sample.getProductId());
+                    SampleStatus s = SampleStatus.fromCode(sample.getStatus());
+                    writer.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
+                            csvEscape(sample.getRequestNo()),
+                            csvEscape(sample.getTalentNickname()),
+                            csvEscape(product == null ? null : product.getName()),
+                            csvEscape(s.apiStatus),
+                            csvEscape(resolveUserDisplayName(sample.getChannelUserId())),
+                            csvEscape(sample.getTrackingNo()),
+                            csvEscape(sample.getRejectReason()),
+                            csvEscape(sample.getRemark()),
+                            sample.getCreateTime());
+                }
+                if (current >= pageResult.getPages()) {
+                    break;
+                }
+                current++;
+            }
+        } catch (Exception e) {
+            log.error("CSV export failed for user={}", userId, e);
+            response.reset();
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.setContentType("application/json; charset=UTF-8");
+            response.getWriter().write("{\"error\":\"Export failed\"}");
+            return;
+        }
+        writer.flush();
+    }
+
+    private SampleRequest requireSampleByRequestNo(String requestNo, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
+        SampleRequest sample = sampleRequestMapper.selectOne(new LambdaQueryWrapper<SampleRequest>()
+                .eq(SampleRequest::getRequestNo, requestNo)
+                .last("LIMIT 1"));
+        if (sample == null) {
+            throw new BusinessException("Sample request not found: " + requestNo);
+        }
+        assertCanAccessSample(sample, currentUserId, currentDeptId, dataScope);
+        return sample;
+    }
+
+    private static String csvEscape(String value) {
+        if (value == null) {
+            return "";
+        }
+        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
+
     private void ensureTransition(SampleStatus current, SampleStatus expected) {
         if (current != expected) {
             throw new BusinessException("Current status does not allow this action: " + current.apiStatus);
@@ -609,14 +791,67 @@ public class SampleController extends BaseController {
         return false;
     }
 
-    private void ensureEligibilityReasonIfNeeded(SampleApplyRequest request, Talent talent, CrawlerTalentInfo talentInfo) {
+    private SampleEligibilityService.EligibilityResult ensureEligibilityReasonIfNeeded(
+            SampleApplyRequest request,
+            Talent talent,
+            CrawlerTalentInfo talentInfo) {
         SampleEligibilityService.EligibilityResult result = sampleEligibilityService.evaluate(talent, talentInfo);
         if (result.eligible()) {
-            return;
+            return result;
         }
         if (!StringUtils.hasText(request.getRemark())) {
             throw new BusinessException("达人未满足默认寄样标准，请先填写申请原因后再提交");
         }
+        return result;
+    }
+
+    private Map<String, Object> buildSampleExtraData(
+            SampleApplyRequest request,
+            SampleEligibilityService.EligibilityResult eligibility) {
+        Map<String, Object> extra = new LinkedHashMap<>();
+        Map<String, Object> eligibilityCheck = new LinkedHashMap<>();
+        eligibilityCheck.put("passed", eligibility.eligible());
+        eligibilityCheck.put("failedRules", classifyEligibilityFailures(eligibility.reasons()));
+        eligibilityCheck.put("reasons", eligibility.reasons());
+        extra.put("eligibilityCheck", eligibilityCheck);
+        extra.put("applyReason", StringUtils.hasText(request.getRemark()) ? request.getRemark().trim() : null);
+        extra.put("requirementSnapshot", buildRequirementSnapshot(eligibility));
+        extra.put("addressSource", "manual");
+        return extra;
+    }
+
+    private Map<String, Object> buildRequirementSnapshot(SampleEligibilityService.EligibilityResult eligibility) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("min30DaySales", eligibility.standard().min30DaySales());
+        snapshot.put("minLevel", eligibility.standard().minLevel());
+        snapshot.put("actual30DaySales", eligibility.actual().monthlySales());
+        snapshot.put("actualLevel", eligibility.actual().level());
+        if (eligibility.standard().raw() != null && !eligibility.standard().raw().isEmpty()) {
+            snapshot.put("rawStandard", eligibility.standard().raw());
+        }
+        return snapshot;
+    }
+
+    private List<String> classifyEligibilityFailures(List<String> reasons) {
+        if (reasons == null || reasons.isEmpty()) {
+            return List.of();
+        }
+        List<String> failedRules = new ArrayList<>();
+        for (String reason : reasons) {
+            if (!StringUtils.hasText(reason)) {
+                continue;
+            }
+            if (reason.contains("销售额")) {
+                failedRules.add("min30DaySales");
+                continue;
+            }
+            if (reason.contains("等级")) {
+                failedRules.add("minLevel");
+                continue;
+            }
+            failedRules.add("custom");
+        }
+        return failedRules;
     }
 
     private SampleEligibilityCheckVO toEligibilityVO(SampleEligibilityService.EligibilityResult result) {
@@ -700,11 +935,34 @@ public class SampleController extends BaseController {
         vo.setRejectReason(sample.getRejectReason());
         vo.setCloseReason(sample.getCloseReason());
         vo.setRemark(sample.getRemark());
+        vo.setApplyReason(readExtraText(sample.getExtraData(), "applyReason"));
+        vo.setEligibilityCheck(readExtraMap(sample.getExtraData(), "eligibilityCheck"));
+        vo.setRequirementSnapshot(readExtraMap(sample.getExtraData(), "requirementSnapshot"));
         vo.setCreateTime(sample.getCreateTime());
         vo.setUpdateTime(sample.getUpdateTime());
         vo.setCompleteTime(sample.getCompleteTime());
         vo.setStatus(toLegacyStatus(SampleStatus.fromCode(sample.getStatus())));
         return vo;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readExtraMap(Map<String, Object> extraData, String key) {
+        if (extraData == null || extraData.isEmpty()) {
+            return Map.of();
+        }
+        Object value = extraData.get(key);
+        if (value instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        return Map.of();
+    }
+
+    private String readExtraText(Map<String, Object> extraData, String key) {
+        if (extraData == null || extraData.isEmpty()) {
+            return null;
+        }
+        Object value = extraData.get(key);
+        return value == null ? null : String.valueOf(value);
     }
 
     private UUID resolveColonelUserId(Product product) {
@@ -877,6 +1135,32 @@ public class SampleController extends BaseController {
         }
     }
 
+    public static class SampleBatchActionRequest {
+        @Schema(description = "寄样单号列表。", example = "[\"SR20250101001\",\"SR20250101002\"]")
+        @NotEmpty(message = "requestNos cannot be empty")
+        @Size(max = 100, message = "requestNos size cannot exceed 100")
+        private List<String> requestNos;
+
+        @Schema(description = "备注/原因。批量驳回时必填。", example = "商品缺货")
+        private String remark;
+
+        public List<String> getRequestNos() {
+            return requestNos;
+        }
+
+        public void setRequestNos(List<String> requestNos) {
+            this.requestNos = requestNos;
+        }
+
+        public String getRemark() {
+            return remark;
+        }
+
+        public void setRemark(String remark) {
+            this.remark = remark;
+        }
+    }
+
     public static class SampleVO {
         private UUID id;
         private String requestNo;
@@ -893,6 +1177,9 @@ public class SampleController extends BaseController {
         private String rejectReason;
         private String closeReason;
         private String remark;
+        private String applyReason;
+        private Map<String, Object> eligibilityCheck;
+        private Map<String, Object> requirementSnapshot;
         private String status;
         private LocalDateTime createTime;
         private LocalDateTime updateTime;
@@ -1016,6 +1303,30 @@ public class SampleController extends BaseController {
 
         public void setRemark(String remark) {
             this.remark = remark;
+        }
+
+        public String getApplyReason() {
+            return applyReason;
+        }
+
+        public void setApplyReason(String applyReason) {
+            this.applyReason = applyReason;
+        }
+
+        public Map<String, Object> getEligibilityCheck() {
+            return eligibilityCheck;
+        }
+
+        public void setEligibilityCheck(Map<String, Object> eligibilityCheck) {
+            this.eligibilityCheck = eligibilityCheck;
+        }
+
+        public Map<String, Object> getRequirementSnapshot() {
+            return requirementSnapshot;
+        }
+
+        public void setRequirementSnapshot(Map<String, Object> requirementSnapshot) {
+            this.requirementSnapshot = requirementSnapshot;
         }
 
         public String getStatus() {
