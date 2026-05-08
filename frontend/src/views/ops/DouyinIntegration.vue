@@ -599,6 +599,7 @@ const probeShopOrders = async () => {
 const runFullCheck = async () => {
   loading.fullCheck = true;
   latestSummary.value = '';
+  lastRun.value = null;
   resetChecks();
   const summary: Record<string, any> = {};
   const initialActivityId = activityId.value.trim();
