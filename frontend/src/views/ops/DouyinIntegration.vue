@@ -564,7 +564,7 @@ const runFullCheck = async () => {
   loading.fullCheck = true;
   latestSummary.value = '';
   const summary: Record<string, any> = {};
-  const selectedActivityId = activityId.value.trim() || '3916506';
+  const initialActivityId = activityId.value.trim();
 
   try {
     setCheck('token', 'running', 'Token 检查中', '正在读取 Token 状态。');
@@ -602,12 +602,11 @@ const runFullCheck = async () => {
       logId: findDeepValue(institutionResult, ['logId', 'log_id'])
     };
 
-    setCheck('products', 'running', '活动商品刷新中', `正在刷新活动 ${selectedActivityId} 的商品快照。`);
+    setCheck('products', 'running', '活动商品刷新中', `正在刷新活动 ${initialActivityId || '自动探测'} 的商品快照。`);
     const activityResult = await getDouyinActivityTest(appId.value || undefined);
     const detectedActivityId = findActivityId(activityResult);
-    if (!activityId.value.trim() && detectedActivityId) {
-      activityId.value = detectedActivityId;
-    }
+    const selectedActivityId = initialActivityId || detectedActivityId || '3916506';
+    activityId.value = selectedActivityId;
     const productResult = await getDouyinActivityProductList({
       appId: appId.value || undefined,
       activityId: selectedActivityId,

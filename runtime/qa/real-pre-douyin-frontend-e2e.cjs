@@ -1,6 +1,33 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { chromium, request } = require('C:/Users/caojianing/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+
+function loadPlaywright() {
+  const candidates = [
+    'playwright',
+    path.join(
+      process.env.USERPROFILE || process.env.HOME || '',
+      '.cache',
+      'codex-runtimes',
+      'codex-primary-runtime',
+      'dependencies',
+      'node',
+      'node_modules',
+      'playwright'
+    )
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch (_error) {
+      // Try the next candidate.
+    }
+  }
+
+  throw new Error('未找到 playwright，请先安装依赖或提供 Codex bundled runtime。');
+}
+
+const { chromium, request } = loadPlaywright();
 
 const FRONTEND = process.env.FRONTEND_URL || 'http://localhost:3001';
 const BACKEND = process.env.BACKEND_URL || 'http://localhost:8081';
@@ -8,7 +35,7 @@ const BACKEND = process.env.BACKEND_URL || 'http://localhost:8081';
 const now = new Date();
 const pad = (n) => String(n).padStart(2, '0');
 const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-const OUT_DIR = path.join('D:', 'Projects', 'SAAS', 'runtime', 'qa', 'out', `real-pre-douyin-frontend-${stamp}`);
+const OUT_DIR = path.join(process.cwd(), 'runtime', 'qa', 'out', `real-pre-douyin-frontend-${stamp}`);
 const REPORT_MD = path.join(OUT_DIR, 'report.md');
 const REPORT_JSON = path.join(OUT_DIR, 'results.json');
 
@@ -93,6 +120,7 @@ async function run() {
 
   try {
     await page.goto(`${FRONTEND}/system/douyin`, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.getByPlaceholder('活动ID').fill('');
     await page.getByRole('button', { name: '一键刷新联调状态' }).click();
 
     await assertVisibleText(page, 'Token 正常');
