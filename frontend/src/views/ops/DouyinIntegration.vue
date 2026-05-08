@@ -320,6 +320,13 @@ const resetChecks = () => {
   });
 };
 
+const markChecksBlockedByToken = () => {
+  const blockedDetail = 'Token 不完整或需要重新授权，已跳过后续真实联调步骤。';
+  (['institution', 'products', 'orders', 'dashboard', 'shopOrders'] as CheckKey[]).forEach((key) => {
+    setCheck(key, 'warning', `${defaultCheckState[key].title}（已跳过）`, blockedDetail);
+  });
+};
+
 const unwrapApiData = <T = any>(response: any): T => response?.data ?? response;
 
 const normalizeNumber = (value: any) => {
@@ -625,6 +632,16 @@ const runFullCheck = async () => {
       tokenExpiringSoon: tokenStatus.value.tokenExpiringSoon,
       reauthorizeRequired: tokenStatus.value.reauthorizeRequired
     };
+    if (!tokenOk) {
+      markChecksBlockedByToken();
+      activeCheckKey = null;
+      latestSummary.value = JSON.stringify({
+        ...summary,
+        skipped: 'Token 不完整或需要重新授权，后续真实联调步骤已跳过。'
+      }, null, 2);
+      message.warning('Token 不可用，已跳过后续真实联调步骤');
+      return;
+    }
 
     activeCheckKey = 'institution';
     setCheck('institution', 'running', '授权主体检查中', '正在调用 buyin.institutionInfo。');
