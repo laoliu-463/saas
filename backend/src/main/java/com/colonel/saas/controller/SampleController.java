@@ -29,6 +29,7 @@ import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SampleStatusLogMapper;
 import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.service.BusinessRuleConfigService;
@@ -98,6 +99,7 @@ public class SampleController extends BaseController {
     private final ProductSnapshotMapper productSnapshotMapper;
     private final SysUserMapper sysUserMapper;
     private final TalentMapper talentMapper;
+    private final TalentClaimMapper talentClaimMapper;
     private final SampleStatusLogService sampleStatusLogService;
     private final SampleStatusLogMapper sampleStatusLogMapper;
     private final CrawlerTalentInfoService crawlerTalentInfoService;
@@ -111,6 +113,7 @@ public class SampleController extends BaseController {
             ProductSnapshotMapper productSnapshotMapper,
             SysUserMapper sysUserMapper,
             TalentMapper talentMapper,
+            TalentClaimMapper talentClaimMapper,
             SampleStatusLogService sampleStatusLogService,
             SampleStatusLogMapper sampleStatusLogMapper,
             CrawlerTalentInfoService crawlerTalentInfoService,
@@ -122,6 +125,7 @@ public class SampleController extends BaseController {
         this.productSnapshotMapper = productSnapshotMapper;
         this.sysUserMapper = sysUserMapper;
         this.talentMapper = talentMapper;
+        this.talentClaimMapper = talentClaimMapper;
         this.sampleStatusLogService = sampleStatusLogService;
         this.sampleStatusLogMapper = sampleStatusLogMapper;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
@@ -141,9 +145,23 @@ public class SampleController extends BaseController {
             @Valid @RequestBody SampleApplyRequest request,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        ensureSampleApplyPermission(roleCodes);
         Product product = requireProduct(request.getProductId());
+        // 寄样前必须先加入商品库
+        ProductSnapshot snapshot = productSnapshotMapper.selectById(product.getId());
+        if (snapshot != null) {
+            ProductOperationState state = productOperationStateMapper.selectOne(
+                    new LambdaQueryWrapper<ProductOperationState>()
+                            .eq(ProductOperationState::getActivityId, snapshot.getActivityId())
+                            .eq(ProductOperationState::getProductId, snapshot.getProductId())
+                            .last("LIMIT 1"));
+            if (state == null || !Boolean.TRUE.equals(state.getSelectedToLibrary())) {
+                throw new BusinessException("该商品尚未加入商品库，请先审核并加入商品库后再进行寄样操作");
+            }
+        }
         CrawlerTalentInfo talentInfo = requireCrawlerTalent(request.getTalentId());
         Talent talent = findOrCreateTalentFromCrawler(talentInfo);
+        ensureChannelTalentClaim(userId, talent.getId(), roleCodes);
         checkSevenDaysLimit(userId, talent.getId(), product.getId(), roleCodes);
         SampleEligibilityService.EligibilityResult eligibility = ensureEligibilityReasonIfNeeded(request, talent, talentInfo);
 
@@ -176,7 +194,9 @@ public class SampleController extends BaseController {
     @Operation(summary = "寄样资格预检", description = "按当前寄样默认标准检查达人是否满足要求；不满足时前端需提醒并要求填写申请原因。")
     @PostMapping("/eligibility-check")
     public ApiResult<SampleEligibilityCheckVO> checkEligibility(
-            @Valid @RequestBody SampleApplyRequest request) {
+            @Valid @RequestBody SampleApplyRequest request,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        ensureSampleApplyPermission(roleCodes);
         CrawlerTalentInfo talentInfo = requireCrawlerTalent(request.getTalentId());
         Talent talent = findOrCreateTalentFromCrawler(talentInfo);
         return ok(toEligibilityVO(sampleEligibilityService.evaluate(talent, talentInfo)));
@@ -191,9 +211,23 @@ public class SampleController extends BaseController {
             @Parameter(description = "寄样状态。可用值包括 PENDING_AUDIT、PENDING_SHIP、SHIPPING、DELIVERED、PENDING_HOMEWORK、COMPLETED、REJECTED、CLOSED。") @RequestParam(required = false) String status,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
-            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+            @RequestAttribute(value = "dataScope", required = false) com.colonel.saas.common.enums.DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         Page<SampleRequest> pageReq = new Page<>(page, size);
         QueryWrapper<SampleRequest> wrapper = new QueryWrapper<>();
+
+        if (isOpsStaffOnly(roleCodes)) {
+            if (!StringUtils.hasText(status)) {
+                status = "PENDING_SHIP";
+            }
+            ensureOpsVisibleStatus(status);
+        }
+
+        // 招商专员在个人范围下，默认展示待审核单据
+        if (hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) && !hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER) && !StringUtils.hasText(status)) {
+            status = "PENDING_AUDIT";
+        }
+
         if (StringUtils.hasText(status)) {
             wrapper.eq("status", parseStatus(status).code);
         }
@@ -211,7 +245,14 @@ public class SampleController extends BaseController {
             });
         }
 
-        IPage<SampleRequest> samplePage = sampleRequestMapper.findPageWithScope(pageReq, wrapper);
+        IPage<SampleRequest> samplePage;
+        // 招商专员且数据范围为个人：按“我负责的商品”过滤
+        if (dataScope == com.colonel.saas.common.enums.DataScope.PERSONAL && hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) && !hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
+            samplePage = sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper);
+        } else {
+            samplePage = sampleRequestMapper.findPageWithScope(pageReq, wrapper);
+        }
+
         Map<UUID, Product> productMap = loadProducts(samplePage.getRecords().stream()
                 .map(SampleRequest::getProductId)
                 .collect(Collectors.toSet()));
@@ -249,7 +290,9 @@ public class SampleController extends BaseController {
     public ApiResult<PageResult<SampleProductVO>> searchProducts(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") @Min(1) @Max(100) long size,
-            @Parameter(description = "商品名称或商品 ID。") @RequestParam(required = false) String keyword) {
+            @Parameter(description = "商品名称或商品 ID。") @RequestParam(required = false) String keyword,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        ensureSampleApplyPermission(roleCodes);
         Page<Product> pageReq = new Page<>(page, size);
         QueryWrapper<Product> wrapper = new QueryWrapper<Product>().orderByDesc("create_time");
         if (StringUtils.hasText(keyword)) {
@@ -264,12 +307,20 @@ public class SampleController extends BaseController {
         return okPage(result);
     }
 
+    ApiResult<PageResult<SampleProductVO>> searchProducts(long page, long size, String keyword) {
+        return searchProducts(page, size, keyword, null);
+    }
+
     @Operation(summary = "寄样看板", description = "按状态分组返回全量寄样单，用于看板视图。")
     @GetMapping("/board")
     public ApiResult<Map<String, List<SampleBoardCard>>> getSampleBoard(
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
-            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        if (isOpsStaffOnly(roleCodes)) {
+            throw new ForbiddenException("运营角色仅可通过寄样发货台查看待发货及物流数据");
+        }
         QueryWrapper<SampleRequest> wrapper = new QueryWrapper<>();
         List<SampleRequest> allSamples = loadBoardSamples(wrapper);
 
@@ -291,6 +342,10 @@ public class SampleController extends BaseController {
         }
 
         return ok(board);
+    }
+
+    ApiResult<Map<String, List<SampleBoardCard>>> getSampleBoard(UUID userId, UUID deptId, DataScope dataScope) {
+        return getSampleBoard(userId, deptId, dataScope, null);
     }
 
     private List<SampleRequest> loadBoardSamples(QueryWrapper<SampleRequest> wrapper) {
@@ -317,8 +372,9 @@ public class SampleController extends BaseController {
             @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
-            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        SampleRequest sample = requireSample(id, userId, deptId, dataScope);
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
         Product product = productMapper.selectById(sample.getProductId());
         return ok(toVO(
                 sample,
@@ -327,14 +383,19 @@ public class SampleController extends BaseController {
                 sample.getTalentNickname()));
     }
 
+    ApiResult<SampleVO> getSampleById(UUID id, UUID userId, UUID deptId, DataScope dataScope) {
+        return getSampleById(id, userId, deptId, dataScope, null);
+    }
+
     @Operation(summary = "寄样状态日志", description = "查询寄样申请的状态变更历史记录。")
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/status-logs")
     public ApiResult<List<StatusLogVO>> getStatusLogs(
             @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
-            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        requireSample(id, userId, deptId, dataScope);
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        requireSample(id, userId, deptId, dataScope, roleCodes);
         List<SampleStatusLog> logs = sampleStatusLogMapper.selectList(
                 new LambdaQueryWrapper<SampleStatusLog>()
                         .eq(SampleStatusLog::getRequestId, id)
@@ -367,7 +428,7 @@ public class SampleController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        SampleRequest sample = requireSample(id, userId, deptId, dataScope);
+        SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
         LocalDateTime now = LocalDateTime.now();
         int fromStatus = sample.getStatus();
         SampleStatus current = SampleStatus.fromCode(fromStatus);
@@ -399,7 +460,11 @@ public class SampleController extends BaseController {
             sample.setStatus(SampleStatus.DELIVERED.code);
             sample.setDeliverTime(now);
         } else if ("PENDING_HOMEWORK".equals(action)) {
-            ensureTransition(current, SampleStatus.DELIVERED);
+            if (current == SampleStatus.SHIPPING) {
+                sample.setDeliverTime(now);
+            } else {
+                ensureTransition(current, SampleStatus.DELIVERED);
+            }
             sample.setStatus(SampleStatus.PENDING_HOMEWORK.code);
         } else if ("COMPLETED".equals(action)) {
             ensureTransition(current, SampleStatus.PENDING_HOMEWORK);
@@ -429,8 +494,10 @@ public class SampleController extends BaseController {
             @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
-            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        SampleRequest sample = requireSample(id, userId, deptId, dataScope);
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        ensureSampleDeletePermission(roleCodes);
+        SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
         SampleStatus status = SampleStatus.fromCode(sample.getStatus());
         if (status != SampleStatus.PENDING_AUDIT && status != SampleStatus.REJECTED) {
             throw new BusinessException("Only pending/rejected sample can be deleted");
@@ -507,6 +574,39 @@ public class SampleController extends BaseController {
         return ok(Map.of("success", success, "fail", fail));
     }
 
+    @Operation(summary = "批量发货", description = "批量将 PENDING_SHIP 的寄样单标记为发货（SHIPPING），同时录入物流单号。仅运营角色可操作。")
+    @PostMapping("/batch-ship")
+    @Transactional(rollbackFor = Exception.class)
+    public ApiResult<Map<String, Integer>> batchShip(
+            @Valid @RequestBody SampleBatchShipRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        ensureActionRolePermission("SHIPPING", roleCodes);
+        LocalDateTime now = LocalDateTime.now();
+        int success = 0;
+        int fail = 0;
+        for (SampleBatchShipItem item : request.getItems()) {
+            try {
+                SampleRequest sample = requireSampleByRequestNo(item.getRequestNo(), userId, deptId, dataScope);
+                SampleStatus current = SampleStatus.fromCode(sample.getStatus());
+                ensureTransition(current, SampleStatus.PENDING_SHIP);
+                int fromStatus = sample.getStatus();
+                sample.setStatus(SampleStatus.SHIPPING.code);
+                sample.setTrackingNo(item.getTrackingNo());
+                sample.setShipTime(now);
+                sampleRequestMapper.updateById(sample);
+                sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, item.getTrackingNo());
+                success++;
+            } catch (BusinessException | ForbiddenException e) {
+                log.warn("Batch ship failed for requestNo={}: {}", item.getRequestNo(), e.getMessage());
+                fail++;
+            }
+        }
+        return ok(Map.of("success", success, "fail", fail));
+    }
+
     @Operation(summary = "寄样导出 CSV", description = "导出寄样申请列表为 CSV 文件，支持状态筛选和关键字搜索。")
     @GetMapping("/exports")
     public void exportSamples(
@@ -515,7 +615,9 @@ public class SampleController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes,
             HttpServletResponse response) throws IOException {
+        ensureSampleExportPermission(roleCodes);
         // Validate status early, before committing response headers
         if (StringUtils.hasText(status)) {
             parseStatus(status);
@@ -617,12 +719,13 @@ public class SampleController extends BaseController {
         }
     }
 
-    private SampleRequest requireSample(UUID id, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
+    private SampleRequest requireSample(UUID id, UUID currentUserId, UUID currentDeptId, DataScope dataScope, Object roleCodes) {
         SampleRequest sample = sampleRequestMapper.selectById(id);
         if (sample == null) {
             throw new BusinessException("Sample request not found");
         }
         assertCanAccessSample(sample, currentUserId, currentDeptId, dataScope);
+        ensureRoleCanAccessSample(sample, roleCodes);
         return sample;
     }
 
@@ -653,20 +756,48 @@ public class SampleController extends BaseController {
         return user == null ? null : user.getDeptId();
     }
 
+    private void ensureSampleApplyPermission(Object roleCodes) {
+        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
+            throw new ForbiddenException("仅渠道角色可以发起寄样申请");
+        }
+    }
+
+    private void ensureSampleDeletePermission(Object roleCodes) {
+        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
+            throw new ForbiddenException("仅渠道角色可以删除寄样申请");
+        }
+    }
+
+    private void ensureRoleCanAccessSample(SampleRequest sample, Object roleCodes) {
+        if (sample == null || !isOpsStaffOnly(roleCodes)) {
+            return;
+        }
+        if (!isOpsVisibleStatusCode(sample.getStatus())) {
+            throw new ForbiddenException("运营仅可查看待发货及后续物流寄样单");
+        }
+    }
+
     private void ensureActionRolePermission(String action, Object roleCodes) {
         switch (action) {
             case "PENDING_SHIP", "REJECTED" -> {
-                if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF)) {
+                if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_STAFF)) {
                     throw new ForbiddenException("仅招商角色可以审核寄样");
                 }
             }
-            case "SHIPPING", "DELIVERED", "PENDING_HOMEWORK", "COMPLETED", "CLOSED" -> {
+            case "SHIPPING", "DELIVERED", "PENDING_HOMEWORK" -> {
                 if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
-                    throw new ForbiddenException("仅运营角色可以推进物流与完结状态");
+                    throw new ForbiddenException("仅运营角色可以推进物流状态");
                 }
             }
+            case "COMPLETED", "CLOSED" -> throw new ForbiddenException("完成与关闭状态仅允许系统自动推进");
             default -> {
             }
+        }
+    }
+
+    private void ensureSampleExportPermission(Object roleCodes) {
+        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER)) {
+            throw new ForbiddenException("仅管理员、招商组长或渠道组长可导出寄样数据");
         }
     }
 
@@ -710,6 +841,19 @@ public class SampleController extends BaseController {
         talent.setStatus(1);
         talentMapper.insert(talent);
         return talent;
+    }
+
+    private void ensureChannelTalentClaim(UUID userId, UUID talentId, Object roleCodes) {
+        if (!hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
+                || hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
+            return;
+        }
+        if (userId == null || talentId == null) {
+            throw new ValidateException("该达人信息不完整，请重新选择");
+        }
+        if (talentClaimMapper.findActiveByTalentAndUser(talentId, userId) == null) {
+            throw new ForbiddenException("该达人未在你的私海中，请先认领后再申请寄样");
+        }
     }
 
     private void checkSevenDaysLimit(UUID userId, UUID talentId, UUID productId, Object roleCodes) {
@@ -759,7 +903,6 @@ public class SampleController extends BaseController {
 
     private boolean isExemptRoleCode(String roleCode) {
         return RoleCodes.ADMIN.equals(roleCode)
-                || RoleCodes.BIZ_LEADER.equals(roleCode)
                 || RoleCodes.CHANNEL_LEADER.equals(roleCode);
     }
 
@@ -1015,11 +1158,34 @@ public class SampleController extends BaseController {
         return switch (normalized) {
             case "APPROVED" -> "PENDING_SHIP";
             case "SHIPPED" -> "SHIPPING";
-            case "SIGNED" -> "DELIVERED";
+            case "SIGNED" -> "PENDING_HOMEWORK";
             case "PENDING_TASK" -> "PENDING_HOMEWORK";
             case "FINISHED" -> "COMPLETED";
             default -> normalized;
         };
+    }
+
+    private void ensureOpsVisibleStatus(String status) {
+        SampleStatus sampleStatus = parseStatus(status);
+        if (!isOpsVisibleStatusCode(sampleStatus.code)) {
+            throw new ForbiddenException("运营仅可查看待发货及后续物流寄样单");
+        }
+    }
+
+    private boolean isOpsVisibleStatusCode(Integer statusCode) {
+        if (statusCode == null) {
+            return false;
+        }
+        return statusCode.equals(SampleStatus.PENDING_SHIP.code)
+                || statusCode.equals(SampleStatus.SHIPPING.code)
+                || statusCode.equals(SampleStatus.DELIVERED.code)
+                || statusCode.equals(SampleStatus.PENDING_HOMEWORK.code)
+                || statusCode.equals(SampleStatus.COMPLETED.code)
+                || statusCode.equals(SampleStatus.CLOSED.code);
+    }
+
+    private boolean isOpsStaffOnly(Object roleCodes) {
+        return hasAnyRole(roleCodes, RoleCodes.OPS_STAFF) && !hasAnyRole(roleCodes, RoleCodes.ADMIN);
     }
 
     private String toLegacyStatus(SampleStatus status) {
@@ -1158,6 +1324,47 @@ public class SampleController extends BaseController {
 
         public void setRemark(String remark) {
             this.remark = remark;
+        }
+    }
+
+    public static class SampleBatchShipRequest {
+        @Schema(description = "批量发货列表。", example = "[{\"requestNo\":\"SR20250101001\",\"trackingNo\":\"SF1234567890\"}]")
+        @NotEmpty(message = "items cannot be empty")
+        @Size(max = 100, message = "items size cannot exceed 100")
+        private List<SampleBatchShipItem> items;
+
+        public List<SampleBatchShipItem> getItems() {
+            return items;
+        }
+
+        public void setItems(List<SampleBatchShipItem> items) {
+            this.items = items;
+        }
+    }
+
+    public static class SampleBatchShipItem {
+        @Schema(description = "寄样单号。", example = "SR20250101001")
+        @NotBlank(message = "requestNo is required")
+        private String requestNo;
+
+        @Schema(description = "物流单号。", example = "SF1234567890")
+        @NotBlank(message = "trackingNo is required")
+        private String trackingNo;
+
+        public String getRequestNo() {
+            return requestNo;
+        }
+
+        public void setRequestNo(String requestNo) {
+            this.requestNo = requestNo;
+        }
+
+        public String getTrackingNo() {
+            return trackingNo;
+        }
+
+        public void setTrackingNo(String trackingNo) {
+            this.trackingNo = trackingNo;
         }
     }
 

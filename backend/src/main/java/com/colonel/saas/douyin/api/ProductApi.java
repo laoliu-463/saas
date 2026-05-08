@@ -118,6 +118,50 @@ public class ProductApi {
         return douyinApiClient.postWithoutAuth("buyin.materialsProductStatus", params);
     }
 
+    /**
+     * 查询抖店商品详情（/product/detail）
+     * @param productId 抖店商品ID（19位数字字符串）
+     */
+    public Map<String, Object> getProductDetail(String productId) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("product_id", parseProductId(productId));
+        return douyinApiClient.post("product.detail", params);
+    }
+
+    /**
+     * 查询抖店SKU详情（/sku/detail）
+     * @param skuId SKU ID（数字字符串）
+     */
+    public Map<String, Object> getSkuDetail(String skuId) {
+        Map<String, Object> params = new HashMap<>();
+        if (skuId != null && !skuId.isBlank()) {
+            params.put("sku_id", parseSkuId(skuId));
+        }
+        return douyinApiClient.post("sku.detail", params);
+    }
+
+    private long parseProductId(String productId) {
+        if (productId == null || productId.isBlank()) {
+            throw new BusinessException("productId 不能为空");
+        }
+        try {
+            return Long.parseLong(productId.trim());
+        } catch (NumberFormatException e) {
+            throw new BusinessException("productId 必须为数字类型", e);
+        }
+    }
+
+    private long parseSkuId(String skuId) {
+        if (skuId == null || skuId.isBlank()) {
+            throw new BusinessException("skuId 不能为空");
+        }
+        try {
+            return Long.parseLong(skuId.trim());
+        } catch (NumberFormatException e) {
+            throw new BusinessException("skuId 必须为数字类型", e);
+        }
+    }
+
     private void putIfNotBlank(Map<String, Object> params, String key, String value) {
         if (value != null && !value.isBlank()) {
             params.put(key, value.trim());

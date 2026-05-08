@@ -79,14 +79,14 @@ class PromotionApiTest {
         Map<String, Object> response = Map.of(
                 "data",
                 Map.of(
-                        "promote_link", "https://promote.example.com?pick_source=ABC12345",
+                        "converted_link", "https://promote.example.com?pick_source=ABC12345&pick_extra=channel_demo_01",
                         "short_link", "https://short.url"
                 )
         );
-        when(douyinApiClient.post(eq("buyin.promotion.link.generate"), any())).thenReturn(response);
+        when(douyinApiClient.post(eq("buyin.instPickSourceConvert"), any())).thenReturn(response);
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
-        String desiredPickExtra = "channel_" + userId;
+        String desiredPickExtra = "channel_demo_01";
 
         PromotionApi.PromotionLinkResult result = promotionApi.generateLink(
                 "ext_ctx",
@@ -105,7 +105,7 @@ class PromotionApiTest {
         );
 
         assertThat(result.promoteLink()).contains("pick_source");
-        assertThat(result.pickExtra()).isEqualTo(desiredPickExtra);
+        assertThat(result.pickExtra()).isEqualTo("channel_demo_01");
         verify(pickSourceMappingService).saveOrUpdate(
                 eq(userId),
                 eq(null),
@@ -121,8 +121,24 @@ class PromotionApiTest {
                 eq(result.promoteLink()),
                 eq(null),
                 eq("PRODUCT_LIBRARY"),
-                eq(desiredPickExtra)
+                eq("channel_demo_01")
         );
+    }
+
+    @Test
+    void promotionLinkResultFrom_shouldTreatProductUrlAsPromoteLink() {
+        PromotionApi.PromotionLinkResult result = PromotionApi.PromotionLinkResult.from(
+                Map.of("data", Map.of(
+                        "product_url", "https://haohuo.jinritemai.com/ecommerce/trade/detail/index.html?id=1&pick_source=MuRpGc&pick_extra=channel_demo"
+                )),
+                "fallback",
+                "seed"
+        );
+
+        assertThat(result.promoteLink()).contains("pick_source=MuRpGc");
+        assertThat(result.pickSource()).isEqualTo("MuRpGc");
+        assertThat(result.shortId()).isEqualTo("MuRpGc");
+        assertThat(result.pickExtra()).isEqualTo("channel_demo");
     }
 
     @Test

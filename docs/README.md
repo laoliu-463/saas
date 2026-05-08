@@ -1,6 +1,6 @@
 # 文档总览
 
-更新时间：2026-05-03
+更新时间：2026-05-06
 
 ## 当前一句话状态
 
@@ -22,13 +22,14 @@
 ### 代码与验证基线
 
 - 前端构建：`frontend npm run build` 通过
-- 后端测试：`backend mvn test` 作为当前代码基线为通过（`418 tests, 0 failures, 0 errors`）
+- 后端测试：`backend mvn test` 作为当前代码基线为通过（`597 tests, 0 failures, 0 errors`，2026-05-06 确认）
 - 认证安全相关补测（AuthService、JwtTokenProvider、JwtAuthInterceptor 等）已通过
 - 本地 Mock 主链路联调记录已形成文档
 - real-pre 全路径回归报告已落盘：`runtime/qa/out/e2e-20260503-1353/report.md`
 - local-mock 补充验收报告已落盘：`runtime/qa/out/local-mock-supplement-20260503-1430/report.md`
-- QA 脚本入口已固定为：`runtime/qa/full-browser-e2e.cjs`、`runtime/qa/local-mock-supplement.cjs`
-- QA 一键命令已固定为：`scripts/run-real-pre-e2e.ps1`、`scripts/run-local-mock-supplement.ps1`、`scripts/run-qa-all.ps1`
+- 数据看板 Gap 4 定向回归报告已落盘：`out/e2e-data-gap4-visible-20260506150815/report.md`
+- QA 脚本入口已固定为：`runtime/qa/full-browser-e2e.cjs`、`runtime/qa/local-mock-supplement.cjs`、`runtime/qa/data-gap4-visible.cjs`
+- QA 一键命令已固定为：`scripts/run-real-pre-e2e.ps1`、`scripts/run-local-mock-supplement.ps1`、`scripts/run-data-gap4-visible.ps1`、`scripts/run-qa-all.ps1`
 - 本地 Mock 可见浏览器验收截图与结果已落盘：`out/e2e-*`
 - 本地 Mock 最终可见浏览器烟雾验收已落盘：`out/e2e-final-smoke-20260503114958/results.json`
 
@@ -75,7 +76,7 @@
 3. 登出与 Token 吊销（Redis 黑名单）
 4. DataScope 数据权限过滤（本人 / 本组 / 全部）
 5. 系统用户与系统角色 CRUD
-6. 商品库、活动商品、商品审核、分配、Mock 转链
+6. 商品库、商品管理（活动列表 / 商品列表）、商品审核、分配、Mock 转链
 7. Mock 订单回流、归因、未归因展示与详情排查
 8. 寄样申请、审核、发货、签收、待交作业、自动完成
 9. 达人列表、达人详情、达人与商品/订单/寄样关联
@@ -93,6 +94,7 @@
 4. [03-Test与Real网关契约](./03-Test与Real网关契约.md)
 5. [05-接口与数据模型](./05-接口与数据模型.md)
 6. 如需直接跑浏览器验收，可先看 `runtime/qa/full-browser-e2e.cjs`
+7. 如需单独回归数据看板 Gap 4（`timeField` 切换、`talentId/merchantId` 筛选），可执行 `scripts/run-data-gap4-visible.ps1`
 
 ### 2. 做本地 Mock 联调
 
@@ -118,6 +120,11 @@
 4. [archive/audits/13-接口导入APIFOX整改任务单](./archive/audits/13-接口导入APIFOX整改任务单.md)
 5. [archive/audits/接口整改-现状vs目标](./archive/audits/接口整改-现状vs目标.md)
 6. [archive/audits/接口整改-决策备忘录](./archive/audits/接口整改-决策备忘录.md)
+
+### 5. 做全量文档口径整合
+
+1. [archive/records/28-当前文档整合总览](./archive/records/28-当前文档整合总览.md)
+2. [archive/audits/14-项目级覆盖审计报告](./archive/audits/14-项目级覆盖审计报告.md)
 
 ## 当前最重要的执行原则
 

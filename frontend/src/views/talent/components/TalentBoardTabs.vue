@@ -19,6 +19,7 @@ import { TALENT_VIEW_HELP_MAP, TALENT_VIEW_OPTIONS } from '../constants'
 const props = defineProps<{
   modelValue: string
   summary: Record<string, number>
+  tabs?: ReadonlyArray<{ label: string; value: string }>
 }>()
 
 const { modelValue, summary } = toRefs(props)
@@ -27,7 +28,7 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
 }>()
 
-const tabs = TALENT_VIEW_OPTIONS
+const tabs = computed(() => props.tabs?.length ? props.tabs : TALENT_VIEW_OPTIONS)
 
 const helpText = computed(() => TALENT_VIEW_HELP_MAP[modelValue.value] || '')
 

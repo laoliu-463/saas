@@ -201,7 +201,12 @@ public class AttributionService {
     }
 
     private String talentUid(java.util.Map<String, Object> source) {
-        return firstNonBlank(asString(source.get("talent_uid")), asString(source.get("author_id")));
+        return firstNonBlank(
+                asString(source.get("talent_uid")),
+                asString(source.get("author_id")),
+                asString(source.get("author_buyin_id")),
+                asString(source.get("authorBuyinId"))
+        );
     }
 
     private UUID resolveTalentId(String talentUid) {

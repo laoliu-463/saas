@@ -4,6 +4,7 @@
 !.env.local-mock.example
 !.env.test.example
 !.env.real.example
+!.env.real-pre.example
 !.env.prod.example
 
 .idea/
@@ -15,3 +16,10 @@ backend/temp-*.log
 
 
 out/
+runtime/
+test-results/
+frontend/test-results/
+.codex-run/
+*.zip
+*.tar.gz
+dump.rdb

@@ -125,6 +125,7 @@ class OrderSyncServiceTest {
                         channelUserId,
                         deptId,
                         channelUserId,
+                        null,
                         "talent-1",
                         "activity-1",
                         colonelUserId,

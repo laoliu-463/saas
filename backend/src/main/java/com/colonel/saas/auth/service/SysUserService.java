@@ -118,6 +118,36 @@ public class SysUserService {
                 .toList();
     }
 
+    public void assertAssignableUser(UUID targetUserId, List<String> currentRoleCodes, UUID currentDeptId) {
+        if (targetUserId == null) {
+            throw new BusinessException("负责人不能为空");
+        }
+        AssignableScope scope = resolveAssignableScope(currentRoleCodes, currentDeptId);
+        if (scope.allowedRoleCodes().isEmpty()) {
+            throw new BusinessException("当前角色不允许分配负责人");
+        }
+        SysUser targetUser = requireUser(targetUserId);
+        if (scope.deptId() != null && !scope.allowCrossDept() && !Objects.equals(scope.deptId(), targetUser.getDeptId())) {
+            throw new BusinessException("只能分配给本组招商下属");
+        }
+
+        List<SysUserRole> relations = sysUserRoleMapper.findByUserId(targetUserId);
+        if (relations == null || relations.isEmpty()) {
+            throw new BusinessException("目标负责人未配置可分配角色");
+        }
+        Set<UUID> roleIds = relations.stream()
+                .map(SysUserRole::getRoleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, SysRole> roleMap = roleIds.isEmpty()
+                ? Collections.emptyMap()
+                : sysRoleMapper.selectBatchIds(roleIds).stream()
+                .collect(Collectors.toMap(SysRole::getId, role -> role));
+        if (!matchesAssignableRole(targetUserId, Map.of(targetUserId, relations), roleMap, scope.allowedRoleCodes())) {
+            throw new BusinessException("只能分配给符合规则的招商下属");
+        }
+    }
+
     public SysUserVO getById(UUID id, UUID currentUserId, DataScope dataScope) {
         SysUser user = requireUser(id);
         assertCanAccess(user, currentUserId, dataScope);
@@ -397,6 +427,10 @@ public class SysUserService {
         }
         if (normalized.contains(RoleCodes.CHANNEL_LEADER)) {
             return new AssignableScope(Set.of(RoleCodes.CHANNEL_STAFF), currentDeptId, false);
+        }
+        if (normalized.contains(RoleCodes.COLONEL_LEADER)) {
+            // 招商组长可将商品分配给招商专员（BIZ_STAFF）
+            return new AssignableScope(Set.of(RoleCodes.BIZ_STAFF), currentDeptId, false);
         }
         return AssignableScope.empty();
     }

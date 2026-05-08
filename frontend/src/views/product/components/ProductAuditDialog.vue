@@ -11,7 +11,7 @@
   >
     <n-space vertical :size="16">
       <n-radio-group v-model:value="auditApproved">
-        <n-radio :value="true">通过</n-radio>
+        <n-radio :value="true">通过并上架</n-radio>
         <n-radio :value="false">驳回</n-radio>
       </n-radio-group>
 
@@ -24,61 +24,72 @@
       />
 
       <template v-else>
-        <n-grid :cols="2" :x-gap="12">
+        <n-divider title-placement="left">基础补充信息</n-divider>
+        <n-grid :cols="2" :x-gap="12" :y-gap="12">
           <n-gi>
-            <n-input v-model:value="form.exclusivePriceRemark" placeholder="专属价说明" />
+            <n-form-item label="专属价说明">
+              <n-input v-model:value="form.exclusivePriceRemark" placeholder="如：团长专属9折" />
+            </n-form-item>
           </n-gi>
           <n-gi>
-            <n-input v-model:value="form.shippingInfo" placeholder="发货信息" />
+            <n-form-item label="发货信息">
+              <n-input v-model:value="form.shippingInfo" placeholder="发货地、快递等" />
+            </n-form-item>
+          </n-gi>
+          <n-gi :span="2">
+            <n-form-item label="商品卖点">
+              <n-input v-model:value="sellingPointsText" type="textarea" :rows="2" placeholder="每行一条卖点" />
+            </n-form-item>
+          </n-gi>
+          <n-gi :span="2">
+            <n-form-item label="推广话术">
+              <n-input v-model:value="form.promotionScript" type="textarea" :rows="2" placeholder="给达人的推广建议" />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="支持投流">
+              <n-radio-group v-model:value="form.supportsAds">
+                <n-radio :value="true">是</n-radio>
+                <n-radio :value="false">否</n-radio>
+              </n-radio-group>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="活动时间">
+              <n-input v-model:value="form.campaignTimeRemark" placeholder="如：长期在线" />
+            </n-form-item>
           </n-gi>
         </n-grid>
 
-        <n-input
-          v-model:value="sellingPointsText"
-          type="textarea"
-          :rows="4"
-          placeholder="商品卖点，每行一条"
-        />
-
-        <n-input
-          v-model:value="form.promotionScript"
-          type="textarea"
-          :rows="4"
-          placeholder="推广话术"
-        />
-
-        <n-radio-group v-model:value="form.supportsAds">
-          <n-radio :value="true">支持投流</n-radio>
-          <n-radio :value="false">不支持投流</n-radio>
-        </n-radio-group>
-
-        <n-input
-          v-model:value="form.rewardRemark"
-          type="textarea"
-          :rows="3"
-          placeholder="奖励说明"
-        />
-
-        <n-input
-          v-model:value="form.participationRequirements"
-          type="textarea"
-          :rows="3"
-          placeholder="参与要求"
-        />
-
-        <n-input
-          v-model:value="form.campaignTimeRemark"
-          type="textarea"
-          :rows="3"
-          placeholder="活动时间说明"
-        />
-
-        <n-input
-          v-model:value="materialFilesText"
-          type="textarea"
-          :rows="4"
-          placeholder="手卡素材链接或文件说明，每行一条"
-        />
+        <n-divider title-placement="left">寄样门槛配置</n-divider>
+        <n-grid :cols="2" :x-gap="12" :y-gap="12">
+          <n-gi>
+            <n-form-item label="30天销售额 ≥">
+              <n-input-number v-model:value="form.sampleThresholdSales" :min="0" style="width: 100%" placeholder="默认 30000" />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="达人等级 ≥">
+              <n-select
+                v-model:value="form.sampleThresholdLevel"
+                :options="[
+                  { label: 'LV0', value: 0 },
+                  { label: 'LV1', value: 1 },
+                  { label: 'LV2', value: 2 },
+                  { label: 'LV3', value: 3 },
+                  { label: 'LV4', value: 4 },
+                  { label: 'LV5', value: 5 },
+                  { label: 'LV6', value: 6 }
+                ]"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi :span="2">
+            <n-form-item label="寄样补充要求">
+              <n-input v-model:value="form.sampleThresholdRemark" type="textarea" :rows="2" placeholder="如：需真人出镜，粉丝量>10万" />
+            </n-form-item>
+          </n-gi>
+        </n-grid>
       </template>
     </n-space>
   </n-modal>
@@ -89,89 +100,59 @@ import { reactive, ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
 import { auditActivityProduct } from '../../../api/activityProduct';
 
-const props = defineProps<{ show: boolean; activityId: string | number | null; productId: string | number | null }>();
+const props = defineProps<{
+  show: boolean;
+  activityId: string | number | null;
+  productId: string | number | null;
+}>();
+
 const emit = defineEmits(['update:show', 'success']);
 const message = useMessage();
 
 const auditApproved = ref(true);
 const auditReason = ref('');
 const sellingPointsText = ref('');
-const materialFilesText = ref('');
-const form = reactive<{
-  exclusivePriceRemark: string;
-  shippingInfo: string;
-  promotionScript: string;
-  supportsAds: boolean | null;
-  rewardRemark: string;
-  participationRequirements: string;
-  campaignTimeRemark: string;
-}>({
+
+const form = reactive({
   exclusivePriceRemark: '',
   shippingInfo: '',
   promotionScript: '',
-  supportsAds: null,
+  supportsAds: true,
   rewardRemark: '',
   participationRequirements: '',
-  campaignTimeRemark: ''
+  campaignTimeRemark: '',
+  sampleThresholdSales: 30000,
+  sampleThresholdLevel: 1,
+  sampleThresholdRemark: ''
 });
 
 const resetForm = () => {
   auditApproved.value = true;
   auditReason.value = '';
   sellingPointsText.value = '';
-  materialFilesText.value = '';
   form.exclusivePriceRemark = '';
   form.shippingInfo = '';
   form.promotionScript = '';
-  form.supportsAds = null;
+  form.supportsAds = true;
   form.rewardRemark = '';
   form.participationRequirements = '';
   form.campaignTimeRemark = '';
+  form.sampleThresholdSales = 30000;
+  form.sampleThresholdLevel = 1;
+  form.sampleThresholdRemark = '';
 };
 
-watch(() => props.show, (val) => {
-  if (val) resetForm();
-});
+watch(
+  () => props.show,
+  (val) => {
+    if (val) {
+      resetForm();
+    }
+  }
+);
 
 const updateShow = (val: boolean) => {
   emit('update:show', val);
-};
-
-const splitLines = (value: string) =>
-  value
-    .split('\n')
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-const requiredTextFields = [
-  ['exclusivePriceRemark', '专属价说明'],
-  ['shippingInfo', '发货信息'],
-  ['promotionScript', '推广话术'],
-  ['rewardRemark', '奖励说明'],
-  ['participationRequirements', '参与要求'],
-  ['campaignTimeRemark', '活动时间']
-] as const;
-
-const validateApprovedForm = () => {
-  for (const [field, label] of requiredTextFields) {
-    if (!String(form[field] || '').trim()) {
-      message.warning(`请填写${label}`);
-      return false;
-    }
-  }
-  if (!splitLines(sellingPointsText.value).length) {
-    message.warning('请至少填写一条商品卖点');
-    return false;
-  }
-  if (form.supportsAds === null) {
-    message.warning('请选择是否支持投流');
-    return false;
-  }
-  if (!splitLines(materialFilesText.value).length) {
-    message.warning('请至少填写一条手卡素材');
-    return false;
-  }
-  return true;
 };
 
 const handleSubmit = async () => {
@@ -183,24 +164,30 @@ const handleSubmit = async () => {
     message.warning('驳回时必须填写原因');
     return false;
   }
-  if (auditApproved.value && !validateApprovedForm()) {
-    return false;
-  }
   try {
-    const res: any = await auditActivityProduct(props.activityId, props.productId, {
+    const sellingPoints = sellingPointsText.value
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const payload = {
       approved: auditApproved.value,
       reason: auditApproved.value ? undefined : auditReason.value.trim(),
-      exclusivePriceRemark: auditApproved.value ? form.exclusivePriceRemark.trim() : undefined,
-      shippingInfo: auditApproved.value ? form.shippingInfo.trim() : undefined,
-      sellingPoints: auditApproved.value ? splitLines(sellingPointsText.value) : undefined,
-      promotionScript: auditApproved.value ? form.promotionScript.trim() : undefined,
-      supportsAds: auditApproved.value ? form.supportsAds ?? undefined : undefined,
-      rewardRemark: auditApproved.value ? form.rewardRemark.trim() : undefined,
-      participationRequirements: auditApproved.value ? form.participationRequirements.trim() : undefined,
-      campaignTimeRemark: auditApproved.value ? form.campaignTimeRemark.trim() : undefined,
-      materialFiles: auditApproved.value ? splitLines(materialFilesText.value) : undefined
-    });
-    message.success(auditApproved.value ? '审核通过' : '审核驳回');
+      // 补充信息
+      exclusivePriceRemark: auditApproved.value ? form.exclusivePriceRemark : undefined,
+      shippingInfo: auditApproved.value ? form.shippingInfo : undefined,
+      sellingPoints: auditApproved.value ? sellingPoints : undefined,
+      promotionScript: auditApproved.value ? form.promotionScript : undefined,
+      supportsAds: auditApproved.value ? form.supportsAds : undefined,
+      campaignTimeRemark: auditApproved.value ? form.campaignTimeRemark : undefined,
+      // 门槛信息
+      sampleThresholdSales: auditApproved.value ? form.sampleThresholdSales : undefined,
+      sampleThresholdLevel: auditApproved.value ? form.sampleThresholdLevel : undefined,
+      sampleThresholdRemark: auditApproved.value ? form.sampleThresholdRemark : undefined
+    };
+
+    const res: any = await auditActivityProduct(props.activityId, props.productId, payload);
+    message.success(auditApproved.value ? '审核通过，商品已自动加入商品库' : '审核驳回');
     emit('success', res?.data);
     updateShow(false);
     return true;

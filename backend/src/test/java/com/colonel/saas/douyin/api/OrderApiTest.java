@@ -59,8 +59,10 @@ class OrderApiTest {
         ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instituteOrderColonel"), captor.capture());
         Map<String, Object> params = captor.getValue();
-        assertThat(params.get("start_time")).isEqualTo(1000L);
-        assertThat(params.get("end_time")).isEqualTo(2000L);
+        assertThat(params.get("start_time")).isInstanceOf(String.class);
+        assertThat(params.get("end_time")).isInstanceOf(String.class);
+        assertThat((String) params.get("start_time")).matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}");
+        assertThat((String) params.get("end_time")).matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}");
         assertThat(params.get("count")).isEqualTo(50);
         assertThat(params.get("page")).isEqualTo(51L);
     }

@@ -1,9 +1,14 @@
 package com.colonel.saas.controller;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -12,7 +17,9 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.util.stream.Collectors;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -167,5 +174,67 @@ class DouyinWebhookControllerTest {
                         .contentType("application/json"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("success"));
+    }
+
+    @Test
+    void colonelOpenEvent_validJson_logsMetadataWithoutRawSensitivePayload() throws Exception {
+        MockMvc mockMvc = createMvc(false);
+        String body = """
+                {"event":"doudian_alliance_colonelOpenEvent","data":{"mobile":"13900000000","access_token":"very-secret-token","sign":"very-secret-sign"}}
+                """;
+        Logger logger = (Logger) LoggerFactory.getLogger(DouyinWebhookController.class);
+        Level originalLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.setLevel(Level.INFO);
+        logger.addAppender(appender);
+        try {
+            mockMvc.perform(post("/douyin/webhooks/colonel-open-events")
+                            .contentType("application/json")
+                            .content(body))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string("success"));
+
+            String logText = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .collect(Collectors.joining("\n"));
+            assertThat(logText)
+                    .contains("event=doudian_alliance_colonelOpenEvent")
+                    .contains("bodyLength=")
+                    .doesNotContain("13900000000", "very-secret-token", "very-secret-sign", "access_token", "sign=");
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(originalLevel);
+        }
+    }
+
+    @Test
+    void colonelOpenEvent_invalidJson_logsMetadataWithoutRawSensitivePayload() throws Exception {
+        MockMvc mockMvc = createMvc(false);
+        String body = "{bad-json, mobile=13900000000, access_token=very-secret-token, sign=very-secret-sign";
+        Logger logger = (Logger) LoggerFactory.getLogger(DouyinWebhookController.class);
+        Level originalLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.setLevel(Level.WARN);
+        logger.addAppender(appender);
+        try {
+            mockMvc.perform(post("/douyin/webhooks/colonel-open-events")
+                            .contentType("application/json")
+                            .content(body))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string("success"));
+
+            String logText = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .collect(Collectors.joining("\n"));
+            assertThat(logText)
+                    .contains("payload parse failed")
+                    .contains("bodyLength=")
+                    .doesNotContain("13900000000", "very-secret-token", "very-secret-sign", "access_token", "sign=");
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(originalLevel);
+        }
     }
 }

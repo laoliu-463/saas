@@ -168,23 +168,23 @@ class DouyinTokenServiceTest {
     }
 
     @Test
-    void exchangeCodeAndBootstrap_shouldCacheSelfUseTokens() {
+    void exchangeCodeAndBootstrap_shouldCacheAllianceTokens() {
         when(douyinAuthGateway.createToken(any())).thenReturn(
-                new DouyinAuthGateway.TokenPayload("self-use-access", "self-use-refresh", 7200L, "auth-456", "Colonel", 1L)
+                new DouyinAuthGateway.TokenPayload("alliance-access", "alliance-refresh", 7200L, "auth-456", "Colonel", 1L)
         );
 
-        tokenService.exchangeCodeAndBootstrap("app123", "", "authorization_self", "Colonel", null, "auth-456", null);
+        tokenService.exchangeCodeAndBootstrap("app123", "auth-code", "authorization_code", null, null, "auth-456", "Colonel");
 
-        verify(valueOperations).set(eq("douyin:token:app123"), eq("self-use-access"), any(Duration.class));
-        verify(valueOperations).set(eq("douyin:refresh:app123"), eq("self-use-refresh"), eq(Duration.ofDays(14)));
+        verify(valueOperations).set(eq("douyin:token:app123"), eq("alliance-access"), any(Duration.class));
+        verify(valueOperations).set(eq("douyin:refresh:app123"), eq("alliance-refresh"), eq(Duration.ofDays(14)));
         verify(valueOperations).set(eq("douyin:token:expire_at:app123"), any(String.class), any(Duration.class));
         verify(redisTemplate).delete("douyin:token:reauthorize_required:app123");
     }
 
     @Test
-    void exchangeCodeAndBootstrap_shouldRejectShopIdWhenAuthSubjectTypeProvidedForSelfUse() {
+    void exchangeCodeAndBootstrap_shouldRejectShopIdWhenAuthSubjectTypeProvidedForAllianceCode() {
         assertThatThrownBy(() -> tokenService.exchangeCodeAndBootstrap(
-                "app123", "", "authorization_self", "Colonel", "17239", "auth-456", "kol"))
+                "app123", "auth-code", "authorization_code", null, "17239", "auth-456", "kol"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("auth_subject_type and shop_id cannot be provided at the same time");
     }

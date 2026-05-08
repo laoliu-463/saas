@@ -1,7 +1,9 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ExclusiveTalent;
+import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
+import com.colonel.saas.mapper.TalentMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,12 +39,17 @@ class ExclusiveTalentServiceTest {
     private JdbcTemplate jdbcTemplate;
     @Mock
     private ExclusiveTalentMapper exclusiveTalentMapper;
+    @Mock
+    private TalentMapper talentMapper;
 
     private ExclusiveTalentService service;
 
     @BeforeEach
     void setUp() {
-        service = new ExclusiveTalentService(jdbcTemplate, exclusiveTalentMapper);
+        service = new ExclusiveTalentService(jdbcTemplate, exclusiveTalentMapper, talentMapper);
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        when(talentMapper.selectOne(any())).thenReturn(talent);
     }
 
     private static final String KEY_RATIO = "talent.exclusive.service_fee_ratio";

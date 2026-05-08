@@ -187,10 +187,12 @@ public class OrderSyncService {
                     order.setUserId(attribution.userId());
                     order.setDeptId(attribution.deptId());
                     order.setColonelUserId(attribution.colonelUserId());
+                    order.setTalentId(attribution.talentId());
                     order.setActivityId(firstNonBlank(attribution.activityId(), order.getActivityId()));
                     order.setAttributionStatus(attribution.attributionStatus());
                     order.setAttributionRemark(attribution.attributionRemark());
                     order.setProductTitle(order.getProductName());
+                    order.setTalentName(item.talentName());
                     // talent_name 应由达人信息补全，此处不写入不可靠的uid值
 
                     // 补全人名

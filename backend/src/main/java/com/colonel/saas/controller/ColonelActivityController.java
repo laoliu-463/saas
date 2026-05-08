@@ -27,7 +27,7 @@ import java.util.Map;
 @RestController
 @Tag(name = "团长活动管理", description = "团长活动列表及活动下商品查询接口。")
 @RequestMapping("/colonel/activities")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
+@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.ADMIN, RoleCodes.COLONEL_LEADER})
 public class ColonelActivityController extends BaseController {
 
     private final DouyinColonelActivityGateway douyinColonelActivityGateway;
@@ -78,9 +78,10 @@ public class ColonelActivityController extends BaseController {
             @Parameter(description = "拉取模式。待确认：取值含义请联系产品或参考上游 SDK 文档。") @RequestParam(defaultValue = "1") Long retrieveMode,
             @Parameter(description = "游标，继续翻页时使用。") @RequestParam(required = false) String cursor,
             @Parameter(description = "页码。当前仅在部分上游模式下使用。") @RequestParam(required = false) @Min(1) Long page,
-            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
+            @Parameter(description = "是否绕过本地快照并强制刷新上游数据。") @RequestParam(defaultValue = "false") Boolean refresh) {
         try {
-            if (productService.hasActivitySnapshots(activityId)) {
+            if (!Boolean.TRUE.equals(refresh) && productService.hasActivitySnapshots(activityId)) {
                 return ok(productService.buildActivityProductListViewFromDb(
                         activityId,
                         count,

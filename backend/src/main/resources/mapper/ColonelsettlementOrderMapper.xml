@@ -16,6 +16,7 @@
         <result property="settleSecondColonelCommission" column="settle_second_colonel_commission"/>
         <result property="orderStatus" column="order_status"/>
         <result property="pickSource" column="pick_source"/>
+        <result property="talentId" column="talent_id"/>
         <result property="channelUserId" column="channel_user_id"/>
         <result property="channelUserName" column="channel_user_name"/>
         <result property="channelDeptId" column="channel_dept_id"/>
@@ -47,8 +48,9 @@
             id, order_id, product_id, product_name, shop_id, shop_name,
             order_amount, actual_amount, settle_colonel_commission, settle_colonel_tech_service_fee,
             settle_second_colonel_commission, order_status, pick_source,
+            talent_id,
             channel_user_id, channel_user_name, channel_dept_id,
-            user_id, dept_id, colonel_user_id, colonel_user_name, promotion_link_id, product_title,
+            user_id, dept_id, colonel_user_id, colonel_user_name, promotion_link_id, product_title, talent_name,
             colonel_activity_id, settle_time,
             attribution_status, attribution_remark, create_time, update_time, deleted, extra_data
         )
@@ -56,8 +58,9 @@
             #{id}, #{orderId}, #{productId}, #{productName}, #{shopId}, #{shopName},
             #{orderAmount}, #{actualAmount}, #{settleColonelCommission}, #{settleColonelTechServiceFee},
             #{settleSecondColonelCommission}, #{orderStatus}, #{pickSource},
+            #{talentId},
             #{channelUserId}, #{channelUserName}, #{channelDeptId},
-            #{userId}, #{deptId}, #{colonelUserId}, #{colonelUserName}, #{promotionLinkId}, #{productTitle},
+            #{userId}, #{deptId}, #{colonelUserId}, #{colonelUserName}, #{promotionLinkId}, #{productTitle}, #{talentName},
             #{activityId}, #{settleTime},
             #{attributionStatus}, #{attributionRemark}, #{createTime}, #{updateTime}, #{deleted},
             CAST(#{extraData, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB)
@@ -67,6 +70,42 @@
             WHERE order_id = #{orderId}
         )
     </insert>
+
+    <update id="updateSyncedById" parameterType="com.colonel.saas.entity.ColonelsettlementOrder">
+        UPDATE colonelsettlement_order
+        SET
+            order_id = #{orderId},
+            product_id = #{productId},
+            product_name = #{productName},
+            shop_id = #{shopId},
+            shop_name = #{shopName},
+            order_amount = #{orderAmount},
+            actual_amount = #{actualAmount},
+            settle_colonel_commission = #{settleColonelCommission},
+            settle_colonel_tech_service_fee = #{settleColonelTechServiceFee},
+            settle_second_colonel_commission = #{settleSecondColonelCommission},
+            order_status = #{orderStatus},
+            pick_source = #{pickSource},
+            talent_id = #{talentId},
+            channel_user_id = #{channelUserId},
+            channel_user_name = #{channelUserName},
+            channel_dept_id = #{channelDeptId},
+            user_id = #{userId},
+            dept_id = #{deptId},
+            colonel_user_id = #{colonelUserId},
+            colonel_user_name = #{colonelUserName},
+            promotion_link_id = #{promotionLinkId},
+            product_title = #{productTitle},
+            talent_name = #{talentName},
+            colonel_activity_id = #{activityId},
+            settle_time = #{settleTime},
+            attribution_status = #{attributionStatus},
+            attribution_remark = #{attributionRemark},
+            update_time = #{updateTime},
+            deleted = #{deleted},
+            extra_data = CAST(#{extraData, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB)
+        WHERE id = #{id}
+    </update>
 
     <select id="findPageWithScope" resultMap="ColonelsettlementOrderMap">
         SELECT co.*

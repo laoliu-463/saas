@@ -39,6 +39,7 @@
           @update:value="updateFilter('hasSample', $event)"
         />
         <n-select
+          v-if="showAssigneeFilter"
           :value="filters.assignee"
           :options="assigneeOptions"
           placeholder="招商归属"
@@ -78,14 +79,17 @@ interface Filters {
   decision: string | null
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   filters: Filters
   selectedProduct: string | null
   status: string | null
   productOptions: { label: string; value: string }[]
   productOptionsLoading: boolean
   loading: boolean
-}>()
+  showAssigneeFilter?: boolean
+}>(), {
+  showAssigneeFilter: true
+})
 
 const emit = defineEmits<{
   'update:filters': [value: Filters]

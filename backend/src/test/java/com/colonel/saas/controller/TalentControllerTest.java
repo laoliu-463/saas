@@ -2,8 +2,10 @@ package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
@@ -21,11 +23,13 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 import java.util.UUID;
+import java.lang.reflect.Method;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -325,5 +329,26 @@ class TalentControllerTest {
                 .andExpect(jsonPath("$.data.eligible").value(true))
                 .andExpect(jsonPath("$.data.serviceFeeRatio").value(85))
                 .andExpect(jsonPath("$.data.monthlySamples").value(12));
+    }
+
+    @Test
+    void controller_shouldOnlyExposeChannelRoles() {
+        RequireRoles requireRoles = TalentController.class.getAnnotation(RequireRoles.class);
+        assertThat(requireRoles).isNotNull();
+        assertThat(requireRoles.value()).containsExactly(RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF);
+    }
+
+    @Test
+    void blacklistAndWeeklyRefresh_shouldRequireChannelLeader() throws Exception {
+        Method blacklist = TalentController.class.getMethod("blacklist", UUID.class, com.colonel.saas.dto.talent.TalentOperateRequest.class);
+        Method unblacklist = TalentController.class.getMethod("unblacklist", UUID.class);
+        Method refreshWeekly = TalentController.class.getMethod("refreshWeekly");
+
+        assertThat(blacklist.getAnnotation(RequireRoles.class)).isNotNull();
+        assertThat(blacklist.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.CHANNEL_LEADER);
+        assertThat(unblacklist.getAnnotation(RequireRoles.class)).isNotNull();
+        assertThat(unblacklist.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.CHANNEL_LEADER);
+        assertThat(refreshWeekly.getAnnotation(RequireRoles.class)).isNotNull();
+        assertThat(refreshWeekly.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.CHANNEL_LEADER);
     }
 }

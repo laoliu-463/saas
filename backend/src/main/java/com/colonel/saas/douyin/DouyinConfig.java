@@ -19,6 +19,8 @@ public class DouyinConfig {
     private String clientKey;
     private String clientSecret;
     private boolean sandbox;
+    private Duration connectTimeout = Duration.ofSeconds(3);
+    private Duration readTimeout = Duration.ofSeconds(5);
 
     public String getBaseUrl() {
         return baseUrl;
@@ -63,8 +65,8 @@ public class DouyinConfig {
     @Bean
     public RestTemplate douyinRestTemplate(RestTemplateBuilder restTemplateBuilder) {
         return restTemplateBuilder
-                .setConnectTimeout(Duration.ofSeconds(15))
-                .setReadTimeout(Duration.ofSeconds(30))
+                .setConnectTimeout(connectTimeout)
+                .setReadTimeout(readTimeout)
                 .build();
     }
 }

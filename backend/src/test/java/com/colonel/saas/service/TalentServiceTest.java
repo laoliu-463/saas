@@ -229,6 +229,73 @@ class TalentServiceTest {
     }
 
     @Test
+    void release_shouldAllowSelfRelease() {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("dy_release_self");
+        talent.setDeleted(0);
+
+        TalentClaim selfClaim = new TalentClaim();
+        selfClaim.setId(UUID.randomUUID());
+        selfClaim.setTalentId(talentId);
+        selfClaim.setUserId(userId);
+        selfClaim.setDeptId(deptId);
+        selfClaim.setStatus(1);
+        selfClaim.setClaimedAt(LocalDateTime.now().minusDays(2));
+        selfClaim.setProtectedUntil(LocalDateTime.now().plusDays(10));
+
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(selfClaim));
+
+        Talent released = talentService.release(talentId, userId, deptId, List.of("channel_leader"));
+
+        assertThat(released.getId()).isEqualTo(talentId);
+        assertThat(selfClaim.getStatus()).isEqualTo(3);
+        verify(talentClaimMapper).updateById(selfClaim);
+        verify(talentMapper).updateById(talent);
+        assertThat(talent.getOwnerId()).isNull();
+    }
+
+    @Test
+    void release_shouldRejectDeptLeaderReleasingOtherUsersClaim() {
+        UUID talentId = UUID.randomUUID();
+        UUID leaderUserId = UUID.randomUUID();
+        UUID memberUserId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("dy_release_forbidden");
+        talent.setDeleted(0);
+
+        TalentClaim memberClaim = new TalentClaim();
+        memberClaim.setId(UUID.randomUUID());
+        memberClaim.setTalentId(talentId);
+        memberClaim.setUserId(memberUserId);
+        memberClaim.setDeptId(deptId);
+        memberClaim.setStatus(1);
+        memberClaim.setClaimedAt(LocalDateTime.now().minusDays(2));
+        memberClaim.setProtectedUntil(LocalDateTime.now().plusDays(10));
+
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(memberClaim));
+
+        assertThatThrownBy(() -> talentService.release(
+                talentId,
+                leaderUserId,
+                deptId,
+                List.of("channel_leader")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("仅认领人或管理员可以释放达人");
+
+        verify(talentClaimMapper, never()).updateById(memberClaim);
+    }
+
+    @Test
     void create_shouldNotTriggerPublicPageCrawl() {
         Talent talent = new Talent();
         talent.setId(UUID.randomUUID());

@@ -9,23 +9,35 @@
           placeholder="选择日期范围"
           style="width: 250px"
         />
-      <n-select
-        v-model:value="searchParams.status"
-        :options="statusOptions"
-        placeholder="状态筛选"
-        style="width: 150px"
-        clearable
-      />
-      <n-input
-        v-model:value="searchParams.orderId"
-        placeholder="订单号筛选"
-        style="width: 220px"
-        clearable
-      />
-      <n-button type="primary" @click="fetchData">查询</n-button>
+        <n-select
+          v-model:value="searchParams.status"
+          :options="statusOptions"
+          placeholder="状态筛选"
+          style="width: 150px"
+          clearable
+        />
+        <n-input
+          v-model:value="searchParams.orderId"
+          placeholder="订单号筛选"
+          style="width: 220px"
+          clearable
+        />
+        <n-input
+          v-model:value="searchParams.talentId"
+          placeholder="达人ID筛选"
+          style="width: 220px"
+          clearable
+        />
+        <n-input
+          v-model:value="searchParams.merchantId"
+          placeholder="商家ID筛选"
+          style="width: 220px"
+          clearable
+        />
+        <n-button type="primary" @click="fetchData">查询</n-button>
         <n-button ghost type="primary" @click="fetchData">刷新订单</n-button>
-        <n-button type="info" @click="handleExport">导出 CSV</n-button>
-        <n-button type="warning" :loading="decryptLoading" @click="handleDecrypt">
+        <n-button v-if="canExport" type="info" @click="handleExport">导出 CSV</n-button>
+        <n-button v-if="canDecrypt" type="warning" :loading="decryptLoading" @click="handleDecrypt">
           批量解密（{{ checkedRowKeys.length }}）
         </n-button>
       </n-space>
@@ -141,13 +153,17 @@ const dateRange = ref<[number, number] | null>(buildTodayRange())
 
 const searchParams = reactive({
   orderId: '',
-  status: null as string | null
+  status: null as string | null,
+  talentId: '',
+  merchantId: ''
 })
 
 const showDetail = ref(false)
 const currentOrder = ref<any>(null)
 const checkedRowKeys = ref<string[]>([])
 const decryptMap = ref<Record<string, DecryptResultItem>>({})
+const canExport = computed(() => authStore.isAdmin || authStore.isLeader)
+const canDecrypt = computed(() => authStore.isAdmin || authStore.isLeader)
 
 const statusOptions = [
   { label: '已下单', value: 'ORDERED' },
@@ -191,6 +207,10 @@ const handleCheck = (keys: string[]) => {
 }
 
 const handleDecrypt = async () => {
+  if (!canDecrypt.value) {
+    message.warning('当前角色无权解密订单手机号')
+    return
+  }
   if (checkedRowKeys.value.length === 0) {
     message.warning('请先选择订单')
     return
@@ -236,6 +256,8 @@ const fetchData = async () => {
       size: pagination.pageSize,
       orderId: searchParams.orderId || undefined,
       status: searchParams.status,
+      talentId: searchParams.talentId || undefined,
+      merchantId: searchParams.merchantId || undefined,
       startDate,
       endDate
     })
@@ -255,10 +277,6 @@ const fetchData = async () => {
   }
 }
 
-const canExport = computed(
-  () => authStore.isAdmin || authStore.isLeader || authStore.userInfo?.roleCodes?.includes('DATA_VIEWER')
-)
-
 const handleExport = async () => {
   if (!canExport.value) {
     message.warning('当前角色无权导出订单数据')
@@ -275,14 +293,22 @@ const handleExport = async () => {
       startDate = new Date(dateRange.value[0]).toISOString().split('T')[0]
       endDate = new Date(dateRange.value[1]).toISOString().split('T')[0]
     }
-    const res: any = await exportOrders({ status: searchParams.status, startDate, endDate })
+    const res: any = await exportOrders({
+      status: searchParams.status,
+      talentId: searchParams.talentId || undefined,
+      merchantId: searchParams.merchantId || undefined,
+      startDate,
+      endDate
+    })
+    const filename = `orders-${new Date().toISOString().slice(0, 10)}.csv`
     const url = window.URL.createObjectURL(new Blob([res]))
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', 'orders.csv')
+    link.setAttribute('download', filename)
     document.body.appendChild(link)
     link.click()
     link.parentNode?.removeChild(link)
+    window.URL.revokeObjectURL(url)
     message.success('导出成功')
   } catch {
     message.error('导出失败')
@@ -300,8 +326,8 @@ const handlePageSizeChange = (pageSize: number) => {
   fetchData()
 }
 
-const columns = [
-  { type: 'selection' },
+const columns = computed(() => [
+  ...(canDecrypt.value ? [{ type: 'selection' as const }] : []),
   { title: '订单号', key: 'id' },
   { title: '商品名称', key: 'productName' },
   { title: '达人名称', key: 'talentName' },
@@ -347,7 +373,7 @@ const columns = [
       return h(NButton, { size: 'small', onClick: () => openDetail(row) }, { default: () => '详情' })
     }
   }
-]
+])
 
 onMounted(() => {
   fetchData()

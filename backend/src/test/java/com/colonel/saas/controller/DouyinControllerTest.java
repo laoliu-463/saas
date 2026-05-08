@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.douyin.DoudianTokenGateway;
+import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.douyin.DouyinTokenService;
 import com.colonel.saas.douyin.api.ActivityApi;
@@ -53,6 +54,8 @@ class DouyinControllerTest {
     private InstitutionApi institutionApi;
     @Mock
     private DoudianTokenGateway doudianTokenGateway;
+    @Mock
+    private DouyinApiClient douyinApiClient;
 
     private DouyinController controller;
     private MockMvc mockMvc;
@@ -62,7 +65,7 @@ class DouyinControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new DouyinController(activityApi, productApi, orderApi, institutionApi, douyinTokenService, doudianTokenGateway);
+        controller = new DouyinController(activityApi, productApi, orderApi, institutionApi, douyinTokenService, doudianTokenGateway, douyinApiClient);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -258,7 +261,34 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.data.status").value("success"))
                 .andExpect(jsonPath("$.data.endpoint").value("buyin.colonelMultiSettlementOrders"))
                 .andExpect(jsonPath("$.data.query.size").value(20))
-                .andExpect(jsonPath("$.data.query.timeType").value("update"));
+                .andExpect(jsonPath("$.data.query.timeType").value("update"))
+                .andExpect(jsonPath("$.data.query.startTime").value("2026-04-01 00:00:00"))
+                .andExpect(jsonPath("$.data.query.endTime").value("2026-04-02 00:00:00"));
+    }
+
+    @Test
+    void dingdanTongbuYuanshi_standardRestPath_callsInstituteOrderColonel() throws Exception {
+        when(douyinApiClient.post(eq("buyin.instituteOrderColonel"), any()))
+                .thenReturn(Map.of("data", Map.of("order_list", List.of())));
+
+        mockMvc.perform(post("/douyin/order-sync-probes/raw")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "appId", "test_app",
+                                "start_time", 1711900800,
+                                "end_time", 1711987200,
+                                "page", 1,
+                                "count", 20
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("success"))
+                .andExpect(jsonPath("$.data.endpoint").value("buyin.instituteOrderColonel"))
+                .andExpect(jsonPath("$.data.appId").value("test_app"))
+                .andExpect(jsonPath("$.data.payload.start_time").value(1711900800))
+                .andExpect(jsonPath("$.data.payload.count").value(20));
+
+        verify(douyinApiClient).post(eq("buyin.instituteOrderColonel"), any());
     }
 
     @Test
@@ -405,32 +435,33 @@ class DouyinControllerTest {
     }
 
     @Test
-    void tokenChuangjian_authorizationSelf_allowsSnakeCasePayloadWithoutCode() throws Exception {
+    void tokenChuangjian_authorizationCode_allowsSnakeCasePayload() throws Exception {
         DouyinTokenService.TokenStatus tokenStatus =
                 new DouyinTokenService.TokenStatus("test_app", true, "tok***", true, "ref***", 0, false, false);
         doNothing().when(douyinTokenService).exchangeCodeAndBootstrap(
-                eq("test_app"), eq(null), eq("authorization_self"), eq(null), eq(null), eq(null), eq(null));
+                eq("test_app"), eq("auth-code"), eq("authorization_code"), eq(null), eq(null), eq(null), eq(null));
         when(douyinTokenService.getTokenStatus("test_app")).thenReturn(tokenStatus);
 
         mockMvc.perform(post("/douyin/tokens")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "app_id", "test_app",
-                                "grant_type", "authorization_self"
+                                "authorization_code", "auth-code",
+                                "grant_type", "authorization_code"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.appId").value("test_app"));
 
         verify(douyinTokenService).exchangeCodeAndBootstrap(
-                "test_app", null, "authorization_self", null, null, null, null);
+                "test_app", "auth-code", "authorization_code", null, null, null, null);
     }
 
     @Test
     void tokenCreateProbe_returnsSanitizedRawSdkResponse() throws Exception {
         DoudianTokenGateway.TokenCreateProbeResult probeResult = new DoudianTokenGateway.TokenCreateProbeResult(
-                "authorization_self",
-                "absent",
+                "authorization_code",
+                "present",
                 null,
                 null,
                 true,
@@ -440,7 +471,7 @@ class DouyinControllerTest {
                         "50002",
                         "业务处理失败",
                         "isv.business-failed:4",
-                        "非自用型应用code不能为空",
+                        "authorization code required",
                         null,
                         null,
                         null,
@@ -455,7 +486,8 @@ class DouyinControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "appId", "test_app",
-                                "grantType", "authorization_self",
+                                "grantType", "authorization_code",
+                                "code", "auth-code",
                                 "authId", "7351155267604218149",
                                 "authSubjectType", "Colonel"
                         ))))
@@ -463,11 +495,51 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.module").value("M1.3 Real SDK Probe"))
                 .andExpect(jsonPath("$.data.endpoint").value("token.create"))
-                .andExpect(jsonPath("$.data.requestSnapshot.grantType").value("authorization_self"))
+                .andExpect(jsonPath("$.data.requestSnapshot.grantType").value("authorization_code"))
                 .andExpect(jsonPath("$.data.requestSnapshot.authIdPresent").value(true))
                 .andExpect(jsonPath("$.data.response.code").value("50002"))
-                .andExpect(jsonPath("$.data.response.subMsg").value("非自用型应用code不能为空"));
+                .andExpect(jsonPath("$.data.response.subMsg").value("authorization code required"));
 
         verify(doudianTokenGateway).probeCreateToken(any());
+    }
+
+    @Test
+    void promotionLinkRawProbe_returnsRemoteResponse() throws Exception {
+        when(douyinApiClient.post(eq("buyin.instPickSourceConvert"), any()))
+                .thenReturn(Map.of("data", Map.of("pick_source", "ABC12345")));
+
+        mockMvc.perform(post("/douyin/promotion-link-probes/raw")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "appId", "test_app",
+                                "method", "buyin.instPickSourceConvert",
+                                "product_url", "https://haohuo.jinritemai.com/ecommerce/trade/detail/index.html?id=1",
+                                "pick_extra", "channel_demo"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.module").value("M1.3 Promotion Raw Probe"))
+                .andExpect(jsonPath("$.data.endpoint").value("buyin.instPickSourceConvert"))
+                .andExpect(jsonPath("$.data.appId").value("test_app"))
+                .andExpect(jsonPath("$.data.status").value("success"))
+                .andExpect(jsonPath("$.data.remoteResponse.data.pick_source").value("ABC12345"));
+
+        verify(douyinApiClient).post(eq("buyin.instPickSourceConvert"), any());
+    }
+
+    @Test
+    void promotionLinkRawProbe_missingMethod_returnsFailedStatus() throws Exception {
+        mockMvc.perform(post("/douyin/promotion-link-probes/raw")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "appId", "test_app",
+                                "product_url", "https://haohuo.jinritemai.com/ecommerce/trade/detail/index.html?id=1"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.module").value("M1.3 Promotion Raw Probe"))
+                .andExpect(jsonPath("$.data.status").value("failed"))
+                .andExpect(jsonPath("$.data.message").value("method is required"))
+                .andExpect(jsonPath("$.data.errorType").value("IllegalArgumentException"));
     }
 }

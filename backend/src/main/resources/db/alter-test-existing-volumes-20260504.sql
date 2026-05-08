@@ -21,3 +21,6 @@ ALTER TABLE product_operation_state
 
 CREATE INDEX IF NOT EXISTS idx_product_operation_state_selected_to_library
     ON product_operation_state(selected_to_library);
+
+ALTER TABLE pick_source_mapping
+    ALTER COLUMN pick_extra TYPE VARCHAR(128);

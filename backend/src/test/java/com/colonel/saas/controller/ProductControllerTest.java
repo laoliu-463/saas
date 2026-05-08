@@ -1,6 +1,9 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.common.result.PageResult;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ProductService;
@@ -40,12 +43,26 @@ class ProductControllerTest {
         Page<Product> page = new Page<>(1, 10);
         page.setRecords(List.of(new Product()));
         page.setTotal(1);
-        when(productService.getPage(1, 10, 1)).thenReturn(page);
+        when(productService.getPage(1, 10, 1, null)).thenReturn(page);
 
-        var response = productController.pickPage(1, 10, 1);
+        var response = productController.pickPage(1, 10, 1, null, List.of(RoleCodes.BIZ_LEADER));
 
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData().getTotal()).isEqualTo(1);
+    }
+
+    @Test
+    void pickPage_shouldLimitBizStaffToOwnAssignedProducts() {
+        UUID userId = UUID.randomUUID();
+        Page<Product> page = new Page<>(1, 10);
+        page.setRecords(List.of(new Product()));
+        page.setTotal(1);
+        when(productService.getPage(1, 10, null, userId)).thenReturn(page);
+
+        var response = productController.pickPage(1, 10, null, userId, List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getCode()).isEqualTo(200);
+        verify(productService).getPage(1, 10, null, userId);
     }
 
     @Test
@@ -130,6 +147,22 @@ class ProductControllerTest {
     }
 
     @Test
+    void promotionLinkHistory_shouldCallService() {
+        PageResult<Map<String, Object>> pageResult = new PageResult<>();
+        pageResult.setPage(1);
+        pageResult.setSize(20);
+        pageResult.setTotal(1);
+        pageResult.setRecords(List.of(Map.of("productId", "3810562766247428542")));
+        when(productService.getPromotionLinkHistory("3810562766247428542", 1, 20)).thenReturn(pageResult);
+
+        var response = productController.promotionLinkHistory("3810562766247428542", 1, 20);
+
+        assertThat(response.getCode()).isEqualTo(200);
+        assertThat(response.getData().getTotal()).isEqualTo(1);
+        verify(productService).getPromotionLinkHistory("3810562766247428542", 1, 20);
+    }
+
+    @Test
     void follow_shouldCallService() {
         UUID id = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -162,5 +195,19 @@ class ProductControllerTest {
         assertThat(response.getData().getTotal()).isEqualTo(1);
         assertThat(response.getData().getRecords().get(0).getName()).isEqualTo("共享商品");
         verify(productService).getSelectedLibraryPage(1, 10, "共享", null);
+    }
+
+    @Test
+    void controllerRoleAnnotations_shouldMatchBizStaffProductScope() throws NoSuchMethodException {
+        RequireRoles pageRoles = ProductController.class.getMethod("page", long.class, long.class, Integer.class, String.class)
+                .getAnnotation(RequireRoles.class);
+        RequireRoles detailRoles = ProductController.class.getMethod("detail", UUID.class)
+                .getAnnotation(RequireRoles.class);
+        RequireRoles bindRoles = ProductController.class.getMethod("bindActivity", UUID.class, ProductController.BindActivityRequest.class)
+                .getAnnotation(RequireRoles.class);
+
+        assertThat(pageRoles.value()).containsExactly(RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF);
+        assertThat(detailRoles.value()).containsExactly(RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF);
+        assertThat(bindRoles.value()).containsExactly(RoleCodes.BIZ_LEADER);
     }
 }

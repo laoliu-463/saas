@@ -11,12 +11,14 @@ import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SampleStatusLogMapper;
 import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.CrawlerTalentInfoService;
@@ -63,6 +65,8 @@ class SampleControllerTest {
     @Mock
     private TalentMapper talentMapper;
     @Mock
+    private TalentClaimMapper talentClaimMapper;
+    @Mock
     private SampleStatusLogService sampleStatusLogService;
     @Mock
     private SampleStatusLogMapper sampleStatusLogMapper;
@@ -84,6 +88,7 @@ class SampleControllerTest {
                 productSnapshotMapper,
                 sysUserMapper,
                 talentMapper,
+                talentClaimMapper,
                 sampleStatusLogService,
                 sampleStatusLogMapper,
                 crawlerTalentInfoService,
@@ -99,6 +104,8 @@ class SampleControllerTest {
                         new SampleEligibilityService.SampleDefaultStandard(30000L, "LV1", java.util.Map.of()),
                         new SampleEligibilityService.TalentSnapshot(50000L, "LV2")
                 ));
+        lenient().when(talentClaimMapper.findActiveByTalentAndUser(any(), any()))
+                .thenReturn(mock(TalentClaim.class));
     }
 
     @Test
@@ -169,6 +176,7 @@ class SampleControllerTest {
         when(productMapper.selectById(productId)).thenReturn(product);
         when(crawlerTalentInfoService.findByTalentId("talent_002")).thenReturn(crawlerTalentInfo);
         when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(mock(com.colonel.saas.entity.TalentClaim.class));
         when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
 
         sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
@@ -183,6 +191,9 @@ class SampleControllerTest {
         assertThat(saved.getTalentCreditScore()).isEqualTo(new BigDecimal("4.80"));
         assertThat(saved.getTalentMainCategory()).isEqualTo("food");
         assertThat(saved.getStatus()).isEqualTo(1);
+        assertThat(saved.getExtraData()).isNotNull();
+        assertThat(((java.util.Map<?, ?>) saved.getExtraData().get("eligibilityCheck")).get("passed")).isEqualTo(true);
+        assertThat(((java.util.Map<?, ?>) saved.getExtraData().get("requirementSnapshot")).get("minLevel")).isEqualTo("LV1");
     }
 
     @Test
@@ -219,6 +230,7 @@ class SampleControllerTest {
         when(productMapper.selectOne(any())).thenReturn(product);
         when(crawlerTalentInfoService.findByTalentId("talent_snapshot_001")).thenReturn(crawlerTalentInfo);
         when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(mock(com.colonel.saas.entity.TalentClaim.class));
         when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
 
         sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
@@ -229,7 +241,7 @@ class SampleControllerTest {
     }
 
     @Test
-    void createSample_shouldAllowLeaderBypassSevenDaysLimit() {
+    void createSample_shouldAllowChannelLeaderBypassSevenDaysLimit() {
         UUID productId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID talentUuid = UUID.randomUUID();
@@ -254,11 +266,59 @@ class SampleControllerTest {
         when(productMapper.selectById(productId)).thenReturn(product);
         when(crawlerTalentInfoService.findByTalentId("talent_leader_001")).thenReturn(crawlerTalentInfo);
         when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(mock(com.colonel.saas.entity.TalentClaim.class));
 
-        sampleController.createSample(request, userId, List.of(RoleCodes.BIZ_LEADER));
+        sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_LEADER));
 
         verify(sampleRequestMapper).insert(any(SampleRequest.class));
         verify(sampleRequestMapper, never()).selectCount(any());
+    }
+
+    @Test
+    void createSample_shouldRejectChannelStaffWhenTalentNotClaimed() {
+        UUID productId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID talentUuid = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("test product");
+
+        CrawlerTalentInfo crawlerTalentInfo = new CrawlerTalentInfo();
+        crawlerTalentInfo.setTalentId("talent_unclaimed_001");
+        crawlerTalentInfo.setNickname("unclaimed talent");
+
+        Talent talent = new Talent();
+        talent.setId(talentUuid);
+        talent.setDouyinUid("talent_unclaimed_001");
+
+        SampleApplyRequest request = new SampleApplyRequest();
+        request.setTalentId("talent_unclaimed_001");
+        request.setProductId(productId);
+        request.setQuantity(1);
+
+        when(productMapper.selectById(productId)).thenReturn(product);
+        when(crawlerTalentInfoService.findByTalentId("talent_unclaimed_001")).thenReturn(crawlerTalentInfo);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(null);
+
+        assertThatThrownBy(() -> sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("请先认领");
+
+        verify(sampleRequestMapper, never()).insert(any(SampleRequest.class));
+    }
+
+    @Test
+    void createSample_shouldRejectOpsStaff() {
+        SampleApplyRequest request = new SampleApplyRequest();
+        request.setTalentId("talent_ops_001");
+        request.setProductId(UUID.randomUUID());
+        request.setQuantity(1);
+
+        assertThatThrownBy(() -> sampleController.createSample(request, UUID.randomUUID(), List.of(RoleCodes.OPS_STAFF)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("仅渠道角色可以发起寄样申请");
     }
 
     @Test
@@ -303,6 +363,35 @@ class SampleControllerTest {
         var response = sampleController.getSampleById(sampleId, viewerId, storedDeptId, DataScope.DEPT);
 
         assertThat(response.getData().getId()).isEqualTo(sampleId);
+    }
+
+    @Test
+    void getSampleById_shouldExposeEligibilitySnapshotFields() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setChannelUserId(ownerId);
+        sample.setDeptId(deptId);
+        sample.setStatus(1);
+        sample.setRemark("原始备注");
+        sample.setExtraData(java.util.Map.of(
+                "applyReason", "潜力达人，申请破格寄样",
+                "eligibilityCheck", java.util.Map.of("passed", false, "failedRules", java.util.List.of("minLevel")),
+                "requirementSnapshot", java.util.Map.of("minLevel", "LV1", "actualLevel", "LV0")
+        ));
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productMapper.selectById(null)).thenReturn(null);
+        when(sysUserMapper.selectById(ownerId)).thenReturn(new SysUser());
+
+        var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL);
+
+        assertThat(response.getData().getApplyReason()).isEqualTo("潜力达人，申请破格寄样");
+        assertThat(response.getData().getEligibilityCheck()).containsEntry("passed", false);
+        assertThat(response.getData().getRequirementSnapshot()).containsEntry("actualLevel", "LV0");
     }
 
     @Test
@@ -372,6 +461,66 @@ class SampleControllerTest {
                 List.of(RoleCodes.CHANNEL_STAFF)))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("招商角色");
+    }
+
+    @Test
+    void actionSample_shouldRejectBizLeaderAuditAction() {
+        UUID sampleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setChannelUserId(userId);
+        sample.setStatus(1);
+
+        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        request.setAction("PENDING_SHIP");
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        assertThatThrownBy(() -> sampleController.actionSample(
+                sampleId,
+                request,
+                userId,
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.BIZ_LEADER)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("招商角色");
+    }
+
+    @Test
+    void getSamplePage_shouldRejectOpsStaffPendingAuditStatus() {
+        assertThatThrownBy(() -> sampleController.getSamplePage(
+                1,
+                10,
+                null,
+                "PENDING_AUDIT",
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("待发货及后续物流");
+    }
+
+    @Test
+    void getSampleById_shouldRejectOpsStaffWhenStatusBeforePendingShip() {
+        UUID sampleId = UUID.randomUUID();
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setStatus(1);
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        assertThatThrownBy(() -> sampleController.getSampleById(
+                sampleId,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("待发货及后续物流");
     }
 
     @Test
@@ -449,6 +598,56 @@ class SampleControllerTest {
     }
 
     @Test
+    void createSample_shouldPersistEligibilitySnapshotWhenReasonProvided() {
+        UUID productId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID talentUuid = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("test product");
+
+        CrawlerTalentInfo crawlerTalentInfo = new CrawlerTalentInfo();
+        crawlerTalentInfo.setTalentId("talent_reason_ok");
+        crawlerTalentInfo.setNickname("talent reason ok");
+
+        Talent talent = new Talent();
+        talent.setId(talentUuid);
+        talent.setDouyinUid("talent_reason_ok");
+
+        SampleApplyRequest request = new SampleApplyRequest();
+        request.setTalentId("talent_reason_ok");
+        request.setProductId(productId);
+        request.setQuantity(1);
+        request.setRemark("潜力达人，申请破格寄样");
+
+        when(productMapper.selectById(productId)).thenReturn(product);
+        when(crawlerTalentInfoService.findByTalentId("talent_reason_ok")).thenReturn(crawlerTalentInfo);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
+        when(sampleEligibilityService.evaluate(any(), any()))
+                .thenReturn(new SampleEligibilityService.EligibilityResult(
+                        false,
+                        java.util.List.of("近30天销售额未达到 30000", "达人等级未达到 LV1"),
+                        new SampleEligibilityService.SampleDefaultStandard(30000L, "LV1", java.util.Map.of("other_conditions", "粉丝>=10000")),
+                        new SampleEligibilityService.TalentSnapshot(1000L, "LV0")
+                ));
+
+        sampleController.createSample(request, userId, java.util.List.of(RoleCodes.CHANNEL_STAFF));
+
+        ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
+        verify(sampleRequestMapper).insert(captor.capture());
+        SampleRequest saved = captor.getValue();
+        assertThat(saved.getExtraData()).isNotNull();
+        assertThat(saved.getExtraData()).containsEntry("applyReason", "潜力达人，申请破格寄样");
+        assertThat(((java.util.Map<?, ?>) saved.getExtraData().get("eligibilityCheck")).get("passed")).isEqualTo(false);
+        @SuppressWarnings("unchecked")
+        List<String> failedRules = (List<String>) ((java.util.Map<?, ?>) saved.getExtraData().get("eligibilityCheck")).get("failedRules");
+        assertThat(failedRules).containsExactly("min30DaySales", "minLevel");
+        assertThat(((java.util.Map<?, ?>) saved.getExtraData().get("requirementSnapshot")).get("actualLevel")).isEqualTo("LV0");
+    }
+
+    @Test
     void searchTalents_shouldReturnPagedResults() {
         SampleTalentVO vo = new SampleTalentVO();
         vo.setTalentId("talent_001");
@@ -499,7 +698,7 @@ class SampleControllerTest {
 
         when(productMapper.selectPage(any(Page.class), any(QueryWrapper.class))).thenReturn(productPage);
 
-        var response = sampleController.searchProducts(1, 20, "主演示");
+        var response = sampleController.searchProducts(1, 20, "主演示", List.of(RoleCodes.CHANNEL_STAFF));
 
         assertThat(response.getData().getTotal()).isEqualTo(1L);
         assertThat(response.getData().getRecords()).hasSize(1);
@@ -540,7 +739,8 @@ class SampleControllerTest {
                 "PENDING_HOMEWORK",
                 UUID.randomUUID(),
                 null,
-                mock(DataScope.class)
+                DataScope.ALL,
+                null
         );
 
         assertThat(response.getData().getTotal()).isEqualTo(1L);
@@ -667,6 +867,63 @@ class SampleControllerTest {
     }
 
     @Test
+    void actionSample_shouldAllowOpsSignDirectlyToPendingHomework() {
+        UUID sampleId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setStatus(3);
+        sample.setProductId(productId);
+        sample.setRequestNo("SM20260506000001");
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("test product");
+
+        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        request.setAction("SIGNED");
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productMapper.selectById(productId)).thenReturn(product);
+
+        var response = sampleController.actionSample(
+                sampleId,
+                request,
+                userId,
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF));
+
+        assertThat(response.getData().getStatus()).isEqualTo("PENDING_TASK");
+        verify(sampleStatusLogService).log(sampleId, 3, 5, userId, null);
+    }
+
+    @Test
+    void actionSample_shouldRejectOpsCompleteAction() {
+        UUID sampleId = UUID.randomUUID();
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setStatus(5);
+
+        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        request.setAction("COMPLETED");
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        assertThatThrownBy(() -> sampleController.actionSample(
+                sampleId,
+                request,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("仅允许系统自动推进");
+    }
+
+    @Test
     void actionSample_shouldAllowRejectFromPendingAudit() {
         UUID sampleId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
@@ -722,7 +979,7 @@ class SampleControllerTest {
                 DataScope.ALL,
                 List.of(RoleCodes.OPS_STAFF)))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Current status does not allow this action");
+                .hasMessageContaining("仅允许系统自动推进");
 
         verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
     }

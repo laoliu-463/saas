@@ -11,8 +11,14 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.ExclusiveMerchant;
+import com.colonel.saas.entity.ExclusiveTalent;
+import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.ExclusiveMerchantMapper;
+import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderDecryptService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -59,14 +65,23 @@ public class DataController extends BaseController {
     private final ColonelsettlementOrderMapper orderMapper;
     private final OrderDecryptService orderDecryptService;
     private final CommissionService commissionService;
+    private final ExclusiveTalentMapper exclusiveTalentMapper;
+    private final ExclusiveMerchantMapper exclusiveMerchantMapper;
+    private final ColonelsettlementActivityMapper activityMapper;
 
     public DataController(
             ColonelsettlementOrderMapper orderMapper,
             OrderDecryptService orderDecryptService,
-            CommissionService commissionService) {
+            CommissionService commissionService,
+            ExclusiveTalentMapper exclusiveTalentMapper,
+            ExclusiveMerchantMapper exclusiveMerchantMapper,
+            ColonelsettlementActivityMapper activityMapper) {
         this.orderMapper = orderMapper;
         this.orderDecryptService = orderDecryptService;
         this.commissionService = commissionService;
+        this.exclusiveTalentMapper = exclusiveTalentMapper;
+        this.exclusiveMerchantMapper = exclusiveMerchantMapper;
+        this.activityMapper = activityMapper;
     }
 
     @Operation(summary = "订单分页", description = "分页查询数据页订单列表。该接口服务于数据分析页面，不等同于订单主链路接口。")
@@ -76,6 +91,8 @@ public class DataController extends BaseController {
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,
             @Parameter(description = "订单号，支持模糊匹配。") @RequestParam(required = false) String orderId,
             @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
+            @Parameter(description = "达人 ID（UUID），精确匹配。") @RequestParam(required = false) UUID talentId,
+            @Parameter(description = "商家 merchant_id（字符串），精确匹配。") @RequestParam(required = false) String merchantId,
             @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestAttribute("userId") UUID userId,
@@ -98,6 +115,19 @@ public class DataController extends BaseController {
         if (StringUtils.hasText(status)) {
             wrapper.eq("co.order_status", toOrderStatusCode(status));
         }
+        if (talentId != null) {
+            wrapper.eq("co.talent_id", talentId);
+        }
+        if (StringUtils.hasText(merchantId)) {
+            String normalized = merchantId.trim();
+            String digits = normalized.replaceAll("\\D", "");
+            String shopIdText = StringUtils.hasText(digits) ? digits : normalized;
+            wrapper.apply(
+                    "(co.extra_data->>'merchant_id' = {0} OR CAST(co.shop_id AS TEXT) = {1})",
+                    normalized,
+                    shopIdText
+            );
+        }
 
         IPage<ColonelsettlementOrder> orderPage = orderMapper.findPageWithScope(new Page<>(page, size), wrapper);
         Page<OrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
@@ -108,6 +138,7 @@ public class DataController extends BaseController {
     @Operation(summary = "核心指标", description = "查询数据页首页核心指标与近 7 天趋势。该接口面向数据看板展示，不承担订单归因主逻辑。")
     @GetMapping("/dashboard/metrics")
     public ApiResult<MetricsVO> getMetrics(
+            @Parameter(description = "时间字段：settleTime（默认）或 createTime。") @RequestParam(required = false) String timeField,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
@@ -115,23 +146,25 @@ public class DataController extends BaseController {
         LocalDateTime todayStart = today.atStartOfDay();
         LocalDateTime tomorrowStart = today.plusDays(1).atStartOfDay();
         LocalDateTime rollingStart = today.minusDays(29).atStartOfDay();
+        String timeColumn = resolveTimeColumn(timeField);
 
         QueryWrapper<ColonelsettlementOrder> todayAggregateWrapper = buildScopedQuery(userId, deptId, dataScope)
                 .select(
                         "COUNT(*) AS order_count",
                         "COALESCE(SUM(order_amount), 0) AS order_amount_cent"
                 )
-                .ge("settle_time", todayStart)
-                .lt("settle_time", tomorrowStart);
+                .ge(timeColumn, todayStart)
+                .lt(timeColumn, tomorrowStart);
         Map<String, Object> todayAggregate = getSingleAggregate(todayAggregateWrapper);
         Long todayOrders = asLong(todayAggregate, "order_count");
         Long todayGmvCent = asLong(todayAggregate, "order_amount_cent");
 
-        LambdaQueryWrapper<ColonelsettlementOrder> pendingWrapper = new LambdaQueryWrapper<ColonelsettlementOrder>()
-                .eq(ColonelsettlementOrder::getOrderStatus, toOrderStatusCode("ORDERED"))
-                .between(ColonelsettlementOrder::getSettleTime, rollingStart, tomorrowStart);
-        applyDataScope(pendingWrapper, userId, deptId, dataScope);
-        Long pendingShipCount = safeCount(pendingWrapper);
+        QueryWrapper<ColonelsettlementOrder> pendingWrapper = buildScopedQuery(userId, deptId, dataScope)
+                .select("COUNT(1) AS order_count")
+                .eq("order_status", toOrderStatusCode("ORDERED"))
+                .ge(timeColumn, rollingStart)
+                .lt(timeColumn, tomorrowStart);
+        Long pendingShipCount = asLong(getSingleAggregate(pendingWrapper), "order_count");
         QueryWrapper<ColonelsettlementOrder> commissionWrapper = buildScopedQuery(userId, deptId, dataScope)
                 .select(
                         "COALESCE(colonel_activity_id, '') AS activity_id",
@@ -139,8 +172,8 @@ public class DataController extends BaseController {
                         "COALESCE(SUM(settle_colonel_tech_service_fee), 0) AS tech_service_fee",
                         "COALESCE(SUM(settle_second_colonel_commission), 0) AS talent_commission"
                 )
-                .ge("settle_time", todayStart)
-                .lt("settle_time", tomorrowStart)
+                .ge(timeColumn, todayStart)
+                .lt(timeColumn, tomorrowStart)
                 .groupBy("colonel_activity_id");
         CommissionService.CommissionSummary commissionSummary = commissionService.calculateByActivityBuckets(
                 orderMapper.selectMaps(commissionWrapper).stream()
@@ -156,13 +189,13 @@ public class DataController extends BaseController {
         LocalDateTime weekStart = today.minusDays(6).atStartOfDay();
         QueryWrapper<ColonelsettlementOrder> trendWrapper = buildScopedQuery(userId, deptId, dataScope)
                 .select(
-                        "DATE(settle_time) AS settle_date",
+                        String.format("DATE(%s) AS settle_date", timeColumn),
                         "COUNT(*) AS order_count",
                         "COALESCE(SUM(order_amount), 0) AS order_amount_cent"
                 )
-                .ge("settle_time", weekStart)
-                .lt("settle_time", tomorrowStart)
-                .groupBy("DATE(settle_time)");
+                .ge(timeColumn, weekStart)
+                .lt(timeColumn, tomorrowStart)
+                .groupBy(String.format("DATE(%s)", timeColumn));
         Map<LocalDate, Map<String, Object>> trendMap = orderMapper.selectMaps(trendWrapper).stream()
                 .collect(java.util.stream.Collectors.toMap(
                         row -> LocalDate.parse(asString(row, "settle_date")),
@@ -199,6 +232,7 @@ public class DataController extends BaseController {
 
     @Operation(summary = "订单手机号解密（仅展示，不落库）", description = "按订单 ID 列表解密手机号，仅返回展示结果，不写回数据库。")
     @PostMapping("/orders/phone-decryptions")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public ApiResult<List<OrderDecryptService.DecryptPhoneVO>> decryptOrderPhones(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "手机号解密请求体。",
@@ -219,6 +253,8 @@ public class DataController extends BaseController {
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public void exportOrders(
             @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
+            @Parameter(description = "达人 ID（UUID），精确匹配。") @RequestParam(required = false) UUID talentId,
+            @Parameter(description = "商家 merchant_id（字符串），精确匹配。") @RequestParam(required = false) String merchantId,
             @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestAttribute("userId") UUID userId,
@@ -240,6 +276,19 @@ public class DataController extends BaseController {
         if (StringUtils.hasText(status)) {
             wrapper.eq("co.order_status", toOrderStatusCode(status));
         }
+        if (talentId != null) {
+            wrapper.eq("co.talent_id", talentId);
+        }
+        if (StringUtils.hasText(merchantId)) {
+            String normalized = merchantId.trim();
+            String digits = normalized.replaceAll("\\D", "");
+            String shopIdText = StringUtils.hasText(digits) ? digits : normalized;
+            wrapper.apply(
+                    "(co.extra_data->>'merchant_id' = {0} OR CAST(co.shop_id AS TEXT) = {1})",
+                    normalized,
+                    shopIdText
+            );
+        }
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"orders.csv\"");
@@ -257,13 +306,13 @@ public class DataController extends BaseController {
             for (ColonelsettlementOrder order : orders) {
                 OrderVO vo = toOrderVO(order);
                 writer.printf("%s,%s,%s,%s,%s,%s,%s%n",
-                        vo.getId(),
-                        vo.getProductName(),
-                        vo.getTalentName(),
-                        vo.getAmount(),
-                        vo.getAttributionSource() == null ? "默认归属" : vo.getAttributionSource(),
-                        vo.getStatus(),
-                        vo.getCreateTime());
+                        csvEscape(vo.getId()),
+                        csvEscape(vo.getProductName()),
+                        csvEscape(vo.getTalentName()),
+                        csvEscape(vo.getAmount()),
+                        csvEscape(vo.getAttributionSource() == null ? "默认归属" : vo.getAttributionSource()),
+                        csvEscape(vo.getStatus()),
+                        csvEscape(vo.getCreateTime()));
             }
             if (current >= pageResult.getPages()) {
                 break;
@@ -273,21 +322,65 @@ public class DataController extends BaseController {
         writer.flush();
     }
 
-    @Operation(summary = "独家状态监控 - 达人", description = "查询达人独家状态监控数据。当前本地 Mock 阶段未接入真实独家计算，默认返回空列表。")
+    @Operation(summary = "独家状态监控 - 达人", description = "分页查询达人独家状态监控数据。支持按月份、关键字、状态筛选。")
     @GetMapping("/operations/exclusive-talents")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
-    public ApiResult<List<Map<String, Object>>> getExclusiveTalentStatus() {
-        return ok(List.of());
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    public ApiResult<PageResult<ExclusiveTalent>> getExclusiveTalentStatus(
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,
+            @Parameter(description = "生效月份，格式 yyyy-MM。") @RequestParam(required = false) String effectiveMonth,
+            @Parameter(description = "达人 UID 关键字，模糊匹配。") @RequestParam(required = false) String keyword,
+            @Parameter(description = "状态：1=活跃，0=已过期。") @RequestParam(required = false) Integer status,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        LambdaQueryWrapper<ExclusiveTalent> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ExclusiveTalent::getDeleted, 0);
+        if (StringUtils.hasText(effectiveMonth)) {
+            wrapper.eq(ExclusiveTalent::getEffectiveMonth, effectiveMonth.trim());
+        }
+        if (StringUtils.hasText(keyword)) {
+            wrapper.like(ExclusiveTalent::getTalentUid, keyword.trim());
+        }
+        if (status != null) {
+            wrapper.eq(ExclusiveTalent::getStatus, status);
+        }
+        applyTalentDataScope(wrapper, userId, deptId, dataScope);
+        wrapper.orderByDesc(ExclusiveTalent::getCreateTime);
+        IPage<ExclusiveTalent> result = exclusiveTalentMapper.selectPage(new Page<>(page, size), wrapper);
+        return okPage(result);
     }
 
-    @Operation(summary = "独家状态监控 - 商家", description = "查询商家独家状态监控数据。当前本地 Mock 阶段未接入真实独家计算，默认返回空列表。")
+    @Operation(summary = "独家状态监控 - 商家", description = "分页查询商家独家状态监控数据。支持按月份、关键字、状态筛选。")
     @GetMapping("/operations/exclusive-merchants")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
-    public ApiResult<List<Map<String, Object>>> getExclusiveMerchantStatus() {
-        return ok(List.of());
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    public ApiResult<PageResult<ExclusiveMerchant>> getExclusiveMerchantStatus(
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,
+            @Parameter(description = "生效月份，格式 yyyy-MM。") @RequestParam(required = false) String effectiveMonth,
+            @Parameter(description = "商家名称关键字，模糊匹配。") @RequestParam(required = false) String keyword,
+            @Parameter(description = "状态：1=活跃，0=已过期。") @RequestParam(required = false) Integer status,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        LambdaQueryWrapper<ExclusiveMerchant> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ExclusiveMerchant::getDeleted, 0);
+        if (StringUtils.hasText(effectiveMonth)) {
+            wrapper.eq(ExclusiveMerchant::getEffectiveMonth, effectiveMonth.trim());
+        }
+        if (StringUtils.hasText(keyword)) {
+            wrapper.like(ExclusiveMerchant::getMerchantName, keyword.trim());
+        }
+        if (status != null) {
+            wrapper.eq(ExclusiveMerchant::getStatus, status);
+        }
+        applyMerchantDataScope(wrapper, userId, deptId, dataScope);
+        wrapper.orderByDesc(ExclusiveMerchant::getCreateTime);
+        IPage<ExclusiveMerchant> result = exclusiveMerchantMapper.selectPage(new Page<>(page, size), wrapper);
+        return okPage(result);
     }
 
-    @Operation(summary = "导出活动列表CSV", description = "导出活动列表 CSV。当前阶段未开放活动导出。")
+    @Operation(summary = "导出活动列表CSV", description = "按活动名称筛选导出活动列表 CSV。")
     @GetMapping("/activities/exports")
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public void exportActivities(
@@ -296,7 +389,63 @@ public class DataController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             HttpServletResponse response) throws IOException {
-        throw new BusinessException("活动导出暂未开放");
+        response.setContentType("text/csv; charset=UTF-8");
+        response.setHeader("Content-Disposition", "attachment; filename=\"activities.csv\"");
+        PrintWriter writer = response.getWriter();
+        writer.write('\ufeff');
+        writer.println("活动ID,活动名称,开始时间,结束时间,状态");
+
+        long current = 1L;
+        LocalDateTime now = LocalDateTime.now();
+        while (true) {
+            long offset = (current - 1) * EXPORT_BATCH_SIZE;
+            List<ColonelsettlementActivity> rows = activityMapper.selectExportPage(
+                    offset,
+                    EXPORT_BATCH_SIZE,
+                    StringUtils.hasText(activityName) ? activityName.trim() : null,
+                    now
+            );
+            if (rows == null || rows.isEmpty()) {
+                break;
+            }
+            for (ColonelsettlementActivity activity : rows) {
+                writer.printf("%s,%s,%s,%s,%s%n",
+                        csvEscape(activity.getActivityId()),
+                        csvEscape(activity.getName()),
+                        csvEscape(activity.getStartTime()),
+                        csvEscape(activity.getEndTime()),
+                        csvEscape(activity.getStatus() != null && Integer.valueOf(1).equals(activity.getStatus()) ? "进行中" : "已结束")
+                );
+            }
+            if (rows.size() < EXPORT_BATCH_SIZE) {
+                break;
+            }
+            current++;
+        }
+        writer.flush();
+    }
+
+    private static String csvEscape(Object value) {
+        if (value == null) {
+            return "";
+        }
+        String text = String.valueOf(value);
+        if (text.contains(",") || text.contains("\"") || text.contains("\n") || text.contains("\r")) {
+            return "\"" + text.replace("\"", "\"\"") + "\"";
+        }
+        return text;
+    }
+
+    private String resolveTimeColumn(String timeField) {
+        if (!StringUtils.hasText(timeField)) {
+            return "settle_time";
+        }
+        String normalized = timeField.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "createtime", "create_time", "create" -> "create_time";
+            case "settletime", "settle_time", "settle" -> "settle_time";
+            default -> "settle_time";
+        };
     }
 
     private OrderVO toOrderVO(ColonelsettlementOrder order) {
@@ -330,11 +479,6 @@ public class DataController extends BaseController {
             }
         }
         return "-";
-    }
-
-    private Long safeCount(LambdaQueryWrapper<ColonelsettlementOrder> wrapper) {
-        Long count = orderMapper.selectCount(wrapper);
-        return count == null ? 0L : count;
     }
 
     private Integer toOrderStatusCode(String status) {
@@ -419,31 +563,6 @@ public class DataController extends BaseController {
         return null;
     }
 
-    private void applyDataScope(
-            LambdaQueryWrapper<ColonelsettlementOrder> wrapper,
-            UUID userId,
-            UUID deptId,
-            DataScope dataScope) {
-        if (wrapper == null || dataScope == null) {
-            return;
-        }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getUserId, userId);
-                }
-            }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
-                }
-            }
-            case ALL -> {
-                // no filter
-            }
-        }
-    }
-
     private void applyPageDataScope(
             QueryWrapper<ColonelsettlementOrder> wrapper,
             UUID userId,
@@ -486,6 +605,56 @@ public class DataController extends BaseController {
             case DEPT -> {
                 if (deptId != null) {
                     wrapper.eq("dept_id", deptId);
+                }
+            }
+            case ALL -> {
+                // no filter
+            }
+        }
+    }
+
+    private void applyTalentDataScope(
+            LambdaQueryWrapper<ExclusiveTalent> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        switch (dataScope) {
+            case PERSONAL -> {
+                if (userId != null) {
+                    wrapper.eq(ExclusiveTalent::getUserId, userId);
+                }
+            }
+            case DEPT -> {
+                if (deptId != null) {
+                    wrapper.eq(ExclusiveTalent::getDeptId, deptId);
+                }
+            }
+            case ALL -> {
+                // no filter
+            }
+        }
+    }
+
+    private void applyMerchantDataScope(
+            LambdaQueryWrapper<ExclusiveMerchant> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        switch (dataScope) {
+            case PERSONAL -> {
+                if (userId != null) {
+                    wrapper.eq(ExclusiveMerchant::getUserId, userId);
+                }
+            }
+            case DEPT -> {
+                if (deptId != null) {
+                    wrapper.eq(ExclusiveMerchant::getDeptId, deptId);
                 }
             }
             case ALL -> {

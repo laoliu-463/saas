@@ -26,7 +26,8 @@ public class SysRoleService {
             RoleCodes.BIZ_STAFF,
             RoleCodes.CHANNEL_LEADER,
             RoleCodes.CHANNEL_STAFF,
-            RoleCodes.OPS_STAFF
+            RoleCodes.OPS_STAFF,
+            RoleCodes.COLONEL_LEADER
     );
 
     private final SysRoleMapper sysRoleMapper;

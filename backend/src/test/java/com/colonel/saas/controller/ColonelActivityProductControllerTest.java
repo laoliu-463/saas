@@ -1,6 +1,9 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,12 +27,14 @@ class ColonelActivityProductControllerTest {
 
     @Mock
     private ProductService productService;
+    @Mock
+    private SysUserService sysUserService;
 
     private ColonelActivityProductController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new ColonelActivityProductController(productService);
+        controller = new ColonelActivityProductController(productService, sysUserService);
     }
 
     @Test
@@ -83,10 +88,11 @@ class ColonelActivityProductControllerTest {
         ColonelActivityProductController.AssignRequest request = new ColonelActivityProductController.AssignRequest();
         request.setAssigneeId(assigneeId);
 
-        var response = controller.assign("10001", "9001", request, null, null);
+        var response = controller.assign("10001", "9001", request, null, null, List.of(com.colonel.saas.constant.RoleCodes.BIZ_LEADER));
 
         assertThat(response.getData().get("bizStatus")).isEqualTo("ASSIGNED");
         assertThat(response.getData().get("assigneeId")).isEqualTo(assigneeId);
+        verify(sysUserService).assertAssignableUser(assigneeId, List.of(com.colonel.saas.constant.RoleCodes.BIZ_LEADER), null);
         verify(productService).assignProduct("10001", "9001", assigneeId, null, null);
     }
 
@@ -149,5 +155,26 @@ class ColonelActivityProductControllerTest {
 
         assertThat(response.getData().get("selectedToLibrary")).isEqualTo(true);
         verify(productService).putIntoLibrary("10001", "9001", userId, deptId);
+    }
+
+    @Test
+    void roleAnnotations_shouldMatchBizWorkflow() throws NoSuchMethodException {
+        RequireRoles auditRoles = ColonelActivityProductController.class
+                .getMethod("audit", String.class, String.class, ColonelActivityProductController.AuditRequest.class, UUID.class, UUID.class)
+                .getAnnotation(RequireRoles.class);
+        RequireRoles bindRoles = ColonelActivityProductController.class
+                .getMethod("bindActivity", String.class, String.class, ColonelActivityProductController.BindActivityRequest.class, UUID.class, UUID.class)
+                .getAnnotation(RequireRoles.class);
+        RequireRoles decisionRoles = ColonelActivityProductController.class
+                .getMethod("decision", String.class, String.class, ColonelActivityProductController.DecisionRequest.class, UUID.class, UUID.class)
+                .getAnnotation(RequireRoles.class);
+        RequireRoles libraryRoles = ColonelActivityProductController.class
+                .getMethod("putIntoLibrary", String.class, String.class, UUID.class, UUID.class)
+                .getAnnotation(RequireRoles.class);
+
+        assertThat(auditRoles.value()).containsExactly(RoleCodes.BIZ_STAFF);
+        assertThat(bindRoles.value()).containsExactly(RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER);
+        assertThat(decisionRoles.value()).containsExactly(RoleCodes.BIZ_STAFF);
+        assertThat(libraryRoles.value()).containsExactly(RoleCodes.BIZ_STAFF);
     }
 }

@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.ProductBizStatus;
+import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.entity.ProductOperationState;
@@ -131,8 +132,15 @@ class ProductServiceTest {
     }
 
     @Test
-    void auditProduct_shouldRequireSupplementFieldsWhenApproved() {
-        assertThatThrownBy(() -> service.auditProduct(
+    void auditProduct_shouldMarkSelectedToLibraryWhenApproved() {
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+        ProductOperationState state = buildState("PENDING_AUDIT");
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state, state);
+
+        service.auditProduct(
                 "10001",
                 "9001",
                 true,
@@ -140,11 +148,13 @@ class ProductServiceTest {
                 Map.of("exclusivePriceRemark", "专属价 129"),
                 UUID.randomUUID(),
                 UUID.randomUUID()
-        )).hasMessageContaining("审核通过前请补充");
+        );
+
+        assertThat(state.getSelectedToLibrary()).isTrue();
     }
 
     @Test
-    void auditProduct_shouldPersistSupplementPayload() {
+    void auditProduct_shouldClearSupplementPayloadAndReturnLibraryVisible() {
         UUID operatorId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
         ProductSnapshot snapshot = new ProductSnapshot();
@@ -156,44 +166,27 @@ class ProductServiceTest {
         ProductOperationState state = buildState("PENDING_AUDIT");
         when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
         when(operationStateMapper.selectOne(any())).thenReturn(state);
-        when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.APPROVED);
-        doAnswer(invocation -> {
-            ProductBizStatusService.StatusMutation mutation = invocation.getArgument(7);
-            mutation.apply(state);
-            return null;
-        }).when(productBizStatusService).changeStatus(any(), any(), any(), any(), any(), any(), any(), any());
 
         Map<String, Object> result = service.auditProduct(
                 "10001",
                 "9001",
                 true,
                 null,
-                Map.of(
-                        "exclusivePriceRemark", "专属价 129",
-                        "shippingInfo", "48 小时发货",
-                        "sellingPoints", List.of("高复购", "场景强"),
-                        "promotionScript", "主打复购场景",
-                        "supportsAds", true,
-                        "rewardRemark", "破峰值有奖励",
-                        "participationRequirements", "食品饮料达人优先",
-                        "campaignTimeRemark", "4 月第一波活动",
-                        "materialFiles", List.of("https://example.com/material.png")
-                ),
+                Map.of("exclusivePriceRemark", "专属价 129"),
                 operatorId,
                 deptId
         );
 
-        assertThat(state.getAuditPayload()).contains("exclusivePriceRemark").contains("supportsAds");
-        assertThat(((Map<?, ?>) result.get("auditSupplement")).get("shippingInfo")).isEqualTo("48 小时发货");
-        assertThat(((Map<?, ?>) result.get("auditSupplement")).get("supportsAds")).isEqualTo(true);
-        assertThat(((Map<?, ?>) result.get("promotionMaterialPack")).get("sellingPoints")).isEqualTo(List.of("高复购", "场景强"));
+        assertThat(state.getAuditPayload()).isNull();
+        assertThat(state.getSelectedToLibrary()).isTrue();
+        assertThat(result.get("selectedToLibrary")).isEqualTo(true);
     }
 
     @Test
     void generatePromotionLink_shouldPersistLinkAndAdvanceStatus() {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
-        String expectedPickExtra = "channel_" + userId;
+        String expectedPickExtra = "channel_channelleader";
         ProductSnapshot snapshot = new ProductSnapshot();
         snapshot.setActivityId("10001");
         snapshot.setProductId("9001");
@@ -202,8 +195,10 @@ class ProductServiceTest {
         state.setActivityId("10001");
         state.setProductId("9001");
         state.setBizStatus("ASSIGNED");
+        state.setSelectedToLibrary(true);
         SysUser user = new SysUser();
         user.setRealName("渠道A");
+        user.setChannelCode("channelleader");
         when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
         when(operationStateMapper.selectOne(any())).thenReturn(state);
         when(sysUserMapper.selectById(userId)).thenReturn(user);
@@ -239,6 +234,7 @@ class ProductServiceTest {
         state.setActivityId("10001");
         state.setProductId("9001");
         state.setBizStatus("ASSIGNED");
+        state.setSelectedToLibrary(true);
         when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
         when(operationStateMapper.selectOne(any())).thenReturn(state);
         when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.ASSIGNED);
@@ -249,6 +245,43 @@ class ProductServiceTest {
         )).hasMessageContaining("mock convert failed");
 
         verify(productBizStatusService).logFailure(any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void getPromotionLinkHistory_shouldReturnPagedRecords() {
+        PromotionLink latest = new PromotionLink();
+        latest.setId(UUID.randomUUID());
+        latest.setProductId("3810562766247428542");
+        latest.setActivityId("3916506");
+        latest.setPromotionUrl("https://p.latest");
+        latest.setShortUrl("https://s.latest");
+        latest.setPickSource("v.latest");
+        latest.setLinkStatus("SUCCESS");
+        latest.setCreatedAt(LocalDateTime.of(2026, 5, 8, 10, 0));
+
+        PromotionLink earlier = new PromotionLink();
+        earlier.setId(UUID.randomUUID());
+        earlier.setProductId("3810562766247428542");
+        earlier.setActivityId("3916506");
+        earlier.setPromotionUrl("https://p.earlier");
+        earlier.setShortUrl("https://s.earlier");
+        earlier.setPickSource("v.earlier");
+        earlier.setLinkStatus("SUCCESS");
+        earlier.setCreatedAt(LocalDateTime.of(2026, 5, 7, 10, 0));
+
+        when(promotionLinkMapper.selectList(any())).thenReturn(List.of(latest, earlier));
+
+        PageResult<Map<String, Object>> result = service.getPromotionLinkHistory("3810562766247428542", 1, 1);
+
+        assertThat(result.getTotal()).isEqualTo(2);
+        assertThat(result.getRecords()).hasSize(1);
+        assertThat(result.getRecords().get(0))
+                .containsEntry("productId", "3810562766247428542")
+                .containsEntry("activityId", "3916506")
+                .containsEntry("promotionUrl", "https://p.latest")
+                .containsEntry("promoteLink", "https://p.latest")
+                .containsEntry("shortLink", "https://s.latest")
+                .containsEntry("pickSource", "v.latest");
     }
 
     @Test
@@ -287,6 +320,7 @@ class ProductServiceTest {
         snapshot.setProductId("9001");
         snapshot.setShopId(3001L);
         ProductOperationState state = buildState("APPROVED");
+        state.setSelectedToLibrary(true);
         SysUser assignee = new SysUser();
         assignee.setRealName("招商李四");
         assignee.setUsername("lisi");
@@ -329,6 +363,7 @@ class ProductServiceTest {
         snapshot.setProductId("9001");
         snapshot.setShopId(3001L);
         ProductOperationState state = buildState("ASSIGNED");
+        state.setSelectedToLibrary(true);
         when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
         when(operationStateMapper.selectOne(any())).thenReturn(state);
         when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.ASSIGNED);
@@ -355,6 +390,7 @@ class ProductServiceTest {
         UUID productId = UUID.randomUUID();
         ProductSnapshot snapshot = buildSnapshot(productId);
         ProductOperationState state = buildState("LINKED");
+        state.setSelectedToLibrary(true);
         TalentFollowRecord record = new TalentFollowRecord();
         record.setId(UUID.randomUUID());
         when(snapshotMapper.selectById(productId)).thenReturn(snapshot);
@@ -436,16 +472,17 @@ class ProductServiceTest {
         snapshot.setActivityId("10001");
         snapshot.setProductId("9001");
         snapshot.setTitle("精选商品");
-        ProductOperationState state = buildState("APPROVED");
+        ProductOperationState state = buildState("PENDING_AUDIT");
+        state.setAuditStatus(2);
         when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
         when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.PENDING_AUDIT);
 
         Map<String, Object> result = service.putIntoLibrary("10001", "9001", operatorId, deptId);
 
         assertThat(result.get("selectedToLibrary")).isEqualTo(true);
         assertThat(result.get("libraryVisible")).isEqualTo(true);
-        verify(operationStateMapper).updateById(state);
-        verify(operationLogMapper).insert(any(ProductOperationLog.class));
+        verify(productBizStatusService).changeStatus(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -665,6 +702,47 @@ class ProductServiceTest {
     }
 
     @Test
+    void buildActivityProductListViewFromDb_shouldExposeSelectedLibraryFields() {
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+        snapshot.setTitle("已审核商品");
+        snapshot.setShopId(3001L);
+        snapshot.setShopName("测试店铺");
+        snapshot.setPriceText("99.00");
+        snapshot.setDetailUrl("https://example.com/detail");
+        snapshot.setActivityCosRatioText("20%");
+
+        ProductOperationState state = buildState("APPROVED");
+        state.setSelectedToLibrary(true);
+
+        Page<ProductSnapshot> snapshotPage = new Page<>(1, 20, 1);
+        snapshotPage.setRecords(List.of(snapshot));
+
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(state));
+        when(snapshotMapper.selectCount(any())).thenReturn(1L);
+        when(snapshotMapper.selectPage(any(Page.class), any())).thenReturn(snapshotPage);
+        when(operationLogMapper.selectList(any())).thenReturn(List.of());
+        when(orderMapper.selectList(any())).thenReturn(List.of());
+        when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
+        when(merchantMapper.selectList(any())).thenReturn(List.of());
+        when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.APPROVED);
+
+        Map<String, Object> result = service.buildActivityProductListViewFromDb(
+                "10001",
+                20,
+                null,
+                null,
+                "APPROVED"
+        );
+
+        Map<?, ?> item = (Map<?, ?>) ((List<?>) result.get("items")).get(0);
+        assertThat(item.get("selectedToLibrary")).isEqualTo(true);
+        assertThat(item.get("libraryVisible")).isEqualTo(true);
+        assertThat(item.get("bizStatus")).isEqualTo("APPROVED");
+    }
+
+    @Test
     void getActivityProductDetail_shouldUseSingleItemAggregates() {
         ProductSnapshot snapshot = new ProductSnapshot();
         snapshot.setActivityId("10001");
@@ -749,6 +827,11 @@ class ProductServiceTest {
         state.setActivityId("10001");
         state.setProductId("9001");
         state.setBizStatus(bizStatus);
+        if ("APPROVED".equals(bizStatus)) {
+            state.setAuditStatus(2);
+        } else if ("REJECTED".equals(bizStatus)) {
+            state.setAuditStatus(3);
+        }
         return state;
     }
 

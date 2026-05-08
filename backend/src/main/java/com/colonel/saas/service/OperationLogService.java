@@ -18,6 +18,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -179,18 +182,82 @@ public class OperationLogService {
         LocalDate start = month.atDay(1);
         LocalDate end = month.plusMonths(1).atDay(1);
         try {
-            jdbcTemplate.execute(String.format(
+            String createPartitionSql = String.format(
                     "CREATE TABLE IF NOT EXISTS %s PARTITION OF operation_log FOR VALUES FROM ('%s') TO ('%s')",
                     partitionName,
                     start,
                     end
-            ));
-            jdbcTemplate.execute(String.format("CREATE INDEX IF NOT EXISTS idx_%s_create_time ON %s (create_time)", partitionName, partitionName));
-            jdbcTemplate.execute(String.format("CREATE INDEX IF NOT EXISTS idx_%s_user_id ON %s (user_id)", partitionName, partitionName));
-            jdbcTemplate.execute(String.format("CREATE INDEX IF NOT EXISTS idx_%s_module ON %s (module)", partitionName, partitionName));
+            );
+            jdbcTemplate.execute(Objects.requireNonNull(createPartitionSql));
+            String idxCreateTimeSql = String.format("CREATE INDEX IF NOT EXISTS idx_%s_create_time ON %s (create_time)", partitionName, partitionName);
+            String idxUserIdSql = String.format("CREATE INDEX IF NOT EXISTS idx_%s_user_id ON %s (user_id)", partitionName, partitionName);
+            String idxModuleSql = String.format("CREATE INDEX IF NOT EXISTS idx_%s_module ON %s (module)", partitionName, partitionName);
+            jdbcTemplate.execute(Objects.requireNonNull(idxCreateTimeSql));
+            jdbcTemplate.execute(Objects.requireNonNull(idxUserIdSql));
+            jdbcTemplate.execute(Objects.requireNonNull(idxModuleSql));
         } catch (RuntimeException ex) {
             ENSURED_PARTITIONS.remove(partitionName);
             throw ex;
+        }
+    }
+
+    /**
+     * 删除过期的操作日志分区（默认按分区月粒度清理）。
+     * <p>
+     * 注意：分区表数据删除优先用 DROP PARTITION（DROP TABLE 子分区）而非按行 DELETE，
+     * 以避免全表 vacuum/锁放大。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int cleanupOldPartitions(int retentionDays) {
+        int days = Math.max(retentionDays, 1);
+        YearMonth cutoff = YearMonth.from(LocalDate.now().minusDays(days));
+
+        List<String> partitions = listOperationLogPartitions();
+        int dropped = 0;
+        for (String name : partitions) {
+            YearMonth month = parsePartitionMonth(name);
+            if (month == null) {
+                continue;
+            }
+            if (month.isBefore(cutoff)) {
+                jdbcTemplate.execute("DROP TABLE IF EXISTS " + name);
+                ENSURED_PARTITIONS.remove(name);
+                dropped++;
+            }
+        }
+        return dropped;
+    }
+
+    private List<String> listOperationLogPartitions() {
+        String sql = """
+                SELECT c.relname AS partition_name
+                FROM pg_inherits i
+                JOIN pg_class p ON i.inhparent = p.oid
+                JOIN pg_class c ON i.inhrelid = c.oid
+                WHERE p.relname = 'operation_log'
+                """;
+        List<String> result = new ArrayList<>();
+        jdbcTemplate.query(sql, rs -> {
+            String name = rs.getString("partition_name");
+            if (StringUtils.hasText(name)) {
+                result.add(name);
+            }
+        });
+        return result;
+    }
+
+    private YearMonth parsePartitionMonth(String partitionName) {
+        if (!StringUtils.hasText(partitionName)) {
+            return null;
+        }
+        if (!partitionName.startsWith("op_log_")) {
+            return null;
+        }
+        String month = partitionName.substring("op_log_".length());
+        try {
+            return YearMonth.parse(month, PARTITION_MONTH);
+        } catch (Exception ignore) {
+            return null;
         }
     }
 }

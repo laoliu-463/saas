@@ -69,6 +69,8 @@ douyin:
     client-key: ${DOUYIN_CLIENT_KEY:}
     client-secret: ${DOUYIN_CLIENT_SECRET:}
     sandbox: ${DOUYIN_SANDBOX:false}
+    connect-timeout: ${DOUYIN_CONNECT_TIMEOUT:3s}
+    read-timeout: ${DOUYIN_READ_TIMEOUT:5s}
   webhook:
     verify-sign: ${DOUYIN_WEBHOOK_VERIFY_SIGN:false}
   test:
@@ -91,5 +93,4 @@ talent:
     mode: ${TALENT_ENRICH_MODE:real}
   data:
     public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
-
 

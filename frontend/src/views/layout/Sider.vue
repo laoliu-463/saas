@@ -48,6 +48,21 @@ const router = useRouter()
 const route = useRoute()
 const ROLE = ROLE_CODES
 
+const isChannelStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.CHANNEL_LEADER) && !roles.includes(ROLE.ADMIN)
+})
+
+const isBizStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.BIZ_LEADER) && !roles.includes(ROLE.ADMIN)
+})
+
+const isOpsStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE.OPS_STAFF) && !roles.includes(ROLE.ADMIN)
+})
+
 const iconData = (d: string) => () =>
   h(NIcon, null, {
     default: () =>
@@ -96,8 +111,9 @@ const SECTION_MAP: [string, string][] = [
   ['/system/douyin', 'system'],
   ['/system/roles', 'system'],
   ['/system/users', 'system'],
+  ['/product/manage/products', 'product-manage'],
+  ['/product/manage', 'product-manage'],
   ['/product/library', 'product'],
-  ['/product/activity', 'product'],
   ['/product', 'product'],
   ['/data/orders', 'data'],
   ['/data', 'data'],
@@ -144,19 +160,33 @@ const rawMenus: MenuItem[] = [
     roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
     children: [
       { label: '核心看板', key: '/data', icon: icons.chart },
-      { label: '订单明细', key: '/data/orders', icon: icons.list }
+      { label: '订单明细', key: '/data/orders', icon: icons.list },
+      { label: '独家状态', key: '/ops/exclusive', icon: icons.shield, roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
     ]
   },
   {
-    label: '商品中心',
-    key: 'product-group',
+    label: '寄样发货台',
+    key: '/ops/shipping',
+    icon: icons.truck,
+    _section: 'ops',
+    roles: [ROLE.OPS_STAFF]
+  },
+  {
+    label: '商品库',
+    key: '/product',
     icon: icons.bag,
     _section: 'product',
-    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
+    roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF]
+  },
+  {
+    label: '商品管理',
+    key: 'product-manage-group',
+    icon: icons.list,
+    _section: 'product-manage',
+    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF],
     children: [
-      { label: '选品库', key: '/product', icon: icons.bag },
-      { label: '商品库', key: '/product/library', icon: icons.list },
-      { label: '活动列表', key: '/product/activity', icon: icons.list }
+      { label: '活动列表', key: '/product/manage', icon: icons.list, roles: [ROLE.BIZ_LEADER] },
+      { label: '商品列表', key: '/product/manage/products', icon: icons.bag, roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
     ]
   },
   {
@@ -173,22 +203,11 @@ const rawMenus: MenuItem[] = [
     ]
   },
   {
-    label: '寄样台',
+    label: '寄样审核',
     key: '/sample',
     icon: icons.gift,
     _section: 'sample',
-    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.OPS_STAFF]
-  },
-  {
-    label: '运营中心',
-    key: 'ops-group',
-    icon: icons.truck,
-    _section: 'ops',
-    roles: [ROLE.OPS_STAFF, ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER],
-    children: [
-      { label: '独家状态', key: '/ops/exclusive', icon: icons.shield },
-      { label: '物流发货', key: '/ops/shipping', icon: icons.truck }
-    ]
+    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF]
   },
   {
     label: '系统管理',
@@ -227,10 +246,34 @@ const menuOptions = computed(() => {
       return hasAccess(roles, menu.roles)
     })
     .map(({ roles: _roles, _section: _s, children, ...menu }) => {
-      if (!children?.length) return menu
+      const localizedMenu = { ...menu }
+      if (isChannelStaffOnly.value && localizedMenu.key === 'talent-group') {
+        localizedMenu.label = '我的达人'
+      }
+      if ((isChannelStaffOnly.value || isBizStaffOnly.value) && localizedMenu.key === 'data-group') {
+        localizedMenu.label = '我的业绩'
+      }
+      if (isOpsStaffOnly.value && localizedMenu.key === '/ops/shipping') {
+        localizedMenu.label = '寄样发货台'
+      }
+      if (!children?.length) return localizedMenu
+      let filteredChildren = children.filter((child) => hasAccess(roles, child.roles))
+      if (isChannelStaffOnly.value && localizedMenu.key === 'talent-group') {
+        filteredChildren = filteredChildren.filter((child) =>
+          [TALENT_MENU_KEYS.teamPublic, TALENT_MENU_KEYS.myTalents].includes(child.key as any)
+        )
+      }
+      if (isChannelStaffOnly.value || isBizStaffOnly.value) {
+        filteredChildren = filteredChildren.map((child) => {
+          if (child.key === '/data') return { ...child, label: '我的业绩' }
+          if (isChannelStaffOnly.value && child.key === TALENT_MENU_KEYS.myTalents) return { ...child, label: '我的达人' }
+          if (isChannelStaffOnly.value && child.key === TALENT_MENU_KEYS.teamPublic) return { ...child, label: '公海达人' }
+          return child
+        })
+      }
       return {
-        ...menu,
-        children: children.filter((child) => hasAccess(roles, child.roles))
+        ...localizedMenu,
+        children: filteredChildren
       }
     })
     .filter((menu) => !('children' in menu) || !Array.isArray(menu.children) || menu.children.length > 0)
@@ -245,7 +288,10 @@ const activeMenuKey = computed(() => {
   if (route.path.startsWith('/system/roles')) return '/system/roles'
   if (route.path.startsWith('/system/users')) return '/system/users'
   if (route.path === '/data/orders') return '/data/orders'
-  if (route.path.startsWith('/product/library')) return '/product/library'
+  if (route.path === '/product/manage/products') return '/product/manage/products'
+  if (route.path === '/product/manage') return '/product/manage'
+  if (route.path.startsWith('/product/manage/')) return '/product/manage'
+  if (route.path.startsWith('/product/library')) return '/product'
   if (route.path.startsWith('/talent')) {
     const view = typeof route.query.view === 'string' ? route.query.view : 'TEAM_PUBLIC'
     if (view === 'MY_TALENTS') return TALENT_MENU_KEYS.myTalents

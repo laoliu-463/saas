@@ -87,6 +87,46 @@ class EntityTest {
     }
 
     @Nested
+    @DisplayName("SysDept 实体")
+    class SysDeptTest {
+
+        @Test
+        void getterSetter() {
+            SysDept dept = new SysDept();
+            UUID id = UUID.randomUUID();
+            UUID parentId = UUID.randomUUID();
+            dept.setId(id);
+            dept.setParentId(parentId);
+            dept.setDeptCode("BIZ");
+            dept.setDeptName("招商部");
+            dept.setLeader("负责人A");
+            dept.setPhone("010-88886666");
+            dept.setEmail("biz@test.com");
+            dept.setSortOrder(10);
+            dept.setStatus(1);
+            dept.setRemark("默认招商部门");
+
+            assertThat(dept.getId()).isEqualTo(id);
+            assertThat(dept.getParentId()).isEqualTo(parentId);
+            assertThat(dept.getDeptCode()).isEqualTo("BIZ");
+            assertThat(dept.getDeptName()).isEqualTo("招商部");
+            assertThat(dept.getLeader()).isEqualTo("负责人A");
+            assertThat(dept.getPhone()).isEqualTo("010-88886666");
+            assertThat(dept.getEmail()).isEqualTo("biz@test.com");
+            assertThat(dept.getSortOrder()).isEqualTo(10);
+            assertThat(dept.getStatus()).isEqualTo(1);
+            assertThat(dept.getRemark()).isEqualTo("默认招商部门");
+        }
+
+        @Test
+        void defaults() {
+            SysDept dept = new SysDept();
+            assertThat(dept.getSortOrder()).isEqualTo(0);
+            assertThat(dept.getStatus()).isEqualTo(1);
+        }
+    }
+
+    @Nested
     @DisplayName("Product 实体")
     class ProductTest {
 
@@ -94,11 +134,21 @@ class EntityTest {
         void getterSetter() {
             Product product = new Product();
             product.setProductId("P001");
+            product.setOuterProductId("OUT001");
             product.setName("测试商品");
+            product.setDescription("商品描述");
+            product.setMarketPrice(12900L);
             product.setPrice(9900L);
+            product.setCosRatio(new BigDecimal("25.00"));
+            product.setCosFee(2500L);
+            product.setServiceRatio(new BigDecimal("8.00"));
             product.setStatus(1);
             product.setCheckStatus(1);
             product.setCategory("美妆");
+            product.setDetailUrl("https://example.com/p/1");
+            product.setCategoryDetail(Map.of("first", "美妆"));
+            product.setPics(List.of("https://example.com/1.png"));
+            product.setSpecPrices(List.of(Map.of("sku", "默认款", "price", 9900)));
             product.setShopName("测试店铺");
             product.setCover("http://img.jpg");
             product.setPriceText("99.00");
@@ -109,10 +159,20 @@ class EntityTest {
             product.setAlertTags(List.of("low_stock"));
 
             assertThat(product.getProductId()).isEqualTo("P001");
+            assertThat(product.getOuterProductId()).isEqualTo("OUT001");
             assertThat(product.getName()).isEqualTo("测试商品");
+            assertThat(product.getDescription()).isEqualTo("商品描述");
+            assertThat(product.getMarketPrice()).isEqualTo(12900L);
             assertThat(product.getPrice()).isEqualTo(9900L);
+            assertThat(product.getCosRatio()).isEqualByComparingTo("25.00");
+            assertThat(product.getCosFee()).isEqualTo(2500L);
+            assertThat(product.getServiceRatio()).isEqualByComparingTo("8.00");
             assertThat(product.getStatus()).isEqualTo(1);
             assertThat(product.getCategory()).isEqualTo("美妆");
+            assertThat(product.getDetailUrl()).isEqualTo("https://example.com/p/1");
+            assertThat(product.getCategoryDetail()).containsEntry("first", "美妆");
+            assertThat(product.getPics()).containsExactly("https://example.com/1.png");
+            assertThat(product.getSpecPrices()).hasSize(1);
             assertThat(product.getShopName()).isEqualTo("测试店铺");
             assertThat(product.getSelectedToLibrary()).isTrue();
             assertThat(product.getSystemTags()).containsExactly("hot", "new");
@@ -246,14 +306,34 @@ class EntityTest {
         @Test
         void getterSetter() {
             ColonelsettlementActivity activity = new ColonelsettlementActivity();
+            activity.setActivityId("ACT001");
             activity.setName("测试活动");
+            activity.setActivityType("招商活动");
+            activity.setShopId(3001L);
+            activity.setShopName("测试店铺");
+            activity.setColonelBuyinId(90001L);
+            activity.setCommissionRate(new BigDecimal("0.2000"));
+            activity.setServiceRate(new BigDecimal("0.0500"));
             activity.setStartTime(LocalDateTime.now());
             activity.setEndTime(LocalDateTime.now().plusDays(30));
+            activity.setLastSyncAt(LocalDateTime.now());
+            activity.setMonthsOfProtection(30);
+            activity.setExtraData(Map.of("source", "seed"));
             activity.setStatus(1);
 
+            assertThat(activity.getActivityId()).isEqualTo("ACT001");
             assertThat(activity.getName()).isEqualTo("测试活动");
+            assertThat(activity.getActivityType()).isEqualTo("招商活动");
+            assertThat(activity.getShopId()).isEqualTo(3001L);
+            assertThat(activity.getShopName()).isEqualTo("测试店铺");
+            assertThat(activity.getColonelBuyinId()).isEqualTo(90001L);
+            assertThat(activity.getCommissionRate()).isEqualByComparingTo("0.2000");
+            assertThat(activity.getServiceRate()).isEqualByComparingTo("0.0500");
             assertThat(activity.getStartTime()).isNotNull();
             assertThat(activity.getEndTime()).isNotNull();
+            assertThat(activity.getLastSyncAt()).isNotNull();
+            assertThat(activity.getMonthsOfProtection()).isEqualTo(30);
+            assertThat(activity.getExtraData()).containsEntry("source", "seed");
             assertThat(activity.getStatus()).isEqualTo(1);
         }
     }

@@ -61,14 +61,21 @@ class OrderSyncPersistenceServiceTest {
     @Test
     void persistOrder_shouldReturnFalseWhenInsertIgnored() {
         ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
+        ColonelsettlementOrder existing = makeOrder(UUID.randomUUID());
+        existing.setId(UUID.randomUUID());
+        existing.setCreateTime(java.time.LocalDateTime.now().minusDays(1));
         when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(0);
+        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(existing);
 
         boolean result = service.persistOrder(order);
 
         assertThat(result).isFalse();
-        verify(pickSourceMappingService, never()).ensureFromOrder(any());
-        verify(merchantService, never()).ensureMerchantFromOrder(any());
-        verify(sampleLifecycleService, never()).completePendingHomeworkByOrder(any());
+        assertThat(order.getId()).isEqualTo(existing.getId());
+        assertThat(order.getCreateTime()).isEqualTo(existing.getCreateTime());
+        verify(orderMapper).updateSyncedById(order);
+        verify(pickSourceMappingService).ensureFromOrder(order);
+        verify(merchantService).ensureMerchantFromOrder(order);
+        verify(sampleLifecycleService).completePendingHomeworkByOrder(order);
     }
 
     @Test

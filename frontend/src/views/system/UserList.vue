@@ -125,8 +125,8 @@ const roleDescriptionMap: Record<string, string> = {
   biz_leader: '落地首页 /dashboard，可看归因与订单工作台',
   biz_staff: '落地首页 /data，可看数据平台与商品寄样',
   channel_leader: '落地首页 /dashboard，可看归因、达人与寄样',
-  channel_staff: '落地首页 /data，可看达人、数据与寄样',
-  ops_staff: '落地首页 /ops/shipping，可处理物流与独家状态'
+  channel_staff: '落地首页 /product，可做选品、达人跟进、寄样申请与个人业绩查看',
+  ops_staff: '落地首页 /ops/shipping，仅负责寄样发货、物流录入与签收跟进'
 };
 const roleSelectOptions = computed(() =>
   (roleOptions.value as any[]).map((role) => ({

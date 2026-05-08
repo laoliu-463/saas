@@ -181,6 +181,52 @@ class SysUserServiceTest {
     }
 
     @Test
+    void assertAssignableUser_allowsBizLeaderAssigningOwnDeptBizStaff() {
+        UUID assigneeId = UUID.randomUUID();
+        SysUser assignee = new SysUser();
+        assignee.setId(assigneeId);
+        assignee.setUsername("bizstaff-a");
+        assignee.setDeptId(deptId);
+
+        SysUserRole relation = new SysUserRole();
+        relation.setUserId(assigneeId);
+        relation.setRoleId(roleId);
+
+        SysRole role = new SysRole();
+        role.setId(roleId);
+        role.setRoleCode(RoleCodes.BIZ_STAFF);
+        role.setStatus(1);
+
+        when(sysUserMapper.selectById(assigneeId)).thenReturn(assignee);
+        when(sysUserRoleMapper.findByUserId(assigneeId)).thenReturn(List.of(relation));
+        when(sysRoleMapper.selectBatchIds(any())).thenReturn(List.of(role));
+
+        assertThatCode(() -> sysUserService.assertAssignableUser(
+                assigneeId,
+                List.of(RoleCodes.BIZ_LEADER),
+                deptId
+        )).doesNotThrowAnyException();
+    }
+
+    @Test
+    void assertAssignableUser_rejectsBizLeaderAssigningOtherDeptUser() {
+        UUID assigneeId = UUID.randomUUID();
+        SysUser assignee = new SysUser();
+        assignee.setId(assigneeId);
+        assignee.setUsername("bizstaff-b");
+        assignee.setDeptId(UUID.randomUUID());
+
+        when(sysUserMapper.selectById(assigneeId)).thenReturn(assignee);
+
+        assertThatThrownBy(() -> sysUserService.assertAssignableUser(
+                assigneeId,
+                List.of(RoleCodes.BIZ_LEADER),
+                deptId
+        )).isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("本组招商下属");
+    }
+
+    @Test
     void getById_returnsUserWhenExists() {
         when(sysUserMapper.selectById(userId)).thenReturn(testUser);
         when(sysUserRoleMapper.findByUserId(userId)).thenReturn(Collections.emptyList());

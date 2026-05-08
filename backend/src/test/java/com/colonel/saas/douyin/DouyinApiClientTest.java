@@ -1,5 +1,9 @@
 package com.colonel.saas.douyin;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.colonel.saas.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -9,11 +13,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -180,5 +187,43 @@ class DouyinApiClientTest {
                 .isInstanceOf(DouyinApiException.class)
                 .extracting(ex -> ((DouyinApiException) ex).getErrorMsg())
                 .isEqualTo("参数校验失败");
+    }
+
+    @Test
+    void post_shouldNotLogOrThrowSensitiveRequestUrlWhenTransportFails() {
+        when(douyinConfig.getAppId()).thenReturn("app123");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
+        when(douyinTokenService.getValidToken("app123")).thenReturn("very-secret-token");
+        when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
+                .thenThrow(new ResourceAccessException(
+                        "I/O error on POST request for \"https://openapi-fxg.jinritemai.com/test/method"
+                                + "?access_token=very-secret-token&sign=very-secret-sign\": Read timed out"));
+
+        Logger logger = (Logger) LoggerFactory.getLogger(DouyinApiClient.class);
+        Level originalLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.setLevel(Level.ERROR);
+        logger.addAppender(appender);
+        try {
+            assertThatThrownBy(() -> douyinApiClient.post("test.method", Map.of()))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Douyin API request failed")
+                    .satisfies(ex -> assertThat(ex.getCause()).isNull());
+
+            String logText = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .collect(Collectors.joining("\n"));
+            assertThat(logText)
+                    .contains("method=test.method")
+                    .contains("exception=ResourceAccessException")
+                    .doesNotContain("very-secret-token", "very-secret-sign", "access_token=", "sign=");
+            assertThat(appender.list)
+                    .allSatisfy(event -> assertThat(event.getThrowableProxy()).isNull());
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(originalLevel);
+        }
     }
 }

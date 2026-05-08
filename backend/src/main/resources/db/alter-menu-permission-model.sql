@@ -76,6 +76,21 @@ VALUES
     (gen_random_uuid(), '商品管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/product', null, 'shopping', 20, null, 1, 1)
 ON CONFLICT DO NOTHING;
 
+-- 菜单口径收口：/product 作为商品库，活动链路拆到 /product/manage
+UPDATE sys_menu
+SET menu_name = '商品库',
+    path = '/product',
+    update_time = CURRENT_TIMESTAMP
+WHERE deleted = 0
+  AND parent_id = '00000000-0000-0000-0000-000000000000'
+  AND menu_name = '商品管理'
+  AND path = '/product';
+
+INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
+VALUES
+    (gen_random_uuid(), '商品管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/product/manage', null, 'shopping', 21, null, 1, 1)
+ON CONFLICT DO NOTHING;
+
 -- 业务菜单: 订单管理
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
 VALUES

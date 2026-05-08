@@ -22,6 +22,13 @@ public interface ColonelsettlementActivityMapper {
             @Param("now") LocalDateTime now
     );
 
+    List<ColonelsettlementActivity> selectExportPage(
+            @Param("offset") long offset,
+            @Param("limit") long limit,
+            @Param("activityName") String activityName,
+            @Param("now") LocalDateTime now
+    );
+
     void insertSeedActivity(
             @Param("id") UUID id,
             @Param("activityId") String activityId,

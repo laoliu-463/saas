@@ -12,6 +12,27 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- 1. 用户与权限
 -- =============================================
 
+CREATE TABLE IF NOT EXISTS sys_dept (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    parent_id     UUID,
+    dept_code     VARCHAR(50) NOT NULL UNIQUE,
+    dept_name     VARCHAR(100) NOT NULL,
+    leader        VARCHAR(100),
+    phone         VARCHAR(20),
+    email         VARCHAR(100),
+    sort_order    INT       NOT NULL DEFAULT 0,
+    status        SMALLINT  NOT NULL DEFAULT 1,
+    deleted       SMALLINT  NOT NULL DEFAULT 0,
+    create_time   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    create_by     UUID,
+    update_by     UUID,
+    remark        VARCHAR(255)
+);
+CREATE INDEX IF NOT EXISTS idx_sys_dept_parent_id ON sys_dept(parent_id);
+CREATE INDEX IF NOT EXISTS idx_sys_dept_status    ON sys_dept(status);
+CREATE INDEX IF NOT EXISTS idx_sys_dept_deleted   ON sys_dept(deleted);
+
 CREATE TABLE IF NOT EXISTS sys_user (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username      VARCHAR(50)  NOT NULL UNIQUE,
@@ -363,6 +384,8 @@ CREATE TABLE IF NOT EXISTS merchant (
     shop_id         BIGINT,                                 -- 关联店铺ID
     shop_name       VARCHAR(200),
     source_order_id VARCHAR(50),                           -- 首次来源订单ID
+    owner_id        UUID,                                  -- 当前负责人
+    owner_dept_id   UUID,                                  -- 当前负责人所属组
     status          SMALLINT  NOT NULL DEFAULT 1,          -- [V1.3] 1=启用, 0=禁用
     deleted         SMALLINT  NOT NULL DEFAULT 0,
     create_time     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -373,6 +396,8 @@ CREATE TABLE IF NOT EXISTS merchant (
 );
 CREATE INDEX IF NOT EXISTS idx_merchant_merchant_id ON merchant(merchant_id);
 CREATE INDEX IF NOT EXISTS idx_merchant_shop_id     ON merchant(shop_id);
+CREATE INDEX IF NOT EXISTS idx_merchant_owner_id    ON merchant(owner_id);
+CREATE INDEX IF NOT EXISTS idx_merchant_owner_dept  ON merchant(owner_dept_id);
 CREATE INDEX IF NOT EXISTS idx_merchant_deleted     ON merchant(deleted);
 
 CREATE TABLE IF NOT EXISTS crawler_talent_info (
@@ -404,6 +429,10 @@ CREATE TABLE IF NOT EXISTS pick_source_mapping (
     pick_source      VARCHAR(128) NOT NULL,               -- [V1.2] 扩容至128（API实际返回可能较长）
     product_id       VARCHAR(50),
     activity_id      VARCHAR(50),
+    promotion_link_id UUID,                               -- [V2.2] 关联 promotion_link（alter v2 口径）
+    channel_user_name VARCHAR(100),
+    talent_id        VARCHAR(50),                         -- [V2.2] 业务透传达人标识（非 talent 表 UUID）
+    talent_name      VARCHAR(200),
     source_url       TEXT,
     converted_url    TEXT,
     click_count      INT       DEFAULT 0,
@@ -427,6 +456,7 @@ CREATE INDEX IF NOT EXISTS idx_psm_uuid_seed    ON pick_source_mapping(uuid_seed
 CREATE INDEX IF NOT EXISTS idx_psm_dept_id      ON pick_source_mapping(dept_id);
 CREATE INDEX IF NOT EXISTS idx_psm_product_id   ON pick_source_mapping(product_id);
 CREATE INDEX IF NOT EXISTS idx_psm_scene        ON pick_source_mapping(scene);
+CREATE INDEX IF NOT EXISTS idx_psm_pick_extra   ON pick_source_mapping(pick_extra);
 CREATE INDEX IF NOT EXISTS idx_psm_valid_until  ON pick_source_mapping(valid_until);
 CREATE INDEX IF NOT EXISTS idx_psm_status       ON pick_source_mapping(status);
 CREATE INDEX IF NOT EXISTS idx_psm_deleted      ON pick_source_mapping(deleted);
@@ -491,6 +521,17 @@ CREATE INDEX IF NOT EXISTS idx_sr_channel_talent_product_7d
     ON sample_request(channel_user_id, talent_id, product_id, create_time DESC)
     WHERE deleted = 0;
 
+CREATE INDEX IF NOT EXISTS idx_sr_talent_uid
+    ON sample_request(talent_uid)
+    WHERE deleted = 0 AND talent_uid IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sr_channel_talent_ship_time
+    ON sample_request(channel_user_id, talent_uid, ship_time)
+    WHERE deleted = 0
+      AND channel_user_id IS NOT NULL
+      AND talent_uid IS NOT NULL
+      AND ship_time IS NOT NULL;
+
 ALTER TABLE sample_request
     ADD COLUMN IF NOT EXISTS talent_fans_count BIGINT,
     ADD COLUMN IF NOT EXISTS talent_credit_score DECIMAL(3,2),
@@ -512,9 +553,10 @@ CREATE INDEX IF NOT EXISTS idx_ssl_operate_t  ON sample_status_log(operate_time)
 -- =============================================
 -- 8. 订单（按月分区）
 -- =============================================
+-- 主键必须为 (id, create_time)：分区键 create_time 须包含在主键中（PostgreSQL 分区表约束）。
 
 CREATE TABLE IF NOT EXISTS colonelsettlement_order (
-    id                       UUID,
+    id                       UUID NOT NULL DEFAULT gen_random_uuid(),
     order_id                 VARCHAR(50)  NOT NULL,
     product_id               VARCHAR(50),
     product_name             VARCHAR(500),
@@ -534,16 +576,25 @@ CREATE TABLE IF NOT EXISTS colonelsettlement_order (
     order_type               SMALLINT,
     settle_time              TIMESTAMP,
     cursor                   VARCHAR(100),
-    pick_source              VARCHAR(20),
+    pick_source              VARCHAR(128),
     channel_user_id          UUID,
+    channel_user_name        VARCHAR(100),
     channel_dept_id          UUID,
     user_id                  UUID,
     dept_id                  UUID,
+    colonel_user_id          UUID,
+    colonel_user_name        VARCHAR(100),
+    promotion_link_id        UUID,
+    product_title            VARCHAR(500),
+    talent_name              VARCHAR(200),
+    talent_id                UUID,
+    attribution_status       VARCHAR(32) DEFAULT 'UNATTRIBUTED',
+    attribution_remark       VARCHAR(255),
     create_time              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted                  SMALLINT  NOT NULL DEFAULT 0,
     extra_data               JSONB,
-    PRIMARY KEY (id, create_time)
+    CONSTRAINT pk_cso PRIMARY KEY (id, create_time)
 ) PARTITION BY RANGE (create_time);
 
 -- 创建初始分区（2026年4月 ~ 2027年3月，共12个月）
@@ -560,27 +611,20 @@ CREATE TABLE IF NOT EXISTS cso_2027_01 PARTITION OF colonelsettlement_order FOR 
 CREATE TABLE IF NOT EXISTS cso_2027_02 PARTITION OF colonelsettlement_order FOR VALUES FROM ('2027-02-01') TO ('2027-03-01');
 CREATE TABLE IF NOT EXISTS cso_2027_03 PARTITION OF colonelsettlement_order FOR VALUES FROM ('2027-03-01') TO ('2027-04-01');
 
--- 各分区索引
-DO $$
-DECLARE
-    part_name TEXT;
-BEGIN
-    FOREACH part_name IN ARRAY ARRAY[
-        'cso_2026_04','cso_2026_05','cso_2026_06','cso_2026_07',
-        'cso_2026_08','cso_2026_09','cso_2026_10','cso_2026_11',
-        'cso_2026_12','cso_2027_01','cso_2027_02','cso_2027_03'
-    ]
-    LOOP
-        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_order_id ON %I (order_id)', part_name);
-        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_product_id ON %I (product_id)', part_name);
-        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_colonel_id ON %I (colonel_buyin_id)', part_name);
-        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_settle_time ON %I (settle_time)', part_name);
-        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_pick_source ON %I (pick_source)', part_name);
-        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_user_id ON %I (user_id)', part_name);
-        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_dept_id ON %I (dept_id)', part_name);
-        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_create_time ON %I (create_time)', part_name);
-    END LOOP;
-END $$;
+-- 订单分区索引：在父表上创建（PG 分区表自动下发各子分区；避免多分区重复索引名在 schema 内冲突）
+CREATE INDEX IF NOT EXISTS idx_cso_order_id ON colonelsettlement_order (order_id);
+CREATE INDEX IF NOT EXISTS idx_cso_product_id ON colonelsettlement_order (product_id);
+CREATE INDEX IF NOT EXISTS idx_cso_colonel_id ON colonelsettlement_order (colonel_buyin_id);
+CREATE INDEX IF NOT EXISTS idx_cso_settle_time ON colonelsettlement_order (settle_time);
+CREATE INDEX IF NOT EXISTS idx_cso_pick_source ON colonelsettlement_order (pick_source);
+CREATE INDEX IF NOT EXISTS idx_cso_user_id ON colonelsettlement_order (user_id);
+CREATE INDEX IF NOT EXISTS idx_cso_dept_id ON colonelsettlement_order (dept_id);
+CREATE INDEX IF NOT EXISTS idx_cso_create_time ON colonelsettlement_order (create_time);
+-- 渠道/招商：部分索引与归因 SQL 中 deleted=0 条件一致（如 ExclusiveTalentService 订单汇总）。
+CREATE INDEX IF NOT EXISTS idx_cso_channel_user_id ON colonelsettlement_order (channel_user_id) WHERE deleted = 0;
+CREATE INDEX IF NOT EXISTS idx_cso_colonel_user_id ON colonelsettlement_order (colonel_user_id) WHERE deleted = 0;
+CREATE INDEX IF NOT EXISTS idx_cso_talent_id ON colonelsettlement_order (talent_id);
+CREATE INDEX IF NOT EXISTS idx_cso_attribution_status ON colonelsettlement_order (attribution_status);
 
 -- =============================================
 -- 9. 分佣与提成
@@ -698,6 +742,14 @@ INSERT INTO sys_role (role_code, role_name, data_scope, status) VALUES
     ('channel_staff', '渠道专员',     1, 1)
 ON CONFLICT (role_code) DO NOTHING;
 
+-- 种子数据：默认业务组（技术上复用 sys_dept 承载“本组”概念）
+INSERT INTO sys_dept (id, parent_id, dept_code, dept_name, sort_order, status)
+VALUES
+    ('11111111-1111-1111-1111-111111111111', NULL, 'BIZ', '招商组', 10, 1),
+    ('22222222-2222-2222-2222-222222222222', NULL, 'CHANNEL', '渠道组', 20, 1),
+    ('33333333-3333-3333-3333-333333333333', NULL, 'OPS', '运营组', 30, 1)
+ON CONFLICT (dept_code) DO NOTHING;
+
 -- 种子数据：默认管理员（仅开发环境）
 INSERT INTO sys_user (username, password, real_name, channel_code, status)
 VALUES ('admin', crypt('admin123', gen_salt('bf', 12)), '系统管理员', 'admin', 1)
@@ -805,7 +857,7 @@ CREATE TABLE IF NOT EXISTS operation_log (
     error_message   TEXT,
     create_time     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted         SMALLINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (id, create_time)
+    CONSTRAINT pk_ol PRIMARY KEY (id, create_time)
 ) PARTITION BY RANGE (create_time);
 
 -- 日志分区：2026年4月 ~ 2027年3月（与订单分区对齐，共12个月）
@@ -842,20 +894,11 @@ BEGIN
     cso_part_name    := 'cso_'  || month_str;
     ol_part_name     := 'op_log_' || month_str;
 
-    -- 订单分区
+    -- 订单分区（父表已建索引时，新分区自动继承）
     EXECUTE format(
         'CREATE TABLE IF NOT EXISTS %I PARTITION OF colonelsettlement_order FOR VALUES FROM (%L) TO (%L)',
         cso_part_name, next_month_start, next_month_end
     );
-    -- 订单分区索引
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_order_id ON %I (order_id)', cso_part_name);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_product_id ON %I (product_id)', cso_part_name);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_colonel_id ON %I (colonel_buyin_id)', cso_part_name);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_settle_time ON %I (settle_time)', cso_part_name);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_pick_source ON %I (pick_source)', cso_part_name);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_user_id ON %I (user_id)', cso_part_name);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_dept_id ON %I (dept_id)', cso_part_name);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_cso_create_time ON %I (create_time)', cso_part_name);
 
     -- 日志分区
     EXECUTE format(

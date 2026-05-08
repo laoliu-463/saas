@@ -75,6 +75,10 @@ public interface DouyinColonelActivityGateway {
             item.put("applicationEndTime", applicationEndTime);
             item.put("categoriesLimit", categoriesLimit);
             item.put("colonelBuyinId", colonelBuyinId);
+            // Keep legacy page fields until all consumers finish migrating to the normalized names.
+            item.put("activityStatus", status);
+            item.put("startTime", activityStartTime);
+            item.put("endTime", activityEndTime);
             return item;
         }
     }

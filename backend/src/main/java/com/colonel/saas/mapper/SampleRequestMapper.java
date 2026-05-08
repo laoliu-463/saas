@@ -30,4 +30,23 @@ public interface SampleRequestMapper extends BaseMapper<SampleRequest> {
             Page<SampleRequest> page,
             @Param(Constants.WRAPPER) QueryWrapper<SampleRequest> wrapper
     );
+
+    @Select("""
+            <script>
+            SELECT sr.*
+            FROM sample_request sr
+            JOIN product_operation_state pos ON sr.product_id = pos.product_id
+            WHERE sr.deleted = 0
+            AND pos.assignee_id = #{userId}
+            <if test="ew != null and ew.sqlSegment != null and ew.sqlSegment != ''">
+                AND ${ew.sqlSegment}
+            </if>
+            ORDER BY sr.create_time DESC
+            </script>
+            """)
+    IPage<SampleRequest> findPageForAuditor(
+            Page<SampleRequest> page,
+            @Param("userId") java.util.UUID userId,
+            @Param(Constants.WRAPPER) QueryWrapper<SampleRequest> wrapper
+    );
 }

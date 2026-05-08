@@ -4,8 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.ExclusiveMerchant;
+import com.colonel.saas.entity.ExclusiveTalent;
+import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.ExclusiveMerchantMapper;
+import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderDecryptService;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +44,12 @@ class DataControllerTest {
     private OrderDecryptService orderDecryptService;
     @Mock
     private CommissionService commissionService;
+    @Mock
+    private ExclusiveTalentMapper exclusiveTalentMapper;
+    @Mock
+    private ExclusiveMerchantMapper exclusiveMerchantMapper;
+    @Mock
+    private ColonelsettlementActivityMapper activityMapper;
 
     private DataController dataController;
 
@@ -47,7 +59,14 @@ class DataControllerTest {
 
     @BeforeEach
     void setUp() {
-        dataController = new DataController(orderMapper, orderDecryptService, commissionService);
+        dataController = new DataController(
+                orderMapper,
+                orderDecryptService,
+                commissionService,
+                exclusiveTalentMapper,
+                exclusiveMerchantMapper,
+                activityMapper
+        );
     }
 
     @Test
@@ -58,6 +77,8 @@ class DataControllerTest {
         dataController.getOrderPage(
                 1,
                 10,
+                null,
+                null,
                 null,
                 null,
                 LocalDate.of(2026, 4, 1),
@@ -87,13 +108,6 @@ class DataControllerTest {
     }
 
     @Test
-    void decryptOrderPhones_nullRequest_throwsBusinessException() {
-        assertThatThrownBy(() -> dataController.decryptOrderPhones(null, UUID.randomUUID(), "tester"))
-                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
-                .hasMessageContaining("orderIds");
-    }
-
-    @Test
     void decryptOrderPhones_emptyOrderIds_doesNotThrow() {
         DataController.DecryptOrderRequest request = new DataController.DecryptOrderRequest();
         request.setOrderIds(List.of());
@@ -104,6 +118,13 @@ class DataControllerTest {
 
         assertThat(response.getCode()).isEqualTo(200);
         verify(orderDecryptService).decryptPhones(List.of(), userId, "tester");
+    }
+
+    @Test
+    void decryptOrderPhones_nullRequest_throwsBusinessException() {
+        assertThatThrownBy(() -> dataController.decryptOrderPhones(null, UUID.randomUUID(), "tester"))
+                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
+                .hasMessageContaining("orderIds");
     }
 
     @Test
@@ -122,14 +143,13 @@ class DataControllerTest {
                         "order_count", 2L,
                         "order_amount_cent", 3000L
                 )));
-        when(orderMapper.selectCount(any())).thenReturn(0L);
         CommissionService.CommissionSummary summary =
                 new CommissionService.CommissionSummary(100000L, 20000L, 30000L,
                         50000L, 25000L, 12500L, 12500L,
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25));
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(summary);
 
-        var response = dataController.getMetrics(userId, null, DataScope.ALL);
+        var response = dataController.getMetrics(null, userId, null, DataScope.ALL);
 
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData()).isNotNull();
@@ -145,12 +165,11 @@ class DataControllerTest {
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
                 .thenReturn(List.of())
                 .thenReturn(List.of());
-        when(orderMapper.selectCount(any())).thenReturn(0L);
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
                 new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
 
-        var response = dataController.getMetrics(userId, UUID.randomUUID(), DataScope.PERSONAL);
+        var response = dataController.getMetrics(null, userId, UUID.randomUUID(), DataScope.PERSONAL);
 
         assertThat(response.getCode()).isEqualTo(200);
     }
@@ -163,12 +182,11 @@ class DataControllerTest {
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
                 .thenReturn(List.of())
                 .thenReturn(List.of());
-        when(orderMapper.selectCount(any())).thenReturn(0L);
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
                 new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
 
-        var response = dataController.getMetrics(userId, deptId, DataScope.DEPT);
+        var response = dataController.getMetrics(null, userId, deptId, DataScope.DEPT);
 
         assertThat(response.getCode()).isEqualTo(200);
     }
@@ -179,29 +197,64 @@ class DataControllerTest {
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
                 .thenReturn(List.of())
                 .thenReturn(List.of());
-        when(orderMapper.selectCount(any())).thenReturn(0L);
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
                 new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.15), java.math.BigDecimal.valueOf(0.15)));
 
-        var response = dataController.getMetrics(UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
+        var response = dataController.getMetrics("createTime", UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
 
         assertThat(response.getCode()).isEqualTo(200);
         verify(orderMapper, never()).selectPage(any(Page.class), any());
     }
 
     @Test
-    void getExclusiveTalentStatus_returnsMockData() {
-        var response = dataController.getExclusiveTalentStatus();
+    void getExclusiveTalentStatus_returnsPagedData() {
+        Page<ExclusiveTalent> page = new Page<>(1, 10, 1);
+        ExclusiveTalent record = new ExclusiveTalent();
+        record.setTalentUid("talent-001");
+        page.setRecords(List.of(record));
+        when(exclusiveTalentMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        var response = dataController.getExclusiveTalentStatus(
+                1,
+                10,
+                "2026-05",
+                "talent",
+                1,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL
+        );
+
         assertThat(response.getCode()).isEqualTo(200);
-        assertThat(response.getData()).isEmpty();
+        assertThat(response.getData()).isNotNull();
+        assertThat(response.getData().getRecords()).hasSize(1);
+        assertThat(response.getData().getRecords().get(0).getTalentUid()).isEqualTo("talent-001");
     }
 
     @Test
-    void getExclusiveMerchantStatus_returnsMockData() {
-        var response = dataController.getExclusiveMerchantStatus();
+    void getExclusiveMerchantStatus_returnsPagedData() {
+        Page<ExclusiveMerchant> page = new Page<>(1, 10, 1);
+        ExclusiveMerchant record = new ExclusiveMerchant();
+        record.setMerchantName("商家A");
+        page.setRecords(List.of(record));
+        when(exclusiveMerchantMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        var response = dataController.getExclusiveMerchantStatus(
+                1,
+                10,
+                "2026-05",
+                "商家",
+                1,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL
+        );
+
         assertThat(response.getCode()).isEqualTo(200);
-        assertThat(response.getData()).isEmpty();
+        assertThat(response.getData()).isNotNull();
+        assertThat(response.getData().getRecords()).hasSize(1);
+        assertThat(response.getData().getRecords().get(0).getMerchantName()).isEqualTo("商家A");
     }
 
     @Test
@@ -209,7 +262,7 @@ class DataControllerTest {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
-        dataController.getOrderPage(1, 10, null, "SHIPPED", null, null,
+        dataController.getOrderPage(1, 10, null, "SHIPPED", null, null, null, null,
                 UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
@@ -223,7 +276,7 @@ class DataControllerTest {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
-        dataController.getOrderPage(1, 10, "MOCK_GEN_ATTR", null, null, null,
+        dataController.getOrderPage(1, 10, "MOCK_GEN_ATTR", null, null, null, null, null,
                 UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
@@ -242,6 +295,8 @@ class DataControllerTest {
                 10,
                 null,
                 null,
+                null,
+                null,
                 LocalDate.of(2026, 5, 3),
                 LocalDate.of(2026, 5, 3),
                 UUID.randomUUID(),
@@ -254,12 +309,41 @@ class DataControllerTest {
     }
 
     @Test
+    void getOrderPage_withTalentAndMerchantFilter_addsConditions() {
+        IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
+        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+        UUID talentId = UUID.randomUUID();
+
+        dataController.getOrderPage(
+                1,
+                10,
+                null,
+                null,
+                talentId,
+                "merchant_10086",
+                null,
+                null,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL
+        );
+
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        String segment = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(segment).contains("co.talent_id");
+        assertThat(segment).contains("merchant_id");
+    }
+
+    @Test
     void exportOrders_withPersonalScope_appliesUserFilter() throws Exception {
         Page<ColonelsettlementOrder> empty = new Page<>(1, 10);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
         UUID userId = UUID.randomUUID();
 
         dataController.exportOrders(
+                null,
+                null,
                 null,
                 LocalDate.of(2026, 5, 1),
                 LocalDate.of(2026, 5, 4),
@@ -303,6 +387,8 @@ class DataControllerTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         dataController.exportOrders(
                 null,
+                null,
+                null,
                 LocalDate.of(2026, 5, 1),
                 LocalDate.of(2026, 5, 5),
                 UUID.randomUUID(),
@@ -317,14 +403,27 @@ class DataControllerTest {
     }
 
     @Test
-    void exportActivities_throwsBusinessException() {
-        assertThatThrownBy(() -> dataController.exportActivities(
-                null,
+    void exportActivities_shouldWriteCsv() throws Exception {
+        ColonelsettlementActivity activity = new ColonelsettlementActivity();
+        activity.setActivityId("ACT-001");
+        activity.setName("活动A");
+        activity.setStartTime(java.time.LocalDateTime.of(2026, 5, 1, 10, 0));
+        activity.setEndTime(java.time.LocalDateTime.of(2026, 5, 31, 23, 59));
+        activity.setStatus(1);
+        when(activityMapper.selectExportPage(any(Long.class), any(Long.class), any(), any())).thenReturn(List.of(activity));
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        dataController.exportActivities(
+                "活动",
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 DataScope.ALL,
-                new MockHttpServletResponse()))
-                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
-                .hasMessageContaining("活动导出暂未开放");
+                response
+        );
+
+        String csv = response.getContentAsString();
+        assertThat(csv).contains("活动ID,活动名称,开始时间,结束时间,状态");
+        assertThat(csv).contains("ACT-001");
+        assertThat(csv).contains("活动A");
     }
 }

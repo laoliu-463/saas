@@ -4,7 +4,10 @@ import { useAuthStore } from '../stores/auth'
 import { isTestEnv } from '../utils/env'
 
 const ROLE = ROLE_CODES
-const HOME_CANDIDATES = ['/dashboard', '/orders', '/data', '/product', '/talent', '/ops/shipping', '/sample', '/system/users']
+const HOME_CANDIDATES = ['/dashboard', '/orders', '/data', '/product', '/product/manage', '/product/manage/products', '/talent', '/ops/shipping', '/sample', '/system/users']
+const CHANNEL_STAFF_HOME_CANDIDATES = ['/product', '/talent', '/sample', '/data']
+const BIZ_STAFF_HOME_CANDIDATES = ['/product/manage/products', '/sample', '/data']
+const OPS_STAFF_HOME_CANDIDATES = ['/ops/shipping']
 
 const router = createRouter({
   history: createWebHistory(),
@@ -16,38 +19,57 @@ const router = createRouter({
       children: [
         {
           path: 'product',
-          component: () => import('../views/product/index.vue'),
-          meta: { title: '选品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          component: () => import('../views/product/ProductLibrary.vue'),
+          meta: { title: '商品库', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'product/library',
+          redirect: '/product',
+          meta: { title: '商品库', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+        },
+        {
+          path: 'product/manage',
+          component: () => import('../views/product/ActivityList.vue'),
+          meta: { title: '活动列表', roles: [ROLE.BIZ_LEADER] }
+        },
+        {
+          path: 'product/manage/products',
           component: () => import('../views/product/index.vue'),
-          meta: { title: '商品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '商品列表', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
+        },
+        {
+          path: 'product/manage/list',
+          redirect: '/product/manage/products'
+        },
+        {
+          path: 'product/manage/:activityId',
+          component: () => import('../views/product/index.vue'),
+          meta: { title: '商品列表', roles: [ROLE.BIZ_LEADER] }
         },
         {
           path: 'product/activity',
-          component: () => import('../views/product/ActivityList.vue'),
-          meta: { title: '活动列表', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
+          redirect: '/product/manage',
+          meta: { title: '商品管理', roles: [ROLE.BIZ_LEADER] }
         },
         {
           path: 'product/activity/:activityId',
-          component: () => import('../views/product/index.vue'),
-          meta: { title: '活动商品', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          redirect: (to) => `/product/manage/${to.params.activityId}`,
+          meta: { title: '商品列表', roles: [ROLE.BIZ_LEADER] }
         },
         {
           path: 'product/:id',
           redirect: '/product',
-          meta: { title: '选品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '商品库', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'talent',
           component: () => import('../views/talent/index.vue'),
-          meta: { title: '达人经营台', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '达人 CRM', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'sample',
           component: () => import('../views/sample/index.vue'),
-          meta: { title: '寄样台', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.OPS_STAFF] }
+          meta: { title: '寄样台', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'sample/apply',
@@ -62,7 +84,7 @@ const router = createRouter({
         {
           path: 'ops/exclusive',
           component: () => import('../views/ops/ExclusiveStatus.vue'),
-          meta: { title: '独家状态', roles: [ROLE.OPS_STAFF, ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
+          meta: { title: '独家状态', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
         },
         {
           path: 'ops/shipping',
@@ -72,7 +94,7 @@ const router = createRouter({
         {
           path: 'data',
           component: () => import('../views/data/index.vue'),
-          meta: { title: '核心看板', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '数据看板', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'data/orders',
@@ -128,7 +150,15 @@ const router = createRouter({
 
 const resolveHomePath = (authStore: ReturnType<typeof useAuthStore>): string => {
   const roles = authStore.roleCodes
-  const accessible = HOME_CANDIDATES.find((path) => {
+  const candidates =
+    roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.CHANNEL_LEADER) && !roles.includes(ROLE.ADMIN)
+      ? CHANNEL_STAFF_HOME_CANDIDATES
+      : roles.includes(ROLE.OPS_STAFF) && !roles.includes(ROLE.ADMIN)
+        ? OPS_STAFF_HOME_CANDIDATES
+      : roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.BIZ_LEADER) && !roles.includes(ROLE.ADMIN)
+        ? BIZ_STAFF_HOME_CANDIDATES
+        : HOME_CANDIDATES
+  const accessible = candidates.find((path) => {
     const matched = router.resolve(path).matched
     const required = matched[matched.length - 1]?.meta?.roles as string[] | undefined
     return hasAccess(roles, required)

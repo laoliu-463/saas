@@ -14,7 +14,7 @@ import java.util.UUID;
  * <ul>
  *   <li>将 JWT token 放入后续请求的 Authorization header</li>
  *   <li>前端根据 dataScope/roleCodes 控制 UI 权限展示</li>
- *   <li>根据 userId/deptId 关联业务数据</li>
+ *   <li>根据 userId/deptId 关联业务数据（技术字段仍沿用 deptId，业务上表示所在组）</li>
  * </ul>
  *
  * @see <a href="https://swagger.io/docs/specification/data-models/">OpenAPI Schema 文档</a>
@@ -69,21 +69,21 @@ public class LoginResponse {
     private UUID userId;
 
     /**
-     * 部门 ID(UUID)，对应 sys_dept 表主键，可为空.
+     * 组织/组 ID(UUID)，对应 sys_dept 表主键，可为空.
      * <p>
-     * 用于数据权限隔离，用户只能看到归属部门的数据。
-     * 为空时表示用户未归属任何部门，dataScope 仍生效。
+     * 用于数据权限隔离，用户只能看到归属本组的数据。
+     * 为空时表示用户未归属任何组，dataScope 仍生效。
      *
      * @see #dataScope
      */
-    @Schema(description = "部门 ID")
+    @Schema(description = "组 ID（技术字段名仍为 deptId）")
     private UUID deptId;
 
     /**
      * 数据权限范围，控制用户可查询的数据范围.
      * <ul>
      *   <li>{@code 1} = 本人数据（仅能查看自己创建的数据）</li>
-     *   <li>{@code 2} = 本组数据（可查看同部门/同角色下其他人的数据）</li>
+     *   <li>{@code 2} = 本组数据（可查看同组/同角色下其他人的数据）</li>
      *   <li>{@code 3} = 全部数据（管理员，可查看所有数据）</li>
      * </ul>
      * <p>

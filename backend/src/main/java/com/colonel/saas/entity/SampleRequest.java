@@ -2,17 +2,19 @@ package com.colonel.saas.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.colonel.saas.common.base.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("sample_request")
+@TableName(value = "sample_request", autoResultMap = true)
 public class SampleRequest extends BaseEntity {
 
     @TableField("request_no")
@@ -84,4 +86,7 @@ public class SampleRequest extends BaseEntity {
     private String closeReason;
 
     private String remark;
+
+    @TableField(value = "extra_data", typeHandler = JacksonTypeHandler.class)
+    private Map<String, Object> extraData;
 }

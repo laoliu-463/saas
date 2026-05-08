@@ -3,8 +3,10 @@ package com.colonel.saas.service;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.entity.ProductOperationState;
+import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.PickSourceMappingMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
+import com.colonel.saas.mapper.TalentMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +21,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -28,6 +31,8 @@ class AttributionServiceTest {
     private PickSourceMappingMapper pickSourceMappingMapper;
     @Mock
     private ProductOperationStateMapper productOperationStateMapper;
+    @Mock
+    private TalentMapper talentMapper;
     @Mock
     private ExclusiveTalentService exclusiveTalentService;
     @Mock
@@ -40,9 +45,13 @@ class AttributionServiceTest {
         service = new AttributionService(
                 pickSourceMappingMapper,
                 productOperationStateMapper,
+                talentMapper,
                 exclusiveTalentService,
                 exclusiveMerchantService
         );
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        lenient().when(talentMapper.selectOne(any())).thenReturn(talent);
     }
 
     @Test
@@ -88,6 +97,29 @@ class AttributionServiceTest {
         assertThat(result.userId()).isEqualTo(talentOwner);
         assertThat(result.deptId()).isEqualTo(talentDept);
         assertThat(result.talentUid()).isEqualTo("t-2");
+        verify(pickSourceMappingMapper, never()).selectOne(any());
+    }
+
+    @Test
+    void resolveAttribution_shouldUseAuthorBuyinIdForExclusiveTalent() {
+        UUID talentOwner = UUID.randomUUID();
+        UUID talentDept = UUID.randomUUID();
+        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        when(exclusiveTalentService.findActiveOwnerByTalentUid("7137334329718292775"))
+                .thenReturn(new AttributionService.ExclusiveOwner(talentOwner, talentDept));
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("3745254399715443024");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of("author_buyin_id", "7137334329718292775")
+        );
+
+        assertThat(result.userId()).isEqualTo(talentOwner);
+        assertThat(result.deptId()).isEqualTo(talentDept);
+        assertThat(result.talentUid()).isEqualTo("7137334329718292775");
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
         verify(pickSourceMappingMapper, never()).selectOne(any());
     }
 

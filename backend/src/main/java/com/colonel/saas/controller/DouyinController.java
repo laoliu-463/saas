@@ -5,6 +5,7 @@ import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.DoudianTokenGateway;
+import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.douyin.DouyinTokenService;
 import com.colonel.saas.douyin.api.ActivityApi;
@@ -27,6 +28,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -56,6 +58,7 @@ public class DouyinController extends BaseController {
     private final InstitutionApi institutionApi;
     private final DouyinTokenService douyinTokenService;
     private final DoudianTokenGateway doudianTokenGateway;
+    private final DouyinApiClient douyinApiClient;
 
     public DouyinController(
             ActivityApi activityApi,
@@ -63,13 +66,15 @@ public class DouyinController extends BaseController {
             OrderApi orderApi,
             InstitutionApi institutionApi,
             DouyinTokenService douyinTokenService,
-            DoudianTokenGateway doudianTokenGateway) {
+            DoudianTokenGateway doudianTokenGateway,
+            DouyinApiClient douyinApiClient) {
         this.activityApi = activityApi;
         this.productApi = productApi;
         this.orderApi = orderApi;
         this.institutionApi = institutionApi;
         this.douyinTokenService = douyinTokenService;
         this.doudianTokenGateway = doudianTokenGateway;
+        this.douyinApiClient = douyinApiClient;
     }
 
     @Operation(summary = "[联调] 查询活动列表", description = "验证上游 alliance.instituteColonelActivityList 能力是否可用，检查当前 appId 下团长活动列表查询链路。")
@@ -193,7 +198,13 @@ public class DouyinController extends BaseController {
         result.put("module", "M1.2 Douyin SDK");
         result.put("endpoint", "buyin.colonelMultiSettlementOrders");
         result.put("appId", appId);
-        result.put("query", Map.of("size", size, "cursor", cursor, "timeType", timeType));
+        Map<String, Object> query = new HashMap<>();
+        query.put("size", size);
+        query.put("cursor", cursor);
+        query.put("timeType", timeType);
+        query.put("startTime", startTime);
+        query.put("endTime", endTime);
+        result.put("query", query);
         try {
             result.put("remoteResponse", orderApi.listColonelMultiSettlementOrders(
                     appId, size, cursor, timeType, startTime, endTime, null));
@@ -255,6 +266,76 @@ public class DouyinController extends BaseController {
             result.put("status", "success");
         } catch (Throwable e) {
             log.error("Douyin activity product cancel raw call failed", e);
+            fillError(result, e);
+        }
+        return ok(result);
+    }
+
+    @Operation(summary = "[联调] 推广链接 RAW 探针", description = "使用原始 JSON 直接调用指定推广相关上游方法，便于核对 instPickSourceConvert / kolProductShare / getProductShareMaterial 的真实返回结构。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/promotion-link-probes/raw")
+    public ApiResult<Map<String, Object>> tuiguangLianjieYuanshi(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "原始推广探针请求体，需包含 appId、method，其他字段按上游接口要求透传。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"method\":\"buyin.instPickSourceConvert\",\"product_url\":\"https://haohuo.jinritemai.com/ecommerce/trade/detail/index.html?id=1\",\"pick_extra\":\"channel_demo\"}"))
+            )
+            @RequestBody Map<String, Object> request) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("module", "M1.3 Promotion Raw Probe");
+        try {
+            if (request == null || request.isEmpty()) {
+                throw new IllegalArgumentException("request body is required");
+            }
+            Map<String, Object> payload = new HashMap<>(request);
+            String method = asTrimmedText(payload.remove("method"));
+            String appId = asTrimmedText(payload.remove("appId"));
+            if (!StringUtils.hasText(method)) {
+                throw new IllegalArgumentException("method is required");
+            }
+            result.put("endpoint", method);
+            result.put("appId", appId);
+            result.put("payload", payload);
+            if (StringUtils.hasText(appId)) {
+                payload.put("appId", appId);
+            }
+            result.put("remoteResponse", douyinApiClient.post(method, payload));
+            result.put("status", "success");
+        } catch (Throwable e) {
+            log.error("Douyin promotion raw probe failed", e);
+            fillError(result, e);
+        }
+        return ok(result);
+    }
+
+    @Operation(summary = "[联调] 订单同步 RAW 探针", description = "使用原始 JSON 直接调用 buyin.instituteOrderColonel，便于联调阶段先拿真实订单原始返回，再补本地映射。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/order-sync-probes/raw")
+    public ApiResult<Map<String, Object>> dingdanTongbuYuanshi(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "原始订单同步探针请求体，需包含 appId，其他字段按上游接口要求透传。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"start_time\":1711900800,\"end_time\":1711987200,\"page\":1,\"count\":20}"))
+            )
+            @RequestBody Map<String, Object> request) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("module", "M1.4 Order Raw Probe");
+        result.put("endpoint", "buyin.instituteOrderColonel");
+        try {
+            if (request == null || request.isEmpty()) {
+                throw new IllegalArgumentException("request body is required");
+            }
+            Map<String, Object> payload = new HashMap<>(request);
+            String appId = asTrimmedText(payload.remove("appId"));
+            result.put("appId", appId);
+            result.put("payload", payload);
+            if (StringUtils.hasText(appId)) {
+                payload.put("appId", appId);
+            }
+            result.put("remoteResponse", douyinApiClient.post("buyin.instituteOrderColonel", payload));
+            result.put("status", "success");
+        } catch (Throwable e) {
+            log.error("Douyin order sync raw probe failed", e);
             fillError(result, e);
         }
         return ok(result);
@@ -332,7 +413,7 @@ public class DouyinController extends BaseController {
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Token 初始化请求体。",
                     required = true,
-                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"code\":\"\",\"grantType\":\"authorization_self\",\"shopId\":\"123456789\"}"))
+                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"code\":\"达人或机构授权code\",\"grantType\":\"authorization_code\"}"))
             )
             @Valid @RequestBody TokenCreateRequest request) {
         douyinTokenService.exchangeCodeAndBootstrap(
@@ -354,7 +435,7 @@ public class DouyinController extends BaseController {
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "TokenCreateRequest 探针请求体。",
                     required = true,
-                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"7623665273727387199\",\"grantType\":\"authorization_self\",\"authId\":\"7351155267604218149\"}"))
+                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"7623665273727387199\",\"code\":\"达人或机构授权code\",\"grantType\":\"authorization_code\"}"))
             )
             @Valid @RequestBody TokenCreateRequest request) {
         DoudianTokenGateway.TokenCreateProbeResult probe = doudianTokenGateway.probeCreateToken(
@@ -437,31 +518,39 @@ public class DouyinController extends BaseController {
         result.put("errorType", e.getClass().getSimpleName());
     }
 
+    private String asTrimmedText(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
+    }
+
     public static class TokenCreateRequest {
         @Schema(description = "抖音应用 appId。", example = "test-app")
         @JsonAlias({"app_id"})
         private String appId;
 
-        @Schema(description = "授权码。工具型应用传回调得到的 code；自用型应用传空字符串 \"\"。", example = "")
+        @Schema(description = "达人或机构回调返回的授权 code。", example = "code_xxx")
         @JsonAlias({"authorizationCode", "authorization_code"})
         private String code;
 
-        @Schema(description = "授权类型。工具型为 authorization_code；自用型为 authorization_self。", example = "authorization_self")
+        @Schema(description = "授权类型，联盟自研固定为 authorization_code。", example = "authorization_code")
         @JsonAlias({"grant_type"})
         private String grantType;
 
         @JsonAlias({"test_shop", "testShop"})
         private String testShop;
 
-        @Schema(description = "店铺 ID（自用型授权时使用，与 authId 互斥二选一）。", example = "123456789")
+        @Schema(description = "预留字段，联盟授权换 token 时通常不需要。", example = "123456789")
         @JsonAlias({"shop_id", "shopId"})
         private String shopId;
 
-        @Schema(description = "授权 ID（自用型授权时使用，与 shopId 互斥二选一）。", example = "auth_xxx")
+        @Schema(description = "预留字段，联盟授权换 token 时通常不需要。", example = "auth_xxx")
         @JsonAlias({"auth_id", "authId"})
         private String authId;
 
-        @Schema(description = "授权主体类型（自用型授权时配合 authId 使用）。待确认：取值请参考抖店开放平台文档。", example = "1")
+        @Schema(description = "预留字段，联盟授权换 token 时通常不需要。", example = "1")
         @JsonAlias({"auth_subject_type", "authSubjectType", "auth_type", "type"})
         private String authSubjectType;
 

@@ -80,8 +80,9 @@ public class DouyinApiClient {
             }
             response = castToStringObjectMap(responseMap);
         } catch (Exception e) {
-            log.error("Douyin API request failed, method={}", method, e);
-            throw new BusinessException("Douyin API request failed", e);
+            log.error("Douyin API request failed, method={}, exception={}",
+                    method, e.getClass().getSimpleName());
+            throw new BusinessException("Douyin API request failed");
         }
 
         int code = parseCode(response);

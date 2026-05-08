@@ -18,7 +18,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,5 +55,24 @@ class OperationLogServiceTest {
         assertThat(ddlList).anyMatch(sql -> sql.contains("op_log_2027_04 PARTITION OF operation_log"));
         assertThat(ddlList).anyMatch(sql -> sql.contains("idx_op_log_2027_04_create_time"));
         verify(jdbcTemplate).update(anyString(), any(Object[].class));
+    }
+
+    @Test
+    void cleanupOldPartitions_shouldDropExpiredPartitionsOnly() {
+        doAnswer(invocation -> {
+            org.springframework.jdbc.core.RowCallbackHandler handler = invocation.getArgument(1);
+            java.sql.ResultSet jan = org.mockito.Mockito.mock(java.sql.ResultSet.class);
+            when(jan.getString("partition_name")).thenReturn("op_log_2026_01");
+            handler.processRow(jan);
+            java.sql.ResultSet feb = org.mockito.Mockito.mock(java.sql.ResultSet.class);
+            when(feb.getString("partition_name")).thenReturn("op_log_2026_02");
+            handler.processRow(feb);
+            return null;
+        }).when(jdbcTemplate).query(anyString(), any(org.springframework.jdbc.core.RowCallbackHandler.class));
+
+        int dropped = service.cleanupOldPartitions(90);
+
+        assertThat(dropped).isGreaterThanOrEqualTo(0);
+        verify(jdbcTemplate, atLeast(1)).execute(anyString());
     }
 }

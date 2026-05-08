@@ -3,6 +3,7 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.enums.TalentFollowStatus;
 import com.colonel.saas.common.exception.BusinessException;
@@ -100,6 +101,13 @@ public class ProductService {
     }
 
     public IPage<Product> getPage(long page, long size, Integer status) {
+        return getPage(page, size, status, null);
+    }
+
+    public IPage<Product> getPage(long page, long size, Integer status, UUID assigneeId) {
+        if (assigneeId != null) {
+            return getAssignedPickPage(page, size, assigneeId);
+        }
         Page<ProductSnapshot> query = new Page<>(Math.max(page, 1), Math.max(size, 1));
         LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<ProductSnapshot>()
                 .orderByDesc(ProductSnapshot::getSyncTime)
@@ -122,6 +130,31 @@ public class ProductService {
                         snapshot,
                         stateMap.get(stateBatchKey(snapshot.getActivityId(), snapshot.getProductId())),
                         assigneeNameMap))
+                .toList());
+        return result;
+    }
+
+    private IPage<Product> getAssignedPickPage(long page, long size, UUID assigneeId) {
+        Page<ProductOperationState> query = new Page<>(Math.max(page, 1), Math.max(size, 1));
+        IPage<ProductOperationState> statePage = operationStateMapper.selectPage(
+                query,
+                new LambdaQueryWrapper<ProductOperationState>()
+                        .eq(ProductOperationState::getAssigneeId, assigneeId)
+                        .orderByDesc(ProductOperationState::getUpdateTime)
+                        .orderByDesc(ProductOperationState::getCreateTime)
+        );
+        List<ProductOperationState> states = statePage.getRecords();
+        Map<String, ProductSnapshot> snapshotMap = loadSnapshotsForStateBatch(states);
+        Map<UUID, String> assigneeNameMap = loadUserDisplayNames(Set.of(assigneeId));
+
+        Page<Product> result = new Page<>(statePage.getCurrent(), statePage.getSize());
+        result.setTotal(statePage.getTotal());
+        result.setRecords(states.stream()
+                .map(state -> {
+                    ProductSnapshot snapshot = snapshotMap.get(stateBatchKey(state.getActivityId(), state.getProductId()));
+                    return snapshot == null ? null : toLegacyProduct(snapshot, state, assigneeNameMap);
+                })
+                .filter(java.util.Objects::nonNull)
                 .toList());
         return result;
     }
@@ -173,6 +206,40 @@ public class ProductService {
 
         Page<Product> result = new Page<>(currentPage, pageSize, matchedTotal);
         result.setRecords(pageRecords);
+        return result;
+    }
+
+    public PageResult<Map<String, Object>> getPromotionLinkHistory(String productId, long page, long size) {
+        long currentPage = Math.max(page, 1);
+        long pageSize = Math.max(size, 1);
+        PageResult<Map<String, Object>> result = new PageResult<>();
+        result.setPage(currentPage);
+        result.setSize(pageSize);
+        if (!StringUtils.hasText(productId)) {
+            result.setTotal(0);
+            result.setRecords(List.of());
+            return result;
+        }
+        List<PromotionLink> links = promotionLinkMapper.selectList(new LambdaQueryWrapper<PromotionLink>()
+                .eq(PromotionLink::getProductId, productId)
+                .orderByDesc(PromotionLink::getCreatedAt));
+        if (links == null || links.isEmpty()) {
+            result.setTotal(0);
+            result.setRecords(List.of());
+            return result;
+        }
+        long fromIndexLong = (currentPage - 1) * pageSize;
+        if (fromIndexLong >= links.size()) {
+            result.setTotal(links.size());
+            result.setRecords(List.of());
+            return result;
+        }
+        int fromIndex = Math.toIntExact(fromIndexLong);
+        int toIndex = (int) Math.min(fromIndexLong + pageSize, links.size());
+        result.setTotal(links.size());
+        result.setRecords(links.subList(fromIndex, toIndex).stream()
+                .map(this::toPromotionLinkHistoryItem)
+                .toList());
         return result;
     }
 
@@ -526,11 +593,41 @@ public class ProductService {
             UUID operatorDeptId) {
         ProductSnapshot snapshot = ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
+        if (Boolean.TRUE.equals(state.getSelectedToLibrary())) {
+            Map<String, Object> existingDetail = getActivityProductDetail(activityId, productId);
+            existingDetail.put("selectedToLibrary", true);
+            existingDetail.put("libraryVisible", true);
+            return existingDetail;
+        }
+        requireApprovedAuditForLibraryEntry(state);
         state.setSelectedToLibrary(true);
         state.setSelectedAt(LocalDateTime.now());
         state.setSelectedBy(operatorId);
         state.setLastOperationAt(LocalDateTime.now());
-        if (state.getId() == null) {
+        ProductBizStatus currentStatus = productBizStatusService.readBizStatus(state);
+        if (currentStatus == ProductBizStatus.PENDING_AUDIT) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("eventLabel", "加入商品库");
+            payload.put("productTitle", safeText(snapshot.getTitle(), "活动商品"));
+            productBizStatusService.changeStatus(
+                    state,
+                    ProductBizStatus.APPROVED,
+                    "LIBRARY_ENTRY",
+                    operatorId,
+                    operatorDeptId,
+                    payload,
+                    "已加入商品库，对全员可见",
+                    current -> {
+                        current.setSelectedToLibrary(true);
+                        current.setSelectedAt(LocalDateTime.now());
+                        current.setSelectedBy(operatorId);
+                    }
+            );
+            Map<String, Object> detail = getActivityProductDetail(activityId, productId);
+            detail.put("selectedToLibrary", true);
+            detail.put("libraryVisible", true);
+            return detail;
+        } else if (state.getId() == null) {
             operationStateMapper.insert(state);
         } else {
             operationStateMapper.updateById(state);
@@ -606,6 +703,7 @@ public class ProductService {
         }
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
+        requireSelectedToLibrary(state, "分配招商");
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("assigneeId", assigneeId);
         payload.put("assigneeName", resolveUserDisplayName(assigneeId));
@@ -648,29 +746,66 @@ public class ProductService {
         if (!approved && !StringUtils.hasText(reason)) {
             throw new BusinessException("审核拒绝时必须填写原因");
         }
-        if (approved) {
-            validateAuditSupplement(supplement);
-        }
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
+        ProductBizStatus beforeStatus = productBizStatusService.readBizStatus(state);
+        if (beforeStatus == null) {
+            beforeStatus = ProductBizStatus.PENDING_AUDIT;
+        }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("approved", approved);
         payload.put("reason", reason);
+        state.setLastOperationAt(LocalDateTime.now());
+        state.setAuditStatus(approved ? 2 : 3);
+        state.setAuditRemark(approved ? null : reason);
+        state.setAuditPayload(null);
         if (approved) {
+            state.setSelectedToLibrary(true);
+            state.setSelectedAt(LocalDateTime.now());
+            state.setSelectedBy(operatorId);
+            payload.put("eventLabel", "审核通过并加入商品库");
+            payload.put("selectedToLibrary", true);
+            payload.put("libraryVisible", true);
             payload.put("supplement", normalizeAuditSupplement(supplement));
+            productBizStatusService.changeStatus(
+                    state,
+                    ProductBizStatus.APPROVED,
+                    "AUDIT",
+                    operatorId,
+                    operatorDeptId,
+                    payload,
+                    "审核通过，已加入商品库",
+                    current -> {
+                        current.setAuditStatus(2);
+                        current.setAuditRemark(null);
+                        current.setAuditPayload(null);
+                        current.setSelectedToLibrary(true);
+                        current.setSelectedAt(LocalDateTime.now());
+                        current.setSelectedBy(operatorId);
+                        current.setLastOperationAt(LocalDateTime.now());
+                    }
+            );
+            Map<String, Object> detail = getActivityProductDetail(activityId, productId);
+            detail.put("selectedToLibrary", true);
+            detail.put("libraryVisible", true);
+            return detail;
         }
+
+        state.setSelectedToLibrary(false);
+        payload.put("eventLabel", "审核拒绝");
         productBizStatusService.changeStatus(
                 state,
-                approved ? ProductBizStatus.APPROVED : ProductBizStatus.REJECTED,
+                ProductBizStatus.REJECTED,
                 "AUDIT",
                 operatorId,
                 operatorDeptId,
                 payload,
-                approved ? "审核通过" : "审核拒绝",
+                "审核拒绝",
                 current -> {
-                    current.setAuditStatus(approved ? 2 : 3);
-                    current.setAuditRemark(approved ? null : reason);
-                    current.setAuditPayload(approved ? writeAuditPayload(supplement) : null);
+                    current.setAuditStatus(3);
+                    current.setAuditRemark(reason);
+                    current.setAuditPayload(null);
+                    current.setLastOperationAt(LocalDateTime.now());
                 }
         );
         return getActivityProductDetail(activityId, productId);
@@ -690,6 +825,7 @@ public class ProductService {
         }
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
+        requireSelectedToLibrary(state, "保存推进判断");
         ProductBizStatus currentStatus = productBizStatusService.readBizStatus(state);
         state.setLastOperationAt(LocalDateTime.now());
         if (state.getId() == null) {
@@ -749,6 +885,7 @@ public class ProductService {
         int finalPromotionScene = promotionScene == null ? 4 : promotionScene;
         String finalScene = normalizePromotionScene(scene);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
+        requireSelectedToLibrary(state, "生成推广链接");
         ProductBizStatus beforeStatus = productBizStatusService.readBizStatus(state);
         SysUser user = sysUserMapper.selectById(userId);
         String desiredPickExtra = buildPickExtra(userId);
@@ -863,7 +1000,13 @@ public class ProductService {
         if (userId == null) {
             return null;
         }
-        return "channel_" + userId;
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user != null && StringUtils.hasText(user.getChannelCode())) {
+            String candidate = "channel_" + user.getChannelCode().trim().toLowerCase(Locale.ROOT);
+            return candidate.length() <= 20 ? candidate : candidate.substring(0, 20);
+        }
+        String fallback = "channel_" + userId.toString().replace("-", "");
+        return fallback.substring(0, Math.min(fallback.length(), 20));
     }
 
     private String normalizePromotionScene(String scene) {
@@ -914,6 +1057,7 @@ public class ProductService {
             String operatorName) {
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
+        requireSelectedToLibrary(state, "创建达人跟进");
         ProductBizStatus beforeStatus = productBizStatusService.readBizStatus(state);
         TalentFollowStatus normalizedStatus = normalizeFollowStatus(followStatus);
 
@@ -1083,6 +1227,9 @@ public class ProductService {
             product.setShortLink(state.getShortLink());
             product.setSelectedToLibrary(Boolean.TRUE.equals(state.getSelectedToLibrary()));
             product.setAssigneeName(resolveUserDisplayName(state.getAssigneeId(), userDisplayNames));
+            product.setSelectedAt(state.getSelectedAt());
+            Map<String, Object> auditSupplement = parseAuditPayload(state.getAuditPayload());
+            product.setAuditSupplement(auditSupplement);
             ProductBizStatus bizStatus = productBizStatusService.readBizStatus(state);
             if (bizStatus == null) {
                 bizStatus = ProductBizStatus.PENDING_AUDIT;
@@ -1626,6 +1773,30 @@ public class ProductService {
         return summary.freeze();
     }
 
+    private Map<String, Object> toPromotionLinkHistoryItem(PromotionLink link) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", link.getId());
+        item.put("activityId", link.getActivityId());
+        item.put("productId", link.getProductId());
+        item.put("talentId", link.getTalentId());
+        item.put("talentName", link.getTalentName());
+        item.put("channelUserId", link.getChannelUserId());
+        item.put("channelUserName", link.getChannelUserName());
+        item.put("pickSource", link.getPickSource());
+        item.put("pickExtra", link.getPickExtra());
+        item.put("promotionUrl", link.getPromotionUrl());
+        item.put("promoteLink", link.getPromotionUrl());
+        item.put("shortUrl", link.getShortUrl());
+        item.put("shortLink", link.getShortUrl());
+        item.put("doukouling", link.getDoukouling());
+        item.put("linkStatus", link.getLinkStatus());
+        item.put("expireTime", link.getExpireTime());
+        item.put("createdAt", link.getCreatedAt());
+        item.put("operatorId", link.getOperatorId());
+        item.put("operatorName", link.getOperatorName());
+        return item;
+    }
+
     private Map<Long, Merchant> buildMerchantMap(Set<Long> shopIds) {
         if (shopIds == null || shopIds.isEmpty()) {
             return Map.of();
@@ -1710,6 +1881,23 @@ public class ProductService {
         pack.put("supportsAds", readBoolean(auditSupplement, "supportsAds"));
         pack.put("materialFiles", readStringList(auditSupplement, "materialFiles"));
         return pack;
+    }
+
+    private void requireApprovedAuditForLibraryEntry(ProductOperationState state) {
+        Integer auditStatus = state == null ? null : state.getAuditStatus();
+        if (Integer.valueOf(2).equals(auditStatus)) {
+            return;
+        }
+        if (Integer.valueOf(3).equals(auditStatus)) {
+            throw new BusinessException("审核拒绝的商品不能加入商品库");
+        }
+        throw new BusinessException("请先完成审核通过，再继续后续业务操作");
+    }
+
+    private void requireSelectedToLibrary(ProductOperationState state, String actionLabel) {
+        if (!Boolean.TRUE.equals(state.getSelectedToLibrary())) {
+            throw new BusinessException("请先将商品加入商品库后再" + actionLabel);
+        }
     }
 
     private void validateAuditSupplement(Map<String, Object> supplement) {

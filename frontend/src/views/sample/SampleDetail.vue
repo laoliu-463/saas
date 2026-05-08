@@ -26,8 +26,8 @@
             <n-descriptions-item label="当前状态">
               <StatusTag scene="sample" :status="detail.status" />
             </n-descriptions-item>
-            <n-descriptions-item label="渠道名称">{{ detail.channelUserName || '-' }}</n-descriptions-item>
-            <n-descriptions-item label="招商负责人">{{ detail.colonelUserName || '-' }}</n-descriptions-item>
+            <n-descriptions-item v-if="!isChannelStaffOnly" label="渠道名称">{{ detail.channelUserName || '-' }}</n-descriptions-item>
+            <n-descriptions-item :label="isChannelStaffOnly ? '审核负责人' : '招商负责人'">{{ detail.colonelUserName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="商品名称">{{ detail.productName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="达人昵称">{{ detail.talentName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="物流单号">{{ detail.trackingNo || '-' }}</n-descriptions-item>
@@ -43,8 +43,48 @@
           </n-descriptions>
         </section>
 
+        <section v-if="showEligibilitySection" class="detail-section">
+          <h3 class="section-title">资格校验</h3>
+          <n-grid :cols="24" :x-gap="12">
+            <n-gi :span="24">
+              <n-alert
+                :type="detail.eligibilityCheck?.passed ? 'success' : 'warning'"
+                :title="detail.eligibilityCheck?.passed ? '提交时满足默认寄样标准' : '提交时未满足默认寄样标准'"
+              >
+                <template v-if="detail.eligibilityCheck?.passed">
+                  系统已记录该达人在提交申请时满足默认寄样标准。
+                </template>
+                <template v-else>
+                  <div v-if="detail.applyReason" class="eligibility-reason">
+                    申请原因：{{ detail.applyReason }}
+                  </div>
+                  <div v-if="detail.eligibilityCheck?.reasons?.length" class="eligibility-reason">
+                    未达标项：{{ detail.eligibilityCheck.reasons.join('；') }}
+                  </div>
+                </template>
+              </n-alert>
+            </n-gi>
+            <n-gi :span="24">
+              <n-descriptions bordered :column="2">
+                <n-descriptions-item label="标准销售额">
+                  {{ formatSales(detail.requirementSnapshot?.min30DaySales) }}
+                </n-descriptions-item>
+                <n-descriptions-item label="当前销售额">
+                  {{ formatSales(detail.requirementSnapshot?.actual30DaySales) }}
+                </n-descriptions-item>
+                <n-descriptions-item label="标准等级">
+                  {{ detail.requirementSnapshot?.minLevel || '-' }}
+                </n-descriptions-item>
+                <n-descriptions-item label="当前等级">
+                  {{ detail.requirementSnapshot?.actualLevel || '-' }}
+                </n-descriptions-item>
+              </n-descriptions>
+            </n-gi>
+          </n-grid>
+        </section>
+
         <section class="detail-section">
-          <h3 class="section-title">可执行操作</h3>
+          <h3 class="section-title">{{ isChannelStaffOnly ? '当前处理状态' : '可执行操作' }}</h3>
           <n-space>
             <n-button v-if="canAudit && detail.status === 'PENDING_AUDIT'" type="success" @click="handleAction('APPROVED')">
               审核通过
@@ -59,10 +99,13 @@
               签收
             </n-button>
             <n-tag v-if="detail.status === 'PENDING_TASK'" type="warning" round>等待订单完成交作业</n-tag>
+            <n-tag v-if="isChannelStaffOnly && detail.status === 'PENDING_AUDIT'" type="info" round>等待招商审核</n-tag>
+            <n-tag v-if="isChannelStaffOnly && detail.status === 'PENDING_SHIP'" type="warning" round>等待运营发货</n-tag>
+            <n-tag v-if="isChannelStaffOnly && detail.status === 'SHIPPED'" type="info" round>已发货，等待签收</n-tag>
           </n-space>
         </section>
 
-        <section class="detail-section">
+        <section v-if="!isChannelStaffOnly" class="detail-section">
           <h3 class="section-title">操作日志</h3>
           <div v-if="statusLogs.length" class="log-timeline">
             <div v-for="log in statusLogs" :key="log.id" class="log-item">
@@ -101,10 +144,10 @@ import { computed, h, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NInput, useDialog, useMessage } from 'naive-ui'
 import { actionSample, getSampleById, getSampleStatusLogs } from '../../api/sample'
-import { testSignSample } from '../../api/test'
 import StatusTag from '../../components/StatusTag.vue'
 import { ROLE_CODES } from '../../constants/rbac'
 import { useAuthStore } from '../../stores/auth'
+import type { SampleItem } from '../../types'
 
 const props = withDefaults(defineProps<{ show?: boolean; sampleId?: string }>(), {
   show: true,
@@ -120,7 +163,7 @@ const router = useRouter()
 
 const loading = ref(false)
 const actionLoading = ref(false)
-const detail = ref<any>(null)
+const detail = ref<SampleItem | null>(null)
 const statusLogs = ref<any[]>([])
 const shippingDraft = ref('')
 const shippingError = ref('')
@@ -134,13 +177,24 @@ const isRouteMode = computed(() => Boolean(routeSampleId.value))
 const effectiveShow = computed(() => isRouteMode.value || props.show)
 const effectiveSampleId = computed(() => routeSampleId.value || props.sampleId)
 
-const canAudit = authStore.isAdmin || authStore.isLeader
-const canShip = canAudit || authStore.roleCodes.includes(ROLE_CODES.OPS_STAFF)
+const canAudit = authStore.isAdmin || authStore.roleCodes.includes(ROLE_CODES.BIZ_STAFF)
+const canShip = authStore.isAdmin || authStore.roleCodes.includes(ROLE_CODES.OPS_STAFF)
+const isChannelStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE_CODES.CHANNEL_STAFF)
+    && !roles.includes(ROLE_CODES.CHANNEL_LEADER)
+    && !authStore.isAdmin
+})
+
+const isOpsStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE_CODES.OPS_STAFF) && !authStore.isAdmin
+})
 
 const stepOrder = ['PENDING_AUDIT', 'PENDING_SHIP', 'SHIPPED', 'PENDING_TASK', 'FINISHED']
 
 const flowSteps = computed(() => {
-  const currentIndex = stepOrder.indexOf(detail.value?.status)
+  const currentIndex = stepOrder.indexOf(detail.value?.status || '')
   return stepOrder.map((key, index) => ({
     key,
     label:
@@ -162,6 +216,14 @@ const flowSteps = computed(() => {
   }))
 })
 
+const showEligibilitySection = computed(() =>
+  !isOpsStaffOnly.value && Boolean(
+    detail.value?.applyReason
+      || detail.value?.eligibilityCheck
+      || detail.value?.requirementSnapshot
+  )
+)
+
 function formatDateTime(value?: string) {
   if (!value) return '-'
   const date = new Date(value)
@@ -169,9 +231,14 @@ function formatDateTime(value?: string) {
   return date.toLocaleString('zh-CN', { hour12: false })
 }
 
+function formatSales(value?: number) {
+  if (value === null || value === undefined) return '-'
+  return `${(value / 100).toFixed(2)}`
+}
+
 function closeDetail() {
   if (isRouteMode.value) {
-    router.push('/sample')
+    router.push(isOpsStaffOnly.value ? '/ops/shipping' : '/sample')
     return
   }
   emit('update:show', false)
@@ -218,7 +285,7 @@ async function loadDetail() {
   loading.value = true
   try {
     const res = await getSampleById(effectiveSampleId.value)
-    detail.value = res?.data || res
+    detail.value = (res?.data || res) as SampleItem
     await loadStatusLogs()
   } catch (error: any) {
     detail.value = null
@@ -321,18 +388,7 @@ async function handleAction(action: string) {
   }
 
   if (action === 'SIGNED') {
-    if (!effectiveSampleId.value) return
-    actionLoading.value = true
-    try {
-      await testSignSample(effectiveSampleId.value)
-      message.success('状态流转成功')
-      emit('refresh')
-      await loadDetail()
-    } catch (error: any) {
-      message.error(error?.message || '操作失败')
-    } finally {
-      actionLoading.value = false
-    }
+    await doActionSample({ action })
     return
   }
 

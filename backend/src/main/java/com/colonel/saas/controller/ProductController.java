@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Validated
@@ -49,6 +50,7 @@ public class ProductController extends BaseController {
     }
 
     @Operation(summary = "商品库分页", description = "查询已从选品库沉淀到共享商品库的商品列表，对全员可见。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @GetMapping
     public ApiResult<PageResult<Product>> page(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
@@ -64,18 +66,22 @@ public class ProductController extends BaseController {
     public ApiResult<PageResult<Product>> pickPage(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
-            @Parameter(description = "商品状态。待确认：取值含义请联系产品。") @RequestParam(required = false) Integer status) {
-        return okPage(productService.getPage(page, size, status));
+            @Parameter(description = "商品状态。待确认：取值含义请联系产品。") @RequestParam(required = false) Integer status,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        UUID assigneeId = shouldLimitPickPageToSelf(roleCodes) ? userId : null;
+        return okPage(productService.getPage(page, size, status, assigneeId));
     }
 
     @Operation(summary = "[已废弃] 商品详情", description = "兼容旧版商品详情查询。请迁移到 /colonel/activities/{activityId}/products/{productId}。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @GetMapping("/{id}")
     public ApiResult<Product> detail(@Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id) {
         return ok(productService.getById(id));
     }
 
     @Operation(summary = "[已废弃] 商品绑定活动", description = "兼容旧版商品绑定活动入口。请迁移到 /colonel/activities/{activityId}/products/{productId}/bind-activity。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequireRoles({RoleCodes.BIZ_LEADER})
     @PutMapping("/{id}/activity")
     public ApiResult<Product> bindActivity(
             @Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -103,7 +109,7 @@ public class ProductController extends BaseController {
     }
 
     @Operation(summary = "[已废弃] 商品审核", description = "兼容旧版商品审核入口。请迁移到 /colonel/activities/{activityId}/products/{productId}/audit-result。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequireRoles({RoleCodes.BIZ_STAFF})
     @PutMapping("/{id}/audit-result")
     public ApiResult<Product> audit(
             @Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -142,7 +148,18 @@ public class ProductController extends BaseController {
         return ok(result);
     }
 
+    @Operation(summary = "[已废弃] 商品推广记录", description = "兼容旧版商品库按商品ID读取历史推广记录。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @GetMapping("/{productId}/promotion-links/history")
+    public ApiResult<PageResult<java.util.Map<String, Object>>> promotionLinkHistory(
+            @Parameter(description = "业务商品 ID。") @PathVariable String productId,
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") @Min(1) @Max(100) long size) {
+        return ok(productService.getPromotionLinkHistory(productId, page, size));
+    }
+
     @Operation(summary = "[已废弃] 商品达人跟进", description = "兼容旧版商品达人跟进入口。请逐步迁移到商品主链路跟进入口。")
+    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @PostMapping("/{id}/follow")
     public ApiResult<java.util.Map<String, Object>> follow(
             @Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -341,5 +358,18 @@ public class ProductController extends BaseController {
         public void setOperatorName(String operatorName) {
             this.operatorName = operatorName;
         }
+    }
+
+    private boolean shouldLimitPickPageToSelf(List<String> roleCodes) {
+        if (roleCodes == null || roleCodes.isEmpty()) {
+            return false;
+        }
+        List<String> normalized = roleCodes.stream()
+                .map(String::toLowerCase)
+                .toList();
+        if (normalized.contains(RoleCodes.ADMIN) || normalized.contains(RoleCodes.BIZ_LEADER)) {
+            return false;
+        }
+        return normalized.contains(RoleCodes.BIZ_STAFF);
     }
 }

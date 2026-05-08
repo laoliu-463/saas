@@ -119,7 +119,7 @@ public interface DouyinProductGateway {
             String cover,
             Long price,
             String priceText,
-            String detailUrl,
+            String mainVideo,
             String shopName,
             String categoryName,
             List<ProductSkuResult> skus) {

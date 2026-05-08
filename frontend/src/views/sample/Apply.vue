@@ -9,12 +9,14 @@
               <n-input v-model:value="talentQuery.region" placeholder="地域" clearable style="width: 140px" />
               <n-input-number v-model:value="talentQuery.minFans" :min="0" placeholder="最低粉丝" style="width: 140px" />
               <n-input-number v-model:value="talentQuery.maxFans" :min="0" placeholder="最高粉丝" style="width: 140px" />
-              <n-input-number v-model:value="talentQuery.minScore" :min="0" :max="5" :step="0.1" placeholder="最低评分" style="width: 140px" />
-              <n-button type="primary" :loading="loadingTalents" @click="fetchTalents(1)">搜索达人</n-button>
+              <n-button type="primary" :loading="loadingTalents" @click="fetchTalents(1)">搜索我的达人</n-button>
             </n-space>
           </n-form-item-gi>
 
           <n-form-item-gi :span="24" path="talentId" label="选择达人">
+            <div style="width: 100%; margin-bottom: 8px; color: var(--text-secondary); font-size: var(--text-xs);">
+              仅支持为我已认领的达人申请寄样。
+            </div>
             <n-data-table
               :columns="talentColumns"
               :data="talentRows"
@@ -73,7 +75,8 @@
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import { NButton, useDialog, useMessage } from 'naive-ui';
 import { useRouter } from 'vue-router';
-import { checkSampleEligibility, createSample, searchSampleProducts, searchSampleTalents } from '../../api/sample';
+import { checkSampleEligibility, createSample, searchSampleProducts } from '../../api/sample';
+import { getTalentPage } from '../../api/talent';
 import { useAuthStore } from '../../stores/auth';
 import { resolveSafeAvatarUrl } from '../../utils/media';
 
@@ -107,7 +110,6 @@ const talentQuery = reactive({
   region: '',
   minFans: null as number | null,
   maxFans: null as number | null,
-  minScore: null as number | null,
   page: 1,
   size: 10,
   total: 0
@@ -176,17 +178,26 @@ const fetchTalents = async (page = 1) => {
   loadingTalents.value = true;
   try {
     talentQuery.page = page;
-    const res = await searchSampleTalents({
+    const res = await getTalentPage({
+      view: 'MY_TALENTS',
       keyword: talentQuery.keyword || undefined,
       region: talentQuery.region || undefined,
       minFans: talentQuery.minFans ?? undefined,
       maxFans: talentQuery.maxFans ?? undefined,
-      minScore: talentQuery.minScore ?? undefined,
       page: talentQuery.page,
       size: talentQuery.size
     });
     const pageData: any = (res as any)?.data ?? (res as any) ?? {};
-    talentRows.value = pageData.records || [];
+    talentRows.value = (pageData.records || []).map((item: any) => ({
+      id: item.id,
+      talentId: item.douyinUid || item.douyinNo || item.uid,
+      nickname: item.nickname,
+      fansCount: item.fansCount,
+      creditScore: item.creditScore,
+      region: item.ipLocation || item.region,
+      mainCategory: item.mainCategory,
+      avatarUrl: item.avatarUrl
+    }));
     talentQuery.total = pageData.total || 0;
   } catch (error: any) {
     talentRows.value = [];
@@ -234,9 +245,13 @@ const doSubmit = async () => {
 
 const openEligibilityWarning = (eligibility: any) => {
   const reasons = Array.isArray(eligibility?.reasons) ? eligibility.reasons : []
+  const standardBits = [
+    eligibility?.min30DaySales ? `标准销售额 ${Number(eligibility.min30DaySales / 100).toFixed(2)}` : '',
+    eligibility?.minLevel ? `标准等级 ${eligibility.minLevel}` : ''
+  ].filter(Boolean)
   dialog.warning({
     title: '达人暂未满足默认寄样标准',
-    content: `当前校验结果：${reasons.join('；')}。请先在备注中填写申请原因，再重新提交。`,
+    content: `${standardBits.join('，') || '已触发默认寄样标准校验'}。当前校验结果：${reasons.join('；')}。请先在备注中填写申请原因，再重新提交。`,
     positiveText: '我知道了'
   })
 }

@@ -7,7 +7,9 @@ import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.HashMap;
@@ -53,8 +55,8 @@ public class OrderApi {
         long page = normalizedCursor + 1;
 
         Map<String, Object> params = new HashMap<>();
-        params.put("start_time", startTime);
-        params.put("end_time", endTime);
+        params.put("start_time", formatEpochSecond(startTime));
+        params.put("end_time", formatEpochSecond(endTime));
         params.put("page", page);
         params.put("count", normalizedCount);
 
@@ -65,8 +67,8 @@ public class OrderApi {
                 throw ex;
             }
             Map<String, Object> retryParams = new HashMap<>();
-            retryParams.put("start_time", startTime);
-            retryParams.put("end_time", endTime);
+            retryParams.put("start_time", formatEpochSecond(startTime));
+            retryParams.put("end_time", formatEpochSecond(endTime));
             retryParams.put("cursor", normalizedCursor);
             retryParams.put("count", normalizedCount);
             return douyinApiClient.post(ORDER_LIST_METHOD, retryParams);
@@ -251,6 +253,13 @@ public class OrderApi {
         return containsIgnoreCase(subCode, "parameter-invalid")
                 || containsIgnoreCase(subCode, "business-failed:257")
                 || containsIgnoreCase(message, "参数校验失败");
+    }
+
+    private String formatEpochSecond(long epochSecond) {
+        return DATE_TIME_FORMATTER.format(LocalDateTime.ofInstant(
+                Instant.ofEpochSecond(epochSecond),
+                ZoneId.systemDefault()
+        ));
     }
 
     private boolean isApiServiceOff(DouyinApiException ex) {

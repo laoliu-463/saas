@@ -56,6 +56,21 @@ const router = useRouter()
 const route = useRoute()
 const message = useMessage()
 const ROLE = ROLE_CODES
+
+const isChannelStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.CHANNEL_LEADER) && !roles.includes(ROLE.ADMIN)
+})
+
+const isBizStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.BIZ_LEADER) && !roles.includes(ROLE.ADMIN)
+})
+
+const isOpsStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE.OPS_STAFF) && !roles.includes(ROLE.ADMIN)
+})
 const envLabel = import.meta.env.VITE_ENV_LABEL as string | undefined
 
 interface NavTab {
@@ -65,27 +80,57 @@ interface NavTab {
 }
 
 const navTabs: NavTab[] = [
-  { label: '数据平台', key: '/data', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
-  { label: '商品库', key: '/product', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
+  { label: '数据看板', key: '/data', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.ADMIN] },
+  { label: '商品库', key: '/product', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
+  { label: '商品管理', key: '/product/manage', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] },
   { label: '达人 CRM', key: '/talent', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
-  { label: '寄样台', key: '/sample', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.OPS_STAFF] },
-  { label: '运营中心', key: '/ops/exclusive', roles: [ROLE.OPS_STAFF, ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER] },
+  { label: '寄样审核', key: '/sample', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
+  { label: '寄样发货台', key: '/ops/shipping', roles: [ROLE.OPS_STAFF] },
   { label: '系统管理', key: '/system/users', roles: [ROLE.ADMIN] }
 ]
 
-const visibleTabs = computed(() => navTabs.filter((tab) => hasAccess(authStore.roleCodes, tab.roles)))
+const visibleTabs = computed(() =>
+  navTabs
+    .filter((tab) => hasAccess(authStore.roleCodes, tab.roles))
+    .map((tab) => {
+      if (isChannelStaffOnly.value) {
+        if (tab.key === '/data') return { ...tab, label: '我的业绩' }
+        if (tab.key === '/talent') return { ...tab, label: '我的达人' }
+        if (tab.key === '/sample') return { ...tab, label: '寄样台' }
+      }
+      if (isBizStaffOnly.value) {
+        if (tab.key === '/data') return { ...tab, label: '我的业绩' }
+        if (tab.key === '/sample') return { ...tab, label: '寄样台' }
+      }
+      if (isOpsStaffOnly.value && tab.key === '/ops/shipping') {
+        return { ...tab, label: '寄样发货台' }
+      }
+      return tab
+    })
+)
 
 const isActiveTab = (tab: NavTab) => {
-  if (tab.key === '/ops/exclusive') {
-    return route.path.startsWith('/ops')
-  }
   if (tab.key === '/system/users') {
     return route.path.startsWith('/system')
   }
-  return route.path.startsWith(tab.key) && !route.path.startsWith('/data/orders')
+  if (tab.key === '/data') {
+    return route.path.startsWith('/data')
+  }
+  if (tab.key === '/ops/shipping') return route.path.startsWith('/ops/shipping')
+  if (tab.key === '/product') {
+    return route.path === '/product'
+  }
+  if (tab.key === '/product/manage') {
+    return route.path.startsWith('/product/manage')
+  }
+  return route.path.startsWith(tab.key) && !route.path.startsWith('/data/orders') && !route.path.startsWith('/product/manage')
 }
 
 const handleTabClick = (tab: NavTab) => {
+  if (tab.key === '/product/manage' && authStore.roleCodes.includes(ROLE.BIZ_STAFF) && !authStore.roleCodes.includes(ROLE.BIZ_LEADER)) {
+    router.push('/product/manage/products')
+    return
+  }
   router.push(tab.key)
 }
 

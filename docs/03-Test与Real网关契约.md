@@ -1,6 +1,6 @@
 ﻿# 03-Test 与 Real 网关契约
 
-更新时间：2026-05-03
+更新时间：2026-05-08
 
 ## 一、目的
 
@@ -51,37 +51,35 @@ Test 实现不应只是简单的静态返回，应支持：
 
 - `local-mock` 继续承担默认本地人工联调与调试台验证
 - `test` 继续承担自动化测试与隔离测试栈
-- `real-pre` 当前承担浏览器回归、权限验收、独立拓扑验证
-- 未来真实第三方 SDK 联调，应在不污染上述基线的前提下继续演进 `real-pre` 或单独拉起更纯粹的 real Gateway 环境
+- `real-pre` 当前承担真实上游联调、浏览器回归、权限验收、独立拓扑验证
 
-当前仓库中的实际 `real-pre` 不是“真实 SDK 已接通环境”，而是“独立回归拓扑”。当前事实如下：
+当前代码合并口径是：同一套 Controller / Service / 前端调用同时支持 Test 与 Real，运行时只通过 Gateway Bean 和环境配置切换，不把 Test 与 Real 的数据环境合并。当前事实如下：
 
 | 项目 | `test` | 当前 `real-pre` |
 | :--- | :--- | :--- |
-| `SPRING_PROFILES_ACTIVE` | `test` | `local-mock` |
-| `DOUYIN_TEST_ENABLED` | `true` | `true` |
+| `SPRING_PROFILES_ACTIVE` | `test` | `real` |
+| `DOUYIN_TEST_ENABLED` | `true` | `false` |
 | `DB_NAME` | `colonel_saas_test` | `colonel_saas_real` |
-| `REDIS_DATABASE` | `1` | `2` |
+| `REDIS_DATABASE` | `1` | `0` |
 | 后端端口 | `8080` | `8081` |
-| `/api/test/**` | 可用 | 当前仍可用 |
-| 当前职责 | 自动化验证 | 浏览器回归 / 权限验收 / 部署形态验证 |
+| `/api/test/**` | 可用 | 不作为 real-pre 联调入口 |
+| 当前职责 | 自动化验证 / Mock 基线 | 真实上游联调 / 权限验收 / 部署形态验证 |
 
 执行约束：
 
 1. 不允许把真实 `access_token`、真实订单、真实回调写进 `test` 或 `local-mock` 基线
 2. 不允许为了真实联调临时修改 `test`、`local-mock` 的 DTO、页面字段和调试台口径
-3. 当前 `real-pre` 首轮任务仍以浏览器回归和接口事实核对为主，不强行宣称“已接真实 SDK”
+3. 当前 `real-pre` 已可命中真实上游，但仍是预备联调环境，不等同生产环境
 4. 所有真实联调记录统一回写到 `docs/archive/records/14-抖店SDK全量梳理与逐接口联调规划.md`
 5. 后续真实 Gateway 联调环境必须关闭 Spring Boot DEBUG、`RestTemplate` DEBUG 与抖店 SDK INFO 原始报文日志，避免 `access_token`、`refresh_token`、签名或 JWT 出现在日志中
-6. 首轮 Token 联调期间建议设置 `ORDER_SYNC_ENABLED=false`，避免订单定时同步在 Token 未创建前反复触发 Real Gateway
+6. 若 Token 失效或重建缓存，应先暂停订单自动同步或确认 `ORDER_SYNC_ENABLED` 不会反复触发无效 Real Gateway 调用
 
 当前已知代码缺口：
 
 1. `RealDouyinAuthGateway.ensureToken` 已补为“从 Redis 读取已有 token / refresh_token / expire_at 的非阻塞兜底”，不再固定返回 `null`
-2. `RealDouyinOrderGateway` 尚未完成订单字段映射
-3. `RealDouyinProductGateway.queryProductDetail` 未实现
-4. `RealDouyinProductGateway.queryProductSkus` 未实现
-5. Webhook 当前只接收、验签、记日志，未接业务消费
+2. `RealDouyinOrderGateway` 已完成订单主同步首轮映射：`buyin.instituteOrderColonel` 真实结构为 `data.cursor / data.orders`，时间参数必须传 `yyyy-MM-dd HH:mm:ss` 字符串；`POST /api/orders/sync` 已在 real-pre 30 分钟窗口入库 10 单
+3. 商品详情 / SKU 真实样本当前受 `product.detail` 权限包阻塞，不能用活动商品快照替代
+4. Webhook 当前只接收、验签、记日志，未接业务消费
 
 上述缺口不阻塞认证、身份、活动、商品、转链等前置接口联调，但会阻塞订单主链路闭环验收。
 

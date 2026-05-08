@@ -1,6 +1,7 @@
 export const TALENT_VIEW_OPTIONS = [
   { label: '团队公海', value: 'TEAM_PUBLIC' },
   { label: '我的达人', value: 'MY_TALENTS' },
+  { label: '本组达人', value: 'TEAM_PRIVATE' },
   { label: '自然出单达人', value: 'NATURAL_ORDERS' },
   { label: '达人黑名单', value: 'BLACKLIST' }
 ] as const
@@ -31,8 +32,9 @@ export const CATEGORY_OPTIONS = [
 ]
 
 export const TALENT_VIEW_HELP_MAP: Record<string, string> = {
-  TEAM_PUBLIC: '聚焦团队可认领达人；即使他人已先认领，你仍可继续认领并进入自己的私海。',
+  TEAM_PUBLIC: '聚焦当前可认领的公海达人，认领后将进入自己的私海并开始保护期。',
   MY_TALENTS: '查看本人私海达人，按经营表现继续跟进、释放或转黑。',
+  TEAM_PRIVATE: '仅渠道组长可查看本组渠道成员已认领达人，用于跟进产出与保护期管理。',
   NATURAL_ORDERS: '筛出已经自然出单的达人，优先补建合作关系和归属。',
   BLACKLIST: '管理已拉黑达人，集中处理风险达人与误拉黑恢复。'
 }
@@ -73,6 +75,6 @@ export function getPoolTagType(poolStatus?: string | null) {
 
 export function getPoolLabel(poolStatus?: string | null) {
   if (poolStatus === 'BLACKLIST') return '黑名单'
-  if (poolStatus === 'PRIVATE') return '我的达人'
+  if (poolStatus === 'PRIVATE') return '私海达人'
   return '团队公海'
 }

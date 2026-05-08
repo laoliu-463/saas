@@ -7,6 +7,7 @@ export const createSample = (data: any) => request.post('/samples', data);
 export const checkSampleEligibility = (data: any) => request.post('/samples/eligibility-check', data);
 export const actionSample = (id: string, data: any) => request.put(`/samples/${id}/status`, data);
 export const deleteSample = (id: string) => request.delete(`/samples/${id}`);
+export const exportSamples = (params: any) => request.get('/samples/exports', { params, responseType: 'blob' });
 export const searchSampleProducts = (params: any) => request.get('/samples/product-candidates', { params });
 
 // 寄样台 — 达人搜索（数据源：crawler_talent_info）
@@ -25,3 +26,7 @@ export const getSampleBoard = () => request.get('/samples/board');
 
 // 寄样状态日志
 export const getSampleStatusLogs = (id: string) => request.get(`/samples/${id}/status-logs`);
+
+// 批量发货（运营）
+export const batchShipSamples = (data: { items: { requestNo: string; trackingNo: string }[] }) =>
+  request.post('/samples/batch-ship', data);

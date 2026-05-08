@@ -1,8 +1,8 @@
 <template>
   <div class="activity-page">
     <PageHeader
-      title="团长活动"
-      description="同步并查看抖音官方报名的团长活动，作为商品引入的基础。"
+      title="活动列表"
+      description="同步并查看抖音官方报名的团长活动，点击活动可进入商品列表进行选品操作。"
     />
 
     <div class="toolbar">
@@ -20,6 +20,7 @@
         />
         <n-button type="primary" @click="fetchData">查询</n-button>
         <n-button @click="resetFilters">重置</n-button>
+        <n-button type="info" :loading="exporting" @click="handleExport">导出 CSV</n-button>
       </n-space>
     </div>
 
@@ -47,10 +48,12 @@ import { NButton, NTag, useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import { getColonelActivityPage } from '../../api/activity'
+import { exportActivities } from '../../api/data'
 
 const message = useMessage()
 const router = useRouter()
 const loading = ref(false)
+const exporting = ref(false)
 const data = ref([])
 
 const filters = reactive({
@@ -102,7 +105,7 @@ const columns = [
         type: 'primary',
         quaternary: true,
         onClick: () => {
-          router.push(`/product/activity/${row.activityId}`)
+          router.push(`/product/manage/${row.activityId}`)
         }
       }, { default: () => '查看商品' })
     }
@@ -139,6 +142,29 @@ const resetFilters = () => {
   filters.activityName = ''
   filters.status = null
   fetchData()
+}
+
+const handleExport = async () => {
+  exporting.value = true
+  try {
+    const res: any = await exportActivities({
+      activityName: filters.activityName || undefined
+    })
+    const filename = `activities-${new Date().toISOString().slice(0, 10)}.csv`
+    const url = window.URL.createObjectURL(new Blob([res]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', filename)
+    document.body.appendChild(link)
+    link.click()
+    link.parentNode?.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    message.success('导出成功')
+  } catch (err: any) {
+    message.error(err?.message || '导出失败')
+  } finally {
+    exporting.value = false
+  }
 }
 
 onMounted(fetchData)

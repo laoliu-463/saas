@@ -428,16 +428,13 @@ public class DouyinTokenService {
             return "authorization_code";
         }
         String normalized = grantType.trim().toLowerCase(Locale.ROOT);
-        if (!"authorization_code".equals(normalized) && !"authorization_self".equals(normalized)) {
-            throw new BusinessException("grant_type 格式非法, 必须为 authorization_code 或 authorization_self");
+        if (!"authorization_code".equals(normalized)) {
+            throw new BusinessException("联盟自研应用仅支持 grant_type=authorization_code");
         }
         return normalized;
     }
 
     private String normalizeAuthorizationCode(String authorizationCode, String grantType) {
-        if ("authorization_self".equals(grantType)) {
-            return trimToNull(authorizationCode);
-        }
         if (authorizationCode == null || authorizationCode.isBlank()) {
             throw new BusinessException("authorization_code cannot be blank");
         }

@@ -56,9 +56,27 @@
             </div>
           </div>
 
+          <div v-if="hasAuditSummary(product)" class="card-audit-summary">
+            <div v-if="getAuditSellingPoints(product).length" class="audit-selling-points">
+              <n-tag
+                v-for="point in getAuditSellingPoints(product).slice(0, 2)"
+                :key="point"
+                size="small"
+                type="info"
+                round
+                bordered
+              >
+                {{ point }}
+              </n-tag>
+            </div>
+            <div class="audit-summary-text" :title="getAuditSummaryText(product)">
+              {{ getAuditSummaryText(product) }}
+            </div>
+          </div>
+
           <div class="card-footer">
             <div class="card-stats">
-              <span class="stats-active">{{ product.activityName || '活动商品' }}</span>
+              <span class="stats-active">{{ product.activityName || '所属活动' }}</span>
               <span class="stats-meta" :title="buildCardProgressSummary(product)">
                 {{ buildCardProgressSummary(product) }}
               </span>
@@ -74,7 +92,7 @@
                 审核
               </n-button>
               <n-button
-                v-if="['APPROVED', 'BOUND'].includes(product.bizStatus) && canAssign"
+                v-if="product.selectedToLibrary && ['APPROVED', 'BOUND'].includes(product.bizStatus) && canAssign"
                 size="small"
                 quaternary
                 type="info"
@@ -82,17 +100,8 @@
               >
                 分配
               </n-button>
-              <n-button
-                v-if="pickMode && canPutIntoLibrary && hasLibraryEntrySource(product) && !product.selectedToLibrary"
-                size="small"
-                quaternary
-                type="success"
-                @click.stop="$emit('putIntoLibrary', product)"
-              >
-                加入商品库
-              </n-button>
               <n-tag
-                v-else-if="product.selectedToLibrary"
+                v-if="product.selectedToLibrary"
                 size="small"
                 type="success"
                 bordered
@@ -153,24 +162,25 @@
                 <span class="qv-summary-label">最近动作</span>
                 <span class="qv-summary-value">{{ getRecentActionLabel(product) }}</span>
               </div>
+              <div v-if="hasAuditSummary(product)" class="qv-summary-row qv-summary-block">
+                <span class="qv-summary-label">审核补充</span>
+                <span class="qv-summary-value qv-summary-multiline">{{ getAuditSummaryText(product) }}</span>
+              </div>
+              <div v-if="hasSampleThreshold(product)" class="qv-summary-row qv-summary-block" style="border-top: 1px dashed var(--border-color-light); padding-top: 6px; margin-top: 4px;">
+                <span class="qv-summary-label">寄样门槛</span>
+                <span class="qv-summary-value qv-summary-multiline" style="color: var(--color-warning); font-weight: 600;">
+                  {{ getSampleThresholdText(product) }}
+                </span>
+              </div>
             </div>
           </div>
 
           <div class="qv-section">
             <div class="section-label">快速操作</div>
             <n-space vertical :size="8">
-              <n-button
-                v-if="pickMode && canPutIntoLibrary && hasLibraryEntrySource(product) && !product.selectedToLibrary"
-                block
-                size="small"
-                type="success"
-                secondary
-                @click.stop="$emit('putIntoLibrary', product)"
-              >
-                加入商品库
-              </n-button>
+              <n-tag v-if="product.selectedToLibrary" type="success" size="small" round>已入商品库</n-tag>
               <n-button block size="small" type="primary" secondary @click.stop="$emit('copyLink', product)">
-                复制推广链接 (Pick Source)
+                一键复制专属推广链接
               </n-button>
               <n-button block size="small" @click.stop="$emit('showLogs', product)">
                 查看操作日志
@@ -259,19 +269,66 @@ const buildCardProgressSummary = (item: any) => {
   return `${assignee} · ${getRecentActionLabel(item)}`
 }
 
+const getAuditSupplement = (item: any) => item?.auditSupplement || {}
+
+const getPromotionMaterialPack = (item: any) => item?.promotionMaterialPack || {}
+
+const getAuditSellingPoints = (item: any) => {
+  const supplementPoints = getAuditSupplement(item)?.sellingPoints
+  if (Array.isArray(supplementPoints) && supplementPoints.length) return supplementPoints
+  const packPoints = getPromotionMaterialPack(item)?.sellingPoints
+  return Array.isArray(packPoints) ? packPoints.filter(Boolean) : []
+}
+
+const getAuditSummaryText = (item: any) => {
+  const supplement = getAuditSupplement(item)
+  const summaryParts = [
+    supplement?.exclusivePriceRemark,
+    supplement?.shippingInfo,
+    supplement?.rewardRemark,
+    supplement?.participationRequirements,
+    supplement?.campaignTimeRemark
+  ].map((value) => String(value || '').trim()).filter(Boolean)
+
+  if (summaryParts.length) {
+    return summaryParts[0]
+  }
+
+  const pack = getPromotionMaterialPack(item)
+  const fallback = [pack?.outreachScript, pack?.shortVideoScript]
+    .map((value) => String(value || '').trim())
+    .find(Boolean)
+
+  return fallback || ''
+}
+
+const hasAuditSummary = (item: any) => Boolean(getAuditSellingPoints(item).length || getAuditSummaryText(item))
+
+const hasSampleThreshold = (item: any) => {
+  const supplement = getAuditSupplement(item)
+  return supplement?.sampleThresholdSales !== undefined || supplement?.sampleThresholdLevel !== undefined || supplement?.sampleThresholdRemark
+}
+
+const getSampleThresholdText = (item: any) => {
+  const supplement = getAuditSupplement(item)
+  const parts = []
+  if (supplement?.sampleThresholdSales !== undefined) parts.push(`30天销售额≥${supplement.sampleThresholdSales}`)
+  if (supplement?.sampleThresholdLevel !== undefined) parts.push(`达人等级≥LV${supplement.sampleThresholdLevel}`)
+  if (supplement?.sampleThresholdRemark) parts.push(supplement.sampleThresholdRemark)
+  return parts.join('；') || '未设置门槛'
+}
+
 const cardTags = (item: any) => {
   const tags: Array<{ text: string; type: 'error' | 'warning' | 'info' | 'success' }> = []
   if (!item.promotion?.link && !item.promotionLink && (item.promotion?.status || item.promotionLinkStatus) === 'FAILED') {
     tags.push({ text: '链接生成失败', type: 'error' })
   }
   if (!item.hasMaterial) tags.push({ text: '缺少话术素材', type: 'warning' })
-  if (!item.hasSampleRule) tags.push({ text: '暂无寄样要求', type: 'warning' })
+  if (!hasSampleThreshold(item) && !item.hasSampleRule) tags.push({ text: '暂无寄样要求', type: 'warning' })
   if (!item.assigneeName) tags.push({ text: '待分配负责人', type: 'error' })
   if (item.selectedToLibrary) tags.push({ text: '商品库可见', type: 'success' })
   return tags
 }
-
-const hasLibraryEntrySource = (item: any) => Boolean(item?.sourceActivityId || item?.activityId)
 
 const handleImageError = (event: Event) => {
   ;(event.target as HTMLImageElement).style.display = 'none'
@@ -421,6 +478,33 @@ const handleImageError = (event: Event) => {
   gap: 12px;
 }
 
+.card-audit-summary {
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color-light);
+  border-radius: var(--radius-sm);
+}
+
+.audit-selling-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.audit-summary-text {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .card-stats {
   display: flex;
   flex-direction: column;
@@ -567,6 +651,16 @@ const handleImageError = (event: Event) => {
 .qv-summary-value {
   color: var(--text-primary);
   text-align: right;
+}
+
+.qv-summary-block {
+  align-items: flex-start;
+}
+
+.qv-summary-multiline {
+  white-space: normal;
+  line-height: 1.6;
+  max-width: 180px;
 }
 
 .qv-footer {

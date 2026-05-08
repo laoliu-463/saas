@@ -26,7 +26,7 @@
                 审核商品
               </n-button>
               <n-button
-                v-if="!libraryMode && ['APPROVED', 'BOUND'].includes(detail.bizStatus) && canDo('assign')"
+                v-if="!libraryMode && detail.selectedToLibrary && ['APPROVED', 'BOUND'].includes(detail.bizStatus) && canDo('assign')"
                 type="info"
                 size="small"
                 secondary
@@ -34,16 +34,7 @@
               >
                 分配招商
               </n-button>
-              <n-button
-                v-if="pickMode && canPutIntoLibrary && hasLibraryEntrySource(detail) && !detail.selectedToLibrary"
-                type="success"
-                size="small"
-                secondary
-                @click="handleAction('putIntoLibrary')"
-              >
-                加入商品库
-              </n-button>
-              <n-tag v-else-if="detail.selectedToLibrary" type="success" size="small" round>
+              <n-tag v-if="detail.selectedToLibrary" type="success" size="small" round>
                 已入商品库
               </n-tag>
             </n-space>
@@ -80,6 +71,9 @@
 
                 <n-card title="推进判断" size="small" style="margin-top: 16px;">
                   <div class="decision-card">
+                    <n-alert v-if="!businessReady" type="info" :bordered="false">
+                      商品通过审核后会自动进入商品库，进入商品库后再继续分配、推进判断和转链等后续动作。
+                    </n-alert>
                     <div class="decision-current">
                       <n-tag :type="decisionTagType(latestDecision?.level)" size="small" round>
                         {{ latestDecision?.label || '暂无判断' }}
@@ -115,7 +109,7 @@
                         :autosize="{ minRows: 2, maxRows: 4 }"
                         placeholder="填写判断原因，例如：佣金高且库存稳定，适合优先找达人"
                       />
-                      <div class="decision-actions">
+                      <div v-if="businessReady && canDo('decision')" class="decision-actions">
                         <n-button
                           type="primary"
                           size="small"
@@ -190,7 +184,7 @@
                       <div class="promotion-link-box">
                         <span class="promotion-link-text">{{ promotion.link || '后台处理中，暂不可复制' }}</span>
                         <n-button
-                          v-if="canDo('promotion')"
+                          v-if="businessReady && canDo('promotion')"
                           size="small"
                           type="primary"
                           secondary
@@ -231,47 +225,97 @@
                   </n-space>
                 </div>
 
-                <n-descriptions label-placement="top" :column="1" bordered size="small">
-                  <n-descriptions-item label="审核补充信息">
-                    <n-descriptions label-placement="left" :column="2" size="small">
-                      <n-descriptions-item label="专属价说明">
-                        {{ auditSupplement.exclusivePriceRemark || '-' }}
-                      </n-descriptions-item>
-                      <n-descriptions-item label="发货信息">
-                        {{ auditSupplement.shippingInfo || '-' }}
-                      </n-descriptions-item>
-                      <n-descriptions-item label="是否支持投流">
-                        {{ auditSupplement.supportsAds === true ? '支持' : auditSupplement.supportsAds === false ? '不支持' : '-' }}
-                      </n-descriptions-item>
-                      <n-descriptions-item label="活动时间">
-                        {{ auditSupplement.campaignTimeRemark || '-' }}
-                      </n-descriptions-item>
-                      <n-descriptions-item label="奖励说明" :span="2">
-                        {{ auditSupplement.rewardRemark || '-' }}
-                      </n-descriptions-item>
-                      <n-descriptions-item label="参与要求" :span="2">
-                        {{ auditSupplement.participationRequirements || '-' }}
-                      </n-descriptions-item>
-                      <n-descriptions-item label="手卡素材" :span="2">
-                        <div v-if="auditMaterialFiles.length" class="material-file-list">
-                          <div v-for="file in auditMaterialFiles" :key="file">{{ file }}</div>
+                <n-card size="small" title="审核补充信息">
+                  <template #header-extra>
+                    <n-tag v-if="auditSchemaVersion" size="small" round type="default">
+                      schema v{{ auditSchemaVersion }}
+                    </n-tag>
+                  </template>
+                  <n-empty v-if="!hasAuditSupplement" description="暂无审核补充信息" />
+                  <n-descriptions v-else label-placement="left" :column="2" size="small">
+                    <n-descriptions-item label="专属价说明">
+                      {{ auditSupplement.exclusivePriceRemark || '-' }}
+                    </n-descriptions-item>
+                    <n-descriptions-item label="发货信息">
+                      {{ auditSupplement.shippingInfo || '-' }}
+                    </n-descriptions-item>
+                    <n-descriptions-item label="是否支持投流">
+                      <n-tag
+                        v-if="auditSupplement.supportsAds !== undefined && auditSupplement.supportsAds !== null"
+                        :type="auditSupplement.supportsAds ? 'success' : 'warning'"
+                        size="small"
+                        round
+                      >
+                        {{ auditSupplement.supportsAds ? '支持投流' : '暂不支持投流' }}
+                      </n-tag>
+                      <span v-else>-</span>
+                    </n-descriptions-item>
+                    <n-descriptions-item label="活动时间">
+                      {{ auditSupplement.campaignTimeRemark || '-' }}
+                    </n-descriptions-item>
+                    <n-descriptions-item label="奖励说明" :span="2">
+                      {{ auditSupplement.rewardRemark || '-' }}
+                    </n-descriptions-item>
+                    <n-descriptions-item label="参与要求" :span="2">
+                      {{ auditSupplement.participationRequirements || '-' }}
+                    </n-descriptions-item>
+                    <n-descriptions-item label="推广话术" :span="2">
+                      <n-log :log="auditSupplement.promotionScript || '-'" />
+                    </n-descriptions-item>
+                    <n-descriptions-item label="手卡素材" :span="2">
+                      <div v-if="auditMaterialFiles.length" class="material-file-list">
+                        <div v-for="file in auditMaterialFiles" :key="file" class="material-file-item">
+                          <n-button
+                            v-if="isHttpLink(file)"
+                            text
+                            type="primary"
+                            tag="a"
+                            :href="file"
+                            target="_blank"
+                          >
+                            {{ file }}
+                          </n-button>
+                          <span v-else>{{ file }}</span>
                         </div>
-                        <span v-else>-</span>
-                      </n-descriptions-item>
-                    </n-descriptions>
-                  </n-descriptions-item>
-                  <n-descriptions-item label="核心卖点">
-                    <ul class="material-list">
-                      <li v-for="point in materialSellingPoints" :key="point">{{ point }}</li>
-                    </ul>
-                  </n-descriptions-item>
-                  <n-descriptions-item label="建联话术示例">
-                    <n-log :log="detail?.promotionMaterialPack?.outreachScript || '-'" />
-                  </n-descriptions-item>
-                  <n-descriptions-item label="短视频脚本">
-                    <n-log :log="detail?.promotionMaterialPack?.shortVideoScript || '-'" />
-                  </n-descriptions-item>
-                </n-descriptions>
+                      </div>
+                      <span v-else>-</span>
+                    </n-descriptions-item>
+                  </n-descriptions>
+                </n-card>
+
+                <n-card v-if="hasSampleThreshold" size="small" title="寄样门槛配置" style="margin-top: 16px;">
+                  <n-descriptions label-placement="left" :column="2" size="small">
+                    <n-descriptions-item label="30天销售额要求">
+                      <span class="highlight-text">{{ auditSupplement.sampleThresholdSales !== undefined ? `≥ ${auditSupplement.sampleThresholdSales}` : '-' }}</span>
+                    </n-descriptions-item>
+                    <n-descriptions-item label="达人等级要求">
+                      <n-tag v-if="auditSupplement.sampleThresholdLevel !== undefined" type="warning" size="small" round>
+                        ≥ LV{{ auditSupplement.sampleThresholdLevel }}
+                      </n-tag>
+                      <span v-else>-</span>
+                    </n-descriptions-item>
+                    <n-descriptions-item label="补充门槛说明" :span="2">
+                      {{ auditSupplement.sampleThresholdRemark || '暂无补充说明' }}
+                    </n-descriptions-item>
+                  </n-descriptions>
+                </n-card>
+
+                <n-card size="small" title="核心卖点" style="margin-top: 16px;">
+                  <div v-if="materialSellingPoints.length" class="selling-point-list">
+                    <n-tag v-for="point in materialSellingPoints" :key="point" type="info" size="small" round>
+                      {{ point }}
+                    </n-tag>
+                  </div>
+                  <n-empty v-else description="暂无可展示的推广卖点" />
+                </n-card>
+
+                <n-card size="small" title="建联话术示例" style="margin-top: 16px;">
+                  <n-log :log="detail?.promotionMaterialPack?.outreachScript || '-'" />
+                </n-card>
+
+                <n-card size="small" title="短视频脚本" style="margin-top: 16px;">
+                  <n-log :log="detail?.promotionMaterialPack?.shortVideoScript || '-'" />
+                </n-card>
               </div>
             </n-tab-pane>
 
@@ -313,8 +357,9 @@ const authStore = useAuthStore();
 const canDo = (action: string) => {
   const roles = authStore.roleCodes;
   if (roles.includes('admin')) return true;
-  if (action === 'audit') return hasAccess(roles, ['biz_leader', 'biz_staff']);
-  if (action === 'assign') return hasAccess(roles, ['biz_leader', 'channel_leader']);
+  if (action === 'audit') return hasAccess(roles, ['biz_staff']);
+  if (action === 'assign') return hasAccess(roles, ['biz_leader']);
+  if (action === 'decision') return hasAccess(roles, ['biz_staff']);
   if (action === 'promotion') return hasAccess(roles, ['channel_leader', 'channel_staff']);
   return true;
 };
@@ -339,6 +384,7 @@ const statusMap: Record<string, number> = {
 };
 
 const currentStep = computed(() => statusMap[detail.value?.bizStatus || 'PENDING_AUDIT'] ?? 0);
+const businessReady = computed(() => Boolean(detail.value?.selectedToLibrary));
 
 const promotion = computed(() => detail.value?.promotion || {
   status: detail.value?.promotionLinkStatus || 'PENDING',
@@ -349,12 +395,30 @@ const promotion = computed(() => detail.value?.promotion || {
   failReason: detail.value?.promotionLinkFailReason || null
 });
 
-const materialSellingPoints = computed(() => {
-  const points = detail.value?.promotionMaterialPack?.sellingPoints;
-  return Array.isArray(points) && points.length ? points : ['暂无可展示的推广卖点'];
+const auditSupplement = computed(() => detail.value?.auditSupplement || {});
+const auditSchemaVersion = computed(() => auditSupplement.value?.schemaVersion);
+const hasAuditSupplement = computed(() => {
+  const supplement = auditSupplement.value;
+  return Object.keys(supplement).some((key) => {
+    if (key === 'schemaVersion') return false;
+    const value = supplement[key];
+    return Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined && String(value).trim() !== '';
+  });
 });
 
-const auditSupplement = computed(() => detail.value?.auditSupplement || {});
+const hasSampleThreshold = computed(() => {
+  const supplement = auditSupplement.value;
+  return supplement?.sampleThresholdSales !== undefined || supplement?.sampleThresholdLevel !== undefined || supplement?.sampleThresholdRemark;
+});
+
+const materialSellingPoints = computed(() => {
+  const supplementPoints = auditSupplement.value?.sellingPoints;
+  if (Array.isArray(supplementPoints) && supplementPoints.length) {
+    return supplementPoints;
+  }
+  const packPoints = detail.value?.promotionMaterialPack?.sellingPoints;
+  return Array.isArray(packPoints) && packPoints.length ? packPoints : [];
+});
 
 const auditMaterialFiles = computed(() => {
   const files = auditSupplement.value?.materialFiles;
@@ -637,11 +701,13 @@ const handleAction = (action: string) => {
   emit('action', { action, row: detail.value });
 };
 
-const hasLibraryEntrySource = (row: any) => Boolean(row?.sourceActivityId || row?.activityId)
-
 const saveDecision = async () => {
   if (!props.activityId || !props.productId) {
     message.warning('商品信息不完整，暂不可保存判断');
+    return;
+  }
+  if (!businessReady.value) {
+    message.warning('请先完成审核并进入商品库后，再保存推进判断');
     return;
   }
   const reason = decisionForm.value.reason.trim();
@@ -687,6 +753,10 @@ const copyText = async (text?: string) => {
 const copyPromotionLink = async () => {
   if (!props.activityId || !props.productId) {
     message.warning('商品信息不完整，暂不可生成推广链接');
+    return;
+  }
+  if (!businessReady.value) {
+    message.warning('请先完成审核并进入商品库后，再生成推广链接');
     return;
   }
   if (promotion.value?.link) {
@@ -737,6 +807,8 @@ const formatPercent = (value?: number | string | null) => {
   if (typeof value === 'string' && value.includes('%')) return value;
   return `${value}%`;
 };
+
+const isHttpLink = (value?: string | null) => /^https?:\/\//i.test(normalizeText(value));
 </script>
 
 <style scoped>
@@ -810,6 +882,7 @@ const formatPercent = (value?: number | string | null) => {
 .promotion-link-text { word-break: break-all; color: var(--text-primary); }
 .section-title { margin: 16px 0 12px; }
 .material-actions { margin-bottom: 16px; }
-.material-list { margin: 0; padding-left: 18px; }
 .material-file-list { display: flex; flex-direction: column; gap: 6px; word-break: break-all; }
+.material-file-item { line-height: 1.6; }
+.selling-point-list { display: flex; flex-wrap: wrap; gap: 8px; }
 </style>

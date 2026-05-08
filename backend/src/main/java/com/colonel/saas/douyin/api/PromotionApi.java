@@ -13,14 +13,17 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
 public class PromotionApi {
 
+    private static final String INST_PICK_SOURCE_CONVERT_METHOD = "buyin.instPickSourceConvert";
     private static final String LEGACY_METHOD = "buyin.promotion.link.generate";
     private static final String FALLBACK_METHOD_1 = "buyin.kolProductShare";
     private static final String FALLBACK_METHOD_2 = "buyin.getProductShareMaterial";
+    private static final int MAX_PICK_EXTRA_LENGTH = 20;
 
     private final DouyinApiClient douyinApiClient;
     private final PickSourceMappingService pickSourceMappingService;
@@ -48,6 +51,19 @@ public class PromotionApi {
     ) {
         UUID uuidSeed = UUID.randomUUID();
         String shortId = ShortCodeGenerator.generate(uuidSeed);
+        String normalizedPickExtra = normalizePickExtra(context == null ? null : context.pickExtra());
+
+        if (context != null && StringUtils.hasText(context.sourceUrl())) {
+            Map<String, Object> response = convertBySourceUrl(context.sourceUrl(), normalizedPickExtra);
+            PromotionLinkResult result = PromotionLinkResult.from(
+                    response,
+                    shortId,
+                    uuidSeed.toString(),
+                    normalizedPickExtra
+            );
+            saveMappingIfNecessary(result, uuidSeed, context);
+            return result;
+        }
 
         Map<String, Object> params = new HashMap<>();
         params.put("external_unique_id", externalUniqueId);
@@ -65,28 +81,60 @@ public class PromotionApi {
                 response,
                 shortId,
                 uuidSeed.toString(),
-                context == null ? null : context.pickExtra()
+                normalizedPickExtra
         );
-        if (context != null && context.userId() != null) {
-            pickSourceMappingService.saveOrUpdate(
-                    context.userId(),
-                    null,
-                    context.deptId(),
-                    null,
-                    null,
-                    result.shortId(),
-                    uuidSeed,
-                    result.pickSource(),
-                    context.productId(),
-                    context.activityId(),
-                    context.sourceUrl(),
-                    result.promoteLink(),
-                    null,
-                    context.scene(),
-                    result.pickExtra()
-            );
-        }
+        saveMappingIfNecessary(result, uuidSeed, context);
         return result;
+    }
+
+    private Map<String, Object> convertBySourceUrl(String productUrl, String pickExtra) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("product_url", productUrl);
+        params.put("pick_extra", pickExtra);
+        return douyinApiClient.post(INST_PICK_SOURCE_CONVERT_METHOD, params);
+    }
+
+    private void saveMappingIfNecessary(PromotionLinkResult result, UUID uuidSeed, PromotionContext context) {
+        if (context == null || context.userId() == null) {
+            return;
+        }
+        pickSourceMappingService.saveOrUpdate(
+                context.userId(),
+                null,
+                context.deptId(),
+                null,
+                null,
+                result.shortId(),
+                uuidSeed,
+                result.pickSource(),
+                context.productId(),
+                context.activityId(),
+                context.sourceUrl(),
+                result.promoteLink(),
+                null,
+                context.scene(),
+                result.pickExtra()
+        );
+    }
+
+    private String normalizePickExtra(String pickExtra) {
+        if (!StringUtils.hasText(pickExtra)) {
+            return null;
+        }
+        String normalized = pickExtra.trim()
+                .replaceAll("[^A-Za-z0-9_]", "_");
+        if (normalized.length() <= MAX_PICK_EXTRA_LENGTH) {
+            return normalized;
+        }
+        if (normalized.startsWith("channel_")) {
+            String tail = normalized.substring("channel_".length());
+            int allowedTailLength = MAX_PICK_EXTRA_LENGTH - "channel_".length();
+            if (tail.length() > allowedTailLength) {
+                tail = tail.substring(0, allowedTailLength);
+            }
+            return "channel_" + tail;
+        }
+        return normalized.substring(0, MAX_PICK_EXTRA_LENGTH).toLowerCase(Locale.ROOT);
     }
 
     private Map<String, Object> postWithFallback(Map<String, Object> params) {
@@ -158,6 +206,9 @@ public class PromotionApi {
             String promoteLink = firstNonBlank(
                     data != null ? asStringOrNull(data.get("promote_link")) : null,
                     data != null ? asStringOrNull(data.get("promotion_link")) : null,
+                    data != null ? asStringOrNull(data.get("converted_link")) : null,
+                    data != null ? asStringOrNull(data.get("converted_url")) : null,
+                    data != null ? asStringOrNull(data.get("product_url")) : null,
                     data != null ? asStringOrNull(data.get("share_link")) : null,
                     data != null ? asStringOrNull(data.get("url")) : null
             );

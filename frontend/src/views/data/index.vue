@@ -1,10 +1,14 @@
 <template>
   <div class="dashboard">
     <PageHeader
-      title="数据看板"
-      description="核心经营指标一览，快速了解订单、收入与利润趋势。"
+      :title="pageTitle"
+      :description="pageDesc"
     >
       <template #actions>
+        <n-radio-group v-model:value="timeField" size="small" @update:value="loadMetrics">
+          <n-radio-button value="settleTime">按结算时间</n-radio-button>
+          <n-radio-button value="createTime">按创建时间</n-radio-button>
+        </n-radio-group>
         <n-button type="primary" size="small" @click="$router.push('/data/orders')">
           查看完整明细
         </n-button>
@@ -37,7 +41,7 @@
             </svg>
           </div>
           <div class="metric-body">
-            <div class="metric-label">今日订单数</div>
+            <div class="metric-label">{{ metricLabels.orders }}</div>
             <div class="metric-value">{{ metrics.totalOrders ?? 0 }}</div>
             <div class="metric-trend up">较上周 +12.5%</div>
           </div>
@@ -50,7 +54,7 @@
             </svg>
           </div>
           <div class="metric-body">
-            <div class="metric-label">今日订单总额</div>
+            <div class="metric-label">{{ metricLabels.amount }}</div>
             <div class="metric-value">¥{{ metrics.totalAmount || '0.00' }}</div>
             <div class="metric-trend up">较上周 +8.3%</div>
           </div>
@@ -63,7 +67,7 @@
             </svg>
           </div>
           <div class="metric-body">
-            <div class="metric-label">今日服务费净收</div>
+            <div class="metric-label">{{ metricLabels.fee }}</div>
             <div class="metric-value">¥{{ metrics.serviceFee || '0.00' }}</div>
             <div class="metric-trend up">较上周 +5.7%</div>
           </div>
@@ -76,7 +80,7 @@
             </svg>
           </div>
           <div class="metric-body">
-            <div class="metric-label">今日毛利</div>
+            <div class="metric-label">{{ metricLabels.profit }}</div>
             <div class="metric-value">¥{{ metrics.grossProfit || '0.00' }}</div>
             <div class="metric-trend down">较上周 -2.1%</div>
           </div>
@@ -85,32 +89,44 @@
 
       <!-- 业绩分拆标签组 -->
       <div class="breakdown-section">
-        <h3 class="section-title">收入分拆</h3>
+        <h3 class="section-title">{{ isChannelStaffOnly ? '我的收益分拆' : '收入分拆' }}</h3>
         <div class="breakdown-tags">
-          <div class="breakdown-item">
-            <span class="breakdown-label">招商+渠道提成</span>
-            <span class="breakdown-value accent">¥{{ metrics.commission || '0.00' }}</span>
-          </div>
-          <div class="breakdown-item">
-            <span class="breakdown-label">服务费收入</span>
-            <span class="breakdown-value">¥{{ metrics.serviceFeeIncome || '0.00' }}</span>
-          </div>
-          <div class="breakdown-item">
-            <span class="breakdown-label">技术服务费</span>
-            <span class="breakdown-value">¥{{ metrics.techServiceFee || '0.00' }}</span>
-          </div>
-          <div class="breakdown-item">
-            <span class="breakdown-label">达人分佣</span>
-            <span class="breakdown-value">¥{{ metrics.talentCommission || '0.00' }}</span>
-          </div>
-          <div class="breakdown-item">
-            <span class="breakdown-label">招商提成</span>
-            <span class="breakdown-value">¥{{ metrics.bizCommission || '0.00' }}</span>
-          </div>
-          <div class="breakdown-item">
-            <span class="breakdown-label">渠道提成</span>
-            <span class="breakdown-value">¥{{ metrics.channelCommission || '0.00' }}</span>
-          </div>
+          <template v-if="isChannelStaffOnly">
+            <div class="breakdown-item">
+              <span class="breakdown-label">服务费收入</span>
+              <span class="breakdown-value accent">¥{{ metrics.serviceFeeIncome || '0.00' }}</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="breakdown-label">渠道提成</span>
+              <span class="breakdown-value accent">¥{{ metrics.channelCommission || '0.00' }}</span>
+            </div>
+          </template>
+          <template v-else>
+            <div class="breakdown-item">
+              <span class="breakdown-label">招商+渠道提成</span>
+              <span class="breakdown-value accent">¥{{ metrics.commission || '0.00' }}</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="breakdown-label">服务费收入</span>
+              <span class="breakdown-value">¥{{ metrics.serviceFeeIncome || '0.00' }}</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="breakdown-label">技术服务费</span>
+              <span class="breakdown-value">¥{{ metrics.techServiceFee || '0.00' }}</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="breakdown-label">达人分佣</span>
+              <span class="breakdown-value">¥{{ metrics.talentCommission || '0.00' }}</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="breakdown-label">招商提成</span>
+              <span class="breakdown-value">¥{{ metrics.bizCommission || '0.00' }}</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="breakdown-label">渠道提成</span>
+              <span class="breakdown-value">¥{{ metrics.channelCommission || '0.00' }}</span>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -142,19 +158,65 @@ import { computed, onMounted, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import PageHeader from '../../components/PageHeader.vue'
 import { getMetrics } from '../../api/data'
+import { useAuthStore } from '../../stores/auth'
+import { ROLE_CODES } from '../../constants/rbac'
 
 const message = useMessage()
+const authStore = useAuthStore()
 const loading = ref(false)
 const initialized = ref(false)
 const metrics = ref<any>({})
+const timeField = ref<'settleTime' | 'createTime'>('settleTime')
 const showSkeleton = computed(() => loading.value && !initialized.value)
 const INITIAL_SKELETON_MIN_MS = 1200
+const ROLE = ROLE_CODES
+
+const isBizStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.ADMIN) && !roles.includes(ROLE.BIZ_LEADER)
+})
+
+const isChannelStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.ADMIN) && !roles.includes(ROLE.CHANNEL_LEADER)
+})
+
+const pageTitle = computed(() => {
+  if (isChannelStaffOnly.value) return '我的业绩'
+  if (isBizStaffOnly.value) return '我的业绩'
+  return '数据看板'
+})
+
+const pageDesc = computed(() => {
+  if (isChannelStaffOnly.value) return '查看我自己的订单、服务费收益和提成预估，持续跟进达人产出。'
+  if (isBizStaffOnly.value) return '查看我负责商品带来的订单、服务费收益和招商提成预估。'
+  return '核心经营指标一览，快速了解订单、收入与利润趋势。'
+})
+
+const metricLabels = computed(() => {
+  if (isChannelStaffOnly.value) {
+    return {
+      orders: '我的推广订单数',
+      amount: '我的订单总额',
+      fee: '我的服务费收入',
+      profit: '我的渠道提成'
+    }
+  }
+  return {
+    orders: '今日订单数',
+    amount: '今日订单总额',
+    fee: '今日服务费净收',
+    profit: '今日毛利'
+  }
+})
 
 const loadMetrics = async () => {
   const startedAt = Date.now()
   loading.value = true
   try {
-    const res = await getMetrics()
+    const params: any = { timeField: timeField.value }
+    if (isChannelStaffOnly.value) params.scope = 'personal'
+    const res = await getMetrics(params)
     metrics.value = res?.data || res || {}
   } catch (error: any) {
     message.warning(error?.message || '获取指标异常')
@@ -178,6 +240,13 @@ onMounted(() => {
 .dashboard {
   max-width: 1200px;
   padding: var(--spacing-xl);
+}
+
+:deep(.n-page-header-extra) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .loading-state {

@@ -1,11 +1,18 @@
 <template>
   <div class="talent-page">
     <PageHeader
-      title="达人经营台"
-      description="围绕团队公海、我的达人、自然出单达人和黑名单，完成认领、释放与风险处置闭环。"
+      :title="pageTitle"
+      :description="pageDesc"
     >
       <template #actions>
-        <n-button secondary :loading="weeklyRefreshing" @click="handleWeeklyRefresh">触发周更</n-button>
+        <n-button
+          v-if="authStore.roleCodes.includes('channel_leader')"
+          secondary
+          :loading="weeklyRefreshing"
+          @click="handleWeeklyRefresh"
+        >
+          触发周更
+        </n-button>
         <n-button type="primary" secondary :loading="loading" @click="fetchData">刷新数据</n-button>
         <n-button type="primary" @click="showCreate = true">新增达人</n-button>
       </template>
@@ -34,7 +41,7 @@
       </n-card>
     </div>
 
-    <TalentBoardTabs v-model="activeView" :summary="viewSummary" />
+    <TalentBoardTabs v-model="activeView" :summary="viewSummary" :tabs="availableViewOptions" />
     <TalentMetricFilters
       :filters="filters"
       @update:filters="handleFilterPatch"
@@ -147,6 +154,23 @@ const pagination = reactive({
 
 const currentViewLabel = computed(() => TALENT_VIEW_LABEL_MAP[activeView.value] || '达人经营台')
 const currentViewHelp = computed(() => TALENT_VIEW_HELP_MAP[activeView.value] || '')
+
+const isChannelStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes('channel_staff') && !roles.includes('channel_leader') && !authStore.isAdmin
+})
+const canManageBlacklist = computed(() => authStore.isAdmin || authStore.roleCodes.includes('channel_leader'))
+
+const pageTitle = computed(() => isChannelStaffOnly.value ? '我的达人管理' : '达人经营台')
+const pageDesc = computed(() => isChannelStaffOnly.value
+  ? '管理我认领的合作达人，跟进合作状态与产出数据，或从公海中发掘新达人。'
+  : '围绕团队公海、我的达人、本组达人、自然出单达人和黑名单，完成认领、释放与风险处置闭环。'
+)
+const availableViewOptions = computed(() =>
+  authStore.roleCodes.includes('channel_leader')
+    ? TALENT_VIEW_OPTIONS
+    : TALENT_VIEW_OPTIONS.filter((item) => ['TEAM_PUBLIC', 'MY_TALENTS'].includes(item.value))
+)
 const pageOrderTalentCount = computed(() => data.value.filter((item) => Number(item.orderCount || 0) > 0).length)
 const pageServiceFeeText = computed(() => {
   const total = data.value.reduce((sum, item) => sum + Number(item.serviceFeeContribution || 0), 0)
@@ -155,7 +179,8 @@ const pageServiceFeeText = computed(() => {
 
 function resolveView(raw: unknown) {
   const value = typeof raw === 'string' ? raw : ''
-  return TALENT_VIEW_OPTIONS.some((item) => item.value === value) ? value : TALENT_VIEW_OPTIONS[0].value
+  const allowed = availableViewOptions.value
+  return allowed.some((item) => item.value === value) ? value : allowed[0].value
 }
 
 function parsePositiveInt(value: unknown, fallback: number) {
@@ -187,6 +212,14 @@ function isMine(row: TalentListItem) {
 
 function isBlacklisted(row: TalentListItem) {
   return row.blacklisted === true || activeView.value === 'BLACKLIST'
+}
+
+function resolvePoolStatus(row: TalentListItem) {
+  if (isBlacklisted(row)) return 'BLACKLIST'
+  if (activeView.value === 'TEAM_PRIVATE' && Number(row.activeClaimCount || 0) > 0) {
+    return 'PRIVATE'
+  }
+  return row.poolStatus
 }
 
 function openDetail(row: TalentListItem) {
@@ -358,9 +391,9 @@ const columns: DataTableColumns<TalentListItem> = [
     render: (row) =>
       h(NSpace, { size: 8, wrap: true }, {
         default: () => [
-          h(NTag, { type: getPoolTagType(isBlacklisted(row) ? 'BLACKLIST' : row.poolStatus), size: 'small' }, {
-            default: () => getPoolLabel(isBlacklisted(row) ? 'BLACKLIST' : row.poolStatus)
-          }),
+            h(NTag, { type: getPoolTagType(resolvePoolStatus(row)), size: 'small' }, {
+            default: () => getPoolLabel(resolvePoolStatus(row))
+            }),
           h(NTag, { type: 'info', size: 'small' }, { default: () => row.mainCategory || '未分类' }),
           h(NTag, { type: 'default', size: 'small' }, { default: () => row.ipLocation || '未知地区' })
         ]
@@ -420,8 +453,8 @@ const columns: DataTableColumns<TalentListItem> = [
       h(TalentStatusActions, {
         canClaim: !isBlacklisted(row) && row.poolStatus !== 'PRIVATE',
         canRelease: !isBlacklisted(row) && row.poolStatus === 'PRIVATE' && isMine(row),
-        canBlacklist: !isBlacklisted(row),
-        canUnblacklist: isBlacklisted(row),
+        canBlacklist: canManageBlacklist.value && !isBlacklisted(row),
+        canUnblacklist: canManageBlacklist.value && isBlacklisted(row),
         onDetail: () => openDetail(row),
         onClaim: () => handleClaim(row),
         onRelease: () => handleRelease(row),
@@ -441,6 +474,17 @@ watch(
   () => {
     syncFromRoute()
   }
+)
+
+watch(
+  availableViewOptions,
+  (options) => {
+    if (!options.some((item) => item.value === activeView.value)) {
+      activeView.value = options[0]?.value || 'TEAM_PUBLIC'
+      syncRoute()
+    }
+  },
+  { immediate: true }
 )
 
 onMounted(() => {

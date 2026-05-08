@@ -36,8 +36,8 @@
         <section class="detail-section">
           <h3 class="section-title">基础资料</h3>
           <n-descriptions bordered :column="2">
-            <n-descriptions-item label="sec_uid">{{ detail.talent?.secUid || '-' }}</n-descriptions-item>
-            <n-descriptions-item label="主页链接">{{ detail.talent?.profileUrl || '-' }}</n-descriptions-item>
+            <n-descriptions-item v-if="!isChannelStaffOnly" label="sec_uid">{{ detail.talent?.secUid || '-' }}</n-descriptions-item>
+            <n-descriptions-item v-if="!isChannelStaffOnly" label="主页链接">{{ detail.talent?.profileUrl || '-' }}</n-descriptions-item>
             <n-descriptions-item label="获赞数">{{ formatFans(detail.talent?.likesCount) }}</n-descriptions-item>
             <n-descriptions-item label="作品数">{{ detail.talent?.worksCount ?? '-' }}</n-descriptions-item>
             <n-descriptions-item label="达人等级">{{ detail.talent?.level || '-' }}</n-descriptions-item>
@@ -61,17 +61,17 @@
         </section>
 
         <section class="detail-section">
-          <h3 class="section-title">归属信息</h3>
+          <h3 class="section-title">{{ isChannelStaffOnly ? '合作信息' : '归属信息' }}</h3>
           <n-descriptions bordered :column="2">
             <n-descriptions-item label="当前状态">
               <n-tag :type="poolTagType">{{ poolLabel }}</n-tag>
             </n-descriptions-item>
-            <n-descriptions-item label="认领人">{{ detail.claim?.ownerName || '-' }}</n-descriptions-item>
+            <n-descriptions-item :label="isChannelStaffOnly ? '当前归属' : '认领人'">{{ detail.claim?.ownerName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="认领时间">{{ formatDateTime(detail.claim?.claimedAt) }}</n-descriptions-item>
             <n-descriptions-item label="保护期截止">{{ formatDateTime(detail.claim?.protectedUntil) }}</n-descriptions-item>
-            <n-descriptions-item label="有效认领人数">{{ detail.claim?.activeClaimCount ?? 0 }}</n-descriptions-item>
+            <n-descriptions-item v-if="!isChannelStaffOnly" label="有效认领人数">{{ detail.claim?.activeClaimCount ?? 0 }}</n-descriptions-item>
           </n-descriptions>
-          <div v-if="detail.claim?.activeClaimOwners?.length" class="claim-owner-list">
+          <div v-if="!isChannelStaffOnly && detail.claim?.activeClaimOwners?.length" class="claim-owner-list">
             <div class="claim-owner-title">当前有效认领人</div>
             <div
               v-for="owner in detail.claim.activeClaimOwners"
@@ -118,6 +118,8 @@
 import { computed, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { getTalentById, refreshTalent, type TalentDetailResponse } from '../../../api/talent'
+import { useAuthStore } from '../../../stores/auth'
+import { ROLE_CODES } from '../../../constants/rbac'
 import { resolveSafeAvatarUrl } from '../../../utils/media'
 import { formatDateTime, formatFans, formatMoney, getPoolLabel, getPoolTagType } from '../constants'
 
@@ -125,12 +127,20 @@ const props = defineProps<{ show: boolean; talentId: string }>()
 const emit = defineEmits<{ 'update:show': [value: boolean] }>()
 
 const message = useMessage()
+const authStore = useAuthStore()
 const loading = ref(false)
 const refreshing = ref(false)
 const detail = ref<TalentDetailResponse | null>(null)
+const isChannelStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE_CODES.CHANNEL_STAFF)
+    && !roles.includes(ROLE_CODES.CHANNEL_LEADER)
+    && !authStore.isAdmin
+})
 
 const resolvedPoolStatus = computed(() => {
   if (detail.value?.talent?.blacklisted) return 'BLACKLIST'
+  if (Number(detail.value?.claim?.activeClaimCount || 0) > 0) return 'PRIVATE'
   return detail.value?.claim?.poolStatus || 'PUBLIC'
 })
 
@@ -155,7 +165,7 @@ const sampleColumns = [
   }
 ]
 
-const orderColumns = [
+const orderColumns = computed(() => [
   { title: '订单号', key: 'orderId', width: 180 },
   { title: '商品名称', key: 'productName', minWidth: 180 },
   {
@@ -170,14 +180,14 @@ const orderColumns = [
     width: 120,
     render: (row: any) => formatMoney(row.serviceFee)
   },
-  { title: '归因渠道', key: 'channelName', width: 140 },
+  ...(!isChannelStaffOnly.value ? [{ title: '归因渠道', key: 'channelName', width: 140 }] : []),
   {
     title: '订单时间',
     key: 'createTime',
     width: 180,
     render: (row: any) => formatDateTime(row.createTime)
   }
-]
+])
 
 function closeModal() {
   emit('update:show', false)

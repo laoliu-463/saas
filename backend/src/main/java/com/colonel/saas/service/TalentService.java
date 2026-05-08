@@ -358,7 +358,7 @@ public class TalentService {
                         .thenComparing(TalentClaim::getClaimedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .filter(claim -> canRelease(claim, userId, deptId, isAdmin))
                 .findFirst()
-                .orElseThrow(() -> new BusinessException("仅认领人、同组组长或管理员可以释放达人"));
+                .orElseThrow(() -> new BusinessException("仅认领人或管理员可以释放达人"));
 
         releaseTarget.setStatus(CLAIM_STATUS_RELEASED);
         releaseTarget.setProtectedUntil(LocalDateTime.now());
@@ -693,7 +693,7 @@ public class TalentService {
         if (userId.equals(claim.getUserId())) {
             return true;
         }
-        return deptId != null && deptId.equals(claim.getDeptId());
+        return false;
     }
 
     private boolean hasRole(Collection<?> roleCodes, String role) {

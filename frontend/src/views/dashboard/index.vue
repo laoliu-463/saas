@@ -1,6 +1,6 @@
 <template>
   <div class="dashboard-page">
-    <PageHeader title="业务概览" description="实时掌握商品推广进度、订单归因率及招商业绩分布。" />
+    <PageHeader :title="dashboardTitle" :description="dashboardDesc" />
 
     <n-grid :cols="4" :x-gap="16" :y-gap="16" class="stats-row">
       <n-gi v-for="stat in stats" :key="stat.label">
@@ -39,7 +39,7 @@
       <n-gi>
         <n-card :bordered="false" class="panel-card">
           <template #header>
-            <span>招商团队表现榜</span>
+            <span>{{ rankingTitle }}</span>
           </template>
           <n-list hoverable clickable>
             <n-list-item v-for="(item, index) in ranking" :key="item.name">
@@ -74,6 +74,8 @@
 import { computed, onMounted, ref } from 'vue'
 import PageHeader from '../../components/PageHeader.vue'
 import { getSummary } from '../../api/dashboard'
+import { useAuthStore } from '../../stores/auth'
+import { ROLE_CODES, hasAccess } from '../../constants/rbac'
 
 interface StatItem {
   label: string
@@ -101,13 +103,59 @@ const stats = ref<StatItem[]>([
 
 const trendData = ref<TrendItem[]>([])
 const ranking = ref<RankingItem[]>([])
+const authStore = useAuthStore()
+const ROLE = ROLE_CODES
 
-const quickEntries = [
-  { label: '订单归因', path: '/orders' },
-  { label: '商品库', path: '/product' },
-  { label: '达人 CRM', path: '/talent' },
-  { label: '数据看板', path: '/data' }
-]
+const isBizStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.ADMIN) && !roles.includes(ROLE.BIZ_LEADER)
+})
+
+const isChannelStaffOnly = computed(() => {
+  const roles = authStore.roleCodes
+  return roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.ADMIN) && !roles.includes(ROLE.CHANNEL_LEADER)
+})
+
+const isPersonalOnly = computed(() => isBizStaffOnly.value || isChannelStaffOnly.value)
+
+const dashboardTitle = computed(() => isPersonalOnly.value ? '我的业绩概览' : '业务概览')
+const dashboardDesc = computed(() => {
+  if (isBizStaffOnly.value) return '实时掌握我负责商品的销售额、佣金及订单趋势。'
+  if (isChannelStaffOnly.value) return '实时掌握我的达人带来的销售额、服务费及订单趋势。'
+  return '实时掌握商品推广进度、订单归因率及团队业绩分布。'
+})
+
+const rankingTitle = computed(() => {
+  if (isChannelStaffOnly.value) return '我的重点产出'
+  if (isBizStaffOnly.value) return '我的重点产出'
+  return '招商团队表现榜'
+})
+
+const quickEntries = computed(() => {
+  const roles = authStore.roleCodes
+  return [
+    { label: '订单归因', path: '/orders', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] },
+    { label: '商品库', path: '/product', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
+    { label: '商品管理', path: '/product/manage', roles: [ROLE.BIZ_LEADER] },
+    { label: '我的商品', path: '/product/manage/products', roles: [ROLE.BIZ_STAFF] },
+    { label: '达人 CRM', path: '/talent', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
+    { label: '数据看板', path: '/data', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
+    { label: '寄样台', path: '/sample', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+  ]
+    .filter((entry) => hasAccess(roles, entry.roles))
+    .map((entry) => {
+      if (isChannelStaffOnly.value) {
+        if (entry.path === '/talent') return { ...entry, label: '我的达人' }
+        if (entry.path === '/data') return { ...entry, label: '我的业绩' }
+        if (entry.path === '/sample') return { ...entry, label: '寄样台' }
+      }
+      if (isBizStaffOnly.value) {
+        if (entry.path === '/data') return { ...entry, label: '我的业绩' }
+        if (entry.path === '/sample') return { ...entry, label: '寄样台' }
+      }
+      return entry
+    })
+})
 
 const maxOrders = computed(() => {
   if (!trendData.value.length) return 1

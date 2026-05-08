@@ -71,6 +71,7 @@ export interface TalentItem {
 // 寄样台模块
 export interface SampleItem {
   id: string;
+  requestNo?: string;
   talentId: string;
   talentName?: string;
   talentNickname?: string;
@@ -81,11 +82,31 @@ export interface SampleItem {
   productId: string;
   productName?: string;
   quantity: number;
+  channelUserId?: string;
+  channelUserName?: string;
+  colonelUserId?: string;
+  colonelUserName?: string;
   status: string;
   remark?: string;
   trackingNo?: string;
   rejectReason?: string;
+  closeReason?: string;
+  applyReason?: string;
+  eligibilityCheck?: {
+    passed?: boolean;
+    failedRules?: string[];
+    reasons?: string[];
+  };
+  requirementSnapshot?: {
+    min30DaySales?: number;
+    minLevel?: string;
+    actual30DaySales?: number;
+    actualLevel?: string;
+    rawStandard?: Record<string, any>;
+  };
   createTime: string;
+  updateTime?: string;
+  completeTime?: string;
 }
 
 // 数据大盘与订单模块

@@ -43,7 +43,7 @@ public class OrderSyncPersistenceService {
             }
             order.setId(existing.getId());
             order.setCreateTime(existing.getCreateTime());
-            orderMapper.updateById(order);
+            orderMapper.updateSyncedById(order);
             pickSourceMappingService.ensureFromOrder(order);
             merchantService.ensureMerchantFromOrder(order);
             sampleLifecycleService.completePendingHomeworkByOrder(order);

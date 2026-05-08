@@ -64,17 +64,33 @@ public class DouyinWebhookController {
         String body = rawBody == null ? "" : rawBody;
         String providedSign = firstNonBlank(xDoudianSign, sign, xSign);
         if (verifySign && !verifySignature(body, providedSign)) {
-            log.warn("Douyin webhook sign verify failed, providedSign={}", providedSign);
+            log.warn("Douyin webhook sign verify failed, providedSignPresent={}, providedSignLength={}, bodyLength={}",
+                    StringUtils.hasText(providedSign),
+                    providedSign == null ? 0 : providedSign.length(),
+                    body.length());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("invalid sign");
         }
         try {
             Map<?, ?> event = objectMapper.readValue(body, Map.class);
-            log.info("Receive doudian_alliance_colonelOpenEvent: {}", event);
+            log.info("Receive douyin webhook event, event={}, bodyLength={}", safeEventName(event), body.length());
         } catch (Exception e) {
-            log.warn("Douyin webhook payload parse failed, body={}", body);
+            log.warn("Douyin webhook payload parse failed, bodyLength={}, exception={}",
+                    body.length(), e.getClass().getSimpleName());
         }
         // 抖店回调通常要求快速返回 success，避免上游重复重试。
         return ResponseEntity.ok("success");
+    }
+
+    private String safeEventName(Map<?, ?> event) {
+        Object eventName = event.get("event");
+        if (eventName == null) {
+            return "unknown";
+        }
+        String value = String.valueOf(eventName).trim();
+        if (!StringUtils.hasText(value) || value.length() > 128 || !value.matches("[A-Za-z0-9._:-]+")) {
+            return "unknown";
+        }
+        return value;
     }
 
     private boolean verifySignature(String body, String providedSign) {

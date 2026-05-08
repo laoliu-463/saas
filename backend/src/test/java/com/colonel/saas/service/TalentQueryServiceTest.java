@@ -265,6 +265,50 @@ class TalentQueryServiceTest {
     }
 
     @Test
+    void page_teamPublicPersonalShouldExcludeTalentsClaimedByOthers() {
+        UUID myUserId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+
+        Talent publicTalent = new Talent();
+        publicTalent.setId(UUID.randomUUID());
+        publicTalent.setDouyinUid("public_only");
+
+        Talent sharedTalent = new Talent();
+        sharedTalent.setId(UUID.randomUUID());
+        sharedTalent.setDouyinUid("claimed_by_other");
+
+        TalentClaim otherActiveClaim = new TalentClaim();
+        otherActiveClaim.setTalentId(sharedTalent.getId());
+        otherActiveClaim.setUserId(otherUserId);
+        otherActiveClaim.setStatus(1);
+
+        SysUser otherUser = new SysUser();
+        otherUser.setId(otherUserId);
+        otherUser.setRealName("渠道B");
+
+        TalentPageQuery query = new TalentPageQuery();
+        query.setView("TEAM_PUBLIC");
+        query.setUserId(myUserId);
+        query.setDataScope(DataScope.PERSONAL);
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<Talent> basePage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 200, 2);
+        basePage.setRecords(List.of(publicTalent, sharedTalent));
+
+        when(talentService.page(1, 10, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
+        when(talentClaimMapper.selectList(any())).thenReturn(List.of(otherActiveClaim));
+        when(sysUserMapper.selectBatchIds(any())).thenReturn(List.of(otherUser));
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+                .thenReturn(List.of());
+
+        var page = talentQueryService.page(query);
+
+        assertThat(page.getRecords()).extracting(Talent::getDouyinUid).containsExactly("public_only");
+    }
+
+    @Test
     void page_teamPublicShouldIgnoreDeptScopeAndIncludePublicPool() {
         UUID myUserId = UUID.randomUUID();
         UUID myDeptId = UUID.randomUUID();
@@ -310,6 +354,69 @@ class TalentQueryServiceTest {
         assertThat(page.getRecords()).hasSize(2);
         assertThat(page.getRecords()).extracting(Talent::getDouyinUid)
                 .containsExactlyInAnyOrder("public_pool_1", "shared_pool_1");
+    }
+
+    @Test
+    void page_teamPrivateShouldReturnDeptClaimedTalents() {
+        UUID myUserId = UUID.randomUUID();
+        UUID myDeptId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+
+        Talent myTalent = new Talent();
+        myTalent.setId(UUID.randomUUID());
+        myTalent.setDouyinUid("my_private_1");
+        myTalent.setPoolStatus("PRIVATE");
+        myTalent.setOwnerId(myUserId);
+
+        Talent teammateTalent = new Talent();
+        teammateTalent.setId(UUID.randomUUID());
+        teammateTalent.setDouyinUid("team_private_1");
+        teammateTalent.setPoolStatus("PUBLIC");
+
+        Talent publicTalent = new Talent();
+        publicTalent.setId(UUID.randomUUID());
+        publicTalent.setDouyinUid("public_only_1");
+        publicTalent.setPoolStatus("PUBLIC");
+
+        TalentClaim myClaim = new TalentClaim();
+        myClaim.setTalentId(myTalent.getId());
+        myClaim.setUserId(myUserId);
+        myClaim.setDeptId(myDeptId);
+        myClaim.setStatus(1);
+
+        TalentClaim teammateClaim = new TalentClaim();
+        teammateClaim.setTalentId(teammateTalent.getId());
+        teammateClaim.setUserId(otherUserId);
+        teammateClaim.setDeptId(myDeptId);
+        teammateClaim.setStatus(1);
+
+        SysUser teammate = new SysUser();
+        teammate.setId(otherUserId);
+        teammate.setRealName("渠道同事");
+
+        TalentPageQuery query = new TalentPageQuery();
+        query.setView("TEAM_PRIVATE");
+        query.setUserId(myUserId);
+        query.setDeptId(myDeptId);
+        query.setDataScope(DataScope.DEPT);
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<Talent> basePage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 200, 3);
+        basePage.setRecords(List.of(myTalent, teammateTalent, publicTalent));
+
+        when(talentService.page(1, 10, null, null, null, null, DataScope.DEPT, myUserId, myDeptId)).thenReturn(basePage);
+        when(talentClaimMapper.selectList(any())).thenReturn(List.of(myClaim, teammateClaim));
+        when(sysUserMapper.selectBatchIds(any())).thenReturn(List.of(teammate));
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+                .thenReturn(List.of());
+
+        var page = talentQueryService.page(query);
+
+        assertThat(page.getRecords()).hasSize(2);
+        assertThat(page.getRecords()).extracting(Talent::getDouyinUid)
+                .containsExactlyInAnyOrder("my_private_1", "team_private_1");
     }
 
     @Test

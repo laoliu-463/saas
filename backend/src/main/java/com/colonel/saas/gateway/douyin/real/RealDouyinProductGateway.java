@@ -70,7 +70,52 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
         if (upstreamModeSupport.isContract()) {
             return contractFixtureProvider.buildProductDetailResult(productId);
         }
-        throw new BusinessException("真实抖店商品详情接口暂未接入");
+        Map<String, Object> response = productApi.getProductDetail(productId);
+        Map<String, Object> dataNode = asMap(response.get("data"));
+        String name = asString(dataNode.get("name"));
+        List<?> specPrices = asList(dataNode.get("spec_prices"));
+        String cover = null;
+        List<?> images = asList(dataNode.get("images"));
+        if (cover == null && !images.isEmpty()) {
+            Map<String, Object> firstImage = asMap(images.get(0));
+            cover = asString(firstImage.get("url"));
+        }
+        long price = 0L;
+        if (!specPrices.isEmpty()) {
+            Map<String, Object> firstSku = asMap(specPrices.get(0));
+            price = asLong(firstSku.get("price"), 0L);
+        }
+        String mainVideo = null;
+        Map<String, Object> videoNode = asMap(dataNode.get("main_screen_video"));
+        if (videoNode != null && !videoNode.isEmpty()) {
+            mainVideo = asString(videoNode.get("url"));
+        }
+        List<ProductSkuResult> skus = specPrices.stream().map(item -> {
+            Map<String, Object> sku = asMap(item);
+            String skuId = asString(sku.get("sku_id"));
+            String spec1 = asString(sku.get("spec_detail_name1"));
+            String spec2 = asString(sku.get("spec_detail_name2"));
+            String spec3 = asString(sku.get("spec_detail_name3"));
+            String skuName = buildSkuName(name, spec1, spec2, spec3);
+            return new ProductSkuResult(
+                    skuId,
+                    skuName,
+                    asLong(sku.get("price"), 0L),
+                    toInt(sku.get("stock_num"), 0),
+                    asString(sku.get("picture_url"))
+            );
+        }).toList();
+        return new ProductDetailResult(
+                productId,
+                name,
+                cover,
+                price,
+                price > 0 ? String.format(Locale.ROOT, "%.2f", price / 100.0) : null,
+                mainVideo,
+                asString(dataNode.get("shop_name")),
+                null,
+                skus
+        );
     }
 
     @Override
@@ -79,7 +124,47 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
         if (upstreamModeSupport.isContract()) {
             return contractFixtureProvider.buildProductSkus(productId);
         }
-        throw new BusinessException("真实抖店商品 SKU 接口暂未接入");
+        // 先查商品详情，从 spec_prices 拿所有 SKU
+        Map<String, Object> response = productApi.getProductDetail(productId);
+        Map<String, Object> dataNode = asMap(response.get("data"));
+        String name = asString(dataNode.get("name"));
+        List<?> specPrices = asList(dataNode.get("spec_prices"));
+        return specPrices.stream().map(item -> {
+            Map<String, Object> sku = asMap(item);
+            String skuId = asString(sku.get("sku_id"));
+            String spec1 = asString(sku.get("spec_detail_name1"));
+            String spec2 = asString(sku.get("spec_detail_name2"));
+            String spec3 = asString(sku.get("spec_detail_name3"));
+            String skuName = buildSkuName(name, spec1, spec2, spec3);
+            return new ProductSkuResult(
+                    skuId,
+                    skuName,
+                    asLong(sku.get("price"), 0L),
+                    toInt(sku.get("stock_num"), 0),
+                    asString(sku.get("picture_url"))
+            );
+        }).toList();
+    }
+
+    private String buildSkuName(String productName, String spec1, String spec2, String spec3) {
+        List<String> parts = new java.util.ArrayList<>();
+        if (spec1 != null && !spec1.isBlank()) parts.add(spec1);
+        if (spec2 != null && !spec2.isBlank()) parts.add(spec2);
+        if (spec3 != null && !spec3.isBlank()) parts.add(spec3);
+        if (parts.isEmpty()) {
+            return productName;
+        }
+        return productName + " " + String.join(" / ", parts);
+    }
+
+    private int toInt(Object value, int defaultValue) {
+        if (value == null) return defaultValue;
+        if (value instanceof Number n) return n.intValue();
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (Exception e) {
+            return defaultValue;
+        }
     }
 
     private ActivityProductItem normalizeProductItem(Map<String, Object> raw) {

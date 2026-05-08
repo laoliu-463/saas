@@ -3,6 +3,7 @@ package com.colonel.saas.entity;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.colonel.saas.common.base.BaseEntity;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -27,6 +28,7 @@ public class PickSourceMapping extends BaseEntity {
     private UUID deptId;
 
     @TableField("pick_source")
+    @Size(max = 128)
     private String pickSource;
 
     @TableField("product_id")
@@ -42,6 +44,7 @@ public class PickSourceMapping extends BaseEntity {
     private String convertedUrl;
 
     @TableField("pick_extra")
+    @Size(max = 128)
     private String pickExtra;
 
     @TableField("promotion_link_id")

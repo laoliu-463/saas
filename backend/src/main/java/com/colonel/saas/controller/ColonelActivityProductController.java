@@ -6,6 +6,7 @@ import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ProductService;
@@ -41,13 +42,15 @@ import java.util.UUID;
 @RestController
 @Tag(name = "活动商品主链路", description = "团长活动下商品的详情、绑定、分配、审核、转链、达人跟进与操作日志接口。")
 @RequestMapping("/colonel/activities/{activityId}/products")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
+@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN, RoleCodes.COLONEL_LEADER})
 public class ColonelActivityProductController extends BaseController {
 
     private final ProductService productService;
+    private final SysUserService sysUserService;
 
-    public ColonelActivityProductController(ProductService productService) {
+    public ColonelActivityProductController(ProductService productService, SysUserService sysUserService) {
         this.productService = productService;
+        this.sysUserService = sysUserService;
     }
 
     @Operation(summary = "活动商品详情", description = "查询指定活动下单个商品的业务详情。")
@@ -59,7 +62,7 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     @Operation(summary = "活动商品绑定活动", description = "为活动商品补绑或修正关联活动。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER})
     @PutMapping("/{productId}/bind-activity")
     public ApiResult<Map<String, Object>> bindActivity(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -76,7 +79,7 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     @Operation(summary = "活动商品分配招商", description = "为活动商品指定招商负责人。")
-    @RequireRoles({RoleCodes.BIZ_LEADER})
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER})
     @PutMapping("/{productId}/assignee")
     public ApiResult<Map<String, Object>> assign(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -88,12 +91,14 @@ public class ColonelActivityProductController extends BaseController {
             )
             @Valid @RequestBody AssignRequest request,
             @RequestAttribute(value = "userId", required = false) UUID userId,
-            @RequestAttribute(value = "deptId", required = false) UUID deptId) {
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        sysUserService.assertAssignableUser(request.getAssigneeId(), roleCodes, deptId);
         return ok(productService.assignProduct(activityId, productId, request.getAssigneeId(), userId, deptId));
     }
 
     @Operation(summary = "活动商品审核", description = "提交活动商品审核结果。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequireRoles({RoleCodes.BIZ_STAFF})
     @PutMapping("/{productId}/audit-result")
     public ApiResult<Map<String, Object>> audit(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -118,7 +123,7 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     @Operation(summary = "活动商品推进判断", description = "记录商品主推、次推、暂缓或放弃等人工推进判断，不改变商品主状态。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequireRoles({RoleCodes.BIZ_STAFF})
     @PutMapping("/{productId}/decision")
     public ApiResult<Map<String, Object>> decision(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -207,6 +212,7 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     @Operation(summary = "加入商品库", description = "将当前选品结果沉淀到共享商品库，供全员查看。")
+    @RequireRoles({RoleCodes.BIZ_STAFF})
     @PostMapping("/{productId}/library-entry")
     public ApiResult<Map<String, Object>> putIntoLibrary(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -277,6 +283,15 @@ public class ColonelActivityProductController extends BaseController {
 
         @Schema(description = "手卡或素材文件列表。", example = "[\"https://example.com/material-1.png\"]")
         private List<String> materialFiles;
+
+        @Schema(description = "30天销售额门槛。", example = "30000")
+        private Long sampleThresholdSales;
+
+        @Schema(description = "达人等级门槛。", example = "1")
+        private Integer sampleThresholdLevel;
+
+        @Schema(description = "寄样补充要求。", example = "需真人出镜，粉丝量>10万")
+        private String sampleThresholdRemark;
 
         public boolean isApproved() {
             return approved;
@@ -366,6 +381,30 @@ public class ColonelActivityProductController extends BaseController {
             this.materialFiles = materialFiles;
         }
 
+        public Long getSampleThresholdSales() {
+            return sampleThresholdSales;
+        }
+
+        public void setSampleThresholdSales(Long sampleThresholdSales) {
+            this.sampleThresholdSales = sampleThresholdSales;
+        }
+
+        public Integer getSampleThresholdLevel() {
+            return sampleThresholdLevel;
+        }
+
+        public void setSampleThresholdLevel(Integer sampleThresholdLevel) {
+            this.sampleThresholdLevel = sampleThresholdLevel;
+        }
+
+        public String getSampleThresholdRemark() {
+            return sampleThresholdRemark;
+        }
+
+        public void setSampleThresholdRemark(String sampleThresholdRemark) {
+            this.sampleThresholdRemark = sampleThresholdRemark;
+        }
+
         public Map<String, Object> toSupplementMap() {
             Map<String, Object> supplement = new LinkedHashMap<>();
             putText(supplement, "exclusivePriceRemark", exclusivePriceRemark);
@@ -374,8 +413,15 @@ public class ColonelActivityProductController extends BaseController {
             putText(supplement, "rewardRemark", rewardRemark);
             putText(supplement, "participationRequirements", participationRequirements);
             putText(supplement, "campaignTimeRemark", campaignTimeRemark);
+            putText(supplement, "sampleThresholdRemark", sampleThresholdRemark);
             if (supportsAds != null) {
                 supplement.put("supportsAds", supportsAds);
+            }
+            if (sampleThresholdSales != null) {
+                supplement.put("sampleThresholdSales", sampleThresholdSales);
+            }
+            if (sampleThresholdLevel != null) {
+                supplement.put("sampleThresholdLevel", sampleThresholdLevel);
             }
             List<String> normalizedSellingPoints = normalizeList(sellingPoints);
             if (!normalizedSellingPoints.isEmpty()) {

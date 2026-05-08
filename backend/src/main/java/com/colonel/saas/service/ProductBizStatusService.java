@@ -100,6 +100,26 @@ public class ProductBizStatusService {
                 operatorId, operatorDeptId, payload, remark, false, errorMessage);
     }
 
+    /**
+     * 记录状态变更日志（不改变状态，用于审核等只记录操作不跳转状态的场景）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void logStatusChange(
+            String activityId,
+            String productId,
+            String operationType,
+            ProductBizStatus beforeStatus,
+            ProductBizStatus afterStatus,
+            UUID operatorId,
+            UUID operatorDeptId,
+            Map<String, Object> payload,
+            String remark,
+            boolean success,
+            String errorMessage) {
+        writeLog(activityId, productId, operationType, beforeStatus, afterStatus,
+                operatorId, operatorDeptId, payload, remark, success, errorMessage);
+    }
+
     private void ensureAllowed(ProductBizStatus beforeStatus, ProductBizStatus targetStatus, String operationType) {
         boolean allowed = switch (targetStatus) {
             case APPROVED -> beforeStatus == ProductBizStatus.PENDING_AUDIT;

@@ -2,7 +2,9 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.entity.ExclusiveTalent;
+import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
+import com.colonel.saas.mapper.TalentMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -31,10 +33,15 @@ public class ExclusiveTalentService {
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
     private final JdbcTemplate jdbcTemplate;
     private final ExclusiveTalentMapper exclusiveTalentMapper;
+    private final TalentMapper talentMapper;
 
-    public ExclusiveTalentService(JdbcTemplate jdbcTemplate, ExclusiveTalentMapper exclusiveTalentMapper) {
+    public ExclusiveTalentService(
+            JdbcTemplate jdbcTemplate,
+            ExclusiveTalentMapper exclusiveTalentMapper,
+            TalentMapper talentMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.exclusiveTalentMapper = exclusiveTalentMapper;
+        this.talentMapper = talentMapper;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -110,8 +117,13 @@ public class ExclusiveTalentService {
                 .last("limit 1"));
 
         ExclusiveTalent target = existing == null ? new ExclusiveTalent() : existing;
+        UUID talentId = resolveTalentId(row.talentUid());
+        if (talentId == null) {
+            log.warn("Skip exclusive talent upsert due to missing talent record, talentUid={}", row.talentUid());
+            return;
+        }
         target.setTalentUid(row.talentUid());
-        target.setTalentId(null);
+        target.setTalentId(talentId);
         target.setUserId(row.channelUserId());
         target.setDeptId(row.deptId());
         target.setExclusiveType(1);
@@ -245,6 +257,17 @@ public class ExclusiveTalentService {
         } catch (Exception ex) {
             return null;
         }
+    }
+
+    private UUID resolveTalentId(String talentUid) {
+        if (!StringUtils.hasText(talentUid)) {
+            return null;
+        }
+        Talent talent = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
+                .eq(Talent::getDouyinUid, talentUid)
+                .eq(Talent::getDeleted, 0)
+                .last("limit 1"));
+        return talent == null ? null : talent.getId();
     }
 
     private record TalentChannelFeeRow(String talentUid, UUID channelUserId, UUID deptId, long channelFee) {

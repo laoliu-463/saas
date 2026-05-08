@@ -47,6 +47,28 @@
         LIMIT #{limit} OFFSET #{offset}
     </select>
 
+    <select id="selectExportPage" resultType="com.colonel.saas.entity.ColonelsettlementActivity">
+        SELECT
+            id,
+            activity_id AS activityId,
+            activity_name AS name,
+            start_time AS startTime,
+            end_time AS endTime,
+            <include refid="StatusCodeExpr"/> AS status,
+            create_time AS createTime,
+            update_time AS updateTime,
+            create_by AS createBy,
+            update_by AS updateBy,
+            deleted
+        FROM colonel_activity
+        WHERE deleted = 0
+        <if test="activityName != null and activityName != ''">
+            AND activity_name ILIKE CONCAT('%', #{activityName}, '%')
+        </if>
+        ORDER BY start_time DESC NULLS LAST, create_time DESC NULLS LAST
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
     <insert id="insertSeedActivity">
         INSERT INTO colonel_activity (
             id,

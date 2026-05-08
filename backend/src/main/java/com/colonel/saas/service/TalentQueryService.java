@@ -573,15 +573,24 @@ public class TalentQueryService {
         if (!StringUtils.hasText(view)) {
             return true;
         }
+        boolean personalPublicView = "TEAM_PUBLIC".equalsIgnoreCase(view)
+                && query.getDataScope() == DataScope.PERSONAL;
         return switch (view) {
             case "TEAM_PUBLIC" -> "PUBLIC".equalsIgnoreCase(firstNonBlank(talent.getPoolStatus(), "PUBLIC"))
-                    && !Boolean.TRUE.equals(talent.getBlacklisted());
+                    && !Boolean.TRUE.equals(talent.getBlacklisted())
+                    && (!personalPublicView || itemOrZero(talent.getActiveClaimCount()) == 0);
             case "MY_TALENTS" -> "PRIVATE".equalsIgnoreCase(firstNonBlank(talent.getPoolStatus(), "PUBLIC"))
                     && Objects.equals(talent.getOwnerId(), query.getUserId());
+            case "TEAM_PRIVATE" -> itemOrZero(talent.getActiveClaimCount()) > 0
+                    && !Boolean.TRUE.equals(talent.getBlacklisted());
             case "NATURAL_ORDERS" -> Boolean.TRUE.equals(talent.getNaturalOrderTalent());
             case "BLACKLIST" -> Boolean.TRUE.equals(talent.getBlacklisted());
             default -> true;
         };
+    }
+
+    private long itemOrZero(Number value) {
+        return value == null ? 0L : value.longValue();
     }
 
     private boolean matchesClaimStatus(Talent talent, String claimStatus) {

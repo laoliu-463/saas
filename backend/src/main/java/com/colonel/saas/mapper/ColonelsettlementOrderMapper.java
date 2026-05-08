@@ -17,6 +17,8 @@ public interface ColonelsettlementOrderMapper extends BaseMapper<Colonelsettleme
 
     int insertIgnoreByOrderId(ColonelsettlementOrder order);
 
+    int updateSyncedById(ColonelsettlementOrder order);
+
     @DataScope
     IPage<ColonelsettlementOrder> findPageWithScope(
             Page<ColonelsettlementOrder> page,

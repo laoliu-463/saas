@@ -2,11 +2,14 @@ package com.colonel.saas.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.colonel.saas.common.base.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -14,19 +17,62 @@ import java.util.UUID;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("product")
+@TableName(value = "product", autoResultMap = true)
 public class Product extends BaseEntity {
 
     @TableField("product_id")
     private String productId;
 
+    @TableField("outer_product_id")
+    private String outerProductId;
+
     private String name;
+
+    private String description;
+
+    @TableField("market_price")
+    private Long marketPrice;
 
     /**
      * 单位：分。
      */
     @TableField("discount_price")
     private Long price;
+
+    private String cover;
+
+    @TableField("detail_url")
+    private String detailUrl;
+
+    @TableField("first_cid")
+    private Long firstCid;
+
+    @TableField("second_cid")
+    private Long secondCid;
+
+    @TableField("third_cid")
+    private Long thirdCid;
+
+    @TableField("fourth_cid")
+    private Long fourthCid;
+
+    @TableField(value = "category_detail", typeHandler = JacksonTypeHandler.class)
+    private Map<String, Object> categoryDetail;
+
+    @TableField(value = "pics", typeHandler = JacksonTypeHandler.class)
+    private List<String> pics;
+
+    @TableField(value = "spec_prices", typeHandler = JacksonTypeHandler.class)
+    private List<Map<String, Object>> specPrices;
+
+    @TableField("cos_ratio")
+    private BigDecimal cosRatio;
+
+    @TableField("cos_fee")
+    private Long cosFee;
+
+    @TableField("service_ratio")
+    private BigDecimal serviceRatio;
 
     /**
      * 1=上架, 0=下架。
@@ -61,9 +107,6 @@ public class Product extends BaseEntity {
     private String bizStatusLabel;
 
     @TableField(exist = false)
-    private String cover;
-
-    @TableField(exist = false)
     private String shopName;
 
     @TableField(exist = false)
@@ -89,5 +132,11 @@ public class Product extends BaseEntity {
 
     @TableField(exist = false)
     private List<String> alertTags;
+
+    @TableField(exist = false)
+    private Map<String, Object> auditSupplement;
+
+    @TableField(exist = false)
+    private java.time.LocalDateTime selectedAt;
 }
 

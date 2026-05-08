@@ -125,7 +125,7 @@ if (-not $Username) { $Username = if ($env:ADMIN_USERNAME) { $env:ADMIN_USERNAME
 if (-not $Password) { $Password = if ($env:ADMIN_PASSWORD) { $env:ADMIN_PASSWORD } else { "admin123" } }
 if (-not $AppId) { $AppId = $env:DOUYIN_APP_ID }
 if (-not $GrantType) {
-    $GrantType = if ($env:DOUYIN_GRANT_TYPE) { $env:DOUYIN_GRANT_TYPE } else { "authorization_self" }
+    $GrantType = if ($env:DOUYIN_GRANT_TYPE) { $env:DOUYIN_GRANT_TYPE } else { "authorization_code" }
 }
 if (-not $AuthorizationCode) { $AuthorizationCode = $env:DOUYIN_AUTH_CODE }
 if (-not $RefreshToken) { $RefreshToken = $env:DOUYIN_REFRESH_TOKEN }
