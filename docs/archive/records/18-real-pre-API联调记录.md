@@ -519,7 +519,7 @@ curl -X POST http://localhost:8081/api/douyin/webhooks/colonel-open-events \
 | 活动商品联调接口 | ✅ 2026-05-07 `alliance.colonelActivityProduct` 返回上游 `code=10000 / msg=success`，真实数组位于 `data.data` |
 | 转链主接口 | ✅ 2026-05-07 已命中真实上游并生成 `pickSource`、`promoteLink`；真实上游主字段为 `data.product_url` |
 | 订单主同步 raw 探针 | ✅ 2026-05-07 `buyin.instituteOrderColonel` 成功结构为 `data.cursor / data.orders`，时间参数必须为 `yyyy-MM-dd HH:mm:ss` 字符串 |
-| 订单主同步业务接口 | ✅ 2026-05-07 `POST /api/orders/sync` 30 分钟窗口拉取 10 单、落库 10 单、失败 0；当前真实样本未回 `pick_source`，均为未归因 |
+| 订单主同步业务接口 | ✅ 2026-05-07 `POST /api/orders/sync` 30 分钟窗口拉取 10 单、落库 10 单、失败 0；2026-05-08 `pick_source` 重复映射修复后复验：重放同步 `totalFetched=10 / created=4 / updated=6 / attributed=10 / unattributed=0`，全库 `colonel_native` 场景 316 单全部 `ATTRIBUTED`（归因率 100%） |
 | 订单展示与统计 smoke | ⚠️ `/api/orders` 与 Dashboard `createTime` 口径能看到真实同步订单；数据平台订单页与 Dashboard 默认 `settleTime` 口径暂不覆盖未结算订单 |
 | 订单详情 / 店铺订单接口 | ⚠️ 2026-05-07 `order.orderDetail`、`order.searchList` 均返回 `30001 / isv.app-permissions-insufficient`，需补订单管理接口权限包 |
 | Webhook 签名验证 + 事件接收 | ✅ 正常 |
@@ -583,7 +583,7 @@ curl -X POST http://localhost:8081/api/douyin/tokens \
 
 | 序号 | 本地入口 | 上游能力 | 当前状态 | 剩余阻塞 |
 | :--- | :--- | :--- | :--- | :--- |
-| 15 | `POST /api/orders/sync` | `buyin.instituteOrderColonel` | **已闭环入库**：30 分钟窗口 `totalFetched=10 / created=10 / failed=0` | 本轮真实样本未返回 `pick_source`，订单归因均为 `UNATTRIBUTED`；订单详情与敏感字段仍受权限包阻塞 |
+| 15 | `POST /api/orders/sync` | `buyin.instituteOrderColonel` | **已闭环入库**：30 分钟窗口 `totalFetched=10 / created=10 / failed=0` | 2026-05-08 `pick_source` 重复映射修复后：`colonel_native` 场景通过 `colonel_buyin_id + activity_id + product_id` 三层级联匹配，全库 316 单 100% `ATTRIBUTED`；种子 SQL 扩展为 8 个 `colonel_buyin_id` |
 
 ### C. 活动商品业务刷新闭环
 
@@ -667,10 +667,12 @@ curl -X POST http://localhost:8081/api/douyin/tokens \
 
 - `buyin.instituteOrderColonel` 的真实调用入口与映射层已具备
 - 当前真实入参时间口径固定为 `yyyy-MM-dd HH:mm:ss` 字符串，不能传秒级 / 毫秒级时间戳
-- `/api/orders/sync` 已完成真实订单入库闭环，本轮 10 单均因缺少 `pick_source` 或等价归因字段进入未归因
+- `/api/orders/sync` 已完成真实订单入库闭环；2026-05-08 `pick_source` 重复映射修复后复验：重放同步 `totalFetched=10 / created=4 / updated=6 / attributed=10 / unattributed=0`
+- `colonel_native` 场景归因已打通：通过 `colonel_buyin_id + activity_id + product_id` 三层级联匹配，全库 316 单 100% `ATTRIBUTED`；修复前 `pick_source` 被视为全局唯一导致归因失配，修复后改为复合键匹配（`pick_source + activity_id + product_id + user_id`）
+- 种子 SQL 扩展为 8 个 `colonel_buyin_id`：`7351155267604218149`、`7345890512227811619`、`7622387250219827506`、`7349597984361611561`、`7341320980353073418`、`7108286947231105312`、`7109679864001364265`、`7350227679947440424`
 - 当前真实订单样本稳定返回达人字段 `author_buyin_id / author_account / author_short_id`；系统已将 `author_buyin_id` 纳入达人 UID 识别，将 `author_account` 写入 `talent_name`，可支撑达人展示与后续独家达人归因
-- 订单重复同步更新路径已修复：`extra_data` 在专用 update SQL 中显式 `CAST(... AS JSONB)`，同一窗口重放结果为 `updated=10 / failed=0`
-- 证据目录：`runtime/qa/out/orders-attribution-evidence-20260507-211000`、`runtime/qa/out/orders-sync-author-alias-20260507-211944`
+- 订单重复同步更新路径已修复：`extra_data` 在专用 update SQL 中显式 `CAST(... AS JSONB)`，同一窗口重放结果为 `updated=6 / failed=0`
+- 证据目录：`runtime/qa/out/orders-attribution-evidence-20260507-211000`、`runtime/qa/out/orders-sync-author-alias-20260507-211944`、`runtime/qa/out/orders-sync-real-20260507-203422`
 - 订单解密不再是“没有真实订单号”的单点问题，而是当前应用缺少订单详情 / 店铺订单接口权限包，且团长订单主接口不返回收件人密文字段
 
 ### C. 当前可直接进入的下一个动作

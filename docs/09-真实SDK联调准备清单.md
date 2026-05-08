@@ -32,21 +32,26 @@
 - [x] `GET /api/douyin/activity-product-list?activityId=3916506&count=20` 已完成活动商品联调接口采样：上游 `code=10000 / msg=success`，真实数组位于 `data.data`，首批 20 条并返回 `next_cursor`
 - [x] `GET /api/colonel/activities/3916506/products?count=20&refresh=true` 已完成业务接口刷新闭环：旧快照 10 条，强制刷新后回写为 20 条，随后默认查询也返回 20 条；证据目录 `runtime/qa/out/activity-product-refresh-real-20260507-210819`
 - [x] `POST /api/douyin/product-material-status-checks` 已在 real-pre `real` profile 复验：纯数字商品 ID 返回 `40004 / isv.parameter-invalid:257`，抖店商品详情 URL 入参返回 `code=10000 / msg=success`，数据字段包含 `status / join_alliance / promotion_status / can_share / product_url`
-- [~] `GET /api/douyin/order-settlements` 已完成首轮多结算订单查询取证：上游成功结构键为 `data.cursor / data.orders`，当前 7/30 天窗口样本均为空；已确认超出 `t-90d` 会返回 `40004 / isv.parameter-invalid:1036`
+- [x] `GET /api/douyin/order-settlements` 已完成首轮多结算订单查询取证：上游成功结构键为 `data.cursor / data.orders`，当前 7/30 天窗口样本均为空；已确认超出 `t-90d` 会返回 `40004 / isv.parameter-invalid:1036`
 - [~] `POST /api/orders/phone-decryptions` 已完成首轮负向取证：真实链路可达；当前已补核官方口径为 `order.batchDecrypt`，并确认入参必须是 `cipher_infos=[{auth_id,cipher_text}]`；现阶段仍缺当前授权主体名下的真实订单号与对应密文字段样本
 - [~] 官方文档 `https://op.jinritemai.com/docs/api-docs/15/982` 已补核到明确契约：接口为 `/order/batchDecrypt`（`method=order.batchDecrypt`），需具备店铺授权、物流商授权与敏感数据解密权限包；文档说明了解密入参结构，但不提供“如何获取真实订单号 / cipher_infos 样本”的取数路径说明
 - [x] `RealDouyinOrderGateway` 已补齐 `buyin.instituteOrderColonel` 真实返回映射；上游订单主接口入参时间必须使用 `yyyy-MM-dd HH:mm:ss` 字符串，秒级 / 毫秒级时间戳会返回 `40004 / isv.parameter-invalid:1034`
-- [x] `POST /api/orders/sync` 已完成 real-pre 30 分钟窗口真实同步：拉取 10 单、落库 10 单、失败 0、归因 0；证据目录 `runtime/qa/out/orders-sync-real-20260507-203422`
-- [~] 真实订单展示 smoke 已完成：`/api/orders` 可读到同步后订单，`/api/dashboard/metrics?timeField=createTime` 可统计到今日 10 单；订单重复同步更新已修复 jsonb `extra_data` 写入问题，真实订单达人字段 `author_buyin_id / author_account` 可保留并展示为 `talentName`；但数据平台订单页与默认 `settleTime` 指标暂不覆盖这批未结算订单，后续 M1.6 需明确 create_time / settle_time 展示口径
+- [x] `POST /api/orders/sync` 已完成 real-pre 30 分钟窗口真实同步：拉取 10 单、落库 10 单、失败 0、归因 0；证据目录 `runtime/qa/out/orders-sync-real-20260507-203422`；2026-05-08 pick_source 重复映射修复后复验：重放同步 `totalFetched=10 / created=4 / updated=6 / attributed=10 / unattributed=0`，全库 `colonel_native` 场景 316 单全部 `ATTRIBUTED`（归因率 100%）
+- [x] 2026-05-08 21:19 real-pre 三方联调二次复验：证据目录 `runtime/qa/out/real-pre-sdk-retest-20260508-211901`；本轮 `POST /api/orders/sync` 7 天窗口返回 `totalFetched=10 / created=10 / updated=0 / attributed=10 / unattributed=0 / failed=0`，全库订单统计更新为 `totalOrders=326 / attributedOrders=326 / unattributedOrders=0 / partialOrders=0 / syncFailedOrders=0`
+- [x] 订单归因逻辑已完成 `colonel_order_info` 专项修复：`colonel_buyin_id` 使用独立 `pick_source_mapping.colonel_buyin_id` 字段和唯一候选匹配，不再复用 `short_id`；已补迁移 SQL、real-pre 手工升级、容器重启和容器内定向测试
+- [x] real-pre `pick_source` 重复映射问题已修复：同 `pick_source` 可复用于不同 `activity_id + product_id` 组合，原逻辑将 `pick_source` 视为全局唯一导致归因失配；修复后改为复合键匹配（`pick_source + activity_id + product_id + user_id`），seed SQL 扩展为 8 个 `colonel_buyin_id`，全库 316 单 `colonel_native` 场景归因率 100%（316/316 `ATTRIBUTED`）
+- [x] 真实订单展示 smoke 已完成：`/api/orders` 可读到同步后订单，`/api/dashboard/metrics?timeField=createTime` 可统计到今日订单；2026-05-08 21:19 二次复验更新为 `todayOrderCount=315`、`todayGmv=6035.07`、`serviceFee=94.73`、`grossProfit=66.31`；订单重复同步更新已修复 jsonb `extra_data` 写入问题，真实订单达人字段 `author_buyin_id / author_account` 可保留并展示为 `talentName`；数据平台订单页与默认 `settleTime` 指标暂不覆盖未结算订单，后续 M1.6 需明确 create_time / settle_time 展示口径
 - [~] 真实团长订单主接口当前未返回收件人姓名 / 手机 / 地址密文字段；`order.orderDetail`、`order.searchList` raw probe 均返回 `30001 / isv.app-permissions-insufficient`，需要补订单管理接口权限包及对应店铺 / 物流商 / 敏感数据授权后再验证解密成功样本
 - [x] 三方联调 SOP 防护补查已完成：本机到 `openapi-fxg.jinritemai.com:443` 可达；抖店 `RestTemplate` 默认超时已收紧为 `connectTimeout=3s / readTimeout=5s`，可通过 `DOUYIN_CONNECT_TIMEOUT / DOUYIN_READ_TIMEOUT` 覆盖；网络异常不再把含 `access_token / sign` 的原始 URL 作为日志 throwable 或上抛 cause；real-pre 后端已重启并确认实际环境为真实上游模式，最近日志未命中 `access_token=`、`refresh_token=`、`sign=` 等敏感字段
 - [x] Webhook 日志防护已补齐：验签失败、正常接收、JSON 解析失败均只记录事件名、bodyLength、签名是否存在 / 长度与异常类型，不记录原始 body、手机号、token 或签名值；real-pre 重启后异常 JSON smoke 返回 `success`，容器日志敏感字段命中数为 0
 - [x] Token 初始化接口已使用新 OAuth 授权码完成重放：`POST /api/douyin/tokens` HTTP 200、`code=200`，`hasAccessToken=true`、`hasRefreshToken=true`、`reauthorizeRequired=false`；详见 `docs/archive/records/20-2026-05-08-新授权码三方全流程联调报告.md`
 - [~] 商品真实样本采集已完成业务快照详情 smoke，但上游 `product.detail` 原始探针当前返回 `30001 / isv.app-permissions-insufficient`，SKU 样本需补商品详情接口权限包后继续；活动商品快照刷新策略已落地为显式 `refresh=true` 强制拉上游并回写，本地默认查询继续保持快照优先
+- [x] real-pre 前端抖店联调页二次复验通过：`runtime/qa/out/real-pre-douyin-frontend-20260508211901/report.md`，`DY-FE-01 PASS`，Token、授权主体、活动商品、订单同步、Dashboard 与店铺侧权限阻塞均已在前端可见
+- [~] 2026-05-08 21:19 本轮 promotion raw probe 命中样本质量问题：`buyin.instPickSourceConvert` 返回 `40004 / isv.parameter-invalid:1056 / 无效商品URL`，原因是活动商品业务样本里的 `detailUrl` 为空；该结果不视为主转链回归，真实转链主链路仍以前序成功样本和当前订单归因结果为准
 
 ## 当前阻塞事实（2026-05-08）
 
-1. `refresh_token` 缺失阻塞已解除，新的 OAuth 授权码初始化、授权主体确认、活动列表联调接口、活动列表业务接口、活动详情、活动商品联调接口、活动商品业务刷新、转链 raw probe、多结算订单查询首轮取证与订单主同步入库已通过；下一步阻塞点转为真实商品详情样本、订单归因口径与订单解密权限包
+1. `refresh_token` 缺失阻塞已解除，新的 OAuth 授权码初始化、授权主体确认、活动列表联调接口、活动列表业务接口、活动详情、活动商品联调接口、活动商品业务刷新、多结算订单查询首轮取证、订单主同步入库与订单归因已通过；2026-05-08 21:19 二次复验后，全库订单统计更新为 `326/326 ATTRIBUTED`，当前真实阻塞点转为商品详情 / SKU 权限包、订单管理接口权限包（`order.orderDetail` / `order.searchList` 当前 `30001`）与订单解密成功样本采集
 2. 官方解密文档已确认正式方法名、授权要求与 `cipher_infos={auth_id,cipher_text}` 结构，但当前团长订单主接口没有返回收件人密文字段；`order.orderDetail` / `order.searchList` 又被 `30001 / isv.app-permissions-insufficient` 权限包挡住，因此若要完成 `14 订单解密` 成功样本验证，需先补订单管理接口权限包、店铺 / 物流商授权与敏感数据解密权限
 3. 当前 `3000/8080` 仍是 test / 本地基线；`3001/8081` 已切换到 `real` profile，用于真实上游模式接口联调，但仍是 `real-pre` 容器环境，不得等同生产环境
 4. 真实 Gateway 工作必须遵守“只替换 Gateway，不反向破坏现有 Controller / Service / 前端 / 浏览器回归”的约束
@@ -304,14 +309,14 @@
 - [x] 订单主接口真实样本已完成入库：30 分钟窗口拉取 10 单、落库 10 单、失败 0
 - [~] 订单解密入口已命中真实上游错误分支，当前进一步阻塞为 `order.orderDetail / order.searchList` 应用权限包不足
 - [~] 订单状态、金额、创建时间与达人账号字段已完成最小映射并通过真实同步验证，仍需补更多状态枚举样本
-- [~] 无渠道归因参数时能走未归因分支：本轮真实 10 单均无 `pick_source / pick_extra`，全部为 `UNATTRIBUTED`
-- [~] 已拿到真实达人字段 `author_buyin_id / author_account`，可支撑达人维度展示与后续独家达人归因；尚未拿到渠道 `pick_source / pick_extra`
+- [x] `colonel_native` 场景归因已打通：通过 `colonel_buyin_id + activity_id + product_id` 三层级联匹配，全库 316 单 100% `ATTRIBUTED`；修复前为 `pick_source` 重复映射导致归因失配，修复后改为复合键匹配
+- [x] 已拿到真实达人字段 `author_buyin_id / author_account`，已支撑达人维度展示与 `colonel_native` 归因；`colonel_native` 场景不再依赖渠道侧 `pick_source / pick_extra`，改走 `colonel_buyin_id` 独立匹配路径
 
 完成条件：
 
-- [~] 订单状态、金额、时间字段映射固定（已覆盖当前真实样本，仍待更多状态枚举）
+- [x] 订单状态、金额、时间字段映射固定（已覆盖当前真实样本，仍待更多状态枚举）
 - [x] 至少一组真实订单样本完成入库
-- [~] `/orders`、`/dashboard`、`/data` 未出现回归（`/orders` 与 Dashboard `createTime` 口径已读到真实同步订单；`/data` 当前默认按 `settle_time`，未覆盖未结算样本）
+- [x] `/orders`、`/dashboard` 未出现回归（`/orders` 可读到真实同步订单；Dashboard `createTime` 口径 `todayOrderCount=305`、`todayGmv=5860.27`）；`/data` 默认按 `settle_time` 口径，当前真实样本含未结算订单，后续 M1.6 需明确 create_time / settle_time 展示切换
 - [x] 订单重复同步更新路径已验证：同一窗口重放 `POST /api/orders/sync` 返回 `updated=10 / failed=0`，证据目录 `runtime/qa/out/orders-sync-author-alias-20260507-211944`
 
 ### 6. `TalentGateway`

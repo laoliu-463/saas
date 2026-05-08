@@ -26,12 +26,16 @@
 - `06 活动详情`：已验证通过；`GET /api/douyin/activities/3916506` 返回上游 `code=10000 / msg=success`，已确认详情字段含 `activity_desc / apply_start_time / apply_end_time / commission_rate / service_rate / institution_id / colonel_buyin_id`
 - `07 活动商品联调接口`：已验证通过；`GET /api/douyin/activity-product-list?activityId=3916506&count=20` 返回上游 `code=10000 / msg=success`，真实数组位于 `data.data`，首批 20 条
 - `08 活动商品业务接口`：部分成功；`GET /api/colonel/activities/3916506/products?count=20` 当前优先返回本地快照 10 条，未与同批上游 20 条实时样本对齐
+- `08 活动商品业务接口`：2026-05-08 21:19 二次复验继续可用；本轮选定真实商品样本 `product_id=3816304798194598152`
 - `09 商品素材状态`：已在 real-pre `real` profile 复验通过；商品详情 URL 入参返回上游 `10000 / success`，纯数字商品 ID 入参返回 `40004 / isv.parameter-invalid:257`
+- `10 转链主接口`：主链路已由前序真实样本与订单归因结果间接验通；本轮 raw probe 因活动商品样本 `detailUrl` 为空触发 `40004 / isv.parameter-invalid:1056 / 无效商品URL`，不视为接口回退
 - `11 转链 fallback-1`：已完成 raw probe 负向取证；`buyin.kolProductShare` 可达真实上游，但当前授权主体返回 `40003 / isv.authorization-type-invalid`
 - `12 转链 fallback-2`：已完成 raw probe 负向取证；`buyin.getProductShareMaterial` 可达真实上游，但返回 `90000 / isp.unknown-error`，提示接口已不再提供服务
+- `15 订单同步主接口`：2026-05-08 21:19 二次复验完成；7 天窗口 `totalFetched=10 / created=10 / updated=0 / attributed=10 / unattributed=0 / failed=0`，全库订单统计 `totalOrders=326 / attributedOrders=326 / unattributedOrders=0`
+- `前端联调页`：`runtime/qa/out/real-pre-douyin-frontend-20260508211901/report.md` 二次复验 `1/1 PASS`，Token、授权主体、活动商品、订单同步、Dashboard 与店铺侧权限阻塞均可见
 - `20 Webhook 接收`：接收、验签、快速返回与日志脱敏单测已验证通过；仍未接业务消费与幂等落库
 - `01 Token 初始化`：2026-05-08 已使用新 OAuth 授权码重放 `POST /api/douyin/tokens`，HTTP 200、`code=200`，`hasAccessToken=true`、`hasRefreshToken=true`、`reauthorizeRequired=false`
-- 后续接口仍需继续按顺序逐项联调和回写；`09/11/12` 的完成不改变“主转链以 `buyin.instPickSourceConvert` 为准、真实订单归因仍缺 `pick_source` 样本”的阶段结论
+- 后续接口仍需继续按顺序逐项联调和回写；`09/10/11/12/15` 的最新结论是：团长侧订单归因链路已跑通，剩余真实阻塞集中在商品详情 / SKU 权限、店铺侧订单管理权限、订单解密成功样本与 Webhook 业务消费
 
 ## 2. 执行总规则
 
@@ -231,7 +235,7 @@
 | 07 | 活动商品联调接口 | `alliance.colonelActivityProduct` | `GET /api/douyin/activity-product-list` | P0 | 成功 | 已适配 | 已执行 |
 | 08 | 活动商品业务接口 | `alliance.colonelActivityProduct` | `GET /api/colonel/activities/{activityId}/products` | P0 | 部分成功 | 已适配 | 已执行 |
 | 09 | 商品素材状态 | `buyin.materialsProductStatus` | `POST /api/douyin/product-material-status-checks` | P1 | 成功 | 已通未入链 | 已执行 |
-| 10 | 转链主接口 | `buyin.promotion.link.generate` | `POST /api/colonel/activities/{activityId}/products/{productId}/promotion-links` | P0 | 未开始 | 已适配 | 是 |
+| 10 | 转链主接口 | `buyin.promotion.link.generate` | `POST /api/colonel/activities/{activityId}/products/{productId}/promotion-links` | P0 | 部分成功 | 已适配 | 是 |
 | 11 | 转链 fallback-1 | `buyin.kolProductShare` | 同上 | P1 | 部分成功 | 权限待补齐 | 已执行 |
 | 12 | 转链 fallback-2 | `buyin.getProductShareMaterial` | 同上 | P1 | 失败 | 上游已下线 | 已执行 |
 | 13 | 多结算订单查询 | `buyin.colonelMultiSettlementOrders` | `GET /api/douyin/order-settlements` | P0 | 部分成功 | 已通未入链 | 是 |
@@ -1095,6 +1099,11 @@
 6. Talent / Logistics：当前仓库没有可直接联调的真实达人资料网关和真实物流网关；`TalentApi` 主要包装 `buyin.instPickSourceConvert`，`LogisticsGateway` 当前只有测试实现，需先补真实接口选型和 Gateway 实现再联调。
 7. 限流 / 退避：尚未对真实接口触发 429 或官方限流错误；考虑到当前 POST 能力里包含创建、更新、取消等有副作用方法，不能在 `DouyinApiClient` 上做无差别自动重试，后续应按方法白名单设计查询类退避策略。
 
+2026-05-08 21:19 复核更新：
+
+- 第 1 项已完成，新 OAuth 授权码重放证据见 `docs/archive/records/20-2026-05-08-新授权码三方全流程联调报告.md`
+- 当前不再把“真实订单归因未成立”视为阻塞项；团长原生订单 `colonel_native` 归因已跑通，剩余阻塞集中在商品详情 / SKU 权限、店铺侧订单管理权限、订单解密成功样本与 Webhook 业务消费
+
 ## 13. 2026-05-08 新授权码三方全流程联调
 
 已按 real-pre 真实上游模式完成一次全流程重放，专用报告见：
@@ -1114,3 +1123,45 @@
 补充说明：
 
 - 本轮业务转链接口没有选到一个“已入库且状态为 ASSIGNED”的新商品；已转链样本与未入库样本分别被本地状态机和入库前置条件拦截。该结果不代表三方转链失败，已用 raw probe 隔离验证上游转链能力。
+
+## 14. 2026-05-08 接口 10 业务转链复验补记
+
+本轮按真实业务前置流程重新选取活动商品执行接口 10：
+
+- 活动 ID：`3223881`
+- 商品 ID：`3686785923229548825`
+- 流程：`biz_staff` 审核入库 -> `biz_leader` 分配招商 -> `channel_staff` 调用业务转链接口
+- 业务入口：`POST /api/colonel/activities/3223881/products/3686785923229548825/promotion-links`
+- 上游方法：`buyin.instPickSourceConvert`
+- 结果：HTTP 200 / `code=200`，返回 `pickSource=v.MxZLIw`、`pickExtra=channel_channelstaff`、`promoteLink` 非空
+- 详情回读：`bizStatus=LINKED`、`promotionLinkStatus=READY`、`promotion.copyEnabled=true`
+- 库内复核：`promotion_link` 新增 `8700cde6-946b-43bd-a778-9a327a1b1ad2`，`pick_source_mapping` 命中并回写 `pick_source=v.MxZLIw` 对应映射
+
+结论：
+
+- 接口 10 当前已完成业务入口复验，不能再按“未开始执行”处理。
+- 当前真实订单归因已经成立，但主路径是团长原生订单 `colonel_native -> colonel_buyin_id + activity_id + product_id` 归因，不再依赖渠道侧 `pick_source / pick_extra` 才能形成有效归因。
+- 需继续关注 `pickSource=v.MxZLIw` 被多商品复用导致 `pick_source_mapping` 唯一键覆盖的问题；若订单侧只回传 `pick_source`，归因查询需要进一步补商品 / 活动 / `pick_extra` 维度防误配。
+
+## 15. 2026-05-08 订单归因专项修复补记
+
+问题定位：
+
+- 真实订单 raw payload 已能拿到 `colonel_order_info.colonel_buyin_id` 与 `activity_id`
+- 旧归因逻辑把 19 位 `colonel_buyin_id` 当作 `pick_source_mapping.short_id` 查询，而 `short_id` 字段长度只有 8-10 位口径，导致真实原生团长订单稳定落入 `NO_PICK_SOURCE`
+- 当前 real-pre 历史订单与已有推广映射没有形成精确 `activity_id + product_id` 交集，不能靠补历史种子映射强行归因
+
+修复口径：
+
+- `pick_source_mapping` 新增 `colonel_buyin_id VARCHAR(32)` 与索引
+- `RealDouyinOrderGateway` 扁平化 `colonel_order_info` 到订单 raw payload 顶层
+- `AttributionService` 原生归因优先按 `colonel_buyin_id + activity_id + product_id` 找唯一映射；历史映射没有 `colonel_buyin_id` 时，可在 `activity_id + product_id` 唯一的前提下兜底；候选多条时保持未归因
+- `PickSourceMappingService` 保留 `colonel_buyin_id` 写入入口，为后续真实转链或迁移补齐原生归因字段
+
+验证结果：
+
+- 已执行 real-pre 数据库升级脚本 `alter-pick-source-mapping-colonel-buyin-id.sql`，字段与索引存在
+- 已重建并重启 `backend-real-pre`，健康检查 `UP`
+- 宿主机定向回归：`AttributionServiceTest`、`PickSourceMappingServiceTest`、`RealDouyinOrderGatewayTest`、`OrderSyncServiceTest`、`OrderSyncPersistenceServiceTest` 共 `36 tests, 0 failures, 0 errors`
+- 容器内同一组定向测试退出码 `0`
+- 库内复核：2026-05-08 21:19 二次复验后，全库订单统计为 `totalOrders=326 / attributedOrders=326 / unattributedOrders=0 / partialOrders=0 / syncFailedOrders=0`；当前真实原生团长订单归因已不再是 `0`
