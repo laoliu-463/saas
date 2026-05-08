@@ -157,6 +157,7 @@ const handleUserMenu = async (key: string) => {
 }
 
 .nav-tab {
+  flex: 0 0 auto;
   padding: 8px 18px;
   font-size: var(--text-base);
   font-weight: 500;

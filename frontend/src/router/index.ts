@@ -95,6 +95,11 @@ const router = createRouter({
           meta: { title: '系统配置', roles: [ROLE.ADMIN] }
         },
         {
+          path: 'system/douyin',
+          component: () => import('../views/ops/DouyinIntegration.vue'),
+          meta: { title: '抖店联调', roles: [ROLE.ADMIN] }
+        },
+        {
           path: 'system/operation-logs',
           component: () => import('../views/system/OperationLogList.vue'),
           meta: { title: '操作日志', roles: [ROLE.ADMIN] }

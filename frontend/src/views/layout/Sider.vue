@@ -93,6 +93,7 @@ const SECTION_MAP: [string, string][] = [
   ['/ops/exclusive', 'ops'],
   ['/system/operation-logs', 'system'],
   ['/system/config', 'system'],
+  ['/system/douyin', 'system'],
   ['/system/roles', 'system'],
   ['/system/users', 'system'],
   ['/product/library', 'product'],
@@ -199,6 +200,7 @@ const rawMenus: MenuItem[] = [
       { label: '用户管理', key: '/system/users', icon: icons.user },
       { label: '角色管理', key: '/system/roles', icon: icons.shield },
       { label: '系统配置', key: '/system/config', icon: icons.settings },
+      { label: '抖店联调', key: '/system/douyin', icon: icons.truck },
       { label: '操作日志', key: '/system/operation-logs', icon: icons.list }
     ]
   }
@@ -238,6 +240,7 @@ const activeMenuKey = computed(() => {
   if (route.path.startsWith('/ops/shipping')) return '/ops/shipping'
   if (route.path.startsWith('/ops/exclusive')) return '/ops/exclusive'
   if (route.path.startsWith('/system/config')) return '/system/config'
+  if (route.path.startsWith('/system/douyin')) return '/system/douyin'
   if (route.path.startsWith('/system/operation-logs')) return '/system/operation-logs'
   if (route.path.startsWith('/system/roles')) return '/system/roles'
   if (route.path.startsWith('/system/users')) return '/system/users'

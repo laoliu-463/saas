@@ -1,116 +1,188 @@
 <template>
   <div class="douyin-integration">
-    <n-card title="抖店联调" :bordered="false">
-      <n-tabs type="line" animated>
-        <n-tab-pane name="token" tab="Token 管理">
-          <n-space vertical size="large">
-            <n-card size="small" title="Token 状态">
-              <n-space>
-                <n-input v-model:value="appId" placeholder="appId，可留空使用默认配置" style="width: 260px" clearable />
-                <n-button type="primary" :loading="loading.status" @click="checkTokenStatus">查询状态</n-button>
-                <n-button type="warning" :loading="loading.refresh" @click="refreshToken">刷新 Token</n-button>
-              </n-space>
+    <PageHeader
+      title="抖店联调"
+      description="汇总 real-pre 真实上游链路状态，供授权、活动商品、订单同步和权限阻塞排查使用。"
+    >
+      <template #actions>
+        <n-input v-model:value="appId" placeholder="appId，可留空" clearable class="app-id-input" />
+        <n-input v-model:value="activityId" placeholder="活动ID" clearable class="activity-id-input" />
+        <n-button type="primary" :loading="loading.fullCheck" @click="runFullCheck">
+          一键刷新联调状态
+        </n-button>
+      </template>
+    </PageHeader>
 
-              <n-grid :cols="24" :x-gap="12" style="margin-top: 16px">
-                <n-grid-item :span="8">
-                  <n-select
-                    v-model:value="createForm.grantType"
-                    :options="grantTypeOptions"
-                    placeholder="授权类型"
-                  />
-                </n-grid-item>
-                <n-grid-item :span="12">
-                  <n-input
-                    v-model:value="createForm.code"
-                    clearable
-                    placeholder="请输入授权码 code（authorization_code 模式必填）"
-                  />
-                </n-grid-item>
-                <n-grid-item :span="4">
-                  <n-button type="success" block :loading="loading.create" @click="createToken">创建 Token</n-button>
-                </n-grid-item>
-              </n-grid>
+    <n-alert type="warning" :show-icon="false" class="scope-alert">
+      当前 real-pre 用于真实上游联调取证；店铺侧订单与敏感数据解密仍依赖订单管理接口权限包、店铺授权和敏感数据权限。
+    </n-alert>
 
-              <n-alert
-                v-if="tokenStatusAlert"
-                :type="tokenStatusAlert.type"
-                :show-icon="false"
-                style="margin-top: 16px"
-              >
-                {{ tokenStatusAlert.text }}
-              </n-alert>
+    <div class="status-grid">
+      <div v-for="item in orderedChecks" :key="item.key" class="status-card" :class="item.status">
+        <div class="status-card-head">
+          <n-tag :type="statusTagType(item.status)" size="small">{{ statusLabel(item.status) }}</n-tag>
+          <span v-if="item.updatedAt" class="status-time">{{ item.updatedAt }}</span>
+        </div>
+        <div class="status-title">{{ item.title }}</div>
+        <div class="status-detail">{{ item.detail }}</div>
+      </div>
+    </div>
 
-              <n-descriptions v-if="tokenStatus" bordered label-placement="left" style="margin-top: 16px">
-                <n-descriptions-item label="App ID">{{ tokenStatus.appId || '-' }}</n-descriptions-item>
-                <n-descriptions-item label="Access Token">{{ tokenStatus.hasAccessToken ? '已获取' : '未获取' }}</n-descriptions-item>
-                <n-descriptions-item label="Refresh Token">{{ tokenStatus.hasRefreshToken ? '已获取' : '未获取' }}</n-descriptions-item>
-                <n-descriptions-item label="Access Token 摘要">{{ tokenStatus.maskedAccessToken || '-' }}</n-descriptions-item>
-                <n-descriptions-item label="Refresh Token 摘要">{{ tokenStatus.maskedRefreshToken || '-' }}</n-descriptions-item>
-                <n-descriptions-item label="到期时间">{{ formatExpireTime(tokenStatus.tokenExpireAtEpochSeconds) }}</n-descriptions-item>
-                <n-descriptions-item label="即将过期">{{ tokenStatus.tokenExpiringSoon ? '是' : '否' }}</n-descriptions-item>
-                <n-descriptions-item label="需重新授权">{{ tokenStatus.reauthorizeRequired ? '是' : '否' }}</n-descriptions-item>
-              </n-descriptions>
+    <n-tabs type="line" animated class="integration-tabs">
+      <n-tab-pane name="summary" tab="联调总览">
+        <div class="summary-layout">
+          <div class="summary-panel">
+            <div class="panel-title">最近一次执行</div>
+            <n-descriptions v-if="lastRun" bordered label-placement="left" :column="2">
+              <n-descriptions-item label="执行时间">{{ lastRun.checkedAt }}</n-descriptions-item>
+              <n-descriptions-item label="活动ID">{{ lastRun.activityId || '-' }}</n-descriptions-item>
+              <n-descriptions-item label="活动商品">{{ lastRun.productCount }} 条</n-descriptions-item>
+              <n-descriptions-item label="订单总数">{{ lastRun.orderTotal }}</n-descriptions-item>
+              <n-descriptions-item label="今日订单">{{ lastRun.dashboardOrders }}</n-descriptions-item>
+              <n-descriptions-item label="今日 GMV">¥{{ lastRun.dashboardAmount }}</n-descriptions-item>
+              <n-descriptions-item label="店铺侧订单">{{ lastRun.shopOrderStatus }}</n-descriptions-item>
+            </n-descriptions>
+            <n-empty v-else description="尚未执行联调状态刷新" />
+          </div>
 
-              <n-alert type="info" :show-icon="false" style="margin-top: 16px">
-                创建 Token 用于抖店授权链路。若失败会展示可读性更高的错误提示，便于快速排查授权码、授权类型或权限问题。
-              </n-alert>
-            </n-card>
-          </n-space>
-        </n-tab-pane>
+          <div class="summary-panel">
+            <div class="panel-title">执行证据</div>
+            <n-input
+              v-model:value="latestSummary"
+              type="textarea"
+              :rows="14"
+              readonly
+              placeholder="一键刷新后显示脱敏后的执行摘要"
+            />
+          </div>
+        </div>
+      </n-tab-pane>
 
-        <n-tab-pane name="debug" tab="活动联调">
-          <n-space vertical size="large">
-            <n-card size="small" title="联调入口">
-              <n-space>
-                <n-button type="primary" :loading="loading.activity" @click="testActivityList">活动列表</n-button>
-                <n-button type="info" :loading="loading.productActivities" @click="testProductActivities">活动商品列表</n-button>
-              </n-space>
+      <n-tab-pane name="token" tab="Token 管理">
+        <div class="tool-panel">
+          <div class="tool-actions">
+            <n-button type="primary" :loading="loading.status" @click="checkTokenStatus">查询状态</n-button>
+            <n-button type="warning" :loading="loading.refresh" @click="refreshToken">刷新 Token</n-button>
+          </div>
 
-              <n-alert
-                v-if="debugAlert"
-                :type="debugAlert.type"
-                :show-icon="false"
-                style="margin-top: 16px"
-              >
-                {{ debugAlert.text }}
-              </n-alert>
+          <div class="create-token-row">
+            <n-select
+              v-model:value="createForm.grantType"
+              :options="grantTypeOptions"
+              placeholder="授权类型"
+              class="grant-select"
+            />
+            <n-input
+              v-model:value="createForm.code"
+              clearable
+              placeholder="请输入授权码 code"
+            />
+            <n-button type="success" :loading="loading.create" @click="createToken">创建 Token</n-button>
+          </div>
 
-              <n-input
-                v-model:value="apiResult"
-                type="textarea"
-                :rows="14"
-                readonly
-                placeholder="接口响应会显示在这里"
-                style="margin-top: 16px"
-              />
-            </n-card>
-          </n-space>
-        </n-tab-pane>
-      </n-tabs>
-    </n-card>
+          <n-alert
+            v-if="tokenStatusAlert"
+            :type="tokenStatusAlert.type"
+            :show-icon="false"
+            class="inline-alert"
+          >
+            {{ tokenStatusAlert.text }}
+          </n-alert>
+
+          <n-descriptions v-if="tokenStatus" bordered label-placement="left" class="token-descriptions">
+            <n-descriptions-item label="App ID">{{ tokenStatus.appId || '-' }}</n-descriptions-item>
+            <n-descriptions-item label="Access Token">{{ tokenStatus.hasAccessToken ? '已获取' : '未获取' }}</n-descriptions-item>
+            <n-descriptions-item label="Refresh Token">{{ tokenStatus.hasRefreshToken ? '已获取' : '未获取' }}</n-descriptions-item>
+            <n-descriptions-item label="Access Token 摘要">{{ tokenStatus.maskedAccessToken || '-' }}</n-descriptions-item>
+            <n-descriptions-item label="Refresh Token 摘要">{{ tokenStatus.maskedRefreshToken || '-' }}</n-descriptions-item>
+            <n-descriptions-item label="到期时间">{{ formatExpireTime(tokenStatus.tokenExpireAtEpochSeconds) }}</n-descriptions-item>
+            <n-descriptions-item label="即将过期">{{ tokenStatus.tokenExpiringSoon ? '是' : '否' }}</n-descriptions-item>
+            <n-descriptions-item label="需重新授权">{{ tokenStatus.reauthorizeRequired ? '是' : '否' }}</n-descriptions-item>
+          </n-descriptions>
+        </div>
+      </n-tab-pane>
+
+      <n-tab-pane name="debug" tab="接口探针">
+        <div class="tool-panel">
+          <div class="tool-actions">
+            <n-button type="primary" :loading="loading.activity" @click="testActivityList">活动列表</n-button>
+            <n-button type="info" :loading="loading.productActivities" @click="testProductActivities">活动商品活动列表</n-button>
+            <n-button type="info" :loading="loading.activityProductList" @click="testActivityProductList">指定活动商品</n-button>
+            <n-button type="warning" :loading="loading.shopOrderProbe" @click="probeShopOrders">店铺订单权限探针</n-button>
+          </div>
+
+          <n-alert
+            v-if="debugAlert"
+            :type="debugAlert.type"
+            :show-icon="false"
+            class="inline-alert"
+          >
+            {{ debugAlert.text }}
+          </n-alert>
+
+          <n-input
+            v-model:value="apiResult"
+            type="textarea"
+            :rows="16"
+            readonly
+            placeholder="接口响应会显示在这里"
+          />
+        </div>
+      </n-tab-pane>
+    </n-tabs>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useMessage } from 'naive-ui';
+import PageHeader from '../../components/PageHeader.vue';
+import { getActivityProducts } from '../../api/activityProduct';
+import { getMetrics } from '../../api/data';
+import { getOrders, syncOrders } from '../../api/order';
 import {
   createDouyinToken,
+  getDouyinActivityProductList,
   getDouyinActivityTest,
+  getDouyinInstitutionInfo,
   getDouyinProductActivities,
   getDouyinTokenStatus,
+  postDouyinRawProbe,
   refreshDouyinToken,
   type DouyinDebugResult,
   type DouyinTokenStatus
 } from '../../api/douyin';
 
 type AlertType = 'info' | 'success' | 'warning' | 'error';
+type CheckStatus = 'pending' | 'running' | 'success' | 'warning' | 'error';
+type CheckKey = 'token' | 'institution' | 'products' | 'orders' | 'dashboard' | 'shopOrders';
+
+interface IntegrationCheck {
+  key: CheckKey;
+  title: string;
+  detail: string;
+  status: CheckStatus;
+  updatedAt?: string;
+}
+
+interface LastRunSummary {
+  checkedAt: string;
+  activityId: string;
+  productCount: number;
+  orderTotal: number;
+  dashboardOrders: number;
+  dashboardAmount: string;
+  shopOrderStatus: string;
+}
 
 const message = useMessage();
 const appId = ref('');
+const activityId = ref('3916506');
 const tokenStatus = ref<DouyinTokenStatus | null>(null);
 const apiResult = ref('');
+const latestSummary = ref('');
 const debugResult = ref<DouyinDebugResult | null>(null);
+const lastRun = ref<LastRunSummary | null>(null);
 
 const createForm = reactive({
   grantType: 'authorization_code',
@@ -118,17 +190,67 @@ const createForm = reactive({
 });
 
 const grantTypeOptions = [
-  { label: 'authorization_code（推荐）', value: 'authorization_code' },
-  { label: 'authorization_self', value: 'authorization_self' }
+  { label: 'authorization_code', value: 'authorization_code' }
 ];
 
 const loading = reactive({
+  fullCheck: false,
   status: false,
   refresh: false,
   create: false,
   activity: false,
-  productActivities: false
+  productActivities: false,
+  activityProductList: false,
+  shopOrderProbe: false
 });
+
+const checks = reactive<Record<CheckKey, IntegrationCheck>>({
+  token: {
+    key: 'token',
+    title: 'Token 待检查',
+    detail: '查询 access token 与 refresh token 是否完整。',
+    status: 'pending'
+  },
+  institution: {
+    key: 'institution',
+    title: '授权主体待检查',
+    detail: '确认当前授权主体可以访问抖店开放平台。',
+    status: 'pending'
+  },
+  products: {
+    key: 'products',
+    title: '活动商品待刷新',
+    detail: '刷新指定活动商品并回写业务快照。',
+    status: 'pending'
+  },
+  orders: {
+    key: 'orders',
+    title: '订单同步待执行',
+    detail: '同步最近 30 分钟团长侧订单。',
+    status: 'pending'
+  },
+  dashboard: {
+    key: 'dashboard',
+    title: 'Dashboard 待读取',
+    detail: '使用 createTime 口径读取真实订单指标。',
+    status: 'pending'
+  },
+  shopOrders: {
+    key: 'shopOrders',
+    title: '店铺侧订单待探针',
+    detail: '验证 order.searchList 权限包状态。',
+    status: 'pending'
+  }
+});
+
+const orderedChecks = computed(() => [
+  checks.token,
+  checks.institution,
+  checks.products,
+  checks.orders,
+  checks.dashboard,
+  checks.shopOrders
+]);
 
 const formatExpireTime = (epochSeconds?: number) => {
   if (!epochSeconds || epochSeconds <= 0) {
@@ -137,15 +259,112 @@ const formatExpireTime = (epochSeconds?: number) => {
   return new Date(epochSeconds * 1000).toLocaleString('zh-CN', { hour12: false });
 };
 
+const nowText = () => new Date().toLocaleTimeString('zh-CN', { hour12: false });
+
+const statusLabel = (status: CheckStatus) => {
+  if (status === 'success') return '通过';
+  if (status === 'warning') return '待补';
+  if (status === 'error') return '异常';
+  if (status === 'running') return '执行中';
+  return '待检查';
+};
+
+const statusTagType = (status: CheckStatus) => {
+  if (status === 'success') return 'success';
+  if (status === 'warning') return 'warning';
+  if (status === 'error') return 'error';
+  if (status === 'running') return 'info';
+  return 'default';
+};
+
+const setCheck = (key: CheckKey, status: CheckStatus, title: string, detail: string) => {
+  checks[key].status = status;
+  checks[key].title = title;
+  checks[key].detail = detail;
+  checks[key].updatedAt = nowText();
+};
+
+const unwrapApiData = <T = any>(response: any): T => response?.data ?? response;
+
+const normalizeNumber = (value: any) => {
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? number : 0;
+};
+
+const maskText = (value?: string | null) => {
+  const text = String(value || '').trim();
+  if (text.length <= 8) return text || '-';
+  return `${text.slice(0, 4)}...${text.slice(-4)}`;
+};
+
+const formatLocalDateTime = (date: Date) => {
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+};
+
+const findDeepValue = (input: any, keys: string[], seen = new Set<any>()): any => {
+  if (!input || typeof input !== 'object' || seen.has(input)) return undefined;
+  seen.add(input);
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(input, key)) {
+      return input[key];
+    }
+  }
+  for (const value of Object.values(input)) {
+    const found = findDeepValue(value, keys, seen);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+};
+
+const findProductArray = (input: any, seen = new Set<any>()): any[] => {
+  if (!input || seen.has(input)) return [];
+  if (Array.isArray(input)) {
+    const first = input[0];
+    if (!first || typeof first !== 'object') return input;
+    if ('product_id' in first || 'productId' in first || 'title' in first || 'productName' in first) return input;
+  }
+  if (typeof input !== 'object') return [];
+  seen.add(input);
+  for (const value of Object.values(input)) {
+    const found = findProductArray(value, seen);
+    if (found.length) return found;
+  }
+  return [];
+};
+
+const findActivityId = (input: any): string | null => {
+  const value = findDeepValue(input, ['activityId', 'activity_id']);
+  return value ? String(value) : null;
+};
+
+const isUpstreamSuccess = (result: any) => {
+  const code = findDeepValue(result, ['code', 'err_no', 'errorCode']);
+  if (code === undefined || code === null || code === '') {
+    return result?.status === 'success';
+  }
+  return ['10000', '0', '200'].includes(String(code));
+};
+
+const isShopPermissionMissing = (result: any) => {
+  const code = findDeepValue(result, ['errorCode', 'code', 'err_no']);
+  const subCode = String(findDeepValue(result, ['subCode', 'sub_code']) || '').toLowerCase();
+  const messageText = String(findDeepValue(result, ['message', 'msg']) || '').toLowerCase();
+  return String(code) === '30001' || subCode.includes('permissions-insufficient') || messageText.includes('无权限');
+};
+
 const buildDebugAlert = (result: DouyinDebugResult | null): { type: AlertType; text: string } | null => {
   if (!result) {
     return null;
+  }
+  if (isShopPermissionMissing(result)) {
+    return { type: 'warning', text: '店铺侧订单接口已到达上游，但当前应用缺订单管理接口权限包。' };
   }
   if (result.status === 'success') {
     return { type: 'success', text: '接口已成功命中后端与抖店链路。' };
   }
   if (result.errorCode === 50002 && result.message?.includes('招商团长')) {
-    return { type: 'warning', text: '当前后端链路正常，但抖店侧缺少“招商团长”业务授权，属于外部权限不足，不是前端或后端路由问题。' };
+    return { type: 'warning', text: '当前后端链路正常，但抖店侧缺少“招商团长”业务授权。' };
   }
   if (result.status === 'failed') {
     return {
@@ -171,12 +390,12 @@ const tokenStatusAlert = computed(() => {
 
 const debugAlert = computed(() => buildDebugAlert(debugResult.value));
 
-const renderDebugResult = (result: DouyinDebugResult) => {
+const renderDebugResult = (result: any) => {
   apiResult.value = JSON.stringify(result, null, 2);
 };
 
 const extractErrorMessage = (error: any, fallback: string) => {
-  return error?.response?.data?.msg || error?.message || fallback;
+  return error?.response?.data?.msg || error?.msg || error?.message || fallback;
 };
 
 const mapCreateTokenError = (rawMsg: string) => {
@@ -197,8 +416,14 @@ const checkTokenStatus = async () => {
   loading.status = true;
   try {
     tokenStatus.value = await getDouyinTokenStatus(appId.value || undefined);
+    if (tokenStatus.value.hasAccessToken && tokenStatus.value.hasRefreshToken && !tokenStatus.value.reauthorizeRequired) {
+      setCheck('token', 'success', 'Token 正常', `Access / Refresh Token 均存在，到期时间 ${formatExpireTime(tokenStatus.value.tokenExpireAtEpochSeconds)}。`);
+    } else {
+      setCheck('token', 'warning', 'Token 需处理', 'Token 不完整或需要重新授权。');
+    }
     message.success('Token 状态已更新');
   } catch (error: any) {
+    setCheck('token', 'error', 'Token 查询异常', extractErrorMessage(error, 'Token 状态查询失败'));
     message.error(extractErrorMessage(error, 'Token 状态查询失败'));
   } finally {
     loading.status = false;
@@ -218,10 +443,12 @@ const createToken = async () => {
       grantType: createForm.grantType,
       code: createForm.code.trim() || undefined
     });
+    setCheck('token', 'success', 'Token 正常', 'Token 创建成功，已写入缓存。');
     message.success('Token 创建成功，已写入缓存并刷新状态');
     createForm.code = '';
   } catch (error: any) {
     const raw = extractErrorMessage(error, 'Token 创建失败');
+    setCheck('token', 'error', 'Token 创建失败', mapCreateTokenError(raw));
     message.error(mapCreateTokenError(raw));
   } finally {
     loading.create = false;
@@ -232,8 +459,10 @@ const refreshToken = async () => {
   loading.refresh = true;
   try {
     tokenStatus.value = await refreshDouyinToken(appId.value || undefined);
+    setCheck('token', 'success', 'Token 正常', `Token 已刷新，到期时间 ${formatExpireTime(tokenStatus.value.tokenExpireAtEpochSeconds)}。`);
     message.success('Token 已刷新');
   } catch (error: any) {
+    setCheck('token', 'error', 'Token 刷新异常', extractErrorMessage(error, 'Token 刷新失败'));
     message.error(extractErrorMessage(error, 'Token 刷新失败'));
   } finally {
     loading.refresh = false;
@@ -246,6 +475,8 @@ const testActivityList = async () => {
     const result = await getDouyinActivityTest(appId.value || undefined);
     debugResult.value = result;
     renderDebugResult(result);
+    const detectedActivityId = findActivityId(result);
+    if (detectedActivityId) activityId.value = detectedActivityId;
     message.success(result.status === 'success' ? '活动列表联调成功' : '活动列表已命中后端，结果见下方');
   } catch (error: any) {
     debugResult.value = null;
@@ -261,12 +492,223 @@ const testProductActivities = async () => {
     const result = await getDouyinProductActivities({ appId: appId.value || undefined });
     debugResult.value = result;
     renderDebugResult(result);
-    message.success(result.status === 'success' ? '活动商品联调成功' : '活动商品接口已命中后端，结果见下方');
+    message.success(result.status === 'success' ? '活动商品活动列表联调成功' : '活动商品接口已命中后端，结果见下方');
   } catch (error: any) {
     debugResult.value = null;
     message.error(extractErrorMessage(error, '活动商品联调失败'));
   } finally {
     loading.productActivities = false;
+  }
+};
+
+const testActivityProductList = async () => {
+  if (!activityId.value.trim()) {
+    message.warning('请先填写活动ID');
+    return;
+  }
+  loading.activityProductList = true;
+  try {
+    const result = await getDouyinActivityProductList({
+      appId: appId.value || undefined,
+      activityId: activityId.value.trim(),
+      count: 20
+    });
+    debugResult.value = result;
+    renderDebugResult(result);
+    const productCount = findProductArray(result?.remoteResponse).length;
+    message.success(`指定活动商品联调完成，当前返回 ${productCount} 条`);
+  } catch (error: any) {
+    debugResult.value = null;
+    message.error(extractErrorMessage(error, '指定活动商品联调失败'));
+  } finally {
+    loading.activityProductList = false;
+  }
+};
+
+const buildShopOrderProbePayload = () => {
+  const end = new Date();
+  const start = new Date(end.getTime() - 6 * 60 * 60 * 1000);
+  return {
+    appId: appId.value || undefined,
+    method: 'order.searchList',
+    createTimeStart: Math.floor(start.getTime() / 1000),
+    createTimeEnd: Math.floor(end.getTime() / 1000),
+    page: 0,
+    size: 10
+  };
+};
+
+const probeShopOrders = async () => {
+  loading.shopOrderProbe = true;
+  try {
+    const result = await postDouyinRawProbe(buildShopOrderProbePayload());
+    debugResult.value = result;
+    renderDebugResult(result);
+    if (isShopPermissionMissing(result)) {
+      setCheck('shopOrders', 'warning', '店铺侧订单权限待补齐', 'order.searchList 已到达上游，当前返回 30001 权限包不足。');
+    } else if (isUpstreamSuccess(result)) {
+      setCheck('shopOrders', 'success', '店铺侧订单已联通', 'order.searchList 已返回成功响应。');
+    } else {
+      setCheck('shopOrders', 'error', '店铺侧订单探针异常', String(findDeepValue(result, ['message', 'msg']) || '请查看原始返回。'));
+    }
+  } catch (error: any) {
+    debugResult.value = null;
+    setCheck('shopOrders', 'error', '店铺侧订单探针异常', extractErrorMessage(error, '店铺订单权限探针失败'));
+    message.error(extractErrorMessage(error, '店铺订单权限探针失败'));
+  } finally {
+    loading.shopOrderProbe = false;
+  }
+};
+
+const runFullCheck = async () => {
+  loading.fullCheck = true;
+  latestSummary.value = '';
+  const summary: Record<string, any> = {};
+  const selectedActivityId = activityId.value.trim() || '3916506';
+
+  try {
+    setCheck('token', 'running', 'Token 检查中', '正在读取 Token 状态。');
+    tokenStatus.value = await getDouyinTokenStatus(appId.value || undefined);
+    const tokenOk = tokenStatus.value.hasAccessToken && tokenStatus.value.hasRefreshToken && !tokenStatus.value.reauthorizeRequired;
+    setCheck(
+      'token',
+      tokenOk ? 'success' : 'warning',
+      tokenOk ? 'Token 正常' : 'Token 需处理',
+      tokenOk
+        ? `Access / Refresh Token 均存在，到期时间 ${formatExpireTime(tokenStatus.value.tokenExpireAtEpochSeconds)}。`
+        : 'Token 不完整或需要重新授权。'
+    );
+    summary.token = {
+      appId: maskText(tokenStatus.value.appId),
+      hasAccessToken: tokenStatus.value.hasAccessToken,
+      hasRefreshToken: tokenStatus.value.hasRefreshToken,
+      tokenExpiringSoon: tokenStatus.value.tokenExpiringSoon,
+      reauthorizeRequired: tokenStatus.value.reauthorizeRequired
+    };
+
+    setCheck('institution', 'running', '授权主体检查中', '正在调用 buyin.institutionInfo。');
+    const institutionResult = await getDouyinInstitutionInfo(appId.value || undefined);
+    const institutionOk = isUpstreamSuccess(institutionResult);
+    setCheck(
+      'institution',
+      institutionOk ? 'success' : 'error',
+      institutionOk ? '授权主体正常' : '授权主体异常',
+      institutionOk ? '上游返回成功，当前授权主体可用。' : String(findDeepValue(institutionResult, ['message', 'msg']) || '授权主体查询失败。')
+    );
+    summary.institution = {
+      endpoint: institutionResult.endpoint,
+      status: institutionResult.status,
+      code: findDeepValue(institutionResult, ['code', 'err_no', 'errorCode']),
+      logId: findDeepValue(institutionResult, ['logId', 'log_id'])
+    };
+
+    setCheck('products', 'running', '活动商品刷新中', `正在刷新活动 ${selectedActivityId} 的商品快照。`);
+    const activityResult = await getDouyinActivityTest(appId.value || undefined);
+    const detectedActivityId = findActivityId(activityResult);
+    if (!activityId.value.trim() && detectedActivityId) {
+      activityId.value = detectedActivityId;
+    }
+    const productResult = await getDouyinActivityProductList({
+      appId: appId.value || undefined,
+      activityId: selectedActivityId,
+      count: 20
+    });
+    const rawProductCount = findProductArray(productResult?.remoteResponse).length;
+    const businessProductResponse = await getActivityProducts(selectedActivityId, {
+      appId: appId.value || undefined,
+      count: 20,
+      refresh: true
+    });
+    const businessProductData = unwrapApiData<any>(businessProductResponse);
+    const businessProductCount = Array.isArray(businessProductData?.items)
+      ? businessProductData.items.length
+      : findProductArray(businessProductData).length;
+    setCheck(
+      'products',
+      businessProductCount > 0 ? 'success' : 'warning',
+      businessProductCount > 0 ? '活动商品已刷新' : '活动商品刷新为空',
+      `上游样本 ${rawProductCount} 条，业务视图 ${businessProductCount} 条。`
+    );
+    summary.products = {
+      activityId: selectedActivityId,
+      rawProductCount,
+      businessProductCount,
+      businessTotal: normalizeNumber(businessProductData?.total)
+    };
+
+    setCheck('orders', 'running', '订单同步中', '正在同步最近 30 分钟团长侧订单。');
+    const end = new Date();
+    const start = new Date(end.getTime() - 30 * 60 * 1000);
+    const syncResponse = await syncOrders(formatLocalDateTime(start), formatLocalDateTime(end));
+    const syncData = unwrapApiData<any>(syncResponse);
+    const failed = normalizeNumber(syncData?.failed ?? syncData?.failedCount);
+    const fetched = normalizeNumber(syncData?.fetched ?? syncData?.total ?? syncData?.totalFetched);
+    const created = normalizeNumber(syncData?.created);
+    const updated = normalizeNumber(syncData?.updated);
+    setCheck(
+      'orders',
+      failed === 0 ? 'success' : 'warning',
+      failed === 0 ? '订单同步成功' : '订单同步有失败',
+      `窗口 ${formatLocalDateTime(start)} ~ ${formatLocalDateTime(end)}，拉取 ${fetched}，新增 ${created}，更新 ${updated}，失败 ${failed}。`
+    );
+    const ordersResponse = await getOrders({ page: 1, size: 5 });
+    const ordersData = unwrapApiData<any>(ordersResponse);
+    summary.orders = {
+      sync: syncData,
+      total: normalizeNumber(ordersData?.total)
+    };
+
+    setCheck('dashboard', 'running', 'Dashboard 读取中', '正在读取 createTime 口径指标。');
+    const metricsResponse = await getMetrics({ timeField: 'createTime' });
+    const metricsData = unwrapApiData<any>(metricsResponse);
+    const dashboardOrders = normalizeNumber(metricsData?.totalOrders);
+    const dashboardAmount = String(metricsData?.totalAmount ?? '0.00');
+    setCheck(
+      'dashboard',
+      dashboardOrders > 0 ? 'success' : 'warning',
+      dashboardOrders > 0 ? 'Dashboard 已读取真实订单' : 'Dashboard 当前无订单',
+      `createTime 今日订单 ${dashboardOrders}，今日 GMV ${dashboardAmount}。`
+    );
+    summary.dashboard = {
+      totalOrders: dashboardOrders,
+      totalAmount: dashboardAmount
+    };
+
+    setCheck('shopOrders', 'running', '店铺侧订单探针中', '正在调用 order.searchList 权限探针。');
+    const shopOrderResult = await postDouyinRawProbe(buildShopOrderProbePayload());
+    if (isShopPermissionMissing(shopOrderResult)) {
+      setCheck('shopOrders', 'warning', '店铺侧订单权限待补齐', 'order.searchList 已到达上游，当前返回 30001 权限包不足。');
+    } else if (isUpstreamSuccess(shopOrderResult)) {
+      setCheck('shopOrders', 'success', '店铺侧订单已联通', 'order.searchList 已返回成功响应。');
+    } else {
+      setCheck('shopOrders', 'error', '店铺侧订单探针异常', String(findDeepValue(shopOrderResult, ['message', 'msg']) || '请查看原始返回。'));
+    }
+    summary.shopOrders = {
+      endpoint: shopOrderResult.endpoint,
+      code: findDeepValue(shopOrderResult, ['errorCode', 'code', 'err_no']),
+      subCode: findDeepValue(shopOrderResult, ['subCode', 'sub_code']),
+      logId: findDeepValue(shopOrderResult, ['logId', 'log_id'])
+    };
+
+    lastRun.value = {
+      checkedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
+      activityId: selectedActivityId,
+      productCount: businessProductCount,
+      orderTotal: normalizeNumber(ordersData?.total),
+      dashboardOrders,
+      dashboardAmount,
+      shopOrderStatus: checks.shopOrders.title
+    };
+    latestSummary.value = JSON.stringify(summary, null, 2);
+    message.success('抖店联调状态已刷新');
+  } catch (error: any) {
+    latestSummary.value = JSON.stringify({
+      ...summary,
+      error: extractErrorMessage(error, '联调状态刷新失败')
+    }, null, 2);
+    message.error(extractErrorMessage(error, '联调状态刷新失败'));
+  } finally {
+    loading.fullCheck = false;
   }
 };
 
@@ -277,6 +719,147 @@ onMounted(() => {
 
 <style scoped>
 .douyin-integration {
-  min-height: 100%;
+  max-width: 1280px;
+  padding: var(--spacing-xl);
+}
+
+.app-id-input {
+  width: 220px;
+}
+
+.activity-id-input {
+  width: 180px;
+}
+
+.scope-alert {
+  margin-bottom: var(--spacing-md);
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.status-card {
+  min-height: 132px;
+  padding: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+}
+
+.status-card.success {
+  border-color: rgba(7, 193, 96, 0.28);
+}
+
+.status-card.warning {
+  border-color: rgba(255, 149, 0, 0.38);
+}
+
+.status-card.error {
+  border-color: rgba(250, 81, 81, 0.34);
+}
+
+.status-card.running {
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.status-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.status-time {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.status-title {
+  font-size: var(--text-lg);
+  line-height: 1.35;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.status-detail {
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.integration-tabs {
+  background: transparent;
+}
+
+.summary-layout {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);
+  gap: var(--spacing-md);
+}
+
+.summary-panel,
+.tool-panel {
+  padding: 20px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+}
+
+.panel-title {
+  margin-bottom: 14px;
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tool-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.create-token-row {
+  display: grid;
+  grid-template-columns: 190px minmax(260px, 1fr) auto;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.grant-select {
+  min-width: 180px;
+}
+
+.inline-alert {
+  margin-bottom: 14px;
+}
+
+.token-descriptions {
+  margin-top: 14px;
+}
+
+@media (max-width: 960px) {
+  .douyin-integration {
+    padding: var(--spacing-md);
+  }
+
+  .summary-layout,
+  .create-token-row {
+    grid-template-columns: 1fr;
+  }
+
+  .app-id-input,
+  .activity-id-input {
+    width: 100%;
+  }
 }
 </style>

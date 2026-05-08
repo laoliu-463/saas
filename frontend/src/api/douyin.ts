@@ -14,7 +14,7 @@ export interface DouyinTokenStatus {
 export interface DouyinTokenCreateRequest {
   appId?: string;
   code?: string;
-  grantType?: 'authorization_code' | 'authorization_self' | string;
+  grantType?: 'authorization_code' | string;
 }
 
 export interface DouyinDebugResult<T = any> {
@@ -115,6 +115,22 @@ export function getDouyinActivityDetail(appId: string | undefined, activityId: s
   return request.get(`/douyin/activities/${activityId}`, { params: { appId } }).then((res) => unwrap<DouyinDebugResult>(res));
 }
 
+export function getDouyinInstitutionInfo(appId?: string) {
+  if (isTestEnv) {
+    return Promise.resolve({
+      status: 'success',
+      message: '授权主体查询成功（Test）',
+      appId: appId || 'test-app-id',
+      endpoint: 'buyin.institutionInfo',
+      remoteResponse: {
+        code: 10000,
+        msg: 'success'
+      }
+    } as DouyinDebugResult);
+  }
+  return request.get('/douyin/institution-info', { params: { appId } }).then((res) => unwrap<DouyinDebugResult>(res));
+}
+
 export function getDouyinProductActivities(params: Record<string, any>) {
   if (isTestEnv) {
     return Promise.resolve({
@@ -129,6 +145,25 @@ export function getDouyinProductActivities(params: Record<string, any>) {
     } as DouyinDebugResult);
   }
   return request.get('/douyin/activity-products', { params }).then((res) => unwrap<DouyinDebugResult>(res));
+}
+
+export function getDouyinActivityProductList(params: { appId?: string; activityId: string; count?: number; cursor?: string }) {
+  if (isTestEnv) {
+    return Promise.resolve({
+      status: 'success',
+      message: '活动商品列表调用成功（Test）',
+      appId: params?.appId || 'test-app-id',
+      endpoint: 'alliance.colonelActivityProduct',
+      remoteResponse: {
+        code: 10000,
+        msg: 'success',
+        data: {
+          data: [{ product_id: 'test_product_001', title: 'Test商品' }]
+        }
+      }
+    } as DouyinDebugResult);
+  }
+  return request.get('/douyin/activity-product-list', { params }).then((res) => unwrap<DouyinDebugResult>(res));
 }
 
 export function getDouyinProductsByActivity(params: { appId?: string; activityId: string; count?: number; cursor?: string }) {
@@ -146,6 +181,22 @@ export function getDouyinProductsByActivity(params: { appId?: string; activityId
   }
   const { activityId, ...query } = params;
   return request.get(`/douyin/activities/${activityId}/products`, { params: query }).then((res) => unwrap<DouyinDebugResult>(res));
+}
+
+export function postDouyinRawProbe(data: Record<string, any>) {
+  if (isTestEnv) {
+    return Promise.resolve({
+      status: 'success',
+      message: 'RAW 探针成功（Test）',
+      appId: data?.appId || 'test-app-id',
+      endpoint: data?.method || 'test.method',
+      remoteResponse: {
+        code: 10000,
+        msg: 'success'
+      }
+    } as DouyinDebugResult);
+  }
+  return request.post('/douyin/promotion-link-probes/raw', data).then((res) => unwrap<DouyinDebugResult>(res));
 }
 
 export function createOrUpdateDouyinActivity(data: Record<string, any>) {
