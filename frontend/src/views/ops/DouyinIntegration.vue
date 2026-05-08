@@ -252,6 +252,33 @@ const orderedChecks = computed(() => [
   checks.shopOrders
 ]);
 
+const defaultCheckState: Record<CheckKey, Pick<IntegrationCheck, 'title' | 'detail'>> = {
+  token: {
+    title: 'Token 待检查',
+    detail: '查询 access token 与 refresh token 是否完整。'
+  },
+  institution: {
+    title: '授权主体待检查',
+    detail: '确认当前授权主体可以访问抖店开放平台。'
+  },
+  products: {
+    title: '活动商品待刷新',
+    detail: '刷新指定活动商品并回写业务快照。'
+  },
+  orders: {
+    title: '订单同步待执行',
+    detail: '同步最近 30 分钟团长侧订单。'
+  },
+  dashboard: {
+    title: 'Dashboard 待读取',
+    detail: '使用 createTime 口径读取真实订单指标。'
+  },
+  shopOrders: {
+    title: '店铺侧订单待探针',
+    detail: '验证 order.searchList 权限包状态。'
+  }
+};
+
 const formatExpireTime = (epochSeconds?: number) => {
   if (!epochSeconds || epochSeconds <= 0) {
     return '-';
@@ -282,6 +309,15 @@ const setCheck = (key: CheckKey, status: CheckStatus, title: string, detail: str
   checks[key].title = title;
   checks[key].detail = detail;
   checks[key].updatedAt = nowText();
+};
+
+const resetChecks = () => {
+  (Object.keys(defaultCheckState) as CheckKey[]).forEach((key) => {
+    checks[key].status = 'pending';
+    checks[key].title = defaultCheckState[key].title;
+    checks[key].detail = defaultCheckState[key].detail;
+    checks[key].updatedAt = undefined;
+  });
 };
 
 const unwrapApiData = <T = any>(response: any): T => response?.data ?? response;
@@ -563,10 +599,13 @@ const probeShopOrders = async () => {
 const runFullCheck = async () => {
   loading.fullCheck = true;
   latestSummary.value = '';
+  resetChecks();
   const summary: Record<string, any> = {};
   const initialActivityId = activityId.value.trim();
+  let activeCheckKey: CheckKey | null = null;
 
   try {
+    activeCheckKey = 'token';
     setCheck('token', 'running', 'Token 检查中', '正在读取 Token 状态。');
     tokenStatus.value = await getDouyinTokenStatus(appId.value || undefined);
     const tokenOk = tokenStatus.value.hasAccessToken && tokenStatus.value.hasRefreshToken && !tokenStatus.value.reauthorizeRequired;
@@ -586,6 +625,7 @@ const runFullCheck = async () => {
       reauthorizeRequired: tokenStatus.value.reauthorizeRequired
     };
 
+    activeCheckKey = 'institution';
     setCheck('institution', 'running', '授权主体检查中', '正在调用 buyin.institutionInfo。');
     const institutionResult = await getDouyinInstitutionInfo(appId.value || undefined);
     const institutionOk = isUpstreamSuccess(institutionResult);
@@ -602,6 +642,7 @@ const runFullCheck = async () => {
       logId: findDeepValue(institutionResult, ['logId', 'log_id'])
     };
 
+    activeCheckKey = 'products';
     setCheck('products', 'running', '活动商品刷新中', `正在刷新活动 ${initialActivityId || '自动探测'} 的商品快照。`);
     const activityResult = await getDouyinActivityTest(appId.value || undefined);
     const detectedActivityId = findActivityId(activityResult);
@@ -635,6 +676,7 @@ const runFullCheck = async () => {
       businessTotal: normalizeNumber(businessProductData?.total)
     };
 
+    activeCheckKey = 'orders';
     setCheck('orders', 'running', '订单同步中', '正在同步最近 30 分钟团长侧订单。');
     const end = new Date();
     const start = new Date(end.getTime() - 30 * 60 * 1000);
@@ -657,6 +699,7 @@ const runFullCheck = async () => {
       total: normalizeNumber(ordersData?.total)
     };
 
+    activeCheckKey = 'dashboard';
     setCheck('dashboard', 'running', 'Dashboard 读取中', '正在读取 createTime 口径指标。');
     const metricsResponse = await getMetrics({ timeField: 'createTime' });
     const metricsData = unwrapApiData<any>(metricsResponse);
@@ -673,6 +716,7 @@ const runFullCheck = async () => {
       totalAmount: dashboardAmount
     };
 
+    activeCheckKey = 'shopOrders';
     setCheck('shopOrders', 'running', '店铺侧订单探针中', '正在调用 order.searchList 权限探针。');
     const shopOrderResult = await postDouyinRawProbe(buildShopOrderProbePayload());
     if (isShopPermissionMissing(shopOrderResult)) {
@@ -698,9 +742,18 @@ const runFullCheck = async () => {
       dashboardAmount,
       shopOrderStatus: checks.shopOrders.title
     };
+    activeCheckKey = null;
     latestSummary.value = JSON.stringify(summary, null, 2);
     message.success('抖店联调状态已刷新');
   } catch (error: any) {
+    if (activeCheckKey) {
+      setCheck(
+        activeCheckKey,
+        'error',
+        `${checks[activeCheckKey].title.replace(/检查中|刷新中|同步中|读取中|探针中/, '').trim() || '联调步骤'}异常`,
+        extractErrorMessage(error, '联调状态刷新失败')
+      );
+    }
     latestSummary.value = JSON.stringify({
       ...summary,
       error: extractErrorMessage(error, '联调状态刷新失败')
