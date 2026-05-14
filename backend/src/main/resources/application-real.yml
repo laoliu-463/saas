@@ -35,6 +35,8 @@ talent:
     public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
 
 douyin:
+  webhook:
+    verify-sign: ${DOUYIN_WEBHOOK_VERIFY_SIGN:true}
   test:
     enabled: false
 

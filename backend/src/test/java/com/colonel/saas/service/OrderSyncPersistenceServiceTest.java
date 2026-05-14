@@ -1,8 +1,8 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.OrderSyncDedupClaimMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +24,8 @@ class OrderSyncPersistenceServiceTest {
     @Mock
     private ColonelsettlementOrderMapper orderMapper;
     @Mock
+    private OrderSyncDedupClaimMapper orderSyncDedupClaimMapper;
+    @Mock
     private PickSourceMappingService pickSourceMappingService;
     @Mock
     private MerchantService merchantService;
@@ -38,6 +40,7 @@ class OrderSyncPersistenceServiceTest {
     void setUp() {
         service = new OrderSyncPersistenceService(
                 orderMapper,
+                orderSyncDedupClaimMapper,
                 pickSourceMappingService,
                 merchantService,
                 sampleLifecycleService,
@@ -48,6 +51,8 @@ class OrderSyncPersistenceServiceTest {
     @Test
     void persistOrder_shouldReturnTrueAndTriggerFollowUpsWhenInserted() {
         ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
+        when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null);
         when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(1);
 
         boolean result = service.persistOrder(order);
@@ -64,15 +69,38 @@ class OrderSyncPersistenceServiceTest {
         ColonelsettlementOrder existing = makeOrder(UUID.randomUUID());
         existing.setId(UUID.randomUUID());
         existing.setCreateTime(java.time.LocalDateTime.now().minusDays(1));
+        when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null, existing);
         when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(0);
-        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(existing);
 
         boolean result = service.persistOrder(order);
 
         assertThat(result).isFalse();
         assertThat(order.getId()).isEqualTo(existing.getId());
         assertThat(order.getCreateTime()).isEqualTo(existing.getCreateTime());
+        verify(orderSyncDedupClaimMapper).bindOrderRow(order.getOrderId(), existing.getId());
         verify(orderMapper).updateSyncedById(order);
+        verify(pickSourceMappingService).ensureFromOrder(order);
+        verify(merchantService).ensureMerchantFromOrder(order);
+        verify(sampleLifecycleService).completePendingHomeworkByOrder(order);
+    }
+
+    @Test
+    void persistOrder_shouldUpdateExistingOrderWhenLegacyRowAlreadyExists() {
+        ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
+        ColonelsettlementOrder existing = makeOrder(UUID.randomUUID());
+        existing.setId(UUID.randomUUID());
+        existing.setCreateTime(java.time.LocalDateTime.now().minusHours(2));
+        when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(existing);
+
+        boolean result = service.persistOrder(order);
+
+        assertThat(result).isFalse();
+        assertThat(order.getId()).isEqualTo(existing.getId());
+        verify(orderSyncDedupClaimMapper).bindOrderRow(order.getOrderId(), existing.getId());
+        verify(orderMapper).updateSyncedById(order);
+        verify(orderMapper, never()).insertIgnoreByOrderId(any());
         verify(pickSourceMappingService).ensureFromOrder(order);
         verify(merchantService).ensureMerchantFromOrder(order);
         verify(sampleLifecycleService).completePendingHomeworkByOrder(order);
@@ -81,6 +109,8 @@ class OrderSyncPersistenceServiceTest {
     @Test
     void persistOrder_shouldStillEnsureMerchantWhenChannelIdMissing() {
         ColonelsettlementOrder order = makeOrder(null);
+        when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null);
         when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(1);
 
         boolean result = service.persistOrder(order);

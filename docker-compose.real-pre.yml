@@ -17,6 +17,14 @@ services:
       - ./backend/src/main/resources/db/alter-order-attribution-mvp.sql:/docker-entrypoint-initdb.d/08-alter-order-attribution-mvp.sql
       - ./backend/src/main/resources/db/alter-order-attribution-mvp-v2.sql:/docker-entrypoint-initdb.d/09-alter-order-attribution-mvp-v2.sql
       - ./backend/src/main/resources/db/alter-order-pick-source-length.sql:/docker-entrypoint-initdb.d/10-alter-order-pick-source-length.sql
+      - ./backend/src/main/resources/db/alter-pick-source-mapping-colonel-buyin-id.sql:/docker-entrypoint-initdb.d/11-alter-pick-source-mapping-colonel-buyin-id.sql
+      - ./backend/src/main/resources/db/alter-pick-source-mapping-duplicate-pick-source.sql:/docker-entrypoint-initdb.d/12-alter-pick-source-mapping-duplicate-pick-source.sql
+      - ./backend/src/main/resources/db/backfill-pick-source-mapping-colonel-buyin-id.sql:/docker-entrypoint-initdb.d/13-backfill-pick-source-mapping-colonel-buyin-id.sql
+      - ./backend/src/main/resources/db/backfill-pick-source-mapping-from-promotion-link.sql:/docker-entrypoint-initdb.d/14-backfill-pick-source-mapping-from-promotion-link.sql
+      - ./backend/src/main/resources/db/backfill-order-attribution-colonel-reasons.sql:/docker-entrypoint-initdb.d/15-backfill-order-attribution-colonel-reasons.sql
+      - ./backend/src/main/resources/db/seed-colonel-buyin-mappings.sql:/docker-entrypoint-initdb.d/16-seed-colonel-buyin-mappings.sql
+      - ./backend/src/main/resources/db/create-douyin-webhook-event.sql:/docker-entrypoint-initdb.d/17-create-douyin-webhook-event.sql
+      - ./backend/src/main/resources/db/create-order-sync-dedup-claim.sql:/docker-entrypoint-initdb.d/18-create-order-sync-dedup-claim.sql
     ports:
       - "5433:5432"
     healthcheck:
@@ -76,7 +84,7 @@ services:
       ORDER_SYNC_ENABLED: ${ORDER_SYNC_ENABLED}
       TALENT_ENRICH_MODE: ${TALENT_ENRICH_MODE}
       TALENT_PUBLIC_PAGE_CRAWL_ENABLED: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED}
-      APP_TEST_ENABLED: ${APP_TEST_ENABLED:-true}
+      APP_TEST_ENABLED: ${APP_TEST_ENABLED}
       DEBUG: "false"
       SPRING_DEVTOOLS_ADD_PROPERTIES: "false"
       LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB_CLIENT_RESTTEMPLATE: "INFO"

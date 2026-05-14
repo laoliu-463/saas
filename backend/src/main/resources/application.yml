@@ -72,7 +72,7 @@ douyin:
     connect-timeout: ${DOUYIN_CONNECT_TIMEOUT:3s}
     read-timeout: ${DOUYIN_READ_TIMEOUT:5s}
   webhook:
-    verify-sign: ${DOUYIN_WEBHOOK_VERIFY_SIGN:false}
+    verify-sign: ${DOUYIN_WEBHOOK_VERIFY_SIGN:true}
   test:
     enabled: ${DOUYIN_TEST_ENABLED:false}
   real:
@@ -93,4 +93,3 @@ talent:
     mode: ${TALENT_ENRICH_MODE:real}
   data:
     public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
-

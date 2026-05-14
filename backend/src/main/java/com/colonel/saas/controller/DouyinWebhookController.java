@@ -1,6 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.colonel.saas.service.DouyinWebhookEventService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -31,21 +32,24 @@ import java.util.Map;
 public class DouyinWebhookController {
 
     private final ObjectMapper objectMapper;
+    private final DouyinWebhookEventService webhookEventService;
     private final String clientSecret;
     private final boolean verifySign;
 
     public DouyinWebhookController(
             ObjectMapper objectMapper,
+            DouyinWebhookEventService webhookEventService,
             @Value("${douyin.app.client-secret:}") String clientSecret,
-            @Value("${douyin.webhook.verify-sign:false}") boolean verifySign) {
+            @Value("${douyin.webhook.verify-sign:true}") boolean verifySign) {
         this.objectMapper = objectMapper;
+        this.webhookEventService = webhookEventService;
         this.clientSecret = clientSecret;
         this.verifySign = verifySign;
     }
 
     @Operation(
             summary = "[联调] 接收团长开放事件回调",
-            description = "接收抖店联盟团长开放事件回调。该接口用于验证 webhook 回调链路与签名校验逻辑，默认快速返回 success 以避免上游重复重试。"
+            description = "接收抖店联盟团长开放事件回调。该接口会先做签名校验，再按事件键幂等落库并推进本地消费状态。"
     )
     @PostMapping(
             value = "/colonel-open-events",
@@ -77,7 +81,16 @@ public class DouyinWebhookController {
             log.warn("Douyin webhook payload parse failed, bodyLength={}, exception={}",
                     body.length(), e.getClass().getSimpleName());
         }
-        // 抖店回调通常要求快速返回 success，避免上游重复重试。
+        try {
+            DouyinWebhookEventService.CaptureResult result = webhookEventService.captureColonelOpenEvent(body);
+            log.info("Douyin webhook captured, event={}, status={}, duplicate={}, bodyLength={}",
+                    result.eventType(), result.status(), result.duplicate(), body.length());
+        } catch (Exception e) {
+            log.warn("Douyin webhook capture failed, bodyLength={}, exception={}",
+                    body.length(), e.getClass().getSimpleName());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("receive failed");
+        }
+        // 已完成幂等落库后再快速返回 success，避免上游重复重试。
         return ResponseEntity.ok("success");
     }
 
