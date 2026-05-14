@@ -65,85 +65,74 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
     }
 
     @Override
-    public ProductDetailResult queryProductDetail(String productId) {
-        logGateway(null);
-        if (upstreamModeSupport.isContract()) {
-            return contractFixtureProvider.buildProductDetailResult(productId);
-        }
-        Map<String, Object> response = productApi.getProductDetail(productId);
-        Map<String, Object> dataNode = asMap(response.get("data"));
-        String name = asString(dataNode.get("name"));
-        List<?> specPrices = asList(dataNode.get("spec_prices"));
-        String cover = null;
-        List<?> images = asList(dataNode.get("images"));
-        if (cover == null && !images.isEmpty()) {
-            Map<String, Object> firstImage = asMap(images.get(0));
-            cover = asString(firstImage.get("url"));
-        }
-        long price = 0L;
-        if (!specPrices.isEmpty()) {
-            Map<String, Object> firstSku = asMap(specPrices.get(0));
-            price = asLong(firstSku.get("price"), 0L);
-        }
-        String mainVideo = null;
-        Map<String, Object> videoNode = asMap(dataNode.get("main_screen_video"));
-        if (videoNode != null && !videoNode.isEmpty()) {
-            mainVideo = asString(videoNode.get("url"));
-        }
-        List<ProductSkuResult> skus = specPrices.stream().map(item -> {
-            Map<String, Object> sku = asMap(item);
-            String skuId = asString(sku.get("sku_id"));
-            String spec1 = asString(sku.get("spec_detail_name1"));
-            String spec2 = asString(sku.get("spec_detail_name2"));
-            String spec3 = asString(sku.get("spec_detail_name3"));
-            String skuName = buildSkuName(name, spec1, spec2, spec3);
-            return new ProductSkuResult(
-                    skuId,
-                    skuName,
-                    asLong(sku.get("price"), 0L),
-                    toInt(sku.get("stock_num"), 0),
-                    asString(sku.get("picture_url"))
-            );
-        }).toList();
-        return new ProductDetailResult(
-                productId,
-                name,
-                cover,
-                price,
-                price > 0 ? String.format(Locale.ROOT, "%.2f", price / 100.0) : null,
-                mainVideo,
-                asString(dataNode.get("shop_name")),
-                null,
-                skus
-        );
-    }
-
-    @Override
     public List<ProductSkuResult> queryProductSkus(String productId) {
         logGateway(null);
         if (upstreamModeSupport.isContract()) {
             return contractFixtureProvider.buildProductSkus(productId);
         }
-        // 先查商品详情，从 spec_prices 拿所有 SKU
-        Map<String, Object> response = productApi.getProductDetail(productId);
+        Map<String, Object> response = productApi.getProductSkusV2(productId);
         Map<String, Object> dataNode = asMap(response.get("data"));
-        String name = asString(dataNode.get("name"));
-        List<?> specPrices = asList(dataNode.get("spec_prices"));
-        return specPrices.stream().map(item -> {
-            Map<String, Object> sku = asMap(item);
-            String skuId = asString(sku.get("sku_id"));
-            String spec1 = asString(sku.get("spec_detail_name1"));
-            String spec2 = asString(sku.get("spec_detail_name2"));
-            String spec3 = asString(sku.get("spec_detail_name3"));
-            String skuName = buildSkuName(name, spec1, spec2, spec3);
+        List<Map<String, Object>> skuRows = extractBuyinSkuRows(dataNode);
+        return skuRows.stream().map(sku -> {
+            String skuId = firstNonBlank(
+                    asString(sku.get("sku_id")),
+                    asString(sku.get("skuId")),
+                    asString(sku.get("id"))
+            );
+            String spec1 = firstNonBlank(asString(sku.get("spec_detail_name1")), asString(sku.get("specName1")));
+            String spec2 = firstNonBlank(asString(sku.get("spec_detail_name2")), asString(sku.get("specName2")));
+            String spec3 = firstNonBlank(asString(sku.get("spec_detail_name3")), asString(sku.get("specName3")));
+            String skuName = firstNonBlank(
+                    asString(sku.get("sku_name")),
+                    asString(sku.get("skuName")),
+                    buildSkuName(null, spec1, spec2, spec3),
+                    skuId
+            );
             return new ProductSkuResult(
                     skuId,
                     skuName,
-                    asLong(sku.get("price"), 0L),
-                    toInt(sku.get("stock_num"), 0),
-                    asString(sku.get("picture_url"))
+                    asLong(pick(sku, "price", "sku_price", "skuPrice"), 0L),
+                    toInt(pick(sku, "stock_num", "stockNum", "stock", "stock_count"), 0),
+                    firstNonBlank(
+                            asString(pick(sku, "picture_url", "pictureUrl", "cover", "image", "pic"))
+                    )
             );
         }).toList();
+    }
+
+    private List<Map<String, Object>> extractBuyinSkuRows(Map<String, Object> dataNode) {
+        Object skus = pick(dataNode, "skus", "sku_map", "skuMap", "sku_list", "skuList", "list");
+        if (skus instanceof List<?> list) {
+            return castListMap(list);
+        }
+        if (skus instanceof Map<?, ?> map) {
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                Map<String, Object> sku = asMap(entry.getValue());
+                if (sku.isEmpty()) {
+                    continue;
+                }
+                if (!sku.containsKey("sku_id") && entry.getKey() != null) {
+                    sku = new LinkedHashMap<>(sku);
+                    sku.put("sku_id", String.valueOf(entry.getKey()));
+                }
+                result.add(sku);
+            }
+            return result;
+        }
+        return List.of();
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private String buildSkuName(String productName, String spec1, String spec2, String spec3) {
@@ -154,7 +143,11 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
         if (parts.isEmpty()) {
             return productName;
         }
-        return productName + " " + String.join(" / ", parts);
+        String specName = String.join(" / ", parts);
+        if (productName == null || productName.isBlank()) {
+            return specName;
+        }
+        return productName + " " + specName;
     }
 
     private int toInt(Object value, int defaultValue) {
@@ -173,6 +166,7 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
         long price = asLong(pick(raw, "price"), 0L);
         long activityCosRatio = asLong(pick(raw, "activity_cos_ratio"), 0L);
         Long activityAdCosRatio = raw.containsKey("activity_ad_cos_ratio") ? asLong(pick(raw, "activity_ad_cos_ratio"), 0L) : null;
+        String originColonelBuyinId = asString(pick(raw, "origin_colonel_buyin_id", "originColonelBuyinId"));
         return new ActivityProductItem(
                 asLong(pick(raw, "product_id", "productId"), 0L),
                 asString(pick(raw, "title")),
@@ -202,7 +196,9 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
                 asString(pick(raw, "activity_end_time")),
                 asString(pick(raw, "promotion_start_time")),
                 asString(pick(raw, "promotion_end_time")),
-                asString(pick(raw, "detail_url"))
+                asString(pick(raw, "detail_url")),
+                originColonelBuyinId,
+                new LinkedHashMap<>(raw)
         );
     }
 

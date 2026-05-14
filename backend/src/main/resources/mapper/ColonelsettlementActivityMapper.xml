@@ -94,4 +94,89 @@
         ON CONFLICT (activity_id) DO NOTHING
     </insert>
 
+    <insert id="upsertRealActivityMeta">
+        INSERT INTO colonel_activity (
+            id,
+            activity_id,
+            activity_name,
+            shop_id,
+            shop_name,
+            colonel_buyin_id,
+            commission_rate,
+            service_rate,
+            start_time,
+            end_time,
+            status,
+            last_sync_at,
+            deleted,
+            create_time,
+            update_time,
+            extra_data
+        ) VALUES (
+            #{id},
+            #{activityId},
+            #{activityName},
+            #{shopId},
+            #{shopName},
+            #{colonelBuyinId},
+            #{commissionRate},
+            #{serviceRate},
+            #{startTime},
+            #{endTime},
+            #{statusText},
+            #{lastSyncAt},
+            0,
+            #{lastSyncAt},
+            #{lastSyncAt},
+            CAST(#{extraData, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB)
+        )
+        ON CONFLICT (activity_id) DO UPDATE SET
+            activity_name = COALESCE(EXCLUDED.activity_name, colonel_activity.activity_name),
+            shop_id = COALESCE(EXCLUDED.shop_id, colonel_activity.shop_id),
+            shop_name = COALESCE(EXCLUDED.shop_name, colonel_activity.shop_name),
+            colonel_buyin_id = COALESCE(EXCLUDED.colonel_buyin_id, colonel_activity.colonel_buyin_id),
+            commission_rate = COALESCE(EXCLUDED.commission_rate, colonel_activity.commission_rate),
+            service_rate = COALESCE(EXCLUDED.service_rate, colonel_activity.service_rate),
+            start_time = COALESCE(EXCLUDED.start_time, colonel_activity.start_time),
+            end_time = COALESCE(EXCLUDED.end_time, colonel_activity.end_time),
+            status = COALESCE(EXCLUDED.status, colonel_activity.status),
+            last_sync_at = EXCLUDED.last_sync_at,
+            extra_data = COALESCE(EXCLUDED.extra_data, colonel_activity.extra_data),
+            deleted = 0,
+            update_time = EXCLUDED.update_time
+    </insert>
+
+    <select id="selectByActivityId" resultType="com.colonel.saas.entity.ColonelsettlementActivity">
+        SELECT
+            id,
+            activity_id AS activityId,
+            activity_name AS name,
+            start_time AS startTime,
+            end_time AS endTime,
+            status,
+            shop_id AS shopId,
+            shop_name AS shopName,
+            colonel_buyin_id AS colonelBuyinId,
+            commission_rate AS commissionRate,
+            service_rate AS serviceRate,
+            create_time AS createTime,
+            update_time AS updateTime,
+            create_by AS createBy,
+            update_by AS updateBy,
+            deleted
+        FROM colonel_activity
+        WHERE deleted = 0
+          AND activity_id = #{activityId}
+        LIMIT 1
+    </select>
+
+    <!-- 仅取 extra_data 字段，用于 colonel_buyin_id 回源查询 -->
+    <select id="selectExtraDataByActivityId" resultType="map">
+        SELECT extra_data
+        FROM colonel_activity
+        WHERE deleted = 0
+          AND activity_id = #{activityId}
+        LIMIT 1
+    </select>
+
 </mapper>

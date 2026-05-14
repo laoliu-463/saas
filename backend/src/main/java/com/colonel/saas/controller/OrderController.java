@@ -13,6 +13,8 @@ import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.AttributionService;
+import com.colonel.saas.service.DashboardService;
+import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderSyncService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -51,18 +53,21 @@ public class OrderController extends BaseController {
     private final OrderSyncService orderSyncService;
     private final ColonelsettlementOrderMapper orderMapper;
     private final OrderQueryService orderQueryService;
+    private final OrderAttributionReplayService orderAttributionReplayService;
 
     public OrderController(
             OrderSyncService orderSyncService,
             ColonelsettlementOrderMapper orderMapper,
-            OrderQueryService orderQueryService) {
+            OrderQueryService orderQueryService,
+            OrderAttributionReplayService orderAttributionReplayService) {
         this.orderSyncService = orderSyncService;
         this.orderMapper = orderMapper;
         this.orderQueryService = orderQueryService;
+        this.orderAttributionReplayService = orderAttributionReplayService;
     }
 
     @Operation(summary = "手动同步订单", description = "按时间范围触发订单同步，用于补拉订单或联调真实网关回流数据。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.ADMIN})
+    @RequireRoles({RoleCodes.ADMIN})
     @PostMapping("/sync")
     public ApiResult<OrderSyncService.SyncResult> syncOrders(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -77,6 +82,25 @@ public class OrderController extends BaseController {
         return ok(orderSyncService.syncByTimeRange(start, end));
     }
 
+    @Operation(summary = "重算历史订单归因", description = "对已落库订单重新执行归因逻辑，用于补映射后的历史订单回放验证。默认只扫描未归因订单。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/replay-attribution")
+    public ApiResult<OrderAttributionReplayService.ReplayResult> replayAttribution(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "历史订单重算请求。可指定 orderIds 或按未归因原因批量扫描。",
+                    required = false,
+                    content = @Content(examples = @ExampleObject(value = "{\"reason\":\"COLONEL_MAPPING_NOT_FOUND\",\"limit\":50,\"dryRun\":true}"))
+            )
+            @RequestBody(required = false) ReplayAttributionRequest request) {
+        ReplayAttributionRequest safeRequest = request == null ? new ReplayAttributionRequest() : request;
+        return ok(orderAttributionReplayService.replay(
+                safeRequest.getOrderIds(),
+                safeRequest.getReason(),
+                safeRequest.getLimit(),
+                Boolean.TRUE.equals(safeRequest.getDryRun())
+        ));
+    }
+
     @Operation(summary = "获取订单列表", description = "分页查询订单归因列表，用于订单主页面。")
     @GetMapping
     public ApiResult<IPage<ColonelsettlementOrder>> getOrders(
@@ -85,12 +109,15 @@ public class OrderController extends BaseController {
             @Parameter(description = "订单 ID。") @RequestParam(required = false) String orderId,
             @Parameter(description = "归因状态，例如 ATTRIBUTED、UNATTRIBUTED。完整取值以代码常量为准。") @RequestParam(required = false) String attributionStatus,
             @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(required = false) String unattributedReason,
+            @Parameter(description = "活动 ID。") @RequestParam(required = false) String activityId,
             @Parameter(description = "商品 ID。") @RequestParam(required = false) String productId,
             @Parameter(description = "渠道关键字，可匹配渠道名称或渠道 ID。") @RequestParam(required = false) String channelKeyword,
             @Parameter(description = "团长关键字，可匹配团长名称或团长 ID。") @RequestParam(required = false) String colonelKeyword,
             @Parameter(description = "订单状态。完整映射以代码标签函数为准。") @RequestParam(required = false) Integer orderStatus,
             @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
             @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
+            @Parameter(description = "时间字段，支持 createTime 或 settleTime。默认 createTime。") @RequestParam(required = false) String timeField,
+            @Parameter(description = "Dashboard 诊断分类过滤。") @RequestParam(required = false) String dashboardDiagnosis,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
@@ -99,12 +126,15 @@ public class OrderController extends BaseController {
                 orderId,
                 attributionStatus,
                 unattributedReason,
+                activityId,
                 productId,
                 channelKeyword,
                 colonelKeyword,
                 orderStatus,
                 startTime,
-                endTime
+                endTime,
+                timeField,
+                dashboardDiagnosis
         );
         applyDataScope(wrapper, userId, deptId, dataScope);
         wrapper.orderByDesc(ColonelsettlementOrder::getUpdateTime)
@@ -121,16 +151,19 @@ public class OrderController extends BaseController {
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") long size,
             @Parameter(description = "订单 ID。") @RequestParam(required = false) String orderId,
             @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(required = false) String unattributedReason,
+            @Parameter(description = "活动 ID。") @RequestParam(required = false) String activityId,
             @Parameter(description = "商品 ID。") @RequestParam(required = false) String productId,
             @Parameter(description = "渠道关键字，可匹配渠道名称或渠道 ID。") @RequestParam(required = false) String channelKeyword,
             @Parameter(description = "团长关键字，可匹配团长名称或团长 ID。") @RequestParam(required = false) String colonelKeyword,
             @Parameter(description = "订单状态。完整映射以代码标签函数为准。") @RequestParam(required = false) Integer orderStatus,
             @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
             @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
+            @Parameter(description = "时间字段，支持 createTime 或 settleTime。默认 createTime。") @RequestParam(required = false) String timeField,
+            @Parameter(description = "Dashboard 诊断分类过滤。") @RequestParam(required = false) String dashboardDiagnosis,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
-        return getOrders(page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, productId, channelKeyword, colonelKeyword, orderStatus, startTime, endTime, userId, deptId, dataScope);
+        return getOrders(page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, activityId, productId, channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField, dashboardDiagnosis, userId, deptId, dataScope);
     }
 
     @Operation(summary = "获取订单详情", description = "查询单个订单详情，返回订单基础信息、归因结果、推广映射、达人与寄样关联信息。")
@@ -149,12 +182,15 @@ public class OrderController extends BaseController {
             @Parameter(description = "订单 ID。") @RequestParam(required = false) String orderId,
             @Parameter(description = "归因状态，例如 ATTRIBUTED、UNATTRIBUTED。完整取值以代码常量为准。") @RequestParam(required = false) String attributionStatus,
             @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(required = false) String unattributedReason,
+            @Parameter(description = "活动 ID。") @RequestParam(required = false) String activityId,
             @Parameter(description = "商品 ID。") @RequestParam(required = false) String productId,
             @Parameter(description = "渠道关键字，可匹配渠道名称或渠道 ID。") @RequestParam(required = false) String channelKeyword,
             @Parameter(description = "团长关键字，可匹配团长名称或团长 ID。") @RequestParam(required = false) String colonelKeyword,
             @Parameter(description = "订单状态。完整映射以代码标签函数为准。") @RequestParam(required = false) Integer orderStatus,
             @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
             @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
+            @Parameter(description = "时间字段，支持 createTime 或 settleTime。默认 createTime。") @RequestParam(required = false) String timeField,
+            @Parameter(description = "Dashboard 诊断分类过滤。") @RequestParam(required = false) String dashboardDiagnosis,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
@@ -162,12 +198,15 @@ public class OrderController extends BaseController {
                 orderId,
                 attributionStatus,
                 unattributedReason,
+                activityId,
                 productId,
                 channelKeyword,
                 colonelKeyword,
                 orderStatus,
                 startTime,
-                endTime
+                endTime,
+                timeField,
+                dashboardDiagnosis
         );
         applyQueryDataScope(statusWrapper, userId, deptId, dataScope);
         OrderStats stats = new OrderStats();
@@ -198,12 +237,15 @@ public class OrderController extends BaseController {
                 orderId,
                 attributionStatus,
                 unattributedReason,
+                activityId,
                 productId,
                 channelKeyword,
                 colonelKeyword,
                 orderStatus,
                 startTime,
-                endTime
+                endTime,
+                timeField,
+                dashboardDiagnosis
         );
         applyQueryDataScope(reasonWrapper, userId, deptId, dataScope);
         reasonWrapper.eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED)
@@ -328,48 +370,58 @@ public class OrderController extends BaseController {
             String orderId,
             String attributionStatus,
             String unattributedReason,
+            String activityId,
             String productId,
             String channelKeyword,
             String colonelKeyword,
             Integer orderStatus,
             String startTime,
-            String endTime) {
+            String endTime,
+            String timeField,
+            String dashboardDiagnosis) {
         LocalDateTime start = parseLocalDateTime(startTime);
         LocalDateTime end = parseLocalDateTime(endTime);
-        return new LambdaQueryWrapper<ColonelsettlementOrder>()
+        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = new LambdaQueryWrapper<ColonelsettlementOrder>()
+                .eq(ColonelsettlementOrder::getDeleted, 0)
                 .eq(StringUtils.hasText(orderId), ColonelsettlementOrder::getOrderId, orderId)
-                .eq(StringUtils.hasText(attributionStatus), ColonelsettlementOrder::getAttributionStatus, attributionStatus)
                 .eq(StringUtils.hasText(unattributedReason), ColonelsettlementOrder::getAttributionRemark, unattributedReason)
+                .eq(StringUtils.hasText(activityId), ColonelsettlementOrder::getActivityId, activityId)
                 .eq(StringUtils.hasText(productId), ColonelsettlementOrder::getProductId, productId)
                 .eq(orderStatus != null, ColonelsettlementOrder::getOrderStatus, orderStatus)
-                .and(StringUtils.hasText(channelKeyword), wrapper -> wrapper
+                .and(StringUtils.hasText(channelKeyword), nested -> nested
                         .like(ColonelsettlementOrder::getChannelUserName, channelKeyword)
                         .or()
                         .like(ColonelsettlementOrder::getChannelUserId, channelKeyword))
-                .and(StringUtils.hasText(colonelKeyword), wrapper -> wrapper
+                .and(StringUtils.hasText(colonelKeyword), nested -> nested
                         .like(ColonelsettlementOrder::getColonelUserName, colonelKeyword)
                         .or()
-                        .like(ColonelsettlementOrder::getColonelUserId, colonelKeyword))
-                .ge(start != null, ColonelsettlementOrder::getCreateTime, start)
-                .le(end != null, ColonelsettlementOrder::getCreateTime, end);
+                        .like(ColonelsettlementOrder::getColonelUserId, colonelKeyword));
+        applyAttributionStatusFilter(wrapper, attributionStatus);
+        applyTimeRange(wrapper, resolveTimeField(timeField), start, end);
+        applyDashboardDiagnosisFilter(wrapper, null, dashboardDiagnosis);
+        return wrapper;
     }
 
     private QueryWrapper<ColonelsettlementOrder> buildStatsWrapper(
             String orderId,
             String attributionStatus,
             String unattributedReason,
+            String activityId,
             String productId,
             String channelKeyword,
             String colonelKeyword,
             Integer orderStatus,
             String startTime,
-            String endTime) {
+            String endTime,
+            String timeField,
+            String dashboardDiagnosis) {
         LocalDateTime start = parseLocalDateTime(startTime);
         LocalDateTime end = parseLocalDateTime(endTime);
         QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
-        wrapper.eq(StringUtils.hasText(orderId), "order_id", orderId)
-                .eq(StringUtils.hasText(attributionStatus), "attribution_status", attributionStatus)
+        wrapper.eq("deleted", 0)
+                .eq(StringUtils.hasText(orderId), "order_id", orderId)
                 .eq(StringUtils.hasText(unattributedReason), "attribution_remark", unattributedReason)
+                .eq(StringUtils.hasText(activityId), "colonel_activity_id", activityId)
                 .eq(StringUtils.hasText(productId), "product_id", productId)
                 .eq(orderStatus != null, "order_status", orderStatus)
                 .and(StringUtils.hasText(channelKeyword), nested -> nested
@@ -379,10 +431,109 @@ public class OrderController extends BaseController {
                 .and(StringUtils.hasText(colonelKeyword), nested -> nested
                         .like("colonel_user_name", colonelKeyword)
                         .or()
-                        .like("colonel_user_id", colonelKeyword))
-                .ge(start != null, "create_time", start)
-                .le(end != null, "create_time", end);
+                        .like("colonel_user_id", colonelKeyword));
+        applyAttributionStatusFilter(wrapper, attributionStatus);
+        applyTimeRange(wrapper, resolveTimeField(timeField), start, end);
+        applyDashboardDiagnosisFilter(wrapper, null, dashboardDiagnosis);
         return wrapper;
+    }
+
+    private void applyAttributionStatusFilter(
+            LambdaQueryWrapper<ColonelsettlementOrder> wrapper,
+            String attributionStatus) {
+        if (wrapper == null || !StringUtils.hasText(attributionStatus)) {
+            return;
+        }
+        if (AttributionService.STATUS_UNATTRIBUTED.equals(attributionStatus)) {
+            wrapper.and(nested -> nested
+                    .eq(ColonelsettlementOrder::getAttributionStatus, AttributionService.STATUS_UNATTRIBUTED)
+                    .or()
+                    .isNull(ColonelsettlementOrder::getAttributionStatus));
+            return;
+        }
+        wrapper.eq(ColonelsettlementOrder::getAttributionStatus, attributionStatus);
+    }
+
+    private void applyAttributionStatusFilter(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            String attributionStatus) {
+        if (wrapper == null || !StringUtils.hasText(attributionStatus)) {
+            return;
+        }
+        if (AttributionService.STATUS_UNATTRIBUTED.equals(attributionStatus)) {
+            wrapper.and(nested -> nested
+                    .eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED)
+                    .or()
+                    .isNull("attribution_status"));
+            return;
+        }
+        wrapper.eq("attribution_status", attributionStatus);
+    }
+
+    private void applyTimeRange(LambdaQueryWrapper<ColonelsettlementOrder> wrapper, String timeField, LocalDateTime start, LocalDateTime end) {
+        if ("settle_time".equals(timeField)) {
+            wrapper.ge(start != null, ColonelsettlementOrder::getSettleTime, start)
+                    .le(end != null, ColonelsettlementOrder::getSettleTime, end);
+            return;
+        }
+        wrapper.ge(start != null, ColonelsettlementOrder::getCreateTime, start)
+                .le(end != null, ColonelsettlementOrder::getCreateTime, end);
+    }
+
+    private void applyTimeRange(QueryWrapper<ColonelsettlementOrder> wrapper, String timeField, LocalDateTime start, LocalDateTime end) {
+        wrapper.ge(start != null, timeField, start)
+                .le(end != null, timeField, end);
+    }
+
+    private String resolveTimeField(String timeField) {
+        return "settleTime".equalsIgnoreCase(timeField) ? "settle_time" : "create_time";
+    }
+
+    private void applyDashboardDiagnosisFilter(
+            LambdaQueryWrapper<ColonelsettlementOrder> wrapper,
+            String alias,
+            String dashboardDiagnosis) {
+        if (wrapper == null || !StringUtils.hasText(dashboardDiagnosis)) {
+            return;
+        }
+        String prefix = StringUtils.hasText(alias) ? alias + "." : "colonelsettlement_order.";
+        applyDiagnosisSql(wrapper, prefix, dashboardDiagnosis.trim());
+    }
+
+    private void applyDashboardDiagnosisFilter(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            String alias,
+            String dashboardDiagnosis) {
+        if (wrapper == null || !StringUtils.hasText(dashboardDiagnosis)) {
+            return;
+        }
+        String prefix = StringUtils.hasText(alias) ? alias + "." : "colonelsettlement_order.";
+        applyDiagnosisSql(wrapper, prefix, dashboardDiagnosis.trim());
+    }
+
+    private void applyDiagnosisSql(LambdaQueryWrapper<ColonelsettlementOrder> wrapper, String prefix, String diagnosis) {
+        wrapper.apply(diagnosisSql(prefix, diagnosis));
+    }
+
+    private void applyDiagnosisSql(QueryWrapper<ColonelsettlementOrder> wrapper, String prefix, String diagnosis) {
+        wrapper.apply(diagnosisSql(prefix, diagnosis));
+    }
+
+    private String diagnosisSql(String prefix, String diagnosis) {
+        String normalizedDiagnosis = DashboardService.normalizeDiagnosisCategory(diagnosis);
+        if (!StringUtils.hasText(normalizedDiagnosis)) {
+            return "1 = 1";
+        }
+        String categorySql = DashboardService.diagnosisCategoryCaseSql(
+                prefix + "colonel_activity_id",
+                prefix + "second_colonel_activity_id",
+                prefix + "product_id",
+                prefix + "create_time",
+                prefix + "colonel_buyin_id",
+                prefix + "attribution_status",
+                prefix + "attribution_remark"
+        );
+        return "(" + categorySql + ") = '" + normalizedDiagnosis + "'";
     }
 
     private void applyDataScope(
@@ -536,6 +687,8 @@ public class OrderController extends BaseController {
         return switch (value) {
             case AttributionService.REASON_NO_PICK_SOURCE, "订单未携带推广参数" -> "订单未携带推广参数";
             case AttributionService.REASON_MAPPING_NOT_FOUND, "pick_source 未匹配到有效归因映射" -> "未找到对应推广链接";
+            case AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND -> "原生团长订单未找到归因映射";
+            case AttributionService.REASON_COLONEL_MAPPING_AMBIGUOUS -> "原生团长订单命中多条归因映射";
             case AttributionService.REASON_PRODUCT_NOT_FOUND -> "未匹配到本地商品库";
             case AttributionService.REASON_ACTIVITY_NOT_FOUND -> "商品未关联活动";
             case AttributionService.REASON_CHANNEL_NOT_FOUND -> "未匹配到渠道负责人";
@@ -581,6 +734,21 @@ public class OrderController extends BaseController {
 
         @Schema(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-04-28 23:59:59")
         private String endTime;
+    }
+
+    @Data
+    public static class ReplayAttributionRequest {
+        @Schema(description = "指定需要重算的订单号列表；为空时按未归因订单筛选。")
+        private List<String> orderIds;
+
+        @Schema(description = "未归因原因筛选，例如 COLONEL_MAPPING_NOT_FOUND。仅在未指定 orderIds 时生效。")
+        private String reason;
+
+        @Schema(description = "批量扫描上限，默认 50，最大 200。仅在未指定 orderIds 时生效。")
+        private Integer limit;
+
+        @Schema(description = "是否仅预演不落库。默认 false。")
+        private Boolean dryRun;
     }
 
     @Data

@@ -63,8 +63,8 @@ class OrderApiTest {
         assertThat(params.get("end_time")).isInstanceOf(String.class);
         assertThat((String) params.get("start_time")).matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}");
         assertThat((String) params.get("end_time")).matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}");
-        assertThat(params.get("count")).isEqualTo(50);
-        assertThat(params.get("page")).isEqualTo(51L);
+        assertThat(params.get("size")).isEqualTo(50);
+        assertThat(params.get("cursor")).isEqualTo("50");
     }
 
     @Test
@@ -76,11 +76,11 @@ class OrderApiTest {
 
         ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instituteOrderColonel"), captor.capture());
-        assertThat(captor.getValue().get("count")).isEqualTo(100);
+        assertThat(captor.getValue().get("size")).isEqualTo(100);
     }
 
     @Test
-    void listSettlement_normalizesCursor() {
+    void listSettlement_passesCursorAsString() {
         when(douyinApiClient.post(eq("buyin.instituteOrderColonel"), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(Map.of("data", List.of()));
 
@@ -88,7 +88,7 @@ class OrderApiTest {
 
         ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instituteOrderColonel"), captor.capture());
-        assertThat(captor.getValue().get("page")).isEqualTo(1L);
+        assertThat(captor.getValue().get("cursor")).isEqualTo("not_a_number");
     }
 
     @Test
@@ -103,8 +103,8 @@ class OrderApiTest {
         Map<String, Object> params = captor.getValue();
         assertThat(params).containsKey("start_time");
         assertThat(params).containsKey("end_time");
-        assertThat(params.get("count")).isEqualTo(100);
-        assertThat(params.get("page")).isEqualTo(1L);
+        assertThat(params.get("size")).isEqualTo(100);
+        assertThat(params.get("cursor")).isEqualTo("0");
     }
 
     @Test
@@ -116,35 +116,20 @@ class OrderApiTest {
 
         ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
         verify(douyinApiClient).post(eq("buyin.instituteOrderColonel"), captor.capture());
-        assertThat(captor.getValue().get("count")).isEqualTo(25);
+        assertThat(captor.getValue().get("size")).isEqualTo(25);
     }
 
     @Test
-    void listSettlement_shouldRetryWithCursorWhenPageParamsInvalid() {
+    void listSettlement_shouldPropagateParameterInvalid() {
         when(douyinApiClient.post(eq("buyin.instituteOrderColonel"), org.mockito.ArgumentMatchers.anyMap()))
-                .thenThrow(new DouyinApiException(50002, "参数校验失败", "isv.parameter-invalid", "log-x", "buyin.instituteOrderColonel"))
-                .thenReturn(Map.of("data", List.of()));
+                .thenThrow(new DouyinApiException(50002, "参数校验失败", "isv.parameter-invalid", "log-x", "buyin.instituteOrderColonel"));
 
-        orderApi.listSettlement(1000L, 2000L, 20, "3");
-
-        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
-        verify(douyinApiClient, times(2)).post(eq("buyin.instituteOrderColonel"), captor.capture());
-        assertThat(captor.getAllValues().get(0)).containsEntry("page", 4L);
-        assertThat(captor.getAllValues().get(1)).containsEntry("cursor", 3L);
-    }
-
-    @Test
-    void decryptSensitiveData_shouldPassOrderIdsWithTypeOne() {
-        when(douyinApiClient.post(eq("order.batchSensitiveDataRequest"), org.mockito.ArgumentMatchers.anyMap()))
-                .thenReturn(Map.of("data", Map.of()));
-
-        orderApi.decryptSensitiveData(List.of("oid1", "oid2"));
+        assertThatThrownBy(() -> orderApi.listSettlement(1000L, 2000L, 20, "3"))
+                .isInstanceOf(DouyinApiException.class);
 
         ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
-        verify(douyinApiClient).post(eq("order.batchSensitiveDataRequest"), captor.capture());
-        Map<String, Object> params = captor.getValue();
-        assertThat(params.get("order_ids")).isEqualTo(List.of("oid1", "oid2"));
-        assertThat(params.get("type")).isEqualTo(1);
+        verify(douyinApiClient).post(eq("buyin.instituteOrderColonel"), captor.capture());
+        assertThat(captor.getValue()).containsEntry("cursor", "3");
     }
 
     @Test

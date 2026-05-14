@@ -2,8 +2,10 @@ package com.colonel.saas.controller;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
+import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.common.result.ApiResult;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.DoudianTokenGateway;
 import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.douyin.DouyinApiException;
@@ -12,6 +14,7 @@ import com.colonel.saas.douyin.api.ActivityApi;
 import com.colonel.saas.douyin.api.InstitutionApi;
 import com.colonel.saas.douyin.api.OrderApi;
 import com.colonel.saas.douyin.api.ProductApi;
+import com.colonel.saas.service.DouyinWebhookEventService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,6 +59,8 @@ class DouyinControllerTest {
     private DoudianTokenGateway doudianTokenGateway;
     @Mock
     private DouyinApiClient douyinApiClient;
+    @Mock
+    private DouyinWebhookEventService douyinWebhookEventService;
 
     private DouyinController controller;
     private MockMvc mockMvc;
@@ -65,7 +70,7 @@ class DouyinControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new DouyinController(activityApi, productApi, orderApi, institutionApi, douyinTokenService, doudianTokenGateway, douyinApiClient);
+        controller = new DouyinController(activityApi, productApi, orderApi, institutionApi, douyinTokenService, doudianTokenGateway, douyinApiClient, douyinWebhookEventService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -73,6 +78,22 @@ class DouyinControllerTest {
         controllerLogger = (Logger) LoggerFactory.getLogger(DouyinController.class);
         originalLevel = controllerLogger.getLevel();
         controllerLogger.setLevel(Level.OFF);
+    }
+
+    @Test
+    void replayWebhookEvents_shouldReturnReplaySummary() throws Exception {
+        when(douyinWebhookEventService.replayUnfinished(20))
+                .thenReturn(new DouyinWebhookEventService.ReplayResult(3, 2, 1));
+
+        mockMvc.perform(post("/douyin/webhook-events/replay")
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.scanned").value(3))
+                .andExpect(jsonPath("$.data.consumed").value(2))
+                .andExpect(jsonPath("$.data.failed").value(1));
+
+        verify(douyinWebhookEventService).replayUnfinished(20);
     }
 
     @AfterEach
@@ -158,69 +179,12 @@ class DouyinControllerTest {
     }
 
     @Test
-    void shangpinSucaiZhuangtai_success_returnsSuccessResult() {
-        DouyinController.ProductMaterialStatusRequest request = new DouyinController.ProductMaterialStatusRequest();
-        request.setAppId("test_app");
-        request.setProducts(List.of("https://haohuo.jinritemai.com/views/product/detail?id=1"));
-        when(productApi.materialsProductStatus(eq("test_app"), any())).thenReturn(Map.of());
-
-        ApiResult<Map<String, Object>> result = controller.shangpinSucaiZhuangtai(request);
-
-        assertThat(result.getData()).containsEntry("endpoint", "buyin.materialsProductStatus");
-        assertThat(result.getData()).containsEntry("status", "success");
-    }
-
-    @Test
-    void shangpinSucaiZhuangtai_failure_returnsErrorStatus() {
-        DouyinController.ProductMaterialStatusRequest request = new DouyinController.ProductMaterialStatusRequest();
-        request.setAppId("test_app");
-        request.setProducts(List.of("https://haohuo.jinritemai.com/views/product/detail?id=1"));
-        when(productApi.materialsProductStatus(eq("test_app"), any()))
-                .thenThrow(new DouyinApiException(40004, "PARAM_INVALID", "isv.parameter-invalid:257", "log_1", "buyin.materialsProductStatus"));
-
-        ApiResult<Map<String, Object>> result = controller.shangpinSucaiZhuangtai(request);
-
-        assertThat(result.getData()).containsEntry("status", "failed");
-        assertThat(result.getData()).containsEntry("errorCode", 40004);
-        assertThat(result.getData()).containsEntry("subCode", "isv.parameter-invalid:257");
-    }
-
-    @Test
-    void shangpinSucaiZhuangtai_standardRestPath_bindsRequestBody() throws Exception {
-        when(productApi.materialsProductStatus(eq("test_app"), any())).thenReturn(Map.of("ok", true));
-
-        mockMvc.perform(post("/douyin/product-material-status-checks")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "appId", "test_app",
-                                "products", List.of("https://haohuo.jinritemai.com/views/product/detail?id=1")
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.status").value("success"))
-                .andExpect(jsonPath("$.data.endpoint").value("buyin.materialsProductStatus"));
-    }
-
-    @Test
-    void shangpinSucaiZhuangtai_standardRestPath_rejectsEmptyProducts() throws Exception {
-        mockMvc.perform(post("/douyin/product-material-status-checks")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "appId", "test_app",
-                                "products", List.of()
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("products cannot be empty"));
-    }
-
-    @Test
     void dingdanJiesuan_success_returnsQueryContext() {
         when(orderApi.listColonelMultiSettlementOrders(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(Map.of("data", Map.of("cursor", "1")));
 
         ApiResult<Map<String, Object>> result = controller.dingdanJiesuan(
-                "test_app", 20, "0", "update", "2026-04-01 00:00:00", "2026-04-02 00:00:00");
+                "test_app", 20, "0", "update", "2026-04-01 00:00:00", "2026-04-02 00:00:00", null, null);
 
         assertThat(result.getData()).containsEntry("endpoint", "buyin.colonelMultiSettlementOrders");
         assertThat(result.getData()).containsEntry("status", "success");
@@ -237,7 +201,7 @@ class DouyinControllerTest {
                         "log_order_1",
                         "buyin.colonelMultiSettlementOrders"));
 
-        ApiResult<Map<String, Object>> result = controller.dingdanJiesuan(null, 20, "0", "update", null, null);
+        ApiResult<Map<String, Object>> result = controller.dingdanJiesuan(null, 20, "0", "update", null, null, null, null);
 
         assertThat(result.getData()).containsEntry("status", "failed");
         assertThat(result.getData()).containsEntry("errorCode", 40004);
@@ -264,6 +228,29 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.data.query.timeType").value("update"))
                 .andExpect(jsonPath("$.data.query.startTime").value("2026-04-01 00:00:00"))
                 .andExpect(jsonPath("$.data.query.endTime").value("2026-04-02 00:00:00"));
+    }
+
+    @Test
+    void dingdanJiesuan_standardRestPath_supportsOrderIdsAliases() throws Exception {
+        when(orderApi.listColonelMultiSettlementOrders(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(Map.of("data", Map.of("orders", List.of())));
+
+        mockMvc.perform(get("/douyin/order-settlements")
+                        .queryParam("appId", "test_app")
+                        .queryParam("order_ids", "4737996432465788974,4737996432465788973"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("success"))
+                .andExpect(jsonPath("$.data.query.orderIds").value("4737996432465788974,4737996432465788973"));
+
+        verify(orderApi).listColonelMultiSettlementOrders(
+                eq("test_app"),
+                eq(20),
+                eq("0"),
+                eq("update"),
+                eq(null),
+                eq(null),
+                eq("4737996432465788974,4737996432465788973"));
     }
 
     @Test
@@ -541,5 +528,12 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.data.status").value("failed"))
                 .andExpect(jsonPath("$.data.message").value("method is required"))
                 .andExpect(jsonPath("$.data.errorType").value("IllegalArgumentException"));
+    }
+
+    @Test
+    void douyinController_shouldRequireAdminRoleAnnotation() {
+        RequireRoles requireRoles = DouyinController.class.getAnnotation(RequireRoles.class);
+        assertThat(requireRoles).isNotNull();
+        assertThat(requireRoles.value()).containsExactly(RoleCodes.ADMIN);
     }
 }

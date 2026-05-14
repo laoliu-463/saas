@@ -139,6 +139,34 @@ class PickSourceMappingServiceTest {
     }
 
     @Test
+    void saveOrUpdate_shouldPersistNativeColonelBuyinId() {
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
+
+        service.saveOrUpdate(
+                UUID.randomUUID(),
+                "channel-user",
+                UUID.randomUUID(),
+                "talent-native",
+                "Talent Native",
+                "NATIVE01",
+                UUID.randomUUID(),
+                "PS_NATIVE",
+                "pid_native",
+                "act_native",
+                "source_url",
+                "converted_url",
+                UUID.randomUUID(),
+                "PRODUCT_LIBRARY",
+                "channel_native",
+                "7351155267604218149"
+        );
+
+        ArgumentCaptor<PickSourceMapping> captor = ArgumentCaptor.forClass(PickSourceMapping.class);
+        verify(pickSourceMappingMapper).insert(captor.capture());
+        assertThat(captor.getValue().getColonelBuyinId()).isEqualTo("7351155267604218149");
+    }
+
+    @Test
     void saveOrUpdate_shouldUpdateWhenPickSourceAlreadyExists() {
         PickSourceMapping existing = new PickSourceMapping();
         existing.setId(UUID.randomUUID());
@@ -167,11 +195,107 @@ class PickSourceMappingServiceTest {
     }
 
     @Test
+    void saveOrUpdate_shouldInsertDistinctRowsWhenSamePickSourceUsedByDifferentProducts() {
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
+
+        service.saveOrUpdate(
+                UUID.randomUUID(),
+                "channel-user",
+                UUID.randomUUID(),
+                "talent-1",
+                "Talent A",
+                "REALID001",
+                UUID.randomUUID(),
+                "v.MxZLIw",
+                "product-a",
+                "activity-a",
+                "source_url_a",
+                "target_url_a",
+                UUID.randomUUID(),
+                "PRODUCT_LIBRARY",
+                "channel_user"
+        );
+
+        service.saveOrUpdate(
+                UUID.randomUUID(),
+                "channel-user",
+                UUID.randomUUID(),
+                "talent-2",
+                "Talent B",
+                "REALID002",
+                UUID.randomUUID(),
+                "v.MxZLIw",
+                "product-b",
+                "activity-b",
+                "source_url_b",
+                "target_url_b",
+                UUID.randomUUID(),
+                "PRODUCT_LIBRARY",
+                "channel_user"
+        );
+
+        verify(pickSourceMappingMapper, never()).updateById(any(PickSourceMapping.class));
+        verify(pickSourceMappingMapper, org.mockito.Mockito.times(2)).insert(any(PickSourceMapping.class));
+    }
+
+    @Test
+    void saveOrUpdate_shouldNotSilentlyOverwriteDifferentUsersForSameNativeKey() {
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
+        UUID firstUser = UUID.randomUUID();
+        UUID secondUser = UUID.randomUUID();
+
+        service.saveOrUpdate(
+                firstUser,
+                "channel-user-a",
+                UUID.randomUUID(),
+                "talent-1",
+                "Talent A",
+                "NATIVEA1",
+                UUID.randomUUID(),
+                "v.MxZLIw",
+                "3816127512791089531",
+                "3859423",
+                "source_url_a",
+                "target_url_a",
+                UUID.randomUUID(),
+                "PRODUCT_LIBRARY",
+                "channel_user_a",
+                "7293293346398011698",
+                PickSourceMappingService.SOURCE_TYPE_NATIVE
+        );
+
+        service.saveOrUpdate(
+                secondUser,
+                "channel-user-b",
+                UUID.randomUUID(),
+                "talent-2",
+                "Talent B",
+                "NATIVEB1",
+                UUID.randomUUID(),
+                "v.MxZLIw",
+                "3816127512791089531",
+                "3859423",
+                "source_url_b",
+                "target_url_b",
+                UUID.randomUUID(),
+                "PRODUCT_LIBRARY",
+                "channel_user_b",
+                "7293293346398011698",
+                PickSourceMappingService.SOURCE_TYPE_NATIVE
+        );
+
+        verify(pickSourceMappingMapper, never()).updateById(any(PickSourceMapping.class));
+        verify(pickSourceMappingMapper, org.mockito.Mockito.times(2)).insert(any(PickSourceMapping.class));
+    }
+
+    @Test
     void saveOrUpdate_shouldRecoverFromConcurrentDuplicateInsert() {
         PickSourceMapping concurrent = new PickSourceMapping();
         concurrent.setId(UUID.randomUUID());
         concurrent.setPickSource("PS_DUP");
         when(pickSourceMappingMapper.selectOne(any()))
+                .thenReturn(null)
+                .thenReturn(null)
                 .thenReturn(null)
                 .thenReturn(concurrent);
         doThrow(new DuplicateKeyException("dup"))
@@ -198,7 +322,10 @@ class PickSourceMappingServiceTest {
 
     @Test
     void saveOrUpdate_shouldRethrowWhenConcurrentRowStillMissing() {
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
+        when(pickSourceMappingMapper.selectOne(any()))
+                .thenReturn(null)
+                .thenReturn(null)
+                .thenReturn(null);
         doThrow(new DuplicateKeyException("dup"))
                 .when(pickSourceMappingMapper).insert(any(PickSourceMapping.class));
 

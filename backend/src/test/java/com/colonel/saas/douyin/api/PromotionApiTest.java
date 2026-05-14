@@ -137,7 +137,7 @@ class PromotionApiTest {
 
         assertThat(result.promoteLink()).contains("pick_source=MuRpGc");
         assertThat(result.pickSource()).isEqualTo("MuRpGc");
-        assertThat(result.shortId()).isEqualTo("MuRpGc");
+        assertThat(result.shortId()).isEqualTo("fallback");
         assertThat(result.pickExtra()).isEqualTo("channel_demo");
     }
 
@@ -159,7 +159,7 @@ class PromotionApiTest {
                 "seed"
         );
 
-        assertThat(result.shortId()).isEqualTo("ABCDE");
+        assertThat(result.shortId()).isEqualTo("fallback");
         assertThat(result.pickSource()).isEqualTo("ABCDE");
     }
 
@@ -172,7 +172,7 @@ class PromotionApiTest {
                 "channel_user-1"
         );
 
-        assertThat(result.shortId()).isEqualTo("ABCDE");
+        assertThat(result.shortId()).isEqualTo("fallback");
         assertThat(result.pickSource()).isEqualTo("ABCDE");
         assertThat(result.pickExtra()).isEqualTo("channel_user-1");
     }

@@ -11,9 +11,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.time.LocalDateTime;
-import java.util.UUID;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -21,6 +22,8 @@ import java.util.regex.Pattern;
 @Service
 public class PickSourceMappingService {
     private static final Pattern SHORT_ID_PATTERN = Pattern.compile("([0-9A-Z]{8,10})");
+    public static final String SOURCE_TYPE_PICK_SOURCE = "PICK_SOURCE";
+    public static final String SOURCE_TYPE_NATIVE = "NATIVE";
 
     private final PickSourceMappingMapper pickSourceMappingMapper;
     private final int validMonths;
@@ -96,7 +99,9 @@ public class PickSourceMappingService {
                 convertedUrl,
                 promotionLinkId,
                 scene,
-                shortId
+                shortId,
+                null,
+                SOURCE_TYPE_PICK_SOURCE
         );
     }
 
@@ -117,9 +122,95 @@ public class PickSourceMappingService {
             UUID promotionLinkId,
             String scene,
             String pickExtra) {
-        PickSourceMapping existing = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
-                .eq(PickSourceMapping::getPickSource, pickSource)
-                .last("limit 1"));
+        saveOrUpdate(
+                userId,
+                channelUserName,
+                deptId,
+                talentId,
+                talentName,
+                shortId,
+                uuidSeed,
+                pickSource,
+                productId,
+                activityId,
+                sourceUrl,
+                convertedUrl,
+                promotionLinkId,
+                scene,
+                pickExtra,
+                null,
+                SOURCE_TYPE_PICK_SOURCE
+        );
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void saveOrUpdate(
+            UUID userId,
+            String channelUserName,
+            UUID deptId,
+            String talentId,
+            String talentName,
+            String shortId,
+            UUID uuidSeed,
+            String pickSource,
+            String productId,
+            String activityId,
+            String sourceUrl,
+            String convertedUrl,
+            UUID promotionLinkId,
+            String scene,
+            String pickExtra,
+            String colonelBuyinId) {
+        saveOrUpdate(
+                userId,
+                channelUserName,
+                deptId,
+                talentId,
+                talentName,
+                shortId,
+                uuidSeed,
+                pickSource,
+                productId,
+                activityId,
+                sourceUrl,
+                convertedUrl,
+                promotionLinkId,
+                scene,
+                pickExtra,
+                colonelBuyinId,
+                StringUtils.hasText(colonelBuyinId) ? SOURCE_TYPE_NATIVE : SOURCE_TYPE_PICK_SOURCE
+        );
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void saveOrUpdate(
+            UUID userId,
+            String channelUserName,
+            UUID deptId,
+            String talentId,
+            String talentName,
+            String shortId,
+            UUID uuidSeed,
+            String pickSource,
+            String productId,
+            String activityId,
+            String sourceUrl,
+            String convertedUrl,
+            UUID promotionLinkId,
+            String scene,
+            String pickExtra,
+            String colonelBuyinId,
+            String sourceType) {
+        String resolvedSourceType = resolveSourceType(sourceType, colonelBuyinId);
+        PickSourceMapping existing = findExistingMapping(
+                userId,
+                pickSource,
+                productId,
+                activityId,
+                promotionLinkId,
+                colonelBuyinId,
+                resolvedSourceType
+        );
         if (existing == null) {
             try {
                 PickSourceMapping mapping = new PickSourceMapping();
@@ -132,6 +223,7 @@ public class PickSourceMappingService {
                 mapping.setShortId(shortId);
                 mapping.setUuidSeed(uuidSeed);
                 mapping.setPickSource(pickSource);
+                mapping.setColonelBuyinId(resolveColonelBuyinId(colonelBuyinId));
                 mapping.setProductId(productId);
                 mapping.setActivityId(activityId);
                 mapping.setSourceUrl(sourceUrl);
@@ -139,16 +231,24 @@ public class PickSourceMappingService {
                 mapping.setPickExtra(resolvePickExtra(pickExtra));
                 mapping.setPromotionLinkId(promotionLinkId);
                 mapping.setScene(scene);
+                mapping.setSourceType(resolvedSourceType);
                 mapping.setValidFrom(LocalDateTime.now());
                 mapping.setValidUntil(LocalDateTime.now().plusMonths(validMonths));
                 mapping.setStatus(1);
                 pickSourceMappingMapper.insert(mapping);
+                logNativeAmbiguousIfNeeded(mapping);
                 return;
             } catch (DuplicateKeyException ex) {
                 log.debug("Concurrent insert detected for pickSource={}, attempting recovery", pickSource);
-                existing = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
-                        .eq(PickSourceMapping::getPickSource, pickSource)
-                        .last("limit 1"));
+                existing = findExistingMapping(
+                        userId,
+                        pickSource,
+                        productId,
+                        activityId,
+                        promotionLinkId,
+                        colonelBuyinId,
+                        resolvedSourceType
+                );
                 if (existing == null) {
                     throw ex;
                 }
@@ -161,6 +261,7 @@ public class PickSourceMappingService {
         existing.setShortId(shortId);
         existing.setUuidSeed(uuidSeed);
         existing.setDeptId(deptId);
+        existing.setColonelBuyinId(resolveColonelBuyinId(colonelBuyinId));
         existing.setProductId(productId);
         existing.setActivityId(activityId);
         existing.setSourceUrl(sourceUrl);
@@ -168,9 +269,100 @@ public class PickSourceMappingService {
         existing.setPickExtra(resolvePickExtra(pickExtra));
         existing.setPromotionLinkId(promotionLinkId);
         existing.setScene(scene);
+        existing.setSourceType(resolvedSourceType);
         existing.setValidUntil(LocalDateTime.now().plusMonths(validMonths));
         existing.setStatus(1);
         pickSourceMappingMapper.updateById(existing);
+        logNativeAmbiguousIfNeeded(existing);
+    }
+
+    private PickSourceMapping findExistingMapping(
+            UUID userId,
+            String pickSource,
+            String productId,
+            String activityId,
+            UUID promotionLinkId,
+            String colonelBuyinId,
+            String sourceType) {
+        if (promotionLinkId != null) {
+            PickSourceMapping existingByPromotionLink = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                    .eq(PickSourceMapping::getPromotionLinkId, promotionLinkId)
+                    .last("limit 1"));
+            if (existingByPromotionLink != null) {
+                return existingByPromotionLink;
+            }
+        }
+        if (userId != null && StringUtils.hasText(pickSource) && StringUtils.hasText(productId) && StringUtils.hasText(activityId)) {
+            PickSourceMapping existingByComposite = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                    .eq(PickSourceMapping::getUserId, userId)
+                    .eq(PickSourceMapping::getPickSource, pickSource)
+                    .eq(PickSourceMapping::getProductId, productId)
+                    .eq(PickSourceMapping::getActivityId, activityId)
+                    .last("limit 1"));
+            if (existingByComposite != null) {
+                return existingByComposite;
+            }
+        }
+        if (SOURCE_TYPE_NATIVE.equals(sourceType)
+                && userId != null
+                && StringUtils.hasText(colonelBuyinId)
+                && StringUtils.hasText(productId)
+                && StringUtils.hasText(activityId)) {
+            PickSourceMapping existingByNativeComposite = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                    .eq(PickSourceMapping::getColonelBuyinId, resolveColonelBuyinId(colonelBuyinId))
+                    .eq(PickSourceMapping::getProductId, productId)
+                    .eq(PickSourceMapping::getActivityId, activityId)
+                    .eq(PickSourceMapping::getUserId, userId)
+                    .eq(PickSourceMapping::getSourceType, SOURCE_TYPE_NATIVE)
+                    .last("limit 1"));
+            if (existingByNativeComposite != null) {
+                return existingByNativeComposite;
+            }
+        }
+        if (StringUtils.hasText(pickSource) && !StringUtils.hasText(productId) && !StringUtils.hasText(activityId)) {
+            return pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                    .eq(PickSourceMapping::getPickSource, pickSource)
+                    .last("limit 1"));
+        }
+        return null;
+    }
+
+    private String resolveSourceType(String sourceType, String colonelBuyinId) {
+        if (StringUtils.hasText(sourceType)) {
+            return sourceType.trim().toUpperCase();
+        }
+        return StringUtils.hasText(colonelBuyinId) ? SOURCE_TYPE_NATIVE : SOURCE_TYPE_PICK_SOURCE;
+    }
+
+    private void logNativeAmbiguousIfNeeded(PickSourceMapping mapping) {
+        if (mapping == null
+                || !SOURCE_TYPE_NATIVE.equals(mapping.getSourceType())
+                || !StringUtils.hasText(mapping.getColonelBuyinId())
+                || !StringUtils.hasText(mapping.getActivityId())
+                || !StringUtils.hasText(mapping.getProductId())) {
+            return;
+        }
+        List<PickSourceMapping> mappings = pickSourceMappingMapper.selectList(new LambdaQueryWrapper<PickSourceMapping>()
+                .eq(PickSourceMapping::getSourceType, SOURCE_TYPE_NATIVE)
+                .eq(PickSourceMapping::getColonelBuyinId, mapping.getColonelBuyinId())
+                .eq(PickSourceMapping::getActivityId, mapping.getActivityId())
+                .eq(PickSourceMapping::getProductId, mapping.getProductId())
+                .eq(PickSourceMapping::getStatus, 1));
+        if (mappings == null || mappings.isEmpty()) {
+            return;
+        }
+        long distinctUsers = mappings.stream()
+                .map(PickSourceMapping::getUserId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .count();
+        if (distinctUsers > 1) {
+            log.warn("Native mapping ambiguous for activityId={}, productId={}, colonelBuyinId={}, distinctUsers={}",
+                    mapping.getActivityId(),
+                    mapping.getProductId(),
+                    mapping.getColonelBuyinId(),
+                    distinctUsers);
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -222,6 +414,13 @@ public class PickSourceMappingService {
     private String resolvePickExtra(String pickExtra) {
         if (StringUtils.hasText(pickExtra)) {
             return pickExtra.trim();
+        }
+        return null;
+    }
+
+    private String resolveColonelBuyinId(String colonelBuyinId) {
+        if (StringUtils.hasText(colonelBuyinId)) {
+            return colonelBuyinId.trim();
         }
         return null;
     }

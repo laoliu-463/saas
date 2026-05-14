@@ -12,7 +12,10 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -20,8 +23,6 @@ public class OrderApi {
 
     private static final String ORDER_LIST_METHOD = "buyin.instituteOrderColonel";
     private static final String COLONEL_MULTI_SETTLEMENT_METHOD = "buyin.colonelMultiSettlementOrders";
-    private static final String LEGACY_DECRYPT_METHOD = "order.batchSensitiveDataRequest";
-    private static final String NEW_DECRYPT_METHOD = "order.batchSensitive";
     private static final int DEFAULT_COUNT = 100;
     private static final int MAX_COUNT = 100;
     private static final int DEFAULT_MULTI_SETTLEMENT_SIZE = 50;
@@ -50,29 +51,12 @@ public class OrderApi {
         if (upstreamModeSupport.isContract()) {
             return contractFixtureProvider.buildOrderSettlementResponse(null, count, cursor, "update", null, null, null);
         }
-        int normalizedCount = normalizeCount(count);
-        long normalizedCursor = normalizeCursor(cursor);
-        long page = normalizedCursor + 1;
-
         Map<String, Object> params = new HashMap<>();
         params.put("start_time", formatEpochSecond(startTime));
         params.put("end_time", formatEpochSecond(endTime));
-        params.put("page", page);
-        params.put("count", normalizedCount);
-
-        try {
-            return douyinApiClient.post(ORDER_LIST_METHOD, params);
-        } catch (DouyinApiException ex) {
-            if (!isParameterInvalid(ex)) {
-                throw ex;
-            }
-            Map<String, Object> retryParams = new HashMap<>();
-            retryParams.put("start_time", formatEpochSecond(startTime));
-            retryParams.put("end_time", formatEpochSecond(endTime));
-            retryParams.put("cursor", normalizedCursor);
-            retryParams.put("count", normalizedCount);
-            return douyinApiClient.post(ORDER_LIST_METHOD, retryParams);
-        }
+        params.put("size", normalizeCount(count));
+        params.put("cursor", hasText(cursor) ? cursor.trim() : "0");
+        return douyinApiClient.post(ORDER_LIST_METHOD, params);
     }
 
     public Map<String, Object> listSettlementWindow(String cursor, Integer count) {
@@ -114,25 +98,6 @@ public class OrderApi {
             params.put("order_ids", normalizedOrderIds);
         }
         return douyinApiClient.post(COLONEL_MULTI_SETTLEMENT_METHOD, params);
-    }
-
-    public Map<String, Object> decryptSensitiveData(java.util.List<String> orderIds) {
-        if (upstreamModeSupport.isContract()) {
-            return contractFixtureProvider.buildDecryptSensitiveResponse(orderIds);
-        }
-        Map<String, Object> params = new HashMap<>();
-        params.put("order_ids", orderIds);
-        params.put("type", 1);
-        try {
-            return douyinApiClient.post(LEGACY_DECRYPT_METHOD, params);
-        } catch (DouyinApiException ex) {
-            if (!isApiServiceOff(ex)) {
-                throw ex;
-            }
-            Map<String, Object> fallbackParams = new HashMap<>();
-            fallbackParams.put("cipher_infos", orderIds);
-            return douyinApiClient.post(NEW_DECRYPT_METHOD, fallbackParams);
-        }
     }
 
     private int normalizeCount(int count) {
@@ -244,41 +209,11 @@ public class OrderApi {
         }
     }
 
-    private boolean isParameterInvalid(DouyinApiException ex) {
-        if (ex == null) {
-            return false;
-        }
-        String subCode = ex.getSubCode();
-        String message = ex.getErrorMsg();
-        return containsIgnoreCase(subCode, "parameter-invalid")
-                || containsIgnoreCase(subCode, "business-failed:257")
-                || containsIgnoreCase(message, "参数校验失败");
-    }
-
     private String formatEpochSecond(long epochSecond) {
         return DATE_TIME_FORMATTER.format(LocalDateTime.ofInstant(
                 Instant.ofEpochSecond(epochSecond),
                 ZoneId.systemDefault()
         ));
-    }
-
-    private boolean isApiServiceOff(DouyinApiException ex) {
-        if (ex == null) {
-            return false;
-        }
-        String subCode = ex.getSubCode();
-        String message = ex.getErrorMsg();
-        return ex.getErrorCode() == 70000
-                || containsIgnoreCase(subCode, "api-service-off")
-                || containsIgnoreCase(message, "API不存在")
-                || containsIgnoreCase(message, "API已下线");
-    }
-
-    private boolean containsIgnoreCase(String source, String needle) {
-        if (source == null || needle == null) {
-            return false;
-        }
-        return source.toLowerCase().contains(needle.toLowerCase());
     }
 
     private boolean hasText(String value) {

@@ -10,6 +10,8 @@ import com.colonel.saas.mapper.TalentMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -20,10 +22,13 @@ public class AttributionService {
     public static final String REASON_ATTRIBUTED = "ATTRIBUTED";
     public static final String REASON_NO_PICK_SOURCE = "NO_PICK_SOURCE";
     public static final String REASON_MAPPING_NOT_FOUND = "MAPPING_NOT_FOUND";
+    public static final String REASON_COLONEL_MAPPING_NOT_FOUND = "COLONEL_MAPPING_NOT_FOUND";
+    public static final String REASON_COLONEL_MAPPING_AMBIGUOUS = "COLONEL_MAPPING_AMBIGUOUS";
     public static final String REASON_PRODUCT_NOT_FOUND = "PRODUCT_NOT_FOUND";
     public static final String REASON_ACTIVITY_NOT_FOUND = "ACTIVITY_NOT_FOUND";
     public static final String REASON_CHANNEL_NOT_FOUND = "CHANNEL_NOT_FOUND";
     public static final String REASON_SYNC_FAILED = "SYNC_FAILED";
+    public static final String REASON_COLONEL_ORDER_INFO = "COLONEL_ORDER_INFO";
 
     private final PickSourceMappingMapper pickSourceMappingMapper;
     private final ProductOperationStateMapper operationStateMapper;
@@ -62,11 +67,11 @@ public class AttributionService {
                     talentUid,
                     activityId,
                     null,
-                    REASON_PRODUCT_NOT_FOUND
+                    REASON_PRODUCT_NOT_FOUND,
+                    NativeMappingTrace.none()
             );
         }
 
-        // 招商归因：查找该商品的负责人
         UUID colonelUserId = null;
         boolean activityStateMissing = false;
         if (StringUtils.hasText(activityId) && StringUtils.hasText(productId)) {
@@ -86,8 +91,7 @@ public class AttributionService {
                 asString(source.get("shop_id")),
                 order.getShopId() == null ? null : String.valueOf(order.getShopId())
         );
-        
-        // 商家独家归因
+
         ExclusiveOwner merchantExclusiveOwner = findExclusiveMerchantOwner(merchantId);
         if (merchantExclusiveOwner != null) {
             return AttributionResult.attributed(
@@ -98,10 +102,11 @@ public class AttributionService {
                     null,
                     activityId,
                     colonelUserId,
-                    REASON_ATTRIBUTED
+                    REASON_ATTRIBUTED,
+                    NativeMappingTrace.none()
             );
         }
-        // 达人独家归因
+
         ExclusiveOwner exclusiveOwner = findExclusiveTalentOwner(talentUid);
         if (exclusiveOwner != null) {
             return AttributionResult.attributed(
@@ -112,18 +117,70 @@ public class AttributionService {
                     talentUid,
                     activityId,
                     colonelUserId,
-                    REASON_ATTRIBUTED
+                    REASON_ATTRIBUTED,
+                    NativeMappingTrace.none()
             );
         }
 
-        // 渠道归因 (PickSource)
+        String colonelsBuyinId = firstNonBlank(
+                asString(source.get("colonel_buyin_id")),
+                asString(source.get("colonelBuyinId"))
+        );
+        String secondColonelsBuyinId = firstNonBlank(
+                asString(source.get("second_colonel_buyin_id")),
+                asString(source.get("secondColonelBuyinId"))
+        );
+        String secondActivityId = firstNonBlank(
+                asString(source.get("second_colonel_activity_id")),
+                asString(source.get("secondColonelActivityId"))
+        );
+        if (StringUtils.hasText(colonelsBuyinId) || StringUtils.hasText(secondColonelsBuyinId)) {
+            NativeColonelMappingResolution colonelResolution = resolveNativeColonelAttribution(
+                    colonelsBuyinId,
+                    activityId,
+                    secondColonelsBuyinId,
+                    secondActivityId,
+                    productId
+            );
+            PickSourceMapping colonelMapping = colonelResolution.mapping();
+            if (colonelMapping != null && colonelMapping.getUserId() != null) {
+                return AttributionResult.attributed(
+                        colonelMapping.getUserId(),
+                        colonelMapping.getDeptId(),
+                        colonelMapping.getUserId(),
+                        talentId,
+                        talentUid,
+                        firstNonBlank(colonelResolution.activityId(), colonelMapping.getActivityId(), activityId),
+                        colonelUserId,
+                        REASON_COLONEL_ORDER_INFO,
+                        colonelResolution.trace()
+                );
+            }
+            String reason = colonelResolution.reason();
+            if (!StringUtils.hasText(reason)) {
+                reason = REASON_COLONEL_MAPPING_NOT_FOUND;
+            }
+            if (colonelMapping != null && colonelMapping.getUserId() == null) {
+                reason = REASON_CHANNEL_NOT_FOUND;
+            }
+            return AttributionResult.unattributed(
+                    talentId,
+                    talentUid,
+                    firstNonBlank(colonelResolution.activityId(), activityId),
+                    colonelUserId,
+                    reason,
+                    colonelResolution.trace()
+            );
+        }
+
         if (!StringUtils.hasText(pickSource) && !StringUtils.hasText(pickExtra)) {
             return AttributionResult.unattributed(
                     talentId,
                     talentUid,
                     activityId,
                     colonelUserId,
-                    REASON_NO_PICK_SOURCE
+                    REASON_NO_PICK_SOURCE,
+                    NativeMappingTrace.none()
             );
         }
         PickSourceMapping mapping = findPickSourceMapping(pickSource, pickExtra);
@@ -133,7 +190,8 @@ public class AttributionService {
                     talentUid,
                     activityId,
                     colonelUserId,
-                    activityStateMissing ? REASON_ACTIVITY_NOT_FOUND : REASON_MAPPING_NOT_FOUND
+                    activityStateMissing ? REASON_ACTIVITY_NOT_FOUND : REASON_MAPPING_NOT_FOUND,
+                    NativeMappingTrace.none()
             );
         }
         if (mapping.getUserId() == null) {
@@ -142,7 +200,8 @@ public class AttributionService {
                     talentUid,
                     activityId,
                     colonelUserId,
-                    REASON_CHANNEL_NOT_FOUND
+                    REASON_CHANNEL_NOT_FOUND,
+                    NativeMappingTrace.none()
             );
         }
 
@@ -154,7 +213,8 @@ public class AttributionService {
                 talentUid,
                 firstNonBlank(mapping.getActivityId(), activityId),
                 colonelUserId,
-                REASON_ATTRIBUTED
+                REASON_ATTRIBUTED,
+                NativeMappingTrace.none()
         );
     }
 
@@ -164,6 +224,136 @@ public class AttributionService {
 
     protected ExclusiveOwner findExclusiveTalentOwner(String talentUid) {
         return exclusiveTalentService.findActiveOwnerByTalentUid(talentUid);
+    }
+
+    protected NativeColonelMappingResolution resolveNativeColonelAttribution(
+            String firstColonelsBuyinId,
+            String firstActivityId,
+            String secondColonelsBuyinId,
+            String secondActivityId,
+            String productId) {
+        boolean hasSecondActivity = StringUtils.hasText(secondActivityId);
+        NativeColonelMappingResolution firstResolution = resolveNativeColonelOrderMapping(
+                firstColonelsBuyinId,
+                firstActivityId,
+                productId,
+                !hasSecondActivity
+        );
+        if (firstResolution.mapping() != null || REASON_COLONEL_MAPPING_AMBIGUOUS.equals(firstResolution.reason())) {
+            return firstResolution;
+        }
+        if (hasSecondActivity || StringUtils.hasText(secondColonelsBuyinId)) {
+            NativeColonelMappingResolution secondResolution = resolveNativeColonelOrderMapping(
+                    secondColonelsBuyinId,
+                    secondActivityId,
+                    productId,
+                    false
+            );
+            if (secondResolution.mapping() != null || REASON_COLONEL_MAPPING_AMBIGUOUS.equals(secondResolution.reason())) {
+                return secondResolution;
+            }
+            if (hasSecondActivity) {
+                return secondResolution;
+            }
+        }
+        return firstResolution;
+    }
+
+    protected NativeColonelMappingResolution resolveNativeColonelOrderMapping(
+            String colonelsBuyinId,
+            String activityId,
+            String productId,
+            boolean allowGenericFallback) {
+        if (!StringUtils.hasText(colonelsBuyinId)) {
+            return new NativeColonelMappingResolution(null, REASON_COLONEL_MAPPING_NOT_FOUND, activityId, NativeMappingTrace.none());
+        }
+        if (StringUtils.hasText(activityId) && StringUtils.hasText(productId)) {
+            NativeColonelMappingResolution exactNative = singleMappingWithReason(
+                    pickSourceMappingMapper.selectList(new LambdaQueryWrapper<PickSourceMapping>()
+                            .eq(PickSourceMapping::getColonelBuyinId, colonelsBuyinId)
+                            .eq(PickSourceMapping::getActivityId, activityId)
+                            .eq(PickSourceMapping::getProductId, productId)
+                            .eq(PickSourceMapping::getSourceType, PickSourceMappingService.SOURCE_TYPE_NATIVE)
+                            .eq(PickSourceMapping::getStatus, 1)
+                            .orderByDesc(PickSourceMapping::getUpdateTime)),
+                    activityId,
+                    false,
+                    true
+            );
+            if (exactNative.mapping() != null || REASON_COLONEL_MAPPING_AMBIGUOUS.equals(exactNative.reason())) {
+                return exactNative;
+            }
+
+            NativeColonelMappingResolution exactActivityProduct = singleMappingWithReason(
+                    pickSourceMappingMapper.selectList(new LambdaQueryWrapper<PickSourceMapping>()
+                            .eq(PickSourceMapping::getActivityId, activityId)
+                            .eq(PickSourceMapping::getProductId, productId)
+                            .eq(PickSourceMapping::getSourceType, PickSourceMappingService.SOURCE_TYPE_NATIVE)
+                            .eq(PickSourceMapping::getStatus, 1)
+                            .orderByDesc(PickSourceMapping::getUpdateTime)),
+                    activityId,
+                    true,
+                    false
+            );
+            if (exactActivityProduct.mapping() != null || REASON_COLONEL_MAPPING_AMBIGUOUS.equals(exactActivityProduct.reason())) {
+                PickSourceMapping mapping = exactActivityProduct.mapping();
+                if (mapping != null && !colonelsBuyinId.equals(mapping.getColonelBuyinId())) {
+                    return new NativeColonelMappingResolution(
+                            mapping,
+                            exactActivityProduct.reason(),
+                            firstNonBlank(activityId, mapping.getActivityId()),
+                            exactActivityProduct.trace().withColonelBuyinIdMismatch(true)
+                    );
+                }
+                return exactActivityProduct;
+            }
+        }
+
+        if (!allowGenericFallback) {
+            return new NativeColonelMappingResolution(null, REASON_COLONEL_MAPPING_NOT_FOUND, activityId, NativeMappingTrace.none());
+        }
+
+        return singleMappingWithReason(
+                pickSourceMappingMapper.selectList(new LambdaQueryWrapper<PickSourceMapping>()
+                        .eq(PickSourceMapping::getColonelBuyinId, colonelsBuyinId)
+                        .eq(PickSourceMapping::getSourceType, PickSourceMappingService.SOURCE_TYPE_NATIVE)
+                        .eq(PickSourceMapping::getStatus, 1)
+                        .orderByDesc(PickSourceMapping::getUpdateTime)),
+                activityId,
+                false,
+                true
+        );
+    }
+
+    protected PickSourceMapping findPickSourceMappingByShortId(String colonelsBuyinId) {
+        return resolveNativeColonelOrderMapping(colonelsBuyinId, null, null, true).mapping();
+    }
+
+    private NativeColonelMappingResolution singleMappingWithReason(
+            List<PickSourceMapping> mappings,
+            String activityId,
+            boolean fallbackActivityProduct,
+            boolean nativeKeyMatched) {
+        if (mappings == null || mappings.isEmpty()) {
+            return new NativeColonelMappingResolution(null, REASON_COLONEL_MAPPING_NOT_FOUND, activityId, NativeMappingTrace.none());
+        }
+        if (mappings.size() == 1) {
+            PickSourceMapping mapping = mappings.get(0);
+            NativeMappingTrace trace = new NativeMappingTrace(
+                    nativeKeyMatched || fallbackActivityProduct,
+                    false,
+                    false,
+                    fallbackActivityProduct,
+                    mapping == null ? null : mapping.getCreateTime()
+            );
+            return new NativeColonelMappingResolution(mapping, REASON_COLONEL_ORDER_INFO, firstNonBlank(activityId, mapping.getActivityId()), trace);
+        }
+        return new NativeColonelMappingResolution(
+                null,
+                REASON_COLONEL_MAPPING_AMBIGUOUS,
+                activityId,
+                new NativeMappingTrace(nativeKeyMatched || fallbackActivityProduct, false, true, fallbackActivityProduct, null)
+        );
     }
 
     protected PickSourceMapping findPickSourceMapping(String pickSource, String pickExtra) {
@@ -235,6 +425,28 @@ public class AttributionService {
     public record ExclusiveOwner(UUID userId, UUID deptId) {
     }
 
+    public record NativeColonelMappingResolution(
+            PickSourceMapping mapping,
+            String reason,
+            String activityId,
+            NativeMappingTrace trace) {
+    }
+
+    public record NativeMappingTrace(
+            boolean nativeKeyMatched,
+            boolean colonelBuyinIdMismatch,
+            boolean ambiguousMapping,
+            boolean usedActivityProductFallback,
+            LocalDateTime mappingCreatedAt) {
+        public static NativeMappingTrace none() {
+            return new NativeMappingTrace(false, false, false, false, null);
+        }
+
+        public NativeMappingTrace withColonelBuyinIdMismatch(boolean mismatch) {
+            return new NativeMappingTrace(nativeKeyMatched, mismatch, ambiguousMapping, usedActivityProductFallback, mappingCreatedAt);
+        }
+    }
+
     public record AttributionResult(
             UUID channelUserId,
             UUID deptId,
@@ -244,7 +456,8 @@ public class AttributionService {
             String activityId,
             UUID colonelUserId,
             String attributionStatus,
-            String attributionRemark) {
+            String attributionRemark,
+            NativeMappingTrace nativeTrace) {
 
         public static AttributionResult attributed(
                 UUID channelUserId,
@@ -255,7 +468,20 @@ public class AttributionService {
                 String activityId,
                 UUID colonelUserId,
                 String remark) {
-            return new AttributionResult(channelUserId, deptId, userId, talentId, talentUid, activityId, colonelUserId, STATUS_ATTRIBUTED, remark);
+            return new AttributionResult(channelUserId, deptId, userId, talentId, talentUid, activityId, colonelUserId, STATUS_ATTRIBUTED, remark, NativeMappingTrace.none());
+        }
+
+        public static AttributionResult attributed(
+                UUID channelUserId,
+                UUID deptId,
+                UUID userId,
+                UUID talentId,
+                String talentUid,
+                String activityId,
+                UUID colonelUserId,
+                String remark,
+                NativeMappingTrace nativeTrace) {
+            return new AttributionResult(channelUserId, deptId, userId, talentId, talentUid, activityId, colonelUserId, STATUS_ATTRIBUTED, remark, nativeTrace == null ? NativeMappingTrace.none() : nativeTrace);
         }
 
         public static AttributionResult unattributed(
@@ -264,7 +490,17 @@ public class AttributionService {
                 String activityId,
                 UUID colonelUserId,
                 String remark) {
-            return new AttributionResult(null, null, null, talentId, talentUid, activityId, colonelUserId, STATUS_UNATTRIBUTED, remark);
+            return new AttributionResult(null, null, null, talentId, talentUid, activityId, colonelUserId, STATUS_UNATTRIBUTED, remark, NativeMappingTrace.none());
+        }
+
+        public static AttributionResult unattributed(
+                UUID talentId,
+                String talentUid,
+                String activityId,
+                UUID colonelUserId,
+                String remark,
+                NativeMappingTrace nativeTrace) {
+            return new AttributionResult(null, null, null, talentId, talentUid, activityId, colonelUserId, STATUS_UNATTRIBUTED, remark, nativeTrace == null ? NativeMappingTrace.none() : nativeTrace);
         }
     }
 }

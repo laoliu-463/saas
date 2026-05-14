@@ -216,10 +216,11 @@ public class PromotionApi {
                     data != null ? asStringOrNull(data.get("short_link")) : null,
                     data != null ? asStringOrNull(data.get("short_url")) : null
             );
+            String responsePickSource = data != null ? asStringOrNull(data.get("pick_source")) : null;
             String responsePickExtra = data != null ? asStringOrNull(data.get("pick_extra")) : null;
-            String extractedShortId = extractShortId(
-                    data != null ? asStringOrNull(data.get("pick_source")) : null,
-                    promoteLink,
+            String finalPickSource = firstNonBlank(
+                    responsePickSource,
+                    extractPickSource(promoteLink),
                     shortId
             );
             String finalPickExtra = firstNonBlank(
@@ -228,13 +229,13 @@ public class PromotionApi {
                     desiredPickExtra
             );
             return new PromotionLinkResult(
-                    extractedShortId,
+                    finalPickSource,
                     finalPickExtra,
-                    extractedShortId,
+                    shortId,
                     shortLink,
                     promoteLink,
                     uuidSeed
-            );
+                );
         }
 
         private static String firstNonBlank(String... values) {
@@ -253,10 +254,7 @@ public class PromotionApi {
             return value == null ? null : String.valueOf(value);
         }
 
-        private static String extractShortId(String pickSource, String promoteLink, String fallback) {
-            if (StringUtils.hasText(pickSource) && pickSource.length() <= 10) {
-                return pickSource;
-            }
+        private static String extractPickSource(String promoteLink) {
             if (StringUtils.hasText(promoteLink)) {
                 try {
                     String query = URI.create(promoteLink).getQuery();
@@ -264,19 +262,16 @@ public class PromotionApi {
                         String[] parts = query.split("&");
                         for (String part : parts) {
                             String[] kv = part.split("=", 2);
-                            if (kv.length == 2 && ("pick_source".equals(kv[0]) || "pick_extra".equals(kv[0]))) {
-                                String decoded = URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
-                                if (decoded.length() <= 10) {
-                                    return decoded;
-                                }
+                            if (kv.length == 2 && "pick_source".equals(kv[0])) {
+                                return URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
                             }
                         }
                     }
                 } catch (Exception ignore) {
-                    return fallback;
+                    return null;
                 }
             }
-            return fallback;
+            return null;
         }
 
         private static String extractPickExtra(String promoteLink) {

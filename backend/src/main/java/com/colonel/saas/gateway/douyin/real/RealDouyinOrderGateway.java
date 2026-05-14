@@ -4,6 +4,7 @@ import com.colonel.saas.douyin.api.OrderApi;
 import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
 import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
+import com.colonel.saas.service.AttributionSourceNormalizer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -15,6 +16,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,12 +72,33 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
     }
 
     @Override
-    public Map<String, Object> decryptSensitiveData(List<String> orderIds) {
+    public OrderListResult listSettlementByOrderIds(List<String> orderIds) {
         logGateway();
-        if (upstreamModeSupport.isContract()) {
-            return contractFixtureProvider.buildDecryptSensitiveResponse(orderIds);
+        List<String> normalized = normalizeOrderIds(orderIds);
+        if (normalized.isEmpty()) {
+            return new OrderListResult(List.of(), false, "0", Map.of("order_ids", ""));
         }
-        return orderApi.decryptSensitiveData(orderIds);
+        if (upstreamModeSupport.isContract()) {
+            return toOrderListResult(contractFixtureProvider.buildOrderSettlementResponse(
+                    null,
+                    normalized.size(),
+                    "0",
+                    "update",
+                    null,
+                    null,
+                    String.join(",", normalized)
+            ));
+        }
+        Map<String, Object> response = orderApi.listColonelMultiSettlementOrders(
+                null,
+                normalized.size(),
+                "0",
+                "update",
+                null,
+                null,
+                String.join(",", normalized)
+        );
+        return toOrderListResult(response);
     }
 
     private void logGateway() {
@@ -157,6 +180,7 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
     }
 
     private DouyinOrderItem toOrderItem(Map<String, Object> raw) {
+        raw = AttributionSourceNormalizer.normalize(raw);
         return new DouyinOrderItem(
                 asString(pick(raw, "order_id", "orderId", "order_id_str", "orderIdStr")),
                 asString(pick(raw, "external_product_id", "externalProductId", "product_id", "productId")),
@@ -219,6 +243,19 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
 
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private List<String> normalizeOrderIds(List<String> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> deduped = new LinkedHashSet<>();
+        for (String orderId : orderIds) {
+            if (StringUtils.hasText(orderId)) {
+                deduped.add(orderId.trim());
+            }
+        }
+        return List.copyOf(deduped);
     }
 
     private Boolean asBoolean(Object value) {

@@ -12,6 +12,7 @@ import com.colonel.saas.douyin.api.ActivityApi;
 import com.colonel.saas.douyin.api.InstitutionApi;
 import com.colonel.saas.douyin.api.OrderApi;
 import com.colonel.saas.douyin.api.ProductApi;
+import com.colonel.saas.service.DouyinWebhookEventService;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -47,7 +48,7 @@ import java.util.stream.Collectors;
 @Validated
 @RestController
 @RequestMapping("/douyin")
-@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER})
+@RequireRoles({RoleCodes.ADMIN})
 @Tag(name = "抖音联调")
 @SecurityRequirement(name = "bearerAuth")
 public class DouyinController extends BaseController {
@@ -59,6 +60,7 @@ public class DouyinController extends BaseController {
     private final DouyinTokenService douyinTokenService;
     private final DoudianTokenGateway doudianTokenGateway;
     private final DouyinApiClient douyinApiClient;
+    private final DouyinWebhookEventService douyinWebhookEventService;
 
     public DouyinController(
             ActivityApi activityApi,
@@ -67,7 +69,8 @@ public class DouyinController extends BaseController {
             InstitutionApi institutionApi,
             DouyinTokenService douyinTokenService,
             DoudianTokenGateway doudianTokenGateway,
-            DouyinApiClient douyinApiClient) {
+            DouyinApiClient douyinApiClient,
+            DouyinWebhookEventService douyinWebhookEventService) {
         this.activityApi = activityApi;
         this.productApi = productApi;
         this.orderApi = orderApi;
@@ -75,6 +78,19 @@ public class DouyinController extends BaseController {
         this.douyinTokenService = douyinTokenService;
         this.doudianTokenGateway = doudianTokenGateway;
         this.douyinApiClient = douyinApiClient;
+        this.douyinWebhookEventService = douyinWebhookEventService;
+    }
+
+    @Operation(summary = "[联调] 重放未完成 Webhook 事件", description = "重放 Webhook 收件箱中 RECEIVED / FAILED 状态的事件，用于本地消费补偿与 real-pre 排障。")
+    @PostMapping("/webhook-events/replay")
+    public ApiResult<Map<String, Object>> replayWebhookEvents(
+            @Parameter(description = "单次最多重放数量，默认 20，服务层上限 100。") @RequestParam(defaultValue = "20") int limit) {
+        DouyinWebhookEventService.ReplayResult result = douyinWebhookEventService.replayUnfinished(limit);
+        Map<String, Object> data = new HashMap<>();
+        data.put("scanned", result.scanned());
+        data.put("consumed", result.consumed());
+        data.put("failed", result.failed());
+        return ok(data);
     }
 
     @Operation(summary = "[联调] 查询活动列表", description = "验证上游 alliance.instituteColonelActivityList 能力是否可用，检查当前 appId 下团长活动列表查询链路。")
@@ -162,30 +178,7 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
-    @Operation(summary = "[联调] 查询商品素材状态", description = "验证上游 buyin.materialsProductStatus 商品素材状态查询能力。")
-    @PostMapping("/product-material-status-checks")
-    public ApiResult<Map<String, Object>> shangpinSucaiZhuangtai(
-            @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "商品素材状态查询请求体。",
-                    required = true,
-                    content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"products\":[\"101\",\"102\"]}"))
-            )
-            @Valid @RequestBody ProductMaterialStatusRequest request) {
-        Map<String, Object> result = new HashMap<>();
-        result.put("module", "M1.2 Douyin SDK");
-        result.put("endpoint", "buyin.materialsProductStatus");
-        result.put("appId", request.getAppId());
-        try {
-            result.put("remoteResponse", productApi.materialsProductStatus(request.getAppId(), request.getProducts()));
-            result.put("status", "success");
-        } catch (Throwable e) {
-            log.error("Douyin product material status call failed", e);
-            fillError(result, e);
-        }
-        return ok(result);
-    }
-
-    @Operation(summary = "[联调] 查询订单结算", description = "验证上游 buyin.colonelMultiSettlementOrders 团长多结算订单查询能力。")
+    @Operation(summary = "[联调] 查询团长分次结算订单", description = "验证上游 buyin.colonelMultiSettlementOrders 团长分次结算订单查询能力。该接口依赖当前 access_token 对应主体已完成团长授权，仅作为结算订单补充样本来源，不替代订单主同步接口 buyin.instituteOrderColonel。")
     @GetMapping("/order-settlements")
     public ApiResult<Map<String, Object>> dingdanJiesuan(
             @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
@@ -193,21 +186,25 @@ public class DouyinController extends BaseController {
             @Parameter(description = "游标，继续翻页时使用。") @RequestParam(required = false, defaultValue = "0") String cursor,
             @Parameter(description = "时间类型，如 update。待确认：更多取值请参考上游 SDK 文档。") @RequestParam(required = false, defaultValue = "update") String timeType,
             @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
-            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime) {
+            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
+            @Parameter(description = "订单号列表，逗号分隔，最多 100 个；与时间范围二选一，优先使用 camelCase 入参。") @RequestParam(required = false) String orderIds,
+            @RequestParam(name = "order_ids", required = false) String orderIdsLegacy) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
         result.put("endpoint", "buyin.colonelMultiSettlementOrders");
         result.put("appId", appId);
+        String normalizedOrderIds = StringUtils.hasText(orderIds) ? orderIds : orderIdsLegacy;
         Map<String, Object> query = new HashMap<>();
         query.put("size", size);
         query.put("cursor", cursor);
         query.put("timeType", timeType);
         query.put("startTime", startTime);
         query.put("endTime", endTime);
+        query.put("orderIds", normalizedOrderIds);
         result.put("query", query);
         try {
             result.put("remoteResponse", orderApi.listColonelMultiSettlementOrders(
-                    appId, size, cursor, timeType, startTime, endTime, null));
+                    appId, size, cursor, timeType, startTime, endTime, normalizedOrderIds));
             result.put("status", "success");
         } catch (Throwable e) {
             log.error("Douyin order settlement call failed", e);
@@ -568,20 +565,6 @@ public class DouyinController extends BaseController {
         public void setAuthId(String authId) { this.authId = authId; }
         public String getAuthSubjectType() { return authSubjectType; }
         public void setAuthSubjectType(String authSubjectType) { this.authSubjectType = authSubjectType; }
-    }
-
-    public static class ProductMaterialStatusRequest {
-        @Schema(description = "抖音应用 appId。", example = "test-app")
-        private String appId;
-
-        @Schema(description = "商品 ID 列表。", example = "[\"101\",\"102\"]")
-        @NotEmpty(message = "products cannot be empty")
-        private List<String> products;
-
-        public String getAppId() { return appId; }
-        public void setAppId(String appId) { this.appId = appId; }
-        public List<String> getProducts() { return products; }
-        public void setProducts(List<String> products) { this.products = products; }
     }
 
     public static class ActivityProductCancelRequest {

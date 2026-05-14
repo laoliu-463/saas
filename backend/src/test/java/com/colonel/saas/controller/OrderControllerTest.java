@@ -2,11 +2,15 @@ package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.service.DashboardService;
+import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderSyncService;
 import org.junit.jupiter.api.Assertions;
@@ -20,11 +24,14 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -43,13 +50,15 @@ class OrderControllerTest {
     private ColonelsettlementOrderMapper orderMapper;
     @Mock
     private OrderQueryService orderQueryService;
+    @Mock
+    private OrderAttributionReplayService orderAttributionReplayService;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new OrderController(orderSyncService, orderMapper, orderQueryService))
+                .standaloneSetup(new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -109,6 +118,33 @@ class OrderControllerTest {
     }
 
     @Test
+    void syncOrders_shouldRequireAdminRoleAnnotation() throws Exception {
+        Method syncOrders = OrderController.class.getMethod("syncOrders", OrderController.SyncRequest.class);
+        assertThat(syncOrders.getAnnotation(RequireRoles.class)).isNotNull();
+        assertThat(syncOrders.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.ADMIN);
+    }
+
+    @Test
+    void replayAttribution_shouldForwardRequestToService() throws Exception {
+        OrderAttributionReplayService.ReplayResult result =
+                new OrderAttributionReplayService.ReplayResult(12, 4, 8, 0, true, 0, 0, 0, 0, 0, 8);
+        when(orderAttributionReplayService.replay(any(), any(), any(), anyBoolean())).thenReturn(result);
+
+        mockMvc.perform(post("/orders/replay-attribution")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"reason":"COLONEL_MAPPING_NOT_FOUND","limit":12,"dryRun":true}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.scanned").value(12))
+                .andExpect(jsonPath("$.data.attributed").value(4))
+                .andExpect(jsonPath("$.data.dryRun").value(true));
+
+        verify(orderAttributionReplayService).replay(any(), org.mockito.ArgumentMatchers.eq("COLONEL_MAPPING_NOT_FOUND"), org.mockito.ArgumentMatchers.eq(12), org.mockito.ArgumentMatchers.eq(true));
+    }
+
+    @Test
     void getStats_shouldAggregateViaSqlGroupedMaps() throws Exception {
         when(orderMapper.selectMaps(any())).thenReturn(
                 List.of(
@@ -135,5 +171,61 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.unattributedReasons[0].reason").value("pick_source 未匹配"));
 
         verify(orderMapper, times(2)).selectMaps(any());
+    }
+
+    @Test
+    void diagnosisSql_shouldReuseDashboardClassifierForOrders() throws Exception {
+        OrderController controller = new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService);
+        Method method = OrderController.class.getDeclaredMethod("diagnosisSql", String.class, String.class);
+        method.setAccessible(true);
+
+        String sql = (String) method.invoke(controller, "colonelsettlement_order.", DashboardService.DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED);
+
+        String expected = "(" + DashboardService.diagnosisCategoryCaseSql(
+                "colonelsettlement_order.colonel_activity_id",
+                "colonelsettlement_order.second_colonel_activity_id",
+                "colonelsettlement_order.product_id",
+                "colonelsettlement_order.create_time",
+                "colonelsettlement_order.colonel_buyin_id",
+                "colonelsettlement_order.attribution_status",
+                "colonelsettlement_order.attribution_remark"
+        ) + ") = '" + DashboardService.DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED + "'";
+        assertThat(sql).isEqualTo(expected);
+    }
+
+    @Test
+    void diagnosisSql_shouldAcceptUnsafeAlias() throws Exception {
+        OrderController controller = new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService);
+        Method method = OrderController.class.getDeclaredMethod("diagnosisSql", String.class, String.class);
+        method.setAccessible(true);
+
+        String sql = (String) method.invoke(controller, "colonelsettlement_order.", "UNSAFE_BECAUSE_CREATED_AFTER_ORDER");
+
+        assertThat(sql).contains("'" + DashboardService.DIAGNOSIS_MECHANISM_HIT_HISTORY_UNSAFE + "'");
+    }
+
+    @Test
+    void getFilterOptions_shouldExposeNativeColonelReasonLabels() throws Exception {
+        when(orderMapper.selectMaps(any())).thenReturn(
+                List.of(Map.of("value", 1)),
+                List.of(Map.of("value", "UNATTRIBUTED")),
+                List.of(
+                        Map.of("value", "COLONEL_MAPPING_NOT_FOUND"),
+                        Map.of("value", "COLONEL_MAPPING_AMBIGUOUS")
+                ),
+                List.of(),
+                List.of(),
+                List.of()
+        );
+
+        mockMvc.perform(get("/orders/filter-options")
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.unattributedReasons[0].value").value("COLONEL_MAPPING_NOT_FOUND"))
+                .andExpect(jsonPath("$.data.unattributedReasons[0].label").value("原生团长订单未找到归因映射"))
+                .andExpect(jsonPath("$.data.unattributedReasons[1].value").value("COLONEL_MAPPING_AMBIGUOUS"))
+                .andExpect(jsonPath("$.data.unattributedReasons[1].label").value("原生团长订单命中多条归因映射"));
     }
 }

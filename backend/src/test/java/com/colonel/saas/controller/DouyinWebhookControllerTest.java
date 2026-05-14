@@ -4,6 +4,9 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.colonel.saas.mapper.DouyinWebhookEventMapper;
+import com.colonel.saas.service.DouyinWebhookEventService;
+import com.colonel.saas.service.OrderSyncService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +22,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.stream.Collectors;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -30,8 +34,10 @@ class DouyinWebhookControllerTest {
     private static final String CLIENT_SECRET = "test-client-secret";
 
     private MockMvc createMvc(boolean verifySign) {
+        DouyinWebhookEventService eventService =
+                new DouyinWebhookEventService(mock(DouyinWebhookEventMapper.class), new ObjectMapper(), mock(OrderSyncService.class));
         DouyinWebhookController controller =
-                new DouyinWebhookController(new ObjectMapper(), CLIENT_SECRET, verifySign);
+                new DouyinWebhookController(new ObjectMapper(), eventService, CLIENT_SECRET, verifySign);
         return MockMvcBuilders.standaloneSetup(controller).build();
     }
 

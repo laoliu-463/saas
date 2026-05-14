@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -124,6 +125,203 @@ class AttributionServiceTest {
     }
 
     @Test
+    void resolveAttribution_shouldUseNativeColonelBuyinMappingWhenPickSourceMissing() {
+        UUID mappingUser = UUID.randomUUID();
+        UUID mappingDept = UUID.randomUUID();
+        UUID colonelUserId = UUID.randomUUID();
+        ProductOperationState state = new ProductOperationState();
+        state.setAssigneeId(colonelUserId);
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(mappingUser);
+        mapping.setDeptId(mappingDept);
+        when(productOperationStateMapper.selectOne(any())).thenReturn(state);
+        when(pickSourceMappingMapper.selectList(any())).thenReturn(List.of(mapping));
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-native");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of(
+                        "colonel_buyin_id", "7351155267604218149",
+                        "colonel_activity_id", "3916506"
+                )
+        );
+
+        assertThat(result.userId()).isEqualTo(mappingUser);
+        assertThat(result.deptId()).isEqualTo(mappingDept);
+        assertThat(result.channelUserId()).isEqualTo(mappingUser);
+        assertThat(result.colonelUserId()).isEqualTo(colonelUserId);
+        assertThat(result.activityId()).isEqualTo("3916506");
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_COLONEL_ORDER_INFO);
+    }
+
+    @Test
+    void resolveAttribution_shouldNotUseShortIdLookupForNativeColonelBuyinId() {
+        UUID mappingUser = UUID.randomUUID();
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(mappingUser);
+        mapping.setDeptId(UUID.randomUUID());
+        when(pickSourceMappingMapper.selectList(any())).thenReturn(List.of(mapping));
+        AttributionService serviceRejectingShortIdLookup = new AttributionService(
+                pickSourceMappingMapper,
+                productOperationStateMapper,
+                talentMapper,
+                exclusiveTalentService,
+                exclusiveMerchantService
+        ) {
+            @Override
+            protected PickSourceMapping findPickSourceMappingByShortId(String colonelsBuyinId) {
+                throw new AssertionError("colonel_buyin_id must not be queried through short_id");
+            }
+        };
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-native");
+
+        AttributionService.AttributionResult result = serviceRejectingShortIdLookup.resolveAttribution(
+                order,
+                Map.of(
+                        "colonel_buyin_id", "7351155267604218149",
+                        "colonel_activity_id", "3916506"
+                )
+        );
+
+        assertThat(result.userId()).isEqualTo(mappingUser);
+        assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_COLONEL_ORDER_INFO);
+    }
+
+    @Test
+    void resolveAttribution_shouldRemainUnattributedWhenColonelBuyinIdHasNoMapping() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-native-missing");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of("colonelBuyinId", "7351155267604218149")
+        );
+
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
+        assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND);
+        assertThat(result.userId()).isNull();
+    }
+
+    @Test
+    void resolveAttribution_shouldFallbackToActivityProductMappingForNativeOrder() {
+        UUID mappingUser = UUID.randomUUID();
+        UUID mappingDept = UUID.randomUUID();
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(mappingUser);
+        mapping.setDeptId(mappingDept);
+        when(pickSourceMappingMapper.selectList(any()))
+                .thenReturn(List.of())
+                .thenReturn(List.of(mapping));
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-native");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of(
+                        "colonel_buyin_id", "7351155267604218149",
+                        "colonel_activity_id", "3916506"
+                )
+        );
+
+        assertThat(result.userId()).isEqualTo(mappingUser);
+        assertThat(result.deptId()).isEqualTo(mappingDept);
+        assertThat(result.activityId()).isEqualTo("3916506");
+        assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_COLONEL_ORDER_INFO);
+        verify(pickSourceMappingMapper, times(2)).selectList(any());
+    }
+
+    @Test
+    void resolveAttribution_shouldUseSecondColonelOrderInfoWhenPrimaryActivityMissing() {
+        UUID mappingUser = UUID.randomUUID();
+        UUID mappingDept = UUID.randomUUID();
+        PickSourceMapping secondMapping = new PickSourceMapping();
+        secondMapping.setUserId(mappingUser);
+        secondMapping.setDeptId(mappingDept);
+        secondMapping.setActivityId("3543332");
+        when(pickSourceMappingMapper.selectList(any()))
+                .thenReturn(List.of())
+                .thenReturn(List.of(secondMapping));
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("3633722889687181734");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of(
+                        "colonel_buyin_id", "7392822694083707171",
+                        "second_colonel_buyin_id", "7351155267604218149",
+                        "second_colonel_activity_id", "3543332"
+                )
+        );
+
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(result.userId()).isEqualTo(mappingUser);
+        assertThat(result.deptId()).isEqualTo(mappingDept);
+        assertThat(result.activityId()).isEqualTo("3543332");
+        assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_COLONEL_ORDER_INFO);
+    }
+
+    @Test
+    void resolveAttribution_shouldNotFallbackToGenericSeedWhenSecondActivityExistsButExactMappingMissing() {
+        UUID adminUser = UUID.randomUUID();
+        PickSourceMapping genericSeed = new PickSourceMapping();
+        genericSeed.setUserId(adminUser);
+        genericSeed.setScene("COLONEL_NATIVE");
+        when(pickSourceMappingMapper.selectList(any()))
+                .thenReturn(List.of())
+                .thenReturn(List.of())
+                .thenReturn(List.of(genericSeed));
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("3633722889687181734");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of(
+                        "colonel_buyin_id", "7392822694083707171",
+                        "second_colonel_buyin_id", "7351155267604218149",
+                        "second_colonel_activity_id", "3543332"
+                )
+        );
+
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
+        assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND);
+        assertThat(result.userId()).isNull();
+    }
+
+    @Test
+    void resolveAttribution_shouldNotFallbackWhenActivityProductMappingIsAmbiguous() {
+        PickSourceMapping first = new PickSourceMapping();
+        first.setUserId(UUID.randomUUID());
+        PickSourceMapping second = new PickSourceMapping();
+        second.setUserId(UUID.randomUUID());
+        when(pickSourceMappingMapper.selectList(any()))
+                .thenReturn(List.of())
+                .thenReturn(List.of(first, second));
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-native");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of(
+                        "colonel_buyin_id", "7351155267604218149",
+                        "colonel_activity_id", "3916506"
+                )
+        );
+
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
+        assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_COLONEL_MAPPING_AMBIGUOUS);
+        assertThat(result.userId()).isNull();
+    }
+
+    @Test
     void resolveAttribution_shouldFallbackToPickSourceMapping() {
         UUID mappingUser = UUID.randomUUID();
         UUID mappingDept = UUID.randomUUID();
@@ -141,6 +339,34 @@ class AttributionServiceTest {
         AttributionService.AttributionResult result = service.resolveAttribution(
                 order,
                 Map.of("pick_extra", "short_123")
+        );
+
+        assertThat(result.userId()).isEqualTo(mappingUser);
+        assertThat(result.deptId()).isEqualTo(mappingDept);
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+    }
+
+    @Test
+    void resolveAttribution_shouldPreferExactActivityProductWhenPickSourceIsReused() {
+        UUID mappingUser = UUID.randomUUID();
+        UUID mappingDept = UUID.randomUUID();
+        PickSourceMapping exact = new PickSourceMapping();
+        exact.setUserId(mappingUser);
+        exact.setDeptId(mappingDept);
+        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(exact);
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-reused");
+        order.setPickSource("v.MxZLIw");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of(
+                        "activity_id", "act-reused",
+                        "pick_extra", "channel_user"
+                )
         );
 
         assertThat(result.userId()).isEqualTo(mappingUser);
@@ -213,5 +439,72 @@ class AttributionServiceTest {
         assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
         assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_MAPPING_NOT_FOUND);
         assertThat(result.userId()).isNull();
+    }
+
+    @Test
+    void resolveAttribution_shouldReturnAmbiguousWhenNativeKeyMapsToMultipleUsers() {
+        PickSourceMapping first = new PickSourceMapping();
+        first.setUserId(UUID.randomUUID());
+        first.setColonelBuyinId("7293293346398011698");
+        first.setActivityId("3859423");
+        first.setProductId("3816127512791089531");
+        first.setSourceType(PickSourceMappingService.SOURCE_TYPE_NATIVE);
+        PickSourceMapping second = new PickSourceMapping();
+        second.setUserId(UUID.randomUUID());
+        second.setColonelBuyinId("7293293346398011698");
+        second.setActivityId("3859423");
+        second.setProductId("3816127512791089531");
+        second.setSourceType(PickSourceMappingService.SOURCE_TYPE_NATIVE);
+        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        when(pickSourceMappingMapper.selectList(any())).thenReturn(java.util.List.of(first, second));
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("3816127512791089531");
+        order.setActivityId("3859423");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of("colonel_buyin_id", "7293293346398011698")
+        );
+
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
+        assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_COLONEL_MAPPING_AMBIGUOUS);
+        assertThat(result.nativeTrace().ambiguousMapping()).isTrue();
+    }
+
+    @Test
+    void resolveAttribution_shouldUseActivityProductFallbackAndMarkBuyinMismatch() {
+        UUID mappingUser = UUID.randomUUID();
+        UUID mappingDept = UUID.randomUUID();
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(mappingUser);
+        mapping.setDeptId(mappingDept);
+        mapping.setColonelBuyinId("7351155267604218149");
+        mapping.setActivityId("3859423");
+        mapping.setProductId("3816127512791089531");
+        mapping.setSourceType(PickSourceMappingService.SOURCE_TYPE_NATIVE);
+        mapping.setCreateTime(java.time.LocalDateTime.of(2026, 5, 10, 6, 41, 19));
+        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        when(pickSourceMappingMapper.selectList(any()))
+                .thenReturn(java.util.List.of())
+                .thenReturn(java.util.List.of(mapping));
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("3816127512791089531");
+        order.setActivityId("3859423");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of("colonel_buyin_id", "7293293346398011698")
+        );
+
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_COLONEL_ORDER_INFO);
+        assertThat(result.userId()).isEqualTo(mappingUser);
+        assertThat(result.nativeTrace().nativeKeyMatched()).isTrue();
+        assertThat(result.nativeTrace().usedActivityProductFallback()).isTrue();
+        assertThat(result.nativeTrace().colonelBuyinIdMismatch()).isTrue();
     }
 }

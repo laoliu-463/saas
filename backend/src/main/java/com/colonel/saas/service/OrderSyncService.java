@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -71,6 +72,21 @@ public class OrderSyncService {
 
     public SyncResult triggerManualSync() {
         return syncLatestWindow();
+    }
+
+    public SyncResult syncByOrderIds(List<String> orderIds) {
+        List<String> normalizedOrderIds = normalizeOrderIds(orderIds);
+        if (normalizedOrderIds.isEmpty()) {
+            throw new BusinessException("orderIds is required");
+        }
+        if (!acquireSyncLock()) {
+            throw new BusinessException("Order sync is busy");
+        }
+        try {
+            return syncSpecificOrders(normalizedOrderIds);
+        } finally {
+            releaseSyncLock();
+        }
     }
 
     public LocalDateTime getLastSyncTime() {
@@ -154,6 +170,32 @@ public class OrderSyncService {
     }
 
     private SyncResult syncRange(long startTime, long endTime, int count) {
+        return syncItems(
+                douyinOrderGateway.listSettlement(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, "0")),
+                startTime,
+                endTime,
+                true,
+                count
+        );
+    }
+
+    private SyncResult syncSpecificOrders(List<String> orderIds) {
+        long now = Instant.now().getEpochSecond();
+        return syncItems(
+                douyinOrderGateway.listSettlementByOrderIds(orderIds),
+                now,
+                now,
+                false,
+                orderIds.size()
+        );
+    }
+
+    private SyncResult syncItems(
+            DouyinOrderGateway.OrderListResult firstPage,
+            long startTime,
+            long endTime,
+            boolean continuePaging,
+            int count) {
         String cursor = "0";
         boolean hasMore = true;
         int totalFetched = 0;
@@ -163,11 +205,9 @@ public class OrderSyncService {
         int unattributedCount = 0;
         int failedCount = 0;
         int pages = 0;
+        DouyinOrderGateway.OrderListResult response = firstPage;
 
         while (hasMore) {
-            DouyinOrderGateway.OrderListResult response = douyinOrderGateway.listSettlement(
-                    new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, cursor)
-            );
             List<DouyinOrderGateway.DouyinOrderItem> items = response.orders();
             if (items == null || items.isEmpty()) {
                 break;
@@ -227,7 +267,12 @@ public class OrderSyncService {
             }
 
             cursor = response.nextCursor();
-            hasMore = response.hasMore() && pages < MAX_PAGES;
+            hasMore = continuePaging && response.hasMore() && pages < MAX_PAGES;
+            if (hasMore) {
+                response = douyinOrderGateway.listSettlement(
+                        new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, cursor)
+                );
+            }
         }
 
         log.info("Order sync completed, range=[{}, {}], pages={}, fetched={}, created={}, updated={}, attributed={}",
@@ -297,6 +342,19 @@ public class OrderSyncService {
         return value == null ? null : String.valueOf(value);
     }
 
+    private List<String> normalizeOrderIds(List<String> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String orderId : orderIds) {
+            if (StringUtils.hasText(orderId)) {
+                normalized.add(orderId.trim());
+            }
+        }
+        return List.copyOf(normalized);
+    }
+
     private long asLong(Object value, long defaultValue) {
         if (value == null) {
             return defaultValue;
@@ -336,5 +394,4 @@ public class OrderSyncService {
         }
     }
 }
-
 

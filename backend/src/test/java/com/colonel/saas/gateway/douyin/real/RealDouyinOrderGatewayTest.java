@@ -145,4 +145,117 @@ class RealDouyinOrderGatewayTest {
         assertThat(item.pickSource()).isNull();
         assertThat(item.rawPayload()).containsEntry("author_buyin_id", "7137334329718292775");
     }
+
+    @Test
+    void listSettlement_flattensColonelOrderInfoForNativeAttribution() {
+        OrderApi orderApi = mock(OrderApi.class);
+        DouyinUpstreamModeSupport upstreamModeSupport = mock(DouyinUpstreamModeSupport.class);
+        DouyinContractFixtureProvider contractFixtureProvider = mock(DouyinContractFixtureProvider.class);
+        RealDouyinOrderGateway gateway = new RealDouyinOrderGateway(
+                orderApi,
+                upstreamModeSupport,
+                contractFixtureProvider
+        );
+        Map<String, Object> order = new LinkedHashMap<>();
+        order.put("order_id", "6952647330859784066");
+        order.put("product_id", "3686785923229548825");
+        order.put("colonel_order_info", Map.of(
+                "colonel_buyin_id", "7351155267604218149",
+                "activity_id", "3223881"
+        ));
+        when(upstreamModeSupport.isContract()).thenReturn(false);
+        when(orderApi.listSettlement(1778233653L, 1778237939L, 20, "0"))
+                .thenReturn(Map.of(
+                        "code", 10000,
+                        "data", Map.of(
+                                "orders", List.of(order),
+                                "cursor", "0"
+                        )
+                ));
+
+        DouyinOrderGateway.OrderListResult result = gateway.listSettlement(
+                new DouyinOrderGateway.DouyinOrderQueryRequest(1778233653L, 1778237939L, 20, "0")
+        );
+
+        assertThat(result.orders()).hasSize(1);
+        DouyinOrderGateway.DouyinOrderItem item = result.orders().get(0);
+        assertThat(item.productId()).isEqualTo("3686785923229548825");
+        assertThat(item.pickSource()).isNull();
+        assertThat(item.rawPayload()).containsEntry("colonel_buyin_id", "7351155267604218149");
+        assertThat(item.rawPayload()).containsEntry("colonel_activity_id", "3223881");
+    }
+
+    @Test
+    void listSettlement_flattensSecondColonelOrderInfoForNativeAttribution() {
+        OrderApi orderApi = mock(OrderApi.class);
+        DouyinUpstreamModeSupport upstreamModeSupport = mock(DouyinUpstreamModeSupport.class);
+        DouyinContractFixtureProvider contractFixtureProvider = mock(DouyinContractFixtureProvider.class);
+        RealDouyinOrderGateway gateway = new RealDouyinOrderGateway(
+                orderApi,
+                upstreamModeSupport,
+                contractFixtureProvider
+        );
+        Map<String, Object> order = new LinkedHashMap<>();
+        order.put("order_id", "6952703795028694675");
+        order.put("product_id", "3633722889687181734");
+        Map<String, Object> firstColonelInfo = new LinkedHashMap<>();
+        firstColonelInfo.put("colonel_buyin_id", "7392822694083707171");
+        firstColonelInfo.put("activity_id", null);
+        order.put("colonel_order_info", firstColonelInfo);
+        order.put("colonel_order_info_second", Map.of(
+                "colonel_buyin_id", "7351155267604218149",
+                "activity_id", "3543332"
+        ));
+        when(upstreamModeSupport.isContract()).thenReturn(false);
+        when(orderApi.listSettlement(1L, 2L, 20, "0"))
+                .thenReturn(Map.of(
+                        "code", 10000,
+                        "data", Map.of(
+                                "orders", List.of(order),
+                                "cursor", "0"
+                        )
+                ));
+
+        DouyinOrderGateway.OrderListResult result = gateway.listSettlement(
+                new DouyinOrderGateway.DouyinOrderQueryRequest(1L, 2L, 20, "0")
+        );
+
+        assertThat(result.orders()).hasSize(1);
+        Map<String, Object> rawPayload = result.orders().get(0).rawPayload();
+        assertThat(rawPayload).containsEntry("colonel_buyin_id", "7392822694083707171");
+        assertThat(rawPayload).containsEntry("second_colonel_buyin_id", "7351155267604218149");
+        assertThat(rawPayload).containsEntry("second_colonel_activity_id", "3543332");
+    }
+
+    @Test
+    void listSettlementByOrderIds_usesMultiSettlementOrderQuery() {
+        OrderApi orderApi = mock(OrderApi.class);
+        DouyinUpstreamModeSupport upstreamModeSupport = mock(DouyinUpstreamModeSupport.class);
+        DouyinContractFixtureProvider contractFixtureProvider = mock(DouyinContractFixtureProvider.class);
+        RealDouyinOrderGateway gateway = new RealDouyinOrderGateway(
+                orderApi,
+                upstreamModeSupport,
+                contractFixtureProvider
+        );
+        when(upstreamModeSupport.isContract()).thenReturn(false);
+        when(orderApi.listColonelMultiSettlementOrders(null, 2, "0", "update", null, null, "ORDER_1,ORDER_2"))
+                .thenReturn(Map.of(
+                        "code", 10000,
+                        "data", Map.of(
+                                "orders", List.of(Map.of(
+                                        "order_id", "ORDER_1",
+                                        "product_id", "PRODUCT_1",
+                                        "create_time", 1711900800L
+                                )),
+                                "cursor", "0"
+                        )
+                ));
+
+        DouyinOrderGateway.OrderListResult result = gateway.listSettlementByOrderIds(List.of("ORDER_1", "ORDER_2", "ORDER_1"));
+
+        assertThat(result.orders()).hasSize(1);
+        assertThat(result.orders().get(0).externalOrderId()).isEqualTo("ORDER_1");
+        assertThat(result.orders().get(0).productId()).isEqualTo("PRODUCT_1");
+    }
+
 }

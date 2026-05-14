@@ -15,7 +15,6 @@ public class ProductApi {
 
     private static final int DEFAULT_COUNT = 20;
     private static final int MAX_COUNT = 20;
-    private static final int MAX_PRODUCTS_SIZE = 50;
 
     private final DouyinApiClient douyinApiClient;
     private final DouyinUpstreamModeSupport upstreamModeSupport;
@@ -111,33 +110,14 @@ public class ProductApi {
         return adaptDualCommissionFields(response);
     }
 
-    public Map<String, Object> materialsProductStatus(String appId, List<String> products) {
-        Map<String, Object> params = new HashMap<>();
-        putIfNotBlank(params, "appId", appId);
-        params.put("products", normalizeProducts(products));
-        return douyinApiClient.postWithoutAuth("buyin.materialsProductStatus", params);
-    }
-
     /**
-     * 查询抖店商品详情（/product/detail）
-     * @param productId 抖店商品ID（19位数字字符串）
+     * 查询精选联盟商品 SKU（/buyin/productSkus/v2）。
+     * @param productId 精选联盟商品 ID（19位数字字符串）
      */
-    public Map<String, Object> getProductDetail(String productId) {
+    public Map<String, Object> getProductSkusV2(String productId) {
         Map<String, Object> params = new HashMap<>();
         params.put("product_id", parseProductId(productId));
-        return douyinApiClient.post("product.detail", params);
-    }
-
-    /**
-     * 查询抖店SKU详情（/sku/detail）
-     * @param skuId SKU ID（数字字符串）
-     */
-    public Map<String, Object> getSkuDetail(String skuId) {
-        Map<String, Object> params = new HashMap<>();
-        if (skuId != null && !skuId.isBlank()) {
-            params.put("sku_id", parseSkuId(skuId));
-        }
-        return douyinApiClient.post("sku.detail", params);
+        return douyinApiClient.post("buyin.productSkus.v2", params);
     }
 
     private long parseProductId(String productId) {
@@ -148,17 +128,6 @@ public class ProductApi {
             return Long.parseLong(productId.trim());
         } catch (NumberFormatException e) {
             throw new BusinessException("productId 必须为数字类型", e);
-        }
-    }
-
-    private long parseSkuId(String skuId) {
-        if (skuId == null || skuId.isBlank()) {
-            throw new BusinessException("skuId 不能为空");
-        }
-        try {
-            return Long.parseLong(skuId.trim());
-        } catch (NumberFormatException e) {
-            throw new BusinessException("skuId 必须为数字类型", e);
         }
     }
 
@@ -179,23 +148,6 @@ public class ProductApi {
             return DEFAULT_COUNT;
         }
         return Math.min(count, MAX_COUNT);
-    }
-
-    private List<String> normalizeProducts(List<String> products) {
-        if (products == null || products.isEmpty()) {
-            throw new BusinessException("products cannot be empty");
-        }
-        if (products.size() > MAX_PRODUCTS_SIZE) {
-            throw new BusinessException("products size cannot exceed 50");
-        }
-        return products.stream()
-                .map(value -> value == null ? "" : value.trim())
-                .peek(value -> {
-                    if (value.isEmpty()) {
-                        throw new BusinessException("products contains blank url");
-                    }
-                })
-                .toList();
     }
 
     private long parseActivityId(String activityId) {

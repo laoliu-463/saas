@@ -31,6 +31,10 @@ public class PickSourceMapping extends BaseEntity {
     @Size(max = 128)
     private String pickSource;
 
+    @TableField("colonel_buyin_id")
+    @Size(max = 32)
+    private String colonelBuyinId;
+
     @TableField("product_id")
     private String productId;
 
@@ -61,6 +65,9 @@ public class PickSourceMapping extends BaseEntity {
 
     @TableField("scene")
     private String scene;
+
+    @TableField("source_type")
+    private String sourceType;
 
     @TableField("valid_from")
     private LocalDateTime validFrom;
@@ -108,6 +115,14 @@ public class PickSourceMapping extends BaseEntity {
 
     public void setPickSource(String pickSource) {
         this.pickSource = pickSource;
+    }
+
+    public String getColonelBuyinId() {
+        return colonelBuyinId;
+    }
+
+    public void setColonelBuyinId(String colonelBuyinId) {
+        this.colonelBuyinId = colonelBuyinId;
     }
 
     public String getProductId() {
@@ -164,6 +179,14 @@ public class PickSourceMapping extends BaseEntity {
 
     public void setValidUntil(LocalDateTime validUntil) {
         this.validUntil = validUntil;
+    }
+
+    public String getSourceType() {
+        return sourceType;
+    }
+
+    public void setSourceType(String sourceType) {
+        this.sourceType = sourceType;
     }
 
     public Integer getStatus() {

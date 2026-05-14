@@ -119,40 +119,21 @@ class ProductApiTest {
     }
 
     @Test
-    void materialsProductStatus_shouldCallBuyinMaterialsProductStatusWithoutAuth() {
-        when(douyinApiClient.postWithoutAuth(eq("buyin.materialsProductStatus"), anyMap()))
-                .thenReturn(new HashMap<>());
+    void getProductSkusV2_shouldCallBuyinProductSkusV2() {
+        when(douyinApiClient.post(eq("buyin.productSkus.v2"), anyMap()))
+                .thenReturn(Map.of("data", Map.of("skus", Map.of())));
 
-        productApi.materialsProductStatus("app-1", List.of("https://haohuo.jinritemai.com/views/product/detail?id=1"));
+        productApi.getProductSkusV2("3810562766247428542");
 
         ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
-        verify(douyinApiClient).postWithoutAuth(eq("buyin.materialsProductStatus"), captor.capture());
-        Map<String, Object> params = captor.getValue();
-        assertThat(params.get("appId")).isEqualTo("app-1");
-        assertThat(params).containsKey("products");
-        assertThat((List<?>) params.get("products")).hasSize(1);
+        verify(douyinApiClient).post(eq("buyin.productSkus.v2"), captor.capture());
+        assertThat(captor.getValue()).containsEntry("product_id", 3810562766247428542L);
     }
 
     @Test
-    void materialsProductStatus_shouldRejectEmptyProducts() {
-        assertThatThrownBy(() -> productApi.materialsProductStatus("app-1", List.of()))
-                .hasMessageContaining("products");
-    }
-
-    @Test
-    void materialsProductStatus_shouldRejectProductsSizeOver50() {
-        List<String> products = java.util.stream.IntStream.range(0, 51)
-                .mapToObj(i -> "https://haohuo.jinritemai.com/views/product/detail?id=" + i)
-                .toList();
-
-        assertThatThrownBy(() -> productApi.materialsProductStatus("app-1", products))
-                .hasMessageContaining("50");
-    }
-
-    @Test
-    void materialsProductStatus_shouldRejectBlankProductUrl() {
-        assertThatThrownBy(() -> productApi.materialsProductStatus("app-1", List.of("  ")))
-                .hasMessageContaining("blank");
+    void getProductSkusV2_shouldRejectNonNumericProductId() {
+        assertThatThrownBy(() -> productApi.getProductSkusV2("not-a-product"))
+                .hasMessageContaining("productId");
     }
 
     @Test

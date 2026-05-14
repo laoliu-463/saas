@@ -227,6 +227,47 @@ class OrderSyncServiceTest {
     }
 
     @Test
+    void syncByOrderIds_shouldUseTargetedGatewayQuery() {
+        when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
+        when(douyinOrderGateway.listSettlementByOrderIds(List.of("ORDER_1", "ORDER_2")))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(
+                        List.of(new DouyinOrderGateway.DouyinOrderItem(
+                                "ORDER_1",
+                                "ext-product-1",
+                                "product-1",
+                                "1001",
+                                "Test Shop",
+                                null,
+                                null,
+                                null,
+                                12345L,
+                                888L,
+                                1,
+                                1710000000L,
+                                null,
+                                Map.of("product_name", "Product A")
+                        )),
+                        false,
+                        "0",
+                        Map.of()
+                ));
+        when(attributionService.resolveAttribution(any(), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null,
+                        null,
+                        null,
+                        null,
+                        AttributionService.REASON_NO_PICK_SOURCE
+                ));
+
+        OrderSyncService.SyncResult result = service.syncByOrderIds(List.of("ORDER_1", "ORDER_2", "ORDER_1"));
+
+        assertThat(result.totalFetched()).isEqualTo(1);
+        verify(douyinOrderGateway).listSettlementByOrderIds(List.of("ORDER_1", "ORDER_2"));
+        verify(douyinOrderGateway, never()).listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
+    }
+
+    @Test
     void mockModeShouldFallbackWhenRedisUnavailable() {
         service = new OrderSyncService(douyinOrderGateway, persistenceService, attributionService, redisTemplate, true);
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class)))

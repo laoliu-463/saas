@@ -427,6 +427,7 @@ CREATE TABLE IF NOT EXISTS pick_source_mapping (
     uuid_seed        UUID,                                -- [V1.3] 方案B原始UUID，反查还原
     dept_id          UUID,
     pick_source      VARCHAR(128) NOT NULL,               -- [V1.2] 扩容至128（API实际返回可能较长）
+    colonel_buyin_id VARCHAR(32),                         -- [Real] 抖店原生团长ID，不能复用 short_id
     product_id       VARCHAR(50),
     activity_id      VARCHAR(50),
     promotion_link_id UUID,                               -- [V2.2] 关联 promotion_link（alter v2 口径）
@@ -440,6 +441,7 @@ CREATE TABLE IF NOT EXISTS pick_source_mapping (
     order_amount     BIGINT    DEFAULT 0,
     pick_extra       VARCHAR(128),                        -- [V2.2] 实际透传值，当前口径为 channel_{userId}
     scene            VARCHAR(32) DEFAULT 'PRODUCT_LIBRARY',
+    source_type      VARCHAR(32) DEFAULT 'PICK_SOURCE',
     valid_from       TIMESTAMP NOT NULL,
     valid_until      TIMESTAMP NOT NULL,
     status           SMALLINT NOT NULL DEFAULT 1,
@@ -449,17 +451,25 @@ CREATE TABLE IF NOT EXISTS pick_source_mapping (
     create_by        UUID,
     update_by        UUID
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uk_psm_pick_source ON pick_source_mapping(pick_source);  -- [V1.2] 改为唯一索引
 CREATE INDEX IF NOT EXISTS idx_psm_user_id      ON pick_source_mapping(user_id);
+CREATE INDEX IF NOT EXISTS idx_psm_pick_source  ON pick_source_mapping(pick_source);
 CREATE INDEX IF NOT EXISTS idx_psm_short_id     ON pick_source_mapping(short_id);        -- [V1.3] 方案B透传查询
+CREATE INDEX IF NOT EXISTS idx_psm_colonel_buyin_id ON pick_source_mapping(colonel_buyin_id);
 CREATE INDEX IF NOT EXISTS idx_psm_uuid_seed    ON pick_source_mapping(uuid_seed);       -- [V1.3] 方案B UUID反查
 CREATE INDEX IF NOT EXISTS idx_psm_dept_id      ON pick_source_mapping(dept_id);
 CREATE INDEX IF NOT EXISTS idx_psm_product_id   ON pick_source_mapping(product_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_psm_pick_source_product_activity_user
+    ON pick_source_mapping(pick_source, product_id, activity_id, user_id)
+    WHERE deleted = 0;
 CREATE INDEX IF NOT EXISTS idx_psm_scene        ON pick_source_mapping(scene);
+CREATE INDEX IF NOT EXISTS idx_psm_source_type  ON pick_source_mapping(source_type);
 CREATE INDEX IF NOT EXISTS idx_psm_pick_extra   ON pick_source_mapping(pick_extra);
 CREATE INDEX IF NOT EXISTS idx_psm_valid_until  ON pick_source_mapping(valid_until);
 CREATE INDEX IF NOT EXISTS idx_psm_status       ON pick_source_mapping(status);
 CREATE INDEX IF NOT EXISTS idx_psm_deleted      ON pick_source_mapping(deleted);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_psm_native_activity_product_user
+    ON pick_source_mapping(colonel_buyin_id, product_id, activity_id, user_id, source_type)
+    WHERE deleted = 0 AND source_type = 'NATIVE';
 
 -- =============================================
 -- 7. 寄样管理
@@ -875,7 +885,37 @@ CREATE TABLE IF NOT EXISTS op_log_2027_02 PARTITION OF operation_log FOR VALUES 
 CREATE TABLE IF NOT EXISTS op_log_2027_03 PARTITION OF operation_log FOR VALUES FROM ('2027-03-01') TO ('2027-04-01');
 
 -- =============================================
--- 14. 分区自动管理函数
+-- 14. Webhook 事件收件箱（幂等、消费状态、重放补偿）
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS douyin_webhook_event (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_key      VARCHAR(256) NOT NULL,
+    event_type     VARCHAR(128) NOT NULL,
+    payload_hash   VARCHAR(64) NOT NULL,
+    body_length    INTEGER DEFAULT 0,
+    raw_payload    TEXT,
+    status         VARCHAR(32) NOT NULL DEFAULT 'RECEIVED',
+    consume_result VARCHAR(256),
+    retry_count    INTEGER NOT NULL DEFAULT 0,
+    received_at    TIMESTAMP NOT NULL DEFAULT NOW(),
+    processed_at   TIMESTAMP,
+    deleted        INTEGER DEFAULT 0,
+    create_time    TIMESTAMP DEFAULT NOW(),
+    update_time    TIMESTAMP DEFAULT NOW(),
+    create_by      UUID,
+    update_by      UUID
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_douyin_webhook_event_key
+    ON douyin_webhook_event(event_key)
+    WHERE deleted = 0;
+CREATE INDEX IF NOT EXISTS idx_douyin_webhook_event_status
+    ON douyin_webhook_event(status, create_time);
+CREATE INDEX IF NOT EXISTS idx_douyin_webhook_event_type
+    ON douyin_webhook_event(event_type);
+
+-- =============================================
+-- 15. 分区自动管理函数
 -- =============================================
 
 -- 为订单表和日志表自动创建下月分区（建议由 pg_cron 每月1号调用）
@@ -911,7 +951,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- =============================================
--- 15. 验证查询（建库后手动执行确认）
+-- 16. 验证查询（建库后手动执行确认）
 -- =============================================
 
 -- 列出所有用户表
