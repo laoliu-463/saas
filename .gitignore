@@ -19,6 +19,10 @@ out/
 runtime/
 test-results/
 frontend/test-results/
+node_modules/
+frontend/.pnpm-store/
+playwright-report/
+tests/e2e/.auth/
 .codex-run/
 *.zip
 *.tar.gz
