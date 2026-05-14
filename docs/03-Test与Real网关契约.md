@@ -1,6 +1,6 @@
 ﻿# 03-Test 与 Real 网关契约
 
-更新时间：2026-05-08
+更新时间：2026-05-09（与 `docs/README.md`、`docs/04-开发进度.md` 事实口径对齐）
 
 ## 一、目的
 
@@ -58,6 +58,7 @@ Test 实现不应只是简单的静态返回，应支持：
 | 项目 | `test` | 当前 `real-pre` |
 | :--- | :--- | :--- |
 | `SPRING_PROFILES_ACTIVE` | `test` | `real` |
+| `APP_TEST_ENABLED` | `true` | `false` |
 | `DOUYIN_TEST_ENABLED` | `true` | `false` |
 | `DB_NAME` | `colonel_saas_test` | `colonel_saas_real` |
 | `REDIS_DATABASE` | `1` | `0` |
@@ -81,8 +82,9 @@ Test 实现不应只是简单的静态返回，应支持：
 3. 订单归因已补齐抖店原生 `colonel_order_info` 口径：Real 网关会把 `colonel_buyin_id / activity_id` 扁平化到订单 raw payload，主业务归因优先用 `colonel_buyin_id + activity_id + product_id` 做唯一匹配，不再把 19 位 `colonel_buyin_id` 塞进 8-10 位 `short_id`
 4. 当前 real-pre 历史订单仍缺“通过系统推广链接下单后产生的精确活动+商品映射样本”，因此不能把现有未归因真实订单误判为代码归因失败
 5. 商品详情 / SKU 真实样本当前受 `product.detail` 权限包阻塞，不能用活动商品快照替代
-6. Webhook 当前只接收、验签、记日志，未接业务消费
 
-上述缺口不阻塞认证、身份、活动、商品、转链等前置接口联调，但会阻塞订单主链路闭环验收。
+补充说明（与 `docs/04` 对齐）：Webhook 本地收件箱、幂等落库与重放框架已具备；具体业务事件副作用仍依赖上游真实样本确认。
+
+上述编号缺口（1–5）不阻塞认证、身份、活动、商品、转链等前置接口联调，但会阻塞订单主链路闭环验收。
 
 

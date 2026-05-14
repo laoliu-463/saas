@@ -1,7 +1,7 @@
 # AGENTS.md — 抖音团长 SaaS V2.2 开发地图
 
 **版本**：V2.2 维护版  
-**最后更新**：2026-05-03  
+**最后更新**：2026-05-09（事实口径与 `docs/README.md`、`docs/04-开发进度.md` 对齐）  
 **适用对象**：AI 智能体 / 开发者
 
 ---
@@ -37,13 +37,14 @@
 - 已完成：V1.0 到 M1.5（SDK 封装、订单同步、爬虫、寄样真实数据接入、寄样自动闭环）
 - 已完成：P0/P1 本地 Mock 收口（环境口径统一、数据基线固化、日志降噪、SOP 文档化）
 - 已完成：real-pre 环境浏览器 E2E 全路径自动化联调（2026-05-02 首轮 10/10 PASS；2026-05-03 全量 45/45 PASS）
-- 进行中：P2 工程治理（权限注解口径统一）
-- 待完成：M1.6 数据看板真实化、M1.7 部署验证、真实 SDK 联调（依赖外部 Token）
+- 进行中：P2 工程治理（权限注解口径统一）；real-pre 订单归因与看板口径收口（详见 `docs/04-开发进度.md`）
+- 待完成：M1.6 数据看板真实化**剩余项**、M1.7 部署验证；联盟侧能力中仍依赖外部 Token / 权限包 / 真实样本的分支（见 `docs/09`）
 
 关键说明：
-- 当前 `mvn test` 全绿（`410 tests, 0 failures, 0 errors`，本地 Test 链路）
-- real-pre 环境（APP_TEST_ENABLED=true，DOUYIN_TEST_ENABLED=true，profile 仍为 `local-mock`）E2E 全路径已验收通过
-- 第三方 SDK 真实环境联调尚未完成（Token / 真实接口返回 / 限流分支待验证）
+- 当前 `mvn test` 全绿（以 `docs/04` 最近一次记录为准：`652 tests, 0 failures, 0 errors`；重大变更后请先本地跑 `mvn clean test` 再更新数字）
+- real-pre：`docker-compose.real-pre` 后端 **`real` profile**，典型 `.env.real-pre` 为 **`APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`**，可命中真实抖店上游；浏览器全路径回归 **45/45**（见 `docs/README.md`）。旧文档中「real-pre = local-mock + APP_TEST_ENABLED=true」为历史口径，以主干文档为准。
+- 根目录 Playwright：`README-e2e.md`，日常 `npm run e2e`；抖店联调专项 `npm run e2e:real-pre`（等价 `runtime/qa/real-pre-douyin-frontend-e2e.cjs` → `tests/e2e/08-real-pre-douyin-integration.spec.ts`）。
+- 第三方 SDK：主链路已具备大量 real-pre 取证；限流 / 429、部分权限包阻塞分支仍以清单跟踪（`docs/09`、`docs/04` 未完成项）。
 - 商品页已实现抖音 Token 缺失时降级本地商品库；Dashboard 已兼容后端实际 Summary 字段格式
 - 当前本机标准启动格局已固定为：`3000/8080` 一组、`3001/8081` 一组；执行时不得混起第二个 `3001` 本机 Vite 或额外 `8080` 手工后端
 
@@ -131,6 +132,11 @@ mvn test
 cd frontend
 npm run dev
 npm run build
+
+# 仓库根目录（Playwright，见 README-e2e.md）
+cd ..
+npm install
+npm run e2e
 ```
 
 ---

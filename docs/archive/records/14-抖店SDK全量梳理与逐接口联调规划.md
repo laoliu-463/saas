@@ -1,6 +1,6 @@
 # 14-抖店 SDK 接口逐项联调执行文档
 
-更新时间：2026-05-08
+更新时间：2026-05-09
 
 ## 1. 文档定位
 
@@ -35,7 +35,7 @@
 - `前端联调页`：`runtime/qa/out/real-pre-douyin-frontend-20260508211901/report.md` 二次复验 `1/1 PASS`，Token、授权主体、活动商品、订单同步、Dashboard 与店铺侧权限阻塞均可见
 - `20 Webhook 接收`：接收、验签、快速返回与日志脱敏单测已验证通过；仍未接业务消费与幂等落库
 - `01 Token 初始化`：2026-05-08 已使用新 OAuth 授权码重放 `POST /api/douyin/tokens`，HTTP 200、`code=200`，`hasAccessToken=true`、`hasRefreshToken=true`、`reauthorizeRequired=false`
-- 后续接口仍需继续按顺序逐项联调和回写；`09/10/11/12/15` 的最新结论是：团长侧订单归因链路已跑通，剩余真实阻塞集中在商品详情 / SKU 权限、店铺侧订单管理权限、订单解密成功样本与 Webhook 业务消费
+- 后续接口仍需继续按顺序逐项联调和回写；`09/10/11/12/15` 的最新结论是：团长侧订单归因链路已跑通，剩余真实阻塞集中在商品详情 / SKU 权限、店铺侧订单管理权限与 Webhook 业务消费；订单解密能力保留为后续增强项
 
 ## 2. 执行总规则
 
@@ -811,6 +811,8 @@
 - 适配状态：已通未入链
 - 项目入口：`GET /api/douyin/order-settlements`
 - 上游能力：`buyin.colonelMultiSettlementOrders`
+- 授权前提：当前 `access_token` 对应主体需完成团长授权
+- 接口属性：免费 API；用于查询团长分次结算订单
 
 #### 执行重点
 
@@ -829,6 +831,7 @@
 - 请求参数：
   - 成功样本：`size=20&cursor=0&timeType=update&startTime=2026-04-30 19:33:41&endTime=2026-05-07 19:33:41`
   - 边界样本：`size=20&cursor=0&timeType=update&startTime=2026-02-06 00:00:00&endTime=2026-05-07 23:59:59`
+  - 补充说明：项目联调入口已兼容 `orderIds` / `order_ids` 订单号查询，最多 100 个，和时间范围二选一
 - 请求头：`Authorization: Bearer <JWT>`；JWT 未入样本
 - 返回数据：
   - 成功样本 `remoteResponse.data` 当前键为 `cursor`、`orders`
@@ -845,6 +848,7 @@
   - 已确认上游对查询时间窗有 `t-90d` 边界校验
   - 由于当前窗口内无真实订单，金额、状态、结算时间、归因字段仍未拿到非空样本，暂不能据此定义订单 DTO
 - 异常问题：当前仅拿到空订单样本，说明接口可用但缺少“非空真实订单”来完成字段口径固化；同时该接口是多结算查询，不可直接替代 `15` 所依赖的 `buyin.instituteOrderColonel`
+- 业务边界补记：该接口虽为免费 API，但依然受“团长授权主体”约束；后续若命中无权限或空样本，需优先核对授权主体，而不是把问题误判为订单同步主链路异常
 - 适配状态结论：部分成功；查询链路已通，返回结构已确认，但仍处于“已通未入链”，后续需继续补非空样本与订单同步所需的另一条上游映射
 - 是否阻塞下一个接口：否
 - 下一步：进入 `14 订单解密` 前，优先尝试拿到至少一条真实订单号；若拿不到，则先把 `13` 维持为“空样本成功 + 边界失败已取证”的阶段结论
@@ -885,9 +889,10 @@
 -  - 官方文档已明确 `cipher_infos` 结构为 `[{auth_id: 订单号或售后单号, cipher_text: 待解密密文}]`；说明当前主要缺口不是“没有文档”，而是“没有当前授权主体名下真实订单及其密文字段样本”
 - 异常问题：real-pre 本地库当前只有 Mock 种子订单 `MOCK_SEED_TALENT_D_ORDER`，不属于当前真实授权主体，无法用于完成成功样本验证
 - 适配状态结论：部分成功；解密链路已命中真实上游且失败原因可见，但仍缺真实授权主体名下订单号，尚未拿到成功解密样本
-- 是否阻塞下一个接口：是
-- 阻塞原因：继续验证需要真实授权主体名下的订单号，以及同主体真实订单返回 / 后台导出中的密文字段，拼出官方要求的 `cipher_infos[{auth_id,cipher_text}]` 样本；当前本地库无可用真实订单号和密文
-- 下一步：优先补一条真实订单号，再重试 `POST /api/orders/phone-decryptions`；若后续拿到的是加密联系方式而非订单号，再补记 `order.batchSensitive` 的 `cipher_infos` 口径
+- 业务口径补记：当前项目已明确“订单展示、归因与看板以上游已返回字段为准”，因此订单解密不再作为联盟主链路、M1.6 数据看板真实化或 M1.7 部署验证前置
+- 是否阻塞下一个接口：否
+- 阻塞原因：无主链路阻塞；若后续继续验证增强能力，仍需要真实授权主体名下的订单号，以及同主体真实订单返回 / 后台导出中的密文字段，拼出官方要求的 `cipher_infos[{auth_id,cipher_text}]` 样本
+- 下一步：当前先继续保持“负向取证 + 官方契约已确认”的阶段结论；后续若补到真实密文字段样本，再重试 `POST /api/orders/phone-decryptions`
 - raw probe 证据：`runtime/qa/out/order-decrypt-raw-probes-20260507-194927/order-decrypt-raw-probes-summary.json`
 
 ### 15. 订单同步主接口
@@ -1093,7 +1098,7 @@
 
 1. `POST /api/douyin/tokens`：仍需新的 OAuth 授权码重放一次完整 Token 初始化，补齐“新码换 token”证据。
 2. 店铺侧订单接口：`order.searchList`、`order.orderDetail` 已到达上游，但固定返回 `30001 / isv.app-permissions-insufficient`；需订单管理接口权限包、店铺授权与敏感数据授权生效后继续。
-3. 订单解密成功样本：`order.batchDecrypt` 入参契约已确认，但缺同一授权主体下的真实订单号与 `cipher_infos[{auth_id,cipher_text}]` 样本。
+3. 订单解密能力：`order.batchDecrypt` 入参契约已确认，但当前仅保留为后续增强项；若后续补成功样本，仍需同一授权主体下的真实订单号与 `cipher_infos[{auth_id,cipher_text}]` 样本。
 4. 商品详情 / SKU：业务快照详情可 smoke，但上游 `product.detail` raw probe 仍被 `30001` 权限包阻塞，SKU 字段不能用快照替代。
 5. Webhook：接收、验签与日志脱敏已单测通过，尚未完成抖店控制台真实回调投递、业务消费、幂等表或重放补偿。
 6. Talent / Logistics：当前仓库没有可直接联调的真实达人资料网关和真实物流网关；`TalentApi` 主要包装 `buyin.instPickSourceConvert`，`LogisticsGateway` 当前只有测试实现，需先补真实接口选型和 Gateway 实现再联调。
@@ -1102,7 +1107,7 @@
 2026-05-08 21:19 复核更新：
 
 - 第 1 项已完成，新 OAuth 授权码重放证据见 `docs/archive/records/20-2026-05-08-新授权码三方全流程联调报告.md`
-- 当前不再把“真实订单归因未成立”视为阻塞项；团长原生订单 `colonel_native` 归因已跑通，剩余阻塞集中在商品详情 / SKU 权限、店铺侧订单管理权限、订单解密成功样本与 Webhook 业务消费
+- 当前不再把“真实订单归因未成立”或“订单解密成功样本未补齐”视为阻塞项；团长原生订单 `colonel_native` 归因已跑通，剩余阻塞集中在商品详情 / SKU 权限、店铺侧订单管理权限与 Webhook 业务消费
 
 ## 13. 2026-05-08 新授权码三方全流程联调
 
@@ -1165,3 +1170,68 @@
 - 宿主机定向回归：`AttributionServiceTest`、`PickSourceMappingServiceTest`、`RealDouyinOrderGatewayTest`、`OrderSyncServiceTest`、`OrderSyncPersistenceServiceTest` 共 `36 tests, 0 failures, 0 errors`
 - 容器内同一组定向测试退出码 `0`
 - 库内复核：2026-05-08 21:19 二次复验后，全库订单统计为 `totalOrders=326 / attributedOrders=326 / unattributedOrders=0 / partialOrders=0 / syncFailedOrders=0`；当前真实原生团长订单归因已不再是 `0`
+
+## 16. 2026-05-09 二级团长归因排查补记
+
+问题定位：
+
+- real-pre 当前未归因订单再次复核后，不再是文档旧快照中的 `18` 单，而是 `21` 单，且全部为 `COLONEL_MAPPING_NOT_FOUND`
+- 抽样订单显示：`extra_data.colonel_order_info.colonel_buyin_id` 存在，但一级 `activity_id` 为空；同时 `extra_data.colonel_order_info_second` 全部携带二级 `colonel_buyin_id` 与 `activity_id`
+- 旧代码仅把一级 `colonel_order_info` 扁平化到 raw payload 顶层，`AttributionService` 也只消费一级 `colonel_buyin_id`
+- 若直接放开按 `colonel_buyin_id` 泛匹配，当前 real-pre 仅有的 `7351155267604218149 -> admin` seed 映射会把订单误归到系统管理员，属于假归因
+
+代码收口口径：
+
+- `RealDouyinOrderGateway` 新增二级团长字段扁平化：`second_colonel_buyin_id / second_colonel_activity_id`
+- `AttributionService` 新增二级团长归因候选：
+  1. 先尝试一级团长精确匹配
+  2. 若存在二级活动信息，则继续尝试二级团长精确匹配
+  3. 当订单携带二级活动信息时，禁止退回“仅按 colonel_buyin_id 命中 seed 泛映射”的 admin 误归因路径
+- 该改动当前只完成代码与单测，尚未宣称 real-pre 数据已修复
+
+验证结果：
+
+- `backend mvn "-Dtest=RealDouyinOrderGatewayTest,AttributionServiceTest" test`：`21 tests, 0 failures, 0 errors`
+- 数据排查结论：这批未归因订单对应的 6 个二级活动、13 组 `activity_id + product_id` 组合当前在本地 `colonel_activity / product_snapshot / product_operation_state` 均无落库记录，因此后续仍需结合活动商品同步链路补业务映射，而不能只靠归因代码兜底
+- 2026-05-09 16:31 real-pre 继续复跑后，未归因样本已扩大为 `46` 单；`POST /api/orders/sync` 正确 JSON 调用成功，说明同步接口本身无阻塞
+- 已新增管理员收口入口 `POST /api/orders/replay-attribution`，real-pre `dryRun(limit=50)` 返回 `scanned=46 / attributed=0 / unattributed=46 / updated=0`
+- 当前本地缺口同步更新为 `10` 个缺失活动、`27` 个缺失 `activity_id + product_id` 组合；后续收口重点已切到补业务映射，而非继续修改二级团长归因代码
+
+## 17. 2026-05-10 P1-2 real-pre 真实链路联调补记
+
+执行环境：
+
+- 后端：`http://localhost:8081/api`
+- 前端：`http://localhost:3001`
+- profile：`SPRING_PROFILES_ACTIVE=real`
+- 数据库：`colonel_saas_real`
+- Redis：DB `0`
+- 抖音开关：`DOUYIN_TEST_ENABLED=false`、`APP_TEST_ENABLED=false`、`DOUYIN_REAL_UPSTREAM_MODE=live`
+- 证据目录：
+  - `runtime/qa/out/real-pre-p1-2-20260510-020545`
+  - `runtime/qa/out/real-pre-p1-2-product-chain-20260510-020840`
+
+本轮环境约束：
+
+- `test` 继续保持 `SPRING_PROFILES_ACTIVE=test`、`colonel_saas_test`、Redis DB `1`、`DOUYIN_TEST_ENABLED=true`
+- 本轮未删除 `test` 容器或 volume
+- 本轮未把 `test` 改成真实接口环境
+
+逐项结果：
+
+| 项 | 入口 / 操作 | 结果 | 问题与下一步 |
+| --- | --- | --- | --- |
+| Token 状态 / 刷新 | `GET /api/douyin/tokens`、`POST /api/douyin/token-refreshes`、`GET /api/douyin/institution-info` | Token 缓存可用，刷新返回 `code=200`，授权主体返回上游 `10000 / success` | 暂无；后续 token 失效再执行授权码初始化 |
+| 活动列表 | `GET /api/douyin/activities`、`GET /api/colonel/activities` | 上游与业务接口均返回首批 `20` 条，真实总数 `21`，活动样本 `3916506` | 暂无 |
+| 活动商品 | `GET /api/douyin/activity-product-list?activityId=3916506&count=20`、`GET /api/colonel/activities/3916506/products?count=20&refresh=true` | 上游返回 `20` 条，业务刷新返回 `20` 条，业务总数 `56` | 暂无 |
+| 商品审核 / 入库 | `biz_staff` 审核活动 `3916506` 商品 `3810699728333702016`，随后幂等调用 `library-entry` | 审核后 `bizStatus=APPROVED`、`selectedToLibrary=true`；入库确认仍为 `selectedToLibrary=true` | 发现 real-pre `biz_staff` 测试账号密码漂移，已用管理员接口恢复为文档约定 `admin123`；后续角色流失败先核账号状态 |
+| 分配招商 | `biz_leader` 查询可分配负责人后调用 `assignee` | 商品进入 `ASSIGNED`，负责人为招商专员 | 首轮失败原因是前序未审核入库；账号与状态修复后通过 |
+| 真实转链 | `channel_staff` 调用 `POST /api/colonel/activities/3916506/products/3810699728333702016/promotion-links` | 上游 `buyin.instPickSourceConvert` 成功；返回 `pickSource=v.MxZLIw`、`pickExtra=channel_channelstaff`、`shortId` 与 `promoteLink`；详情回读 `LINKED / READY / copyEnabled=true` | 上游未返回短链，不阻塞主推广链接 |
+| `pick_source_mapping` | real-pre DB 复核 `pick_source_mapping` 与 `promotion_link` | `3916506 / 3810699728333702016` 均存在记录，证据见 `db-mapping-corrected.json` | 首版证据脚本 SQL 引号误报 `0`，已修正复核 |
+| 订单同步 | `POST /api/orders/sync` 最近 `7` 天 | `totalFetched=100 / created=5 / updated=95 / attributed=95 / unattributed=5 / failed=0` | 真实接口非空，且无同步失败 |
+| 订单归因 | `GET /api/orders/stats?timeField=createTime`、`POST /api/orders/replay-attribution` dry-run | 订单同步后全库 `totalOrders=1802 / attributedOrders=1665 / unattributedOrders=137 / syncFailedOrders=0`；dry-run `scanned=50 / attributed=0 / unattributed=50`；最终收口复核更新为 `totalOrders=1821 / attributedOrders=1683 / unattributedOrders=138` | 未归因仍是本地活动/商品/mapping 缺口，不能用 Mock 数据覆盖成通过 |
+| Dashboard | `GET /api/dashboard/metrics?timeField=createTime`、`GET /api/dashboard/summary` | 同步后 `todayOrderCount=617 / todayGmv=12081.57 / serviceFee=181.55 / grossProfit=127.07`；最终收口复核为 `todayOrderCount=636 / todayGmv=12448.27`，Summary 可读 | 后续 M1.6 继续细化真实看板字段口径 |
+
+结论：
+
+P1-2 real-pre 真实链路本轮已完成 Token、活动、活动商品、商品审核入库、分配、真实转链、`pick_source_mapping`、订单同步、订单归因统计与 Dashboard 展示验证。剩余风险继续集中在真实订单未归因样本的本地业务映射缺口，而不是同步入口或 Real Gateway 主链路不可用。

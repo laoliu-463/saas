@@ -1,12 +1,12 @@
 # 文档总览
 
-更新时间：2026-05-06
+更新时间：2026-05-14
 
 ## 当前一句话状态
 
 当前项目最准确的阶段表述是：
 
-> `本地 Mock 核心业务闭环已完成，认证安全体系已补齐，真实 SDK 联调准备中`
+> `本地 Mock 核心业务闭环已完成，real-pre 主链路最终回归已通过，当前唯一核心阻塞已收敛为多结算上游样本等待`
 
 说明：
 
@@ -14,21 +14,33 @@
 - 当前已完成 real-pre 浏览器全路径回归（2026-05-03，45/45 通过）
 - 当前已完成 `3000/8080` 本地 Mock 可见浏览器分批验收，并修复停用登录提示与物流发货数据可见性问题
 - 当前已完成认证安全 5 项补齐：Token 双令牌刷新、登出 / Token 吊销（Redis 黑名单）、SecurityConfig 白名单收紧、DataScope 数据权限过滤、权限 / 菜单管理端点
-- 当前不默认接真实抖店 / 抖音 / SDK
-- 下一阶段重点是收口剩余问题，并为真实 SDK 联调做准备
+- 当前 real-pre 已切换为 `real` profile，可命中真实抖店上游；本地 Mock / test 基线仍不混入真实数据
+- 当前已完成真实 Token、授权主体、活动、活动商品、转链、订单同步与 `colonel_native` 订单归因首轮收口
+- 当前已完成 `P1-8 Dashboard 全链路真实化验收`：真实数据持续增长下，`summary / activity-products / diagnosis drilldown / 前台链路` 保持一致
+- 当前已完成 `M1.7 部署验证`：real-pre compose 重建恢复、健康检查、抖店联调 E2E、Dashboard smoke 与管理员全旅程 smoke 均通过
+- 当前已补齐 real-pre Webhook 收件箱缺表问题：老 volume 现可由应用启动自动幂等补建 `douyin_webhook_event`，并已实投确认 `200 success + CONSUMED + event_key 幂等`
+- 当前代码已补上“Webhook 带 `order_id / order_ids` 时触发定向订单同步”的保守业务消费，单测通过；real-pre 现场证据待 Docker 环境恢复后补打
+- 2026-05-14 已补到 real-pre 现场证据：带 `order_id` 的 Webhook 会真实命中 `buyin.colonelMultiSettlementOrders`，收件箱结果为 `COLONEL_OPEN_EVENT_SYNCED`；当前剩余阻塞是该授权主体下上游返回 `orders=[]`
+- 同轮补证显示：主订单真实样本目前仍是未结算态（`settled_goods_amount=0 / real_commission=0`）；虽然本地历史 `settle_time IS NOT NULL` 记录已有 48 条，但当前授权主体最近窗口内仍没有可供多结算接口返回的非空样本
+- 已新增自动探针 `scripts/qa/watch-real-pre-order-settlements.ps1`；首轮证据目录为 `runtime/qa/out/real-pre-order-settlements-watch-20260514-130606`
+- 2026-05-14 14:29 watcher 已继续复跑：`runtime/qa/out/real-pre-order-settlements-watch-20260514-142923`，结果仍为 `orderCount=0`，该问题已固化为“上游样本等待项”
+- 2026-05-14 14:33 real-pre 主链路最终回归已完成：`runtime/qa/out/real-pre-final-regression-20260514-143347`；健康检查、授权主体、活动、商品、既有转链 / `pick_source_mapping`、主订单同步、归因 dry-run、Dashboard、Webhook 接收 / 重放 / 定向同步均通过
+- 已新增上线前清单：`docs/10-上线前验收清单.md`
+- 下一阶段重点仍是“真实 Webhook 事件副作用”本身与限流 / 429 等非默认分支补证；未带订单号的泛事件当前仍只到 `COLONEL_OPEN_EVENT_CAPTURED`
 
 ## 当前基线
 
 ### 代码与验证基线
 
 - 前端构建：`frontend npm run build` 通过
-- 后端测试：`backend mvn test` 作为当前代码基线为通过（`597 tests, 0 failures, 0 errors`，2026-05-06 确认）
+- 后端测试：`backend mvn clean test` 作为当前代码基线为通过（`652 tests, 0 failures, 0 errors`，2026-05-09 确认）
 - 认证安全相关补测（AuthService、JwtTokenProvider、JwtAuthInterceptor 等）已通过
 - 本地 Mock 主链路联调记录已形成文档
 - real-pre 全路径回归报告已落盘：`runtime/qa/out/e2e-20260503-1353/report.md`
 - local-mock 补充验收报告已落盘：`runtime/qa/out/local-mock-supplement-20260503-1430/report.md`
 - 数据看板 Gap 4 定向回归报告已落盘：`out/e2e-data-gap4-visible-20260506150815/report.md`
 - QA 脚本入口已固定为：`runtime/qa/full-browser-e2e.cjs`、`runtime/qa/local-mock-supplement.cjs`、`runtime/qa/data-gap4-visible.cjs`
+- 根目录 Playwright（与 `playwright.config.ts` / `tests/e2e`）：见仓库根 `README-e2e.md`；`npm run e2e` 为日常回归，`npm run e2e:real-pre` 为 real-pre 抖店联调专项（`runtime/qa/real-pre-douyin-frontend-e2e.cjs` 转发至 `08-real-pre-douyin-integration.spec.ts`）
 - QA 一键命令已固定为：`scripts/run-real-pre-e2e.ps1`、`scripts/run-local-mock-supplement.ps1`、`scripts/run-data-gap4-visible.ps1`、`scripts/run-qa-all.ps1`
 - 本地 Mock 可见浏览器验收截图与结果已落盘：`out/e2e-*`
 - 本地 Mock 最终可见浏览器烟雾验收已落盘：`out/e2e-final-smoke-20260503114958/results.json`
@@ -39,18 +51,20 @@
 - 后端：`http://localhost:8080/api`
 - real-pre 前端：`http://localhost:3001`
 - real-pre 后端：`http://localhost:8081/api`
-- real-pre 当前是独立端口/容器的回归环境，但后端 profile 仍是 `local-mock`
-- 当前 `.env.real-pre` 仍启用 `APP_TEST_ENABLED=true`、`DOUYIN_TEST_ENABLED=true`
+- real-pre PostgreSQL：`5433`
+- real-pre Redis：`6380`
+- real-pre 当前是独立端口/容器的真实上游联调环境，后端 profile 为 `real`
+- 当前 `.env.real-pre` 使用 `APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`、`ORDER_SYNC_ENABLED=true`
 - PostgreSQL：`5432`
 - Redis：`6379`
 - 登录账号：`admin / admin123`
 
 ### 当前口径说明
 
-- 本地人工联调默认口径已经统一为 `local-mock`
-- `test` 继续用于自动化测试 / 隔离测试栈
-- `real-pre` 当前用于浏览器回归、权限验收、部署形态验证
-- 真实 SDK 联调环境仍待从当前 `real-pre` 进一步演进
+- Mock 联调与回归口径收敛为 `test`，`local-mock` 仅保留为历史脚本、历史报告和回滚参考口径
+- `test` 继续用于本地业务联调 / Mock 数据 / 自动化测试 / 隔离测试栈
+- `real-pre` 当前用于真实上游联调、浏览器回归、权限验收、部署形态验证
+- 第三方联调当前按精选联盟 / 团长链路统计进度；店铺商品与店铺订单接口不纳入联盟测范围，不依赖权限包的本地收口可继续推进
 
 ## 主干文档（10 个）
 
@@ -137,7 +151,6 @@
 
 ## 当前优先级
 
-1. 推进真实 SDK Token 建立与真实接口样本获取
-2. 完成 M1.6 数据看板真实化
-3. 完成 M1.7 部署验证
-4. 继续按 Gateway 逐项推进真实 SDK 联调
+1. 用真实 Webhook 样本确认具体业务事件副作用
+2. 补齐限流 / 429 等非默认分支证据
+3. 继续跟踪联盟 SKU 业务 Gateway 复验、解密成功样本、Webhook 真实事件与限流分支

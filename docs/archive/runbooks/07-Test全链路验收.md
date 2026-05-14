@@ -113,7 +113,7 @@
 
 本次按当前代码与运行环境复核：
 
-- `backend mvn test`：`410 tests, 0 failures, 0 errors`
+- `backend mvn test`：以 `docs/04-开发进度.md` 最近一次全量为准（当前记录：`652 tests, 0 failures, 0 errors`，2026-05-09）
 - `frontend npm.cmd run build`：通过
 - real-pre 浏览器全系统 E2E：`45/45` 通过
 - `/dev/test` 本轮实测 `reset=200`、`seed=200`

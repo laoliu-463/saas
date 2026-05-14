@@ -1102,3 +1102,57 @@ P1-1 下一小步建议：
 5. 对当前运行实例做一次重启确认，确保 `/api/test/**` 的 `OPTIONS` 预检放行策略真正生效。
 
 P1-2 再进入 Mock 数据一致性治理。
+
+## 15. P1-2 real-pre 真实链路联调记录
+
+更新时间：2026-05-10
+
+### 15.1 本节定位
+
+本节是 `real-pre` 真实三方链路补记，不改变本文前序 `local-mock` / `test` Mock 联调结论。
+
+本轮执行口径：
+
+- 不删除 `test` 环境容器和 volume
+- 不把 `test` 改成真实接口环境
+- `real-pre` 使用真实上游链路，`test` 继续保留为 Mock 回归兜底
+- 真实接口返回空数据或失败时，如实记录，不用 Mock 数据伪装通过
+
+证据目录：
+
+- `runtime/qa/out/real-pre-p1-2-20260510-020545`
+- `runtime/qa/out/real-pre-p1-2-product-chain-20260510-020840`
+
+### 15.2 环境隔离检查
+
+| 检查项 | 操作 | 结果 | 问题 | 下一步 |
+| --- | --- | --- | --- | --- |
+| profile 隔离 | 核对 `.env.real-pre`、`.env.test` 与运行中后端容器环境变量 | `test=SPRING_PROFILES_ACTIVE=test`；`real-pre=SPRING_PROFILES_ACTIVE=real` | 无 | 后续继续禁止把 `test` 切到真实接口 |
+| 数据库隔离 | 分别查询容器当前数据库 | `test=colonel_saas_test`；`real-pre=colonel_saas_real` | 无 | 保持 `5432/5433` 分离 |
+| Redis 隔离 | 分别 ping Redis DB | `test` 使用 Redis DB `1`；`real-pre` 使用 Redis DB `0`；均 `PONG` | 无 | Token 与业务缓存继续只写 real-pre Redis DB 0 |
+| 抖音配置隔离 | 核对 `DOUYIN_TEST_ENABLED`、`APP_TEST_ENABLED`、`DOUYIN_REAL_UPSTREAM_MODE` | `test` 为 Mock：`DOUYIN_TEST_ENABLED=true`、`APP_TEST_ENABLED=true`；`real-pre` 为真实：`DOUYIN_TEST_ENABLED=false`、`APP_TEST_ENABLED=false`、`DOUYIN_REAL_UPSTREAM_MODE=live` | 无 | 后续真实联调只走 `8081` |
+| 启动与健康检查 | `docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml up -d --build backend-real-pre frontend-real-pre`；随后访问 `/api/actuator/health` | real-pre 后端 `UP`，`3001/8081` 拓扑检查通过 | compose 提示存在旧 `saas-*` orphan 容器，但本轮未删除 | 后续如需清理旧残留，单独评估，不在本轮执行 |
+
+### 15.3 模块联调结果
+
+| 模块 | 操作 | 结果 | 问题分类 / 问题 | 下一步 |
+| --- | --- | --- | --- | --- |
+| Token 获取 / 刷新 | 管理员登录后调用 `GET /api/douyin/tokens`、`POST /api/douyin/token-refreshes`、`GET /api/douyin/institution-info` | Token 状态存在 `access_token / refresh_token`；刷新返回 `code=200`；授权主体上游返回 `10000 / success` | 无 | 继续使用现有 real-pre token；若后续 token 失效，再走授权码初始化 |
+| 活动列表 | 调用 `GET /api/douyin/activities` 与 `GET /api/colonel/activities` | 联调接口返回首批 `20` 条、总数 `21`；业务接口同样返回 `20` 条，首个活动 `3916506` | 无 | 后续优先使用活动 `3916506` 继续链路验证 |
+| 活动商品 | 调用 `GET /api/douyin/activity-product-list?activityId=3916506&count=20` 与 `GET /api/colonel/activities/3916506/products?count=20&refresh=true` | 联调接口返回 `20` 条真实商品；业务刷新返回 `20` 条，活动商品业务总数 `56` | 无 | 继续保留 `refresh=true` 作为真实样本刷新入口 |
+| 商品审核 | 首轮 `biz_staff/admin123` 登录失败；确认用户存在且启用后，用管理员接口重置 `biz_staff` 本地 real-pre 测试账号密码，再以 `biz_staff` 审核商品 `3810699728333702016` | 审核返回 `bizStatus=APPROVED`、`selectedToLibrary=true`、`auditStatus=2` | Token/账号问题：real-pre 本地测试账号密码漂移，已按文档约定修复为 `admin123` | 后续若角色流验收失败，先核账号密码是否漂移 |
+| 商品入库 | 审核后调用 `POST /api/colonel/activities/3916506/products/3810699728333702016/library-entry` 做幂等确认 | 返回 `selectedToLibrary=true`，说明审核通过自动入库与显式入库确认均成立 | 无 | 继续以“审核通过自动入库”为主链路口径 |
+| 商品分配 | `biz_leader` 查询 `/api/users/assignable?keyword=biz_staff` 后分配给招商专员 | 返回 `bizStatus=ASSIGNED`，负责人为招商专员 | 首轮失败为前序未入库导致，分类为业务前置未满足；账号修复并审核入库后已通过 | 分配前必须先确认 `selectedToLibrary=true` |
+| 真实转链 | `channel_staff` 调用 `POST /api/colonel/activities/3916506/products/3810699728333702016/promotion-links` | 返回 `code=200`，`pickSource=v.MxZLIw`、`pickExtra=channel_channelstaff`、`shortId` 非空、`promoteLink` 非空；详情回读为 `bizStatus=LINKED`、`promotionLinkStatus=READY`、`copyEnabled=true` | 无；上游本次未返回短链，不阻塞主推广链接复制 | 继续以 `buyin.instPickSourceConvert -> promoteLink/product_url` 为主转链入口 |
+| `pick_source_mapping` | 查询 real-pre 数据库 `pick_source_mapping` 与 `promotion_link` | `3916506 / 3810699728333702016` 已写入 `pick_source_mapping`，同时存在 `promotion_link` 记录；校正证据见 `db-mapping-corrected.json` | 证据脚本首版 SQL 引号写法误报 `0`，已用修正 SQL 复核存在 | 后续脚本化复核需避免 shell/SQL 双层引号误判 |
+| 订单同步 | 调用 `POST /api/orders/sync`，时间窗为最近 `7` 天 | 返回 `totalFetched=100 / created=5 / updated=95 / attributed=95 / unattributed=5 / failed=0` | 无同步失败；真实接口不是空数据 | 后续继续观察新增订单的未归因原因分布 |
+| 订单归因 | 调用 `GET /api/orders/stats?timeField=createTime` 与 `POST /api/orders/replay-attribution` dry-run | 订单同步后全库 `totalOrders=1802 / attributedOrders=1665 / unattributedOrders=137 / syncFailedOrders=0`；dry-run 扫描 `50` 单，`attributed=0 / unattributed=50`；最终收口复核更新为 `totalOrders=1821 / attributedOrders=1683 / unattributedOrders=138` | 数据为空/映射缺口问题：未归因仍集中在缺少本地活动/商品/mapping，不能判成代码同步失败 | 下一步补齐缺失活动与 `activity_id + product_id` 映射后再重放归因 |
+| Dashboard 展示 | 调用 `GET /api/dashboard/metrics?timeField=createTime` 与 `GET /api/dashboard/summary` | 同步后 `todayOrderCount=617`、`todayGmv=12081.57`、`serviceFee=181.55`、`grossProfit=127.07`；最终收口复核为 `todayOrderCount=636`、`todayGmv=12448.27`；Summary 可返回 | 无 | 后续 M1.6 继续做看板真实化字段口径细化 |
+
+### 15.4 本轮结论
+
+P1-2 `real-pre` 真实链路本轮已覆盖 Token、活动、活动商品、商品审核入库、分配、真实转链、`pick_source_mapping`、订单同步、订单归因统计与 Dashboard 展示。
+
+本轮没有把 `test` 改成真实接口环境，也没有删除 `test` 容器或 volume。
+
+剩余问题不是“订单同步入口失败”，而是部分真实订单仍缺本地活动 / 商品 / 映射组合，导致 `COLONEL_MAPPING_NOT_FOUND` 无法通过 dry-run 重算归因。下一步应围绕缺失映射补齐，而不是用 Mock 订单覆盖真实未归因结果。
