@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.result.PageResult;
+import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.entity.ProductOperationState;
@@ -10,9 +11,11 @@ import com.colonel.saas.entity.PromotionLink;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.TalentFollowRecord;
+import com.colonel.saas.douyin.api.ActivityApi;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.MerchantMapper;
 import com.colonel.saas.mapper.ProductOperationLogMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
@@ -38,6 +41,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -66,7 +70,11 @@ class ProductServiceTest {
     @Mock
     private ProductBizStatusService productBizStatusService;
     @Mock
+    private ColonelsettlementActivityMapper colonelActivityMapper;
+    @Mock
     private TalentFollowService talentFollowService;
+    @Mock
+    private ActivityApi activityApi;
 
     private ProductService service;
 
@@ -84,7 +92,9 @@ class ProductServiceTest {
                 sysUserMapper,
                 pickSourceMappingService,
                 productBizStatusService,
-                talentFollowService
+                colonelActivityMapper,
+                talentFollowService,
+                activityApi
         );
     }
 
@@ -122,6 +132,53 @@ class ProductServiceTest {
         verify(snapshotMapper, never()).insert(any(ProductSnapshot.class));
         verify(snapshotMapper, never()).updateById(any(ProductSnapshot.class));
         verify(snapshotMapper).upsert(any(ProductSnapshot.class));
+    }
+
+    @Test
+    void refreshActivitySnapshots_shouldFollowCursorUntilNoNextPage() {
+        when(snapshotMapper.selectById(any(UUID.class))).thenReturn(null);
+        when(snapshotMapper.upsert(any(ProductSnapshot.class))).thenReturn(1);
+        when(operationStateMapper.selectOne(any())).thenReturn(null);
+        List<DouyinProductGateway.ActivityProductItem> firstPageItems = java.util.stream.LongStream.rangeClosed(9001L, 9020L)
+                .mapToObj(id -> buildItem(id, "第一页商品-" + id))
+                .toList();
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenReturn(new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        10001L,
+                        30001L,
+                        40L,
+                        "cursor-2",
+                        firstPageItems
+                ))
+                .thenReturn(new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        10001L,
+                        30001L,
+                        40L,
+                        "",
+                        List.of(buildItem(9021L, "第二页商品"))
+                ));
+
+        int refreshed = service.refreshActivitySnapshots(new DouyinProductGateway.ActivityProductQueryRequest(
+                null,
+                "10001",
+                4L,
+                1L,
+                20,
+                null,
+                0,
+                null,
+                null,
+                1L,
+                null,
+                null
+        ));
+
+        assertThat(refreshed).isEqualTo(21);
+        verify(douyinProductGateway, times(2)).queryActivityProducts(any());
+        verify(snapshotMapper, times(21)).upsert(any(ProductSnapshot.class));
+        verify(productBizStatusService, times(21)).initStateIfAbsent(any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -191,6 +248,7 @@ class ProductServiceTest {
         snapshot.setActivityId("10001");
         snapshot.setProductId("9001");
         snapshot.setDetailUrl("https://example.com/detail");
+        snapshot.setRawPayload("{\"extra_data\":{\"colonel_buyin_id\":\"7351155267604218149\"}}");
         ProductOperationState state = new ProductOperationState();
         state.setActivityId("10001");
         state.setProductId("9001");
@@ -220,8 +278,187 @@ class ProductServiceTest {
         assertThat(result.pickExtra()).isEqualTo(expectedPickExtra);
         verify(douyinPromotionGateway).generateLink(any());
         verify(promotionLinkMapper).insert(any(PromotionLink.class));
-        verify(pickSourceMappingService).saveOrUpdate(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(pickSourceMappingService).saveOrUpdate(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(productBizStatusService).changeStatus(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void generatePromotionLink_shouldPreferSnapshotOriginBuyinIdBeforeActivityLevelBuyin() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId("3859423");
+        snapshot.setProductId("3816127512791089531");
+        snapshot.setDetailUrl("https://example.com/detail");
+        snapshot.setRawPayload("{\"origin_colonel_buyin_id\":\"7293293346398011698\",\"colonel_buyin_id\":\"7351155267604218149\"}");
+        ProductOperationState state = new ProductOperationState();
+        state.setActivityId("3859423");
+        state.setProductId("3816127512791089531");
+        state.setBizStatus("ASSIGNED");
+        state.setSelectedToLibrary(true);
+        SysUser user = new SysUser();
+        user.setRealName("渠道A");
+        user.setChannelCode("channela");
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(douyinPromotionGateway.generateLink(any())).thenReturn(
+                new DouyinPromotionGateway.PromotionLinkResult(
+                        "SID12345",
+                        "channel_channela",
+                        "SID12345",
+                        "https://s.link",
+                        "https://p.link",
+                        "seed"
+                )
+        );
+
+        service.generatePromotionLink("3859423", "3816127512791089531", userId, deptId, null, null, true);
+
+        ArgumentCaptor<String> buyinCaptor = ArgumentCaptor.forClass(String.class);
+        verify(pickSourceMappingService).saveOrUpdate(
+                eq(userId),
+                any(),
+                eq(deptId),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                eq("3816127512791089531"),
+                eq("3859423"),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                buyinCaptor.capture(),
+                eq(PickSourceMappingService.SOURCE_TYPE_NATIVE)
+        );
+        assertThat(buyinCaptor.getValue()).isEqualTo("7293293346398011698");
+        verify(colonelActivityMapper, never()).selectByActivityId("3859423");
+        verify(colonelActivityMapper, never()).selectExtraDataByActivityId("3859423");
+        verify(activityApi, never()).detail(any(), any());
+    }
+
+    @Test
+    void generatePromotionLink_shouldPersistNativeMappingWhenLinkedProductIsRetried() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId("3859423");
+        snapshot.setProductId("3816127512791089531");
+        snapshot.setDetailUrl("https://example.com/detail");
+        snapshot.setRawPayload("{\"origin_colonel_buyin_id\":\"7293293346398011698\"}");
+        ProductOperationState state = new ProductOperationState();
+        state.setId(UUID.randomUUID());
+        state.setActivityId("3859423");
+        state.setProductId("3816127512791089531");
+        state.setBizStatus("LINKED");
+        state.setSelectedToLibrary(true);
+        SysUser user = new SysUser();
+        user.setRealName("渠道A");
+        user.setChannelCode("channela");
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(douyinPromotionGateway.generateLink(any())).thenReturn(
+                new DouyinPromotionGateway.PromotionLinkResult(
+                        "SID12345",
+                        "channel_channela",
+                        "SID12345",
+                        "https://s.link",
+                        "https://p.link",
+                        "seed"
+                )
+        );
+
+        DouyinPromotionGateway.PromotionLinkResult result =
+                service.generatePromotionLink("3859423", "3816127512791089531", userId, deptId, null, null, true);
+
+        assertThat(result.promoteLink()).isEqualTo("https://p.link");
+        verify(promotionLinkMapper).insert(any(PromotionLink.class));
+        verify(operationStateMapper).updateById(state);
+        verify(productBizStatusService).logStatusChange(
+                eq("3859423"),
+                eq("3816127512791089531"),
+                eq("PROMOTION_LINK"),
+                eq(ProductBizStatus.LINKED),
+                eq(ProductBizStatus.LINKED),
+                eq(userId),
+                eq(deptId),
+                any(),
+                eq("已转链商品重新生成推广链接"),
+                eq(true),
+                eq(null)
+        );
+        verify(productBizStatusService, never()).changeStatus(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(pickSourceMappingService).saveOrUpdate(
+                eq(userId),
+                any(),
+                eq(deptId),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                eq("3816127512791089531"),
+                eq("3859423"),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                eq("7293293346398011698"),
+                eq(PickSourceMappingService.SOURCE_TYPE_NATIVE)
+        );
+    }
+
+    @Test
+    void generatePromotionLink_shouldHydrateActivityDetailWhenLocalActivityMissing() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId("3859423");
+        snapshot.setProductId("3816127512791089531");
+        snapshot.setDetailUrl("https://example.com/detail");
+        ProductOperationState state = new ProductOperationState();
+        state.setActivityId("3859423");
+        state.setProductId("3816127512791089531");
+        state.setBizStatus("ASSIGNED");
+        state.setSelectedToLibrary(true);
+        SysUser user = new SysUser();
+        user.setRealName("渠道A");
+        user.setChannelCode("channela");
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(colonelActivityMapper.selectByActivityId("3859423")).thenReturn(null);
+        when(colonelActivityMapper.selectExtraDataByActivityId("3859423")).thenReturn(Map.of());
+        when(activityApi.detail(null, "3859423")).thenReturn(Map.of(
+                "data", Map.of(
+                        "colonel_buyin_id", "7351155267604218149",
+                        "activity_name", "活动A",
+                        "shop_id", "123",
+                        "shop_name", "店铺A",
+                        "status", "ONLINE"
+                )
+        ));
+        when(douyinPromotionGateway.generateLink(any())).thenReturn(
+                new DouyinPromotionGateway.PromotionLinkResult(
+                        "SID12345",
+                        "channel_channela",
+                        "SID12345",
+                        "https://s.link",
+                        "https://p.link",
+                        "seed"
+                )
+        );
+
+        service.generatePromotionLink("3859423", "3816127512791089531", userId, deptId, null, null, true);
+
+        verify(colonelActivityMapper).upsertRealActivityMeta(any(), eq("3859423"), any(), any(), any(), eq(7351155267604218149L), any(), any(), any(), any(), any(), any(), any());
+        verify(pickSourceMappingService).saveOrUpdate(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq("7351155267604218149"), eq(PickSourceMappingService.SOURCE_TYPE_NATIVE));
     }
 
     @Test
@@ -865,7 +1102,9 @@ class ProductServiceTest {
                 "2026-05-01",
                 "2026-04-01",
                 "2026-05-01",
-                "https://example.com/detail"
+                "https://example.com/detail",
+                null,
+                Map.of()
         );
     }
 }

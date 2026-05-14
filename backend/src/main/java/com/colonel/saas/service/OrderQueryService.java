@@ -361,6 +361,8 @@ public class OrderQueryService {
         return switch (value) {
             case AttributionService.REASON_NO_PICK_SOURCE, "订单未携带推广参数" -> "订单未携带推广参数";
             case AttributionService.REASON_MAPPING_NOT_FOUND, "pick_source 未匹配到有效归因映射" -> "未找到对应推广链接";
+            case AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND -> "原生团长订单未找到归因映射";
+            case AttributionService.REASON_COLONEL_MAPPING_AMBIGUOUS -> "原生团长订单命中多条归因映射";
             case AttributionService.REASON_PRODUCT_NOT_FOUND -> "未匹配到本地商品库";
             case AttributionService.REASON_ACTIVITY_NOT_FOUND -> "商品未关联活动";
             case AttributionService.REASON_CHANNEL_NOT_FOUND -> "未匹配到渠道负责人";
@@ -377,6 +379,10 @@ public class OrderQueryService {
             case AttributionService.REASON_NO_PICK_SOURCE, "订单未携带推广参数" -> "请确认达人是否使用系统生成的推广链接。";
             case AttributionService.REASON_MAPPING_NOT_FOUND, "pick_source 未匹配到有效归因映射" ->
                     "请检查该 pick_source 是否由系统转链生成，或是否已过期/未落库。";
+            case AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND ->
+                    "请确认该原生团长订单对应的活动、商品和推广映射是否已落库。";
+            case AttributionService.REASON_COLONEL_MAPPING_AMBIGUOUS ->
+                    "请排查同一活动商品是否存在多条渠道映射，避免原生团长订单串单。";
             case AttributionService.REASON_PRODUCT_NOT_FOUND -> "请检查商品主链路是否已同步入库。";
             case AttributionService.REASON_ACTIVITY_NOT_FOUND -> "请检查该商品是否已绑定活动并完成状态落库。";
             case AttributionService.REASON_CHANNEL_NOT_FOUND -> "请检查渠道负责人是否已完成分配。";

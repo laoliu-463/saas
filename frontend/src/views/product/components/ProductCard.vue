@@ -1,6 +1,7 @@
 <template>
   <div
     class="product-card-shell"
+    data-testid="product-card"
     :class="{ expanded }"
     @mouseenter="$emit('toggle', product.productId)"
     @mouseleave="$emit('toggle', null)"
@@ -108,7 +109,7 @@
               >
                 已入商品库
               </n-tag>
-              <n-button size="small" quaternary @click.stop="$emit('detail', product)">详情</n-button>
+              <n-button size="small" quaternary data-testid="product-detail-button" @click.stop="$emit('detail', product)">详情</n-button>
             </div>
           </div>
         </div>
@@ -179,7 +180,7 @@
             <div class="section-label">快速操作</div>
             <n-space vertical :size="8">
               <n-tag v-if="product.selectedToLibrary" type="success" size="small" round>已入商品库</n-tag>
-              <n-button block size="small" type="primary" secondary @click.stop="$emit('copyLink', product)">
+              <n-button block size="small" type="primary" secondary data-testid="product-copy-link" @click.stop="$emit('copyLink', product)">
                 一键复制专属推广链接
               </n-button>
               <n-button block size="small" @click.stop="$emit('showLogs', product)">

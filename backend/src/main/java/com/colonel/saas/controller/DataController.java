@@ -20,7 +20,6 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.service.CommissionService;
-import com.colonel.saas.service.OrderDecryptService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -54,7 +53,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Validated
-@Tag(name = "数据平台", description = "数据页专用接口，包括订单数据页、核心指标、手机号解密、导出与运营监控。")
+@Tag(name = "数据平台", description = "数据页专用接口，包括订单数据页、核心指标、导出与运营监控。")
 @RestController
 @RequestMapping
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
@@ -63,7 +62,6 @@ public class DataController extends BaseController {
     private static final long EXPORT_BATCH_SIZE = 2000L;
 
     private final ColonelsettlementOrderMapper orderMapper;
-    private final OrderDecryptService orderDecryptService;
     private final CommissionService commissionService;
     private final ExclusiveTalentMapper exclusiveTalentMapper;
     private final ExclusiveMerchantMapper exclusiveMerchantMapper;
@@ -71,13 +69,11 @@ public class DataController extends BaseController {
 
     public DataController(
             ColonelsettlementOrderMapper orderMapper,
-            OrderDecryptService orderDecryptService,
             CommissionService commissionService,
             ExclusiveTalentMapper exclusiveTalentMapper,
             ExclusiveMerchantMapper exclusiveMerchantMapper,
             ColonelsettlementActivityMapper activityMapper) {
         this.orderMapper = orderMapper;
-        this.orderDecryptService = orderDecryptService;
         this.commissionService = commissionService;
         this.exclusiveTalentMapper = exclusiveTalentMapper;
         this.exclusiveMerchantMapper = exclusiveMerchantMapper;
@@ -95,6 +91,7 @@ public class DataController extends BaseController {
             @Parameter(description = "商家 merchant_id（字符串），精确匹配。") @RequestParam(required = false) String merchantId,
             @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "时间字段：createTime（默认）或 settleTime。") @RequestParam(required = false) String timeField,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
@@ -105,9 +102,10 @@ public class DataController extends BaseController {
                 ? LocalDate.now().plusDays(1).atStartOfDay()
                 : endDate.plusDays(1).atStartOfDay();
 
+        String timeColumn = resolveAliasedOrderTimeColumn(timeField);
         QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
-        wrapper.ge("co.settle_time", start)
-                .lt("co.settle_time", end);
+        wrapper.ge(timeColumn, start)
+                .lt(timeColumn, end);
         applyPageDataScope(wrapper, userId, deptId, dataScope);
         if (StringUtils.hasText(orderId)) {
             wrapper.like("co.order_id", orderId.trim());
@@ -138,7 +136,7 @@ public class DataController extends BaseController {
     @Operation(summary = "核心指标", description = "查询数据页首页核心指标与近 7 天趋势。该接口面向数据看板展示，不承担订单归因主逻辑。")
     @GetMapping("/dashboard/metrics")
     public ApiResult<MetricsVO> getMetrics(
-            @Parameter(description = "时间字段：settleTime（默认）或 createTime。") @RequestParam(required = false) String timeField,
+            @Parameter(description = "时间字段：createTime（默认）或 settleTime。") @RequestParam(required = false) String timeField,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
@@ -230,24 +228,6 @@ public class DataController extends BaseController {
         return ok(metrics);
     }
 
-    @Operation(summary = "订单手机号解密（仅展示，不落库）", description = "按订单 ID 列表解密手机号，仅返回展示结果，不写回数据库。")
-    @PostMapping("/orders/phone-decryptions")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
-    public ApiResult<List<OrderDecryptService.DecryptPhoneVO>> decryptOrderPhones(
-            @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "手机号解密请求体。",
-                    required = true,
-                    content = @Content(examples = @ExampleObject(value = "{\"orderIds\":[\"ORDER_001\",\"ORDER_002\"]}"))
-            )
-            @RequestBody DecryptOrderRequest request,
-            @RequestAttribute(value = "userId", required = false) UUID userId,
-            @RequestAttribute(value = "username", required = false) String username) {
-        if (request == null || request.getOrderIds() == null) {
-            throw new BusinessException("orderIds cannot be empty");
-        }
-        return ok(orderDecryptService.decryptPhones(request.getOrderIds(), userId, username));
-    }
-
     @Operation(summary = "导出订单CSV", description = "按筛选条件导出订单数据页 CSV。")
     @GetMapping("/orders/exports")
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
@@ -257,6 +237,7 @@ public class DataController extends BaseController {
             @Parameter(description = "商家 merchant_id（字符串），精确匹配。") @RequestParam(required = false) String merchantId,
             @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "时间字段：createTime（默认）或 settleTime。") @RequestParam(required = false) String timeField,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
@@ -269,9 +250,10 @@ public class DataController extends BaseController {
                 ? LocalDate.now().plusDays(1).atStartOfDay()
                 : endDate.plusDays(1).atStartOfDay();
 
+        String timeColumn = resolveAliasedOrderTimeColumn(timeField);
         QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
-        wrapper.ge("co.settle_time", start)
-                .lt("co.settle_time", end);
+        wrapper.ge(timeColumn, start)
+                .lt(timeColumn, end);
         applyPageDataScope(wrapper, userId, deptId, dataScope);
         if (StringUtils.hasText(status)) {
             wrapper.eq("co.order_status", toOrderStatusCode(status));
@@ -294,7 +276,7 @@ public class DataController extends BaseController {
         response.setHeader("Content-Disposition", "attachment; filename=\"orders.csv\"");
         PrintWriter writer = response.getWriter();
         writer.write('\ufeff');
-        writer.println("订单号,商品名称,达人名称,金额,归因来源,状态,创建时间");
+        writer.println("订单号,商品名称,达人名称,金额,归因来源,状态,创建时间,结算时间");
 
         long current = 1L;
         while (true) {
@@ -305,14 +287,15 @@ public class DataController extends BaseController {
             }
             for (ColonelsettlementOrder order : orders) {
                 OrderVO vo = toOrderVO(order);
-                writer.printf("%s,%s,%s,%s,%s,%s,%s%n",
+                writer.printf("%s,%s,%s,%s,%s,%s,%s,%s%n",
                         csvEscape(vo.getId()),
                         csvEscape(vo.getProductName()),
                         csvEscape(vo.getTalentName()),
                         csvEscape(vo.getAmount()),
                         csvEscape(vo.getAttributionSource() == null ? "默认归属" : vo.getAttributionSource()),
                         csvEscape(vo.getStatus()),
-                        csvEscape(vo.getCreateTime()));
+                        csvEscape(vo.getCreateTime()),
+                        csvEscape(vo.getSettleTime()));
             }
             if (current >= pageResult.getPages()) {
                 break;
@@ -438,14 +421,18 @@ public class DataController extends BaseController {
 
     private String resolveTimeColumn(String timeField) {
         if (!StringUtils.hasText(timeField)) {
-            return "settle_time";
+            return "create_time";
         }
         String normalized = timeField.trim().toLowerCase(Locale.ROOT);
         return switch (normalized) {
             case "createtime", "create_time", "create" -> "create_time";
             case "settletime", "settle_time", "settle" -> "settle_time";
-            default -> "settle_time";
+            default -> "create_time";
         };
+    }
+
+    private String resolveAliasedOrderTimeColumn(String timeField) {
+        return "co." + resolveTimeColumn(timeField);
     }
 
     private OrderVO toOrderVO(ColonelsettlementOrder order) {
@@ -459,6 +446,7 @@ public class DataController extends BaseController {
         vo.setFreight(centToYuan(0L));
         vo.setStatus(fromOrderStatusCode(order.getOrderStatus()));
         vo.setCreateTime(order.getCreateTime());
+        vo.setSettleTime(order.getSettleTime());
 
         String source = order.getPickSource();
         if (order.getExtraData() != null && order.getExtraData().containsKey("attributionSource")) {
@@ -674,6 +662,7 @@ public class DataController extends BaseController {
         private String status;
         private String attributionSource;
         private LocalDateTime createTime;
+        private LocalDateTime settleTime;
 
         public String getId() {
             return id;
@@ -753,6 +742,14 @@ public class DataController extends BaseController {
 
         public void setCreateTime(LocalDateTime createTime) {
             this.createTime = createTime;
+        }
+
+        public LocalDateTime getSettleTime() {
+            return settleTime;
+        }
+
+        public void setSettleTime(LocalDateTime settleTime) {
+            this.settleTime = settleTime;
         }
     }
 
@@ -922,16 +919,4 @@ public class DataController extends BaseController {
         }
     }
 
-    public static class DecryptOrderRequest {
-        @Schema(description = "订单 ID 列表。", example = "[\"ORDER_001\",\"ORDER_002\"]")
-        private List<String> orderIds;
-
-        public List<String> getOrderIds() {
-            return orderIds;
-        }
-
-        public void setOrderIds(List<String> orderIds) {
-            this.orderIds = orderIds;
-        }
-    }
 }

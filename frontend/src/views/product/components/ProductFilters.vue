@@ -150,8 +150,7 @@ const statusOptions = [
 .product-toolbar {
   background: var(--bg-card);
   border-radius: var(--radius-md);
-  padding: var(--spacing-lg) 20px;
-  margin-bottom: var(--spacing-md);
-  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  margin-bottom: 16px;
 }
 </style>

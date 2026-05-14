@@ -26,6 +26,7 @@
         :collapsed-width="64"
         :collapsed-icon-size="22"
         :indent="18"
+        data-testid="sidebar-menu"
         @update:value="handleMenuClick"
       />
       <div v-else class="empty-tip">当前账号没有可见菜单</div>

@@ -52,6 +52,7 @@
             <n-input
               v-model:value="form.username"
               placeholder="请输入用户名"
+              data-testid="login-username"
               :input-props="{ autocomplete: 'username' }"
             >
               <template #prefix>
@@ -65,6 +66,7 @@
               v-model:value="form.password"
               type="password"
               placeholder="请输入密码"
+              data-testid="login-password"
               show-password-on="click"
               :input-props="{ autocomplete: 'current-password' }"
             >
@@ -80,6 +82,7 @@
             attr-type="submit"
             :loading="loading"
             class="login-btn"
+            data-testid="login-submit"
           >
             登 录
           </n-button>

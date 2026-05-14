@@ -1,15 +1,15 @@
 <template>
-  <div class="dashboard">
+  <div class="dashboard" data-testid="data-dashboard-page">
     <PageHeader
       :title="pageTitle"
       :description="pageDesc"
     >
       <template #actions>
-        <n-radio-group v-model:value="timeField" size="small" @update:value="loadMetrics">
-          <n-radio-button value="settleTime">按结算时间</n-radio-button>
+        <n-radio-group v-model:value="timeField" size="small" data-testid="dashboard-time-field" @update:value="loadMetrics">
           <n-radio-button value="createTime">按创建时间</n-radio-button>
+          <n-radio-button value="settleTime">按结算时间</n-radio-button>
         </n-radio-group>
-        <n-button type="primary" size="small" @click="$router.push('/data/orders')">
+        <n-button type="primary" size="small" data-testid="dashboard-orders-link" @click="$router.push('/data/orders')">
           查看完整明细
         </n-button>
       </template>
@@ -33,8 +33,8 @@
     <!-- 主指标卡片 -->
     <n-spin :show="loading && initialized">
       <template v-if="!showSkeleton">
-      <div class="metric-cards">
-        <div class="metric-card">
+      <div class="metric-cards" data-testid="dashboard-metric-cards">
+        <div class="metric-card" data-testid="dashboard-metric-orders">
           <div class="metric-icon orders">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
               <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
@@ -42,12 +42,12 @@
           </div>
           <div class="metric-body">
             <div class="metric-label">{{ metricLabels.orders }}</div>
-            <div class="metric-value">{{ metrics.totalOrders ?? 0 }}</div>
-            <div class="metric-trend up">较上周 +12.5%</div>
+            <div class="metric-value">{{ displayOrderCount }}</div>
+            <div class="metric-trend" :class="ordersTrendClass">{{ ordersTrendText }}</div>
           </div>
         </div>
 
-        <div class="metric-card">
+        <div class="metric-card" data-testid="dashboard-metric-amount">
           <div class="metric-icon amount">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
               <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
@@ -55,12 +55,12 @@
           </div>
           <div class="metric-body">
             <div class="metric-label">{{ metricLabels.amount }}</div>
-            <div class="metric-value">¥{{ metrics.totalAmount || '0.00' }}</div>
-            <div class="metric-trend up">较上周 +8.3%</div>
+            <div class="metric-value">¥{{ displayGmv }}</div>
+            <div class="metric-trend" :class="amountTrendClass">{{ amountTrendText }}</div>
           </div>
         </div>
 
-        <div class="metric-card">
+        <div class="metric-card" data-testid="dashboard-metric-fee">
           <div class="metric-icon fee">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
               <circle cx="12" cy="12" r="10"/><path d="M16 8h-4a2 2 0 000 4h2a2 2 0 010 4h-5"/>
@@ -69,11 +69,11 @@
           <div class="metric-body">
             <div class="metric-label">{{ metricLabels.fee }}</div>
             <div class="metric-value">¥{{ metrics.serviceFee || '0.00' }}</div>
-            <div class="metric-trend up">较上周 +5.7%</div>
+            <div class="metric-trend neutral">{{ metricScopeText }}</div>
           </div>
         </div>
 
-        <div class="metric-card">
+        <div class="metric-card" data-testid="dashboard-metric-profit">
           <div class="metric-icon profit">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
               <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
@@ -82,9 +82,31 @@
           <div class="metric-body">
             <div class="metric-label">{{ metricLabels.profit }}</div>
             <div class="metric-value">¥{{ metrics.grossProfit || '0.00' }}</div>
-            <div class="metric-trend down">较上周 -2.1%</div>
+            <div class="metric-trend neutral">{{ metricScopeText }}</div>
           </div>
         </div>
+      </div>
+
+      <!-- 近 7 日真实趋势 -->
+      <div v-if="trendPoints.length" class="trend-section" data-testid="dashboard-real-trend">
+        <div class="trend-header">
+          <h3 class="section-title">近 7 日真实趋势</h3>
+          <span class="trend-scope">{{ timeScopeDescription }}</span>
+        </div>
+
+        <div class="trend-summary-list">
+          <div v-for="item in trendSummaryItems" :key="item.label" class="trend-summary-item">
+            <span class="trend-summary-label">{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+
+        <div
+          ref="trendChartRef"
+          class="trend-chart"
+          data-testid="dashboard-real-trend-chart"
+          aria-label="近 7 日订单数与 GMV 趋势图"
+        ></div>
       </div>
 
       <!-- 业绩分拆标签组 -->
@@ -154,8 +176,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
+import * as echarts from 'echarts/core'
+import { BarChart, LineChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+echarts.use([
+  BarChart,
+  LineChart,
+  GridComponent,
+  LegendComponent,
+  TooltipComponent,
+  CanvasRenderer
+])
+
 import PageHeader from '../../components/PageHeader.vue'
 import { getMetrics } from '../../api/data'
 import { useAuthStore } from '../../stores/auth'
@@ -166,7 +202,15 @@ const authStore = useAuthStore()
 const loading = ref(false)
 const initialized = ref(false)
 const metrics = ref<any>({})
-const timeField = ref<'settleTime' | 'createTime'>('settleTime')
+const timeField = ref<'settleTime' | 'createTime'>('createTime')
+const trendChartRef = ref<HTMLDivElement | null>(null)
+type TrendChartInstance = {
+  setOption: (option: Record<string, unknown>, notMerge?: boolean) => void
+  resize: () => void
+  dispose: () => void
+}
+
+let trendChart: TrendChartInstance | null = null
 const showSkeleton = computed(() => loading.value && !initialized.value)
 const INITIAL_SKELETON_MIN_MS = 1200
 const ROLE = ROLE_CODES
@@ -210,6 +254,207 @@ const metricLabels = computed(() => {
   }
 })
 
+interface TrendPoint {
+  date: string
+  dateLabel: string
+  orderCount: number
+  gmv: number
+  gmvText: string
+}
+
+const toNumber = (value: unknown) => {
+  const parsed = Number(value ?? 0)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const formatAmount = (value: number) => toNumber(value).toFixed(2)
+
+const displayOrderCount = computed(() => toNumber(metrics.value?.todayOrderCount ?? metrics.value?.totalOrders))
+
+const displayGmv = computed(() => formatAmount(toNumber(metrics.value?.todayGmv ?? metrics.value?.totalAmount)))
+
+const timeScopeLabel = computed(() => timeField.value === 'createTime' ? '按创建时间统计' : '按结算时间统计')
+
+const metricScopeText = computed(() => (
+  timeField.value === 'createTime' ? '统计已同步真实订单' : '仅统计已结算订单'
+))
+
+const timeScopeDescription = computed(() => (
+  timeField.value === 'createTime'
+    ? '默认按订单创建时间统计，适合运营日报和 real-pre 回流复核'
+    : '按结算时间统计，仅纳入已结算订单，适合收益复核'
+))
+
+const trendPoints = computed<TrendPoint[]>(() => {
+  const rows = Array.isArray(metrics.value?.trend7d) ? metrics.value.trend7d : []
+  return rows.map((row: any) => {
+    const date = String(row?.date || '')
+    const gmv = toNumber(row?.gmv ?? row?.orderAmount ?? row?.amount)
+    return {
+      date,
+      dateLabel: date ? date.slice(5) : '-',
+      orderCount: toNumber(row?.orderCount),
+      gmv,
+      gmvText: formatAmount(gmv)
+    }
+  })
+})
+
+const latestTrendPoint = computed(() => {
+  const rows = trendPoints.value
+  return rows.length ? rows[rows.length - 1] : null
+})
+
+const previousTrendPoint = computed(() => {
+  const rows = trendPoints.value
+  return rows.length > 1 ? rows[rows.length - 2] : null
+})
+
+const formatSignedCount = (delta: number) => `${delta > 0 ? '+' : ''}${Math.trunc(delta)} 单`
+const formatSignedAmount = (delta: number) => `${delta > 0 ? '+' : ''}${formatAmount(delta)} 元`
+
+const buildDeltaText = (
+  current: number,
+  previous: number | null,
+  formatter: (delta: number) => string
+) => {
+  if (previous === null) return `${timeScopeLabel.value} · 暂无昨日对比`
+  const delta = current - previous
+  if (delta === 0) return '较昨日持平'
+  if (previous === 0) return `较昨日 ${formatter(delta)}`
+  const percent = (delta / Math.abs(previous)) * 100
+  return `较昨日 ${formatter(delta)} (${delta > 0 ? '+' : ''}${percent.toFixed(1)}%)`
+}
+
+const buildTrendClass = (current: number, previous: number | null) => {
+  if (previous === null) return 'neutral'
+  const delta = current - previous
+  if (delta > 0) return 'up'
+  if (delta < 0) return 'down'
+  return 'flat'
+}
+
+const ordersTrendText = computed(() => buildDeltaText(
+  latestTrendPoint.value?.orderCount ?? 0,
+  previousTrendPoint.value?.orderCount ?? null,
+  formatSignedCount
+))
+
+const amountTrendText = computed(() => buildDeltaText(
+  latestTrendPoint.value?.gmv ?? 0,
+  previousTrendPoint.value?.gmv ?? null,
+  formatSignedAmount
+))
+
+const ordersTrendClass = computed(() => buildTrendClass(
+  latestTrendPoint.value?.orderCount ?? 0,
+  previousTrendPoint.value?.orderCount ?? null
+))
+
+const amountTrendClass = computed(() => buildTrendClass(
+  latestTrendPoint.value?.gmv ?? 0,
+  previousTrendPoint.value?.gmv ?? null
+))
+
+const trendTotalOrders = computed(() => trendPoints.value.reduce((total, item) => total + item.orderCount, 0))
+
+const trendTotalGmv = computed(() => trendPoints.value.reduce((total, item) => total + item.gmv, 0))
+
+const peakTrendPoint = computed(() => (
+  trendPoints.value.reduce<TrendPoint | null>((peak, item) => {
+    if (!peak || item.orderCount > peak.orderCount) return item
+    return peak
+  }, null)
+))
+
+const trendSummaryItems = computed(() => [
+  { label: '7 日订单', value: `${trendTotalOrders.value} 单` },
+  { label: '7 日 GMV', value: `¥${formatAmount(trendTotalGmv.value)}` },
+  {
+    label: '峰值日期',
+    value: peakTrendPoint.value
+      ? `${peakTrendPoint.value.dateLabel} · ${peakTrendPoint.value.orderCount} 单`
+      : '-'
+  }
+])
+
+const resizeTrendChart = () => {
+  trendChart?.resize()
+}
+
+const renderTrendChart = async () => {
+  await nextTick()
+  if (!trendChartRef.value || !trendPoints.value.length) return
+  if (!trendChart) {
+    trendChart = echarts.init(trendChartRef.value) as unknown as TrendChartInstance
+  }
+
+  trendChart.setOption({
+    color: ['#2563EB', '#16A34A'],
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      valueFormatter: (value: number | string) => String(value)
+    },
+    legend: {
+      top: 0,
+      right: 0,
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { color: '#64748B' }
+    },
+    grid: {
+      top: 42,
+      right: 56,
+      bottom: 28,
+      left: 48
+    },
+    xAxis: {
+      type: 'category',
+      data: trendPoints.value.map((item) => item.dateLabel),
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: '#CBD5E1' } },
+      axisLabel: { color: '#64748B' }
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: '订单',
+        minInterval: 1,
+        axisLabel: { color: '#64748B' },
+        splitLine: { lineStyle: { color: '#E2E8F0' } }
+      },
+      {
+        type: 'value',
+        name: 'GMV',
+        axisLabel: {
+          color: '#64748B',
+          formatter: (value: number) => `¥${value}`
+        },
+        splitLine: { show: false }
+      }
+    ],
+    series: [
+      {
+        name: '订单数',
+        type: 'bar',
+        data: trendPoints.value.map((item) => item.orderCount),
+        barMaxWidth: 28,
+        itemStyle: { borderRadius: [4, 4, 0, 0] }
+      },
+      {
+        name: 'GMV',
+        type: 'line',
+        yAxisIndex: 1,
+        data: trendPoints.value.map((item) => Number(item.gmv.toFixed(2))),
+        smooth: true,
+        symbolSize: 7,
+        lineStyle: { width: 3 }
+      }
+    ]
+  }, true)
+}
+
 const loadMetrics = async () => {
   const startedAt = Date.now()
   loading.value = true
@@ -228,11 +473,23 @@ const loadMetrics = async () => {
     }
     initialized.value = true
     loading.value = false
+    void renderTrendChart()
   }
 }
 
 onMounted(() => {
   loadMetrics()
+  window.addEventListener('resize', resizeTrendChart)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', resizeTrendChart)
+  trendChart?.dispose()
+  trendChart = null
+})
+
+watch(trendPoints, () => {
+  renderTrendChart()
 })
 </script>
 
@@ -349,6 +606,70 @@ onMounted(() => {
   color: var(--color-danger);
 }
 
+.metric-trend.flat,
+.metric-trend.neutral {
+  color: var(--text-muted);
+}
+
+/* ---- 近 7 日趋势 ---- */
+.trend-section {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-card);
+  margin-bottom: var(--spacing-md);
+}
+
+.trend-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.trend-scope {
+  max-width: 520px;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.trend-summary-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.trend-summary-item {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-page);
+}
+
+.trend-summary-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.trend-summary-item strong {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.trend-chart {
+  width: 100%;
+  height: 320px;
+  min-height: 320px;
+}
+
 /* ---- 分拆标签 ---- */
 .breakdown-section {
   background: var(--bg-card);
@@ -433,5 +754,24 @@ onMounted(() => {
 .quick-link-arrow {
   color: var(--text-muted);
   font-size: var(--text-base);
+}
+
+@media (max-width: 768px) {
+  .trend-header {
+    display: grid;
+  }
+
+  .trend-scope {
+    text-align: left;
+  }
+
+  .trend-summary-list {
+    grid-template-columns: 1fr;
+  }
+
+  .trend-chart {
+    height: 300px;
+    min-height: 300px;
+  }
 }
 </style>

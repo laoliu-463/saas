@@ -4,6 +4,7 @@ import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
+import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.DashboardService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,5 +41,25 @@ public class DashboardController extends BaseController {
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
         return ok(dashboardService.getSummary(startTime, endTime, userId, deptId, dataScope));
+    }
+
+    @Operation(summary = "获取活动商品维度归因聚合", description = "按 activity_id + product_id 聚合订单、商品事实层和映射事实层，用于 Dashboard 穿透和解释层辅助排查。")
+    @GetMapping("/activity-products")
+    public ApiResult<PageResult<DashboardService.ActivityProductItem>> getActivityProducts(
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") long page,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") long size,
+            @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+            @RequestAttribute(name = "userId", required = false) UUID userId,
+            @RequestAttribute(name = "deptId", required = false) UUID deptId,
+            @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        DashboardService.ActivityProductPage result =
+                dashboardService.getActivityProductBreakdown(startTime, endTime, userId, deptId, dataScope, page, size);
+        PageResult<DashboardService.ActivityProductItem> pageResult = new PageResult<>();
+        pageResult.setTotal(result.total());
+        pageResult.setPage(result.page());
+        pageResult.setSize(result.size());
+        pageResult.setRecords(result.records());
+        return ok(pageResult);
     }
 }

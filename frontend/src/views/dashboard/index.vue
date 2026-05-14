@@ -1,8 +1,8 @@
 <template>
-  <div class="dashboard-page">
+  <div class="dashboard-page" data-testid="dashboard-overview-page">
     <PageHeader :title="dashboardTitle" :description="dashboardDesc" />
 
-    <n-grid :cols="4" :x-gap="16" :y-gap="16" class="stats-row">
+    <n-grid :cols="4" :x-gap="16" :y-gap="16" class="stats-row" data-testid="dashboard-stat-cards">
       <n-gi v-for="stat in stats" :key="stat.label">
         <n-card :bordered="false" class="stat-card">
           <n-statistic :label="stat.label">
@@ -12,7 +12,7 @@
             <span v-if="stat.trend !== null" class="stat-trend" :class="stat.trend >= 0 ? 'up' : 'down'">
               {{ stat.trend >= 0 ? '↑' : '↓' }} {{ Math.abs(stat.trend) }}%
             </span>
-            <span class="stat-period">较昨日</span>
+            <span class="stat-period">{{ stat.trend !== null ? '较昨日' : '真实归因口径' }}</span>
           </div>
         </n-card>
       </n-gi>
@@ -95,10 +95,10 @@ interface RankingItem {
 }
 
 const stats = ref<StatItem[]>([
-  { label: '今日 GMV', value: '-', trend: null },
-  { label: '待处理订单', value: '-', trend: null },
+  { label: '累计 GMV', value: '-', trend: null },
+  { label: '未归因订单', value: '-', trend: null },
   { label: '归因成功率', value: '-', trend: null },
-  { label: '活跃达人数', value: '-', trend: null }
+  { label: '服务费收入', value: '-', trend: null }
 ])
 
 const trendData = ref<TrendItem[]>([])
@@ -179,17 +179,20 @@ const applySummary = (data: any) => {
   } else {
     // 兼容后端实际返回的 Summary 字段格式
     const gmv = typeof data.orderAmount === 'number'
-      ? `¥${(data.orderAmount / 100).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
+      ? `¥${(data.orderAmount / 100).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`
+      : '-'
+    const serviceFee = typeof data.serviceFee === 'number'
+      ? `¥${(data.serviceFee / 100).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`
       : '-'
     const unattributed = data.unattributedOrderCount != null ? String(data.unattributedOrderCount) : '-'
     const rate = typeof data.attributionRate === 'number'
       ? `${(data.attributionRate * 100).toFixed(1)}%`
       : '-'
     stats.value = [
-      { label: '今日 GMV', value: gmv, trend: null },
-      { label: '待处理订单', value: unattributed, trend: null },
+      { label: '累计 GMV', value: gmv, trend: null },
+      { label: '未归因订单', value: unattributed, trend: null },
       { label: '归因成功率', value: rate, trend: null },
-      { label: '活跃达人数', value: '-', trend: null }
+      { label: '服务费收入', value: serviceFee, trend: null }
     ]
   }
 

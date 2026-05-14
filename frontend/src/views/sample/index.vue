@@ -1,10 +1,10 @@
 <template>
-  <div class="sample-kanban-page">
+  <div class="sample-kanban-page" data-testid="sample-page">
     <PageHeader :title="pageTitle" :description="pageDesc">
       <template #actions>
-        <n-button v-if="canApplySample" type="primary" @click="$router.push('/sample/apply')">申请寄样</n-button>
-        <n-button v-if="canExportSamples" type="info" @click="handleExport">导出寄样单</n-button>
-        <n-button :loading="loading" @click="fetchData">刷新数据</n-button>
+        <n-button v-if="canApplySample" type="primary" data-testid="sample-apply" @click="$router.push('/sample/apply')">申请寄样</n-button>
+        <n-button v-if="canExportSamples" type="info" data-testid="sample-export" @click="handleExport">导出寄样单</n-button>
+        <n-button :loading="loading" data-testid="sample-refresh" @click="fetchData">刷新数据</n-button>
       </template>
     </PageHeader>
 
@@ -13,6 +13,7 @@
         <n-tab-pane v-for="tab in tabList" :key="tab.value" :name="tab.value" :tab="tab.label">
           <n-data-table
             remote
+            data-testid="sample-table"
             :columns="columns"
             :data="data"
             :loading="loading"
@@ -107,7 +108,7 @@ const canApplySample = computed(() => {
   const roles = authStore.roleCodes;
   return roles.includes(ROLE_CODES.CHANNEL_LEADER) || roles.includes(ROLE_CODES.CHANNEL_STAFF);
 });
-const canExportSamples = computed(() => authStore.isAdmin || authStore.isLeader || isOpsStaffOnly.value);
+const canExportSamples = computed(() => authStore.isAdmin || authStore.isLeader);
 
 const openDetail = (row: any) => {
   currentSampleId.value = row.id || row.sampleRequestId;
@@ -184,18 +185,18 @@ const columns = [
     key: 'eligibility',
     render: (row: SampleItem) => {
       if (row.eligibilityCheck?.passed === false) {
-        return h(
-          NTag,
-          { type: 'warning', size: 'small', bordered: false },
-          { default: () => '破格申请' }
-        );
+      return h(
+        NTag,
+        { type: 'warning', size: 'small', bordered: false, 'data-testid': 'sample-status' },
+        { default: () => '破格申请' }
+      );
       }
       if (row.eligibilityCheck?.passed === true) {
         return h(
-          NTag,
-          { type: 'success', size: 'small', bordered: false },
-          { default: () => '达标' }
-        );
+        NTag,
+        { type: 'success', size: 'small', bordered: false, 'data-testid': 'sample-status' },
+        { default: () => '达标' }
+      );
       }
       return '-';
     }
@@ -215,7 +216,7 @@ const columns = [
     render(row: any) {
       return h(
         NButton,
-        { size: 'small', type: 'info', onClick: () => openDetail(row) },
+        { size: 'small', type: 'info', 'data-testid': 'sample-row', onClick: () => openDetail(row) },
         { default: () => isChannelStaffOnly.value ? '查看详情' : '查看处理' }
       );
     }

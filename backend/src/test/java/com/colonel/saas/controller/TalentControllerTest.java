@@ -343,6 +343,12 @@ class TalentControllerTest {
         Method blacklist = TalentController.class.getMethod("blacklist", UUID.class, com.colonel.saas.dto.talent.TalentOperateRequest.class);
         Method unblacklist = TalentController.class.getMethod("unblacklist", UUID.class);
         Method refreshWeekly = TalentController.class.getMethod("refreshWeekly");
+        Method overrideAssignee = TalentController.class.getMethod(
+                "overrideAssignee",
+                UUID.class,
+                com.colonel.saas.dto.talent.OverrideAssigneeRequest.class,
+                UUID.class
+        );
 
         assertThat(blacklist.getAnnotation(RequireRoles.class)).isNotNull();
         assertThat(blacklist.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.CHANNEL_LEADER);
@@ -350,5 +356,7 @@ class TalentControllerTest {
         assertThat(unblacklist.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.CHANNEL_LEADER);
         assertThat(refreshWeekly.getAnnotation(RequireRoles.class)).isNotNull();
         assertThat(refreshWeekly.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.CHANNEL_LEADER);
+        assertThat(overrideAssignee.getAnnotation(RequireRoles.class)).isNotNull();
+        assertThat(overrideAssignee.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.ADMIN);
     }
 }

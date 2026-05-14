@@ -206,8 +206,12 @@ class ProductControllerTest {
         RequireRoles bindRoles = ProductController.class.getMethod("bindActivity", UUID.class, ProductController.BindActivityRequest.class)
                 .getAnnotation(RequireRoles.class);
 
-        assertThat(pageRoles.value()).containsExactly(RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF);
-        assertThat(detailRoles.value()).containsExactly(RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF);
+        assertThat(pageRoles.value()).containsExactly(RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF);
+        assertThat(detailRoles.value()).containsExactly(RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF);
         assertThat(bindRoles.value()).containsExactly(RoleCodes.BIZ_LEADER);
+        RequireRoles historyRoles = ProductController.class
+                .getMethod("promotionLinkHistory", String.class, long.class, long.class)
+                .getAnnotation(RequireRoles.class);
+        assertThat(historyRoles.value()).containsExactly(RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF);
     }
 }

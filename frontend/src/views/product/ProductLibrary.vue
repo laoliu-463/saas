@@ -1,11 +1,11 @@
 <template>
-  <div class="product-page">
+  <div class="product-page" data-testid="product-library-page">
     <PageHeader
       title="商品库"
       description="沉淀完成的共享商品库，对全员可见，可直接复用历史商品结果。"
     >
       <template #actions>
-        <n-button :loading="loading" type="primary" @click="refreshProducts">刷新商品</n-button>
+        <n-button :loading="loading" type="primary" data-testid="product-library-refresh" @click="refreshProducts">刷新商品</n-button>
       </template>
     </PageHeader>
 
@@ -29,7 +29,7 @@
     </div>
 
     <n-spin :show="loading">
-      <div v-if="products.length" class="product-grid">
+      <div v-if="products.length" class="product-grid" data-testid="product-grid">
         <ProductCard
           v-for="item in products"
           :key="item.productId"

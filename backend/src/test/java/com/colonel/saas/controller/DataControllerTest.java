@@ -1,9 +1,11 @@
 package com.colonel.saas.controller;
 
+import com.colonel.saas.annotation.RequireRoles;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ExclusiveMerchant;
@@ -13,7 +15,6 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.service.CommissionService;
-import com.colonel.saas.service.OrderDecryptService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,7 +23,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+import java.lang.reflect.Method;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.List;
 import java.util.UUID;
@@ -31,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -40,8 +44,6 @@ class DataControllerTest {
 
     @Mock
     private ColonelsettlementOrderMapper orderMapper;
-    @Mock
-    private OrderDecryptService orderDecryptService;
     @Mock
     private CommissionService commissionService;
     @Mock
@@ -61,7 +63,6 @@ class DataControllerTest {
     void setUp() {
         dataController = new DataController(
                 orderMapper,
-                orderDecryptService,
                 commissionService,
                 exclusiveTalentMapper,
                 exclusiveMerchantMapper,
@@ -70,7 +71,7 @@ class DataControllerTest {
     }
 
     @Test
-    void getOrderPage_shouldAlwaysIncludeSettleTimeRange() {
+    void getOrderPage_shouldUseCreateTimeRangeByDefault() {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
@@ -83,6 +84,34 @@ class DataControllerTest {
                 null,
                 LocalDate.of(2026, 4, 1),
                 LocalDate.of(2026, 4, 30),
+                null,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL
+        );
+
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        String segment = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(segment).contains("co.create_time");
+        assertThat(segment).doesNotContain("co.settle_time");
+    }
+
+    @Test
+    void getOrderPage_withSettleTimeField_shouldUseSettleTimeRange() {
+        IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
+        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+
+        dataController.getOrderPage(
+                1,
+                10,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2026, 4, 1),
+                LocalDate.of(2026, 4, 30),
+                "settleTime",
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 DataScope.ALL
@@ -92,39 +121,43 @@ class DataControllerTest {
         verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.settle_time");
+        assertThat(segment).doesNotContain("co.create_time");
     }
 
     @Test
-    void decryptOrderPhones_shouldDelegateToService() {
-        DataController.DecryptOrderRequest request = new DataController.DecryptOrderRequest();
-        request.setOrderIds(List.of("oid-1"));
-        UUID userId = UUID.randomUUID();
-        when(orderDecryptService.decryptPhones(List.of("oid-1"), userId, "tester")).thenReturn(List.of());
+    void getOrderPage_shouldReturnSettleTimeForFrontendDisplay() {
+        LocalDateTime createTime = LocalDateTime.of(2026, 5, 10, 9, 30);
+        LocalDateTime settleTime = LocalDateTime.of(2026, 5, 10, 15, 45);
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORDER-SETTLE-1");
+        order.setProductName("真实结算商品");
+        order.setOrderAmount(1000L);
+        order.setOrderStatus(1);
+        order.setCreateTime(createTime);
+        order.setSettleTime(settleTime);
+        Page<ColonelsettlementOrder> page = new Page<>(1, 10, 1);
+        page.setRecords(List.of(order));
+        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
 
-        var response = dataController.decryptOrderPhones(request, userId, "tester");
+        var response = dataController.getOrderPage(
+                1,
+                10,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2026, 5, 10),
+                LocalDate.of(2026, 5, 10),
+                "settleTime",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL
+        );
 
-        assertThat(response.getCode()).isEqualTo(200);
-        verify(orderDecryptService).decryptPhones(List.of("oid-1"), userId, "tester");
-    }
-
-    @Test
-    void decryptOrderPhones_emptyOrderIds_doesNotThrow() {
-        DataController.DecryptOrderRequest request = new DataController.DecryptOrderRequest();
-        request.setOrderIds(List.of());
-        UUID userId = UUID.randomUUID();
-        when(orderDecryptService.decryptPhones(List.of(), userId, "tester")).thenReturn(List.of());
-
-        var response = dataController.decryptOrderPhones(request, userId, "tester");
-
-        assertThat(response.getCode()).isEqualTo(200);
-        verify(orderDecryptService).decryptPhones(List.of(), userId, "tester");
-    }
-
-    @Test
-    void decryptOrderPhones_nullRequest_throwsBusinessException() {
-        assertThatThrownBy(() -> dataController.decryptOrderPhones(null, UUID.randomUUID(), "tester"))
-                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
-                .hasMessageContaining("orderIds");
+        assertThat(response.getData().getRecords()).hasSize(1);
+        var vo = response.getData().getRecords().get(0);
+        assertThat(vo.getCreateTime()).isEqualTo(createTime);
+        assertThat(vo.getSettleTime()).isEqualTo(settleTime);
     }
 
     @Test
@@ -156,6 +189,9 @@ class DataControllerTest {
         assertThat(response.getData().getTrend7d()).hasSize(7);
         assertThat(response.getData().getTodayGmv()).isNotNull();
         assertThat(response.getData().getServiceFee()).isNotNull();
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues().get(0).getSqlSegment()).contains("create_time");
     }
 
     @Test
@@ -262,7 +298,7 @@ class DataControllerTest {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
-        dataController.getOrderPage(1, 10, null, "SHIPPED", null, null, null, null,
+        dataController.getOrderPage(1, 10, null, "SHIPPED", null, null, null, null, null,
                 UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
@@ -276,7 +312,7 @@ class DataControllerTest {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
-        dataController.getOrderPage(1, 10, "MOCK_GEN_ATTR", null, null, null, null, null,
+        dataController.getOrderPage(1, 10, "MOCK_GEN_ATTR", null, null, null, null, null, null,
                 UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
@@ -299,6 +335,7 @@ class DataControllerTest {
                 null,
                 LocalDate.of(2026, 5, 3),
                 LocalDate.of(2026, 5, 3),
+                null,
                 UUID.randomUUID(),
                 null,
                 DataScope.DEPT
@@ -321,6 +358,7 @@ class DataControllerTest {
                 null,
                 talentId,
                 "merchant_10086",
+                null,
                 null,
                 null,
                 UUID.randomUUID(),
@@ -347,6 +385,7 @@ class DataControllerTest {
                 null,
                 LocalDate.of(2026, 5, 1),
                 LocalDate.of(2026, 5, 4),
+                null,
                 userId,
                 UUID.randomUUID(),
                 DataScope.PERSONAL,
@@ -366,14 +405,16 @@ class DataControllerTest {
         first.setProductName("商品A");
         first.setOrderAmount(1000L);
         first.setOrderStatus(1);
-        first.setCreateTime(java.time.LocalDateTime.of(2026, 5, 5, 10, 0));
+        first.setCreateTime(LocalDateTime.of(2026, 5, 5, 10, 0));
+        first.setSettleTime(LocalDateTime.of(2026, 5, 5, 16, 30));
 
         ColonelsettlementOrder second = new ColonelsettlementOrder();
         second.setOrderId("ORDER-2");
         second.setProductName("商品B");
         second.setOrderAmount(2000L);
         second.setOrderStatus(2);
-        second.setCreateTime(java.time.LocalDateTime.of(2026, 5, 5, 11, 0));
+        second.setCreateTime(LocalDateTime.of(2026, 5, 5, 11, 0));
+        second.setSettleTime(LocalDateTime.of(2026, 5, 5, 17, 0));
 
         Page<ColonelsettlementOrder> firstPage = new Page<>(1, 2000, 2001);
         firstPage.setRecords(List.of(first));
@@ -391,6 +432,7 @@ class DataControllerTest {
                 null,
                 LocalDate.of(2026, 5, 1),
                 LocalDate.of(2026, 5, 5),
+                null,
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 DataScope.ALL,
@@ -398,8 +440,10 @@ class DataControllerTest {
         );
 
         String csv = response.getContentAsString();
+        assertThat(csv).contains("创建时间,结算时间");
         assertThat(csv).contains("ORDER-1");
         assertThat(csv).contains("ORDER-2");
+        assertThat(csv).contains("2026-05-05T16:30");
     }
 
     @Test
@@ -425,5 +469,65 @@ class DataControllerTest {
         assertThat(csv).contains("活动ID,活动名称,开始时间,结束时间,状态");
         assertThat(csv).contains("ACT-001");
         assertThat(csv).contains("活动A");
+    }
+
+    @Test
+    void sensitiveDataEndpoints_shouldRequireAdminOrLeaderRoles() throws Exception {
+        Method exportOrders = DataController.class.getMethod(
+                "exportOrders",
+                String.class,
+                UUID.class,
+                String.class,
+                LocalDate.class,
+                LocalDate.class,
+                String.class,
+                UUID.class,
+                UUID.class,
+                DataScope.class,
+                jakarta.servlet.http.HttpServletResponse.class
+        );
+        Method getExclusiveTalentStatus = DataController.class.getMethod(
+                "getExclusiveTalentStatus",
+                long.class,
+                long.class,
+                String.class,
+                String.class,
+                Integer.class,
+                UUID.class,
+                UUID.class,
+                DataScope.class
+        );
+        Method getExclusiveMerchantStatus = DataController.class.getMethod(
+                "getExclusiveMerchantStatus",
+                long.class,
+                long.class,
+                String.class,
+                String.class,
+                Integer.class,
+                UUID.class,
+                UUID.class,
+                DataScope.class
+        );
+        Method exportActivities = DataController.class.getMethod(
+                "exportActivities",
+                String.class,
+                UUID.class,
+                UUID.class,
+                DataScope.class,
+                jakarta.servlet.http.HttpServletResponse.class
+        );
+
+        assertThat(exportOrders.getAnnotation(RequireRoles.class)).isNotNull();
+        assertThat(exportOrders.getAnnotation(RequireRoles.class).value())
+                .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
+        assertThat(getExclusiveTalentStatus.getAnnotation(RequireRoles.class)).isNotNull();
+        assertThat(getExclusiveTalentStatus.getAnnotation(RequireRoles.class).value())
+                .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
+        assertThat(getExclusiveMerchantStatus.getAnnotation(RequireRoles.class)).isNotNull();
+        assertThat(getExclusiveMerchantStatus.getAnnotation(RequireRoles.class).value())
+                .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
+        assertThat(exportActivities.getAnnotation(RequireRoles.class)).isNotNull();
+        assertThat(exportActivities.getAnnotation(RequireRoles.class).value())
+                .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
     }
 }

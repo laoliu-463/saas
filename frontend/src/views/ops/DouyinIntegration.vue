@@ -2,11 +2,12 @@
   <div class="douyin-integration">
     <PageHeader
       title="抖店联调"
-      description="汇总 real-pre 真实上游链路状态，供授权、活动商品、订单同步和权限阻塞排查使用。"
+      description="汇总 real-pre 精选联盟链路状态，供授权、活动商品、SKU、订单同步和看板排查使用。"
     >
       <template #actions>
         <n-input v-model:value="appId" placeholder="appId，可留空" clearable class="app-id-input" />
         <n-input v-model:value="activityId" placeholder="活动ID" clearable class="activity-id-input" />
+        <n-input v-model:value="productId" placeholder="商品ID（SKU探针）" clearable class="product-id-input" />
         <n-button type="primary" :loading="loading.fullCheck" @click="runFullCheck">
           一键刷新联调状态
         </n-button>
@@ -14,7 +15,7 @@
     </PageHeader>
 
     <n-alert type="warning" :show-icon="false" class="scope-alert">
-      当前 real-pre 用于真实上游联调取证；店铺侧订单与敏感数据解密仍依赖订单管理接口权限包、店铺授权和敏感数据权限。
+      当前 real-pre 用于精选联盟 / 团长链路取证；店铺商品与店铺订单接口不纳入本页联调进度。
     </n-alert>
 
     <div class="status-grid">
@@ -40,7 +41,7 @@
               <n-descriptions-item label="订单总数">{{ lastRun.orderTotal }}</n-descriptions-item>
               <n-descriptions-item label="今日订单">{{ lastRun.dashboardOrders }}</n-descriptions-item>
               <n-descriptions-item label="今日 GMV">¥{{ lastRun.dashboardAmount }}</n-descriptions-item>
-              <n-descriptions-item label="店铺侧订单">{{ lastRun.shopOrderStatus }}</n-descriptions-item>
+              <n-descriptions-item label="商品 SKU">{{ lastRun.skuStatus }}</n-descriptions-item>
             </n-descriptions>
             <n-empty v-else description="尚未执行联调状态刷新" />
           </div>
@@ -108,7 +109,31 @@
             <n-button type="primary" :loading="loading.activity" @click="testActivityList">活动列表</n-button>
             <n-button type="info" :loading="loading.productActivities" @click="testProductActivities">活动商品活动列表</n-button>
             <n-button type="info" :loading="loading.activityProductList" @click="testActivityProductList">指定活动商品</n-button>
-            <n-button type="warning" :loading="loading.shopOrderProbe" @click="probeShopOrders">店铺订单权限探针</n-button>
+            <n-button type="warning" :loading="loading.orderSettlements" @click="testOrderSettlements">分次结算订单</n-button>
+            <n-button type="warning" :loading="loading.productSkuProbe" @click="probeProductSkus">商品 SKU 探针</n-button>
+          </div>
+
+          <div class="settlement-query-row">
+            <n-input
+              v-model:value="settlementForm.orderIds"
+              clearable
+              placeholder="订单号列表，逗号分隔；留空则走时间窗"
+            />
+            <n-select
+              v-model:value="settlementForm.timeType"
+              :options="settlementTimeTypeOptions"
+              class="settlement-time-type"
+            />
+            <n-input
+              v-model:value="settlementForm.startTime"
+              clearable
+              placeholder="开始时间 yyyy-MM-dd HH:mm:ss"
+            />
+            <n-input
+              v-model:value="settlementForm.endTime"
+              clearable
+              placeholder="结束时间 yyyy-MM-dd HH:mm:ss"
+            />
           </div>
 
           <n-alert
@@ -145,6 +170,7 @@ import {
   getDouyinActivityProductList,
   getDouyinActivityTest,
   getDouyinInstitutionInfo,
+  getDouyinOrderSettlements,
   getDouyinProductActivities,
   getDouyinTokenStatus,
   postDouyinRawProbe,
@@ -155,7 +181,7 @@ import {
 
 type AlertType = 'info' | 'success' | 'warning' | 'error';
 type CheckStatus = 'pending' | 'running' | 'success' | 'warning' | 'error';
-type CheckKey = 'token' | 'institution' | 'products' | 'orders' | 'dashboard' | 'shopOrders';
+type CheckKey = 'token' | 'institution' | 'products' | 'productSkus' | 'orders' | 'dashboard';
 
 interface IntegrationCheck {
   key: CheckKey;
@@ -172,12 +198,13 @@ interface LastRunSummary {
   orderTotal: number;
   dashboardOrders: number;
   dashboardAmount: string;
-  shopOrderStatus: string;
+  skuStatus: string;
 }
 
 const message = useMessage();
 const appId = ref('');
 const activityId = ref('3916506');
+const productId = ref('3810562766247428542');
 const tokenStatus = ref<DouyinTokenStatus | null>(null);
 const apiResult = ref('');
 const latestSummary = ref('');
@@ -189,8 +216,20 @@ const createForm = reactive({
   code: ''
 });
 
+const settlementForm = reactive({
+  orderIds: '',
+  timeType: 'update',
+  startTime: '',
+  endTime: ''
+});
+
 const grantTypeOptions = [
   { label: 'authorization_code', value: 'authorization_code' }
+];
+
+const settlementTimeTypeOptions = [
+  { label: '按更新时间', value: 'update' },
+  { label: '按结算时间', value: 'settle' }
 ];
 
 const loading = reactive({
@@ -201,7 +240,8 @@ const loading = reactive({
   activity: false,
   productActivities: false,
   activityProductList: false,
-  shopOrderProbe: false
+  orderSettlements: false,
+  productSkuProbe: false
 });
 
 const checks = reactive<Record<CheckKey, IntegrationCheck>>({
@@ -235,10 +275,10 @@ const checks = reactive<Record<CheckKey, IntegrationCheck>>({
     detail: '使用 createTime 口径读取真实订单指标。',
     status: 'pending'
   },
-  shopOrders: {
-    key: 'shopOrders',
-    title: '店铺侧订单待探针',
-    detail: '验证 order.searchList 权限包状态。',
+  productSkus: {
+    key: 'productSkus',
+    title: '商品 SKU 待探针',
+    detail: '验证精选联盟 /buyin/productSkus/v2 返回结构。',
     status: 'pending'
   }
 });
@@ -247,9 +287,9 @@ const orderedChecks = computed(() => [
   checks.token,
   checks.institution,
   checks.products,
+  checks.productSkus,
   checks.orders,
-  checks.dashboard,
-  checks.shopOrders
+  checks.dashboard
 ]);
 
 const defaultCheckState: Record<CheckKey, Pick<IntegrationCheck, 'title' | 'detail'>> = {
@@ -273,9 +313,9 @@ const defaultCheckState: Record<CheckKey, Pick<IntegrationCheck, 'title' | 'deta
     title: 'Dashboard 待读取',
     detail: '使用 createTime 口径读取真实订单指标。'
   },
-  shopOrders: {
-    title: '店铺侧订单待探针',
-    detail: '验证 order.searchList 权限包状态。'
+  productSkus: {
+    title: '商品 SKU 待探针',
+    detail: '验证精选联盟 /buyin/productSkus/v2 返回结构。'
   }
 };
 
@@ -322,7 +362,7 @@ const resetChecks = () => {
 
 const markChecksBlockedByToken = () => {
   const blockedDetail = 'Token 不完整或需要重新授权，已跳过后续真实联调步骤。';
-  (['institution', 'products', 'orders', 'dashboard', 'shopOrders'] as CheckKey[]).forEach((key) => {
+  (['institution', 'products', 'productSkus', 'orders', 'dashboard'] as CheckKey[]).forEach((key) => {
     setCheck(key, 'warning', `${defaultCheckState[key].title}（已跳过）`, blockedDetail);
   });
 };
@@ -381,6 +421,18 @@ const findActivityId = (input: any): string | null => {
   return value ? String(value) : null;
 };
 
+const findProductId = (input: any): string | null => {
+  const value = findDeepValue(input, ['productId', 'product_id']);
+  return value ? String(value) : null;
+};
+
+const findSkuCount = (input: any): number => {
+  const container = findDeepValue(input, ['skus', 'sku_map', 'skuMap', 'sku_list', 'skuList', 'list']);
+  if (Array.isArray(container)) return container.length;
+  if (container && typeof container === 'object') return Object.keys(container).length;
+  return 0;
+};
+
 const isUpstreamSuccess = (result: any) => {
   const code = findDeepValue(result, ['code', 'err_no', 'errorCode']);
   if (code === undefined || code === null || code === '') {
@@ -389,19 +441,9 @@ const isUpstreamSuccess = (result: any) => {
   return ['10000', '0', '200'].includes(String(code));
 };
 
-const isShopPermissionMissing = (result: any) => {
-  const code = findDeepValue(result, ['errorCode', 'code', 'err_no']);
-  const subCode = String(findDeepValue(result, ['subCode', 'sub_code']) || '').toLowerCase();
-  const messageText = String(findDeepValue(result, ['message', 'msg']) || '').toLowerCase();
-  return String(code) === '30001' || subCode.includes('permissions-insufficient') || messageText.includes('无权限');
-};
-
 const buildDebugAlert = (result: DouyinDebugResult | null): { type: AlertType; text: string } | null => {
   if (!result) {
     return null;
-  }
-  if (isShopPermissionMissing(result)) {
-    return { type: 'warning', text: '店铺侧订单接口已到达上游，但当前应用缺订单管理接口权限包。' };
   }
   if (result.status === 'success') {
     return { type: 'success', text: '接口已成功命中后端与抖店链路。' };
@@ -568,38 +610,84 @@ const testActivityProductList = async () => {
   }
 };
 
-const buildShopOrderProbePayload = () => {
-  const end = new Date();
-  const start = new Date(end.getTime() - 6 * 60 * 60 * 1000);
+const buildSettlementParams = () => {
+  const orderIds = settlementForm.orderIds.trim();
+  if (orderIds) {
+    return {
+      appId: appId.value || undefined,
+      size: 20,
+      cursor: '0',
+      timeType: settlementForm.timeType,
+      orderIds
+    };
+  }
+  const startTime = settlementForm.startTime.trim();
+  const endTime = settlementForm.endTime.trim();
+  if (!startTime || !endTime) {
+    throw new Error('请输入 orderIds，或同时填写开始时间和结束时间');
+  }
   return {
     appId: appId.value || undefined,
-    method: 'order.searchList',
-    createTimeStart: Math.floor(start.getTime() / 1000),
-    createTimeEnd: Math.floor(end.getTime() / 1000),
-    page: 0,
-    size: 10
+    size: 20,
+    cursor: '0',
+    timeType: settlementForm.timeType,
+    startTime,
+    endTime
   };
 };
 
-const probeShopOrders = async () => {
-  loading.shopOrderProbe = true;
+const testOrderSettlements = async () => {
+  loading.orderSettlements = true;
   try {
-    const result = await postDouyinRawProbe(buildShopOrderProbePayload());
+    const result = await getDouyinOrderSettlements(buildSettlementParams());
     debugResult.value = result;
     renderDebugResult(result);
-    if (isShopPermissionMissing(result)) {
-      setCheck('shopOrders', 'warning', '店铺侧订单权限待补齐', 'order.searchList 已到达上游，当前返回 30001 权限包不足。');
-    } else if (isUpstreamSuccess(result)) {
-      setCheck('shopOrders', 'success', '店铺侧订单已联通', 'order.searchList 已返回成功响应。');
+    const orderCount = Array.isArray(findDeepValue(result?.remoteResponse, ['orders'])) ? findDeepValue(result?.remoteResponse, ['orders']).length : 0;
+    if (settlementForm.orderIds.trim()) {
+      message.success(`分次结算订单查询完成，当前返回 ${orderCount} 条`);
     } else {
-      setCheck('shopOrders', 'error', '店铺侧订单探针异常', String(findDeepValue(result, ['message', 'msg']) || '请查看原始返回。'));
+      message.success(`分次结算订单时间窗查询完成，当前返回 ${orderCount} 条`);
     }
   } catch (error: any) {
     debugResult.value = null;
-    setCheck('shopOrders', 'error', '店铺侧订单探针异常', extractErrorMessage(error, '店铺订单权限探针失败'));
-    message.error(extractErrorMessage(error, '店铺订单权限探针失败'));
+    message.error(extractErrorMessage(error, '分次结算订单查询失败'));
   } finally {
-    loading.shopOrderProbe = false;
+    loading.orderSettlements = false;
+  }
+};
+
+const buildProductSkuProbePayload = (id = productId.value) => {
+  return {
+    appId: appId.value || undefined,
+    method: 'buyin.productSkus.v2',
+    product_id: String(id || '').trim()
+  };
+};
+
+const probeProductSkus = async () => {
+  if (!productId.value.trim()) {
+    message.warning('请先填写商品ID');
+    return;
+  }
+  loading.productSkuProbe = true;
+  try {
+    const result = await postDouyinRawProbe(buildProductSkuProbePayload());
+    debugResult.value = result;
+    renderDebugResult(result);
+    const skuCount = findSkuCount(result);
+    if (isUpstreamSuccess(result) && skuCount > 0) {
+      setCheck('productSkus', 'success', '商品 SKU 已验证', `精选联盟 SKU 返回 ${skuCount} 条。`);
+    } else if (isUpstreamSuccess(result)) {
+      setCheck('productSkus', 'warning', '商品 SKU 返回为空', '上游返回成功，但未解析到 SKU 明细。');
+    } else {
+      setCheck('productSkus', 'error', '商品 SKU 探针异常', String(findDeepValue(result, ['message', 'msg']) || '请查看原始返回。'));
+    }
+  } catch (error: any) {
+    debugResult.value = null;
+    setCheck('productSkus', 'error', '商品 SKU 探针异常', extractErrorMessage(error, '商品 SKU 探针失败'));
+    message.error(extractErrorMessage(error, '商品 SKU 探针失败'));
+  } finally {
+    loading.productSkuProbe = false;
   }
 };
 
@@ -694,6 +782,35 @@ const runFullCheck = async () => {
       businessTotal: normalizeNumber(businessProductData?.total)
     };
 
+    activeCheckKey = 'productSkus';
+    const detectedProductId =
+      productId.value.trim() ||
+      findProductId(businessProductData) ||
+      findProductId(productResult?.remoteResponse);
+    if (detectedProductId) {
+      productId.value = detectedProductId;
+      setCheck('productSkus', 'running', '商品 SKU 探针中', `正在调用 /buyin/productSkus/v2，productId=${detectedProductId}。`);
+      const skuResult = await postDouyinRawProbe(buildProductSkuProbePayload(detectedProductId));
+      const skuCount = findSkuCount(skuResult);
+      setCheck(
+        'productSkus',
+        isUpstreamSuccess(skuResult) && skuCount > 0 ? 'success' : 'warning',
+        isUpstreamSuccess(skuResult) && skuCount > 0 ? '商品 SKU 已验证' : '商品 SKU 待补样本',
+        isUpstreamSuccess(skuResult)
+          ? `精选联盟 SKU 返回 ${skuCount} 条。`
+          : String(findDeepValue(skuResult, ['message', 'msg']) || 'SKU 探针未返回成功。')
+      );
+      summary.productSkus = {
+        productId: detectedProductId,
+        endpoint: skuResult.endpoint,
+        code: findDeepValue(skuResult, ['code', 'err_no', 'errorCode']),
+        skuCount
+      };
+    } else {
+      setCheck('productSkus', 'warning', '商品 SKU 已跳过', '当前活动商品样本未解析到 productId。');
+      summary.productSkus = { skipped: 'missing productId' };
+    }
+
     activeCheckKey = 'orders';
     setCheck('orders', 'running', '订单同步中', '正在同步最近 30 分钟团长侧订单。');
     const end = new Date();
@@ -721,8 +838,8 @@ const runFullCheck = async () => {
     setCheck('dashboard', 'running', 'Dashboard 读取中', '正在读取 createTime 口径指标。');
     const metricsResponse = await getMetrics({ timeField: 'createTime' });
     const metricsData = unwrapApiData<any>(metricsResponse);
-    const dashboardOrders = normalizeNumber(metricsData?.totalOrders);
-    const dashboardAmount = String(metricsData?.totalAmount ?? '0.00');
+    const dashboardOrders = normalizeNumber(metricsData?.todayOrderCount ?? metricsData?.totalOrders);
+    const dashboardAmount = String(metricsData?.todayGmv ?? metricsData?.totalAmount ?? '0.00');
     setCheck(
       'dashboard',
       dashboardOrders > 0 ? 'success' : 'warning',
@@ -730,25 +847,8 @@ const runFullCheck = async () => {
       `createTime 今日订单 ${dashboardOrders}，今日 GMV ${dashboardAmount}。`
     );
     summary.dashboard = {
-      totalOrders: dashboardOrders,
-      totalAmount: dashboardAmount
-    };
-
-    activeCheckKey = 'shopOrders';
-    setCheck('shopOrders', 'running', '店铺侧订单探针中', '正在调用 order.searchList 权限探针。');
-    const shopOrderResult = await postDouyinRawProbe(buildShopOrderProbePayload());
-    if (isShopPermissionMissing(shopOrderResult)) {
-      setCheck('shopOrders', 'warning', '店铺侧订单权限待补齐', 'order.searchList 已到达上游，当前返回 30001 权限包不足。');
-    } else if (isUpstreamSuccess(shopOrderResult)) {
-      setCheck('shopOrders', 'success', '店铺侧订单已联通', 'order.searchList 已返回成功响应。');
-    } else {
-      setCheck('shopOrders', 'error', '店铺侧订单探针异常', String(findDeepValue(shopOrderResult, ['message', 'msg']) || '请查看原始返回。'));
-    }
-    summary.shopOrders = {
-      endpoint: shopOrderResult.endpoint,
-      code: findDeepValue(shopOrderResult, ['errorCode', 'code', 'err_no']),
-      subCode: findDeepValue(shopOrderResult, ['subCode', 'sub_code']),
-      logId: findDeepValue(shopOrderResult, ['logId', 'log_id'])
+      todayOrderCount: dashboardOrders,
+      todayGmv: dashboardAmount
     };
 
     lastRun.value = {
@@ -758,7 +858,7 @@ const runFullCheck = async () => {
       orderTotal: normalizeNumber(ordersData?.total),
       dashboardOrders,
       dashboardAmount,
-      shopOrderStatus: checks.shopOrders.title
+      skuStatus: checks.productSkus.title
     };
     activeCheckKey = null;
     latestSummary.value = JSON.stringify(summary, null, 2);
@@ -799,6 +899,10 @@ onMounted(() => {
 
 .activity-id-input {
   width: 180px;
+}
+
+.product-id-input {
+  width: 240px;
 }
 
 .scope-alert {
@@ -905,6 +1009,17 @@ onMounted(() => {
   margin-bottom: 14px;
 }
 
+.settlement-query-row {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.4fr) 150px minmax(220px, 1fr) minmax(220px, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.settlement-time-type {
+  min-width: 140px;
+}
+
 .grant-select {
   min-width: 180px;
 }
@@ -923,12 +1038,14 @@ onMounted(() => {
   }
 
   .summary-layout,
-  .create-token-row {
+  .create-token-row,
+  .settlement-query-row {
     grid-template-columns: 1fr;
   }
 
   .app-id-input,
-  .activity-id-input {
+  .activity-id-input,
+  .product-id-input {
     width: 100%;
   }
 }

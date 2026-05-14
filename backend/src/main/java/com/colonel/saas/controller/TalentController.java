@@ -146,7 +146,7 @@ public class TalentController extends BaseController {
     }
 
     @Operation(summary = "归属覆盖", description = "组长级别手动覆盖达人的当前归属人，同时记录覆盖原因。")
-    @RequireRoles({RoleCodes.BIZ_LEADER})
+    @RequireRoles({RoleCodes.ADMIN})
     @PostMapping("/{id}/override-assignee")
     public ApiResult<Talent> overrideAssignee(
             @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId,

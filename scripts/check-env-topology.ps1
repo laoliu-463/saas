@@ -95,20 +95,26 @@ $httpChecks = [ordered]@{
 
 $violations = New-Object System.Collections.Generic.List[string]
 
-$node3001 = $portSummary | Where-Object { $_.port -eq 3001 } | Select-Object -ExpandProperty listeners |
-    Where-Object { $_.processName -eq 'node.exe' }
+$node3001 = @(
+    $portSummary | Where-Object { $_.port -eq 3001 } | Select-Object -ExpandProperty listeners |
+        Where-Object { $_.processName -eq 'node.exe' }
+)
 if ($node3001.Count -gt 0) {
     $violations.Add("Port 3001 has a local node/vite listener; real-pre frontend must be the only source on 3001.")
 }
 
-$node3000 = $portSummary | Where-Object { $_.port -eq 3000 } | Select-Object -ExpandProperty listeners |
-    Where-Object { $_.processName -eq 'node.exe' }
+$node3000 = @(
+    $portSummary | Where-Object { $_.port -eq 3000 } | Select-Object -ExpandProperty listeners |
+        Where-Object { $_.processName -eq 'node.exe' }
+)
 if ($node3000.Count -eq 0) {
     $violations.Add("No local frontend process detected on port 3000.")
 }
 
-$redis6379 = $portSummary | Where-Object { $_.port -eq 6379 } | Select-Object -ExpandProperty listeners |
-    Where-Object { $_.processName -eq 'redis-server.exe' }
+$redis6379 = @(
+    $portSummary | Where-Object { $_.port -eq 6379 } | Select-Object -ExpandProperty listeners |
+        Where-Object { $_.processName -like 'redis-server*' }
+)
 if ($redis6379.Count -gt 0) {
     $violations.Add("A local redis-server is listening on 6379; stop it unless it is explicitly required.")
 }

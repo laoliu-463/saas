@@ -18,6 +18,7 @@
         :key="tab.key"
         class="nav-tab"
         :class="{ active: isActiveTab(tab) }"
+        :data-testid="tab.testId"
         @click="handleTabClick(tab)"
       >
         {{ tab.label }}
@@ -77,16 +78,17 @@ interface NavTab {
   label: string
   key: string
   roles: string[]
+  testId: string
 }
 
 const navTabs: NavTab[] = [
-  { label: '数据看板', key: '/data', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.ADMIN] },
-  { label: '商品库', key: '/product', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
-  { label: '商品管理', key: '/product/manage', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] },
-  { label: '达人 CRM', key: '/talent', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
-  { label: '寄样审核', key: '/sample', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
-  { label: '寄样发货台', key: '/ops/shipping', roles: [ROLE.OPS_STAFF] },
-  { label: '系统管理', key: '/system/users', roles: [ROLE.ADMIN] }
+  { label: '数据看板', key: '/data', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.ADMIN], testId: 'nav-dashboard' },
+  { label: '商品库', key: '/product', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF], testId: 'nav-product' },
+  { label: '商品管理', key: '/product/manage', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF], testId: 'nav-activity-product' },
+  { label: '达人 CRM', key: '/talent', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF], testId: 'nav-talent' },
+  { label: '寄样审核', key: '/sample', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF], testId: 'nav-sample' },
+  { label: '寄样发货台', key: '/ops/shipping', roles: [ROLE.OPS_STAFF], testId: 'nav-shipping' },
+  { label: '系统管理', key: '/system/users', roles: [ROLE.ADMIN], testId: 'nav-system' }
 ]
 
 const visibleTabs = computed(() =>

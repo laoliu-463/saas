@@ -1,5 +1,5 @@
 <template>
-  <div class="activity-page">
+  <div class="activity-page" data-testid="activity-list-page">
     <PageHeader
       title="活动列表"
       description="同步并查看抖音官方报名的团长活动，点击活动可进入商品列表进行选品操作。"
@@ -18,7 +18,7 @@
           clearable
           style="width: 160px"
         />
-        <n-button type="primary" @click="fetchData">查询</n-button>
+        <n-button type="primary" data-testid="activity-search-submit" @click="fetchData">查询</n-button>
         <n-button @click="resetFilters">重置</n-button>
         <n-button type="info" :loading="exporting" @click="handleExport">导出 CSV</n-button>
       </n-space>
@@ -31,6 +31,7 @@
     <n-card :bordered="false" class="main-card">
       <n-data-table
         remote
+        data-testid="activity-table"
         :columns="columns"
         :data="data"
         :loading="loading"
@@ -104,6 +105,7 @@ const columns = [
         size: 'small',
         type: 'primary',
         quaternary: true,
+        'data-testid': 'activity-view-products',
         onClick: () => {
           router.push(`/product/manage/${row.activityId}`)
         }

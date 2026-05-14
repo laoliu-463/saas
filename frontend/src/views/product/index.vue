@@ -1,15 +1,17 @@
 <template>
-  <div class="product-page">
+  <div class="product-page" :data-testid="isActivityProductMode ? 'activity-product-page' : 'product-manage-page'">
     <PageHeader :title="pageTitle" :description="pageDescription">
       <template #actions>
-        <n-button :loading="loading" type="primary" @click="refreshProducts">刷新商品</n-button>
+        <n-button :loading="loading" type="primary" data-testid="product-manage-refresh" @click="refreshProducts">
+          刷新商品
+        </n-button>
       </template>
     </PageHeader>
 
-    <n-alert v-if="hasExplicitActivityRoute" type="info" style="margin-bottom: var(--spacing-md)">
+    <n-alert v-if="hasExplicitActivityRoute" type="info" class="page-alert">
       当前正在查看活动下的商品列表，可直接做审核、转链和寄样前置准备。
       <template #action>
-        <n-button size="small" @click="$router.push('/product/manage')">返回活动列表</n-button>
+        <n-button size="small" @click="router.push('/product/manage')">返回活动列表</n-button>
       </template>
     </n-alert>
 
@@ -29,41 +31,30 @@
       @reset="resetFilters"
     />
 
-    <n-spin :show="loading">
-      <div v-if="products.length" class="product-grid">
-        <ProductCard
-          v-for="item in products"
-          :key="item.productId"
-          :product="item"
-          :expanded="expandedProductId === item.productId"
-          :can-audit="canDo('audit')"
-          :can-assign="canDo('assign')"
-          :pick-mode="isPickLibraryMode"
-          :library-mode="isSharedLibraryMode"
-          :can-put-into-library="canDo('libraryEntry')"
-          @toggle="expandedProductId = $event"
-          @detail="openDetail"
-          @audit="openDialog('audit', $event)"
-          @assign="openDialog('assign', $event)"
-          @put-into-library="handlePutIntoLibrary"
-          @copy-link="copyPromotionLink"
-          @show-logs="openDialog('logs', $event)"
-        />
-      </div>
+    <n-card :bordered="false" class="main-card">
+      <n-data-table
+        v-if="products.length"
+        data-testid="product-table"
+        :columns="columns"
+        :data="products"
+        :loading="loading"
+        :row-key="(row: any) => row.productId"
+        :single-line="false"
+      />
 
-      <PageEmpty v-else-if="!loading" title="暂无商品数据" :description="emptyDescription">
+      <PageEmpty v-else-if="!loading" title="暂无商品数据" :description="emptyDescription" class="table-empty">
         <template #icon>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36">
             <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
           </svg>
         </template>
       </PageEmpty>
-    </n-spin>
 
-    <div v-if="products.length" class="load-more">
-      <n-button v-if="hasMore" :loading="loadingMore" secondary @click="loadMore">加载更多</n-button>
-      <span v-else class="no-more">已加载全部商品</span>
-    </div>
+      <div v-if="products.length" class="load-more">
+        <n-button v-if="hasMore" :loading="loadingMore" secondary @click="loadMore">加载更多</n-button>
+        <span v-else class="no-more">已加载全部商品</span>
+      </div>
+    </n-card>
 
     <ProductDetail
       v-model:show="showDetail"
@@ -96,9 +87,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
-import { useRoute } from 'vue-router'
+import { computed, h, onMounted, ref, watch } from 'vue'
+import { NButton, useMessage } from 'naive-ui'
+import { useRoute, useRouter } from 'vue-router'
 import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
 import { useAuthStore } from '../../stores/auth'
@@ -107,7 +98,6 @@ import { convertActivityProductLink, getActivityProducts, putActivityProductInto
 import { getColonelActivityPage } from '../../api/activity'
 import { getProducts, getProductPickPage } from '../../api/product'
 import ProductFilters from './components/ProductFilters.vue'
-import ProductCard from './components/ProductCard.vue'
 import ProductDetail from './ProductDetail.vue'
 import ProductAuditDialog from './components/ProductAuditDialog.vue'
 import ProductAssignDialog from './components/ProductAssignDialog.vue'
@@ -117,6 +107,7 @@ type ProductAction = 'audit' | 'assign'
 
 const message = useMessage()
 const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
 
 const loading = ref(false)
@@ -132,7 +123,6 @@ const productOptionsLoading = ref(false)
 const status = ref<string | null>(null)
 const fallbackActivityId = ref('')
 const currentRow = ref<any | null>(null)
-const expandedProductId = ref<string | null>(null)
 const showDetail = ref(false)
 const detailRefreshKey = ref(0)
 
@@ -208,6 +198,110 @@ const getStatusLabel = (statusCode?: string) => {
   return map[statusCode || ''] || statusCode || '未知状态'
 }
 
+const normalizeText = (value?: string | number | null) => {
+  if (value === null || value === undefined) return ''
+  const text = String(value).trim()
+  return text === 'null' || text === 'undefined' ? '' : text
+}
+
+const formatPercent = (value?: string | number | null) => {
+  const text = normalizeText(value)
+  if (!text) return '-'
+  return text.includes('%') ? text : `${text}%`
+}
+
+const formatMoney = (value?: string | number | null, prefix = '¥') => {
+  const text = normalizeText(value)
+  if (!text) return '-'
+  return text.startsWith(prefix) ? text : `${prefix}${text}`
+}
+
+const normalizeImageUrl = (value?: string | null) => {
+  const text = normalizeText(value)
+  if (!text) return ''
+  if (text.startsWith('//')) return `https:${text}`
+  return text
+}
+
+const resolveProductImage = (item: any) => {
+  const candidates = [
+    item?.cover,
+    item?.imageUrl,
+    item?.imgUrl,
+    item?.coverUrl,
+    item?.picUrl,
+    item?.mainPic,
+    Array.isArray(item?.pics) ? item.pics[0] : null
+  ]
+  for (const candidate of candidates) {
+    const normalized = normalizeImageUrl(candidate)
+    if (normalized) return normalized
+  }
+  return ''
+}
+
+const getAuditSupplement = (item: any) => item?.auditSupplement || {}
+
+const getPromotionMaterialPack = (item: any) => item?.promotionMaterialPack || {}
+
+const getSampleThresholdText = (item: any) => {
+  const supplement = getAuditSupplement(item)
+  const parts = []
+  if (supplement?.sampleThresholdSales !== undefined) parts.push(`近30天销量额>=${supplement.sampleThresholdSales}`)
+  if (supplement?.sampleThresholdLevel !== undefined) parts.push(`达人带货等级>=LV${supplement.sampleThresholdLevel}`)
+  if (supplement?.sampleThresholdRemark) parts.push(normalizeText(supplement.sampleThresholdRemark))
+  return parts.join('\n') || '未设置寄样门槛'
+}
+
+const getCooperationLines = (item: any) => {
+  const supplement = getAuditSupplement(item)
+  const materialPack = getPromotionMaterialPack(item)
+  const supportAds =
+    supplement?.supportsAds === undefined || supplement?.supportsAds === null
+      ? '未设置'
+      : supplement.supportsAds
+        ? '支持'
+        : '不支持'
+  return [
+    getSampleThresholdText(item),
+    supplement?.participationRequirements || materialPack?.outreachScript || '未补充合作要求',
+    `投放支持：${supportAds}`,
+    `人工设置标签：${Array.isArray(item.systemTags) && item.systemTags.length ? '开' : '关'}`,
+    `特殊提报比例：${normalizeText(supplement?.specialCommissionRatio) ? formatPercent(supplement.specialCommissionRatio) : '关'}`
+  ]
+}
+
+const getActivityLines = (item: any) => [
+  `活动名称：${normalizeText(item.activityName) || (isActivityProductMode.value ? '当前活动商品' : '未绑定活动')}`,
+  `活动ID：${normalizeText(item.sourceActivityId || item.activityId || resolvedActivityId.value) || '-'}`,
+  `推广时间：${normalizeText(item.promotionStartTime || item.startTime) || '-'}${normalizeText(item.promotionEndTime || item.endTime) ? ` ~ ${normalizeText(item.promotionEndTime || item.endTime)}` : ''}`
+]
+
+const getCommissionLines = (item: any) => {
+  const common = normalizeText(item.commonCommissionRateText || item.normalCommissionText || item.activityCosRatioText)
+  const daily = normalizeText(item.dailyCommissionRateText || item.activityCosRatioText)
+  const campaign = normalizeText(item.campaignCommissionRateText || item.deliveryCommissionRateText || item.putCommissionRateText)
+  return [
+    `普通：${common || '-'}`,
+    `日常：${daily || '-'}`,
+    `投放期：${campaign || '-'}`
+  ]
+}
+
+const getServiceFeeLines = (item: any) => {
+  const normal = normalizeText(item.serviceFeeRateText || item.serviceFeeRate)
+  const daily = normalizeText(item.dailyServiceFeeRateText || item.dayServiceFeeRate || item.estimatedServiceFee)
+  const campaign = normalizeText(item.campaignServiceFeeRateText || item.putServiceFeeRate)
+  return [
+    normal ? `普通：${formatPercent(normal)}` : '',
+    `日常：${daily ? (String(daily).includes('%') ? formatPercent(daily) : formatMoney(daily)) : '-'}`,
+    `投放期：${campaign ? formatPercent(campaign) : '-'}`
+  ].filter(Boolean)
+}
+
+const hasDoubleCommission = (item: any) =>
+  Boolean(item?.doubleCommission || item?.dualCommission || item?.serviceFeeMode === 'DOUBLE' || item?.promotionMode === 'DOUBLE')
+
 const ensureActivityId = async () => {
   if (isSharedLibraryMode.value) return ''
   if (isPickLibraryMode.value) return ''
@@ -238,6 +332,7 @@ const ensureActivityId = async () => {
 
 const normalizeItem = (item: any) => ({
   ...item,
+  cover: resolveProductImage(item),
   bizStatus: item?.bizStatus || 'PENDING_AUDIT',
   bizStatusLabel: item?.bizStatusLabel || getStatusLabel(item?.bizStatus),
   productId: String(item?.productId ?? ''),
@@ -606,6 +701,173 @@ const copyPromotionLink = async (item: any) => {
   }
 }
 
+const renderTextAction = (label: string, onClick?: (event: MouseEvent) => void, muted = false) =>
+  h(
+    NButton,
+    {
+      text: true,
+      size: 'small',
+      type: muted ? 'default' : 'primary',
+      class: ['table-link-action-button', muted ? 'is-muted' : ''],
+      focusable: false,
+      onClick: (event: MouseEvent) => {
+        event.stopPropagation()
+        onClick?.(event)
+      }
+    },
+    {
+      default: () => label
+    }
+  )
+
+const renderProductInfo = (row: any) =>
+  h('div', { class: 'table-product' }, [
+    h(
+      'div',
+      { class: 'table-product-cover' },
+      row.cover
+        ? h('img', {
+            class: 'img',
+            src: row.cover,
+            alt: row.title || row.name || '商品图片',
+            style: {
+              width: '68px',
+              height: '68px',
+              objectFit: 'contain',
+              display: 'block',
+              background: '#f5f6fa'
+            }
+          })
+        : h('div', { class: 'table-product-fallback' }, '暂无图片')
+    ),
+    h('div', { class: 'table-product-body' }, [
+      h('div', { class: 'table-product-title' }, row.title || row.name || '-'),
+      h('div', { class: 'table-product-meta' }, `商品ID：${row.productId || '-'}`),
+      h('div', { class: 'table-product-meta' }, `店铺：${row.shopName || '未识别店铺'}`),
+      h('div', { class: 'table-product-meta' }, `售价：${row.priceText || '-'}    库存：${normalizeText(row.productStock) || normalizeText(row.stockText) || '-'}`),
+      h('div', { class: 'table-product-meta' }, `来源类型：${normalizeText(row.sourceTypeLabel || row.sourceTypeName || row.sourceType) || '团长活动'}`)
+    ])
+  ])
+
+const renderTagList = (row: any) => {
+  const firstLabel = Array.isArray(row.systemTags) && row.systemTags.length
+    ? row.systemTags[0]
+    : Array.isArray(row.alertTags) && row.alertTags.length
+      ? row.alertTags[0]
+      : '暂无标签'
+  const secondaryLabel = normalizeText(row.latestDecisionLabel)
+  const canShowLibraryEntry =
+    !row.selectedToLibrary &&
+    ['APPROVED', 'BOUND'].includes(String(row.bizStatus || '')) &&
+    canDo('audit')
+  return h(
+    'div',
+    { class: 'table-tag-block' },
+    [
+      h('div', { class: 'table-stack-line' }, firstLabel),
+      secondaryLabel ? h('div', { class: 'table-stack-line muted' }, secondaryLabel) : null,
+      row.selectedToLibrary
+        ? renderTextAction('已入商品库', undefined, true)
+        : canShowLibraryEntry
+          ? renderTextAction('加入商品库', () => handlePutIntoLibrary(row))
+          : null
+    ]
+  )
+}
+
+const renderLineList = (lines: string[], className = 'table-stack') =>
+  h(
+    'div',
+    { class: className },
+    lines.map((line) => h('div', { class: 'table-stack-line' }, line))
+  )
+
+const renderCommission = (row: any) => renderLineList(getCommissionLines(row), 'table-stack compact')
+
+const renderServiceFee = (row: any) =>
+  h('div', { class: 'table-stack compact' }, [
+    hasDoubleCommission(row) ? h('span', { class: 'table-inline-badge' }, '双佣金') : null,
+    ...getServiceFeeLines(row).map((line) => h('div', { class: 'table-stack-line' }, line))
+  ])
+
+const renderProgress = (row: any) =>
+  h('div', { class: 'table-stack' }, [
+    h('div', { class: 'table-stack-line strong' }, row.assigneeName || '未分配负责人'),
+    h('div', { class: 'table-stack-line muted' }, row.bizStatusLabel || getStatusLabel(row.bizStatus))
+  ])
+
+const renderActions = (row: any) => {
+  const buttons: any[] = []
+  if (row.bizStatus === 'PENDING_AUDIT' && canDo('audit')) {
+    buttons.push(renderTextAction('审核商品', () => openDialog('audit', row)))
+  }
+  if (row.selectedToLibrary && ['APPROVED', 'BOUND'].includes(row.bizStatus) && canDo('assign')) {
+    buttons.push(renderTextAction('分配招商', () => openDialog('assign', row)))
+  }
+  buttons.push(renderTextAction('详情', () => openDetail(row)))
+  buttons.push(renderTextAction('操作日志', () => openDialog('logs', row)))
+  if (row.selectedToLibrary && canDo('promotion')) {
+    buttons.push(renderTextAction('复制推广链接', () => copyPromotionLink(row)))
+  }
+  return h('div', { class: 'table-actions' }, buttons)
+}
+
+const columns = computed(() => [
+  {
+    type: 'selection',
+    width: 42,
+    multiple: true
+  },
+  {
+    title: '商品信息',
+    key: 'product',
+    minWidth: 360,
+    render: (row: any) => renderProductInfo(row)
+  },
+  {
+    title: '佣金率',
+    key: 'commission',
+    width: 240,
+    render: (row: any) => renderCommission(row)
+  },
+  {
+    title: '服务费率',
+    key: 'serviceFee',
+    width: 150,
+    render: (row: any) => renderServiceFee(row)
+  },
+  {
+    title: '标签',
+    key: 'tags',
+    width: 150,
+    render: (row: any) => renderTagList(row)
+  },
+  {
+    title: '招商跟进人',
+    key: 'progress',
+    width: 120,
+    render: (row: any) => renderProgress(row)
+  },
+  {
+    title: '合作设置',
+    key: 'cooperation',
+    minWidth: 260,
+    render: (row: any) => renderLineList(getCooperationLines(row))
+  },
+  {
+    title: '活动信息',
+    key: 'activity',
+    minWidth: 220,
+    render: (row: any) => renderLineList(getActivityLines(row))
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 140,
+    render: (row: any) => renderActions(row)
+  }
+])
+
 onMounted(async () => {
   try {
     await refreshProducts()
@@ -627,20 +889,168 @@ watch(
 
 <style scoped>
 .product-page {
-  max-width: 100%;
-  padding: var(--spacing-xl);
+  padding: 24px;
 }
 
-.product-grid {
+.page-alert {
+  margin-bottom: 16px;
+}
+
+.main-card {
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: none;
+  border: 1px solid #f0f0f0;
+}
+
+.table-empty {
+  padding: 48px 0;
+}
+
+:deep(.table-product) {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: var(--spacing-md);
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 10px;
   align-items: start;
 }
 
+:deep(.table-product-cover) {
+  width: 68px;
+  height: 68px;
+  border-radius: 0;
+  overflow: hidden;
+  background: #f5f6fa;
+  border: 1px solid #f0f0f0;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.table-product-cover img),
+:deep(.table-product-cover .img) {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+  display: block;
+  background: #f5f6fa;
+}
+
+:deep(.table-product-fallback) {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  font-size: 12px;
+}
+
+:deep(.table-product-body) {
+  min-width: 0;
+}
+
+:deep(.table-product-title) {
+  color: #ef4444;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+
+:deep(.table-product-meta),
+:deep(.table-muted) {
+  color: #666;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+:deep(.table-stack) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+:deep(.table-stack.compact) {
+  gap: 4px;
+}
+
+:deep(.table-stack-line) {
+  color: #333;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+:deep(.table-stack-line.strong) {
+  color: #111827;
+  font-weight: 600;
+}
+
+:deep(.table-stack-line.muted) {
+  color: #888;
+}
+
+:deep(.table-tag-block) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+:deep(.table-inline-badge) {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #fff2e8;
+  color: #f97316;
+  font-size: 12px;
+  font-weight: 600;
+  width: fit-content;
+}
+
+:deep(.table-link-action-button) {
+  justify-content: flex-start;
+  padding: 0;
+  height: auto;
+  min-height: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  --n-text-color: #ef4444 !important;
+  --n-text-color-hover: #dc2626 !important;
+  --n-text-color-pressed: #dc2626 !important;
+  --n-text-color-focus: #dc2626 !important;
+}
+
+:deep(.table-link-action-button .n-button__content) {
+  justify-content: flex-start;
+}
+
+:deep(.table-link-action-button.is-muted) {
+  --n-text-color: #999 !important;
+  --n-text-color-hover: #999 !important;
+  --n-text-color-pressed: #999 !important;
+  --n-text-color-focus: #999 !important;
+  cursor: default;
+  pointer-events: none;
+}
+
+:deep(.table-actions) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+
 .load-more {
-  text-align: center;
-  padding: var(--spacing-xl) 0;
+  display: flex;
+  justify-content: center;
+  padding: 20px 0 4px;
 }
 
 .no-more {
@@ -648,19 +1058,28 @@ watch(
   font-size: var(--text-sm);
 }
 
-.badge-active {
-  background: var(--color-success);
+.main-card :deep(.n-data-table-wrapper) {
+  background: #fff;
 }
 
-.badge-review {
-  background: var(--color-warning);
+.main-card :deep(.n-data-table-th) {
+  background: #fff;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 700;
+  border-bottom: 1px solid #f0f0f0;
 }
 
-.badge-ended {
-  background: var(--color-danger);
+.main-card :deep(.n-data-table-th--selection),
+.main-card :deep(.n-data-table-td--selection) {
+  padding-left: 10px;
+  padding-right: 6px;
 }
 
-.badge-default {
-  background: var(--text-tertiary);
+.main-card :deep(.n-data-table-td) {
+  padding-top: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #f5f5f5;
+  vertical-align: top;
 }
 </style>

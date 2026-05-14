@@ -113,6 +113,33 @@ class OrderQueryServiceTest {
     }
 
     @Test
+    void getOrderDetail_shouldBuildNativeColonelMissingDiagnosis() {
+        when(jdbcTemplate.queryForList(anyString(), eq("mock-order-3")))
+                .thenReturn(List.of(Map.ofEntries(
+                        Map.entry("order_id", "mock-order-3"),
+                        Map.entry("order_status", 1),
+                        Map.entry("attribution_status", "UNATTRIBUTED"),
+                        Map.entry("attribution_remark", "COLONEL_MAPPING_NOT_FOUND"),
+                        Map.entry("product_id", "10901827"),
+                        Map.entry("product_name", "原生团长缺映射订单"),
+                        Map.entry("activity_id", "REAL_ACTIVITY_X"),
+                        Map.entry("order_amount", 10900L),
+                        Map.entry("settle_colonel_commission", 900L),
+                        Map.entry("create_time", Timestamp.valueOf(LocalDateTime.of(2026, 5, 8, 12, 27, 18))),
+                        Map.entry("update_time", Timestamp.valueOf(LocalDateTime.of(2026, 5, 8, 12, 27, 18)))
+                )));
+        when(jdbcTemplate.queryForList(anyString(), eq("10901827")))
+                .thenReturn(List.of());
+
+        OrderDetailResponse detail = service.getOrderDetail("mock-order-3", null, null, DataScope.ALL);
+
+        assertThat(detail.getAttributionStatus()).isEqualTo("UNATTRIBUTED");
+        assertThat(detail.getDiagnosis().getReasonCode()).isEqualTo("COLONEL_MAPPING_NOT_FOUND");
+        assertThat(detail.getDiagnosis().getReasonText()).isEqualTo("原生团长订单未找到归因映射");
+        assertThat(detail.getDiagnosis().getSuggestion()).contains("活动、商品和推广映射");
+    }
+
+    @Test
     void getOrderDetail_shouldThrowWhenMissing() {
         when(jdbcTemplate.queryForList(anyString(), eq("missing-order"))).thenReturn(List.of());
 

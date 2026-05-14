@@ -118,7 +118,9 @@ class ColonelActivityControllerTest {
                 "2026-04-30 23:59:59",
                 "2026-04-25 00:00:00",
                 "2026-04-30 23:59:59",
-                "https://detail.test/products/9001"
+                "https://detail.test/products/9001",
+                null,
+                Map.of()
         );
         DouyinProductGateway.ActivityProductListResult gatewayResult =
                 new DouyinProductGateway.ActivityProductListResult(
@@ -196,18 +198,10 @@ class ColonelActivityControllerTest {
                 "2026-05-31 23:59:59",
                 "2026-05-01 00:00:00",
                 "2026-05-31 23:59:59",
-                "https://detail.test/products/9002"
+                "https://detail.test/products/9002",
+                null,
+                Map.of()
         );
-        DouyinProductGateway.ActivityProductListResult gatewayResult =
-                new DouyinProductGateway.ActivityProductListResult(
-                        true,
-                        100018L,
-                        30001L,
-                        1L,
-                        "fresh-cursor",
-                        List.of(item)
-                );
-
         Map<String, Object> itemView = new LinkedHashMap<>();
         itemView.put("productId", 9002L);
         itemView.put("title", "防晒霜");
@@ -220,7 +214,6 @@ class ColonelActivityControllerTest {
         listView.put("nextCursor", "fresh-cursor");
         listView.put("items", List.of(itemView));
 
-        when(douyinProductGateway.queryActivityProducts(any())).thenReturn(gatewayResult);
         when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null)).thenReturn(listView);
 
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
@@ -233,8 +226,9 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.nextCursor").value("fresh-cursor"));
 
         verify(productService, never()).hasActivitySnapshots("100018");
-        verify(douyinProductGateway).queryActivityProducts(any());
-        verify(productService).upsertSnapshots(eq("100018"), eq(gatewayResult.items()));
+        verify(productService).refreshActivitySnapshots(any());
+        verify(douyinProductGateway, never()).queryActivityProducts(any());
+        verify(productService, never()).upsertSnapshots(eq("100018"), any());
         verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null);
     }
 

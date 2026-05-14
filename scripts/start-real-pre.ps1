@@ -1,5 +1,5 @@
 param(
-    [string]$EnvFile = ".env.real",
+    [string]$EnvFile = ".env.real-pre",
     [int]$BackendPort = 8081,
     [int]$FrontendPort = 3001,
     [switch]$ForceRestartFrontend
@@ -138,6 +138,10 @@ Assert-RequiredEnv -EnvMap $envMap -Keys @(
 
 if ($envMap["DOUYIN_TEST_ENABLED"] -ne "false") {
     throw "DOUYIN_TEST_ENABLED must be false for real/pre startup. Current value: $($envMap["DOUYIN_TEST_ENABLED"])"
+}
+
+if ($envMap["APP_TEST_ENABLED"] -ne "false") {
+    throw "APP_TEST_ENABLED must be false for real/pre startup. Current value: $($envMap["APP_TEST_ENABLED"])"
 }
 
 if ($envMap["DB_NAME"] -eq "colonel_saas_test") {

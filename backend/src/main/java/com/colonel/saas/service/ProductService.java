@@ -7,6 +7,7 @@ import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.enums.TalentFollowStatus;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.entity.Product;
@@ -16,8 +17,10 @@ import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.TalentFollowRecord;
 import com.colonel.saas.entity.PromotionLink;
 import com.colonel.saas.entity.SysUser;
+import com.colonel.saas.douyin.api.ActivityApi;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
+import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.MerchantMapper;
 import com.colonel.saas.mapper.ProductOperationLogMapper;
@@ -27,6 +30,7 @@ import com.colonel.saas.mapper.PromotionLinkMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -52,13 +56,17 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class ProductService {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final long SELECTED_LIBRARY_BATCH_SIZE = 200L;
+    private static final Pattern BUYIN_ID_PATTERN = Pattern.compile("(?:origin_colonel_buyin_id|originColonelBuyinId|colonel_buyin_id|colonelBuyinId)\\s*[=:]\\s*['\\\"]?([0-9]{10,})");
 
     private final DouyinPromotionGateway douyinPromotionGateway;
     private final DouyinProductGateway douyinProductGateway;
@@ -71,7 +79,9 @@ public class ProductService {
     private final SysUserMapper sysUserMapper;
     private final PickSourceMappingService pickSourceMappingService;
     private final ProductBizStatusService productBizStatusService;
+    private final ColonelsettlementActivityMapper colonelActivityMapper;
     private final TalentFollowService talentFollowService;
+    private final ActivityApi activityApi;
 
     public ProductService(
             DouyinPromotionGateway douyinPromotionGateway,
@@ -85,7 +95,9 @@ public class ProductService {
             SysUserMapper sysUserMapper,
             PickSourceMappingService pickSourceMappingService,
             ProductBizStatusService productBizStatusService,
-            TalentFollowService talentFollowService) {
+            ColonelsettlementActivityMapper colonelActivityMapper,
+            TalentFollowService talentFollowService,
+            ActivityApi activityApi) {
         this.douyinPromotionGateway = douyinPromotionGateway;
         this.douyinProductGateway = douyinProductGateway;
         this.snapshotMapper = snapshotMapper;
@@ -97,7 +109,9 @@ public class ProductService {
         this.sysUserMapper = sysUserMapper;
         this.pickSourceMappingService = pickSourceMappingService;
         this.productBizStatusService = productBizStatusService;
+        this.colonelActivityMapper = colonelActivityMapper;
         this.talentFollowService = talentFollowService;
+        this.activityApi = activityApi;
     }
 
     public IPage<Product> getPage(long page, long size, Integer status) {
@@ -407,6 +421,59 @@ public class ProductService {
             ProductOperationState existingState = getOperationState(activityId, productId);
             productBizStatusService.initStateIfAbsent(existingState, activityId, productId, null, null, "活动商品同步");
         }
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public int refreshActivitySnapshots(DouyinProductGateway.ActivityProductQueryRequest request) {
+        if (request == null || !StringUtils.hasText(request.activityId())) {
+            return 0;
+        }
+        int pageSize = Math.min(Math.max(request.count() == null ? 20 : request.count(), 1), 20);
+        String cursor = request.cursor();
+        Set<String> seenProductKeys = new LinkedHashSet<>();
+        int maxPages = 100;
+
+        for (int pageNo = 0; pageNo < maxPages; pageNo++) {
+            DouyinProductGateway.ActivityProductListResult result = douyinProductGateway.queryActivityProducts(
+                    new DouyinProductGateway.ActivityProductQueryRequest(
+                            request.appId(),
+                            request.activityId(),
+                            request.searchType(),
+                            request.sortType(),
+                            pageSize,
+                            request.cooperationInfo(),
+                            request.cooperationType(),
+                            request.productInfo(),
+                            request.status(),
+                            1L,
+                            cursor,
+                            null
+                    )
+            );
+            List<DouyinProductGateway.ActivityProductItem> items = result.items();
+            if (items == null || items.isEmpty()) {
+                break;
+            }
+            upsertSnapshots(request.activityId(), items);
+
+            int newItems = 0;
+            for (DouyinProductGateway.ActivityProductItem item : items) {
+                String productId = String.valueOf(item.productId());
+                if (StringUtils.hasText(productId) && seenProductKeys.add(request.activityId() + "::" + productId)) {
+                    newItems++;
+                }
+            }
+
+            String nextCursor = StringUtils.hasText(result.nextCursor()) ? result.nextCursor().trim() : "";
+            if (!StringUtils.hasText(nextCursor)
+                    || nextCursor.equals(cursor)
+                    || newItems == 0
+                    || items.size() < pageSize) {
+                break;
+            }
+            cursor = nextCursor;
+        }
+        return seenProductKeys.size();
     }
 
     public Map<String, Object> buildActivityProductListView(
@@ -881,12 +948,20 @@ public class ProductService {
             String scene,
             String talentId) {
         ProductSnapshot snapshot = ensureSnapshotExists(activityId, productId);
+        NativeColonelBuyinResolution nativeColonelBuyin = resolveColonelBuyinIdForNativeMapping(snapshot.getActivityId(), snapshot.getProductId());
         String finalExternalId = StringUtils.hasText(externalUniqueId) ? externalUniqueId : String.valueOf(userId);
         int finalPromotionScene = promotionScene == null ? 4 : promotionScene;
         String finalScene = normalizePromotionScene(scene);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
         requireSelectedToLibrary(state, "生成推广链接");
         ProductBizStatus beforeStatus = productBizStatusService.readBizStatus(state);
+        if (beforeStatus == null) {
+            beforeStatus = ProductBizStatus.fromCode(state.getBizStatus());
+        }
+        boolean relinkExistingProduct = beforeStatus == ProductBizStatus.LINKED;
+        if (beforeStatus != ProductBizStatus.ASSIGNED && !relinkExistingProduct) {
+            throw new BusinessException("当前状态不允许执行PROMOTION_LINK，当前状态：" + beforeStatus.name());
+        }
         SysUser user = sysUserMapper.selectById(userId);
         String desiredPickExtra = buildPickExtra(userId);
 
@@ -931,23 +1006,54 @@ public class ProductService {
             promotionLinkMapper.insert(link);
 
             // 2. 保存 PickSourceMapping (用于订单归因反查)
-            pickSourceMappingService.saveOrUpdate(
-                    userId,
-                    user != null ? user.getRealName() : "unknown",
-                    deptId,
-                    talentId,
-                    null,
-                    result.shortId(),
-                    null,
-                    result.pickSource(),
-                    snapshot.getProductId(),
-                    snapshot.getActivityId(),
-                    snapshot.getDetailUrl(),
-                    result.promoteLink(),
-                    link.getId(),
-                    finalScene,
-                    result.pickExtra()
-            );
+            if (nativeColonelBuyin.resolved()) {
+                log.info("Native mapping resolved for activityId={}, productId={}, colonelBuyinId={}, source={}",
+                        snapshot.getActivityId(),
+                        snapshot.getProductId(),
+                        nativeColonelBuyin.colonelBuyinId(),
+                        nativeColonelBuyin.source());
+                pickSourceMappingService.saveOrUpdate(
+                        userId,
+                        user != null ? user.getRealName() : "unknown",
+                        deptId,
+                        talentId,
+                        null,
+                        result.shortId(),
+                        null,
+                        result.pickSource(),
+                        snapshot.getProductId(),
+                        snapshot.getActivityId(),
+                        snapshot.getDetailUrl(),
+                        result.promoteLink(),
+                        link.getId(),
+                        finalScene,
+                        result.pickExtra(),
+                        nativeColonelBuyin.colonelBuyinId(),
+                        PickSourceMappingService.SOURCE_TYPE_NATIVE
+                );
+            } else {
+                log.warn("Skip native mapping creation because colonel_buyin_id is unresolved, activityId={}, productId={}, source={}",
+                        snapshot.getActivityId(),
+                        snapshot.getProductId(),
+                        nativeColonelBuyin.source());
+                pickSourceMappingService.saveOrUpdate(
+                        userId,
+                        user != null ? user.getRealName() : "unknown",
+                        deptId,
+                        talentId,
+                        null,
+                        result.shortId(),
+                        null,
+                        result.pickSource(),
+                        snapshot.getProductId(),
+                        snapshot.getActivityId(),
+                        snapshot.getDetailUrl(),
+                        result.promoteLink(),
+                        link.getId(),
+                        finalScene,
+                        result.pickExtra()
+                );
+            }
 
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("promotionScene", finalPromotionScene);
@@ -958,6 +1064,27 @@ public class ProductService {
             payload.put("shortLink", result.shortLink());
             payload.put("promoteLink", result.promoteLink());
             payload.put("pickSource", result.pickSource());
+            if (relinkExistingProduct) {
+                state.setPromoteLink(result.promoteLink());
+                state.setShortLink(result.shortLink());
+                state.setPromotionScene(finalPromotionScene);
+                state.setExternalUniqueId(finalExternalId);
+                operationStateMapper.updateById(state);
+                productBizStatusService.logStatusChange(
+                        snapshot.getActivityId(),
+                        snapshot.getProductId(),
+                        "PROMOTION_LINK",
+                        ProductBizStatus.LINKED,
+                        ProductBizStatus.LINKED,
+                        userId,
+                        deptId,
+                        payload,
+                        "已转链商品重新生成推广链接",
+                        true,
+                        null
+                );
+                return result;
+            }
             productBizStatusService.changeStatus(
                     state,
                     ProductBizStatus.LINKED,
@@ -1018,6 +1145,291 @@ public class ProductService {
             case "PRODUCT_LIBRARY", "PRODUCT_DETAIL", "TALENT_SHARE", "SAMPLE_DESK" -> normalized;
             default -> "PRODUCT_LIBRARY";
         };
+    }
+
+    /**
+     * 从 colonel_activity 表按 activity_id 查询 colonel_buyin_id。
+     * 返回的 Long 会自动转 String（19 位数字字符串），供 saveOrUpdate 写入 pick_source_mapping。
+     */
+    private NativeColonelBuyinResolution resolveColonelBuyinIdForNativeMapping(String activityId, String productId) {
+        String colonelBuyinId = resolveColonelBuyinIdFromSnapshot(activityId, productId);
+        if (StringUtils.hasText(colonelBuyinId)) {
+            return new NativeColonelBuyinResolution(colonelBuyinId, NativeColonelBuyinSource.PRODUCT_SNAPSHOT);
+        }
+        colonelBuyinId = resolveColonelBuyinIdFromOperationState(activityId, productId);
+        if (StringUtils.hasText(colonelBuyinId)) {
+            return new NativeColonelBuyinResolution(colonelBuyinId, NativeColonelBuyinSource.PRODUCT_OPERATION_STATE);
+        }
+        colonelBuyinId = resolveColonelBuyinIdFromActivity(activityId);
+        if (StringUtils.hasText(colonelBuyinId)) {
+            return new NativeColonelBuyinResolution(colonelBuyinId, NativeColonelBuyinSource.COLONEL_ACTIVITY);
+        }
+        colonelBuyinId = hydrateColonelActivityMeta(activityId);
+        if (StringUtils.hasText(colonelBuyinId)) {
+            return new NativeColonelBuyinResolution(colonelBuyinId, NativeColonelBuyinSource.ACTIVITY_API_DETAIL);
+        }
+        return NativeColonelBuyinResolution.unresolved();
+    }
+
+    private String resolveColonelBuyinIdFromActivity(String activityId) {
+        if (!StringUtils.hasText(activityId)) {
+            return null;
+        }
+        ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(activityId);
+        if (activity != null && activity.getColonelBuyinId() != null) {
+            return String.valueOf(activity.getColonelBuyinId());
+        }
+        // extra_data 回源：hydrateColonelActivityMeta 已将真实 colonel_buyin_id 存入 extraData JSONB
+        Map<String, Object> extraData = colonelActivityMapper.selectExtraDataByActivityId(activityId);
+        if (extraData != null && !extraData.isEmpty()) {
+            String fromExtra = firstNonBlank(
+                    readString(extraData, "colonel_buyin_id", "colonelBuyinId"),
+                    readString(readNestedMap(extraData, "extra_data", "extraData"), "colonel_buyin_id", "colonelBuyinId")
+            );
+            if (StringUtils.hasText(fromExtra)) {
+                return fromExtra;
+            }
+        }
+        return null;
+    }
+
+    private String hydrateColonelActivityMeta(String activityId) {
+        if (!StringUtils.hasText(activityId)) {
+            return null;
+        }
+        try {
+            Map<String, Object> response = activityApi.detail(null, activityId);
+            Map<String, Object> data = readPrimaryDataNode(response);
+            Long colonelBuyinId = readLong(data, "colonel_buyin_id", "colonelBuyinId");
+            if (colonelBuyinId == null || colonelBuyinId <= 0L) {
+                return null;
+            }
+            colonelActivityMapper.upsertRealActivityMeta(
+                    UUID.nameUUIDFromBytes(("real-activity-" + activityId).getBytes(StandardCharsets.UTF_8)),
+                    activityId,
+                    readString(data, "activity_name", "activityName", "name"),
+                    readLong(data, "shop_id", "shopId"),
+                    readString(data, "shop_name", "shopName"),
+                    colonelBuyinId,
+                    readDecimal(data, "commission_rate", "commissionRate"),
+                    readDecimal(data, "service_rate", "serviceRate"),
+                    parseDateTimeValue(readString(data, "activity_start_time", "activityStartTime", "start_time", "startTime")),
+                    parseDateTimeValue(readString(data, "activity_end_time", "activityEndTime", "end_time", "endTime")),
+                    readString(data, "status_text", "statusText", "status"),
+                    LocalDateTime.now(),
+                    data
+            );
+            return String.valueOf(colonelBuyinId);
+        } catch (Exception ex) {
+            // 真实活动详情补水仅作为 native 映射生成前的兜底，不阻断转链主流程。
+            log.warn("Hydrate colonel activity meta failed, activityId={}", activityId, ex);
+            return null;
+        }
+    }
+
+    private String resolveColonelBuyinIdFromSnapshot(String activityId, String productId) {
+        if (!StringUtils.hasText(activityId) || !StringUtils.hasText(productId)) {
+            return null;
+        }
+        ProductSnapshot snapshot = snapshotMapper.selectOne(new LambdaQueryWrapper<ProductSnapshot>()
+                .eq(ProductSnapshot::getActivityId, activityId)
+                .eq(ProductSnapshot::getProductId, productId)
+                .eq(ProductSnapshot::getDeleted, 0)
+                .last("limit 1"));
+        if (snapshot == null) {
+            return null;
+        }
+        String fromPayload = resolveColonelBuyinIdFromPayload(snapshot.getRawPayload());
+        if (StringUtils.hasText(fromPayload)) {
+            return fromPayload;
+        }
+        return extractColonelBuyinIdFromText(snapshot.getRawPayload());
+    }
+
+    private String resolveColonelBuyinIdFromOperationState(String activityId, String productId) {
+        if (!StringUtils.hasText(activityId) || !StringUtils.hasText(productId)) {
+            return null;
+        }
+        ProductOperationState state = operationStateMapper.selectOne(new LambdaQueryWrapper<ProductOperationState>()
+                .eq(ProductOperationState::getActivityId, activityId)
+                .eq(ProductOperationState::getProductId, productId)
+                .eq(ProductOperationState::getDeleted, 0)
+                .last("limit 1"));
+        if (state == null) {
+            return null;
+        }
+        String fromPayload = resolveColonelBuyinIdFromPayload(state.getAuditPayload());
+        if (StringUtils.hasText(fromPayload)) {
+            return fromPayload;
+        }
+        return extractColonelBuyinIdFromText(state.getAuditPayload());
+    }
+
+    private Map<String, Object> readPrimaryDataNode(Map<String, Object> response) {
+        if (response == null || response.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> data = readNestedMap(response, "data");
+        if (!data.isEmpty()) {
+            Map<String, Object> detail = readNestedMap(data, "data", "detail");
+            if (!detail.isEmpty()) {
+                return detail;
+            }
+            return data;
+        }
+        return response;
+    }
+
+    private Map<String, Object> parseJsonObject(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return Map.of();
+        }
+        try {
+            return OBJECT_MAPPER.readValue(raw, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception ex) {
+            return Map.of();
+        }
+    }
+
+    private String resolveColonelBuyinIdFromPayload(String raw) {
+        Map<String, Object> payload = parseJsonObject(raw);
+        if (payload.isEmpty()) {
+            return null;
+        }
+        String fromRoot = readString(payload,
+                "origin_colonel_buyin_id",
+                "originColonelBuyinId",
+                "colonel_buyin_id",
+                "colonelBuyinId");
+        if (StringUtils.hasText(fromRoot)) {
+            return fromRoot;
+        }
+        Map<String, Object> extraData = readNestedMap(payload, "extra_data", "extraData");
+        return readString(extraData,
+                "origin_colonel_buyin_id",
+                "originColonelBuyinId",
+                "colonel_buyin_id",
+                "colonelBuyinId");
+    }
+
+    private String extractColonelBuyinIdFromText(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        Matcher matcher = BUYIN_ID_PATTERN.matcher(raw);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+
+    private Map<String, Object> readNestedMap(Map<String, Object> source, String... keys) {
+        if (source == null || source.isEmpty() || keys == null) {
+            return Map.of();
+        }
+        for (String key : keys) {
+            Object value = source.get(key);
+            if (value instanceof Map<?, ?> raw) {
+                Map<String, Object> converted = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : raw.entrySet()) {
+                    if (entry.getKey() != null) {
+                        converted.put(String.valueOf(entry.getKey()), entry.getValue());
+                    }
+                }
+                return converted;
+            }
+        }
+        return Map.of();
+    }
+
+    private String readString(Map<String, Object> source, String... keys) {
+        if (source == null || source.isEmpty() || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            Object value = source.get(key);
+            if (value != null && StringUtils.hasText(String.valueOf(value))) {
+                return String.valueOf(value).trim();
+            }
+        }
+        return null;
+    }
+
+    private Long readLong(Map<String, Object> source, String... keys) {
+        String text = readString(source, keys);
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        try {
+            return Long.parseLong(text.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private BigDecimal readDecimal(Map<String, Object> source, String... keys) {
+        String text = readString(source, keys);
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        try {
+            return new BigDecimal(text.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private LocalDateTime parseDateTimeValue(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String normalized = value.trim();
+        List<DateTimeFormatter> formatters = List.of(
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
+                DateTimeFormatter.ISO_LOCAL_DATE_TIME
+        );
+        for (DateTimeFormatter formatter : formatters) {
+            try {
+                return LocalDateTime.parse(normalized, formatter);
+            } catch (DateTimeParseException ignored) {
+            }
+        }
+        try {
+            return LocalDate.parse(normalized, DateTimeFormatter.ISO_LOCAL_DATE).atStartOfDay();
+        } catch (DateTimeParseException ignored) {
+            return null;
+        }
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private record NativeColonelBuyinResolution(String colonelBuyinId, NativeColonelBuyinSource source) {
+        private static NativeColonelBuyinResolution unresolved() {
+            return new NativeColonelBuyinResolution(null, NativeColonelBuyinSource.UNRESOLVED);
+        }
+
+        private boolean resolved() {
+            return StringUtils.hasText(colonelBuyinId);
+        }
+    }
+
+    private enum NativeColonelBuyinSource {
+        PRODUCT_SNAPSHOT,
+        PRODUCT_OPERATION_STATE,
+        COLONEL_ACTIVITY,
+        ACTIVITY_API_DETAIL,
+        UNRESOLVED
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -1183,8 +1595,17 @@ public class ProductService {
         snapshot.setAdServiceRatio(item.adServiceRatio());
         snapshot.setActivityAdCosRatio(item.activityAdCosRatio());
         snapshot.setHasDouinGoodsTag(item.hasDouinGoodsTag());
-        snapshot.setRawPayload(String.valueOf(item.toMap()));
+        snapshot.setRawPayload(writeSnapshotPayload(item));
         snapshot.setSyncTime(java.time.LocalDateTime.now());
+    }
+
+    private String writeSnapshotPayload(DouyinProductGateway.ActivityProductItem item) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(item.toMap());
+        } catch (Exception ex) {
+            log.warn("Serialize product snapshot payload failed, activityProductItem={}", item.productId(), ex);
+            return String.valueOf(item.toMap());
+        }
     }
 
     private Product toLegacyProduct(ProductSnapshot snapshot) {

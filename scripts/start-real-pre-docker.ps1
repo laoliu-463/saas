@@ -1,5 +1,6 @@
 param(
-    [string]$EnvFile = ".env.real",
+    [string]$EnvFile = ".env.real-pre",
+    [string]$ProjectName = "saas",
     [switch]$Detach
 )
 
@@ -44,6 +45,9 @@ $envMap = Read-EnvFile -Path $envPath
 if ($envMap["DOUYIN_TEST_ENABLED"] -ne "false") {
     throw "DOUYIN_TEST_ENABLED must be false in ${EnvFile}."
 }
+if ($envMap["APP_TEST_ENABLED"] -ne "false") {
+    throw "APP_TEST_ENABLED must be false in ${EnvFile}."
+}
 if ($envMap["DB_NAME"] -eq "colonel_saas_test") {
     throw "DB_NAME cannot be colonel_saas_test in ${EnvFile}."
 }
@@ -53,7 +57,7 @@ if ($envMap["REDIS_DATABASE"] -eq "1") {
 
 $args = @(
     "compose",
-    "--project-name", "saas-real-pre",
+    "--project-name", $ProjectName,
     "--env-file", $envPath,
     "-f", $composePath,
     "up",
@@ -70,3 +74,5 @@ try {
 finally {
     Pop-Location
 }
+
+Write-Host "real-pre Docker compose requested with project '$ProjectName' and env file '$EnvFile'." -ForegroundColor Green

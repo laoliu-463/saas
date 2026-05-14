@@ -90,24 +90,28 @@ public class ColonelActivityController extends BaseController {
                         status == null ? null : status.toString()
                 ));
             }
-            DouyinProductGateway.ActivityProductListResult result =
-                    douyinProductGateway.queryActivityProducts(
-                            new DouyinProductGateway.ActivityProductQueryRequest(
-                                    appId,
-                                    activityId,
-                                    searchType,
-                                    sortType,
-                                    count,
-                                    cooperationInfo,
-                                    cooperationType,
-                                    productInfo,
-                                    status,
-                                    retrieveMode,
-                                    cursor,
-                                    page
-                            )
+            DouyinProductGateway.ActivityProductQueryRequest queryRequest =
+                    new DouyinProductGateway.ActivityProductQueryRequest(
+                            appId,
+                            activityId,
+                            searchType,
+                            sortType,
+                            count,
+                            cooperationInfo,
+                            cooperationType,
+                            productInfo,
+                            status,
+                            retrieveMode,
+                            cursor,
+                            page
                     );
-            productService.upsertSnapshots(activityId, result.items());
+            if (Boolean.TRUE.equals(refresh)) {
+                productService.refreshActivitySnapshots(queryRequest);
+            } else {
+                DouyinProductGateway.ActivityProductListResult result =
+                        douyinProductGateway.queryActivityProducts(queryRequest);
+                productService.upsertSnapshots(activityId, result.items());
+            }
             return ok(productService.buildActivityProductListViewFromDb(
                     activityId,
                     count,

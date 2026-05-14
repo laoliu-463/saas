@@ -1,12 +1,12 @@
 <template>
-  <div class="orders-page">
+  <div class="orders-page" data-testid="orders-page">
     <PageHeader
       title="订单归因"
       description="自动回流抖店结算订单，精准识别推广渠道、达人业绩与招商归属。"
     >
       <template #actions>
-        <n-button :loading="syncLoading" type="primary" secondary @click="handleSync">同步最新订单</n-button>
-        <n-button type="primary" @click="fetchData">查询</n-button>
+        <n-button :loading="syncLoading" type="primary" secondary data-testid="orders-sync" @click="handleSync">同步最新订单</n-button>
+        <n-button type="primary" data-testid="orders-search-submit" @click="fetchData">查询</n-button>
       </template>
     </PageHeader>
 
@@ -90,9 +90,12 @@ const summaryReady = computed(() => Number(stats.value?.totalOrders || 0) > 0)
 
 const filters = reactive({
   orderId: '',
+  activityId: '',
   productId: '',
   attributionStatus: null,
-  dateRange: null as [number, number] | null
+  dateRange: null as [number, number] | null,
+  timeField: 'createTime',
+  dashboardDiagnosis: ''
 })
 
 const pagination = reactive({
@@ -103,7 +106,10 @@ const pagination = reactive({
 
 const applyRouteFilters = () => {
   filters.orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
+  filters.activityId = typeof route.query.activityId === 'string' ? route.query.activityId : ''
   filters.productId = typeof route.query.productId === 'string' ? route.query.productId : ''
+  filters.timeField = typeof route.query.timeField === 'string' ? route.query.timeField : 'createTime'
+  filters.dashboardDiagnosis = typeof route.query.dashboardDiagnosis === 'string' ? route.query.dashboardDiagnosis : ''
 }
 
 function getDiagnosticSummary(row: any) {
@@ -142,7 +148,7 @@ function getDiagnosticSummary(row: any) {
 }
 
 const columns = [
-  { title: '订单号/结算时间', key: 'orderInfo', width: 220, render: (row: any) => h('div', null, [
+  { title: '订单号/结算时间', key: 'orderInfo', width: 220, render: (row: any) => h('div', { 'data-testid': 'order-row' }, [
     h('div', { style: 'font-weight: 600' }, row.orderId),
     h('div', { style: 'font-size: var(--text-xs); color: var(--text-tertiary)' }, row.settleTime || '-')
   ]) },
@@ -156,7 +162,7 @@ const columns = [
       const status = row.attributionStatus || 'UNATTRIBUTED'
       const type = status === 'ATTRIBUTED' ? 'success' : (status === 'UNATTRIBUTED' ? 'error' : 'info')
       const labels: Record<string, string> = { ATTRIBUTED: '已归因', UNATTRIBUTED: '待排查', PARTIAL: '部分归因' }
-      return h(NTag, { type, size: 'small' }, { default: () => labels[status] || status })
+      return h(NTag, { type, size: 'small', 'data-testid': 'order-attribution-status' }, { default: () => labels[status] || status })
     }
   },
   {
@@ -171,7 +177,7 @@ const columns = [
       ])
     }
   },
-  { title: '渠道负责人', key: 'channelUserName', width: 120, render: (row: any) => row.channelUserName || '-' },
+  { title: '渠道负责人', key: 'channelUserName', width: 120, render: (row: any) => h('span', { 'data-testid': 'order-channel' }, row.channelUserName || '-') },
   { title: '归因标识 (pick_source)', key: 'pickSource', width: 180, ellipsis: true },
   {
     title: '操作',
@@ -184,6 +190,7 @@ const columns = [
         {
           size: 'small',
           quaternary: true,
+          'data-testid': 'order-detail-button',
           onClick: () => openDetail(row)
         },
         { default: () => '查看详情' }
@@ -224,8 +231,11 @@ function buildQueryParams() {
     page: pagination.page,
     size: pagination.pageSize,
     orderId: filters.orderId || undefined,
+    activityId: filters.activityId || undefined,
     productId: filters.productId || undefined,
     attributionStatus: filters.attributionStatus || undefined,
+    timeField: filters.timeField || undefined,
+    dashboardDiagnosis: filters.dashboardDiagnosis || undefined,
     ...resolveDateRange()
   }
 }
@@ -239,7 +249,10 @@ const fetchData = async () => {
       getOrderStats({
         orderId: params.orderId,
         attributionStatus: params.attributionStatus,
+        activityId: params.activityId,
         productId: params.productId,
+        timeField: params.timeField,
+        dashboardDiagnosis: params.dashboardDiagnosis,
         startTime: params.startTime,
         endTime: params.endTime
       })
@@ -287,15 +300,18 @@ const handleSync = async () => {
 
 const resetFilters = () => {
   filters.orderId = ''
+  filters.activityId = ''
   filters.productId = ''
   filters.attributionStatus = null
   filters.dateRange = null
+  filters.timeField = 'createTime'
+  filters.dashboardDiagnosis = ''
   stats.value = null
   fetchData()
 }
 
 watch(
-  () => [route.query.orderId, route.query.productId],
+  () => [route.query.orderId, route.query.activityId, route.query.productId, route.query.timeField, route.query.dashboardDiagnosis],
   () => {
     applyRouteFilters()
     pagination.page = 1

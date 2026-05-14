@@ -1,7 +1,11 @@
 <template>
-  <div class="order-list">
+  <div class="order-list" data-testid="data-orders-page">
     <n-card title="订单明细" :bordered="false">
       <n-space style="margin-bottom: 16px">
+        <n-radio-group v-model:value="timeField" size="small" @update:value="handleTimeFieldChange">
+          <n-radio-button value="createTime">按创建时间</n-radio-button>
+          <n-radio-button value="settleTime">按结算时间</n-radio-button>
+        </n-radio-group>
         <n-date-picker
           v-model:value="dateRange"
           type="daterange"
@@ -34,9 +38,9 @@
           style="width: 220px"
           clearable
         />
-        <n-button type="primary" @click="fetchData">查询</n-button>
+        <n-button type="primary" data-testid="data-orders-search-submit" @click="fetchData">查询</n-button>
         <n-button ghost type="primary" @click="fetchData">刷新订单</n-button>
-        <n-button v-if="canExport" type="info" @click="handleExport">导出 CSV</n-button>
+        <n-button v-if="canExport" type="info" data-testid="data-orders-export" @click="handleExport">导出 CSV</n-button>
         <n-button v-if="canDecrypt" type="warning" :loading="decryptLoading" @click="handleDecrypt">
           批量解密（{{ checkedRowKeys.length }}）
         </n-button>
@@ -70,10 +74,12 @@
           </div>
         </n-descriptions-item>
         <n-descriptions-item label="收件人信息">
-          {{ currentOrder.receiverName || '张三' }}
-          ({{ currentOrder.receiverPhone || '13800138000' }})
-          -
-          {{ currentOrder.receiverAddress || '浙江省杭州市 xxx' }}
+          <n-text v-if="hasReceiverInfo(currentOrder)">
+            {{ displayText(currentOrder.receiverName) }}
+            <template v-if="currentOrder.receiverPhone">（{{ currentOrder.receiverPhone }}）</template>
+            <template v-if="currentOrder.receiverAddress"> - {{ currentOrder.receiverAddress }}</template>
+          </n-text>
+          <n-text v-else depth="3">上游当前未返回收件人姓名或地址</n-text>
         </n-descriptions-item>
         <n-descriptions-item label="联系电话">
           <template v-if="decryptMap[currentOrder.id]">
@@ -84,14 +90,19 @@
           </template>
         </n-descriptions-item>
         <n-descriptions-item label="快递信息">
-          {{ currentOrder.expressCompany || '顺丰快递' }} - {{ currentOrder.expressNo || 'SF1234567890' }}
+          <n-text v-if="hasExpressInfo(currentOrder)">
+            {{ displayText(currentOrder.expressCompany) }}
+            <template v-if="currentOrder.expressNo"> - {{ currentOrder.expressNo }}</template>
+          </n-text>
+          <n-text v-else depth="3">暂无真实物流信息</n-text>
         </n-descriptions-item>
         <n-descriptions-item label="归因来源">
           <n-tag :type="getAttributionTagType(currentOrder.attributionSource)" size="small">
             {{ getAttributionLabel(currentOrder.attributionSource) }}
           </n-tag>
         </n-descriptions-item>
-        <n-descriptions-item label="创建时间">{{ currentOrder.createTime }}</n-descriptions-item>
+        <n-descriptions-item label="创建时间">{{ displayText(currentOrder.createTime) }}</n-descriptions-item>
+        <n-descriptions-item label="结算时间">{{ currentOrder.settleTime || '未结算或上游未返回' }}</n-descriptions-item>
       </n-descriptions>
       <template #footer>
         <n-button @click="showDetail = false">关闭</n-button>
@@ -150,6 +161,7 @@ const buildTodayRange = (): [number, number] => {
 }
 
 const dateRange = ref<[number, number] | null>(buildTodayRange())
+const timeField = ref<'createTime' | 'settleTime'>('createTime')
 
 const searchParams = reactive({
   orderId: '',
@@ -164,6 +176,7 @@ const checkedRowKeys = ref<string[]>([])
 const decryptMap = ref<Record<string, DecryptResultItem>>({})
 const canExport = computed(() => authStore.isAdmin || authStore.isLeader)
 const canDecrypt = computed(() => authStore.isAdmin || authStore.isLeader)
+const activeTimeTitle = computed(() => timeField.value === 'settleTime' ? '结算时间' : '创建时间')
 
 const statusOptions = [
   { label: '已下单', value: 'ORDERED' },
@@ -186,6 +199,20 @@ function getAttributionTagType(source?: string): 'success' | 'warning' | 'info' 
   return 'default'
 }
 
+const displayText = (value: unknown, fallback = '-') => {
+  if (value === null || value === undefined || value === '') return fallback
+  return String(value)
+}
+
+const hasReceiverInfo = (order: any) => Boolean(order?.receiverName || order?.receiverPhone || order?.receiverAddress)
+
+const hasExpressInfo = (order: any) => Boolean(order?.expressCompany || order?.expressNo)
+
+const activeTimeValue = (row: any) => {
+  if (timeField.value === 'settleTime') return row?.settleTime || '未结算'
+  return row?.createTime || '-'
+}
+
 const renderDecryptPhone = (orderId: string) => {
   const item = decryptMap.value[orderId]
   if (!item) return h(NText, { depth: 3 }, { default: () => '未解密' })
@@ -204,6 +231,11 @@ const renderDecryptPhone = (orderId: string) => {
 
 const handleCheck = (keys: string[]) => {
   checkedRowKeys.value = keys
+}
+
+const handleTimeFieldChange = () => {
+  pagination.page = 1
+  fetchData()
 }
 
 const handleDecrypt = async () => {
@@ -258,6 +290,7 @@ const fetchData = async () => {
       status: searchParams.status,
       talentId: searchParams.talentId || undefined,
       merchantId: searchParams.merchantId || undefined,
+      timeField: timeField.value,
       startDate,
       endDate
     })
@@ -297,6 +330,7 @@ const handleExport = async () => {
       status: searchParams.status,
       talentId: searchParams.talentId || undefined,
       merchantId: searchParams.merchantId || undefined,
+      timeField: timeField.value,
       startDate,
       endDate
     })
@@ -363,7 +397,13 @@ const columns = computed(() => [
       return renderDecryptPhone(row.id)
     }
   },
-  { title: '创建时间', key: 'createTime' },
+  {
+    title: activeTimeTitle.value,
+    key: timeField.value === 'settleTime' ? 'settleTime' : 'createTime',
+    render(row: any) {
+      return activeTimeValue(row)
+    }
+  },
   {
     title: '操作',
     key: 'actions',

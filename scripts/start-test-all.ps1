@@ -105,7 +105,8 @@ $composeFiles = @(
 
 $composeArgs = @(
     "compose",
-    "--project-name", "saas-test"
+    "--project-name", "saas-test",
+    "--env-file", (Join-Path $repoRoot ".env.test")
 ) + $composeFiles + @(
     "up",
     "--build"

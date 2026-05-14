@@ -1,5 +1,5 @@
 <template>
-  <div class="talent-page">
+  <div class="talent-page" data-testid="talent-page">
     <PageHeader
       :title="pageTitle"
       :description="pageDesc"
@@ -9,12 +9,13 @@
           v-if="authStore.roleCodes.includes('channel_leader')"
           secondary
           :loading="weeklyRefreshing"
+          data-testid="talent-weekly-refresh"
           @click="handleWeeklyRefresh"
         >
           触发周更
         </n-button>
-        <n-button type="primary" secondary :loading="loading" @click="fetchData">刷新数据</n-button>
-        <n-button type="primary" @click="showCreate = true">新增达人</n-button>
+        <n-button type="primary" secondary :loading="loading" data-testid="talent-refresh" @click="fetchData">刷新数据</n-button>
+        <n-button type="primary" data-testid="talent-create" @click="showCreate = true">新增达人</n-button>
       </template>
     </PageHeader>
 
@@ -128,7 +129,6 @@ const showCreate = ref(false)
 const showDetail = ref(false)
 const activeTalentId = ref('')
 const data = ref<TalentListItem[]>([])
-const activeView = ref(resolveView(route.query.view))
 const viewSummary = reactive<Record<string, number>>(
   TALENT_VIEW_OPTIONS.reduce<Record<string, number>>((acc, item) => {
     acc[item.value] = 0
@@ -171,6 +171,7 @@ const availableViewOptions = computed(() =>
     ? TALENT_VIEW_OPTIONS
     : TALENT_VIEW_OPTIONS.filter((item) => ['TEAM_PUBLIC', 'MY_TALENTS'].includes(item.value))
 )
+const activeView = ref(resolveView(route.query.view))
 const pageOrderTalentCount = computed(() => data.value.filter((item) => Number(item.orderCount || 0) > 0).length)
 const pageServiceFeeText = computed(() => {
   const total = data.value.reduce((sum, item) => sum + Number(item.serviceFeeContribution || 0), 0)

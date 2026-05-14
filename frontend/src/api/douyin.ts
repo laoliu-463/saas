@@ -30,6 +30,16 @@ export interface DouyinDebugResult<T = any> {
   [key: string]: any;
 }
 
+export interface DouyinOrderSettlementParams {
+  appId?: string;
+  size?: number;
+  cursor?: string;
+  timeType?: 'update' | 'settle' | string;
+  startTime?: string;
+  endTime?: string;
+  orderIds?: string;
+}
+
 const unwrap = <T>(response: any): T => response?.data ?? response;
 const isTestEnv = ['MOCK', 'TEST'].some((keyword) =>
   String(import.meta.env.VITE_ENV_LABEL || '').toUpperCase().includes(keyword)
@@ -164,6 +174,27 @@ export function getDouyinActivityProductList(params: { appId?: string; activityI
     } as DouyinDebugResult);
   }
   return request.get('/douyin/activity-product-list', { params }).then((res) => unwrap<DouyinDebugResult>(res));
+}
+
+export function getDouyinOrderSettlements(params: DouyinOrderSettlementParams) {
+  if (isTestEnv) {
+    return Promise.resolve({
+      status: 'success',
+      message: '团长分次结算订单查询成功（Test）',
+      appId: params?.appId || 'test-app-id',
+      endpoint: 'buyin.colonelMultiSettlementOrders',
+      query: params,
+      remoteResponse: {
+        code: 10000,
+        msg: 'success',
+        data: {
+          cursor: '',
+          orders: []
+        }
+      }
+    } as DouyinDebugResult);
+  }
+  return request.get('/douyin/order-settlements', { params }).then((res) => unwrap<DouyinDebugResult>(res));
 }
 
 export function getDouyinProductsByActivity(params: { appId?: string; activityId: string; count?: number; cursor?: string }) {
