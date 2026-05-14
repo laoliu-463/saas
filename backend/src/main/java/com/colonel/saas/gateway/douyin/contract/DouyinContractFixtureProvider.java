@@ -237,21 +237,6 @@ public class DouyinContractFixtureProvider {
         return success("alliance.colonelActivityProduct", data);
     }
 
-    public DouyinProductGateway.ProductDetailResult buildProductDetailResult(String productId) {
-        DouyinProductGateway.ActivityProductItem item = findProduct(productId);
-        return new DouyinProductGateway.ProductDetailResult(
-                String.valueOf(item.productId()),
-                item.title(),
-                item.cover(),
-                item.price(),
-                item.priceText(),
-                item.detailUrl(),
-                item.shopName(),
-                item.categoryName(),
-                buildProductSkus(String.valueOf(item.productId()))
-        );
-    }
-
     public List<DouyinProductGateway.ProductSkuResult> buildProductSkus(String productId) {
         long seed = asLong(productId, 0L);
         return List.of(
@@ -424,21 +409,6 @@ public class DouyinContractFixtureProvider {
         return success("buyin.colonelMultiSettlementOrders", data);
     }
 
-    public Map<String, Object> buildDecryptSensitiveResponse(List<String> orderIds) {
-        Map<String, Object> data = new LinkedHashMap<>();
-        List<Map<String, Object>> list = new ArrayList<>();
-        if (orderIds != null) {
-            for (String orderId : orderIds) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("order_id", orderId);
-                item.put("receiver_name", "联调收件人");
-                item.put("receiver_phone", "13800000000");
-                list.add(item);
-            }
-        }
-        data.put("list", list);
-        return success("order.batchSensitive", data);
-    }
 
     private List<DouyinColonelActivityGateway.ActivityItem> contractActivities() {
         return List.of(
@@ -524,19 +494,10 @@ public class DouyinContractFixtureProvider {
                 "2026-05-01 00:00:00",
                 "2026-04-01 00:00:00",
                 "2026-05-01 00:00:00",
-                "https://haohuo.jinritemai.com/views/product/item2?id=" + productId + "&activity_id=" + activityId
+                "https://haohuo.jinritemai.com/views/product/item2?id=" + productId + "&activity_id=" + activityId,
+                null,
+                Map.of()
         );
-    }
-
-    private DouyinProductGateway.ActivityProductItem findProduct(String productId) {
-        for (DouyinColonelActivityGateway.ActivityItem activity : contractActivities()) {
-            for (DouyinProductGateway.ActivityProductItem item : contractProducts(String.valueOf(activity.activityId()))) {
-                if (String.valueOf(item.productId()).equals(productId)) {
-                    return item;
-                }
-            }
-        }
-        return contractProducts("20260428001").get(0);
     }
 
     private List<DouyinColonelActivityGateway.ActivityItem> filterActivities(

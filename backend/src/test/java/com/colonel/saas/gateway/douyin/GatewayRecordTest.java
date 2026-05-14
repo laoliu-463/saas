@@ -118,7 +118,8 @@ class GatewayRecordTest {
                     false, true, 5000L, 100L, "测试店铺",
                     "4.9", 1, "上架", "美妆", "100",
                     "优惠券信息", "2024-01-01", "2024-12-31",
-                    "2024-01-01", "2024-12-31", "http://detail");
+                    "2024-01-01", "2024-12-31", "http://detail",
+                    "7293293346398011698", Map.of("origin_colonel_buyin_id", "7293293346398011698"));
 
             Map<String, Object> map = item.toMap();
 
@@ -131,7 +132,9 @@ class GatewayRecordTest {
             assertThat(map).containsEntry("status", 1);
             assertThat(map).containsEntry("categoryName", "美妆");
             assertThat(map).containsEntry("detailUrl", "http://detail");
-            assertThat(map).hasSize(29);
+            assertThat(map).containsEntry("origin_colonel_buyin_id", "7293293346398011698");
+            assertThat(map).containsEntry("originColonelBuyinId", "7293293346398011698");
+            assertThat(map).hasSize(31);
         }
 
         @Test
@@ -141,7 +144,7 @@ class GatewayRecordTest {
                     100L, 100L, 100L, "1%", 0, "CPS",
                     "5%", null, false, true, 10L, 1L, "店铺",
                     "4.8", 1, "上架", "类目", "10",
-                    "", "", "", "", "", "http://d");
+                    "", "", "", "", "", "http://d", null, Map.of());
 
             var result = new DouyinProductGateway.ActivityProductListResult(
                     true, 100L, 200L, 50L, "next", List.of(item));
@@ -158,19 +161,6 @@ class GatewayRecordTest {
             List<Map<String, Object>> items = (List<Map<String, Object>>) map.get("items");
             assertThat(items).hasSize(1);
             assertThat(items.get(0)).containsEntry("productId", 1L);
-        }
-
-        @Test
-        void productDetailResult_fields() {
-            var detail = new DouyinProductGateway.ProductDetailResult(
-                    "P001", "商品名", "cover.jpg", 9900L, "99.00",
-                    "http://detail", "店铺", "美妆",
-                    List.of(new DouyinProductGateway.ProductSkuResult(
-                            "SKU001", "默认规格", 9900L, 100, "sku_cover.jpg")));
-
-            assertThat(detail.productId()).isEqualTo("P001");
-            assertThat(detail.skus()).hasSize(1);
-            assertThat(detail.skus().get(0).skuName()).isEqualTo("默认规格");
         }
 
         @Test

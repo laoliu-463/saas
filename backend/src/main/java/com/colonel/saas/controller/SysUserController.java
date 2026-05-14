@@ -56,7 +56,7 @@ public class SysUserController extends BaseController {
 
     @Operation(summary = "查询可分配负责人候选", description = "返回可用于商品分配招商弹窗的负责人候选，仅暴露最小必要字段。")
     @GetMapping("/assignable")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.COLONEL_LEADER})
     public ApiResult<List<SysUserVO>> assignable(
             @Parameter(description = "负责人关键字，匹配用户名或姓名。") String keyword,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes,

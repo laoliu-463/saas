@@ -60,7 +60,9 @@ public class TestDouyinProductGateway implements DouyinProductGateway {
                     String.format("2026-05-%02d", 10 + (seedOffset % 9)),
                     String.format("2026-04-%02d", 1 + (seedOffset % 9)),
                     String.format("2026-05-%02d", 10 + (seedOffset % 9)),
-                    "https://example.com/test-detail/" + productId
+                    "https://example.com/test-detail/" + productId,
+                    null,
+                    java.util.Map.of()
             ));
         }
         List<ActivityProductItem> filtered = all.stream()
@@ -84,23 +86,6 @@ public class TestDouyinProductGateway implements DouyinProductGateway {
         String nextCursor = to >= filtered.size() ? "" : String.valueOf(to);
         return new ActivityProductListResult(true, activitySeed, 111111L,
                 mode == 0L ? Long.valueOf(filtered.size()) : null, nextCursor, items);
-    }
-
-    @Override
-    public ProductDetailResult queryProductDetail(String productId) {
-        long productSeed = asLong(productId, 0L);
-        long price = 9900L + (productSeed % 5000);
-        return new ProductDetailResult(
-                productId,
-                "商品详情演示-" + productId,
-                "https://example.com/test-product-detail-" + productId + ".png",
-                price,
-                String.format(Locale.ROOT, "%.2f", price / 100.0),
-                "https://example.com/test-detail/" + productId,
-                buildShopName((int) (productSeed % 9)),
-                productSeed % 2 == 0 ? "美妆个护" : "女装穿搭",
-                queryProductSkus(productId)
-        );
     }
 
     @Override
@@ -167,5 +152,4 @@ public class TestDouyinProductGateway implements DouyinProductGateway {
         };
     }
 }
-
 

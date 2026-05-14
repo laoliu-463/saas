@@ -113,6 +113,22 @@ class SysUserControllerTest {
     }
 
     @Test
+    void assignable_shouldAllowColonelLeaderRole() throws Exception {
+        SysUserVO vo = new SysUserVO();
+        vo.setId(testUserId);
+        vo.setUsername("bizstaff");
+
+        when(sysUserService.findAssignableUsers("招商", List.of(RoleCodes.COLONEL_LEADER), deptId)).thenReturn(List.of(vo));
+
+        mockMvc.perform(get("/users/assignable")
+                        .param("keyword", "招商")
+                        .requestAttr("roleCodes", List.of(RoleCodes.COLONEL_LEADER))
+                        .requestAttr("deptId", deptId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].username").value("bizstaff"));
+    }
+
+    @Test
     void create_returnsCreatedUser() throws Exception {
         SysUserCreateRequest request = new SysUserCreateRequest(
                 "newuser", "password123", "新用户", "13800138000", "newuser@test.com", deptId, List.of(UUID.randomUUID()));

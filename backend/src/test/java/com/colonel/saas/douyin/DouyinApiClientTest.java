@@ -82,23 +82,6 @@ class DouyinApiClientTest {
     }
 
     @Test
-    void postWithoutAuth_shouldNotIncludeAccessToken() {
-        when(douyinConfig.getAppId()).thenReturn("app123");
-        when(douyinConfig.getClientSecret()).thenReturn("secret123");
-        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
-        when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
-                .thenReturn(Map.of("code", 10000));
-
-        douyinApiClient.postWithoutAuth("buyin.materialsProductStatus", Map.of("products", java.util.List.of("https://a.com")));
-
-        ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(douyinRestTemplate).postForObject(urlCaptor.capture(), any(HttpEntity.class), eq(Map.class));
-        assertThat(urlCaptor.getValue()).contains("method=buyin.materialsProductStatus");
-        assertThat(urlCaptor.getValue()).doesNotContain("access_token=");
-        verify(douyinTokenService, never()).getValidToken(any());
-    }
-
-    @Test
     void post_shouldThrowWhenResponseIsNull() {
         when(douyinConfig.getAppId()).thenReturn("app123");
         when(douyinConfig.getClientSecret()).thenReturn("secret123");

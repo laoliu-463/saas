@@ -181,6 +181,44 @@ class SysUserServiceTest {
     }
 
     @Test
+    void findAssignableUsers_shouldAllowColonelLeaderToAssignOwnDeptBizStaff() {
+        SysUser sameDept = new SysUser();
+        sameDept.setId(UUID.randomUUID());
+        sameDept.setUsername("bizstaff-a");
+        sameDept.setRealName("招商A");
+        sameDept.setStatus(1);
+        sameDept.setDeptId(deptId);
+
+        SysUser otherDept = new SysUser();
+        otherDept.setId(UUID.randomUUID());
+        otherDept.setUsername("bizstaff-b");
+        otherDept.setRealName("招商B");
+        otherDept.setStatus(1);
+        otherDept.setDeptId(UUID.randomUUID());
+
+        SysUserRole sameRelation = new SysUserRole();
+        sameRelation.setUserId(sameDept.getId());
+        sameRelation.setRoleId(roleId);
+        SysUserRole otherRelation = new SysUserRole();
+        otherRelation.setUserId(otherDept.getId());
+        otherRelation.setRoleId(roleId);
+
+        SysRole assignableRole = new SysRole();
+        assignableRole.setId(roleId);
+        assignableRole.setRoleCode(RoleCodes.BIZ_STAFF);
+        assignableRole.setStatus(1);
+
+        when(sysUserMapper.selectList(any())).thenReturn(List.of(sameDept, otherDept));
+        when(sysUserRoleMapper.findByUserId(sameDept.getId())).thenReturn(List.of(sameRelation));
+        when(sysUserRoleMapper.findByUserId(otherDept.getId())).thenReturn(List.of(otherRelation));
+        when(sysRoleMapper.selectBatchIds(any())).thenReturn(List.of(assignableRole));
+
+        List<SysUserVO> result = sysUserService.findAssignableUsers(null, List.of(RoleCodes.COLONEL_LEADER), deptId);
+
+        assertThat(result).extracting(SysUserVO::getUsername).containsExactly("bizstaff-a");
+    }
+
+    @Test
     void assertAssignableUser_allowsBizLeaderAssigningOwnDeptBizStaff() {
         UUID assigneeId = UUID.randomUUID();
         SysUser assignee = new SysUser();

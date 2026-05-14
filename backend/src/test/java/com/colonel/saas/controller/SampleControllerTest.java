@@ -28,6 +28,7 @@ import com.colonel.saas.service.SampleStatusLogService;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -521,6 +522,20 @@ class SampleControllerTest {
                 List.of(RoleCodes.OPS_STAFF)))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("待发货及后续物流");
+    }
+
+    @Test
+    void exportSamples_shouldRejectOpsStaff() {
+        assertThatThrownBy(() -> sampleController.exportSamples(
+                null,
+                null,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF),
+                new MockHttpServletResponse()))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("仅管理员、招商组长或渠道组长");
     }
 
     @Test

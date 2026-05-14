@@ -24,7 +24,7 @@ import java.util.UUID;
 @Tag(name = "商家管理", description = "商家归属与基本信息管理。")
 @RestController
 @RequestMapping("/merchants")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+@RequireRoles({RoleCodes.ADMIN})
 public class MerchantController extends BaseController {
 
     private final MerchantService merchantService;

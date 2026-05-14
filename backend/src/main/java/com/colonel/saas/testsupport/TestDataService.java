@@ -180,6 +180,48 @@ public class TestDataService implements ApplicationRunner {
                     ALTER TABLE product_operation_log ADD COLUMN error_message TEXT;
                   END IF;
                 END $$""");
+        jdbcTemplate.execute("""
+                DO $$ BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'pick_source_mapping' AND column_name = 'colonel_buyin_id') THEN
+                    ALTER TABLE pick_source_mapping ADD COLUMN colonel_buyin_id VARCHAR(32);
+                  END IF;
+                END $$""");
+        jdbcTemplate.execute("DROP INDEX IF EXISTS uk_psm_pick_source");
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_psm_pick_source ON pick_source_mapping(pick_source)");
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_psm_colonel_buyin_id ON pick_source_mapping(colonel_buyin_id)");
+        jdbcTemplate.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uk_psm_pick_source_product_activity_user
+                ON pick_source_mapping(pick_source, product_id, activity_id, user_id)
+                WHERE deleted = 0
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS douyin_webhook_event (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    event_key VARCHAR(256) NOT NULL,
+                    event_type VARCHAR(128) NOT NULL,
+                    payload_hash VARCHAR(64) NOT NULL,
+                    body_length INTEGER DEFAULT 0,
+                    raw_payload TEXT,
+                    status VARCHAR(32) NOT NULL DEFAULT 'RECEIVED',
+                    consume_result VARCHAR(256),
+                    retry_count INTEGER NOT NULL DEFAULT 0,
+                    received_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    processed_at TIMESTAMP,
+                    deleted INTEGER DEFAULT 0,
+                    create_time TIMESTAMP DEFAULT NOW(),
+                    update_time TIMESTAMP DEFAULT NOW(),
+                    create_by UUID,
+                    update_by UUID
+                )
+                """);
+        jdbcTemplate.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uk_douyin_webhook_event_key
+                ON douyin_webhook_event(event_key)
+                WHERE deleted = 0
+                """);
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_douyin_webhook_event_status ON douyin_webhook_event(status, create_time)");
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_douyin_webhook_event_type ON douyin_webhook_event(event_type)");
     }
 
     @Transactional(rollbackFor = Exception.class)

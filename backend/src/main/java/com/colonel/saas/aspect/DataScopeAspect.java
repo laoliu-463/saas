@@ -36,22 +36,17 @@ public class DataScopeAspect {
         }
         AbstractWrapper rawWrapper = (AbstractWrapper) wrapper;
 
-        switch (context.scope()) {
-            case PERSONAL -> {
-                if (context.userId() == null) {
-                    throw new BusinessException("数据权限异常：缺少用户上下文");
-                }
-                rawWrapper.eq(dataScope.userField(), context.userId());
+        com.colonel.saas.common.enums.DataScope scope = context.scope();
+        if (scope == com.colonel.saas.common.enums.DataScope.PERSONAL) {
+            if (context.userId() == null) {
+                throw new BusinessException("数据权限异常：缺少用户上下文");
             }
-            case DEPT -> {
-                if (context.deptId() == null) {
-                    throw new BusinessException("数据权限异常：缺少部门上下文");
-                }
-                rawWrapper.eq("dept_id", context.deptId());
+            rawWrapper.eq(dataScope.userField(), context.userId());
+        } else if (scope == com.colonel.saas.common.enums.DataScope.DEPT) {
+            if (context.deptId() == null) {
+                throw new BusinessException("数据权限异常：缺少部门上下文");
             }
-            case ALL -> {
-                // 全量数据，无附加过滤条件
-            }
+            rawWrapper.eq("dept_id", context.deptId());
         }
         return point.proceed();
     }

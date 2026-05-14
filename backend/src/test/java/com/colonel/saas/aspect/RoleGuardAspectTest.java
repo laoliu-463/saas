@@ -67,6 +67,15 @@ class RoleGuardAspectTest {
                 .isInstanceOf(ForbiddenException.class);
     }
 
+    @Test
+    void shouldUseMethodAnnotationInsteadOfClassAnnotation() throws Throwable {
+        bindRoleCodes(List.of(RoleCodes.BIZ_STAFF));
+        ProceedingJoinPoint point = mockJoinPoint(MethodOverrideController.class, "adminEndpoint");
+
+        assertThatThrownBy(() -> aspect.guard(point))
+                .isInstanceOf(ForbiddenException.class);
+    }
+
     private void bindRoleCodes(Object roleCodes) {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setAttribute("roleCodes", roleCodes);
@@ -93,6 +102,13 @@ class RoleGuardAspectTest {
     @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     static class ProtectedController {
         public void bizEndpoint() {
+        }
+    }
+
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    static class MethodOverrideController {
+        @RequireRoles({RoleCodes.ADMIN})
+        public void adminEndpoint() {
         }
     }
 }

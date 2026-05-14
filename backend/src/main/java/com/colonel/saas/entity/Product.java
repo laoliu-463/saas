@@ -138,5 +138,26 @@ public class Product extends BaseEntity {
 
     @TableField(exist = false)
     private java.time.LocalDateTime selectedAt;
+
+    @TableField(exist = false)
+    private String latestDecisionLevel;
+
+    @TableField(exist = false)
+    private String latestDecisionLabel;
+
+    @TableField(exist = false)
+    private String latestDecisionReason;
+
+    @TableField(exist = false)
+    private String latestDecisionAt;
+
+    @TableField(exist = false)
+    private Boolean hasMaterial;
+
+    @TableField(exist = false)
+    private Boolean hasSampleRule;
+
+    @TableField(exist = false)
+    private Long sales30d;
 }
 

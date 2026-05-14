@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -121,9 +122,64 @@ public class TestDouyinOrderGateway implements DouyinOrderGateway {
     }
 
     @Override
-    public Map<String, Object> decryptSensitiveData(List<String> orderIds) {
-        return Map.of("err_no", 0, "data", Map.of("list", List.of()));
+    public OrderListResult listSettlementByOrderIds(List<String> orderIds) {
+        List<String> normalized = normalizeOrderIds(orderIds);
+        if (normalized.isEmpty()) {
+            return new OrderListResult(List.of(), false, "0", Map.of("test", true, "order_ids", List.of()));
+        }
+        PickSourceMapping latestMapping = pickSourceMappingMapper.selectOne(
+                new LambdaQueryWrapper<PickSourceMapping>()
+                        .eq(PickSourceMapping::getStatus, 1)
+                        .orderByDesc(PickSourceMapping::getUpdateTime)
+                        .last("limit 1")
+        );
+        long baseTime = Instant.now().getEpochSecond() - 300L;
+        List<DouyinOrderItem> orders = new ArrayList<>();
+        int index = 0;
+        for (String orderId : normalized) {
+            Map<String, Object> raw = new LinkedHashMap<>();
+            raw.put("product_name", "Webhook定向同步订单");
+            raw.put("merchant_id", "M_WEBHOOK");
+            raw.put("order_id", orderId);
+            if (latestMapping != null) {
+                raw.put("colonel_activity_id", latestMapping.getActivityId());
+                raw.put("pick_source", latestMapping.getPickSource());
+                raw.put("pick_extra", latestMapping.getPickExtra());
+                raw.put("talent_uid", latestMapping.getTalentId());
+                raw.put("author_id", latestMapping.getTalentId());
+            }
+            orders.add(new DouyinOrderItem(
+                    orderId,
+                    latestMapping == null ? "EXT_WEBHOOK_" + index : latestMapping.getProductId(),
+                    latestMapping == null ? "WEBHOOK_PRODUCT_" + index : latestMapping.getProductId(),
+                    "800900",
+                    "Webhook测试商家",
+                    latestMapping == null ? "T_WEBHOOK" : latestMapping.getTalentId(),
+                    latestMapping == null ? "Webhook达人" : latestMapping.getTalentName(),
+                    latestMapping == null ? null : latestMapping.getPickSource(),
+                    9900L,
+                    1200L,
+                    1,
+                    baseTime + index,
+                    null,
+                    raw
+            ));
+            index++;
+        }
+        return new OrderListResult(orders, false, "0", Map.of("test", true, "order_ids", normalized));
     }
+
+    private List<String> normalizeOrderIds(List<String> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String orderId : orderIds) {
+            if (orderId != null && !orderId.isBlank()) {
+                normalized.add(orderId.trim());
+            }
+        }
+        return List.copyOf(normalized);
+    }
+
 }
-
-

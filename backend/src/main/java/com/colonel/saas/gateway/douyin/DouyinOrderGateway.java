@@ -6,7 +6,7 @@ import java.util.Map;
 /**
  * 抖店订单 Gateway 接口。
  * <p>
- * 业务层（OrderSyncService / OrderDecryptService）只依赖此接口，
+ * 业务层只依赖此接口，
  * 不感知底层是 Test 还是真实 SDK 调用。
  */
 public interface DouyinOrderGateway {
@@ -22,9 +22,9 @@ public interface DouyinOrderGateway {
     OrderListResult listSettlementWindow(String cursor, Integer count);
 
     /**
-     * 解密订单敏感数据（order.batchSensitiveDataRequest / order.batchSensitive）。
+     * 按指定订单号定向拉取订单。
      */
-    Map<String, Object> decryptSensitiveData(List<String> orderIds);
+    OrderListResult listSettlementByOrderIds(List<String> orderIds);
 
     record DouyinOrderQueryRequest(
             long startTime,

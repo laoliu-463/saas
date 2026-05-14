@@ -8,8 +8,6 @@ public interface DouyinProductGateway {
 
     ActivityProductListResult queryActivityProducts(ActivityProductQueryRequest request);
 
-    ProductDetailResult queryProductDetail(String productId);
-
     List<ProductSkuResult> queryProductSkus(String productId);
 
     record ActivityProductQueryRequest(
@@ -76,10 +74,15 @@ public interface DouyinProductGateway {
             String activityEndTime,
             String promotionStartTime,
             String promotionEndTime,
-            String detailUrl) {
+            String detailUrl,
+            String originColonelBuyinId,
+            Map<String, Object> rawPayload) {
 
         public Map<String, Object> toMap() {
             Map<String, Object> item = new LinkedHashMap<>();
+            if (rawPayload != null && !rawPayload.isEmpty()) {
+                item.putAll(rawPayload);
+            }
             item.put("productId", productId);
             item.put("title", title);
             item.put("cover", cover);
@@ -109,20 +112,12 @@ public interface DouyinProductGateway {
             item.put("promotionStartTime", promotionStartTime);
             item.put("promotionEndTime", promotionEndTime);
             item.put("detailUrl", detailUrl);
+            if (originColonelBuyinId != null && !originColonelBuyinId.isBlank()) {
+                item.put("origin_colonel_buyin_id", originColonelBuyinId);
+                item.put("originColonelBuyinId", originColonelBuyinId);
+            }
             return item;
         }
-    }
-
-    record ProductDetailResult(
-            String productId,
-            String title,
-            String cover,
-            Long price,
-            String priceText,
-            String mainVideo,
-            String shopName,
-            String categoryName,
-            List<ProductSkuResult> skus) {
     }
 
     record ProductSkuResult(

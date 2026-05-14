@@ -252,8 +252,6 @@ public class DouyinApiClient {
                     Map.of("product_id", "test_product_2", "title", "Test商品2", "cos_type", 0)
             ));
             data.put("has_more", false);
-        } else if ("buyin.materialsProductStatus".equals(method)) {
-            data.put("products", params == null ? java.util.List.of() : params.getOrDefault("products", java.util.List.of()));
         } else {
             data.put("ok", true);
         }
