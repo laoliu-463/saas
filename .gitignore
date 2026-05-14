@@ -6,6 +6,7 @@
 !.env.real.example
 !.env.real-pre.example
 !.env.prod.example
+!.env.e2e.example
 
 .idea/
 .vscode/

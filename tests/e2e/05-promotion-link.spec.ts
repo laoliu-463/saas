@@ -1,0 +1,15 @@
+import { test, expect } from '@playwright/test';
+import { storageStates } from './helpers/test-data';
+import { capturePage } from './helpers/screenshot';
+import { testIds } from './helpers/selectors';
+
+test.use({ storageState: storageStates.channelLeader });
+
+test('渠道组长可以对单个商品做最小转链验证', async ({ page }, testInfo) => {
+  await page.goto('/product');
+  await expect(page.getByTestId(testIds.productCard).first()).toBeVisible();
+  await page.getByTestId(testIds.productCopyLink).first().click();
+
+  await expect(page.locator('body')).toContainText(/推广链接已复制|已复制|归因到当前渠道/);
+  await capturePage(page, testInfo, '05-promotion-link-success', { visual: false });
+});
