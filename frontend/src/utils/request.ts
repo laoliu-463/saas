@@ -22,6 +22,37 @@ const refreshClient = axios.create({
 
 let refreshPromise: Promise<string | null> | null = null;
 
+const nowMs = () => {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+};
+
+const markRequestStarted = (config: any) => {
+  config.__requestStartedAt = nowMs();
+  return config;
+};
+
+const getTimingUrl = (config: any): string => {
+  const baseURL = String(config?.baseURL || '').replace(/\/+$/, '');
+  const url = String(config?.url || '');
+  return `${baseURL}${url}`;
+};
+
+const logRequestTiming = (config: any, status: number | string, failed = false) => {
+  const startedAt = Number(config?.__requestStartedAt || 0);
+  const durationMs = startedAt ? Math.round(nowMs() - startedAt) : 0;
+  const payload = {
+    method: String(config?.method || 'GET').toUpperCase(),
+    url: getTimingUrl(config),
+    status,
+    durationMs
+  };
+  const logger = failed ? console.warn : console.info;
+  logger('[api timing]', payload);
+};
+
 const isAuthLoginRequest = (configOrError: any): boolean => {
   const url = String(configOrError?.url || configOrError?.config?.url || '');
   return url.includes('/auth/login');
@@ -157,8 +188,25 @@ const shouldTryRefresh = (configOrError: any): boolean => {
   return isValidToken(localStorage.getItem('refreshToken'));
 };
 
+refreshClient.interceptors.request.use(
+  (config) => markRequestStarted(config),
+  (error) => Promise.reject(error)
+);
+
+refreshClient.interceptors.response.use(
+  (response) => {
+    logRequestTiming(response.config, response.status);
+    return response;
+  },
+  (error) => {
+    logRequestTiming(error?.config, error?.response?.status || error?.code || 'ERR', true);
+    return Promise.reject(error);
+  }
+);
+
 request.interceptors.request.use(
   (config) => {
+    markRequestStarted(config);
     loadingBar.start();
     const token = localStorage.getItem('token');
     const headers = (config.headers || {}) as any;
@@ -171,6 +219,7 @@ request.interceptors.request.use(
         loadingBar.error();
         clearStoredAuth();
         redirectToLogin();
+        logRequestTiming(config, 'CANCELLED', true);
         return Promise.reject(new axios.Cancel('缺少登录态，已阻止未授权请求'));
       }
     }
@@ -193,6 +242,7 @@ request.interceptors.request.use(
 
 request.interceptors.response.use(
   (response) => {
+    logRequestTiming(response.config, response.status);
     if (response.status === 304) {
       loadingBar.finish();
       return Promise.reject(new Error('资源未修改，使用缓存'));
@@ -222,6 +272,7 @@ request.interceptors.response.use(
     if (axios.isCancel(error)) {
       return Promise.reject(error);
     }
+    logRequestTiming(error?.config, error?.response?.status || error?.code || 'ERR', true);
     const originalRequest = error?.config;
     const isUnauthorized = error?.response?.status === 401 || error?.__business401 === true;
     if (isUnauthorized && originalRequest && !originalRequest.__isRetryRequest && shouldTryRefresh(error)) {

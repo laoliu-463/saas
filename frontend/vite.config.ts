@@ -13,6 +13,24 @@ function resolveProxyTarget() {
 
 const proxyTarget = resolveProxyTarget()
 
+function resolveDevPort() {
+  const rawPort = Number(process.env.VITE_DEV_PORT || 3000)
+  return Number.isFinite(rawPort) && rawPort > 0 ? rawPort : 3000
+}
+
+function resolveWatchInterval() {
+  const rawInterval = Number(process.env.CHOKIDAR_INTERVAL || 1000)
+  return Number.isFinite(rawInterval) && rawInterval > 0 ? rawInterval : 1000
+}
+
+function resolveUsePolling() {
+  const values = [
+    process.env.VITE_FORCE_POLLING,
+    process.env.CHOKIDAR_USEPOLLING
+  ]
+  return values.some((value) => String(value || '').toLowerCase() === 'true')
+}
+
 function createApiProxy(options?: ProxyOptions): ProxyOptions {
   return {
     target: proxyTarget,
@@ -34,31 +52,39 @@ function createApiProxy(options?: ProxyOptions): ProxyOptions {
   }
 }
 
-export default defineConfig({
-  plugins: [vue()],
-  server: {
-    host: '0.0.0.0',
-    port: 3000,
-    watch: {
-      usePolling: true,
-      interval: 300
-    },
-    proxy: {
-      '/api': createApiProxy(),
-      '/douyin': createApiProxy({
-        rewrite: (path) => `/api${path}`
-      })
-    }
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('node_modules/naive-ui')) {
-            return 'naive-ui'
+export default defineConfig(() => {
+  const usePolling = resolveUsePolling()
+
+  return {
+    plugins: [vue()],
+    server: {
+      host: '0.0.0.0',
+      port: resolveDevPort(),
+      strictPort: false,
+      watch: usePolling
+        ? {
+            usePolling,
+            interval: resolveWatchInterval(),
+            ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**']
           }
-          if (id.includes('node_modules/vue') || id.includes('node_modules/@vue') || id.includes('node_modules/pinia') || id.includes('node_modules/vue-router')) {
-            return 'vue-vendor'
+        : undefined,
+      proxy: {
+        '/api': createApiProxy(),
+        '/douyin': createApiProxy({
+          rewrite: (path) => `/api${path}`
+        })
+      }
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules/naive-ui')) {
+              return 'naive-ui'
+            }
+            if (id.includes('node_modules/vue') || id.includes('node_modules/@vue') || id.includes('node_modules/pinia') || id.includes('node_modules/vue-router')) {
+              return 'vue-vendor'
+            }
           }
         }
       }

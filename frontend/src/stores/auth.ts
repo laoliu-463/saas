@@ -46,13 +46,21 @@ const normalizeUserInfo = (userInfo: any): any => {
     };
 };
 
+const readStoredUserInfo = (): any => {
+    try {
+        return JSON.parse(localStorage.getItem('userInfo') || 'null');
+    } catch (_error) {
+        return null;
+    }
+};
+
 export const useAuthStore = defineStore('auth', {
     state: () => ({
         token: normalizeStoredToken(localStorage.getItem('token')),
         refreshToken: normalizeStoredToken(localStorage.getItem('refreshToken')),
         refreshExpiresIn: normalizeStoredNumber(localStorage.getItem('refreshExpiresIn')),
         accessTokenExpiresIn: normalizeStoredNumber(localStorage.getItem('accessTokenExpiresIn')),
-        userInfo: normalizeUserInfo(JSON.parse(localStorage.getItem('userInfo') || 'null'))
+        userInfo: normalizeUserInfo(readStoredUserInfo())
     }),
     getters: {
         isLoggedIn: (state) => !!normalizeStoredToken(state.token),
@@ -90,6 +98,13 @@ export const useAuthStore = defineStore('auth', {
                 this.accessTokenExpiresIn = normalizeStoredNumber(payload.accessTokenExpiresIn);
             }
             this.persistAuthState();
+        },
+        hydrateFromStorage() {
+            this.token = normalizeStoredToken(localStorage.getItem('token'));
+            this.refreshToken = normalizeStoredToken(localStorage.getItem('refreshToken'));
+            this.refreshExpiresIn = normalizeStoredNumber(localStorage.getItem('refreshExpiresIn'));
+            this.accessTokenExpiresIn = normalizeStoredNumber(localStorage.getItem('accessTokenExpiresIn'));
+            this.userInfo = normalizeUserInfo(readStoredUserInfo());
         },
         persistAuthState() {
             if (this.token) {

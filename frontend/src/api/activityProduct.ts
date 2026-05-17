@@ -21,6 +21,9 @@ export const auditActivityProduct = (
     participationRequirements?: string;
     campaignTimeRemark?: string;
     materialFiles?: string[];
+    sampleThresholdSales?: number;
+    sampleThresholdLevel?: number;
+    sampleThresholdRemark?: string;
   }
 ) => request.put(`/colonel/activities/${activityId}/products/${productId}/audit-result`, data);
 
@@ -29,6 +32,12 @@ export const assignActivityProduct = (
   productId: string | number,
   data: { assigneeId: string }
 ) => request.put(`/colonel/activities/${activityId}/products/${productId}/assignee`, data);
+
+export const assignActivityProductAuditOwner = (
+  activityId: string | number,
+  productId: string | number,
+  data: { assigneeId: string }
+) => request.put(`/colonel/activities/${activityId}/products/${productId}/audit-assignee`, data);
 
 export const updateActivityProductDecision = (
   activityId: string | number,

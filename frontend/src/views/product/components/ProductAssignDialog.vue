@@ -2,13 +2,13 @@
   <n-modal
     :show="show"
     preset="dialog"
-    title="分配招商"
+    :title="modeConfig.title"
     positive-text="确认"
     negative-text="取消"
     @positive-click="handleSubmit"
     @update:show="updateShow"
   >
-    <n-form-item label="负责人" required>
+    <n-form-item :label="modeConfig.label" required>
       <n-select
         v-model:value="assigneeId"
         :options="userOptions"
@@ -16,27 +16,57 @@
         filterable
         clearable
         remote
-        placeholder="请选择负责人"
+        :placeholder="modeConfig.placeholder"
         @search="handleSearch"
       />
     </n-form-item>
-    <div class="form-tip">从系统用户中选择负责人，避免手动输入导致格式错误。</div>
+    <div class="form-tip">{{ modeConfig.tip }}</div>
   </n-modal>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
-import { assignActivityProduct } from '../../../api/activityProduct';
+import { assignActivityProduct, assignActivityProductAuditOwner } from '../../../api/activityProduct';
 import { getAssignableUserOptions } from '../../../api/sys';
 
-const props = defineProps<{ show: boolean; activityId: string | number | null; productId: string | number | null }>();
+type AssignMode = 'businessOwner' | 'auditOwner';
+
+const props = withDefaults(defineProps<{
+  show: boolean;
+  activityId: string | number | null;
+  productId: string | number | null;
+  mode?: AssignMode;
+}>(), {
+  mode: 'businessOwner'
+});
 const emit = defineEmits(['update:show', 'success']);
 const message = useMessage();
 
 const assigneeId = ref<string | null>(null);
 const userOptions = ref<{ label: string; value: string }[]>([]);
 const loadingUsers = ref(false);
+
+const modeConfig = computed(() => {
+  if (props.mode === 'auditOwner') {
+    return {
+      title: '分配审核人',
+      label: '审核人',
+      placeholder: '请选择审核人',
+      tip: '从本组招商专员中选择审核负责人，分配后商品仍保持待审核状态。',
+      success: '分配审核人成功',
+      error: '分配审核人失败'
+    };
+  }
+  return {
+    title: '分配招商',
+    label: '招商负责人',
+    placeholder: '请选择招商负责人',
+    tip: '从本组招商专员中选择负责人，审核通过入库后可再次调整归属。',
+    success: '分配招商成功',
+    error: '分配招商失败'
+  };
+});
 
 watch(() => props.show, async (val) => {
   if (val) {
@@ -90,15 +120,16 @@ const handleSubmit = async () => {
     return false;
   }
   try {
-    const res: any = await assignActivityProduct(props.activityId, props.productId, {
+    const assignRequest = props.mode === 'auditOwner' ? assignActivityProductAuditOwner : assignActivityProduct;
+    const res: any = await assignRequest(props.activityId, props.productId, {
       assigneeId: assigneeId.value
     });
-    message.success('分配招商成功');
+    message.success(modeConfig.value.success);
     emit('success', res?.data);
     updateShow(false);
     return true;
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '分配招商失败');
+    message.error(error?.response?.data?.msg || error?.message || modeConfig.value.error);
     return false;
   }
 };

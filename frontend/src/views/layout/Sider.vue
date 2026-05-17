@@ -39,9 +39,9 @@ import { computed, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NIcon } from 'naive-ui'
 import { ROLE_CODES, hasAccess } from '../../constants/rbac'
+import { filterAccessibleMenus, isRoutePathUnderPrefix, resolveActiveSection, type NavigationMenuItem } from '../../router/navigation'
 import { useAppStore } from '../../stores/app'
 import { useAuthStore } from '../../stores/auth'
-import { isTestEnv } from '../../utils/env'
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
@@ -94,7 +94,7 @@ const icons = {
   list: iconData('M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2')
 }
 
-interface MenuItem {
+interface MenuItem extends NavigationMenuItem {
   label: string
   key: string
   icon?: () => any
@@ -103,43 +103,12 @@ interface MenuItem {
   _section?: string
 }
 
-/** 路由前缀 → 侧边栏分组 key 的映射（按长度降序匹配） */
-const SECTION_MAP: [string, string][] = [
-  ['/ops/shipping', 'ops'],
-  ['/ops/exclusive', 'ops'],
-  ['/system/operation-logs', 'system'],
-  ['/system/config', 'system'],
-  ['/system/douyin', 'system'],
-  ['/system/roles', 'system'],
-  ['/system/users', 'system'],
-  ['/product/manage/products', 'product-manage'],
-  ['/product/manage', 'product-manage'],
-  ['/product/library', 'product'],
-  ['/product', 'product'],
-  ['/data/orders', 'data'],
-  ['/data', 'data'],
-  ['/dashboard', 'attribution'],
-  ['/orders', 'attribution'],
-  ['/talent', 'talent'],
-  ['/sample', 'sample'],
-  ['/dev', 'dev']
-]
-
 const TALENT_MENU_KEYS = {
   teamPublic: '/talent?view=TEAM_PUBLIC',
   myTalents: '/talent?view=MY_TALENTS',
   naturalOrders: '/talent?view=NATURAL_ORDERS',
   blacklist: '/talent?view=BLACKLIST'
 } as const
-
-/** 根据当前路由确定应展示的侧边栏分组 */
-const activeSection = computed(() => {
-  const path = route.path
-  for (const [prefix, section] of SECTION_MAP) {
-    if (path.startsWith(prefix)) return section
-  }
-  return null
-})
 
 const rawMenus: MenuItem[] = [
   {
@@ -177,7 +146,7 @@ const rawMenus: MenuItem[] = [
     key: '/product',
     icon: icons.bag,
     _section: 'product',
-    roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF]
+    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF]
   },
   {
     label: '商品管理',
@@ -212,7 +181,7 @@ const rawMenus: MenuItem[] = [
   },
   {
     label: '系统管理',
-    key: 'system',
+    key: '/system',
     icon: icons.settings,
     _section: 'system',
     roles: [ROLE.ADMIN],
@@ -226,26 +195,10 @@ const rawMenus: MenuItem[] = [
   }
 ]
 
-if (isTestEnv) {
-  rawMenus.push({
-    label: '开发调试',
-    key: 'dev-group',
-    icon: icons.settings,
-    _section: 'dev',
-    roles: [ROLE.ADMIN],
-    children: [{ label: '测试调试台', key: '/dev/test', icon: icons.settings }]
-  })
-}
-
 const menuOptions = computed(() => {
   const roles = authStore.roleCodes
-  const section = activeSection.value
-  return rawMenus
-    .filter((menu) => {
-      // 按当前活跃的顶部导航分组过滤
-      if (section && menu._section && menu._section !== section) return false
-      return hasAccess(roles, menu.roles)
-    })
+  const section = resolveActiveSection(route.path)
+  return filterAccessibleMenus(rawMenus, roles, section)
     .map(({ roles: _roles, _section: _s, children, ...menu }) => {
       const localizedMenu = { ...menu }
       if (isChannelStaffOnly.value && localizedMenu.key === 'talent-group') {
@@ -281,19 +234,21 @@ const menuOptions = computed(() => {
 })
 
 const activeMenuKey = computed(() => {
-  if (route.path.startsWith('/ops/shipping')) return '/ops/shipping'
-  if (route.path.startsWith('/ops/exclusive')) return '/ops/exclusive'
-  if (route.path.startsWith('/system/config')) return '/system/config'
-  if (route.path.startsWith('/system/douyin')) return '/system/douyin'
-  if (route.path.startsWith('/system/operation-logs')) return '/system/operation-logs'
-  if (route.path.startsWith('/system/roles')) return '/system/roles'
-  if (route.path.startsWith('/system/users')) return '/system/users'
+  if (isRoutePathUnderPrefix(route.path, '/ops/shipping')) return '/ops/shipping'
+  if (isRoutePathUnderPrefix(route.path, '/ops/exclusive')) return '/ops/exclusive'
+  if (isRoutePathUnderPrefix(route.path, '/system/config')) return '/system/config'
+  if (isRoutePathUnderPrefix(route.path, '/system/douyin')) return '/system/douyin'
+  if (isRoutePathUnderPrefix(route.path, '/system/operation-logs')) return '/system/operation-logs'
+  if (isRoutePathUnderPrefix(route.path, '/system/roles')) return '/system/roles'
+  if (isRoutePathUnderPrefix(route.path, '/system/users')) return '/system/users'
   if (route.path === '/data/orders') return '/data/orders'
   if (route.path === '/product/manage/products') return '/product/manage/products'
   if (route.path === '/product/manage') return '/product/manage'
-  if (route.path.startsWith('/product/manage/')) return '/product/manage'
-  if (route.path.startsWith('/product/library')) return '/product'
-  if (route.path.startsWith('/talent')) {
+  if (isRoutePathUnderPrefix(route.path, '/product/manage')) return '/product/manage'
+  if (isRoutePathUnderPrefix(route.path, '/product/activity')) return '/product/manage'
+  if (isRoutePathUnderPrefix(route.path, '/product/review')) return '/product/manage/products'
+  if (isRoutePathUnderPrefix(route.path, '/product/library')) return '/product'
+  if (isRoutePathUnderPrefix(route.path, '/talent')) {
     const view = typeof route.query.view === 'string' ? route.query.view : 'TEAM_PUBLIC'
     if (view === 'MY_TALENTS') return TALENT_MENU_KEYS.myTalents
     if (view === 'NATURAL_ORDERS') return TALENT_MENU_KEYS.naturalOrders

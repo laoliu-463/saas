@@ -89,6 +89,8 @@ export interface SampleItem {
   status: string;
   remark?: string;
   trackingNo?: string;
+  shipperCode?: string;
+  logisticsSource?: 'MANUAL' | 'MOCK' | string;
   rejectReason?: string;
   closeReason?: string;
   applyReason?: string;
@@ -133,16 +135,6 @@ export interface MetricsData {
   bizCommission?: number;
   channelCommission?: number;
   grossProfit?: number;
-}
-
-// 订单解密
-export interface DecryptResultItem {
-  orderId: string;
-  isVirtualTel: boolean;
-  phone?: string;           // 非虚拟号时返回
-  phoneNoA?: string;        // 虚拟号 A（达人号，脱敏）
-  phoneNoB?: string;        // 虚拟号 B（快递员号，脱敏）
-  expireTime?: number;      // 虚拟号过期时间（秒级时间戳）
 }
 
 // 转链结果

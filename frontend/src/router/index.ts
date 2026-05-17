@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { ROLE_CODES, hasAccess } from '../constants/rbac'
 import { useAuthStore } from '../stores/auth'
-import { isTestEnv } from '../utils/env'
+import { createGuardWarningDeduper, resolveGuardDecision, type GuardRedirectDecision } from './guard'
 
 const ROLE = ROLE_CODES
 const HOME_CANDIDATES = ['/dashboard', '/orders', '/data', '/product', '/product/manage', '/product/manage/products', '/talent', '/ops/shipping', '/sample', '/system/users']
@@ -20,12 +20,12 @@ const router = createRouter({
         {
           path: 'product',
           component: () => import('../views/product/ProductLibrary.vue'),
-          meta: { title: '商品库', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '商品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'product/library',
-          redirect: '/product',
-          meta: { title: '商品库', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          component: () => import('../views/product/ProductLibrary.vue'),
+          meta: { title: '商品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'product/manage',
@@ -59,7 +59,7 @@ const router = createRouter({
         {
           path: 'product/:id',
           redirect: '/product',
-          meta: { title: '商品库', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '商品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'talent',
@@ -102,6 +102,11 @@ const router = createRouter({
           meta: { title: '订单明细', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
+          path: 'system',
+          redirect: '/system/users',
+          meta: { title: '系统管理', roles: [ROLE.ADMIN] }
+        },
+        {
           path: 'system/users',
           component: () => import('../views/system/UserList.vue'),
           meta: { title: '用户管理', roles: [ROLE.ADMIN] }
@@ -136,17 +141,22 @@ const router = createRouter({
           component: () => import('../views/dashboard/index.vue'),
           meta: { title: '归因概览', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
         },
-        {
-          path: 'dev/test',
-          component: () => import('../views/dev/TestConsole.vue'),
-          meta: { title: '测试调试台', roles: [ROLE.ADMIN], testOnly: true }
-        },
         { path: '', redirect: '/dashboard' }
       ]
     },
     { path: '/:pathMatch(.*)*', redirect: '/data' }
   ]
 })
+
+const shouldEmitGuardWarning = createGuardWarningDeduper()
+let routeStartedAt = 0
+
+const nowRouteMs = () => {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now()
+  }
+  return Date.now()
+}
 
 const resolveHomePath = (authStore: ReturnType<typeof useAuthStore>): string => {
   const roles = authStore.roleCodes
@@ -166,27 +176,63 @@ const resolveHomePath = (authStore: ReturnType<typeof useAuthStore>): string => 
   return accessible || '/login'
 }
 
-router.beforeEach((to) => {
+router.beforeEach((to, from) => {
+  routeStartedAt = nowRouteMs()
+  console.info('[router timing] beforeEach', {
+    from: from.fullPath || '(start)',
+    to: to.fullPath
+  })
+
   const authStore = useAuthStore()
+  authStore.hydrateFromStorage()
 
-  if (to.path !== '/login' && !authStore.isLoggedIn) {
-    return '/login'
-  }
-  if (to.path === '/login' && authStore.isLoggedIn) {
-    return resolveHomePath(authStore)
-  }
-  if (to.path === '/') {
-    return resolveHomePath(authStore)
-  }
-  if (to.meta?.testOnly && !isTestEnv) {
-    return resolveHomePath(authStore)
-  }
-
+  const roleCodes = authStore.roleCodes
   const requiredRoles = to.meta?.roles as string[] | undefined
-  if (!hasAccess(authStore.roleCodes, requiredRoles)) {
-    return resolveHomePath(authStore)
+  const decision = resolveGuardDecision({
+    toPath: to.path,
+    fromPath: from.path,
+    isLoggedIn: authStore.isLoggedIn,
+    roleCodes,
+    requiredRoles,
+    resolveHomePath: () => resolveHomePath(authStore)
+  })
+
+  if (decision.type !== 'allow') {
+    warnGuardDecision(decision, from.fullPath, to.fullPath, roleCodes)
   }
+
+  if (decision.type === 'redirect') {
+    return decision.redirectTarget
+  }
+
+  if (decision.type === 'abort') {
+    return false
+  }
+
   return true
 })
+
+router.afterEach((to, from, failure) => {
+  const durationMs = routeStartedAt ? Math.round(nowRouteMs() - routeStartedAt) : 0
+  console.info('[router timing] afterEach', {
+    from: from.fullPath || '(start)',
+    to: to.fullPath,
+    durationMs,
+    failure: failure ? failure.type : undefined
+  })
+})
+
+function warnGuardDecision(decision: GuardRedirectDecision, from: string, to: string, roleCodes: string[]) {
+  if (!shouldEmitGuardWarning(decision, from, to, roleCodes)) {
+    return
+  }
+  console.warn('[router guard] redirect', {
+    from,
+    to,
+    roleCodes,
+    redirectTarget: decision.redirectTarget,
+    reason: decision.reason
+  })
+}
 
 export default router

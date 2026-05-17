@@ -2,7 +2,7 @@
   <div class="activity-page" data-testid="activity-list-page">
     <PageHeader
       title="活动列表"
-      description="同步并查看抖音官方报名的团长活动，点击活动可进入商品列表进行选品操作。"
+      description="同步并查看抖音官方报名的团长活动，进入活动商品推进工作台处理入库与分配。"
     />
 
     <div class="toolbar">
@@ -65,7 +65,7 @@ const filters = reactive({
 
 const pagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 20,
   itemCount: 0,
   showSizePicker: true,
   pageSizes: [10, 20, 50]
@@ -109,7 +109,7 @@ const columns = [
         onClick: () => {
           router.push(`/product/manage/${row.activityId}`)
         }
-      }, { default: () => '查看商品' })
+      }, { default: () => '进入工作台' })
     }
   }
 ]

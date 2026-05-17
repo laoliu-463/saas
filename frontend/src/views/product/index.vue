@@ -2,6 +2,15 @@
   <div class="product-page" :data-testid="isActivityProductMode ? 'activity-product-page' : 'product-manage-page'">
     <PageHeader :title="pageTitle" :description="pageDescription">
       <template #actions>
+        <n-button
+          v-if="isActivityProductMode"
+          :loading="syncing"
+          secondary
+          data-testid="activity-product-sync"
+          @click="syncActivityProductsFromRemote"
+        >
+          同步活动商品
+        </n-button>
         <n-button :loading="loading" type="primary" data-testid="product-manage-refresh" @click="refreshProducts">
           刷新商品
         </n-button>
@@ -9,11 +18,55 @@
     </PageHeader>
 
     <n-alert v-if="hasExplicitActivityRoute" type="info" class="page-alert">
-      当前正在查看活动下的商品列表，可直接做审核、转链和寄样前置准备。
+      当前活动按“组长分配审核人、招商审核、自动入库、分配招商、渠道转链”推进。待审核商品可在这里先指定审核负责人。
       <template #action>
-        <n-button size="small" @click="router.push('/product/manage')">返回活动列表</n-button>
+        <n-space>
+          <n-button size="small" @click="router.push('/product/manage')">返回活动列表</n-button>
+          <n-button size="small" secondary @click="router.push('/product/manage/products')">打开商品列表</n-button>
+        </n-space>
       </template>
     </n-alert>
+
+    <section
+      v-if="isActivityProductMode"
+      class="activity-workbench"
+      data-testid="activity-product-workbench"
+    >
+      <div class="activity-workbench-header">
+        <div>
+          <div class="activity-workbench-title">活动商品推进</div>
+          <div class="activity-workbench-subtitle">
+            已加载 {{ activityStats.total }} 个商品，优先处理待审核分配、待分配招商和已分配后的复核。
+          </div>
+        </div>
+        <div class="activity-workbench-actions">
+          <n-button size="small" secondary data-testid="activity-filter-all" @click="applyActivityQuickFilter('all')">
+            全部
+          </n-button>
+          <n-button size="small" type="warning" secondary data-testid="activity-filter-pending-audit" @click="applyActivityQuickFilter('pendingAudit')">
+            只看待审核
+          </n-button>
+          <n-button size="small" type="primary" secondary data-testid="activity-filter-ready-assign" @click="applyActivityQuickFilter('readyAssign')">
+            只看待分配
+          </n-button>
+        </div>
+      </div>
+      <div class="activity-stage-row">
+        <button
+          v-for="stage in activityStages"
+          :key="stage.key"
+          type="button"
+          class="activity-stage"
+          :class="{ active: activeStage === stage.key }"
+          :data-testid="`activity-stage-${stage.key}`"
+          @click="applyActivityQuickFilter(stage.key)"
+        >
+          <span class="activity-stage-label">{{ stage.label }}</span>
+          <strong>{{ stage.count }}</strong>
+          <span class="activity-stage-hint">{{ stage.hint }}</span>
+        </button>
+      </div>
+    </section>
 
     <ProductFilters
       :filters="filters"
@@ -23,9 +76,9 @@
       :product-options-loading="productOptionsLoading"
       :loading="loading"
       :show-assignee-filter="!authStore.roleCodes.includes('biz_staff') || authStore.roleCodes.includes('biz_leader') || authStore.isAdmin"
-      @update:filters="filters = $event"
+      @update:filters="handleFiltersUpdate"
       @update:selected-product="selectedProduct = $event"
-      @update:status="status = $event"
+      @update:status="handleStatusUpdate"
       @search="handleProductSearch"
       @search-click="refreshProducts"
       @reset="resetFilters"
@@ -76,7 +129,8 @@
       v-model:show="dialogs.assign"
       :product-id="currentRow?.productId ?? null"
       :activity-id="detailActivityId"
-      @success="(payload: any) => handleActionSuccess('assign', payload)"
+      :mode="assignDialogMode"
+      @success="(payload: any) => handleActionSuccess(assignDialogMode === 'auditOwner' ? 'auditOwner' : 'assign', payload)"
     />
     <ProductOperationLogDrawer
       v-model:show="dialogs.logs"
@@ -103,7 +157,9 @@ import ProductAuditDialog from './components/ProductAuditDialog.vue'
 import ProductAssignDialog from './components/ProductAssignDialog.vue'
 import ProductOperationLogDrawer from './components/ProductOperationLogDrawer.vue'
 
-type ProductAction = 'audit' | 'assign'
+type ProductAction = 'audit' | 'assign' | 'auditOwner'
+type AssignDialogMode = 'businessOwner' | 'auditOwner'
+type ActivityStageKey = 'all' | 'pendingAudit' | 'readyAssign' | 'assigned' | 'linked'
 
 const message = useMessage()
 const route = useRoute()
@@ -111,6 +167,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const loading = ref(false)
+const syncing = ref(false)
 const loadingMore = ref(false)
 const products = ref<any[]>([])
 const nextCursor = ref('')
@@ -121,10 +178,12 @@ const productKeyword = ref('')
 const productOptions = ref<{ label: string; value: string }[]>([])
 const productOptionsLoading = ref(false)
 const status = ref<string | null>(null)
+const activeStage = ref<ActivityStageKey>('all')
 const fallbackActivityId = ref('')
 const currentRow = ref<any | null>(null)
 const showDetail = ref(false)
 const detailRefreshKey = ref(0)
+const assignDialogMode = ref<AssignDialogMode>('businessOwner')
 
 const dialogs = ref({
   audit: false,
@@ -142,7 +201,8 @@ const filters = ref({
 
 const forcedStatusMap: Record<ProductAction, string> = {
   audit: 'APPROVED',
-  assign: 'ASSIGNED'
+  assign: 'ASSIGNED',
+  auditOwner: 'PENDING_AUDIT'
 }
 
 const canDo = (action: string) => {
@@ -150,6 +210,7 @@ const canDo = (action: string) => {
   if (roles.includes('admin')) return true
   if (action === 'audit') return hasAccess(roles, ['biz_staff'])
   if (action === 'assign') return hasAccess(roles, ['biz_leader'])
+  if (action === 'auditOwner') return hasAccess(roles, ['biz_leader'])
   if (action === 'promotion') return hasAccess(roles, ['channel_leader', 'channel_staff'])
   if (action === 'libraryEntry') return false
   if (action === 'decision') return false
@@ -161,24 +222,86 @@ const hasExplicitActivityRoute = computed(() => Boolean(route.params.activityId)
 const isSharedLibraryMode = computed(() => route.path === '/product')
 const isActivityProductMode = computed(() => hasExplicitActivityRoute.value)
 const isPickLibraryMode = computed(() => route.path === '/product/manage/products' || (!isSharedLibraryMode.value && !isActivityProductMode.value))
+const isBizLeader = computed(() => authStore.roleCodes.includes('biz_leader') || authStore.isAdmin)
+const isBizStaffOnly = computed(() => authStore.roleCodes.includes('biz_staff') && !isBizLeader.value)
 
 const pageTitle = computed(() => {
-  if (isActivityProductMode.value) return '商品列表'
-  if (route.path === '/product/manage/products') return '我负责的商品'
+  if (isActivityProductMode.value) return '活动商品推进'
+  if (route.path === '/product/manage/products') return isBizStaffOnly.value ? '我负责的商品' : '商品推进池'
   return '商品库'
 })
 
 const pageDescription = computed(() => {
-  if (isActivityProductMode.value) return '查看活动下的商品列表，支持审核、转链和寄样前置准备。'
-  if (route.path === '/product/manage/products') return '管理我负责的商品，补全推广资料并完成审核。'
+  if (isActivityProductMode.value) return '围绕当前活动处理审核人分配、商品审核、入库分配与协作推进。'
+  if (route.path === '/product/manage/products') {
+    return isBizStaffOnly.value
+      ? '管理我负责的商品，补全推广资料并完成审核。'
+      : '统一查看活动商品，给待审核商品分配审核人，并在入库后分配招商负责人。'
+  }
   if (isSharedLibraryMode.value) return '沉淀完成的共享商品库，对全员可见，可直接复用历史商品结果。'
   return '支持候选商品浏览、审核、转链和入库沉淀，作为商品协同的统一工作台。'
 })
 
 const emptyDescription = computed(() => {
   if (isSharedLibraryMode.value) return '当前还没有加入商品库的商品，可先在商品管理里进入活动并将商品沉淀到商品库。'
-  return '当前暂无我负责的待审商品，如有疑问请联系组长分配。'
+  if (isActivityProductMode.value) return '当前活动暂无商品数据，可先同步活动商品，或返回活动列表切换活动。'
+  return isBizStaffOnly.value
+    ? '当前暂无我负责的待审商品，如有疑问请联系组长分配。'
+    : '当前暂无可推进商品，可进入活动列表同步或切换活动。'
 })
+
+const assignableBizStatuses = ['APPROVED', 'BOUND', 'ASSIGNED']
+const libraryReadyStatuses = new Set(['APPROVED', 'BOUND', 'ASSIGNED', 'LINKED', 'FOLLOWING'])
+const isLibraryReadyStatus = (statusCode?: string | null) => libraryReadyStatuses.has(String(statusCode || ''))
+
+const canAssignAuditOwnerRow = (row: any) =>
+  canDo('auditOwner') && String(row?.bizStatus || '') === 'PENDING_AUDIT'
+
+const canAssignRow = (row: any) =>
+  canDo('assign') &&
+  (Boolean(row?.selectedToLibrary) || isLibraryReadyStatus(row?.bizStatus)) &&
+  assignableBizStatuses.includes(String(row?.bizStatus || ''))
+
+const getAssignActionLabel = (row: any) => (row?.assigneeName || row?.bizStatus === 'ASSIGNED' ? '重新分配' : '分配招商')
+
+const activityStats = computed(() => {
+  const rows = products.value
+  const count = (predicate: (row: any) => boolean) => rows.filter(predicate).length
+  return {
+    total: rows.length,
+    pendingAudit: count((row) => row.bizStatus === 'PENDING_AUDIT'),
+    readyAssign: count((row) => row.selectedToLibrary && ['APPROVED', 'BOUND'].includes(String(row.bizStatus || '')) && !row.assigneeName),
+    assigned: count((row) => row.bizStatus === 'ASSIGNED'),
+    linked: count((row) => ['LINKED', 'FOLLOWING'].includes(String(row.bizStatus || '')))
+  }
+})
+
+const activityStages = computed(() => [
+  {
+    key: 'pendingAudit' as ActivityStageKey,
+    label: '待审核',
+    count: activityStats.value.pendingAudit,
+    hint: '招商审核后自动入库'
+  },
+  {
+    key: 'readyAssign' as ActivityStageKey,
+    label: '待分配',
+    count: activityStats.value.readyAssign,
+    hint: '组长可指定负责人'
+  },
+  {
+    key: 'assigned' as ActivityStageKey,
+    label: '已分配',
+    count: activityStats.value.assigned,
+    hint: '可按需重新分配'
+  },
+  {
+    key: 'linked' as ActivityStageKey,
+    label: '渠道推进',
+    count: activityStats.value.linked,
+    hint: '已进入转链/达人跟进'
+  }
+])
 
 const detailActivityId = computed(() => {
   const rowActivityId = currentRow.value?.sourceActivityId || currentRow.value?.activityId
@@ -344,7 +467,8 @@ const normalizeItem = (item: any) => ({
   hasMaterial: item?.hasMaterial ?? false,
   hasSampleRule: item?.hasSampleRule ?? true,
   activityExpired: Boolean(item?.activityExpired),
-  selectedToLibrary: Boolean(item?.selectedToLibrary || item?.libraryVisible),
+  selectedToLibrary: Boolean(item?.selectedToLibrary || item?.libraryVisible || isLibraryReadyStatus(item?.bizStatus)),
+  libraryVisible: Boolean(item?.libraryVisible || item?.selectedToLibrary || isLibraryReadyStatus(item?.bizStatus)),
   systemTags: Array.isArray(item?.systemTags) ? item.systemTags : [],
   alertTags: Array.isArray(item?.alertTags) ? item.alertTags : [],
   promotion: item?.promotion || {
@@ -406,7 +530,7 @@ const applyFilters = (items: any[]) =>
     return true
   })
 
-const fetchProducts = async (reset: boolean) => {
+const fetchProducts = async (reset: boolean, forceRemote = false): Promise<boolean> => {
   if (reset) loading.value = true
   else loadingMore.value = true
 
@@ -431,7 +555,7 @@ const fetchProducts = async (reset: boolean) => {
       const total = Number(data.total || 0)
       hasMore.value = currentPage * pageSize < total
       nextCursor.value = ''
-      return
+      return true
     }
 
     const activityId = await ensureActivityId()
@@ -440,14 +564,15 @@ const fetchProducts = async (reset: boolean) => {
         count: 20,
         cursor: reset ? undefined : nextCursor.value,
         productInfo: selectedProduct.value || productKeyword.value.trim() || undefined,
-        retrieveMode: 1
+        retrieveMode: 1,
+        refresh: forceRemote || undefined
       })
       const data = res?.data || {}
       const items = applyFilters((Array.isArray(data.items) ? data.items : []).map(normalizeItem))
       products.value = reset ? items : products.value.concat(items)
       nextCursor.value = String(data.nextCursor || '')
       hasMore.value = Boolean(data.hasMore || data.nextCursor)
-      return
+      return true
     }
 
     const page = reset ? 1 : Math.floor(products.value.length / 20) + 1
@@ -470,8 +595,9 @@ const fetchProducts = async (reset: boolean) => {
     const total = Number(data.total || 0)
     hasMore.value = currentPage * pageSize < total
     nextCursor.value = ''
+    return true
   } catch (error: any) {
-    if (hasExplicitActivityRoute.value) {
+    if (hasExplicitActivityRoute.value && !forceRemote) {
       products.value = []
       nextCursor.value = ''
       hasMore.value = false
@@ -483,6 +609,7 @@ const fetchProducts = async (reset: boolean) => {
         hasMore.value = false
       }
     }
+    return false
   } finally {
     loading.value = false
     loadingMore.value = false
@@ -500,10 +627,15 @@ const buildProductOption = (item: any) => {
 }
 
 const loadProductOptions = async (keyword: string) => {
+  const normalizedKeyword = String(keyword || '').trim()
+  if (!normalizedKeyword) {
+    productOptions.value = []
+    return
+  }
   productOptionsLoading.value = true
   try {
     if (isSharedLibraryMode.value) {
-      const res: any = await getProducts({ size: 20, keyword: keyword || undefined })
+      const res: any = await getProducts({ page: 1, size: 20, keyword: normalizedKeyword })
       const records = Array.isArray(res?.data?.records) ? res.data.records : []
       productOptions.value = records
         .map((p: any) => buildProductOption({
@@ -519,7 +651,7 @@ const loadProductOptions = async (keyword: string) => {
     if (!isPickLibraryMode.value && activityId) {
       const res: any = await getActivityProducts(activityId, {
         count: 20,
-        productInfo: keyword || undefined,
+        productInfo: normalizedKeyword,
         retrieveMode: 1
       })
       const items = Array.isArray(res?.data?.items) ? res.data.items : []
@@ -527,7 +659,7 @@ const loadProductOptions = async (keyword: string) => {
       return
     }
 
-    const res: any = await getProductPickPage({ size: 20 })
+    const res: any = await getProductPickPage({ page: 1, size: 20 })
     const records = Array.isArray(res?.data?.records) ? res.data.records : []
     productOptions.value = records
       .map((p: any) => ({ label: String(p.name || p.title || ''), value: String(p.productId || '') }))
@@ -545,15 +677,61 @@ const handleProductSearch = async (keyword: string) => {
   await loadProductOptions(productKeyword.value)
 }
 
+const handleFiltersUpdate = (value: typeof filters.value) => {
+  filters.value = value
+  activeStage.value = 'all'
+}
+
+const handleStatusUpdate = (value: string | null) => {
+  status.value = value
+  activeStage.value = 'all'
+}
+
+const applyActivityQuickFilter = (stage: ActivityStageKey) => {
+  activeStage.value = stage
+  if (stage === 'all') {
+    status.value = null
+    filters.value = { ...filters.value, assignee: null }
+  } else if (stage === 'pendingAudit') {
+    status.value = 'PENDING_AUDIT'
+    filters.value = { ...filters.value, assignee: null }
+  } else if (stage === 'readyAssign') {
+    status.value = 'APPROVED'
+    filters.value = { ...filters.value, assignee: 'unassigned' }
+  } else if (stage === 'assigned') {
+    status.value = 'ASSIGNED'
+    filters.value = { ...filters.value, assignee: 'assigned' }
+  } else if (stage === 'linked') {
+    status.value = 'LINKED'
+    filters.value = { ...filters.value, assignee: null }
+  }
+  refreshProducts()
+}
+
 const resetFilters = () => {
   selectedProduct.value = null
   status.value = null
+  activeStage.value = 'all'
   filters.value = { category: null, commission: null, hasSample: null, assignee: null, decision: null }
   refreshProducts()
 }
 
 const refreshProducts = async () => {
   await fetchProducts(true)
+}
+
+const syncActivityProductsFromRemote = async () => {
+  const activityId = resolvedActivityId.value
+  if (!activityId) {
+    message.warning('缺少活动 ID，暂时无法同步活动商品')
+    return
+  }
+  syncing.value = true
+  const ok = await fetchProducts(true, true)
+  syncing.value = false
+  if (ok) {
+    message.success('活动商品已同步，列表已更新')
+  }
 }
 
 const loadMore = () => {
@@ -568,6 +746,11 @@ const openDetail = (row: any) => {
 const openDialog = (type: keyof typeof dialogs.value, row: any) => {
   currentRow.value = { ...row }
   dialogs.value[type] = true
+}
+
+const openAssignDialog = (row: any, mode: AssignDialogMode) => {
+  assignDialogMode.value = mode
+  openDialog('assign', row)
 }
 
 const mergeProductRow = (payload?: any, fallbackAction?: ProductAction) => {
@@ -598,6 +781,14 @@ const handleActionSuccess = (action: ProductAction, payload?: any) => {
 const handleDetailAction = (payload: { action: string; row: any }) => {
   if (payload.action === 'putIntoLibrary') {
     handlePutIntoLibrary(payload.row)
+    return
+  }
+  if (payload.action === 'auditOwner') {
+    openAssignDialog(payload.row, 'auditOwner')
+    return
+  }
+  if (payload.action === 'assign') {
+    openAssignDialog(payload.row, 'businessOwner')
     return
   }
   openDialog(payload.action as keyof typeof dialogs.value, payload.row)
@@ -701,7 +892,7 @@ const copyPromotionLink = async (item: any) => {
   }
 }
 
-const renderTextAction = (label: string, onClick?: (event: MouseEvent) => void, muted = false) =>
+const renderTextAction = (label: string, onClick?: (event: MouseEvent) => void, muted = false, testId?: string) =>
   h(
     NButton,
     {
@@ -709,6 +900,7 @@ const renderTextAction = (label: string, onClick?: (event: MouseEvent) => void, 
       size: 'small',
       type: muted ? 'default' : 'primary',
       class: ['table-link-action-button', muted ? 'is-muted' : ''],
+      'data-testid': testId,
       focusable: false,
       onClick: (event: MouseEvent) => {
         event.stopPropagation()
@@ -792,22 +984,48 @@ const renderServiceFee = (row: any) =>
 
 const renderProgress = (row: any) =>
   h('div', { class: 'table-stack' }, [
-    h('div', { class: 'table-stack-line strong' }, row.assigneeName || '未分配负责人'),
-    h('div', { class: 'table-stack-line muted' }, row.bizStatusLabel || getStatusLabel(row.bizStatus))
+    h(
+      'div',
+      { class: 'table-stack-line strong' },
+      row.bizStatus === 'PENDING_AUDIT'
+        ? (row.assigneeName ? `审核人：${row.assigneeName}` : '待分配审核人')
+        : (row.assigneeName ? `负责人：${row.assigneeName}` : '未分配负责人')
+    ),
+    h('div', { class: 'table-stack-line muted' }, row.bizStatusLabel || getStatusLabel(row.bizStatus)),
+    row.selectedToLibrary && ['APPROVED', 'BOUND'].includes(String(row.bizStatus || '')) && !row.assigneeName
+      ? h('div', { class: 'table-stack-line action-needed' }, '待组长分配')
+      : null
   ])
+
+const getBlockedAssignLabel = (row: any) => {
+  if (!canDo('assign')) return ''
+  if (row.bizStatus === 'PENDING_AUDIT') return ''
+  if (row.bizStatus === 'REJECTED') return '审核拒绝'
+  if (!row.selectedToLibrary && !isLibraryReadyStatus(row.bizStatus)) return '待入库'
+  if (['LINKED', 'FOLLOWING'].includes(String(row.bizStatus || ''))) return '渠道推进中'
+  return ''
+}
 
 const renderActions = (row: any) => {
   const buttons: any[] = []
+  if (canAssignAuditOwnerRow(row)) {
+    buttons.push(renderTextAction('分配审核人', () => openAssignDialog(row, 'auditOwner'), false, 'product-action-assign-audit-owner'))
+  }
   if (row.bizStatus === 'PENDING_AUDIT' && canDo('audit')) {
-    buttons.push(renderTextAction('审核商品', () => openDialog('audit', row)))
+    buttons.push(renderTextAction('审核商品', () => openDialog('audit', row), false, 'product-action-audit'))
   }
-  if (row.selectedToLibrary && ['APPROVED', 'BOUND'].includes(row.bizStatus) && canDo('assign')) {
-    buttons.push(renderTextAction('分配招商', () => openDialog('assign', row)))
+  if (canAssignRow(row)) {
+    buttons.push(renderTextAction(getAssignActionLabel(row), () => openAssignDialog(row, 'businessOwner'), false, 'product-action-assign'))
+  } else {
+    const blockedLabel = getBlockedAssignLabel(row)
+    if (blockedLabel) {
+      buttons.push(renderTextAction(blockedLabel, undefined, true, 'product-action-assign-blocked'))
+    }
   }
-  buttons.push(renderTextAction('详情', () => openDetail(row)))
-  buttons.push(renderTextAction('操作日志', () => openDialog('logs', row)))
+  buttons.push(renderTextAction('详情', () => openDetail(row), false, 'product-action-detail'))
+  buttons.push(renderTextAction('操作日志', () => openDialog('logs', row), false, 'product-action-logs'))
   if (row.selectedToLibrary && canDo('promotion')) {
-    buttons.push(renderTextAction('复制推广链接', () => copyPromotionLink(row)))
+    buttons.push(renderTextAction('复制推广链接', () => copyPromotionLink(row), false, 'product-action-copy-link'))
   }
   return h('div', { class: 'table-actions' }, buttons)
 }
@@ -843,9 +1061,9 @@ const columns = computed(() => [
     render: (row: any) => renderTagList(row)
   },
   {
-    title: '招商跟进人',
+    title: '负责人',
     key: 'progress',
-    width: 120,
+    width: 160,
     render: (row: any) => renderProgress(row)
   },
   {
@@ -863,7 +1081,7 @@ const columns = computed(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 140,
+    width: 160,
     render: (row: any) => renderActions(row)
   }
 ])
@@ -871,7 +1089,6 @@ const columns = computed(() => [
 onMounted(async () => {
   try {
     await refreshProducts()
-    await loadProductOptions('')
   } catch (error: any) {
     message.error(error?.response?.data?.msg || error?.message || '页面初始化失败')
   }
@@ -882,7 +1099,11 @@ watch(
   async () => {
     nextCursor.value = ''
     await refreshProducts()
-    await loadProductOptions(productKeyword.value)
+    if (productKeyword.value) {
+      await loadProductOptions(productKeyword.value)
+    } else {
+      productOptions.value = []
+    }
   }
 )
 </script>
@@ -894,6 +1115,84 @@ watch(
 
 .page-alert {
   margin-bottom: 16px;
+}
+
+.activity-workbench {
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #edf0f5;
+  border-radius: 6px;
+}
+
+.activity-workbench-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.activity-workbench-title {
+  color: #111827;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.activity-workbench-subtitle {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 2px;
+}
+
+.activity-workbench-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.activity-stage-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.activity-stage {
+  appearance: none;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 6px;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+  min-height: 90px;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.activity-stage:hover,
+.activity-stage.active {
+  border-color: #ef4444;
+  background: #fff7f7;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.08);
+}
+
+.activity-stage-label,
+.activity-stage-hint {
+  display: block;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.activity-stage strong {
+  display: block;
+  color: #111827;
+  font-size: 24px;
+  line-height: 1.2;
+  margin: 4px 0;
 }
 
 .main-card {
@@ -995,6 +1294,11 @@ watch(
   color: #888;
 }
 
+:deep(.table-stack-line.action-needed) {
+  color: #ef4444;
+  font-weight: 600;
+}
+
 :deep(.table-tag-block) {
   display: flex;
   flex-direction: column;
@@ -1081,5 +1385,29 @@ watch(
   padding-bottom: 18px;
   border-bottom: 1px solid #f5f5f5;
   vertical-align: top;
+}
+
+@media (max-width: 960px) {
+  .activity-workbench-header {
+    flex-direction: column;
+  }
+
+  .activity-workbench-actions {
+    justify-content: flex-start;
+  }
+
+  .activity-stage-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .product-page {
+    padding: 16px;
+  }
+
+  .activity-stage-row {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

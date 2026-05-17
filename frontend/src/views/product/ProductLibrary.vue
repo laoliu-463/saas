@@ -37,9 +37,11 @@
           :expanded="expandedProductId === item.productId"
           :can-audit="false"
           :can-assign="false"
+          :can-assign-audit-owner="false"
           :pick-mode="false"
           :library-mode="true"
           :can-put-into-library="false"
+          :can-copy-link="canCopyPromotionLink"
           @toggle="expandedProductId = $event"
           @detail="openDetail"
           @copy-link="copyPromotionLink"
@@ -84,18 +86,21 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
 import { getProducts } from '../../api/product'
 import { convertActivityProductLink } from '../../api/activityProduct'
+import { useAuthStore } from '../../stores/auth'
+import { ROLE_CODES, hasAccess } from '../../constants/rbac'
 
 import ProductCard from './components/ProductCard.vue'
 import ProductDetail from './ProductDetail.vue'
 import ProductOperationLogDrawer from './components/ProductOperationLogDrawer.vue'
 
 const message = useMessage()
+const authStore = useAuthStore()
 
 const loading = ref(false)
 const loadingMore = ref(false)
@@ -114,6 +119,10 @@ const detailRefreshKey = ref(0)
 const dialogs = ref({
   logs: false
 })
+
+const canCopyPromotionLink = computed(() =>
+  hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
+)
 
 const normalizeItem = (item: any) => ({
   ...item,
@@ -188,9 +197,14 @@ const buildProductOption = (item: any) => {
 }
 
 const loadProductOptions = async (keyword: string) => {
+  const normalizedKeyword = String(keyword || '').trim()
+  if (!normalizedKeyword) {
+    productOptions.value = []
+    return
+  }
   productOptionsLoading.value = true
   try {
-    const res: any = await getProducts({ size: 20, keyword: keyword || undefined })
+    const res: any = await getProducts({ page: 1, size: 20, keyword: normalizedKeyword })
     const records = Array.isArray(res?.data?.records) ? res.data.records : []
     productOptions.value = records
       .map((p: any) => buildProductOption({
@@ -241,6 +255,10 @@ const handleDetailAction = (_payload: { action: string; row: any }) => {
 }
 
 const copyPromotionLink = async (item: any) => {
+  if (!canCopyPromotionLink.value) {
+    message.warning('当前角色仅可查看商品库，推广链接由渠道角色生成')
+    return
+  }
   const productId = String(item?.productId || '')
   const activityId = String(item?.sourceActivityId || item?.activityId || '')
   if (!productId || !activityId) {
@@ -308,7 +326,6 @@ const copyPromotionLink = async (item: any) => {
 onMounted(async () => {
   try {
     await refreshProducts()
-    await loadProductOptions('')
   } catch (error: any) {
     message.error(error?.response?.data?.msg || error?.message || '页面初始化失败')
   }

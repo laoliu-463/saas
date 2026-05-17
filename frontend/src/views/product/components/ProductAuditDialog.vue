@@ -59,6 +59,21 @@
               <n-input v-model:value="form.campaignTimeRemark" placeholder="如：长期在线" />
             </n-form-item>
           </n-gi>
+          <n-gi :span="2">
+            <n-form-item label="奖励说明">
+              <n-input v-model:value="form.rewardRemark" type="textarea" :rows="2" placeholder="如：破峰值有奖励、额外返佣规则" />
+            </n-form-item>
+          </n-gi>
+          <n-gi :span="2">
+            <n-form-item label="参与要求">
+              <n-input v-model:value="form.participationRequirements" type="textarea" :rows="2" placeholder="如：食品饮料达人优先，需真人出镜" />
+            </n-form-item>
+          </n-gi>
+          <n-gi :span="2">
+            <n-form-item label="手卡素材">
+              <n-input v-model:value="materialFilesText" type="textarea" :rows="2" placeholder="每行填写一个素材链接或文件名" />
+            </n-form-item>
+          </n-gi>
         </n-grid>
 
         <n-divider title-placement="left">寄样门槛配置</n-divider>
@@ -112,6 +127,7 @@ const message = useMessage();
 const auditApproved = ref(true);
 const auditReason = ref('');
 const sellingPointsText = ref('');
+const materialFilesText = ref('');
 
 const form = reactive({
   exclusivePriceRemark: '',
@@ -130,6 +146,7 @@ const resetForm = () => {
   auditApproved.value = true;
   auditReason.value = '';
   sellingPointsText.value = '';
+  materialFilesText.value = '';
   form.exclusivePriceRemark = '';
   form.shippingInfo = '';
   form.promotionScript = '';
@@ -169,6 +186,27 @@ const handleSubmit = async () => {
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean);
+    const materialFiles = materialFilesText.value
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (auditApproved.value) {
+      const missing: string[] = [];
+      if (!form.exclusivePriceRemark.trim()) missing.push('专属价说明');
+      if (!form.shippingInfo.trim()) missing.push('发货信息');
+      if (!sellingPoints.length) missing.push('商品卖点');
+      if (!form.promotionScript.trim()) missing.push('推广话术');
+      if (form.supportsAds === undefined || form.supportsAds === null) missing.push('是否支持投流');
+      if (!form.rewardRemark.trim()) missing.push('奖励说明');
+      if (!form.participationRequirements.trim()) missing.push('参与要求');
+      if (!form.campaignTimeRemark.trim()) missing.push('活动时间');
+      if (!materialFiles.length) missing.push('手卡素材');
+      if (missing.length) {
+        message.warning(`审核通过前请补充：${missing.join('、')}`);
+        return false;
+      }
+    }
 
     const payload = {
       approved: auditApproved.value,
@@ -179,7 +217,10 @@ const handleSubmit = async () => {
       sellingPoints: auditApproved.value ? sellingPoints : undefined,
       promotionScript: auditApproved.value ? form.promotionScript : undefined,
       supportsAds: auditApproved.value ? form.supportsAds : undefined,
+      rewardRemark: auditApproved.value ? form.rewardRemark : undefined,
+      participationRequirements: auditApproved.value ? form.participationRequirements : undefined,
       campaignTimeRemark: auditApproved.value ? form.campaignTimeRemark : undefined,
+      materialFiles: auditApproved.value ? materialFiles : undefined,
       // 门槛信息
       sampleThresholdSales: auditApproved.value ? form.sampleThresholdSales : undefined,
       sampleThresholdLevel: auditApproved.value ? form.sampleThresholdLevel : undefined,

@@ -84,6 +84,15 @@
             </div>
             <div class="card-actions">
               <n-button
+                v-if="product.bizStatus === 'PENDING_AUDIT' && canAssignAuditOwner"
+                size="small"
+                quaternary
+                type="info"
+                @click.stop="$emit('assignAuditOwner', product)"
+              >
+                分配审核人
+              </n-button>
+              <n-button
                 v-if="product.bizStatus === 'PENDING_AUDIT' && canAudit"
                 size="small"
                 quaternary
@@ -93,13 +102,13 @@
                 审核
               </n-button>
               <n-button
-                v-if="product.selectedToLibrary && ['APPROVED', 'BOUND'].includes(product.bizStatus) && canAssign"
+                v-if="product.selectedToLibrary && ['APPROVED', 'BOUND', 'ASSIGNED'].includes(product.bizStatus) && canAssign"
                 size="small"
                 quaternary
                 type="info"
                 @click.stop="$emit('assign', product)"
               >
-                分配
+                {{ product.assigneeName || product.bizStatus === 'ASSIGNED' ? '重新分配' : '分配招商' }}
               </n-button>
               <n-tag
                 v-if="product.selectedToLibrary"
@@ -180,7 +189,15 @@
             <div class="section-label">快速操作</div>
             <n-space vertical :size="8">
               <n-tag v-if="product.selectedToLibrary" type="success" size="small" round>已入商品库</n-tag>
-              <n-button block size="small" type="primary" secondary data-testid="product-copy-link" @click.stop="$emit('copyLink', product)">
+              <n-button
+                v-if="canCopyLink"
+                block
+                size="small"
+                type="primary"
+                secondary
+                data-testid="product-copy-link"
+                @click.stop="$emit('copyLink', product)"
+              >
                 一键复制专属推广链接
               </n-button>
               <n-button block size="small" @click.stop="$emit('showLogs', product)">
@@ -203,9 +220,11 @@ defineProps<{
   expanded: boolean
   canAudit: boolean
   canAssign: boolean
+  canAssignAuditOwner?: boolean
   pickMode: boolean
   libraryMode: boolean
   canPutIntoLibrary: boolean
+  canCopyLink?: boolean
 }>()
 
 defineEmits<{
@@ -213,6 +232,7 @@ defineEmits<{
   detail: [product: any]
   audit: [product: any]
   assign: [product: any]
+  assignAuditOwner: [product: any]
   putIntoLibrary: [product: any]
   copyLink: [product: any]
   showLogs: [product: any]

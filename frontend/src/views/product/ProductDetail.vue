@@ -17,6 +17,15 @@
           <div class="action-bar">
             <n-space>
               <n-button
+                v-if="!libraryMode && detail.bizStatus === 'PENDING_AUDIT' && canDo('auditOwner')"
+                type="info"
+                size="small"
+                secondary
+                @click="handleAction('auditOwner')"
+              >
+                分配审核人
+              </n-button>
+              <n-button
                 v-if="!libraryMode && detail.bizStatus === 'PENDING_AUDIT' && canDo('audit')"
                 type="warning"
                 size="small"
@@ -26,15 +35,15 @@
                 审核商品
               </n-button>
               <n-button
-                v-if="!libraryMode && detail.selectedToLibrary && ['APPROVED', 'BOUND'].includes(detail.bizStatus) && canDo('assign')"
+                v-if="!libraryMode && canAssignDetail"
                 type="info"
                 size="small"
                 secondary
                 @click="handleAction('assign')"
               >
-                分配招商
+                {{ detail.assigneeName || detail.bizStatus === 'ASSIGNED' ? '重新分配' : '分配招商' }}
               </n-button>
-              <n-tag v-if="detail.selectedToLibrary" type="success" size="small" round>
+              <n-tag v-if="businessReady" type="success" size="small" round>
                 已入商品库
               </n-tag>
             </n-space>
@@ -64,7 +73,9 @@
                       </n-tag>
                     </n-descriptions-item>
                     <n-descriptions-item label="最后操作时间">{{ detail.lastOperationAt || '-' }}</n-descriptions-item>
-                    <n-descriptions-item label="招商负责人">{{ detail.assigneeName || '未分配' }}</n-descriptions-item>
+                    <n-descriptions-item :label="detail.bizStatus === 'PENDING_AUDIT' ? '审核负责人' : '招商负责人'">
+                      {{ detail.assigneeName || (detail.bizStatus === 'PENDING_AUDIT' ? '未分配审核人' : '未分配') }}
+                    </n-descriptions-item>
                     <n-descriptions-item label="来源活动">{{ detail.activityId || '-' }}</n-descriptions-item>
                   </n-descriptions>
                 </n-card>
@@ -359,6 +370,7 @@ const canDo = (action: string) => {
   if (roles.includes('admin')) return true;
   if (action === 'audit') return hasAccess(roles, ['biz_staff']);
   if (action === 'assign') return hasAccess(roles, ['biz_leader']);
+  if (action === 'auditOwner') return hasAccess(roles, ['biz_leader']);
   if (action === 'decision') return hasAccess(roles, ['biz_staff']);
   if (action === 'promotion') return hasAccess(roles, ['channel_leader', 'channel_staff']);
   return true;
@@ -384,7 +396,14 @@ const statusMap: Record<string, number> = {
 };
 
 const currentStep = computed(() => statusMap[detail.value?.bizStatus || 'PENDING_AUDIT'] ?? 0);
-const businessReady = computed(() => Boolean(detail.value?.selectedToLibrary));
+const libraryReadyStatuses = new Set(['APPROVED', 'BOUND', 'ASSIGNED', 'LINKED', 'FOLLOWING']);
+const isLibraryReadyStatus = (statusCode?: string | null) => libraryReadyStatuses.has(String(statusCode || ''));
+const businessReady = computed(() => Boolean(detail.value?.selectedToLibrary || detail.value?.libraryVisible || isLibraryReadyStatus(detail.value?.bizStatus)));
+const canAssignDetail = computed(() =>
+  businessReady.value &&
+  ['APPROVED', 'BOUND', 'ASSIGNED'].includes(String(detail.value?.bizStatus || '')) &&
+  canDo('assign')
+);
 
 const promotion = computed(() => detail.value?.promotion || {
   status: detail.value?.promotionLinkStatus || 'PENDING',
@@ -488,6 +507,7 @@ const timelineEvents = computed(() => {
     const assigneeName = payload.assigneeName || detail.value?.assigneeName || '未识别负责人';
     const operatorName = formatOperatorDisplay(log);
     const titles: Record<string, string> = {
+      ASSIGN_AUDIT: `商品已分配给审核人 ${assigneeName}`,
       ASSIGN: `商品已分配给 ${assigneeName}`,
       AUDIT: log?.afterStatus === 'REJECTED' ? '商品审核被拒绝' : '商品审核通过',
       DECISION: payload.eventLabel || '商品推进判断已更新',
@@ -568,6 +588,7 @@ const getStatusLabel = (status?: string) => {
 
 const mapOperationTypeLabel = (type?: string) => {
   const map: Record<string, string> = {
+    ASSIGN_AUDIT: '分配审核人',
     ASSIGN: '分配招商',
     AUDIT: '商品审核',
     DECISION: '推进判断',
@@ -627,6 +648,9 @@ const buildTimelineMeta = (type: string, operatorName: string, assigneeName: str
   if (type === 'DECISION') {
     return `${operatorName} 更新了商品推进判断`;
   }
+  if (type === 'ASSIGN_AUDIT') {
+    return `${operatorName} 指定审核负责人：${assigneeName}`;
+  }
   if (type === 'ASSIGN') {
     return `${operatorName} 完成分配，当前负责人：${assigneeName}`;
   }
@@ -647,6 +671,9 @@ const buildOperationSummary = (row: any) => {
   const type = String(row?.operationType || '');
   if (type === 'DECISION') {
     return row?.operationRemark || `${payload.decisionLabel || '推进判断'}：未填写原因`;
+  }
+  if (type === 'ASSIGN_AUDIT') {
+    return row?.operationRemark || `已分配给审核人 ${payload.assigneeName || detail.value?.assigneeName || '负责人'}`;
   }
   if (type === 'ASSIGN') {
     return row?.operationRemark || `已分配给 ${payload.assigneeName || detail.value?.assigneeName || '负责人'}`;

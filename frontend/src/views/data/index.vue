@@ -212,7 +212,7 @@ type TrendChartInstance = {
 
 let trendChart: TrendChartInstance | null = null
 const showSkeleton = computed(() => loading.value && !initialized.value)
-const INITIAL_SKELETON_MIN_MS = 1200
+const INITIAL_SKELETON_MIN_MS = 0
 const ROLE = ROLE_CODES
 
 const isBizStaffOnly = computed(() => {

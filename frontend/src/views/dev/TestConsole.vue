@@ -71,7 +71,7 @@
 
     <n-card title="环境信息" style="margin-top: 16px;">
       <n-descriptions label-placement="left" bordered :column="2">
-        <n-descriptions-item label="当前 Profile">local-mock (Test Enabled)</n-descriptions-item>
+        <n-descriptions-item label="当前环境">{{ currentEnv }}</n-descriptions-item>
         <n-descriptions-item label="后端基地址">/api</n-descriptions-item>
         <n-descriptions-item label="Test 服务状态">
           <n-tag type="success" size="small">运行中</n-tag>
@@ -83,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import PageHeader from '../../components/PageHeader.vue'
 import {
@@ -106,6 +106,20 @@ const seedResult = ref<any>(null)
 const shippingSampleId = ref<string | null>(null)
 const shippedSampleId = ref<string | null>(null)
 const lastActionTime = ref<string | null>(null)
+const currentEnv = ref('TEST')
+
+onMounted(async () => {
+  try {
+    const res = await fetch('/api/system/env')
+    const body = await res.json()
+    const label = body?.data?.environmentLabel
+    if (label) {
+      currentEnv.value = String(label).trim().toUpperCase()
+    }
+  } catch {
+    currentEnv.value = 'TEST'
+  }
+})
 
 const now = () => new Date().toLocaleString('zh-CN', { hour12: false })
 

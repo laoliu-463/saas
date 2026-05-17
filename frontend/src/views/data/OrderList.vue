@@ -41,9 +41,6 @@
         <n-button type="primary" data-testid="data-orders-search-submit" @click="fetchData">查询</n-button>
         <n-button ghost type="primary" @click="fetchData">刷新订单</n-button>
         <n-button v-if="canExport" type="info" data-testid="data-orders-export" @click="handleExport">导出 CSV</n-button>
-        <n-button v-if="canDecrypt" type="warning" :loading="decryptLoading" @click="handleDecrypt">
-          批量解密（{{ checkedRowKeys.length }}）
-        </n-button>
       </n-space>
 
       <n-data-table
@@ -53,8 +50,6 @@
         :loading="loading"
         :pagination="pagination"
         :row-key="(row: any) => row.id"
-        :checked-row-keys="checkedRowKeys"
-        @update:checked-row-keys="handleCheck"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       />
@@ -81,14 +76,7 @@
           </n-text>
           <n-text v-else depth="3">上游当前未返回收件人姓名或地址</n-text>
         </n-descriptions-item>
-        <n-descriptions-item label="联系电话">
-          <template v-if="decryptMap[currentOrder.id]">
-            <DecryptPhoneDisplay :item="decryptMap[currentOrder.id]" />
-          </template>
-          <template v-else>
-            <n-text depth="3">未解密</n-text>
-          </template>
-        </n-descriptions-item>
+        <n-descriptions-item label="联系电话">{{ displayText(currentOrder.receiverPhone, '上游未返回联系电话') }}</n-descriptions-item>
         <n-descriptions-item label="快递信息">
           <n-text v-if="hasExpressInfo(currentOrder)">
             {{ displayText(currentOrder.expressCompany) }}
@@ -112,41 +100,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue'
+import { computed, h, onMounted, reactive, ref } from 'vue'
 import { NButton, NTag, NText, useMessage } from 'naive-ui'
-import { exportOrders, getOrderPage, decryptOrders } from '../../api/data'
+import { exportOrders, getOrderPage } from '../../api/data'
 import { useAuthStore } from '../../stores/auth'
-import type { DecryptResultItem } from '../../types'
-
-const DecryptPhoneDisplay = defineComponent({
-  props: { item: { type: Object as () => DecryptResultItem, required: true } },
-  setup(props: { item: DecryptResultItem }) {
-    return () => {
-      const { item } = props
-      if (!item.isVirtualTel) {
-        return h('span', item.phone || '-')
-      }
-      const expired = item.expireTime != null && item.expireTime * 1000 < Date.now()
-      if (expired) {
-        return h(NText, { type: 'warning' }, { default: () => '虚拟号已过期' })
-      }
-      return h('span', [
-        h('span', { style: 'margin-right: 8px' }, `A: ${item.phoneNoA || '-'}`),
-        h('span', `B: ${item.phoneNoB || '-'}`)
-      ])
-    }
-  }
-})
 
 const authStore = useAuthStore()
 const message = useMessage()
 const loading = ref(false)
-const decryptLoading = ref(false)
 
 const data = ref<any[]>([])
 const pagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 20,
   itemCount: 0,
   showSizePicker: true,
   pageSizes: [10, 20, 50]
@@ -172,10 +138,7 @@ const searchParams = reactive({
 
 const showDetail = ref(false)
 const currentOrder = ref<any>(null)
-const checkedRowKeys = ref<string[]>([])
-const decryptMap = ref<Record<string, DecryptResultItem>>({})
 const canExport = computed(() => authStore.isAdmin || authStore.isLeader)
-const canDecrypt = computed(() => authStore.isAdmin || authStore.isLeader)
 const activeTimeTitle = computed(() => timeField.value === 'settleTime' ? '结算时间' : '创建时间')
 
 const statusOptions = [
@@ -213,59 +176,9 @@ const activeTimeValue = (row: any) => {
   return row?.createTime || '-'
 }
 
-const renderDecryptPhone = (orderId: string) => {
-  const item = decryptMap.value[orderId]
-  if (!item) return h(NText, { depth: 3 }, { default: () => '未解密' })
-  if (!item.isVirtualTel) {
-    return h('span', item.phone || '-')
-  }
-  const expired = item.expireTime != null && item.expireTime * 1000 < Date.now()
-  if (expired) {
-    return h(NText, { type: 'warning' }, { default: () => '虚拟号已过期' })
-  }
-  return h('span', [
-    h('span', { style: 'margin-right: 8px' }, `A: ${item.phoneNoA || '-'}`),
-    h('span', `B: ${item.phoneNoB || '-'}`)
-  ])
-}
-
-const handleCheck = (keys: string[]) => {
-  checkedRowKeys.value = keys
-}
-
 const handleTimeFieldChange = () => {
   pagination.page = 1
   fetchData()
-}
-
-const handleDecrypt = async () => {
-  if (!canDecrypt.value) {
-    message.warning('当前角色无权解密订单手机号')
-    return
-  }
-  if (checkedRowKeys.value.length === 0) {
-    message.warning('请先选择订单')
-    return
-  }
-  if (checkedRowKeys.value.length > 50) {
-    message.warning('单次最多解密 50 条订单')
-    return
-  }
-  decryptLoading.value = true
-  try {
-    const res: any = await decryptOrders(checkedRowKeys.value)
-    const results: DecryptResultItem[] = res?.data || res || []
-    const map: Record<string, DecryptResultItem> = {}
-    for (const item of results) {
-      map[item.orderId] = item
-    }
-    decryptMap.value = { ...decryptMap.value, ...map }
-    message.success(`成功解密 ${results.length} 条订单`)
-  } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '解密失败')
-  } finally {
-    decryptLoading.value = false
-  }
 }
 
 const openDetail = (row: any) => {
@@ -361,7 +274,6 @@ const handlePageSizeChange = (pageSize: number) => {
 }
 
 const columns = computed(() => [
-  ...(canDecrypt.value ? [{ type: 'selection' as const }] : []),
   { title: '订单号', key: 'id' },
   { title: '商品名称', key: 'productName' },
   { title: '达人名称', key: 'talentName' },
@@ -391,10 +303,10 @@ const columns = computed(() => [
   },
   {
     title: '联系电话',
-    key: 'decryptPhone',
+    key: 'receiverPhone',
     width: 200,
     render(row: any) {
-      return renderDecryptPhone(row.id)
+      return h(NText, { depth: row.receiverPhone ? undefined : 3 }, { default: () => displayText(row.receiverPhone, '上游未返回') })
     }
   },
   {

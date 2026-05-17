@@ -26,7 +26,7 @@
     </div>
 
     <div class="header-right">
-      <span v-if="envLabel" class="env-badge">{{ envLabel }}</span>
+      <span v-if="envLabel" class="env-badge" data-testid="current-env-badge">环境：{{ envLabel }}</span>
       <n-dropdown :options="userMenuOptions" @select="handleUserMenu">
         <div class="user-info">
           <n-avatar round size="small" :style="{ backgroundColor: 'rgba(255,255,255,0.2)' }">
@@ -45,12 +45,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NIcon, useMessage } from 'naive-ui'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES, hasAccess } from '../../constants/rbac'
-import { logout as logoutApi } from '../../api/auth'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -72,7 +71,25 @@ const isOpsStaffOnly = computed(() => {
   const roles = authStore.roleCodes
   return roles.includes(ROLE.OPS_STAFF) && !roles.includes(ROLE.ADMIN)
 })
-const envLabel = import.meta.env.VITE_ENV_LABEL as string | undefined
+const rawEnvLabel = import.meta.env.VITE_ENV_LABEL as string | undefined
+const serverEnvLabel = ref('')
+onMounted(async () => {
+  try {
+    const res = await fetch('/api/system/env')
+    const body = await res.json()
+    const label = body?.data?.environmentLabel
+    if (label != null && String(label).trim() !== '') {
+      serverEnvLabel.value = String(label).trim()
+    }
+  } catch {
+    // ignore: banner falls back to Vite label
+  }
+})
+const envLabel = computed(() => {
+  const fromServer = String(serverEnvLabel.value || '').trim().toUpperCase()
+  if (fromServer) return fromServer
+  return String(rawEnvLabel || '').trim().toUpperCase()
+})
 
 interface NavTab {
   label: string
@@ -83,7 +100,7 @@ interface NavTab {
 
 const navTabs: NavTab[] = [
   { label: '数据看板', key: '/data', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.ADMIN], testId: 'nav-dashboard' },
-  { label: '商品库', key: '/product', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF], testId: 'nav-product' },
+  { label: '商品库', key: '/product', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF], testId: 'nav-product' },
   { label: '商品管理', key: '/product/manage', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF], testId: 'nav-activity-product' },
   { label: '达人 CRM', key: '/talent', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF], testId: 'nav-talent' },
   { label: '寄样审核', key: '/sample', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF], testId: 'nav-sample' },
@@ -143,23 +160,37 @@ const userInitial = computed(() => {
 
 const userMenuOptions = [{ label: '退出登录', key: 'logout' }]
 
+const revokeServerSession = async (accessToken: string, refreshToken: string) => {
+  if (!accessToken) {
+    return
+  }
+  try {
+    const response = await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        accessToken,
+        refreshToken: refreshToken || undefined
+      })
+    })
+    if (!response.ok) {
+      throw new Error(`Logout request failed: ${response.status}`)
+    }
+  } catch (_error) {
+    message.warning('登出接口执行失败，已清除本地登录态')
+  }
+}
+
 const handleUserMenu = async (key: string) => {
   if (key === 'logout') {
     const accessToken = authStore.token || localStorage.getItem('token') || ''
     const refreshToken = authStore.refreshToken || localStorage.getItem('refreshToken') || ''
-    try {
-      if (accessToken) {
-        await logoutApi({
-          accessToken,
-          refreshToken: refreshToken || undefined
-        })
-      }
-    } catch (_error) {
-      message.warning('登出接口执行失败，已清除本地登录态')
-    } finally {
-      authStore.logout()
-      router.push('/login')
-    }
+    await revokeServerSession(accessToken, refreshToken)
+    authStore.logout()
+    await router.replace('/login')
   }
 }
 </script>
@@ -241,13 +272,14 @@ const handleUserMenu = async (key: string) => {
 }
 
 .env-badge {
-  padding: 2px 10px;
+  padding: 3px 10px;
   border-radius: var(--radius-sm);
   font-size: var(--text-xs);
   font-weight: 600;
   background: rgba(255, 255, 255, 0.2);
   color: white;
-  letter-spacing: 1px;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .user-info {
