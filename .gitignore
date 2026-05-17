@@ -17,7 +17,19 @@ backend/temp-*.log
 
 
 out/
-runtime/
+runtime/*
+!runtime/qa/
+runtime/qa/*
+!runtime/qa/*.cjs
+!runtime/qa/business-crud-cases.json
+!runtime/qa/mock-scenario-matrix.json
+!runtime/qa/role-page-cases.json
+runtime/qa/out/
+runtime/qa/screenshots/
+runtime/qa/*.log
+runtime/qa/*.err.log
+runtime/qa/*.stdout.log
+runtime/qa/*.stderr.log
 test-results/
 frontend/test-results/
 node_modules/
