@@ -125,8 +125,11 @@ public class ProductBizStatusService {
             case APPROVED -> beforeStatus == ProductBizStatus.PENDING_AUDIT;
             case REJECTED -> beforeStatus == ProductBizStatus.PENDING_AUDIT;
             case BOUND -> false;
-            case ASSIGNED -> beforeStatus == ProductBizStatus.APPROVED || beforeStatus == ProductBizStatus.BOUND;
-            case LINKED -> beforeStatus == ProductBizStatus.ASSIGNED;
+            case ASSIGNED -> beforeStatus == ProductBizStatus.APPROVED
+                    || beforeStatus == ProductBizStatus.BOUND
+                    || beforeStatus == ProductBizStatus.ASSIGNED;
+            case LINKED -> beforeStatus == ProductBizStatus.APPROVED
+                    || beforeStatus == ProductBizStatus.ASSIGNED;
             case FOLLOWING -> beforeStatus == ProductBizStatus.LINKED;
             case PENDING_AUDIT -> false;
         };

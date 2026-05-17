@@ -189,9 +189,12 @@ class PickSourceMappingServiceTest {
                 UUID.randomUUID()
         );
 
-        verify(pickSourceMappingMapper).updateById(existing);
-        assertThat(existing.getShortId()).isEqualTo("ABCD1234");
-        assertThat(existing.getPickExtra()).isEqualTo("ABCD1234");
+        ArgumentCaptor<PickSourceMapping> captor = ArgumentCaptor.forClass(PickSourceMapping.class);
+        verify(pickSourceMappingMapper).updateById(captor.capture());
+        PickSourceMapping updated = captor.getValue();
+        assertThat(updated.getId()).isEqualTo(existing.getId());
+        assertThat(updated.getShortId()).isEqualTo("ABCD1234");
+        assertThat(updated.getPickExtra()).isEqualTo("ABCD1234");
     }
 
     @Test
@@ -317,7 +320,95 @@ class PickSourceMappingServiceTest {
                 UUID.randomUUID()
         );
 
-        verify(pickSourceMappingMapper).updateById(concurrent);
+        verify(pickSourceMappingMapper).updateById(any(PickSourceMapping.class));
+    }
+
+    @Test
+    void saveOrUpdate_shouldPreserveNativeKeyWhenRetryingExistingNativeMapping() {
+        UUID userId = UUID.randomUUID();
+        PickSourceMapping existing = new PickSourceMapping();
+        existing.setId(UUID.randomUUID());
+        existing.setUserId(userId);
+        existing.setColonelBuyinId("7293293346398011698");
+        existing.setProductId("3816127512791089531");
+        existing.setActivityId("3859423");
+        existing.setSourceType(PickSourceMappingService.SOURCE_TYPE_NATIVE);
+        when(pickSourceMappingMapper.selectOne(any()))
+                .thenReturn(existing);
+
+        service.saveOrUpdate(
+                userId,
+                "channel-user",
+                UUID.randomUUID(),
+                "talent-native",
+                "Talent Native",
+                "NATIVE02",
+                UUID.randomUUID(),
+                "PS_NATIVE_NEXT",
+                "3816127512791089531",
+                "3859423",
+                "source_url",
+                "converted_url",
+                UUID.randomUUID(),
+                "PRODUCT_LIBRARY",
+                "channel_native",
+                "7293293346398011698",
+                PickSourceMappingService.SOURCE_TYPE_NATIVE
+        );
+
+        ArgumentCaptor<PickSourceMapping> captor = ArgumentCaptor.forClass(PickSourceMapping.class);
+        verify(pickSourceMappingMapper).updateById(captor.capture());
+        PickSourceMapping updated = captor.getValue();
+        assertThat(updated.getId()).isEqualTo(existing.getId());
+        assertThat(updated.getPickSource()).isEqualTo("PS_NATIVE_NEXT");
+        assertThat(updated.getPromotionLinkId()).isNotNull();
+        assertThat(updated.getShortId()).isNull();
+        assertThat(updated.getUuidSeed()).isNull();
+        assertThat(updated.getUserId()).isNull();
+        assertThat(updated.getColonelBuyinId()).isNull();
+        assertThat(updated.getProductId()).isNull();
+        assertThat(updated.getActivityId()).isNull();
+        assertThat(updated.getSourceType()).isNull();
+    }
+
+    @Test
+    void saveOrUpdate_shouldRecoverFromNativeDuplicateUpdate() {
+        UUID userId = UUID.randomUUID();
+        PickSourceMapping existing = new PickSourceMapping();
+        existing.setId(UUID.randomUUID());
+        existing.setUserId(userId);
+        existing.setColonelBuyinId("7293293346398011698");
+        existing.setProductId("3816127512791089531");
+        existing.setActivityId("3859423");
+        existing.setSourceType(PickSourceMappingService.SOURCE_TYPE_NATIVE);
+        when(pickSourceMappingMapper.selectOne(any()))
+                .thenReturn(existing)
+                .thenReturn(existing);
+        when(pickSourceMappingMapper.updateById(any(PickSourceMapping.class)))
+                .thenThrow(new DuplicateKeyException("dup"))
+                .thenReturn(1);
+
+        service.saveOrUpdate(
+                userId,
+                "channel-user",
+                UUID.randomUUID(),
+                "talent-native",
+                "Talent Native",
+                "NATIVE03",
+                UUID.randomUUID(),
+                "PS_NATIVE_RETRY",
+                "3816127512791089531",
+                "3859423",
+                "source_url",
+                "converted_url",
+                UUID.randomUUID(),
+                "PRODUCT_LIBRARY",
+                "channel_native",
+                "7293293346398011698",
+                PickSourceMappingService.SOURCE_TYPE_NATIVE
+        );
+
+        verify(pickSourceMappingMapper, org.mockito.Mockito.times(2)).updateById(any(PickSourceMapping.class));
     }
 
     @Test

@@ -1,12 +1,12 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.config.AppProperties;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.SysUser;
 import io.lettuce.core.RedisCommandExecutionException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -38,7 +38,7 @@ public class OrderSyncService {
     private final OrderSyncPersistenceService persistenceService;
     private final AttributionService attributionService;
     private final RedisTemplate<String, Object> redisTemplate;
-    private final boolean testEnabled;
+    private final AppProperties appProperties;
     private final AtomicBoolean localLock = new AtomicBoolean(false);
     private volatile long localLastSyncTime;
 
@@ -47,12 +47,16 @@ public class OrderSyncService {
             OrderSyncPersistenceService persistenceService,
             AttributionService attributionService,
             RedisTemplate<String, Object> redisTemplate,
-            @Value("${app.test.enabled:false}") boolean testEnabled) {
+            AppProperties appProperties) {
         this.douyinOrderGateway = douyinOrderGateway;
         this.persistenceService = persistenceService;
         this.attributionService = attributionService;
         this.redisTemplate = redisTemplate;
-        this.testEnabled = testEnabled;
+        this.appProperties = appProperties;
+    }
+
+    private boolean testEnabled() {
+        return appProperties.getTest().isEnabled();
     }
 
     public SyncResult syncLatestWindow() {
@@ -118,7 +122,7 @@ public class OrderSyncService {
             Object raw = redisTemplate.opsForValue().get(LAST_SYNC_TIME_KEY);
             return asLong(raw, localLastSyncTime);
         } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (testEnabled) {
+            if (testEnabled()) {
                 log.warn("Redis unavailable in test mode when reading last sync time, fallback to local state: {}", ex.getMessage());
                 return localLastSyncTime;
             }
@@ -135,7 +139,7 @@ public class OrderSyncService {
             );
             return Boolean.TRUE.equals(locked);
         } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (testEnabled) {
+            if (testEnabled()) {
                 log.warn("Redis unavailable in test mode when acquiring sync lock, fallback to local lock: {}", ex.getMessage());
                 return localLock.compareAndSet(false, true);
             }
@@ -148,7 +152,7 @@ public class OrderSyncService {
         try {
             redisTemplate.opsForValue().set(LAST_SYNC_TIME_KEY, String.valueOf(endTime));
         } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (testEnabled) {
+            if (testEnabled()) {
                 log.warn("Redis unavailable in test mode when persisting last sync time, keep local state only: {}", ex.getMessage());
                 return;
             }
@@ -161,7 +165,7 @@ public class OrderSyncService {
         try {
             redisTemplate.delete(SYNC_LOCK_KEY);
         } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (testEnabled) {
+            if (testEnabled()) {
                 log.warn("Redis unavailable in test mode when releasing sync lock, local lock already released: {}", ex.getMessage());
                 return;
             }

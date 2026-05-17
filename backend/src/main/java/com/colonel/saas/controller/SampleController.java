@@ -33,8 +33,10 @@ import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.service.BusinessRuleConfigService;
+import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.SampleStatusLogService;
 import com.colonel.saas.service.SampleEligibilityService;
+import com.colonel.saas.service.LogisticsTrackService;
 import com.colonel.saas.vo.SampleTalentVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -104,7 +106,9 @@ public class SampleController extends BaseController {
     private final SampleStatusLogMapper sampleStatusLogMapper;
     private final CrawlerTalentInfoService crawlerTalentInfoService;
     private final BusinessRuleConfigService businessRuleConfigService;
+    private final ProductService productService;
     private final SampleEligibilityService sampleEligibilityService;
+    private final LogisticsTrackService logisticsTrackService;
 
     public SampleController(
             SampleRequestMapper sampleRequestMapper,
@@ -118,7 +122,9 @@ public class SampleController extends BaseController {
             SampleStatusLogMapper sampleStatusLogMapper,
             CrawlerTalentInfoService crawlerTalentInfoService,
             BusinessRuleConfigService businessRuleConfigService,
-            SampleEligibilityService sampleEligibilityService) {
+            ProductService productService,
+            SampleEligibilityService sampleEligibilityService,
+            LogisticsTrackService logisticsTrackService) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productMapper = productMapper;
         this.productOperationStateMapper = productOperationStateMapper;
@@ -130,7 +136,9 @@ public class SampleController extends BaseController {
         this.sampleStatusLogMapper = sampleStatusLogMapper;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
         this.businessRuleConfigService = businessRuleConfigService;
+        this.productService = productService;
         this.sampleEligibilityService = sampleEligibilityService;
+        this.logisticsTrackService = logisticsTrackService;
     }
 
     @Operation(summary = "创建寄样申请", description = "发起寄样申请并初始化寄样状态，用于达人寄样闭环的起点。")
@@ -159,7 +167,7 @@ public class SampleController extends BaseController {
                 throw new BusinessException("该商品尚未加入商品库，请先审核并加入商品库后再进行寄样操作");
             }
         }
-        CrawlerTalentInfo talentInfo = requireCrawlerTalent(request.getTalentId());
+        CrawlerTalentInfo talentInfo = resolveSampleTalentInfo(request.getTalentId());
         Talent talent = findOrCreateTalentFromCrawler(talentInfo);
         ensureChannelTalentClaim(userId, talent.getId(), roleCodes);
         checkSevenDaysLimit(userId, talent.getId(), product.getId(), roleCodes);
@@ -197,7 +205,7 @@ public class SampleController extends BaseController {
             @Valid @RequestBody SampleApplyRequest request,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         ensureSampleApplyPermission(roleCodes);
-        CrawlerTalentInfo talentInfo = requireCrawlerTalent(request.getTalentId());
+        CrawlerTalentInfo talentInfo = resolveSampleTalentInfo(request.getTalentId());
         Talent talent = findOrCreateTalentFromCrawler(talentInfo);
         return ok(toEligibilityVO(sampleEligibilityService.evaluate(talent, talentInfo)));
     }
@@ -293,13 +301,7 @@ public class SampleController extends BaseController {
             @Parameter(description = "商品名称或商品 ID。") @RequestParam(required = false) String keyword,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         ensureSampleApplyPermission(roleCodes);
-        Page<Product> pageReq = new Page<>(page, size);
-        QueryWrapper<Product> wrapper = new QueryWrapper<Product>().orderByDesc("create_time");
-        if (StringUtils.hasText(keyword)) {
-            String value = keyword.trim();
-            wrapper.and(query -> query.like("name", value).or().like("product_id", value));
-        }
-        IPage<Product> productPage = productMapper.selectPage(pageReq, wrapper);
+        IPage<Product> productPage = productService.getSelectedLibraryPage(page, size, keyword, null);
         Page<SampleProductVO> result = new Page<>(productPage.getCurrent(), productPage.getSize(), productPage.getTotal());
         result.setRecords(productPage.getRecords().stream()
                 .map(product -> new SampleProductVO(product.getId(), product.getProductId(), product.getName()))
@@ -403,8 +405,8 @@ public class SampleController extends BaseController {
         List<StatusLogVO> voList = logs.stream().map(log -> {
             StatusLogVO vo = new StatusLogVO();
             vo.setId(log.getId());
-            vo.setFromStatus(log.getFromStatus() == null ? null : SampleStatus.fromCode(log.getFromStatus()).apiStatus);
-            vo.setToStatus(log.getToStatus() == null ? null : SampleStatus.fromCode(log.getToStatus()).apiStatus);
+            vo.setFromStatus(log.getFromStatus() == null ? null : toLegacyStatus(SampleStatus.fromCode(log.getFromStatus())));
+            vo.setToStatus(log.getToStatus() == null ? null : toLegacyStatus(SampleStatus.fromCode(log.getToStatus())));
             vo.setOperatorName(resolveUserDisplayName(log.getOperatorId()));
             vo.setOperateTime(log.getOperateTime());
             vo.setRemark(log.getRemark());
@@ -454,6 +456,8 @@ public class SampleController extends BaseController {
             }
             sample.setStatus(SampleStatus.SHIPPING.code);
             sample.setTrackingNo(request.getTrackingNo());
+            sample.setShipperCode(request.getShipperCode());
+            putExtraValue(sample, "logisticsSource", "MANUAL");
             sample.setShipTime(now);
         } else if ("DELIVERED".equals(action)) {
             ensureTransition(current, SampleStatus.SHIPPING);
@@ -465,6 +469,7 @@ public class SampleController extends BaseController {
             } else {
                 ensureTransition(current, SampleStatus.DELIVERED);
             }
+            putExtraValueIfMissing(sample, "logisticsSource", "MANUAL");
             sample.setStatus(SampleStatus.PENDING_HOMEWORK.code);
         } else if ("COMPLETED".equals(action)) {
             ensureTransition(current, SampleStatus.PENDING_HOMEWORK);
@@ -506,6 +511,26 @@ public class SampleController extends BaseController {
         return ok();
     }
 
+    @Operation(summary = "手动刷新物流状态", description = "手动触发物流状态查询，若已签收则自动推进寄样单状态。")
+    @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics/refresh")
+    @Transactional(rollbackFor = Exception.class)
+    public ApiResult<SampleVO> refreshLogistics(
+            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
+        logisticsTrackService.refreshAndProgress(sample);
+        sample = sampleRequestMapper.selectById(id);
+        Product product = productMapper.selectById(sample.getProductId());
+        return ok(toVO(
+                sample,
+                product,
+                product == null ? null : product.getName(),
+                sample.getTalentNickname()));
+    }
+
     @Operation(summary = "批量审批通过", description = "批量将 PENDING_AUDIT 的寄样申请审批为待发货。仅招商角色可操作。")
     @PostMapping("/batch-approve")
     @Transactional(rollbackFor = Exception.class)
@@ -521,7 +546,7 @@ public class SampleController extends BaseController {
         int fail = 0;
         for (String requestNo : request.getRequestNos()) {
             try {
-                SampleRequest sample = requireSampleByRequestNo(requestNo, userId, deptId, dataScope);
+                SampleRequest sample = requireSampleByRequestNo(requestNo, userId, deptId, dataScope, roleCodes);
                 SampleStatus current = SampleStatus.fromCode(sample.getStatus());
                 ensureTransition(current, SampleStatus.PENDING_AUDIT);
                 int fromStatus = sample.getStatus();
@@ -556,7 +581,7 @@ public class SampleController extends BaseController {
         int fail = 0;
         for (String requestNo : request.getRequestNos()) {
             try {
-                SampleRequest sample = requireSampleByRequestNo(requestNo, userId, deptId, dataScope);
+                SampleRequest sample = requireSampleByRequestNo(requestNo, userId, deptId, dataScope, roleCodes);
                 SampleStatus current = SampleStatus.fromCode(sample.getStatus());
                 ensureTransition(current, SampleStatus.PENDING_AUDIT);
                 int fromStatus = sample.getStatus();
@@ -589,12 +614,14 @@ public class SampleController extends BaseController {
         int fail = 0;
         for (SampleBatchShipItem item : request.getItems()) {
             try {
-                SampleRequest sample = requireSampleByRequestNo(item.getRequestNo(), userId, deptId, dataScope);
+                SampleRequest sample = requireSampleByRequestNo(item.getRequestNo(), userId, deptId, dataScope, roleCodes);
                 SampleStatus current = SampleStatus.fromCode(sample.getStatus());
                 ensureTransition(current, SampleStatus.PENDING_SHIP);
                 int fromStatus = sample.getStatus();
                 sample.setStatus(SampleStatus.SHIPPING.code);
                 sample.setTrackingNo(item.getTrackingNo());
+                sample.setShipperCode(item.getShipperCode());
+                putExtraValue(sample, "logisticsSource", "MANUAL");
                 sample.setShipTime(now);
                 sampleRequestMapper.updateById(sample);
                 sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, item.getTrackingNo());
@@ -692,14 +719,14 @@ public class SampleController extends BaseController {
         writer.flush();
     }
 
-    private SampleRequest requireSampleByRequestNo(String requestNo, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
+    private SampleRequest requireSampleByRequestNo(String requestNo, UUID currentUserId, UUID currentDeptId, DataScope dataScope, Object roleCodes) {
         SampleRequest sample = sampleRequestMapper.selectOne(new LambdaQueryWrapper<SampleRequest>()
                 .eq(SampleRequest::getRequestNo, requestNo)
                 .last("LIMIT 1"));
         if (sample == null) {
             throw new BusinessException("Sample request not found: " + requestNo);
         }
-        assertCanAccessSample(sample, currentUserId, currentDeptId, dataScope);
+        assertCanAccessSample(sample, currentUserId, currentDeptId, dataScope, roleCodes);
         return sample;
     }
 
@@ -724,13 +751,19 @@ public class SampleController extends BaseController {
         if (sample == null) {
             throw new BusinessException("Sample request not found");
         }
-        assertCanAccessSample(sample, currentUserId, currentDeptId, dataScope);
+        assertCanAccessSample(sample, currentUserId, currentDeptId, dataScope, roleCodes);
         ensureRoleCanAccessSample(sample, roleCodes);
         return sample;
     }
 
-    private void assertCanAccessSample(SampleRequest sample, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
+    private void assertCanAccessSample(SampleRequest sample, UUID currentUserId, UUID currentDeptId, DataScope dataScope, Object roleCodes) {
         if (sample == null || dataScope == null || dataScope == DataScope.ALL) {
+            return;
+        }
+        if (hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
+            return;
+        }
+        if (hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) && isSampleProductAssignedToUser(sample, currentUserId)) {
             return;
         }
         if (dataScope == DataScope.PERSONAL) {
@@ -746,6 +779,31 @@ public class SampleController extends BaseController {
         if (currentDeptId == null || ownerDeptId == null || !currentDeptId.equals(ownerDeptId)) {
             throw new ForbiddenException("无权访问该寄样单");
         }
+    }
+
+    private boolean isSampleProductAssignedToUser(SampleRequest sample, UUID userId) {
+        if (sample == null || sample.getProductId() == null || userId == null) {
+            return false;
+        }
+        String sourceProductId = resolveSampleSourceProductId(sample.getProductId());
+        if (!StringUtils.hasText(sourceProductId)) {
+            return false;
+        }
+        return productOperationStateMapper.selectCount(new LambdaQueryWrapper<ProductOperationState>()
+                .eq(ProductOperationState::getProductId, sourceProductId)
+                .eq(ProductOperationState::getAssigneeId, userId)) > 0;
+    }
+
+    private String resolveSampleSourceProductId(UUID productPrimaryId) {
+        Product product = productMapper.selectById(productPrimaryId);
+        if (product != null && StringUtils.hasText(product.getProductId())) {
+            return product.getProductId();
+        }
+        ProductSnapshot snapshot = productSnapshotMapper.selectById(productPrimaryId);
+        if (snapshot != null && StringUtils.hasText(snapshot.getProductId())) {
+            return snapshot.getProductId();
+        }
+        return null;
     }
 
     private UUID resolveUserDeptId(UUID userId) {
@@ -812,10 +870,27 @@ public class SampleController extends BaseController {
             product = productMapper.selectOne(new LambdaQueryWrapper<Product>()
                     .eq(Product::getProductId, snapshot.getProductId())
                     .last("LIMIT 1"));
+            if (product == null) {
+                product = materializeProductFromSnapshot(snapshot);
+                productMapper.insert(product);
+            }
         }
         if (product == null) {
             throw new ValidateException("Selected product does not exist");
         }
+        return product;
+    }
+
+    private Product materializeProductFromSnapshot(ProductSnapshot snapshot) {
+        Product product = new Product();
+        product.setId(snapshot.getId());
+        product.setProductId(snapshot.getProductId());
+        product.setName(StringUtils.hasText(snapshot.getTitle()) ? snapshot.getTitle() : snapshot.getProductId());
+        product.setPrice(snapshot.getPrice());
+        product.setCover(snapshot.getCover());
+        product.setDetailUrl(snapshot.getDetailUrl());
+        product.setStatus(snapshot.getStatus() == null ? 1 : snapshot.getStatus());
+        product.setCheckStatus(2);
         return product;
     }
 
@@ -825,6 +900,31 @@ public class SampleController extends BaseController {
             throw new ValidateException("Selected talent does not exist");
         }
         return talentInfo;
+    }
+
+    private CrawlerTalentInfo resolveSampleTalentInfo(String talentId) {
+        CrawlerTalentInfo talentInfo = crawlerTalentInfoService.findByTalentId(talentId);
+        if (talentInfo != null) {
+            return talentInfo;
+        }
+        Talent manualTalent = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
+                .eq(Talent::getDouyinUid, talentId)
+                .last("limit 1"));
+        if (manualTalent == null) {
+            throw new ValidateException("Selected talent does not exist");
+        }
+        return buildCrawlerSnapshotFromTalent(manualTalent, talentId);
+    }
+
+    private CrawlerTalentInfo buildCrawlerSnapshotFromTalent(Talent talent, String selectedTalentId) {
+        CrawlerTalentInfo info = new CrawlerTalentInfo();
+        info.setTalentId(StringUtils.hasText(talent.getDouyinUid()) ? talent.getDouyinUid() : selectedTalentId);
+        info.setNickname(talent.getNickname());
+        info.setAvatarUrl(talent.getAvatarUrl());
+        info.setFansCount(talent.getFans());
+        info.setMainCategory(StringUtils.hasText(talent.getMainCategory()) ? talent.getMainCategory() : talent.getCategories());
+        info.setRegion(talent.getIpLocation());
+        return info;
     }
 
     private Talent findOrCreateTalentFromCrawler(CrawlerTalentInfo info) {
@@ -1075,6 +1175,8 @@ public class SampleController extends BaseController {
         vo.setColonelUserId(colonelUserId);
         vo.setColonelUserName(resolveUserDisplayName(colonelUserId));
         vo.setTrackingNo(sample.getTrackingNo());
+        vo.setShipperCode(sample.getShipperCode());
+        vo.setLogisticsSource(readExtraText(sample.getExtraData(), "logisticsSource"));
         vo.setRejectReason(sample.getRejectReason());
         vo.setCloseReason(sample.getCloseReason());
         vo.setRemark(sample.getRemark());
@@ -1106,6 +1208,22 @@ public class SampleController extends BaseController {
         }
         Object value = extraData.get(key);
         return value == null ? null : String.valueOf(value);
+    }
+
+    private void putExtraValue(SampleRequest sample, String key, Object value) {
+        Map<String, Object> extra = sample.getExtraData() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(sample.getExtraData());
+        extra.put(key, value);
+        sample.setExtraData(extra);
+    }
+
+    private void putExtraValueIfMissing(SampleRequest sample, String key, Object value) {
+        Map<String, Object> extra = sample.getExtraData() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(sample.getExtraData());
+        extra.putIfAbsent(key, value);
+        sample.setExtraData(extra);
     }
 
     private UUID resolveColonelUserId(Product product) {
@@ -1276,6 +1394,9 @@ public class SampleController extends BaseController {
         @Schema(description = "物流单号。发货时必填。", example = "SF1234567890")
         private String trackingNo;
 
+        @Schema(description = "快递公司编码。发货时选填，用于物流追踪。", example = "SF")
+        private String shipperCode;
+
         public String getAction() {
             return action;
         }
@@ -1298,6 +1419,14 @@ public class SampleController extends BaseController {
 
         public void setTrackingNo(String trackingNo) {
             this.trackingNo = trackingNo;
+        }
+
+        public String getShipperCode() {
+            return shipperCode;
+        }
+
+        public void setShipperCode(String shipperCode) {
+            this.shipperCode = shipperCode;
         }
     }
 
@@ -1351,6 +1480,9 @@ public class SampleController extends BaseController {
         @NotBlank(message = "trackingNo is required")
         private String trackingNo;
 
+        @Schema(description = "快递公司编码。", example = "SF")
+        private String shipperCode;
+
         public String getRequestNo() {
             return requestNo;
         }
@@ -1365,6 +1497,14 @@ public class SampleController extends BaseController {
 
         public void setTrackingNo(String trackingNo) {
             this.trackingNo = trackingNo;
+        }
+
+        public String getShipperCode() {
+            return shipperCode;
+        }
+
+        public void setShipperCode(String shipperCode) {
+            this.shipperCode = shipperCode;
         }
     }
 
@@ -1381,6 +1521,9 @@ public class SampleController extends BaseController {
         private UUID colonelUserId;
         private String colonelUserName;
         private String trackingNo;
+        private String shipperCode;
+        private String logisticsCompany;
+        private String logisticsSource;
         private String rejectReason;
         private String closeReason;
         private String remark;
@@ -1486,6 +1629,30 @@ public class SampleController extends BaseController {
 
         public void setTrackingNo(String trackingNo) {
             this.trackingNo = trackingNo;
+        }
+
+        public String getShipperCode() {
+            return shipperCode;
+        }
+
+        public void setShipperCode(String shipperCode) {
+            this.shipperCode = shipperCode;
+        }
+
+        public String getLogisticsCompany() {
+            return logisticsCompany;
+        }
+
+        public void setLogisticsCompany(String logisticsCompany) {
+            this.logisticsCompany = logisticsCompany;
+        }
+
+        public String getLogisticsSource() {
+            return logisticsSource;
+        }
+
+        public void setLogisticsSource(String logisticsSource) {
+            this.logisticsSource = logisticsSource;
         }
 
         public String getRejectReason() {

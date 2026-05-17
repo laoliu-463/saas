@@ -9,6 +9,7 @@ import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
+import com.colonel.saas.entity.SampleStatusLog;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
@@ -23,6 +24,8 @@ import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.service.BusinessRuleConfigService;
+import com.colonel.saas.service.LogisticsTrackService;
+import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.SampleEligibilityService;
 import com.colonel.saas.service.SampleStatusLogService;
 import com.colonel.saas.vo.SampleTalentVO;
@@ -76,7 +79,11 @@ class SampleControllerTest {
     @Mock
     private BusinessRuleConfigService businessRuleConfigService;
     @Mock
+    private ProductService productService;
+    @Mock
     private SampleEligibilityService sampleEligibilityService;
+    @Mock
+    private LogisticsTrackService logisticsTrackService;
 
     private SampleController sampleController;
 
@@ -94,7 +101,9 @@ class SampleControllerTest {
                 sampleStatusLogMapper,
                 crawlerTalentInfoService,
                 businessRuleConfigService,
-                sampleEligibilityService
+                productService,
+                sampleEligibilityService,
+                logisticsTrackService
         );
         lenient().when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(true);
         lenient().when(businessRuleConfigService.getSampleRestrictDays()).thenReturn(7);
@@ -195,6 +204,47 @@ class SampleControllerTest {
         assertThat(saved.getExtraData()).isNotNull();
         assertThat(((java.util.Map<?, ?>) saved.getExtraData().get("eligibilityCheck")).get("passed")).isEqualTo(true);
         assertThat(((java.util.Map<?, ?>) saved.getExtraData().get("requirementSnapshot")).get("minLevel")).isEqualTo("LV1");
+    }
+
+    @Test
+    void createSample_shouldAllowManualTalentWhenCrawlerMissing() {
+        UUID productId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID talentUuid = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("manual product");
+
+        Talent talent = new Talent();
+        talent.setId(talentUuid);
+        talent.setDouyinUid("manual_talent_001");
+        talent.setNickname("manual talent");
+        talent.setFans(66000L);
+        talent.setCategories("beauty");
+        talent.setDataSource("MANUAL");
+
+        SampleApplyRequest request = new SampleApplyRequest();
+        request.setTalentId("manual_talent_001");
+        request.setProductId(productId);
+        request.setQuantity(1);
+
+        when(productMapper.selectById(productId)).thenReturn(product);
+        when(crawlerTalentInfoService.findByTalentId("manual_talent_001")).thenReturn(null);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(mock(com.colonel.saas.entity.TalentClaim.class));
+        when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
+
+        sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
+
+        ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
+        verify(sampleRequestMapper).insert(captor.capture());
+        SampleRequest saved = captor.getValue();
+        assertThat(saved.getTalentId()).isEqualTo(talentUuid);
+        assertThat(saved.getTalentUid()).isEqualTo("manual_talent_001");
+        assertThat(saved.getTalentNickname()).isEqualTo("manual talent");
+        assertThat(saved.getTalentFansCount()).isEqualTo(66000L);
+        assertThat(saved.getTalentMainCategory()).isEqualTo("beauty");
     }
 
     @Test
@@ -711,7 +761,7 @@ class SampleControllerTest {
         productPage.setRecords(List.of(product));
         productPage.setTotal(1);
 
-        when(productMapper.selectPage(any(Page.class), any(QueryWrapper.class))).thenReturn(productPage);
+        when(productService.getSelectedLibraryPage(1, 20, "主演示", null)).thenReturn(productPage);
 
         var response = sampleController.searchProducts(1, 20, "主演示", List.of(RoleCodes.CHANNEL_STAFF));
 
@@ -719,6 +769,7 @@ class SampleControllerTest {
         assertThat(response.getData().getRecords()).hasSize(1);
         assertThat(response.getData().getRecords().get(0).getId()).isEqualTo(productId);
         assertThat(response.getData().getRecords().get(0).getProductName()).isEqualTo("主演示商品-已转链可出单");
+        verify(productService).getSelectedLibraryPage(1, 20, "主演示", null);
     }
 
     @Test
@@ -877,6 +928,8 @@ class SampleControllerTest {
 
         assertThat(response.getData().getStatus()).isEqualTo("SHIPPED");
         assertThat(response.getData().getTrackingNo()).isEqualTo("YT123456");
+        assertThat(response.getData().getLogisticsSource()).isEqualTo("MANUAL");
+        assertThat(sample.getExtraData()).containsEntry("logisticsSource", "MANUAL");
         verify(sampleRequestMapper).updateById(sample);
         verify(sampleStatusLogService).log(sampleId, 2, 3, userId, null);
     }
@@ -912,7 +965,47 @@ class SampleControllerTest {
                 List.of(RoleCodes.OPS_STAFF));
 
         assertThat(response.getData().getStatus()).isEqualTo("PENDING_TASK");
+        assertThat(response.getData().getLogisticsSource()).isEqualTo("MANUAL");
+        assertThat(sample.getExtraData()).containsEntry("logisticsSource", "MANUAL");
         verify(sampleStatusLogService).log(sampleId, 3, 5, userId, null);
+    }
+
+    @Test
+    void getStatusLogs_shouldExposeLegacyStatuses() {
+        UUID sampleId = UUID.randomUUID();
+        UUID operatorId = UUID.randomUUID();
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setStatus(5);
+
+        SampleStatusLog log = new SampleStatusLog();
+        log.setId(UUID.randomUUID());
+        log.setRequestId(sampleId);
+        log.setFromStatus(3);
+        log.setToStatus(5);
+        log.setOperatorId(operatorId);
+
+        SysUser operator = new SysUser();
+        operator.setId(operatorId);
+        operator.setRealName("运营测试");
+        operator.setUsername("ops_staff");
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(sampleStatusLogMapper.selectList(any())).thenReturn(List.of(log));
+        when(sysUserMapper.selectById(operatorId)).thenReturn(operator);
+
+        var response = sampleController.getStatusLogs(
+                sampleId,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.ADMIN));
+
+        assertThat(response.getData()).hasSize(1);
+        assertThat(response.getData().get(0).getFromStatus()).isEqualTo("SHIPPED");
+        assertThat(response.getData().get(0).getToStatus()).isEqualTo("PENDING_TASK");
+        assertThat(response.getData().get(0).getOperatorName()).isEqualTo("运营测试 (ops_staff)");
     }
 
     @Test
@@ -999,4 +1092,3 @@ class SampleControllerTest {
         verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
     }
 }
-

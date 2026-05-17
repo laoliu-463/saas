@@ -1,3 +1,6 @@
+saas:
+  env-label: ${APP_ENV_LABEL:}
+
 spring:
   application:
     name: colonel-saas
@@ -51,6 +54,8 @@ security:
     expire-seconds: ${JWT_EXPIRE_SECONDS:7200}
 
 app:
+  logistics:
+    refresh-job-enabled: ${APP_LOGISTICS_REFRESH_JOB_ENABLED:false}
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
   test:
@@ -93,3 +98,15 @@ talent:
     mode: ${TALENT_ENRICH_MODE:real}
   data:
     public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
+
+kdniao:
+  enabled: ${KDNIAO_ENABLED:false}
+  request-url: ${KDNIAO_REQUEST_URL:}
+  request-type: ${KDNIAO_REQUEST_TYPE:1002}
+  base-url: ${KDNIAO_BASE_URL:https://api.kdniao.com}
+  sandbox-url: ${KDNIAO_SANDBOX_URL:http://sandboxapi.kdniao.com:8080/kdniaosandbox/gateway/exterfaceInvoke.json}
+  e-business-id: ${KDNIAO_EBUSINESS_ID:}
+  app-key: ${KDNIAO_APP_KEY:}
+  sandbox: ${KDNIAO_SANDBOX:false}
+  connect-timeout: ${KDNIAO_CONNECT_TIMEOUT:5s}
+  read-timeout: ${KDNIAO_READ_TIMEOUT:10s}

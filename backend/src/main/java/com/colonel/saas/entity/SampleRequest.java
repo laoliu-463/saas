@@ -2,8 +2,8 @@ package com.colonel.saas.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.colonel.saas.common.base.BaseEntity;
+import com.colonel.saas.common.typehandler.JsonbTypeHandler;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -62,6 +62,9 @@ public class SampleRequest extends BaseEntity {
     @TableField("tracking_no")
     private String trackingNo;
 
+    @TableField("shipper_code")
+    private String shipperCode;
+
     private Integer status;
 
     @TableField("reject_reason")
@@ -87,6 +90,6 @@ public class SampleRequest extends BaseEntity {
 
     private String remark;
 
-    @TableField(value = "extra_data", typeHandler = JacksonTypeHandler.class)
+    @TableField(value = "extra_data", typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> extraData;
 }

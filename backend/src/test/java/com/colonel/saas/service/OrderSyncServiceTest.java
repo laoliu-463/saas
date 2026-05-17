@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.config.AppProperties;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.SysUser;
@@ -42,13 +43,16 @@ class OrderSyncServiceTest {
     @Mock
     private ValueOperations<String, Object> valueOperations;
 
+    private AppProperties appProperties;
     private OrderSyncService service;
 
     @BeforeEach
     void setUp() {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(persistenceService.persistOrder(any())).thenReturn(true);
-        service = new OrderSyncService(douyinOrderGateway, persistenceService, attributionService, redisTemplate, false);
+        appProperties = new AppProperties();
+        appProperties.getTest().setEnabled(false);
+        service = new OrderSyncService(douyinOrderGateway, persistenceService, attributionService, redisTemplate, appProperties);
     }
 
     @Test
@@ -269,7 +273,9 @@ class OrderSyncServiceTest {
 
     @Test
     void mockModeShouldFallbackWhenRedisUnavailable() {
-        service = new OrderSyncService(douyinOrderGateway, persistenceService, attributionService, redisTemplate, true);
+        AppProperties testProps = new AppProperties();
+        testProps.getTest().setEnabled(true);
+        service = new OrderSyncService(douyinOrderGateway, persistenceService, attributionService, redisTemplate, testProps);
         when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class)))
                 .thenThrow(new RedisConnectionFailureException("redis down"));
         when(douyinOrderGateway.listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))

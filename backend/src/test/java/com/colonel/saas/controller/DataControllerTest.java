@@ -15,6 +15,7 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.service.CommissionService;
+import com.colonel.saas.service.ShortTtlCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -66,7 +67,8 @@ class DataControllerTest {
                 commissionService,
                 exclusiveTalentMapper,
                 exclusiveMerchantMapper,
-                activityMapper
+                activityMapper,
+                new ShortTtlCacheService()
         );
     }
 

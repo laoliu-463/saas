@@ -17,6 +17,7 @@ import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.AttributionService;
+import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OrderSyncPersistenceService;
 import com.colonel.saas.service.OrderSyncService;
 import com.colonel.saas.service.PickSourceMappingService;
@@ -53,6 +54,7 @@ public class TestDataService implements ApplicationRunner {
     private static final String PRODUCT_ID = "10901825";
     private static final String SECOND_PRODUCT_ID = "10901826";
     private static final String THIRD_PRODUCT_ID = "10901827";
+    private static final String FOURTH_PRODUCT_ID = "10901828";
     private static final String MAPPING_PICK_SOURCE = "TESTPS01";
     private static final String MAPPING_SHORT_ID = "TESTPS01";
     private static final String TALENT_UID_A = "talent_test_a";
@@ -64,6 +66,8 @@ public class TestDataService implements ApplicationRunner {
     private static final String TALENT_UID_G = "talent_test_g";
     private static final String MAPPING_PICK_SOURCE_D = "TESTPS04";
     private static final String MAPPING_SHORT_ID_D = "TESTPS04";
+    private static final String AMBIGUOUS_NATIVE_BUYIN_ID = "900000000001";
+    private static final String HISTORY_UNSAFE_BUYIN_ID = "900000000002";
 
     private final ProductMapper productMapper;
     private final ProductSnapshotMapper productSnapshotMapper;
@@ -231,10 +235,13 @@ public class TestDataService implements ApplicationRunner {
         UUID channelStaffUserId = requireUserId(CHANNEL_STAFF_USERNAME);
         UUID channelStaffDeptId = findDeptId(channelStaffUserId);
         UUID bizUserId = requireUserId(BIZ_USERNAME);
+        ensureMockAuditActivities();
+        ensureDisabledDemoUser();
 
         Product mainProduct = upsertProduct(PRODUCT_ID, "主演示商品-已转链可出单", 9900L, 1, 1);
         Product secondProduct = upsertProduct(SECOND_PRODUCT_ID, "排查演示商品-推广映射缺失", 5900L, 1, 1);
         Product thirdProduct = upsertProduct(THIRD_PRODUCT_ID, "排查演示商品-未带推广参数", 12900L, 1, 1);
+        Product approvedProduct = upsertProduct(FOURTH_PRODUCT_ID, "审计演示商品-审核通过待分配", 7900L, 1, 1);
 
         Talent talentA = upsertTalent(TALENT_UID_A, "达人A-寄样待交作业", 186_000L, "四川成都", "寄样闭环演示");
         Talent talentB = upsertTalent(TALENT_UID_B, "达人B-映射缺失订单", 96_000L, "浙江杭州", "订单排查演示");
@@ -247,10 +254,12 @@ public class TestDataService implements ApplicationRunner {
         upsertProductSnapshot(mainProduct, 1, "ON_SHELF", 32560L, "189", "https://test.local/product/" + mainProduct.getProductId());
         upsertProductSnapshot(secondProduct, 0, "PENDING_AUDIT", 8420L, "64", "https://test.local/product/" + secondProduct.getProductId());
         upsertProductSnapshot(thirdProduct, 2, "OFFLINE", 1280L, "12", "https://test.local/product/" + thirdProduct.getProductId());
+        upsertProductSnapshot(approvedProduct, 1, "APPROVED", 9800L, "88", "https://test.local/product/" + approvedProduct.getProductId());
 
         upsertOperationState(mainProduct.getProductId(), bizUserId, "ASSIGNED", 2, "test assigned");
         upsertOperationState(secondProduct.getProductId(), null, "PENDING_AUDIT", 1, "test pending audit");
         upsertOperationState(thirdProduct.getProductId(), null, "REJECTED", 3, "test rejected");
+        upsertOperationState(approvedProduct.getProductId(), null, "APPROVED", 2, "test approved for audit coverage");
 
         pickSourceMappingService.saveOrUpdate(
                 channelUserId,
@@ -289,7 +298,9 @@ public class TestDataService implements ApplicationRunner {
         SampleRequest sampleForOrders = upsertFinishedSample(mainProduct, talentD, bizUserId, channelUserId, channelDeptId);
         SampleRequest rejectedSample = upsertRejectedSample(secondProduct, talentF, bizUserId, channelUserId, channelDeptId);
         SampleRequest closedSample = upsertClosedSample(thirdProduct, talentG, bizUserId, channelUserId, channelDeptId);
-        SampleRequest shippingSample = upsertPendingShipSample(secondProduct, talentB, bizUserId, channelUserId, channelDeptId);
+        SampleRequest pendingShipSample = upsertPendingShipSample(secondProduct, talentB, bizUserId, channelUserId, channelDeptId);
+        SampleRequest pendingReviewSample = upsertPendingReviewSample(thirdProduct, talentF, bizUserId, channelUserId, channelDeptId);
+        SampleRequest shippingSample = upsertShippingSample(secondProduct, talentB, bizUserId, channelUserId, channelDeptId);
 
         upsertCrawlerTalent("talent_test_a", "达人A-寄样待交作业", 186_000L, 4.9, "四川成都", "美妆个护");
         upsertCrawlerTalent("talent_test_b", "达人B-映射缺失订单", 96_000L, 4.2, "浙江杭州", "服饰穿搭");
@@ -302,6 +313,7 @@ public class TestDataService implements ApplicationRunner {
         resetTalentClaims();
         upsertTalentClaim(talentB.getId(), talentB.getDouyinUid(), channelUserId, channelDeptId, LocalDateTime.now().minusDays(2));
         upsertTalentClaim(talentC.getId(), talentC.getDouyinUid(), channelStaffUserId, channelStaffDeptId, LocalDateTime.now().minusDays(4));
+        upsertTalentClaim(talentC.getId(), talentC.getDouyinUid(), channelUserId, channelDeptId, LocalDateTime.now().minusDays(3));
         upsertExpiredTalentClaim(
                 talentE.getId(),
                 talentE.getDouyinUid(),
@@ -312,9 +324,39 @@ public class TestDataService implements ApplicationRunner {
         );
 
         seedAttributedOrder("MOCK_SEED_TALENT_D_ORDER", mainProduct, talentD, MAPPING_PICK_SOURCE_D, "M_TALENT_D", "主演示商家-达人D转化");
+        seedMockAuditOrder(
+                "MOCK_AUDIT_PRODUCT_UNCOVERED",
+                thirdProduct,
+                talentE,
+                "MOCK_MISSING_PRODUCT",
+                "商品未覆盖商家",
+                null,
+                AttributionService.REASON_PRODUCT_NOT_FOUND,
+                1,
+                18600L,
+                0L,
+                LocalDateTime.now().minusDays(2),
+                LocalDateTime.now().plusMonths(1),
+                LocalDateTime.now().plusDays(1)
+        );
+        seedMockAuditOrder(
+                "MOCK_AUDIT_REFUNDED_CLOSED",
+                approvedProduct,
+                talentB,
+                "M_REFUND_CLOSED",
+                "退款关闭商家",
+                MAPPING_PICK_SOURCE,
+                "REFUNDED_OR_CLOSED",
+                4,
+                4200L,
+                120L,
+                LocalDateTime.now(),
+                null,
+                LocalDateTime.now().minusDays(7)
+        );
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("products", List.of(mainProduct.getProductId(), secondProduct.getProductId(), thirdProduct.getProductId()));
+        result.put("products", List.of(mainProduct.getProductId(), secondProduct.getProductId(), thirdProduct.getProductId(), approvedProduct.getProductId()));
         result.put("talents", List.of(
                 talentA.getDouyinUid(),
                 talentB.getDouyinUid(),
@@ -328,6 +370,8 @@ public class TestDataService implements ApplicationRunner {
         result.put("orderSampleRequestNo", sampleForOrders.getRequestNo());
         result.put("rejectedSampleRequestNo", rejectedSample.getRequestNo());
         result.put("closedSampleRequestNo", closedSample.getRequestNo());
+        result.put("pendingShipSampleRequestNo", pendingShipSample.getRequestNo());
+        result.put("pendingReviewSampleRequestNo", pendingReviewSample.getRequestNo());
         result.put("shippingSampleRequestNo", shippingSample.getRequestNo());
         result.put("shippingSampleId", shippingSample.getId());
         result.put("expiredClaimTalentUid", talentE.getDouyinUid());
@@ -438,6 +482,165 @@ public class TestDataService implements ApplicationRunner {
     }
 
     @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> generateAmbiguousMappingOrder() {
+        Product product = requireProduct(PRODUCT_ID);
+        Talent talent = requireTalentByUid(TALENT_UID_B);
+        UUID channelLeaderId = requireUserId(CHANNEL_USERNAME);
+        UUID channelLeaderDeptId = findDeptId(channelLeaderId);
+        UUID channelStaffId = requireUserId(CHANNEL_STAFF_USERNAME);
+        UUID channelStaffDeptId = findDeptId(channelStaffId);
+        LocalDateTime orderCreateTime = LocalDateTime.now().minusDays(2);
+
+        upsertNativeMapping(
+                channelLeaderId,
+                channelLeaderDeptId,
+                talent.getDouyinUid(),
+                talent.getNickname(),
+                product.getProductId(),
+                ACTIVITY_ID,
+                AMBIGUOUS_NATIVE_BUYIN_ID,
+                "AMBPSA" + (System.currentTimeMillis() % 100000),
+                orderCreateTime.minusHours(6)
+        );
+        upsertNativeMapping(
+                channelStaffId,
+                channelStaffDeptId,
+                talent.getDouyinUid(),
+                talent.getNickname(),
+                product.getProductId(),
+                ACTIVITY_ID,
+                AMBIGUOUS_NATIVE_BUYIN_ID,
+                "AMBPSB" + (System.currentTimeMillis() % 100000),
+                orderCreateTime.minusHours(5)
+        );
+
+        ColonelsettlementOrder order = buildTestOrder(
+                "MOCK_GEN_AMBIG_" + System.currentTimeMillis(),
+                product,
+                "主演示商品-多候选歧义映射",
+                12900L,
+                1800L,
+                null,
+                talent.getDouyinUid(),
+                ACTIVITY_ID,
+                "M_AMBIG",
+                "排查演示商家-多候选"
+        );
+        order.setTalentId(talent.getId());
+        order.setTalentName(talent.getNickname());
+        order.setCreateTime(orderCreateTime);
+        order.setSettleTime(orderCreateTime.plusHours(12));
+        Map<String, Object> extra = new LinkedHashMap<>(order.getExtraData());
+        extra.put("colonel_buyin_id", AMBIGUOUS_NATIVE_BUYIN_ID);
+        extra.put("mockScenario", "AMBIGUOUS_MAPPING");
+        order.setExtraData(extra);
+        AttributionService.AttributionResult attribution = attributionService.resolveAttribution(order, new LinkedHashMap<>(extra));
+        applyAttribution(order, attribution);
+        order.setTalentName(talent.getNickname());
+        boolean inserted = orderSyncPersistenceService.persistOrder(order);
+        updateOrderNativeColumns(order.getOrderId(), orderCreateTime, order.getSettleTime(), AMBIGUOUS_NATIVE_BUYIN_ID);
+
+        Map<String, Object> result = orderResult("ambiguous-mapping", order, inserted, null);
+        result.put("dashboardDiagnosis", DashboardService.DIAGNOSIS_AMBIGUOUS_MAPPING);
+        result.put("colonelBuyinId", AMBIGUOUS_NATIVE_BUYIN_ID);
+        result.put("nativeMappingUsers", List.of(channelLeaderId, channelStaffId));
+        return result;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> generateHistoryUnsafeOrder() {
+        Product product = requireProduct(PRODUCT_ID);
+        Talent talent = requireTalentByUid(TALENT_UID_D);
+        UUID channelLeaderId = requireUserId(CHANNEL_USERNAME);
+        UUID channelLeaderDeptId = findDeptId(channelLeaderId);
+        LocalDateTime orderCreateTime = LocalDateTime.now().minusDays(5);
+        LocalDateTime mappingCreateTime = orderCreateTime.plusDays(3);
+
+        upsertNativeMapping(
+                channelLeaderId,
+                channelLeaderDeptId,
+                talent.getDouyinUid(),
+                talent.getNickname(),
+                product.getProductId(),
+                ACTIVITY_ID,
+                HISTORY_UNSAFE_BUYIN_ID,
+                "UNSAFE" + (System.currentTimeMillis() % 100000),
+                mappingCreateTime
+        );
+
+        ColonelsettlementOrder order = buildTestOrder(
+                "MOCK_GEN_UNSAFE_" + System.currentTimeMillis(),
+                product,
+                "主演示商品-历史不可回填",
+                15900L,
+                2100L,
+                null,
+                talent.getDouyinUid(),
+                ACTIVITY_ID,
+                "M_UNSAFE",
+                "排查演示商家-历史不可回填"
+        );
+        order.setTalentId(talent.getId());
+        order.setTalentName(talent.getNickname());
+        order.setCreateTime(orderCreateTime);
+        order.setSettleTime(orderCreateTime.plusHours(6));
+        order.setAttributionStatus(AttributionService.STATUS_UNATTRIBUTED);
+        order.setAttributionRemark(AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND);
+        Map<String, Object> extra = new LinkedHashMap<>(order.getExtraData());
+        extra.put("colonel_buyin_id", HISTORY_UNSAFE_BUYIN_ID);
+        extra.put("mockScenario", "MECHANISM_HIT_HISTORY_UNSAFE");
+        extra.put("mappingCreateTime", mappingCreateTime.toString());
+        order.setExtraData(extra);
+        boolean inserted = orderSyncPersistenceService.persistOrder(order);
+        updateOrderNativeColumns(order.getOrderId(), orderCreateTime, order.getSettleTime(), HISTORY_UNSAFE_BUYIN_ID);
+
+        Map<String, Object> result = orderResult("history-unsafe", order, inserted, null);
+        result.put("dashboardDiagnosis", DashboardService.DIAGNOSIS_MECHANISM_HIT_HISTORY_UNSAFE);
+        result.put("colonelBuyinId", HISTORY_UNSAFE_BUYIN_ID);
+        result.put("mappingCreateTime", mappingCreateTime);
+        return result;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> generateProductUncoveredOrder() {
+        Product product = requireProduct(THIRD_PRODUCT_ID);
+        Talent talent = requireTalentByUid(TALENT_UID_E);
+        String uncoveredProductId = "UNCOVERED_" + (System.currentTimeMillis() % 1000000);
+        LocalDateTime createTime = LocalDateTime.now().minusDays(1);
+
+        ColonelsettlementOrder order = buildTestOrder(
+                "MOCK_GEN_UNCOVERED_" + System.currentTimeMillis(),
+                product,
+                "排查演示商品-活动商品未覆盖",
+                18900L,
+                0L,
+                null,
+                talent.getDouyinUid(),
+                ACTIVITY_ID,
+                "M_UNCOVERED",
+                "排查演示商家-活动商品未覆盖"
+        );
+        order.setProductId(uncoveredProductId);
+        order.setProductName("活动商品未覆盖-" + uncoveredProductId);
+        order.setProductTitle(order.getProductName());
+        order.setTalentId(talent.getId());
+        order.setTalentName(talent.getNickname());
+        order.setCreateTime(createTime);
+        order.setSettleTime(createTime.plusHours(4));
+        order.setAttributionStatus(AttributionService.STATUS_UNATTRIBUTED);
+        order.setAttributionRemark(AttributionService.REASON_PRODUCT_NOT_FOUND);
+        Map<String, Object> extra = new LinkedHashMap<>(order.getExtraData());
+        extra.put("mockScenario", "UPSTREAM_PRODUCT_UNCOVERED");
+        order.setExtraData(extra);
+        boolean inserted = orderSyncPersistenceService.persistOrder(order);
+
+        Map<String, Object> result = orderResult("product-uncovered", order, inserted, null);
+        result.put("dashboardDiagnosis", DashboardService.DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED);
+        result.put("uncoveredProductId", uncoveredProductId);
+        return result;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> shipSample(UUID sampleRequestId) {
         SampleRequest sample = requireSample(sampleRequestId);
         ensureSampleStatus(sample, 2);
@@ -452,6 +655,7 @@ public class TestDataService implements ApplicationRunner {
         int fromStatus = sample.getStatus();
         sample.setStatus(3);
         sample.setTrackingNo(shipment.trackingNo());
+        putSampleExtraValue(sample, "logisticsSource", "MOCK");
         sample.setShipTime(shipment.shipTime());
         sampleRequestMapper.updateById(sample);
         sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), sample.getUserId(), "test logistics ship");
@@ -466,10 +670,92 @@ public class TestDataService implements ApplicationRunner {
         int fromStatus = sample.getStatus();
         sample.setStatus(5);
         sample.setDeliverTime(LocalDateTime.now());
+        putSampleExtraValueIfMissing(sample, "logisticsSource", "MOCK");
         sampleRequestMapper.updateById(sample);
         sampleStatusLogService.log(sample.getId(), fromStatus, 4, sample.getUserId(), "test logistics delivered");
         sampleStatusLogService.log(sample.getId(), 4, sample.getStatus(), sample.getUserId(), "test logistics sign -> pending homework");
         return sampleResult(sample, logisticsStatus.status().toLowerCase(Locale.ROOT), logisticsStatus.trackingNo());
+    }
+
+    private void ensureMockAuditActivities() {
+        LocalDateTime now = LocalDateTime.now();
+        jdbcTemplate.update("""
+                INSERT INTO colonel_activity (
+                    id, activity_id, activity_name, shop_id, shop_name, colonel_buyin_id,
+                    commission_rate, service_rate, start_time, end_time, status, last_sync_at,
+                    deleted, create_time, update_time
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                ON CONFLICT (activity_id) DO UPDATE SET
+                    activity_name = EXCLUDED.activity_name,
+                    shop_id = EXCLUDED.shop_id,
+                    shop_name = EXCLUDED.shop_name,
+                    colonel_buyin_id = EXCLUDED.colonel_buyin_id,
+                    commission_rate = EXCLUDED.commission_rate,
+                    service_rate = EXCLUDED.service_rate,
+                    start_time = EXCLUDED.start_time,
+                    end_time = EXCLUDED.end_time,
+                    status = EXCLUDED.status,
+                    last_sync_at = EXCLUDED.last_sync_at,
+                    deleted = 0,
+                    update_time = EXCLUDED.update_time
+                """,
+                UUID.nameUUIDFromBytes(ACTIVITY_ID.getBytes()),
+                ACTIVITY_ID,
+                "TEST/mock 审计主链路活动",
+                10001001L,
+                "TEST/mock 审计店铺",
+                90000001L,
+                BigDecimal.valueOf(0.25),
+                BigDecimal.valueOf(0.08),
+                now.minusDays(1),
+                now.plusDays(20),
+                "进行中",
+                now,
+                now,
+                now
+        );
+    }
+
+    private void ensureDisabledDemoUser() {
+        String password = jdbcTemplate.query(
+                "SELECT password FROM sys_user WHERE username = ? AND deleted = 0 LIMIT 1",
+                rs -> rs.next() ? rs.getString(1) : null,
+                CHANNEL_STAFF_USERNAME
+        );
+        if (password == null) {
+            password = "";
+        }
+        UUID disabledUserId = UUID.nameUUIDFromBytes("mock-audit-disabled-user".getBytes());
+        jdbcTemplate.update("""
+                INSERT INTO sys_user (
+                    id, username, password, real_name, channel_code, dept_id, status, deleted,
+                    create_time, update_time
+                ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT (username) DO UPDATE SET
+                    real_name = EXCLUDED.real_name,
+                    channel_code = EXCLUDED.channel_code,
+                    dept_id = EXCLUDED.dept_id,
+                    status = 0,
+                    deleted = 0,
+                    update_time = CURRENT_TIMESTAMP
+                """,
+                disabledUserId,
+                "disabled_audit_user",
+                password,
+                "停用账号审计样本",
+                "disabled_audit",
+                CHANNEL_DEPT_ID
+        );
+        jdbcTemplate.update("""
+                INSERT INTO sys_user_role (user_id, role_id)
+                SELECT ?, r.id
+                FROM sys_role r
+                WHERE r.role_code = ?
+                ON CONFLICT DO NOTHING
+                """,
+                disabledUserId,
+                "channel_staff"
+        );
     }
 
     private Product upsertProduct(String productId, String name, long price, int status, int checkStatus) {
@@ -533,18 +819,24 @@ public class TestDataService implements ApplicationRunner {
             String bizStatus,
             int auditStatus,
             String auditRemark) {
+        boolean selectedToLibrary = auditStatus == 2;
+        LocalDateTime selectedAt = selectedToLibrary ? LocalDateTime.now() : null;
         UUID id = jdbcTemplate.query(
                 """
                 INSERT INTO product_operation_state (
                     id, activity_id, product_id, assignee_id, biz_status,
-                    audit_status, audit_remark, last_operation_at, deleted,
+                    audit_status, audit_remark, selected_to_library, selected_at, selected_by,
+                    last_operation_at, deleted,
                     create_time, update_time
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (activity_id, product_id) DO UPDATE SET
                     assignee_id = EXCLUDED.assignee_id,
                     biz_status = EXCLUDED.biz_status,
                     audit_status = EXCLUDED.audit_status,
                     audit_remark = EXCLUDED.audit_remark,
+                    selected_to_library = EXCLUDED.selected_to_library,
+                    selected_at = EXCLUDED.selected_at,
+                    selected_by = EXCLUDED.selected_by,
                     last_operation_at = EXCLUDED.last_operation_at,
                     deleted = 0,
                     update_time = CURRENT_TIMESTAMP
@@ -558,6 +850,9 @@ public class TestDataService implements ApplicationRunner {
                 bizStatus,
                 auditStatus,
                 auditRemark,
+                selectedToLibrary,
+                selectedAt,
+                assigneeId,
                 LocalDateTime.now()
         );
         return productOperationStateMapper.selectById(id);
@@ -784,6 +1079,182 @@ public class TestDataService implements ApplicationRunner {
                 sample.getStatus(),
                 0L,
                 sample.getAuditTime(),
+                0,
+                userId,
+                userId,
+                sample.getRemark()
+        );
+        return sampleRequestMapper.selectById(sample.getId());
+    }
+
+    private SampleRequest upsertPendingReviewSample(
+            Product product,
+            Talent talent,
+            UUID userId,
+            UUID channelUserId,
+            UUID channelDeptId) {
+        String requestNo = "TEST-SAMPLE-PENDING-REVIEW-001";
+        SampleRequest sample = sampleRequestMapper.selectOne(new LambdaQueryWrapper<SampleRequest>()
+                .eq(SampleRequest::getRequestNo, requestNo)
+                .last("limit 1"));
+        if (sample == null) {
+            sample = new SampleRequest();
+            sample.setId(UUID.randomUUID());
+            sample.setDeleted(0);
+        }
+        sample.setRequestNo(requestNo);
+        sample.setTalentId(talent.getId());
+        sample.setTalentUid(talent.getDouyinUid());
+        sample.setTalentNickname(talent.getNickname());
+        sample.setTalentFansCount(talent.getFans());
+        sample.setTalentCreditScore(BigDecimal.valueOf(7.50));
+        sample.setTalentMainCategory("零食饮品");
+        sample.setProductId(product.getId());
+        sample.setUserId(userId);
+        sample.setChannelUserId(channelUserId);
+        sample.setExpectedSampleNum(1);
+        sample.setActualSampleNum(0);
+        sample.setStatus(1);
+        sample.setRemark("审计样例：达人不符合默认资格但已填写申请原因");
+        jdbcTemplate.update("""
+                INSERT INTO sample_request (
+                    id, request_no, talent_id, talent_uid, talent_nickname, product_id, user_id, dept_id,
+                    channel_user_id, channel_dept_id, recipient_name, recipient_phone, recipient_address,
+                    expected_sample_num, actual_sample_num, status, sample_fee, deleted,
+                    create_time, update_time, create_by, update_by, remark
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?)
+                ON CONFLICT (request_no) DO UPDATE SET
+                    talent_id = EXCLUDED.talent_id,
+                    talent_uid = EXCLUDED.talent_uid,
+                    talent_nickname = EXCLUDED.talent_nickname,
+                    product_id = EXCLUDED.product_id,
+                    user_id = EXCLUDED.user_id,
+                    dept_id = EXCLUDED.dept_id,
+                    channel_user_id = EXCLUDED.channel_user_id,
+                    channel_dept_id = EXCLUDED.channel_dept_id,
+                    recipient_name = EXCLUDED.recipient_name,
+                    recipient_phone = EXCLUDED.recipient_phone,
+                    recipient_address = EXCLUDED.recipient_address,
+                    expected_sample_num = EXCLUDED.expected_sample_num,
+                    actual_sample_num = EXCLUDED.actual_sample_num,
+                    status = EXCLUDED.status,
+                    sample_fee = EXCLUDED.sample_fee,
+                    deleted = EXCLUDED.deleted,
+                    update_time = CURRENT_TIMESTAMP,
+                    update_by = EXCLUDED.update_by,
+                    remark = EXCLUDED.remark
+                """,
+                sample.getId(),
+                requestNo,
+                talent.getId(),
+                sample.getTalentUid(),
+                sample.getTalentNickname(),
+                product.getId(),
+                userId,
+                channelDeptId,
+                channelUserId,
+                channelDeptId,
+                "演示收件人-待审核",
+                "13800000007",
+                "福州市仓山区待审核演示点",
+                sample.getExpectedSampleNum(),
+                sample.getActualSampleNum(),
+                sample.getStatus(),
+                0L,
+                0,
+                userId,
+                userId,
+                sample.getRemark()
+        );
+        return sampleRequestMapper.selectById(sample.getId());
+    }
+
+    private SampleRequest upsertShippingSample(
+            Product product,
+            Talent talent,
+            UUID userId,
+            UUID channelUserId,
+            UUID channelDeptId) {
+        String requestNo = "TEST-SAMPLE-SHIPPING-001";
+        SampleRequest sample = sampleRequestMapper.selectOne(new LambdaQueryWrapper<SampleRequest>()
+                .eq(SampleRequest::getRequestNo, requestNo)
+                .last("limit 1"));
+        if (sample == null) {
+            sample = new SampleRequest();
+            sample.setId(UUID.randomUUID());
+            sample.setDeleted(0);
+        }
+        sample.setRequestNo(requestNo);
+        sample.setTalentId(talent.getId());
+        sample.setTalentUid(talent.getDouyinUid());
+        sample.setTalentNickname(talent.getNickname());
+        sample.setTalentFansCount(talent.getFans());
+        sample.setTalentCreditScore(BigDecimal.valueOf(8.10));
+        sample.setTalentMainCategory("服饰穿搭");
+        sample.setProductId(product.getId());
+        sample.setUserId(userId);
+        sample.setChannelUserId(channelUserId);
+        sample.setExpectedSampleNum(1);
+        sample.setActualSampleNum(1);
+        sample.setTrackingNo("TEST-TRACK-SHIPPING-001");
+        sample.setStatus(3);
+        sample.setAuditTime(LocalDateTime.now().minusDays(1));
+        sample.setShipTime(LocalDateTime.now().minusHours(6));
+        sample.setRemark("审计样例：快递中寄样单");
+        jdbcTemplate.update("""
+                INSERT INTO sample_request (
+                    id, request_no, talent_id, talent_uid, talent_nickname, product_id, user_id, dept_id,
+                    channel_user_id, channel_dept_id, recipient_name, recipient_phone, recipient_address,
+                    expected_sample_num, actual_sample_num, logistics_company, tracking_no, status,
+                    sample_fee, audit_time, ship_time, deleted,
+                    create_time, update_time, create_by, update_by, remark
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?)
+                ON CONFLICT (request_no) DO UPDATE SET
+                    talent_id = EXCLUDED.talent_id,
+                    talent_uid = EXCLUDED.talent_uid,
+                    talent_nickname = EXCLUDED.talent_nickname,
+                    product_id = EXCLUDED.product_id,
+                    user_id = EXCLUDED.user_id,
+                    dept_id = EXCLUDED.dept_id,
+                    channel_user_id = EXCLUDED.channel_user_id,
+                    channel_dept_id = EXCLUDED.channel_dept_id,
+                    recipient_name = EXCLUDED.recipient_name,
+                    recipient_phone = EXCLUDED.recipient_phone,
+                    recipient_address = EXCLUDED.recipient_address,
+                    expected_sample_num = EXCLUDED.expected_sample_num,
+                    actual_sample_num = EXCLUDED.actual_sample_num,
+                    logistics_company = EXCLUDED.logistics_company,
+                    tracking_no = EXCLUDED.tracking_no,
+                    status = EXCLUDED.status,
+                    sample_fee = EXCLUDED.sample_fee,
+                    audit_time = EXCLUDED.audit_time,
+                    ship_time = EXCLUDED.ship_time,
+                    deleted = EXCLUDED.deleted,
+                    update_time = CURRENT_TIMESTAMP,
+                    update_by = EXCLUDED.update_by,
+                    remark = EXCLUDED.remark
+                """,
+                sample.getId(),
+                requestNo,
+                talent.getId(),
+                sample.getTalentUid(),
+                sample.getTalentNickname(),
+                product.getId(),
+                userId,
+                channelDeptId,
+                channelUserId,
+                channelDeptId,
+                "演示收件人-快递中",
+                "13800000008",
+                "杭州市拱墅区快递中演示点",
+                sample.getExpectedSampleNum(),
+                sample.getActualSampleNum(),
+                "演示物流-中通模拟",
+                sample.getTrackingNo(),
+                sample.getStatus(),
+                0L,
+                sample.getAuditTime(),
+                sample.getShipTime(),
                 0,
                 userId,
                 userId,
@@ -1137,10 +1608,6 @@ public class TestDataService implements ApplicationRunner {
             String pickSource,
             String merchantId,
             String shopName) {
-        ColonelsettlementOrder exists = orderMapper.findByOrderId(orderId);
-        if (exists != null) {
-            return;
-        }
         ColonelsettlementOrder order = buildTestOrder(
                 orderId,
                 product,
@@ -1153,9 +1620,69 @@ public class TestDataService implements ApplicationRunner {
                 merchantId,
                 shopName
         );
+        order.setTalentId(talent.getId());
+        order.setTalentName(talent.getNickname());
+        Map<String, Object> extra = new LinkedHashMap<>(order.getExtraData());
+        extra.put("talentName", talent.getNickname());
+        extra.put("mappingCreateTime", LocalDateTime.now().minusDays(7).toString());
+        order.setExtraData(extra);
         AttributionService.AttributionResult attribution = attributionService.resolveAttribution(order, new LinkedHashMap<>(order.getExtraData()));
         applyAttribution(order, attribution);
         orderSyncPersistenceService.persistOrder(order);
+    }
+
+    private void seedMockAuditOrder(
+            String orderId,
+            Product product,
+            Talent talent,
+            String merchantId,
+            String shopName,
+            String pickSource,
+            String attributionRemark,
+            int orderStatus,
+            long orderAmount,
+            long serviceFee,
+            LocalDateTime createTime,
+            LocalDateTime settleTime,
+            LocalDateTime mappingCreateTime) {
+        ColonelsettlementOrder order = buildTestOrder(
+                orderId,
+                product,
+                product.getName(),
+                orderAmount,
+                serviceFee,
+                pickSource,
+                talent.getDouyinUid(),
+                ACTIVITY_ID,
+                merchantId,
+                shopName
+        );
+        order.setTalentId(talent.getId());
+        order.setTalentName(talent.getNickname());
+        order.setOrderStatus(orderStatus);
+        order.setCreateTime(createTime);
+        order.setUpdateTime(LocalDateTime.now());
+        order.setSettleTime(settleTime);
+        order.setAttributionStatus(AttributionService.STATUS_UNATTRIBUTED);
+        order.setAttributionRemark(attributionRemark);
+        Map<String, Object> extra = new LinkedHashMap<>(order.getExtraData());
+        extra.put("talentName", talent.getNickname());
+        extra.put("talentId", talent.getId().toString());
+        extra.put("activityId", ACTIVITY_ID);
+        extra.put("attributionRemark", attributionRemark);
+        extra.put("mockScenario", orderId);
+        if (mappingCreateTime != null) {
+            extra.put("mappingCreateTime", mappingCreateTime.toString());
+        }
+        order.setExtraData(extra);
+        orderSyncPersistenceService.persistOrder(order);
+        jdbcTemplate.update(
+                "UPDATE colonelsettlement_order SET create_time = ?, update_time = ?, settle_time = ? WHERE order_id = ?",
+                createTime,
+                LocalDateTime.now(),
+                settleTime,
+                orderId
+        );
     }
 
     private UUID requireUserId(String username) {
@@ -1224,6 +1751,17 @@ public class TestDataService implements ApplicationRunner {
         return mapping;
     }
 
+    private Talent requireTalentByUid(String douyinUid) {
+        Talent talent = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
+                .eq(Talent::getDouyinUid, douyinUid)
+                .eq(Talent::getDeleted, 0)
+                .last("limit 1"));
+        if (talent == null) {
+            throw new IllegalStateException("test talent not found: " + douyinUid);
+        }
+        return talent;
+    }
+
     private SampleRequest requireSample(UUID sampleRequestId) {
         SampleRequest sample = sampleRequestMapper.selectById(sampleRequestId);
         if (sample == null) {
@@ -1266,6 +1804,8 @@ public class TestDataService implements ApplicationRunner {
         order.setOrderAmount(orderAmount);
         order.setActualAmount(orderAmount);
         order.setSettleColonelCommission(serviceFee);
+        order.setSettleColonelTechServiceFee(0L);
+        order.setSettleSecondColonelCommission(serviceFee);
         order.setOrderStatus(1);
         order.setPickSource(pickSource);
         order.setCreateTime(LocalDateTime.now());
@@ -1292,6 +1832,7 @@ public class TestDataService implements ApplicationRunner {
         order.setUserId(attribution.userId());
         order.setDeptId(attribution.deptId());
         order.setColonelUserId(attribution.colonelUserId());
+        order.setTalentId(attribution.talentId());
         order.setActivityId(attribution.activityId());
         order.setAttributionStatus(attribution.attributionStatus());
         order.setAttributionRemark(attribution.attributionRemark());
@@ -1339,9 +1880,95 @@ public class TestDataService implements ApplicationRunner {
         result.put("action", action);
         result.put("sampleRequestId", sample.getId());
         result.put("trackingNo", trackingNo);
+        result.put("logisticsSource", latest == null || latest.getExtraData() == null
+                ? null
+                : latest.getExtraData().get("logisticsSource"));
         result.put("status", latest == null ? null : latest.getStatus());
         result.put("requestNo", latest == null ? null : latest.getRequestNo());
         return result;
+    }
+
+    private void upsertNativeMapping(
+            UUID userId,
+            UUID deptId,
+            String talentId,
+            String talentName,
+            String productId,
+            String activityId,
+            String colonelBuyinId,
+            String pickSource,
+            LocalDateTime createTime) {
+        String normalizedPickSource = pickSource.toUpperCase(Locale.ROOT);
+        String shortId = normalizedPickSource.substring(0, Math.min(normalizedPickSource.length(), 10));
+        pickSourceMappingService.saveOrUpdate(
+                userId,
+                null,
+                deptId,
+                talentId,
+                talentName,
+                shortId,
+                UUID.nameUUIDFromBytes(normalizedPickSource.getBytes()),
+                normalizedPickSource,
+                productId,
+                activityId,
+                "https://test.source.local/native/" + activityId + "/" + productId,
+                "https://test.promote.link/activity/" + activityId + "/product/" + productId + "?pick_source=" + normalizedPickSource,
+                null,
+                "PRODUCT_LIBRARY",
+                normalizedPickSource,
+                colonelBuyinId,
+                PickSourceMappingService.SOURCE_TYPE_NATIVE
+        );
+        jdbcTemplate.update("""
+                UPDATE pick_source_mapping
+                SET create_time = ?, update_time = ?, valid_from = ?
+                WHERE pick_source = ?
+                  AND product_id = ?
+                  AND activity_id = ?
+                  AND user_id = ?
+                  AND source_type = ?
+                """,
+                createTime,
+                createTime,
+                createTime,
+                normalizedPickSource,
+                productId,
+                activityId,
+                userId,
+                PickSourceMappingService.SOURCE_TYPE_NATIVE
+        );
+    }
+
+    private void updateOrderNativeColumns(String orderId, LocalDateTime createTime, LocalDateTime settleTime, String colonelBuyinId) {
+        jdbcTemplate.update("""
+                UPDATE colonelsettlement_order
+                SET create_time = ?,
+                    update_time = CURRENT_TIMESTAMP,
+                    settle_time = ?,
+                    colonel_buyin_id = CAST(? AS BIGINT)
+                WHERE order_id = ?
+                """,
+                createTime,
+                settleTime,
+                colonelBuyinId,
+                orderId
+        );
+    }
+
+    private void putSampleExtraValue(SampleRequest sample, String key, Object value) {
+        Map<String, Object> extra = sample.getExtraData() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(sample.getExtraData());
+        extra.put(key, value);
+        sample.setExtraData(extra);
+    }
+
+    private void putSampleExtraValueIfMissing(SampleRequest sample, String key, Object value) {
+        Map<String, Object> extra = sample.getExtraData() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(sample.getExtraData());
+        extra.putIfAbsent(key, value);
+        sample.setExtraData(extra);
     }
 
     private Long parseShopId(String merchantId) {

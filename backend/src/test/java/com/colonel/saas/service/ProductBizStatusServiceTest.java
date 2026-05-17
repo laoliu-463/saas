@@ -162,6 +162,27 @@ class ProductBizStatusServiceTest {
     }
 
     @Test
+    void changeStatus_shouldAllowAssignedToAssignedForReassign() {
+        ProductOperationState state = buildState(ProductBizStatus.ASSIGNED);
+        UUID newAssigneeId = UUID.randomUUID();
+
+        service.changeStatus(
+                state,
+                ProductBizStatus.ASSIGNED,
+                "ASSIGN",
+                null,
+                null,
+                Map.of("assigneeId", newAssigneeId),
+                "重新分配招商",
+                current -> current.setAssigneeId(newAssigneeId)
+        );
+
+        assertThat(state.getBizStatus()).isEqualTo(ProductBizStatus.ASSIGNED.name());
+        assertThat(state.getAssigneeId()).isEqualTo(newAssigneeId);
+        verify(operationStateMapper).updateById(state);
+    }
+
+    @Test
     void changeStatus_shouldRejectApprovedToBound() {
         ProductOperationState state = buildState(ProductBizStatus.APPROVED);
 
@@ -210,6 +231,25 @@ class ProductBizStatusServiceTest {
                 Map.of("linkId", "L001"),
                 "生成推广链接",
                 current -> current.setPromoteLink("https://link.example.com/abc")
+        );
+
+        assertThat(state.getBizStatus()).isEqualTo(ProductBizStatus.LINKED.name());
+        verify(operationStateMapper).updateById(state);
+    }
+
+    @Test
+    void changeStatus_shouldAllowApprovedToLinkedForProductLibraryCopy() {
+        ProductOperationState state = buildState(ProductBizStatus.APPROVED);
+
+        service.changeStatus(
+                state,
+                ProductBizStatus.LINKED,
+                "PROMOTION_LINK",
+                null,
+                null,
+                Map.of("scene", "PRODUCT_LIBRARY"),
+                "转链成功",
+                current -> current.setPromoteLink("https://link.example.com/approved")
         );
 
         assertThat(state.getBizStatus()).isEqualTo(ProductBizStatus.LINKED.name());

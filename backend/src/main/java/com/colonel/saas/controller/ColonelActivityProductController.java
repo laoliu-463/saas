@@ -97,6 +97,25 @@ public class ColonelActivityProductController extends BaseController {
         return ok(productService.assignProduct(activityId, productId, request.getAssigneeId(), userId, deptId));
     }
 
+    @Operation(summary = "活动商品分配审核人", description = "为待审核活动商品指定招商专员审核负责人，不改变商品主状态。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER})
+    @PutMapping("/{productId}/audit-assignee")
+    public ApiResult<Map<String, Object>> assignAuditOwner(
+            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
+            @Parameter(description = "商品 ID。") @PathVariable String productId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "审核负责人分配请求体。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"assigneeId\":\"22222222-2222-2222-2222-222222222222\"}"))
+            )
+            @Valid @RequestBody AssignRequest request,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        sysUserService.assertAssignableUser(request.getAssigneeId(), roleCodes, deptId);
+        return ok(productService.assignAuditOwner(activityId, productId, request.getAssigneeId(), userId, deptId));
+    }
+
     @Operation(summary = "活动商品审核", description = "提交活动商品审核结果。")
     @RequireRoles({RoleCodes.BIZ_STAFF})
     @PutMapping("/{productId}/audit-result")

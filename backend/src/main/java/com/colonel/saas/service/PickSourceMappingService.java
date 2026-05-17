@@ -254,26 +254,55 @@ public class PickSourceMappingService {
                 }
             }
         }
-        existing.setUserId(userId);
-        existing.setChannelUserName(channelUserName);
-        existing.setTalentId(talentId);
-        existing.setTalentName(talentName);
-        existing.setShortId(shortId);
-        existing.setUuidSeed(uuidSeed);
-        existing.setDeptId(deptId);
-        existing.setColonelBuyinId(resolveColonelBuyinId(colonelBuyinId));
-        existing.setProductId(productId);
-        existing.setActivityId(activityId);
-        existing.setSourceUrl(sourceUrl);
-        existing.setConvertedUrl(convertedUrl);
-        existing.setPickExtra(resolvePickExtra(pickExtra));
-        existing.setPromotionLinkId(promotionLinkId);
-        existing.setScene(scene);
-        existing.setSourceType(resolvedSourceType);
-        existing.setValidUntil(LocalDateTime.now().plusMonths(validMonths));
-        existing.setStatus(1);
-        pickSourceMappingMapper.updateById(existing);
-        logNativeAmbiguousIfNeeded(existing);
+        PickSourceMapping update = buildUpdateEntity(
+                existing,
+                userId,
+                channelUserName,
+                deptId,
+                talentId,
+                talentName,
+                shortId,
+                uuidSeed,
+                pickSource,
+                colonelBuyinId,
+                productId,
+                activityId,
+                sourceUrl,
+                convertedUrl,
+                promotionLinkId,
+                scene,
+                pickExtra,
+                resolvedSourceType
+        );
+        try {
+            pickSourceMappingMapper.updateById(update);
+            logNativeAmbiguousIfNeeded(materializeForLogging(existing, update));
+        } catch (DuplicateKeyException ex) {
+            PickSourceMapping recovered = recoverNativeConflict(
+                    ex,
+                    userId,
+                    channelUserName,
+                    deptId,
+                    talentId,
+                    talentName,
+                    shortId,
+                    uuidSeed,
+                    pickSource,
+                    colonelBuyinId,
+                    productId,
+                    activityId,
+                    sourceUrl,
+                    convertedUrl,
+                    promotionLinkId,
+                    scene,
+                    pickExtra,
+                    resolvedSourceType
+            );
+            if (recovered == null) {
+                throw ex;
+            }
+            logNativeAmbiguousIfNeeded(recovered);
+        }
     }
 
     private PickSourceMapping findExistingMapping(
@@ -292,17 +321,6 @@ public class PickSourceMappingService {
                 return existingByPromotionLink;
             }
         }
-        if (userId != null && StringUtils.hasText(pickSource) && StringUtils.hasText(productId) && StringUtils.hasText(activityId)) {
-            PickSourceMapping existingByComposite = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
-                    .eq(PickSourceMapping::getUserId, userId)
-                    .eq(PickSourceMapping::getPickSource, pickSource)
-                    .eq(PickSourceMapping::getProductId, productId)
-                    .eq(PickSourceMapping::getActivityId, activityId)
-                    .last("limit 1"));
-            if (existingByComposite != null) {
-                return existingByComposite;
-            }
-        }
         if (SOURCE_TYPE_NATIVE.equals(sourceType)
                 && userId != null
                 && StringUtils.hasText(colonelBuyinId)
@@ -319,12 +337,183 @@ public class PickSourceMappingService {
                 return existingByNativeComposite;
             }
         }
+        if (userId != null && StringUtils.hasText(pickSource) && StringUtils.hasText(productId) && StringUtils.hasText(activityId)) {
+            PickSourceMapping existingByComposite = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                    .eq(PickSourceMapping::getUserId, userId)
+                    .eq(PickSourceMapping::getPickSource, pickSource)
+                    .eq(PickSourceMapping::getProductId, productId)
+                    .eq(PickSourceMapping::getActivityId, activityId)
+                    .last("limit 1"));
+            if (existingByComposite != null) {
+                return existingByComposite;
+            }
+        }
         if (StringUtils.hasText(pickSource) && !StringUtils.hasText(productId) && !StringUtils.hasText(activityId)) {
             return pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
                     .eq(PickSourceMapping::getPickSource, pickSource)
                     .last("limit 1"));
         }
         return null;
+    }
+
+    private PickSourceMapping buildUpdateEntity(
+            PickSourceMapping existing,
+            UUID userId,
+            String channelUserName,
+            UUID deptId,
+            String talentId,
+            String talentName,
+            String shortId,
+            UUID uuidSeed,
+            String pickSource,
+            String colonelBuyinId,
+            String productId,
+            String activityId,
+            String sourceUrl,
+            String convertedUrl,
+            UUID promotionLinkId,
+            String scene,
+            String pickExtra,
+            String resolvedSourceType) {
+        boolean preserveNativeIdentity = shouldPreserveNativeIdentity(
+                existing,
+                userId,
+                colonelBuyinId,
+                productId,
+                activityId,
+                resolvedSourceType
+        );
+        PickSourceMapping update = new PickSourceMapping();
+        update.setId(existing.getId());
+        update.setChannelUserName(channelUserName);
+        update.setTalentId(talentId);
+        update.setTalentName(talentName);
+        update.setDeptId(deptId);
+        update.setPickSource(pickSource);
+        update.setSourceUrl(sourceUrl);
+        update.setConvertedUrl(convertedUrl);
+        update.setPickExtra(resolvePickExtra(pickExtra));
+        update.setPromotionLinkId(promotionLinkId);
+        update.setScene(scene);
+        update.setValidUntil(LocalDateTime.now().plusMonths(validMonths));
+        update.setStatus(1);
+        if (!preserveNativeIdentity) {
+            update.setShortId(shortId);
+            update.setUuidSeed(uuidSeed);
+            update.setUserId(userId);
+            update.setColonelBuyinId(resolveColonelBuyinId(colonelBuyinId));
+            update.setProductId(productId);
+            update.setActivityId(activityId);
+            update.setSourceType(resolvedSourceType);
+        }
+        return update;
+    }
+
+    private PickSourceMapping materializeForLogging(PickSourceMapping existing, PickSourceMapping update) {
+        PickSourceMapping materialized = new PickSourceMapping();
+        materialized.setId(existing.getId());
+        materialized.setUserId(update.getUserId() != null ? update.getUserId() : existing.getUserId());
+        materialized.setChannelUserName(update.getChannelUserName() != null ? update.getChannelUserName() : existing.getChannelUserName());
+        materialized.setTalentId(update.getTalentId() != null ? update.getTalentId() : existing.getTalentId());
+        materialized.setTalentName(update.getTalentName() != null ? update.getTalentName() : existing.getTalentName());
+        materialized.setShortId(update.getShortId() != null ? update.getShortId() : existing.getShortId());
+        materialized.setUuidSeed(update.getUuidSeed() != null ? update.getUuidSeed() : existing.getUuidSeed());
+        materialized.setDeptId(update.getDeptId() != null ? update.getDeptId() : existing.getDeptId());
+        materialized.setPickSource(update.getPickSource() != null ? update.getPickSource() : existing.getPickSource());
+        materialized.setColonelBuyinId(update.getColonelBuyinId() != null ? update.getColonelBuyinId() : existing.getColonelBuyinId());
+        materialized.setProductId(update.getProductId() != null ? update.getProductId() : existing.getProductId());
+        materialized.setActivityId(update.getActivityId() != null ? update.getActivityId() : existing.getActivityId());
+        materialized.setSourceUrl(update.getSourceUrl() != null ? update.getSourceUrl() : existing.getSourceUrl());
+        materialized.setConvertedUrl(update.getConvertedUrl() != null ? update.getConvertedUrl() : existing.getConvertedUrl());
+        materialized.setPickExtra(update.getPickExtra() != null ? update.getPickExtra() : existing.getPickExtra());
+        materialized.setPromotionLinkId(update.getPromotionLinkId() != null ? update.getPromotionLinkId() : existing.getPromotionLinkId());
+        materialized.setScene(update.getScene() != null ? update.getScene() : existing.getScene());
+        materialized.setSourceType(update.getSourceType() != null ? update.getSourceType() : existing.getSourceType());
+        materialized.setValidFrom(existing.getValidFrom());
+        materialized.setValidUntil(update.getValidUntil() != null ? update.getValidUntil() : existing.getValidUntil());
+        materialized.setStatus(update.getStatus() != null ? update.getStatus() : existing.getStatus());
+        materialized.setDeleted(existing.getDeleted());
+        return materialized;
+    }
+
+    private PickSourceMapping recoverNativeConflict(
+            DuplicateKeyException ex,
+            UUID userId,
+            String channelUserName,
+            UUID deptId,
+            String talentId,
+            String talentName,
+            String shortId,
+            UUID uuidSeed,
+            String pickSource,
+            String colonelBuyinId,
+            String productId,
+            String activityId,
+            String sourceUrl,
+            String convertedUrl,
+            UUID promotionLinkId,
+            String scene,
+            String pickExtra,
+            String resolvedSourceType) {
+        if (!SOURCE_TYPE_NATIVE.equals(resolvedSourceType)
+                || userId == null
+                || !StringUtils.hasText(colonelBuyinId)
+                || !StringUtils.hasText(productId)
+                || !StringUtils.hasText(activityId)) {
+            return null;
+        }
+        PickSourceMapping nativeExisting = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                .eq(PickSourceMapping::getColonelBuyinId, resolveColonelBuyinId(colonelBuyinId))
+                .eq(PickSourceMapping::getProductId, productId)
+                .eq(PickSourceMapping::getActivityId, activityId)
+                .eq(PickSourceMapping::getUserId, userId)
+                .eq(PickSourceMapping::getSourceType, SOURCE_TYPE_NATIVE)
+                .last("limit 1"));
+        if (nativeExisting == null) {
+            return null;
+        }
+        PickSourceMapping patch = buildUpdateEntity(
+                nativeExisting,
+                userId,
+                channelUserName,
+                deptId,
+                talentId,
+                talentName,
+                shortId,
+                uuidSeed,
+                pickSource,
+                colonelBuyinId,
+                productId,
+                activityId,
+                sourceUrl,
+                convertedUrl,
+                promotionLinkId,
+                scene,
+                pickExtra,
+                resolvedSourceType
+        );
+        pickSourceMappingMapper.updateById(patch);
+        return materializeForLogging(nativeExisting, patch);
+    }
+
+    private boolean shouldPreserveNativeIdentity(
+            PickSourceMapping existing,
+            UUID userId,
+            String colonelBuyinId,
+            String productId,
+            String activityId,
+            String resolvedSourceType) {
+        return existing != null
+                && SOURCE_TYPE_NATIVE.equals(resolvedSourceType)
+                && SOURCE_TYPE_NATIVE.equals(existing.getSourceType())
+                && userId != null
+                && userId.equals(existing.getUserId())
+                && resolveColonelBuyinId(colonelBuyinId) != null
+                && resolveColonelBuyinId(colonelBuyinId).equals(existing.getColonelBuyinId())
+                && StringUtils.hasText(productId)
+                && productId.equals(existing.getProductId())
+                && StringUtils.hasText(activityId)
+                && activityId.equals(existing.getActivityId());
     }
 
     private String resolveSourceType(String sourceType, String colonelBuyinId) {

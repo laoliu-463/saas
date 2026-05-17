@@ -33,9 +33,10 @@ public interface SampleRequestMapper extends BaseMapper<SampleRequest> {
 
     @Select("""
             <script>
-            SELECT sr.*
+            SELECT DISTINCT sr.*
             FROM sample_request sr
-            JOIN product_operation_state pos ON sr.product_id = pos.product_id
+            JOIN product p ON p.id = sr.product_id AND p.deleted = 0
+            JOIN product_operation_state pos ON p.product_id = pos.product_id
             WHERE sr.deleted = 0
             AND pos.assignee_id = #{userId}
             <if test="ew != null and ew.sqlSegment != null and ew.sqlSegment != ''">

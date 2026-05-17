@@ -13,6 +13,7 @@ import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.service.ShortTtlCacheService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,7 +59,7 @@ class OrderControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService))
+                .standaloneSetup(new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService, new ShortTtlCacheService()))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -175,7 +176,7 @@ class OrderControllerTest {
 
     @Test
     void diagnosisSql_shouldReuseDashboardClassifierForOrders() throws Exception {
-        OrderController controller = new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService);
+        OrderController controller = new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService, new ShortTtlCacheService());
         Method method = OrderController.class.getDeclaredMethod("diagnosisSql", String.class, String.class);
         method.setAccessible(true);
 
@@ -195,7 +196,7 @@ class OrderControllerTest {
 
     @Test
     void diagnosisSql_shouldAcceptUnsafeAlias() throws Exception {
-        OrderController controller = new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService);
+        OrderController controller = new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService, new ShortTtlCacheService());
         Method method = OrderController.class.getDeclaredMethod("diagnosisSql", String.class, String.class);
         method.setAccessible(true);
 

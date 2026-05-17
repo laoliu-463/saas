@@ -70,6 +70,24 @@ public class TestController extends BaseController {
         return ok(testDataService.generateMissingMappingOrder());
     }
 
+    @Operation(summary = "[测试] 生成多候选歧义映射订单", description = "生成一笔命中多条 native 映射的测试订单，用于验证 AMBIGUOUS_MAPPING 诊断与未归因筛选。")
+    @PostMapping("/orders/generate-ambiguous-mapping")
+    public ApiResult<Map<String, Object>> generateAmbiguousMappingOrder() {
+        return ok(testDataService.generateAmbiguousMappingOrder());
+    }
+
+    @Operation(summary = "[测试] 生成历史不可回填订单", description = "生成一笔 native 映射创建时间晚于订单创建时间的测试订单，用于验证 replay-attribution dryRun 的 unsafe 诊断。")
+    @PostMapping("/orders/generate-history-unsafe")
+    public ApiResult<Map<String, Object>> generateHistoryUnsafeOrder() {
+        return ok(testDataService.generateHistoryUnsafeOrder());
+    }
+
+    @Operation(summary = "[测试] 生成商品未覆盖订单", description = "生成一笔活动商品未覆盖的测试订单，用于验证 UPSTREAM_PRODUCT_UNCOVERED 诊断与排查链路。")
+    @PostMapping("/orders/generate-product-uncovered")
+    public ApiResult<Map<String, Object>> generateProductUncoveredOrder() {
+        return ok(testDataService.generateProductUncoveredOrder());
+    }
+
     @Operation(summary = "[测试] 推进寄样到发货", description = "将指定寄样单推进到发货节点，用于验证寄样状态机与订单联动场景。")
     @PostMapping("/logistics/ship/{sampleRequestId}")
     public ApiResult<Map<String, Object>> shipSample(

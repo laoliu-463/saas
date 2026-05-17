@@ -153,7 +153,11 @@
             activity_name AS name,
             start_time AS startTime,
             end_time AS endTime,
-            status,
+            CASE
+                WHEN end_time IS NOT NULL AND end_time &lt; CURRENT_TIMESTAMP THEN 0
+                WHEN status IN ('已结束', '结束', 'CLOSED', 'ENDED', 'FINISHED', '0') THEN 0
+                ELSE 1
+            END AS status,
             shop_id AS shopId,
             shop_name AS shopName,
             colonel_buyin_id AS colonelBuyinId,

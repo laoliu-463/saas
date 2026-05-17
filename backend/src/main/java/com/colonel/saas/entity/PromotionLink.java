@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.colonel.saas.common.handler.UUIDTypeHandler;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -17,6 +18,7 @@ import java.util.UUID;
 public class PromotionLink implements Serializable {
 
     @TableId(type = IdType.INPUT)
+    @TableField(typeHandler = UUIDTypeHandler.class)
     private UUID id;
 
     @TableField("product_id")

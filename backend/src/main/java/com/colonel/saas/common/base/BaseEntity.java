@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
+import com.colonel.saas.common.handler.UUIDTypeHandler;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -15,6 +16,7 @@ import java.util.UUID;
 public abstract class BaseEntity implements Serializable {
 
     @TableId(type = IdType.INPUT)
+    @TableField(typeHandler = UUIDTypeHandler.class)
     private UUID id;
 
     @TableField(fill = FieldFill.INSERT)

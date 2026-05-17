@@ -97,6 +97,30 @@ class ColonelActivityProductControllerTest {
     }
 
     @Test
+    void assignAuditOwner_shouldKeepPendingAuditStatus() {
+        UUID assigneeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        List<String> roleCodes = List.of(RoleCodes.BIZ_LEADER);
+        when(productService.assignAuditOwner("10001", "9001", assigneeId, userId, deptId))
+                .thenReturn(Map.of(
+                        "bizStatus", "PENDING_AUDIT",
+                        "bizStatusLabel", "待审核",
+                        "assigneeId", assigneeId
+                ));
+
+        ColonelActivityProductController.AssignRequest request = new ColonelActivityProductController.AssignRequest();
+        request.setAssigneeId(assigneeId);
+
+        var response = controller.assignAuditOwner("10001", "9001", request, userId, deptId, roleCodes);
+
+        assertThat(response.getData().get("bizStatus")).isEqualTo("PENDING_AUDIT");
+        assertThat(response.getData().get("assigneeId")).isEqualTo(assigneeId);
+        verify(sysUserService).assertAssignableUser(assigneeId, roleCodes, deptId);
+        verify(productService).assignAuditOwner("10001", "9001", assigneeId, userId, deptId);
+    }
+
+    @Test
     void audit_shouldPassSupplementFields() {
         when(productService.auditProduct(
                 eq("10001"),
@@ -165,6 +189,9 @@ class ColonelActivityProductControllerTest {
         RequireRoles bindRoles = ColonelActivityProductController.class
                 .getMethod("bindActivity", String.class, String.class, ColonelActivityProductController.BindActivityRequest.class, UUID.class, UUID.class)
                 .getAnnotation(RequireRoles.class);
+        RequireRoles assignAuditOwnerRoles = ColonelActivityProductController.class
+                .getMethod("assignAuditOwner", String.class, String.class, ColonelActivityProductController.AssignRequest.class, UUID.class, UUID.class, List.class)
+                .getAnnotation(RequireRoles.class);
         RequireRoles decisionRoles = ColonelActivityProductController.class
                 .getMethod("decision", String.class, String.class, ColonelActivityProductController.DecisionRequest.class, UUID.class, UUID.class)
                 .getAnnotation(RequireRoles.class);
@@ -174,6 +201,7 @@ class ColonelActivityProductControllerTest {
 
         assertThat(auditRoles.value()).containsExactly(RoleCodes.BIZ_STAFF);
         assertThat(bindRoles.value()).containsExactly(RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER);
+        assertThat(assignAuditOwnerRoles.value()).containsExactly(RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER);
         assertThat(decisionRoles.value()).containsExactly(RoleCodes.BIZ_STAFF);
         assertThat(libraryRoles.value()).containsExactly(RoleCodes.BIZ_STAFF);
     }

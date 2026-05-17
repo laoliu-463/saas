@@ -20,6 +20,7 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.service.CommissionService;
+import com.colonel.saas.service.ShortTtlCacheService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -44,6 +45,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -60,31 +62,36 @@ import java.util.UUID;
 public class DataController extends BaseController {
 
     private static final long EXPORT_BATCH_SIZE = 2000L;
+    private static final Duration METRICS_CACHE_TTL = Duration.ofSeconds(30);
+    private static final String METRICS_CACHE_PREFIX = "dashboard:metrics:";
 
     private final ColonelsettlementOrderMapper orderMapper;
     private final CommissionService commissionService;
     private final ExclusiveTalentMapper exclusiveTalentMapper;
     private final ExclusiveMerchantMapper exclusiveMerchantMapper;
     private final ColonelsettlementActivityMapper activityMapper;
+    private final ShortTtlCacheService shortTtlCacheService;
 
     public DataController(
             ColonelsettlementOrderMapper orderMapper,
             CommissionService commissionService,
             ExclusiveTalentMapper exclusiveTalentMapper,
             ExclusiveMerchantMapper exclusiveMerchantMapper,
-            ColonelsettlementActivityMapper activityMapper) {
+            ColonelsettlementActivityMapper activityMapper,
+            ShortTtlCacheService shortTtlCacheService) {
         this.orderMapper = orderMapper;
         this.commissionService = commissionService;
         this.exclusiveTalentMapper = exclusiveTalentMapper;
         this.exclusiveMerchantMapper = exclusiveMerchantMapper;
         this.activityMapper = activityMapper;
+        this.shortTtlCacheService = shortTtlCacheService;
     }
 
     @Operation(summary = "订单分页", description = "分页查询数据页订单列表。该接口服务于数据分析页面，不等同于订单主链路接口。")
     @GetMapping("/data/orders")
     public ApiResult<PageResult<OrderVO>> getOrderPage(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
-            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") @Min(1) @Max(200) long size,
             @Parameter(description = "订单号，支持模糊匹配。") @RequestParam(required = false) String orderId,
             @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
             @Parameter(description = "达人 ID（UUID），精确匹配。") @RequestParam(required = false) UUID talentId,
@@ -140,6 +147,8 @@ public class DataController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        String cacheKey = METRICS_CACHE_PREFIX + cacheKey(timeField, userId, deptId, dataScope);
+        return ok(shortTtlCacheService.get(cacheKey, METRICS_CACHE_TTL, () -> {
         LocalDate today = LocalDate.now();
         LocalDateTime todayStart = today.atStartOfDay();
         LocalDateTime tomorrowStart = today.plusDays(1).atStartOfDay();
@@ -225,7 +234,8 @@ public class DataController extends BaseController {
         metrics.setChannelCommission(centToYuan(commissionSummary.channelCommission()));
         metrics.setCommission(centToYuan(commissionSummary.bizCommission() + commissionSummary.channelCommission()));
         metrics.setGrossProfit(centToYuan(commissionSummary.grossProfit()));
-        return ok(metrics);
+        return metrics;
+        }));
     }
 
     @Operation(summary = "导出订单CSV", description = "按筛选条件导出订单数据页 CSV。")
@@ -417,6 +427,17 @@ public class DataController extends BaseController {
             return "\"" + text.replace("\"", "\"\"") + "\"";
         }
         return text;
+    }
+
+    private String cacheKey(Object... values) {
+        StringBuilder builder = new StringBuilder();
+        for (Object value : values) {
+            if (builder.length() > 0) {
+                builder.append('|');
+            }
+            builder.append(value == null ? "" : value);
+        }
+        return builder.toString();
     }
 
     private String resolveTimeColumn(String timeField) {

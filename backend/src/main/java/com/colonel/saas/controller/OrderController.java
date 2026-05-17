@@ -17,6 +17,7 @@ import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.service.ShortTtlCacheService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -34,6 +35,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -50,20 +52,28 @@ import java.util.UUID;
 @RequestMapping("/orders")
 public class OrderController extends BaseController {
 
+    private static final Duration FILTER_OPTIONS_CACHE_TTL = Duration.ofSeconds(60);
+    private static final String FILTER_OPTIONS_CACHE_PREFIX = "orders:filter-options:";
+    private static final String DASHBOARD_SUMMARY_CACHE_PREFIX = "dashboard:summary:";
+    private static final String DASHBOARD_METRICS_CACHE_PREFIX = "dashboard:metrics:";
+
     private final OrderSyncService orderSyncService;
     private final ColonelsettlementOrderMapper orderMapper;
     private final OrderQueryService orderQueryService;
     private final OrderAttributionReplayService orderAttributionReplayService;
+    private final ShortTtlCacheService shortTtlCacheService;
 
     public OrderController(
             OrderSyncService orderSyncService,
             ColonelsettlementOrderMapper orderMapper,
             OrderQueryService orderQueryService,
-            OrderAttributionReplayService orderAttributionReplayService) {
+            OrderAttributionReplayService orderAttributionReplayService,
+            ShortTtlCacheService shortTtlCacheService) {
         this.orderSyncService = orderSyncService;
         this.orderMapper = orderMapper;
         this.orderQueryService = orderQueryService;
         this.orderAttributionReplayService = orderAttributionReplayService;
+        this.shortTtlCacheService = shortTtlCacheService;
     }
 
     @Operation(summary = "手动同步订单", description = "按时间范围触发订单同步，用于补拉订单或联调真实网关回流数据。")
@@ -79,7 +89,9 @@ public class OrderController extends BaseController {
         SyncRequest safeRequest = request == null ? defaultSyncRequest() : request;
         long start = parseDateTime(safeRequest.getStartTime());
         long end = parseDateTime(safeRequest.getEndTime());
-        return ok(orderSyncService.syncByTimeRange(start, end));
+        OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(start, end);
+        evictOrderDerivedCaches();
+        return ok(result);
     }
 
     @Operation(summary = "重算历史订单归因", description = "对已落库订单重新执行归因逻辑，用于补映射后的历史订单回放验证。默认只扫描未归因订单。")
@@ -93,12 +105,16 @@ public class OrderController extends BaseController {
             )
             @RequestBody(required = false) ReplayAttributionRequest request) {
         ReplayAttributionRequest safeRequest = request == null ? new ReplayAttributionRequest() : request;
-        return ok(orderAttributionReplayService.replay(
+        OrderAttributionReplayService.ReplayResult result = orderAttributionReplayService.replay(
                 safeRequest.getOrderIds(),
                 safeRequest.getReason(),
                 safeRequest.getLimit(),
                 Boolean.TRUE.equals(safeRequest.getDryRun())
-        ));
+        );
+        if (!Boolean.TRUE.equals(safeRequest.getDryRun())) {
+            evictOrderDerivedCaches();
+        }
+        return ok(result);
     }
 
     @Operation(summary = "获取订单列表", description = "分页查询订单归因列表，用于订单主页面。")
@@ -285,6 +301,8 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        String cacheKey = FILTER_OPTIONS_CACHE_PREFIX + cacheKey(keyword, userId, deptId, dataScope);
+        return ok(shortTtlCacheService.get(cacheKey, FILTER_OPTIONS_CACHE_TTL, () -> {
         QueryConditions conditions = new QueryConditions(keyword);
         OrderFilterOptions options = new OrderFilterOptions();
 
@@ -332,7 +350,7 @@ public class OrderController extends BaseController {
                         .like("product_name", conditions.keyword())
                         .or()
                         .like("product_id", conditions.keyword()))
-                .last("limit 100");
+                .last("limit 50");
         applyQueryDataScope(productWrapper, userId, deptId, dataScope);
         options.setProducts(orderMapper.selectMaps(productWrapper)
                 .stream()
@@ -344,7 +362,7 @@ public class OrderController extends BaseController {
                 .select("distinct channel_user_name as value", "channel_user_name as label")
                 .isNotNull("channel_user_name")
                 .and(conditions.hasKeyword(), wrapper -> wrapper.like("channel_user_name", conditions.keyword()))
-                .last("limit 100");
+                .last("limit 50");
         applyQueryDataScope(channelWrapper, userId, deptId, dataScope);
         options.setChannels(orderMapper.selectMaps(channelWrapper)
                 .stream()
@@ -356,14 +374,15 @@ public class OrderController extends BaseController {
                 .select("distinct colonel_user_name as value", "colonel_user_name as label")
                 .isNotNull("colonel_user_name")
                 .and(conditions.hasKeyword(), wrapper -> wrapper.like("colonel_user_name", conditions.keyword()))
-                .last("limit 100");
+                .last("limit 50");
         applyQueryDataScope(colonelWrapper, userId, deptId, dataScope);
         options.setColonels(orderMapper.selectMaps(colonelWrapper)
                 .stream()
                 .map(this::toOptionItem)
                 .filter(item -> StringUtils.hasText(item.value()))
                 .toList());
-        return ok(options);
+        return options;
+        }));
     }
 
     private LambdaQueryWrapper<ColonelsettlementOrder> buildWrapper(
@@ -400,6 +419,23 @@ public class OrderController extends BaseController {
         applyTimeRange(wrapper, resolveTimeField(timeField), start, end);
         applyDashboardDiagnosisFilter(wrapper, null, dashboardDiagnosis);
         return wrapper;
+    }
+
+    private String cacheKey(Object... values) {
+        StringBuilder builder = new StringBuilder();
+        for (Object value : values) {
+            if (builder.length() > 0) {
+                builder.append('|');
+            }
+            builder.append(value == null ? "" : value);
+        }
+        return builder.toString();
+    }
+
+    private void evictOrderDerivedCaches() {
+        shortTtlCacheService.evictByPrefix(DASHBOARD_SUMMARY_CACHE_PREFIX);
+        shortTtlCacheService.evictByPrefix(DASHBOARD_METRICS_CACHE_PREFIX);
+        shortTtlCacheService.evictByPrefix(FILTER_OPTIONS_CACHE_PREFIX);
     }
 
     private QueryWrapper<ColonelsettlementOrder> buildStatsWrapper(

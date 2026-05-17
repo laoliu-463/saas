@@ -246,8 +246,10 @@ public class TalentService {
                 markEnrichTask(task, ENRICH_TASK_STATUS_WAIT_MANUAL, orchestrateResult.message());
             }
         } catch (RuntimeException ex) {
+            request.setEnrichStatus(ENRICH_TASK_STATUS_FAILED);
+            request.setLastEnrichTime(LocalDateTime.now());
+            talentMapper.updateById(request);
             markEnrichTask(task, ENRICH_TASK_STATUS_FAILED, ex.getMessage());
-            throw ex;
         }
         return request;
     }
@@ -458,8 +460,11 @@ public class TalentService {
             }
             return talent;
         } catch (RuntimeException ex) {
+            talent.setEnrichStatus(ENRICH_TASK_STATUS_FAILED);
+            talent.setLastEnrichTime(LocalDateTime.now());
+            talentMapper.updateById(talent);
             markEnrichTask(task, ENRICH_TASK_STATUS_FAILED, ex.getMessage());
-            throw ex;
+            return talent;
         }
     }
 

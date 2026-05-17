@@ -17,7 +17,7 @@ import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.TalentFollowRecord;
 import com.colonel.saas.entity.PromotionLink;
 import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.douyin.api.ActivityApi;
+import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
@@ -81,7 +81,7 @@ public class ProductService {
     private final ProductBizStatusService productBizStatusService;
     private final ColonelsettlementActivityMapper colonelActivityMapper;
     private final TalentFollowService talentFollowService;
-    private final ActivityApi activityApi;
+    private final DouyinActivityGateway douyinActivityGateway;
 
     public ProductService(
             DouyinPromotionGateway douyinPromotionGateway,
@@ -97,7 +97,7 @@ public class ProductService {
             ProductBizStatusService productBizStatusService,
             ColonelsettlementActivityMapper colonelActivityMapper,
             TalentFollowService talentFollowService,
-            ActivityApi activityApi) {
+            DouyinActivityGateway douyinActivityGateway) {
         this.douyinPromotionGateway = douyinPromotionGateway;
         this.douyinProductGateway = douyinProductGateway;
         this.snapshotMapper = snapshotMapper;
@@ -111,7 +111,7 @@ public class ProductService {
         this.productBizStatusService = productBizStatusService;
         this.colonelActivityMapper = colonelActivityMapper;
         this.talentFollowService = talentFollowService;
-        this.activityApi = activityApi;
+        this.douyinActivityGateway = douyinActivityGateway;
     }
 
     public IPage<Product> getPage(long page, long size, Integer status) {
@@ -330,7 +330,9 @@ public class ProductService {
         }
         if (StringUtils.hasText(keyword)) {
             String trimmed = keyword.trim();
-            if (!StringUtils.hasText(product.getName()) || !product.getName().contains(trimmed)) {
+            boolean matchedByName = StringUtils.hasText(product.getName()) && product.getName().contains(trimmed);
+            boolean matchedByProductId = StringUtils.hasText(product.getProductId()) && product.getProductId().contains(trimmed);
+            if (!matchedByName && !matchedByProductId) {
                 return false;
             }
         }
@@ -770,6 +772,7 @@ public class ProductService {
         }
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
+        ensurePostAuditLibraryFlag(state, operatorId);
         requireSelectedToLibrary(state, "分配招商");
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("assigneeId", assigneeId);
@@ -786,6 +789,53 @@ public class ProductService {
                 payload,
                 "分配招商成功",
                 current -> current.setAssigneeId(assigneeId)
+        );
+        return getActivityProductDetail(activityId, productId);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> assignAuditOwner(
+            String activityId,
+            String productId,
+            UUID assigneeId,
+            UUID operatorId,
+            UUID operatorDeptId) {
+        if (assigneeId == null) {
+            throw new BusinessException("assigneeId 不能为空");
+        }
+        ensureSnapshotExists(activityId, productId);
+        ProductOperationState state = getOrInitOperationState(activityId, productId);
+        ProductBizStatus currentStatus = productBizStatusService.readBizStatus(state);
+        if (currentStatus != ProductBizStatus.PENDING_AUDIT) {
+            throw new BusinessException("仅待审核商品可分配审核人");
+        }
+        state.setAssigneeId(assigneeId);
+        state.setLastOperationAt(LocalDateTime.now());
+        if (state.getId() == null) {
+            state.setId(UUID.randomUUID());
+            operationStateMapper.insert(state);
+        } else {
+            operationStateMapper.updateById(state);
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("assigneeId", assigneeId);
+        payload.put("assigneeName", resolveUserDisplayName(assigneeId));
+        payload.put("operatorId", operatorId);
+        payload.put("operatorName", resolveUserDisplayName(operatorId));
+        payload.put("eventLabel", "商品已分配给审核负责人");
+        productBizStatusService.logStatusChange(
+                activityId,
+                productId,
+                "ASSIGN_AUDIT",
+                currentStatus,
+                currentStatus,
+                operatorId,
+                operatorDeptId,
+                payload,
+                "分配审核人成功",
+                true,
+                null
         );
         return getActivityProductDetail(activityId, productId);
     }
@@ -819,13 +869,19 @@ public class ProductService {
         if (beforeStatus == null) {
             beforeStatus = ProductBizStatus.PENDING_AUDIT;
         }
+        String auditPayload = null;
+        if (approved) {
+            validateAuditSupplement(supplement);
+            auditPayload = writeAuditPayload(supplement);
+        }
+        final String approvedAuditPayload = auditPayload;
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("approved", approved);
         payload.put("reason", reason);
         state.setLastOperationAt(LocalDateTime.now());
         state.setAuditStatus(approved ? 2 : 3);
         state.setAuditRemark(approved ? null : reason);
-        state.setAuditPayload(null);
+        state.setAuditPayload(approvedAuditPayload);
         if (approved) {
             state.setSelectedToLibrary(true);
             state.setSelectedAt(LocalDateTime.now());
@@ -845,7 +901,7 @@ public class ProductService {
                     current -> {
                         current.setAuditStatus(2);
                         current.setAuditRemark(null);
-                        current.setAuditPayload(null);
+                        current.setAuditPayload(approvedAuditPayload);
                         current.setSelectedToLibrary(true);
                         current.setSelectedAt(LocalDateTime.now());
                         current.setSelectedBy(operatorId);
@@ -959,7 +1015,9 @@ public class ProductService {
             beforeStatus = ProductBizStatus.fromCode(state.getBizStatus());
         }
         boolean relinkExistingProduct = beforeStatus == ProductBizStatus.LINKED;
-        if (beforeStatus != ProductBizStatus.ASSIGNED && !relinkExistingProduct) {
+        if (beforeStatus != ProductBizStatus.APPROVED
+                && beforeStatus != ProductBizStatus.ASSIGNED
+                && !relinkExistingProduct) {
             throw new BusinessException("当前状态不允许执行PROMOTION_LINK，当前状态：" + beforeStatus.name());
         }
         SysUser user = sysUserMapper.selectById(userId);
@@ -1198,7 +1256,7 @@ public class ProductService {
             return null;
         }
         try {
-            Map<String, Object> response = activityApi.detail(null, activityId);
+            Map<String, Object> response = douyinActivityGateway.activityDetail(null, activityId);
             Map<String, Object> data = readPrimaryDataNode(response);
             Long colonelBuyinId = readLong(data, "colonel_buyin_id", "colonelBuyinId");
             if (colonelBuyinId == null || colonelBuyinId <= 0L) {
@@ -1211,8 +1269,8 @@ public class ProductService {
                     readLong(data, "shop_id", "shopId"),
                     readString(data, "shop_name", "shopName"),
                     colonelBuyinId,
-                    readDecimal(data, "commission_rate", "commissionRate"),
-                    readDecimal(data, "service_rate", "serviceRate"),
+                    readRateDecimal(data, "commission_rate", "commissionRate"),
+                    readRateDecimal(data, "service_rate", "serviceRate"),
                     parseDateTimeValue(readString(data, "activity_start_time", "activityStartTime", "start_time", "startTime")),
                     parseDateTimeValue(readString(data, "activity_end_time", "activityEndTime", "end_time", "endTime")),
                     readString(data, "status_text", "statusText", "status"),
@@ -1377,6 +1435,24 @@ public class ProductService {
         } catch (NumberFormatException ex) {
             return null;
         }
+    }
+
+    private BigDecimal readRateDecimal(Map<String, Object> source, String... keys) {
+        BigDecimal value = readDecimal(source, keys);
+        if (value == null) {
+            return null;
+        }
+        BigDecimal normalized = value;
+        BigDecimal abs = value.abs();
+        if (abs.compareTo(new BigDecimal("100")) > 0) {
+            normalized = value.divide(new BigDecimal("10000"), 8, RoundingMode.HALF_UP);
+        } else if (abs.compareTo(BigDecimal.ONE) > 0) {
+            normalized = value.divide(new BigDecimal("100"), 8, RoundingMode.HALF_UP);
+        }
+        if (normalized.abs().compareTo(new BigDecimal("9.9999")) > 0) {
+            return null;
+        }
+        return normalized.setScale(4, RoundingMode.HALF_UP);
     }
 
     private LocalDateTime parseDateTimeValue(String value) {
@@ -2321,6 +2397,24 @@ public class ProductService {
         }
     }
 
+    private void ensurePostAuditLibraryFlag(ProductOperationState state, UUID operatorId) {
+        if (Boolean.TRUE.equals(state.getSelectedToLibrary())) {
+            return;
+        }
+        ProductBizStatus currentStatus = productBizStatusService.readBizStatus(state);
+        if (currentStatus != ProductBizStatus.APPROVED
+                && currentStatus != ProductBizStatus.BOUND
+                && currentStatus != ProductBizStatus.ASSIGNED
+                && currentStatus != ProductBizStatus.LINKED
+                && currentStatus != ProductBizStatus.FOLLOWING) {
+            return;
+        }
+        state.setSelectedToLibrary(true);
+        state.setSelectedAt(LocalDateTime.now());
+        state.setSelectedBy(operatorId);
+        operationStateMapper.updateById(state);
+    }
+
     private void validateAuditSupplement(Map<String, Object> supplement) {
         Map<String, Object> normalized = normalizeAuditSupplement(supplement);
         List<String> missing = new ArrayList<>();
@@ -2386,6 +2480,7 @@ public class ProductService {
         putNormalizedText(normalized, "rewardRemark", supplement.get("rewardRemark"));
         putNormalizedText(normalized, "participationRequirements", supplement.get("participationRequirements"));
         putNormalizedText(normalized, "campaignTimeRemark", supplement.get("campaignTimeRemark"));
+        putNormalizedText(normalized, "sampleThresholdRemark", supplement.get("sampleThresholdRemark"));
         List<String> sellingPoints = normalizeStringList(supplement.get("sellingPoints"));
         if (!sellingPoints.isEmpty()) {
             normalized.put("sellingPoints", sellingPoints);
@@ -2397,12 +2492,33 @@ public class ProductService {
         if (supplement.containsKey("supportsAds") && supplement.get("supportsAds") != null) {
             normalized.put("supportsAds", Boolean.parseBoolean(String.valueOf(supplement.get("supportsAds"))));
         }
+        putNormalizedNumber(normalized, "sampleThresholdSales", supplement.get("sampleThresholdSales"));
+        putNormalizedNumber(normalized, "sampleThresholdLevel", supplement.get("sampleThresholdLevel"));
         return normalized;
     }
 
     private void putNormalizedText(Map<String, Object> payload, String key, Object rawValue) {
         String value = rawValue == null ? null : String.valueOf(rawValue).trim();
         if (StringUtils.hasText(value)) {
+            payload.put(key, value);
+        }
+    }
+
+    private void putNormalizedNumber(Map<String, Object> payload, String key, Object rawValue) {
+        if (rawValue == null) {
+            return;
+        }
+        if (rawValue instanceof Number number) {
+            payload.put(key, number.longValue());
+            return;
+        }
+        String value = String.valueOf(rawValue).trim();
+        if (!StringUtils.hasText(value)) {
+            return;
+        }
+        try {
+            payload.put(key, Long.parseLong(value));
+        } catch (NumberFormatException ex) {
             payload.put(key, value);
         }
     }

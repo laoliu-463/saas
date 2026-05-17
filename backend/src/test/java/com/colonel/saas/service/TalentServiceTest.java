@@ -314,6 +314,32 @@ class TalentServiceTest {
     }
 
     @Test
+    void create_shouldKeepTalentForManualFillWhenEnrichProviderFails() {
+        Talent talent = new Talent();
+        talent.setDouyinUid("dy_test_fail");
+
+        when(talentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+        when(talentMapper.insert(any(Talent.class))).thenReturn(1);
+        when(talentMapper.updateById(any(Talent.class))).thenReturn(1);
+        when(talentEnrichOrchestrator.enrich(any(Talent.class), eq(false)))
+                .thenThrow(new IllegalStateException("test provider simulated failure"));
+
+        Talent result = talentService.create(talent);
+
+        assertThat(result.getId()).isNotNull();
+        assertThat(result.getDouyinUid()).isEqualTo("dy_test_fail");
+        assertThat(result.getEnrichStatus()).isEqualTo("FAILED");
+        assertThat(result.getLastEnrichTime()).isNotNull();
+        verify(talentMapper).insert(any(Talent.class));
+        verify(talentMapper, times(1)).updateById(any(Talent.class));
+        ArgumentCaptor<TalentEnrichTask> taskCaptor = ArgumentCaptor.forClass(TalentEnrichTask.class);
+        verify(talentEnrichTaskMapper, times(2)).updateById(taskCaptor.capture());
+        assertThat(taskCaptor.getAllValues())
+                .extracting(TalentEnrichTask::getTaskStatus)
+                .containsExactly("RUNNING", "FAILED");
+    }
+
+    @Test
     void refresh_shouldUpdateTalentFromCrawlerDataWhenEnabled() {
         UUID talentId = UUID.randomUUID();
         Talent talent = new Talent();
@@ -370,6 +396,27 @@ class TalentServiceTest {
         verify(talentEnrichTaskMapper).insert(any(TalentEnrichTask.class));
         verify(talentEnrichTaskMapper).updateById(any(TalentEnrichTask.class));
         verify(crawlerTalentInfoService, never()).crawlAndSave(any());
+    }
+
+    @Test
+    void refresh_shouldRecordFailureWithoutThrowingWhenProviderFails() {
+        UUID talentId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("dy_refresh_fail");
+        talent.setDeleted(0);
+
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        when(talentMapper.updateById(any(Talent.class))).thenReturn(1);
+        when(talentEnrichOrchestrator.enrich(any(Talent.class), eq(true)))
+                .thenThrow(new IllegalStateException("test provider simulated failure"));
+
+        Talent refreshed = talentService.refresh(talentId);
+
+        assertThat(refreshed.getEnrichStatus()).isEqualTo("FAILED");
+        assertThat(refreshed.getLastEnrichTime()).isNotNull();
+        verify(talentMapper).updateById(talent);
+        verify(talentEnrichTaskMapper).updateById(any(TalentEnrichTask.class));
     }
 
     @Test
