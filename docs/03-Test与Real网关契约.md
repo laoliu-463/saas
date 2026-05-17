@@ -36,7 +36,7 @@
 | `DouyinActivityGateway` | 团长活动列表同步 | [x] 已完成 | [x] 已完成 |
 | `DouyinOrderGateway` | 订单回流 (增量/Webhook) | [x] 已完成 | [x] 已完成 |
 | `DouyinPromotionGateway` | 自动化转链 (Pick Source) | [x] 已完成 | [x] 已完成 |
-| `LogisticsGateway` | 物流轨迹查询与发货 | [x] 已完成 | [ ] 待对接 |
+| `LogisticsGateway` | 物流轨迹查询与发货 | [x] 已完成，已补无轨迹 / 在途 / 签收 / 问题件 / 失败模拟底座 | [~] 快递鸟即时查询 API 网关底座已接入本地代码，Sandbox / real-pre 尚未验证 |
 
 ## 四、Test 拟真化要求
 
@@ -49,22 +49,31 @@ Test 实现不应只是简单的静态返回，应支持：
 
 为避免把真实抖店联调和现有 `test` 基线混在一起，当前项目统一执行口径如下：
 
-- `local-mock` 继续承担默认本地人工联调与调试台验证
-- `test` 继续承担自动化测试与隔离测试栈
-- `real-pre` 当前承担真实上游联调、浏览器回归、权限验收、独立拓扑验证
+- `test` 是当前系统功能、权限测试、自动化测试和 Mock 闭环的默认环境
+- `real-pre` 仅用于真实 SDK / 真实上游联调
+- `local-mock` 仅保留为历史口径和回滚参考，不再作为独立容器环境扩展
+- 本机同一时间只允许启动一套 SAAS 环境，统一使用 `docker-compose.yml` + project name `saas-active`
 
 当前代码合并口径是：同一套 Controller / Service / 前端调用同时支持 Test 与 Real，运行时只通过 Gateway Bean 和环境配置切换，不把 Test 与 Real 的数据环境合并。当前事实如下：
 
 | 项目 | `test` | 当前 `real-pre` |
 | :--- | :--- | :--- |
-| `SPRING_PROFILES_ACTIVE` | `test` | `real` |
+| `SPRING_PROFILES_ACTIVE` | `test` | `real-pre` |
 | `APP_TEST_ENABLED` | `true` | `false` |
 | `DOUYIN_TEST_ENABLED` | `true` | `false` |
-| `DB_NAME` | `colonel_saas_test` | `colonel_saas_real` |
+| `DB_NAME` | `saas_test` | `saas_real_pre` |
 | `REDIS_DATABASE` | `1` | `0` |
-| 后端端口 | `8080` | `8081` |
+| 前端端口 | `3000` | `3000`（单活环境，不与 test 同时运行） |
+| 后端端口 | `8080` | `8080`（单活环境，不与 test 同时运行） |
 | `/api/test/**` | 可用 | 不作为 real-pre 联调入口 |
-| 当前职责 | 自动化验证 / Mock 基线 | 真实上游联调 / 权限验收 / 部署形态验证 |
+| 当前职责 | 系统功能 / 权限测试 / 自动化验证 / Mock 基线 | 真实 SDK 联调 |
+
+固定容器命名如下，环境切换时复用同一组名字，不再同时保留 test / real-pre 双套 backend/frontend：
+
+- `saas-frontend`
+- `saas-backend`
+- `saas-postgres`
+- `saas-redis`
 
 执行约束：
 
@@ -86,5 +95,3 @@ Test 实现不应只是简单的静态返回，应支持：
 补充说明（与 `docs/04` 对齐）：Webhook 本地收件箱、幂等落库与重放框架已具备；具体业务事件副作用仍依赖上游真实样本确认。
 
 上述编号缺口（1–5）不阻塞认证、身份、活动、商品、转链等前置接口联调，但会阻塞订单主链路闭环验收。
-
-

@@ -6,6 +6,22 @@
 
 ---
 
+## Agent skills
+
+### Issue tracker
+
+本仓库默认使用 GitHub Issues 作为 issue tracker，相关 skill 统一按当前仓库 remote 使用 `gh` CLI。见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+当前仓库未声明自定义 triage 标签词汇，先使用 `needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix` 作为默认映射。见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+当前仓库按单上下文布局接入：根目录 `CONTEXT.md` 提供术语表，主业务与执行口径仍以 `AGENTS.md` 和 `docs/*.md` 为准。见 `docs/agents/domain.md`。
+
+---
+
 ## 1. 当前执行口径
 
 本项目采用 Harness Engineering：

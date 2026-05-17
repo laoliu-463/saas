@@ -1,8 +1,10 @@
 # Third Party Integration Next Plan Implementation Plan
 
+> Historical note (2026-05-15): the current project scope has removed order phone decryption. Any decryption-related asks, probes, permissions, or success criteria below are preserved only as historical planning context and are no longer active execution goals.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Subagent-driven development is not the default here because AGENTS.md says real-pre integration closure favors centralized context unless task boundaries are very clear.
 
-**Goal:** Continue real-pre third-party integration from the current proven state: token, activity, promotion, and order main sync are reachable; next close activity product freshness, product detail samples, attribution source, dashboard time semantics, and order detail/decryption permissions.
+**Goal:** Continue real-pre third-party integration from the current proven state: token, activity, promotion, and order main sync are reachable; next close activity product freshness, product detail samples, attribution source, dashboard time semantics, and order detail permissions.
 
 **Architecture:** Keep `test` / `local-mock` stable and let Real Gateway absorb upstream differences. Use raw probes only to discover upstream structure, then move stable mappings into Gateway or service DTO boundaries. Record every real-pre fact in `docs/09-真实SDK联调准备清单.md`, `docs/04-开发进度.md`, and `docs/archive/records/18-real-pre-API联调记录.md`.
 
@@ -279,7 +281,7 @@ Expected: backend test passes and frontend build succeeds.
 
 ---
 
-### Task 5: Order Detail And Decryption Permission Runbook
+### Task 5: Order Detail Permission Runbook (Decryption Historical)
 
 **Files:**
 - Modify: `docs/09-真实SDK联调准备清单.md`
@@ -294,8 +296,9 @@ Record these required platform items:
 1. 订单管理接口权限包
 2. 店铺授权
 3. 物流商授权
-4. 敏感数据解密权限包
-5. 可用于 order.batchDecrypt 的 cipher_infos 样本来源
+4. 以下解密相关项仅作历史背景，不再作为当前待办：
+   - 敏感数据解密权限包
+   - 可用于 order.batchDecrypt 的 cipher_infos 样本来源
 ```
 
 - [ ] **Step 2: Prepare repeatable probes**
@@ -305,7 +308,7 @@ Keep these current probes as the permission verification suite:
 ```powershell
 POST /api/douyin/promotion-link-probes/raw with method=order.orderDetail
 POST /api/douyin/promotion-link-probes/raw with method=order.searchList
-POST /api/orders/phone-decryptions
+POST /api/orders/phone-decryptions (historical only)
 ```
 
 - [ ] **Step 3: Define success criteria**
@@ -313,7 +316,7 @@ POST /api/orders/phone-decryptions
 Use:
 
 ```text
-order.orderDetail or order.searchList returns receiver cipher fields, then order.batchDecrypt returns masked/virtual phone display data through /api/orders/phone-decryptions without logging plaintext.
+Current scope excludes order decryption. Success here is limited to proving order detail permissions and upstream field availability without introducing decryption work.
 ```
 
 - [ ] **Step 4: Do not change code until permissions change**
