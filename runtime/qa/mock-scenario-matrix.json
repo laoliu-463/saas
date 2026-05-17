@@ -1,0 +1,154 @@
+{
+  "name": "TEST/mock 数据业务场景覆盖矩阵",
+  "version": "2026-05-15",
+  "modules": [
+    {
+      "id": "roles",
+      "label": "角色权限",
+      "required": [
+        "ADMIN",
+        "BIZ_LEADER",
+        "BIZ_USER",
+        "CHANNEL_LEADER",
+        "CHANNEL_USER",
+        "OPS"
+      ],
+      "specialCases": [
+        "cross_group_data",
+        "own_data_only",
+        "team_data",
+        "forbidden_system_access",
+        "menu_visible",
+        "route_rejected",
+        "api_forbidden"
+      ]
+    },
+    {
+      "id": "products",
+      "label": "商品与活动",
+      "requiredStatuses": [
+        "UNASSIGNED",
+        "ASSIGNED",
+        "PENDING_REVIEW",
+        "APPROVED",
+        "REJECTED",
+        "LISTED",
+        "UNLISTED"
+      ],
+      "specialCases": [
+        "bound_activity",
+        "unbound_activity",
+        "activity_without_products",
+        "activity_with_multiple_products",
+        "support_traffic",
+        "not_support_traffic",
+        "sample_required",
+        "sample_not_required",
+        "missing_supplement_info",
+        "convert_success",
+        "convert_failed"
+      ]
+    },
+    {
+      "id": "talents",
+      "label": "达人",
+      "requiredStatuses": [
+        "PUBLIC",
+        "PRIVATE",
+        "CLAIMED",
+        "PROTECTION_ACTIVE",
+        "PROTECTION_EXPIRED"
+      ],
+      "specialCases": [
+        "crawler_success",
+        "crawler_failed_manual_fallback",
+        "qualified_for_sample",
+        "not_qualified_for_sample",
+        "multi_claim",
+        "missing_contact",
+        "complete_profile",
+        "incomplete_profile"
+      ]
+    },
+    {
+      "id": "samples",
+      "label": "寄样",
+      "requiredStatuses": [
+        "PENDING_REVIEW",
+        "PENDING_SHIPMENT",
+        "SHIPPING",
+        "WAITING_TASK",
+        "COMPLETED",
+        "REJECTED",
+        "CLOSED"
+      ],
+      "specialCases": [
+        "duplicate_within_7_days",
+        "reapply_after_rejected",
+        "admin_bypass_limit",
+        "leader_bypass_limit",
+        "missing_address",
+        "missing_tracking_no",
+        "completed_by_order",
+        "auto_closed_timeout",
+        "talent_not_qualified_but_reason_filled"
+      ]
+    },
+    {
+      "id": "orders",
+      "label": "订单与归因",
+      "requiredAttributionCases": [
+        "ATTRIBUTED",
+        "NO_PICK_SOURCE",
+        "MAPPING_NOT_FOUND",
+        "PRODUCT_UNCOVERED",
+        "AMBIGUOUS_MAPPING",
+        "EXCLUSIVE_TALENT",
+        "EXCLUSIVE_MERCHANT",
+        "SETTLED",
+        "UNSETTLED",
+        "REFUNDED_OR_CLOSED"
+      ],
+      "specialCases": [
+        "order_with_valid_mapping",
+        "order_without_mapping",
+        "order_created_before_mapping",
+        "order_created_after_mapping",
+        "zero_service_fee",
+        "large_amount",
+        "cross_month",
+        "no_order_date"
+      ]
+    },
+    {
+      "id": "dashboard",
+      "label": "数据平台",
+      "requiredCases": [
+        "today_data",
+        "seven_days_data",
+        "thirty_days_data",
+        "cross_month_data",
+        "empty_date_range",
+        "filter_by_product",
+        "filter_by_talent",
+        "filter_by_biz_user",
+        "filter_by_channel_user",
+        "filter_by_activity",
+        "export_allowed_role",
+        "export_forbidden_role"
+      ]
+    },
+    {
+      "id": "system",
+      "label": "系统管理",
+      "requiredCases": [
+        "user_create_case",
+        "user_disabled_case",
+        "role_permission_case",
+        "config_sample_limit_case",
+        "config_commission_case",
+        "operation_log_case"
+      ]
+    }
+  ]
+}

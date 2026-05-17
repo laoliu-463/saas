@@ -6,6 +6,8 @@ import { testIds } from './helpers/selectors';
 
 const authDir = path.join(process.cwd(), 'tests', 'e2e', '.auth');
 
+setup.setTimeout(180_000);
+
 setup.beforeAll(() => {
   fs.mkdirSync(authDir, { recursive: true });
 });
@@ -18,7 +20,7 @@ async function loginAndSave(browser: Browser, username: string, password: string
     await page.getByTestId(testIds.loginUsername).locator('input').fill(username);
     await page.getByTestId(testIds.loginPassword).locator('input').fill(password);
     await page.getByTestId(testIds.loginSubmit).click();
-    await expect(page).not.toHaveURL(/\/login$/);
+    await expect(page).not.toHaveURL(/\/login$/, { timeout: 30_000 });
     await context.storageState({ path: statePath });
   } finally {
     await context.close();

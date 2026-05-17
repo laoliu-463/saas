@@ -1,18 +1,18 @@
 param(
-    [string]$BaseUrl = "http://localhost:8081/api",
+    [string]$BaseUrl = "http://localhost:8080/api",
     [string]$AdminUsername = "admin",
     [string]$AdminPassword = "admin123",
     [string]$DashboardUsername = "channel_leader",
     [string]$DashboardPassword = "admin123",
     [string]$SampleActivityId = "3223881",
     [string]$SampleProductId = "3814081914181124118",
-    [string]$ComposeFile = "docker-compose.real-pre.yml",
+    [string]$ComposeFile = "docker-compose.yml",
     [string]$EnvFile = ".env.real-pre",
-    [string]$BackendService = "backend-real-pre",
-    [string]$PostgresService = "postgres-real-pre",
-    [string]$PostgresContainer = "saas-postgres-real-pre-1",
+    [string]$BackendService = "backend",
+    [string]$PostgresService = "postgres",
+    [string]$PostgresContainer = "saas-postgres",
     [string]$DbUser = "saas",
-    [string]$DbName = "colonel_saas_real",
+    [string]$DbName = "saas_real_pre",
     [string]$WatcherEvidenceDir = ""
 )
 
@@ -102,6 +102,7 @@ function Invoke-Compose {
     if (Test-Path $envPath) {
         $composeArgs += @("--env-file", $envPath)
     }
+    $composeArgs += @("--project-name", "saas-active")
     $composeArgs += @("-f", (Join-Path $RepoRoot $ComposeFile))
     $composeArgs += $Arguments
     & docker compose @composeArgs

@@ -2,6 +2,12 @@ import { defineConfig, devices } from '@playwright/test';
 import * as dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.e2e' });
+const alwaysCaptureArtifacts =
+  process.env.E2E_VISUAL_CAPTURE === 'true' ||
+  process.env.E2E_REAL_PRE_JOURNEY_VISUAL === 'true';
+const slowMo = Number(process.env.PW_SLOWMO_MS || 0);
+const requestedWorkers = Number(process.env.PW_WORKERS || 1);
+const workers = Number.isFinite(requestedWorkers) && requestedWorkers > 0 ? requestedWorkers : 1;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -16,6 +22,7 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,
+  workers,
   reporter: [
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['list']
@@ -24,10 +31,13 @@ export default defineConfig({
   use: {
     baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000',
     headless: process.env.E2E_HEADLESS === 'true',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
-    trace: 'retain-on-failure',
-    viewport: { width: 1440, height: 960 },
+    launchOptions: {
+      slowMo
+    },
+    screenshot: alwaysCaptureArtifacts ? 'on' : 'only-on-failure',
+    video: alwaysCaptureArtifacts ? 'on' : 'retain-on-failure',
+    trace: alwaysCaptureArtifacts ? 'on' : 'retain-on-failure',
+    viewport: { width: 1440, height: 900 },
     permissions: ['clipboard-read', 'clipboard-write']
   },
   projects: [
@@ -39,12 +49,36 @@ export default defineConfig({
     {
       name: 'chromium',
       dependencies: ['setup'],
-      testIgnore: [/auth\.setup\.ts/, /08-real-pre-douyin-integration\.spec\.ts/],
+      testIgnore: [
+        /auth\.setup\.ts/,
+        /08-real-pre-douyin-integration\.spec\.ts/,
+        /10-real-pre-business-flow\.spec\.ts/,
+        /11-real-pre-role-business-flow\.spec\.ts/,
+        /12-real-pre-full-business-journey\.visual\.spec\.ts/
+      ],
       use: { ...devices['Desktop Chrome'] }
     },
     {
       name: 'real-pre',
       testMatch: /08-real-pre-douyin-integration\.spec\.ts/,
+      dependencies: [],
+      use: { ...devices['Desktop Chrome'] }
+    },
+    {
+      name: 'real-pre-business',
+      testMatch: /10-real-pre-business-flow\.spec\.ts/,
+      dependencies: [],
+      use: { ...devices['Desktop Chrome'] }
+    },
+    {
+      name: 'real-pre-roles',
+      testMatch: /11-real-pre-role-business-flow\.spec\.ts/,
+      dependencies: [],
+      use: { ...devices['Desktop Chrome'] }
+    },
+    {
+      name: 'real-pre-journey-visual',
+      testMatch: /12-real-pre-full-business-journey\.visual\.spec\.ts/,
       dependencies: [],
       use: { ...devices['Desktop Chrome'] }
     },

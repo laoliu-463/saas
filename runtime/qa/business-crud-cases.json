@@ -1,0 +1,36 @@
+{
+  "scriptName": "qa-business-crud-flow",
+  "roles": {
+    "admin": {
+      "username": "admin",
+      "password": "admin123"
+    },
+    "biz_leader": {
+      "username": "biz_leader",
+      "password": "admin123"
+    },
+    "channel_leader": {
+      "username": "channel_leader",
+      "password": "admin123"
+    },
+    "channel_staff": {
+      "username": "channel_staff",
+      "password": "admin123"
+    }
+  },
+  "protectedAccounts": [
+    "admin",
+    "leader_zs",
+    "seller_zs",
+    "channel_user",
+    "ops_user",
+    "biz_leader"
+  ],
+  "mockActivityId": "3859423",
+  "hardFailRoutes": [
+    "/dashboard",
+    "/product/library",
+    "/sample",
+    "/orders"
+  ]
+}

@@ -43,18 +43,18 @@ npm run e2e:headed -- tests/e2e/07-sample.spec.ts
 npm run e2e:trace
 ```
 
-### Real-pre 抖店联调（真实 upstream / docker 8081）
+### Real-pre 抖店联调（真实 upstream / 单活 3000/8080）
 
 逻辑已并入 Playwright：`tests/e2e/08-real-pre-douyin-integration.spec.ts`。默认 **`npm run e2e` 会跳过**该文件（需 `E2E_REAL_PRE=true`）。
 
 ```bash
-# 推荐：脚本自动设置默认 3001 / 8081 并开启标记
+# 推荐：脚本自动设置默认 3000 / 8080 并开启标记
 npm run e2e:real-pre
 
 # 或手动指定前后端
 set E2E_REAL_PRE=true
-set E2E_BASE_URL=http://localhost:3001
-set E2E_BACKEND_URL=http://localhost:8081
+set E2E_BASE_URL=http://localhost:3000
+set E2E_BACKEND_URL=http://localhost:8080
 npm run e2e -- --project=real-pre tests/e2e/08-real-pre-douyin-integration.spec.ts
 ```
 
@@ -62,6 +62,35 @@ npm run e2e -- --project=real-pre tests/e2e/08-real-pre-douyin-integration.spec.
 
 ```bash
 node runtime/qa/real-pre-douyin-frontend-e2e.cjs
+```
+
+### Real-pre 业务闭环与全角色可视化回归
+
+```bash
+# 业务闭环 + 全角色权限，一次性可视化顺序回归
+npm run e2e:real-pre:visual
+
+# 单剧本串行可视化全业务旅程
+# 管理员 -> 招商组长 -> 招商 -> 渠道 -> 招商复审 -> 运营 -> 渠道组长 -> 管理员复核
+npm run e2e:real-pre:journey:visual
+
+# 仅业务闭环，可追加 headed / trace / video / screenshot 等 Playwright 参数
+npm run e2e:real-pre:business -- --headed --workers=1 --trace on --video on --screenshot on --reporter=line,html
+
+# 仅全角色权限，可追加同样参数
+npm run e2e:real-pre:roles -- --headed --workers=1 --trace on --video on --screenshot on --reporter=line,html
+```
+
+- `e2e:real-pre:visual` 默认会开启 `headed`、`workers=1`、`trace/video/screenshot on`，并把证据写到 `runtime/qa/out/real-pre-visual-regression-时间戳/`
+- `e2e:real-pre:journey:visual` 默认会先检查 frontend `3000`、backend `8080`、real-pre env guard、六类账号登录与 `.env.real-pre` gitignore，再开启 `headed`、`workers=1`、`trace/video/screenshot on`，并把证据写到 `runtime/qa/out/real-pre-full-business-journey-时间戳/`
+- `e2e:real-pre:business` 会把业务闭环证据写到 `runtime/qa/out/real-pre-business-e2e-时间戳/`
+- `e2e:real-pre:roles` 会把角色业务流证据写到 `runtime/qa/out/real-pre-role-business-e2e-时间戳/`
+- 若想放慢浏览器动作，可先设置 `PW_SLOWMO_MS`
+
+```powershell
+$env:PW_SLOWMO_MS="300"
+npm run e2e:real-pre:journey:visual
+Remove-Item Env:\PW_SLOWMO_MS
 ```
 
 ## 报告与回放

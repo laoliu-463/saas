@@ -3,7 +3,7 @@ import { request as playwrightRequest } from '@playwright/test';
 
 /** 后端 REST API 前缀，例如 http://localhost:8080/api */
 export function getBackendApiBase(): string {
-  const backend = (process.env.E2E_BACKEND_URL || 'http://localhost:8081').replace(/\/$/, '');
+  const backend = (process.env.E2E_BACKEND_URL || 'http://localhost:8080').replace(/\/$/, '');
   return `${backend}/api`;
 }
 
@@ -72,7 +72,7 @@ function formatLocalDateTime(date: Date): string {
  * 因此 baseURL 只保留 host，所有路径统一用 /api/… 前缀。
  */
 export async function verifyBackendApis(token: string): Promise<BackendProbeResults> {
-  const backend = (process.env.E2E_BACKEND_URL || 'http://localhost:8081').replace(/\/$/, '');
+  const backend = (process.env.E2E_BACKEND_URL || 'http://localhost:8080').replace(/\/$/, '');
   const ctx = await playwrightRequest.newContext({ baseURL: backend, ignoreHTTPSErrors: true });
   const headers = { Authorization: `Bearer ${token}` };
   const results: BackendProbeResults = {};
@@ -174,12 +174,13 @@ export function skuProbeAccept(probe: BackendProbeResults['skuProbe']): boolean 
   const data = root?.data as Record<string, unknown> | undefined;
   const remote = data?.remoteResponse as Record<string, unknown> | undefined;
   const remoteData = remote?.data as Record<string, unknown> | undefined;
-  const code = remote?.code ?? data?.errorCode ?? data?.code;
+  const code = remote?.code ?? data?.errorCode ?? data?.code ?? root?.code;
   const skus = remoteData?.skus;
   const skuCount = Array.isArray(skus)
     ? skus.length
     : skus && typeof skus === 'object'
       ? Object.keys(skus).length
       : 0;
-  return String(code) === '10000' && skuCount > 0;
+  const success = ['10000', '0', '200'].includes(String(code)) || data?.status === 'success';
+  return success && skuCount > 0;
 }

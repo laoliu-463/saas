@@ -1,10 +1,10 @@
 param(
-    [string]$ComposeFile = "docker-compose.real-pre.yml",
+    [string]$ComposeFile = "docker-compose.yml",
     [string]$EnvFile = ".env.real-pre",
-    [string]$BackendService = "backend-real-pre",
-    [string]$PostgresService = "postgres-real-pre",
+    [string]$BackendService = "backend",
+    [string]$PostgresService = "postgres",
     [string]$DbUser = "saas",
-    [string]$DbName = "colonel_saas_real"
+    [string]$DbName = "saas_real_pre"
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,6 +25,7 @@ function Invoke-Compose {
     if (Test-Path $EnvFile) {
         $composeArgs += @("--env-file", $EnvFile)
     }
+    $composeArgs += @("--project-name", "saas-active")
     $composeArgs += @("-f", $ComposeFile)
     $composeArgs += $Arguments
 

@@ -56,8 +56,8 @@ if (-not (Test-Path -LiteralPath $qaScript)) {
     throw "QA script not found: $qaScript"
 }
 
-Assert-HttpOk -Name 'real-pre frontend' -Url 'http://localhost:3001'
-Assert-HttpOk -Name 'real-pre backend health' -Url 'http://localhost:8081/api/actuator/health'
+Assert-HttpOk -Name 'real-pre frontend' -Url 'http://localhost:3000'
+Assert-HttpOk -Name 'real-pre backend health' -Url 'http://localhost:8080/api/actuator/health'
 
 Push-Location $repoRoot
 try {

@@ -141,18 +141,29 @@ function Read-ContainerEnv {
         return $null
     }
 
-    $container = & docker ps --filter "name=^/${ContainerName}$" --format "{{.Names}}" 2>$null
-    if (-not $container) {
-        return $null
-    }
-
-    $map = @{}
-    foreach ($line in (& docker exec $ContainerName printenv 2>$null)) {
-        if ($line -match "^([^=]+)=(.*)$") {
-            $map[$Matches[1]] = $Matches[2]
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $container = & docker ps --filter "name=^/${ContainerName}$" --format "{{.Names}}" 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $container) {
+            return $null
         }
+
+        $envLines = & docker exec $ContainerName printenv 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $envLines) {
+            return $null
+        }
+
+        $map = @{}
+        foreach ($line in $envLines) {
+            if ($line -match "^([^=]+)=(.*)$") {
+                $map[$Matches[1]] = $Matches[2]
+            }
+        }
+        return $map
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
     }
-    return $map
 }
 
 function Invoke-ReadOnlyJson {
@@ -222,10 +233,10 @@ try {
     if ($envMap.ContainsKey("SPRING_PROFILES_ACTIVE")) {
         $configuredProfile = "$($envMap["SPRING_PROFILES_ACTIVE"])".Trim().ToLowerInvariant()
     }
-    $profileOk = $configuredProfile -in @("real", "real-pre")
+    $profileOk = $configuredProfile -eq "real-pre"
     Add-Check -List $checks -Name "configured_active_profile" -Status $(if ($profileOk) { "PASS" } else { "FAIL" }) -Detail @{
         configured = $configuredProfile
-        expected   = @("real", "real-pre")
+        expected   = @("real-pre")
     }
 
     $appTestEnabled = Normalize-BoolString ($envMap["APP_TEST_ENABLED"])
@@ -262,6 +273,18 @@ try {
         $notes.Add("Blocked by real SDK credentials in .env.real-pre: $($invalidSdkFields -join ', '). Fill real values locally, then rerun qa-real-pre-preflight.ps1.") | Out-Null
     }
 
+    $jwtSecretAssessment = Get-ConfigValueAssessment -Name "JWT_SECRET" -Value $envMap["JWT_SECRET"]
+    $jwtSecretText = if ($null -eq $envMap["JWT_SECRET"]) { "" } else { "$($envMap["JWT_SECRET"])".Trim() }
+    $jwtSecretOk = $jwtSecretAssessment.valid -and $jwtSecretText.Length -ge 32
+    Add-Check -List $checks -Name "real_security_config_present" -Status $(if ($jwtSecretOk) { "PASS" } else { "FAIL" }) -Detail @{
+        required = @("JWT_SECRET")
+        fields   = @($jwtSecretAssessment)
+        minLength = 32
+    }
+    if (-not $jwtSecretOk) {
+        $notes.Add("Blocked by real security config in .env.real-pre: JWT_SECRET must be a non-placeholder value with at least 32 characters.") | Out-Null
+    }
+
     $containerEnv = Read-ContainerEnv -ContainerName $BackendContainerName
     if ($containerEnv) {
         $runtimeProfile = ""
@@ -272,7 +295,7 @@ try {
         $runtimeDouyinTest = Normalize-BoolString ($containerEnv["DOUYIN_TEST_ENABLED"])
         $runtimeSeed = Normalize-BoolString ($containerEnv["APP_TEST_SEED_ON_STARTUP"])
         $runtimeSeedDisabled = $runtimeSeed -eq "false" -or (-not $runtimeSeed -and $profileDefaults.seedOnStartupFalse)
-        $runtimeOk = ($runtimeProfile -in @("real", "real-pre")) -and $runtimeAppTest -eq "false" -and $runtimeDouyinTest -eq "false" -and $runtimeSeedDisabled
+        $runtimeOk = ($runtimeProfile -eq "real-pre") -and $runtimeAppTest -eq "false" -and $runtimeDouyinTest -eq "false" -and $runtimeSeedDisabled
         Add-Check -List $checks -Name "runtime_container_env_safe" -Status $(if ($runtimeOk) { "PASS" } else { "FAIL" }) -Detail @{
             SPRING_PROFILES_ACTIVE = $runtimeProfile
             APP_TEST_ENABLED = $runtimeAppTest
@@ -295,7 +318,7 @@ try {
     if ($systemEnv) {
         $profiles = Get-ActiveProfiles -EnvResponse $systemEnv
         $data = if ($systemEnv.data -and $systemEnv.data -is [object]) { $systemEnv.data } else { $systemEnv }
-        $runtimeApiProfileOk = (($profiles | Where-Object { $_ -in @("real", "real-pre") }).Count -gt 0) -and (($profiles | Where-Object { $_ -eq "test" }).Count -eq 0)
+        $runtimeApiProfileOk = (($profiles | Where-Object { $_ -eq "real-pre" }).Count -gt 0) -and (($profiles | Where-Object { $_ -eq "test" }).Count -eq 0)
         $runtimeApiAppTest = Normalize-BoolString $data.appTestEnabled
         $runtimeApiDouyinTest = Normalize-BoolString $data.douyinTestEnabled
         $runtimeApiOk = $runtimeApiProfileOk -and $runtimeApiAppTest -eq "false" -and $runtimeApiDouyinTest -eq "false"

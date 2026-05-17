@@ -1,0 +1,102 @@
+{
+  "roles": {
+    "admin": {
+      "username": "admin",
+      "password": "admin123",
+      "mustAccess": [
+        {
+          "path": "/dashboard",
+          "allowedFinalPaths": ["/dashboard"]
+        },
+        {
+          "path": "/product/library",
+          "allowedFinalPaths": ["/product/library"]
+        },
+        {
+          "path": "/product/activity",
+          "allowedFinalPaths": ["/product/manage"]
+        },
+        {
+          "path": "/orders",
+          "allowedFinalPaths": ["/orders"]
+        },
+        {
+          "path": "/system",
+          "allowedFinalPaths": ["/system/users"]
+        },
+        {
+          "path": "/system/users",
+          "allowedFinalPaths": ["/system/users"]
+        }
+      ],
+      "mustReject": [],
+      "mustSeeText": [
+        {
+          "scope": "@sidebar",
+          "texts": ["归因概览", "订单工作台"]
+        },
+        {
+          "path": "/system",
+          "texts": ["系统管理", "用户管理"]
+        }
+      ],
+      "mustNotSeeText": [],
+      "consoleErrorAllowSubstrings": []
+    },
+    "biz_leader": {
+      "username": "biz_leader",
+      "password": "admin123",
+      "mustAccess": [
+        {
+          "path": "/dashboard",
+          "allowedFinalPaths": ["/dashboard"]
+        },
+        {
+          "path": "/product/library",
+          "allowedFinalPaths": ["/product/library"]
+        },
+        {
+          "path": "/product/activity",
+          "allowedFinalPaths": ["/product/manage"]
+        },
+        {
+          "path": "/orders",
+          "allowedFinalPaths": ["/orders"]
+        }
+      ],
+      "mustReject": [
+        {
+          "path": "/system",
+          "mustNotStayUnderPrefix": "/system",
+          "allowedFinalPaths": ["/dashboard", "/orders"]
+        },
+        {
+          "path": "/system/users",
+          "mustNotStayUnderPrefix": "/system",
+          "allowedFinalPaths": ["/dashboard", "/orders"]
+        }
+      ],
+      "mustSeeText": [
+        {
+          "scope": "@sidebar",
+          "texts": ["归因概览", "订单工作台"]
+        },
+        {
+          "path": "/product/activity",
+          "texts": ["活动列表", "商品列表"]
+        }
+      ],
+      "mustNotSeeText": [
+        {
+          "scope": "@sidebar",
+          "texts": ["系统管理", "达人 CRM"]
+        },
+        {
+          "path": "/system",
+          "texts": ["系统管理", "用户管理"]
+        }
+      ],
+      "consoleErrorAllowSubstrings": []
+    }
+  }
+}

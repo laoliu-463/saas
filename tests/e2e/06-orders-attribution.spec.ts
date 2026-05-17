@@ -3,7 +3,7 @@ import { storageStates } from './helpers/test-data';
 import { capturePage } from './helpers/screenshot';
 import { testIds } from './helpers/selectors';
 
-test.use({ storageState: storageStates.bizLeader });
+test.use({ storageState: storageStates.channelLeader });
 
 test('订单归因页可展示真实订单与归因字段', async ({ page }, testInfo) => {
   await page.goto('/orders');

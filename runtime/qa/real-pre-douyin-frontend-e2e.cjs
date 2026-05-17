@@ -4,8 +4,8 @@
  * 通常通过根目录 `npm run e2e:real-pre` 调用本脚本。
  *
  * 环境变量（可选）：
- *   FRONTEND_URL / E2E_BASE_URL — 默认 http://localhost:3001
- *   BACKEND_URL / E2E_BACKEND_URL — 默认 http://localhost:8081
+ *   FRONTEND_URL / E2E_BASE_URL — 默认 http://localhost:3000
+ *   BACKEND_URL / E2E_BACKEND_URL — 默认 http://localhost:8080
  */
 
 const path = require('node:path');
@@ -15,10 +15,10 @@ const root = path.join(__dirname, '..', '..');
 
 process.env.E2E_REAL_PRE = 'true';
 if (!process.env.E2E_BASE_URL) {
-  process.env.E2E_BASE_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
+  process.env.E2E_BASE_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 }
 if (!process.env.E2E_BACKEND_URL) {
-  process.env.E2E_BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8081';
+  process.env.E2E_BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
 }
 
 const result = spawnSync(
