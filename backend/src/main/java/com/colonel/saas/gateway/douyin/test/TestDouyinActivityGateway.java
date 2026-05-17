@@ -1,17 +1,19 @@
 package com.colonel.saas.gateway.douyin.test;
 
-import com.colonel.saas.gateway.douyin.DouyinColonelActivityGateway;
+import com.colonel.saas.douyin.api.ActivityApi;
+import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 @Component
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "true")
-public class TestDouyinColonelActivityGateway implements DouyinColonelActivityGateway {
+public class TestDouyinActivityGateway implements DouyinActivityGateway {
 
     @Override
     public ActivityListResult listActivities(ActivityListQuery query) {
@@ -101,6 +103,56 @@ public class TestDouyinColonelActivityGateway implements DouyinColonelActivityGa
         String nextCursor = to >= filtered.size() ? "" : String.valueOf(to);
         return new ActivityProductListResult(true, activitySeed, 111111L,
                 mode == 0L ? Long.valueOf(filtered.size()) : null, nextCursor, items);
+    }
+
+    @Override
+    public Map<String, Object> createOrUpdate(ActivityApi.ActivityCreateOrUpdateCommand command) {
+        long activityId = command.activityId() == null ? 900001L : command.activityId();
+        return Map.of(
+                "code", 10000,
+                "msg", "success",
+                "data", Map.of(
+                        "activity_id", activityId,
+                        "activity_name", command.activityName() == null ? "Mock活动" : command.activityName()
+                )
+        );
+    }
+
+    @Override
+    public Map<String, Object> cancelActivityProduct(String appId, Map<String, Object> payload) {
+        return Map.of(
+                "code", 10000,
+                "msg", "success",
+                "data", Map.of(
+                        "app_id", appId == null ? "test-app" : appId,
+                        "payload", payload == null ? Map.of() : payload
+                )
+        );
+    }
+
+    @Override
+    public Map<String, Object> activityDetail(String appId, String activityId) {
+        long seed = activityId == null || activityId.isBlank() ? 0L : asLong(activityId, Math.abs(activityId.hashCode()));
+        long colonelBuyinId = 46128341673481000L + (Math.floorMod(seed, 100000));
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("colonel_buyin_id", colonelBuyinId);
+        detail.put("colonelBuyinId", colonelBuyinId);
+        detail.put("activity_name", "Mock活动-" + activityId);
+        detail.put("activityName", "Mock活动-" + activityId);
+        detail.put("shop_id", 800001L);
+        detail.put("shop_name", "Mock店铺");
+        detail.put("commission_rate", "10");
+        detail.put("service_rate", "5");
+        detail.put("activity_start_time", "2026-04-01 00:00:00");
+        detail.put("activity_end_time", "2026-06-30 23:59:59");
+        detail.put("status_text", "推广中");
+        return Map.of("data", Map.of("data", detail));
+    }
+
+    @Override
+    public Map<String, Object> createOrUpdateActivity(ActivityMutateCommand command) {
+        long id = command.activityId() == null ? 12345L : command.activityId();
+        return Map.of("code", 10000, "msg", "success", "data", Map.of("activity_id", id));
     }
 
     private List<ActivityItem> buildTestActivities() {
@@ -216,5 +268,3 @@ public class TestDouyinColonelActivityGateway implements DouyinColonelActivityGa
         };
     }
 }
-
-

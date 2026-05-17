@@ -6,14 +6,13 @@ import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.douyin.DoudianTokenGateway;
-import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.douyin.DouyinTokenService;
-import com.colonel.saas.douyin.api.ActivityApi;
-import com.colonel.saas.douyin.api.InstitutionApi;
-import com.colonel.saas.douyin.api.OrderApi;
-import com.colonel.saas.douyin.api.ProductApi;
+import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
+import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
+import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
+import com.colonel.saas.gateway.douyin.DouyinTokenGateway;
 import com.colonel.saas.service.DouyinWebhookEventService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -33,6 +32,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
@@ -46,19 +46,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DouyinControllerTest {
 
     @Mock
-    private ActivityApi activityApi;
+    private DouyinActivityGateway douyinActivityGateway;
     @Mock
-    private ProductApi productApi;
+    private DouyinProductGateway douyinProductGateway;
     @Mock
-    private OrderApi orderApi;
+    private DouyinOrderGateway douyinOrderGateway;
+    @Mock
+    private DouyinPromotionGateway douyinPromotionGateway;
+    @Mock
+    private DouyinTokenGateway douyinTokenGateway;
     @Mock
     private DouyinTokenService douyinTokenService;
-    @Mock
-    private InstitutionApi institutionApi;
-    @Mock
-    private DoudianTokenGateway doudianTokenGateway;
-    @Mock
-    private DouyinApiClient douyinApiClient;
     @Mock
     private DouyinWebhookEventService douyinWebhookEventService;
 
@@ -70,7 +68,14 @@ class DouyinControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new DouyinController(activityApi, productApi, orderApi, institutionApi, douyinTokenService, doudianTokenGateway, douyinApiClient, douyinWebhookEventService);
+        controller = new DouyinController(
+                douyinActivityGateway,
+                douyinProductGateway,
+                douyinOrderGateway,
+                douyinPromotionGateway,
+                douyinTokenGateway,
+                douyinTokenService,
+                douyinWebhookEventService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -103,7 +108,8 @@ class DouyinControllerTest {
 
     @Test
     void huodongLiebiao_success_returnsSuccessResult() {
-        when(activityApi.list("test_app")).thenReturn(Map.of("items", List.of()));
+        when(douyinActivityGateway.listActivities(any()))
+                .thenReturn(new DouyinActivityGateway.ActivityListResult(false, 0L, 0L, List.of()));
 
         ApiResult<Map<String, Object>> result = controller.huodongLiebiao("test_app");
 
@@ -116,7 +122,7 @@ class DouyinControllerTest {
 
     @Test
     void huodongLiebiao_failure_returnsErrorFields() {
-        when(activityApi.list(any()))
+        when(douyinActivityGateway.listActivities(any()))
                 .thenThrow(new DouyinApiException(10012, "INVALID_TOKEN", "sub_123", "log_abc", "/list"));
 
         ApiResult<Map<String, Object>> result = controller.huodongLiebiao(null);
@@ -132,7 +138,7 @@ class DouyinControllerTest {
 
     @Test
     void huodongXiangqing_success_returnsSuccessResult() {
-        when(activityApi.detail("test_app", "54321")).thenReturn(Map.of("detail", Map.of()));
+        when(douyinActivityGateway.activityDetail("test_app", "54321")).thenReturn(Map.of("detail", Map.of()));
 
         ApiResult<Map<String, Object>> result = controller.huodongXiangqing("test_app", "54321");
 
@@ -143,7 +149,7 @@ class DouyinControllerTest {
 
     @Test
     void huodongXiangqing_standardRestPath_bindsRequestParams() throws Exception {
-        when(activityApi.detail("test_app", "54321")).thenReturn(Map.of("detail", Map.of()));
+        when(douyinActivityGateway.activityDetail("test_app", "54321")).thenReturn(Map.of("detail", Map.of()));
 
         mockMvc.perform(get("/douyin/activities/54321")
                         .queryParam("appId", "test_app"))
@@ -152,12 +158,13 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.data.activityId").value("54321"))
                 .andExpect(jsonPath("$.data.endpoint").value("buyin.colonelActivityDetail"));
 
-        verify(activityApi).detail("test_app", "54321");
+        verify(douyinActivityGateway).activityDetail("test_app", "54321");
     }
 
     @Test
     void huodongShangpin_success_returnsSuccessResult() {
-        when(productApi.listActivities(any(), any(), any(), any(), any(), any(), any())).thenReturn(Map.of());
+        when(douyinActivityGateway.listActivities(any()))
+                .thenReturn(new DouyinActivityGateway.ActivityListResult(false, 0L, 0L, List.of()));
 
         ApiResult<Map<String, Object>> result =
                 controller.huodongShangpin("test_app", 1, 2L, 3L, 4L, 20L, "keyword");
@@ -168,7 +175,8 @@ class DouyinControllerTest {
 
     @Test
     void shangpinLiebiao_success_returnsSuccessResult() {
-        when(productApi.listProductsByActivity("test_app", "54321", 10, "cursor-1")).thenReturn(Map.of());
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenReturn(new DouyinProductGateway.ActivityProductListResult(false, 0L, 0L, 0L, null, List.of()));
 
         ApiResult<Map<String, Object>> result =
                 controller.shangpinLiebiao("test_app", "54321", 10, "cursor-1");
@@ -180,8 +188,9 @@ class DouyinControllerTest {
 
     @Test
     void dingdanJiesuan_success_returnsQueryContext() {
-        when(orderApi.listColonelMultiSettlementOrders(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(Map.of("data", Map.of("cursor", "1")));
+        when(douyinOrderGateway.listSettlement(any()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(
+                        List.of(), false, "1", Map.of("data", Map.of("cursor", "1"))));
 
         ApiResult<Map<String, Object>> result = controller.dingdanJiesuan(
                 "test_app", 20, "0", "update", "2026-04-01 00:00:00", "2026-04-02 00:00:00", null, null);
@@ -193,7 +202,7 @@ class DouyinControllerTest {
 
     @Test
     void dingdanJiesuan_failure_returnsErrorStatus() {
-        when(orderApi.listColonelMultiSettlementOrders(any(), any(), any(), any(), any(), any(), any()))
+        when(douyinOrderGateway.listSettlement(any()))
                 .thenThrow(new DouyinApiException(
                         40004,
                         "PARAM_INVALID",
@@ -201,7 +210,15 @@ class DouyinControllerTest {
                         "log_order_1",
                         "buyin.colonelMultiSettlementOrders"));
 
-        ApiResult<Map<String, Object>> result = controller.dingdanJiesuan(null, 20, "0", "update", null, null, null, null);
+        ApiResult<Map<String, Object>> result = controller.dingdanJiesuan(
+                null,
+                20,
+                "0",
+                "update",
+                "2026-04-01 00:00:00",
+                "2026-04-02 00:00:00",
+                null,
+                null);
 
         assertThat(result.getData()).containsEntry("status", "failed");
         assertThat(result.getData()).containsEntry("errorCode", 40004);
@@ -210,8 +227,9 @@ class DouyinControllerTest {
 
     @Test
     void dingdanJiesuan_standardRestPath_bindsQueryParams() throws Exception {
-        when(orderApi.listColonelMultiSettlementOrders(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(Map.of("data", Map.of("cursor", "1")));
+        when(douyinOrderGateway.listSettlement(any()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(
+                        List.of(), false, "1", Map.of("data", Map.of("cursor", "1"))));
 
         mockMvc.perform(get("/douyin/order-settlements")
                         .queryParam("appId", "test_app")
@@ -232,8 +250,9 @@ class DouyinControllerTest {
 
     @Test
     void dingdanJiesuan_standardRestPath_supportsOrderIdsAliases() throws Exception {
-        when(orderApi.listColonelMultiSettlementOrders(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(Map.of("data", Map.of("orders", List.of())));
+        when(douyinOrderGateway.listSettlementByOrderIds(any()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(
+                        List.of(), false, null, Map.of("data", Map.of("orders", List.of()))));
 
         mockMvc.perform(get("/douyin/order-settlements")
                         .queryParam("appId", "test_app")
@@ -243,20 +262,18 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.data.status").value("success"))
                 .andExpect(jsonPath("$.data.query.orderIds").value("4737996432465788974,4737996432465788973"));
 
-        verify(orderApi).listColonelMultiSettlementOrders(
-                eq("test_app"),
-                eq(20),
-                eq("0"),
-                eq("update"),
-                eq(null),
-                eq(null),
-                eq("4737996432465788974,4737996432465788973"));
+        verify(douyinOrderGateway).listSettlementByOrderIds(argThat(ids ->
+                ids != null
+                        && ids.size() == 2
+                        && ids.get(0).equals("4737996432465788974")
+                        && ids.get(1).equals("4737996432465788973")));
     }
 
     @Test
     void dingdanTongbuYuanshi_standardRestPath_callsInstituteOrderColonel() throws Exception {
-        when(douyinApiClient.post(eq("buyin.instituteOrderColonel"), any()))
-                .thenReturn(Map.of("data", Map.of("order_list", List.of())));
+        when(douyinOrderGateway.listSettlement(any()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(
+                        List.of(), false, null, Map.of("data", Map.of("order_list", List.of()))));
 
         mockMvc.perform(post("/douyin/order-sync-probes/raw")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -275,7 +292,10 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.data.payload.start_time").value(1711900800))
                 .andExpect(jsonPath("$.data.payload.count").value(20));
 
-        verify(douyinApiClient).post(eq("buyin.instituteOrderColonel"), any());
+        verify(douyinOrderGateway).listSettlement(argThat(req ->
+                req.startTime() == 1711900800L
+                        && req.endTime() == 1711987200L
+                        && req.count() == 20));
     }
 
     @Test
@@ -283,7 +303,7 @@ class DouyinControllerTest {
         DouyinController.ActivityProductCancelRequest request = new DouyinController.ActivityProductCancelRequest();
         request.setAppId("test_app");
         request.setActivityId(12345L);
-        when(activityApi.cancelActivityProduct(eq("test_app"), any())).thenReturn(Map.of());
+        when(douyinActivityGateway.cancelActivityProduct(eq("test_app"), any())).thenReturn(Map.of());
 
         ApiResult<Map<String, Object>> result = controller.quxiaoHuodongShangpin(request);
 
@@ -297,7 +317,7 @@ class DouyinControllerTest {
         DouyinController.ActivityProductCancelRequest request = new DouyinController.ActivityProductCancelRequest();
         request.setAppId("test_app");
         request.setActivityId(12345L);
-        when(activityApi.cancelActivityProduct(eq("test_app"), any()))
+        when(douyinActivityGateway.cancelActivityProduct(eq("test_app"), any()))
                 .thenThrow(new DouyinApiException(99999, "ACTIVITY_NOT_FOUND", null, "log_xyz", "/cancel"));
 
         ApiResult<Map<String, Object>> result = controller.quxiaoHuodongShangpin(request);
@@ -320,7 +340,7 @@ class DouyinControllerTest {
         request.setEstimatedSingleSale("100");
         request.setActivityType(1);
         request.setOnline(true);
-        when(activityApi.createOrUpdate(any(ActivityApi.ActivityCreateOrUpdateCommand.class)))
+        when(douyinActivityGateway.createOrUpdateActivity(any(DouyinActivityGateway.ActivityMutateCommand.class)))
                 .thenReturn(Map.of("activity_id", 12345L));
 
         ApiResult<Map<String, Object>> result = controller.chuangjianHuodong(request);
@@ -357,7 +377,7 @@ class DouyinControllerTest {
 
     @Test
     void jigouShenfen_success_returnsInstitutionInfo() {
-        when(institutionApi.info("test_app")).thenReturn(Map.of("data", Map.of("institution_id", "by_1")));
+        when(douyinTokenGateway.institutionInfo("test_app")).thenReturn(Map.of("data", Map.of("institution_id", "by_1")));
 
         ApiResult<Map<String, Object>> result = controller.jigouShenfen("test_app");
 
@@ -370,7 +390,7 @@ class DouyinControllerTest {
 
     @Test
     void jigouShenfen_standardRestPath_returnsInstitutionInfo() throws Exception {
-        when(institutionApi.info("test_app")).thenReturn(Map.of("data", Map.of("institution_id", "by_1")));
+        when(douyinTokenGateway.institutionInfo("test_app")).thenReturn(Map.of("data", Map.of("institution_id", "by_1")));
 
         mockMvc.perform(MockMvcRequestBuilders.get("/douyin/institution-info")
                         .queryParam("appId", "test_app"))
@@ -380,7 +400,7 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.data.endpoint").value("buyin.institutionInfo"))
                 .andExpect(jsonPath("$.data.remoteResponse.data.institution_id").value("by_1"));
 
-        verify(institutionApi).info("test_app");
+        verify(douyinTokenGateway).institutionInfo("test_app");
     }
 
     @Test
@@ -446,15 +466,14 @@ class DouyinControllerTest {
 
     @Test
     void tokenCreateProbe_returnsSanitizedRawSdkResponse() throws Exception {
-        DoudianTokenGateway.TokenCreateProbeResult probeResult = new DoudianTokenGateway.TokenCreateProbeResult(
+        DouyinTokenGateway.ProbeTokenCreateResult probeResult = new DouyinTokenGateway.ProbeTokenCreateResult(
                 "authorization_code",
                 "present",
                 null,
                 null,
                 true,
                 "Colonel",
-                null,
-                new DoudianTokenGateway.TokenCreateResponseView(
+                new DouyinTokenGateway.TokenProbeResponseView(
                         "50002",
                         "业务处理失败",
                         "isv.business-failed:4",
@@ -467,7 +486,7 @@ class DouyinControllerTest {
                         null
                 )
         );
-        when(doudianTokenGateway.probeCreateToken(any())).thenReturn(probeResult);
+        when(douyinTokenGateway.probeCreateToken(any())).thenReturn(probeResult);
 
         mockMvc.perform(post("/douyin/token-create-probes")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -487,12 +506,12 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.data.response.code").value("50002"))
                 .andExpect(jsonPath("$.data.response.subMsg").value("authorization code required"));
 
-        verify(doudianTokenGateway).probeCreateToken(any());
+        verify(douyinTokenGateway).probeCreateToken(any());
     }
 
     @Test
     void promotionLinkRawProbe_returnsRemoteResponse() throws Exception {
-        when(douyinApiClient.post(eq("buyin.instPickSourceConvert"), any()))
+        when(douyinPromotionGateway.rawUpstreamPost(eq("test_app"), eq("buyin.instPickSourceConvert"), any()))
                 .thenReturn(Map.of("data", Map.of("pick_source", "ABC12345")));
 
         mockMvc.perform(post("/douyin/promotion-link-probes/raw")
@@ -511,7 +530,7 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.data.status").value("success"))
                 .andExpect(jsonPath("$.data.remoteResponse.data.pick_source").value("ABC12345"));
 
-        verify(douyinApiClient).post(eq("buyin.instPickSourceConvert"), any());
+        verify(douyinPromotionGateway).rawUpstreamPost(eq("test_app"), eq("buyin.instPickSourceConvert"), any());
     }
 
     @Test

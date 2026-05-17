@@ -1,5 +1,6 @@
 package com.colonel.saas.gateway.douyin.real;
 
+import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.douyin.api.PromotionApi;
 import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
 import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
@@ -8,20 +9,26 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 @Slf4j
 @Component
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "false", matchIfMissing = true)
 public class RealDouyinPromotionGateway implements DouyinPromotionGateway {
 
     private final PromotionApi promotionApi;
+    private final DouyinApiClient douyinApiClient;
     private final DouyinUpstreamModeSupport upstreamModeSupport;
     private final DouyinContractFixtureProvider contractFixtureProvider;
 
     public RealDouyinPromotionGateway(
             PromotionApi promotionApi,
+            DouyinApiClient douyinApiClient,
             DouyinUpstreamModeSupport upstreamModeSupport,
             DouyinContractFixtureProvider contractFixtureProvider) {
         this.promotionApi = promotionApi;
+        this.douyinApiClient = douyinApiClient;
         this.upstreamModeSupport = upstreamModeSupport;
         this.contractFixtureProvider = contractFixtureProvider;
     }
@@ -56,6 +63,25 @@ public class RealDouyinPromotionGateway implements DouyinPromotionGateway {
                 result.promoteLink(),
                 result.uuidSeed()
         );
+    }
+
+    @Override
+    public Map<String, Object> rawUpstreamPost(String appId, String method, Map<String, Object> payload) {
+        logGateway();
+        if (upstreamModeSupport.isContract()) {
+            return Map.of(
+                    "code", "10000",
+                    "msg", "success",
+                    "data", Map.of("contract", true, "method", method == null ? "" : method));
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (payload != null) {
+            body.putAll(payload);
+        }
+        if (org.springframework.util.StringUtils.hasText(appId)) {
+            body.putIfAbsent("appId", appId);
+        }
+        return douyinApiClient.post(method, body);
     }
 
     private void logGateway() {

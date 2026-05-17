@@ -6,9 +6,10 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.DouyinApiException;
-import com.colonel.saas.gateway.douyin.DouyinColonelActivityGateway;
+import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.service.ProductService;
+import com.colonel.saas.service.ShortTtlCacheService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
 import java.util.Map;
 
 @Validated
@@ -30,17 +32,23 @@ import java.util.Map;
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.ADMIN, RoleCodes.COLONEL_LEADER})
 public class ColonelActivityController extends BaseController {
 
-    private final DouyinColonelActivityGateway douyinColonelActivityGateway;
+    private static final Duration ACTIVITY_LIST_CACHE_TTL = Duration.ofSeconds(60);
+    private static final String ACTIVITY_LIST_CACHE_PREFIX = "activities:list:";
+
+    private final DouyinActivityGateway douyinActivityGateway;
     private final DouyinProductGateway douyinProductGateway;
     private final ProductService productService;
+    private final ShortTtlCacheService shortTtlCacheService;
 
     public ColonelActivityController(
-            DouyinColonelActivityGateway douyinColonelActivityGateway,
+            DouyinActivityGateway douyinActivityGateway,
             DouyinProductGateway douyinProductGateway,
-            ProductService productService) {
-        this.douyinColonelActivityGateway = douyinColonelActivityGateway;
+            ProductService productService,
+            ShortTtlCacheService shortTtlCacheService) {
+        this.douyinActivityGateway = douyinActivityGateway;
         this.douyinProductGateway = douyinProductGateway;
         this.productService = productService;
+        this.shortTtlCacheService = shortTtlCacheService;
     }
 
     @Operation(summary = "团长活动列表", description = "查询机构创建的团长活动列表。该接口服务于业务页活动筛选，不是原始联调接口。")
@@ -54,11 +62,12 @@ public class ColonelActivityController extends BaseController {
             @Parameter(description = "活动信息关键字。") @RequestParam(required = false) String activityInfo,
             @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId) {
         try {
-            return ok(douyinColonelActivityGateway.listActivities(
-                    new DouyinColonelActivityGateway.ActivityListQuery(
+            String cacheKey = ACTIVITY_LIST_CACHE_PREFIX + cacheKey(status, searchType, sortType, page, pageSize, activityInfo, appId);
+            return ok(shortTtlCacheService.get(cacheKey, ACTIVITY_LIST_CACHE_TTL, () -> douyinActivityGateway.listActivities(
+                    new DouyinActivityGateway.ActivityListQuery(
                             appId, status, searchType, sortType, page, pageSize, activityInfo
                     )
-            ).toMap());
+            ).toMap()));
         } catch (DouyinApiException e) {
             throw mapActivityError(e);
         }
@@ -162,5 +171,16 @@ public class ColonelActivityController extends BaseController {
             return new BusinessException("抖店服务异常，请稍后重试");
         }
         return new BusinessException("活动商品查询失败: " + e.getErrorMsg());
+    }
+
+    private String cacheKey(Object... values) {
+        StringBuilder builder = new StringBuilder();
+        for (Object value : values) {
+            if (builder.length() > 0) {
+                builder.append('|');
+            }
+            builder.append(value == null ? "" : value);
+        }
+        return builder.toString();
     }
 }

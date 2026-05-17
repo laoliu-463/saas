@@ -1,21 +1,16 @@
 package com.colonel.saas.gateway.douyin.test;
 
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
-import com.colonel.saas.service.PickSourceMappingService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Component
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "true")
 public class TestDouyinPromotionGateway implements DouyinPromotionGateway {
-
-    private final PickSourceMappingService pickSourceMappingService;
-
-    public TestDouyinPromotionGateway(PickSourceMappingService pickSourceMappingService) {
-        this.pickSourceMappingService = pickSourceMappingService;
-    }
 
     @Override
     public PromotionLinkResult generateLink(PromotionLinkCommand command) {
@@ -33,26 +28,6 @@ public class TestDouyinPromotionGateway implements DouyinPromotionGateway {
         String shortLink = "https://test.short.link/" + shortId;
         String promoteLink = "https://test.promote.link/activity/" + activityId + "/product/" + productId + "?pick_source=" + pickSource;
 
-        if (command.context() != null && command.context().userId() != null) {
-            pickSourceMappingService.saveOrUpdate(
-                    command.context().userId(),
-                    null,
-                    command.context().deptId(),
-                    null,
-                    null,
-                    shortId,
-                    uuidSeed,
-                    pickSource,
-                    productId,
-                    activityId,
-                    command.context().sourceUrl(),
-                    promoteLink,
-                    null,
-                    command.context().scene(),
-                    pickExtra
-            );
-        }
-
         return new PromotionLinkResult(
                 pickSource,
                 pickExtra,
@@ -62,6 +37,18 @@ public class TestDouyinPromotionGateway implements DouyinPromotionGateway {
                 uuidSeed.toString()
         );
     }
-}
 
+    @Override
+    public Map<String, Object> rawUpstreamPost(String appId, String method, Map<String, Object> payload) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        if (payload != null) {
+            data.putAll(payload);
+        }
+        data.put("method", method == null ? "" : method);
+        if (appId != null && !appId.isBlank()) {
+            data.put("appId", appId.trim());
+        }
+        return Map.of("code", 10000, "msg", "success", "data", data);
+    }
+}
 

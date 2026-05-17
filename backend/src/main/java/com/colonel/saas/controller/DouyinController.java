@@ -4,14 +4,13 @@ import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.douyin.DoudianTokenGateway;
-import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.douyin.DouyinTokenService;
-import com.colonel.saas.douyin.api.ActivityApi;
-import com.colonel.saas.douyin.api.InstitutionApi;
-import com.colonel.saas.douyin.api.OrderApi;
-import com.colonel.saas.douyin.api.ProductApi;
+import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
+import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
+import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
+import com.colonel.saas.gateway.douyin.DouyinTokenGateway;
 import com.colonel.saas.service.DouyinWebhookEventService;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import io.swagger.v3.oas.annotations.Operation;
@@ -53,31 +52,28 @@ import java.util.stream.Collectors;
 @SecurityRequirement(name = "bearerAuth")
 public class DouyinController extends BaseController {
 
-    private final ActivityApi activityApi;
-    private final ProductApi productApi;
-    private final OrderApi orderApi;
-    private final InstitutionApi institutionApi;
+    private final DouyinActivityGateway douyinActivityGateway;
+    private final DouyinProductGateway douyinProductGateway;
+    private final DouyinOrderGateway douyinOrderGateway;
+    private final DouyinPromotionGateway douyinPromotionGateway;
+    private final DouyinTokenGateway douyinTokenGateway;
     private final DouyinTokenService douyinTokenService;
-    private final DoudianTokenGateway doudianTokenGateway;
-    private final DouyinApiClient douyinApiClient;
     private final DouyinWebhookEventService douyinWebhookEventService;
 
     public DouyinController(
-            ActivityApi activityApi,
-            ProductApi productApi,
-            OrderApi orderApi,
-            InstitutionApi institutionApi,
+            DouyinActivityGateway douyinActivityGateway,
+            DouyinProductGateway douyinProductGateway,
+            DouyinOrderGateway douyinOrderGateway,
+            DouyinPromotionGateway douyinPromotionGateway,
+            DouyinTokenGateway douyinTokenGateway,
             DouyinTokenService douyinTokenService,
-            DoudianTokenGateway doudianTokenGateway,
-            DouyinApiClient douyinApiClient,
             DouyinWebhookEventService douyinWebhookEventService) {
-        this.activityApi = activityApi;
-        this.productApi = productApi;
-        this.orderApi = orderApi;
-        this.institutionApi = institutionApi;
+        this.douyinActivityGateway = douyinActivityGateway;
+        this.douyinProductGateway = douyinProductGateway;
+        this.douyinOrderGateway = douyinOrderGateway;
+        this.douyinPromotionGateway = douyinPromotionGateway;
+        this.douyinTokenGateway = douyinTokenGateway;
         this.douyinTokenService = douyinTokenService;
-        this.doudianTokenGateway = doudianTokenGateway;
-        this.douyinApiClient = douyinApiClient;
         this.douyinWebhookEventService = douyinWebhookEventService;
     }
 
@@ -102,7 +98,10 @@ public class DouyinController extends BaseController {
         result.put("endpoint", "alliance.instituteColonelActivityList");
         result.put("appId", appId);
         try {
-            result.put("remoteResponse", activityApi.list(appId));
+            DouyinActivityGateway.ActivityListResult gatewayResult = douyinActivityGateway.listActivities(
+                    new DouyinActivityGateway.ActivityListQuery(appId, 0, 0L, 1L, 1L, 20L, null)
+            );
+            result.put("remoteResponse", gatewayResult.toMap());
             result.put("status", "success");
         } catch (Throwable e) {
             log.error("Douyin activity test call failed", e);
@@ -122,7 +121,7 @@ public class DouyinController extends BaseController {
         result.put("appId", appId);
         result.put("activityId", activityId);
         try {
-            result.put("remoteResponse", activityApi.detail(appId, activityId));
+            result.put("remoteResponse", douyinActivityGateway.activityDetail(appId, activityId));
             result.put("status", "success");
         } catch (Throwable e) {
             log.error("Douyin activity detail call failed", e);
@@ -146,8 +145,10 @@ public class DouyinController extends BaseController {
         result.put("endpoint", "alliance.instituteColonelActivityList");
         result.put("appId", appId);
         try {
-            result.put("remoteResponse", productApi.listActivities(
-                    appId, status, searchType, sortType, page, pageSize, activityInfo));
+            DouyinActivityGateway.ActivityListResult gatewayResult = douyinActivityGateway.listActivities(
+                    new DouyinActivityGateway.ActivityListQuery(appId, status, searchType, sortType, page, pageSize, activityInfo)
+            );
+            result.put("remoteResponse", gatewayResult.toMap());
             result.put("status", "success");
         } catch (Throwable e) {
             log.error("Douyin product activities test call failed", e);
@@ -169,7 +170,23 @@ public class DouyinController extends BaseController {
         result.put("appId", appId);
         result.put("activityId", activityId);
         try {
-            result.put("remoteResponse", productApi.listProductsByActivity(appId, activityId, count, cursor));
+            DouyinProductGateway.ActivityProductListResult gatewayResult = douyinProductGateway.queryActivityProducts(
+                    new DouyinProductGateway.ActivityProductQueryRequest(
+                            appId,
+                            activityId,
+                            4L,
+                            1L,
+                            count,
+                            null,
+                            null,
+                            null,
+                            null,
+                            1L,
+                            cursor,
+                            null
+                    )
+            );
+            result.put("remoteResponse", gatewayResult.toMap());
             result.put("status", "success");
         } catch (Throwable e) {
             log.error("Douyin products by activity test call failed", e);
@@ -203,8 +220,22 @@ public class DouyinController extends BaseController {
         query.put("orderIds", normalizedOrderIds);
         result.put("query", query);
         try {
-            result.put("remoteResponse", orderApi.listColonelMultiSettlementOrders(
-                    appId, size, cursor, timeType, startTime, endTime, normalizedOrderIds));
+            if (StringUtils.hasText(normalizedOrderIds)) {
+                List<String> orderIdList = java.util.Arrays.stream(normalizedOrderIds.split(","))
+                        .map(String::trim)
+                        .filter(StringUtils::hasText)
+                        .toList();
+                result.put("remoteResponse", douyinOrderGateway.listSettlementByOrderIds(orderIdList).rawResponse());
+            } else {
+                result.put("remoteResponse", douyinOrderGateway.listSettlement(
+                        new DouyinOrderGateway.DouyinOrderQueryRequest(
+                                parseDateTimeToEpochSecond(startTime),
+                                parseDateTimeToEpochSecond(endTime),
+                                size == null ? 20 : size,
+                                cursor
+                        )
+                ).rawResponse());
+            }
             result.put("status", "success");
         } catch (Throwable e) {
             log.error("Douyin order settlement call failed", e);
@@ -229,7 +260,7 @@ public class DouyinController extends BaseController {
         try {
             Map<String, Object> payload = request.toPayload();
             result.put("payload", payload);
-            result.put("remoteResponse", activityApi.cancelActivityProduct(request.getAppId(), payload));
+            result.put("remoteResponse", douyinActivityGateway.cancelActivityProduct(request.getAppId(), payload));
             result.put("status", "success");
         } catch (Throwable e) {
             log.error("Douyin activity product cancel call failed", e);
@@ -259,7 +290,7 @@ public class DouyinController extends BaseController {
             String appId = appIdValue == null ? null : String.valueOf(appIdValue).trim();
             result.put("appId", appId);
             result.put("payload", payload);
-            result.put("remoteResponse", activityApi.cancelActivityProduct(appId, payload));
+            result.put("remoteResponse", douyinActivityGateway.cancelActivityProduct(appId, payload));
             result.put("status", "success");
         } catch (Throwable e) {
             log.error("Douyin activity product cancel raw call failed", e);
@@ -293,11 +324,22 @@ public class DouyinController extends BaseController {
             result.put("endpoint", method);
             result.put("appId", appId);
             result.put("payload", payload);
-            if (StringUtils.hasText(appId)) {
-                payload.put("appId", appId);
+            if ("buyin.productSkus.v2".equals(method)) {
+                String productId = asTrimmedText(payload.get("product_id"));
+                if (!StringUtils.hasText(productId)) {
+                    productId = asTrimmedText(payload.get("productId"));
+                }
+                if (!StringUtils.hasText(productId)) {
+                    throw new IllegalArgumentException("product_id is required for buyin.productSkus.v2");
+                }
+                result.put("remoteResponse", Map.of(
+                        "data", Map.of("skus", douyinProductGateway.queryProductSkus(productId))
+                ));
+                result.put("status", "success");
+            } else {
+                result.put("remoteResponse", douyinPromotionGateway.rawUpstreamPost(appId, method, payload));
+                result.put("status", "success");
             }
-            result.put("remoteResponse", douyinApiClient.post(method, payload));
-            result.put("status", "success");
         } catch (Throwable e) {
             log.error("Douyin promotion raw probe failed", e);
             fillError(result, e);
@@ -322,14 +364,21 @@ public class DouyinController extends BaseController {
             if (request == null || request.isEmpty()) {
                 throw new IllegalArgumentException("request body is required");
             }
-            Map<String, Object> payload = new HashMap<>(request);
-            String appId = asTrimmedText(payload.remove("appId"));
+            String appId = asTrimmedText(request.get("appId"));
+            Object startRaw = request.get("start_time");
+            Object endRaw = request.get("end_time");
+            String cursor = asTrimmedText(request.get("cursor"));
+            int count = request.get("count") instanceof Number number ? number.intValue() : 20;
             result.put("appId", appId);
-            result.put("payload", payload);
-            if (StringUtils.hasText(appId)) {
-                payload.put("appId", appId);
-            }
-            result.put("remoteResponse", douyinApiClient.post("buyin.instituteOrderColonel", payload));
+            result.put("payload", request);
+            result.put("remoteResponse", douyinOrderGateway.listSettlement(
+                    new DouyinOrderGateway.DouyinOrderQueryRequest(
+                            parseFlexibleEpoch(startRaw, "start_time"),
+                            parseFlexibleEpoch(endRaw, "end_time"),
+                            count,
+                            cursor
+                    )
+            ).rawResponse());
             result.put("status", "success");
         } catch (Throwable e) {
             log.error("Douyin order sync raw probe failed", e);
@@ -348,7 +397,7 @@ public class DouyinController extends BaseController {
                     content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"applicationLimited\":false,\"activityName\":\"测试活动\",\"activityDesc\":\"联调用活动\",\"applyStartTime\":\"2026-04-28 10:00:00\",\"applyEndTime\":\"2026-04-29 10:00:00\",\"commissionRate\":\"10\",\"serviceRate\":\"5\",\"estimatedSingleSale\":\"1000\",\"activityType\":1,\"online\":true}"))
             )
             @Valid @RequestBody ActivityCreateOrUpdateRequest request) {
-        return ok(activityApi.createOrUpdate(buildActivityCommand(request, request.getActivityId())));
+        return ok(douyinActivityGateway.createOrUpdateActivity(buildActivityMutateCommand(request, request.getActivityId())));
     }
 
     @Operation(summary = "[联调] 更新活动", description = "验证上游 alliance.colonelActivityCreateOrUpdate 更新团长活动能力。")
@@ -362,7 +411,7 @@ public class DouyinController extends BaseController {
                     content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"applicationLimited\":false,\"activityName\":\"测试活动-更新\",\"activityDesc\":\"联调用活动\",\"applyStartTime\":\"2026-04-28 10:00:00\",\"applyEndTime\":\"2026-04-29 10:00:00\",\"commissionRate\":\"10\",\"serviceRate\":\"5\",\"estimatedSingleSale\":\"1000\",\"activityType\":1,\"online\":true}"))
             )
             @Valid @RequestBody ActivityCreateOrUpdateRequest request) {
-        return ok(activityApi.createOrUpdate(buildActivityCommand(request, activityId)));
+        return ok(douyinActivityGateway.createOrUpdateActivity(buildActivityMutateCommand(request, activityId)));
     }
 
     @Operation(summary = "[联调] 查询 Token 状态", description = "查看当前 appId 的 Token 缓存状态，用于确认真实联调前授权是否准备完毕。")
@@ -392,7 +441,7 @@ public class DouyinController extends BaseController {
         result.put("endpoint", "buyin.institutionInfo");
         result.put("appId", appId);
         try {
-            result.put("remoteResponse", institutionApi.info(appId));
+            result.put("remoteResponse", douyinTokenGateway.institutionInfo(appId));
             result.put("status", "success");
         } catch (Throwable e) {
             log.error("Douyin institution info call failed", e);
@@ -435,8 +484,8 @@ public class DouyinController extends BaseController {
                     content = @Content(examples = @ExampleObject(value = "{\"appId\":\"7623665273727387199\",\"code\":\"达人或机构授权code\",\"grantType\":\"authorization_code\"}"))
             )
             @Valid @RequestBody TokenCreateRequest request) {
-        DoudianTokenGateway.TokenCreateProbeResult probe = doudianTokenGateway.probeCreateToken(
-                new DoudianTokenGateway.TokenCreateCommand(
+        DouyinTokenGateway.ProbeTokenCreateResult probe = douyinTokenGateway.probeCreateToken(
+                new DouyinTokenGateway.TokenCreateCommand(
                         request.getCode(),
                         request.getGrantType(),
                         request.getTestShop(),
@@ -458,14 +507,14 @@ public class DouyinController extends BaseController {
         result.put("appId", request.getAppId());
         result.put("status", "completed");
         result.put("requestSnapshot", requestSnapshot);
-        result.put("response", probe.responseView());
+        result.put("response", probe.response());
         return ok(result);
     }
 
-    private ActivityApi.ActivityCreateOrUpdateCommand buildActivityCommand(
+    private DouyinActivityGateway.ActivityMutateCommand buildActivityMutateCommand(
             ActivityCreateOrUpdateRequest request,
             Long activityId) {
-        return new ActivityApi.ActivityCreateOrUpdateCommand(
+        return new DouyinActivityGateway.ActivityMutateCommand(
                 request.getAppId(),
                 activityId,
                 request.getApplicationLimited(),
@@ -521,6 +570,33 @@ public class DouyinController extends BaseController {
         }
         String text = String.valueOf(value).trim();
         return text.isEmpty() ? null : text;
+    }
+
+    private long parseFlexibleEpoch(Object value, String label) {
+        if (value == null) {
+            throw new IllegalArgumentException(label + " is required");
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        String text = asTrimmedText(value);
+        if (!StringUtils.hasText(text)) {
+            throw new IllegalArgumentException(label + " is required");
+        }
+        if (text.chars().allMatch(Character::isDigit) && text.length() >= 9 && text.length() <= 12) {
+            return Long.parseLong(text);
+        }
+        return parseDateTimeToEpochSecond(text);
+    }
+
+    private long parseDateTimeToEpochSecond(String value) {
+        if (!StringUtils.hasText(value)) {
+            throw new IllegalArgumentException("start_time/end_time must use format yyyy-MM-dd HH:mm:ss");
+        }
+        return java.time.LocalDateTime.parse(
+                value.trim(),
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+        ).atZone(java.time.ZoneId.systemDefault()).toEpochSecond();
     }
 
     public static class TokenCreateRequest {

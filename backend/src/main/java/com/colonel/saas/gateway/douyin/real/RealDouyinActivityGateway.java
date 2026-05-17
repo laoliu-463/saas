@@ -2,7 +2,7 @@ package com.colonel.saas.gateway.douyin.real;
 
 import com.colonel.saas.douyin.api.ActivityApi;
 import com.colonel.saas.douyin.api.ProductApi;
-import com.colonel.saas.gateway.douyin.DouyinColonelActivityGateway;
+import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
 import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
 import lombok.extern.slf4j.Slf4j;
@@ -18,14 +18,14 @@ import java.util.Map;
 @Slf4j
 @Component
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "false", matchIfMissing = true)
-public class RealDouyinColonelActivityGateway implements DouyinColonelActivityGateway {
+public class RealDouyinActivityGateway implements DouyinActivityGateway {
 
     private final ActivityApi activityApi;
     private final ProductApi productApi;
     private final DouyinUpstreamModeSupport upstreamModeSupport;
     private final DouyinContractFixtureProvider contractFixtureProvider;
 
-    public RealDouyinColonelActivityGateway(
+    public RealDouyinActivityGateway(
             ActivityApi activityApi,
             ProductApi productApi,
             DouyinUpstreamModeSupport upstreamModeSupport,
@@ -38,7 +38,7 @@ public class RealDouyinColonelActivityGateway implements DouyinColonelActivityGa
 
     @Override
     public ActivityListResult listActivities(ActivityListQuery query) {
-        logGateway("RealDouyinColonelActivityGateway", query.appId());
+        logGateway("RealDouyinActivityGateway", query.appId());
         if (upstreamModeSupport.isContract()) {
             return contractFixtureProvider.buildActivityListResult(query);
         }
@@ -61,7 +61,7 @@ public class RealDouyinColonelActivityGateway implements DouyinColonelActivityGa
 
     @Override
     public ActivityProductListResult listActivityProducts(ActivityProductListQuery query) {
-        logGateway("RealDouyinColonelActivityGateway", query.appId());
+        logGateway("RealDouyinActivityGateway", query.appId());
         if (upstreamModeSupport.isContract()) {
             return contractFixtureProvider.buildActivityProductListResult(query);
         }
@@ -79,6 +79,60 @@ public class RealDouyinColonelActivityGateway implements DouyinColonelActivityGa
         Long total = dataNode.containsKey("total") ? asLong(dataNode.get("total"), items.size()) : null;
         return new ActivityProductListResult(false, asLong(query.activityId(), 0L),
                 asLong(dataNode.get("institution_id"), 0L), total, asString(dataNode.get("next_cursor")), items);
+    }
+
+    @Override
+    public Map<String, Object> createOrUpdate(ActivityApi.ActivityCreateOrUpdateCommand command) {
+        logGateway("RealDouyinActivityGateway.createOrUpdate", command == null ? null : command.appId());
+        return activityApi.createOrUpdate(command);
+    }
+
+    @Override
+    public Map<String, Object> cancelActivityProduct(String appId, Map<String, Object> payload) {
+        logGateway("RealDouyinActivityGateway.cancelActivityProduct", appId);
+        return activityApi.cancelActivityProduct(appId, payload);
+    }
+
+    @Override
+    public Map<String, Object> activityDetail(String appId, String activityId) {
+        logGateway("RealDouyinActivityGateway.activityDetail", appId);
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildActivityDetailResponse(appId, activityId);
+        }
+        return activityApi.detail(appId, activityId);
+    }
+
+    @Override
+    public Map<String, Object> createOrUpdateActivity(ActivityMutateCommand command) {
+        logGateway("RealDouyinActivityGateway.createOrUpdateActivity", command.appId());
+        ActivityApi.ActivityCreateOrUpdateCommand apiCmd = new ActivityApi.ActivityCreateOrUpdateCommand(
+                command.appId(),
+                command.activityId(),
+                command.applicationLimited(),
+                command.isNewShop(),
+                command.shopType(),
+                command.activityName(),
+                command.activityDesc(),
+                command.applyStartTime(),
+                command.applyEndTime(),
+                command.commissionRate(),
+                command.serviceRate(),
+                command.wechatId(),
+                command.phoneNum(),
+                command.estimatedSingleSale(),
+                command.activityType(),
+                command.specifiedShopIds(),
+                command.online(),
+                command.categories(),
+                command.shopScore(),
+                command.minPromotionDays(),
+                command.thresholdCrossBorder(),
+                command.minExclusionDuration(),
+                command.adCommissionRate(),
+                command.adServiceRate(),
+                command.cosLimitType()
+        );
+        return activityApi.createOrUpdate(apiCmd);
     }
 
     private ActivityItem normalizeActivityItem(Map<String, Object> raw) {

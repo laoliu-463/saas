@@ -2,8 +2,8 @@ package com.colonel.saas.gateway.douyin.contract;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.entity.PickSourceMapping;
-import com.colonel.saas.gateway.douyin.DouyinAuthGateway;
-import com.colonel.saas.gateway.douyin.DouyinColonelActivityGateway;
+import com.colonel.saas.gateway.douyin.DouyinTokenGateway;
+import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
@@ -54,14 +54,14 @@ public class DouyinContractFixtureProvider {
         return DEFAULT_AUTH_ID;
     }
 
-    public DouyinAuthGateway.TokenPayload buildTokenPayload(String appId, String refreshTokenHint) {
+    public DouyinTokenGateway.TokenPayload buildTokenPayload(String appId, String refreshTokenHint) {
         String finalAppId = hasText(appId) ? appId.trim() : DEFAULT_APP_KEY;
         String suffix = finalAppId.length() <= 6 ? finalAppId : finalAppId.substring(finalAppId.length() - 6);
         String accessToken = "contract_access_" + suffix + "_" + Instant.now().getEpochSecond();
         String refreshToken = hasText(refreshTokenHint)
                 ? refreshTokenHint.trim()
                 : "contract_refresh_" + suffix;
-        return new DouyinAuthGateway.TokenPayload(
+        return new DouyinTokenGateway.TokenPayload(
                 accessToken,
                 refreshToken,
                 7200L,
@@ -84,9 +84,9 @@ public class DouyinContractFixtureProvider {
         return success("buyin.institutionInfo", data);
     }
 
-    public DouyinColonelActivityGateway.ActivityListResult buildActivityListResult(
-            DouyinColonelActivityGateway.ActivityListQuery query) {
-        List<DouyinColonelActivityGateway.ActivityItem> filtered = filterActivities(
+    public DouyinActivityGateway.ActivityListResult buildActivityListResult(
+            DouyinActivityGateway.ActivityListQuery query) {
+        List<DouyinActivityGateway.ActivityItem> filtered = filterActivities(
                 contractActivities(),
                 query.status(),
                 query.activityInfo(),
@@ -97,10 +97,10 @@ public class DouyinContractFixtureProvider {
         long pageSize = query.pageSize() == null || query.pageSize() < 1 ? 20 : query.pageSize();
         int from = (int) ((page - 1) * pageSize);
         int to = Math.min(from + (int) pageSize, filtered.size());
-        List<DouyinColonelActivityGateway.ActivityItem> pageList = from >= filtered.size()
+        List<DouyinActivityGateway.ActivityItem> pageList = from >= filtered.size()
                 ? List.of()
                 : filtered.subList(from, to);
-        return new DouyinColonelActivityGateway.ActivityListResult(
+        return new DouyinActivityGateway.ActivityListResult(
                 false,
                 Long.parseLong(DEFAULT_AUTH_ID),
                 filtered.size(),
@@ -116,7 +116,7 @@ public class DouyinContractFixtureProvider {
             Long page,
             Long pageSize,
             String activityInfo) {
-        List<DouyinColonelActivityGateway.ActivityItem> filtered = filterActivities(
+        List<DouyinActivityGateway.ActivityItem> filtered = filterActivities(
                 contractActivities(),
                 status,
                 activityInfo,
@@ -127,7 +127,7 @@ public class DouyinContractFixtureProvider {
         long finalPageSize = pageSize == null || pageSize < 1 ? 20 : pageSize;
         int from = (int) ((finalPage - 1) * finalPageSize);
         int to = Math.min(from + (int) finalPageSize, filtered.size());
-        List<Map<String, Object>> activityList = (from >= filtered.size() ? List.<DouyinColonelActivityGateway.ActivityItem>of() : filtered.subList(from, to))
+        List<Map<String, Object>> activityList = (from >= filtered.size() ? List.<DouyinActivityGateway.ActivityItem>of() : filtered.subList(from, to))
                 .stream()
                 .map(this::toActivityRaw)
                 .toList();
@@ -140,7 +140,7 @@ public class DouyinContractFixtureProvider {
     }
 
     public Map<String, Object> buildActivityDetailResponse(String appId, String activityId) {
-        DouyinColonelActivityGateway.ActivityItem item = contractActivities().stream()
+        DouyinActivityGateway.ActivityItem item = contractActivities().stream()
                 .filter(activity -> String.valueOf(activity.activityId()).equals(activityId))
                 .findFirst()
                 .orElse(contractActivities().get(0));
@@ -149,8 +149,8 @@ public class DouyinContractFixtureProvider {
         return success("buyin.colonelActivityDetail", data);
     }
 
-    public DouyinColonelActivityGateway.ActivityProductListResult buildActivityProductListResult(
-            DouyinColonelActivityGateway.ActivityProductListQuery query) {
+    public DouyinActivityGateway.ActivityProductListResult buildActivityProductListResult(
+            DouyinActivityGateway.ActivityProductListQuery query) {
         List<DouyinProductGateway.ActivityProductItem> filtered = filterProducts(
                 contractProducts(query.activityId()),
                 query.status(),
@@ -162,11 +162,11 @@ public class DouyinContractFixtureProvider {
                 ? (int) (((query.page() == null || query.page() < 1 ? 1 : query.page()) - 1) * pageSize)
                 : parseCursor(query.cursor());
         int to = Math.min(from + pageSize, filtered.size());
-        List<DouyinColonelActivityGateway.ActivityProductItem> items = from >= filtered.size()
+        List<DouyinActivityGateway.ActivityProductItem> items = from >= filtered.size()
                 ? List.of()
                 : filtered.subList(from, to).stream().map(this::toColonelActivityProductItem).toList();
         String nextCursor = to >= filtered.size() ? "" : String.valueOf(to);
-        return new DouyinColonelActivityGateway.ActivityProductListResult(
+        return new DouyinActivityGateway.ActivityProductListResult(
                 false,
                 asLong(query.activityId(), 0L),
                 Long.parseLong(DEFAULT_AUTH_ID),
@@ -410,9 +410,9 @@ public class DouyinContractFixtureProvider {
     }
 
 
-    private List<DouyinColonelActivityGateway.ActivityItem> contractActivities() {
+    private List<DouyinActivityGateway.ActivityItem> contractActivities() {
         return List.of(
-                new DouyinColonelActivityGateway.ActivityItem(
+                new DouyinActivityGateway.ActivityItem(
                         20260428001L,
                         "4月精选联盟活动",
                         "2026-04-01 00:00:00",
@@ -424,7 +424,7 @@ public class DouyinContractFixtureProvider {
                         Map.of("一级类目", "美妆个护"),
                         7351155267604218149L
                 ),
-                new DouyinColonelActivityGateway.ActivityItem(
+                new DouyinActivityGateway.ActivityItem(
                         20260501002L,
                         "高佣爆品活动",
                         "2026-05-01 00:00:00",
@@ -500,13 +500,13 @@ public class DouyinContractFixtureProvider {
         );
     }
 
-    private List<DouyinColonelActivityGateway.ActivityItem> filterActivities(
-            List<DouyinColonelActivityGateway.ActivityItem> activities,
+    private List<DouyinActivityGateway.ActivityItem> filterActivities(
+            List<DouyinActivityGateway.ActivityItem> activities,
             Integer status,
             String keyword,
             Long searchType,
             Long sortType) {
-        List<DouyinColonelActivityGateway.ActivityItem> filtered = activities.stream()
+        List<DouyinActivityGateway.ActivityItem> filtered = activities.stream()
                 .filter(item -> status == null || status == 0 || item.status() == status)
                 .filter(item -> {
                     if (!hasText(keyword)) {
@@ -517,13 +517,13 @@ public class DouyinContractFixtureProvider {
                             || String.valueOf(item.activityId()).contains(normalized);
                 })
                 .toList();
-        Comparator<DouyinColonelActivityGateway.ActivityItem> comparator;
+        Comparator<DouyinActivityGateway.ActivityItem> comparator;
         if (searchType != null && searchType == 1L) {
-            comparator = Comparator.comparing(DouyinColonelActivityGateway.ActivityItem::applicationStartTime, Comparator.nullsLast(String::compareTo));
+            comparator = Comparator.comparing(DouyinActivityGateway.ActivityItem::applicationStartTime, Comparator.nullsLast(String::compareTo));
         } else if (searchType != null && searchType == 2L) {
-            comparator = Comparator.comparing(DouyinColonelActivityGateway.ActivityItem::applicationEndTime, Comparator.nullsLast(String::compareTo));
+            comparator = Comparator.comparing(DouyinActivityGateway.ActivityItem::applicationEndTime, Comparator.nullsLast(String::compareTo));
         } else {
-            comparator = Comparator.comparing(DouyinColonelActivityGateway.ActivityItem::activityStartTime, Comparator.nullsLast(String::compareTo));
+            comparator = Comparator.comparing(DouyinActivityGateway.ActivityItem::activityStartTime, Comparator.nullsLast(String::compareTo));
         }
         if (sortType == null || sortType != 0L) {
             comparator = comparator.reversed();
@@ -548,7 +548,7 @@ public class DouyinContractFixtureProvider {
                 .toList();
     }
 
-    private Map<String, Object> toActivityRaw(DouyinColonelActivityGateway.ActivityItem item) {
+    private Map<String, Object> toActivityRaw(DouyinActivityGateway.ActivityItem item) {
         Map<String, Object> raw = new LinkedHashMap<>();
         raw.put("activity_id", item.activityId());
         raw.put("activity_name", item.activityName());
@@ -612,9 +612,9 @@ public class DouyinContractFixtureProvider {
         return raw;
     }
 
-    private DouyinColonelActivityGateway.ActivityProductItem toColonelActivityProductItem(
+    private DouyinActivityGateway.ActivityProductItem toColonelActivityProductItem(
             DouyinProductGateway.ActivityProductItem item) {
-        return new DouyinColonelActivityGateway.ActivityProductItem(
+        return new DouyinActivityGateway.ActivityProductItem(
                 item.productId(),
                 item.title(),
                 item.cover(),

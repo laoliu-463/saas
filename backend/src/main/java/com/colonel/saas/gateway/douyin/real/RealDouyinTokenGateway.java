@@ -2,20 +2,23 @@ package com.colonel.saas.gateway.douyin.real;
 
 import com.colonel.saas.douyin.DoudianTokenGateway;
 import com.colonel.saas.douyin.DouyinConfig;
+import com.colonel.saas.douyin.api.InstitutionApi;
 import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
 import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
-import com.colonel.saas.gateway.douyin.DouyinAuthGateway;
+import com.colonel.saas.gateway.douyin.DouyinTokenGateway;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.Map;
 
 @Slf4j
 @Component
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "false", matchIfMissing = true)
-public class RealDouyinAuthGateway implements DouyinAuthGateway {
+public class RealDouyinTokenGateway implements DouyinTokenGateway {
 
     private static final String TOKEN_KEY_PREFIX = "douyin:token:";
     private static final String REFRESH_KEY_PREFIX = "douyin:refresh:";
@@ -24,18 +27,22 @@ public class RealDouyinAuthGateway implements DouyinAuthGateway {
     private final RedisTemplate<String, Object> redisTemplate;
     private final DouyinConfig douyinConfig;
     private final DoudianTokenGateway doudianTokenGateway;
+    private final InstitutionApi institutionApi;
     private final DouyinUpstreamModeSupport upstreamModeSupport;
     private final DouyinContractFixtureProvider contractFixtureProvider;
 
-    public RealDouyinAuthGateway(
+    public RealDouyinTokenGateway(
             RedisTemplate<String, Object> redisTemplate,
             DouyinConfig douyinConfig,
             DoudianTokenGateway doudianTokenGateway,
+            @Lazy
+            InstitutionApi institutionApi,
             DouyinUpstreamModeSupport upstreamModeSupport,
             DouyinContractFixtureProvider contractFixtureProvider) {
         this.redisTemplate = redisTemplate;
         this.douyinConfig = douyinConfig;
         this.doudianTokenGateway = doudianTokenGateway;
+        this.institutionApi = institutionApi;
         this.upstreamModeSupport = upstreamModeSupport;
         this.contractFixtureProvider = contractFixtureProvider;
     }
@@ -100,9 +107,76 @@ public class RealDouyinAuthGateway implements DouyinAuthGateway {
         );
     }
 
+    @Override
+    public Map<String, Object> institutionInfo(String appId) {
+        logGateway(appId);
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildInstitutionInfoResponse(appId);
+        }
+        return institutionApi.info(appId);
+    }
+
+    @Override
+    public ProbeTokenCreateResult probeCreateToken(TokenCreateCommand command) {
+        logGateway(null);
+        if (upstreamModeSupport.isContract()) {
+            return new ProbeTokenCreateResult(
+                    command.grantType(),
+                    command.authorizationCode() == null || command.authorizationCode().isBlank() ? "absent" : "present",
+                    command.testShop(),
+                    command.shopId(),
+                    command.authId() != null && !command.authId().isBlank(),
+                    command.authSubjectType(),
+                    new TokenProbeResponseView(
+                            "10000",
+                            "success",
+                            null,
+                            null,
+                            "****",
+                            "****",
+                            7200L,
+                            contractFixtureProvider.authId(),
+                            "Colonel",
+                            1L
+                    )
+            );
+        }
+        DoudianTokenGateway.TokenCreateProbeResult probe = doudianTokenGateway.probeCreateToken(
+                new DoudianTokenGateway.TokenCreateCommand(
+                        command.authorizationCode(),
+                        command.grantType(),
+                        command.testShop(),
+                        command.shopId(),
+                        command.authId(),
+                        command.authSubjectType()
+                ));
+        DoudianTokenGateway.TokenCreateResponseView v = probe.responseView();
+        TokenProbeResponseView view = new TokenProbeResponseView(
+                v.code(),
+                v.msg(),
+                v.subCode(),
+                v.subMsg(),
+                v.maskedAccessToken(),
+                v.maskedRefreshToken(),
+                v.expiresIn(),
+                v.authorityId(),
+                v.authSubjectType(),
+                v.tokenType()
+        );
+        return new ProbeTokenCreateResult(
+                probe.grantType(),
+                probe.codeState(),
+                probe.testShop(),
+                probe.shopId(),
+                probe.authIdPresent(),
+                probe.authSubjectType(),
+                view
+        );
+    }
+
     private void logGateway(String appId) {
         log.info(
-                "gateway=RealDouyinAuthGateway, upstreamMode={}, appKey={}, shopId={}, authId={}",
+                "gateway=RealDouyinTokenGateway, upstreamMode={}, appKey={}, shopId={}, authId={}",
                 upstreamModeSupport.value(),
                 mask(appId == null ? contractFixtureProvider.appKey() : appId),
                 contractFixtureProvider.shopId(),

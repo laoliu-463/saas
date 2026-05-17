@@ -1,11 +1,17 @@
 package com.colonel.saas.gateway.douyin;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public interface DouyinPromotionGateway {
 
     PromotionLinkResult generateLink(PromotionLinkCommand command);
+
+    /**
+     * Low-level upstream POST for admin probes (any method name + JSON-like body).
+     */
+    Map<String, Object> rawUpstreamPost(String appId, String method, Map<String, Object> payload);
 
     record PromotionLinkCommand(
             String externalUniqueId,

@@ -1,7 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.douyin.api.ActivityApi;
+import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.service.ColonelsettlementActivityService;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,13 +19,13 @@ class ColonelsettlementActivityControllerTest {
     @Mock
     private ColonelsettlementActivityService activityService;
     @Mock
-    private ActivityApi activityApi;
+    private DouyinActivityGateway douyinActivityGateway;
 
     private ColonelsettlementActivityController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new ColonelsettlementActivityController(activityService, activityApi);
+        controller = new ColonelsettlementActivityController(activityService, douyinActivityGateway);
     }
 
     @Test

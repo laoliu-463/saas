@@ -3,9 +3,10 @@ package com.colonel.saas.controller;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
-import com.colonel.saas.gateway.douyin.DouyinColonelActivityGateway;
+import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.service.ProductService;
+import com.colonel.saas.service.ShortTtlCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ColonelActivityControllerTest {
 
     @Mock
-    private DouyinColonelActivityGateway douyinColonelActivityGateway;
+    private DouyinActivityGateway douyinActivityGateway;
     @Mock
     private DouyinProductGateway douyinProductGateway;
     @Mock
@@ -43,9 +44,10 @@ class ColonelActivityControllerTest {
     @BeforeEach
     void setUp() {
         ColonelActivityController controller = new ColonelActivityController(
-                douyinColonelActivityGateway,
+                douyinActivityGateway,
                 douyinProductGateway,
-                productService
+                productService,
+                new ShortTtlCacheService()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -54,7 +56,7 @@ class ColonelActivityControllerTest {
 
     @Test
     void list_shouldExposeNormalizedAndLegacyActivityFields() throws Exception {
-        DouyinColonelActivityGateway.ActivityItem item = new DouyinColonelActivityGateway.ActivityItem(
+        DouyinActivityGateway.ActivityItem item = new DouyinActivityGateway.ActivityItem(
                 3916506L,
                 "星链达客-zy",
                 "2026-05-06",
@@ -66,10 +68,10 @@ class ColonelActivityControllerTest {
                 Map.of("9", "美妆"),
                 0L
         );
-        DouyinColonelActivityGateway.ActivityListResult result =
-                new DouyinColonelActivityGateway.ActivityListResult(false, 7351155267604201765L, 21L, List.of(item));
+        DouyinActivityGateway.ActivityListResult result =
+                new DouyinActivityGateway.ActivityListResult(false, 7351155267604201765L, 21L, List.of(item));
 
-        when(douyinColonelActivityGateway.listActivities(any())).thenReturn(result);
+        when(douyinActivityGateway.listActivities(any())).thenReturn(result);
 
         mockMvc.perform(get("/colonel/activities")
                         .param("page", "1")

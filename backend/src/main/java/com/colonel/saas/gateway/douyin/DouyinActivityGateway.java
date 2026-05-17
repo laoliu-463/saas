@@ -1,14 +1,61 @@
 package com.colonel.saas.gateway.douyin;
 
+import com.colonel.saas.douyin.api.ActivityApi;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public interface DouyinColonelActivityGateway {
+public interface DouyinActivityGateway {
 
     ActivityListResult listActivities(ActivityListQuery query);
 
     ActivityProductListResult listActivityProducts(ActivityProductListQuery query);
+
+    Map<String, Object> createOrUpdate(ActivityApi.ActivityCreateOrUpdateCommand command);
+
+    /**
+     * Raw upstream-shaped activity detail (e.g. buyin.colonelActivityDetail), used for meta hydration and admin probes.
+     */
+    Map<String, Object> activityDetail(String appId, String activityId);
+
+    /**
+     * alliance.colonelActivityProductCancel — raw upstream response map.
+     */
+    Map<String, Object> cancelActivityProduct(String appId, Map<String, Object> payload);
+
+    /**
+     * alliance.colonelActivityCreateOrUpdate — raw upstream response map.
+     */
+    Map<String, Object> createOrUpdateActivity(ActivityMutateCommand command);
+
+    record ActivityMutateCommand(
+            String appId,
+            Long activityId,
+            Boolean applicationLimited,
+            Boolean isNewShop,
+            String shopType,
+            String activityName,
+            String activityDesc,
+            String applyStartTime,
+            String applyEndTime,
+            String commissionRate,
+            String serviceRate,
+            String wechatId,
+            String phoneNum,
+            String estimatedSingleSale,
+            Integer activityType,
+            String specifiedShopIds,
+            Boolean online,
+            String categories,
+            Integer shopScore,
+            Integer minPromotionDays,
+            Integer thresholdCrossBorder,
+            Integer minExclusionDuration,
+            String adCommissionRate,
+            String adServiceRate,
+            Integer cosLimitType) {
+    }
 
     record ActivityListQuery(
             String appId,
@@ -75,7 +122,6 @@ public interface DouyinColonelActivityGateway {
             item.put("applicationEndTime", applicationEndTime);
             item.put("categoriesLimit", categoriesLimit);
             item.put("colonelBuyinId", colonelBuyinId);
-            // Keep legacy page fields until all consumers finish migrating to the normalized names.
             item.put("activityStatus", status);
             item.put("startTime", activityStartTime);
             item.put("endTime", activityEndTime);

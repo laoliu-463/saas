@@ -6,7 +6,7 @@ import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.douyin.api.ActivityApi;
+import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.service.ColonelsettlementActivityService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,13 +33,13 @@ import java.util.Map;
 public class ColonelsettlementActivityController extends BaseController {
 
     private final ColonelsettlementActivityService activityService;
-    private final ActivityApi activityApi;
+    private final DouyinActivityGateway douyinActivityGateway;
 
     public ColonelsettlementActivityController(
             ColonelsettlementActivityService activityService,
-            ActivityApi activityApi) {
+            DouyinActivityGateway douyinActivityGateway) {
         this.activityService = activityService;
-        this.activityApi = activityApi;
+        this.douyinActivityGateway = douyinActivityGateway;
     }
 
     @Operation(summary = "活动分页列表", description = "分页查询本地活动列表。")
@@ -58,7 +58,7 @@ public class ColonelsettlementActivityController extends BaseController {
             @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId) {
         log.info("Get colonel activity detail, activityId={}", activityId);
-        Map<String, Object> response = activityApi.detail(appId, activityId);
+        Map<String, Object> response = douyinActivityGateway.activityDetail(appId, activityId);
         return ok(response);
     }
 }

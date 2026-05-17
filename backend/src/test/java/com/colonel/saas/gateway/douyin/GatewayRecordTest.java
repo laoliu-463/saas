@@ -19,12 +19,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class GatewayRecordTest {
 
     @Nested
-    @DisplayName("DouyinAuthGateway Records")
+    @DisplayName("DouyinTokenGateway Records")
     class AuthGatewayRecords {
 
         @Test
         void tokenCreateCommand_fields() {
-            var cmd = new DouyinAuthGateway.TokenCreateCommand(
+            var cmd = new DouyinTokenGateway.TokenCreateCommand(
                     "auth_code_123", "authorization_code",
                     "testShop", "shop_001", "auth_001", "merchant");
 
@@ -38,7 +38,7 @@ class GatewayRecordTest {
 
         @Test
         void tokenPayload_fields() {
-            var payload = new DouyinAuthGateway.TokenPayload(
+            var payload = new DouyinTokenGateway.TokenPayload(
                     "access_token_abc", "refresh_token_xyz",
                     7200L, "auth_001", "merchant", 1L);
 
@@ -236,6 +236,36 @@ class GatewayRecordTest {
             assertThat(result.company()).isEqualTo("顺丰速运");
             assertThat(result.status()).isEqualTo("已签收");
             assertThat(result.shipTime()).isEqualTo(shipTime);
+        }
+
+        @Test
+        void logisticsTrackResult_fields() {
+            LocalDateTime acceptTime = LocalDateTime.of(2026, 5, 14, 10, 23, 3);
+            var trace = new LogisticsGateway.LogisticsTraceNode(
+                    acceptTime,
+                    "派件已签收[深圳市]",
+                    null);
+            var result = new LogisticsGateway.LogisticsTrackResult(
+                    "SF",
+                    "118650888018",
+                    true,
+                    null,
+                    "3",
+                    "SIGNED",
+                    true,
+                    acceptTime,
+                    List.of(trace),
+                    Map.of("Success", true));
+
+            assertThat(result.companyCode()).isEqualTo("SF");
+            assertThat(result.trackingNo()).isEqualTo("118650888018");
+            assertThat(result.success()).isTrue();
+            assertThat(result.externalState()).isEqualTo("3");
+            assertThat(result.internalStatus()).isEqualTo("SIGNED");
+            assertThat(result.signed()).isTrue();
+            assertThat(result.signedAt()).isEqualTo(acceptTime);
+            assertThat(result.traces()).containsExactly(trace);
+            assertThat(result.rawResponse()).containsEntry("Success", true);
         }
     }
 }

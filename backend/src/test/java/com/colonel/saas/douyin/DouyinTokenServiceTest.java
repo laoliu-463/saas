@@ -1,7 +1,7 @@
 package com.colonel.saas.douyin;
 
 import com.colonel.saas.common.exception.BusinessException;
-import com.colonel.saas.gateway.douyin.DouyinAuthGateway;
+import com.colonel.saas.gateway.douyin.DouyinTokenGateway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,7 +32,7 @@ class DouyinTokenServiceTest {
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
-    private DouyinAuthGateway douyinAuthGateway;
+    private DouyinTokenGateway douyinTokenGateway;
     @Mock
     private DouyinConfig douyinConfig;
     @Mock
@@ -52,7 +52,7 @@ class DouyinTokenServiceTest {
         when(valueOperations.get(startsWith("douyin:token:reauthorize_required:"))).thenReturn(null);
 
         tokenService = new DouyinTokenService(
-                redisTemplate, douyinAuthGateway, douyinConfig,
+                redisTemplate, douyinTokenGateway, douyinConfig,
                 tokenRefreshExecutor, 300L, 5L);
     }
 
@@ -73,8 +73,8 @@ class DouyinTokenServiceTest {
         when(valueOperations.get("douyin:refresh:app123")).thenReturn("refresh-token");
         when(valueOperations.setIfAbsent(eq("douyin:token:lock:app123"), eq("1"), any(Duration.class)))
                 .thenReturn(true);
-        when(douyinAuthGateway.refreshToken("app123", "refresh-token")).thenReturn(
-                new DouyinAuthGateway.TokenPayload("new-access-token", "new-refresh-token", 7200L, null, null, 0L)
+        when(douyinTokenGateway.refreshToken("app123", "refresh-token")).thenReturn(
+                new DouyinTokenGateway.TokenPayload("new-access-token", "new-refresh-token", 7200L, null, null, 0L)
         );
 
         String token = tokenService.getValidToken(null);
@@ -104,7 +104,7 @@ class DouyinTokenServiceTest {
         when(valueOperations.setIfAbsent(eq("douyin:token:lock:app123"), eq("1"), any(Duration.class)))
                 .thenReturn(true);
         when(valueOperations.get("douyin:refresh:app123")).thenReturn("refresh-token");
-        when(douyinAuthGateway.refreshToken("app123", "refresh-token"))
+        when(douyinTokenGateway.refreshToken("app123", "refresh-token"))
                 .thenThrow(new DouyinApiException(31012, "concurrent refresh"));
 
         assertThatThrownBy(() -> tokenService.refreshToken("app123"))
@@ -127,8 +127,8 @@ class DouyinTokenServiceTest {
 
     @Test
     void bootstrapWithRefreshToken_shouldOnlyPersistAfterRemoteRefreshSucceeds() {
-        when(douyinAuthGateway.refreshToken("app123", "refresh-123")).thenReturn(
-                new DouyinAuthGateway.TokenPayload("new-access-token", "new-refresh-token", 7200L, null, null, 0L)
+        when(douyinTokenGateway.refreshToken("app123", "refresh-123")).thenReturn(
+                new DouyinTokenGateway.TokenPayload("new-access-token", "new-refresh-token", 7200L, null, null, 0L)
         );
 
         tokenService.bootstrapWithRefreshToken("app123", "refresh-123");
@@ -140,7 +140,7 @@ class DouyinTokenServiceTest {
 
     @Test
     void bootstrapWithRefreshToken_shouldNotPersistWhenRemoteRefreshFails() {
-        when(douyinAuthGateway.refreshToken("app123", "refresh-123"))
+        when(douyinTokenGateway.refreshToken("app123", "refresh-123"))
                 .thenThrow(new DouyinApiException(31008, "token expired"));
 
         assertThatThrownBy(() -> tokenService.bootstrapWithRefreshToken("app123", "refresh-123"))
@@ -169,8 +169,8 @@ class DouyinTokenServiceTest {
 
     @Test
     void exchangeCodeAndBootstrap_shouldCacheAllianceTokens() {
-        when(douyinAuthGateway.createToken(any())).thenReturn(
-                new DouyinAuthGateway.TokenPayload("alliance-access", "alliance-refresh", 7200L, "auth-456", "Colonel", 1L)
+        when(douyinTokenGateway.createToken(any())).thenReturn(
+                new DouyinTokenGateway.TokenPayload("alliance-access", "alliance-refresh", 7200L, "auth-456", "Colonel", 1L)
         );
 
         tokenService.exchangeCodeAndBootstrap("app123", "auth-code", "authorization_code", null, null, "auth-456", "Colonel");
@@ -191,8 +191,8 @@ class DouyinTokenServiceTest {
 
     @Test
     void exchangeCodeAndBootstrap_shouldCacheTokens() {
-        when(douyinAuthGateway.createToken(any())).thenReturn(
-                new DouyinAuthGateway.TokenPayload("access-from-code", "refresh-from-code", 7200L, null, null, 0L)
+        when(douyinTokenGateway.createToken(any())).thenReturn(
+                new DouyinTokenGateway.TokenPayload("access-from-code", "refresh-from-code", 7200L, null, null, 0L)
         );
 
         tokenService.exchangeCodeAndBootstrap("app123", "auth-code");

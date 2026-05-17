@@ -1,7 +1,7 @@
 package com.colonel.saas.douyin;
 
 import com.colonel.saas.common.exception.BusinessException;
-import com.colonel.saas.gateway.douyin.DouyinAuthGateway;
+import com.colonel.saas.gateway.douyin.DouyinTokenGateway;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -54,7 +54,7 @@ public class DouyinTokenService {
     private static final String REAUTHORIZE_REQUIRED_KEY_PREFIX = "douyin:token:reauthorize_required:";
 
     private final RedisTemplate<String, Object> redisTemplate;
-    private final DouyinAuthGateway douyinAuthGateway;
+    private final DouyinTokenGateway douyinTokenGateway;
     private final DouyinConfig douyinConfig;
     private final long refreshThresholdSeconds;
     private final long redisLockMinutes;
@@ -62,13 +62,13 @@ public class DouyinTokenService {
 
     public DouyinTokenService(
             RedisTemplate<String, Object> redisTemplate,
-            DouyinAuthGateway douyinAuthGateway,
+            DouyinTokenGateway douyinTokenGateway,
             DouyinConfig douyinConfig,
             @Qualifier("applicationTaskExecutor") Executor tokenRefreshExecutor,
             @Value("${douyin.token.refresh-threshold-seconds:300}") long refreshThresholdSeconds,
             @Value("${douyin.token.redis-lock-minutes:5}") long redisLockMinutes) {
         this.redisTemplate = redisTemplate;
-        this.douyinAuthGateway = douyinAuthGateway;
+        this.douyinTokenGateway = douyinTokenGateway;
         this.douyinConfig = douyinConfig;
         this.tokenRefreshExecutor = tokenRefreshExecutor;
         this.refreshThresholdSeconds = refreshThresholdSeconds;
@@ -119,7 +119,7 @@ public class DouyinTokenService {
             if (refreshToken == null || refreshToken.isBlank()) {
                 throw new BusinessException("missing refresh_token, cannot refresh token");
             }
-            DouyinAuthGateway.TokenPayload payload = douyinAuthGateway.refreshToken(finalAppId, refreshToken);
+            DouyinTokenGateway.TokenPayload payload = douyinTokenGateway.refreshToken(finalAppId, refreshToken);
             cacheTokenPayload(finalAppId, payload);
 
             log.info("Douyin token refreshed successfully for appId={}", finalAppId);
@@ -169,7 +169,7 @@ public class DouyinTokenService {
     public void bootstrapWithRefreshToken(String appId, String refreshToken) {
         String finalAppId = resolveCacheKey(appId);
         String normalizedRefreshToken = normalizeRefreshToken(refreshToken);
-        DouyinAuthGateway.TokenPayload payload = douyinAuthGateway.refreshToken(finalAppId, normalizedRefreshToken);
+        DouyinTokenGateway.TokenPayload payload = douyinTokenGateway.refreshToken(finalAppId, normalizedRefreshToken);
         cacheTokenPayload(finalAppId, payload, normalizedRefreshToken);
     }
 
@@ -205,7 +205,7 @@ public class DouyinTokenService {
                 authSubjectType,
                 finalAuthorizationCode == null ? "absent" : (finalAuthorizationCode.isEmpty() ? "empty" : "present"));
 
-        DouyinAuthGateway.TokenCreateCommand command = new DouyinAuthGateway.TokenCreateCommand(
+        DouyinTokenGateway.TokenCreateCommand command = new DouyinTokenGateway.TokenCreateCommand(
                 finalAuthorizationCode,
                 finalGrantType,
                 testShop,
@@ -214,7 +214,7 @@ public class DouyinTokenService {
                 authSubjectType
         );
         try {
-            DouyinAuthGateway.TokenPayload payload = douyinAuthGateway.createToken(command);
+            DouyinTokenGateway.TokenPayload payload = douyinTokenGateway.createToken(command);
             cacheTokenPayload(finalAppId, payload);
         } catch (DouyinApiException e) {
             if (e.getErrorCode() == 31005) {
@@ -254,11 +254,11 @@ public class DouyinTokenService {
         return value != null;
     }
 
-    private void cacheTokenPayload(String appId, DouyinAuthGateway.TokenPayload payload) {
+    private void cacheTokenPayload(String appId, DouyinTokenGateway.TokenPayload payload) {
         cacheTokenPayload(appId, payload, null);
     }
 
-    private void cacheTokenPayload(String appId, DouyinAuthGateway.TokenPayload payload, String fallbackRefreshToken) {
+    private void cacheTokenPayload(String appId, DouyinTokenGateway.TokenPayload payload, String fallbackRefreshToken) {
         if (payload == null) {
             throw new BusinessException("token payload is empty");
         }
@@ -386,7 +386,7 @@ public class DouyinTokenService {
     }
 
     private void bootstrapGatewayTokenIfAvailable(String appId) {
-        DouyinAuthGateway.TokenPayload payload = douyinAuthGateway.ensureToken(appId);
+        DouyinTokenGateway.TokenPayload payload = douyinTokenGateway.ensureToken(appId);
         if (payload != null) {
             cacheTokenPayload(appId, payload);
         }
