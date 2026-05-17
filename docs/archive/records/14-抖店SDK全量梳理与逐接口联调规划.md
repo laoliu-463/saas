@@ -2,6 +2,9 @@
 
 更新时间：2026-05-09
 
+> 历史说明（2026-05-15 补记）：
+> 本文保留 2026-05 的逐接口联调现场记录。当前项目口径已移除“订单手机号解密”功能，因此文中 `14 订单解密` 及相关“下一步/阻塞/样本”表述仅作历史取证，不再属于当前联调执行范围。
+
 ## 1. 文档定位
 
 本文是抖店第三方 SDK 联调的专属执行文档，执行口径统一为：
@@ -35,7 +38,7 @@
 - `前端联调页`：`runtime/qa/out/real-pre-douyin-frontend-20260508211901/report.md` 二次复验 `1/1 PASS`，Token、授权主体、活动商品、订单同步、Dashboard 与店铺侧权限阻塞均可见
 - `20 Webhook 接收`：接收、验签、快速返回与日志脱敏单测已验证通过；仍未接业务消费与幂等落库
 - `01 Token 初始化`：2026-05-08 已使用新 OAuth 授权码重放 `POST /api/douyin/tokens`，HTTP 200、`code=200`，`hasAccessToken=true`、`hasRefreshToken=true`、`reauthorizeRequired=false`
-- 后续接口仍需继续按顺序逐项联调和回写；`09/10/11/12/15` 的最新结论是：团长侧订单归因链路已跑通，剩余真实阻塞集中在商品详情 / SKU 权限、店铺侧订单管理权限与 Webhook 业务消费；订单解密能力保留为后续增强项
+- 后续接口仍需继续按顺序逐项联调和回写；`09/10/11/12/15` 的最新结论是：团长侧订单归因链路已跑通，剩余真实阻塞集中在商品详情 / SKU 权限、店铺侧订单管理权限与 Webhook 业务消费
 
 ## 2. 执行总规则
 
@@ -154,7 +157,7 @@
 ### 3.2 当前 Real 联调关键事实
 
 1. Token 创建、刷新链路已具备真实调用能力
-2. 活动列表、活动商品列表、转链、订单解密都已有真实调用入口
+2. 活动列表、活动商品列表、转链都已有真实调用入口
 3. `RealDouyinOrderGateway` 已完成当前真实样本最小映射，团长侧订单主同步可落库；店铺侧订单详情仍受权限包阻塞
 4. `RealDouyinProductGateway.queryProductDetail` 未实现
 5. `RealDouyinProductGateway.queryProductSkus` 未实现
@@ -194,7 +197,7 @@
 2. Redis 可用
 3. PostgreSQL 已完成当前 SQL 升级
 4. 已确认真实店铺授权
-5. 已确认活动、商品、推广、订单、解密权限
+5. 已确认活动、商品、推广、订单相关联调前提
 6. 已准备真实回调地址
 7. 已明确本次联调使用的 app 与授权码归属一致
 
@@ -239,7 +242,7 @@
 | 11 | 转链 fallback-1 | `buyin.kolProductShare` | 同上 | P1 | 部分成功 | 权限待补齐 | 已执行 |
 | 12 | 转链 fallback-2 | `buyin.getProductShareMaterial` | 同上 | P1 | 失败 | 上游已下线 | 已执行 |
 | 13 | 多结算订单查询 | `buyin.colonelMultiSettlementOrders` | `GET /api/douyin/order-settlements` | P0 | 部分成功 | 已通未入链 | 是 |
-| 14 | 订单解密 | `order.batchDecrypt`（历史探针曾覆盖 `order.batchSensitiveDataRequest` / `order.batchSensitive`） | `OrderDecryptService` 链路 | P0 | 部分成功 | 已适配 | 是 |
+| 14 | 订单解密（历史项） | `order.batchDecrypt`（历史探针曾覆盖 `order.batchSensitiveDataRequest` / `order.batchSensitive`） | `OrderDecryptService` 链路 | 历史记录 | 部分成功 | 历史记录 | 否 |
 | 15 | 订单同步主接口 | `buyin.instituteOrderColonel` | `POST /api/orders/sync` | P0 | 成功 | 已适配 | 已执行 |
 | 16 | 活动创建 | `alliance.colonelActivityCreateOrUpdate` | `POST /api/douyin/activities` | P2 | 未开始 | 已通未入链 | 后置 |
 | 17 | 活动更新 | `alliance.colonelActivityCreateOrUpdate` | `PUT /api/douyin/activities/{activityId}` | P2 | 未开始 | 已通未入链 | 后置 |
@@ -851,9 +854,9 @@
 - 业务边界补记：该接口虽为免费 API，但依然受“团长授权主体”约束；后续若命中无权限或空样本，需优先核对授权主体，而不是把问题误判为订单同步主链路异常
 - 适配状态结论：部分成功；查询链路已通，返回结构已确认，但仍处于“已通未入链”，后续需继续补非空样本与订单同步所需的另一条上游映射
 - 是否阻塞下一个接口：否
-- 下一步：进入 `14 订单解密` 前，优先尝试拿到至少一条真实订单号；若拿不到，则先把 `13` 维持为“空样本成功 + 边界失败已取证”的阶段结论
+- 下一步：当前保持 `13` 的“空样本成功 + 边界失败已取证”阶段结论，并继续等待真实多结算样本
 
-### 14. 订单解密
+### 14. 订单解密（历史项）
 
 - 执行序号：14
 - 联调状态：部分成功
@@ -889,10 +892,10 @@
 -  - 官方文档已明确 `cipher_infos` 结构为 `[{auth_id: 订单号或售后单号, cipher_text: 待解密密文}]`；说明当前主要缺口不是“没有文档”，而是“没有当前授权主体名下真实订单及其密文字段样本”
 - 异常问题：real-pre 本地库当前只有 Mock 种子订单 `MOCK_SEED_TALENT_D_ORDER`，不属于当前真实授权主体，无法用于完成成功样本验证
 - 适配状态结论：部分成功；解密链路已命中真实上游且失败原因可见，但仍缺真实授权主体名下订单号，尚未拿到成功解密样本
-- 业务口径补记：当前项目已明确“订单展示、归因与看板以上游已返回字段为准”，因此订单解密不再作为联盟主链路、M1.6 数据看板真实化或 M1.7 部署验证前置
+- 业务口径补记：当前项目已明确“订单展示、归因与看板以上游已返回字段为准”，且当前产品范围已移除订单手机号解密功能，因此本节仅保留历史联调取证价值
 - 是否阻塞下一个接口：否
-- 阻塞原因：无主链路阻塞；若后续继续验证增强能力，仍需要真实授权主体名下的订单号，以及同主体真实订单返回 / 后台导出中的密文字段，拼出官方要求的 `cipher_infos[{auth_id,cipher_text}]` 样本
-- 下一步：当前先继续保持“负向取证 + 官方契约已确认”的阶段结论；后续若补到真实密文字段样本，再重试 `POST /api/orders/phone-decryptions`
+- 阻塞原因：历史记录；当前范围已移除该功能
+- 下一步：无；保留历史证据，不再继续推进
 - raw probe 证据：`runtime/qa/out/order-decrypt-raw-probes-20260507-194927/order-decrypt-raw-probes-summary.json`
 
 ### 15. 订单同步主接口
@@ -1004,7 +1007,6 @@
 12. 11 转链 fallback-1
 13. 12 转链 fallback-2
 14. 13 多结算订单查询
-15. 14 订单解密
 16. 补代码后再进 15 订单同步主接口
 
 ## 10. 本文档使用说明
@@ -1098,7 +1100,7 @@
 
 1. `POST /api/douyin/tokens`：仍需新的 OAuth 授权码重放一次完整 Token 初始化，补齐“新码换 token”证据。
 2. 店铺侧订单接口：`order.searchList`、`order.orderDetail` 已到达上游，但固定返回 `30001 / isv.app-permissions-insufficient`；需订单管理接口权限包、店铺授权与敏感数据授权生效后继续。
-3. 订单解密能力：`order.batchDecrypt` 入参契约已确认，但当前仅保留为后续增强项；若后续补成功样本，仍需同一授权主体下的真实订单号与 `cipher_infos[{auth_id,cipher_text}]` 样本。
+3. 订单解密能力：`order.batchDecrypt` 入参契约已在当时联调中确认；现已退出当前产品范围，仅保留为历史取证，不再列为后续增强项。
 4. 商品详情 / SKU：业务快照详情可 smoke，但上游 `product.detail` raw probe 仍被 `30001` 权限包阻塞，SKU 字段不能用快照替代。
 5. Webhook：接收、验签与日志脱敏已单测通过，尚未完成抖店控制台真实回调投递、业务消费、幂等表或重放补偿。
 6. Talent / Logistics：当前仓库没有可直接联调的真实达人资料网关和真实物流网关；`TalentApi` 主要包装 `buyin.instPickSourceConvert`，`LogisticsGateway` 当前只有测试实现，需先补真实接口选型和 Gateway 实现再联调。
@@ -1107,7 +1109,7 @@
 2026-05-08 21:19 复核更新：
 
 - 第 1 项已完成，新 OAuth 授权码重放证据见 `docs/archive/records/20-2026-05-08-新授权码三方全流程联调报告.md`
-- 当前不再把“真实订单归因未成立”或“订单解密成功样本未补齐”视为阻塞项；团长原生订单 `colonel_native` 归因已跑通，剩余阻塞集中在商品详情 / SKU 权限、店铺侧订单管理权限与 Webhook 业务消费
+- 当前不再把“真实订单归因未成立”或“订单解密成功样本未补齐”视为阻塞项；团长原生订单 `colonel_native` 归因已跑通，剩余阻塞集中在商品详情 / SKU 权限、店铺侧订单管理权限与 Webhook 业务消费。订单解密相关样本是否齐备，仅保留为历史联调说明。
 
 ## 13. 2026-05-08 新授权码三方全流程联调
 

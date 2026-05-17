@@ -1,0 +1,55 @@
+# Legacy compatibility profile.
+# Do not use as the default local business walkthrough entrypoint.
+# Preferred local profile: local-mock
+spring:
+  devtools:
+    restart:
+      enabled: false
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:colonel_saas}
+    username: ${DB_USER:saas}
+    password: ${DB_PASSWORD:saas123}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      timeout: 5000ms
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+douyin:
+  crawler:
+    talent-url: ${CRAWLER_TALENT_URL:https://api.douyin.com/internal/talent/list}
+    batch-size: ${CRAWLER_BATCH_SIZE:100}
+  test:
+    enabled: true
+  token:
+    auto-refresh:
+      enabled: false
+
+talent:
+  enrich:
+    mode: test
+  data:
+    public-page-crawl-enabled: false

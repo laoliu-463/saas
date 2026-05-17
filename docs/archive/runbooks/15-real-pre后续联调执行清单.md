@@ -1,5 +1,9 @@
 # 15-real-pre 后续联调执行清单
 
+> 历史说明（2026-05-15 补记）
+>
+> 本文为 real-pre 后续联调执行清单归档。当前项目口径已移除“订单手机号解密”功能，因此文中关于敏感数据解密、`order.batchDecrypt`、`/api/orders/phone-decryptions` 的执行步骤，仅保留为历史联调背景，不再属于当前必做项。
+
 更新时间：2026-05-09
 适用环境：`real-pre`
 目标：把当前真实上游联调状态、核心卡点和下一步动作固化为可执行清单。
@@ -16,7 +20,7 @@
 | Order 订单接口 | 部分覆盖 | 团长侧订单同步已通；`colonel_native` 订单归因已按原生团长字段首轮收口 |
 | Webhook 验签 / 收件箱 | 已完成本地框架 | 接收、验签、日志脱敏、`event_key` 幂等落库、消费状态推进和重放入口已覆盖；具体业务事件副作用仍待真实样本确认 |
 | 归因逻辑 | Mock / 本地通，`colonel_native` 已首轮收口 | 2026-05-08 21:19 复验后，全库订单统计为 `326/326 ATTRIBUTED`；最终“推广链接投放后新单携带来源”的商品级样本仍需后续真实投放验证 |
-| 权限包申请 | 等待平台审批 | 商品详情、店铺侧订单、敏感数据解密依赖抖店平台权限包 |
+| 权限包申请 | 等待平台审批 | 商品详情、店铺侧订单依赖抖店平台权限包；敏感数据解密相关描述仅作历史背景 |
 
 ### 2. 订单数量口径
 
@@ -36,7 +40,7 @@
 
 - 团长原生订单已可通过 `colonel_buyin_id + activity_id + product_id` 或原生团长映射归因；不再把 19 位 `colonel_buyin_id` 塞进 8-10 位 `short_id`。
 - 已真实转链的商品，在转链完成后尚未产生“通过该链接下单并携带来源”的新增商品级样本；这属于最终投放闭环验证，不阻塞本地归因收口。
-- 商品详情 / SKU、店铺侧订单和敏感数据解密权限包尚未审批完成。
+- 商品详情 / SKU、店铺侧订单相关权限包尚未审批完成；敏感数据解密相关审批描述仅作历史背景。
 - 多个真实转链样本曾返回同一个 `pickSource=v.MxZLIw`；当前本地模型已改为允许同 `pick_source` 按商品、活动、用户形成复合映射，避免后写覆盖先写。
 - real-pre fresh DB 初始化已补齐迁移挂载顺序：`colonel_buyin_id` schema、重复 `pick_source` 复合索引、`colonel_buyin_id` 回填、promotion_link 回填、未归因原因回填、原生团长种子映射、Webhook 收件箱按 `11~17` 顺序执行，并由 `RealPreMigrationContractTest` 固化。
 
@@ -205,7 +209,7 @@ Invoke-RestMethod -Method Post -Uri "$base/douyin/promotion-link-probes/raw" `
 - 能拿到当前授权主体下真实订单号。
 - 若返回敏感字段，应确认是否是密文字段，不能写入日志。
 
-### 3. 验证订单解密成功样本
+### 3. 验证订单解密成功样本（历史项）
 
 正式口径：
 
@@ -214,9 +218,9 @@ Invoke-RestMethod -Method Post -Uri "$base/douyin/promotion-link-probes/raw" `
 
 当前状态：
 
-- 本地入口 `/api/orders/phone-decryptions` 可达。
+- 本地入口 `/api/orders/phone-decryptions` 曾可达。
 - 真实负向证据已命中上游。
-- 代码仍需对齐正式 `order.batchDecrypt` 契约。
+- 本节仅保留当时联调背景；当前产品范围已移除该能力，不再继续对齐或补样本。
 
 通过标准：
 
@@ -254,4 +258,4 @@ Invoke-RestMethod -Method Post -Uri "$base/douyin/promotion-link-probes/raw" `
 
 ## 六、一句话结论
 
-当前 real-pre 已经不是“没有真实 SDK”的状态；它已经完成真实上游主链路前半段，并已按 `colonel_native` 口径完成订单归因首轮收口，Webhook 本地收件箱和重放底座也已补齐。下一步本地优先推进 M1.6 数据看板剩余项与 M1.7 部署验证；商品详情 / 店铺订单 / 解密 / Webhook 具体事件副作用继续作为三方权限包或真实样本依赖项单独跟踪。
+当前 real-pre 已经不是“没有真实 SDK”的状态；它已经完成真实上游主链路前半段，并已按 `colonel_native` 口径完成订单归因首轮收口，Webhook 本地收件箱和重放底座也已补齐。下一步本地优先推进 M1.6 数据看板剩余项与 M1.7 部署验证；商品详情 / 店铺订单 / Webhook 具体事件副作用继续作为三方权限包或真实样本依赖项单独跟踪，订单解密仅保留为历史记录。

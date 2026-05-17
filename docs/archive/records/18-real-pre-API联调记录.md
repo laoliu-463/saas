@@ -1,5 +1,9 @@
 # 18-Real-Pre 真实 SDK 联调记录
 
+> 历史说明（2026-05-15 补记）
+>
+> 本文为 real-pre API 联调归档。当前项目口径已移除“订单手机号解密”功能，因此文中关于解密入口、权限包、密文字段来源与成功样本的描述，仅保留为历史取证，不再构成当前待办。
+
 > 2026-05-06 补充：联盟自研应用获取 AccessToken 的执行口径已确认应使用 `grant_type=authorization_code`，并携带达人或机构授权返回的 `code`。本文较早阶段围绕 `authorization_self` 的试探性记录仅保留为排查历史，不再作为当前联调指引。
 
 > 2026-05-07 复核：real-pre 容器实际已关闭 `DOUYIN_TEST_ENABLED` / `APP_TEST_ENABLED`，Redis DB 0 中已有真实 `access_token / refresh_token / expire_at` 缓存；`POST /api/douyin/token-refreshes` 已返回 HTTP 200 / `code=200`。本文中 2026-05-02 关于 `refresh_token` 缺失的阻塞结论仅作为历史状态保留。
@@ -26,7 +30,7 @@
 
 > 2026-05-07 20:34 复核：`POST /api/orders/sync` 已完成 real-pre 30 分钟窗口真实同步，结果为 `totalFetched=10 / created=10 / updated=0 / attributed=0 / unattributed=10 / failed=0`；证据目录为 `runtime/qa/out/orders-sync-real-20260507-203422`。本轮真实订单未回 `pick_source`，因此全部进入未归因分支。
 
-> 2026-05-07 20:34 复核：围绕订单详情与店铺订单列表的 raw probe 已确认当前应用缺少订单管理接口权限包：`order.orderDetail` 与 `order.searchList` 均返回 `30001 / isv.app-permissions-insufficient / 应用无权限调用该接口，请先申请接口权限包`。团长订单主接口可同步订单，但当前返回中没有收件人姓名 / 手机 / 地址密文字段，订单解密成功样本需要补订单管理权限、店铺 / 物流商授权与敏感数据权限后再继续。
+> 2026-05-07 20:34 复核：围绕订单详情与店铺订单列表的 raw probe 已确认当前应用缺少订单管理接口权限包：`order.orderDetail` 与 `order.searchList` 均返回 `30001 / isv.app-permissions-insufficient / 应用无权限调用该接口，请先申请接口权限包`。团长订单主接口可同步订单，但当前返回中没有收件人姓名 / 手机 / 地址密文字段；这部分解密样本要求现仅保留为历史背景。
 
 > 2026-05-07 20:56 复核：真实订单展示 smoke 显示 `/api/orders` 已可读到同步后的订单总量 `11`、首条真实订单 `6952647330859784065`；`/api/dashboard/metrics?timeField=createTime` 可统计今日 `10` 单；`timeField=settleTime` 与 `/api/data/orders` 默认口径暂未覆盖这批未结算真实单，说明 M1.6 数据看板真实化需要明确 create_time / settle_time 的页面默认口径。
 
@@ -535,7 +539,7 @@ curl -X POST http://localhost:8081/api/douyin/webhooks/colonel-open-events \
 1. 评估 `GET /api/colonel/activities/3916506/products` 是否需要主动刷新快照入口或首屏刷新策略
 2. 继续验证 `11/12` fallback 是否还有实际命中场景，但它们已不再阻塞 Promotion 主链路
 3. 补订单归因口径：当前 `buyin.instituteOrderColonel` 真实样本未返回 `pick_source`，需确认是否存在其他归因字段、推广链接回传参数或订单详情扩展字段
-4. 补订单详情 / 店铺订单接口权限包，再复测 `order.orderDetail`、`order.searchList` 与 `order.batchDecrypt`
+4. 补订单详情 / 店铺订单接口权限包，再复测 `order.orderDetail`、`order.searchList`；`order.batchDecrypt` 相关项已转为历史记录，不再作为当前执行目标
 5. 若后续需要重建 token，再用新 OAuth code 调用 `POST /api/douyin/tokens`
 6. `POST /api/douyin/token-create-probes` 仍保留为平台提单取证工具；如需继续向平台确认旧问题，提供：
    - 应用 `星链达客`
@@ -577,7 +581,7 @@ curl -X POST http://localhost:8081/api/douyin/tokens \
 | 11 | 同 10 | `buyin.kolProductShare` | 仅在主方法 API 下线时 fallback | 前置仍是 token |
 | 12 | 同 10 | `buyin.getProductShareMaterial` | 仅在 fallback-1 继续下线时 fallback | 前置仍是 token |
 | 13 | `GET /api/douyin/order-settlements` | `buyin.colonelMultiSettlementOrders` | 2026-05-07 已实测成功命中真实上游；当前拿到 `data.orders=[]` 空样本，并确认 `t-90d` 边界错误码 | 继续作为结算订单补充样本来源 |
-| 14 | `POST /api/orders/phone-decryptions` | `order.batchDecrypt`（历史探针曾验证 `order.batchSensitiveDataRequest` / `order.batchSensitive`） | 已确认旧接口下线；同时已确认官方正式契约要求 `cipher_infos=[{auth_id,cipher_text}]`。当前团长订单主接口未返回收件人密文字段，订单详情 / 店铺订单接口又缺权限包，旧探针结果只能作为负向取证 | 需补订单管理接口权限包、店铺 / 物流商授权与敏感数据权限 |
+| 14 | `POST /api/orders/phone-decryptions` | `order.batchDecrypt`（历史探针曾验证 `order.batchSensitiveDataRequest` / `order.batchSensitive`） | 已确认旧接口下线；同时已确认官方正式契约要求 `cipher_infos=[{auth_id,cipher_text}]`。当前团长订单主接口未返回收件人密文字段，订单详情 / 店铺订单接口又缺权限包，旧探针结果仅保留为负向取证 | 历史记录，不再作为当前执行项 |
 
 ### B. 已解除的订单同步代码缺口
 
@@ -673,7 +677,7 @@ curl -X POST http://localhost:8081/api/douyin/tokens \
 - 当前真实订单样本稳定返回达人字段 `author_buyin_id / author_account / author_short_id`；系统已将 `author_buyin_id` 纳入达人 UID 识别，将 `author_account` 写入 `talent_name`，可支撑达人展示与后续独家达人归因
 - 订单重复同步更新路径已修复：`extra_data` 在专用 update SQL 中显式 `CAST(... AS JSONB)`，同一窗口重放结果为 `updated=6 / failed=0`
 - 证据目录：`runtime/qa/out/orders-attribution-evidence-20260507-211000`、`runtime/qa/out/orders-sync-author-alias-20260507-211944`、`runtime/qa/out/orders-sync-real-20260507-203422`
-- 订单解密不再是“没有真实订单号”的单点问题，而是当前应用缺少订单详情 / 店铺订单接口权限包，且团长订单主接口不返回收件人密文字段
+- 订单解密相关问题仅保留为当时联调背景：当时应用缺少订单详情 / 店铺订单接口权限包，且团长订单主接口不返回收件人密文字段
 
 ### C. 当前可直接进入的下一个动作
 
@@ -687,7 +691,7 @@ curl -X POST http://localhost:8081/api/douyin/tokens \
    - 07/08 活动商品接口
    - 10/11/12 转链
 - 13 多结算订单：已完成首轮 real-pre 取证；成功结构为 `data.cursor + data.orders`，当前窗口内订单为空，另已确认时间窗越界报错 `40004 / isv.parameter-invalid:1036`
-- 14 订单解密：已完成首轮负向取证；当前正式方法为 `order.batchDecrypt`，但还缺订单详情 / 店铺订单接口权限包以及收件人密文字段来源
+- 14 订单解密：已完成首轮负向取证；相关契约与阻塞保留为历史记录，不再作为当前范围
 2. `POST /api/orders/sync` 已完成首轮真实同步；`/orders` 与 Dashboard `createTime` 口径已能看到真实订单，下一步应在 M1.6 明确数据平台和 Dashboard 默认使用 `create_time` 还是 `settle_time`
 3. 当前可继续保留的独立验证项：
    - `POST /api/douyin/product-material-status-checks`

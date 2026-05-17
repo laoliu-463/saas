@@ -1,0 +1,82 @@
+spring:
+  devtools:
+    restart:
+      enabled: false
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:colonel_saas}
+    username: ${DB_USER:saas}
+    password: ${DB_PASSWORD:saas123}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: 5000ms
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+app:
+  activities:
+    seed-demo-on-empty: true
+  test:
+    enabled: true
+    seed-on-startup: true
+    douyin: true
+    promotion: true
+    order: true
+    talent: true
+    logistics: true
+
+talent:
+  enrich:
+    mode: test
+  data:
+    public-page-crawl-enabled: false
+
+order:
+  sync:
+    enabled: false
+
+douyin:
+  test:
+    enabled: true
+  token:
+    auto-refresh:
+      enabled: false
+
+logging:
+  level:
+    root: info
+    com.colonel.saas: info
+    com.baomidou.mybatisplus: warn
+    com.zaxxer.hikari: warn
+    org.mybatis: warn
+    org.springframework: info
+    org.springframework.boot: info
+    org.springframework.boot.autoconfigure.logging.ConditionEvaluationReportLogger: error
+    org.springframework.boot.devtools: warn
+    org.springframework.data.repository.config: warn
+    org.springframework.jdbc.core: warn
+    org.springframework.security: warn
+    org.springframework.web: info
+
+debug: false
