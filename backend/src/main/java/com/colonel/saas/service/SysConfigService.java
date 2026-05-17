@@ -202,8 +202,10 @@ public class SysConfigService {
     @Transactional(rollbackFor = Exception.class)
     public void delete(UUID id, UUID userId) {
         SystemConfig existing = getById(id);
-        existing.setDeleted(1);
-        systemConfigMapper.updateById(existing);
+        int affected = systemConfigMapper.softDeleteById(id, userId);
+        if (affected == 0) {
+            throw new BusinessException("配置项不存在");
+        }
         invalidateBusinessRuleCache(existing.getConfigKey());
         operationLogService.recordSystemAction(
                 userId,

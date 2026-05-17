@@ -1,0 +1,60 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:saas_real_pre}
+    username: ${DB_USER:saas}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 10
+      idle-timeout: 600000
+      connection-timeout: 30000
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: 5000ms
+  devtools:
+    restart:
+      enabled: false
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+knife4j:
+  enable: false
+
+app:
+  test:
+    enabled: false
+    seed-on-startup: false
+    douyin: false
+    promotion: false
+    order: false
+    talent: false
+    logistics: false
+
+talent:
+  enrich:
+    mode: ${TALENT_ENRICH_MODE:real}
+  data:
+    public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
+
+douyin:
+  webhook:
+    verify-sign: ${DOUYIN_WEBHOOK_VERIFY_SIGN:true}
+  test:
+    enabled: false
+
+logging:
+  level:
+    root: info
+    com.colonel.saas: info
+    com.doudian.open.core: warn
+    org.springframework.web.client.RestTemplate: info
+
+debug: false

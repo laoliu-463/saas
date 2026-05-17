@@ -7,7 +7,7 @@ spring:
     banner-mode: off
     log-startup-info: false
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:colonel_saas_test}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:saas_test}
     username: ${DB_USER:saas}
     password: ${DB_PASSWORD:saas123}
     driver-class-name: org.postgresql.Driver

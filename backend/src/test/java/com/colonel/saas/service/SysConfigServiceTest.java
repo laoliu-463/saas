@@ -135,4 +135,30 @@ class SysConfigServiceTest {
         verify(businessRuleConfigService, times(1)).invalidate("sample.restrict_days");
         verify(businessRuleConfigService, times(1)).invalidate("sample.restrict_days_v2");
     }
+
+    @Test
+    void delete_shouldUseLogicalDeleteAndInvalidateCache() {
+        UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        SystemConfig existing = new SystemConfig();
+        existing.setId(id);
+        existing.setConfigKey("sample.restrict_days");
+        when(systemConfigMapper.selectById(id)).thenReturn(existing);
+        when(systemConfigMapper.softDeleteById(id, userId)).thenReturn(1);
+
+        sysConfigService.delete(id, userId);
+
+        verify(systemConfigMapper).softDeleteById(id, userId);
+        verify(businessRuleConfigService).invalidate("sample.restrict_days");
+        verify(operationLogService).recordSystemAction(
+                userId,
+                "系统配置",
+                "删除配置",
+                "DELETE",
+                "SystemConfig",
+                id.toString(),
+                "sample.restrict_days",
+                "删除配置项: sample.restrict_days"
+        );
+    }
 }

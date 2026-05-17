@@ -54,7 +54,9 @@ public class WebConfig implements WebMvcConfigurer {
                         "/swagger-ui/**",
                         "/swagger-resources/**",
                         "/doc.html",
-                        "/actuator/**"
+                        "/actuator/**",
+                        "/system/env",
+                        "/api/system/env"
                 );
         registry.addInterceptor(Objects.requireNonNull(operationLogInterceptor))
                 .addPathPatterns("/**")

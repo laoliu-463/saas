@@ -2,31 +2,40 @@ package com.colonel.saas.auth.service;
 
 import com.colonel.saas.auth.dto.LoginRequest;
 import com.colonel.saas.auth.dto.LoginResponse;
+import com.colonel.saas.auth.dto.LogoutRequest;
+import com.colonel.saas.auth.dto.RefreshRequest;
+import com.colonel.saas.auth.dto.RefreshResponse;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.SysRoleMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.security.JwtTokenProvider;
+import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@SuppressWarnings("unchecked")
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
@@ -38,6 +47,8 @@ class AuthServiceTest {
     private JwtTokenProvider jwtTokenProvider;
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
+    @Mock
+    private ValueOperations<String, Object> valueOperations;
 
     private PasswordEncoder passwordEncoder;
     private AuthService authService;
@@ -48,45 +59,54 @@ class AuthServiceTest {
         authService = new AuthService(sysUserMapper, sysRoleMapper, jwtTokenProvider, passwordEncoder, redisTemplate);
     }
 
-    @Test
-    void login_success_shouldReturnTokenAndUserInfo() {
-        UUID userId = UUID.randomUUID();
-        UUID deptId = UUID.randomUUID();
-        String rawPassword = "password123";
-        String encodedPassword = passwordEncoder.encode(rawPassword);
+    private void stubJwtTokenGeneration() {
+        when(jwtTokenProvider.generateAccessToken(any(), any(), any(Integer.class), any(), any())).thenReturn("jwt.token.here");
+        when(jwtTokenProvider.generateRefreshToken(any())).thenReturn("refresh.token.here");
+        when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
+        when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
+    }
 
+    private SysUser createActiveUser(String username) {
         SysUser user = new SysUser();
-        user.setId(userId);
-        user.setDeptId(deptId);
-        user.setUsername("alice");
-        user.setRealName("Alice");
-        user.setPassword(encodedPassword);
+        user.setId(UUID.randomUUID());
+        user.setUsername(username);
+        user.setPassword(passwordEncoder.encode("password"));
         user.setStatus(1);
+        return user;
+    }
+
+    // ==================== Login Tests ====================
+
+    @Test
+    @DisplayName("登录成功返回令牌和用户信息")
+    void login_success_shouldReturnTokenAndUserInfo() {
+        SysUser user = createActiveUser("alice");
+        UUID deptId = UUID.randomUUID();
+        user.setDeptId(deptId);
+        user.setRealName("Alice");
 
         SysRole role = new SysRole();
         role.setRoleCode("admin");
         role.setDataScope(3);
 
         when(sysUserMapper.findByUsername("alice")).thenReturn(Optional.of(user));
-        when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of(role));
-        when(jwtTokenProvider.generateAccessToken(any(), any(), any(Integer.class), any(), any())).thenReturn("jwt.token.here");
-        when(jwtTokenProvider.generateRefreshToken(any())).thenReturn("refresh.token.here");
-        when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
-        when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
+        when(sysRoleMapper.findByUserId(user.getId())).thenReturn(List.of(role));
+        stubJwtTokenGeneration();
 
         LoginRequest request = new LoginRequest();
         request.setUsername("alice");
-        request.setPassword(rawPassword);
+        request.setPassword("password");
         LoginResponse response = authService.login(request);
 
         assertThat(response.getToken()).isEqualTo("jwt.token.here");
-        assertThat(response.getUserId()).isEqualTo(userId);
+        assertThat(response.getUserId()).isEqualTo(user.getId());
         assertThat(response.getUsername()).isEqualTo("alice");
         assertThat(response.getRoleCodes()).contains("admin");
         verify(sysUserMapper).updateById(any(SysUser.class));
     }
 
     @Test
+    @DisplayName("登录失败 - 用户不存在")
     void login_userNotFound_shouldThrow() {
         when(sysUserMapper.findByUsername("nobody")).thenReturn(Optional.empty());
 
@@ -100,12 +120,10 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("登录失败 - 密码错误")
     void login_wrongPassword_shouldThrow() {
-        UUID userId = UUID.randomUUID();
-        SysUser user = new SysUser();
-        user.setId(userId);
+        SysUser user = createActiveUser("bob");
         user.setPassword(passwordEncoder.encode("correct"));
-        user.setStatus(1);
 
         when(sysUserMapper.findByUsername("bob")).thenReturn(Optional.of(user));
 
@@ -119,11 +137,9 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("登录失败 - 账号已停用(status=0)")
     void login_inactiveUser_shouldThrow() {
-        UUID userId = UUID.randomUUID();
-        SysUser user = new SysUser();
-        user.setId(userId);
-        user.setPassword(passwordEncoder.encode("password"));
+        SysUser user = createActiveUser("inactive");
         user.setStatus(0);
 
         when(sysUserMapper.findByUsername("inactive")).thenReturn(Optional.of(user));
@@ -138,24 +154,17 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("登录 - ops_staff角色dataScope提权到3")
     void login_opsStaff_shouldEscalateDataScopeToAll() {
-        UUID userId = UUID.randomUUID();
-        SysUser user = new SysUser();
-        user.setId(userId);
-        user.setUsername("ops");
-        user.setPassword(passwordEncoder.encode("password"));
-        user.setStatus(1);
+        SysUser user = createActiveUser("ops");
 
         SysRole role = new SysRole();
         role.setRoleCode("ops_staff");
         role.setDataScope(1);
 
         when(sysUserMapper.findByUsername("ops")).thenReturn(Optional.of(user));
-        when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of(role));
-        when(jwtTokenProvider.generateAccessToken(any(), any(), any(Integer.class), any(), any())).thenReturn("jwt.token.here");
-        when(jwtTokenProvider.generateRefreshToken(any())).thenReturn("refresh.token.here");
-        when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
-        when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
+        when(sysRoleMapper.findByUserId(user.getId())).thenReturn(List.of(role));
+        stubJwtTokenGeneration();
 
         LoginRequest request = new LoginRequest();
         request.setUsername("ops");
@@ -164,5 +173,159 @@ class AuthServiceTest {
         LoginResponse response = authService.login(request);
 
         assertThat(response.getDataScope()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("登录 - admin角色dataScope提权到3")
+    void login_adminRole_shouldEscalateDataScopeToAll() {
+        SysUser user = createActiveUser("admin");
+
+        SysRole role = new SysRole();
+        role.setRoleCode("admin");
+        role.setDataScope(2);
+
+        when(sysUserMapper.findByUsername("admin")).thenReturn(Optional.of(user));
+        when(sysRoleMapper.findByUserId(user.getId())).thenReturn(List.of(role));
+        stubJwtTokenGeneration();
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername("admin");
+        request.setPassword("password");
+
+        LoginResponse response = authService.login(request);
+
+        assertThat(response.getDataScope()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("登录 - status为null时抛出异常")
+    void login_nullStatus_shouldThrow() {
+        SysUser user = createActiveUser("nullstatus");
+        user.setStatus(null);
+
+        when(sysUserMapper.findByUsername("nullstatus")).thenReturn(Optional.of(user));
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername("nullstatus");
+        request.setPassword("password");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("账号已停用");
+    }
+
+    // ==================== RefreshToken Tests ====================
+
+    @Test
+    @DisplayName("刷新令牌成功返回新令牌")
+    void refreshToken_success_shouldReturnNewToken() {
+        UUID userId = UUID.randomUUID();
+        Claims claims = org.mockito.Mockito.mock(Claims.class);
+        when(claims.getSubject()).thenReturn(userId.toString());
+        when(claims.get("type", String.class)).thenReturn("refresh");
+        when(jwtTokenProvider.parseClaims("valid.refresh.token")).thenReturn(claims);
+
+        SysUser user = new SysUser();
+        user.setId(userId);
+        user.setStatus(1);
+        user.setUsername("testuser");
+        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of());
+        when(jwtTokenProvider.generateAccessToken(eq(userId), any(), any(Integer.class), any(), any())).thenReturn("new.access.token");
+        when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
+        when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
+
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken("valid.refresh.token");
+
+        RefreshResponse response = authService.refreshToken(request);
+
+        assertThat(response.getAccessToken()).isEqualTo("new.access.token");
+        assertThat(response.getRefreshToken()).isEqualTo("valid.refresh.token");
+        assertThat(response.getAccessTokenExpiresIn()).isEqualTo(3600L);
+        assertThat(response.getRefreshExpiresIn()).isEqualTo(604800L);
+    }
+
+    @Test
+    @DisplayName("刷新令牌失败 - 令牌无效")
+    void refreshToken_invalidToken_shouldThrow() {
+        when(jwtTokenProvider.parseClaims("invalid.token")).thenThrow(new RuntimeException("invalid token"));
+
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken("invalid.token");
+
+        assertThatThrownBy(() -> authService.refreshToken(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Refresh Token 无效或已过期");
+    }
+
+    // ==================== Logout Tests ====================
+
+    @Test
+    @DisplayName("登出成功将令牌加入黑名单并吊销刷新令牌")
+    void logout_success_shouldBlacklistTokenAndRevokeRefresh() {
+        when(jwtTokenProvider.parseClaims("valid.access.token")).thenReturn(org.mockito.Mockito.mock(Claims.class));
+        when(jwtTokenProvider.getTokenHash("valid.access.token")).thenReturn("accessHash");
+        when(jwtTokenProvider.getRemainingSeconds("valid.access.token")).thenReturn(3600L);
+
+        when(jwtTokenProvider.parseClaims("valid.refresh.token")).thenReturn(org.mockito.Mockito.mock(Claims.class));
+        when(jwtTokenProvider.getTokenHash("valid.refresh.token")).thenReturn("refreshHash");
+        when(jwtTokenProvider.getRemainingSeconds("valid.refresh.token")).thenReturn(604800L);
+
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        LogoutRequest request = new LogoutRequest();
+        request.setAccessToken("valid.access.token");
+        request.setRefreshToken("valid.refresh.token");
+
+        authService.logout(request);
+
+        verify(valueOperations).set(eq("auth:blacklist:accessHash"), eq("1"), eq(3600L), eq(TimeUnit.SECONDS));
+        verify(valueOperations).set(eq("auth:refresh:refreshHash"), eq("1"), eq(604800L), eq(TimeUnit.SECONDS));
+    }
+
+    @Test
+    @DisplayName("登出 - 令牌已过期则抛出异常")
+    void logout_expiredToken_shouldThrow() {
+        when(jwtTokenProvider.parseClaims("expired.token")).thenThrow(new RuntimeException("expired"));
+
+        LogoutRequest request = new LogoutRequest();
+        request.setAccessToken("expired.token");
+
+        assertThatThrownBy(() -> authService.logout(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Token 无效");
+    }
+
+    // ==================== IsTokenBlacklisted Tests ====================
+
+    @Test
+    @DisplayName("令牌在黑名单中返回true")
+    void isTokenBlacklisted_tokenInBlacklist_shouldReturnTrue() {
+        when(redisTemplate.hasKey("auth:blacklist:blacklisted.token")).thenReturn(true);
+
+        boolean result = authService.isTokenBlacklisted("blacklisted.token");
+
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    @DisplayName("令牌不在黑名单中返回false")
+    void isTokenBlacklisted_tokenNotInBlacklist_shouldReturnFalse() {
+        when(redisTemplate.hasKey("auth:blacklist:valid.token")).thenReturn(false);
+
+        boolean result = authService.isTokenBlacklisted("valid.token");
+
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    @DisplayName("令牌黑名单Redis返回null时返回false")
+    void isTokenBlacklisted_redisReturnsNull_shouldReturnFalse() {
+        when(redisTemplate.hasKey("auth:blacklist:some.token")).thenReturn(null);
+
+        boolean result = authService.isTokenBlacklisted("some.token");
+
+        assertThat(result).isFalse();
     }
 }

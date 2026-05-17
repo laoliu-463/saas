@@ -38,7 +38,9 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-resources/**",
                                 "/doc.html",
-                                "/actuator/**"
+                                "/actuator/**",
+                                "/system/env",
+                                "/api/system/env"
                         ).permitAll()
                         .anyRequest().authenticated())
                 .cors(Customizer.withDefaults());
