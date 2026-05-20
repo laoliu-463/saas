@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $PSCommandPath
 $repoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
-$composeFile = Join-Path $repoRoot "docker-compose.yml"
+$composeFile = Join-Path $repoRoot "docker-compose.real-pre.yml"
 $envFile = Join-Path $repoRoot ".env.real-pre"
 
 if (-not (Test-Path -LiteralPath $composeFile)) {

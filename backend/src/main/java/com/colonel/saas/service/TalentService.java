@@ -229,8 +229,23 @@ public class TalentService {
         if (StringUtils.hasText(request.getIntro())) {
             request.setIntro(request.getIntro().trim());
         }
+        if (!StringUtils.hasText(request.getDouyinAccount()) && StringUtils.hasText(request.getDouyinNo())) {
+            request.setDouyinAccount(request.getDouyinNo().trim());
+        }
+        if (!StringUtils.hasText(request.getTalentUid()) && StringUtils.hasText(request.getUid())) {
+            request.setTalentUid(request.getUid().trim());
+        }
+        if (request.getUnsupportedFields() == null || request.getUnsupportedFields().isEmpty()) {
+            request.setUnsupportedFields(List.of("talentLevel", "sales30d"));
+        }
         request.setId(UUID.randomUUID());
         talentMapper.insert(request);
+        boolean profilePrefilled = StringUtils.hasText(request.getDataSource()) && StringUtils.hasText(request.getSyncStatus());
+        if (profilePrefilled) {
+            request.setLastSyncTime(LocalDateTime.now());
+            talentMapper.updateById(request);
+            return request;
+        }
         TalentEnrichTask task = createEnrichTask(request, ENRICH_TASK_STATUS_PENDING, null);
         markEnrichTask(task, ENRICH_TASK_STATUS_RUNNING, null);
         try {

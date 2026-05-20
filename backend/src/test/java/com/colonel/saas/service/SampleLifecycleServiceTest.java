@@ -64,7 +64,7 @@ class SampleLifecycleServiceTest {
         SampleRequest sample = new SampleRequest();
         sample.setId(requestId);
         sample.setStatus(5);
-        when(sampleRequestMapper.selectById(requestId)).thenReturn(sample);
+        when(sampleRequestMapper.selectBatchIds(List.of(requestId))).thenReturn(List.of(sample));
 
         int completed = service.completePendingHomeworkByOrder(order);
 
@@ -72,7 +72,13 @@ class SampleLifecycleServiceTest {
         ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
         verify(sampleRequestMapper).updateById(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(6);
-        verify(sampleStatusLogService).log(requestId, 5, 6, null, "auto complete by order: order-1");
+        verify(sampleStatusLogService).logBatch(org.mockito.ArgumentMatchers.argThat(entries ->
+                entries.size() == 1
+                        && entries.get(0).requestId().equals(requestId)
+                        && entries.get(0).fromStatus() == 5
+                        && entries.get(0).toStatus() == 6
+                        && "auto complete by order: order-1".equals(entries.get(0).remark())
+        ));
     }
 
     @Test
@@ -100,7 +106,7 @@ class SampleLifecycleServiceTest {
         SampleRequest sample = new SampleRequest();
         sample.setId(requestId);
         sample.setStatus(5);
-        when(sampleRequestMapper.selectById(requestId)).thenReturn(sample);
+        when(sampleRequestMapper.selectBatchIds(List.of(requestId))).thenReturn(List.of(sample));
 
         int closed = service.autoCloseTimeoutPendingHomework(30);
 
@@ -109,7 +115,13 @@ class SampleLifecycleServiceTest {
         verify(sampleRequestMapper).updateById(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(8);
         assertThat(captor.getValue().getCloseReason()).contains("30天");
-        verify(sampleStatusLogService).log(requestId, 5, 8, null, "超时30天未出单自动关闭");
+        verify(sampleStatusLogService).logBatch(org.mockito.ArgumentMatchers.argThat(entries ->
+                entries.size() == 1
+                        && entries.get(0).requestId().equals(requestId)
+                        && entries.get(0).fromStatus() == 5
+                        && entries.get(0).toStatus() == 8
+                        && entries.get(0).remark().contains("30天")
+        ));
     }
 
     @Test
@@ -139,7 +151,7 @@ class SampleLifecycleServiceTest {
         SampleRequest sample = new SampleRequest();
         sample.setId(requestId);
         sample.setStatus(2);
-        when(sampleRequestMapper.selectById(requestId)).thenReturn(sample);
+        when(sampleRequestMapper.selectBatchIds(List.of(requestId))).thenReturn(List.of(sample));
 
         int closed = service.autoCloseTimeoutPendingShip(7);
 
@@ -147,6 +159,12 @@ class SampleLifecycleServiceTest {
         ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
         verify(sampleRequestMapper).updateById(captor.capture());
         assertThat(captor.getValue().getCloseReason()).isEqualTo("超时7天未发货自动关闭");
-        verify(sampleStatusLogService).log(requestId, 2, 8, null, "超时7天未发货自动关闭");
+        verify(sampleStatusLogService).logBatch(org.mockito.ArgumentMatchers.argThat(entries ->
+                entries.size() == 1
+                        && entries.get(0).requestId().equals(requestId)
+                        && entries.get(0).fromStatus() == 2
+                        && entries.get(0).toStatus() == 8
+                        && "超时7天未发货自动关闭".equals(entries.get(0).remark())
+        ));
     }
 }

@@ -1,6 +1,6 @@
 # real-pre 证据索引
 
-更新时间：2026-05-17
+更新时间：2026-05-20
 
 本文主要索引已经落盘的 real-pre 收口证据；如收录 TEST/mock 基线证据，必须显式标注环境边界，不新增推断性样本，不补伪造数据。所有结论均以 `runtime/qa/out/` 下目录和文件为准。
 
@@ -11,6 +11,11 @@
 
 ## 目录索引
 
+- 达人真实资料接入 E2E（2026-05-20）：
+  - 脚本：`runtime/qa/e2e/domains/talent-profile-real-data.e2e.cjs`
+  - 输出目录模式：`runtime/qa/out/e2e-talent-profile-real-data-YYYYMMDD-HHmmss/`
+  - 说明：[达人真实数据接入说明.md](/D:/Projects/SAAS/docs/达人真实数据接入说明.md)
+  - 口径：真实链接成功则校验 `nickname/fans_count/like_count/works_count` 等字段、`sync_status`、`raw_payload`、`talent_profile_sync_log`；失败分支校验 `failed` + `error_message`；人工补充必须 `data_source=manual`
 - real-pre 准入基线证据目录：
   - [qa-real-pre-preflight-20260517-090308-762](/D:/Projects/SAAS/runtime/qa/out/qa-real-pre-preflight-20260517-090308-762)
   - [real-pre-e2e-20260517-090457-069](/D:/Projects/SAAS/runtime/qa/out/real-pre-e2e-20260517-090457-069)

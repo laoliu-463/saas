@@ -3,16 +3,20 @@ package com.colonel.saas.entity;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.colonel.saas.common.base.BaseEntity;
+import com.colonel.saas.common.typehandler.JsonbListTypeHandler;
+import com.colonel.saas.common.typehandler.JsonbTypeHandler;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("talent")
+@TableName(value = "talent", autoResultMap = true)
 public class Talent extends BaseEntity {
 
     @TableField("douyin_uid")
@@ -83,6 +87,36 @@ public class Talent extends BaseEntity {
 
     @TableField("data_source")
     private String dataSource;
+
+    @TableField("douyin_account")
+    private String douyinAccount;
+
+    @TableField("talent_uid")
+    private String talentUid;
+
+    @TableField("talent_level")
+    private String talentLevel;
+
+    @TableField("sales_30d")
+    private Long sales30d;
+
+    @TableField("sync_status")
+    private String syncStatus;
+
+    @TableField("last_sync_time")
+    private LocalDateTime lastSyncTime;
+
+    @TableField("sync_error_code")
+    private String syncErrorCode;
+
+    @TableField("sync_error_message")
+    private String syncErrorMessage;
+
+    @TableField(value = "raw_payload", typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> rawPayload;
+
+    @TableField(value = "unsupported_fields", typeHandler = JsonbListTypeHandler.class)
+    private List<String> unsupportedFields;
 
     @TableField("blacklisted")
     private Boolean blacklisted;

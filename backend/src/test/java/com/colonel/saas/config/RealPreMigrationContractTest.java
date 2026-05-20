@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RealPreMigrationContractTest {
 
     private static final Path DB_DIR = Path.of("src/main/resources/db");
-    private static final Path COMPOSE_FILE = Path.of("../docker-compose.yml").normalize();
+    private static final Path COMPOSE_FILE = Path.of("../docker-compose.test.yml").normalize();
 
     @Test
     void pickSourceColonelBuyinSchemaMigration_shouldKeepBackfillInSeparateMigration() throws IOException {

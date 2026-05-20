@@ -11,6 +11,7 @@ public final class TalentInputParser {
 
     private static final Pattern SEC_UID_PATTERN = Pattern.compile("sec_uid=([^&]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern USER_PATH_PATTERN = Pattern.compile("/user/([^/?]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern V_DOUYIN_USER_PATTERN = Pattern.compile("v\\.douyin\\.com/[^\\s]+", Pattern.CASE_INSENSITIVE);
     private static final Pattern UID_PATTERN = Pattern.compile("^\\d{5,30}$");
     private static final Pattern DOUYIN_NO_PATTERN = Pattern.compile("^[a-zA-Z0-9_.-]{3,50}$");
 
@@ -23,8 +24,9 @@ public final class TalentInputParser {
         }
         String input = inputValue.trim();
 
-        if (input.startsWith("http://") || input.startsWith("https://")) {
-            return parseUrl(input);
+        if (input.startsWith("http://") || input.startsWith("https://") || V_DOUYIN_USER_PATTERN.matcher(input).find()) {
+            String url = input.startsWith("http://") || input.startsWith("https://") ? input : "https://" + input;
+            return parseUrl(url);
         }
 
         if (UID_PATTERN.matcher(input).matches()) {

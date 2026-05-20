@@ -98,6 +98,15 @@ talent:
     mode: ${TALENT_ENRICH_MODE:real}
   data:
     public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
+  profile:
+    public-web:
+      enabled: ${TALENT_PROFILE_PUBLIC_WEB_ENABLED:true}
+    http:
+      enabled: ${TALENT_PROFILE_HTTP_ENABLED:false}
+      endpoint: ${TALENT_PROFILE_HTTP_ENDPOINT:}
+      method: ${TALENT_PROFILE_HTTP_METHOD:GET}
+      token: ${TALENT_PROFILE_HTTP_TOKEN:}
+      header-authorization: ${TALENT_PROFILE_HTTP_AUTHORIZATION:}
 
 kdniao:
   enabled: ${KDNIAO_ENABLED:false}

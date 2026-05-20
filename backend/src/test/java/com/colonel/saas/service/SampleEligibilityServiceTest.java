@@ -41,7 +41,8 @@ class SampleEligibilityServiceTest {
 
         Talent talent = new Talent();
         talent.setDouyinUid("talent_ok");
-        talent.setLevel("LV2");
+        talent.setTalentLevel("LV2");
+        talent.setUnsupportedFields(java.util.List.of());
 
         var result = service.evaluate(talent, null);
 
@@ -53,8 +54,6 @@ class SampleEligibilityServiceTest {
     void shouldFailWhenTalentBelowStandard() {
         when(businessRuleConfigService.getSampleDefaultStandard())
                 .thenReturn(new BusinessRuleConfigService.SampleDefaultStandardConfig(30000L, "LV1", Map.of()));
-        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<ResultSetExtractor<Long>>any(), any()))
-                .thenReturn(1000L);
 
         CrawlerTalentInfo info = new CrawlerTalentInfo();
         info.setTalentId("talent_low");
@@ -63,7 +62,21 @@ class SampleEligibilityServiceTest {
         var result = service.evaluate(null, info);
 
         assertThat(result.eligible()).isFalse();
-        assertThat(result.reasons()).isNotEmpty();
-        assertThat(result.actual().level()).isEqualTo("LV0");
+        assertThat(result.reasons()).anyMatch(reason -> reason.contains("销售额") || reason.contains("等级"));
+        assertThat(result.actual().level()).isNull();
+    }
+
+    @Test
+    void shouldRequireReasonWhenTalentLevelUnsupported() {
+        when(businessRuleConfigService.getSampleDefaultStandard())
+                .thenReturn(new BusinessRuleConfigService.SampleDefaultStandardConfig(null, "LV1", Map.of()));
+        Talent talent = new Talent();
+        talent.setDouyinUid("talent_unsupported");
+        talent.setUnsupportedFields(java.util.List.of("talentLevel", "sales30d"));
+
+        var result = service.evaluate(talent, null);
+
+        assertThat(result.eligible()).isFalse();
+        assertThat(result.reasons()).anyMatch(reason -> reason.contains("达人等级未同步"));
     }
 }

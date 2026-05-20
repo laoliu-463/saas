@@ -42,8 +42,9 @@
 ## 快速上手
 
 1. 测试环境：`docker compose --env-file .env.test --project-name saas-test -f docker-compose.test.yml up -d`
-2. 打开前端：`http://localhost:3000`
-3. 登录后访问 `/dev/test` 进行 reset / seed / 造数调试。
+2. 预生产环境：`docker compose --env-file .env.real-pre --project-name saas-active -f docker-compose.real-pre.yml up -d`
+3. 打开前端：`http://localhost:3000`
+4. 登录后访问 `/dev/test` 进行 reset / seed / 造数调试。
 
 ## 当前标准启动格局
 

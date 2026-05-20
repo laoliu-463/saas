@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $PSCommandPath
 $repoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
-$composeFile = Join-Path $repoRoot "docker-compose.yml"
+$composeFile = Join-Path $repoRoot "docker-compose.test.yml"
 $envFile = Join-Path $repoRoot ".env.test"
 $projectName = "saas-active"
 $timeoutSeconds = 120

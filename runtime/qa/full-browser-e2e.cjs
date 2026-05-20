@@ -3,7 +3,7 @@ const path = require('node:path');
 const cp = require('node:child_process');
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const { chromium, request } = require(path.join(REPO_ROOT, 'node_modules', 'playwright'));
-const { postTestAction } = require('./test-api.cjs');
+const { postTestAction, gotoStable, resetBrowserSession } = require('./test-api.cjs');
 
 const FRONTEND = process.env.QA_FRONTEND || 'http://localhost:3001';
 const BACKEND = process.env.QA_BACKEND || 'http://localhost:8081';
@@ -145,26 +145,18 @@ async function bodyText(targetPage = page) {
 }
 
 async function waitForIdle(targetPage = page) {
-  await targetPage.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-  await targetPage.locator('.n-spin-body').waitFor({ state: 'hidden', timeout: 4000 }).catch(() => {});
-  await targetPage.locator('.loading-state').waitFor({ state: 'hidden', timeout: 4000 }).catch(() => {});
+  await targetPage.locator('.n-spin-body').waitFor({ state: 'hidden', timeout: 8000 }).catch(() => {});
+  await targetPage.locator('.loading-state').waitFor({ state: 'hidden', timeout: 8000 }).catch(() => {});
+  await targetPage.locator('#boot-loading').waitFor({ state: 'hidden', timeout: 8000 }).catch(() => {});
   await sleep(400);
 }
 
 async function gotoPath(route) {
-  await page.goto(`${FRONTEND}${route}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await waitForIdle(page);
+  await gotoStable(page, `${FRONTEND}${route}`);
 }
 
 async function resetSession() {
-  await page.goto(`${FRONTEND}/login`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-  await page.evaluate(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('userInfo');
-    sessionStorage.clear();
-  }).catch(() => {});
-  await context.clearCookies();
-  await page.goto(`${FRONTEND}/login`, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
+  await resetBrowserSession(page, context, FRONTEND);
 }
 
 async function login(username, password) {
@@ -271,7 +263,7 @@ async function record(phaseKey, id, route, executor) {
 }
 
 async function collectEnvironment() {
-  const front = await page.goto(FRONTEND, { waitUntil: 'networkidle', timeout: 30000 });
+  const front = await page.goto(FRONTEND, { waitUntil: 'domcontentloaded', timeout: 45000 });
   let healthStatus = null;
   let healthJson = null;
   try {
@@ -339,7 +331,7 @@ async function phase1() {
 
   await record('phase1', 'T1-8', '/dashboard', async () => {
     await login('admin', 'admin123');
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForIdle(page);
     const current = page.url().replace(FRONTEND, '');
     const ok = current === '/dashboard';
@@ -416,7 +408,10 @@ async function phase3() {
     const productText = await bodyText();
     await gotoPath('/talent');
     const talentText = await bodyText();
-    const ok = seed.status === 200 && /商品/.test(productText) && /达人/.test(talentText);
+    const ok = seed.status === 200
+      && seedState.shippingSampleId
+      && /商品/.test(productText)
+      && /达人/.test(talentText);
     const screenshot = await shot('T3-2_seed_after');
     return {
       result: ok ? '✅' : '❌',
@@ -688,9 +683,9 @@ async function phase6() {
     await gotoPath('/data');
     await page.getByText('订单明细').first().click();
     await waitForIdle(page);
-    await page.goBack({ waitUntil: 'networkidle' });
+    await page.goBack({ waitUntil: 'domcontentloaded' });
     const backPath = page.url().replace(FRONTEND, '');
-    await page.goForward({ waitUntil: 'networkidle' });
+    await page.goForward({ waitUntil: 'domcontentloaded' });
     const forwardPath = page.url().replace(FRONTEND, '');
     const screenshot = await shot('T6-5_history_navigation');
     const ok = backPath === '/data' && forwardPath === '/data/orders';

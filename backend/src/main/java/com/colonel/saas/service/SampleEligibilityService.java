@@ -25,15 +25,25 @@ public class SampleEligibilityService {
 
     public EligibilityResult evaluate(Talent talent, CrawlerTalentInfo talentInfo) {
         BusinessRuleConfigService.SampleDefaultStandardConfig standard = businessRuleConfigService.getSampleDefaultStandard();
-        long monthlySales = resolveMonthlySales(talent, talentInfo);
-        String level = resolveLevel(talent, talentInfo);
+        boolean salesUnsupported = isUnsupported(talent, "sales30d");
+        boolean levelUnsupported = isUnsupported(talent, "talentLevel");
+        Long monthlySales = resolveMonthlySales(talent, talentInfo, salesUnsupported);
+        String level = resolveLevel(talent, talentInfo, levelUnsupported);
 
         List<String> reasons = new ArrayList<>();
-        if (standard.min30DaySales() != null && monthlySales < standard.min30DaySales()) {
-            reasons.add("近30天销售额未达到 " + standard.min30DaySales());
+        if (standard.min30DaySales() != null) {
+            if (salesUnsupported) {
+                reasons.add("近30天销售额未同步，请填写申请原因");
+            } else if (monthlySales != null && monthlySales < standard.min30DaySales()) {
+                reasons.add("近30天销售额未达到 " + standard.min30DaySales());
+            }
         }
-        if (StringUtils.hasText(standard.minLevel()) && compareLevel(level, standard.minLevel()) < 0) {
-            reasons.add("达人等级未达到 " + standard.minLevel());
+        if (StringUtils.hasText(standard.minLevel())) {
+            if (levelUnsupported) {
+                reasons.add("达人等级未同步，请填写申请原因");
+            } else if (compareLevel(level, standard.minLevel()) < 0) {
+                reasons.add("达人等级未达到 " + standard.minLevel());
+            }
         }
 
         return new EligibilityResult(
@@ -44,7 +54,13 @@ public class SampleEligibilityService {
         );
     }
 
-    private long resolveMonthlySales(Talent talent, CrawlerTalentInfo talentInfo) {
+    private Long resolveMonthlySales(Talent talent, CrawlerTalentInfo talentInfo, boolean salesUnsupported) {
+        if (salesUnsupported) {
+            return null;
+        }
+        if (talent != null && talent.getSales30d() != null) {
+            return talent.getSales30d();
+        }
         String talentUid = talent != null && StringUtils.hasText(talent.getDouyinUid())
                 ? talent.getDouyinUid()
                 : (talentInfo == null ? null : talentInfo.getTalentId());
@@ -61,20 +77,34 @@ public class SampleEligibilityService {
         return value == null ? 0L : value;
     }
 
-    private String resolveLevel(Talent talent, CrawlerTalentInfo talentInfo) {
+    private String resolveLevel(Talent talent, CrawlerTalentInfo talentInfo, boolean levelUnsupported) {
+        if (levelUnsupported) {
+            return null;
+        }
+        if (talent != null && StringUtils.hasText(talent.getTalentLevel())) {
+            return normalizeLevel(talent.getTalentLevel());
+        }
         String raw = talent == null ? null : talent.getLevel();
         if (StringUtils.hasText(raw)) {
             return normalizeLevel(raw);
         }
-        long fans = 0L;
-        if (talent != null && talent.getFans() != null) {
-            fans = talent.getFans();
-        } else if (talentInfo != null && talentInfo.getFansCount() != null) {
-            fans = talentInfo.getFansCount();
+        return null;
+    }
+
+    private boolean isUnsupported(Talent talent, String field) {
+        if (talent == null) {
+            return "talentLevel".equals(field) || "sales30d".equals(field);
         }
-        if (fans >= 300_000) return "LV2";
-        if (fans >= 100_000) return "LV1";
-        return "LV0";
+        if (talent.getUnsupportedFields() == null) {
+            return "talentLevel".equals(field) || "sales30d".equals(field);
+        }
+        if (talent.getUnsupportedFields().isEmpty()) {
+            return false;
+        }
+        return talent.getUnsupportedFields().stream()
+                .filter(StringUtils::hasText)
+                .map(value -> value.trim())
+                .anyMatch(field::equalsIgnoreCase);
     }
 
     private String normalizeLevel(String raw) {
@@ -110,7 +140,11 @@ public class SampleEligibilityService {
 
     public record SampleDefaultStandard(Long min30DaySales, String minLevel, Map<String, Object> raw) {}
 
-    public record TalentSnapshot(Long monthlySales, String level) {}
+    public record TalentSnapshot(Long monthlySales, String level) {
+        public TalentSnapshot {
+            // monthlySales/level may be null when provider marks field unsupported
+        }
+    }
 
     public record EligibilityResult(
             boolean eligible,
