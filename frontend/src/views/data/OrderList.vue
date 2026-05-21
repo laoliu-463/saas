@@ -45,6 +45,7 @@
 
       <n-data-table
         remote
+        data-testid="data-orders-table"
         :columns="columns"
         :data="data"
         :loading="loading"
@@ -104,19 +105,14 @@ import { computed, h, onMounted, reactive, ref } from 'vue'
 import { NButton, NTag, NText, useMessage } from 'naive-ui'
 import { exportOrders, getOrderPage } from '../../api/data'
 import { useAuthStore } from '../../stores/auth'
+import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 
 const authStore = useAuthStore()
 const message = useMessage()
 const loading = ref(false)
 
 const data = ref<any[]>([])
-const pagination = reactive({
-  page: 1,
-  pageSize: 20,
-  itemCount: 0,
-  showSizePicker: true,
-  pageSizes: [10, 20, 50]
-})
+const pagination = reactive(createPaginationState())
 
 const buildTodayRange = (): [number, number] => {
   const start = new Date()
@@ -187,6 +183,7 @@ const openDetail = (row: any) => {
 }
 
 const fetchData = async () => {
+  pagination.pageSize = normalizePageSize(pagination.pageSize)
   loading.value = true
   try {
     let startDate
@@ -268,7 +265,7 @@ const handlePageChange = (page: number) => {
 }
 
 const handlePageSizeChange = (pageSize: number) => {
-  pagination.pageSize = pageSize
+  pagination.pageSize = normalizePageSize(pageSize)
   pagination.page = 1
   fetchData()
 }

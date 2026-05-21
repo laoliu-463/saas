@@ -1,5 +1,5 @@
 <template>
-  <div class="ops-shipping">
+  <div class="ops-shipping" data-testid="ops-shipping-page">
     <PageHeader
       title="寄样发货台"
       description="集中处理待发货及后续物流中的寄样单，录入单号、跟踪签收进度，并处理物流异常。"
@@ -35,6 +35,7 @@
         <n-data-table
           :columns="batchColumns"
           :data="batchItems"
+          data-testid="ops-shipping-batch-preview"
           :max-height="300"
           size="small"
         />
@@ -52,6 +53,7 @@
         <n-tab-pane v-for="tab in tabList" :key="tab.value" :name="tab.value" :tab="tab.label">
           <n-data-table
             remote
+            data-testid="ops-shipping-table"
             :columns="columns"
             :data="data"
             :loading="loading"
@@ -74,6 +76,7 @@ import { getSamplePage, batchShipSamples, exportSamples } from '../../api/sample
 import PageHeader from '../../components/PageHeader.vue';
 import SampleDetail from '../sample/SampleDetail.vue';
 import * as XLSX from 'xlsx';
+import { createPaginationState, normalizePageSize } from '../../utils/pagination';
 
 const message = useMessage();
 const loading = ref(false);
@@ -89,13 +92,7 @@ const tabList = [
   { label: '已关闭', value: 'CLOSED' }
 ];
 
-const pagination = reactive({
-  page: 1,
-  pageSize: 10,
-  itemCount: 0,
-  showSizePicker: true,
-  pageSizes: [10, 20, 50]
-});
+const pagination = reactive(createPaginationState());
 
 const showDetail = ref(false);
 const currentSampleId = ref('');
@@ -150,7 +147,7 @@ const handlePageChange = (page: number) => {
 };
 
 const handlePageSizeChange = (pageSize: number) => {
-  pagination.pageSize = pageSize;
+  pagination.pageSize = normalizePageSize(pageSize);
   pagination.page = 1;
   fetchData();
 };

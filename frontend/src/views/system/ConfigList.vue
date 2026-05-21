@@ -1,5 +1,5 @@
 <template>
-  <div class="config-list">
+  <div class="config-list" data-testid="system-config-page">
     <!-- Toolbar -->
     <div class="config-toolbar">
       <n-space wrap :size="10">
@@ -25,6 +25,7 @@
     <div class="config-table-card">
       <n-data-table
         remote
+        data-testid="system-config-table"
         :columns="columns"
         :data="data"
         :loading="loading"
@@ -91,18 +92,13 @@
 import { ref, reactive, h, onMounted } from 'vue'
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui'
 import { getConfigPage, createConfig, updateConfig, deleteConfig } from '../../api/sys'
+import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 
 const message = useMessage()
 
 const loading = ref(false)
 const data = ref([])
-const pagination = reactive({
-  page: 1,
-  pageSize: 20,
-  itemCount: 0,
-  showSizePicker: true,
-  pageSizes: [10, 20, 50]
-})
+const pagination = reactive(createPaginationState())
 
 const searchParams = reactive({
   configGroup: null as string | null,
@@ -173,7 +169,7 @@ const handlePageChange = (page: number) => {
 }
 
 const handlePageSizeChange = (pageSize: number) => {
-  pagination.pageSize = pageSize
+  pagination.pageSize = normalizePageSize(pageSize)
   pagination.page = 1
   fetchData()
 }

@@ -38,6 +38,7 @@ import SampleDetail from './SampleDetail.vue';
 import type { SampleItem } from '../../types';
 import { useAuthStore } from '../../stores/auth';
 import { ROLE_CODES } from '../../constants/rbac';
+import { createPaginationState, normalizePageSize } from '../../utils/pagination';
 
 const message = useMessage();
 const authStore = useAuthStore();
@@ -69,13 +70,7 @@ const tabList = computed(() =>
 const activeTab = ref(isOpsStaffOnly.value ? 'PENDING_SHIP' : 'PENDING_AUDIT');
 const data = ref<SampleItem[]>([]);
 
-const pagination = reactive({
-  page: 1,
-  pageSize: 10,
-  itemCount: 0,
-  showSizePicker: true,
-  pageSizes: [10, 20, 50]
-});
+const pagination = reactive(createPaginationState());
 
 const showDetail = ref(false);
 const currentSampleId = ref('');
@@ -171,7 +166,7 @@ const handlePageChange = (page: number) => {
 };
 
 const handlePageSizeChange = (pageSize: number) => {
-  pagination.pageSize = pageSize;
+  pagination.pageSize = normalizePageSize(pageSize);
   pagination.page = 1;
   fetchData();
 };

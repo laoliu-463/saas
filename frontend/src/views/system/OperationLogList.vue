@@ -1,5 +1,5 @@
 <template>
-  <div class="operation-log-list">
+  <div class="operation-log-list" data-testid="system-operation-logs-page">
     <div class="toolbar">
       <n-space wrap :size="10">
         <n-input v-model:value="filters.username" placeholder="操作人" clearable style="width: 160px" />
@@ -26,6 +26,7 @@
     <div class="table-card">
       <n-data-table
         remote
+        data-testid="system-operation-logs-table"
         :columns="columns"
         :data="data"
         :loading="loading"
@@ -43,6 +44,7 @@ import { h, onMounted, reactive, ref } from 'vue'
 import type { DataTableColumns } from 'naive-ui'
 import { NTag, useMessage } from 'naive-ui'
 import { getOperationLogPage } from '../../api/sys'
+import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 
 const message = useMessage()
 const loading = ref(false)
@@ -56,13 +58,7 @@ const filters = reactive({
   requestMethod: null as string | null
 })
 
-const pagination = reactive({
-  page: 1,
-  pageSize: 20,
-  itemCount: 0,
-  showSizePicker: true,
-  pageSizes: [10, 20, 50, 100]
-})
+const pagination = reactive(createPaginationState())
 
 const methodOptions = [
   { label: 'POST', value: 'POST' },
@@ -189,7 +185,7 @@ const handlePageChange = (page: number) => {
 }
 
 const handlePageSizeChange = (pageSize: number) => {
-  pagination.pageSize = pageSize
+  pagination.pageSize = normalizePageSize(pageSize)
   pagination.page = 1
   fetchData()
 }

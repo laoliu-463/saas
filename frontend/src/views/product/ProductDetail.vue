@@ -332,7 +332,7 @@
 
             <n-tab-pane name="logs" tab="操作日志">
               <div class="pane-content">
-                <n-data-table :columns="logColumns" :data="operationLogs" size="small" :pagination="{ pageSize: 10 }" />
+                <n-data-table :columns="logColumns" :data="operationLogs" size="small" :pagination="{ pageSize: 20, showSizePicker: true, pageSizes: [20, 50, 100] }" />
               </div>
             </n-tab-pane>
           </n-tabs>

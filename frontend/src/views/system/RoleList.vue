@@ -1,5 +1,5 @@
 <template>
-  <div class="role-list">
+  <div class="role-list" data-testid="system-roles-page">
     <n-card title="角色管理" :bordered="false">
       <n-space style="margin-bottom: 16px;">
         <n-button type="primary" @click="openModal('add')">新增角色</n-button>
@@ -7,6 +7,7 @@
 
       <n-data-table
         remote
+        data-testid="system-roles-table"
         :columns="columns"
         :data="data"
         :loading="loading"
@@ -46,18 +47,13 @@
 import { ref, reactive, h, onMounted } from 'vue';
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui';
 import { getRolePage, createRole, updateRole, deleteRole } from '../../api/sys';
+import { createPaginationState, normalizePageSize } from '../../utils/pagination';
 
 const message = useMessage();
 
 const loading = ref(false);
 const data = ref([]);
-const pagination = reactive({
-  page: 1,
-  pageSize: 10,
-  itemCount: 0,
-  showSizePicker: true,
-  pageSizes: [10, 20, 50]
-});
+const pagination = reactive(createPaginationState());
 
 const dataScopeOptions = [
   { label: '全部数据', value: 3 },
@@ -107,7 +103,7 @@ const handlePageChange = (page: number) => {
 };
 
 const handlePageSizeChange = (pageSize: number) => {
-  pagination.pageSize = pageSize;
+  pagination.pageSize = normalizePageSize(pageSize);
   pagination.page = 1;
   fetchData();
 };

@@ -37,10 +37,12 @@ export const testIds = {
   dashboardStatCards: 'dashboard-stat-cards',
   // Data orders
   dataOrdersPage: 'data-orders-page',
+  dataOrdersTable: 'data-orders-table',
   dataOrdersSearchSubmit: 'data-orders-search-submit',
   dataOrdersExport: 'data-orders-export',
   // Orders (attribution)
   ordersPage: 'orders-page',
+  ordersTable: 'orders-table',
   ordersSync: 'orders-sync',
   ordersSearchSubmit: 'orders-search-submit',
   orderRow: 'order-row',
@@ -57,7 +59,20 @@ export const testIds = {
   sampleExport: 'sample-export',
   // Talent
   talentPage: 'talent-page',
+  talentTable: 'talent-table',
   talentWeeklyRefresh: 'talent-weekly-refresh',
   talentRefresh: 'talent-refresh',
-  talentCreate: 'talent-create'
+  talentCreate: 'talent-create',
+  // Ops
+  opsShippingPage: 'ops-shipping-page',
+  opsShippingTable: 'ops-shipping-table',
+  // System
+  systemUsersPage: 'system-users-page',
+  systemUsersTable: 'system-users-table',
+  systemRolesPage: 'system-roles-page',
+  systemRolesTable: 'system-roles-table',
+  systemConfigPage: 'system-config-page',
+  systemConfigTable: 'system-config-table',
+  systemOperationLogsPage: 'system-operation-logs-page',
+  systemOperationLogsTable: 'system-operation-logs-table'
 } as const;

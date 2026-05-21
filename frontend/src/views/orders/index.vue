@@ -42,12 +42,14 @@
     <n-card :bordered="false" class="main-card">
       <n-data-table
         remote
+        data-testid="orders-table"
         :columns="columns"
         :data="data"
         :loading="loading"
         :pagination="pagination"
         :row-key="(row: any) => row.orderId"
         @update:page="handlePageChange"
+        @update:page-size="handlePageSizeChange"
       />
     </n-card>
 
@@ -63,6 +65,7 @@ import PageHeader from '../../components/PageHeader.vue'
 import OrderDetailModal from './components/OrderDetailModal.vue'
 import { getOrders, getOrderStats, syncOrders } from '../../api/order'
 import { getAttributionReasonText } from '../../constants/orderAttribution'
+import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 
 const message = useMessage()
 const route = useRoute()
@@ -98,11 +101,7 @@ const filters = reactive({
   dashboardDiagnosis: ''
 })
 
-const pagination = reactive({
-  page: 1,
-  pageSize: 20,
-  itemCount: 0
-})
+const pagination = reactive(createPaginationState())
 
 const applyRouteFilters = () => {
   filters.orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
@@ -241,6 +240,7 @@ function buildQueryParams() {
 }
 
 const fetchData = async () => {
+  pagination.pageSize = normalizePageSize(pagination.pageSize)
   loading.value = true
   try {
     const params = buildQueryParams()
@@ -270,6 +270,12 @@ const fetchData = async () => {
 
 const handlePageChange = (page: number) => {
   pagination.page = page
+  fetchData()
+}
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.pageSize = normalizePageSize(pageSize)
+  pagination.page = 1
   fetchData()
 }
 
@@ -307,6 +313,7 @@ const resetFilters = () => {
   filters.timeField = 'createTime'
   filters.dashboardDiagnosis = ''
   stats.value = null
+  pagination.page = 1
   fetchData()
 }
 

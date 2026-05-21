@@ -1,5 +1,5 @@
 <template>
-  <div class="user-list">
+  <div class="user-list" data-testid="system-users-page">
     <!-- Toolbar -->
     <div class="user-toolbar">
       <n-space wrap :size="10">
@@ -14,6 +14,7 @@
     <div class="user-table-card">
       <n-data-table
         remote
+        data-testid="system-users-table"
         :columns="columns"
         :data="data"
         :loading="loading"
@@ -86,19 +87,14 @@
 import { ref, reactive, h, onMounted, computed, watch } from 'vue';
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui';
 import { getUserPage, createUser, updateUser, deleteUser, resetUserPassword, getRoleAll, assignUserRoles } from '../../api/sys';
+import { createPaginationState, normalizePageSize } from '../../utils/pagination';
 
 const message = useMessage();
 
 // Table state
 const loading = ref(false);
 const data = ref([]);
-const pagination = reactive({
-  page: 1,
-  pageSize: 10,
-  itemCount: 0,
-  showSizePicker: true,
-  pageSizes: [10, 20, 50]
-});
+const pagination = reactive(createPaginationState());
 
 // Search params
 const searchParams = reactive({
@@ -194,7 +190,7 @@ const handlePageChange = (page: number) => {
 };
 
 const handlePageSizeChange = (pageSize: number) => {
-  pagination.pageSize = pageSize;
+  pagination.pageSize = normalizePageSize(pageSize);
   pagination.page = 1;
   fetchData();
 };

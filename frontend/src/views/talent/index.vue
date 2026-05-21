@@ -53,6 +53,7 @@
     <n-card :bordered="false" class="main-card">
       <n-data-table
         remote
+        data-testid="talent-table"
         :columns="columns"
         :data="data"
         :loading="loading"
@@ -106,6 +107,7 @@ import TalentMetricFilters from './components/TalentMetricFilters.vue'
 import TalentStatusActions from './components/TalentStatusActions.vue'
 import { resolveSafeAvatarUrl } from '../../utils/media'
 import { useTalentFilters, type TalentFiltersState } from './composables/useTalentFilters'
+import { createPaginationState, normalizePage, normalizePageSize } from '../../utils/pagination'
 import {
   formatDateTime,
   formatFans,
@@ -144,13 +146,7 @@ const {
   toRouteQuery
 } = useTalentFilters()
 
-const pagination = reactive({
-  page: 1,
-  pageSize: 10,
-  itemCount: 0,
-  showSizePicker: true,
-  pageSizes: [10, 20, 50]
-})
+const pagination = reactive(createPaginationState())
 
 const currentViewLabel = computed(() => TALENT_VIEW_LABEL_MAP[activeView.value] || '达人经营台')
 const currentViewHelp = computed(() => TALENT_VIEW_HELP_MAP[activeView.value] || '')
@@ -184,16 +180,12 @@ function resolveView(raw: unknown) {
   return allowed.some((item) => item.value === value) ? value : allowed[0].value
 }
 
-function parsePositiveInt(value: unknown, fallback: number) {
-  const num = Number(value)
-  return Number.isFinite(num) && num > 0 ? Math.floor(num) : fallback
-}
 
 function syncFromRoute() {
   activeView.value = resolveView(route.query.view)
   applyQuery(route.query)
-  pagination.page = parsePositiveInt(route.query.page, 1)
-  pagination.pageSize = parsePositiveInt(route.query.size, 10)
+  pagination.page = normalizePage(route.query.page)
+  pagination.pageSize = normalizePageSize(route.query.size)
 }
 
 function syncRoute() {
@@ -278,7 +270,7 @@ function handlePageChange(page: number) {
 }
 
 function handlePageSizeChange(pageSize: number) {
-  pagination.pageSize = pageSize
+  pagination.pageSize = normalizePageSize(pageSize)
   pagination.page = 1
   fetchData()
 }

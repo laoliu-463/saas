@@ -38,6 +38,7 @@
         :pagination="pagination"
         :row-key="(row: any) => row.activityId"
         @update:page="handlePageChange"
+        @update:page-size="handlePageSizeChange"
       />
     </n-card>
   </div>
@@ -50,6 +51,7 @@ import { useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import { getColonelActivityPage } from '../../api/activity'
 import { exportActivities } from '../../api/data'
+import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 
 const message = useMessage()
 const router = useRouter()
@@ -63,13 +65,7 @@ const filters = reactive({
   status: null
 })
 
-const pagination = reactive({
-  page: 1,
-  pageSize: 20,
-  itemCount: 0,
-  showSizePicker: true,
-  pageSizes: [10, 20, 50]
-})
+const pagination = reactive(createPaginationState())
 
 const statusOptions = [
   { label: '未开始', value: 1 },
@@ -139,10 +135,17 @@ const handlePageChange = (page: number) => {
   fetchData()
 }
 
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.pageSize = normalizePageSize(pageSize)
+  pagination.page = 1
+  fetchData()
+}
+
 const resetFilters = () => {
   filters.activityId = ''
   filters.activityName = ''
   filters.status = null
+  pagination.page = 1
   fetchData()
 }
 
