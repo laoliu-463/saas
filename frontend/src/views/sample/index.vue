@@ -16,7 +16,7 @@
             data-testid="sample-table"
             :columns="columns"
             :data="data"
-            :loading="loading"
+            :loading="tableLoading"
             :pagination="pagination"
             @update:page="handlePageChange"
             @update:page-size="handlePageSizeChange"
@@ -39,10 +39,12 @@ import type { SampleItem } from '../../types';
 import { useAuthStore } from '../../stores/auth';
 import { ROLE_CODES } from '../../constants/rbac';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
+import { useDelayedFlag } from '../../utils/delayedFlag';
 
 const message = useMessage();
 const authStore = useAuthStore();
 const loading = ref(false);
+const tableLoading = useDelayedFlag(loading, 200);
 const EXPORT_ROW_LIMIT = 20000;
 
 const isOpsStaffOnly = computed(() => {

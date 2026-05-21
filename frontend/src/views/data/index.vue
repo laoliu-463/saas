@@ -77,7 +77,7 @@
     </div>
 
     <!-- 主指标卡片 -->
-    <n-spin :show="loading && initialized">
+    <n-spin :show="delayedLoading && initialized">
       <template v-if="!showSkeleton">
       <div class="metric-scope-banner" data-testid="dashboard-active-time-scope">
         <span class="metric-scope-badge">{{ activeTrackBadge }}</span>
@@ -262,11 +262,13 @@ import PageHeader from '../../components/PageHeader.vue'
 import { getMetrics } from '../../api/data'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES } from '../../constants/rbac'
+import { useDelayedFlag } from '../../utils/delayedFlag'
 
 const message = useMessage()
 const router = useRouter()
 const authStore = useAuthStore()
 const loading = ref(false)
+const delayedLoading = useDelayedFlag(loading, 200)
 const initialized = ref(false)
 const metricsCreate = ref<Record<string, any>>({})
 const metricsSettle = ref<Record<string, any>>({})
@@ -289,8 +291,7 @@ type EchartsCore = {
 
 let trendChart: TrendChartInstance | null = null
 let echartsCorePromise: Promise<EchartsCore> | null = null
-const showSkeleton = computed(() => loading.value && !initialized.value)
-const INITIAL_SKELETON_MIN_MS = 0
+const showSkeleton = computed(() => delayedLoading.value && !initialized.value)
 const ROLE = ROLE_CODES
 
 const isBizStaffOnly = computed(() => {
@@ -623,7 +624,6 @@ const goToOrderDetails = () => {
 }
 
 const loadMetrics = async () => {
-  const startedAt = Date.now()
   loading.value = true
   const settleMetricsPromise = getMetrics(buildMetricsParams('settleTime'))
     .then((settleRes: any) => {
@@ -639,11 +639,6 @@ const loadMetrics = async () => {
   } catch (error: any) {
     message.warning(error?.message || '获取创建时间指标异常')
   } finally {
-    const elapsed = Date.now() - startedAt
-    const remaining = INITIAL_SKELETON_MIN_MS - elapsed
-    if (remaining > 0) {
-      await new Promise((resolve) => setTimeout(resolve, remaining))
-    }
     initialized.value = true
     loading.value = false
     void renderTrendChart()

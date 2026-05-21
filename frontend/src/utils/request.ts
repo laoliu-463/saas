@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { createDiscreteApi } from 'naive-ui';
+import { h } from 'vue';
 import { useAuthStore } from '../stores/auth';
+import { extractTraceId } from './requestError';
 
 const { loadingBar, message: discreteMessage } = createDiscreteApi(['loadingBar', 'message']);
 
@@ -128,6 +130,52 @@ const buildFriendlyErrorMessage = (error: any): string => {
     return '请求发送失败，请检查网络或服务状态';
   }
   return '请求失败，请稍后重试';
+};
+
+const copyTraceId = async (traceId: string) => {
+  try {
+    if (!navigator?.clipboard?.writeText) {
+      throw new Error('clipboard unavailable');
+    }
+    await navigator.clipboard.writeText(traceId);
+    discreteMessage.success('traceId 已复制');
+  } catch {
+    discreteMessage.warning('浏览器未允许复制，请手动复制 traceId');
+  }
+};
+
+const showErrorNotice = (message: string, traceId?: string) => {
+  const normalizedTraceId = String(traceId || '').trim();
+  const options = { duration: 5000, closable: true };
+  if (!normalizedTraceId) {
+    discreteMessage.error(message, options);
+    return;
+  }
+
+  discreteMessage.error(
+    () => h(
+      'div',
+      {
+        style: 'display:flex;align-items:center;gap:8px;line-height:1.4;'
+      },
+      [
+        h('span', null, `${message}（traceId: ${normalizedTraceId}）`),
+        h(
+          'button',
+          {
+            type: 'button',
+            style: 'border:1px solid rgba(255,255,255,.55);border-radius:4px;background:transparent;color:inherit;padding:2px 6px;cursor:pointer;font-size:12px;',
+            onClick: (event: MouseEvent) => {
+              event.stopPropagation();
+              void copyTraceId(normalizedTraceId);
+            }
+          },
+          '复制 traceId'
+        )
+      ]
+    ),
+    options
+  );
 };
 
 const clearStoredAuth = () => {
@@ -262,8 +310,9 @@ request.interceptors.response.use(
     if (typeof businessCode === 'number' && businessCode !== 200) {
       loadingBar.error();
       const msg = normalizeServerMessage(String(response?.data?.msg || '请求失败，请稍后重试'));
-      discreteMessage.error(msg);
-      return Promise.reject(response.data);
+      const traceId = extractTraceId(response);
+      showErrorNotice(msg, traceId);
+      return Promise.reject({ ...response.data, traceId });
     }
     loadingBar.finish();
     return response.data;
@@ -287,7 +336,7 @@ request.interceptors.response.use(
       } catch (_refreshError) {
         loadingBar.error();
         if (!isAuthLoginRequest(error)) {
-          discreteMessage.error('登录已过期，请重新登录');
+          showErrorNotice('登录已过期，请重新登录', extractTraceId(_refreshError));
           redirectToLogin();
         }
         return Promise.reject(_refreshError);
@@ -298,11 +347,11 @@ request.interceptors.response.use(
     if (isUnauthorized) {
       clearStoredAuth();
       if (!isAuthLoginRequest(error)) {
-        discreteMessage.error('登录失效或未授权，请重新登录');
+        showErrorNotice('登录失效或未授权，请重新登录', extractTraceId(error));
         redirectToLogin();
       }
     } else {
-      discreteMessage.error(msg);
+      showErrorNotice(msg, extractTraceId(error));
     }
     return Promise.reject(error);
   }

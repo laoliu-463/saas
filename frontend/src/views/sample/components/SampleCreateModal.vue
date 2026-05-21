@@ -12,7 +12,9 @@
             :options="productOptions"
             :loading="loadingProducts"
             @search="handleSearchProduct"
-          />
+          >
+            <template #empty>暂无匹配商品</template>
+          </n-select>
         </n-form-item-gi>
 
         <n-form-item-gi :span="24" label="达人搜索">
@@ -80,6 +82,8 @@ import { NButton, useMessage } from 'naive-ui'
 import { MODAL_WIDTH } from '../../../constants/ui'
 import { createSample, searchSampleProducts, searchSampleTalents } from '../../../api/sample'
 import { resolveSafeAvatarUrl } from '../../../utils/media'
+import { useDebouncedFn } from '../../../utils/debounce'
+import { buildSampleRemark, isMainlandMobile } from '../sample-context'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{
@@ -113,7 +117,14 @@ const rules = {
   productId: { required: true, message: '请选择商品', trigger: 'change' },
   talentId: { required: true, message: '请选择达人', trigger: 'change' },
   receiverName: { required: true, message: '请输入收货人', trigger: 'blur' },
-  receiverPhone: { required: true, message: '请输入手机号', trigger: 'blur' },
+  receiverPhone: [
+    { required: true, message: '请输入手机号', trigger: 'blur' },
+    {
+      validator: (_rule: unknown, value: string) => isMainlandMobile(value),
+      message: '请输入 11 位手机号',
+      trigger: ['blur', 'input']
+    }
+  ],
   receiverAddress: { required: true, message: '请输入收货地址', trigger: 'blur' },
   reason: { required: true, message: '请输入申请理由', trigger: 'blur' }
 }
@@ -165,7 +176,7 @@ function formatFans(fans?: number) {
   return `${fans}`
 }
 
-async function handleSearchProduct(keyword: string) {
+async function fetchProductOptions(keyword: string) {
   loadingProducts.value = true
   try {
     const res = await searchSampleProducts({ keyword: keyword || undefined, size: 20 })
@@ -173,11 +184,21 @@ async function handleSearchProduct(keyword: string) {
     const records = payload?.records || []
     productOptions.value = records.map((item: any) => ({
       label: item.productName || item.name || item.title || item.productId || item.id,
-      value: item.id
+      value: item.id || item.productId
     }))
   } finally {
     loadingProducts.value = false
   }
+}
+
+const debouncedFetchProductOptions = useDebouncedFn((keyword: string) => {
+  fetchProductOptions(keyword).catch((error: any) => {
+    message.error(error?.message || '搜索商品失败')
+  })
+}, 250)
+
+function handleSearchProduct(keyword: string) {
+  debouncedFetchProductOptions(keyword)
 }
 
 async function fetchTalents(page = 1) {
@@ -210,15 +231,18 @@ function chooseTalent(row: any) {
   formData.talentFansCount = row.fansCount
   formData.talentCreditScore = row.creditScore
   formData.talentMainCategory = row.mainCategory
+  formData.receiverName = row.receiverName || row.recipientName || formData.receiverName
+  formData.receiverPhone = row.receiverPhone || row.recipientPhone || formData.receiverPhone
+  formData.receiverAddress = row.receiverAddress || row.recipientAddress || formData.receiverAddress
 }
 
 function buildRemark() {
-  return [
-    `申请理由：${formData.reason}`,
-    `收货人：${formData.receiverName}`,
-    `手机号：${formData.receiverPhone}`,
-    `地址：${formData.receiverAddress}`
-  ].join('\n')
+  return buildSampleRemark({
+    reason: formData.reason,
+    receiverName: formData.receiverName,
+    receiverPhone: formData.receiverPhone,
+    receiverAddress: formData.receiverAddress
+  })
 }
 
 function resetForm() {
@@ -271,7 +295,9 @@ watch(
   () => props.show,
   (show) => {
     if (show) {
-      handleSearchProduct('')
+      fetchProductOptions('').catch((error: any) => {
+        message.error(error?.message || '搜索商品失败')
+      })
       fetchTalents(1)
     } else {
       resetForm()
@@ -280,7 +306,9 @@ watch(
 )
 
 onMounted(() => {
-  handleSearchProduct('')
+  fetchProductOptions('').catch((error: any) => {
+    message.error(error?.message || '搜索商品失败')
+  })
   fetchTalents(1)
 })
 </script>

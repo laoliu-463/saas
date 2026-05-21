@@ -29,6 +29,7 @@ import { computed, ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
 import { assignActivityProduct, assignActivityProductAuditOwner } from '../../../api/activityProduct';
 import { getAssignableUserOptions } from '../../../api/sys';
+import { useDebouncedFn } from '../../../utils/debounce';
 
 type AssignMode = 'businessOwner' | 'auditOwner';
 
@@ -106,8 +107,12 @@ const fetchUsers = async (keyword: string) => {
   }
 };
 
-const handleSearch = async (keyword: string) => {
-  await fetchUsers(String(keyword || '').trim());
+const debouncedFetchUsers = useDebouncedFn((keyword: string) => {
+  void fetchUsers(keyword);
+}, 250);
+
+const handleSearch = (keyword: string) => {
+  debouncedFetchUsers(String(keyword || '').trim());
 };
 
 const handleSubmit = async () => {

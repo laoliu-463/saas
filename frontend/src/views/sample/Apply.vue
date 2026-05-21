@@ -46,18 +46,35 @@
               placeholder="搜索商品"
               :options="productOptions"
               :loading="loadingProducts"
+              :disabled="productLocked"
               @search="handleSearchProduct"
-              clearable
+              :clearable="!productLocked"
               remote
-            />
+            >
+              <template #empty>暂无匹配商品</template>
+            </n-select>
           </n-form-item-gi>
 
-          <n-form-item-gi :span="12" label="寄样数量" path="quantity">
+          <n-form-item-gi :span="8" label="寄样数量" path="quantity">
             <n-input-number v-model:value="formData.quantity" :min="1" :max="10" />
           </n-form-item-gi>
 
-          <n-form-item-gi :span="24" label="备注" path="remark">
-            <n-input v-model:value="formData.remark" type="textarea" placeholder="补充说明" />
+          <n-form-item-gi :span="16" label="申请理由" path="reason">
+            <n-input v-model:value="formData.reason" placeholder="例如：短视频测品" />
+          </n-form-item-gi>
+
+          <n-form-item-gi :span="8" label="收货人" path="receiverName">
+            <n-input v-model:value="formData.receiverName" placeholder="请输入收货人" />
+          </n-form-item-gi>
+          <n-form-item-gi :span="8" label="手机号" path="receiverPhone">
+            <n-input v-model:value="formData.receiverPhone" placeholder="请输入手机号" />
+          </n-form-item-gi>
+          <n-form-item-gi :span="24" label="收货地址" path="receiverAddress">
+            <n-input v-model:value="formData.receiverAddress" placeholder="请输入完整收货地址" />
+          </n-form-item-gi>
+
+          <n-form-item-gi :span="24" label="补充说明" path="remark">
+            <n-input v-model:value="formData.remark" type="textarea" placeholder="可填写发货偏好、沟通备注等" />
           </n-form-item-gi>
 
           <n-form-item-gi :span="24">
@@ -72,15 +89,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, h, onMounted, reactive, ref } from 'vue';
 import { NButton, useDialog, useMessage } from 'naive-ui';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { checkSampleEligibility, createSample, searchSampleProducts } from '../../api/sample';
 import { getTalentPage } from '../../api/talent';
 import { useAuthStore } from '../../stores/auth';
 import { resolveSafeAvatarUrl } from '../../utils/media';
+import { useDebouncedFn } from '../../utils/debounce';
+import { buildSampleRemark, isMainlandMobile, mergeLockedOption, type SampleSelectOption } from './sample-context';
 
 const message = useMessage();
+const route = useRoute();
 const router = useRouter();
 const dialog = useDialog();
 const authStore = useAuthStore();
@@ -96,13 +116,28 @@ const formData = reactive({
   talentMainCategory: '',
   productId: null as string | null,
   quantity: 1,
+  receiverName: '',
+  receiverPhone: '',
+  receiverAddress: '',
+  reason: '',
   remark: ''
 });
 
 const rules = {
   talentId: { required: true, message: '请选择达人', trigger: 'change' },
   productId: { required: true, message: '请选择商品', trigger: 'change' },
-  quantity: { type: 'number', required: true, message: '请输入寄样数量', trigger: 'blur' }
+  quantity: { type: 'number', required: true, message: '请输入寄样数量', trigger: 'blur' },
+  reason: { required: true, message: '请输入申请理由', trigger: 'blur' },
+  receiverName: { required: true, message: '请输入收货人', trigger: 'blur' },
+  receiverPhone: [
+    { required: true, message: '请输入手机号', trigger: 'blur' },
+    {
+      validator: (_rule: unknown, value: string) => isMainlandMobile(value),
+      message: '请输入 11 位手机号',
+      trigger: ['blur', 'input']
+    }
+  ],
+  receiverAddress: { required: true, message: '请输入收货地址', trigger: 'blur' }
 };
 
 const talentQuery = reactive({
@@ -111,7 +146,7 @@ const talentQuery = reactive({
   minFans: null as number | null,
   maxFans: null as number | null,
   page: 1,
-  size: 10,
+  size: 8,
   total: 0
 });
 
@@ -158,7 +193,63 @@ const talentColumns = [
 
 const productOptions = ref<{ label: string; value: string }[]>([]);
 const loadingProducts = ref(false);
-let productSearchTimer: ReturnType<typeof window.setTimeout> | null = null;
+const productLocked = ref(false);
+const lockedProductOption = ref<SampleSelectOption | null>(null);
+
+const getRouteString = (key: string) => {
+  const value = route.query[key]
+  if (Array.isArray(value)) return String(value[0] || '')
+  return typeof value === 'string' ? value : ''
+}
+
+const getRouteNumber = (key: string) => {
+  const raw = getRouteString(key)
+  if (!raw) return null
+  const value = Number(raw)
+  return Number.isFinite(value) ? value : null
+}
+
+const getSubmitRemark = () => buildSampleRemark({
+  reason: formData.reason,
+  receiverName: formData.receiverName,
+  receiverPhone: formData.receiverPhone,
+  receiverAddress: formData.receiverAddress,
+  extraRemark: formData.remark
+});
+
+const applyRouteContext = () => {
+  const productId = getRouteString('productId')
+  if (productId) {
+    const productLabel = getRouteString('productLabel') || productId
+    formData.productId = productId
+    productLocked.value = true
+    lockedProductOption.value = { label: productLabel, value: productId }
+    productOptions.value = mergeLockedOption(productOptions.value, lockedProductOption.value)
+  }
+
+  const talentId = getRouteString('talentId')
+  if (talentId) {
+    const talentRow = {
+      talentId,
+      nickname: getRouteString('talentNickname') || talentId,
+      fansCount: getRouteNumber('talentFansCount'),
+      creditScore: getRouteNumber('talentCreditScore'),
+      region: '',
+      mainCategory: getRouteString('talentMainCategory'),
+      avatarUrl: ''
+    }
+    selectedTalent.value = talentRow
+    formData.talentId = talentRow.talentId
+    formData.talentNickname = talentRow.nickname
+    formData.talentFansCount = talentRow.fansCount
+    formData.talentCreditScore = talentRow.creditScore
+    formData.talentMainCategory = talentRow.mainCategory
+  }
+
+  formData.receiverName = getRouteString('receiverName') || formData.receiverName
+  formData.receiverPhone = getRouteString('receiverPhone') || formData.receiverPhone
+  formData.receiverAddress = getRouteString('receiverAddress') || formData.receiverAddress
+}
 
 const fetchProductOptions = async (query: string) => {
   loadingProducts.value = true;
@@ -168,22 +259,23 @@ const fetchProductOptions = async (query: string) => {
     const records = payload?.records || [];
     productOptions.value = records.map((p: any) => ({
       label: p.productName || p.name || p.title || p.productId || p.id,
-      value: p.id
+      value: p.id || p.productId
     }));
+    productOptions.value = mergeLockedOption(productOptions.value, lockedProductOption.value);
   } finally {
     loadingProducts.value = false;
   }
 };
 
+const debouncedFetchProductOptions = useDebouncedFn((query: string) => {
+  fetchProductOptions(query).catch((error: any) => {
+    message.error(error?.message || '搜索商品失败');
+  });
+}, 250);
+
 const handleSearchProduct = (query: string) => {
-  if (productSearchTimer) {
-    window.clearTimeout(productSearchTimer);
-  }
-  productSearchTimer = window.setTimeout(() => {
-    fetchProductOptions(query).catch((error: any) => {
-      message.error(error?.message || '搜索商品失败');
-    });
-  }, 300);
+  if (productLocked.value) return;
+  debouncedFetchProductOptions(query);
 };
 
 const fetchTalents = async (page = 1) => {
@@ -227,6 +319,9 @@ const chooseTalent = (row: any) => {
   formData.talentFansCount = row.fansCount;
   formData.talentCreditScore = row.creditScore;
   formData.talentMainCategory = row.mainCategory;
+  formData.receiverName = row.receiverName || formData.receiverName;
+  formData.receiverPhone = row.receiverPhone || formData.receiverPhone;
+  formData.receiverAddress = row.receiverAddress || formData.receiverAddress;
 };
 
 const canSubmit = computed(() =>
@@ -236,6 +331,7 @@ const canSubmit = computed(() =>
 const doSubmit = async () => {
   submitting.value = true;
   try {
+    const remark = getSubmitRemark();
     await createSample({
       talentId: formData.talentId,
       talentNickname: formData.talentNickname,
@@ -244,9 +340,9 @@ const doSubmit = async () => {
       talentMainCategory: formData.talentMainCategory,
       productId: formData.productId,
       quantity: formData.quantity,
-      remark: formData.remark
+      remark
     });
-    message.success('寄样申请提交成功');
+    message.success('寄样申请已提交，状态为待审核');
     router.push('/sample');
   } catch (error: any) {
     message.error(error?.message || '提交失败');
@@ -281,6 +377,7 @@ const handleSubmit = async () => {
 
   let eligibility: any = null
   try {
+    const remark = getSubmitRemark()
     const eligibilityResponse = await checkSampleEligibility({
       talentId: formData.talentId,
       talentNickname: formData.talentNickname,
@@ -289,7 +386,7 @@ const handleSubmit = async () => {
       talentMainCategory: formData.talentMainCategory,
       productId: formData.productId,
       quantity: formData.quantity,
-      remark: formData.remark
+      remark
     })
     eligibility = eligibilityResponse?.data || eligibilityResponse
   } catch (error: any) {
@@ -297,7 +394,7 @@ const handleSubmit = async () => {
     return
   }
 
-  if (eligibility?.needReason && !String(formData.remark || '').trim()) {
+  if (eligibility?.needReason && !String(formData.reason || '').trim()) {
     openEligibilityWarning(eligibility)
     return
   }
@@ -319,14 +416,9 @@ const formatFans = (fans?: number) => {
 };
 
 onMounted(async () => {
+  applyRouteContext();
   await fetchTalents(1);
   await fetchProductOptions('');
-});
-
-onUnmounted(() => {
-  if (productSearchTimer) {
-    window.clearTimeout(productSearchTimer);
-  }
 });
 </script>
 

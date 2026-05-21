@@ -20,6 +20,9 @@
           <span class="card-badge" :class="statusBadgeClass(product.bizStatus)">
             {{ getBusinessStatusLabel(product) }}
           </span>
+          <span v-if="product.pinned" class="card-pin-badge" data-testid="product-pinned-badge">
+            置顶
+          </span>
         </div>
 
         <div class="card-body">
@@ -208,6 +211,16 @@
               >
                 复制讲解 + 短链
               </n-button>
+              <n-button
+                v-if="canApplySample"
+                block
+                size="small"
+                secondary
+                data-testid="product-quick-sample"
+                @click.stop="$emit('applySample', product)"
+              >
+                快速寄样
+              </n-button>
               <n-button block size="small" @click.stop="$emit('showLogs', product)">
                 查看操作日志
               </n-button>
@@ -235,6 +248,7 @@ defineProps<{
   libraryMode: boolean
   canPutIntoLibrary: boolean
   canCopyLink?: boolean
+  canApplySample?: boolean
 }>()
 
 defineEmits<{
@@ -245,6 +259,7 @@ defineEmits<{
   assignAuditOwner: [product: any]
   putIntoLibrary: [product: any]
   copyLink: [product: any]
+  applySample: [product: any]
   showLogs: [product: any]
 }>()
 
@@ -360,6 +375,7 @@ const cardTags = (item: any) => {
   if (!hasSampleThreshold(item) && !item.hasSampleRule) tags.push({ text: '暂无寄样要求', type: 'warning' })
   if (!item.assigneeName) tags.push({ text: '待分配负责人', type: 'error' })
   if (item.selectedToLibrary) tags.push({ text: '商品库可见', type: 'success' })
+  if (item.supportsAds === true) tags.push({ text: '可投流', type: 'info' })
   return tags
 }
 
@@ -433,6 +449,20 @@ const handleImageError = (event: Event) => {
   font-weight: 600;
   color: var(--text-inverse);
   z-index: 2;
+}
+
+.card-pin-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  background: #d92d20;
+  color: var(--text-inverse);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(217, 45, 32, 0.22);
 }
 
 .card-body {

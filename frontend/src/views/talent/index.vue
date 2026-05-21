@@ -56,7 +56,7 @@
         data-testid="talent-table"
         :columns="columns"
         :data="data"
-        :loading="loading"
+        :loading="tableLoading"
         :pagination="pagination"
         :row-key="(row: TalentListItem) => row.id"
         :scroll-x="1560"
@@ -80,7 +80,11 @@
     </n-card>
 
     <TalentCreateModal v-model:show="showCreate" @success="handleCreated" />
-    <TalentDetailModal v-model:show="showDetail" :talent-id="activeTalentId" />
+    <TalentDetailModal
+      v-model:show="showDetail"
+      :talent-id="activeTalentId"
+      @apply-sample="handleApplySample"
+    />
   </div>
 </template>
 
@@ -108,6 +112,7 @@ import TalentStatusActions from './components/TalentStatusActions.vue'
 import { resolveSafeAvatarUrl } from '../../utils/media'
 import { useTalentFilters, type TalentFiltersState } from './composables/useTalentFilters'
 import { createPaginationState, normalizePage, normalizePageSize } from '../../utils/pagination'
+import { useDelayedFlag } from '../../utils/delayedFlag'
 import {
   formatDateTime,
   formatFans,
@@ -126,6 +131,7 @@ const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
+const tableLoading = useDelayedFlag(loading, 200)
 const weeklyRefreshing = ref(false)
 const showCreate = ref(false)
 const showDetail = ref(false)
@@ -219,6 +225,11 @@ function openDetail(row: TalentListItem) {
   showDetail.value = true
 }
 
+function handleApplySample(query: Record<string, string>) {
+  showDetail.value = false
+  router.push({ path: '/sample/apply', query })
+}
+
 async function fetchData() {
   loading.value = true
   try {
@@ -295,7 +306,13 @@ function handleClaim(row: TalentListItem) {
         message.success('认领成功，该达人已转入我的达人')
         fetchData()
       } catch (error: any) {
-        message.error(error?.msg || error?.message || '认领失败')
+        const msg = error?.response?.data?.msg || error?.msg || error?.message || '认领失败'
+        const status = Number(error?.response?.status || error?.response?.data?.code || error?.code || 0)
+        if (status === 409 || String(msg).includes('保护期')) {
+          message.warning('该达人在保护期内')
+          return
+        }
+        message.error(msg)
       }
     }
   })

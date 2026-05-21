@@ -45,7 +45,7 @@
         data-testid="orders-table"
         :columns="columns"
         :data="data"
-        :loading="loading"
+        :loading="tableLoading"
         :pagination="pagination"
         :row-key="(row: any) => row.orderId"
         @update:page="handlePageChange"
@@ -66,10 +66,12 @@ import OrderDetailModal from './components/OrderDetailModal.vue'
 import { getOrders, getOrderStats, syncOrders } from '../../api/order'
 import { getAttributionReasonText } from '../../constants/orderAttribution'
 import { createPaginationState, normalizePageSize } from '../../utils/pagination'
+import { useDelayedFlag } from '../../utils/delayedFlag'
 
 const message = useMessage()
 const route = useRoute()
 const loading = ref(false)
+const tableLoading = useDelayedFlag(loading, 200)
 const syncLoading = ref(false)
 const data = ref([])
 const stats = ref<{ totalOrders?: number; attributedOrders?: number; unattributedOrders?: number; partialOrders?: number } | null>(null)

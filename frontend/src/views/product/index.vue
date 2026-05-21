@@ -167,6 +167,7 @@ import ProductAuditDialog from './components/ProductAuditDialog.vue'
 import ProductAssignDialog from './components/ProductAssignDialog.vue'
 import ProductOperationLogDrawer from './components/ProductOperationLogDrawer.vue'
 import { copyProductBriefWithLink } from './product-copy'
+import { useDebouncedFn } from '../../utils/debounce'
 
 type ProductAction = 'audit' | 'assign' | 'auditOwner'
 type AssignDialogMode = 'businessOwner' | 'auditOwner'
@@ -203,7 +204,6 @@ const dialogs = ref({
 })
 
 const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
-const productSearchTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 const forcedStatusMap: Record<ProductAction, string> = {
   audit: 'APPROVED',
@@ -642,12 +642,13 @@ const loadProductOptions = async (keyword: string) => {
   }
 }
 
+const debouncedLoadProductOptions = useDebouncedFn((keyword: string) => {
+  void loadProductOptions(keyword)
+}, 250)
+
 const handleProductSearch = (keyword: string) => {
   productKeyword.value = String(keyword || '').trim()
-  if (productSearchTimer.value) clearTimeout(productSearchTimer.value)
-  productSearchTimer.value = setTimeout(() => {
-    void loadProductOptions(productKeyword.value)
-  }, 300)
+  debouncedLoadProductOptions(productKeyword.value)
 }
 
 const handleFiltersUpdate = (value: typeof filters.value) => {

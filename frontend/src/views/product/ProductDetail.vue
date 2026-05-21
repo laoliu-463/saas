@@ -46,6 +46,14 @@
               <n-tag v-if="businessReady" type="success" size="small" round>
                 已入商品库
               </n-tag>
+              <n-button
+                v-if="businessReady && canDo('promotion')"
+                size="small"
+                secondary
+                @click="goToSampleApply"
+              >
+                快速寄样
+              </n-button>
             </n-space>
           </div>
 
@@ -380,6 +388,7 @@ import { convertActivityProductLink, getActivityProductDetail, getActivityProduc
 import { useAuthStore } from '../../stores/auth';
 import { hasAccess } from '../../constants/rbac';
 import { copyProductBriefWithLink } from './product-copy';
+import { buildProductSampleContext } from '../sample/sample-context';
 
 const props = defineProps<{
   show: boolean;
@@ -820,6 +829,19 @@ const saveDecision = async () => {
 const goToOrders = (productId: string) => {
   if (!productId) return;
   router.push({ path: '/orders', query: { productId: String(productId) } });
+  emit('update:show', false);
+};
+
+const goToSampleApply = () => {
+  const context = buildProductSampleContext({
+    ...(detail.value || {}),
+    id: detail.value?.id || detail.value?.productRecordId || props.productId
+  });
+  if (!context.query.productId) {
+    message.warning('商品信息不完整，暂不可快速寄样');
+    return;
+  }
+  router.push({ path: '/sample/apply', query: context.query });
   emit('update:show', false);
 };
 

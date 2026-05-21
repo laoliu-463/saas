@@ -53,7 +53,7 @@
       </n-space>
     </div>
 
-    <n-spin :show="loading">
+    <n-spin :show="showInitialLoading">
       <div v-if="products.length" class="product-grid" data-testid="product-grid">
         <ProductCard
           v-for="item in products"
@@ -67,9 +67,11 @@
           :library-mode="true"
           :can-put-into-library="false"
           :can-copy-link="canCopyPromotionLink"
+          :can-apply-sample="canCopyPromotionLink"
           @toggle="expandedProductId = $event"
           @detail="openDetail"
           @copy-link="copyPromotionLink"
+          @apply-sample="openSampleApply"
           @show-logs="openDialog('logs', $event)"
         />
       </div>
@@ -107,6 +109,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
@@ -114,6 +117,8 @@ import { getProducts } from '../../api/product'
 import { convertActivityProductLink } from '../../api/activityProduct'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES, hasAccess } from '../../constants/rbac'
+import { useDelayedFlag } from '../../utils/delayedFlag'
+import { useDebouncedFn } from '../../utils/debounce'
 
 import ProductFilters from './components/ProductFilters.vue'
 import ProductCard from './components/ProductCard.vue'
@@ -125,13 +130,16 @@ import {
   type ProductFilterState
 } from './product-filters'
 import { copyProductBriefWithLink } from './product-copy'
+import { buildProductSampleContext } from '../sample/sample-context'
 
 const PAGE_SIZE = 12
 
 const message = useMessage()
+const router = useRouter()
 const authStore = useAuthStore()
 
 const loading = ref(false)
+const showInitialLoading = useDelayedFlag(loading, 200)
 const loadingMore = ref(false)
 const promotionLoadingIds = ref<Set<string>>(new Set())
 const products = ref<any[]>([])
@@ -141,7 +149,6 @@ const selectedProduct = ref<string | null>(null)
 const productKeyword = ref('')
 const libraryStatus = ref<number | null>(null)
 const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
-const productSearchTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const productOptions = ref<{ label: string; value: string }[]>([])
 const productOptionsLoading = ref(false)
 const currentRow = ref<any | null>(null)
@@ -270,12 +277,13 @@ const loadProductOptions = async (keyword: string) => {
   }
 }
 
+const debouncedLoadProductOptions = useDebouncedFn((keyword: string) => {
+  void loadProductOptions(keyword)
+}, 250)
+
 const handleProductSearch = (keyword: string) => {
   productKeyword.value = String(keyword || '').trim()
-  if (productSearchTimer.value) clearTimeout(productSearchTimer.value)
-  productSearchTimer.value = setTimeout(() => {
-    void loadProductOptions(productKeyword.value)
-  }, 300)
+  debouncedLoadProductOptions(productKeyword.value)
 }
 
 const resetFilters = () => {
@@ -379,6 +387,15 @@ const copyPromotionLink = async (item: any) => {
     next.delete(productId)
     promotionLoadingIds.value = next
   }
+}
+
+const openSampleApply = (item: any) => {
+  const context = buildProductSampleContext(item)
+  if (!context.query.productId) {
+    message.warning('商品信息不完整，暂不可快速寄样')
+    return
+  }
+  router.push({ path: '/sample/apply', query: context.query })
 }
 
 onMounted(async () => {

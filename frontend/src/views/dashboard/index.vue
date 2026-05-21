@@ -2,71 +2,92 @@
   <div class="dashboard-page app-page" data-testid="dashboard-overview-page">
     <PageHeader :title="dashboardTitle" :description="dashboardDesc" />
 
-    <n-grid :cols="4" :x-gap="16" :y-gap="16" class="stats-row" data-testid="dashboard-stat-cards">
-      <n-gi v-for="stat in stats" :key="stat.label">
-        <n-card :bordered="false" class="stat-card app-panel">
-          <n-statistic :label="stat.label">
-            {{ stat.value }}
-          </n-statistic>
-          <div class="stat-footer">
-            <span v-if="stat.trend !== null" class="stat-trend" :class="stat.trend >= 0 ? 'up' : 'down'">
-              {{ stat.trend >= 0 ? '↑' : '↓' }} {{ Math.abs(stat.trend) }}%
-            </span>
-            <span class="stat-period">{{ stat.trend !== null ? '较昨日' : '真实归因口径' }}</span>
-          </div>
-        </n-card>
-      </n-gi>
-    </n-grid>
+    <div v-if="showSkeleton" class="dashboard-skeleton" data-testid="dashboard-skeleton">
+      <n-grid :cols="4" :x-gap="16" :y-gap="16" class="stats-row">
+        <n-gi v-for="item in 4" :key="item">
+          <n-card :bordered="false" class="stat-card app-panel skeleton-card">
+            <n-skeleton text :repeat="2" />
+            <n-skeleton height="24px" :sharp="false" />
+          </n-card>
+        </n-gi>
+      </n-grid>
+      <n-grid :cols="2" :x-gap="16" :y-gap="16">
+        <n-gi v-for="item in 2" :key="item">
+          <n-card :bordered="false" class="panel-card app-panel skeleton-card">
+            <n-skeleton text :repeat="3" />
+            <n-skeleton height="160px" :sharp="false" />
+          </n-card>
+        </n-gi>
+      </n-grid>
+    </div>
 
-    <n-grid :cols="2" :x-gap="16" :y-gap="16">
-      <n-gi>
-        <n-card title="近 7 日订单归因趋势" :bordered="false" class="panel-card app-panel">
-          <div v-if="trendData.length" class="trend-chart">
-            <div v-for="item in trendData" :key="item.date" class="trend-col">
-              <div class="trend-bar-track">
-                <div
-                  class="trend-bar-fill"
-                  :style="{ height: barHeight(item.orders) }"
-                ></div>
-              </div>
-              <div class="trend-label">{{ item.dateLabel }}</div>
-              <div class="trend-value">{{ item.orders }}</div>
+    <template v-else-if="initialized">
+      <n-grid :cols="4" :x-gap="16" :y-gap="16" class="stats-row" data-testid="dashboard-stat-cards">
+        <n-gi v-for="stat in stats" :key="stat.label">
+          <n-card :bordered="false" class="stat-card app-panel">
+            <n-statistic :label="stat.label">
+              {{ stat.value }}
+            </n-statistic>
+            <div class="stat-footer">
+              <span v-if="stat.trend !== null" class="stat-trend" :class="stat.trend >= 0 ? 'up' : 'down'">
+                {{ stat.trend >= 0 ? '↑' : '↓' }} {{ Math.abs(stat.trend) }}%
+              </span>
+              <span class="stat-period">{{ stat.trend !== null ? '较昨日' : '真实归因口径' }}</span>
             </div>
-          </div>
-          <n-empty v-else description="暂无趋势数据" class="trend-empty" />
-        </n-card>
-      </n-gi>
-      <n-gi>
-        <n-card :bordered="false" class="panel-card app-panel">
-          <template #header>
-            <span>{{ rankingTitle }}</span>
-          </template>
-          <n-list hoverable clickable>
-            <n-list-item v-for="(item, index) in ranking" :key="item.name">
-              <template #prefix>
-                <n-tag :type="index < 3 ? 'primary' : 'default'" size="small" round>{{ index + 1 }}</n-tag>
-              </template>
-              <n-thing :title="item.name" :description="`完成归因业绩: ¥${item.amount}`" />
-            </n-list-item>
-          </n-list>
+          </n-card>
+        </n-gi>
+      </n-grid>
 
-          <n-divider />
-          <div class="section-label">快捷入口</div>
-          <n-space :size="8" wrap>
-            <n-button
-              v-for="entry in quickEntries"
-              :key="entry.path"
-              quaternary
-              type="primary"
-              size="small"
-              @click="$router.push(entry.path)"
-            >
-              {{ entry.label }}
-            </n-button>
-          </n-space>
-        </n-card>
-      </n-gi>
-    </n-grid>
+      <n-grid :cols="2" :x-gap="16" :y-gap="16">
+        <n-gi>
+          <n-card title="近 7 日订单归因趋势" :bordered="false" class="panel-card app-panel">
+            <div v-if="trendData.length" class="trend-chart">
+              <div v-for="item in trendData" :key="item.date" class="trend-col">
+                <div class="trend-bar-track">
+                  <div
+                    class="trend-bar-fill"
+                    :style="{ height: barHeight(item.orders) }"
+                  ></div>
+                </div>
+                <div class="trend-label">{{ item.dateLabel }}</div>
+                <div class="trend-value">{{ item.orders }}</div>
+              </div>
+            </div>
+            <n-empty v-else description="暂无趋势数据" class="trend-empty" />
+          </n-card>
+        </n-gi>
+        <n-gi>
+          <n-card :bordered="false" class="panel-card app-panel">
+            <template #header>
+              <span>{{ rankingTitle }}</span>
+            </template>
+            <n-list hoverable clickable>
+              <n-list-item v-for="(item, index) in ranking" :key="item.name">
+                <template #prefix>
+                  <n-tag :type="index < 3 ? 'primary' : 'default'" size="small" round>{{ index + 1 }}</n-tag>
+                </template>
+                <n-thing :title="item.name" :description="`完成归因业绩: ¥${item.amount}`" />
+              </n-list-item>
+            </n-list>
+
+            <n-divider />
+            <div class="section-label">快捷入口</div>
+            <n-space :size="8" wrap>
+              <n-button
+                v-for="entry in quickEntries"
+                :key="entry.path"
+                quaternary
+                type="primary"
+                size="small"
+                @click="$router.push(entry.path)"
+              >
+                {{ entry.label }}
+              </n-button>
+            </n-space>
+          </n-card>
+        </n-gi>
+      </n-grid>
+    </template>
   </div>
 </template>
 
@@ -76,6 +97,7 @@ import PageHeader from '../../components/PageHeader.vue'
 import { getSummary } from '../../api/dashboard'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES, hasAccess } from '../../constants/rbac'
+import { useDelayedFlag } from '../../utils/delayedFlag'
 
 interface StatItem {
   label: string
@@ -104,6 +126,10 @@ const stats = ref<StatItem[]>([
 const trendData = ref<TrendItem[]>([])
 const ranking = ref<RankingItem[]>([])
 const authStore = useAuthStore()
+const loading = ref(false)
+const initialized = ref(false)
+const delayedLoading = useDelayedFlag(loading, 200)
+const showSkeleton = computed(() => delayedLoading.value && !initialized.value)
 const ROLE = ROLE_CODES
 
 const isBizStaffOnly = computed(() => {
@@ -225,11 +251,15 @@ const applySummary = (data: any) => {
 }
 
 const fetchSummary = async () => {
+  loading.value = true
   try {
     const res: any = await getSummary()
     applySummary(res?.data)
   } catch {
     // 降级：保持默认空状态
+  } finally {
+    initialized.value = true
+    loading.value = false
   }
 }
 

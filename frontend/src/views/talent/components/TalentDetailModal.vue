@@ -108,6 +108,7 @@
     <template #footer>
       <div class="footer-actions">
         <n-button secondary :loading="refreshing" @click="handleRefresh">刷新达人信息</n-button>
+        <n-button v-if="canApplySample && detail" type="primary" secondary @click="handleApplySample">快速寄样</n-button>
         <n-button @click="closeModal">关闭</n-button>
       </div>
     </template>
@@ -122,10 +123,14 @@ import { getTalentById, refreshTalent, type TalentDetailResponse } from '../../.
 import { useAuthStore } from '../../../stores/auth'
 import { ROLE_CODES } from '../../../constants/rbac'
 import { resolveSafeAvatarUrl } from '../../../utils/media'
+import { buildTalentSampleContext } from '../../sample/sample-context'
 import { formatDateTime, formatFans, formatMoney, getPoolLabel, getPoolTagType } from '../constants'
 
 const props = defineProps<{ show: boolean; talentId: string }>()
-const emit = defineEmits<{ 'update:show': [value: boolean] }>()
+const emit = defineEmits<{
+  'update:show': [value: boolean]
+  applySample: [query: Record<string, string>]
+}>()
 
 const message = useMessage()
 const authStore = useAuthStore()
@@ -138,6 +143,11 @@ const isChannelStaffOnly = computed(() => {
     && !roles.includes(ROLE_CODES.CHANNEL_LEADER)
     && !authStore.isAdmin
 })
+const canApplySample = computed(() =>
+  authStore.isAdmin
+    || authStore.roleCodes.includes(ROLE_CODES.CHANNEL_LEADER)
+    || authStore.roleCodes.includes(ROLE_CODES.CHANNEL_STAFF)
+)
 
 const resolvedPoolStatus = computed(() => {
   if (detail.value?.talent?.blacklisted) return 'BLACKLIST'
@@ -222,6 +232,15 @@ async function handleRefresh() {
   } finally {
     refreshing.value = false
   }
+}
+
+function handleApplySample() {
+  const context = buildTalentSampleContext(detail.value)
+  if (!context.query.talentId) {
+    message.warning('达人信息不完整，暂不可快速寄样')
+    return
+  }
+  emit('applySample', context.query)
 }
 
 watch(
