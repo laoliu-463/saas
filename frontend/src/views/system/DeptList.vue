@@ -8,6 +8,7 @@
 
     <n-card :bordered="false" class="app-panel app-table-shell">
       <n-data-table
+        data-testid="system-depts-table"
         :columns="columns"
         :data="data"
         :loading="loading"
@@ -16,13 +17,24 @@
       />
     </n-card>
 
-    <n-modal v-model:show="showModal" preset="card" :title="modalTitle" :style="{ width: MODAL_WIDTH.md }">
+    <n-modal
+      v-model:show="showModal"
+      preset="card"
+      :title="modalTitle"
+      :style="{ width: MODAL_WIDTH.md }"
+      data-testid="dept-form-modal"
+    >
       <n-form ref="formRef" :model="formData" :rules="rules" label-placement="left" label-width="100">
         <n-form-item label="部门编码" path="deptCode">
-          <n-input v-model:value="formData.deptCode" placeholder="如 BIZ_A" :disabled="modalType === 'edit'" />
+          <n-input
+            v-model:value="formData.deptCode"
+            data-testid="dept-code-input"
+            placeholder="如 BIZ_A"
+            :disabled="modalType === 'edit'"
+          />
         </n-form-item>
         <n-form-item label="部门名称" path="deptName">
-          <n-input v-model:value="formData.deptName" placeholder="如 招商一组" />
+          <n-input v-model:value="formData.deptName" data-testid="dept-name-input" placeholder="如 招商一组" />
         </n-form-item>
         <n-form-item label="上级部门" path="parentId">
           <n-select
@@ -33,10 +45,10 @@
           />
         </n-form-item>
         <n-form-item label="负责人" path="leader">
-          <n-input v-model:value="formData.leader" placeholder="负责人姓名" />
+          <n-input v-model:value="formData.leader" data-testid="dept-leader-input" placeholder="负责人姓名" />
         </n-form-item>
         <n-form-item label="排序" path="sortOrder">
-          <n-input-number v-model:value="formData.sortOrder" :min="0" style="width: 100%" />
+          <n-input-number v-model:value="formData.sortOrder" data-testid="dept-sort-input" :min="0" style="width: 100%" />
         </n-form-item>
         <n-form-item label="状态" path="status">
           <n-switch v-model:value="formData.status" :checked-value="1" :unchecked-value="0" />
@@ -45,8 +57,8 @@
           <n-input v-model:value="formData.remark" type="textarea" placeholder="可选" />
         </n-form-item>
         <div class="app-modal-footer">
-          <n-button @click="showModal = false">取消</n-button>
-          <n-button type="primary" :loading="submitting" @click="handleSubmit">确定</n-button>
+          <n-button data-testid="dept-cancel-btn" @click="showModal = false">取消</n-button>
+          <n-button type="primary" data-testid="dept-submit-btn" :loading="submitting" @click="handleSubmit">确定</n-button>
         </div>
       </n-form>
     </n-modal>
@@ -116,12 +128,32 @@ const columns = [
     width: 160,
     render: (row: any) =>
       h('div', { class: 'table-actions' }, [
-        h(NButton, { size: 'small', quaternary: true, type: 'primary', onClick: () => openModal('edit', row) }, () => '编辑'),
+        h(
+          NButton,
+          {
+            size: 'small',
+            quaternary: true,
+            type: 'primary',
+            'data-testid': `dept-edit-${row.id}`,
+            onClick: () => openModal('edit', row)
+          },
+          () => '编辑'
+        ),
         h(
           NPopconfirm,
           { onPositiveClick: () => handleDelete(row) },
           {
-            trigger: () => h(NButton, { size: 'small', quaternary: true, type: 'error' }, () => '删除'),
+            trigger: () =>
+              h(
+                NButton,
+                {
+                  size: 'small',
+                  quaternary: true,
+                  type: 'error',
+                  'data-testid': `dept-delete-${row.id}`
+                },
+                () => '删除'
+              ),
             default: () => '确认删除该部门？'
           }
         )

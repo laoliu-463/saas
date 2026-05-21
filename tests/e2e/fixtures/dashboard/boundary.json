@@ -1,0 +1,14 @@
+{
+  "gmv": 999999999,
+  "gmvTrend": -0.999,
+  "unattributedOrders": 9999,
+  "attributedRate": 1,
+  "serviceFee": 99999999,
+  "serviceFeeTrend": 9.99,
+  "trend": [
+    { "date": "2026-05-21", "orders": 9999, "gmv": 999999999 }
+  ],
+  "ranking": [
+    { "name": "超长组织名称 ABCDEFGHIJKLMNOPQRSTUVWXYZ", "amount": 999999999 }
+  ]
+}

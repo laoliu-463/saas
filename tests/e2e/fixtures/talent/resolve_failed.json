@@ -1,0 +1,10 @@
+{
+  "success": false,
+  "provider": "PUBLIC_WEB",
+  "syncStatus": "FAILED",
+  "unsupportedFields": ["fansCount"],
+  "rawPayloadSaved": false,
+  "dataSource": "MANUAL",
+  "syncErrorCode": "DOUYIN_RISK_CONTROL",
+  "syncErrorMessage": "抖音风控，需手动补齐达人数据"
+}

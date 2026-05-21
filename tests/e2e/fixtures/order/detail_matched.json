@@ -1,0 +1,38 @@
+{
+  "orderId": "order-mock-matched",
+  "product": {
+    "productId": "douyin-product-001",
+    "title": "夏季爆款水杯",
+    "shopName": "清风小店"
+  },
+  "channel": {
+    "id": "channel-001",
+    "name": "渠道一组"
+  },
+  "talent": {
+    "id": "dy-uid-001",
+    "nickname": "测品达人"
+  },
+  "amount": 3990,
+  "serviceFee": 798,
+  "promotion": {
+    "matched": true,
+    "shortLink": "https://v.douyin.com/mock-success/",
+    "mappingId": "mapping-001",
+    "pickSource": "mock-pick-source"
+  },
+  "sample": {
+    "matched": true,
+    "requestNo": "SM-mock-001"
+  },
+  "attributionStatus": "ATTRIBUTED",
+  "diagnosis": {
+    "reasonCode": null,
+    "reasonText": "",
+    "suggestion": ""
+  },
+  "time": {
+    "createTime": "2026-05-21 09:00:00",
+    "settleTime": "2026-05-21 12:00:00"
+  }
+}

@@ -1,37 +1,10 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { readFixture } from './helpers/fixtures';
 import { storageStates } from './helpers/test-data';
 
 test.use({ storageState: storageStates.channelLeader });
 
-const productRecord = {
-  id: 'product-record-001',
-  productId: 'douyin-product-001',
-  activityId: 'activity-001',
-  sourceActivityId: 'activity-001',
-  title: '夏季爆款水杯',
-  shopName: '清风小店',
-  cover: '',
-  priceText: '¥39.90',
-  activityCosRatioText: '20%',
-  sales30d: 1234,
-  gmv30d: '49236.60',
-  estimatedServiceFee: '984.73',
-  bizStatus: 'APPROVED',
-  selectedToLibrary: true,
-  hasMaterial: true,
-  hasSampleRule: true,
-  assigneeName: '渠道负责人',
-  auditSupplement: {
-    sellingPoints: ['大容量', '防漏'],
-    promotionScript: '主打夏季补水场景',
-    sampleThresholdSales: 5000,
-    sampleThresholdLevel: 3,
-    exclusivePriceRemark: '达人专属券后价'
-  },
-  promotionMaterialPack: {
-    outreachScript: '兜底话术'
-  }
-};
+const productFixture = readFixture<{ records: any[]; total: number; page: number; size: number }>('product', 'single.json');
 
 async function fulfillJson(route: Route, data: unknown, status = 200) {
   await route.fulfill({
@@ -45,12 +18,7 @@ async function mockProductLibrary(page: Page) {
   await page.route('**/api/products**', async (route) => {
     await fulfillJson(route, {
       code: 200,
-      data: {
-        records: [productRecord],
-        total: 1,
-        page: 1,
-        size: 12
-      }
+      data: productFixture
     });
   });
 }

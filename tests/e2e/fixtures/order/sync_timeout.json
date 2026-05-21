@@ -1,0 +1,5 @@
+{
+  "code": 504,
+  "msg": "同步超时，可重试",
+  "traceId": "trace-order-sync-timeout"
+}

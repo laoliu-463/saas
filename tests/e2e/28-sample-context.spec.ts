@@ -1,46 +1,12 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { readFixture } from './helpers/fixtures';
 import { storageStates } from './helpers/test-data';
 
 test.use({ storageState: storageStates.channelLeader });
 
-const productRecord = {
-  id: 'product-record-001',
-  productId: 'douyin-product-001',
-  activityId: 'activity-001',
-  sourceActivityId: 'activity-001',
-  title: '夏季爆款水杯',
-  shopName: '清风小店',
-  cover: '',
-  priceText: '¥39.90',
-  activityCosRatioText: '20%',
-  sales30d: 1234,
-  gmv30d: '49236.60',
-  estimatedServiceFee: '984.73',
-  bizStatus: 'APPROVED',
-  selectedToLibrary: true,
-  hasMaterial: true,
-  hasSampleRule: true,
-  assigneeName: '渠道负责人'
-};
-
-const talentRecord = {
-  id: 'talent-record-001',
-  nickname: '测品达人',
-  douyinUid: 'dy-uid-001',
-  douyinNo: 'dy-no-001',
-  uid: 'dy-uid-001',
-  fansCount: 52000,
-  creditScore: 4.8,
-  mainCategory: '家居',
-  ipLocation: '上海',
-  poolStatus: 'PRIVATE',
-  ownerId: 'channel-leader-user',
-  ownerName: '渠道组长',
-  activeClaimCount: 1,
-  sampleCount: 0,
-  orderCount: 0,
-  serviceFeeContribution: 0
-};
+const productFixture = readFixture<{ records: any[]; total: number; page: number; size: number }>('product', 'single.json');
+const talentFixture = readFixture<{ records: any[]; total: number; page: number; size: number }>('talent', 'single.json');
+const talentDetailFixture = readFixture('talent', 'detail.json');
 
 async function fulfillJson(route: Route, data: unknown, status = 200) {
   await route.fulfill({
@@ -54,12 +20,7 @@ async function mockProductLibrary(page: Page) {
   await page.route('**/api/products**', async (route) => {
     await fulfillJson(route, {
       code: 200,
-      data: {
-        records: [productRecord],
-        total: 1,
-        page: 1,
-        size: 12
-      }
+      data: productFixture
     });
   });
 }
@@ -82,19 +43,7 @@ async function mockTalentApis(page: Page) {
     if (url.pathname.endsWith('/api/talents/talent-record-001')) {
       await fulfillJson(route, {
         code: 200,
-        data: {
-          talent: talentRecord,
-          claim: {
-            poolStatus: 'PRIVATE',
-            ownerName: '渠道组长',
-            activeClaimCount: 1,
-            recipientName: '张三',
-            recipientPhone: '13800138000',
-            recipientAddress: '上海市浦东新区测试路 1 号'
-          },
-          samples: [],
-          orders: []
-        }
+        data: talentDetailFixture
       });
       return;
     }
@@ -102,12 +51,7 @@ async function mockTalentApis(page: Page) {
     if (url.pathname.endsWith('/api/talents')) {
       await fulfillJson(route, {
         code: 200,
-        data: {
-          records: [talentRecord],
-          total: 1,
-          page: 1,
-          size: 20
-        }
+        data: talentFixture
       });
       return;
     }

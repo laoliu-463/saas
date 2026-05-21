@@ -1,0 +1,18 @@
+{
+  "records": [
+    {
+      "orderId": "order-boundary-999999999999",
+      "productId": "douyin-product-boundary",
+      "productTitle": "超长订单商品名称 ABCDEFGHIJKLMNOPQRSTUVWXYZ 99999999",
+      "talentNickname": "边界达人",
+      "amount": 999999999,
+      "serviceFee": 199999999,
+      "attributionStatus": "PARTIAL",
+      "createTime": "2026-05-21 23:59:59",
+      "settleTime": "2026-05-22 00:00:01"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 20
+}

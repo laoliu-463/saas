@@ -1,0 +1,20 @@
+{
+  "records": [
+    {
+      "id": "sample-boundary-001",
+      "requestNo": "SM-boundary-001",
+      "productName": "超长商品名称用于验证列表截断与 Tooltip 展示是否稳定 ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+      "talentNickname": "边界达人",
+      "talentFansCount": 99999999,
+      "talentCreditScore": 5,
+      "status": "PENDING_AUDIT",
+      "receiverName": "边界收货人",
+      "receiverPhone": "13999999999",
+      "receiverAddress": "上海市浦东新区很长很长很长的测试地址 999 号 88 幢 777 室",
+      "reason": "验证超长字段不挤压表格布局"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 20
+}

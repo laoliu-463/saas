@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { ROLE_CODES, hasAccess } from '../constants/rbac'
 import { useAuthStore } from '../stores/auth'
+import { nowMs, recordFrontendTiming } from '../utils/performanceTiming'
 import { createGuardWarningDeduper, resolveGuardDecision, type GuardRedirectDecision } from './guard'
 
 const ROLE = ROLE_CODES
@@ -161,13 +162,6 @@ const router = createRouter({
 const shouldEmitGuardWarning = createGuardWarningDeduper()
 let routeStartedAt = 0
 
-const nowRouteMs = () => {
-  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
-    return performance.now()
-  }
-  return Date.now()
-}
-
 const resolveHomePath = (authStore: ReturnType<typeof useAuthStore>): string => {
   const roles = authStore.roleCodes
   const candidates =
@@ -187,8 +181,9 @@ const resolveHomePath = (authStore: ReturnType<typeof useAuthStore>): string => 
 }
 
 router.beforeEach((to, from) => {
-  routeStartedAt = nowRouteMs()
-  console.info('[router timing] beforeEach', {
+  routeStartedAt = nowMs()
+  recordFrontendTiming('router', {
+    phase: 'beforeEach',
     from: from.fullPath || '(start)',
     to: to.fullPath
   })
@@ -223,13 +218,14 @@ router.beforeEach((to, from) => {
 })
 
 router.afterEach((to, from, failure) => {
-  const durationMs = routeStartedAt ? Math.round(nowRouteMs() - routeStartedAt) : 0
-  console.info('[router timing] afterEach', {
+  const durationMs = routeStartedAt ? Math.round(nowMs() - routeStartedAt) : 0
+  recordFrontendTiming('router', {
+    phase: 'afterEach',
     from: from.fullPath || '(start)',
     to: to.fullPath,
     durationMs,
     failure: failure ? failure.type : undefined
-  })
+  }, { failed: Boolean(failure) })
 })
 
 function warnGuardDecision(decision: GuardRedirectDecision, from: string, to: string, roleCodes: string[]) {

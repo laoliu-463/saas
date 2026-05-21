@@ -1,0 +1,27 @@
+{
+  "records": [
+    {
+      "id": "talent-record-001",
+      "nickname": "测品达人",
+      "douyinUid": "dy-uid-001",
+      "douyinNo": "dy-no-001",
+      "uid": "dy-uid-001",
+      "fansCount": 52000,
+      "creditScore": 4.8,
+      "likesCount": 120000,
+      "worksCount": 36,
+      "mainCategory": "家居",
+      "ipLocation": "上海",
+      "poolStatus": "PRIVATE",
+      "ownerId": "channel-leader-user",
+      "ownerName": "渠道组长",
+      "activeClaimCount": 1,
+      "sampleCount": 0,
+      "orderCount": 0,
+      "serviceFeeContribution": 0
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 20
+}

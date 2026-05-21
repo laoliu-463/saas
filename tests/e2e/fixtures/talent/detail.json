@@ -1,0 +1,23 @@
+{
+  "talent": {
+    "id": "talent-record-001",
+    "nickname": "测品达人",
+    "douyinUid": "dy-uid-001",
+    "douyinNo": "dy-no-001",
+    "uid": "dy-uid-001",
+    "fansCount": 52000,
+    "creditScore": 4.8,
+    "mainCategory": "家居",
+    "ipLocation": "上海"
+  },
+  "claim": {
+    "poolStatus": "PRIVATE",
+    "ownerName": "渠道组长",
+    "activeClaimCount": 1,
+    "recipientName": "张三",
+    "recipientPhone": "13800138000",
+    "recipientAddress": "上海市浦东新区测试路 1 号"
+  },
+  "samples": [],
+  "orders": []
+}

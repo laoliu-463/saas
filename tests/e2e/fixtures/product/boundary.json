@@ -1,0 +1,22 @@
+{
+  "records": [
+    {
+      "id": "product-boundary-001",
+      "productId": "douyin-product-boundary",
+      "title": "超长商品标题用于验证卡片截断与布局稳定性水杯保温杯夏季新品大容量便携防漏吸管杯🙂",
+      "shopName": "边界店铺",
+      "bizStatus": "APPROVED",
+      "selectedToLibrary": true,
+      "hasMaterial": false,
+      "hasSampleRule": false,
+      "assigneeName": "",
+      "sales30d": 99999999,
+      "gmv30d": "999999999.99",
+      "supportsAds": true,
+      "pinned": true
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 12
+}

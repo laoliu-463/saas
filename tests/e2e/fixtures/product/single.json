@@ -1,0 +1,38 @@
+{
+  "records": [
+    {
+      "id": "product-record-001",
+      "productId": "douyin-product-001",
+      "activityId": "activity-001",
+      "sourceActivityId": "activity-001",
+      "title": "夏季爆款水杯",
+      "shopName": "清风小店",
+      "cover": "",
+      "priceText": "¥39.90",
+      "activityCosRatioText": "20%",
+      "sales30d": 1234,
+      "gmv30d": "49236.60",
+      "estimatedServiceFee": "984.73",
+      "bizStatus": "APPROVED",
+      "selectedToLibrary": true,
+      "hasMaterial": true,
+      "hasSampleRule": true,
+      "assigneeName": "渠道负责人",
+      "supportsAds": true,
+      "pinned": true,
+      "auditSupplement": {
+        "sellingPoints": ["大容量", "防漏"],
+        "promotionScript": "主打夏季补水场景",
+        "sampleThresholdSales": 5000,
+        "sampleThresholdLevel": 3,
+        "exclusivePriceRemark": "达人专属券后价"
+      },
+      "promotionMaterialPack": {
+        "outreachScript": "兜底话术"
+      }
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 12
+}

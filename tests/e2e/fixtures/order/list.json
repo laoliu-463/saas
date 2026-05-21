@@ -1,0 +1,33 @@
+{
+  "records": [
+    {
+      "orderId": "order-mock-001",
+      "productId": "douyin-product-001",
+      "productTitle": "夏季爆款水杯",
+      "talentId": "dy-uid-001",
+      "talentNickname": "测品达人",
+      "channelName": "渠道一组",
+      "amount": 3990,
+      "serviceFee": 798,
+      "attributionStatus": "ATTRIBUTED",
+      "createTime": "2026-05-21 09:00:00",
+      "settleTime": "2026-05-21 12:00:00"
+    },
+    {
+      "orderId": "order-mock-002",
+      "productId": "douyin-product-002",
+      "productTitle": "未归因商品",
+      "talentId": "",
+      "talentNickname": "",
+      "channelName": "",
+      "amount": 2590,
+      "serviceFee": 0,
+      "attributionStatus": "UNATTRIBUTED",
+      "createTime": "2026-05-20 09:00:00",
+      "settleTime": null
+    }
+  ],
+  "total": 2,
+  "page": 1,
+  "size": 20
+}

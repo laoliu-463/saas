@@ -1,0 +1,20 @@
+{
+  "timeField": "createTime",
+  "dateRange": ["2026-05-15", "2026-05-21"],
+  "dualTrackCreate": {
+    "orders": 120,
+    "gmv": 1286500,
+    "serviceFee": 98640
+  },
+  "dualTrackSettle": {
+    "orders": 94,
+    "gmv": 968000,
+    "serviceFee": 74220
+  },
+  "gap": {
+    "orders": 26,
+    "gmv": 318500,
+    "serviceFee": 24420,
+    "hint": "创建时间与结算时间差异较大，请核对结算延迟订单"
+  }
+}

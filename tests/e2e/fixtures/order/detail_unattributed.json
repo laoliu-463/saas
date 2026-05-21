@@ -1,0 +1,28 @@
+{
+  "orderId": "order-mock-unattributed",
+  "product": {
+    "productId": "douyin-product-missing",
+    "title": "缺少映射商品",
+    "shopName": "未匹配店铺"
+  },
+  "channel": null,
+  "talent": null,
+  "amount": 2590,
+  "promotion": {
+    "matched": false,
+    "shortLink": ""
+  },
+  "sample": {
+    "matched": false
+  },
+  "attributionStatus": "UNATTRIBUTED",
+  "diagnosis": {
+    "reasonCode": "NO_PICK_SOURCE_MAPPING",
+    "reasonText": "未找到 pick_source 转链映射",
+    "suggestion": "请先确认该商品是否通过系统生成专属推广链接"
+  },
+  "time": {
+    "createTime": "2026-05-20 09:00:00",
+    "settleTime": null
+  }
+}

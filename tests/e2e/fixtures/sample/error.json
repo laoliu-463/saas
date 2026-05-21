@@ -1,0 +1,5 @@
+{
+  "code": 500,
+  "msg": "mock sample service error",
+  "traceId": "trace-sample-error"
+}

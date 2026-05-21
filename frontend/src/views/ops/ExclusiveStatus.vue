@@ -41,6 +41,7 @@
 import { h, ref, onMounted } from 'vue';
 import { NTag, useMessage } from 'naive-ui';
 import { getExclusiveTalentStatus, getExclusiveMerchantStatus } from '../../api/data';
+import { resolveExclusiveStatusView } from './exclusive-status';
 
 const message = useMessage();
 
@@ -58,9 +59,9 @@ const resolveRecords = <T,>(response: PageLikeResponse<T> | T[] | null | undefin
 };
 
 const renderStatus = (row: any) => {
-  const active = Number(row.status) === 1;
-  return h(NTag, { size: 'small', type: active ? 'success' : 'default', round: true }, {
-    default: () => (active ? '生效中' : '已过期')
+  const statusView = resolveExclusiveStatusView(row);
+  return h(NTag, { size: 'small', type: statusView.type, round: true }, {
+    default: () => statusView.label
   });
 };
 

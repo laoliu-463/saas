@@ -2,6 +2,7 @@ import axios from 'axios';
 import { createDiscreteApi } from 'naive-ui';
 import { h } from 'vue';
 import { useAuthStore } from '../stores/auth';
+import { nowMs, recordFrontendTiming } from './performanceTiming';
 import { extractTraceId } from './requestError';
 
 const { loadingBar, message: discreteMessage } = createDiscreteApi(['loadingBar', 'message']);
@@ -24,13 +25,6 @@ const refreshClient = axios.create({
 
 let refreshPromise: Promise<string | null> | null = null;
 
-const nowMs = () => {
-  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
-    return performance.now();
-  }
-  return Date.now();
-};
-
 const markRequestStarted = (config: any) => {
   config.__requestStartedAt = nowMs();
   return config;
@@ -51,8 +45,7 @@ const logRequestTiming = (config: any, status: number | string, failed = false) 
     status,
     durationMs
   };
-  const logger = failed ? console.warn : console.info;
-  logger('[api timing]', payload);
+  recordFrontendTiming('api', payload, { failed });
 };
 
 const isAuthLoginRequest = (configOrError: any): boolean => {

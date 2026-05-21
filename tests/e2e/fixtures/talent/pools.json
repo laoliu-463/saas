@@ -1,0 +1,11 @@
+{
+  "records": [
+    { "id": "talent-public-001", "nickname": "公海达人 01", "douyinUid": "public-001", "douyinNo": "public-no-001", "fansCount": 10000, "poolStatus": "PUBLIC", "mainCategory": "家居", "ipLocation": "上海" },
+    { "id": "talent-private-001", "nickname": "私海达人 01", "douyinUid": "private-001", "douyinNo": "private-no-001", "fansCount": 20000, "poolStatus": "PRIVATE", "ownerId": "channel-leader-user", "ownerName": "渠道组长", "protectedUntil": "2026-05-22 16:00:00", "activeClaimCount": 1, "mainCategory": "美妆", "ipLocation": "杭州" },
+    { "id": "talent-natural-001", "nickname": "自然出单达人 01", "douyinUid": "natural-001", "douyinNo": "natural-no-001", "fansCount": 30000, "poolStatus": "PUBLIC", "naturalOrderTalent": true, "orderCount": 5, "serviceFeeContribution": 1280, "mainCategory": "食品", "ipLocation": "广州" },
+    { "id": "talent-black-001", "nickname": "黑名单达人 01", "douyinUid": "black-001", "douyinNo": "black-no-001", "fansCount": 40000, "poolStatus": "BLACKLIST", "blacklisted": true, "blacklistReason": "合作风险", "mainCategory": "服饰", "ipLocation": "北京" }
+  ],
+  "total": 4,
+  "page": 1,
+  "size": 20
+}

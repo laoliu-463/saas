@@ -1,0 +1,24 @@
+{
+  "gmv": 1286500,
+  "gmvTrend": 0.128,
+  "unattributedOrders": 15,
+  "attributedRate": 0.7917,
+  "serviceFee": 98640,
+  "serviceFeeTrend": 0.086,
+  "trend": [
+    { "date": "2026-05-15", "orders": 16, "gmv": 126000 },
+    { "date": "2026-05-16", "orders": 18, "gmv": 142000 },
+    { "date": "2026-05-17", "orders": 14, "gmv": 118000 },
+    { "date": "2026-05-18", "orders": 21, "gmv": 196000 },
+    { "date": "2026-05-19", "orders": 19, "gmv": 165000 },
+    { "date": "2026-05-20", "orders": 24, "gmv": 232000 },
+    { "date": "2026-05-21", "orders": 28, "gmv": 307500 }
+  ],
+  "ranking": [
+    { "name": "渠道一组", "amount": 392000 },
+    { "name": "渠道二组", "amount": 286000 },
+    { "name": "招商一组", "amount": 241000 },
+    { "name": "招商二组", "amount": 198000 },
+    { "name": "自然出单", "amount": 169500 }
+  ]
+}

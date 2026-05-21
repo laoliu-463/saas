@@ -1,0 +1,13 @@
+{
+  "succeeded": 48,
+  "failed": [
+    {
+      "requestNo": "SM-mock-049",
+      "reason": "快递单号重复"
+    },
+    {
+      "requestNo": "SM-mock-050",
+      "reason": "寄样单状态不是待发货"
+    }
+  ]
+}

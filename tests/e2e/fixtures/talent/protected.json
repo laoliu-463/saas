@@ -1,0 +1,26 @@
+{
+  "records": [
+    {
+      "id": "talent-record-claim",
+      "nickname": "保护期达人",
+      "douyinUid": "dy-protected-001",
+      "douyinNo": "dy-no-protected",
+      "uid": "dy-protected-001",
+      "fansCount": 88000,
+      "likesCount": 120000,
+      "worksCount": 36,
+      "mainCategory": "家居",
+      "ipLocation": "上海",
+      "poolStatus": "PUBLIC",
+      "ownerName": "",
+      "activeClaimCount": 0,
+      "sampleCount": 0,
+      "orderCount": 0,
+      "serviceFeeContribution": 0,
+      "naturalOrderTalent": false
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 20
+}

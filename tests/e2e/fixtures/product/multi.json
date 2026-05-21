@@ -1,0 +1,31 @@
+{
+  "records": [
+    { "id": "product-record-001", "productId": "douyin-product-001", "title": "待审核商品", "shopName": "清风小店", "bizStatus": "PENDING_AUDIT", "selectedToLibrary": true, "hasMaterial": false, "hasSampleRule": true, "assigneeName": "", "sales30d": 120 },
+    { "id": "product-record-002", "productId": "douyin-product-002", "title": "审核通过商品", "shopName": "清风小店", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商一号", "sales30d": 240, "supportsAds": true },
+    { "id": "product-record-003", "productId": "douyin-product-003", "title": "已分配商品", "shopName": "好物小店", "bizStatus": "ASSIGNED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商二号", "sales30d": 360, "pinned": true },
+    { "id": "product-record-004", "productId": "douyin-product-004", "title": "已转链商品", "shopName": "好物小店", "bizStatus": "LINKED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "渠道一号", "sales30d": 480, "promotionLink": "https://v.douyin.com/mock/" },
+    { "id": "product-record-005", "productId": "douyin-product-005", "title": "跟进中商品", "shopName": "优选店铺", "bizStatus": "FOLLOWING", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "渠道二号", "sales30d": 600 },
+    { "id": "product-record-006", "productId": "douyin-product-006", "title": "审核拒绝商品", "shopName": "优选店铺", "bizStatus": "REJECTED", "selectedToLibrary": false, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商三号", "sales30d": 60 },
+    { "id": "product-record-007", "productId": "douyin-product-007", "title": "活动过期商品", "shopName": "清风小店", "bizStatus": "APPROVED", "selectedToLibrary": true, "activityExpired": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商四号", "sales30d": 160 },
+    { "id": "product-record-008", "productId": "douyin-product-008", "title": "库存不足商品", "shopName": "清风小店", "bizStatus": "APPROVED", "selectedToLibrary": true, "alertTags": ["库存不足"], "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商五号", "sales30d": 180 },
+    { "id": "product-record-009", "productId": "douyin-product-009", "title": "样本商品 09", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 190 },
+    { "id": "product-record-010", "productId": "douyin-product-010", "title": "样本商品 10", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 200 },
+    { "id": "product-record-011", "productId": "douyin-product-011", "title": "样本商品 11", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 210 },
+    { "id": "product-record-012", "productId": "douyin-product-012", "title": "样本商品 12", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 220 },
+    { "id": "product-record-013", "productId": "douyin-product-013", "title": "样本商品 13", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 230 },
+    { "id": "product-record-014", "productId": "douyin-product-014", "title": "样本商品 14", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 240 },
+    { "id": "product-record-015", "productId": "douyin-product-015", "title": "样本商品 15", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 250 },
+    { "id": "product-record-016", "productId": "douyin-product-016", "title": "样本商品 16", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 260 },
+    { "id": "product-record-017", "productId": "douyin-product-017", "title": "样本商品 17", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 270 },
+    { "id": "product-record-018", "productId": "douyin-product-018", "title": "样本商品 18", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 280 },
+    { "id": "product-record-019", "productId": "douyin-product-019", "title": "样本商品 19", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 290 },
+    { "id": "product-record-020", "productId": "douyin-product-020", "title": "样本商品 20", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 300 },
+    { "id": "product-record-021", "productId": "douyin-product-021", "title": "样本商品 21", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 310 },
+    { "id": "product-record-022", "productId": "douyin-product-022", "title": "样本商品 22", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 320 },
+    { "id": "product-record-023", "productId": "douyin-product-023", "title": "样本商品 23", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 330 },
+    { "id": "product-record-024", "productId": "douyin-product-024", "title": "样本商品 24", "shopName": "样本店铺", "bizStatus": "APPROVED", "selectedToLibrary": true, "hasMaterial": true, "hasSampleRule": true, "assigneeName": "招商六号", "sales30d": 340 }
+  ],
+  "total": 24,
+  "page": 1,
+  "size": 12
+}

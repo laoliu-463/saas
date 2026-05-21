@@ -1,0 +1,24 @@
+{
+  "records": [
+    {
+      "id": "sample-request-break-001",
+      "requestNo": "SM-break-001",
+      "productId": "douyin-product-001",
+      "productName": "门槛商品",
+      "talentId": "dy-break-001",
+      "talentNickname": "破格达人",
+      "talentFansCount": 1200,
+      "talentCreditScore": 2.1,
+      "status": "PENDING_AUDIT",
+      "statusText": "待审核",
+      "createdAt": "2026-05-21 11:00:00",
+      "eligibilityCheck": {
+        "passed": false,
+        "reasons": ["销量未达门槛", "等级未达 LV3"]
+      }
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 20
+}

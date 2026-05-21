@@ -1,27 +1,11 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { readFixture } from './helpers/fixtures';
 import { storageStates } from './helpers/test-data';
 
 test.use({ storageState: storageStates.channelLeader });
 
-const protectedTalent = {
-  id: 'talent-record-claim',
-  nickname: '保护期达人',
-  douyinUid: 'dy-protected-001',
-  douyinNo: 'dy-no-protected',
-  uid: 'dy-protected-001',
-  fansCount: 88000,
-  likesCount: 120000,
-  worksCount: 36,
-  mainCategory: '家居',
-  ipLocation: '上海',
-  poolStatus: 'PUBLIC',
-  ownerName: '',
-  activeClaimCount: 0,
-  sampleCount: 0,
-  orderCount: 0,
-  serviceFeeContribution: 0,
-  naturalOrderTalent: false
-};
+const protectedTalentFixture = readFixture<{ records: any[]; total: number; page: number; size: number }>('talent', 'protected.json');
+const claimConflict = readFixture<{ status: number; body: unknown }>('talent', 'claim_conflict.json');
 
 async function fulfillJson(route: Route, data: unknown, status = 200) {
   await route.fulfill({
@@ -37,22 +21,14 @@ async function mockTalentProtectionApis(page: Page) {
     const method = route.request().method();
 
     if (method === 'POST' && url.pathname.endsWith('/api/talents/talent-record-claim/claims')) {
-      await fulfillJson(route, {
-        code: 409,
-        msg: '该达人在保护期内'
-      }, 409);
+      await fulfillJson(route, claimConflict.body, claimConflict.status);
       return;
     }
 
     if (method === 'GET' && url.pathname.endsWith('/api/talents')) {
       await fulfillJson(route, {
         code: 200,
-        data: {
-          records: [protectedTalent],
-          total: 1,
-          page: 1,
-          size: 20
-        }
+        data: protectedTalentFixture
       });
       return;
     }

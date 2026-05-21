@@ -1,0 +1,28 @@
+{
+  "records": [
+    {
+      "id": "sample-request-001",
+      "requestNo": "SM-mock-001",
+      "productId": "douyin-product-001",
+      "productName": "夏季爆款水杯",
+      "talentId": "dy-uid-001",
+      "talentNickname": "测品达人",
+      "talentFansCount": 52000,
+      "talentCreditScore": 4.8,
+      "status": "PENDING_AUDIT",
+      "statusText": "待审核",
+      "receiverName": "张三",
+      "receiverPhone": "13800138000",
+      "receiverAddress": "上海市浦东新区测试路 1 号",
+      "reason": "达人测评寄样",
+      "createdAt": "2026-05-21 10:00:00",
+      "eligibilityCheck": {
+        "passed": true,
+        "reasons": []
+      }
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 20
+}

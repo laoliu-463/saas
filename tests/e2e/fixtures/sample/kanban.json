@@ -1,0 +1,214 @@
+{
+  "records": [
+    {
+      "id": "sample-pending-audit-001",
+      "requestNo": "SM-PENDING-AUDIT-001",
+      "productName": "待审水杯 1",
+      "talentNickname": "待审达人 1",
+      "status": "PENDING_AUDIT",
+      "statusText": "待审核",
+      "createdAt": "2026-05-21 09:00:00",
+      "eligibilityCheck": { "passed": true, "reasons": [] }
+    },
+    {
+      "id": "sample-pending-audit-002",
+      "requestNo": "SM-PENDING-AUDIT-002",
+      "productName": "待审水杯 2",
+      "talentNickname": "待审达人 2",
+      "status": "PENDING_AUDIT",
+      "statusText": "待审核",
+      "createdAt": "2026-05-21 09:05:00",
+      "eligibilityCheck": { "passed": false, "reasons": ["销量未达门槛"] }
+    },
+    {
+      "id": "sample-pending-audit-003",
+      "requestNo": "SM-PENDING-AUDIT-003",
+      "productName": "待审水杯 3",
+      "talentNickname": "待审达人 3",
+      "status": "PENDING_AUDIT",
+      "statusText": "待审核",
+      "createdAt": "2026-05-21 09:10:00",
+      "eligibilityCheck": { "passed": true, "reasons": [] }
+    },
+    {
+      "id": "sample-pending-ship-001",
+      "requestNo": "SM-PENDING-SHIP-001",
+      "productName": "待发货商品 1",
+      "talentNickname": "待发货达人 1",
+      "status": "PENDING_SHIP",
+      "statusText": "待发货",
+      "createdAt": "2026-05-20 10:00:00"
+    },
+    {
+      "id": "sample-pending-ship-002",
+      "requestNo": "SM-PENDING-SHIP-002",
+      "productName": "待发货商品 2",
+      "talentNickname": "待发货达人 2",
+      "status": "PENDING_SHIP",
+      "statusText": "待发货",
+      "createdAt": "2026-05-20 10:05:00"
+    },
+    {
+      "id": "sample-pending-ship-003",
+      "requestNo": "SM-PENDING-SHIP-003",
+      "productName": "待发货商品 3",
+      "talentNickname": "待发货达人 3",
+      "status": "PENDING_SHIP",
+      "statusText": "待发货",
+      "createdAt": "2026-05-20 10:10:00"
+    },
+    {
+      "id": "sample-shipped-001",
+      "requestNo": "SM-SHIPPED-001",
+      "productName": "已发货商品 1",
+      "talentNickname": "已发货达人 1",
+      "status": "SHIPPED",
+      "statusText": "已发货",
+      "trackingNo": "SF100000001",
+      "shipperCode": "SF",
+      "shippedAt": "2026-05-19 13:00:00"
+    },
+    {
+      "id": "sample-shipped-002",
+      "requestNo": "SM-SHIPPED-002",
+      "productName": "已发货商品 2",
+      "talentNickname": "已发货达人 2",
+      "status": "SHIPPED",
+      "statusText": "已发货",
+      "trackingNo": "SF100000002",
+      "shipperCode": "SF",
+      "shippedAt": "2026-05-19 13:05:00"
+    },
+    {
+      "id": "sample-shipped-003",
+      "requestNo": "SM-SHIPPED-003",
+      "productName": "已发货商品 3",
+      "talentNickname": "已发货达人 3",
+      "status": "SHIPPED",
+      "statusText": "已发货",
+      "trackingNo": "SF100000003",
+      "shipperCode": "SF",
+      "shippedAt": "2026-05-19 13:10:00"
+    },
+    {
+      "id": "sample-pending-task-001",
+      "requestNo": "SM-PENDING-TASK-001",
+      "productName": "待作业商品 1",
+      "talentNickname": "待作业达人 1",
+      "status": "PENDING_TASK",
+      "statusText": "待交作业",
+      "signedAt": "2026-05-18 15:00:00"
+    },
+    {
+      "id": "sample-pending-task-002",
+      "requestNo": "SM-PENDING-TASK-002",
+      "productName": "待作业商品 2",
+      "talentNickname": "待作业达人 2",
+      "status": "PENDING_TASK",
+      "statusText": "待交作业",
+      "signedAt": "2026-05-18 15:05:00"
+    },
+    {
+      "id": "sample-pending-task-003",
+      "requestNo": "SM-PENDING-TASK-003",
+      "productName": "待作业商品 3",
+      "talentNickname": "待作业达人 3",
+      "status": "PENDING_TASK",
+      "statusText": "待交作业",
+      "signedAt": "2026-05-18 15:10:00"
+    },
+    {
+      "id": "sample-finished-001",
+      "requestNo": "SM-FINISHED-001",
+      "productName": "已完成商品 1",
+      "talentNickname": "已完成达人 1",
+      "status": "FINISHED",
+      "statusText": "已完成",
+      "completedByOrderRule": true,
+      "finishedAt": "2026-05-17 16:00:00"
+    },
+    {
+      "id": "sample-finished-002",
+      "requestNo": "SM-FINISHED-002",
+      "productName": "已完成商品 2",
+      "talentNickname": "已完成达人 2",
+      "status": "FINISHED",
+      "statusText": "已完成",
+      "completedByOrderRule": false,
+      "finishedAt": "2026-05-17 16:05:00"
+    },
+    {
+      "id": "sample-finished-003",
+      "requestNo": "SM-FINISHED-003",
+      "productName": "已完成商品 3",
+      "talentNickname": "已完成达人 3",
+      "status": "FINISHED",
+      "statusText": "已完成",
+      "completedByOrderRule": true,
+      "finishedAt": "2026-05-17 16:10:00"
+    },
+    {
+      "id": "sample-rejected-001",
+      "requestNo": "SM-REJECTED-001",
+      "productName": "已驳回商品 1",
+      "talentNickname": "已驳回达人 1",
+      "status": "REJECTED",
+      "statusText": "已驳回",
+      "rejectReason": "达人等级不足",
+      "updatedAt": "2026-05-16 11:00:00"
+    },
+    {
+      "id": "sample-rejected-002",
+      "requestNo": "SM-REJECTED-002",
+      "productName": "已驳回商品 2",
+      "talentNickname": "已驳回达人 2",
+      "status": "REJECTED",
+      "statusText": "已驳回",
+      "rejectReason": "地址信息不完整",
+      "updatedAt": "2026-05-16 11:05:00"
+    },
+    {
+      "id": "sample-rejected-003",
+      "requestNo": "SM-REJECTED-003",
+      "productName": "已驳回商品 3",
+      "talentNickname": "已驳回达人 3",
+      "status": "REJECTED",
+      "statusText": "已驳回",
+      "rejectReason": "库存不足",
+      "updatedAt": "2026-05-16 11:10:00"
+    },
+    {
+      "id": "sample-closed-001",
+      "requestNo": "SM-CLOSED-001",
+      "productName": "已关闭商品 1",
+      "talentNickname": "已关闭达人 1",
+      "status": "CLOSED",
+      "statusText": "已关闭",
+      "closeReason": "达人取消申请",
+      "updatedAt": "2026-05-15 12:00:00"
+    },
+    {
+      "id": "sample-closed-002",
+      "requestNo": "SM-CLOSED-002",
+      "productName": "已关闭商品 2",
+      "talentNickname": "已关闭达人 2",
+      "status": "CLOSED",
+      "statusText": "已关闭",
+      "closeReason": "活动结束",
+      "updatedAt": "2026-05-15 12:05:00"
+    },
+    {
+      "id": "sample-closed-003",
+      "requestNo": "SM-CLOSED-003",
+      "productName": "已关闭商品 3",
+      "talentNickname": "已关闭达人 3",
+      "status": "CLOSED",
+      "statusText": "已关闭",
+      "closeReason": "运营关闭",
+      "updatedAt": "2026-05-15 12:10:00"
+    }
+  ],
+  "total": 21,
+  "page": 1,
+  "size": 20
+}
