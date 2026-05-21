@@ -15,7 +15,10 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,6 +35,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Tag(name = "订单回流与归因", description = "订单回流摘要与未归因订单排查接口。")
+@Validated
 @RestController
 @RequestMapping
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
@@ -46,8 +50,8 @@ public class OrderAttributionController extends BaseController {
     @Operation(summary = "未归因订单分页", description = "分页查询未归因订单，用于订单回流与归因排查页。")
     @GetMapping("/orders/order-attribution-unattributed")
     public ApiResult<PageResult<OrderRowVO>> getUnattributedOrders(
-            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") long page,
-            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") long size,
+            @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(defaultValue = "1") @Min(1) @Max(1000) long page,
+            @Parameter(description = "每页条数，最大 200。") @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,
             @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestAttribute("userId") UUID userId,

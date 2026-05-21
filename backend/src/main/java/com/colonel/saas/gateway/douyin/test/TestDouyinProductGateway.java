@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Component
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "true")
@@ -61,8 +62,8 @@ public class TestDouyinProductGateway implements DouyinProductGateway {
                     String.format("2026-04-%02d", 1 + (seedOffset % 9)),
                     String.format("2026-05-%02d", 10 + (seedOffset % 9)),
                     "https://example.com/test-detail/" + productId,
-                    null,
-                    java.util.Map.of()
+                    String.valueOf(46128341673481000L + (productId % 1000)),
+                    Map.of("origin_colonel_buyin_id", String.valueOf(46128341673481000L + (productId % 1000)))
             ));
         }
         List<ActivityProductItem> filtered = all.stream()

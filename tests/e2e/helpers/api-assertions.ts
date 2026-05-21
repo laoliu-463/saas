@@ -93,6 +93,18 @@ export async function apiPost(
   }
 }
 
+/** 准备本地测试数据，供 V1-P0 验收套件独立运行 */
+export async function seedTestData(adminToken?: string): Promise<void> {
+  const token = adminToken ?? await loginApi('admin');
+  const body = (await apiPost('/api/test/seed', {}, { token })) as {
+    code?: number | string;
+    data?: unknown;
+  } | null;
+  if (body && Number(body.code) >= 400) {
+    throw new Error(`/api/test/seed 业务失败：code=${body.code}`);
+  }
+}
+
 // ─────────────────────────────────────────────
 // 业务断言辅助函数
 // ─────────────────────────────────────────────
@@ -168,7 +180,7 @@ export async function assert403(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
   token: string,
-  body?: unknown
+  requestBody?: unknown
 ): Promise<void> {
   const ctx = await playwrightRequest.newContext({ baseURL: BACKEND() });
   try {
@@ -177,15 +189,17 @@ export async function assert403(
     if (method === 'GET') {
       res = await ctx.get(path, { headers });
     } else if (method === 'POST') {
-      res = await ctx.post(path, { headers, data: body ?? {} });
+      res = await ctx.post(path, { headers, data: requestBody ?? {} });
     } else if (method === 'PUT') {
-      res = await ctx.put(path, { headers, data: body ?? {} });
+      res = await ctx.put(path, { headers, data: requestBody ?? {} });
     } else {
       res = await ctx.delete(path, { headers });
     }
-    if (res.status() !== 403) {
+    const responseBody = await res.json().catch(() => null) as { code?: number | string } | null;
+    const businessCode = Number(responseBody?.code);
+    if (res.status() !== 403 && businessCode !== 403) {
       throw new Error(
-        `${method} ${path} 期望 403（权限拦截），实际 ${res.status()}`
+        `${method} ${path} 期望 403（权限拦截），实际 HTTP ${res.status()} / code ${responseBody?.code ?? '-'}`
       );
     }
   } finally {

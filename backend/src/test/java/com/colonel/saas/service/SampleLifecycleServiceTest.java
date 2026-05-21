@@ -6,7 +6,6 @@ import com.colonel.saas.mapper.SampleRequestMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,6 +18,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -69,9 +70,9 @@ class SampleLifecycleServiceTest {
         int completed = service.completePendingHomeworkByOrder(order);
 
         assertThat(completed).isEqualTo(1);
-        ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
-        verify(sampleRequestMapper).updateById(captor.capture());
-        assertThat(captor.getValue().getStatus()).isEqualTo(6);
+        verify(sampleRequestMapper, never()).updateById(any());
+        verify(jdbcTemplate).batchUpdate(anyString(), anyList(), anyInt(), any());
+        assertThat(sample.getStatus()).isEqualTo(6);
         verify(sampleStatusLogService).logBatch(org.mockito.ArgumentMatchers.argThat(entries ->
                 entries.size() == 1
                         && entries.get(0).requestId().equals(requestId)
@@ -111,10 +112,10 @@ class SampleLifecycleServiceTest {
         int closed = service.autoCloseTimeoutPendingHomework(30);
 
         assertThat(closed).isEqualTo(1);
-        ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
-        verify(sampleRequestMapper).updateById(captor.capture());
-        assertThat(captor.getValue().getStatus()).isEqualTo(8);
-        assertThat(captor.getValue().getCloseReason()).contains("30天");
+        verify(sampleRequestMapper, never()).updateById(any());
+        verify(jdbcTemplate).batchUpdate(anyString(), anyList(), anyInt(), any());
+        assertThat(sample.getStatus()).isEqualTo(8);
+        assertThat(sample.getCloseReason()).contains("30天");
         verify(sampleStatusLogService).logBatch(org.mockito.ArgumentMatchers.argThat(entries ->
                 entries.size() == 1
                         && entries.get(0).requestId().equals(requestId)
@@ -156,9 +157,9 @@ class SampleLifecycleServiceTest {
         int closed = service.autoCloseTimeoutPendingShip(7);
 
         assertThat(closed).isEqualTo(1);
-        ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
-        verify(sampleRequestMapper).updateById(captor.capture());
-        assertThat(captor.getValue().getCloseReason()).isEqualTo("超时7天未发货自动关闭");
+        verify(sampleRequestMapper, never()).updateById(any());
+        verify(jdbcTemplate).batchUpdate(anyString(), anyList(), anyInt(), any());
+        assertThat(sample.getCloseReason()).isEqualTo("超时7天未发货自动关闭");
         verify(sampleStatusLogService).logBatch(org.mockito.ArgumentMatchers.argThat(entries ->
                 entries.size() == 1
                         && entries.get(0).requestId().equals(requestId)

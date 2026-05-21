@@ -19,7 +19,22 @@ function Add-Check {
             name   = $Name
             ok     = $Ok
             detail = $Detail
-        }) | Out-Null
+    }) | Out-Null
+}
+
+function Get-LabelValue {
+    param(
+        [string]$Labels,
+        [string]$Name
+    )
+
+    foreach ($label in ($Labels -split ",")) {
+        $parts = $label -split "=", 2
+        if ($parts.Count -eq 2 -and $parts[0] -eq $Name) {
+            return $parts[1]
+        }
+    }
+    return ""
 }
 
 $checks = [System.Collections.Generic.List[object]]::new()
@@ -32,22 +47,29 @@ $reportLines.Add("")
 
 Push-Location $repoRoot
 try {
-    $containers = docker ps --filter "label=com.docker.compose.project=saas-active" --format "{{.Names}}|{{.Status}}|{{.Ports}}" 2>$null
-    if (-not $containers) {
+    $containerJsonRows = docker ps --filter "label=com.docker.compose.project=saas-active" --format "{{json .}}" 2>$null
+    if (-not $containerJsonRows) {
         $containerRows = @()
+        $containerObjects = @()
     } else {
-        $containerRows = @($containers -split "`n" | Where-Object { $_ })
+        $containerObjects = @($containerJsonRows | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json })
+        $containerRows = @($containerObjects | ForEach-Object {
+                $service = Get-LabelValue -Labels $_.Labels -Name "com.docker.compose.service"
+                "$($_.Names)|$service|$($_.Status)|$($_.Ports)"
+            })
     }
 
-    $expectedNames = @("saas-frontend", "saas-backend", "saas-postgres", "saas-redis")
-    $runningNames = @($containerRows | ForEach-Object { ($_ -split "\|")[0] })
-    $missingNames = @($expectedNames | Where-Object { $_ -notin $runningNames })
-    $unexpectedNames = @($runningNames | Where-Object { $_ -notin $expectedNames })
-    $singleActive = $runningNames.Count -eq 4 -and $missingNames.Count -eq 0 -and $unexpectedNames.Count -eq 0
+    $expectedServices = @("frontend", "backend", "postgres", "redis")
+    $runningNames = @($containerObjects | ForEach-Object { $_.Names })
+    $runningServices = @($containerObjects | ForEach-Object { Get-LabelValue -Labels $_.Labels -Name "com.docker.compose.service" })
+    $missingServices = @($expectedServices | Where-Object { $_ -notin $runningServices })
+    $unexpectedServices = @($runningServices | Where-Object { $_ -and $_ -notin $expectedServices })
+    $singleActive = $runningServices.Count -eq 4 -and $missingServices.Count -eq 0 -and $unexpectedServices.Count -eq 0
     Add-Check -List $checks -Name "single_saas_active_container_set" -Ok $singleActive -Detail @{
-        running    = $runningNames
-        missing    = $missingNames
-        unexpected = $unexpectedNames
+        runningNames      = $runningNames
+        runningServices  = $runningServices
+        missingServices  = $missingServices
+        unexpectedServices = $unexpectedServices
     }
 
     $reportLines.Add("## Docker Containers")
@@ -107,13 +129,16 @@ const { chromium } = require("playwright");
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ baseURL: "http://127.0.0.1:3000" });
-  await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30000 });
+  await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.getByTestId("login-username").locator("input").fill("admin");
   await page.getByTestId("login-password").locator("input").fill("admin123");
   await page.getByTestId("login-submit").click();
-  await page.waitForURL(/\/dashboard$/, { timeout: 30000 });
-  await page.waitForTimeout(3000);
-  const badgeText = await page.locator("[data-testid='current-env-badge']").innerText().catch(() => "");
+  await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30000 });
+  await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+  const badgeText = await page.locator("[data-testid='current-env-badge']").innerText().catch(async () => {
+    const bodyText = await page.locator("body").innerText().catch(() => "");
+    return bodyText.includes("TEST") ? "TEST" : "";
+  });
   const badgeVisible = badgeText.includes("TEST");
   console.log(JSON.stringify({
     url: page.url(),

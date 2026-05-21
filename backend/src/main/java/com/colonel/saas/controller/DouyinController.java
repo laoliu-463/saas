@@ -2,6 +2,7 @@ package com.colonel.saas.controller;
 
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
+import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.DouyinApiException;
@@ -103,7 +104,7 @@ public class DouyinController extends BaseController {
             );
             result.put("remoteResponse", gatewayResult.toMap());
             result.put("status", "success");
-        } catch (Exception e) {
+        } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin activity test call failed", e);
             fillError(result, e);
         }
@@ -123,7 +124,7 @@ public class DouyinController extends BaseController {
         try {
             result.put("remoteResponse", douyinActivityGateway.activityDetail(appId, activityId));
             result.put("status", "success");
-        } catch (Exception e) {
+        } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin activity detail call failed", e);
             fillError(result, e);
         }
@@ -150,7 +151,7 @@ public class DouyinController extends BaseController {
             );
             result.put("remoteResponse", gatewayResult.toMap());
             result.put("status", "success");
-        } catch (Exception e) {
+        } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin product activities test call failed", e);
             fillError(result, e);
         }
@@ -188,7 +189,7 @@ public class DouyinController extends BaseController {
             );
             result.put("remoteResponse", gatewayResult.toMap());
             result.put("status", "success");
-        } catch (Exception e) {
+        } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin products by activity test call failed", e);
             fillError(result, e);
         }
@@ -237,7 +238,7 @@ public class DouyinController extends BaseController {
                 ).rawResponse());
             }
             result.put("status", "success");
-        } catch (Exception e) {
+        } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin order settlement call failed", e);
             fillError(result, e);
         }
@@ -262,7 +263,7 @@ public class DouyinController extends BaseController {
             result.put("payload", payload);
             result.put("remoteResponse", douyinActivityGateway.cancelActivityProduct(request.getAppId(), payload));
             result.put("status", "success");
-        } catch (Exception e) {
+        } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin activity product cancel call failed", e);
             fillError(result, e);
         }
@@ -292,7 +293,7 @@ public class DouyinController extends BaseController {
             result.put("payload", payload);
             result.put("remoteResponse", douyinActivityGateway.cancelActivityProduct(appId, payload));
             result.put("status", "success");
-        } catch (Exception e) {
+        } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin activity product cancel raw call failed", e);
             fillError(result, e);
         }
@@ -340,7 +341,7 @@ public class DouyinController extends BaseController {
                 result.put("remoteResponse", douyinPromotionGateway.rawUpstreamPost(appId, method, payload));
                 result.put("status", "success");
             }
-        } catch (Exception e) {
+        } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin promotion raw probe failed", e);
             fillError(result, e);
         }
@@ -380,7 +381,7 @@ public class DouyinController extends BaseController {
                     )
             ).rawResponse());
             result.put("status", "success");
-        } catch (Exception e) {
+        } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin order sync raw probe failed", e);
             fillError(result, e);
         }
@@ -443,7 +444,7 @@ public class DouyinController extends BaseController {
         try {
             result.put("remoteResponse", douyinTokenGateway.institutionInfo(appId));
             result.put("status", "success");
-        } catch (Exception e) {
+        } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin institution info call failed", e);
             fillError(result, e);
         }

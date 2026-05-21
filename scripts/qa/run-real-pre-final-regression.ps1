@@ -6,11 +6,11 @@ param(
     [string]$DashboardPassword = "admin123",
     [string]$SampleActivityId = "3223881",
     [string]$SampleProductId = "3814081914181124118",
-    [string]$ComposeFile = "docker-compose.yml",
+    [string]$ComposeFile = "docker-compose.real-pre.yml",
     [string]$EnvFile = ".env.real-pre",
     [string]$BackendService = "backend",
     [string]$PostgresService = "postgres",
-    [string]$PostgresContainer = "saas-postgres",
+    [string]$PostgresContainer = "saas-active-postgres-real-pre-1",
     [string]$DbUser = "saas",
     [string]$DbName = "saas_real_pre",
     [string]$WatcherEvidenceDir = ""

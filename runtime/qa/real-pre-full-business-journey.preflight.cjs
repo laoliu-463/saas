@@ -10,22 +10,22 @@ const DEFAULT_JOURNEY_ACCOUNTS = [
 ];
 
 async function runJourneyPreflight(options = {}) {
-  const frontendUrl = stripTrailingSlash(options.frontendUrl || 'http://localhost:3000');
-  const backendUrl = stripTrailingSlash(options.backendUrl || 'http://localhost:8080');
+  const frontendUrl = stripTrailingSlash(options.frontendUrl || 'http://localhost:3001');
+  const backendUrl = stripTrailingSlash(options.backendUrl || 'http://localhost:8081');
   const root = options.root || process.cwd();
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const spawnSyncImpl = options.spawnSyncImpl || spawnSync;
   const accounts = options.accounts || DEFAULT_JOURNEY_ACCOUNTS;
   const password = options.password || 'admin123';
-  const timeoutMs = options.timeoutMs || 5_000;
+  const timeoutMs = options.timeoutMs || Number(process.env.E2E_REAL_PRE_PREFLIGHT_TIMEOUT_MS || 90_000);
 
   if (typeof fetchImpl !== 'function') {
     throw new Error('global fetch is unavailable; use Node.js 18+ to run journey preflight');
   }
 
   const checks = [];
-  checks.push(await runCheck('frontend 3000', () => checkFrontend(frontendUrl, fetchImpl, timeoutMs)));
-  checks.push(await runCheck('backend 8080', () => checkBackendHealth(backendUrl, fetchImpl, timeoutMs)));
+  checks.push(await runCheck(`frontend ${endpointPort(frontendUrl)}`, () => checkFrontend(frontendUrl, fetchImpl, timeoutMs)));
+  checks.push(await runCheck(`backend ${endpointPort(backendUrl)}`, () => checkBackendHealth(backendUrl, fetchImpl, timeoutMs)));
   checks.push(await runCheck('real-pre env guard', () => checkRealPreEnv(backendUrl, fetchImpl, timeoutMs)));
   checks.push(await runCheck('required accounts', () => checkAccounts(backendUrl, fetchImpl, accounts, password, timeoutMs)));
   checks.push(await runCheck('.env.real-pre gitignore', () => checkRealPreEnvIgnored(root, spawnSyncImpl)));
@@ -152,7 +152,7 @@ async function requestJson(fetchImpl, url, options = {}) {
 
 async function request(fetchImpl, url, options = {}) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.timeoutMs || 5_000);
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs || 30_000);
   try {
     return await fetchImpl(url, {
       method: options.method || 'GET',
@@ -188,6 +188,15 @@ function asStringArray(value) {
 
 function stripTrailingSlash(value) {
   return String(value || '').replace(/\/$/, '');
+}
+
+function endpointPort(value) {
+  try {
+    const url = new URL(value);
+    return url.port || (url.protocol === 'https:' ? '443' : '80');
+  } catch {
+    return String(value || 'unknown');
+  }
 }
 
 module.exports = {

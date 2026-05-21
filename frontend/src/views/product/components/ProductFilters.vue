@@ -1,5 +1,5 @@
 <template>
-  <div class="product-toolbar">
+  <div class="product-toolbar app-toolbar">
     <n-space vertical :size="12">
       <n-space wrap :size="12" align="center">
         <n-select
@@ -9,26 +9,72 @@
           filterable
           remote
           clearable
-          placeholder="搜索商品 / 店铺"
-          style="width: 280px"
+          placeholder="搜索商品名称 / ID"
+          style="width: 260px"
           @update:value="$emit('update:selectedProduct', $event)"
           @search="$emit('search', $event)"
         />
-        <n-select
-          :value="filters.category"
-          :options="categoryOptions"
-          placeholder="商品标签"
+        <n-input
+          :value="filters.shopKeyword"
           clearable
+          placeholder="店铺 / 合作方"
           style="width: 160px"
-          @update:value="updateFilter('category', $event)"
+          @update:value="updateFilter('shopKeyword', $event)"
+        />
+        <n-select
+          :value="filters.categoryName"
+          :options="categoryNameOptions"
+          placeholder="抖音类目"
+          clearable
+          filterable
+          tag
+          style="width: 150px"
+          @update:value="updateFilter('categoryName', $event)"
+        />
+        <n-select
+          :value="filters.systemTag"
+          :options="systemTagOptions"
+          placeholder="系统标签"
+          clearable
+          style="width: 140px"
+          @update:value="updateFilter('systemTag', $event)"
         />
         <n-select
           :value="filters.commission"
           :options="commissionOptions"
           placeholder="佣金区间"
           clearable
-          style="width: 140px"
+          style="width: 130px"
           @update:value="updateFilter('commission', $event)"
+        />
+        <n-select
+          :value="filters.salesRange"
+          :options="salesRangeOptions"
+          placeholder="近30天销量"
+          clearable
+          style="width: 170px"
+          @update:value="updateFilter('salesRange', $event)"
+        />
+        <n-button type="primary" :loading="loading" @click="$emit('search-click')">查询</n-button>
+        <n-button @click="$emit('reset')">重置</n-button>
+      </n-space>
+
+      <n-space wrap :size="12" align="center">
+        <n-select
+          :value="filters.allianceStatus"
+          :options="allianceStatusOptions"
+          placeholder="联盟推广状态"
+          clearable
+          style="width: 150px"
+          @update:value="updateFilter('allianceStatus', $event)"
+        />
+        <n-select
+          :value="filters.promotionLink"
+          :options="promotionLinkOptions"
+          placeholder="转链状态"
+          clearable
+          style="width: 140px"
+          @update:value="updateFilter('promotionLink', $event)"
         />
         <n-select
           :value="filters.hasSample"
@@ -38,119 +84,96 @@
           style="width: 120px"
           @update:value="updateFilter('hasSample', $event)"
         />
-        <n-select
-          v-if="showAssigneeFilter"
-          :value="filters.assignee"
-          :options="assigneeOptions"
-          placeholder="招商归属"
-          clearable
-          style="width: 160px"
-          @update:value="updateFilter('assignee', $event)"
-        />
-        <n-select
-          :value="filters.decision"
-          :options="decisionOptions"
-          placeholder="推进判断"
-          clearable
-          style="width: 160px"
-          @update:value="updateFilter('decision', $event)"
-        />
-        <n-select
-          :value="status"
-          :options="statusOptions"
-          placeholder="业务状态"
-          clearable
-          style="width: 160px"
-          @update:value="$emit('update:status', $event)"
-        />
-        <n-button type="primary" :loading="loading" @click="$emit('search-click')">查询</n-button>
-        <n-button @click="$emit('reset')">重置</n-button>
+        <template v-if="mode === 'manage'">
+          <n-select
+            v-if="showAssigneeFilter"
+            :value="filters.assignee"
+            :options="assigneeOptions"
+            placeholder="招商归属"
+            clearable
+            style="width: 150px"
+            @update:value="updateFilter('assignee', $event)"
+          />
+          <n-select
+            :value="filters.decision"
+            :options="decisionOptions"
+            placeholder="推进判断"
+            clearable
+            style="width: 140px"
+            @update:value="updateFilter('decision', $event)"
+          />
+          <n-select
+            :value="status"
+            :options="bizStatusOptions"
+            placeholder="业务状态"
+            clearable
+            style="width: 150px"
+            @update:value="$emit('update:status', $event)"
+          />
+        </template>
+        <template v-else-if="mode === 'library'">
+          <n-select
+            :value="libraryStatus"
+            :options="libraryShelfOptions"
+            placeholder="上架状态"
+            clearable
+            style="width: 130px"
+            @update:value="$emit('update:libraryStatus', $event)"
+          />
+        </template>
       </n-space>
     </n-space>
   </div>
 </template>
 
 <script setup lang="ts">
-interface Filters {
-  category: string | null
-  commission: string | null
-  hasSample: string | null
-  assignee: string | null
-  decision: string | null
-}
+import type { ProductFilterState } from '../product-filters'
+import {
+  allianceStatusOptions,
+  assigneeOptions,
+  bizStatusOptions,
+  categoryNameOptions,
+  commissionOptions,
+  decisionOptions,
+  promotionLinkOptions,
+  salesRangeOptions,
+  systemTagOptions,
+  yesNoOptions
+} from '../product-filters'
 
 const props = withDefaults(defineProps<{
-  filters: Filters
+  filters: ProductFilterState
   selectedProduct: string | null
   status: string | null
+  libraryStatus?: number | null
   productOptions: { label: string; value: string }[]
   productOptionsLoading: boolean
   loading: boolean
   showAssigneeFilter?: boolean
+  /** manage=活动/推进池；library=共享商品库 */
+  mode?: 'manage' | 'library'
 }>(), {
-  showAssigneeFilter: true
+  showAssigneeFilter: true,
+  mode: 'manage',
+  libraryStatus: null
 })
 
 const emit = defineEmits<{
-  'update:filters': [value: Filters]
+  'update:filters': [value: ProductFilterState]
   'update:selectedProduct': [value: string | null]
   'update:status': [value: string | null]
+  'update:libraryStatus': [value: number | null]
   search: [keyword: string]
   'search-click': []
   reset: []
 }>()
 
-function updateFilter(key: keyof Filters, value: string | null) {
+function updateFilter<K extends keyof ProductFilterState>(key: K, value: ProductFilterState[K]) {
   emit('update:filters', { ...props.filters, [key]: value })
 }
 
-const categoryOptions = [
-  { label: '高佣爆款', value: 'high_commission' },
-  { label: '适合投放', value: 'traffic' },
-  { label: '新品首发', value: 'new' },
-  { label: '高客单价', value: 'high_price' }
-]
-
-const commissionOptions = [
-  { label: '20%以上', value: 'gt20' },
-  { label: '10% - 20%', value: '10_20' },
-  { label: '10%以下', value: 'lt10' }
-]
-
-const yesNoOptions = [
-  { label: '是', value: '1' },
-  { label: '否', value: '0' }
-]
-
-const assigneeOptions = [
-  { label: '已分配负责人', value: 'assigned' },
-  { label: '未分配负责人', value: 'unassigned' }
-]
-
-const decisionOptions = [
-  { label: '主推', value: 'MAIN' },
-  { label: '次推', value: 'SECONDARY' },
-  { label: '暂缓', value: 'PAUSE' },
-  { label: '放弃', value: 'DROP' },
-  { label: '暂无判断', value: 'NONE' }
-]
-
-const statusOptions = [
-  { label: '待审核', value: 'PENDING_AUDIT' },
-  { label: '审核通过', value: 'APPROVED' },
-  { label: '审核拒绝', value: 'REJECTED' },
-  { label: '历史已绑定', value: 'BOUND' },
-  { label: '已分配招商', value: 'ASSIGNED' },
-  { label: '已转链', value: 'LINKED' },
-  { label: '已转交达人 CRM', value: 'FOLLOWING' }
+const libraryShelfOptions = [
+  { label: '上架', value: 1 },
+  { label: '下架', value: 0 }
 ]
 </script>
-
-<style scoped>
-.product-toolbar {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 16px;
-  margin-bottom: 16px;
-}
-</style>

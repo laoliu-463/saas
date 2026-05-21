@@ -6,7 +6,7 @@ param(
     [int]$RawOrderWindowDays = 3,
     [int]$SettlementSize = 20,
     [int]$RawOrderCount = 5,
-    [string]$ComposeFile = "docker-compose.yml",
+    [string]$ComposeFile = "docker-compose.real-pre.yml",
     [string]$EnvFile = ".env.real-pre",
     [string]$PostgresService = "postgres",
     [string]$DbUser = "saas",

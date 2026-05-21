@@ -9,7 +9,7 @@ const API_BASE_URL = normalizeBaseUrl(process.env.API_BASE_URL || 'http://localh
 const REQUEST_TIMEOUT_MS = Number(process.env.QA_REQUEST_TIMEOUT_MS || 20000);
 const ADMIN_USERNAME = process.env.QA_ADMIN_USER || 'admin';
 const ADMIN_PASSWORD = process.env.QA_ADMIN_PASSWORD || 'admin123';
-const POSTGRES_CONTAINER = process.env.QA_POSTGRES_CONTAINER || 'saas-postgres';
+const POSTGRES_CONTAINER = process.env.QA_POSTGRES_CONTAINER || 'saas-active-postgres-real-pre-1';
 const DB_USER = process.env.QA_DB_USER || 'saas';
 const DB_NAME = process.env.QA_DB_NAME || 'saas_real_pre';
 

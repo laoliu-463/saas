@@ -162,8 +162,10 @@ class DouyinTokenServiceTest {
         assertThat(status.getAppId()).isEqualTo("app123");
         assertThat(status.isHasAccessToken()).isTrue();
         assertThat(status.isHasRefreshToken()).isTrue();
-        assertThat(status.getMaskedAccessToken()).startsWith("acce").endsWith("3456");
-        assertThat(status.getMaskedRefreshToken()).startsWith("refr").endsWith("cdef");
+        assertThat(status.getMaskedAccessToken()).isEqualTo("****");
+        assertThat(status.getMaskedRefreshToken()).isEqualTo("****");
+        assertThat(status.getMaskedAccessToken()).doesNotContain("acce", "3456");
+        assertThat(status.getMaskedRefreshToken()).doesNotContain("refr", "cdef");
         assertThat(status.isReauthorizeRequired()).isFalse();
     }
 

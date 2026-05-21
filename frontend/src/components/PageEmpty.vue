@@ -30,16 +30,20 @@ defineProps<{
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   min-height: 220px;
-  padding: 32px 20px;
+  padding: 36px 24px;
   text-align: center;
   color: var(--text-secondary);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card-muted);
 }
 
 .empty-icon {
   font-size: 36px;
   line-height: 1;
+  color: var(--text-tertiary);
 }
 
 .empty-title {

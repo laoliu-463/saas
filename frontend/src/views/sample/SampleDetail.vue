@@ -1,5 +1,5 @@
 <template>
-  <n-modal :show="effectiveShow" preset="card" title="寄样详情" style="width: 760px" @update:show="closeDetail">
+  <n-modal :show="effectiveShow" preset="card" title="寄样详情" :style="{ width: MODAL_WIDTH.lg }" @update:show="closeDetail">
     <n-spin :show="loading || actionLoading">
       <div v-if="detail" class="detail-body">
         <section class="detail-section">
@@ -143,6 +143,7 @@
 import { computed, h, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NInput, useDialog, useMessage } from 'naive-ui'
+import { MODAL_WIDTH } from '../../constants/ui'
 import { actionSample, getSampleById, getSampleStatusLogs } from '../../api/sample'
 import StatusTag from '../../components/StatusTag.vue'
 import { ROLE_CODES } from '../../constants/rbac'

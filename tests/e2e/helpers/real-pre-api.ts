@@ -80,20 +80,50 @@ export async function verifyBackendApis(token: string): Promise<BackendProbeResu
   try {
     try {
       const r = await ctx.get('/api/douyin/tokens', { headers });
-      results.token = { status: r.status(), ok: r.ok() };
+      const data = await r.json().catch(() => undefined);
+      const status = (data as { data?: Record<string, unknown> } | undefined)?.data ?? {};
+      const tokenUsable =
+        status.hasAccessToken === true &&
+        status.hasRefreshToken === true &&
+        status.reauthorizeRequired !== true;
+      results.token = {
+        status: r.status(),
+        ok: r.ok() && tokenUsable,
+        reason: tokenUsable
+          ? undefined
+          : 'REAL_PRE_TOKEN_PRECONDITION_BLOCKED: missing access_token/refresh_token or reauthorization required',
+        data: {
+          appId: status.appId,
+          hasAccessToken: status.hasAccessToken === true,
+          hasRefreshToken: status.hasRefreshToken === true,
+          tokenExpiringSoon: status.tokenExpiringSoon === true,
+          reauthorizeRequired: status.reauthorizeRequired === true,
+        },
+      };
     } catch (e) {
       results.token = { status: 0, ok: false, error: e instanceof Error ? e.message : String(e) };
     }
 
+    if (!results.token?.ok) {
+      const reason = results.token?.reason || `Token 不可用，跳过真实上游副作用探测: token=${results.token?.status ?? 'N/A'}`;
+      results.institution = { status: 0, ok: false, skipped: true, reason };
+      results.activities = { status: 0, ok: false, skipped: true, reason };
+      results.activityProducts = { status: 0, ok: false, skipped: true, reason };
+      results.orderSync = { status: 0, ok: false, skipped: true, reason };
+      results.skuProbe = { status: 0, ok: false, skipped: true, reason };
+      return results;
+    }
+
     try {
       const r = await ctx.get('/api/douyin/institution-info', { headers });
-      results.institution = { status: r.status(), ok: r.ok() };
+      const data = await r.json().catch(() => undefined);
+      results.institution = { status: r.status(), ok: r.ok(), data };
     } catch (e) {
       results.institution = { status: 0, ok: false, error: e instanceof Error ? e.message : String(e) };
     }
 
-    if (!results.token?.ok || !results.institution?.ok) {
-      const reason = `Token 或授权主体不可用，跳过真实上游副作用探测: token=${results.token?.status ?? 'N/A'}, institution=${results.institution?.status ?? 'N/A'}`;
+    if (!results.institution?.ok) {
+      const reason = `授权主体不可用，跳过真实上游副作用探测: institution=${results.institution?.status ?? 'N/A'}`;
       results.activities = { status: 0, ok: false, skipped: true, reason };
       results.activityProducts = { status: 0, ok: false, skipped: true, reason };
       results.orderSync = { status: 0, ok: false, skipped: true, reason };

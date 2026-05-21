@@ -1,5 +1,5 @@
 <template>
-  <div class="sample-kanban-page" data-testid="sample-page">
+  <div class="sample-kanban-page app-page" data-testid="sample-page">
     <PageHeader :title="pageTitle" :description="pageDesc">
       <template #actions>
         <n-button v-if="canApplySample" type="primary" data-testid="sample-apply" @click="$router.push('/sample/apply')">申请寄样</n-button>
@@ -8,7 +8,7 @@
       </template>
     </PageHeader>
 
-    <div class="shipping-table-card">
+    <div class="shipping-table-card app-panel">
       <n-tabs v-model:value="activeTab" type="line" animated @update:value="handleTabChange">
         <n-tab-pane v-for="tab in tabList" :key="tab.value" :name="tab.value" :tab="tab.label">
           <n-data-table
@@ -43,6 +43,7 @@ import { createPaginationState, normalizePageSize } from '../../utils/pagination
 const message = useMessage();
 const authStore = useAuthStore();
 const loading = ref(false);
+const EXPORT_ROW_LIMIT = 20000;
 
 const isOpsStaffOnly = computed(() => {
   const roles = authStore.roleCodes;
@@ -136,6 +137,14 @@ const fetchData = async () => {
 const handleExport = async () => {
   if (!canExportSamples.value) {
     message.warning('当前角色无权导出寄样单');
+    return;
+  }
+  if (!data.value.length) {
+    message.warning('暂无寄样单可导出');
+    return;
+  }
+  if (pagination.itemCount > EXPORT_ROW_LIMIT) {
+    message.warning(`当前筛选结果 ${pagination.itemCount} 条，超过 ${EXPORT_ROW_LIMIT} 条导出上限，请缩小状态或筛选范围`);
     return;
   }
   try {
@@ -235,14 +244,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.sample-kanban-page {
-  padding: var(--spacing-xl);
-}
-
 .shipping-table-card {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
   padding: 4px 16px 16px;
-  box-shadow: var(--shadow-card);
 }
 </style>

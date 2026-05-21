@@ -26,6 +26,6 @@ finally {
 Write-Host ""
 Write-Host "SAAS real-pre environment is starting as project saas-active." -ForegroundColor Green
 Write-Host "Use this environment only for real SDK integration."
-Write-Host "Frontend: http://localhost:3000"
-Write-Host "Backend health: http://localhost:8080/api/actuator/health"
-Write-Host "Containers: saas-frontend, saas-backend, saas-postgres, saas-redis"
+Write-Host "Frontend: http://localhost:3001"
+Write-Host "Backend health: http://localhost:8081/api/actuator/health"
+Write-Host "Containers: saas-active-frontend-real-pre-1, saas-active-backend-real-pre-1, saas-active-postgres-real-pre-1, saas-active-redis-real-pre-1"

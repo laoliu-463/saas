@@ -1,5 +1,5 @@
 <template>
-  <div class="douyin-integration">
+  <div class="douyin-integration app-page">
     <PageHeader
       title="抖店联调"
       description="汇总 real-pre 精选联盟链路状态，供授权、活动商品、SKU、订单同步和看板排查使用。"
@@ -14,12 +14,12 @@
       </template>
     </PageHeader>
 
-    <n-alert type="warning" :show-icon="false" class="scope-alert">
+    <n-alert type="warning" :show-icon="false" class="scope-alert app-page-alert">
       当前 real-pre 用于精选联盟 / 团长链路取证；店铺商品与店铺订单接口不纳入本页联调进度。
     </n-alert>
 
     <div class="status-grid">
-      <div v-for="item in orderedChecks" :key="item.key" class="status-card" :class="item.status">
+      <div v-for="item in orderedChecks" :key="item.key" class="status-card app-status-card" :class="item.status">
         <div class="status-card-head">
           <n-tag :type="statusTagType(item.status)" size="small">{{ statusLabel(item.status) }}</n-tag>
           <span v-if="item.updatedAt" class="status-time">{{ item.updatedAt }}</span>
@@ -202,6 +202,7 @@ interface LastRunSummary {
 }
 
 const message = useMessage();
+const REAL_PRE_REQUEST_TIMEOUT_MS = 120_000;
 const appId = ref('');
 const activityId = ref('3916506');
 const productId = ref('3810562766247428542');
@@ -764,6 +765,8 @@ const runFullCheck = async () => {
       appId: appId.value || undefined,
       count: 20,
       refresh: true
+    }, {
+      timeout: REAL_PRE_REQUEST_TIMEOUT_MS
     });
     const businessProductData = unwrapApiData<any>(businessProductResponse);
     const businessProductCount = Array.isArray(businessProductData?.items)
@@ -815,7 +818,9 @@ const runFullCheck = async () => {
     setCheck('orders', 'running', '订单同步中', '正在同步最近 30 分钟团长侧订单。');
     const end = new Date();
     const start = new Date(end.getTime() - 30 * 60 * 1000);
-    const syncResponse = await syncOrders(formatLocalDateTime(start), formatLocalDateTime(end));
+    const syncResponse = await syncOrders(formatLocalDateTime(start), formatLocalDateTime(end), {
+      timeout: REAL_PRE_REQUEST_TIMEOUT_MS
+    });
     const syncData = unwrapApiData<any>(syncResponse);
     const failed = normalizeNumber(syncData?.failed ?? syncData?.failedCount);
     const fetched = normalizeNumber(syncData?.fetched ?? syncData?.total ?? syncData?.totalFetched);
@@ -827,7 +832,9 @@ const runFullCheck = async () => {
       failed === 0 ? '订单同步成功' : '订单同步有失败',
       `窗口 ${formatLocalDateTime(start)} ~ ${formatLocalDateTime(end)}，拉取 ${fetched}，新增 ${created}，更新 ${updated}，失败 ${failed}。`
     );
-    const ordersResponse = await getOrders({ page: 1, size: 5 });
+    const ordersResponse = await getOrders({ page: 1, size: 5 }, {
+      timeout: REAL_PRE_REQUEST_TIMEOUT_MS
+    });
     const ordersData = unwrapApiData<any>(ordersResponse);
     summary.orders = {
       sync: syncData,
@@ -836,7 +843,9 @@ const runFullCheck = async () => {
 
     activeCheckKey = 'dashboard';
     setCheck('dashboard', 'running', 'Dashboard 读取中', '正在读取 createTime 口径指标。');
-    const metricsResponse = await getMetrics({ timeField: 'createTime' });
+    const metricsResponse = await getMetrics({ timeField: 'createTime' }, {
+      timeout: REAL_PRE_REQUEST_TIMEOUT_MS
+    });
     const metricsData = unwrapApiData<any>(metricsResponse);
     const dashboardOrders = normalizeNumber(metricsData?.todayOrderCount ?? metricsData?.totalOrders);
     const dashboardAmount = String(metricsData?.todayGmv ?? metricsData?.totalAmount ?? '0.00');
@@ -889,8 +898,7 @@ onMounted(() => {
 
 <style scoped>
 .douyin-integration {
-  max-width: 1280px;
-  padding: var(--spacing-xl);
+  max-width: var(--page-max-width);
 }
 
 .app-id-input {
@@ -917,11 +925,6 @@ onMounted(() => {
 }
 
 .status-card {
-  min-height: 132px;
-  padding: 18px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--bg-card);
   box-shadow: var(--shadow-card);
 }
 

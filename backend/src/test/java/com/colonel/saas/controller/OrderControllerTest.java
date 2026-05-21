@@ -175,34 +175,29 @@ class OrderControllerTest {
     }
 
     @Test
-    void diagnosisSql_shouldReuseDashboardClassifierForOrders() throws Exception {
-        OrderController controller = new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService, new ShortTtlCacheService());
-        Method method = OrderController.class.getDeclaredMethod("diagnosisSql", String.class, String.class);
-        method.setAccessible(true);
-
-        String sql = (String) method.invoke(controller, "colonelsettlement_order.", DashboardService.DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED);
-
-        String expected = "(" + DashboardService.diagnosisCategoryCaseSql(
-                "colonelsettlement_order.colonel_activity_id",
-                "colonelsettlement_order.second_colonel_activity_id",
-                "colonelsettlement_order.product_id",
-                "colonelsettlement_order.create_time",
-                "colonelsettlement_order.colonel_buyin_id",
-                "colonelsettlement_order.attribution_status",
-                "colonelsettlement_order.attribution_remark"
-        ) + ") = '" + DashboardService.DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED + "'";
-        assertThat(sql).isEqualTo(expected);
+    void normalizeDiagnosisCategory_shouldWhitelistDashboardCategories() {
+        assertThat(DashboardService.normalizeDiagnosisCategory(DashboardService.DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED))
+                .isEqualTo(DashboardService.DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED);
+        assertThat(DashboardService.normalizeDiagnosisCategory("UNSAFE_BECAUSE_CREATED_AFTER_ORDER"))
+                .isEqualTo(DashboardService.DIAGNOSIS_MECHANISM_HIT_HISTORY_UNSAFE);
     }
 
     @Test
-    void diagnosisSql_shouldAcceptUnsafeAlias() throws Exception {
+    void normalizeDiagnosisCategory_shouldRejectSqlInjectionPayload() {
+        assertThat(DashboardService.normalizeDiagnosisCategory("'; DROP TABLE colonelsettlement_order; --"))
+                .isNull();
+        assertThat(DashboardService.normalizeDiagnosisCategory("UPSTREAM_PRODUCT_UNCOVERED' OR '1'='1"))
+                .isNull();
+    }
+
+    @Test
+    void sanitizeDiagnosisSqlPrefix_shouldRejectUnknownAlias() throws Exception {
         OrderController controller = new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService, new ShortTtlCacheService());
-        Method method = OrderController.class.getDeclaredMethod("diagnosisSql", String.class, String.class);
+        Method method = OrderController.class.getDeclaredMethod("sanitizeDiagnosisSqlPrefix", String.class);
         method.setAccessible(true);
 
-        String sql = (String) method.invoke(controller, "colonelsettlement_order.", "UNSAFE_BECAUSE_CREATED_AFTER_ORDER");
-
-        assertThat(sql).contains("'" + DashboardService.DIAGNOSIS_MECHANISM_HIT_HISTORY_UNSAFE + "'");
+        assertThat(method.invoke(controller, "evil; DROP TABLE--")).isEqualTo("colonelsettlement_order.");
+        assertThat(method.invoke(controller, "fo.")).isEqualTo("fo.");
     }
 
     @Test

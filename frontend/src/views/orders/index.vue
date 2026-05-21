@@ -1,5 +1,5 @@
 <template>
-  <div class="orders-page" data-testid="orders-page">
+  <div class="orders-page app-page" data-testid="orders-page">
     <PageHeader
       title="订单归因"
       description="自动回流抖店结算订单，精准识别推广渠道、达人业绩与招商归属。"
@@ -10,7 +10,7 @@
       </template>
     </PageHeader>
 
-    <div v-if="summaryReady" class="attribution-summary">
+    <div v-if="summaryReady" class="attribution-summary app-summary-bar">
       <n-space :size="16" align="center">
         <span class="summary-label">归因概览</span>
         <n-tag type="success" size="small" round>已归因: {{ attributionSummary.attributed }} 单 ({{ attributionSummary.attributedPercent }}%)</n-tag>
@@ -19,7 +19,7 @@
       </n-space>
     </div>
 
-    <div class="toolbar">
+    <div class="toolbar app-toolbar">
       <n-space wrap>
         <n-input v-model:value="filters.orderId" placeholder="订单 ID" style="width: 200px" />
         <n-input v-model:value="filters.productId" placeholder="商品 ID" style="width: 180px" />
@@ -39,7 +39,7 @@
       </n-space>
     </div>
 
-    <n-card :bordered="false" class="main-card">
+    <n-card :bordered="false" class="main-card app-panel">
       <n-data-table
         remote
         data-testid="orders-table"
@@ -102,6 +102,8 @@ const filters = reactive({
 })
 
 const pagination = reactive(createPaginationState())
+
+let fetchVersion = 0
 
 const applyRouteFilters = () => {
   filters.orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
@@ -240,31 +242,47 @@ function buildQueryParams() {
 }
 
 const fetchData = async () => {
-  pagination.pageSize = normalizePageSize(pagination.pageSize)
+  const currentFetch = ++fetchVersion
   loading.value = true
+  const params = buildQueryParams()
+  void getOrderStats({
+    orderId: params.orderId,
+    attributionStatus: params.attributionStatus,
+    activityId: params.activityId,
+    productId: params.productId,
+    timeField: params.timeField,
+    dashboardDiagnosis: params.dashboardDiagnosis,
+    startTime: params.startTime,
+    endTime: params.endTime
+  })
+    .then((statsRes: any) => {
+      if (currentFetch === fetchVersion) {
+        stats.value = statsRes.data || null
+      }
+    })
+    .catch((err: any) => {
+      if (currentFetch === fetchVersion) {
+        stats.value = null
+      }
+      console.warn('[orders] stats load failed', err)
+    })
+
   try {
-    const params = buildQueryParams()
-    const [listRes, statsRes]: any = await Promise.all([
-      getOrders(params),
-      getOrderStats({
-        orderId: params.orderId,
-        attributionStatus: params.attributionStatus,
-        activityId: params.activityId,
-        productId: params.productId,
-        timeField: params.timeField,
-        dashboardDiagnosis: params.dashboardDiagnosis,
-        startTime: params.startTime,
-        endTime: params.endTime
-      })
-    ])
+    const listRes: any = await getOrders(params)
+    if (currentFetch !== fetchVersion) {
+      return
+    }
     data.value = listRes.data.records || []
     pagination.itemCount = listRes.data.total || 0
-    stats.value = statsRes.data || null
   } catch (err: any) {
-    stats.value = null
-    message.error('加载订单列表失败')
+    if (currentFetch === fetchVersion) {
+      stats.value = null
+      message.error('加载订单列表失败')
+    }
   } finally {
-    loading.value = false
+    if (currentFetch === fetchVersion) {
+      loading.value = false
+    }
   }
 }
 
@@ -333,23 +351,11 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.orders-page { padding: var(--spacing-xl); }
-
-.attribution-summary {
-  margin-bottom: var(--spacing-md);
-  padding: var(--spacing-md);
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-}
-
 .summary-label {
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-secondary);
 }
-
-.toolbar { margin-bottom: var(--spacing-md); background: var(--bg-card); padding: var(--spacing-md); border-radius: var(--radius-md); }
-.main-card { border-radius: var(--radius-md); }
 .diagnostic-summary {
   display: flex;
   flex-direction: column;

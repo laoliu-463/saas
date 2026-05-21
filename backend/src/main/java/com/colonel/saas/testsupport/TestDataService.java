@@ -323,6 +323,7 @@ public class TestDataService implements ApplicationRunner {
                 LocalDateTime.now().minusDays(15)
         );
 
+        resetFixedMockOrderDedupClaims();
         seedAttributedOrder("MOCK_SEED_TALENT_D_ORDER", mainProduct, talentD, MAPPING_PICK_SOURCE_D, "M_TALENT_D", "主演示商家-达人D转化");
         seedMockAuditOrder(
                 "MOCK_AUDIT_PRODUCT_UNCOVERED",
@@ -389,6 +390,7 @@ public class TestDataService implements ApplicationRunner {
         jdbcTemplate.update("DELETE FROM sample_status_log");
         jdbcTemplate.update("DELETE FROM sample_request");
         jdbcTemplate.update("DELETE FROM colonelsettlement_order");
+        jdbcTemplate.update("DELETE FROM order_sync_dedup_claim");
         jdbcTemplate.update("DELETE FROM pick_source_mapping");
         jdbcTemplate.update("DELETE FROM promotion_link");
         jdbcTemplate.update("DELETE FROM product_operation_log");
@@ -1556,6 +1558,17 @@ public class TestDataService implements ApplicationRunner {
 
     private void resetTalentClaims() {
         jdbcTemplate.update("DELETE FROM talent_claim");
+    }
+
+    private void resetFixedMockOrderDedupClaims() {
+        jdbcTemplate.update("""
+                DELETE FROM order_sync_dedup_claim
+                WHERE order_id IN (
+                    'MOCK_SEED_TALENT_D_ORDER',
+                    'MOCK_AUDIT_PRODUCT_UNCOVERED',
+                    'MOCK_AUDIT_REFUNDED_CLOSED'
+                )
+                """);
     }
 
     private void upsertTalentClaim(UUID talentId, String talentUid, UUID userId, UUID deptId, LocalDateTime claimedAt) {

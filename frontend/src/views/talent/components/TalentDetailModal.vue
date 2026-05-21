@@ -1,5 +1,5 @@
 <template>
-  <n-modal :show="show" preset="card" title="达人详情" style="width: 1040px" @update:show="closeModal">
+  <n-modal :show="show" preset="card" title="达人详情" :style="{ width: MODAL_WIDTH.xxl }" @update:show="closeModal">
     <n-spin :show="loading">
       <div v-if="detail" class="detail-body">
         <section class="hero-card">
@@ -117,6 +117,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
+import { MODAL_WIDTH } from '../../../constants/ui'
 import { getTalentById, refreshTalent, type TalentDetailResponse } from '../../../api/talent'
 import { useAuthStore } from '../../../stores/auth'
 import { ROLE_CODES } from '../../../constants/rbac'

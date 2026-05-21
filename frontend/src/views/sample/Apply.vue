@@ -1,6 +1,6 @@
 <template>
-  <div class="sample-apply">
-    <n-card title="申请寄样" :bordered="false" style="max-width: 860px; margin: 0 auto;">
+  <div class="sample-apply app-page">
+    <n-card title="申请寄样" :bordered="false" class="app-panel apply-card">
       <n-form ref="formRef" :model="formData" :rules="rules" label-placement="top">
         <n-grid :cols="24" :x-gap="12">
           <n-form-item-gi :span="24" label="达人搜索">
@@ -72,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue';
+import { computed, h, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { NButton, useDialog, useMessage } from 'naive-ui';
 import { useRouter } from 'vue-router';
 import { checkSampleEligibility, createSample, searchSampleProducts } from '../../api/sample';
@@ -158,8 +158,9 @@ const talentColumns = [
 
 const productOptions = ref<{ label: string; value: string }[]>([]);
 const loadingProducts = ref(false);
+let productSearchTimer: ReturnType<typeof window.setTimeout> | null = null;
 
-const handleSearchProduct = async (query: string) => {
+const fetchProductOptions = async (query: string) => {
   loadingProducts.value = true;
   try {
     const res = await searchSampleProducts({ keyword: query || undefined, size: 20 });
@@ -172,6 +173,17 @@ const handleSearchProduct = async (query: string) => {
   } finally {
     loadingProducts.value = false;
   }
+};
+
+const handleSearchProduct = (query: string) => {
+  if (productSearchTimer) {
+    window.clearTimeout(productSearchTimer);
+  }
+  productSearchTimer = window.setTimeout(() => {
+    fetchProductOptions(query).catch((error: any) => {
+      message.error(error?.message || '搜索商品失败');
+    });
+  }, 300);
 };
 
 const fetchTalents = async (page = 1) => {
@@ -308,14 +320,19 @@ const formatFans = (fans?: number) => {
 
 onMounted(async () => {
   await fetchTalents(1);
-  await handleSearchProduct('');
+  await fetchProductOptions('');
+});
+
+onUnmounted(() => {
+  if (productSearchTimer) {
+    window.clearTimeout(productSearchTimer);
+  }
 });
 </script>
 
 <style scoped>
-.sample-apply {
-  min-height: 100%;
-  padding: 24px;
+.apply-card {
+  max-width: 860px;
+  margin: 0 auto;
 }
 </style>
-

@@ -175,6 +175,52 @@ class GatewayRecordTest {
     }
 
     @Nested
+    @DisplayName("DouyinActivityGateway Records")
+    class ActivityGatewayRecords {
+
+        @Test
+        void activityProductItem_toMap_includesOriginColonelBuyinId() {
+            var item = new DouyinActivityGateway.ActivityProductItem(
+                    12345L, "测试商品", "cover.jpg",
+                    9900L, "99.00", 1500L, 1500L,
+                    2000L, "20%", 1, "CPS", "10%", null,
+                    false, true, 5000L, 100L, "测试店铺",
+                    "4.9", 1, "上架", "美妆", "100",
+                    "优惠券信息", "2024-01-01", "2024-12-31",
+                    "2024-01-01", "2024-12-31", "http://detail",
+                    "7293293346398011698", Map.of("origin_colonel_buyin_id", "7293293346398011698"));
+
+            Map<String, Object> map = item.toMap();
+
+            assertThat(map).containsEntry("productId", 12345L);
+            assertThat(map).containsEntry("origin_colonel_buyin_id", "7293293346398011698");
+            assertThat(map).containsEntry("originColonelBuyinId", "7293293346398011698");
+            assertThat(map).hasSize(31);
+        }
+    }
+
+    @Nested
+    @DisplayName("DouyinAllianceActivityProductRows")
+    class AllianceActivityProductRows {
+
+        @Test
+        void extract_prefersDataArray_thenList() {
+            Map<String, Object> fromData = Map.of(
+                    "data", List.of(Map.of("product_id", 1L, "title", "A")));
+            List<Map<String, Object>> dataRows = DouyinAllianceActivityProductRows.extract(fromData);
+            assertThat(dataRows).hasSize(1);
+            assertThat(dataRows.get(0)).containsEntry("product_id", 1L);
+
+            Map<String, Object> fromList = Map.of(
+                    "data", List.of(),
+                    "list", List.of(Map.of("product_id", 2L, "title", "B")));
+            List<Map<String, Object>> listRows = DouyinAllianceActivityProductRows.extract(fromList);
+            assertThat(listRows).hasSize(1);
+            assertThat(listRows.get(0)).containsEntry("product_id", 2L);
+        }
+    }
+
+    @Nested
     @DisplayName("DouyinPromotionGateway Records")
     class PromotionGatewayRecords {
 

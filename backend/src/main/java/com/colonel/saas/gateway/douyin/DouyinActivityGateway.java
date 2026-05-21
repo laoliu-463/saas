@@ -182,10 +182,15 @@ public interface DouyinActivityGateway {
             String activityEndTime,
             String promotionStartTime,
             String promotionEndTime,
-            String detailUrl) {
+            String detailUrl,
+            String originColonelBuyinId,
+            Map<String, Object> rawPayload) {
 
         public Map<String, Object> toMap() {
             Map<String, Object> item = new LinkedHashMap<>();
+            if (rawPayload != null && !rawPayload.isEmpty()) {
+                item.putAll(rawPayload);
+            }
             item.put("productId", productId);
             item.put("title", title);
             item.put("cover", cover);
@@ -215,6 +220,10 @@ public interface DouyinActivityGateway {
             item.put("promotionStartTime", promotionStartTime);
             item.put("promotionEndTime", promotionEndTime);
             item.put("detailUrl", detailUrl);
+            if (originColonelBuyinId != null && !originColonelBuyinId.isBlank()) {
+                item.put("origin_colonel_buyin_id", originColonelBuyinId);
+                item.put("originColonelBuyinId", originColonelBuyinId);
+            }
             return item;
         }
     }

@@ -52,7 +52,7 @@ Test 实现不应只是简单的静态返回，应支持：
 - `test` 是当前系统功能、权限测试、自动化测试和 Mock 闭环的默认环境
 - `real-pre` 仅用于真实 SDK / 真实上游联调
 - `local-mock` 仅保留为历史口径和回滚参考，不再作为独立容器环境扩展
-- 本机同一时间只允许启动一套 SAAS 环境，统一使用 `docker-compose.yml` + project name `saas-active`
+- 本机同一时间只允许启动一套 SAAS 环境，test 用 `docker-compose.test.yml`，real-pre 用 `docker-compose.real-pre.yml`
 
 当前代码合并口径是：同一套 Controller / Service / 前端调用同时支持 Test 与 Real，运行时只通过 Gateway Bean 和环境配置切换，不把 Test 与 Real 的数据环境合并。当前事实如下：
 

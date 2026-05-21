@@ -18,6 +18,8 @@ services:
       - ./backend/src/main/resources/db/alter-product-test-columns.sql:/docker-entrypoint-initdb.d/07-alter-product-test-columns.sql
       - ./backend/src/main/resources/db/alter-order-attribution-mvp.sql:/docker-entrypoint-initdb.d/08-alter-order-attribution-mvp.sql
       - ./backend/src/main/resources/db/alter-order-attribution-mvp-v2.sql:/docker-entrypoint-initdb.d/09-alter-order-attribution-mvp-v2.sql
+      - ./backend/src/main/resources/db/alter-sample-shipper-code.sql:/docker-entrypoint-initdb.d/10-alter-sample-shipper-code.sql
+      - ./backend/src/main/resources/db/alter-db-performance-contract-20260521.sql:/docker-entrypoint-initdb.d/11-alter-db-performance-contract-20260521.sql
     ports:
       - "5432:5432"
     healthcheck:
@@ -112,11 +114,11 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/favicon.svg"]
+      interval: 45s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
 
 volumes:
   postgres_test_data:

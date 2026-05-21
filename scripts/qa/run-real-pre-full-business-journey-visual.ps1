@@ -1,8 +1,8 @@
 $ErrorActionPreference = "Stop"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
-$BackendUrl = if ($env:E2E_BACKEND_URL) { $env:E2E_BACKEND_URL.TrimEnd("/") } elseif ($env:BACKEND_URL) { $env:BACKEND_URL.TrimEnd("/") } else { "http://localhost:8080" }
-$FrontendUrl = if ($env:E2E_BASE_URL) { $env:E2E_BASE_URL.TrimEnd("/") } elseif ($env:FRONTEND_URL) { $env:FRONTEND_URL.TrimEnd("/") } else { "http://localhost:3000" }
+$BackendUrl = if ($env:E2E_BACKEND_URL) { $env:E2E_BACKEND_URL.TrimEnd("/") } elseif ($env:BACKEND_URL) { $env:BACKEND_URL.TrimEnd("/") } else { "http://localhost:8081" }
+$FrontendUrl = if ($env:E2E_BASE_URL) { $env:E2E_BASE_URL.TrimEnd("/") } elseif ($env:FRONTEND_URL) { $env:FRONTEND_URL.TrimEnd("/") } else { "http://localhost:3001" }
 
 Write-Host "== real-pre full business journey visual regression =="
 Write-Host "Root: $Root"

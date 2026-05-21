@@ -4,6 +4,8 @@
   "scripts": {
     "build": "npm --prefix frontend run build",
     "e2e": "playwright test",
+    "e2e:smoke": "playwright test --project=chromium",
+    "e2e:v1-p0": "playwright test --project=v1-p0",
     "e2e:headed": "playwright test --headed",
     "e2e:ui": "playwright test --ui",
     "e2e:debug": "playwright test --debug",
@@ -16,7 +18,10 @@
     "e2e:real-pre:visual": "node runtime/qa/real-pre-visual-regression.cjs",
     "e2e:real-pre:journey:visual": "node runtime/qa/real-pre-full-business-journey.visual.cjs",
     "qa:real-pre:journey:visual": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa/run-real-pre-full-business-journey-visual.ps1",
-    "e2e:journey": "cross-env E2E_REAL_PRE=true E2E_BASE_URL=http://localhost:3000 E2E_BACKEND_URL=http://localhost:8080 npx playwright test --project=full-journey"
+    "e2e:journey": "cross-env E2E_REAL_PRE=true E2E_BASE_URL=http://localhost:3000 E2E_BACKEND_URL=http://localhost:8080 npx playwright test --project=full-journey",
+    "test:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-all-tests.ps1",
+    "test:frontend": "npm --prefix frontend run test",
+    "test:frontend:coverage": "npm --prefix frontend run test:coverage"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",

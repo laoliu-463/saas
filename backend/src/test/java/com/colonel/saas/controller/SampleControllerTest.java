@@ -501,8 +501,6 @@ class SampleControllerTest {
         SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
         request.setAction("PENDING_SHIP");
 
-        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
-
         assertThatThrownBy(() -> sampleController.actionSample(
                 sampleId,
                 request,
@@ -526,8 +524,6 @@ class SampleControllerTest {
 
         SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
         request.setAction("PENDING_SHIP");
-
-        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
 
         assertThatThrownBy(() -> sampleController.actionSample(
                 sampleId,
@@ -792,9 +788,7 @@ class SampleControllerTest {
         page.setRecords(List.of(sample));
         page.setTotal(1);
 
-        Page<Product> productKeywordPage = new Page<>(1, 500, 1);
-        productKeywordPage.setRecords(List.of(product));
-        when(productMapper.selectPage(any(Page.class), any(QueryWrapper.class))).thenReturn(productKeywordPage);
+        when(productMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(product));
         when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
 
@@ -812,7 +806,7 @@ class SampleControllerTest {
         assertThat(response.getData().getTotal()).isEqualTo(1L);
         assertThat(response.getData().getRecords()).hasSize(1);
         assertThat(response.getData().getRecords().get(0).getTalentName()).isEqualTo("达人B-映射缺失订单");
-        verify(productMapper).selectPage(any(Page.class), any(QueryWrapper.class));
+        verify(productMapper).selectList(any(QueryWrapper.class));
         verify(sampleRequestMapper).findPageWithScope(any(Page.class), any(QueryWrapper.class));
     }
 
@@ -1018,8 +1012,6 @@ class SampleControllerTest {
         SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
         request.setAction("COMPLETED");
 
-        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
-
         assertThatThrownBy(() -> sampleController.actionSample(
                 sampleId,
                 request,
@@ -1076,8 +1068,6 @@ class SampleControllerTest {
 
         SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
         request.setAction("COMPLETED");
-
-        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
 
         assertThatThrownBy(() -> sampleController.actionSample(
                 sampleId,

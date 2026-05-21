@@ -7,7 +7,7 @@ param(
     [int]$RawProbeCount = 20,
     [int]$LocalLookbackDays = 30,
     [int]$CandidateLimit = 20,
-    [string]$PostgresContainer = "saas-postgres",
+    [string]$PostgresContainer = "saas-active-postgres-real-pre-1",
     [string]$DbUser = "saas",
     [string]$DbName = "saas_real_pre"
 )

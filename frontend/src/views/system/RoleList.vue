@@ -1,10 +1,12 @@
 <template>
-  <div class="role-list" data-testid="system-roles-page">
-    <n-card title="角色管理" :bordered="false">
-      <n-space style="margin-bottom: 16px;">
+  <div class="role-list app-page" data-testid="system-roles-page">
+    <PageHeader title="角色管理" description="配置角色编码、数据范围与启用状态。">
+      <template #actions>
         <n-button type="primary" @click="openModal('add')">新增角色</n-button>
-      </n-space>
+      </template>
+    </PageHeader>
 
+    <n-card :bordered="false" class="app-panel app-table-shell">
       <n-data-table
         remote
         data-testid="system-roles-table"
@@ -17,7 +19,7 @@
       />
     </n-card>
 
-    <n-modal v-model:show="showModal" preset="card" :title="modalTitle" style="width: 500px;">
+    <n-modal v-model:show="showModal" preset="card" :title="modalTitle" :style="{ width: MODAL_WIDTH.md }">
       <n-form ref="formRef" :model="formData" :rules="rules" label-placement="left" label-width="100">
         <n-form-item label="角色编码" path="roleCode">
           <n-input v-model:value="formData.roleCode" placeholder="如 admin" :disabled="modalType === 'edit'" />
@@ -34,9 +36,9 @@
         <n-form-item label="备注" path="remark">
           <n-input v-model:value="formData.remark" type="textarea" placeholder="请输入备注" />
         </n-form-item>
-        <div style="display: flex; justify-content: flex-end;">
+        <div class="app-modal-footer">
           <n-button @click="showModal = false">取消</n-button>
-          <n-button type="primary" style="margin-left: 12px;" @click="handleSubmit" :loading="submitting">确定</n-button>
+          <n-button type="primary" @click="handleSubmit" :loading="submitting">确定</n-button>
         </div>
       </n-form>
     </n-modal>
@@ -46,6 +48,8 @@
 <script setup lang="ts">
 import { ref, reactive, h, onMounted } from 'vue';
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui';
+import PageHeader from '../../components/PageHeader.vue';
+import { MODAL_WIDTH } from '../../constants/ui';
 import { getRolePage, createRole, updateRole, deleteRole } from '../../api/sys';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
 

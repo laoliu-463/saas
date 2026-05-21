@@ -1,5 +1,5 @@
 <template>
-  <div class="metric-filters">
+  <div class="metric-filters app-toolbar">
     <n-space wrap>
       <n-input
         :value="filters.keyword"
@@ -80,11 +80,3 @@ function normalizeNumber(value: number | null) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 </script>
-
-<style scoped>
-.metric-filters {
-  padding: 16px;
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-}
-</style>

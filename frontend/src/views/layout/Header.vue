@@ -199,14 +199,13 @@ const handleUserMenu = async (key: string) => {
 .top-header {
   display: flex;
   align-items: center;
-  padding: 0 20px;
-  background: linear-gradient(135deg, rgba(255, 71, 87, 0.95) 0%, rgba(255, 107, 129, 0.95) 100%);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: white;
+  padding: 0 var(--spacing-lg);
+  background: var(--color-primary-gradient);
+  color: var(--text-inverse);
   flex-shrink: 0;
   z-index: 100;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-header);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .header-left {
@@ -236,32 +235,26 @@ const handleUserMenu = async (key: string) => {
 
 .nav-tab {
   flex: 0 0 auto;
-  padding: 8px 18px;
-  font-size: var(--text-base);
+  padding: 7px 16px;
+  font-size: var(--text-sm);
   font-weight: 500;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  color: rgba(255, 255, 255, 0.75);
-  transform: translateY(0);
+  transition: background var(--transition-fast), color var(--transition-fast);
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .nav-tab:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: white;
-  transform: translateY(-1px);
-}
-
-.nav-tab:active {
-  transform: translateY(1px);
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text-inverse);
 }
 
 .nav-tab.active {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
+  background: rgba(255, 255, 255, 0.22);
+  color: var(--text-inverse);
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
 }
 
 .header-right {
@@ -293,12 +286,7 @@ const handleUserMenu = async (key: string) => {
 }
 
 .user-info:hover {
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateY(-1px);
-}
-
-.user-info:active {
-  transform: translateY(1px);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .user-name {

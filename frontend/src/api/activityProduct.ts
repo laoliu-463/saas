@@ -1,10 +1,13 @@
 import request from '../utils/request';
 
-export const getActivityProducts = (activityId: string | number, params: any) =>
-  request.get(`/colonel/activities/${activityId}/products`, { params });
+export const getActivityProducts = (activityId: string | number, params: any, config: any = {}) =>
+  request.get(`/colonel/activities/${activityId}/products`, { params, ...config });
 
 export const getActivityProductDetail = (activityId: string | number, productId: string | number) =>
   request.get(`/colonel/activities/${activityId}/products/${productId}`);
+
+export const getActivityProductSkus = (activityId: string | number, productId: string | number) =>
+  request.get(`/colonel/activities/${activityId}/products/${productId}/skus`);
 
 export const auditActivityProduct = (
   activityId: string | number,

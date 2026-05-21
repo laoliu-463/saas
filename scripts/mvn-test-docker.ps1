@@ -14,11 +14,15 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $PSCommandPath
 $repoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
-$composeFile = Join-Path $repoRoot "docker-compose.yml"
+$composeFile = Join-Path $repoRoot "docker-compose.test.yml"
+$realPreComposeFile = Join-Path $repoRoot "docker-compose.real-pre.yml"
 $envFile = Join-Path $repoRoot ".env.test"
 
 if (-not (Test-Path -LiteralPath $composeFile)) {
     throw "Compose file not found: $composeFile"
+}
+if (-not (Test-Path -LiteralPath $realPreComposeFile)) {
+    throw "Real-pre compose file not found: $realPreComposeFile"
 }
 if (-not (Test-Path -LiteralPath $envFile)) {
     throw "Env file not found: $envFile"
@@ -29,7 +33,9 @@ $mvnArgs = if ($args.Count -gt 0) { ($args -join " ") } else { "-q test" }
 Push-Location $repoRoot
 try {
     # Override image ENTRYPOINT (dev-hot-reload.sh) so we only run Maven.
-    docker compose --env-file $envFile --project-name saas-active -f $composeFile run --rm --entrypoint /bin/sh backend -c "cd /app && mvn $mvnArgs"
+    docker compose --env-file $envFile --project-name saas-active -f $composeFile run --rm --entrypoint /bin/sh `
+        --volume "${realPreComposeFile}:/docker-compose.real-pre.yml:ro" `
+        backend -c "cd /app && mvn $mvnArgs"
 }
 finally {
     Pop-Location

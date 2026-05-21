@@ -40,20 +40,38 @@ public class ColonelsettlementOrder implements Serializable {
     @TableField("actual_amount")
     private Long actualAmount;
 
+    @TableField("colonel_buyin_id")
+    private Long colonelBuyinId;
+
     @TableField("settle_colonel_commission")
     private Long settleColonelCommission;
 
     @TableField("settle_colonel_tech_service_fee")
     private Long settleColonelTechServiceFee;
 
+    @TableField("second_colonel_buyin_id")
+    private Long secondColonelBuyinId;
+
+    @TableField("second_colonel_activity_id")
+    private String secondActivityId;
+
     @TableField("settle_second_colonel_commission")
     private Long settleSecondColonelCommission;
+
+    @TableField("phase_id")
+    private String phaseId;
 
     @TableField("order_status")
     private Integer orderStatus;
 
+    @TableField("order_type")
+    private Integer orderType;
+
     @TableField("pick_source")
     private String pickSource;
+
+    @TableField("cursor")
+    private String cursor;
 
     @TableField("talent_id")
     private UUID talentId;
@@ -178,6 +196,14 @@ public class ColonelsettlementOrder implements Serializable {
         this.actualAmount = actualAmount;
     }
 
+    public Long getColonelBuyinId() {
+        return colonelBuyinId;
+    }
+
+    public void setColonelBuyinId(Long colonelBuyinId) {
+        this.colonelBuyinId = colonelBuyinId;
+    }
+
     public Long getSettleColonelCommission() {
         return settleColonelCommission;
     }
@@ -194,12 +220,36 @@ public class ColonelsettlementOrder implements Serializable {
         this.settleColonelTechServiceFee = settleColonelTechServiceFee;
     }
 
+    public Long getSecondColonelBuyinId() {
+        return secondColonelBuyinId;
+    }
+
+    public void setSecondColonelBuyinId(Long secondColonelBuyinId) {
+        this.secondColonelBuyinId = secondColonelBuyinId;
+    }
+
+    public String getSecondActivityId() {
+        return secondActivityId;
+    }
+
+    public void setSecondActivityId(String secondActivityId) {
+        this.secondActivityId = secondActivityId;
+    }
+
     public Long getSettleSecondColonelCommission() {
         return settleSecondColonelCommission;
     }
 
     public void setSettleSecondColonelCommission(Long settleSecondColonelCommission) {
         this.settleSecondColonelCommission = settleSecondColonelCommission;
+    }
+
+    public String getPhaseId() {
+        return phaseId;
+    }
+
+    public void setPhaseId(String phaseId) {
+        this.phaseId = phaseId;
     }
 
     public Integer getOrderStatus() {
@@ -210,12 +260,28 @@ public class ColonelsettlementOrder implements Serializable {
         this.orderStatus = orderStatus;
     }
 
+    public Integer getOrderType() {
+        return orderType;
+    }
+
+    public void setOrderType(Integer orderType) {
+        this.orderType = orderType;
+    }
+
     public String getPickSource() {
         return pickSource;
     }
 
     public void setPickSource(String pickSource) {
         this.pickSource = pickSource;
+    }
+
+    public String getCursor() {
+        return cursor;
+    }
+
+    public void setCursor(String cursor) {
+        this.cursor = cursor;
     }
 
     public UUID getChannelUserId() {

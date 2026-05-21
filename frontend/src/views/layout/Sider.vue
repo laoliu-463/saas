@@ -22,12 +22,14 @@
         v-if="menuOptions.length"
         :options="menuOptions"
         :value="activeMenuKey"
+        :expanded-keys="expandedKeys"
         :collapsed="appStore.collapsed"
         :collapsed-width="64"
         :collapsed-icon-size="22"
         :indent="18"
         data-testid="sidebar-menu"
         @update:value="handleMenuClick"
+        @update:expanded-keys="handleExpandedKeys"
       />
       <div v-else class="empty-tip">当前账号没有可见菜单</div>
     </div>
@@ -35,11 +37,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h } from 'vue'
+import { computed, h, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NIcon } from 'naive-ui'
 import { ROLE_CODES, hasAccess } from '../../constants/rbac'
-import { filterAccessibleMenus, isRoutePathUnderPrefix, resolveActiveSection, type NavigationMenuItem } from '../../router/navigation'
+import {
+  filterAccessibleMenus,
+  isRoutePathUnderPrefix,
+  resolveActiveSection,
+  resolveMenuNavigateTarget,
+  type NavigationMenuItem
+} from '../../router/navigation'
 import { useAppStore } from '../../stores/app'
 import { useAuthStore } from '../../stores/auth'
 
@@ -181,13 +189,14 @@ const rawMenus: MenuItem[] = [
   },
   {
     label: '系统管理',
-    key: '/system',
+    key: 'system-group',
     icon: icons.settings,
     _section: 'system',
     roles: [ROLE.ADMIN],
     children: [
       { label: '用户管理', key: '/system/users', icon: icons.user },
       { label: '角色管理', key: '/system/roles', icon: icons.shield },
+      { label: '部门管理', key: '/system/depts', icon: icons.list },
       { label: '系统配置', key: '/system/config', icon: icons.settings },
       { label: '抖店联调', key: '/system/douyin', icon: icons.truck },
       { label: '操作日志', key: '/system/operation-logs', icon: icons.list }
@@ -236,6 +245,7 @@ const menuOptions = computed(() => {
 const activeMenuKey = computed(() => {
   if (isRoutePathUnderPrefix(route.path, '/ops/shipping')) return '/ops/shipping'
   if (isRoutePathUnderPrefix(route.path, '/ops/exclusive')) return '/ops/exclusive'
+  if (isRoutePathUnderPrefix(route.path, '/system/depts')) return '/system/depts'
   if (isRoutePathUnderPrefix(route.path, '/system/config')) return '/system/config'
   if (isRoutePathUnderPrefix(route.path, '/system/douyin')) return '/system/douyin'
   if (isRoutePathUnderPrefix(route.path, '/system/operation-logs')) return '/system/operation-logs'
@@ -258,13 +268,40 @@ const activeMenuKey = computed(() => {
   return route.path
 })
 
+// 父菜单组 key -> section 的映射
+const GROUP_KEY_TO_SECTION: Record<string, string> = {
+  'attribution-group': 'attribution',
+  'data-group': 'data',
+  'product-manage-group': 'product-manage',
+  'talent-group': 'talent',
+  '/system': 'system'
+}
+
+// 受控展开 keys：当前 section 对应的父组自动展开，同时保留用户手动展开的其他组
+const manualExpandedKeys = ref<string[]>([])
+
+const expandedKeys = computed(() => {
+  const section = resolveActiveSection(route.path)
+  const autoKeys = Object.entries(GROUP_KEY_TO_SECTION)
+    .filter(([, s]) => s === section)
+    .map(([k]) => k)
+  const combined = new Set([...autoKeys, ...manualExpandedKeys.value])
+  return [...combined]
+})
+
+function handleExpandedKeys(keys: string[]) {
+  manualExpandedKeys.value = keys
+}
+
 function handleMenuClick(key: string) {
   if (key.startsWith('/talent?view=')) {
     const view = key.replace('/talent?view=', '')
     router.push({ path: '/talent', query: { view } })
     return
   }
-  router.push(key)
+  const target = resolveMenuNavigateTarget(key)
+  if (!target) return
+  router.push(target)
 }
 </script>
 
@@ -275,9 +312,8 @@ function handleMenuClick(key: string) {
   flex-direction: column;
   flex-shrink: 0;
   background: var(--bg-sidebar);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border-right: 1px solid var(--border-color);
+  box-shadow: 2px 0 12px rgba(15, 23, 42, 0.03);
   transition: width var(--transition-normal);
   overflow: hidden;
 }
@@ -356,6 +392,5 @@ function handleMenuClick(key: string) {
 
 .app-sider :deep(.n-menu .n-menu-item-content:not(.n-menu-item-content--selected):hover) {
   background: var(--bg-hover);
-  transform: translateX(4px);
 }
 </style>

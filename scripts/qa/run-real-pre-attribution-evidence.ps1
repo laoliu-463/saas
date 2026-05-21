@@ -8,7 +8,7 @@ param(
     [int]$SampleLookbackDays = 30,
     [int]$SampleLimit = 20,
     [string]$EnvFile = ".env.real-pre",
-    [string]$PostgresContainer = "saas-postgres",
+    [string]$PostgresContainer = "saas-active-postgres-real-pre-1",
     [string]$DbUser = "saas",
     [string]$DbName = "saas_real_pre"
 )

@@ -1,11 +1,11 @@
 <template>
-  <div class="activity-page" data-testid="activity-list-page">
+  <div class="activity-page app-page" data-testid="activity-list-page">
     <PageHeader
       title="活动列表"
       description="同步并查看抖音官方报名的团长活动，进入活动商品推进工作台处理入库与分配。"
     />
 
-    <div class="toolbar">
+    <div class="toolbar app-toolbar">
       <n-space>
         <n-input-group>
           <n-input v-model:value="filters.activityId" placeholder="活动 ID" style="width: 200px" />
@@ -24,11 +24,11 @@
       </n-space>
     </div>
 
-    <n-alert type="warning" style="margin-bottom: 16px;">
+    <n-alert type="warning" class="app-page-alert">
       当前为 Test 测试环境，活动数据来自后端 Test 服务。联调 Real 环境时将实时请求抖店开放平台。
     </n-alert>
 
-    <n-card :bordered="false" class="main-card">
+    <n-card :bordered="false" class="main-card app-panel app-table-shell">
       <n-data-table
         remote
         data-testid="activity-table"
@@ -178,5 +178,4 @@ onMounted(fetchData)
 <style scoped>
 .activity-page { padding: 24px; }
 .toolbar { margin-bottom: 16px; background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); }
-.main-card { border-radius: var(--radius-md); }
 </style>

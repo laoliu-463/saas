@@ -5,7 +5,8 @@ import { ROLE_CODES } from '../../frontend/src/constants/rbac'
 import {
   filterAccessibleMenus,
   resolveActiveSection,
-  isRoutePathUnderPrefix
+  isRoutePathUnderPrefix,
+  resolveMenuNavigateTarget
 } from '../../frontend/src/router/navigation'
 import { createGuardWarningDeduper, resolveGuardDecision } from '../../frontend/src/router/guard'
 
@@ -61,13 +62,29 @@ test('sidebar menu filtering keeps only current section menus when section is kn
       { label: '数据平台', key: 'data-group', _section: 'data', roles: [ROLE_CODES.BIZ_STAFF] },
       { label: '商品管理', key: 'product-manage-group', _section: 'product-manage', roles: [ROLE_CODES.BIZ_STAFF] },
       { label: '寄样审核', key: '/sample', _section: 'sample', roles: [ROLE_CODES.BIZ_STAFF] },
-      { label: '系统管理', key: 'system', _section: 'system', roles: [ROLE_CODES.ADMIN] }
+      { label: '系统管理', key: 'system-group', _section: 'system', roles: [ROLE_CODES.ADMIN] }
     ],
     [ROLE_CODES.BIZ_STAFF],
     'data'
   )
 
   expect(menus.map((menu) => menu.key)).toEqual(['data-group'])
+})
+
+test('system group menu navigates to users page', () => {
+  expect(resolveMenuNavigateTarget('system-group')).toBe('/system/users')
+})
+
+test('admin keeps system menu visible on data section', () => {
+  const menus = filterAccessibleMenus(
+    [
+      { label: '数据平台', key: 'data-group', _section: 'data', roles: [ROLE_CODES.ADMIN] },
+      { label: '系统管理', key: 'system-group', _section: 'system', roles: [ROLE_CODES.ADMIN] }
+    ],
+    [ROLE_CODES.ADMIN],
+    'data'
+  )
+  expect(menus.map((menu) => menu.key)).toEqual(['data-group', 'system-group'])
 })
 
 test('sidebar menu filtering falls back to permitted menus when section is unknown', () => {

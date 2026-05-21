@@ -79,7 +79,9 @@ public class TestDouyinActivityGateway implements DouyinActivityGateway {
                     String.format("2026-05-%02d", 10 + (seedOffset % 9)),
                     String.format("2026-04-%02d", 1 + (seedOffset % 9)),
                     String.format("2026-05-%02d", 10 + (seedOffset % 9)),
-                    "https://example.com/test-detail/" + productId
+                    "https://example.com/test-detail/" + productId,
+                    String.valueOf(46128341673481000L + (productId % 1000)),
+                    Map.of("origin_colonel_buyin_id", String.valueOf(46128341673481000L + (productId % 1000)))
             ));
         }
         List<ActivityProductItem> filtered = all.stream()

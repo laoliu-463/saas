@@ -429,7 +429,6 @@ class TalentQueryServiceTest {
         talent.setDouyinUid("talent_private_only");
 
         when(talentService.getById(talentId)).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of());
 
         assertThatThrownBy(() -> talentQueryService.detail(talentId, viewer, null, DataScope.PERSONAL))
                 .isInstanceOf(ForbiddenException.class)

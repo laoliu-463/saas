@@ -6,6 +6,14 @@ spring:
     name: colonel-saas
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local-mock}
+  datasource:
+    hikari:
+      maximum-pool-size: ${DB_HIKARI_MAX_POOL_SIZE:20}
+      minimum-idle: ${DB_HIKARI_MIN_IDLE:5}
+      connection-timeout: ${DB_HIKARI_CONNECTION_TIMEOUT_MS:30000}
+      validation-timeout: ${DB_HIKARI_VALIDATION_TIMEOUT_MS:5000}
+      idle-timeout: ${DB_HIKARI_IDLE_TIMEOUT_MS:600000}
+      max-lifetime: ${DB_HIKARI_MAX_LIFETIME_MS:1800000}
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
@@ -54,6 +62,10 @@ security:
     expire-seconds: ${JWT_EXPIRE_SECONDS:7200}
 
 app:
+  performance:
+    slow-query-threshold-ms: ${APP_SLOW_QUERY_THRESHOLD_MS:500}
+  short-ttl-cache:
+    max-entries: ${APP_SHORT_TTL_CACHE_MAX_ENTRIES:1024}
   logistics:
     refresh-job-enabled: ${APP_LOGISTICS_REFRESH_JOB_ENABLED:false}
   cors:

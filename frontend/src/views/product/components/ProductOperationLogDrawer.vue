@@ -1,5 +1,5 @@
 <template>
-  <n-drawer :show="show" width="640" placement="right" @update:show="updateShow">
+  <n-drawer :show="show" :width="DRAWER_WIDTH_PX.md" placement="right" @update:show="updateShow">
     <n-drawer-content title="操作日志" closable>
       <n-spin :show="loading">
         <n-data-table :columns="columns" :data="logs" :pagination="false" size="small" />
@@ -14,6 +14,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
+import { DRAWER_WIDTH_PX } from '../../../constants/ui';
 import { getActivityProductOperationLogs } from '../../../api/activityProduct';
 
 const props = defineProps<{ show: boolean; activityId: string | number | null; productId: string | number | null }>();

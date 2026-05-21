@@ -126,11 +126,39 @@ public class SampleLifecycleService {
         List<SampleStatusLogService.LogEntry> logEntries = new ArrayList<>(samples.size());
         for (SampleRequest sample : samples) {
             mutator.accept(sample);
-            sampleRequestMapper.updateById(sample);
             logEntries.add(new SampleStatusLogService.LogEntry(sample.getId(), logFromStatus, logToStatus, null, remark));
         }
+        batchUpdateSamples(samples);
         sampleStatusLogService.logBatch(logEntries);
         return samples.size();
+    }
+
+    private void batchUpdateSamples(List<SampleRequest> samples) {
+        if (samples == null || samples.isEmpty()) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        for (SampleRequest sample : samples) {
+            sample.setUpdateTime(now);
+        }
+        for (List<SampleRequest> batch : partition(samples, SQL_IN_BATCH_SIZE)) {
+            jdbcTemplate.batchUpdate("""
+                    UPDATE sample_request
+                    SET status = ?, complete_time = ?, close_time = ?, close_reason = ?, update_time = ?
+                    WHERE id = ? AND deleted = 0
+                    """,
+                    batch,
+                    batch.size(),
+                    (ps, sample) -> {
+                        ps.setObject(1, sample.getStatus());
+                        ps.setObject(2, sample.getCompleteTime());
+                        ps.setObject(3, sample.getCloseTime());
+                        ps.setObject(4, sample.getCloseReason());
+                        ps.setObject(5, sample.getUpdateTime());
+                        ps.setObject(6, sample.getId());
+                    }
+            );
+        }
     }
 
     private List<SampleRequest> loadSamplesInStatus(List<UUID> requestIds, int expectedStatus) {

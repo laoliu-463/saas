@@ -1,5 +1,5 @@
 <template>
-  <div class="talent-page" data-testid="talent-page">
+  <div class="talent-page app-page" data-testid="talent-page">
     <PageHeader
       :title="pageTitle"
       :description="pageDesc"
@@ -20,22 +20,22 @@
     </PageHeader>
 
     <div class="summary-grid">
-      <n-card :bordered="false" class="summary-card">
+      <n-card :bordered="false" class="summary-card app-panel">
         <div class="summary-label">当前视图</div>
         <div class="summary-value">{{ currentViewLabel }}</div>
         <div class="summary-help">{{ currentViewHelp }}</div>
       </n-card>
-      <n-card :bordered="false" class="summary-card">
+      <n-card :bordered="false" class="summary-card app-panel">
         <div class="summary-label">列表总量</div>
         <div class="summary-value">{{ pagination.itemCount }}</div>
         <div class="summary-help">当前经营视图下满足筛选条件的达人数量</div>
       </n-card>
-      <n-card :bordered="false" class="summary-card">
+      <n-card :bordered="false" class="summary-card app-panel">
         <div class="summary-label">当前页自然出单</div>
         <div class="summary-value">{{ pageOrderTalentCount }}</div>
         <div class="summary-help">当前页订单数大于 0 的达人</div>
       </n-card>
-      <n-card :bordered="false" class="summary-card">
+      <n-card :bordered="false" class="summary-card app-panel">
         <div class="summary-label">当前页服务费贡献</div>
         <div class="summary-value">{{ pageServiceFeeText }}</div>
         <div class="summary-help">用于快速判断经营结果密度</div>
@@ -50,7 +50,7 @@
       @reset="handleReset"
     />
 
-    <n-card :bordered="false" class="main-card">
+    <n-card :bordered="false" class="main-card app-panel">
       <n-data-table
         remote
         data-testid="talent-table"
@@ -179,7 +179,6 @@ function resolveView(raw: unknown) {
   const allowed = availableViewOptions.value
   return allowed.some((item) => item.value === value) ? value : allowed[0].value
 }
-
 
 function syncFromRoute() {
   activeView.value = resolveView(route.query.view)
@@ -490,8 +489,7 @@ onMounted(() => {
 .talent-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: var(--spacing-xl);
+  gap: var(--content-gap);
 }
 
 .summary-grid {
@@ -502,7 +500,6 @@ onMounted(() => {
 
 .summary-card {
   min-height: 116px;
-  border-radius: var(--radius-md);
 }
 
 .summary-label {
@@ -522,10 +519,6 @@ onMounted(() => {
   font-size: var(--text-xs);
   line-height: 1.6;
   color: var(--text-secondary);
-}
-
-.main-card {
-  border-radius: var(--radius-md);
 }
 
 .talent-main {

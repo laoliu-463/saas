@@ -5,6 +5,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
@@ -589,6 +590,56 @@ class TalentServiceTest {
     }
 
     @Test
+    void blacklist_shouldRejectPersonalScopeWhenViewerHasNoActiveClaim() {
+        UUID talentId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDeleted(0);
+        TalentClaim otherClaim = new TalentClaim();
+        otherClaim.setTalentId(talentId);
+        otherClaim.setUserId(otherUserId);
+
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(otherClaim));
+
+        assertThatThrownBy(() -> talentService.blacklist(
+                talentId,
+                "重复违约",
+                currentUserId,
+                null,
+                DataScope.PERSONAL))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权操作该达人");
+
+        verify(talentMapper, never()).updateById(talent);
+    }
+
+    @Test
+    void blacklist_shouldAllowDeptScopeWhenTalentClaimedBySameDept() {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDeleted(0);
+        TalentClaim deptClaim = new TalentClaim();
+        deptClaim.setTalentId(talentId);
+        deptClaim.setUserId(UUID.randomUUID());
+        deptClaim.setDeptId(deptId);
+
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(deptClaim));
+
+        Talent result = talentService.blacklist(talentId, null, userId, deptId, DataScope.DEPT);
+
+        assertThat(result.getBlacklisted()).isTrue();
+        assertThat(result.getBlacklistReason()).isEqualTo("手动拉黑");
+        verify(talentMapper).updateById(talent);
+    }
+
+    @Test
     void unblacklist_shouldClearStatus() {
         UUID talentId = UUID.randomUUID();
         Talent talent = new Talent();
@@ -603,6 +654,35 @@ class TalentServiceTest {
         assertThat(result.getBlacklisted()).isFalse();
         assertThat(result.getBlacklistReason()).isNull();
         verify(talentMapper).updateById(talent);
+    }
+
+    @Test
+    void unblacklist_shouldRejectDeptScopeWhenTalentClaimedByOtherDept() {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID currentDeptId = UUID.randomUUID();
+        UUID otherDeptId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDeleted(0);
+        talent.setBlacklisted(true);
+        TalentClaim otherDeptClaim = new TalentClaim();
+        otherDeptClaim.setTalentId(talentId);
+        otherDeptClaim.setUserId(UUID.randomUUID());
+        otherDeptClaim.setDeptId(otherDeptId);
+
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(otherDeptClaim));
+
+        assertThatThrownBy(() -> talentService.unblacklist(
+                talentId,
+                userId,
+                currentDeptId,
+                DataScope.DEPT))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权操作该达人");
+
+        verify(talentMapper, never()).updateById(talent);
     }
 
     @Test

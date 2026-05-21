@@ -31,7 +31,9 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -109,6 +111,8 @@ class AuthServiceTest {
     @DisplayName("登录失败 - 用户不存在")
     void login_userNotFound_shouldThrow() {
         when(sysUserMapper.findByUsername("nobody")).thenReturn(Optional.empty());
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.increment("auth:login:fail:nobody")).thenReturn(1L);
 
         LoginRequest request = new LoginRequest();
         request.setUsername("nobody");
@@ -117,6 +121,7 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("用户名或密码错误");
+        verify(valueOperations).increment("auth:login:fail:nobody");
     }
 
     @Test
@@ -126,6 +131,8 @@ class AuthServiceTest {
         user.setPassword(passwordEncoder.encode("correct"));
 
         when(sysUserMapper.findByUsername("bob")).thenReturn(Optional.of(user));
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.increment("auth:login:fail:bob")).thenReturn(1L);
 
         LoginRequest request = new LoginRequest();
         request.setUsername("bob");
@@ -134,6 +141,42 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("用户名或密码错误");
+        verify(valueOperations).increment("auth:login:fail:bob");
+    }
+
+    @Test
+    @DisplayName("登录失败次数达到阈值后锁定账号")
+    void login_wrongPasswordAtThreshold_shouldLockLogin() {
+        SysUser user = createActiveUser("bob");
+        user.setPassword(passwordEncoder.encode("correct"));
+
+        when(sysUserMapper.findByUsername("bob")).thenReturn(Optional.of(user));
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.increment("auth:login:fail:bob")).thenReturn(5L);
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername("bob");
+        request.setPassword("wrong");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("用户名或密码错误");
+        verify(valueOperations).set("auth:login:lock:bob", "1", 15L, TimeUnit.MINUTES);
+    }
+
+    @Test
+    @DisplayName("登录失败次数过多时直接拒绝认证")
+    void login_lockedUsername_shouldRejectBeforePasswordCheck() {
+        when(redisTemplate.hasKey("auth:login:lock:alice")).thenReturn(true);
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername("alice");
+        request.setPassword("password");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("登录失败次数过多");
+        verify(sysUserMapper, never()).findByUsername(anyString());
     }
 
     @Test

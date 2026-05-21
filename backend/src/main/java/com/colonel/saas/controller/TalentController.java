@@ -160,16 +160,22 @@ public class TalentController extends BaseController {
     @PostMapping("/{id}/blacklist")
     public ApiResult<Talent> blacklist(
             @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId,
-            @RequestBody(required = false) TalentOperateRequest request) {
-        return ok(talentService.blacklist(talentId, request == null ? null : request.getReason()));
+            @RequestBody(required = false) TalentOperateRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        return ok(talentService.blacklist(talentId, request == null ? null : request.getReason(), userId, deptId, dataScope));
     }
 
     @Operation(summary = "解除达人黑名单", description = "取消达人黑名单标记，恢复达人正常经营状态。")
     @RequireRoles({RoleCodes.CHANNEL_LEADER})
     @PostMapping("/{id}/unblacklist")
     public ApiResult<Talent> unblacklist(
-            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId) {
-        return ok(talentService.unblacklist(talentId));
+            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        return ok(talentService.unblacklist(talentId, userId, deptId, dataScope));
     }
 
     @Operation(summary = "刷新达人信息", description = "立即触发单个达人信息刷新，适用于需要同步最新达人资料的场景。")

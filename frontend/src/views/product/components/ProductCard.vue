@@ -55,6 +55,14 @@
               <span class="metric-label">预估服务费</span>
               <span class="metric-val accent">¥{{ product.estimatedServiceFee || '0.00' }}</span>
             </div>
+            <div class="metric-item">
+              <span class="metric-label">近30天销量</span>
+              <span class="metric-val">{{ formatCardSales(product) }}</span>
+            </div>
+            <div v-if="product.categoryName" class="metric-item">
+              <span class="metric-label">类目</span>
+              <span class="metric-val">{{ product.categoryName }}</span>
+            </div>
           </div>
 
           <div v-if="hasAuditSummary(product)" class="card-audit-summary">
@@ -198,7 +206,7 @@
                 data-testid="product-copy-link"
                 @click.stop="$emit('copyLink', product)"
               >
-                一键复制专属推广链接
+                复制讲解 + 短链
               </n-button>
               <n-button block size="small" @click.stop="$emit('showLogs', product)">
                 查看操作日志
@@ -215,6 +223,8 @@
 </template>
 
 <script setup lang="ts">
+import { formatSales30d } from '../product-filters'
+
 defineProps<{
   product: any
   expanded: boolean
@@ -265,6 +275,8 @@ const decisionTagType = (level?: string) => {
   if (level === 'DROP') return 'error'
   return 'default'
 }
+
+const formatCardSales = (item: any) => formatSales30d(item)
 
 const getBusinessStatusLabel = (item: any) => {
   if (item.activityExpired) return '活动过期'

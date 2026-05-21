@@ -73,11 +73,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -430,12 +430,12 @@ public class SampleController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        String action = normalizeAction(request.getAction());
+        ensureActionRolePermission(action, roleCodes);
         SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
         LocalDateTime now = LocalDateTime.now();
         int fromStatus = sample.getStatus();
         SampleStatus current = SampleStatus.fromCode(fromStatus);
-        String action = normalizeAction(request.getAction());
-        ensureActionRolePermission(action, roleCodes);
 
         if ("PENDING_SHIP".equals(action)) {
             ensureTransition(current, SampleStatus.PENDING_AUDIT);
@@ -1131,29 +1131,14 @@ public class SampleController extends BaseController {
         if (!StringUtils.hasText(keyword)) {
             return Set.of();
         }
-        Set<UUID> matched = new HashSet<>();
-        long current = 1L;
-        while (true) {
-            Page<Product> page = new Page<>(current, PRODUCT_KEYWORD_BATCH_SIZE);
-            QueryWrapper<Product> wrapper = new QueryWrapper<Product>()
-                    .select("id")
-                    .and(query -> query.like("name", keyword).or().like("product_id", keyword));
-            IPage<Product> result = productMapper.selectPage(page, wrapper);
-            List<Product> records = result.getRecords();
-            if (records == null || records.isEmpty()) {
-                break;
-            }
-            for (Product product : records) {
-                if (product.getId() != null) {
-                    matched.add(product.getId());
-                }
-            }
-            if (current >= result.getPages()) {
-                break;
-            }
-            current++;
-        }
-        return matched;
+        QueryWrapper<Product> wrapper = new QueryWrapper<Product>()
+                .select("id")
+                .and(query -> query.like("name", keyword).or().like("product_id", keyword))
+                .last("LIMIT " + PRODUCT_KEYWORD_BATCH_SIZE);
+        return productMapper.selectList(wrapper).stream()
+                .map(Product::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
     }
 
     private SampleVO toVO(SampleRequest sample, Product product, String productName, String talentName) {

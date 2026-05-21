@@ -9,10 +9,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import org.springframework.util.StringUtils;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -23,6 +26,17 @@ public class DashboardService {
     public static final String DIAGNOSIS_CANNOT_AUTO_ATTRIBUTION = "CANNOT_AUTO_ATTRIBUTION";
     public static final String DIAGNOSIS_NATIVE_KEY_MISMATCH = "NATIVE_KEY_MISMATCH";
     public static final String DIAGNOSIS_AMBIGUOUS_MAPPING = "AMBIGUOUS_MAPPING";
+
+    private static final Set<String> ALLOWED_DIAGNOSIS_FILTER_CATEGORIES = Set.of(
+            DIAGNOSIS_MECHANISM_HIT_HISTORY_UNSAFE,
+            DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED,
+            DIAGNOSIS_CANNOT_AUTO_ATTRIBUTION,
+            DIAGNOSIS_NATIVE_KEY_MISMATCH,
+            DIAGNOSIS_AMBIGUOUS_MAPPING,
+            "ATTRIBUTED",
+            "MISSING_ACTIVITY_ID",
+            "MISSING_PRODUCT_ID"
+    );
 
     private static final int DEFAULT_BREAKDOWN_LIMIT = 20;
 
@@ -259,13 +273,15 @@ public class DashboardService {
     }
 
     public static String normalizeDiagnosisCategory(String diagnosis) {
-        if (diagnosis == null) {
+        if (!StringUtils.hasText(diagnosis)) {
             return null;
         }
-        return switch (diagnosis.trim()) {
+        String trimmed = diagnosis.trim();
+        String normalized = switch (trimmed) {
             case "UNSAFE_BECAUSE_CREATED_AFTER_ORDER" -> DIAGNOSIS_MECHANISM_HIT_HISTORY_UNSAFE;
-            default -> diagnosis.trim();
+            default -> trimmed;
         };
+        return ALLOWED_DIAGNOSIS_FILTER_CATEGORIES.contains(normalized) ? normalized : null;
     }
 
     public static String diagnosisCategoryCaseSql(String prefix) {

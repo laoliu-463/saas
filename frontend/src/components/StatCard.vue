@@ -1,5 +1,5 @@
 <template>
-  <div class="stat-card" :class="{ clickable: !!$attrs.onClick }">
+  <div class="stat-card app-metric-card" :class="{ clickable: !!$attrs.onClick }">
     <div class="stat-icon" :class="iconClass">
       <slot name="icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
@@ -27,26 +27,6 @@ defineProps<{
 </script>
 
 <style scoped>
-.stat-card {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  box-shadow: var(--shadow-card);
-  transition: box-shadow var(--transition-normal), transform var(--transition-normal);
-}
-
-.stat-card.clickable {
-  cursor: pointer;
-}
-
-.stat-card.clickable:hover {
-  box-shadow: var(--shadow-card-hover);
-  transform: translateY(-2px);
-}
-
 .stat-icon {
   width: 44px;
   height: 44px;

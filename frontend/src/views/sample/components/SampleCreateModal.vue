@@ -1,5 +1,5 @@
 <template>
-  <n-modal :show="show" preset="card" title="新建寄样申请" style="width: 920px" @update:show="handleClose">
+  <n-modal :show="show" preset="card" title="新建寄样申请" :style="{ width: MODAL_WIDTH.xl }" @update:show="handleClose">
     <n-form ref="formRef" :model="formData" :rules="rules" label-placement="top">
       <n-grid cols="24" :x-gap="12" :y-gap="8">
         <n-form-item-gi :span="24" label="选择商品" path="productId">
@@ -77,6 +77,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
+import { MODAL_WIDTH } from '../../../constants/ui'
 import { createSample, searchSampleProducts, searchSampleTalents } from '../../../api/sample'
 import { resolveSafeAvatarUrl } from '../../../utils/media'
 

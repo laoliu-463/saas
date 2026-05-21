@@ -1,6 +1,7 @@
 <template>
-  <div class="operation-log-list" data-testid="system-operation-logs-page">
-    <div class="toolbar">
+  <div class="operation-log-list app-page" data-testid="system-operation-logs-page">
+    <PageHeader title="操作日志" description="审计后台操作记录，支持按模块、动作与时间筛选。" />
+    <div class="app-toolbar">
       <n-space wrap :size="10">
         <n-input v-model:value="filters.username" placeholder="操作人" clearable style="width: 160px" />
         <n-input v-model:value="filters.module" placeholder="模块" clearable style="width: 160px" />
@@ -23,7 +24,7 @@
       </n-space>
     </div>
 
-    <div class="table-card">
+    <n-card :bordered="false" class="app-panel app-table-shell">
       <n-data-table
         remote
         data-testid="system-operation-logs-table"
@@ -35,7 +36,7 @@
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       />
-    </div>
+    </n-card>
   </div>
 </template>
 
@@ -43,6 +44,7 @@
 import { h, onMounted, reactive, ref } from 'vue'
 import type { DataTableColumns } from 'naive-ui'
 import { NTag, useMessage } from 'naive-ui'
+import PageHeader from '../../components/PageHeader.vue'
 import { getOperationLogPage } from '../../api/sys'
 import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 
@@ -192,19 +194,3 @@ const handlePageSizeChange = (pageSize: number) => {
 
 onMounted(fetchData)
 </script>
-
-<style scoped>
-.operation-log-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.toolbar,
-.table-card {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 16px;
-  box-shadow: var(--shadow-card);
-}
-</style>

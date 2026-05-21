@@ -1,10 +1,10 @@
 <template>
-  <div class="dashboard-page" data-testid="dashboard-overview-page">
+  <div class="dashboard-page app-page" data-testid="dashboard-overview-page">
     <PageHeader :title="dashboardTitle" :description="dashboardDesc" />
 
     <n-grid :cols="4" :x-gap="16" :y-gap="16" class="stats-row" data-testid="dashboard-stat-cards">
       <n-gi v-for="stat in stats" :key="stat.label">
-        <n-card :bordered="false" class="stat-card">
+        <n-card :bordered="false" class="stat-card app-panel">
           <n-statistic :label="stat.label">
             {{ stat.value }}
           </n-statistic>
@@ -20,7 +20,7 @@
 
     <n-grid :cols="2" :x-gap="16" :y-gap="16">
       <n-gi>
-        <n-card title="近 7 日订单归因趋势" :bordered="false" class="panel-card">
+        <n-card title="近 7 日订单归因趋势" :bordered="false" class="panel-card app-panel">
           <div v-if="trendData.length" class="trend-chart">
             <div v-for="item in trendData" :key="item.date" class="trend-col">
               <div class="trend-bar-track">
@@ -37,7 +37,7 @@
         </n-card>
       </n-gi>
       <n-gi>
-        <n-card :bordered="false" class="panel-card">
+        <n-card :bordered="false" class="panel-card app-panel">
           <template #header>
             <span>{{ rankingTitle }}</span>
           </template>
@@ -237,22 +237,19 @@ onMounted(fetchSummary)
 </script>
 
 <style scoped>
-.dashboard-page {
-  padding: var(--spacing-xl);
-}
-
 .stats-row {
-  margin-bottom: var(--spacing-lg);
+  margin-bottom: var(--content-gap);
 }
 
-.stat-card {
-  border-radius: var(--radius-lg);
-  transition: transform 0.3s, box-shadow 0.3s;
+.stat-card :deep(.n-statistic-value) {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
-.stat-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-md);
+.stat-card :deep(.n-statistic-label) {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
 }
 
 .stat-footer {
@@ -309,7 +306,7 @@ onMounted(fetchSummary)
 .trend-bar-fill {
   width: 60%;
   max-width: 32px;
-  background: var(--color-primary);
+  background: var(--color-primary-gradient);
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   transition: height 0.4s ease;
   min-height: 4px;

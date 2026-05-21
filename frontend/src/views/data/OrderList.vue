@@ -1,7 +1,8 @@
 <template>
-  <div class="order-list" data-testid="data-orders-page">
-    <n-card title="订单明细" :bordered="false">
-      <n-space style="margin-bottom: 16px">
+  <div class="order-list app-page" data-testid="data-orders-page">
+    <PageHeader title="订单明细" description="按时间、状态与达人维度查询已回流订单，支持导出。" />
+    <div class="app-toolbar">
+      <n-space wrap>
         <n-radio-group v-model:value="timeField" size="small" @update:value="handleTimeFieldChange">
           <n-radio-button value="createTime">按创建时间</n-radio-button>
           <n-radio-button value="settleTime">按结算时间</n-radio-button>
@@ -42,7 +43,9 @@
         <n-button ghost type="primary" @click="fetchData">刷新订单</n-button>
         <n-button v-if="canExport" type="info" data-testid="data-orders-export" @click="handleExport">导出 CSV</n-button>
       </n-space>
+    </div>
 
+    <n-card :bordered="false" class="app-panel app-table-shell">
       <n-data-table
         remote
         data-testid="data-orders-table"
@@ -56,7 +59,7 @@
       />
     </n-card>
 
-    <n-modal v-model:show="showDetail" preset="card" title="订单详情" style="width: 600px">
+    <n-modal v-model:show="showDetail" preset="card" title="订单详情" :style="{ width: MODAL_WIDTH.md }">
       <n-descriptions v-if="currentOrder" bordered :column="1">
         <n-descriptions-item label="订单号">{{ currentOrder.id }}</n-descriptions-item>
         <n-descriptions-item label="商品信息">{{ currentOrder.productName || '未知商品' }}</n-descriptions-item>
@@ -101,17 +104,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue'
+import { computed, h, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { NButton, NTag, NText, useMessage } from 'naive-ui'
+import PageHeader from '../../components/PageHeader.vue'
+import { MODAL_WIDTH } from '../../constants/ui'
 import { exportOrders, getOrderPage } from '../../api/data'
 import { useAuthStore } from '../../stores/auth'
 import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 
 const authStore = useAuthStore()
+const route = useRoute()
 const message = useMessage()
 const loading = ref(false)
 
 const data = ref<any[]>([])
+const EXPORT_ROW_LIMIT = 20000
 const pagination = reactive(createPaginationState())
 
 const buildTodayRange = (): [number, number] => {
@@ -177,6 +185,14 @@ const handleTimeFieldChange = () => {
   fetchData()
 }
 
+const syncTimeFieldFromRoute = () => {
+  const raw = route.query.timeField
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (value === 'createTime' || value === 'settleTime') {
+    timeField.value = value
+  }
+}
+
 const openDetail = (row: any) => {
   currentOrder.value = row
   showDetail.value = true
@@ -227,6 +243,10 @@ const handleExport = async () => {
   }
   if (!data.value.length) {
     message.warning('暂无数据可导出')
+    return
+  }
+  if (pagination.itemCount > EXPORT_ROW_LIMIT) {
+    message.warning(`当前筛选结果 ${pagination.itemCount} 条，超过 ${EXPORT_ROW_LIMIT} 条导出上限，请缩小时间或筛选范围`)
     return
   }
   try {
@@ -324,8 +344,21 @@ const columns = computed(() => [
   }
 ])
 
+watch(
+  () => route.query.timeField,
+  () => {
+    const prev = timeField.value
+    syncTimeFieldFromRoute()
+    if (prev !== timeField.value) {
+      pagination.page = 1
+      void fetchData()
+    }
+  }
+)
+
 onMounted(() => {
-  fetchData()
+  syncTimeFieldFromRoute()
+  void fetchData()
 })
 </script>
 

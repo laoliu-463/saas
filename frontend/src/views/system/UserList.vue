@@ -1,7 +1,7 @@
 <template>
-  <div class="user-list" data-testid="system-users-page">
-    <!-- Toolbar -->
-    <div class="user-toolbar">
+  <div class="user-list app-page" data-testid="system-users-page">
+    <PageHeader title="用户管理" description="管理系统账号、角色分配与登录状态。" />
+    <div class="app-toolbar">
       <n-space wrap :size="10">
         <n-input v-model:value="searchParams.username" placeholder="请输入用户名" clearable style="width: 180px" />
         <n-select v-model:value="searchParams.status" :options="statusOptions" placeholder="全部状态" style="width: 110px;" clearable />
@@ -11,7 +11,7 @@
     </div>
 
     <!-- Table -->
-    <div class="user-table-card">
+    <n-card :bordered="false" class="app-panel app-table-shell">
       <n-data-table
         remote
         data-testid="system-users-table"
@@ -22,10 +22,9 @@
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       />
-    </div>
+    </n-card>
 
-    <!-- Modal for Add/Edit -->
-    <n-modal v-model:show="showModal" preset="card" :title="modalTitle" style="width: 600px;">
+    <n-modal v-model:show="showModal" preset="card" :title="modalTitle" :style="{ width: MODAL_WIDTH.md }">
       <n-form ref="formRef" :model="formData" :rules="rules" label-placement="left" label-width="100">
         <n-form-item label="用户名" path="username">
           <n-input v-model:value="formData.username" placeholder="请输入" :disabled="modalType === 'edit'" />
@@ -61,22 +60,22 @@
         <n-form-item label="状态" path="status">
           <n-switch v-model:value="formData.status" :checked-value="1" :unchecked-value="0" />
         </n-form-item>
-        <div style="display: flex; justify-content: flex-end;">
+        <div class="app-modal-footer">
           <n-button @click="showModal = false">取消</n-button>
-          <n-button type="primary" style="margin-left: 12px;" @click="handleSubmit" :loading="submitting">确定</n-button>
+          <n-button type="primary" @click="handleSubmit" :loading="submitting">确定</n-button>
         </div>
       </n-form>
     </n-modal>
 
     <!-- Modal for Reset Password -->
-    <n-modal v-model:show="showResetModal" preset="card" title="重置密码" style="width: 400px;">
+    <n-modal v-model:show="showResetModal" preset="card" title="重置密码" :style="{ width: MODAL_WIDTH.sm }">
       <n-form ref="resetFormRef" :model="resetData" :rules="resetRules" label-placement="left" label-width="100">
         <n-form-item label="新密码" path="password">
           <n-input v-model:value="resetData.password" type="password" placeholder="请输入新密码" show-password-on="click" />
         </n-form-item>
-        <div style="display: flex; justify-content: flex-end;">
+        <div class="app-modal-footer">
           <n-button @click="showResetModal = false">取消</n-button>
-          <n-button type="primary" style="margin-left: 12px;" @click="handleResetSubmit" :loading="submitting">确定</n-button>
+          <n-button type="primary" @click="handleResetSubmit" :loading="submitting">确定</n-button>
         </div>
       </n-form>
     </n-modal>
@@ -86,6 +85,8 @@
 <script setup lang="ts">
 import { ref, reactive, h, onMounted, computed, watch } from 'vue';
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui';
+import PageHeader from '../../components/PageHeader.vue';
+import { MODAL_WIDTH } from '../../constants/ui';
 import { getUserPage, createUser, updateUser, deleteUser, resetUserPassword, getRoleAll, assignUserRoles } from '../../api/sys';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
 
@@ -425,25 +426,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.user-list {
-  max-width: 100%;
-}
-
-.user-toolbar {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 16px 20px;
-  margin-bottom: var(--spacing-md);
-  box-shadow: var(--shadow-sm);
-}
-
-.user-table-card {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 4px;
-  box-shadow: var(--shadow-card);
-}
-
 .role-picker {
   width: 100%;
 }

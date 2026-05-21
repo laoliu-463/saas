@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -286,18 +287,25 @@ public class OrderSyncService {
     }
 
     private ColonelsettlementOrder mapOrder(DouyinOrderGateway.DouyinOrderItem item) {
+        Map<String, Object> rawPayload = item.rawPayload();
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setId(UUID.randomUUID());
         order.setOrderId(item.externalOrderId());
         order.setProductId(item.productId());
-        order.setProductName(item.rawPayload() != null ? asString(item.rawPayload().get("product_name")) : null);
+        order.setProductName(rawPayload != null ? asString(rawValue(rawPayload, "product_name", "productName")) : null);
         order.setShopId(parseMerchantId(item.merchantId()));
         order.setShopName(item.merchantName());
         order.setOrderAmount(item.orderAmount());
         order.setActualAmount(resolveActualAmount(item));
+        order.setColonelBuyinId(asNullableLong(rawOrderInfoValue(rawPayload, "colonel_buyin_id", "colonelBuyinId")));
         order.setSettleColonelCommission(item.serviceFee());
+        order.setSecondColonelBuyinId(asNullableLong(rawOrderInfoValue(rawPayload, "second_colonel_buyin_id", "secondColonelBuyinId")));
+        order.setSecondActivityId(asString(rawOrderInfoValue(rawPayload, "second_colonel_activity_id", "secondColonelActivityId")));
+        order.setPhaseId(asString(rawValue(rawPayload, "phase_id", "phaseId")));
         order.setOrderStatus(item.orderStatus());
+        order.setOrderType(asNullableInteger(rawValue(rawPayload, "order_type", "orderType")));
         order.setPickSource(item.pickSource());
+        order.setCursor(asString(rawValue(rawPayload, "cursor")));
         order.setCreateTime(LocalDateTime.ofInstant(Instant.ofEpochSecond(item.createTime()), ZoneId.systemDefault()));
         if (item.settleTime() != null) {
             order.setSettleTime(LocalDateTime.ofInstant(Instant.ofEpochSecond(item.settleTime()), ZoneId.systemDefault()));
@@ -305,7 +313,7 @@ public class OrderSyncService {
         order.setAttributionStatus("UNATTRIBUTED");
         order.setUpdateTime(LocalDateTime.now());
         order.setDeleted(0);
-        order.setExtraData(item.rawPayload());
+        order.setExtraData(rawPayload);
         return order;
     }
 
@@ -344,6 +352,51 @@ public class OrderSyncService {
 
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private Object rawValue(Map<String, Object> rawPayload, String... keys) {
+        if (rawPayload == null || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            if (rawPayload.containsKey(key)) {
+                return rawPayload.get(key);
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object rawOrderInfoValue(Map<String, Object> rawPayload, String... keys) {
+        Object value = rawValue(rawPayload, keys);
+        if (value != null) {
+            return value;
+        }
+        Object nested = rawValue(rawPayload, "colonel_order_info", "colonelOrderInfo");
+        if (nested instanceof Map<?, ?> map) {
+            return rawValue((Map<String, Object>) map, keys);
+        }
+        return null;
+    }
+
+    private Long asNullableLong(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            String text = String.valueOf(value).trim();
+            return text.isEmpty() ? null : Long.parseLong(text);
+        } catch (NumberFormatException ignore) {
+            return null;
+        }
+    }
+
+    private Integer asNullableInteger(Object value) {
+        Long parsed = asNullableLong(value);
+        return parsed == null ? null : parsed.intValue();
     }
 
     private List<String> normalizeOrderIds(List<String> orderIds) {
@@ -398,4 +451,3 @@ public class OrderSyncService {
         }
     }
 }
-

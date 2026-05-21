@@ -18,6 +18,14 @@ export const createRole = (data: any) => request.post('/roles', data);
 export const updateRole = (id: string, data: any) => request.put(`/roles/${id}`, data);
 export const deleteRole = (id: string) => request.delete(`/roles/${id}`);
 
+// 部门
+export const getDeptTree = () => request.get('/depts/tree');
+export const getDeptList = () => request.get('/depts');
+export const getDeptById = (id: string) => request.get(`/depts/${id}`);
+export const createDept = (data: any) => request.post('/depts', data);
+export const updateDept = (id: string, data: any) => request.put(`/depts/${id}`, data);
+export const deleteDept = (id: string) => request.delete(`/depts/${id}`);
+
 // 配置
 export const getConfigPage = (params: any) => request.get('/configs', { params });
 export const getConfigGrouped = () => request.get('/configs/grouped');

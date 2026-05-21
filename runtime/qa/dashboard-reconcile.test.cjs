@@ -6,7 +6,8 @@ const {
   aggregateOrders,
   compareMetric,
   parsePsqlTsv,
-  buildReconcileSummary
+  buildReconcileSummary,
+  selectDbContainer
 } = require('./dashboard-reconcile.cjs');
 
 test('centToYuan normalizes cent amounts to two decimal numbers', () => {
@@ -55,4 +56,19 @@ test('buildReconcileSummary fails when any metric mismatch remains', () => {
 
   assert.equal(summary.overallPass, false);
   assert.equal(summary.failedMetrics.length, 1);
+});
+
+test('selectDbContainer prefers explicit env, then compose-detected active postgres', () => {
+  assert.equal(
+    selectDbContainer({ QA_DB_CONTAINER: 'custom-postgres' }, 'saas-active-postgres-1'),
+    'custom-postgres'
+  );
+  assert.equal(
+    selectDbContainer({}, 'saas-active-postgres-1'),
+    'saas-active-postgres-1'
+  );
+  assert.equal(
+    selectDbContainer({}, ''),
+    'saas-active-postgres-1'
+  );
 });

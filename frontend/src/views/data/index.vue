@@ -1,19 +1,65 @@
 <template>
-  <div class="dashboard" data-testid="data-dashboard-page">
+  <div class="dashboard app-page" data-testid="data-dashboard-page">
     <PageHeader
       :title="pageTitle"
       :description="pageDesc"
     >
       <template #actions>
-        <n-radio-group v-model:value="timeField" size="small" data-testid="dashboard-time-field" @update:value="loadMetrics">
+        <n-radio-group v-model:value="timeField" size="small" data-testid="dashboard-time-field">
           <n-radio-button value="createTime">按创建时间</n-radio-button>
           <n-radio-button value="settleTime">按结算时间</n-radio-button>
         </n-radio-group>
-        <n-button type="primary" size="small" data-testid="dashboard-orders-link" @click="$router.push('/data/orders')">
+        <n-button type="primary" size="small" data-testid="dashboard-orders-link" @click="goToOrderDetails">
           查看完整明细
         </n-button>
       </template>
     </PageHeader>
+
+    <div
+      v-if="initialized"
+      class="dual-track-bar app-summary-bar"
+      data-testid="dashboard-dual-track"
+      role="tablist"
+      aria-label="订单时间双轨口径"
+    >
+      <button
+        type="button"
+        class="dual-track-item"
+        :class="{ active: timeField === 'createTime' }"
+        data-testid="dashboard-dual-track-create"
+        role="tab"
+        :aria-selected="timeField === 'createTime'"
+        @click="switchTimeField('createTime')"
+      >
+        <span class="dual-track-title">创建时间轨</span>
+        <span class="dual-track-desc">运营日报 · 已同步订单</span>
+        <span class="dual-track-metrics">
+          <strong>{{ formatTrackOrders(dualTrackCreate) }}</strong>
+          <span class="dual-track-sep">·</span>
+          <strong>¥{{ formatTrackGmv(dualTrackCreate) }}</strong>
+        </span>
+      </button>
+      <button
+        type="button"
+        class="dual-track-item"
+        :class="{ active: timeField === 'settleTime' }"
+        data-testid="dashboard-dual-track-settle"
+        role="tab"
+        :aria-selected="timeField === 'settleTime'"
+        @click="switchTimeField('settleTime')"
+      >
+        <span class="dual-track-title">结算时间轨</span>
+        <span class="dual-track-desc">收益复核 · 仅已结算订单</span>
+        <span class="dual-track-metrics">
+          <strong>{{ formatTrackOrders(dualTrackSettle) }}</strong>
+          <span class="dual-track-sep">·</span>
+          <strong>¥{{ formatTrackGmv(dualTrackSettle) }}</strong>
+        </span>
+      </button>
+      <div v-if="dualTrackGapHint" class="dual-track-hint" data-testid="dashboard-dual-track-hint">
+        {{ dualTrackGapHint }}
+      </div>
+    </div>
 
     <div v-if="showSkeleton" class="loading-state" aria-live="polite">
       <div class="loading-copy">加载中...</div>
@@ -22,7 +68,7 @@
           <n-skeleton height="88px" :sharp="false" />
         </div>
       </div>
-      <div class="breakdown-section">
+      <div class="breakdown-section app-section-panel">
         <n-skeleton text :repeat="2" />
       </div>
       <div class="quick-links">
@@ -33,8 +79,20 @@
     <!-- 主指标卡片 -->
     <n-spin :show="loading && initialized">
       <template v-if="!showSkeleton">
+      <div class="metric-scope-banner" data-testid="dashboard-active-time-scope">
+        <span class="metric-scope-badge">{{ activeTrackBadge }}</span>
+        <span class="metric-scope-copy">{{ timeScopeDescription }}</span>
+      </div>
+
       <div class="metric-cards" data-testid="dashboard-metric-cards">
-        <div class="metric-card" data-testid="dashboard-metric-orders">
+        <div
+          class="metric-card app-metric-card clickable"
+          data-testid="dashboard-metric-orders"
+          role="button"
+          tabindex="0"
+          @click="goToOrderDetails"
+          @keydown.enter="goToOrderDetails"
+        >
           <div class="metric-icon orders">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
               <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
@@ -47,7 +105,14 @@
           </div>
         </div>
 
-        <div class="metric-card" data-testid="dashboard-metric-amount">
+        <div
+          class="metric-card app-metric-card clickable"
+          data-testid="dashboard-metric-amount"
+          role="button"
+          tabindex="0"
+          @click="goToOrderDetails"
+          @keydown.enter="goToOrderDetails"
+        >
           <div class="metric-icon amount">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
               <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
@@ -60,7 +125,14 @@
           </div>
         </div>
 
-        <div class="metric-card" data-testid="dashboard-metric-fee">
+        <div
+          class="metric-card app-metric-card clickable"
+          data-testid="dashboard-metric-fee"
+          role="button"
+          tabindex="0"
+          @click="goToOrderDetails"
+          @keydown.enter="goToOrderDetails"
+        >
           <div class="metric-icon fee">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
               <circle cx="12" cy="12" r="10"/><path d="M16 8h-4a2 2 0 000 4h2a2 2 0 010 4h-5"/>
@@ -73,7 +145,14 @@
           </div>
         </div>
 
-        <div class="metric-card" data-testid="dashboard-metric-profit">
+        <div
+          class="metric-card app-metric-card clickable"
+          data-testid="dashboard-metric-profit"
+          role="button"
+          tabindex="0"
+          @click="goToOrderDetails"
+          @keydown.enter="goToOrderDetails"
+        >
           <div class="metric-icon profit">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
               <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
@@ -88,7 +167,7 @@
       </div>
 
       <!-- 近 7 日真实趋势 -->
-      <div v-if="trendPoints.length" class="trend-section" data-testid="dashboard-real-trend">
+      <div v-if="trendPoints.length" class="trend-section app-section-panel" data-testid="dashboard-real-trend">
         <div class="trend-header">
           <h3 class="section-title">近 7 日真实趋势</h3>
           <span class="trend-scope">{{ timeScopeDescription }}</span>
@@ -110,7 +189,7 @@
       </div>
 
       <!-- 业绩分拆标签组 -->
-      <div class="breakdown-section">
+      <div class="breakdown-section app-section-panel">
         <h3 class="section-title">{{ isChannelStaffOnly ? '我的收益分拆' : '收入分拆' }}</h3>
         <div class="breakdown-tags">
           <template v-if="isChannelStaffOnly">
@@ -154,7 +233,7 @@
 
       <!-- 快速入口 -->
       <div class="quick-links">
-        <n-card size="small" class="quick-link-card" @click="$router.push('/data/orders')">
+        <n-card size="small" class="quick-link-card app-panel" @click="goToOrderDetails">
           <div class="quick-link-content">
             <span class="quick-link-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
@@ -177,40 +256,39 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
-import * as echarts from 'echarts/core'
-import { BarChart, LineChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
-
-echarts.use([
-  BarChart,
-  LineChart,
-  GridComponent,
-  LegendComponent,
-  TooltipComponent,
-  CanvasRenderer
-])
-
 import PageHeader from '../../components/PageHeader.vue'
 import { getMetrics } from '../../api/data'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES } from '../../constants/rbac'
 
 const message = useMessage()
+const router = useRouter()
 const authStore = useAuthStore()
 const loading = ref(false)
 const initialized = ref(false)
-const metrics = ref<any>({})
+const metricsCreate = ref<Record<string, any>>({})
+const metricsSettle = ref<Record<string, any>>({})
 const timeField = ref<'settleTime' | 'createTime'>('createTime')
+const metrics = computed(() => (
+  timeField.value === 'settleTime' ? metricsSettle.value : metricsCreate.value
+))
+const dualTrackCreate = computed(() => metricsCreate.value)
+const dualTrackSettle = computed(() => metricsSettle.value)
 const trendChartRef = ref<HTMLDivElement | null>(null)
 type TrendChartInstance = {
   setOption: (option: Record<string, unknown>, notMerge?: boolean) => void
   resize: () => void
   dispose: () => void
 }
+type EchartsCore = {
+  init: (el: HTMLDivElement) => TrendChartInstance
+  use: (extensions: unknown[]) => void
+}
 
 let trendChart: TrendChartInstance | null = null
+let echartsCorePromise: Promise<EchartsCore> | null = null
 const showSkeleton = computed(() => loading.value && !initialized.value)
 const INITIAL_SKELETON_MIN_MS = 0
 const ROLE = ROLE_CODES
@@ -232,26 +310,65 @@ const pageTitle = computed(() => {
 })
 
 const pageDesc = computed(() => {
-  if (isChannelStaffOnly.value) return '查看我自己的订单、服务费收益和提成预估，持续跟进达人产出。'
-  if (isBizStaffOnly.value) return '查看我负责商品带来的订单、服务费收益和招商提成预估。'
-  return '核心经营指标一览，快速了解订单、收入与利润趋势。'
+  if (isChannelStaffOnly.value) {
+    return '按创建时间轨看回流订单，按结算时间轨复核服务费与提成；两轨今日订单数可对照查看。'
+  }
+  if (isBizStaffOnly.value) {
+    return '按创建时间轨看负责商品订单回流，按结算时间轨复核招商提成；两轨今日订单数可对照查看。'
+  }
+  return '订单域采用创建时间 / 结算时间双轨统计：创建轨覆盖已同步订单，结算轨仅纳入已结算订单，便于运营日报与收益复核。'
 })
 
 const metricLabels = computed(() => {
+  const trackSuffix = timeField.value === 'createTime' ? '（创建轨）' : '（结算轨）'
   if (isChannelStaffOnly.value) {
     return {
-      orders: '我的推广订单数',
-      amount: '我的订单总额',
+      orders: `我的推广订单数${trackSuffix}`,
+      amount: `我的订单总额${trackSuffix}`,
       fee: '我的服务费收入',
       profit: '我的渠道提成'
     }
   }
+  if (isBizStaffOnly.value) {
+    return {
+      orders: `我的订单数${trackSuffix}`,
+      amount: `我的订单总额${trackSuffix}`,
+      fee: '我的服务费收入',
+      profit: '我的招商提成'
+    }
+  }
   return {
-    orders: '今日订单数',
-    amount: '今日订单总额',
+    orders: `今日订单数${trackSuffix}`,
+    amount: `今日 GMV${trackSuffix}`,
     fee: '今日服务费净收',
     profit: '今日毛利'
   }
+})
+
+const activeTrackBadge = computed(() => (
+  timeField.value === 'createTime' ? '当前：创建时间轨' : '当前：结算时间轨'
+))
+
+const formatTrackOrders = (track: Record<string, any>) => {
+  const count = toNumber(track?.todayOrderCount ?? track?.totalOrders)
+  return `${Math.trunc(count)} 单`
+}
+
+const formatTrackGmv = (track: Record<string, any>) => (
+  formatAmount(toNumber(track?.todayGmv ?? track?.totalAmount))
+)
+
+const dualTrackGapHint = computed(() => {
+  const createOrders = toNumber(dualTrackCreate.value?.todayOrderCount ?? dualTrackCreate.value?.totalOrders)
+  const settleOrders = toNumber(dualTrackSettle.value?.todayOrderCount ?? dualTrackSettle.value?.totalOrders)
+  if (createOrders > 0 && settleOrders === 0) {
+    return '今日已有创建轨订单，但结算轨为 0：多为订单尚未结算，服务费与毛利请以结算时间轨在结算后复核。'
+  }
+  if (createOrders > settleOrders && settleOrders > 0) {
+    const gap = Math.trunc(createOrders - settleOrders)
+    return `今日创建轨较结算轨多 ${gap} 单，差额通常为待结算或未进入结算窗口的订单。`
+  }
+  return ''
 })
 
 interface TrendPoint {
@@ -275,9 +392,15 @@ const displayGmv = computed(() => formatAmount(toNumber(metrics.value?.todayGmv 
 
 const timeScopeLabel = computed(() => timeField.value === 'createTime' ? '按创建时间统计' : '按结算时间统计')
 
-const metricScopeText = computed(() => (
-  timeField.value === 'createTime' ? '统计已同步真实订单' : '仅统计已结算订单'
-))
+const metricScopeText = computed(() => {
+  if (timeField.value === 'createTime') {
+    return '服务费 / 毛利按当前创建轨订单的结算字段汇总'
+  }
+  const settleOrders = toNumber(metricsSettle.value?.todayOrderCount ?? metricsSettle.value?.totalOrders)
+  return settleOrders > 0
+    ? '收益类指标与结算轨订单一致'
+    : '结算轨今日无单，收益类指标为 0'
+})
 
 const timeScopeDescription = computed(() => (
   timeField.value === 'createTime'
@@ -382,11 +505,36 @@ const resizeTrendChart = () => {
   trendChart?.resize()
 }
 
+const loadEchartsCore = async () => {
+  if (!echartsCorePromise) {
+    echartsCorePromise = Promise.all([
+      import('echarts/core'),
+      import('echarts/charts'),
+      import('echarts/components'),
+      import('echarts/renderers')
+    ]).then(([core, charts, components, renderers]) => {
+      core.use([
+        charts.BarChart,
+        charts.LineChart,
+        components.GridComponent,
+        components.LegendComponent,
+        components.TooltipComponent,
+        renderers.CanvasRenderer
+      ])
+      return core as unknown as EchartsCore
+    })
+  }
+
+  return echartsCorePromise
+}
+
 const renderTrendChart = async () => {
   await nextTick()
   if (!trendChartRef.value || !trendPoints.value.length) return
   if (!trendChart) {
-    trendChart = echarts.init(trendChartRef.value) as unknown as TrendChartInstance
+    const echarts = await loadEchartsCore()
+    if (!trendChartRef.value) return
+    trendChart = echarts.init(trendChartRef.value)
   }
 
   trendChart.setOption({
@@ -455,16 +603,41 @@ const renderTrendChart = async () => {
   }, true)
 }
 
+const buildMetricsParams = (field: 'createTime' | 'settleTime') => {
+  const params: Record<string, string> = { timeField: field }
+  if (isChannelStaffOnly.value) params.scope = 'personal'
+  return params
+}
+
+const switchTimeField = (field: 'createTime' | 'settleTime') => {
+  if (timeField.value === field) return
+  timeField.value = field
+  void renderTrendChart()
+}
+
+const goToOrderDetails = () => {
+  router.push({
+    path: '/data/orders',
+    query: { timeField: timeField.value }
+  })
+}
+
 const loadMetrics = async () => {
   const startedAt = Date.now()
   loading.value = true
+  const settleMetricsPromise = getMetrics(buildMetricsParams('settleTime'))
+    .then((settleRes: any) => {
+      metricsSettle.value = settleRes?.data || settleRes || {}
+    })
+    .catch((error: any) => {
+      message.warning(error?.message || '获取结算时间指标异常')
+    })
+
   try {
-    const params: any = { timeField: timeField.value }
-    if (isChannelStaffOnly.value) params.scope = 'personal'
-    const res = await getMetrics(params)
-    metrics.value = res?.data || res || {}
+    const createRes = await getMetrics(buildMetricsParams('createTime'))
+    metricsCreate.value = createRes?.data || createRes || {}
   } catch (error: any) {
-    message.warning(error?.message || '获取指标异常')
+    message.warning(error?.message || '获取创建时间指标异常')
   } finally {
     const elapsed = Date.now() - startedAt
     const remaining = INITIAL_SKELETON_MIN_MS - elapsed
@@ -475,6 +648,7 @@ const loadMetrics = async () => {
     loading.value = false
     void renderTrendChart()
   }
+  void settleMetricsPromise.finally(() => renderTrendChart())
 }
 
 onMounted(() => {
@@ -491,12 +665,15 @@ onBeforeUnmount(() => {
 watch(trendPoints, () => {
   renderTrendChart()
 })
+
+watch(timeField, () => {
+  void renderTrendChart()
+})
 </script>
 
 <style scoped>
 .dashboard {
-  max-width: 1200px;
-  padding: var(--spacing-xl);
+  max-width: var(--page-max-width);
 }
 
 :deep(.n-page-header-extra) {
@@ -504,6 +681,107 @@ watch(trendPoints, () => {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.dual-track-bar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: var(--spacing-md);
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+}
+
+.dual-track-item {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-page);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.dual-track-item:hover {
+  border-color: var(--color-primary-border);
+}
+
+.dual-track-item.active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary-light);
+  background: var(--color-primary-light);
+}
+
+.dual-track-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dual-track-desc {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.dual-track-metrics {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+}
+
+.dual-track-metrics strong {
+  font-weight: 700;
+}
+
+.dual-track-sep {
+  color: var(--text-muted);
+}
+
+.dual-track-hint {
+  grid-column: 1 / -1;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-page);
+  border: 1px dashed var(--border-color);
+}
+
+.metric-scope-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-md);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-page);
+}
+
+.metric-scope-badge {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-primary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-primary-light);
+}
+
+.metric-scope-copy {
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-secondary);
 }
 
 .loading-state {
@@ -526,22 +804,6 @@ watch(trendPoints, () => {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: var(--spacing-md);
   margin-bottom: var(--spacing-lg);
-}
-
-.metric-card {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  box-shadow: var(--shadow-card);
-  transition: box-shadow var(--transition-normal), transform var(--transition-normal);
-}
-
-.metric-card:hover {
-  box-shadow: var(--shadow-card-hover);
-  transform: translateY(-2px);
 }
 
 .metric-icon {
@@ -613,11 +875,7 @@ watch(trendPoints, () => {
 
 /* ---- 近 7 日趋势 ---- */
 .trend-section {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 20px 24px;
-  box-shadow: var(--shadow-card);
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--content-gap);
 }
 
 .trend-header {
@@ -672,11 +930,7 @@ watch(trendPoints, () => {
 
 /* ---- 分拆标签 ---- */
 .breakdown-section {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 20px 24px;
-  box-shadow: var(--shadow-card);
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--content-gap);
 }
 
 .section-title {
@@ -757,6 +1011,10 @@ watch(trendPoints, () => {
 }
 
 @media (max-width: 768px) {
+  .dual-track-bar {
+    grid-template-columns: 1fr;
+  }
+
   .trend-header {
     display: grid;
   }

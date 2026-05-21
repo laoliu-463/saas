@@ -1,5 +1,5 @@
 <template>
-  <div class="product-page" :data-testid="isActivityProductMode ? 'activity-product-page' : 'product-manage-page'">
+  <div class="product-page app-page" :data-testid="isActivityProductMode ? 'activity-product-page' : 'product-manage-page'">
     <PageHeader :title="pageTitle" :description="pageDescription">
       <template #actions>
         <n-button
@@ -17,7 +17,7 @@
       </template>
     </PageHeader>
 
-    <n-alert v-if="hasExplicitActivityRoute" type="info" class="page-alert">
+    <n-alert v-if="hasExplicitActivityRoute" type="info" class="page-alert app-page-alert">
       当前活动按“组长分配审核人、招商审核、自动入库、分配招商、渠道转链”推进。待审核商品可在这里先指定审核负责人。
       <template #action>
         <n-space>
@@ -69,6 +69,7 @@
     </section>
 
     <ProductFilters
+      mode="manage"
       :filters="filters"
       :selected-product="selectedProduct"
       :status="status"
@@ -84,7 +85,7 @@
       @reset="resetFilters"
     />
 
-    <n-card :bordered="false" class="main-card">
+    <n-card :bordered="false" class="main-card app-panel app-table-shell">
       <n-data-table
         v-if="products.length"
         data-testid="product-table"
@@ -152,10 +153,20 @@ import { convertActivityProductLink, getActivityProducts, putActivityProductInto
 import { getColonelActivityPage } from '../../api/activity'
 import { getProducts, getProductPickPage } from '../../api/product'
 import ProductFilters from './components/ProductFilters.vue'
+import {
+  applyProductFilters,
+  allianceStatusToUpstreamStatus,
+  buildActivityProductInfoQuery,
+  DEFAULT_PRODUCT_FILTERS,
+  formatGmv30d,
+  formatSales30d,
+  type ProductFilterState
+} from './product-filters'
 import ProductDetail from './ProductDetail.vue'
 import ProductAuditDialog from './components/ProductAuditDialog.vue'
 import ProductAssignDialog from './components/ProductAssignDialog.vue'
 import ProductOperationLogDrawer from './components/ProductOperationLogDrawer.vue'
+import { copyProductBriefWithLink } from './product-copy'
 
 type ProductAction = 'audit' | 'assign' | 'auditOwner'
 type AssignDialogMode = 'businessOwner' | 'auditOwner'
@@ -191,13 +202,8 @@ const dialogs = ref({
   logs: false
 })
 
-const filters = ref({
-  category: null as string | null,
-  commission: null as string | null,
-  hasSample: null as string | null,
-  assignee: null as string | null,
-  decision: null as string | null
-})
+const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
+const productSearchTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 const forcedStatusMap: Record<ProductAction, string> = {
   audit: 'APPROVED',
@@ -461,6 +467,9 @@ const normalizeItem = (item: any) => ({
   productId: String(item?.productId ?? ''),
   activityId: item?.activityId ? String(item.activityId) : '',
   sourceActivityId: item?.sourceActivityId ? String(item.sourceActivityId) : item?.activityId ? String(item.activityId) : '',
+  shopName: normalizeText(item?.shopName) || item?.shopName,
+  categoryName: normalizeText(item?.categoryName) || item?.categoryName,
+  statusText: normalizeText(item?.statusText) || item?.statusText,
   sales30d: item?.sales30d ?? item?.sales ?? 0,
   gmv30d: item?.gmv30d ?? '0.00',
   estimatedServiceFee: item?.estimatedServiceFee ?? item?.estimatedServiceFeeAmount ?? '0.00',
@@ -481,54 +490,7 @@ const normalizeItem = (item: any) => ({
   }
 })
 
-const parsePercent = (value?: string) => Number(String(value || '').replace('%', '').trim()) || 0
-const parsePrice = (value?: string) => Number(String(value || '').replace(/[^\d.]/g, '')) || 0
-
-const matchCategory = (item: any, category: string | null) => {
-  if (!category) return true
-  const tags = Array.isArray(item.systemTags) ? item.systemTags : []
-  if (category === 'high_commission') return tags.includes('高佣')
-  if (category === 'traffic') return tags.includes('抖音商品池')
-  if (category === 'new') return (item.sales30d ?? 0) < 100
-  if (category === 'high_price') return parsePrice(item.priceText) >= 300
-  return true
-}
-
-const matchCommission = (item: any, commission: string | null) => {
-  if (!commission) return true
-  const rate = parsePercent(item.activityCosRatioText)
-  if (commission === 'gt20') return rate >= 20
-  if (commission === '10_20') return rate >= 10 && rate < 20
-  if (commission === 'lt10') return rate < 10
-  return true
-}
-
-const matchSample = (item: any, hasSample: string | null) => {
-  if (!hasSample) return true
-  return hasSample === '1' ? Boolean(item.hasSampleRule) : !item.hasSampleRule
-}
-
-const matchAssignee = (item: any, assignee: string | null) => {
-  if (!assignee) return true
-  return assignee === 'assigned' ? Boolean(item.assigneeName) : !item.assigneeName
-}
-
-const matchDecision = (item: any, decision: string | null) => {
-  if (!decision) return true
-  if (decision === 'NONE') return !item.latestDecisionLevel
-  return item.latestDecisionLevel === decision
-}
-
-const applyFilters = (items: any[]) =>
-  items.filter((item) => {
-    if (status.value && item.bizStatus !== status.value) return false
-    if (!matchCategory(item, filters.value.category)) return false
-    if (!matchCommission(item, filters.value.commission)) return false
-    if (!matchSample(item, filters.value.hasSample)) return false
-    if (!matchAssignee(item, filters.value.assignee)) return false
-    if (!matchDecision(item, filters.value.decision)) return false
-    return true
-  })
+const applyFilters = (items: any[]) => applyProductFilters(items, filters.value, status.value)
 
 const fetchProducts = async (reset: boolean, forceRemote = false): Promise<boolean> => {
   if (reset) loading.value = true
@@ -563,7 +525,15 @@ const fetchProducts = async (reset: boolean, forceRemote = false): Promise<boole
       const res: any = await getActivityProducts(activityId, {
         count: 20,
         cursor: reset ? undefined : nextCursor.value,
-        productInfo: selectedProduct.value || productKeyword.value.trim() || undefined,
+        productInfo: buildActivityProductInfoQuery(
+          selectedProduct.value,
+          productKeyword.value,
+          filters.value.shopKeyword
+        ),
+        bizStatus: status.value || undefined,
+        status: filters.value.allianceStatus
+          ? allianceStatusToUpstreamStatus[filters.value.allianceStatus]
+          : undefined,
         retrieveMode: 1,
         refresh: forceRemote || undefined
       })
@@ -651,7 +621,7 @@ const loadProductOptions = async (keyword: string) => {
     if (!isPickLibraryMode.value && activityId) {
       const res: any = await getActivityProducts(activityId, {
         count: 20,
-        productInfo: normalizedKeyword,
+        productInfo: buildActivityProductInfoQuery(null, normalizedKeyword, null),
         retrieveMode: 1
       })
       const items = Array.isArray(res?.data?.items) ? res.data.items : []
@@ -672,9 +642,12 @@ const loadProductOptions = async (keyword: string) => {
   }
 }
 
-const handleProductSearch = async (keyword: string) => {
+const handleProductSearch = (keyword: string) => {
   productKeyword.value = String(keyword || '').trim()
-  await loadProductOptions(productKeyword.value)
+  if (productSearchTimer.value) clearTimeout(productSearchTimer.value)
+  productSearchTimer.value = setTimeout(() => {
+    void loadProductOptions(productKeyword.value)
+  }, 300)
 }
 
 const handleFiltersUpdate = (value: typeof filters.value) => {
@@ -710,9 +683,10 @@ const applyActivityQuickFilter = (stage: ActivityStageKey) => {
 
 const resetFilters = () => {
   selectedProduct.value = null
+  productKeyword.value = ''
   status.value = null
   activeStage.value = 'all'
-  filters.value = { category: null, commission: null, hasSample: null, assignee: null, decision: null }
+  filters.value = DEFAULT_PRODUCT_FILTERS()
   refreshProducts()
 }
 
@@ -835,56 +809,60 @@ const copyPromotionLink = async (item: any) => {
     message.warning('请先完成审核并进入商品库后，再生成推广链接')
     return
   }
-  const existingLink = item?.promotion?.link || item?.promotionLink
-  if (existingLink) {
-    try {
-      await navigator.clipboard.writeText(existingLink)
-      message.success('推广链接已复制')
-    } catch {
-      message.warning('推广链接已生成，但浏览器未允许写入剪贴板，请手动复制')
-    }
-    return
-  }
   promotionLoadingIds.value = new Set(promotionLoadingIds.value).add(productId)
+  let clipboardWriteFailed = false
   try {
-    const res: any = await convertActivityProductLink(activityId, productId, { scene: 'PRODUCT_LIBRARY' })
-    const data = res?.data || {}
-    const link = data.promoteLink || data.promotionUrl || data.shortLink
-    if (!link) {
-      message.warning('推广链接生成成功，但没有返回可复制的链接地址')
-      detailRefreshKey.value += 1
-      return
-    }
-    const merged = normalizeItem({
-      ...item,
-      bizStatus: 'LINKED',
-      bizStatusLabel: getStatusLabel('LINKED'),
-      promotion: {
-        status: 'READY',
-        statusLabel: '已生成',
-        link,
-        generatedAt: new Date().toISOString(),
-        expireAt: null,
-        failReason: null
-      },
-      promotionLink: link,
-      promotionLinkStatus: 'READY',
-      promotionLinkStatusLabel: '已生成',
-      promotionLinkFailReason: null
+    const result = await copyProductBriefWithLink({
+      item,
+      activityId,
+      productId,
+      scene: 'PRODUCT_LIBRARY',
+      convertLink: convertActivityProductLink,
+      writeText: async (text: string) => {
+        try {
+          await navigator.clipboard.writeText(text)
+        } catch {
+          clipboardWriteFailed = true
+        }
+      }
     })
-    products.value = products.value.map((row: any) => (String(row.productId) === productId ? { ...row, ...merged } : row))
-    if (String(currentRow.value?.productId || '') === productId) {
-      currentRow.value = { ...currentRow.value, ...merged }
+
+    if (result.link && result.responseData) {
+      const data = result.responseData
+      const merged = normalizeItem({
+        ...item,
+        bizStatus: 'LINKED',
+        bizStatusLabel: getStatusLabel('LINKED'),
+        promotion: {
+          status: 'READY',
+          statusLabel: data.statusLabel || '已生成',
+          link: result.link,
+          generatedAt: new Date().toISOString(),
+          expireAt: null,
+          failReason: null
+        },
+        promotionLink: result.link,
+        promotionLinkStatus: 'READY',
+        promotionLinkStatusLabel: data.statusLabel || '已生成',
+        promotionLinkFailReason: null
+      })
+      products.value = products.value.map((row: any) => (String(row.productId) === productId ? { ...row, ...merged } : row))
+      if (String(currentRow.value?.productId || '') === productId) {
+        currentRow.value = { ...currentRow.value, ...merged }
+      }
+      detailRefreshKey.value += 1
     }
-    try {
-      await navigator.clipboard.writeText(link)
-      message.success('推广链接已复制，pick_source 已生成，后续订单将归因到当前渠道')
-    } catch {
-      message.warning('推广链接已生成，但浏览器未允许写入剪贴板，请手动复制')
+
+    if (clipboardWriteFailed) {
+      message.warning('讲解已生成，但浏览器未允许写入剪贴板，请手动复制')
+    } else if (result.linkGenerationFailed) {
+      detailRefreshKey.value += 1
+      message.error('短链生成失败，已复制讲解（不含短链）')
+    } else {
+      message.success('讲解 + 短链已复制')
     }
-    detailRefreshKey.value += 1
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '推广链接生成失败，请稍后重试')
+    message.error(error?.response?.data?.msg || error?.message || '讲解复制失败，请稍后重试')
   } finally {
     const next = new Set(promotionLoadingIds.value)
     next.delete(productId)
@@ -936,10 +914,22 @@ const renderProductInfo = (row: any) =>
       h('div', { class: 'table-product-title' }, row.title || row.name || '-'),
       h('div', { class: 'table-product-meta' }, `商品ID：${row.productId || '-'}`),
       h('div', { class: 'table-product-meta' }, `店铺：${row.shopName || '未识别店铺'}`),
+      h('div', { class: 'table-product-meta' }, `类目：${row.categoryName || '-'}`),
       h('div', { class: 'table-product-meta' }, `售价：${row.priceText || '-'}    库存：${normalizeText(row.productStock) || normalizeText(row.stockText) || '-'}`),
       h('div', { class: 'table-product-meta' }, `来源类型：${normalizeText(row.sourceTypeLabel || row.sourceTypeName || row.sourceType) || '团长活动'}`)
     ])
   ])
+
+const renderMetrics = (row: any) =>
+  renderLineList(
+    [
+      `近30天销量：${formatSales30d(row)}`,
+      `近30天 GMV：${formatGmv30d(row)}`,
+      `联盟状态：${normalizeText(row.statusText) || '-'}`,
+      `转链：${normalizeText(row.promotion?.statusLabel || row.promotionLinkStatusLabel) || '未生成'}`
+    ],
+    'table-stack compact'
+  )
 
 const renderTagList = (row: any) => {
   const firstLabel = Array.isArray(row.systemTags) && row.systemTags.length
@@ -1025,7 +1015,7 @@ const renderActions = (row: any) => {
   buttons.push(renderTextAction('详情', () => openDetail(row), false, 'product-action-detail'))
   buttons.push(renderTextAction('操作日志', () => openDialog('logs', row), false, 'product-action-logs'))
   if (row.selectedToLibrary && canDo('promotion')) {
-    buttons.push(renderTextAction('复制推广链接', () => copyPromotionLink(row), false, 'product-action-copy-link'))
+    buttons.push(renderTextAction('复制讲解 + 短链', () => copyPromotionLink(row), false, 'product-action-copy-link'))
   }
   return h('div', { class: 'table-actions' }, buttons)
 }
@@ -1059,6 +1049,12 @@ const columns = computed(() => [
     key: 'tags',
     width: 150,
     render: (row: any) => renderTagList(row)
+  },
+  {
+    title: '经营指标',
+    key: 'metrics',
+    width: 168,
+    render: (row: any) => renderMetrics(row)
   },
   {
     title: '负责人',
@@ -1196,10 +1192,7 @@ watch(
 }
 
 .main-card {
-  border-radius: 0;
   overflow: hidden;
-  box-shadow: none;
-  border: 1px solid #f0f0f0;
 }
 
 .table-empty {
@@ -1367,11 +1360,11 @@ watch(
 }
 
 .main-card :deep(.n-data-table-th) {
-  background: #fff;
-  color: #111827;
+  background: var(--bg-card);
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 700;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .main-card :deep(.n-data-table-th--selection),

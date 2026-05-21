@@ -29,6 +29,11 @@ public class AuthService {
 
     private static final String REDIS_BLACKLIST_PREFIX = "auth:blacklist:";
     private static final String REDIS_REFRESH_PREFIX = "auth:refresh:";
+    private static final String REDIS_LOGIN_FAIL_PREFIX = "auth:login:fail:";
+    private static final String REDIS_LOGIN_LOCK_PREFIX = "auth:login:lock:";
+    private static final int MAX_LOGIN_FAILURES = 5;
+    private static final long LOGIN_FAILURE_WINDOW_MINUTES = 15L;
+    private static final long LOGIN_LOCK_MINUTES = 15L;
 
     private final SysUserMapper sysUserMapper;
     private final SysRoleMapper sysRoleMapper;
@@ -50,16 +55,24 @@ public class AuthService {
     }
 
     public LoginResponse login(LoginRequest request) {
+        String loginKey = normalizeLoginKey(request.getUsername());
+        assertLoginNotLocked(loginKey);
+
         SysUser user = sysUserMapper.findByUsername(request.getUsername())
-                .orElseThrow(() -> new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "用户名或密码错误"));
+                .orElseThrow(() -> {
+                    recordLoginFailure(loginKey);
+                    return new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "用户名或密码错误");
+                });
 
         if (user.getStatus() == null || user.getStatus() != 1) {
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "账号已停用");
         }
 
         if (!matchesPassword(request.getPassword(), user.getPassword())) {
+            recordLoginFailure(loginKey);
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "用户名或密码错误");
         }
+        clearLoginFailures(loginKey);
 
         List<SysRole> roles = sysRoleMapper.findByUserId(user.getId());
         int dataScope = roles.stream()
@@ -211,6 +224,44 @@ public class AuthService {
 
     public boolean isTokenBlacklisted(String tokenHash) {
         return Boolean.TRUE.equals(redisTemplate.hasKey(REDIS_BLACKLIST_PREFIX + tokenHash));
+    }
+
+    private void assertLoginNotLocked(String loginKey) {
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(loginLockKey(loginKey)))) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "登录失败次数过多，请15分钟后再试");
+        }
+    }
+
+    private void recordLoginFailure(String loginKey) {
+        String failKey = loginFailKey(loginKey);
+        Long attempts = redisTemplate.opsForValue().increment(failKey);
+        if (attempts != null && attempts == 1L) {
+            redisTemplate.expire(failKey, LOGIN_FAILURE_WINDOW_MINUTES, TimeUnit.MINUTES);
+        }
+        if (attempts != null && attempts >= MAX_LOGIN_FAILURES) {
+            redisTemplate.opsForValue().set(loginLockKey(loginKey), "1", LOGIN_LOCK_MINUTES, TimeUnit.MINUTES);
+            redisTemplate.delete(failKey);
+        }
+    }
+
+    private void clearLoginFailures(String loginKey) {
+        redisTemplate.delete(loginFailKey(loginKey));
+        redisTemplate.delete(loginLockKey(loginKey));
+    }
+
+    private String normalizeLoginKey(String username) {
+        if (username == null) {
+            return "";
+        }
+        return username.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private String loginFailKey(String loginKey) {
+        return REDIS_LOGIN_FAIL_PREFIX + loginKey;
+    }
+
+    private String loginLockKey(String loginKey) {
+        return REDIS_LOGIN_LOCK_PREFIX + loginKey;
     }
 
     /**

@@ -11,11 +11,17 @@
         <result property="shopName" column="shop_name"/>
         <result property="orderAmount" column="order_amount"/>
         <result property="actualAmount" column="actual_amount"/>
+        <result property="colonelBuyinId" column="colonel_buyin_id"/>
         <result property="settleColonelCommission" column="settle_colonel_commission"/>
         <result property="settleColonelTechServiceFee" column="settle_colonel_tech_service_fee"/>
+        <result property="secondColonelBuyinId" column="second_colonel_buyin_id"/>
+        <result property="secondActivityId" column="second_colonel_activity_id"/>
         <result property="settleSecondColonelCommission" column="settle_second_colonel_commission"/>
+        <result property="phaseId" column="phase_id"/>
         <result property="orderStatus" column="order_status"/>
+        <result property="orderType" column="order_type"/>
         <result property="pickSource" column="pick_source"/>
+        <result property="cursor" column="cursor"/>
         <result property="talentId" column="talent_id"/>
         <result property="channelUserId" column="channel_user_id"/>
         <result property="channelUserName" column="channel_user_name"/>
@@ -26,6 +32,7 @@
         <result property="colonelUserName" column="colonel_user_name"/>
         <result property="promotionLinkId" column="promotion_link_id"/>
         <result property="productTitle" column="product_title"/>
+        <result property="talentName" column="talent_name"/>
         <result property="activityId" column="colonel_activity_id"/>
         <result property="settleTime" column="settle_time"/>
         <result property="attributionStatus" column="attribution_status"/>
@@ -33,6 +40,7 @@
         <result property="createTime" column="create_time"/>
         <result property="updateTime" column="update_time"/>
         <result property="deleted" column="deleted"/>
+        <result property="extraData" column="extra_data" typeHandler="com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler"/>
     </resultMap>
 
     <select id="findByOrderId" resultMap="ColonelsettlementOrderMap">
@@ -46,8 +54,9 @@
     <insert id="insertIgnoreByOrderId" parameterType="com.colonel.saas.entity.ColonelsettlementOrder">
         INSERT INTO colonelsettlement_order (
             id, order_id, product_id, product_name, shop_id, shop_name,
-            order_amount, actual_amount, settle_colonel_commission, settle_colonel_tech_service_fee,
-            settle_second_colonel_commission, order_status, pick_source,
+            order_amount, actual_amount, colonel_buyin_id, settle_colonel_commission, settle_colonel_tech_service_fee,
+            second_colonel_buyin_id, second_colonel_activity_id, settle_second_colonel_commission, phase_id,
+            order_status, order_type, pick_source, cursor,
             talent_id,
             channel_user_id, channel_user_name, channel_dept_id,
             user_id, dept_id, colonel_user_id, colonel_user_name, promotion_link_id, product_title, talent_name,
@@ -56,8 +65,9 @@
         )
         SELECT
             #{id}, #{orderId}, #{productId}, #{productName}, #{shopId}, #{shopName},
-            #{orderAmount}, #{actualAmount}, #{settleColonelCommission}, #{settleColonelTechServiceFee},
-            #{settleSecondColonelCommission}, #{orderStatus}, #{pickSource},
+            #{orderAmount}, #{actualAmount}, #{colonelBuyinId}, #{settleColonelCommission}, #{settleColonelTechServiceFee},
+            #{secondColonelBuyinId}, #{secondActivityId}, #{settleSecondColonelCommission}, #{phaseId},
+            #{orderStatus}, #{orderType}, #{pickSource}, #{cursor},
             #{talentId},
             #{channelUserId}, #{channelUserName}, #{channelDeptId},
             #{userId}, #{deptId}, #{colonelUserId}, #{colonelUserName}, #{promotionLinkId}, #{productTitle}, #{talentName},
@@ -81,11 +91,17 @@
             shop_name = #{shopName},
             order_amount = #{orderAmount},
             actual_amount = #{actualAmount},
+            colonel_buyin_id = #{colonelBuyinId},
             settle_colonel_commission = #{settleColonelCommission},
             settle_colonel_tech_service_fee = #{settleColonelTechServiceFee},
+            second_colonel_buyin_id = #{secondColonelBuyinId},
+            second_colonel_activity_id = #{secondActivityId},
             settle_second_colonel_commission = #{settleSecondColonelCommission},
+            phase_id = #{phaseId},
             order_status = #{orderStatus},
+            order_type = #{orderType},
             pick_source = #{pickSource},
+            cursor = #{cursor},
             talent_id = #{talentId},
             channel_user_id = #{channelUserId},
             channel_user_name = #{channelUserName},
@@ -108,7 +124,44 @@
     </update>
 
     <select id="findPageWithScope" resultMap="ColonelsettlementOrderMap">
-        SELECT co.*
+        SELECT
+            co.id,
+            co.order_id,
+            co.product_id,
+            co.product_name,
+            co.shop_id,
+            co.shop_name,
+            co.order_amount,
+            co.actual_amount,
+            co.colonel_buyin_id,
+            co.colonel_activity_id,
+            co.settle_colonel_commission,
+            co.settle_colonel_tech_service_fee,
+            co.second_colonel_buyin_id,
+            co.second_colonel_activity_id,
+            co.settle_second_colonel_commission,
+            co.phase_id,
+            co.order_status,
+            co.order_type,
+            co.settle_time,
+            co.cursor,
+            co.pick_source,
+            co.channel_user_id,
+            co.channel_user_name,
+            co.channel_dept_id,
+            co.user_id,
+            co.dept_id,
+            co.colonel_user_id,
+            co.colonel_user_name,
+            co.promotion_link_id,
+            co.product_title,
+            co.talent_name,
+            co.talent_id,
+            co.attribution_status,
+            co.attribution_remark,
+            co.create_time,
+            co.update_time,
+            co.deleted
         FROM colonelsettlement_order co
         WHERE co.deleted = 0
         <if test="ew != null and ew.sqlSegment != null and ew.sqlSegment != ''">

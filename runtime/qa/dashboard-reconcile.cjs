@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 const { promisify } = require('node:util');
 
 const execFileAsync = promisify(execFile);
@@ -9,9 +10,9 @@ const SCRIPT_NAME = 'dashboard-reconcile';
 const OUT_ROOT = path.join(__dirname, 'out');
 const API_BASE_URL = normalizeBaseUrl(process.env.API_BASE_URL || 'http://localhost:8080');
 const REQUEST_TIMEOUT_MS = Number(process.env.QA_REQUEST_TIMEOUT_MS || 20000);
-const DB_CONTAINER = process.env.QA_DB_CONTAINER || 'saas-postgres';
+const DB_CONTAINER = selectDbContainer();
 const DB_USER = process.env.DB_USER || 'saas';
-const DB_NAME = process.env.DB_NAME || 'saas_test';
+let DB_NAME = process.env.QA_DB_NAME || process.env.DB_NAME || 'colonel_saas_test';
 
 function timestamp(date = new Date()) {
   const pad = (n, len = 2) => String(n).padStart(len, '0');
@@ -20,6 +21,31 @@ function timestamp(date = new Date()) {
 
 function normalizeBaseUrl(value) {
   return String(value || '').replace(/\/+$/, '');
+}
+
+function detectComposeServiceContainer(project, service) {
+  try {
+    const stdout = execFileSync(
+      'docker',
+      [
+        'ps',
+        '--filter',
+        `label=com.docker.compose.project=${project}`,
+        '--filter',
+        `label=com.docker.compose.service=${service}`,
+        '--format',
+        '{{.Names}}'
+      ],
+      { encoding: 'utf8' }
+    );
+    return stdout.split(/\r?\n/).find((line) => line.trim()) || '';
+  } catch {
+    return '';
+  }
+}
+
+function selectDbContainer(env = process.env, detectedContainer = detectComposeServiceContainer(env.QA_COMPOSE_PROJECT || 'saas-active', 'postgres')) {
+  return env.QA_DB_CONTAINER || detectedContainer || 'saas-active-postgres-1';
 }
 
 function ensureDir(dir) {
@@ -415,6 +441,9 @@ async function main() {
   let dbAggregate = {};
   try {
     await ensureTestEnvironment(ctx);
+    if (!process.env.QA_DB_NAME && !process.env.DB_NAME && ctx.environment?.database) {
+      DB_NAME = ctx.environment.database;
+    }
     const token = await loginAdmin();
     await seed(token);
     const [metricsResult, summaryResult, activityProductsResult, orders] = await Promise.all([
@@ -497,5 +526,6 @@ module.exports = {
   aggregateOrders,
   compareMetric,
   parsePsqlTsv,
-  buildReconcileSummary
+  buildReconcileSummary,
+  selectDbContainer
 };

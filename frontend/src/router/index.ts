@@ -117,6 +117,16 @@ const router = createRouter({
           meta: { title: '角色管理', roles: [ROLE.ADMIN] }
         },
         {
+          path: 'system/depts',
+          component: () => import('../views/system/DeptList.vue'),
+          meta: { title: '部门管理', roles: [ROLE.ADMIN] }
+        },
+        {
+          path: 'system/departments',
+          redirect: '/system/depts',
+          meta: { title: '部门管理', roles: [ROLE.ADMIN] }
+        },
+        {
           path: 'system/config',
           component: () => import('../views/system/ConfigList.vue'),
           meta: { title: '系统配置', roles: [ROLE.ADMIN] }

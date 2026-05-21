@@ -152,7 +152,7 @@ const handleLogin = () => {
 /* ---- 左侧品牌区 ---- */
 .login-brand {
   flex: 1;
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 50%, var(--color-primary-light) 100%);
+  background: var(--color-primary-gradient);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -245,10 +245,8 @@ const handleLogin = () => {
   width: 100%;
   max-width: 400px;
   background: var(--bg-card);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
   padding: 40px 36px;
   box-shadow: var(--shadow-modal);
 }

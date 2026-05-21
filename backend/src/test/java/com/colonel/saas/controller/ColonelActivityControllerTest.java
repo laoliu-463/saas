@@ -150,7 +150,7 @@ class ColonelActivityControllerTest {
 
         when(productService.hasActivitySnapshots("100018")).thenReturn(false);
         when(douyinProductGateway.queryActivityProducts(any())).thenReturn(gatewayResult);
-        when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null)).thenReturn(listView);
+        when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null, null)).thenReturn(listView);
 
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
                         .param("searchType", "4")
@@ -166,7 +166,7 @@ class ColonelActivityControllerTest {
 
         verify(productService).hasActivitySnapshots("100018");
         verify(productService).upsertSnapshots(eq("100018"), eq(gatewayResult.items()));
-        verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null);
+        verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null);
     }
 
     @Test
@@ -216,7 +216,7 @@ class ColonelActivityControllerTest {
         listView.put("nextCursor", "fresh-cursor");
         listView.put("items", List.of(itemView));
 
-        when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null)).thenReturn(listView);
+        when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null, null)).thenReturn(listView);
 
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
                         .param("count", "20")
@@ -231,7 +231,7 @@ class ColonelActivityControllerTest {
         verify(productService).refreshActivitySnapshots(any());
         verify(douyinProductGateway, never()).queryActivityProducts(any());
         verify(productService, never()).upsertSnapshots(eq("100018"), any());
-        verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null);
+        verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null);
     }
 
     @Test

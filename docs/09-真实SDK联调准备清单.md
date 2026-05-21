@@ -118,6 +118,14 @@
 - 限流分支
 - 状态枚举映射
 
+### 4. real-pre 写入与清理边界（2026-05-21 补充）
+
+- real-pre 完整业务流程、RBAC 与浏览器可视化旅程不得自动新建不可回滚的真实抖店上游转链；转链步骤只允许复用已有 real-pre `pick_source_mapping` / `promotion_link`，缺少可复用映射时按前置条件阻塞。
+- 本地 QA 写入必须携带 `runId=QA...` 或写入 `journey-state.json`，并在清理前导出 `cleanup-plan.json` / `cleanup-plan.sql` / `cleanup-verify.sql`。
+- 清理默认只 PlanOnly；人工审核确认只包含本次 runId 数据后，才允许使用 `scripts/qa/cleanup-real-pre-journey.ps1 -Execute -RunId <runId>` 执行。
+- 清理器必须同时守住 `/api/system/env=REAL-PRE`、数据库 `saas_real_pre`、非 prod/production 容器或连接；清理后 SQL 复核本次 runId 残留为 `0` 前，不得宣称本次 real-pre run 完成。
+- 清理范围仅限本系统 real-pre 本次 QA 数据和 `product_operation_state` 快照恢复；不清理真实订单、真实商品、真实活动、真实 Token 或真实上游不可回滚记录。
+
 ## 三、联调前置准备
 
 ### 1. 环境准备

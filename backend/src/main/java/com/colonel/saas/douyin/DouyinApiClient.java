@@ -9,23 +9,32 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 
 @Slf4j
 @Service
 public class DouyinApiClient {
 
+    private static final Set<Integer> RETRYABLE_BUSINESS_CODES = Set.of(429, 50002, 60000);
+
     private final DouyinTokenService douyinTokenService;
     private final RestTemplate douyinRestTemplate;
     private final DouyinConfig douyinConfig;
     @Value("${douyin.test.enabled:false}")
     private boolean testEnabled;
+    @Value("${douyin.api.retry.max-attempts:3}")
+    private int retryMaxAttempts;
+    @Value("${douyin.api.retry.initial-delay-ms:400}")
+    private long retryInitialDelayMs;
 
     public DouyinApiClient(
             DouyinTokenService douyinTokenService,
@@ -51,6 +60,39 @@ public class DouyinApiClient {
         if (testEnabled) {
             return buildTestResponse(method, appId, params);
         }
+        int attempts = Math.max(1, retryMaxAttempts);
+        RuntimeException lastFailure = null;
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                return executePost(method, params, appId, token);
+            } catch (DouyinApiException ex) {
+                lastFailure = ex;
+                if (!isRetryableBusinessCode(ex.getErrorCode()) || attempt >= attempts) {
+                    throw ex;
+                }
+                sleepBeforeRetry(method, attempt, attempts, "business-code=" + ex.getErrorCode());
+            } catch (BusinessException ex) {
+                lastFailure = ex;
+                throw ex;
+            } catch (RuntimeException ex) {
+                lastFailure = ex;
+                if (!isRetryableTransport(ex) || attempt >= attempts) {
+                    log.error("Douyin API request failed, method={}, exception={}",
+                            method, ex.getClass().getSimpleName());
+                    throw new BusinessException("Douyin API request failed");
+                }
+                sleepBeforeRetry(method, attempt, attempts, ex.getClass().getSimpleName());
+            }
+        }
+        if (lastFailure instanceof DouyinApiException douyinApiException) {
+            throw douyinApiException;
+        }
+        throw lastFailure == null
+                ? new BusinessException("Douyin API request failed")
+                : new BusinessException("Douyin API request failed", lastFailure);
+    }
+
+    private Map<String, Object> executePost(String method, Map<String, Object> params, String appId, String token) {
         String appSecret = resolveAppSecret();
         String urlPath = resolveUrlPath(method);
         String methodName = urlPath.replace("/", ".");
@@ -68,22 +110,15 @@ public class DouyinApiClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        Map<String, Object> response;
-        try {
-            Object responseObj = douyinRestTemplate.postForObject(
-                    requestUrl,
-                    new HttpEntity<>(paramJson, headers),
-                    Map.class
-            );
-            if (!(responseObj instanceof Map<?, ?> responseMap)) {
-                throw new BusinessException("Douyin API returned invalid response format");
-            }
-            response = castToStringObjectMap(responseMap);
-        } catch (Exception e) {
-            log.error("Douyin API request failed, method={}, exception={}",
-                    method, e.getClass().getSimpleName());
-            throw new BusinessException("Douyin API request failed");
+        Object responseObj = douyinRestTemplate.postForObject(
+                requestUrl,
+                new HttpEntity<>(paramJson, headers),
+                Map.class
+        );
+        if (!(responseObj instanceof Map<?, ?> responseMap)) {
+            throw new BusinessException("Douyin API returned invalid response format");
         }
+        Map<String, Object> response = castToStringObjectMap(responseMap);
 
         int code = parseCode(response);
         if (!isSuccessCode(code)) {
@@ -101,6 +136,33 @@ public class DouyinApiClient {
 
         log.info("Douyin API call success, method={}", method);
         return response;
+    }
+
+    private boolean isRetryableTransport(Throwable throwable) {
+        if (throwable instanceof ResourceAccessException || throwable instanceof HttpServerErrorException) {
+            return true;
+        }
+        Throwable cause = throwable.getCause();
+        return cause != null && cause != throwable && isRetryableTransport(cause);
+    }
+
+    private boolean isRetryableBusinessCode(int code) {
+        return RETRYABLE_BUSINESS_CODES.contains(code);
+    }
+
+    private void sleepBeforeRetry(String method, int attempt, int maxAttempts, String reason) {
+        long delayMs = Math.max(0L, retryInitialDelayMs) * attempt;
+        log.warn("Douyin API retry scheduled, method={}, attempt={}/{}, delayMs={}, reason={}",
+                method, attempt, maxAttempts, delayMs, reason);
+        if (delayMs <= 0L) {
+            return;
+        }
+        try {
+            Thread.sleep(delayMs);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException("Douyin API retry interrupted", interrupted);
+        }
     }
 
     private String resolveAppId(Map<String, Object> params) {
@@ -248,8 +310,18 @@ public class DouyinApiClient {
             data.put("total", 2);
         } else if ("alliance.colonelActivityProduct".equals(method)) {
             data.put("data", java.util.List.of(
-                    Map.of("product_id", "test_product_1", "title", "Test商品1", "cos_type", 1),
-                    Map.of("product_id", "test_product_2", "title", "Test商品2", "cos_type", 0)
+                    Map.of(
+                            "product_id", 900001L,
+                            "title", "Test商品1",
+                            "cos_type", 1,
+                            "origin_colonel_buyin_id", "46128341673481001"
+                    ),
+                    Map.of(
+                            "product_id", 900002L,
+                            "title", "Test商品2",
+                            "cos_type", 0,
+                            "origin_colonel_buyin_id", "46128341673481002"
+                    )
             ));
             data.put("has_more", false);
         } else {
@@ -259,5 +331,3 @@ public class DouyinApiClient {
         return response;
     }
 }
-
-

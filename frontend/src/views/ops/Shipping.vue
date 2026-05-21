@@ -1,5 +1,5 @@
 <template>
-  <div class="ops-shipping" data-testid="ops-shipping-page">
+  <div class="ops-shipping app-page" data-testid="ops-shipping-page">
     <PageHeader
       title="寄样发货台"
       description="集中处理待发货及后续物流中的寄样单，录入单号、跟踪签收进度，并处理物流异常。"
@@ -28,7 +28,7 @@
     </div>
 
     <div v-if="batchItems.length > 0" class="batch-preview-card">
-      <n-card title="批量发货预览" size="small">
+      <n-card title="批量发货预览" size="small" class="app-panel">
         <n-alert v-if="parseErrors.length > 0" type="warning" title="解析警告" style="margin-bottom: 12px">
           <div v-for="(err, i) in parseErrors" :key="i">{{ err }}</div>
         </n-alert>
@@ -48,7 +48,7 @@
       </n-card>
     </div>
 
-    <div class="shipping-table-card">
+    <div class="shipping-table-card app-panel app-table-shell">
       <n-tabs v-model:value="activeTab" type="line" animated @update:value="handleTabChange">
         <n-tab-pane v-for="tab in tabList" :key="tab.value" :name="tab.value" :tab="tab.label">
           <n-data-table
@@ -75,7 +75,7 @@ import { NButton, NTag, useMessage } from 'naive-ui';
 import { getSamplePage, batchShipSamples, exportSamples } from '../../api/sample';
 import PageHeader from '../../components/PageHeader.vue';
 import SampleDetail from '../sample/SampleDetail.vue';
-import * as XLSX from 'xlsx';
+import { parseBatchShipRows, type BatchShipItem, type BatchShipRow } from '../../utils/shippingBatch';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
 
 const message = useMessage();
@@ -99,12 +99,13 @@ const currentSampleId = ref('');
 
 // Batch shipping state
 const fileInputRef = ref<HTMLInputElement | null>(null);
-const batchItems = ref<{ requestNo: string; trackingNo: string }[]>([]);
+const batchItems = ref<BatchShipItem[]>([]);
 const parseErrors = ref<string[]>([]);
 const batchSubmitting = ref(false);
 
 const batchColumns = [
   { title: '寄样单号', key: 'requestNo' },
+  { title: '物流公司', key: 'shipperCode', render: (row: BatchShipItem) => row.shipperCode || '-' },
   { title: '物流单号', key: 'trackingNo' }
 ];
 
@@ -164,33 +165,12 @@ const handleFileChange = async (e: Event) => {
   parseErrors.value = [];
 
   try {
+    const XLSX = await import('xlsx');
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<(string | number | undefined)[]>(ws, { header: 1 });
-
-    const items: { requestNo: string; trackingNo: string }[] = [];
-    const errors: string[] = [];
-
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      if (i === 0) {
-        // Skip header row if it looks like a header
-        const first = String(row[0] ?? '').trim();
-        if (first === '寄样单ID' || first === '寄样单号' || first === 'requestNo' || first === 'id') continue;
-      }
-      const requestNo = String(row[0] ?? '').trim();
-      const carrier = String(row[1] ?? '').trim();
-      const trackingNo = String(row[2] ?? '').trim();
-
-      if (!requestNo) continue; // Skip empty rows
-      if (!trackingNo) {
-        errors.push(`第 ${i + 1} 行：物流单号为空，已跳过`);
-        continue;
-      }
-
-      items.push({ requestNo, trackingNo: carrier ? `${carrier} ${trackingNo}` : trackingNo });
-    }
+    const rows = XLSX.utils.sheet_to_json<BatchShipRow>(ws, { header: 1 });
+    const { items, errors } = parseBatchShipRows(rows);
 
     if (items.length === 0) {
       message.warning('未解析到有效数据行，请检查 Excel 格式（第1列：寄样单号，第2列：物流公司，第3列：单号）');
@@ -305,22 +285,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.ops-shipping {
-  max-width: 100%;
-}
-
 .shipping-actions {
-  margin-bottom: 16px;
+  margin-bottom: var(--content-gap);
 }
 
 .batch-preview-card {
-  margin-bottom: 16px;
-}
-
-.shipping-table-card {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 4px 16px 16px;
-  box-shadow: var(--shadow-card);
+  margin-bottom: var(--content-gap);
 }
 </style>

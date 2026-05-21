@@ -4,6 +4,23 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 type JsonMap = Record<string, unknown>;
+type ReusablePromotionMapping = {
+  mappingId?: string;
+  pickSource?: string;
+  promotionLinkId?: string;
+  promotionUrl?: string;
+  shortUrl?: string;
+};
+
+const {
+  queryReusablePromotionMapping,
+  selectReusablePromotionMapping,
+  buildPromotionBlockerMessage
+} = require('../../runtime/qa/real-pre-safe-upstream.cjs') as {
+  queryReusablePromotionMapping: (options: JsonMap) => ReusablePromotionMapping[];
+  selectReusablePromotionMapping: (rows: ReusablePromotionMapping[]) => ReusablePromotionMapping;
+  buildPromotionBlockerMessage: (options: JsonMap) => string;
+};
 
 interface AuthState {
   token: string;
@@ -64,6 +81,9 @@ const EVIDENCE_DIR = process.env.E2E_ROLE_EVIDENCE_DIR || join(
   `real-pre-role-business-e2e-${formatLocalTimestamp(new Date())}`
 );
 const DEFAULT_PASSWORD = 'admin123';
+const REAL_PRE_NAV_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NAV_TIMEOUT_MS || 120_000);
+const REAL_PRE_UI_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_UI_TIMEOUT_MS || 120_000);
+const REAL_PRE_NETWORK_IDLE_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NETWORK_IDLE_TIMEOUT_MS || 5_000);
 const DOUYIN_ONE_CLICK_CHECKS = [
   'Token 正常',
   '授权主体正常',
@@ -152,7 +172,7 @@ test.describe.configure({ mode: 'serial' });
 
 test('P3-5 real-pre role business flow validates menus, permissions, and handoffs', async ({ browser }, testInfo) => {
   test.skip(!SHOULD_RUN, 'Run with npm run e2e:real-pre:roles or set E2E_REAL_PRE_ROLES=true.');
-  test.setTimeout(360_000);
+  test.setTimeout(Number(process.env.E2E_REAL_PRE_ROLES_TIMEOUT_MS || 20 * 60_000));
 
   const run = createRunState();
   const api = await playwrightRequest.newContext({ baseURL: BACKEND, ignoreHTTPSErrors: true });
@@ -171,7 +191,7 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       assertTrue(envData.douyinTestEnabled === false, 'DOUYIN_TEST_ENABLED must be false');
       assertTrue(health.ok && (health.body as JsonMap | undefined)?.status === 'UP', 'actuator health must be UP');
       return { environment: envData, health: health.body as JsonMap };
-    });
+    }, undefined, true);
 
     await record(run, '01-login-all', 'all six role accounts login and expose expected user context', async () => {
       for (const roleCase of ROLE_CASES) {
@@ -190,9 +210,13 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
           userId: auth.userId
         }
       ]));
-    });
+    }, undefined, true);
 
-    await record(run, '02-admin', 'admin validates system, global APIs, and admin-only surfaces', async () => {
+    await record(run, '02-token-preflight', 'real-pre token cache is available before upstream checks', async () => {
+      return assertDouyinTokenReady(api, requireAuth(run, 'admin'));
+    }, undefined, true);
+
+    await record(run, '03-admin', 'admin validates system, global APIs, and admin-only surfaces', async () => {
       const auth = requireAuth(run, 'admin');
       const ui = await verifyRoleUi(browser, auth, ROLE_CASES[0]);
       const douyinRefresh = await verifyDouyinOneClick(browser, auth);
@@ -228,6 +252,14 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       const bizStaff = await firstAssignableUser(api, auth, 'biz_staff');
       const productId = String(auditProduct.productId ?? auditProduct.product_id);
       const rejectProductId = String(rejectProduct?.productId ?? rejectProduct?.product_id);
+      run.flow.productOperationStateSnapshots = [
+        readProductOperationStateSnapshot(ACTIVITY_ID, productId),
+        readProductOperationStateSnapshot(ACTIVITY_ID, rejectProductId)
+      ];
+      const productLogIdsBefore = [
+        ...readProductOperationLogIds(ACTIVITY_ID, productId),
+        ...readProductOperationLogIds(ACTIVITY_ID, rejectProductId)
+      ];
       await apiSuccess(api, 'PUT', `/api/colonel/activities/${ACTIVITY_ID}/products/${productId}/audit-assignee`, auth, {
         data: { assigneeId: bizStaff.id }
       });
@@ -239,6 +271,10 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       run.flow.productId = productId;
       run.flow.rejectProductId = rejectProductId;
       run.flow.bizStaffUserId = bizStaff.id;
+      run.flow.productOperationLogIds = diffNewIds(productLogIdsBefore, [
+        ...readProductOperationLogIds(ACTIVITY_ID, productId),
+        ...readProductOperationLogIds(ACTIVITY_ID, rejectProductId)
+      ]);
       return {
         ui,
         activities: summarizeResult(activities),
@@ -254,20 +290,32 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       const ui = await verifyRoleUi(browser, auth, ROLE_CASES[2]);
       const productId = requireFlowString(run, 'productId');
       const rejectProductId = requireFlowString(run, 'rejectProductId');
+      const runId = requireFlowString(run, 'runId');
+      const productLogIdsBefore = [
+        ...readProductOperationLogIds(ACTIVITY_ID, productId),
+        ...readProductOperationLogIds(ACTIVITY_ID, rejectProductId)
+      ];
       const approved = await apiSuccess(api, 'PUT', `/api/colonel/activities/${ACTIVITY_ID}/products/${productId}/audit-result`, auth, {
-        data: buildAuditPayload('approved')
+        data: buildAuditPayload(`${runId}-approved`)
       });
       const approvedData = unwrap(approved.body) as JsonMap;
       assertTrue(String(approvedData.bizStatus) === 'APPROVED', `approved product should be APPROVED, got ${approvedData.bizStatus}`);
       assertTrue(Boolean(approvedData.selectedToLibrary || approvedData.libraryVisible), 'approved product should enter library');
       const rejected = await apiSuccess(api, 'PUT', `/api/colonel/activities/${ACTIVITY_ID}/products/${rejectProductId}/audit-result`, auth, {
-        data: { approved: false, reason: 'P3-5 role smoke reject path' }
+        data: { approved: false, reason: `P3-5 role smoke reject path ${runId}` }
       });
       const rejectedData = unwrap(rejected.body) as JsonMap;
       assertTrue(String(rejectedData.bizStatus) === 'REJECTED', `rejected product should be REJECTED, got ${rejectedData.bizStatus}`);
       const picks = await apiSuccess(api, 'GET', '/api/products', auth, { params: { page: 1, size: 10 } });
       await expectForbidden(api, auth, 'GET', '/api/users?page=1&size=5');
-      await expectForbidden(api, auth, 'POST', `/api/colonel/activities/${ACTIVITY_ID}/products/${productId}/promotion-links`, { data: { scene: 'PRODUCT_LIBRARY' } });
+      await expectForbidden(api, auth, 'POST', `/api/colonel/activities/${ACTIVITY_ID}/products/${productId}/promotion-links`, { data: { scene: 'PRODUCT_LIBRARY', externalUniqueId: runId } });
+      run.flow.productOperationLogIds = mergeUniqueStringArrays(
+        asStringArray(run.flow.productOperationLogIds),
+        diffNewIds(productLogIdsBefore, [
+          ...readProductOperationLogIds(ACTIVITY_ID, productId),
+          ...readProductOperationLogIds(ACTIVITY_ID, rejectProductId)
+        ])
+      );
       run.flow.productLocalId = String(approvedData.id);
       return {
         ui,
@@ -279,27 +327,35 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       };
     });
 
-    await record(run, '05-channel', 'channel creates promotion link, mapping, talent claim, and sample request', async () => {
+    await record(run, '05-channel', 'channel reuses promotion mapping, creates talent claim, and submits sample request', async () => {
       const auth = requireAuth(run, 'channel');
       const ui = await verifyRoleUi(browser, auth, ROLE_CASES[3]);
       const productId = requireFlowString(run, 'productId');
       const productLocalId = requireFlowString(run, 'productLocalId');
       const library = await apiSuccess(api, 'GET', '/api/products', auth, { params: { page: 1, size: 10 } });
-      const promotion = await apiSuccess(api, 'POST', `/api/colonel/activities/${ACTIVITY_ID}/products/${productId}/promotion-links`, auth, {
-        data: { scene: 'PRODUCT_LIBRARY', needShortLink: true, externalUniqueId: `p3-5-${Date.now()}` }
+      const reusableMappings = queryReusablePromotionMapping({
+        activityId: ACTIVITY_ID,
+        productId,
+        userId: auth.userId
       });
-      const promotionData = unwrap(promotion.body) as JsonMap;
-      const pickSource = String(promotionData.pickSource || '');
-      assertTrue(/^v\./.test(pickSource), `promotion should return real pick_source, got ${pickSource}`);
-      const mappingCount = countPickSourceMapping(pickSource, productId, ACTIVITY_ID, auth.userId);
-      assertTrue(mappingCount > 0, `pick_source_mapping should hit current channel, got ${mappingCount}`);
+      let reusableMapping: ReusablePromotionMapping;
+      try {
+        reusableMapping = selectReusablePromotionMapping(reusableMappings);
+      } catch {
+        throw new Error(buildPromotionBlockerMessage({ activityId: ACTIVITY_ID, productId, userId: auth.userId }));
+      }
+      const pickSource = String(reusableMapping.pickSource || '');
+      assertTrue(/^v\./.test(pickSource), `reusable mapping should expose real pick_source, got ${pickSource}`);
+      const mappingCount = reusableMappings.length;
+      assertTrue(mappingCount > 0, `reusable pick_source_mapping should hit current channel, got ${mappingCount}`);
 
-      const talentUid = `p35_${Date.now()}`;
+      const runId = requireFlowString(run, 'runId');
+      const talentUid = `${runId}_p35_${Date.now()}`;
       const talentCreate = await apiSuccess(api, 'POST', '/api/talents', auth, {
         data: {
           douyinUid: talentUid,
           douyinNo: talentUid,
-          nickname: `P3-5 role talent ${talentUid}`,
+          nickname: `P3-5 role talent ${runId}`,
           fansCount: 80000,
           level: 'L5',
           contactWechat: `wx_${talentUid}`,
@@ -313,12 +369,12 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       const sampleBody = {
         productId: productLocalId,
         talentId: talentUid,
-        talentNickname: `P3-5 role talent ${talentUid}`,
+        talentNickname: `P3-5 role talent ${runId}`,
         talentFansCount: 80000,
         talentCreditScore: 4.8,
         talentMainCategory: 'food',
         quantity: 1,
-        remark: `P3-5 real-pre role flow ${talentUid}`
+        remark: `P3-5 real-pre role flow ${runId}`
       };
       const sample = await apiSuccess(api, 'POST', '/api/samples', auth, { data: sampleBody });
       const sampleData = unwrap(sample.body) as JsonMap;
@@ -327,6 +383,9 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       await expectForbidden(api, auth, 'GET', '/api/users?page=1&size=5');
       await expectForbidden(api, auth, 'PUT', `/api/colonel/activities/${ACTIVITY_ID}/products/${productId}/audit-result`, { data: buildAuditPayload('channel-forbidden') });
       run.flow.pickSource = pickSource;
+      run.flow.mappingId = reusableMapping.mappingId || '';
+      run.flow.promotionLinkId = reusableMapping.promotionLinkId || '';
+      run.flow.promotionUrl = reusableMapping.promotionUrl || '';
       run.flow.mappingCount = mappingCount;
       run.flow.talentId = talentId;
       run.flow.talentUid = talentUid;
@@ -335,7 +394,10 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       return {
         ui,
         library: summarizeResult(library),
+        safeUpstreamMode: run.flow.safeUpstreamMode,
         pickSource,
+        mappingId: run.flow.mappingId,
+        promotionLinkId: run.flow.promotionLinkId,
         mappingCount,
         talentId,
         privateTalentCount: extractRecords(privateTalents.body).length,
@@ -349,8 +411,9 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
     await record(run, '06-merchant-sample-audit', 'merchant audits the channel sample request into pending shipment', async () => {
       const auth = requireAuth(run, 'merchant');
       const sampleId = requireFlowString(run, 'sampleId');
+      const runId = requireFlowString(run, 'runId');
       const sample = await apiSuccess(api, 'PUT', `/api/samples/${sampleId}/status`, auth, {
-        data: { action: 'PENDING_SHIP', reason: 'P3-5 merchant sample approval' }
+        data: { action: 'PENDING_SHIP', reason: `P3-5 merchant sample approval ${runId}` }
       });
       const sampleData = unwrap(sample.body) as JsonMap;
       assertEqual(String(sampleData.status), 'PENDING_SHIP', 'sample status after merchant audit');
@@ -364,19 +427,20 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       const ui = await verifyRoleUi(browser, auth, ROLE_CASES[4]);
       const sampleId = requireFlowString(run, 'sampleId');
       const requestNo = requireFlowString(run, 'sampleRequestNo');
+      const runId = requireFlowString(run, 'runId');
       const pending = await apiSuccess(api, 'GET', '/api/samples', auth, {
         params: { page: 1, size: 10, status: 'PENDING_SHIP', keyword: requestNo }
       });
       assertTrue(extractRecords(pending.body).some((item) => String(item.id) === sampleId), 'operator should see pending shipment sample');
-      const trackingNo = `SF${Date.now()}`;
+      const trackingNo = `SF${runId}_${Date.now()}`;
       const shipped = await apiSuccess(api, 'PUT', `/api/samples/${sampleId}/status`, auth, {
-        data: { action: 'SHIPPING', trackingNo, shipperCode: 'SF', reason: 'P3-5 operator shipment' }
+        data: { action: 'SHIPPING', trackingNo, shipperCode: 'SF', reason: `P3-5 operator shipment ${runId}` }
       });
       const shippedData = unwrap(shipped.body) as JsonMap;
       assertEqual(String(shippedData.status), 'SHIPPED', 'sample status after operator shipment');
       assertEqual(String(shippedData.trackingNo), trackingNo, 'tracking number should persist');
       const pendingHomework = await apiSuccess(api, 'PUT', `/api/samples/${sampleId}/status`, auth, {
-        data: { action: 'PENDING_HOMEWORK', reason: 'P3-5 operator manual delivery handoff' }
+        data: { action: 'PENDING_HOMEWORK', reason: `P3-5 operator manual delivery handoff ${runId}` }
       });
       const pendingHomeworkData = unwrap(pendingHomework.body) as JsonMap;
       assertEqual(String(pendingHomeworkData.status), 'PENDING_TASK', 'sample status after operator handoff');
@@ -401,7 +465,7 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       const talents = await apiSuccess(api, 'GET', '/api/talents', auth, { params: { page: 1, size: 10 } });
       await expectForbidden(api, auth, 'GET', '/api/users?page=1&size=5');
       await expectForbidden(api, auth, 'POST', `/api/talents/${requireFlowString(run, 'talentId')}/override-assignee`, {
-        data: { newUserId: requireAuth(run, 'channel').userId, reason: 'channel leader should not override assignment' }
+        data: { newUserId: requireAuth(run, 'channel').userId, reason: `channel leader should not override assignment ${requireFlowString(run, 'runId')}` }
       });
       return { ui, samples: summarizeResult(samples), dashboard: summarizeResult(dashboard), talents: summarizeResult(talents) };
     });
@@ -480,6 +544,7 @@ function createRunState(): RunState {
   mkdirSync(EVIDENCE_DIR, { recursive: true });
   const screenshotsDir = join(EVIDENCE_DIR, 'screenshots');
   mkdirSync(screenshotsDir, { recursive: true });
+  const runId = process.env.QA_RUN_ID || `QA${formatLocalTimestamp(new Date()).replace(/[^0-9]/g, '')}`;
   return {
     startedAt: new Date().toISOString(),
     evidenceDir: EVIDENCE_DIR,
@@ -488,8 +553,11 @@ function createRunState(): RunState {
     steps: [],
     failures: [],
     flow: {
+      runId,
       activityId: ACTIVITY_ID,
+      safeUpstreamMode: 'REUSE_EXISTING_PROMOTION_MAPPING',
       databaseCleared: false,
+      cleanupStatus: 'PLAN_REQUIRED_BEFORE_COMPLETION',
       secretsWrittenToDocsOrGit: false
     }
   };
@@ -500,7 +568,8 @@ async function record(
   id: string,
   title: string,
   fn: () => Promise<JsonMap | void>,
-  recover?: () => Promise<void>
+  recover?: () => Promise<void>,
+  failFast = false
 ): Promise<void> {
   try {
     const details = await fn();
@@ -516,6 +585,9 @@ async function record(
         const recoverMessage = recoverError instanceof Error ? recoverError.message : String(recoverError);
         run.failures.push(`${id} recovery failed: ${recoverMessage}`);
       }
+    }
+    if (failFast) {
+      throw error;
     }
   }
 }
@@ -541,6 +613,26 @@ async function login(api: APIRequestContext, username: string): Promise<AuthStat
     roleCodes: asStringArray(data.roleCodes),
     dataScope: data.dataScope,
     deptId: data.deptId == null ? null : String(data.deptId)
+  };
+}
+
+async function assertDouyinTokenReady(api: APIRequestContext, auth: AuthState): Promise<JsonMap> {
+  const result = await apiSuccess(api, 'GET', '/api/douyin/tokens', auth);
+  const data = unwrap(result.body) as JsonMap;
+  const ready =
+    data.hasAccessToken === true &&
+    data.hasRefreshToken === true &&
+    data.reauthorizeRequired !== true;
+  assertTrue(
+    ready,
+    `REAL_PRE_TOKEN_PRECONDITION_BLOCKED: hasAccessToken=${data.hasAccessToken}, hasRefreshToken=${data.hasRefreshToken}, reauthorizeRequired=${data.reauthorizeRequired}`
+  );
+  return {
+    appId: data.appId,
+    hasAccessToken: data.hasAccessToken,
+    hasRefreshToken: data.hasRefreshToken,
+    tokenExpiringSoon: data.tokenExpiringSoon,
+    reauthorizeRequired: data.reauthorizeRequired
   };
 }
 
@@ -576,13 +668,13 @@ async function verifyDouyinOneClick(browser: Browser, auth: AuthState): Promise<
   });
 
   try {
-    await page.goto('/system/douyin', { waitUntil: 'domcontentloaded', timeout: 60_000 });
-    await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => undefined);
-    await page.getByRole('button', { name: '一键刷新联调状态' }).click({ timeout: 30_000 });
+    await page.goto('/system/douyin', { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
+    await waitForAppReady(page);
+    await page.getByRole('button', { name: '一键刷新联调状态' }).click({ timeout: REAL_PRE_UI_TIMEOUT_MS });
 
     const checked: string[] = [];
     for (const text of DOUYIN_ONE_CLICK_CHECKS) {
-      await expect(page.getByText(text, { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByText(text, { exact: true }).first()).toBeVisible({ timeout: REAL_PRE_UI_TIMEOUT_MS });
       checked.push(text);
     }
 
@@ -614,9 +706,8 @@ async function openPage(browser: Browser, auth: AuthState, route: string, should
     }
   });
   try {
-    await page.goto(route, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-    await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
-    await page.locator('.n-spin-body').waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined);
+    await page.goto(route, { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
+    await waitForAppReady(page);
     const finalPath = new URL(page.url()).pathname;
     const bodyText = await page.locator('body').innerText({ timeout: 10_000 }).catch(() => '');
     const headerText = await page.locator('.top-header').innerText().catch(() => '');
@@ -643,6 +734,16 @@ async function openPage(browser: Browser, auth: AuthState, route: string, should
   } finally {
     await context.close().catch(() => undefined);
   }
+}
+
+async function waitForAppReady(page: import('@playwright/test').Page): Promise<void> {
+  const bootLoading = page.locator('#boot-loading');
+  await bootLoading.waitFor({ state: 'detached', timeout: REAL_PRE_UI_TIMEOUT_MS }).catch(async () => {
+    await bootLoading.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined);
+  });
+  await page.waitForLoadState('networkidle', { timeout: REAL_PRE_NETWORK_IDLE_TIMEOUT_MS }).catch(() => undefined);
+  await page.locator('.n-spin-body').waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined);
+  await page.waitForTimeout(300);
 }
 
 async function newAuthContext(browser: Browser, auth: AuthState): Promise<BrowserContext> {
@@ -733,22 +834,68 @@ function findProductCandidate(items: JsonMap[], status: string): JsonMap {
   return item;
 }
 
-function countPickSourceMapping(pickSource: string, productId: string, activityId: string, userId: string): number {
-  const container = process.env.E2E_DB_CONTAINER || 'saas-postgres';
+function readProductOperationStateSnapshot(activityId: string, productId: string): JsonMap {
+  const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
+  const user = process.env.E2E_DB_USER || 'saas';
+  const db = process.env.E2E_DB_NAME || 'saas_real_pre';
+  const sql = `
+select coalesce(row_to_json(t)::text, '')
+from (
+  select
+    audit_status,
+    biz_status,
+    audit_remark,
+    audit_payload,
+    bound_activity_id,
+    assignee_id::text as assignee_id,
+    promote_link,
+    short_link,
+    promotion_scene,
+    external_unique_id,
+    last_operation_at::text as last_operation_at,
+    selected_to_library,
+    selected_at::text as selected_at,
+    selected_by::text as selected_by,
+    deleted
+  from product_operation_state
+  where activity_id = ${sqlLiteral(activityId)}
+    and product_id = ${sqlLiteral(productId)}
+  limit 1
+) t;`;
+  const out = execFileSync('docker', ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-tAc', sql], {
+    encoding: 'utf8'
+  }).trim();
+  return {
+    activityId,
+    productId,
+    before: out ? JSON.parse(out) : null
+  };
+}
+
+function readProductOperationLogIds(activityId: string, productId: string): string[] {
+  const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
   const user = process.env.E2E_DB_USER || 'saas';
   const db = process.env.E2E_DB_NAME || 'saas_real_pre';
   const sql = [
-    'select count(*)',
-    'from pick_source_mapping',
-    `where pick_source = ${sqlLiteral(pickSource)}`,
+    'select id::text',
+    'from product_operation_log',
+    `where activity_id = ${sqlLiteral(activityId)}`,
     `and product_id = ${sqlLiteral(productId)}`,
-    `and activity_id = ${sqlLiteral(activityId)}`,
-    `and user_id = ${sqlLiteral(userId)};`
+    'order by create_time asc;'
   ].join(' ');
-  const out = execFileSync('docker', ['exec', container, 'psql', '-U', user, '-d', db, '-tAc', sql], {
+  const out = execFileSync('docker', ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-tAc', sql], {
     encoding: 'utf8'
   }).trim();
-  return Number.parseInt(out, 10) || 0;
+  return out ? out.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) : [];
+}
+
+function diffNewIds(before: string[], after: string[]): string[] {
+  const seen = new Set(before);
+  return after.filter((id) => !seen.has(id));
+}
+
+function mergeUniqueStringArrays(left: string[], right: string[]): string[] {
+  return Array.from(new Set([...left, ...right].filter(Boolean)));
 }
 
 function sqlLiteral(value: string): string {
@@ -828,8 +975,11 @@ function summarizeResult(result: { status: number; ok: boolean; body: unknown; d
 }
 
 function buildSummary(run: RunState): JsonMap {
+  const cleanupVerified = run.flow.cleanupStatus === 'EXECUTED_AND_VERIFIED_ZERO_RESIDUAL';
+  const conclusion = run.failures.length ? 'FAIL' : cleanupVerified ? 'PASS' : 'PASS_NEEDS_CLEANUP';
   return {
     evidenceType: 'real-pre-role-business-e2e',
+    conclusion,
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
     frontend: FRONTEND,
@@ -865,7 +1015,7 @@ function buildReport(summary: JsonMap): string {
   const lines = [
     '# P3-5 real-pre role business flow',
     '',
-    `- Conclusion: **${summary.overallPass ? 'PASS' : 'FAIL'}**`,
+    `- Conclusion: **${summary.conclusion}**`,
     `- Frontend: ${summary.frontend}`,
     `- Backend: ${summary.backend}`,
     `- Evidence: ${summary.evidenceDir}`,

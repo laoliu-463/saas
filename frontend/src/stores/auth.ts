@@ -54,6 +54,9 @@ const readStoredUserInfo = (): any => {
     }
 };
 
+const AUTH_STORAGE_KEYS = new Set(['token', 'refreshToken', 'refreshExpiresIn', 'accessTokenExpiresIn', 'userInfo']);
+let crossTabSyncInitialized = false;
+
 export const useAuthStore = defineStore('auth', {
     state: () => ({
         token: normalizeStoredToken(localStorage.getItem('token')),
@@ -105,6 +108,19 @@ export const useAuthStore = defineStore('auth', {
             this.refreshExpiresIn = normalizeStoredNumber(localStorage.getItem('refreshExpiresIn'));
             this.accessTokenExpiresIn = normalizeStoredNumber(localStorage.getItem('accessTokenExpiresIn'));
             this.userInfo = normalizeUserInfo(readStoredUserInfo());
+        },
+        setupCrossTabSync(onSynced?: () => void) {
+            if (crossTabSyncInitialized || typeof window === 'undefined') {
+                return;
+            }
+            crossTabSyncInitialized = true;
+            window.addEventListener('storage', (event) => {
+                if (event.storageArea !== localStorage || !event.key || !AUTH_STORAGE_KEYS.has(event.key)) {
+                    return;
+                }
+                this.hydrateFromStorage();
+                onSynced?.();
+            });
         },
         persistAuthState() {
             if (this.token) {

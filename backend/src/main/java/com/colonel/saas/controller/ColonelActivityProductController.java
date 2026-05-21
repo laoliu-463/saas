@@ -61,6 +61,14 @@ public class ColonelActivityProductController extends BaseController {
         return ok(productService.getActivityProductDetail(activityId, productId));
     }
 
+    @Operation(summary = "活动商品 SKU 列表", description = "调用抖店 buyin.productSkus.v2 查询商品规格 SKU。")
+    @GetMapping("/{productId}/skus")
+    public ApiResult<List<Map<String, Object>>> skus(
+            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
+            @Parameter(description = "商品 ID。") @PathVariable String productId) {
+        return ok(productService.listActivityProductSkus(productId));
+    }
+
     @Operation(summary = "活动商品绑定活动", description = "为活动商品补绑或修正关联活动。")
     @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER})
     @PutMapping("/{productId}/bind-activity")

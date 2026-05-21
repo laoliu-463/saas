@@ -24,3 +24,6 @@ CREATE INDEX IF NOT EXISTS idx_product_operation_state_selected_to_library
 
 ALTER TABLE pick_source_mapping
     ALTER COLUMN pick_extra TYPE VARCHAR(128);
+
+ALTER TABLE sample_request
+    ADD COLUMN IF NOT EXISTS shipper_code VARCHAR(32);

@@ -24,8 +24,11 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.Data;
 import org.springframework.util.StringUtils;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -47,6 +50,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Tag(name = "订单管理", description = "订单同步、列表、统计、筛选项与详情查询接口。")
+@Validated
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
 @RestController
 @RequestMapping("/orders")
@@ -120,8 +124,8 @@ public class OrderController extends BaseController {
     @Operation(summary = "获取订单列表", description = "分页查询订单归因列表，用于订单主页面。")
     @GetMapping
     public ApiResult<IPage<ColonelsettlementOrder>> getOrders(
-            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") long page,
-            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") long size,
+            @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(defaultValue = "1") @Min(1) @Max(1000) long page,
+            @Parameter(description = "每页条数，最大 200。") @RequestParam(defaultValue = "20") @Min(1) @Max(200) long size,
             @Parameter(description = "订单 ID。") @RequestParam(required = false) String orderId,
             @Parameter(description = "归因状态，例如 ATTRIBUTED、UNATTRIBUTED。完整取值以代码常量为准。") @RequestParam(required = false) String attributionStatus,
             @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(required = false) String unattributedReason,
@@ -152,6 +156,7 @@ public class OrderController extends BaseController {
                 timeField,
                 dashboardDiagnosis
         );
+        selectOrderListColumns(wrapper);
         applyDataScope(wrapper, userId, deptId, dataScope);
         wrapper.orderByDesc(ColonelsettlementOrder::getUpdateTime)
                 .orderByDesc(ColonelsettlementOrder::getCreateTime);
@@ -163,8 +168,8 @@ public class OrderController extends BaseController {
     @Operation(summary = "获取未归因订单", description = "分页查询未归因订单列表，用于未归因排查。其余筛选条件与订单列表保持一致。")
     @GetMapping("/unattributed")
     public ApiResult<IPage<ColonelsettlementOrder>> getUnattributedOrders(
-            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") long page,
-            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") long size,
+            @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(defaultValue = "1") @Min(1) @Max(1000) long page,
+            @Parameter(description = "每页条数，最大 200。") @RequestParam(defaultValue = "20") @Min(1) @Max(200) long size,
             @Parameter(description = "订单 ID。") @RequestParam(required = false) String orderId,
             @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(required = false) String unattributedReason,
             @Parameter(description = "活动 ID。") @RequestParam(required = false) String activityId,
@@ -521,6 +526,13 @@ public class OrderController extends BaseController {
                 .le(end != null, timeField, end);
     }
 
+    private void selectOrderListColumns(LambdaQueryWrapper<ColonelsettlementOrder> wrapper) {
+        if (wrapper == null) {
+            return;
+        }
+        wrapper.select(ColonelsettlementOrder.class, field -> !"extra_data".equals(field.getColumn()));
+    }
+
     private String resolveTimeField(String timeField) {
         return "settleTime".equalsIgnoreCase(timeField) ? "settle_time" : "create_time";
     }
@@ -548,28 +560,50 @@ public class OrderController extends BaseController {
     }
 
     private void applyDiagnosisSql(LambdaQueryWrapper<ColonelsettlementOrder> wrapper, String prefix, String diagnosis) {
-        wrapper.apply(diagnosisSql(prefix, diagnosis));
+        String normalizedDiagnosis = DashboardService.normalizeDiagnosisCategory(diagnosis);
+        if (!StringUtils.hasText(normalizedDiagnosis)) {
+            return;
+        }
+        String safePrefix = sanitizeDiagnosisSqlPrefix(prefix);
+        String categorySql = DashboardService.diagnosisCategoryCaseSql(
+                safePrefix + "colonel_activity_id",
+                safePrefix + "second_colonel_activity_id",
+                safePrefix + "product_id",
+                safePrefix + "create_time",
+                safePrefix + "colonel_buyin_id",
+                safePrefix + "attribution_status",
+                safePrefix + "attribution_remark"
+        );
+        wrapper.apply("(" + categorySql + ") = {0}", normalizedDiagnosis);
     }
 
     private void applyDiagnosisSql(QueryWrapper<ColonelsettlementOrder> wrapper, String prefix, String diagnosis) {
-        wrapper.apply(diagnosisSql(prefix, diagnosis));
-    }
-
-    private String diagnosisSql(String prefix, String diagnosis) {
         String normalizedDiagnosis = DashboardService.normalizeDiagnosisCategory(diagnosis);
         if (!StringUtils.hasText(normalizedDiagnosis)) {
-            return "1 = 1";
+            return;
         }
+        String safePrefix = sanitizeDiagnosisSqlPrefix(prefix);
         String categorySql = DashboardService.diagnosisCategoryCaseSql(
-                prefix + "colonel_activity_id",
-                prefix + "second_colonel_activity_id",
-                prefix + "product_id",
-                prefix + "create_time",
-                prefix + "colonel_buyin_id",
-                prefix + "attribution_status",
-                prefix + "attribution_remark"
+                safePrefix + "colonel_activity_id",
+                safePrefix + "second_colonel_activity_id",
+                safePrefix + "product_id",
+                safePrefix + "create_time",
+                safePrefix + "colonel_buyin_id",
+                safePrefix + "attribution_status",
+                safePrefix + "attribution_remark"
         );
-        return "(" + categorySql + ") = '" + normalizedDiagnosis + "'";
+        wrapper.apply("(" + categorySql + ") = {0}", normalizedDiagnosis);
+    }
+
+    private String sanitizeDiagnosisSqlPrefix(String prefix) {
+        if (!StringUtils.hasText(prefix)) {
+            return "colonelsettlement_order.";
+        }
+        String normalized = prefix.trim();
+        if ("colonelsettlement_order.".equals(normalized) || "fo.".equals(normalized)) {
+            return normalized;
+        }
+        return "colonelsettlement_order.";
     }
 
     private void applyDataScope(

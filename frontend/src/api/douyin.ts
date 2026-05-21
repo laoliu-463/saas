@@ -41,55 +41,56 @@ export interface DouyinOrderSettlementParams {
 }
 
 const unwrap = <T>(response: any): T => response?.data ?? response;
+const REAL_PRE_REQUEST_TIMEOUT_MS = 120_000;
 
 export function getDouyinTokenStatus(appId?: string) {
-  return request.get('/douyin/tokens', { params: { appId } }).then((res) => unwrap<DouyinTokenStatus>(res));
+  return request.get('/douyin/tokens', { params: { appId }, timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinTokenStatus>(res));
 }
 
 export function refreshDouyinToken(appId?: string) {
-  return request.post('/douyin/token-refreshes', null, { params: { appId } }).then((res) => unwrap<DouyinTokenStatus>(res));
+  return request.post('/douyin/token-refreshes', null, { params: { appId }, timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinTokenStatus>(res));
 }
 
 export function createDouyinToken(data: DouyinTokenCreateRequest) {
-  return request.post('/douyin/tokens', data).then((res) => unwrap<DouyinTokenStatus>(res));
+  return request.post('/douyin/tokens', data, { timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinTokenStatus>(res));
 }
 
 export function getDouyinActivityTest(appId?: string) {
-  return request.get('/douyin/activities', { params: { appId } }).then((res) => unwrap<DouyinDebugResult>(res));
+  return request.get('/douyin/activities', { params: { appId }, timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinDebugResult>(res));
 }
 
 export function getDouyinActivityDetail(appId: string | undefined, activityId: string) {
-  return request.get(`/douyin/activities/${activityId}`, { params: { appId } }).then((res) => unwrap<DouyinDebugResult>(res));
+  return request.get(`/douyin/activities/${activityId}`, { params: { appId }, timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinDebugResult>(res));
 }
 
 export function getDouyinInstitutionInfo(appId?: string) {
-  return request.get('/douyin/institution-info', { params: { appId } }).then((res) => unwrap<DouyinDebugResult>(res));
+  return request.get('/douyin/institution-info', { params: { appId }, timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinDebugResult>(res));
 }
 
 export function getDouyinProductActivities(params: Record<string, any>) {
-  return request.get('/douyin/activity-products', { params }).then((res) => unwrap<DouyinDebugResult>(res));
+  return request.get('/douyin/activity-products', { params, timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinDebugResult>(res));
 }
 
 export function getDouyinActivityProductList(params: { appId?: string; activityId: string; count?: number; cursor?: string }) {
-  return request.get('/douyin/activity-product-list', { params }).then((res) => unwrap<DouyinDebugResult>(res));
+  return request.get('/douyin/activity-product-list', { params, timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinDebugResult>(res));
 }
 
 export function getDouyinOrderSettlements(params: DouyinOrderSettlementParams) {
-  return request.get('/douyin/order-settlements', { params }).then((res) => unwrap<DouyinDebugResult>(res));
+  return request.get('/douyin/order-settlements', { params, timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinDebugResult>(res));
 }
 
 export function getDouyinProductsByActivity(params: { appId?: string; activityId: string; count?: number; cursor?: string }) {
   const { activityId, ...query } = params;
-  return request.get(`/douyin/activities/${activityId}/products`, { params: query }).then((res) => unwrap<DouyinDebugResult>(res));
+  return request.get(`/douyin/activities/${activityId}/products`, { params: query, timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinDebugResult>(res));
 }
 
 export function postDouyinRawProbe(data: Record<string, any>) {
-  return request.post('/douyin/promotion-link-probes/raw', data).then((res) => unwrap<DouyinDebugResult>(res));
+  return request.post('/douyin/promotion-link-probes/raw', data, { timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinDebugResult>(res));
 }
 
 export function createOrUpdateDouyinActivity(data: Record<string, any>) {
   if (data?.activityId) {
-    return request.put(`/douyin/activities/${data.activityId}`, data).then((res) => unwrap<DouyinDebugResult>(res));
+    return request.put(`/douyin/activities/${data.activityId}`, data, { timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinDebugResult>(res));
   }
-  return request.post('/douyin/activities', data).then((res) => unwrap<DouyinDebugResult>(res));
+  return request.post('/douyin/activities', data, { timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinDebugResult>(res));
 }

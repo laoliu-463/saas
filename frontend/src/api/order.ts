@@ -56,12 +56,12 @@ export interface OrderDetail {
   }
 }
 
-export function syncOrders(startTime: string, endTime: string) {
-  return request.post('/orders/sync', { startTime, endTime });
+export function syncOrders(startTime: string, endTime: string, config: any = {}) {
+  return request.post('/orders/sync', { startTime, endTime }, config);
 }
 
-export function getOrders(params: any) {
-  return request.get('/orders', { params });
+export function getOrders(params: any, config: any = {}) {
+  return request.get('/orders', { params, ...config });
 }
 
 export function getUnattributedOrders(params: any) {

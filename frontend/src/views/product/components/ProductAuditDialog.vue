@@ -5,7 +5,7 @@
     title="审核商品"
     positive-text="提交"
     negative-text="取消"
-    style="width: 760px;"
+    :style="{ width: MODAL_WIDTH.lg }"
     @positive-click="handleSubmit"
     @update:show="updateShow"
   >
@@ -113,6 +113,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
+import { MODAL_WIDTH } from '../../../constants/ui';
 import { auditActivityProduct } from '../../../api/activityProduct';
 
 const props = defineProps<{

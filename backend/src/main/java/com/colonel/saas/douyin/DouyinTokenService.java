@@ -416,11 +416,7 @@ public class DouyinTokenService {
         if (secret == null || secret.isBlank()) {
             return "";
         }
-        String normalized = secret.trim();
-        if (normalized.length() <= 8) {
-            return "****";
-        }
-        return normalized.substring(0, 4) + "..." + normalized.substring(normalized.length() - 4);
+        return "****";
     }
 
     private String normalizeGrantType(String grantType) {
@@ -462,7 +458,7 @@ public class DouyinTokenService {
      *
      * <p>此对象由 {@link #getTokenStatus(String)} 方法构建，
      * 用于向管理后台或调试接口展示 Token 当前状态。
-     * 内部仅返回脱敏后的 Token 片段（masked），不做敏感信息暴露。</p>
+     * 内部仅返回固定占位符，不暴露任何 Token 字符。</p>
      *
      * <p>响应字段与前端协议对应关系：</p>
      * <pre>
@@ -470,9 +466,9 @@ public class DouyinTokenService {
      * {
      *   "appId": "36",
      *   "hasAccessToken": true,
-     *   "maskedAccessToken": "test...n_36",   // 仅展示前4位 + "..." + 后4位
+     *   "maskedAccessToken": "****",          // 仅表示 token 已配置
      *   "hasRefreshToken": true,
-     *   "maskedRefreshToken": "test...n_36",
+     *   "maskedRefreshToken": "****",
      *   "tokenExpireAtEpochSeconds": 1779614841,  // Unix 秒级时间戳
      *   "tokenExpiringSoon": false,               // 距离过期是否不足阈值（默认5分钟）
      *   "reauthorizeRequired": false              // 是否需重新授权（Redis 标记）
@@ -487,7 +483,7 @@ public class DouyinTokenService {
         private final String appId;
         /** Access Token 是否存在于 Redis 缓存中（不等于有效， possibly expired） */
         private final boolean hasAccessToken;
-        /** Access Token 脱敏展示：前4位 + "..." + 后4位，长度不足8位则显示 "****" */
+        /** Access Token 脱敏展示：固定占位符，不暴露任何 token 字符 */
         private final String maskedAccessToken;
         /** Refresh Token 是否存在于 Redis 缓存（TTL 14 天） */
         private final boolean hasRefreshToken;
@@ -602,4 +598,3 @@ public class DouyinTokenService {
         }
     }
 }
-

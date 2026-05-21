@@ -36,7 +36,7 @@ export default defineConfig({
     },
     screenshot: alwaysCaptureArtifacts ? 'on' : 'only-on-failure',
     video: alwaysCaptureArtifacts ? 'on' : 'retain-on-failure',
-    trace: alwaysCaptureArtifacts ? 'on' : 'retain-on-failure',
+    trace: alwaysCaptureArtifacts ? 'on' : 'off',
     viewport: { width: 1440, height: 900 },
     permissions: ['clipboard-read', 'clipboard-write']
   },
@@ -44,7 +44,12 @@ export default defineConfig({
     {
       name: 'setup',
       testMatch: /auth\.setup\.ts/,
-      use: { ...devices['Desktop Chrome'] }
+      use: {
+        ...devices['Desktop Chrome'],
+        screenshot: 'off',
+        video: 'off',
+        trace: 'off'
+      }
     },
     {
       name: 'chromium',
@@ -54,8 +59,18 @@ export default defineConfig({
         /08-real-pre-douyin-integration\.spec\.ts/,
         /10-real-pre-business-flow\.spec\.ts/,
         /11-real-pre-role-business-flow\.spec\.ts/,
-        /12-real-pre-full-business-journey\.visual\.spec\.ts/
+        /12-real-pre-full-business-journey\.visual\.spec\.ts/,
+        /09-full-user-journey\.spec\.ts/,
+        /2[0-4]-v1-.*\.spec\.ts/
       ],
+      use: { ...devices['Desktop Chrome'] }
+    },
+    {
+      // V1-P0 验收级套件：渠道链 / 招商链 / 管理配置链 / RBAC / 业绩看板
+      // 需要 storageState（由 setup project 生成），独立于日常 CI smoke 运行。
+      name: 'v1-p0',
+      dependencies: ['setup'],
+      testMatch: /2[0-4]-v1-.*\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] }
     },
     {

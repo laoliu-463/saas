@@ -9,13 +9,13 @@
       :root {
         color-scheme: light;
         font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
-        background: #f7f9fc;
-        color: #1f2937;
+        background: #f3f5f9;
+        color: #0f172a;
       }
 
       body {
         margin: 0;
-        background: #f7f9fc;
+        background: #f3f5f9;
       }
 
       #boot-loading {
@@ -24,7 +24,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: linear-gradient(180deg, #fff6f8 0%, #f7f9fc 24%, #f7f9fc 100%);
+        background: linear-gradient(180deg, #fef2f3 0%, #f3f5f9 28%, #f3f5f9 100%);
         z-index: 9999;
         transition: opacity 0.2s ease;
       }
@@ -44,7 +44,7 @@
         display: flex;
         align-items: center;
         gap: 12px;
-        color: #ff5c75;
+        color: #e84555;
         font-size: 20px;
         font-weight: 700;
       }
@@ -53,9 +53,9 @@
         width: 36px;
         height: 36px;
         border-radius: 12px;
-        background: linear-gradient(135deg, #ff7a91, #ff4d6d);
+        background: linear-gradient(128deg, #e84555, #f06b7a);
         position: relative;
-        box-shadow: 0 12px 28px rgba(255, 92, 117, 0.18);
+        box-shadow: 0 12px 28px rgba(232, 69, 85, 0.2);
       }
 
       .boot-logo::after {
@@ -69,7 +69,7 @@
 
       .boot-card {
         background: rgba(255, 255, 255, 0.92);
-        border: 1px solid rgba(255, 92, 117, 0.08);
+        border: 1px solid #e2e8f0;
         border-radius: 20px;
         padding: 24px;
         box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
@@ -96,7 +96,7 @@
         height: 10px;
         border-radius: 999px;
         overflow: hidden;
-        background: #ffe2e8;
+        background: #fce8eb;
       }
 
       .boot-progress::after {
@@ -105,7 +105,7 @@
         width: 42%;
         height: 100%;
         border-radius: inherit;
-        background: linear-gradient(90deg, #ff8fa3, #ff5c75);
+        background: linear-gradient(90deg, #f06b7a, #e84555);
         animation: boot-progress 1.15s ease-in-out infinite;
       }
 

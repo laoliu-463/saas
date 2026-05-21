@@ -1,8 +1,8 @@
 param(
-    [string]$BaseUrl = "http://localhost:8080/api",
+    [string]$BaseUrl = "http://localhost:8081/api",
     [string]$AdminUsername = "admin",
     [string]$AdminPassword = "admin123",
-    [string]$PostgresContainer = "saas-postgres",
+    [string]$PostgresContainer = "saas-active-postgres-real-pre-1",
     [string]$DbUser = "saas",
     [string]$DbName = "saas_real_pre"
 )

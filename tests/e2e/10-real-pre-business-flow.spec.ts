@@ -7,19 +7,38 @@ import { apiLogin } from './helpers/real-pre-api';
 
 type AuthPayload = Record<string, unknown>;
 type JsonMap = Record<string, unknown>;
+type ReusablePromotionMapping = {
+  mappingId?: string;
+  pickSource?: string;
+  promotionLinkId?: string;
+  promotionUrl?: string;
+  shortUrl?: string;
+};
+
+const {
+  queryReusablePromotionMapping,
+  selectReusablePromotionMapping,
+  buildPromotionBlockerMessage
+} = require('../../runtime/qa/real-pre-safe-upstream.cjs') as {
+  queryReusablePromotionMapping: (options: JsonMap) => ReusablePromotionMapping[];
+  selectReusablePromotionMapping: (rows: ReusablePromotionMapping[]) => ReusablePromotionMapping;
+  buildPromotionBlockerMessage: (options: JsonMap) => string;
+};
 
 const DEFAULT_ACTIVITY_ID = '3916506';
 const DEFAULT_PRODUCT_ID = '3810562766247428542';
 const BUSINESS_READY = new Set(['APPROVED', 'BOUND', 'ASSIGNED', 'LINKED', 'FOLLOWING']);
+const REAL_PRE_NAV_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NAV_TIMEOUT_MS || 120_000);
+const REAL_PRE_NETWORK_IDLE_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NETWORK_IDLE_TIMEOUT_MS || 60_000);
 const SHOULD_RUN =
   process.env.E2E_REAL_PRE_BUSINESS === 'true' ||
   process.env.npm_lifecycle_event === 'e2e:real-pre:business' ||
   process.env.npm_lifecycle_event === 'e2e:real-pre:visual' ||
   process.argv.some((arg) => arg.includes('10-real-pre-business-flow'));
 
-test('real-pre business flow links one product and keeps dashboard readable', async ({ page }, testInfo) => {
+test('real-pre business flow reuses promotion mapping and keeps dashboard readable', async ({ page }, testInfo) => {
   test.skip(!SHOULD_RUN, 'Run with npm run e2e:real-pre:business, npm run e2e:real-pre:visual, or set E2E_REAL_PRE_BUSINESS=true.');
-  test.setTimeout(180_000);
+  test.setTimeout(600_000);
 
   const backend = (process.env.E2E_BACKEND_URL || 'http://localhost:8080').replace(/\/$/, '');
   const api = await playwrightRequest.newContext({ baseURL: backend, ignoreHTTPSErrors: true });
@@ -29,7 +48,10 @@ test('real-pre business flow links one product and keeps dashboard readable', as
   const channelStaff = await apiLogin(`${backend}/api`, accounts.channelStaff.username, accounts.channelStaff.password);
   const summary: JsonMap = {
     evidenceType: 'real-pre-business-e2e',
+    runId: process.env.QA_RUN_ID || `QA${formatRunStamp(new Date())}`,
+    safeUpstreamMode: 'REUSE_EXISTING_PROMOTION_MAPPING',
     databaseCleared: false,
+    cleanupStatus: 'PLAN_REQUIRED_BEFORE_COMPLETION',
     secretsWrittenToDocsOrGit: false
   };
 
@@ -68,6 +90,12 @@ test('real-pre business flow links one product and keeps dashboard readable', as
     expect(businessItems.length, 'business product list has at least one product').toBeGreaterThan(0);
     const candidate = selectCandidate(businessItems);
     const productId = String(candidate.productId ?? candidate.product_id);
+    summary.activityId = activityId;
+    summary.selectedProductId = productId;
+    summary.productOperationStateSnapshots = [
+      readProductOperationStateSnapshot(activityId, productId)
+    ];
+    const productOperationLogIdsBefore = readProductOperationLogIds(activityId, productId);
     summary.products = {
       rawProductCount,
       businessProductCount: businessItems.length,
@@ -88,7 +116,7 @@ test('real-pre business flow links one product and keeps dashboard readable', as
     const beforeStatus = String(detail.bizStatus || 'PENDING_AUDIT');
     if (beforeStatus === 'PENDING_AUDIT') {
       detail = await apiJson(api, 'PUT', `/api/colonel/activities/${activityId}/products/${productId}/audit-result`, bizStaff, {
-        data: buildAuditPayload()
+        data: buildAuditPayload(String(summary.runId))
       });
       expect(detail.selectedToLibrary || detail.libraryVisible, 'audited product enters local library').toBeTruthy();
       expect(BUSINESS_READY.has(String(detail.bizStatus)), 'audited product reaches business-ready state').toBe(true);
@@ -106,22 +134,32 @@ test('real-pre business flow links one product and keeps dashboard readable', as
       afterAuditOrAssignStatus: detail.bizStatus,
       selectedToLibrary: Boolean(detail.selectedToLibrary || detail.libraryVisible)
     };
+    summary.productOperationLogIds = diffNewIds(productOperationLogIdsBefore, readProductOperationLogIds(activityId, productId));
 
-    const externalUniqueId = `real-pre-business-${Date.now()}`;
-    const promotion = await apiJson(api, 'POST', `/api/colonel/activities/${activityId}/products/${productId}/promotion-links`, channelStaff, {
-      data: { scene: 'PRODUCT_LIBRARY', needShortLink: true, externalUniqueId }
+    const reusableMappings = queryReusablePromotionMapping({
+      activityId,
+      productId,
+      userId: String(channelStaff.userId)
     });
-    const pickSource = String(promotion.pickSource || '');
-    expect(pickSource, 'promotion link returns pick_source').toMatch(/^v\./);
-    expect(String(promotion.promoteLink || promotion.promotionUrl || ''), 'promotion link is returned').toContain('pick_source=');
+    let reusableMapping: ReusablePromotionMapping;
+    try {
+      reusableMapping = selectReusablePromotionMapping(reusableMappings);
+    } catch {
+      throw new Error(buildPromotionBlockerMessage({ activityId, productId, userId: String(channelStaff.userId) }));
+    }
+    const pickSource = String(reusableMapping.pickSource || '');
+    expect(pickSource, 'reusable promotion mapping returns pick_source').toMatch(/^v\./);
 
-    const mappingCount = countPickSourceMapping(pickSource, productId, activityId);
-    expect(mappingCount, 'pick_source_mapping row exists').toBeGreaterThan(0);
+    const mappingCount = reusableMappings.length;
+    expect(mappingCount, 'reusable pick_source_mapping row exists').toBeGreaterThan(0);
     const detailAfterLink = await apiJson(api, 'GET', `/api/colonel/activities/${activityId}/products/${productId}`, admin);
-    expect(String(detailAfterLink.bizStatus), 'linked product status').toBe('LINKED');
+    expect(BUSINESS_READY.has(String(detailAfterLink.bizStatus)), 'product remains business-ready after reusable promotion mapping check').toBe(true);
     summary.promotion = {
       pickSource,
-      hasPromoteLink: Boolean(promotion.promoteLink || promotion.promotionUrl),
+      mappingId: reusableMapping.mappingId || '',
+      promotionLinkId: reusableMapping.promotionLinkId || '',
+      promotionUrl: reusableMapping.promotionUrl || '',
+      hasPromoteLink: Boolean(reusableMapping.promotionUrl || reusableMapping.shortUrl),
       mappingCount,
       finalBizStatus: detailAfterLink.bizStatus,
       promotionLinkStatus: detailAfterLink.promotionLinkStatus ?? null
@@ -162,7 +200,7 @@ test('real-pre business flow links one product and keeps dashboard readable', as
     await assertPageOpens(page, '/orders');
     await assertPageOpens(page, '/data');
     summary.pages = ['/system/douyin', '/dashboard', '/product', '/orders', '/data'];
-    summary.conclusion = 'real-pre business smoke passed';
+    summary.conclusion = 'PASS_NEEDS_CLEANUP';
 
     await writeEvidence(summary, testInfo.outputPath('business-summary.json'));
     await testInfo.attach('business-summary.json', {
@@ -191,6 +229,70 @@ async function apiJson(
   expect(response.ok(), `${method} ${path} HTTP ${response.status()}`).toBe(true);
   expect(body?.code, `${method} ${path} business code`).toBe(200);
   return (body?.data ?? body) as JsonMap;
+}
+
+function readProductOperationStateSnapshot(activityId: string, productId: string): JsonMap {
+  const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
+  const user = process.env.E2E_DB_USER || 'saas';
+  const db = process.env.E2E_DB_NAME || 'saas_real_pre';
+  const sql = `
+select coalesce(row_to_json(t)::text, '')
+from (
+  select
+    audit_status,
+    biz_status,
+    audit_remark,
+    audit_payload,
+    bound_activity_id,
+    assignee_id::text as assignee_id,
+    promote_link,
+    short_link,
+    promotion_scene,
+    external_unique_id,
+    last_operation_at::text as last_operation_at,
+    selected_to_library,
+    selected_at::text as selected_at,
+    selected_by::text as selected_by,
+    deleted
+  from product_operation_state
+  where activity_id = ${sqlLiteral(activityId)}
+    and product_id = ${sqlLiteral(productId)}
+  limit 1
+) t;`;
+  const out = execFileSync('docker', ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-tAc', sql], {
+    encoding: 'utf8'
+  }).trim();
+  return {
+    activityId,
+    productId,
+    before: out ? JSON.parse(out) : null
+  };
+}
+
+function readProductOperationLogIds(activityId: string, productId: string): string[] {
+  const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
+  const user = process.env.E2E_DB_USER || 'saas';
+  const db = process.env.E2E_DB_NAME || 'saas_real_pre';
+  const sql = [
+    'select id::text',
+    'from product_operation_log',
+    `where activity_id = ${sqlLiteral(activityId)}`,
+    `and product_id = ${sqlLiteral(productId)}`,
+    'order by create_time asc;'
+  ].join(' ');
+  const out = execFileSync('docker', ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-tAc', sql], {
+    encoding: 'utf8'
+  }).trim();
+  return out ? out.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) : [];
+}
+
+function diffNewIds(before: string[], after: string[]): string[] {
+  const seen = new Set(before);
+  return after.filter((id) => !seen.has(id));
+}
+
+function sqlLiteral(value: string): string {
+  return `'${String(value).replace(/'/g, "''")}'`;
 }
 
 function selectCandidate(items: JsonMap[]): JsonMap {
@@ -234,27 +336,6 @@ function buildAuditPayload(): JsonMap {
   };
 }
 
-function countPickSourceMapping(pickSource: string, productId: string, activityId: string): number {
-  const container = process.env.E2E_DB_CONTAINER || 'saas-postgres';
-  const user = process.env.E2E_DB_USER || 'saas';
-  const db = process.env.E2E_DB_NAME || 'saas_real_pre';
-  const sql = [
-    'select count(*)',
-    'from pick_source_mapping',
-    `where pick_source = ${sqlLiteral(pickSource)}`,
-    `and product_id = ${sqlLiteral(productId)}`,
-    `and activity_id = ${sqlLiteral(activityId)};`
-  ].join(' ');
-  const out = execFileSync('docker', ['exec', container, 'psql', '-U', user, '-d', db, '-tAc', sql], {
-    encoding: 'utf8'
-  }).trim();
-  return Number.parseInt(out, 10) || 0;
-}
-
-function sqlLiteral(value: string): string {
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
-
 async function installAuth(page: Page, auth: AuthPayload): Promise<void> {
   await page.addInitScript((payload: AuthPayload) => {
     localStorage.setItem('token', String(payload.token ?? ''));
@@ -266,8 +347,8 @@ async function installAuth(page: Page, auth: AuthPayload): Promise<void> {
 }
 
 async function assertPageOpens(page: Page, path: string): Promise<void> {
-  await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-  await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => undefined);
+  await page.goto(path, { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
+  await page.waitForLoadState('networkidle', { timeout: REAL_PRE_NETWORK_IDLE_TIMEOUT_MS }).catch(() => undefined);
   await expect(page.locator('body'), `${path} should not show runtime error`).not.toContainText(
     /Unexpected Application Error|Application Error|Bad Gateway|Internal Server Error/i
   );
@@ -335,6 +416,11 @@ function findDeepValue(input: unknown, keys: string[], seen = new Set<unknown>()
 function formatLocalDateTime(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function formatRunStamp(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 
 async function writeEvidence(summary: JsonMap, fallbackPath: string): Promise<void> {

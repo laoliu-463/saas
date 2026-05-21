@@ -66,7 +66,12 @@ public class ProductService {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final long SELECTED_LIBRARY_BATCH_SIZE = 200L;
-    private static final Pattern BUYIN_ID_PATTERN = Pattern.compile("(?:origin_colonel_buyin_id|originColonelBuyinId|colonel_buyin_id|colonelBuyinId)\\s*[=:]\\s*['\\\"]?([0-9]{10,})");
+    /** 抖店团长 buyin 通常为 17–20 位；捕获组上限 30 位，并在数字后截断避免粘连字段。 */
+    private static final Pattern BUYIN_ID_PATTERN = Pattern.compile(
+            "(?:(?:origin_colonel_buyin_id|originColonelBuyinId|colonel_buyin_id|colonelBuyinId)\\s*[=:]\\s*['\\\"]?"
+                    + "|[?&](?:origin_colonel_buyin_id|originColonelBuyinId|colonel_buyin_id|colonelBuyinId)=)"
+                    + "([0-9]{10,30})(?![0-9])",
+            Pattern.CASE_INSENSITIVE);
 
     private final DouyinPromotionGateway douyinPromotionGateway;
     private final DouyinProductGateway douyinProductGateway;
@@ -541,7 +546,8 @@ public class ProductService {
             Integer count,
             String cursor,
             String productInfo,
-            String bizStatus) {
+            String bizStatus,
+            Integer promotionStatus) {
         int pageSize = Math.min(Math.max(count == null ? 20 : count, 1), 20);
         int offset = parseCursor(cursor);
         BizStatusFilter bizStatusFilter = resolveBizStatusFilter(activityId, bizStatus);
@@ -551,18 +557,24 @@ public class ProductService {
 
         LambdaQueryWrapper<ProductSnapshot> countWrapper = new LambdaQueryWrapper<ProductSnapshot>()
                 .eq(ProductSnapshot::getActivityId, activityId)
+                .eq(promotionStatus != null, ProductSnapshot::getStatus, promotionStatus)
                 .and(StringUtils.hasText(productInfo), w -> w.like(ProductSnapshot::getTitle, productInfo.trim())
                         .or()
-                        .like(ProductSnapshot::getProductId, productInfo.trim()));
+                        .like(ProductSnapshot::getProductId, productInfo.trim())
+                        .or()
+                        .like(ProductSnapshot::getShopName, productInfo.trim()));
         applyBizStatusFilter(countWrapper, bizStatusFilter);
         Long total = snapshotMapper.selectCount(countWrapper);
 
         Page<ProductSnapshot> snapshotPage = new Page<>(offset / pageSize + 1, pageSize);
         LambdaQueryWrapper<ProductSnapshot> queryWrapper = new LambdaQueryWrapper<ProductSnapshot>()
                 .eq(ProductSnapshot::getActivityId, activityId)
+                .eq(promotionStatus != null, ProductSnapshot::getStatus, promotionStatus)
                 .and(StringUtils.hasText(productInfo), w -> w.like(ProductSnapshot::getTitle, productInfo.trim())
                         .or()
-                        .like(ProductSnapshot::getProductId, productInfo.trim()))
+                        .like(ProductSnapshot::getProductId, productInfo.trim())
+                        .or()
+                        .like(ProductSnapshot::getShopName, productInfo.trim()))
                 .orderByDesc(ProductSnapshot::getSyncTime)
                 .orderByDesc(ProductSnapshot::getCreateTime);
         applyBizStatusFilter(queryWrapper, bizStatusFilter);
@@ -630,6 +642,38 @@ public class ProductService {
         empty.put("hasMore", false);
         empty.put("items", List.of());
         return empty;
+    }
+
+    public List<Map<String, Object>> listActivityProductSkus(String productId) {
+        if (!StringUtils.hasText(productId)) {
+            return List.of();
+        }
+        try {
+            return douyinProductGateway.queryProductSkus(productId.trim()).stream()
+                    .map(sku -> {
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        row.put("skuId", sku.skuId());
+                        row.put("skuName", sku.skuName());
+                        row.put("price", sku.price());
+                        row.put("priceText", formatSkuPriceText(sku.price()));
+                        row.put("stock", sku.stock());
+                        row.put("cover", sku.cover());
+                        return row;
+                    })
+                    .toList();
+        } catch (Exception ex) {
+            log.warn("query product skus failed productId={}", productId, ex);
+            return List.of();
+        }
+    }
+
+    private String formatSkuPriceText(Long priceInFen) {
+        if (priceInFen == null || priceInFen <= 0) {
+            return "-";
+        }
+        return "¥" + BigDecimal.valueOf(priceInFen).movePointLeft(2)
+                .setScale(2, RoundingMode.HALF_UP)
+                .toPlainString();
     }
 
     public Map<String, Object> getActivityProductDetail(String activityId, String productId) {
@@ -1406,11 +1450,32 @@ public class ProductService {
         }
         for (String key : keys) {
             Object value = source.get(key);
-            if (value != null && StringUtils.hasText(String.valueOf(value))) {
-                return String.valueOf(value).trim();
+            String text = formatValueAsString(value);
+            if (StringUtils.hasText(text)) {
+                return text;
             }
         }
         return null;
+    }
+
+    private String formatValueAsString(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof String text) {
+            return text.trim();
+        }
+        if (value instanceof BigDecimal decimal) {
+            return decimal.stripTrailingZeros().toPlainString();
+        }
+        if (value instanceof Number number) {
+            if (number instanceof Double || number instanceof Float) {
+                return new BigDecimal(number.toString()).stripTrailingZeros().toPlainString();
+            }
+            return number.toString();
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
     }
 
     private Long readLong(Map<String, Object> source, String... keys) {

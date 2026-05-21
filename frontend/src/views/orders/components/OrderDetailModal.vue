@@ -1,5 +1,5 @@
 <template>
-  <n-modal :show="show" preset="card" title="订单详情" style="width: 920px" @update:show="closeModal">
+  <n-modal :show="show" preset="card" title="订单详情" :style="{ width: MODAL_WIDTH.xl }" @update:show="closeModal">
     <n-spin :show="loading">
       <div v-if="detail" class="detail-body">
         <n-alert
@@ -136,6 +136,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
+import { MODAL_WIDTH } from '../../../constants/ui'
 import { getOrderDetail, type OrderDetail } from '../../../api/order'
 import StatusTag from '../../../components/StatusTag.vue'
 import {

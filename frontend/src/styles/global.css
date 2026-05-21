@@ -1,0 +1,120 @@
+/* Shared layout, surfaces, and patterns */
+
+.app-page {
+  padding: var(--page-padding);
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.app-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--content-gap);
+  padding: var(--spacing-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+.app-page .app-panel {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-card);
+  background: var(--bg-card);
+}
+
+.app-page .n-card.app-panel.stat-card:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--color-primary-border);
+}
+
+.app-page .n-card.app-panel .n-card-header {
+  padding-bottom: 8px;
+  font-weight: 600;
+}
+
+.app-table-shell {
+  padding: 4px 12px 12px;
+}
+
+.app-summary-bar {
+  margin-bottom: var(--content-gap);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+.app-page-alert {
+  margin-bottom: var(--content-gap);
+}
+
+.app-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* Metric / stat cards (dashboard, data, talent summary) */
+.app-metric-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
+}
+
+.app-metric-card:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--color-primary-border);
+}
+
+.app-metric-card.clickable {
+  cursor: pointer;
+}
+
+.app-status-card {
+  min-height: 132px;
+  padding: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-xs);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.app-status-card:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.app-section-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* Naive data table inside panels (default; dense tables may override locally) */
+.app-page .app-panel .n-data-table-th {
+  background: var(--bg-card-muted);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.app-page .app-panel .n-data-table-td {
+  font-size: var(--text-base);
+}

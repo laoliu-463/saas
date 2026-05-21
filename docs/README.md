@@ -1,33 +1,20 @@
 # 文档总览
 
-更新时间：2026-05-17
+更新时间：2026-05-21
 
 ## 当前一句话状态
 
-当前项目最准确的阶段表述是：
-
-> `TEST/mock 主流程第二阶段验收已通过；real-pre 准入、P3 单样本业务闭环、P3-5 全角色账号业务流程、P3-7 Dashboard 数据可信对账与浏览器可视化全业务剧本回归已通过；当前进入 P3 最后收口：真实订单归因样本观察与异常分支补证`
+> V1 功能开发已完成，进入验收阶段（功能冻结，仅前端UX优化）。真实抖店订单数据归因"后再说"，确保逻辑正确即可。
 
 说明：
 
-- 当前已完成本地 Mock 主链路联调与问题收口
-- 2026-05-15 已完成 `saas-active` 单活环境治理：`test` / `real-pre` 共用 `docker-compose.yml`，通过 `start-test.ps1` / `start-real-pre.ps1` 互斥切换
-- 2026-05-15 已完成管理员系统管理默认落地修复：管理员直达 `/system` 现会进入 `/system/users`，非管理员仍会被重定向到有权限页面
-- 2026-05-15 已完成环境探针修复：`/api/system/env` 现允许匿名访问且仅返回安全环境信息；页面已消除该接口 401 噪音
-- 2026-05-15 已补齐 QA 基线脚本：`scripts/qa-env.ps1`、`scripts/qa-api-smoke.ps1`、`scripts/qa-page-smoke.ps1`
-- 2026-05-16 已新增 TEST/mock 最终回归入口：`scripts/qa-test-mock-final.ps1`
-- 2026-05-16 已完成 TEST/mock 主流程数据覆盖收口：`overallPass=true`，覆盖率 `84.58%`，硬缺口 `0`，`api-errors=[]`；剩余 warning 型专项样本转入 [19-TEST-mock-warning专项样本清单](./19-TEST-mock-warning专项样本清单.md)
-- 2026-05-16 已完成 TEST/mock 主流程第二阶段验收：状态流转 `22/22 PASS`，角色业务 smoke `6/6 PASS`，Dashboard 对账 `23/23 PASS`；最终结论见 [20-TEST/mock 最终验收报告](./20-TEST-mock最终验收报告.md)
-- 2026-05-16 已新增物流/达人三方接口缺失降级联调方案：物流按手动录入 + Mock 状态流转，达人按 Mock 采集 + 手动补录；该方案不代表真实物流/达人三方接口联调完成，风险继续登记在 real-pre 前置阶段
-- 2026-05-17 已完成 real-pre 运行态准入与前后端 E2E：`runtime/qa/out/qa-real-pre-preflight-20260517-090308-762`、`runtime/qa/out/real-pre-e2e-20260517-090457-069`
-- 2026-05-17 已完成 `P3 real-pre 单样本业务闭环`：活动商品同步、SKU 探针、商品本地状态、真实转链、`pick_source_mapping`、订单同步与 Dashboard 首轮通过；证据目录 `runtime/qa/out/real-pre-business-e2e-20260517-091828`
-- 2026-05-17 已完成 `P3-5 全角色账号业务流程验收`：管理员、招商组长、招商、渠道组长、渠道、运营六类账号的菜单权限、数据范围、核心业务动作、越权拦截与寄样闭环状态推进全部通过；证据目录 `runtime/qa/out/real-pre-role-business-e2e-20260517-101101`
-- 2026-05-17 已完成 `real-pre 浏览器可视化全业务剧本回归`：按账号顺序完成“管理员 -> 招商组长 -> 招商 -> 渠道 -> 招商复审 -> 运营 -> 渠道组长 -> 管理员复核”的真实浏览器业务流转；证据目录 `runtime/qa/out/real-pre-full-business-journey-20260517-151152`
-- 当前状态可统一表述为：`real-pre 准入通过 -> P3 单样本业务闭环通过 -> P3-5 全角色账号业务流程通过 -> P3-6 SYNC_OK_NO_SAMPLE -> P3-7 Dashboard 与 PostgreSQL 口径对账 PASS -> P3-8 异常分支 PARTIAL_PASS -> 浏览器可视化全业务剧本回归 PASS -> 当前约 94%+`
-- 当前发布判断：系统已经具备 real-pre 业务可用性，P3-7 已证明 Dashboard Summary 与 PostgreSQL 聚合口径一致，且主业务流程已可由真实浏览器按账号顺序跑通；但尚不能宣称可生产发布，仍缺真实订单归因可信与异常分支可解释证据
-- P3-6 当前状态建议固定为：`部分收口，等待真实 pick_source 订单样本`；本轮可信结论是 `SYNC_OK_NO_SAMPLE`，不伪造归因通过
-- P3-7 当前状态建议固定为：`PASS`；最新证据目录 `runtime/qa/out/real-pre-dashboard-reconcile-20260517-122911`，`diff.json` 为空且 `candidateReasons=[]`
-- 当前已完成 real-pre 浏览器全路径回归（2026-05-03，45/45 通过）
+- V1 代码审查全部完成，共发现 P1 × 15（安全 2 + 数据库 3 + 性能 3 + 运维 4 + 测试 3），全部冻结待 V2 处理
+- 前端 6 项 P1「可绕过」经与后端交叉验证：后端已有 `@RequireRoles` + Service/DataScope 兜底，真实越权面已排除
+- 达人信息获取（PublicWebTalentProvider）：被抖音风控拦截，需接抖音开放平台官方 API 才能真正实现
+- 数据库迁移脚本已合并：`backend/src/main/resources/db/migrate-all.sql`（24 个 alter-*.sql 按序合并）
+- 本地环境端口：real-pre（前端 3001 / 后端 8081 / PG 5433 / Redis 6380）
+- 前端 npm build 遇 rolldown binding 缺失，执行 `rm -rf node_modules package-lock.json && npm install` 即可
+- 宝塔 + Docker 部署检查清单已更新至本文档章节十一
 - 当前已完成 `3000/8080` 本地 Mock 可见浏览器分批验收，并修复停用登录提示与物流发货数据可见性问题
 - 当前已完成认证安全 5 项补齐：Token 双令牌刷新、登出 / Token 吊销（Redis 黑名单）、SecurityConfig 白名单收紧、DataScope 数据权限过滤、权限 / 菜单管理端点
 - 当前 real-pre 已固定为 `real-pre` profile 单活运行，可命中真实抖店上游；本地 Mock / test 基线仍不混入真实数据
@@ -151,7 +138,9 @@
 1. [09-真实SDK联调准备清单](./09-真实SDK联调准备清单.md)
 2. [archive/records/14-抖店SDK全量梳理与逐接口联调规划](./archive/records/14-抖店SDK全量梳理与逐接口联调规划.md)
 3. [archive/records/15-real-pre最小联调落地方案](./archive/records/15-real-pre最小联调落地方案.md)
-4. [runtime/qa/full-browser-e2e.cjs](../runtime/qa/full-browser-e2e.cjs)
+4. [archive/runbooks/19-商品链路本地排查](./archive/runbooks/19-商品链路本地排查.md)
+5. [archive/runbooks/20-real-pre商品订单归因逻辑排查](./archive/runbooks/20-real-pre商品订单归因逻辑排查.md)
+6. [runtime/qa/full-browser-e2e.cjs](../runtime/qa/full-browser-e2e.cjs)
 
 ### 4. 做专项收口
 

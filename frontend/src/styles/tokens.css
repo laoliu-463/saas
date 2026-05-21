@@ -1,86 +1,104 @@
-/* ============================================
-   Design Token System — 兴选官风格
-   基于珊瑚红主色调的完整 CSS 变量体系
-   ============================================ */
+/* Design tokens — Colonel SaaS (visual v2)
+ * Color hex values must match frontend/src/theme/brand.ts */
 
 :root {
-  /* ---- 主色系 (Primary - Coral Red) ---- */
-  --color-primary: #FF4757;
-  --color-primary-hover: #FF6B81;
-  --color-primary-pressed: #E03140;
-  --color-primary-light: rgba(255, 71, 87, 0.08);
-  --color-primary-border: rgba(255, 71, 87, 0.3);
+  /* Primary */
+  --color-primary: #e84555;
+  --color-primary-hover: #f25f6d;
+  --color-primary-pressed: #cf3344;
+  --color-primary-light: rgba(232, 69, 85, 0.1);
+  --color-primary-border: rgba(232, 69, 85, 0.28);
+  --color-primary-gradient: linear-gradient(128deg, #e84555 0%, #f06b7a 52%, #ff8a96 100%);
 
-  /* ---- 功能色 ---- */
-  --color-success: #07C160;
-  --color-success-light: rgba(7, 193, 96, 0.08);
-  --color-warning: #FF9500;
-  --color-warning-light: rgba(255, 149, 0, 0.08);
-  --color-danger: #FA5151;
-  --color-danger-light: rgba(250, 81, 81, 0.08);
-  --color-info: #3B82F6;
-  --color-info-light: rgba(59, 130, 246, 0.08);
+  /* Semantic */
+  --color-success: #0d9f6e;
+  --color-success-light: rgba(13, 159, 110, 0.1);
+  --color-warning: #e58a00;
+  --color-warning-light: rgba(229, 138, 0, 0.1);
+  --color-danger: #e03e3e;
+  --color-danger-light: rgba(224, 62, 62, 0.1);
+  --color-info: #2563eb;
+  --color-info-light: rgba(37, 99, 235, 0.1);
 
-  /* ---- 中性色 / 背景 ---- */
-  --bg-page: #FAFBFD;
-  --bg-card: rgba(255, 255, 255, 0.75);
-  --bg-sidebar: rgba(255, 255, 255, 0.65);
-  --bg-hover: rgba(255, 71, 87, 0.04);
-  --bg-mask: rgba(0, 0, 0, 0.45);
+  /* Surfaces */
+  --bg-page: #f3f5f9;
+  --bg-page-accent:
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(232, 69, 85, 0.07), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 90% 0%, rgba(37, 99, 235, 0.05), transparent 50%);
+  --bg-card: #ffffff;
+  --bg-card-muted: #f8fafc;
+  --bg-sidebar: #ffffff;
+  --bg-hover: rgba(15, 23, 42, 0.04);
+  --bg-mask: rgba(15, 23, 42, 0.48);
 
-  /* ---- 边框 ---- */
-  --border-color: rgba(0, 0, 0, 0.06);
-  --border-color-light: rgba(0, 0, 0, 0.03);
+  /* Borders */
+  --border-color: #e2e8f0;
+  --border-color-light: #f1f5f9;
+  --border-color-strong: #cbd5e1;
 
-  /* ---- 文字色 ---- */
-  --text-primary: #1A1A2E;
-  --text-secondary: #6B7280;
-  --text-muted: #9CA3AF;
-  --text-inverse: #FFFFFF;
+  /* Text */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #94a3b8;
+  --text-muted: #94a3b8;
+  --text-inverse: #ffffff;
 
-  /* ---- 间距系统 ---- */
+  /* Spacing */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --spacing-xl: 32px;
-  --spacing-2xl: 48px;
+  --spacing-lg: 20px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 40px;
 
-  /* ---- 圆角 ---- */
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 32px;
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
 
-  /* ---- 阴影 ---- */
-  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.03);
-  --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  --shadow-card-hover: 0 16px 40px rgba(255, 71, 87, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  --shadow-dropdown: 0 12px 36px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.05);
+  --shadow-card-hover: 0 8px 28px rgba(232, 69, 85, 0.12);
+  --shadow-dropdown: 0 12px 32px rgba(15, 23, 42, 0.1);
+  --shadow-modal: 0 20px 48px rgba(15, 23, 42, 0.14);
+  --shadow-header: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 4px 20px rgba(207, 51, 68, 0.22);
 
-  /* ---- 字体 ---- */
-  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+  /* Typography */
+  --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-
-  /* ---- 字号 ---- */
   --text-xs: 11px;
   --text-sm: 13px;
   --text-base: 14px;
   --text-lg: 16px;
   --text-xl: 20px;
   --text-2xl: 24px;
-  --text-3xl: 32px;
+  --text-3xl: 30px;
 
-  /* ---- 过渡 ---- */
+  /* Motion */
   --transition-fast: 0.15s ease;
-  --transition-normal: 0.25s ease;
-  --transition-slow: 0.35s ease;
+  --transition-normal: 0.22s ease;
+  --transition-slow: 0.32s ease;
 
-  /* ---- 布局 ---- */
+  /* Layout */
   --header-height: 56px;
-  --sider-width: 220px;
-  --sider-collapsed-width: 64px;
+  --sider-width: 232px;
+  --sider-collapsed-width: 68px;
+  --page-padding: 24px;
+  --page-max-width: 1440px;
+  --content-gap: 16px;
+
+  /* Modal / drawer widths */
+  --modal-width-sm: 400px;
+  --modal-width-md: 560px;
+  --modal-width-lg: 720px;
+  --modal-width-xl: 920px;
+  --modal-width-2xl: 1040px;
+  --drawer-width-md: 640px;
+  --drawer-width-lg: 860px;
 }

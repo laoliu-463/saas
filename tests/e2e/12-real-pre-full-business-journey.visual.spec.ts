@@ -5,6 +5,29 @@ import { join } from 'node:path';
 import { showStepBanner, visibleClick, visibleFill, visiblePause } from './helpers/visual-journey';
 
 type JsonMap = Record<string, unknown>;
+type ReusablePromotionMapping = {
+  mappingId?: string;
+  pickSource?: string;
+  promotionLinkId?: string;
+  promotionUrl?: string;
+  shortUrl?: string;
+};
+
+const {
+  queryReusablePromotionMapping,
+  selectReusablePromotionMapping,
+  buildPromotionBlockerMessage
+} = require('../../runtime/qa/real-pre-safe-upstream.cjs') as {
+  queryReusablePromotionMapping: (options: JsonMap) => ReusablePromotionMapping[];
+  selectReusablePromotionMapping: (rows: ReusablePromotionMapping[]) => ReusablePromotionMapping;
+  buildPromotionBlockerMessage: (options: JsonMap) => string;
+};
+
+const {
+  buildCleanupPlan
+} = require('../../runtime/qa/real-pre-cleanup-plan.cjs') as {
+  buildCleanupPlan: (options: JsonMap) => JsonMap;
+};
 
 interface AuthState {
   token: string;
@@ -85,6 +108,9 @@ const EVIDENCE_DIR = process.env.E2E_JOURNEY_EVIDENCE_DIR || join(
 );
 const DEFAULT_PASSWORD = 'admin123';
 const VIEWPORT = { width: 1440, height: 900 } as const;
+const REAL_PRE_NAV_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NAV_TIMEOUT_MS || 120_000);
+const REAL_PRE_UI_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_UI_TIMEOUT_MS || 120_000);
+const REAL_PRE_NETWORK_IDLE_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NETWORK_IDLE_TIMEOUT_MS || 5_000);
 const DOUYIN_ONE_CLICK_CHECKS = [
   /^Token 正常$/,
   /^授权主体正常$/,
@@ -133,11 +159,11 @@ test('real-pre full business journey visual handoff keeps one runId moving acros
     await criticalStep(run, '01-admin-initial', 'admin config CRUD, system review, and douyin refresh', async () => runAdminInitial(browser, api, run));
     await criticalStep(run, '02-biz-leader', 'biz leader syncs activity data and assigns auditor', async () => runBizLeader(browser, api, run));
     await criticalStep(run, '03-merchant-product', 'merchant audits product and enriches business notes', async () => runMerchantProduct(browser, api, run));
-    await criticalStep(run, '04-channel', 'channel completes talent CRUD, promotion link, and sample submit', async () => runChannel(browser, api, run));
+    await criticalStep(run, '04-channel', 'channel completes talent CRUD, reusable promotion mapping, and sample submit', async () => runChannel(browser, api, run));
     await criticalStep(run, '05-merchant-sample', 'merchant revisits to approve sample into shipment queue', async () => runMerchantSample(browser, api, run));
     await criticalStep(run, '06-operator', 'operator ships and signs the sample into pending task', async () => runOperator(browser, api, run));
     await criticalStep(run, '07-channel-leader', 'channel leader verifies team visibility and boundary checks', async () => runChannelLeader(browser, api, run));
-    await criticalStep(run, '08-admin-final', 'admin reviews global evidence and performs safe cleanup', async () => runAdminFinal(browser, api, run));
+    await criticalStep(run, '08-admin-final', 'admin reviews global evidence and exports cleanup plan', async () => runAdminFinal(browser, api, run));
   } finally {
     await api.dispose();
     run.finishedAt = new Date().toISOString();
@@ -158,6 +184,7 @@ function createRunState(): RunState {
   mkdirSync(screenshotsDir, { recursive: true });
   const now = new Date();
   const runStamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const runId = process.env.QA_RUN_ID || `QA${runStamp}`;
   return {
     startedAt: now.toISOString(),
     evidenceDir: EVIDENCE_DIR,
@@ -175,8 +202,9 @@ function createRunState(): RunState {
       stepPauseMs: Number(process.env.PW_STEP_PAUSE_MS || 800),
       afterActionPauseMs: Number(process.env.PW_AFTER_ACTION_PAUSE_MS || 600),
       viewport: `${VIEWPORT.width}x${VIEWPORT.height}`,
-      runId: `QA${runStamp}`,
+      runId,
       runStamp,
+      safeUpstreamMode: 'REUSE_EXISTING_PROMOTION_MAPPING',
       activityId: ACTIVITY_ID,
       requestedProductId: PREFERRED_PRODUCT_ID,
       selectedProductId: '',
@@ -193,6 +221,7 @@ function createRunState(): RunState {
       tempTalentRetiredBy: '',
       pickSource: '',
       mappingCount: 0,
+      productOperationStateSnapshots: [],
       sampleId: '',
       sampleRequestNo: '',
       sampleStatus: '',
@@ -200,6 +229,8 @@ function createRunState(): RunState {
       currentRole: '',
       currentAction: '',
       databaseCleared: false,
+      cleanupStatus: 'PLAN_REQUIRED_BEFORE_COMPLETION',
+      cleanupPlanGenerated: false,
       secretsWrittenToDocsOrGit: false
     }
   };
@@ -313,7 +344,7 @@ async function runAdminInitial(browser: Browser, api: APIRequestContext, run: Ru
     const login = await roleAction(run, 'admin', '管理员登录与系统入口确认', async () => {
       assertTrue(session.auth.roleCodes.includes('admin'), 'admin role should be present');
       await waitForIdle(session.page);
-      await expect(session.page.locator('.top-header')).toBeVisible({ timeout: 20_000 });
+      await expect(session.page.locator('.top-header')).toBeVisible({ timeout: REAL_PRE_UI_TIMEOUT_MS });
       const path = currentPath(session.page);
       await expect(session.page.locator('[data-testid="nav-system"]')).toBeVisible();
       const screenshot = await capture(run, session.page, 'admin-home');
@@ -324,6 +355,10 @@ async function runAdminInitial(browser: Browser, api: APIRequestContext, run: Ru
         screenshot
       };
     });
+
+    const tokenPreflight = await roleAction(run, 'admin', 'real-pre Token 缓存前置检查', async () =>
+      assertDouyinTokenReady(api, session.auth)
+    );
 
     const configCrud = await roleAction(run, 'admin', '管理员新增并修改 QA 配置项', async () =>
       createAndUpdateJourneyConfig(session.page, api, session.auth, run)
@@ -337,7 +372,7 @@ async function runAdminInitial(browser: Browser, api: APIRequestContext, run: Ru
       logoutAndVerify(api, session.page, session.auth, '/api/users?page=1&size=1')
     );
 
-    return { login, configCrud, douyinRefresh, logout };
+    return { login, tokenPreflight, configCrud, douyinRefresh, logout };
   } finally {
     finishRoleFlow(run, 'admin');
     await session.context.close().catch(() => undefined);
@@ -384,6 +419,8 @@ async function runBizLeader(browser: Browser, api: APIRequestContext, run: RunSt
       const productId = String(candidate.productId ?? candidate.product_id);
       const productInitialStatus = String(candidate.bizStatus || 'PENDING_AUDIT');
       const requiresAudit = productInitialStatus === 'PENDING_AUDIT';
+      ensureProductOperationStateSnapshot(run, productId);
+      const productLogIdsBefore = readProductOperationLogIds(ACTIVITY_ID, productId);
       let detail = candidate;
       let assignee: JsonMap | null = null;
       if (requiresAudit) {
@@ -406,6 +443,10 @@ async function runBizLeader(browser: Browser, api: APIRequestContext, run: RunSt
       run.flow.productTitle = String(detail.title || candidate.title || candidate.productName || productId);
       run.flow.auditAssigneeId = assignee ? String(assignee.id) : '';
       run.flow.auditAssigneeUsername = assignee ? String(assignee.username || assignee.realName || 'biz_staff') : '复用已入库商品';
+      run.flow.productOperationLogIds = mergeUniqueStringArrays(
+        asStringArray(run.flow.productOperationLogIds),
+        diffNewIds(productLogIdsBefore, readProductOperationLogIds(ACTIVITY_ID, productId))
+      );
       await navigate(session.page, `/product/manage/${ACTIVITY_ID}`);
       await showStepBanner(
         session.page,
@@ -456,6 +497,8 @@ async function runMerchantProduct(browser: Browser, api: APIRequestContext, run:
       const productId = requireFlowString(run, 'selectedProductId');
       const initialStatus = String(run.flow.productInitialStatus || '');
       const requiresAudit = Boolean(run.flow.productAuditRequired);
+      ensureProductOperationStateSnapshot(run, productId);
+      const productLogIdsBefore = readProductOperationLogIds(ACTIVITY_ID, productId);
       let approvedData: JsonMap;
       if (requiresAudit) {
         await showStepBanner(session.page, `【招商账号】查看分配商品并补充推广资料\n商品：${productId}\n状态：PENDING_AUDIT -> APPROVED`);
@@ -498,12 +541,16 @@ async function runMerchantProduct(browser: Browser, api: APIRequestContext, run:
       const detailData = unwrap(detail.body) as JsonMap;
       run.flow.productLocalId = String(detailData.id || approvedData.id || '');
       run.flow.productTitle = String(detailData.title || run.flow.productTitle || productId);
+      run.flow.productOperationLogIds = mergeUniqueStringArrays(
+        asStringArray(run.flow.productOperationLogIds),
+        diffNewIds(productLogIdsBefore, readProductOperationLogIds(ACTIVITY_ID, productId))
+      );
       await navigate(session.page, '/product');
       await showStepBanner(
         session.page,
         requiresAudit
           ? `【招商账号】商品审核通过并入库\n商品：${productId}\n状态：${detailData.bizStatus}\n判定：selectedToLibrary=${Boolean(detailData.selectedToLibrary || detailData.libraryVisible)}`
-          : `【招商账号】商品复核通过\n商品：${productId}\n状态保持：${initialStatus} -> ${detailData.bizStatus}\n判定：商品库可见，可继续转链/寄样`
+          : `【招商账号】商品复核通过\n商品：${productId}\n状态保持：${initialStatus} -> ${detailData.bizStatus}\n判定：商品库可见，可继续复用推广映射/寄样`
       );
       const screenshot = await capture(run, session.page, 'merchant-product-library');
       return {
@@ -601,7 +648,7 @@ async function runChannel(browser: Browser, api: APIRequestContext, run: RunStat
       };
     });
 
-    const promotionAndBusinessTalent = await roleAction(run, 'channel', '渠道创建业务达人并执行真实转链', async () => {
+    const promotionAndBusinessTalent = await roleAction(run, 'channel', '渠道创建业务达人并复用既有推广映射', async () => {
       const talentUid = `qa_journey_${String(run.flow.runStamp).toLowerCase()}`;
       const talentName = `qa_talent_${run.flow.runId}`;
       await showStepBanner(session.page, `【渠道账号】新增业务达人\n昵称：${talentName}\nUID：${talentUid}`);
@@ -626,30 +673,30 @@ async function runChannel(browser: Browser, api: APIRequestContext, run: RunStat
       await apiSuccess(api, 'POST', `/api/talents/${talentId}/claims`, session.auth);
 
       const productId = requireFlowString(run, 'selectedProductId');
-      await showStepBanner(session.page, `【渠道账号】执行真实转链\n商品：${productId}\n目标：生成 pick_source 并写入映射`);
-      const promotion = await apiSuccess(
-        api,
-        'POST',
-        `/api/colonel/activities/${ACTIVITY_ID}/products/${productId}/promotion-links`,
-        session.auth,
-        {
-          data: {
-            scene: 'PRODUCT_LIBRARY',
-            needShortLink: true,
-            externalUniqueId: `journey-${run.flow.runId}-${Date.now()}`
-          }
-        }
-      );
-      const promotionData = unwrap(promotion.body) as JsonMap;
-      const pickSource = String(promotionData.pickSource || '');
-      assertTrue(/^v\./.test(pickSource), `promotion should return real pick_source, got ${pickSource}`);
-      const mappingCount = countPickSourceMapping(pickSource, productId, ACTIVITY_ID, session.auth.userId);
-      assertTrue(mappingCount > 0, `pick_source_mapping should hit current channel, got ${mappingCount}`);
+      await showStepBanner(session.page, `【渠道账号】复用既有推广映射\n商品：${productId}\n目标：读取已有 pick_source，不调用真实上游创建转链`);
+      const reusableMappings = queryReusablePromotionMapping({
+        activityId: ACTIVITY_ID,
+        productId,
+        userId: session.auth.userId
+      });
+      let reusableMapping: ReusablePromotionMapping;
+      try {
+        reusableMapping = selectReusablePromotionMapping(reusableMappings);
+      } catch {
+        throw new Error(buildPromotionBlockerMessage({ activityId: ACTIVITY_ID, productId, userId: session.auth.userId }));
+      }
+      const pickSource = String(reusableMapping.pickSource || '');
+      assertTrue(/^v\./.test(pickSource), `reusable mapping should expose real pick_source, got ${pickSource}`);
+      const mappingCount = reusableMappings.length;
+      assertTrue(mappingCount > 0, `reusable pick_source_mapping should hit current channel, got ${mappingCount}`);
 
       run.flow.talentName = talentName;
       run.flow.talentUid = talentUid;
       run.flow.talentId = talentId;
       run.flow.pickSource = pickSource;
+      run.flow.mappingId = reusableMapping.mappingId || '';
+      run.flow.promotionLinkId = reusableMapping.promotionLinkId || '';
+      run.flow.promotionUrl = reusableMapping.promotionUrl || '';
       run.flow.mappingCount = mappingCount;
 
       await navigate(session.page, `/talent?view=MY_TALENTS&keyword=${encodeURIComponent(talentName)}`);
@@ -657,14 +704,17 @@ async function runChannel(browser: Browser, api: APIRequestContext, run: RunStat
       assertTrue(body.includes(talentName), 'business talent should be visible in my talents page');
       await showStepBanner(
         session.page,
-        `【渠道账号】转链与映射判定通过\npick_source：${pickSource}\npick_source_mapping：${mappingCount}`
+        `【渠道账号】既有映射判定通过\npick_source：${pickSource}\npick_source_mapping：${mappingCount}`
       );
       const screenshot = await capture(run, session.page, 'channel-business-talent');
       return {
         talentId,
         talentUid,
         talentName,
+        safeUpstreamMode: run.flow.safeUpstreamMode,
         pickSource,
+        mappingId: run.flow.mappingId,
+        promotionLinkId: run.flow.promotionLinkId,
         mappingCount,
         screenshot
       };
@@ -801,7 +851,7 @@ async function runOperator(browser: Browser, api: APIRequestContext, run: RunSta
       await navigate(session.page, '/ops/shipping');
       const boardScreenshot = await capture(run, session.page, 'operator-shipping-board');
       await navigate(session.page, `/sample/${sampleId}`);
-      const trackingNo = `SF${String(run.flow.runStamp).replace(/_/g, '')}`;
+      const trackingNo = `SF${String(run.flow.runId)}_${Date.now()}`;
       await showStepBanner(session.page, `【运营账号】准备录入物流\n状态：PENDING_SHIP -> SHIPPED\n物流单号：${trackingNo}`);
       await visibleClick(session.page, session.page.getByRole('button', { name: '发货' }), '【运营账号】点击发货');
       await visibleFill(session.page, session.page.getByPlaceholder('SF1234567890').last(), trackingNo, '【运营账号】填写物流单号');
@@ -934,28 +984,43 @@ async function runAdminFinal(browser: Browser, api: APIRequestContext, run: RunS
       };
     });
 
-    const cleanup = await roleAction(run, 'cleanup', '管理员删除 QA 配置并校验安全边界', async () => {
-      const configId = requireFlowString(run, 'configId');
+    const cleanup = await roleAction(run, 'cleanup', '管理员生成清理清单并等待人工审核', async () => {
       const configKey = requireFlowString(run, 'configKey');
-      await showStepBanner(session.page, `【管理员最终复核】清理 QA 配置\n配置键：${configKey}`);
-      await apiSuccess(api, 'DELETE', `/api/configs/${configId}`, session.auth);
-      const pageAfterDelete = await apiSuccess(api, 'GET', '/api/configs', session.auth, {
+      const runId = requireFlowString(run, 'runId');
+      await showStepBanner(session.page, `【管理员最终复核】生成清理清单\nrunId：${runId}\n说明：本步骤只导出 PlanOnly，不执行删除/恢复`);
+      const pageBeforeCleanup = await apiSuccess(api, 'GET', '/api/configs', session.auth, {
         params: { page: 1, size: 10, keyword: configKey }
       });
-      assertTrue(extractRecords(pageAfterDelete.body).length === 0, 'journey QA config should be removed after cleanup');
+      assertTrue(extractRecords(pageBeforeCleanup.body).length > 0, 'journey QA config should remain until reviewed cleanup execution');
       await navigate(session.page, '/system/config');
       await pageSearchAndQuery(session.page, configKey);
       const pageText = await session.page.locator('body').innerText().catch(() => '');
-      assertTrue(!pageText.includes(configKey), 'config page should not show deleted QA config');
-      run.flow.configDeleted = true;
+      assertTrue(pageText.includes(configKey), 'config page should still show QA config before manual cleanup');
+      const cleanupDir = join(run.evidenceDir, 'cleanup');
+      mkdirSync(cleanupDir, { recursive: true });
+      flushEvidence(run);
+      const plan = buildCleanupPlan({
+        runId,
+        state: run.flow,
+        evidenceDir: cleanupDir
+      });
+      writeFileSync(join(cleanupDir, 'cleanup-plan.json'), JSON.stringify(plan, null, 2), 'utf8');
+      writeFileSync(join(cleanupDir, 'cleanup-plan.sql'), String(plan.executeSql || ''), 'utf8');
+      writeFileSync(join(cleanupDir, 'cleanup-verify.sql'), String(plan.verifySql || ''), 'utf8');
+      run.flow.cleanupStatus = 'PLAN_ONLY_REQUIRES_MANUAL_REVIEW_AND_EXECUTE';
+      run.flow.cleanupPlanGenerated = true;
+      run.flow.cleanupPlanDir = cleanupDir;
+      run.flow.configDeleted = false;
       run.warnings.push(
-        `Run ${run.flow.runId}: product/sample artifacts remain tagged with runId because progressed sample records cannot be manually closed or deleted in current real-pre workflow.`
+        `Run ${run.flow.runId}: cleanup plan exported only. Completion requires manual review, explicit cleanup execution, and zero-residual SQL verification.`
       );
-      await showStepBanner(session.page, `【管理员最终复核】清理判定通过\n配置已删除：${configKey}`);
-      const screenshot = await capture(run, session.page, 'cleanup-config-deleted');
+      await showStepBanner(session.page, `【管理员最终复核】清理清单已导出\n${cleanupDir}\n待人工审核后执行清理`);
+      const screenshot = await capture(run, session.page, 'cleanup-plan-exported');
       return {
         configKey,
-        remainingConfigs: extractRecords(pageAfterDelete.body).length,
+        cleanupStatus: run.flow.cleanupStatus,
+        cleanupPlanDir: cleanupDir,
+        remainingConfigsBeforeCleanup: extractRecords(pageBeforeCleanup.body).length,
         screenshot
       };
     });
@@ -978,7 +1043,7 @@ async function openRoleSession(browser: Browser, username: string, run: RunState
     viewport: VIEWPORT
   });
   const page = await context.newPage();
-  await page.goto('/login', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.goto('/login', { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
   await visiblePause(page, `准备登录：${roleName}\n账号：${username}`);
   await visibleFill(page, page.locator('[data-testid="login-username"] input'), username, `填写登录账号：${roleName}`);
   await visibleFill(page, page.locator('[data-testid="login-password"] input'), DEFAULT_PASSWORD, `填写登录密码：${roleName}`, {
@@ -986,11 +1051,11 @@ async function openRoleSession(browser: Browser, username: string, run: RunState
   });
   const loginResponse = page.waitForResponse((response) =>
     response.url().includes('/api/auth/login') && response.request().method() === 'POST',
-  { timeout: 30_000 });
+  { timeout: REAL_PRE_UI_TIMEOUT_MS });
   await visibleClick(page, page.locator('[data-testid="login-submit"]'), `点击登录：${roleName}`);
   const response = await loginResponse;
   assertTrue(response.ok(), `${username} login response should be OK`);
-  await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 30_000 });
+  await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: REAL_PRE_UI_TIMEOUT_MS });
   await waitForIdle(page);
   const auth = await readAuthFromPage(page, username);
   await visiblePause(page, `登录成功：${roleName}\n当前账号：${auth.username}\n角色：${auth.roleCodes.join(', ')}`);
@@ -1023,13 +1088,17 @@ async function readAuthFromPage(page: Page, fallbackUsername: string): Promise<A
 }
 
 async function waitForIdle(page: Page): Promise<void> {
-  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
+  const bootLoading = page.locator('#boot-loading');
+  await bootLoading.waitFor({ state: 'detached', timeout: REAL_PRE_UI_TIMEOUT_MS }).catch(async () => {
+    await bootLoading.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined);
+  });
+  await page.waitForLoadState('networkidle', { timeout: REAL_PRE_NETWORK_IDLE_TIMEOUT_MS }).catch(() => undefined);
   await page.locator('.n-spin-body').waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined);
   await page.waitForTimeout(500);
 }
 
 async function navigate(page: Page, route: string): Promise<void> {
-  await page.goto(route, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.goto(route, { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
   await waitForIdle(page);
   await showStepBanner(page, `打开页面：${route}`);
   await expect(page.locator('body')).not.toContainText(/Unexpected Application Error|Application Error|Bad Gateway|Internal Server Error/i);
@@ -1037,7 +1106,7 @@ async function navigate(page: Page, route: string): Promise<void> {
 
 async function assertRouteRedirect(page: Page, route: string): Promise<void> {
   await showStepBanner(page, `验证权限边界：访问 ${route} 应被拦截或重定向`);
-  await page.goto(route, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.goto(route, { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
   await waitForIdle(page);
   const finalPath = currentPath(page);
   await showStepBanner(page, `权限边界通过：${route} -> ${finalPath}`);
@@ -1370,6 +1439,26 @@ function summarizeResult(result: RawApiResult): JsonMap {
   };
 }
 
+async function assertDouyinTokenReady(api: APIRequestContext, auth: AuthState): Promise<JsonMap> {
+  const result = await apiSuccess(api, 'GET', '/api/douyin/tokens', auth);
+  const data = unwrap(result.body) as JsonMap;
+  const ready =
+    data.hasAccessToken === true &&
+    data.hasRefreshToken === true &&
+    data.reauthorizeRequired !== true;
+  assertTrue(
+    ready,
+    `REAL_PRE_TOKEN_PRECONDITION_BLOCKED: hasAccessToken=${data.hasAccessToken}, hasRefreshToken=${data.hasRefreshToken}, reauthorizeRequired=${data.reauthorizeRequired}`
+  );
+  return {
+    appId: data.appId,
+    hasAccessToken: data.hasAccessToken,
+    hasRefreshToken: data.hasRefreshToken,
+    tokenExpiringSoon: data.tokenExpiringSoon,
+    reauthorizeRequired: data.reauthorizeRequired
+  };
+}
+
 function formatApiFailure(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
@@ -1386,22 +1475,82 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function countPickSourceMapping(pickSource: string, productId: string, activityId: string, userId: string): number {
-  const container = process.env.E2E_DB_CONTAINER || 'saas-postgres';
+function readProductOperationStateSnapshot(activityId: string, productId: string): JsonMap {
+  const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
+  const user = process.env.E2E_DB_USER || 'saas';
+  const db = process.env.E2E_DB_NAME || 'saas_real_pre';
+  const sql = `
+select coalesce(row_to_json(t)::text, '')
+from (
+  select
+    audit_status,
+    biz_status,
+    audit_remark,
+    audit_payload,
+    bound_activity_id,
+    assignee_id::text as assignee_id,
+    promote_link,
+    short_link,
+    promotion_scene,
+    external_unique_id,
+    last_operation_at::text as last_operation_at,
+    selected_to_library,
+    selected_at::text as selected_at,
+    selected_by::text as selected_by,
+    deleted
+  from product_operation_state
+  where activity_id = ${sqlLiteral(activityId)}
+    and product_id = ${sqlLiteral(productId)}
+  limit 1
+) t;`;
+  const out = execFileSync('docker', ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-tAc', sql], {
+    encoding: 'utf8'
+  }).trim();
+  return {
+    activityId,
+    productId,
+    before: out ? JSON.parse(out) : null
+  };
+}
+
+function ensureProductOperationStateSnapshot(run: RunState, productId: string): void {
+  const snapshots = asJsonArray(run.flow.productOperationStateSnapshots);
+  const exists = snapshots.some((snapshot) =>
+    String(snapshot.activityId || '') === ACTIVITY_ID &&
+    String(snapshot.productId || '') === productId
+  );
+  if (!exists) {
+    run.flow.productOperationStateSnapshots = [
+      ...snapshots,
+      readProductOperationStateSnapshot(ACTIVITY_ID, productId)
+    ];
+  }
+}
+
+function readProductOperationLogIds(activityId: string, productId: string): string[] {
+  const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
   const user = process.env.E2E_DB_USER || 'saas';
   const db = process.env.E2E_DB_NAME || 'saas_real_pre';
   const sql = [
-    'select count(*)',
-    'from pick_source_mapping',
-    `where pick_source = ${sqlLiteral(pickSource)}`,
+    'select id::text',
+    'from product_operation_log',
+    `where activity_id = ${sqlLiteral(activityId)}`,
     `and product_id = ${sqlLiteral(productId)}`,
-    `and activity_id = ${sqlLiteral(activityId)}`,
-    `and user_id = ${sqlLiteral(userId)};`
+    'order by create_time asc;'
   ].join(' ');
-  const out = execFileSync('docker', ['exec', container, 'psql', '-U', user, '-d', db, '-tAc', sql], {
+  const out = execFileSync('docker', ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-tAc', sql], {
     encoding: 'utf8'
   }).trim();
-  return Number.parseInt(out, 10) || 0;
+  return out ? out.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) : [];
+}
+
+function diffNewIds(before: string[], after: string[]): string[] {
+  const seen = new Set(before);
+  return after.filter((id) => !seen.has(id));
+}
+
+function mergeUniqueStringArrays(left: string[], right: string[]): string[] {
+  return Array.from(new Set([...left, ...right].filter(Boolean)));
 }
 
 function sqlLiteral(value: string): string {
@@ -1416,8 +1565,13 @@ function requireFlowString(run: RunState, key: string): string {
   return String(value);
 }
 
+function asJsonArray(value: unknown): JsonMap[] {
+  return Array.isArray(value) ? value as JsonMap[] : [];
+}
+
 function buildSummary(run: RunState): JsonMap {
-  const conclusion = run.failures.length ? 'FAIL' : 'PASS';
+  const cleanupVerified = run.flow.cleanupStatus === 'EXECUTED_AND_VERIFIED_ZERO_RESIDUAL';
+  const conclusion = run.failures.length ? 'FAIL' : cleanupVerified ? 'PASS' : 'PASS_NEEDS_CLEANUP';
   return {
     evidenceType: 'real-pre-full-business-journey-visual',
     conclusion,
@@ -1448,7 +1602,7 @@ function buildSummary(run: RunState): JsonMap {
       '商品分配',
       '商品审核',
       '达人 CRUD/等价动作',
-      '真实转链',
+      '复用既有推广映射',
       'pick_source_mapping',
       '寄样申请',
       '寄样审核',
@@ -1460,11 +1614,11 @@ function buildSummary(run: RunState): JsonMap {
       '管理员配置',
       '招商组长分配商品',
       '招商审核商品',
-      '渠道创建达人/转链/申请寄样',
+      '渠道创建达人/复用推广链接/申请寄样',
       '招商审核寄样',
       '运营发货签收',
       '渠道组长查看组内数据',
-      '管理员复核与清理'
+      '管理员复核并导出清理清单'
     ],
     overallPass: run.failures.length === 0,
     totalSteps: run.steps.length,
@@ -1535,11 +1689,11 @@ function buildReport(summary: JsonMap): string {
     '管理员配置',
     '-> 招商组长分配商品',
     '-> 招商审核商品',
-    '-> 渠道新增达人/转链/申请寄样',
+    '-> 渠道新增达人/复用推广链接/申请寄样',
     '-> 招商审核寄样',
     '-> 运营发货',
     '-> 渠道组长查看组内数据',
-    '-> 管理员复核全局数据',
+    '-> 管理员复核全局数据并导出清理清单',
     '',
     '## 关键数据',
     '',

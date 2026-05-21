@@ -21,10 +21,10 @@ process.env.E2E_ROLE_EVIDENCE_DIR = roleEvidenceDir;
 process.env.PLAYWRIGHT_HTML_OUTPUT_DIR = path.join(evidenceDir, 'playwright-report');
 process.env.PLAYWRIGHT_HTML_OPEN = 'never';
 if (!process.env.E2E_BASE_URL) {
-  process.env.E2E_BASE_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+  process.env.E2E_BASE_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
 }
 if (!process.env.E2E_BACKEND_URL) {
-  process.env.E2E_BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
+  process.env.E2E_BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8081';
 }
 
 const result = spawnSync(

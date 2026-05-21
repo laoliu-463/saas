@@ -28,8 +28,10 @@ defineProps<{
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: var(--spacing-md);
+  margin-bottom: var(--content-gap);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--border-color-light);
 }
 
 .page-copy {
@@ -45,16 +47,28 @@ defineProps<{
 
 .page-title {
   margin: 0;
-  font-size: 24px;
-  line-height: 1.25;
+  font-size: var(--text-2xl);
+  line-height: 1.3;
   font-weight: 700;
   color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.page-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 1.1em;
+  margin-right: 10px;
+  vertical-align: -0.12em;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-gradient);
 }
 
 .page-description {
-  margin: 8px 0 0;
-  font-size: 14px;
-  line-height: 1.6;
+  margin: 6px 0 0 14px;
+  font-size: var(--text-sm);
+  line-height: 1.55;
   color: var(--text-secondary);
 }
 
@@ -62,13 +76,15 @@ defineProps<{
 .page-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
   flex-wrap: wrap;
 }
 
 @media (max-width: 960px) {
   .page-header {
     flex-direction: column;
+    border-bottom: none;
+    padding-bottom: 0;
   }
 
   .page-actions {

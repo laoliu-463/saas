@@ -83,6 +83,7 @@ public class ColonelActivityController extends BaseController {
             @Parameter(description = "合作信息关键字。") @RequestParam(required = false) String cooperationInfo,
             @Parameter(description = "合作类型。待确认：取值含义请联系产品或参考上游 SDK 文档。") @RequestParam(defaultValue = "0") Integer cooperationType,
             @Parameter(description = "商品信息关键字。") @RequestParam(required = false) String productInfo,
+            @Parameter(description = "业务状态筛选，如 PENDING_AUDIT、APPROVED、ASSIGNED。") @RequestParam(required = false) String bizStatus,
             @Parameter(description = "商品状态。待确认：取值含义请联系产品或参考上游 SDK 文档。") @RequestParam(required = false) Integer status,
             @Parameter(description = "拉取模式。待确认：取值含义请联系产品或参考上游 SDK 文档。") @RequestParam(defaultValue = "1") Long retrieveMode,
             @Parameter(description = "游标，继续翻页时使用。") @RequestParam(required = false) String cursor,
@@ -96,7 +97,8 @@ public class ColonelActivityController extends BaseController {
                         count,
                         cursor,
                         productInfo,
-                        status == null ? null : status.toString()
+                        bizStatus,
+                        status
                 ));
             }
             DouyinProductGateway.ActivityProductQueryRequest queryRequest =
@@ -126,7 +128,8 @@ public class ColonelActivityController extends BaseController {
                     count,
                     cursor,
                     productInfo,
-                    status == null ? null : status.toString()
+                    bizStatus,
+                    status
             ));
         } catch (DouyinApiException e) {
             throw mapProductError(e);

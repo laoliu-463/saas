@@ -5,6 +5,7 @@ import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.security.JwtAuthInterceptor;
 import com.colonel.saas.security.JwtTokenProvider;
+import com.colonel.saas.service.ShortTtlCacheService;
 import com.colonel.saas.testsupport.TestDataService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -30,13 +31,28 @@ class TestControllerSecurityTest {
         JwtAuthInterceptor interceptor = new JwtAuthInterceptor(jwtTokenProvider, authService, new ObjectMapper());
 
         MockMvc mockMvc = MockMvcBuilders
-                .standaloneSetup(new TestController(testDataService))
+                .standaloneSetup(new TestController(testDataService, new ShortTtlCacheService()))
                 .addInterceptors(interceptor)
                 .setMessageConverters(new MappingJackson2HttpMessageConverter())
                 .build();
 
         mockMvc.perform(options("/test/seed"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void seed_shouldEvictDashboardCaches() {
+        TestDataService testDataService = Mockito.mock(TestDataService.class);
+        ShortTtlCacheService cacheService = new ShortTtlCacheService();
+        cacheService.get("dashboard:summary:admin", java.time.Duration.ofMinutes(1), () -> "stale-summary");
+        cacheService.get("dashboard:metrics:admin", java.time.Duration.ofMinutes(1), () -> "stale-metrics");
+
+        new TestController(testDataService, cacheService).seed();
+
+        assertThat(cacheService.get("dashboard:summary:admin", java.time.Duration.ofMinutes(1), () -> "fresh-summary"))
+                .isEqualTo("fresh-summary");
+        assertThat(cacheService.get("dashboard:metrics:admin", java.time.Duration.ofMinutes(1), () -> "fresh-metrics"))
+                .isEqualTo("fresh-metrics");
     }
 
     @Test
@@ -62,6 +78,11 @@ class TestControllerSecurityTest {
         @Bean
         TestDataService testDataService() {
             return Mockito.mock(TestDataService.class);
+        }
+
+        @Bean
+        ShortTtlCacheService shortTtlCacheService() {
+            return new ShortTtlCacheService();
         }
     }
 }

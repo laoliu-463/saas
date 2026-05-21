@@ -1063,7 +1063,8 @@ class ProductServiceTest {
                 20,
                 null,
                 null,
-                "APPROVED"
+                "APPROVED",
+                null
         );
 
         assertThat(result).doesNotContainKey("test");
@@ -1099,7 +1100,8 @@ class ProductServiceTest {
                 20,
                 null,
                 null,
-                "PENDING_AUDIT"
+                "PENDING_AUDIT",
+                null
         );
 
         assertThat(result.get("total")).isEqualTo(1L);
@@ -1146,7 +1148,8 @@ class ProductServiceTest {
                 20,
                 null,
                 null,
-                "ASSIGNED"
+                "ASSIGNED",
+                null
         );
 
         Map<?, ?> item = (Map<?, ?>) ((List<?>) result.get("items")).get(0);
@@ -1186,7 +1189,8 @@ class ProductServiceTest {
                 20,
                 null,
                 null,
-                "APPROVED"
+                "APPROVED",
+                null
         );
 
         Map<?, ?> item = (Map<?, ?>) ((List<?>) result.get("items")).get(0);

@@ -519,6 +519,7 @@ CREATE INDEX IF NOT EXISTS idx_sr_user_id       ON sample_request(user_id);
 CREATE INDEX IF NOT EXISTS idx_sr_dept_id       ON sample_request(dept_id);
 CREATE INDEX IF NOT EXISTS idx_sr_channel_user  ON sample_request(channel_user_id);
 CREATE INDEX IF NOT EXISTS idx_sr_status        ON sample_request(status);
+CREATE INDEX IF NOT EXISTS idx_sr_channel_user_status ON sample_request(channel_user_id, status) WHERE deleted = 0;
 CREATE INDEX IF NOT EXISTS idx_sr_tracking_no   ON sample_request(tracking_no) WHERE tracking_no IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_sr_create_time   ON sample_request(create_time);
 CREATE INDEX IF NOT EXISTS idx_sr_deleted       ON sample_request(deleted);
@@ -625,11 +626,49 @@ CREATE INDEX IF NOT EXISTS idx_cso_pick_source ON colonelsettlement_order (pick_
 CREATE INDEX IF NOT EXISTS idx_cso_user_id ON colonelsettlement_order (user_id);
 CREATE INDEX IF NOT EXISTS idx_cso_dept_id ON colonelsettlement_order (dept_id);
 CREATE INDEX IF NOT EXISTS idx_cso_create_time ON colonelsettlement_order (create_time);
+CREATE INDEX IF NOT EXISTS idx_cso_deleted ON colonelsettlement_order (deleted);
+CREATE INDEX IF NOT EXISTS idx_cso_user_create_time ON colonelsettlement_order (user_id, create_time DESC) WHERE deleted = 0;
+CREATE INDEX IF NOT EXISTS idx_cso_dept_create_time ON colonelsettlement_order (dept_id, create_time DESC) WHERE deleted = 0;
 -- 渠道/招商：部分索引与归因 SQL 中 deleted=0 条件一致（如 ExclusiveTalentService 订单汇总）。
 CREATE INDEX IF NOT EXISTS idx_cso_channel_user_id ON colonelsettlement_order (channel_user_id) WHERE deleted = 0;
 CREATE INDEX IF NOT EXISTS idx_cso_colonel_user_id ON colonelsettlement_order (colonel_user_id) WHERE deleted = 0;
 CREATE INDEX IF NOT EXISTS idx_cso_talent_id ON colonelsettlement_order (talent_id);
 CREATE INDEX IF NOT EXISTS idx_cso_attribution_status ON colonelsettlement_order (attribution_status);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_sys_role_data_scope'
+    ) THEN
+        ALTER TABLE sys_role
+            ADD CONSTRAINT ck_sys_role_data_scope
+            CHECK (data_scope IN (1, 2, 3)) NOT VALID;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_sys_role_status'
+    ) THEN
+        ALTER TABLE sys_role
+            ADD CONSTRAINT ck_sys_role_status
+            CHECK (status IN (0, 1)) NOT VALID;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_sample_request_status'
+    ) THEN
+        ALTER TABLE sample_request
+            ADD CONSTRAINT ck_sample_request_status
+            CHECK (status BETWEEN 1 AND 8) NOT VALID;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_cso_order_type'
+    ) THEN
+        ALTER TABLE colonelsettlement_order
+            ADD CONSTRAINT ck_cso_order_type
+            CHECK (order_type IS NULL OR order_type >= 0) NOT VALID;
+    END IF;
+END $$;
 
 -- =============================================
 -- 9. 分佣与提成

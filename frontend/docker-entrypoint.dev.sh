@@ -26,4 +26,9 @@ if [ ! -d node_modules/.pnpm ] || [ "$installed_hash" != "$lock_hash" ]; then
   printf '%s' "$lock_hash" > node_modules/.lockfile.sha256
 fi
 
+if [ "${FRONTEND_SERVE_MODE:-dev}" = "preview" ]; then
+  pnpm build
+  exec pnpm preview --host 0.0.0.0 --port "${VITE_DEV_PORT:-3000}"
+fi
+
 exec pnpm dev --host 0.0.0.0

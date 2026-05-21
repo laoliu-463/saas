@@ -28,5 +28,5 @@ export const getSampleBoard = () => request.get('/samples/board');
 export const getSampleStatusLogs = (id: string) => request.get(`/samples/${id}/status-logs`);
 
 // 批量发货（运营）
-export const batchShipSamples = (data: { items: { requestNo: string; trackingNo: string }[] }) =>
+export const batchShipSamples = (data: { items: { requestNo: string; trackingNo: string; shipperCode?: string }[] }) =>
   request.post('/samples/batch-ship', data);

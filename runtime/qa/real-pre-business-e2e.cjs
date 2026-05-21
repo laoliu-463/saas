@@ -2,7 +2,7 @@
  * Real-pre business flow E2E entry.
  *
  * This script intentionally covers one narrow business smoke path only:
- * activity products -> local state -> promotion link -> pick_source mapping
+ * activity products -> local state -> reusable promotion mapping
  * -> order sync -> dashboard/pages.
  */
 
@@ -22,10 +22,10 @@ process.env.E2E_BUSINESS_EVIDENCE_DIR = evidenceDir;
 process.env.PLAYWRIGHT_HTML_OUTPUT_DIR = path.join(evidenceDir, 'playwright-report');
 process.env.PLAYWRIGHT_HTML_OPEN = 'never';
 if (!process.env.E2E_BASE_URL) {
-  process.env.E2E_BASE_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+  process.env.E2E_BASE_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
 }
 if (!process.env.E2E_BACKEND_URL) {
-  process.env.E2E_BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
+  process.env.E2E_BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8081';
 }
 const extraArgs = normalizePlaywrightArgs(process.argv.slice(2));
 

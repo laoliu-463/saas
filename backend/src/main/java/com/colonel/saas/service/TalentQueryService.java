@@ -131,8 +131,13 @@ public class TalentQueryService {
 
     public TalentDetailResponse detail(UUID talentId, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
         Talent talent = talentService.getById(talentId);
-        assertCanAccess(talent, currentUserId, currentDeptId, dataScope);
-        enrichTalentCards(List.of(talent), currentUserId);
+        UUID resolvedTalentId = talent == null ? null : talent.getId();
+        ClaimMaps claimMaps = resolvedTalentId == null
+                ? new ClaimMaps(Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), List.of())
+                : loadClaimMaps(Set.of(resolvedTalentId));
+        assertCanAccess(talent, currentUserId, currentDeptId, dataScope,
+                claimMaps.activeClaimsByTalent().getOrDefault(resolvedTalentId, List.of()));
+        enrichTalentCards(List.of(talent), currentUserId, claimMaps);
 
         TalentDetailResponse response = new TalentDetailResponse();
         response.setTalent(toTalentInfo(talent));
@@ -143,19 +148,31 @@ public class TalentQueryService {
     }
 
     private void assertCanAccess(Talent talent, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
+        List<TalentClaim> activeClaims = talent == null || talent.getId() == null
+                ? List.of()
+                : talentClaimMapper.findActiveByTalentId(talent.getId());
+        assertCanAccess(talent, currentUserId, currentDeptId, dataScope, activeClaims);
+    }
+
+    private void assertCanAccess(
+            Talent talent,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope,
+            List<TalentClaim> activeClaims) {
         if (talent == null || talent.getId() == null || dataScope == null || dataScope == DataScope.ALL) {
             return;
         }
-        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talent.getId());
+        List<TalentClaim> safeActiveClaims = activeClaims == null ? List.of() : activeClaims;
         if (dataScope == DataScope.PERSONAL) {
-            boolean ownedByCurrentUser = currentUserId != null && activeClaims.stream()
+            boolean ownedByCurrentUser = currentUserId != null && safeActiveClaims.stream()
                     .anyMatch(claim -> currentUserId.equals(claim.getUserId()));
             if (!ownedByCurrentUser) {
                 throw new ForbiddenException("无权查看该达人详情");
             }
             return;
         }
-        boolean ownedByCurrentDept = currentDeptId != null && activeClaims.stream()
+        boolean ownedByCurrentDept = currentDeptId != null && safeActiveClaims.stream()
                 .anyMatch(claim -> currentDeptId.equals(claim.getDeptId()));
         if (!ownedByCurrentDept) {
             throw new ForbiddenException("无权查看该达人详情");
@@ -163,12 +180,16 @@ public class TalentQueryService {
     }
 
     private void enrichTalentCards(List<Talent> talents, UUID currentUserId) {
+        enrichTalentCards(talents, currentUserId, null);
+    }
+
+    private void enrichTalentCards(List<Talent> talents, UUID currentUserId, ClaimMaps preloadedClaimMaps) {
         if (talents == null || talents.isEmpty()) {
             return;
         }
 
         Set<UUID> talentIds = talents.stream().map(Talent::getId).filter(Objects::nonNull).collect(Collectors.toSet());
-        ClaimMaps claimMaps = loadClaimMaps(talentIds);
+        ClaimMaps claimMaps = preloadedClaimMaps == null ? loadClaimMaps(talentIds) : preloadedClaimMaps;
         Map<UUID, SysUser> ownerMap = loadOwnerMap(claimMaps.allClaims());
         Map<UUID, Long> sampleCountMap = loadSampleCounts(
                 talentIds

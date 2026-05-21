@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
@@ -439,7 +440,13 @@ public class TalentService {
 
     @Transactional(rollbackFor = Exception.class)
     public Talent blacklist(UUID talentId, String reason) {
+        return blacklist(talentId, reason, null, null, DataScope.ALL);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Talent blacklist(UUID talentId, String reason, UUID userId, UUID deptId, DataScope dataScope) {
         Talent talent = getById(talentId);
+        assertCanOperateBlacklist(talentId, userId, deptId, dataScope);
         talent.setBlacklisted(true);
         talent.setBlacklistReason(StringUtils.hasText(reason) ? reason.trim() : "手动拉黑");
         talentMapper.updateById(talent);
@@ -448,7 +455,13 @@ public class TalentService {
 
     @Transactional(rollbackFor = Exception.class)
     public Talent unblacklist(UUID talentId) {
+        return unblacklist(talentId, null, null, DataScope.ALL);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Talent unblacklist(UUID talentId, UUID userId, UUID deptId, DataScope dataScope) {
         Talent talent = getById(talentId);
+        assertCanOperateBlacklist(talentId, userId, deptId, dataScope);
         talent.setBlacklisted(false);
         talent.setBlacklistReason(null);
         talentMapper.updateById(talent);
@@ -714,6 +727,29 @@ public class TalentService {
             return true;
         }
         return false;
+    }
+
+    private void assertCanOperateBlacklist(UUID talentId, UUID userId, UUID deptId, DataScope dataScope) {
+        if (dataScope == null || dataScope == DataScope.ALL) {
+            return;
+        }
+        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
+        if (activeClaims.isEmpty()) {
+            return;
+        }
+        if (dataScope == DataScope.PERSONAL) {
+            boolean ownedByCurrentUser = userId != null && activeClaims.stream()
+                    .anyMatch(claim -> userId.equals(claim.getUserId()));
+            if (!ownedByCurrentUser) {
+                throw new ForbiddenException("无权操作该达人");
+            }
+            return;
+        }
+        boolean ownedByCurrentDept = deptId != null && activeClaims.stream()
+                .anyMatch(claim -> deptId.equals(claim.getDeptId()));
+        if (!ownedByCurrentDept) {
+            throw new ForbiddenException("无权操作该达人");
+        }
     }
 
     private boolean hasRole(Collection<?> roleCodes, String role) {

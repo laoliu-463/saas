@@ -44,6 +44,7 @@ class RealPreMigrationContractTest {
         int webhookEvent = compose.indexOf("17-create-douyin-webhook-event.sql");
         int orderDedupClaim = compose.indexOf("18-create-order-sync-dedup-claim.sql");
         int talentProfileSync = compose.indexOf("19-alter-talent-profile-sync.sql");
+        int dbPerformanceContract = compose.indexOf("20-alter-db-performance-contract-20260521.sql");
 
         assertThat(schema).isNotNegative();
         assertThat(duplicatePickSource).isGreaterThan(schema);
@@ -54,6 +55,15 @@ class RealPreMigrationContractTest {
         assertThat(webhookEvent).isGreaterThan(seedMappings);
         assertThat(orderDedupClaim).isGreaterThan(webhookEvent);
         assertThat(talentProfileSync).isGreaterThan(orderDedupClaim);
+        assertThat(dbPerformanceContract).isGreaterThan(talentProfileSync);
+    }
+
+    @Test
+    void realPreCompose_shouldProvideNumericDouyinTokenDefaults() throws IOException {
+        String compose = Files.readString(COMPOSE_FILE);
+
+        assertThat(compose).contains("DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:-300}");
+        assertThat(compose).contains("DOUYIN_TOKEN_REDIS_LOCK_MINUTES: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:-5}");
     }
 
     private static String readLower(Path path) throws IOException {

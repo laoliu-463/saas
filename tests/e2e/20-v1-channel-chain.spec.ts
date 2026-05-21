@@ -15,6 +15,8 @@ import { test, expect } from '@playwright/test';
 import { storageStates } from './helpers/test-data';
 import { capturePage } from './helpers/screenshot';
 import { testIds } from './helpers/selectors';
+import { gotoApp } from './helpers/page-ready';
+import { waitForProductCard } from './helpers/product-library';
 import {
   loginApi,
   assertProductLibraryNotEmpty,
@@ -22,6 +24,7 @@ import {
   assertDashboardMetrics,
   assertSampleListReachable,
   assert403,
+  seedTestData,
 } from './helpers/api-assertions';
 
 test.use({ storageState: storageStates.channelLeader });
@@ -29,7 +32,9 @@ test.use({ storageState: storageStates.channelLeader });
 let channelToken: string;
 
 test.beforeAll(async () => {
+  await seedTestData();
   channelToken = await loginApi('channelLeader');
+  await assertProductLibraryNotEmpty(channelToken);
 });
 
 test.describe('渠道链 UI 层验收', () => {
@@ -37,13 +42,12 @@ test.describe('渠道链 UI 层验收', () => {
   // 1. 商品库可见且有商品
   // ──────────────────────────────────────────────
   test('渠道组长商品库有商品且可转链', async ({ page }, testInfo) => {
-    await page.goto('/product');
+    await gotoApp(page, '/product');
     await expect(page.getByTestId(testIds.productLibraryPage)).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId(testIds.productCard).first()).toBeVisible({ timeout: 10_000 });
+    const firstCard = await waitForProductCard(page);
     await capturePage(page, testInfo, '20-channel-product-library');
 
     // hover 第一张卡片 → 转链按钮出现
-    const firstCard = page.getByTestId(testIds.productCard).first();
     await firstCard.hover();
     const copyBtn = page.getByTestId(testIds.productCopyLink).first();
     await expect(copyBtn).toBeVisible({ timeout: 5_000 });
@@ -63,8 +67,8 @@ test.describe('渠道链 UI 层验收', () => {
   // 2. 商品详情可读取推广资料包
   // ──────────────────────────────────────────────
   test('渠道组长可查看商品详情推广资料包', async ({ page }, testInfo) => {
-    await page.goto('/product');
-    await expect(page.getByTestId(testIds.productCard).first()).toBeVisible({ timeout: 15_000 });
+    await gotoApp(page, '/product');
+    await waitForProductCard(page);
 
     await page.getByTestId(testIds.productDetailButton).first().click();
     await expect(page.locator('body')).toContainText(
@@ -78,7 +82,7 @@ test.describe('渠道链 UI 层验收', () => {
   // 3. 订单归因页：归因状态 + 渠道负责人列
   // ──────────────────────────────────────────────
   test('渠道视角订单归因页有归因状态和渠道负责人列', async ({ page }, testInfo) => {
-    await page.goto('/orders');
+    await gotoApp(page, '/orders');
     await expect(page.getByTestId(testIds.ordersPage)).toBeVisible({ timeout: 15_000 });
 
     // 表格有数据行
@@ -100,7 +104,7 @@ test.describe('渠道链 UI 层验收', () => {
   // 4. 寄样台可见 + 申请按钮存在
   // ──────────────────────────────────────────────
   test('渠道组长寄样台有申请按钮', async ({ page }, testInfo) => {
-    await page.goto('/sample');
+    await gotoApp(page, '/sample');
     await expect(page.getByTestId(testIds.samplePage)).toBeVisible({ timeout: 15_000 });
     // 渠道组长有申请权限
     await expect(page.getByTestId(testIds.sampleApply)).toBeVisible({ timeout: 5_000 });
@@ -111,7 +115,7 @@ test.describe('渠道链 UI 层验收', () => {
   // 5. 达人 CRM 可进入
   // ──────────────────────────────────────────────
   test('渠道组长可进入达人 CRM', async ({ page }, testInfo) => {
-    await page.goto('/talent');
+    await gotoApp(page, '/talent');
     await expect(page.getByTestId(testIds.talentPage)).toBeVisible({ timeout: 15_000 });
     await capturePage(page, testInfo, '20-channel-talent-crm');
   });
@@ -120,7 +124,7 @@ test.describe('渠道链 UI 层验收', () => {
   // 6. 数据看板可进入
   // ──────────────────────────────────────────────
   test('渠道组长数据看板指标卡可见', async ({ page }, testInfo) => {
-    await page.goto('/data');
+    await gotoApp(page, '/data');
     await expect(page.getByTestId(testIds.dashboardPage)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId(testIds.dashboardMetricCards)).toBeVisible({ timeout: 10_000 });
     await capturePage(page, testInfo, '20-channel-data-dashboard');
@@ -130,7 +134,7 @@ test.describe('渠道链 UI 层验收', () => {
   // 7. 系统管理路由守卫拦截
   // ──────────────────────────────────────────────
   test('渠道组长访问系统管理被重定向', async ({ page }) => {
-    await page.goto('/system/users');
+    await gotoApp(page, '/system/users');
     // 不应停留在 /system 路由
     await page.waitForTimeout(2000);
     const url = page.url();
@@ -197,7 +201,11 @@ test.describe('渠道链 API 层断言', () => {
     await assert403(
       'POST',
       '/api/talents/00000000-0000-0000-0000-000000000001/override-assignee',
-      channelToken
+      channelToken,
+      {
+        newUserId: '00000000-0000-0000-0000-000000000001',
+        reason: 'RBAC negative assertion',
+      }
     );
   });
 });

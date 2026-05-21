@@ -4,6 +4,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.douyin.api.ProductApi;
 import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
 import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
+import com.colonel.saas.gateway.douyin.DouyinAllianceActivityProductRows;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -54,10 +55,7 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
                 request.page()
         );
         Map<String, Object> dataNode = asMap(remote.get("data"));
-        List<Map<String, Object>> rawItems = castListMap(asList(dataNode.get("data")));
-        if (rawItems.isEmpty()) {
-            rawItems = castListMap(asList(dataNode.get("list")));
-        }
+        List<Map<String, Object>> rawItems = DouyinAllianceActivityProductRows.extract(dataNode);
         List<ActivityProductItem> items = rawItems.stream().map(this::normalizeProductItem).toList();
         Long total = dataNode.containsKey("total") ? asLong(dataNode.get("total"), items.size()) : null;
         return new ActivityProductListResult(false, asLong(request.activityId(), 0L),

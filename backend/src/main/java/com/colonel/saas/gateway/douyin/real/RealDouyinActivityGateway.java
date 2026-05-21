@@ -3,6 +3,7 @@ package com.colonel.saas.gateway.douyin.real;
 import com.colonel.saas.douyin.api.ActivityApi;
 import com.colonel.saas.douyin.api.ProductApi;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
+import com.colonel.saas.gateway.douyin.DouyinAllianceActivityProductRows;
 import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
 import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
 import lombok.extern.slf4j.Slf4j;
@@ -71,10 +72,7 @@ public class RealDouyinActivityGateway implements DouyinActivityGateway {
                 query.retrieveMode(), query.cursor(), query.page()
         );
         Map<String, Object> dataNode = asMap(remote.get("data"));
-        List<Map<String, Object>> rawItems = castListMap(asList(dataNode.get("data")));
-        if (rawItems.isEmpty()) {
-            rawItems = castListMap(asList(dataNode.get("list")));
-        }
+        List<Map<String, Object>> rawItems = DouyinAllianceActivityProductRows.extract(dataNode);
         List<ActivityProductItem> items = rawItems.stream().map(this::normalizeProductItem).toList();
         Long total = dataNode.containsKey("total") ? asLong(dataNode.get("total"), items.size()) : null;
         return new ActivityProductListResult(false, asLong(query.activityId(), 0L),
@@ -157,6 +155,7 @@ public class RealDouyinActivityGateway implements DouyinActivityGateway {
         long price = asLong(pick(raw, "price"), 0L);
         long activityCosRatio = asLong(pick(raw, "activity_cos_ratio"), 0L);
         Long activityAdCosRatio = raw.containsKey("activity_ad_cos_ratio") ? asLong(pick(raw, "activity_ad_cos_ratio"), 0L) : null;
+        String originColonelBuyinId = asString(pick(raw, "origin_colonel_buyin_id", "originColonelBuyinId"));
         return new ActivityProductItem(
                 asLong(pick(raw, "product_id", "productId"), 0L),
                 asString(pick(raw, "title")),
@@ -186,7 +185,9 @@ public class RealDouyinActivityGateway implements DouyinActivityGateway {
                 asString(pick(raw, "activity_end_time")),
                 asString(pick(raw, "promotion_start_time")),
                 asString(pick(raw, "promotion_end_time")),
-                asString(pick(raw, "detail_url"))
+                asString(pick(raw, "detail_url")),
+                originColonelBuyinId,
+                new LinkedHashMap<>(raw)
         );
     }
 

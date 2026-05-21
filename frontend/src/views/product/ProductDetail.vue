@@ -1,5 +1,5 @@
 <template>
-  <n-drawer :show="show" width="850" placement="right" @update:show="updateShow">
+  <n-drawer :show="show" :width="DRAWER_WIDTH_PX.lg" placement="right" @update:show="updateShow">
     <n-drawer-content closable>
       <template #header>
         <div class="drawer-header">
@@ -163,6 +163,12 @@
                     <h3 class="product-title">{{ detail.title }}</h3>
                     <n-descriptions label-placement="left" :column="2" size="small" style="margin-top: 12px;">
                       <n-descriptions-item label="商品ID">{{ detail.productId }}</n-descriptions-item>
+                      <n-descriptions-item label="联盟推广状态">
+                        {{ detail.statusText || '-' }}
+                        <template v-if="detail.status !== undefined && detail.status !== null">
+                          （{{ detail.status }}）
+                        </template>
+                      </n-descriptions-item>
                       <n-descriptions-item label="店铺名称">{{ detail.shopName || '-' }}</n-descriptions-item>
                       <n-descriptions-item label="商家信息">{{ detail.merchantName || detail.merchantShopName || '-' }}</n-descriptions-item>
                       <n-descriptions-item label="售价">{{ detail.priceText || '-' }}</n-descriptions-item>
@@ -178,6 +184,20 @@
                     </n-descriptions>
                   </div>
                 </div>
+
+                <n-card title="SKU 规格" size="small" style="margin-top: 16px;">
+                  <n-spin :show="skusLoading">
+                    <n-data-table
+                      v-if="productSkus.length"
+                      size="small"
+                      :columns="skuColumns"
+                      :data="productSkus"
+                      :bordered="false"
+                      :row-key="(row: any) => row.skuId"
+                    />
+                    <n-empty v-else-if="!skusLoading" description="暂无 SKU 数据（需抖店授权且上游返回规格）" />
+                  </n-spin>
+                </n-card>
               </div>
             </n-tab-pane>
 
@@ -230,6 +250,15 @@
               <div class="pane-content">
                 <div class="material-actions">
                   <n-space>
+                    <n-button
+                      v-if="businessReady && canDo('promotion')"
+                      type="primary"
+                      size="small"
+                      :loading="briefCopying"
+                      @click="copyProductBrief"
+                    >
+                      复制讲解 + 短链
+                    </n-button>
                     <n-button type="primary" size="small" ghost @click="copyText(detail?.promotionMaterialPack?.outreachScript)">复制建联话术</n-button>
                     <n-button type="primary" size="small" ghost @click="copyText(detail?.promotionMaterialPack?.shortVideoScript)">复制短视频脚本</n-button>
                     <n-button v-if="promotion.link" type="info" size="small" @click="copyText(promotion.link)">复制推广链接</n-button>
@@ -346,9 +375,11 @@
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useMessage } from 'naive-ui';
-import { convertActivityProductLink, getActivityProductDetail, getActivityProductOperationLogs, updateActivityProductDecision } from '../../api/activityProduct';
+import { DRAWER_WIDTH_PX } from '../../constants/ui';
+import { convertActivityProductLink, getActivityProductDetail, getActivityProductOperationLogs, getActivityProductSkus, updateActivityProductDecision } from '../../api/activityProduct';
 import { useAuthStore } from '../../stores/auth';
 import { hasAccess } from '../../constants/rbac';
+import { copyProductBriefWithLink } from './product-copy';
 
 const props = defineProps<{
   show: boolean;
@@ -377,9 +408,19 @@ const canDo = (action: string) => {
 };
 
 const loading = ref(false);
+const skusLoading = ref(false);
 const promotionGenerating = ref(false);
+const briefCopying = ref(false);
 const decisionSaving = ref(false);
 const detail = ref<any>(null);
+const productSkus = ref<any[]>([]);
+
+const skuColumns = [
+  { title: 'SKU ID', key: 'skuId', width: 180, ellipsis: { tooltip: true } },
+  { title: '规格', key: 'skuName', minWidth: 160, ellipsis: { tooltip: true } },
+  { title: '价格', key: 'priceText', width: 100 },
+  { title: '库存', key: 'stock', width: 80 }
+];
 const operationLogs = ref<any[]>([]);
 const decisionForm = ref<{ level: 'MAIN' | 'SECONDARY' | 'PAUSE' | 'DROP'; reason: string }>({
   level: 'MAIN',
@@ -544,6 +585,22 @@ const promotionColumns = [
   { title: '推广链接', key: 'promoteLink', minWidth: 200, ellipsis: { tooltip: true } }
 ];
 
+const loadSkus = async () => {
+  if (!props.activityId || !props.productId) {
+    productSkus.value = [];
+    return;
+  }
+  skusLoading.value = true;
+  try {
+    const res: any = await getActivityProductSkus(props.activityId, props.productId);
+    productSkus.value = Array.isArray(res?.data) ? res.data : [];
+  } catch {
+    productSkus.value = [];
+  } finally {
+    skusLoading.value = false;
+  }
+};
+
 const fetchData = async () => {
   if (!props.activityId || !props.productId) return;
   loading.value = true;
@@ -552,6 +609,7 @@ const fetchData = async () => {
     detail.value = detailRes?.data || {};
     const logsRes: any = await getActivityProductOperationLogs(props.activityId, props.productId, { page: 1, size: 50 });
     operationLogs.value = logsRes?.data?.records || [];
+    await loadSkus();
   } catch {
     message.error('加载商品详情失败');
   } finally {
@@ -564,6 +622,7 @@ watch(() => props.show, (val) => {
   else {
     detail.value = null;
     operationLogs.value = [];
+    productSkus.value = [];
   }
 });
 
@@ -826,6 +885,72 @@ const copyPromotionLink = async () => {
     message.error(error?.response?.data?.msg || error?.message || '推广链接生成失败，请稍后重试');
   } finally {
     promotionGenerating.value = false;
+  }
+};
+
+const copyProductBrief = async () => {
+  if (!props.activityId || !props.productId) {
+    message.warning('商品信息不完整，暂不可生成讲解');
+    return;
+  }
+  if (!businessReady.value) {
+    message.warning('请先完成审核并进入商品库后，再复制讲解');
+    return;
+  }
+  if (!detail.value) {
+    message.warning('商品详情尚未加载完成');
+    return;
+  }
+
+  briefCopying.value = true;
+  let clipboardWriteFailed = false;
+  try {
+    const result = await copyProductBriefWithLink({
+      item: detail.value,
+      activityId: props.activityId,
+      productId: props.productId,
+      scene: 'PRODUCT_DETAIL',
+      convertLink: convertActivityProductLink,
+      writeText: async (text: string) => {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          clipboardWriteFailed = true;
+        }
+      }
+    });
+
+    if (result.link && result.responseData) {
+      const data = result.responseData;
+      detail.value = {
+        ...(detail.value || {}),
+        promotion: {
+          ...(detail.value?.promotion || {}),
+          ...data,
+          status: 'READY',
+          statusLabel: data.statusLabel || '已生成',
+          link: result.link,
+          failReason: null
+        },
+        promotionLink: result.link,
+        promotionLinkStatus: 'READY',
+        promotionLinkStatusLabel: data.statusLabel || '已生成',
+        promotionLinkFailReason: null
+      };
+      await fetchData();
+    }
+
+    if (clipboardWriteFailed) {
+      message.warning('讲解已生成，但浏览器未允许写入剪贴板，请手动复制');
+    } else if (result.linkGenerationFailed) {
+      message.error('短链生成失败，已复制讲解（不含短链）');
+    } else {
+      message.success('讲解 + 短链已复制');
+    }
+  } catch (error: any) {
+    message.error(error?.response?.data?.msg || error?.message || '讲解复制失败，请稍后重试');
+  } finally {
+    briefCopying.value = false;
   }
 };
 

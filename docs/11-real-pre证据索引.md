@@ -1,6 +1,6 @@
 # real-pre 证据索引
 
-更新时间：2026-05-20
+更新时间：2026-05-21
 
 本文主要索引已经落盘的 real-pre 收口证据；如收录 TEST/mock 基线证据，必须显式标注环境边界，不新增推断性样本，不补伪造数据。所有结论均以 `runtime/qa/out/` 下目录和文件为准。
 
@@ -11,6 +11,16 @@
 
 ## 目录索引
 
+- 商品订单归因逻辑排查（2026-05-21，仅 real-pre）：
+  - Runbook：[archive/runbooks/20-real-pre商品订单归因逻辑排查.md](/D:/Projects/SAAS/docs/archive/runbooks/20-real-pre商品订单归因逻辑排查.md)
+  - 一键脚本：[audit-product-order-attribution-real-pre.ps1](/D:/Projects/SAAS/scripts/qa/audit-product-order-attribution-real-pre.ps1)
+  - 用途：快照 → `pick_source_mapping` → `colonelsettlement_order` 归因 reason → 看板对账；编排 `check-real-pre-real-data` + `audit-product-chain` + `run-real-pre-attribution-evidence`
+- 商品链路本地排查（2026-05-21）：
+  - Runbook：[archive/runbooks/19-商品链路本地排查.md](/D:/Projects/SAAS/docs/archive/runbooks/19-商品链路本地排查.md)
+  - 脚本：[audit-product-chain-real-pre.ps1](/D:/Projects/SAAS/scripts/qa/audit-product-chain-real-pre.ps1)
+  - 证据目录：[product-chain-audit-20260521-122559](/D:/Projects/SAAS/runtime/qa/out/product-chain-audit-20260521-122559)
+  - 用途：对照 `alliance.colonelActivityProduct`、转链、`pick_source_mapping`、主订单 GMV 与看板活动商品接口做 real-pre 只读排查；结论 `WARN`（同步 PASS，转链/归因待样本补证）
+  - 样本：`activityId=3920684`，`productId=3771167367585988821`
 - 达人真实资料接入 E2E（2026-05-20）：
   - 脚本：`runtime/qa/e2e/domains/talent-profile-real-data.e2e.cjs`
   - 输出目录模式：`runtime/qa/out/e2e-talent-profile-real-data-YYYYMMDD-HHmmss/`

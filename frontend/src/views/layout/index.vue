@@ -6,7 +6,7 @@
       <n-layout-content class="app-content">
         <router-view v-slot="{ Component }">
           <transition name="page-fade" mode="out-in">
-            <component :is="Component" />
+            <component :is="Component" v-if="Component" :key="route.fullPath" />
           </transition>
         </router-view>
       </n-layout-content>
@@ -15,8 +15,11 @@
 </template>
 
 <script setup lang="ts">
+import { useRoute } from 'vue-router'
 import Header from './Header.vue'
 import Sider from './Sider.vue'
+
+const route = useRoute()
 </script>
 
 <style scoped>
@@ -39,7 +42,7 @@ import Sider from './Sider.vue'
 .app-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-lg);
+  padding: 0;
   background: transparent;
 }
 
@@ -50,16 +53,16 @@ import Sider from './Sider.vue'
 /* ---- 页面过渡动画 ---- */
 .page-fade-enter-active,
 .page-fade-leave-active {
-  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .page-fade-enter-from {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateY(6px);
 }
 
 .page-fade-leave-to {
   opacity: 0;
-  transform: translateY(-6px);
+  transform: translateY(-4px);
 }
 </style>

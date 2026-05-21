@@ -32,10 +32,10 @@ async function runCli() {
   process.env.PW_STEP_PAUSE_MS = process.env.PW_STEP_PAUSE_MS || '900';
   process.env.PW_AFTER_ACTION_PAUSE_MS = process.env.PW_AFTER_ACTION_PAUSE_MS || '700';
   if (!process.env.E2E_BASE_URL) {
-    process.env.E2E_BASE_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+    process.env.E2E_BASE_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
   }
   if (!process.env.E2E_BACKEND_URL) {
-    process.env.E2E_BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
+    process.env.E2E_BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8081';
   }
 
   await assertJourneyPreflight({

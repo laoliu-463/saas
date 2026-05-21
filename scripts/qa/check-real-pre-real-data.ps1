@@ -1,5 +1,5 @@
 param(
-    [string]$ComposeFile = "docker-compose.yml",
+    [string]$ComposeFile = "docker-compose.test.yml",
     [string]$EnvFile = ".env.real-pre",
     [string]$BackendService = "backend",
     [string]$PostgresService = "postgres",

@@ -237,11 +237,7 @@ public class DoudianTokenGateway {
         if (secret == null || secret.isBlank()) {
             return "";
         }
-        String normalized = secret.trim();
-        if (normalized.length() <= 8) {
-            return "****";
-        }
-        return normalized.substring(0, 4) + "..." + normalized.substring(normalized.length() - 4);
+        return "****";
     }
 
     private TokenCreateProbeResult executeCreateToken(TokenCreateCommand command) {

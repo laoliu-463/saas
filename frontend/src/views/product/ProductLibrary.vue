@@ -1,5 +1,5 @@
 <template>
-  <div class="product-page" data-testid="product-library-page">
+  <div class="product-page app-page" data-testid="product-library-page">
     <PageHeader
       title="商品库"
       description="沉淀完成的共享商品库，对全员可见，可直接复用历史商品结果。"
@@ -9,22 +9,47 @@
       </template>
     </PageHeader>
 
-    <div class="toolbar">
-      <n-space>
-        <n-select
-          v-model:value="selectedProduct"
-          :options="productOptions"
-          :loading="productOptionsLoading"
-          filterable
-          remote
-          clearable
-          placeholder="搜索商品名称"
-          style="width: 280px"
-          @search="handleProductSearch"
-          @update:value="refreshProducts"
-        />
-        <n-button type="primary" @click="refreshProducts">搜索</n-button>
-        <n-button @click="resetFilters">重置</n-button>
+    <ProductFilters
+      mode="library"
+      :filters="filters"
+      :selected-product="selectedProduct"
+      :status="null"
+      :library-status="libraryStatus"
+      :product-options="productOptions"
+      :product-options-loading="productOptionsLoading"
+      :loading="loading"
+      :show-assignee-filter="false"
+      @update:filters="filters = $event"
+      @update:selected-product="selectedProduct = $event"
+      @update:library-status="libraryStatus = $event"
+      @search="handleProductSearch"
+      @search-click="refreshProducts"
+      @reset="resetFilters"
+    />
+
+    <div
+      v-if="products.length"
+      class="product-list-toolbar"
+      data-testid="product-library-list-toolbar"
+    >
+      <span class="product-list-meta">
+        已加载 <strong>{{ products.length }}</strong>
+        <template v-if="totalCount > 0"> / {{ totalCount }}</template>
+        件
+      </span>
+      <n-space align="center" :size="8">
+        <n-button
+          v-if="hasMore"
+          :loading="loadingMore"
+          type="primary"
+          secondary
+          size="small"
+          data-testid="product-library-load-more"
+          @click="loadMore"
+        >
+          加载更多
+        </n-button>
+        <span v-else class="no-more-inline">已全部加载</span>
       </n-space>
     </div>
 
@@ -62,11 +87,6 @@
       </PageEmpty>
     </n-spin>
 
-    <div v-if="products.length" class="load-more">
-      <n-button v-if="hasMore" :loading="loadingMore" secondary @click="loadMore">加载更多</n-button>
-      <span v-else class="no-more">已加载全部商品</span>
-    </div>
-
     <ProductDetail
       v-model:show="showDetail"
       :product-id="currentRow?.productId ?? null"
@@ -95,9 +115,18 @@ import { convertActivityProductLink } from '../../api/activityProduct'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES, hasAccess } from '../../constants/rbac'
 
+import ProductFilters from './components/ProductFilters.vue'
 import ProductCard from './components/ProductCard.vue'
 import ProductDetail from './ProductDetail.vue'
 import ProductOperationLogDrawer from './components/ProductOperationLogDrawer.vue'
+import {
+  applyProductFilters,
+  DEFAULT_PRODUCT_FILTERS,
+  type ProductFilterState
+} from './product-filters'
+import { copyProductBriefWithLink } from './product-copy'
+
+const PAGE_SIZE = 12
 
 const message = useMessage()
 const authStore = useAuthStore()
@@ -107,8 +136,12 @@ const loadingMore = ref(false)
 const promotionLoadingIds = ref<Set<string>>(new Set())
 const products = ref<any[]>([])
 const hasMore = ref(false)
+const totalCount = ref(0)
 const selectedProduct = ref<string | null>(null)
 const productKeyword = ref('')
+const libraryStatus = ref<number | null>(null)
+const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
+const productSearchTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const productOptions = ref<{ label: string; value: string }[]>([])
 const productOptionsLoading = ref(false)
 const currentRow = ref<any | null>(null)
@@ -124,6 +157,12 @@ const canCopyPromotionLink = computed(() =>
   hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
 )
 
+const normalizeText = (value?: string | number | null) => {
+  if (value === null || value === undefined) return ''
+  const text = String(value).trim()
+  return text === 'null' || text === 'undefined' ? '' : text
+}
+
 const normalizeItem = (item: any) => ({
   ...item,
   bizStatus: item?.bizStatus || 'PENDING_AUDIT',
@@ -131,6 +170,9 @@ const normalizeItem = (item: any) => ({
   productId: String(item?.productId ?? ''),
   activityId: item?.activityId ? String(item.activityId) : '',
   sourceActivityId: item?.sourceActivityId ? String(item.sourceActivityId) : item?.activityId ? String(item.activityId) : '',
+  shopName: normalizeText(item?.shopName) || item?.shopName,
+  categoryName: normalizeText(item?.categoryName) || item?.categoryName,
+  statusText: normalizeText(item?.statusText) || item?.statusText,
   sales30d: item?.sales30d ?? item?.sales ?? 0,
   gmv30d: item?.gmv30d ?? '0.00',
   estimatedServiceFee: item?.estimatedServiceFee ?? item?.estimatedServiceFeeAmount ?? '0.00',
@@ -156,29 +198,36 @@ const fetchProducts = async (reset: boolean) => {
   else loadingMore.value = true
 
   try {
-    const page = reset ? 1 : Math.floor(products.value.length / 20) + 1
+    const page = reset ? 1 : Math.floor(products.value.length / PAGE_SIZE) + 1
     const res: any = await getProducts({
       page,
-      size: 20,
-      keyword: selectedProduct.value || productKeyword.value.trim() || undefined
+      size: PAGE_SIZE,
+      keyword: selectedProduct.value || productKeyword.value.trim() || undefined,
+      status: libraryStatus.value ?? undefined
     })
     const data = res?.data || {}
     const records = Array.isArray(data.records) ? data.records : []
-    const items = records.map((p: any) => normalizeItem({
-      ...p,
-      title: p.title || p.name || '未命名商品',
-      productId: String(p.productId || '')
-    }))
+    const items = applyProductFilters(
+      records.map((p: any) => normalizeItem({
+        ...p,
+        title: p.title || p.name || '未命名商品',
+        productId: String(p.productId || '')
+      })),
+      filters.value,
+      null
+    )
     products.value = reset ? items : products.value.concat(items)
     const currentPage = Number(data.page || page || 1)
-    const pageSize = Number(data.size || 20)
+    const pageSize = Number(data.size || PAGE_SIZE)
     const total = Number(data.total || 0)
+    totalCount.value = total
     hasMore.value = currentPage * pageSize < total
   } catch (error: any) {
     message.error(error?.response?.data?.msg || error?.message || '商品查询失败')
     if (reset) {
       products.value = []
       hasMore.value = false
+      totalCount.value = 0
     }
   } finally {
     loading.value = false
@@ -221,14 +270,19 @@ const loadProductOptions = async (keyword: string) => {
   }
 }
 
-const handleProductSearch = async (keyword: string) => {
+const handleProductSearch = (keyword: string) => {
   productKeyword.value = String(keyword || '').trim()
-  await loadProductOptions(productKeyword.value)
+  if (productSearchTimer.value) clearTimeout(productSearchTimer.value)
+  productSearchTimer.value = setTimeout(() => {
+    void loadProductOptions(productKeyword.value)
+  }, 300)
 }
 
 const resetFilters = () => {
   selectedProduct.value = null
   productKeyword.value = ''
+  libraryStatus.value = null
+  filters.value = DEFAULT_PRODUCT_FILTERS()
   refreshProducts()
 }
 
@@ -265,57 +319,61 @@ const copyPromotionLink = async (item: any) => {
     message.warning('商品缺少来源活动信息，暂时无法生成推广链接')
     return
   }
-  const existingLink = item?.promotion?.link || item?.promotionLink || item?.promoteLink || item?.shortLink
-  if (existingLink) {
-    try {
-      await navigator.clipboard.writeText(existingLink)
-      message.success('推广链接已复制')
-    } catch {
-      message.warning('推广链接已生成，但浏览器未允许写入剪贴板，请手动复制')
-    }
-    return
-  }
   if (promotionLoadingIds.value.has(productId)) return
   promotionLoadingIds.value = new Set(promotionLoadingIds.value).add(productId)
+  let clipboardWriteFailed = false
   try {
-    const res: any = await convertActivityProductLink(activityId, productId, { scene: 'PRODUCT_LIBRARY' })
-    const data = res?.data || {}
-    const link = data.promoteLink || data.promotionUrl || data.shortLink
-    if (!link) {
-      message.warning('推广链接生成成功，但没有返回可复制的链接地址')
-      return
-    }
-    const merged = normalizeItem({
-      ...item,
-      bizStatus: item?.bizStatus === 'PENDING_AUDIT' ? 'LINKED' : item?.bizStatus,
-      bizStatusLabel: item?.bizStatus === 'PENDING_AUDIT' ? '已转链' : item?.bizStatusLabel,
-      promotion: {
-        status: 'READY',
-        statusLabel: data.statusLabel || '已生成',
-        link,
-        generatedAt: new Date().toISOString(),
-        expireAt: null,
-        failReason: null
-      },
-      promotionLink: link,
-      promotionLinkStatus: 'READY',
-      promotionLinkStatusLabel: data.statusLabel || '已生成',
-      promotionLinkFailReason: null
+    const result = await copyProductBriefWithLink({
+      item,
+      activityId,
+      productId,
+      scene: 'PRODUCT_LIBRARY',
+      convertLink: convertActivityProductLink,
+      writeText: async (text: string) => {
+        try {
+          await navigator.clipboard.writeText(text)
+        } catch {
+          clipboardWriteFailed = true
+        }
+      }
     })
-    products.value = products.value.map((row: any) =>
-      String(row.productId) === productId ? { ...row, ...merged } : row
-    )
-    if (String(currentRow.value?.productId || '') === productId) {
-      currentRow.value = { ...currentRow.value, ...merged }
+
+    if (result.link && result.responseData) {
+      const data = result.responseData
+      const merged = normalizeItem({
+        ...item,
+        bizStatus: item?.bizStatus === 'PENDING_AUDIT' ? 'LINKED' : item?.bizStatus,
+        bizStatusLabel: item?.bizStatus === 'PENDING_AUDIT' ? '已转链' : item?.bizStatusLabel,
+        promotion: {
+          status: 'READY',
+          statusLabel: data.statusLabel || '已生成',
+          link: result.link,
+          generatedAt: new Date().toISOString(),
+          expireAt: null,
+          failReason: null
+        },
+        promotionLink: result.link,
+        promotionLinkStatus: 'READY',
+        promotionLinkStatusLabel: data.statusLabel || '已生成',
+        promotionLinkFailReason: null
+      })
+      products.value = products.value.map((row: any) =>
+        String(row.productId) === productId ? { ...row, ...merged } : row
+      )
+      if (String(currentRow.value?.productId || '') === productId) {
+        currentRow.value = { ...currentRow.value, ...merged }
+      }
     }
-    await navigator.clipboard.writeText(link)
-    message.success('推广链接已复制，后续订单将归因到当前渠道')
+
+    if (clipboardWriteFailed) {
+      message.warning('讲解已生成，但浏览器未允许写入剪贴板，请手动复制')
+    } else if (result.linkGenerationFailed) {
+      message.error('短链生成失败，已复制讲解（不含短链）')
+    } else {
+      message.success('讲解 + 短链已复制')
+    }
   } catch (error: any) {
-    if (error?.name === 'NotAllowedError') {
-      message.warning('推广链接已生成，但浏览器未允许写入剪贴板，请手动复制')
-      return
-    }
-    message.error(error?.response?.data?.msg || error?.message || '推广链接生成失败，请稍后重试')
+    message.error(error?.response?.data?.msg || error?.message || '讲解复制失败，请稍后重试')
   } finally {
     const next = new Set(promotionLoadingIds.value)
     next.delete(productId)
@@ -335,30 +393,45 @@ onMounted(async () => {
 <style scoped>
 .product-page {
   max-width: 100%;
-  padding: var(--spacing-xl);
 }
 
-.toolbar {
+
+.product-list-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
   margin-bottom: var(--spacing-md);
-  background: var(--bg-card);
-  padding: 16px;
-  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--surface-elevated, #fff);
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.08));
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.product-list-meta {
+  color: var(--text-secondary, #64748b);
+  font-size: var(--text-sm, 13px);
+}
+
+.product-list-meta strong {
+  color: var(--text-primary, #0f172a);
+  font-weight: 600;
+}
+
+.no-more-inline {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .product-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: var(--spacing-md);
   align-items: start;
-}
-
-.load-more {
-  text-align: center;
-  padding: var(--spacing-xl) 0;
-}
-
-.no-more {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
 }
 </style>

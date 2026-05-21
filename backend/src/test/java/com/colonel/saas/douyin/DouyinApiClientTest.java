@@ -15,8 +15,11 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.http.HttpStatus;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -28,6 +31,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -170,6 +174,60 @@ class DouyinApiClientTest {
                 .isInstanceOf(DouyinApiException.class)
                 .extracting(ex -> ((DouyinApiException) ex).getErrorMsg())
                 .isEqualTo("参数校验失败");
+    }
+
+    @Test
+    void post_shouldRetryOn429ThenSucceed() {
+        when(douyinConfig.getAppId()).thenReturn("app123");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
+        when(douyinTokenService.getValidToken("app123")).thenReturn("token");
+        ReflectionTestUtils.setField(douyinApiClient, "retryMaxAttempts", 3);
+        ReflectionTestUtils.setField(douyinApiClient, "retryInitialDelayMs", 0L);
+        when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
+                .thenReturn(Map.of("err_no", 429, "err_msg", "rate limited"))
+                .thenReturn(Map.of("code", 10000, "message", "ok"));
+
+        Map<String, Object> result = douyinApiClient.post("test", null);
+
+        assertThat(result).containsEntry("code", 10000);
+        verify(douyinRestTemplate, times(2)).postForObject(any(String.class), any(HttpEntity.class), eq(Map.class));
+    }
+
+    @Test
+    void post_shouldRetryOnTransportErrorThenSucceed() {
+        when(douyinConfig.getAppId()).thenReturn("app123");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
+        when(douyinTokenService.getValidToken("app123")).thenReturn("token");
+        ReflectionTestUtils.setField(douyinApiClient, "retryMaxAttempts", 3);
+        ReflectionTestUtils.setField(douyinApiClient, "retryInitialDelayMs", 0L);
+        when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
+                .thenThrow(new ResourceAccessException("read timed out"))
+                .thenReturn(Map.of("code", 10000));
+
+        Map<String, Object> result = douyinApiClient.post("test", null);
+
+        assertThat(result).containsEntry("code", 10000);
+        verify(douyinRestTemplate, times(2)).postForObject(any(String.class), any(HttpEntity.class), eq(Map.class));
+    }
+
+    @Test
+    void post_shouldRetryOnHttp5xxThenSucceed() {
+        when(douyinConfig.getAppId()).thenReturn("app123");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
+        when(douyinTokenService.getValidToken("app123")).thenReturn("token");
+        ReflectionTestUtils.setField(douyinApiClient, "retryMaxAttempts", 3);
+        ReflectionTestUtils.setField(douyinApiClient, "retryInitialDelayMs", 0L);
+        when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
+                .thenThrow(HttpServerErrorException.create(HttpStatus.BAD_GATEWAY, "bad gateway", null, null, null))
+                .thenReturn(Map.of("code", 10000));
+
+        Map<String, Object> result = douyinApiClient.post("test", null);
+
+        assertThat(result).containsEntry("code", 10000);
+        verify(douyinRestTemplate, times(2)).postForObject(any(String.class), any(HttpEntity.class), eq(Map.class));
     }
 
     @Test

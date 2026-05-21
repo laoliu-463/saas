@@ -1,7 +1,7 @@
 <template>
-  <div class="config-list" data-testid="system-config-page">
-    <!-- Toolbar -->
-    <div class="config-toolbar">
+  <div class="config-list app-page" data-testid="system-config-page">
+    <PageHeader title="系统配置" description="维护业务参数键值，支持分组筛选与启停。" />
+    <div class="app-toolbar">
       <n-space wrap :size="10">
         <n-select
           v-model:value="searchParams.configGroup"
@@ -22,7 +22,7 @@
     </div>
 
     <!-- Table -->
-    <div class="config-table-card">
+    <n-card :bordered="false" class="app-panel app-table-shell">
       <n-data-table
         remote
         data-testid="system-config-table"
@@ -33,10 +33,9 @@
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       />
-    </div>
+    </n-card>
 
-    <!-- Modal for Add/Edit -->
-    <n-modal v-model:show="showModal" preset="card" :title="modalTitle" style="width: 640px">
+    <n-modal v-model:show="showModal" preset="card" :title="modalTitle" :style="{ width: MODAL_WIDTH.lg }">
       <n-form ref="formRef" :model="formData" :rules="rules" label-placement="left" label-width="120">
         <n-form-item label="配置键" path="configKey">
           <n-input v-model:value="formData.configKey" placeholder="例：talent.protection_days" :disabled="modalType === 'edit'" />
@@ -77,11 +76,9 @@
         <n-form-item label="备注" path="remark">
           <n-input v-model:value="formData.remark" placeholder="备注信息（可选）" />
         </n-form-item>
-        <div style="display: flex; justify-content: flex-end">
+        <div class="app-modal-footer">
           <n-button @click="showModal = false">取消</n-button>
-          <n-button type="primary" style="margin-left: 12px" @click="handleSubmit" :loading="submitting"
-            >确定</n-button
-          >
+          <n-button type="primary" @click="handleSubmit" :loading="submitting">确定</n-button>
         </div>
       </n-form>
     </n-modal>
@@ -91,6 +88,8 @@
 <script setup lang="ts">
 import { ref, reactive, h, onMounted } from 'vue'
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui'
+import PageHeader from '../../components/PageHeader.vue'
+import { MODAL_WIDTH } from '../../constants/ui'
 import { getConfigPage, createConfig, updateConfig, deleteConfig } from '../../api/sys'
 import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 
@@ -364,24 +363,3 @@ onMounted(() => {
   fetchData()
 })
 </script>
-
-<style scoped>
-.config-list {
-  max-width: 100%;
-}
-
-.config-toolbar {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 16px 20px;
-  margin-bottom: var(--spacing-md);
-  box-shadow: var(--shadow-sm);
-}
-
-.config-table-card {
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 4px;
-  box-shadow: var(--shadow-card);
-}
-</style>

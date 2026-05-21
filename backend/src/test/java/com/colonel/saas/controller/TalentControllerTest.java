@@ -242,14 +242,19 @@ class TalentControllerTest {
     @Test
     void blacklist_talent_returnsUpdatedTalent() throws Exception {
         UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
         Talent updated = new Talent();
         updated.setId(talentId);
         updated.setBlacklisted(true);
         updated.setBlacklistReason("重复违约");
-        when(talentService.blacklist(talentId, "重复违约")).thenReturn(updated);
+        when(talentService.blacklist(talentId, "重复违约", userId, deptId, DataScope.DEPT)).thenReturn(updated);
 
         mockMvc.perform(post("/talents/{id}/blacklist", talentId)
                         .contentType("application/json")
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("dataScope", DataScope.DEPT)
                         .content("{\"reason\":\"重复违约\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.blacklisted").value(true))
@@ -259,12 +264,17 @@ class TalentControllerTest {
     @Test
     void unblacklist_talent_returnsUpdatedTalent() throws Exception {
         UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
         Talent updated = new Talent();
         updated.setId(talentId);
         updated.setBlacklisted(false);
-        when(talentService.unblacklist(talentId)).thenReturn(updated);
+        when(talentService.unblacklist(talentId, userId, deptId, DataScope.DEPT)).thenReturn(updated);
 
-        mockMvc.perform(post("/talents/{id}/unblacklist", talentId))
+        mockMvc.perform(post("/talents/{id}/unblacklist", talentId)
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("dataScope", DataScope.DEPT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.blacklisted").value(false));
     }
@@ -340,8 +350,21 @@ class TalentControllerTest {
 
     @Test
     void blacklistAndWeeklyRefresh_shouldRequireChannelLeader() throws Exception {
-        Method blacklist = TalentController.class.getMethod("blacklist", UUID.class, com.colonel.saas.dto.talent.TalentOperateRequest.class);
-        Method unblacklist = TalentController.class.getMethod("unblacklist", UUID.class);
+        Method blacklist = TalentController.class.getMethod(
+                "blacklist",
+                UUID.class,
+                com.colonel.saas.dto.talent.TalentOperateRequest.class,
+                UUID.class,
+                UUID.class,
+                DataScope.class
+        );
+        Method unblacklist = TalentController.class.getMethod(
+                "unblacklist",
+                UUID.class,
+                UUID.class,
+                UUID.class,
+                DataScope.class
+        );
         Method refreshWeekly = TalentController.class.getMethod("refreshWeekly");
         Method overrideAssignee = TalentController.class.getMethod(
                 "overrideAssignee",

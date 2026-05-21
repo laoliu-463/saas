@@ -75,6 +75,16 @@ export default defineConfig(() => {
         })
       }
     },
+    preview: {
+      host: '0.0.0.0',
+      port: resolveDevPort(),
+      proxy: {
+        '/api': createApiProxy(),
+        '/douyin': createApiProxy({
+          rewrite: (path) => `/api${path}`
+        })
+      }
+    },
     build: {
       rollupOptions: {
         output: {
