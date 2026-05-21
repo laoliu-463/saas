@@ -3,6 +3,7 @@ import { storageStates } from './helpers/test-data';
 import { capturePage } from './helpers/screenshot';
 import { testIds } from './helpers/selectors';
 import { seedTestData } from './helpers/api-assertions';
+import { gotoApp } from './helpers/page-ready';
 
 test.use({ storageState: storageStates.bizLeader });
 
@@ -13,13 +14,16 @@ test.beforeAll(async () => {
 const loadedActivityProducts = /已加载\s+[1-9]\d*\s*个商品/;
 
 test('活动列表和活动商品页可展示', async ({ page }, testInfo) => {
-  await page.goto('/product/manage');
+  await gotoApp(page, '/product/manage');
   await expect(page.getByTestId(testIds.activityListPage)).toBeVisible();
   await expect(page.getByRole('heading', { name: '活动列表' })).toBeVisible();
+  await expect(page.getByTestId(testIds.activityViewProducts).first()).toBeVisible({ timeout: 30_000 });
   await capturePage(page, testInfo, '04-activity-list');
 
-  await page.getByTestId(testIds.activityViewProducts).first().click();
-  await expect(page).toHaveURL(/\/product\/manage\/.+/);
+  await Promise.all([
+    page.waitForURL(/\/product\/manage\/[^/?#]+/, { timeout: 20_000 }),
+    page.getByTestId(testIds.activityViewProducts).first().click()
+  ]);
   await expect(page.getByTestId('activity-product-page')).toBeVisible();
   await expect(page.getByTestId('activity-product-workbench')).toBeVisible();
   await expect(page.locator('.activity-workbench-subtitle')).toContainText(loadedActivityProducts, { timeout: 20_000 });
