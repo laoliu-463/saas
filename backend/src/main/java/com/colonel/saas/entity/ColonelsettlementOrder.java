@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.Version;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.Data;
 
@@ -12,6 +13,10 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 订单分区表实体（LCK-01）。不继承 {@link com.colonel.saas.common.base.VersionedEntity}，
+ * 因表无 create_by/update_by 且主键含 create_time 分区键。
+ */
 @Data
 @TableName(value = "colonelsettlement_order", autoResultMap = true)
 public class ColonelsettlementOrder implements Serializable {
@@ -126,6 +131,10 @@ public class ColonelsettlementOrder implements Serializable {
 
     @TableField("update_time")
     private LocalDateTime updateTime;
+
+    @Version
+    @TableField("version")
+    private Integer version;
 
     private Integer deleted;
 

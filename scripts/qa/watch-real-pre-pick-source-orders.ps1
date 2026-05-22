@@ -305,7 +305,7 @@ if ($envResponse.appTestEnabled -or $envResponse.douyinTestEnabled) {
     throw "Current runtime still has test switches enabled."
 }
 
-$health = Invoke-RestMethod -Method Get -Uri ($BaseUrl.TrimEnd("/") + "/actuator/health")
+$health = Invoke-RestMethod -Method Get -Uri ($BaseUrl.TrimEnd("/") + "/system/health")
 $adminToken = Get-ApiToken -BaseUrl $BaseUrl -Username $AdminUsername -Password $AdminPassword
 $adminHeaders = @{ Authorization = "Bearer $adminToken" }
 

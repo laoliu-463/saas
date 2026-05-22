@@ -87,7 +87,7 @@ try {
     $healthOk = $false
     $healthDetail = $null
     try {
-        $healthResponse = Invoke-RestMethod -Uri "http://127.0.0.1:8080/api/actuator/health" -TimeoutSec 20
+        $healthResponse = Invoke-RestMethod -Uri "http://127.0.0.1:8080/api/system/health" -TimeoutSec 20
         $healthOk = $healthResponse.status -eq "UP"
         $healthDetail = $healthResponse
     } catch {

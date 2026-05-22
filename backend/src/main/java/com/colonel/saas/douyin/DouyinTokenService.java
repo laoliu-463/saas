@@ -79,7 +79,7 @@ public class DouyinTokenService {
         String finalAppId = resolveCacheKey(appId);
         bootstrapGatewayTokenIfAvailable(finalAppId);
         if (isReauthorizeRequired(finalAppId)) {
-            throw new BusinessException("token requires re-authorization");
+            throw BusinessException.stateInvalid("token requires re-authorization");
         }
         Object tokenObj = redisTemplate.opsForValue().get(tokenKey(finalAppId));
         String token = tokenObj instanceof String ? (String) tokenObj : null;
@@ -96,7 +96,7 @@ public class DouyinTokenService {
             }
             String refreshedToken = getTokenFromCache(finalAppId);
             if (refreshedToken == null || refreshedToken.isBlank()) {
-                throw new BusinessException("获取 Access Token 失败: API 返回结果中未包含有效 access_token");
+                throw BusinessException.param("获取 Access Token 失败: API 返回结果中未包含有效 access_token");
             }
             return refreshedToken;
         }
@@ -117,7 +117,7 @@ public class DouyinTokenService {
         try {
             String refreshToken = getRefreshToken(finalAppId);
             if (refreshToken == null || refreshToken.isBlank()) {
-                throw new BusinessException("missing refresh_token, cannot refresh token");
+                throw BusinessException.param("missing refresh_token, cannot refresh token");
             }
             DouyinTokenGateway.TokenPayload payload = douyinTokenGateway.refreshToken(finalAppId, refreshToken);
             cacheTokenPayload(finalAppId, payload);
@@ -131,7 +131,7 @@ public class DouyinTokenService {
             throw e;
         } catch (Exception e) {
             log.error("Douyin token refresh error, appId={}", finalAppId, e);
-            throw new BusinessException("failed to refresh token");
+            throw BusinessException.param("failed to refresh token");
         } finally {
             redisTemplate.delete(lockKey);
         }
@@ -161,7 +161,7 @@ public class DouyinTokenService {
     public void saveRefreshToken(String appId, String refreshToken) {
         String finalAppId = resolveCacheKey(appId);
         if (refreshToken == null || refreshToken.isBlank()) {
-            throw new BusinessException("refresh_token cannot be blank");
+            throw BusinessException.param("refresh_token cannot be blank");
         }
         redisTemplate.opsForValue().set(refreshKey(finalAppId), refreshToken.trim(), Duration.ofDays(14));
     }
@@ -218,7 +218,7 @@ public class DouyinTokenService {
             cacheTokenPayload(finalAppId, payload);
         } catch (DouyinApiException e) {
             if (e.getErrorCode() == 31005) {
-                throw new BusinessException("authorization code does not match current app or has expired, please re-authorize with current DOUYIN_CLIENT_KEY and retry within 10 minutes");
+                throw BusinessException.param("authorization code does not match current app or has expired, please re-authorize with current DOUYIN_CLIENT_KEY and retry within 10 minutes");
             }
             throw e;
         }
@@ -260,12 +260,12 @@ public class DouyinTokenService {
 
     private void cacheTokenPayload(String appId, DouyinTokenGateway.TokenPayload payload, String fallbackRefreshToken) {
         if (payload == null) {
-            throw new BusinessException("token payload is empty");
+            throw BusinessException.param("token payload is empty");
         }
         String newAccessToken = payload.accessToken();
         String normalizedAccessToken = trimToNull(newAccessToken);
         if (normalizedAccessToken == null) {
-            throw new BusinessException("token payload missing access_token");
+            throw BusinessException.param("token payload missing access_token");
         }
         String newRefreshToken = normalizeRefreshToken(payload.refreshToken(), fallbackRefreshToken);
         long expiresIn = payload.expiresIn() == null ? 7200L : payload.expiresIn();
@@ -338,7 +338,7 @@ public class DouyinTokenService {
         if (configuredAppId != null) {
             return configuredAppId;
         }
-        throw new BusinessException("missing douyin.app.app-id / client-key config");
+        throw BusinessException.param("missing douyin.app.app-id / client-key config");
     }
 
     private String trimToNull(String value) {
@@ -362,7 +362,7 @@ public class DouyinTokenService {
         if (fallback != null) {
             return fallback;
         }
-        throw new BusinessException("refresh_token cannot be blank");
+            throw BusinessException.param("refresh_token cannot be blank");
     }
 
     private String tokenKey(String appId) {
@@ -425,21 +425,21 @@ public class DouyinTokenService {
         }
         String normalized = grantType.trim().toLowerCase(Locale.ROOT);
         if (!"authorization_code".equals(normalized)) {
-            throw new BusinessException("联盟自研应用仅支持 grant_type=authorization_code");
+            throw BusinessException.param("联盟自研应用仅支持 grant_type=authorization_code");
         }
         return normalized;
     }
 
     private String normalizeAuthorizationCode(String authorizationCode, String grantType) {
         if (authorizationCode == null || authorizationCode.isBlank()) {
-            throw new BusinessException("authorization_code cannot be blank");
+            throw BusinessException.param("authorization_code cannot be blank");
         }
         return authorizationCode.trim();
     }
 
     private void validateAuthScopeParams(String authSubjectType, String shopId) {
         if (hasText(authSubjectType) && hasText(shopId)) {
-            throw new BusinessException("auth_subject_type and shop_id cannot be provided at the same time");
+            throw BusinessException.param("auth_subject_type and shop_id cannot be provided at the same time");
         }
     }
 

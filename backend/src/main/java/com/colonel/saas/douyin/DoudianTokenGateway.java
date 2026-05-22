@@ -34,7 +34,7 @@ public class DoudianTokenGateway {
 
     public TokenPayload createToken(TokenCreateCommand command) {
         if (testEnabled) {
-            throw new BusinessException("test mode enabled: token gateway external call is blocked");
+            throw BusinessException.param("test mode enabled: token gateway external call is blocked");
         }
         TokenCreateProbeResult probeResult = executeCreateToken(command);
         TokenCreateResponse response = probeResult.rawResponse();
@@ -44,7 +44,7 @@ public class DoudianTokenGateway {
 
         TokenCreateData data = response.getData();
         if (data == null) {
-            throw new BusinessException("token.create response missing data");
+            throw BusinessException.param("token.create response missing data");
         }
 
         String authorityId = safeText(data::getAuthorityId);
@@ -66,7 +66,7 @@ public class DoudianTokenGateway {
 
     public TokenCreateProbeResult probeCreateToken(TokenCreateCommand command) {
         if (testEnabled) {
-            throw new BusinessException("test mode enabled: token gateway external call is blocked");
+            throw BusinessException.param("test mode enabled: token gateway external call is blocked");
         }
         TokenCreateProbeResult result = executeCreateToken(command);
         TokenCreateResponse response = result.rawResponse();
@@ -77,7 +77,7 @@ public class DoudianTokenGateway {
 
     public TokenPayload refreshToken(String refreshToken) {
         if (testEnabled) {
-            throw new BusinessException("test mode enabled: token gateway external call is blocked");
+            throw BusinessException.param("test mode enabled: token gateway external call is blocked");
         }
         initSdkConfig();
         TokenRefreshRequest request = new TokenRefreshRequest();
@@ -93,7 +93,7 @@ public class DoudianTokenGateway {
 
         TokenRefreshData data = response.getData();
         if (data == null) {
-            throw new BusinessException("token.refresh response missing data");
+            throw BusinessException.param("token.refresh response missing data");
         }
 
         String authorityId = safeText(data::getAuthorityId);
@@ -116,7 +116,7 @@ public class DoudianTokenGateway {
         String appKey = douyinConfig.getClientKey();
         String appSecret = douyinConfig.getClientSecret();
         if (!StringUtils.hasText(appKey) || !StringUtils.hasText(appSecret)) {
-            throw new BusinessException("missing douyin.app.client-key/client-secret config");
+            throw BusinessException.param("missing douyin.app.client-key/client-secret config");
         }
         GlobalConfig.initAppKey(appKey);
         GlobalConfig.initAppSecret(appSecret);

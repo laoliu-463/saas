@@ -3,7 +3,7 @@ package com.colonel.saas.entity;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
-import com.colonel.saas.common.base.BaseEntity;
+import com.colonel.saas.common.base.VersionedEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -13,7 +13,7 @@ import java.util.UUID;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName(value = "merchant", autoResultMap = true)
-public class Merchant extends BaseEntity {
+public class Merchant extends VersionedEntity {
 
     @TableField("merchant_id")
     private String merchantId;

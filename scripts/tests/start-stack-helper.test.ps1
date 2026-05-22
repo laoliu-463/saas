@@ -37,7 +37,7 @@ try {
     Assert-Equal -Actual $envMap["BACKEND_HOST_PORT"] -Expected "8080" -Message "Read-EnvFile should parse BACKEND_HOST_PORT"
 
     $healthUrl = Get-BackendHealthUrl -EnvMap $envMap
-    Assert-Equal -Actual $healthUrl -Expected "http://localhost:8080/api/actuator/health" -Message "Get-BackendHealthUrl should respect .env backend port"
+    Assert-Equal -Actual $healthUrl -Expected "http://localhost:8080/api/system/health" -Message "Get-BackendHealthUrl should respect .env backend port"
 
     $frontendUrl = Get-FrontendBaseUrl -EnvMap $envMap
     Assert-Equal -Actual $frontendUrl -Expected "http://localhost:3000" -Message "Get-FrontendBaseUrl should respect .env frontend port"
@@ -53,7 +53,7 @@ try {
     Assert-True -Condition ($containerChecks -ge 3) -Message "Wait-ContainersStopped should keep polling until containers stop"
 
     $healthChecks = 0
-    $health = Wait-HttpHealth -Url "http://localhost:8080/api/actuator/health" -TimeoutSeconds 2 -PollIntervalMilliseconds 10 -ProbeScript {
+    $health = Wait-HttpHealth -Url "http://localhost:8080/api/system/health" -TimeoutSeconds 2 -PollIntervalMilliseconds 10 -ProbeScript {
         $script:healthChecks++
         if ($script:healthChecks -lt 2) {
             return @{ ok = $false; status = "DOWN" }

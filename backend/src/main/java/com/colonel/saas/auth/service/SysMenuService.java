@@ -178,7 +178,7 @@ public class SysMenuService {
         SysMenu menu = requireMenu(id);
         int refCount = sysRoleMenuMapper.countByMenuIds(List.of(id));
         if (refCount > 0) {
-            throw new BusinessException("菜单仍被角色引用，不能删除");
+            throw BusinessException.stateInvalid("菜单仍被角色引用，不能删除");
         }
         sysMenuMapper.deleteById(id);
         operationLogService.recordSystemAction(
@@ -196,7 +196,7 @@ public class SysMenuService {
     private SysMenu requireMenu(UUID id) {
         SysMenu menu = sysMenuMapper.selectById(id);
         if (menu == null) {
-            throw new BusinessException("菜单不存在");
+            throw BusinessException.notFound("菜单不存在");
         }
         return menu;
     }

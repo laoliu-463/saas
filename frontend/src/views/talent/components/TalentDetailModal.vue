@@ -36,7 +36,6 @@
         <section class="detail-section">
           <h3 class="section-title">基础资料</h3>
           <n-descriptions bordered :column="2">
-            <n-descriptions-item v-if="!isChannelStaffOnly" label="sec_uid">{{ detail.talent?.secUid || '-' }}</n-descriptions-item>
             <n-descriptions-item v-if="!isChannelStaffOnly" label="主页链接">{{ detail.talent?.profileUrl || '-' }}</n-descriptions-item>
             <n-descriptions-item label="获赞数">{{ formatFans(detail.talent?.likesCount) }}</n-descriptions-item>
             <n-descriptions-item label="作品数">{{ detail.talent?.worksCount ?? '-' }}</n-descriptions-item>

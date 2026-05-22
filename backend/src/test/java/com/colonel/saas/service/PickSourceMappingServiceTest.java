@@ -11,12 +11,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DuplicateKeyException;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -32,6 +34,7 @@ class PickSourceMappingServiceTest {
     @BeforeEach
     void setUp() {
         service = new PickSourceMappingService(pickSourceMappingMapper, 3);
+        lenient().when(pickSourceMappingMapper.updateById(any(PickSourceMapping.class))).thenReturn(1);
     }
 
     @Test
@@ -78,6 +81,37 @@ class PickSourceMappingServiceTest {
 
         verify(pickSourceMappingMapper, never()).selectOne(any());
         verify(pickSourceMappingMapper, never()).insert(any(PickSourceMapping.class));
+    }
+
+    @Test
+    void ensureFromOrder_shouldInsertNativeMappingWhenAttributedOrderHasNoPickSource() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setAttributionStatus("ATTRIBUTED");
+        order.setUserId(userId);
+        order.setDeptId(deptId);
+        order.setProductId("3816127512791089531");
+        order.setActivityId("3859423");
+        order.setColonelBuyinId(7293293346398011698L);
+        order.setExtraData(Map.of("pick_extra", "channel_native"));
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
+
+        service.ensureFromOrder(order);
+
+        ArgumentCaptor<PickSourceMapping> captor = ArgumentCaptor.forClass(PickSourceMapping.class);
+        verify(pickSourceMappingMapper).insert(captor.capture());
+        PickSourceMapping saved = captor.getValue();
+        assertThat(saved.getSourceType()).isEqualTo(PickSourceMappingService.SOURCE_TYPE_NATIVE);
+        assertThat(saved.getColonelBuyinId()).isEqualTo("7293293346398011698");
+        assertThat(saved.getProductId()).isEqualTo("3816127512791089531");
+        assertThat(saved.getActivityId()).isEqualTo("3859423");
+        assertThat(saved.getUserId()).isEqualTo(userId);
+        assertThat(saved.getDeptId()).isEqualTo(deptId);
+        assertThat(saved.getPickExtra()).isEqualTo("channel_native");
+        assertThat(saved.getShortId()).startsWith("N").hasSize(10);
+        assertThat(saved.getPickSource()).startsWith("colonel_native_");
+        assertThat(saved.getUuidSeed()).isNotNull();
     }
 
     @Test
@@ -409,6 +443,63 @@ class PickSourceMappingServiceTest {
         );
 
         verify(pickSourceMappingMapper, org.mockito.Mockito.times(2)).updateById(any(PickSourceMapping.class));
+    }
+
+    @Test
+    void saveOrUpdate_shouldRecoverNativeIdentityConflictWithoutOverwritingOwner() {
+        UUID incomingUserId = UUID.randomUUID();
+        UUID existingOwnerId = UUID.randomUUID();
+        PickSourceMapping sourceRow = new PickSourceMapping();
+        sourceRow.setId(UUID.randomUUID());
+        sourceRow.setUserId(incomingUserId);
+        sourceRow.setColonelBuyinId("old-buyin");
+        sourceRow.setProductId("old-product");
+        sourceRow.setActivityId("old-activity");
+        sourceRow.setSourceType(PickSourceMappingService.SOURCE_TYPE_NATIVE);
+        PickSourceMapping conflictingNativeIdentity = new PickSourceMapping();
+        conflictingNativeIdentity.setId(UUID.randomUUID());
+        conflictingNativeIdentity.setUserId(existingOwnerId);
+        conflictingNativeIdentity.setColonelBuyinId("7293293346398011698");
+        conflictingNativeIdentity.setProductId("3816127512791089531");
+        conflictingNativeIdentity.setActivityId("3859423");
+        conflictingNativeIdentity.setSourceType(PickSourceMappingService.SOURCE_TYPE_NATIVE);
+        when(pickSourceMappingMapper.selectOne(any()))
+                .thenReturn(sourceRow)
+                .thenReturn(null)
+                .thenReturn(conflictingNativeIdentity);
+        when(pickSourceMappingMapper.updateById(any(PickSourceMapping.class)))
+                .thenThrow(new DuplicateKeyException("dup native identity"))
+                .thenReturn(1);
+
+        service.saveOrUpdate(
+                incomingUserId,
+                "incoming-channel",
+                UUID.randomUUID(),
+                "talent-native",
+                "Talent Native",
+                "NATIVE04",
+                UUID.randomUUID(),
+                "PS_NATIVE_CONFLICT",
+                "3816127512791089531",
+                "3859423",
+                "source_url",
+                "converted_url",
+                UUID.randomUUID(),
+                "PRODUCT_LIBRARY",
+                "channel_native",
+                "7293293346398011698",
+                PickSourceMappingService.SOURCE_TYPE_NATIVE
+        );
+
+        ArgumentCaptor<PickSourceMapping> captor = ArgumentCaptor.forClass(PickSourceMapping.class);
+        verify(pickSourceMappingMapper, org.mockito.Mockito.times(2)).updateById(captor.capture());
+        PickSourceMapping recoveryPatch = captor.getAllValues().get(1);
+        assertThat(recoveryPatch.getId()).isEqualTo(conflictingNativeIdentity.getId());
+        assertThat(recoveryPatch.getUserId()).isNull();
+        assertThat(recoveryPatch.getColonelBuyinId()).isNull();
+        assertThat(recoveryPatch.getProductId()).isNull();
+        assertThat(recoveryPatch.getActivityId()).isNull();
+        assertThat(recoveryPatch.getSourceType()).isNull();
     }
 
     @Test

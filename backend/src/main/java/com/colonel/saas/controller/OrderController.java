@@ -14,6 +14,7 @@ import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.service.DashboardService;
+import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderSyncService;
@@ -65,6 +66,7 @@ public class OrderController extends BaseController {
     private final ColonelsettlementOrderMapper orderMapper;
     private final OrderQueryService orderQueryService;
     private final OrderAttributionReplayService orderAttributionReplayService;
+    private final OperationLogService operationLogService;
     private final ShortTtlCacheService shortTtlCacheService;
 
     public OrderController(
@@ -72,11 +74,13 @@ public class OrderController extends BaseController {
             ColonelsettlementOrderMapper orderMapper,
             OrderQueryService orderQueryService,
             OrderAttributionReplayService orderAttributionReplayService,
+            OperationLogService operationLogService,
             ShortTtlCacheService shortTtlCacheService) {
         this.orderSyncService = orderSyncService;
         this.orderMapper = orderMapper;
         this.orderQueryService = orderQueryService;
         this.orderAttributionReplayService = orderAttributionReplayService;
+        this.operationLogService = operationLogService;
         this.shortTtlCacheService = shortTtlCacheService;
     }
 
@@ -89,11 +93,27 @@ public class OrderController extends BaseController {
                     required = false,
                     content = @Content(examples = @ExampleObject(value = "{\"startTime\":\"2026-04-01 00:00:00\",\"endTime\":\"2026-04-28 23:59:59\"}"))
             )
-            @RequestBody(required = false) SyncRequest request) {
+            @RequestBody(required = false) SyncRequest request,
+            @RequestAttribute("userId") UUID userId) {
         SyncRequest safeRequest = request == null ? defaultSyncRequest() : request;
         long start = parseDateTime(safeRequest.getStartTime());
         long end = parseDateTime(safeRequest.getEndTime());
         OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(start, end);
+        operationLogService.recordSystemAction(
+                userId,
+                "订单归因",
+                "手动同步订单",
+                "POST",
+                "order_sync",
+                null,
+                safeRequest.getStartTime() + " ~ " + safeRequest.getEndTime(),
+                String.format(
+                        "created=%d, updated=%d, attributed=%d, unattributed=%d, failed=%d",
+                        result.created(),
+                        result.updated(),
+                        result.attributed(),
+                        result.unattributed(),
+                        result.failed()));
         evictOrderDerivedCaches();
         return ok(result);
     }
@@ -107,15 +127,32 @@ public class OrderController extends BaseController {
                     required = false,
                     content = @Content(examples = @ExampleObject(value = "{\"reason\":\"COLONEL_MAPPING_NOT_FOUND\",\"limit\":50,\"dryRun\":true}"))
             )
-            @RequestBody(required = false) ReplayAttributionRequest request) {
+            @RequestBody(required = false) ReplayAttributionRequest request,
+            @RequestAttribute("userId") UUID userId) {
         ReplayAttributionRequest safeRequest = request == null ? new ReplayAttributionRequest() : request;
+        boolean dryRun = Boolean.TRUE.equals(safeRequest.getDryRun());
         OrderAttributionReplayService.ReplayResult result = orderAttributionReplayService.replay(
                 safeRequest.getOrderIds(),
                 safeRequest.getReason(),
                 safeRequest.getLimit(),
-                Boolean.TRUE.equals(safeRequest.getDryRun())
+                dryRun
         );
-        if (!Boolean.TRUE.equals(safeRequest.getDryRun())) {
+        operationLogService.recordSystemAction(
+                userId,
+                "订单归因",
+                dryRun ? "重算历史订单归因(预览)" : "重算历史订单归因",
+                "POST",
+                "order_attribution",
+                safeRequest.getReason(),
+                dryRun ? "dry-run" : "apply",
+                String.format(
+                        "scanned=%d, attributed=%d, unattributed=%d, updated=%d, dryRun=%s",
+                        result.scanned(),
+                        result.attributed(),
+                        result.unattributed(),
+                        result.updated(),
+                        dryRun));
+        if (!dryRun) {
             evictOrderDerivedCaches();
         }
         return ok(result);
@@ -759,6 +796,7 @@ public class OrderController extends BaseController {
             case AttributionService.REASON_MAPPING_NOT_FOUND, "pick_source 未匹配到有效归因映射" -> "未找到对应推广链接";
             case AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND -> "原生团长订单未找到归因映射";
             case AttributionService.REASON_COLONEL_MAPPING_AMBIGUOUS -> "原生团长订单命中多条归因映射";
+            case AttributionService.REASON_TALENT_CLAIM_OWNER_CONFLICT -> "归因负责人和达人认领人不一致";
             case AttributionService.REASON_PRODUCT_NOT_FOUND -> "未匹配到本地商品库";
             case AttributionService.REASON_ACTIVITY_NOT_FOUND -> "商品未关联活动";
             case AttributionService.REASON_CHANNEL_NOT_FOUND -> "未匹配到渠道负责人";

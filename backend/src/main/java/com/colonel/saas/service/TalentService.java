@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
@@ -175,7 +176,7 @@ public class TalentService {
     public Talent getById(UUID id) {
         Talent talent = talentMapper.selectById(id);
         if (talent == null || (talent.getDeleted() != null && talent.getDeleted() == 1)) {
-            throw new BusinessException("达人不存在");
+            throw BusinessException.notFound("达人不存在");
         }
         return talent;
     }
@@ -189,7 +190,7 @@ public class TalentService {
                     : (StringUtils.hasText(request.getUid()) ? request.getUid()
                     : request.getSecUid()));
             if (!StringUtils.hasText(fallbackInput)) {
-                throw new BusinessException("达人抖音号或链接不能为空");
+                throw BusinessException.param("达人抖音号或链接不能为空");
             }
             TalentInputParseResult parsed = TalentInputParser.parse(fallbackInput);
             if (StringUtils.hasText(parsed.getDouyinUid())) {
@@ -209,13 +210,13 @@ public class TalentService {
             }
         }
         if (!StringUtils.hasText(request.getDouyinUid())) {
-            throw new BusinessException("douyinUid 不能为空");
+            throw BusinessException.param("douyinUid 不能为空");
         }
         Talent existing = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
                 .eq(Talent::getDouyinUid, request.getDouyinUid())
                 .last("limit 1"));
         if (existing != null) {
-            throw new BusinessException("达人 douyinUid 已存在");
+            throw BusinessException.duplicate("达人 douyinUid 已存在");
         }
         request.setStatus(1);
         if (StringUtils.hasText(request.getNickname())) {
@@ -244,7 +245,7 @@ public class TalentService {
         boolean profilePrefilled = StringUtils.hasText(request.getDataSource()) && StringUtils.hasText(request.getSyncStatus());
         if (profilePrefilled) {
             request.setLastSyncTime(LocalDateTime.now());
-            talentMapper.updateById(request);
+            persistTalent(request);
             return request;
         }
         TalentEnrichTask task = createEnrichTask(request, ENRICH_TASK_STATUS_PENDING, null);
@@ -252,19 +253,19 @@ public class TalentService {
         try {
             TalentEnrichOrchestrator.OrchestrateResult orchestrateResult = talentEnrichOrchestrator.enrich(request, false);
             enrichTalentInfo(request, false);
-            talentMapper.updateById(request);
+            persistTalent(request);
             if (orchestrateResult.updated()) {
                 markEnrichTask(task, ENRICH_TASK_STATUS_SUCCESS, null);
             } else {
                 request.setEnrichStatus(ENRICH_TASK_STATUS_WAIT_MANUAL);
                 request.setLastEnrichTime(LocalDateTime.now());
-                talentMapper.updateById(request);
+                persistTalent(request);
                 markEnrichTask(task, ENRICH_TASK_STATUS_WAIT_MANUAL, orchestrateResult.message());
             }
         } catch (RuntimeException ex) {
             request.setEnrichStatus(ENRICH_TASK_STATUS_FAILED);
             request.setLastEnrichTime(LocalDateTime.now());
-            talentMapper.updateById(request);
+            persistTalent(request);
             markEnrichTask(task, ENRICH_TASK_STATUS_FAILED, ex.getMessage());
         }
         return request;
@@ -294,7 +295,7 @@ public class TalentService {
         if (StringUtils.hasText(request.getIntro())) {
             talent.setIntro(request.getIntro().trim());
         }
-        talentMapper.updateById(talent);
+        persistTalent(talent);
         return talent;
     }
 
@@ -307,7 +308,7 @@ public class TalentService {
     @Transactional(rollbackFor = Exception.class)
     public Talent claim(UUID talentId, UUID userId, UUID deptId) {
         if (userId == null) {
-            throw new BusinessException("缺少登录用户");
+            throw BusinessException.param("缺少登录用户");
         }
         String lockKey = "talent:claim:lock:" + talentId;
         String lockValue = userId.toString();
@@ -317,7 +318,7 @@ public class TalentService {
                 10,
                 TimeUnit.SECONDS);
         if (!Boolean.TRUE.equals(locked)) {
-            throw new BusinessException("达人认领处理中，请稍后重试");
+            throw BusinessException.conflict("达人认领处理中，请稍后重试");
         }
         try {
             Talent talent = getById(talentId);
@@ -325,7 +326,7 @@ public class TalentService {
 
             TalentClaim selfActiveClaim = talentClaimMapper.findActiveByTalentAndUser(talentId, userId);
             if (selfActiveClaim != null) {
-                throw new BusinessException("你已认领该达人，无需重复认领");
+                throw BusinessException.duplicate("你已认领该达人，无需重复认领");
             }
 
             LocalDateTime now = LocalDateTime.now();
@@ -346,12 +347,21 @@ public class TalentService {
             if (newClaim) {
                 talentClaimMapper.insert(claim);
             } else {
-                talentClaimMapper.updateById(claim);
+                persistTalentClaim(claim);
             }
 
             talent.setOwnerId(userId);
             talent.setClaimedAt(now);
-            talentMapper.updateById(talent);
+            persistTalent(talent);
+            operationLogService.recordSystemAction(
+                    userId,
+                    "达人管理",
+                    "认领达人",
+                    "POST",
+                    "talent",
+                    talentId.toString(),
+                    talent.getNickname(),
+                    String.format("认领达人: 负责人=%s", userId));
             return talent;
         } finally {
             redisTemplate.delete(lockKey);
@@ -361,13 +371,13 @@ public class TalentService {
     @Transactional(rollbackFor = Exception.class)
     public Talent release(UUID talentId, UUID userId, UUID deptId, Collection<?> roleCodes) {
         if (userId == null) {
-            throw new BusinessException("缺少登录用户");
+            throw BusinessException.param("缺少登录用户");
         }
         getById(talentId);
 
         List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
         if (activeClaims.isEmpty()) {
-            throw new BusinessException("达人当前无有效认领记录");
+            throw BusinessException.stateInvalid("达人当前无有效认领记录");
         }
 
         boolean isAdmin = hasRole(roleCodes, "admin");
@@ -376,26 +386,36 @@ public class TalentService {
                         .thenComparing(TalentClaim::getClaimedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .filter(claim -> canRelease(claim, userId, deptId, isAdmin))
                 .findFirst()
-                .orElseThrow(() -> new BusinessException("仅认领人或管理员可以释放达人"));
+                .orElseThrow(() -> new ForbiddenException("仅认领人或管理员可以释放达人"));
 
         releaseTarget.setStatus(CLAIM_STATUS_RELEASED);
         releaseTarget.setProtectedUntil(LocalDateTime.now());
-        talentClaimMapper.updateById(releaseTarget);
+        persistTalentClaim(releaseTarget);
 
         Talent talent = getById(talentId);
-        talent.setOwnerId(null);
-        talentMapper.updateById(talent);
+        List<TalentClaim> remainingActiveClaims = talentClaimMapper.findActiveByTalentId(talentId);
+        applyReleaseOwnerSnapshot(talent, remainingActiveClaims);
+        persistTalent(talent);
+        operationLogService.recordSystemAction(
+                userId,
+                "达人管理",
+                "释放达人",
+                "POST",
+                "talent",
+                talentId.toString(),
+                talent.getNickname(),
+                String.format("释放达人: 操作人=%s, 释放认领=%s", userId, releaseTarget.getId()));
         return talent;
     }
 
     @Transactional(rollbackFor = Exception.class)
     public Talent overrideTalentAssignment(UUID talentId, UUID newUserId, String reason, UUID currentUserId) {
         if (newUserId == null) {
-            throw new BusinessException("新负责人ID不能为空");
+            throw BusinessException.param("新负责人ID不能为空");
         }
         SysUser targetUser = sysUserMapper.selectById(newUserId);
         if (targetUser == null || targetUser.getDeleted() == 1) {
-            throw new BusinessException("目标负责人不存在");
+            throw BusinessException.notFound("目标负责人不存在");
         }
         Talent talent = getById(talentId);
 
@@ -405,7 +425,7 @@ public class TalentService {
         for (TalentClaim claim : activeClaims) {
             claim.setStatus(CLAIM_STATUS_EXPIRED);
             claim.setProtectedUntil(now);
-            talentClaimMapper.updateById(claim);
+            persistTalentClaim(claim);
         }
 
         // Create a new manual claim for the new user
@@ -423,7 +443,7 @@ public class TalentService {
 
         talent.setOwnerId(newUserId);
         talent.setClaimedAt(now);
-        talentMapper.updateById(talent);
+        persistTalent(talent);
 
         operationLogService.recordSystemAction(
                 currentUserId,
@@ -449,7 +469,7 @@ public class TalentService {
         assertCanOperateBlacklist(talentId, userId, deptId, dataScope);
         talent.setBlacklisted(true);
         talent.setBlacklistReason(StringUtils.hasText(reason) ? reason.trim() : "手动拉黑");
-        talentMapper.updateById(talent);
+        persistTalent(talent);
         return talent;
     }
 
@@ -464,7 +484,7 @@ public class TalentService {
         assertCanOperateBlacklist(talentId, userId, deptId, dataScope);
         talent.setBlacklisted(false);
         talent.setBlacklistReason(null);
-        talentMapper.updateById(talent);
+        persistTalent(talent);
         return talent;
     }
 
@@ -477,20 +497,20 @@ public class TalentService {
             if (publicPageCrawlEnabled) {
                 enrichTalentInfo(talent, true);
             }
-            talentMapper.updateById(talent);
+            persistTalent(talent);
             if (orchestrateResult.updated()) {
                 markEnrichTask(task, ENRICH_TASK_STATUS_SUCCESS, null);
             } else {
                 talent.setEnrichStatus(ENRICH_TASK_STATUS_WAIT_MANUAL);
                 talent.setLastEnrichTime(LocalDateTime.now());
-                talentMapper.updateById(talent);
+                persistTalent(talent);
                 markEnrichTask(task, ENRICH_TASK_STATUS_WAIT_MANUAL, orchestrateResult.message());
             }
             return talent;
         } catch (RuntimeException ex) {
             talent.setEnrichStatus(ENRICH_TASK_STATUS_FAILED);
             talent.setLastEnrichTime(LocalDateTime.now());
-            talentMapper.updateById(talent);
+            persistTalent(talent);
             markEnrichTask(task, ENRICH_TASK_STATUS_FAILED, ex.getMessage());
             return talent;
         }
@@ -532,7 +552,7 @@ public class TalentService {
         talent.setDataSource("MANUAL");
         talent.setEnrichStatus(ENRICH_TASK_STATUS_SUCCESS);
         talent.setLastEnrichTime(LocalDateTime.now());
-        talentMapper.updateById(talent);
+        persistTalent(talent);
         return talent;
     }
 
@@ -574,7 +594,7 @@ public class TalentService {
                 continue;
             }
             claim.setStatus(CLAIM_STATUS_EXPIRED);
-            talentClaimMapper.updateById(claim);
+            persistTalentClaim(claim);
         }
     }
 
@@ -729,6 +749,32 @@ public class TalentService {
         return false;
     }
 
+    private void applyReleaseOwnerSnapshot(Talent talent, List<TalentClaim> activeClaims) {
+        List<TalentClaim> remainingClaims = activeClaims == null
+                ? List.of()
+                : activeClaims.stream()
+                        .filter(claim -> claim.getStatus() != null && claim.getStatus() == CLAIM_STATUS_ACTIVE)
+                        .sorted(Comparator.comparing(
+                                TalentClaim::getClaimedAt,
+                                Comparator.nullsLast(Comparator.reverseOrder())))
+                        .toList();
+        talent.setActiveClaimCount(remainingClaims.size());
+        if (remainingClaims.isEmpty()) {
+            talent.setOwnerId(null);
+            talent.setClaimedAt(null);
+            talent.setProtectedUntil(null);
+            return;
+        }
+        TalentClaim nextOwnerClaim = remainingClaims.get(0);
+        talent.setOwnerId(nextOwnerClaim.getUserId());
+        talent.setClaimedAt(nextOwnerClaim.getClaimedAt());
+        talent.setProtectedUntil(remainingClaims.stream()
+                .map(TalentClaim::getProtectedUntil)
+                .filter(Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(nextOwnerClaim.getProtectedUntil()));
+    }
+
     private void assertCanOperateBlacklist(UUID talentId, UUID userId, UUID deptId, DataScope dataScope) {
         if (dataScope == null || dataScope == DataScope.ALL) {
             return;
@@ -829,6 +875,14 @@ public class TalentService {
             return "DOUYIN_UID";
         }
         return "UNKNOWN";
+    }
+
+    private void persistTalent(Talent talent) {
+        OptimisticLockSupport.requireUpdated(talentMapper.updateById(talent));
+    }
+
+    private void persistTalentClaim(TalentClaim claim) {
+        OptimisticLockSupport.requireUpdated(talentClaimMapper.updateById(claim));
     }
 
     public record ExclusiveCheckResult(boolean eligible, long serviceFeeRatio, long monthlySamples) {

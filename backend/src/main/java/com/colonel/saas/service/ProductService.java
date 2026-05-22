@@ -7,6 +7,9 @@ import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.enums.TalentFollowStatus;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.OptimisticLockSupport;
+import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Merchant;
@@ -87,6 +90,7 @@ public class ProductService {
     private final ColonelsettlementActivityMapper colonelActivityMapper;
     private final TalentFollowService talentFollowService;
     private final DouyinActivityGateway douyinActivityGateway;
+    private final PromotionLinkIdempotencyService promotionLinkIdempotencyService;
 
     public ProductService(
             DouyinPromotionGateway douyinPromotionGateway,
@@ -102,7 +106,8 @@ public class ProductService {
             ProductBizStatusService productBizStatusService,
             ColonelsettlementActivityMapper colonelActivityMapper,
             TalentFollowService talentFollowService,
-            DouyinActivityGateway douyinActivityGateway) {
+            DouyinActivityGateway douyinActivityGateway,
+            PromotionLinkIdempotencyService promotionLinkIdempotencyService) {
         this.douyinPromotionGateway = douyinPromotionGateway;
         this.douyinProductGateway = douyinProductGateway;
         this.snapshotMapper = snapshotMapper;
@@ -117,6 +122,7 @@ public class ProductService {
         this.colonelActivityMapper = colonelActivityMapper;
         this.talentFollowService = talentFollowService;
         this.douyinActivityGateway = douyinActivityGateway;
+        this.promotionLinkIdempotencyService = promotionLinkIdempotencyService;
     }
 
     public IPage<Product> getPage(long page, long size, Integer status) {
@@ -179,6 +185,24 @@ public class ProductService {
     }
 
     public IPage<Product> getSelectedLibraryPage(long page, long size, String keyword, Integer status) {
+        return getSelectedLibraryPage(page, size, new SelectedLibraryFilter(
+                keyword,
+                status,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        ));
+    }
+
+    public IPage<Product> getSelectedLibraryPage(long page, long size, SelectedLibraryFilter filter) {
+        SelectedLibraryFilter safeFilter = filter == null ? SelectedLibraryFilter.empty() : filter.normalized();
         long currentPage = Math.max(page, 1);
         long pageSize = Math.max(size, 1);
         long fromIndex = (currentPage - 1) * pageSize;
@@ -211,7 +235,7 @@ public class ProductService {
                     continue;
                 }
                 Product product = toLegacyProduct(snapshot, state, assigneeNameMap);
-                if (!matchesSelectedLibraryFilters(product, keyword, status)) {
+                if (!matchesSelectedLibraryFilters(product, snapshot, state, safeFilter)) {
                     continue;
                 }
                 if (matchedTotal >= fromIndex && pageRecords.size() < pageSize) {
@@ -329,19 +353,221 @@ public class ProductService {
         return activityId + "::" + productId;
     }
 
-    private boolean matchesSelectedLibraryFilters(Product product, String keyword, Integer status) {
+    private boolean matchesSelectedLibraryFilters(
+            Product product,
+            ProductSnapshot snapshot,
+            ProductOperationState state,
+            SelectedLibraryFilter filter) {
         if (product == null) {
             return false;
         }
-        if (StringUtils.hasText(keyword)) {
-            String trimmed = keyword.trim();
-            boolean matchedByName = StringUtils.hasText(product.getName()) && product.getName().contains(trimmed);
-            boolean matchedByProductId = StringUtils.hasText(product.getProductId()) && product.getProductId().contains(trimmed);
-            if (!matchedByName && !matchedByProductId) {
+        if (StringUtils.hasText(filter.keyword())) {
+            String trimmed = filter.keyword();
+            boolean matchedByName = containsIgnoreCase(product.getName(), trimmed);
+            boolean matchedByProductId = containsIgnoreCase(product.getProductId(), trimmed);
+            boolean matchedByShop = containsIgnoreCase(snapshot.getShopName(), trimmed);
+            if (!matchedByName && !matchedByProductId && !matchedByShop) {
                 return false;
             }
         }
-        return status == null || java.util.Objects.equals(product.getStatus(), status);
+        if (filter.status() != null && !java.util.Objects.equals(product.getStatus(), filter.status())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.shopKeyword()) && !containsIgnoreCase(snapshot.getShopName(), filter.shopKeyword())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.categoryName()) && !containsIgnoreCase(snapshot.getCategoryName(), filter.categoryName())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.salesRange()) && !matchesSalesRange(snapshot.getSales(), filter.salesRange())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.promotionLink()) && !matchesPromotionLinkFilter(state, filter.promotionLink())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.allianceStatus()) && !matchesAllianceStatusFilter(snapshot, filter.allianceStatus())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.commission()) && !matchesCommissionFilter(snapshot, filter.commission())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.hasSample()) && !matchesHasSampleFilter(snapshot, filter.hasSample())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.assignee()) && !matchesAssigneeFilter(state, filter.assignee())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.systemTag()) && !matchesSystemTagFilter(snapshot, filter.systemTag())) {
+            return false;
+        }
+        return !StringUtils.hasText(filter.decision()) || matchesDecisionFilter(snapshot.getActivityId(), snapshot.getProductId(), filter.decision());
+    }
+
+    private boolean containsIgnoreCase(String value, String keyword) {
+        if (!StringUtils.hasText(value) || !StringUtils.hasText(keyword)) {
+            return false;
+        }
+        return value.toLowerCase(Locale.ROOT).contains(keyword.toLowerCase(Locale.ROOT));
+    }
+
+    private boolean matchesSalesRange(Long sales, String salesRange) {
+        long value = sales == null ? 0L : sales;
+        return switch (salesRange) {
+            case "lt100" -> value < 100L;
+            case "100_999" -> value >= 100L && value < 1_000L;
+            case "1k_29k" -> value >= 1_000L && value < 30_000L;
+            case "gte30000" -> value >= 30_000L;
+            default -> true;
+        };
+    }
+
+    private boolean matchesPromotionLinkFilter(ProductOperationState state, String promotionLink) {
+        boolean linked = state != null && (StringUtils.hasText(state.getPromoteLink()) || StringUtils.hasText(state.getShortLink()));
+        boolean failed = !linked && state != null && containsAny(state.getBizStatus(), "LINKED", "FOLLOWING");
+        return switch (promotionLink) {
+            case "LINKED" -> linked;
+            case "PENDING" -> !linked && !failed;
+            case "FAILED" -> failed;
+            default -> true;
+        };
+    }
+
+    private boolean matchesAllianceStatusFilter(ProductSnapshot snapshot, String allianceStatus) {
+        Integer status = snapshot.getStatus();
+        if ("pending_audit".equals(allianceStatus) && java.util.Objects.equals(status, 0)) {
+            return true;
+        }
+        if ("promoting".equals(allianceStatus) && java.util.Objects.equals(status, 1)) {
+            return true;
+        }
+        if ("rejected".equals(allianceStatus) && java.util.Objects.equals(status, 2)) {
+            return true;
+        }
+        if ("terminated".equals(allianceStatus) && java.util.Objects.equals(status, 3)) {
+            return true;
+        }
+        if ("expired".equals(allianceStatus) && java.util.Objects.equals(status, 6)) {
+            return true;
+        }
+        String text = snapshot.getStatusText();
+        return switch (allianceStatus) {
+            case "pending_audit" -> containsAny(text, "待审核", "审核中");
+            case "promoting" -> containsAny(text, "推广中", "推广");
+            case "rejected" -> containsAny(text, "未通过", "拒绝", "申请未通过");
+            case "terminated" -> containsAny(text, "终止", "已终止");
+            case "expired" -> containsAny(text, "过期", "已过期");
+            default -> true;
+        };
+    }
+
+    private boolean containsAny(String value, String... keywords) {
+        if (!StringUtils.hasText(value) || keywords == null) {
+            return false;
+        }
+        for (String keyword : keywords) {
+            if (containsIgnoreCase(value, keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean matchesCommissionFilter(ProductSnapshot snapshot, String commission) {
+        BigDecimal rate = resolveCommissionRate(snapshot);
+        return switch (commission) {
+            case "gt20" -> rate.compareTo(BigDecimal.valueOf(20)) >= 0;
+            case "10_20" -> rate.compareTo(BigDecimal.TEN) >= 0 && rate.compareTo(BigDecimal.valueOf(20)) < 0;
+            case "lt10" -> rate.compareTo(BigDecimal.TEN) < 0;
+            default -> true;
+        };
+    }
+
+    private boolean matchesHasSampleFilter(ProductSnapshot snapshot, String hasSample) {
+        boolean hasRule = isSampleRuleAvailable(snapshot);
+        return "1".equals(hasSample) ? hasRule : !"0".equals(hasSample) || !hasRule;
+    }
+
+    private boolean matchesAssigneeFilter(ProductOperationState state, String assignee) {
+        boolean assigned = state != null && state.getAssigneeId() != null;
+        return switch (assignee) {
+            case "assigned" -> assigned;
+            case "unassigned" -> !assigned;
+            default -> true;
+        };
+    }
+
+    private boolean matchesSystemTagFilter(ProductSnapshot snapshot, String systemTag) {
+        BigDecimal commissionRate = resolveCommissionRate(snapshot);
+        return switch (systemTag) {
+            case "high_commission" -> commissionRate.compareTo(BigDecimal.valueOf(20)) >= 0;
+            case "traffic" -> Boolean.TRUE.equals(snapshot.getHasDouinGoodsTag());
+            case "new" -> (snapshot.getSales() == null ? 0L : snapshot.getSales()) < 100L;
+            case "high_price" -> parsePriceYuan(snapshot.getPriceText(), snapshot.getPrice()).compareTo(BigDecimal.valueOf(300)) >= 0;
+            default -> true;
+        };
+    }
+
+    private boolean matchesDecisionFilter(String activityId, String productId, String decision) {
+        DecisionSummary summary = findDecisionSummary(activityId, productId);
+        if ("NONE".equals(decision)) {
+            return summary == null || !StringUtils.hasText(summary.level());
+        }
+        return summary != null && decision.equals(summary.level());
+    }
+
+    private boolean isSampleRuleAvailable(ProductSnapshot snapshot) {
+        LocalDateTime promotionEndTime = parseDateTime(snapshot.getPromotionEndTime());
+        boolean activityExpired = promotionEndTime != null && promotionEndTime.isBefore(LocalDateTime.now());
+        return !activityExpired && StringUtils.hasText(snapshot.getStatusText());
+    }
+
+    private BigDecimal parsePriceYuan(String priceText, Long priceCent) {
+        if (StringUtils.hasText(priceText)) {
+            String normalized = priceText.trim().replaceAll("[^0-9.]", "");
+            if (StringUtils.hasText(normalized)) {
+                try {
+                    return new BigDecimal(normalized);
+                } catch (NumberFormatException ignore) {
+                    // Fallback to cent price below.
+                }
+            }
+        }
+        if (priceCent == null || priceCent <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return BigDecimal.valueOf(priceCent).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    }
+
+    private List<String> buildLibrarySystemTags(ProductSnapshot snapshot) {
+        List<String> tags = new ArrayList<>();
+        if (resolveCommissionRate(snapshot).compareTo(BigDecimal.valueOf(20)) >= 0) {
+            tags.add("高佣");
+        }
+        if (Boolean.TRUE.equals(snapshot.getHasDouinGoodsTag())) {
+            tags.add("抖音商品池");
+        }
+        if ((snapshot.getSales() == null ? 0L : snapshot.getSales()) < 100L) {
+            tags.add("新品");
+        }
+        if (parsePriceYuan(snapshot.getPriceText(), snapshot.getPrice()).compareTo(BigDecimal.valueOf(300)) >= 0) {
+            tags.add("高客单价");
+        }
+        return tags;
+    }
+
+    private List<String> buildLibraryAlertTags(ProductSnapshot snapshot, ProductOperationState state) {
+        List<String> tags = new ArrayList<>();
+        if (!StringUtils.hasText(snapshot.getDetailUrl())) {
+            tags.add("无商品链接");
+        }
+        LocalDateTime promotionEndTime = parseDateTime(snapshot.getPromotionEndTime());
+        if (promotionEndTime != null && promotionEndTime.isBefore(LocalDateTime.now())) {
+            tags.add("活动过期");
+        }
+        if (state == null || state.getAssigneeId() == null) {
+            tags.add("未分配负责人");
+        }
+        return tags;
     }
 
     public Product getById(UUID id) {
@@ -351,8 +577,18 @@ public class ProductService {
 
     @Transactional(rollbackFor = Exception.class)
     public Product bindActivity(UUID id, UUID activityId) {
+        return bindActivity(id, activityId, null, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Product bindActivity(UUID id, UUID activityId, UUID operatorId, UUID operatorDeptId) {
         ProductSnapshot snapshot = getSnapshotById(id);
-        bindActivity(snapshot.getActivityId(), snapshot.getProductId(), activityId == null ? null : activityId.toString(), null, null);
+        bindActivity(
+                snapshot.getActivityId(),
+                snapshot.getProductId(),
+                activityId == null ? null : activityId.toString(),
+                operatorId,
+                operatorDeptId);
         return getById(id);
     }
 
@@ -378,7 +614,7 @@ public class ProductService {
             String externalUniqueId,
             Integer promotionScene,
             boolean needShortLink) {
-        return generatePromotionLink(id, userId, deptId, externalUniqueId, promotionScene, needShortLink, null, null);
+        return generatePromotionLink(id, userId, deptId, externalUniqueId, promotionScene, needShortLink, null, null, null);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -391,6 +627,20 @@ public class ProductService {
             boolean needShortLink,
             String scene,
             String talentId) {
+        return generatePromotionLink(id, userId, deptId, externalUniqueId, promotionScene, needShortLink, scene, talentId, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public DouyinPromotionGateway.PromotionLinkResult generatePromotionLink(
+            UUID id,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey) {
         ProductSnapshot snapshot = getSnapshotById(id);
         return generatePromotionLink(
                 snapshot.getActivityId(),
@@ -401,8 +651,8 @@ public class ProductService {
                 promotionScene,
                 needShortLink,
                 scene,
-                talentId
-        );
+                talentId,
+                idempotencyKey);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -743,7 +993,7 @@ public class ProductService {
         } else if (state.getId() == null) {
             operationStateMapper.insert(state);
         } else {
-            operationStateMapper.updateById(state);
+            persistOperationState(state);
         }
 
         ProductOperationLog log = new ProductOperationLog();
@@ -774,6 +1024,7 @@ public class ProductService {
             UUID operatorDeptId) {
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
+        assertCanBindActivityInDept(state, operatorDeptId);
         ProductBizStatus currentStatus = productBizStatusService.readBizStatus(state);
         state.setBoundActivityId(StringUtils.hasText(boundActivityId) ? boundActivityId.trim() : null);
         state.setLastOperationAt(LocalDateTime.now());
@@ -781,7 +1032,7 @@ public class ProductService {
             state.setId(UUID.randomUUID());
             operationStateMapper.insert(state);
         } else {
-            operationStateMapper.updateById(state);
+            persistOperationState(state);
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -812,7 +1063,7 @@ public class ProductService {
             UUID operatorId,
             UUID operatorDeptId) {
         if (assigneeId == null) {
-            throw new BusinessException("assigneeId 不能为空");
+            throw BusinessException.param("assigneeId 不能为空");
         }
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
@@ -845,13 +1096,13 @@ public class ProductService {
             UUID operatorId,
             UUID operatorDeptId) {
         if (assigneeId == null) {
-            throw new BusinessException("assigneeId 不能为空");
+            throw BusinessException.param("assigneeId 不能为空");
         }
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
         ProductBizStatus currentStatus = productBizStatusService.readBizStatus(state);
         if (currentStatus != ProductBizStatus.PENDING_AUDIT) {
-            throw new BusinessException("仅待审核商品可分配审核人");
+            throw BusinessException.stateInvalid("仅待审核商品可分配审核人");
         }
         state.setAssigneeId(assigneeId);
         state.setLastOperationAt(LocalDateTime.now());
@@ -859,7 +1110,7 @@ public class ProductService {
             state.setId(UUID.randomUUID());
             operationStateMapper.insert(state);
         } else {
-            operationStateMapper.updateById(state);
+            persistOperationState(state);
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -905,7 +1156,7 @@ public class ProductService {
             UUID operatorId,
             UUID operatorDeptId) {
         if (!approved && !StringUtils.hasText(reason)) {
-            throw new BusinessException("审核拒绝时必须填写原因");
+            throw BusinessException.stateInvalid("审核拒绝时必须填写原因");
         }
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
@@ -988,7 +1239,7 @@ public class ProductService {
             UUID operatorDeptId) {
         String normalizedLevel = normalizeDecisionLevel(decisionLevel);
         if (!StringUtils.hasText(reason)) {
-            throw new BusinessException("推进判断原因不能为空");
+            throw BusinessException.param("推进判断原因不能为空");
         }
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
@@ -998,7 +1249,7 @@ public class ProductService {
         if (state.getId() == null) {
             operationStateMapper.insert(state);
         } else {
-            operationStateMapper.updateById(state);
+            persistOperationState(state);
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -1033,11 +1284,90 @@ public class ProductService {
             String externalUniqueId,
             Integer promotionScene,
             boolean needShortLink) {
-        return generatePromotionLink(activityId, productId, userId, deptId, externalUniqueId, promotionScene, needShortLink, null, null);
+        return generatePromotionLink(activityId, productId, userId, deptId, externalUniqueId, promotionScene, needShortLink, null, null, null);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public DouyinPromotionGateway.PromotionLinkResult generatePromotionLink(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId) {
+        return generatePromotionLink(
+                activityId,
+                productId,
+                userId,
+                deptId,
+                externalUniqueId,
+                promotionScene,
+                needShortLink,
+                scene,
+                talentId,
+                null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public DouyinPromotionGateway.PromotionLinkResult generatePromotionLink(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey) {
+        if (!StringUtils.hasText(idempotencyKey)) {
+            return generatePromotionLinkInternal(
+                    activityId,
+                    productId,
+                    userId,
+                    deptId,
+                    externalUniqueId,
+                    promotionScene,
+                    needShortLink,
+                    scene,
+                    talentId);
+        }
+        String scopeKey = promotionLinkIdempotencyService.buildScopeKey(userId, activityId, productId, idempotencyKey);
+        java.util.Optional<DouyinPromotionGateway.PromotionLinkResult> completed =
+                promotionLinkIdempotencyService.findCompleted(scopeKey);
+        if (completed.isPresent()) {
+            return completed.get();
+        }
+        if (!promotionLinkIdempotencyService.tryAcquireInFlight(scopeKey)) {
+            completed = promotionLinkIdempotencyService.findCompleted(scopeKey);
+            if (completed.isPresent()) {
+                return completed.get();
+            }
+            throw BusinessException.idempotencyInProgress("相同 Idempotency-Key 请求正在处理中，请稍后重试");
+        }
+        try {
+            DouyinPromotionGateway.PromotionLinkResult result = generatePromotionLinkInternal(
+                    activityId,
+                    productId,
+                    userId,
+                    deptId,
+                    externalUniqueId,
+                    promotionScene,
+                    needShortLink,
+                    scene,
+                    talentId);
+            promotionLinkIdempotencyService.markCompleted(scopeKey, result);
+            return result;
+        } catch (RuntimeException ex) {
+            promotionLinkIdempotencyService.releaseInFlight(scopeKey);
+            throw ex;
+        }
+    }
+
+    private DouyinPromotionGateway.PromotionLinkResult generatePromotionLinkInternal(
             String activityId,
             String productId,
             UUID userId,
@@ -1062,7 +1392,7 @@ public class ProductService {
         if (beforeStatus != ProductBizStatus.APPROVED
                 && beforeStatus != ProductBizStatus.ASSIGNED
                 && !relinkExistingProduct) {
-            throw new BusinessException("当前状态不允许执行PROMOTION_LINK，当前状态：" + beforeStatus.name());
+            throw BusinessException.stateInvalid("当前状态不允许执行PROMOTION_LINK，当前状态：" + beforeStatus.name());
         }
         SysUser user = sysUserMapper.selectById(userId);
         String desiredPickExtra = buildPickExtra(userId);
@@ -1171,7 +1501,7 @@ public class ProductService {
                 state.setShortLink(result.shortLink());
                 state.setPromotionScene(finalPromotionScene);
                 state.setExternalUniqueId(finalExternalId);
-                operationStateMapper.updateById(state);
+                persistOperationState(state);
                 productBizStatusService.logStatusChange(
                         snapshot.getActivityId(),
                         snapshot.getProductId(),
@@ -1671,7 +2001,7 @@ public class ProductService {
     private ProductSnapshot getSnapshotById(UUID id) {
         ProductSnapshot snapshot = snapshotMapper.selectById(id);
         if (snapshot == null) {
-            throw new BusinessException("商品不存在");
+            throw BusinessException.notFound("商品不存在");
         }
         return snapshot;
     }
@@ -1679,7 +2009,7 @@ public class ProductService {
     private ProductSnapshot ensureSnapshotExists(String activityId, String productId) {
         ProductSnapshot snapshot = getSnapshot(activityId, productId);
         if (snapshot == null) {
-            throw new BusinessException("未找到商品快照，请先同步活动商品");
+            throw BusinessException.notFound("未找到商品快照，请先同步活动商品");
         }
         return snapshot;
     }
@@ -1768,6 +2098,8 @@ public class ProductService {
         product.setPrice(snapshot.getPrice());
         product.setStatus(snapshot.getStatus());
         product.setCategory(snapshot.getCategoryName());
+        product.setCategoryName(snapshot.getCategoryName());
+        product.setStatusText(snapshot.getStatusText());
         product.setActivityId(toUuid(snapshot.getActivityId()));
         product.setSourceActivityId(snapshot.getActivityId());
         product.setCover(snapshot.getCover());
@@ -1775,12 +2107,16 @@ public class ProductService {
         product.setPriceText(snapshot.getPriceText());
         product.setActivityCosRatioText(snapshot.getActivityCosRatioText());
         product.setEstimatedServiceFee(estimateFee(snapshot.getPrice(), resolveServiceFeeRate(snapshot)).toPlainString());
+        product.setSales30d(snapshot.getSales() == null ? 0L : snapshot.getSales());
+        product.setHasSampleRule(isSampleRuleAvailable(snapshot));
+        product.setSystemTags(buildLibrarySystemTags(snapshot));
         product.setCreateTime(snapshot.getCreateTime());
         product.setUpdateTime(snapshot.getUpdateTime());
 
         ProductOperationState state = providedState != null
                 ? providedState
                 : getOperationState(snapshot.getActivityId(), snapshot.getProductId());
+        product.setAlertTags(buildLibraryAlertTags(snapshot, state));
         if (state != null) {
             product.setCheckStatus(state.getAuditStatus());
             product.setAuditRemark(state.getAuditRemark());
@@ -2165,11 +2501,11 @@ public class ProductService {
 
     private String normalizeDecisionLevel(String decisionLevel) {
         if (!StringUtils.hasText(decisionLevel)) {
-            throw new BusinessException("推进判断不能为空");
+            throw BusinessException.param("推进判断不能为空");
         }
         String normalized = decisionLevel.trim().toUpperCase();
         if (!Set.of("MAIN", "SECONDARY", "PAUSE", "DROP").contains(normalized)) {
-            throw new BusinessException("未知推进判断：" + decisionLevel);
+            throw BusinessException.param("未知推进判断：" + decisionLevel);
         }
         return normalized;
     }
@@ -2451,14 +2787,36 @@ public class ProductService {
             return;
         }
         if (Integer.valueOf(3).equals(auditStatus)) {
-            throw new BusinessException("审核拒绝的商品不能加入商品库");
+            throw BusinessException.stateInvalid("审核拒绝的商品不能加入商品库");
         }
-        throw new BusinessException("请先完成审核通过，再继续后续业务操作");
+        throw BusinessException.stateInvalid("请先完成审核通过，再继续后续业务操作");
+    }
+
+    private void persistOperationState(ProductOperationState state) {
+        OptimisticLockSupport.requireUpdated(operationStateMapper.updateById(state));
     }
 
     private void requireSelectedToLibrary(ProductOperationState state, String actionLabel) {
         if (!Boolean.TRUE.equals(state.getSelectedToLibrary())) {
-            throw new BusinessException("请先将商品加入商品库后再" + actionLabel);
+            throw BusinessException.stateInvalid("请先将商品加入商品库后再" + actionLabel);
+        }
+    }
+
+    private void assertCanBindActivityInDept(ProductOperationState state, UUID operatorDeptId) {
+        if (state == null) {
+            return;
+        }
+        UUID scopedUserId = state.getAssigneeId() != null ? state.getAssigneeId() : state.getSelectedBy();
+        if (scopedUserId == null) {
+            return;
+        }
+        SysUser scopedUser = sysUserMapper.selectById(scopedUserId);
+        UUID scopedDeptId = scopedUser == null ? null : scopedUser.getDeptId();
+        if (scopedDeptId == null) {
+            return;
+        }
+        if (operatorDeptId == null || !scopedDeptId.equals(operatorDeptId)) {
+            throw new ForbiddenException("无权跨部门修改商品绑定活动");
         }
     }
 
@@ -2477,7 +2835,7 @@ public class ProductService {
         state.setSelectedToLibrary(true);
         state.setSelectedAt(LocalDateTime.now());
         state.setSelectedBy(operatorId);
-        operationStateMapper.updateById(state);
+        persistOperationState(state);
     }
 
     private void validateAuditSupplement(Map<String, Object> supplement) {
@@ -2495,7 +2853,7 @@ public class ProductService {
         requireText(normalized, "campaignTimeRemark", "活动时间", missing);
         requireList(normalized, "materialFiles", "手卡素材", missing);
         if (!missing.isEmpty()) {
-            throw new BusinessException("审核通过前请补充：" + String.join("、", missing));
+            throw BusinessException.stateInvalid("审核通过前请补充：" + String.join("、", missing));
         }
     }
 
@@ -2519,7 +2877,7 @@ public class ProductService {
         try {
             return OBJECT_MAPPER.writeValueAsString(normalized);
         } catch (Exception ex) {
-            throw new BusinessException("审核补充信息保存失败");
+            throw BusinessException.conflict("审核补充信息保存失败");
         }
     }
 
@@ -2796,10 +3154,10 @@ public class ProductService {
         }
         String value = raw.trim();
         if (value.matches("^\\d{13}$")) {
-            return LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.parseLong(value)), ZoneId.systemDefault());
+            return AppZone.fromEpochMilli(Long.parseLong(value));
         }
         if (value.matches("^\\d{10}$")) {
-            return LocalDateTime.ofInstant(Instant.ofEpochSecond(Long.parseLong(value)), ZoneId.systemDefault());
+            return AppZone.fromEpochSecond(Long.parseLong(value));
         }
         List<DateTimeFormatter> formatters = List.of(
                 DateTimeFormatter.ISO_LOCAL_DATE_TIME,
@@ -2924,6 +3282,55 @@ public class ProductService {
             int linkCount,
             LocalDateTime lastLinkTime,
             List<Map<String, Object>> linkRecords) {
+    }
+
+    public record SelectedLibraryFilter(
+            String keyword,
+            Integer status,
+            String shopKeyword,
+            String categoryName,
+            String salesRange,
+            String promotionLink,
+            String allianceStatus,
+            String commission,
+            String hasSample,
+            String assignee,
+            String systemTag,
+            String decision
+    ) {
+        public static SelectedLibraryFilter empty() {
+            return new SelectedLibraryFilter(null, null, null, null, null, null, null, null, null, null, null, null);
+        }
+
+        public SelectedLibraryFilter normalized() {
+            return new SelectedLibraryFilter(
+                    trimToNull(keyword),
+                    status,
+                    trimToNull(shopKeyword),
+                    trimToNull(categoryName),
+                    normalizeToken(salesRange),
+                    normalizeToken(promotionLink),
+                    normalizeToken(allianceStatus),
+                    normalizeToken(commission),
+                    normalizeToken(hasSample),
+                    normalizeToken(assignee),
+                    normalizeToken(systemTag),
+                    normalizeToken(decision)
+            );
+        }
+
+        private static String trimToNull(String value) {
+            if (value == null) {
+                return null;
+            }
+            String trimmed = value.trim();
+            return trimmed.isEmpty() ? null : trimmed;
+        }
+
+        private static String normalizeToken(String value) {
+            String trimmed = trimToNull(value);
+            return trimmed == null ? null : trimmed;
+        }
     }
 
     private record BizStatusFilter(

@@ -27,7 +27,7 @@ public class OrderQueryService {
     public OrderDetailResponse getOrderDetail(String orderId, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
         Map<String, Object> row = findOrderDetailRow(orderId);
         if (row == null || row.isEmpty()) {
-            throw new BusinessException("订单不存在");
+            throw BusinessException.notFound("订单不存在");
         }
         assertCanAccess(row, currentUserId, currentDeptId, dataScope);
 
@@ -363,6 +363,7 @@ public class OrderQueryService {
             case AttributionService.REASON_MAPPING_NOT_FOUND, "pick_source 未匹配到有效归因映射" -> "未找到对应推广链接";
             case AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND -> "原生团长订单未找到归因映射";
             case AttributionService.REASON_COLONEL_MAPPING_AMBIGUOUS -> "原生团长订单命中多条归因映射";
+            case AttributionService.REASON_TALENT_CLAIM_OWNER_CONFLICT -> "归因负责人和达人认领人不一致";
             case AttributionService.REASON_PRODUCT_NOT_FOUND -> "未匹配到本地商品库";
             case AttributionService.REASON_ACTIVITY_NOT_FOUND -> "商品未关联活动";
             case AttributionService.REASON_CHANNEL_NOT_FOUND -> "未匹配到渠道负责人";
@@ -383,6 +384,8 @@ public class OrderQueryService {
                     "请确认该原生团长订单对应的活动、商品和推广映射是否已落库。";
             case AttributionService.REASON_COLONEL_MAPPING_AMBIGUOUS ->
                     "请排查同一活动商品是否存在多条渠道映射，避免原生团长订单串单。";
+            case AttributionService.REASON_TALENT_CLAIM_OWNER_CONFLICT ->
+                    "请核对该达人当前有效认领记录和推广映射负责人，必要时重新认领或重建转链映射。";
             case AttributionService.REASON_PRODUCT_NOT_FOUND -> "请检查商品主链路是否已同步入库。";
             case AttributionService.REASON_ACTIVITY_NOT_FOUND -> "请检查该商品是否已绑定活动并完成状态落库。";
             case AttributionService.REASON_CHANNEL_NOT_FOUND -> "请检查渠道负责人是否已完成分配。";

@@ -66,6 +66,39 @@ class RealPreMigrationContractTest {
         assertThat(compose).contains("DOUYIN_TOKEN_REDIS_LOCK_MINUTES: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:-5}");
     }
 
+    @Test
+    void dbPerformanceContract_shouldProtectFinancialAndExclusiveRelationshipInvariants() throws IOException {
+        String initSql = readLower(DB_DIR.resolve("init-db.sql"));
+        String migrationSql = readLower(DB_DIR.resolve("alter-db-performance-contract-20260521.sql"));
+
+        assertFinancialAndExclusiveConstraints(initSql);
+        assertFinancialAndExclusiveConstraints(migrationSql);
+    }
+
+    private static void assertFinancialAndExclusiveConstraints(String sql) {
+        assertThat(sql).contains("ck_exclusive_talent_non_negative_financials");
+        assertThat(sql).contains("service_fee >= 0");
+        assertThat(sql).contains("channel_total_fee >= 0");
+        assertThat(sql).contains("ck_exclusive_merchant_non_negative_financials");
+        assertThat(sql).contains("business_total_fee >= 0");
+        assertThat(sql).contains("ck_commission_settlement_non_negative_financials");
+        assertThat(sql).contains("total_order_amount >= 0");
+        assertThat(sql).contains("commission_amount >= 0");
+        assertThat(sql).contains("tech_service_fee >= 0");
+        assertThat(sql).contains("net_commission >= 0");
+        assertThat(sql).contains("ck_cso_non_negative_financials");
+        assertThat(sql).contains("order_amount >= 0");
+        assertThat(sql).contains("actual_amount >= 0");
+        assertThat(sql).contains("settle_colonel_commission >= 0");
+        assertThat(sql).contains("settle_colonel_tech_service_fee >= 0");
+        assertThat(sql).contains("settle_second_colonel_commission >= 0");
+        assertThat(sql).contains("ck_exclusive_talent_status");
+        assertThat(sql).contains("ck_exclusive_merchant_status");
+        assertThat(sql).contains("status in (0, 1, 2)");
+        assertThat(sql).contains("fk_em_merchant");
+        assertThat(sql).contains("foreign key (merchant_id) references merchant(merchant_id) on delete cascade");
+    }
+
     private static String readLower(Path path) throws IOException {
         return Files.readString(path).toLowerCase(Locale.ROOT);
     }

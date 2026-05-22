@@ -28,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -40,9 +41,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -98,6 +101,8 @@ class TalentServiceTest {
         when(businessRuleConfigService.getTalentProtectionDays()).thenReturn(30);
         when(businessRuleConfigService.getTalentExclusiveRatioThreshold()).thenReturn(new java.math.BigDecimal("70"));
         when(businessRuleConfigService.getTalentExclusiveMonthlySamples()).thenReturn(10);
+        lenient().when(talentMapper.updateById(any(Talent.class))).thenReturn(1);
+        lenient().when(talentClaimMapper.updateById(any(TalentClaim.class))).thenReturn(1);
         when(talentEnrichTaskMapper.insert(any(TalentEnrichTask.class))).thenAnswer(invocation -> {
             TalentEnrichTask task = invocation.getArgument(0);
             if (task.getId() == null) {
@@ -117,6 +122,7 @@ class TalentServiceTest {
         Talent talent = new Talent();
         talent.setId(talentId);
         talent.setDouyinUid("dy_001");
+        talent.setNickname("达人一号");
         talent.setDeleted(0);
 
         when(valueOperations.setIfAbsent(any(String.class), any(String.class), anyLong(), eq(TimeUnit.SECONDS)))
@@ -133,6 +139,191 @@ class TalentServiceTest {
         verify(talentClaimMapper).insert(claimCaptor.capture());
         assertThat(claimCaptor.getValue().getId()).isNotNull();
         assertThat(claimCaptor.getValue().getClaimType()).isEqualTo(1);
+        verify(operationLogService).recordSystemAction(
+                eq(userId), eq("达人管理"), eq("认领达人"), eq("POST"),
+                eq("talent"), eq(talentId.toString()), eq("达人一号"),
+                contains(userId.toString()));
+        verify(redisTemplate).delete("talent:claim:lock:" + talentId);
+    }
+
+    @Test
+    void getPublicPool_shouldExcludeClaimedAndSortByFans() {
+        UUID claimedId = UUID.randomUUID();
+        TalentClaim activeClaim = new TalentClaim();
+        activeClaim.setTalentId(claimedId);
+
+        Talent lowFans = talent("dy_low", 100L);
+        Talent highFans = talent("dy_high", 300L);
+        Talent claimed = talent("dy_claimed", 999L);
+        claimed.setId(claimedId);
+
+        when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(activeClaim));
+        when(talentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(lowFans, claimed, highFans));
+
+        List<Talent> result = talentService.getPublicPool();
+
+        assertThat(result).extracting(Talent::getDouyinUid).containsExactly("dy_high", "dy_low");
+    }
+
+    @Test
+    void getPrivatePool_shouldReturnEmptyWhenNoClaimsAndLoadClaimedTalents() {
+        UUID userId = UUID.randomUUID();
+        when(talentClaimMapper.findActiveByUserId(userId)).thenReturn(List.of());
+
+        assertThat(talentService.getPrivatePool(userId)).isEmpty();
+
+        UUID talentId = UUID.randomUUID();
+        TalentClaim claim = new TalentClaim();
+        claim.setTalentId(talentId);
+        Talent talent = talent("dy_private", 100L);
+        talent.setId(talentId);
+        when(talentClaimMapper.findActiveByUserId(userId)).thenReturn(List.of(claim));
+        when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
+
+        assertThat(talentService.getPrivatePool(userId)).containsExactly(talent);
+    }
+
+    @Test
+    void page_shouldReturnEmptyForScopedQueriesWithoutClaimsAndDelegateGeneralQuery() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        when(talentClaimMapper.findActiveByUserId(userId)).thenReturn(List.of());
+        when(talentClaimMapper.findActiveByDeptId(deptId)).thenReturn(List.of());
+
+        assertThat(talentService.page(1, 10, "alice", "上海", 100L, 1000L, DataScope.PERSONAL, userId, null).getTotal())
+                .isZero();
+        assertThat(talentService.page(1, 10, null, null, null, null, DataScope.DEPT, null, deptId).getTotal())
+                .isZero();
+
+        Page<Talent> mapperPage = new Page<>(2, 5, 1);
+        mapperPage.setRecords(List.of(talent("dy_page", 10L)));
+        when(talentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(mapperPage);
+
+        assertThat(talentService.page(2, 5, "bob", "杭州", 10L, 100L, DataScope.ALL, null, null).getRecords())
+                .hasSize(1);
+    }
+
+    @Test
+    void updateAndDelete_shouldPersistAllowedFieldChanges() {
+        UUID talentId = UUID.randomUUID();
+        Talent existing = talent("dy_update", 10L);
+        existing.setId(talentId);
+        existing.setDeleted(0);
+        when(talentMapper.selectById(talentId)).thenReturn(existing);
+
+        Talent request = new Talent();
+        request.setNickname("updated");
+        request.setFans(200L);
+        request.setLevel("LV2");
+        request.setStatus(2);
+        request.setContactPhone(" 13900000000 ");
+        request.setContactWechat(" wx-test ");
+        request.setIntro(" intro ");
+
+        Talent updated = talentService.update(talentId, request);
+
+        assertThat(updated.getNickname()).isEqualTo("updated");
+        assertThat(updated.getFans()).isEqualTo(200L);
+        assertThat(updated.getLevel()).isEqualTo("LV2");
+        assertThat(updated.getStatus()).isEqualTo(2);
+        assertThat(updated.getContactPhone()).isEqualTo("13900000000");
+        assertThat(updated.getContactWechat()).isEqualTo("wx-test");
+        assertThat(updated.getIntro()).isEqualTo("intro");
+        verify(talentMapper).updateById(existing);
+
+        talentService.delete(talentId);
+        verify(talentMapper).deleteById(talentId);
+    }
+
+    @Test
+    void getById_shouldThrowWhenTalentIsSoftDeleted() {
+        UUID talentId = UUID.randomUUID();
+        Talent deleted = talent("dy_deleted", 1L);
+        deleted.setId(talentId);
+        deleted.setDeleted(1);
+        when(talentMapper.selectById(talentId)).thenReturn(deleted);
+
+        assertThatThrownBy(() -> talentService.getById(talentId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("达人不存在");
+    }
+
+    @Test
+    void create_shouldRejectMissingIdentityAndDuplicateUid() {
+        assertThatThrownBy(() -> talentService.create(new Talent()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("达人抖音号或链接不能为空");
+
+        Talent request = new Talent();
+        request.setDouyinUid("dy_duplicate");
+        when(talentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(talent("dy_duplicate", 1L));
+
+        assertThatThrownBy(() -> talentService.create(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("已存在");
+    }
+
+    @Test
+    void create_shouldTrimFieldsSetDefaultsAndSkipEnrichWhenProfilePrefilled() {
+        Talent request = new Talent();
+        request.setDouyinUid("dy_prefilled");
+        request.setDouyinNo(" douyin-no ");
+        request.setUid(" uid-001 ");
+        request.setNickname(" nickname ");
+        request.setContactPhone(" 13800000000 ");
+        request.setContactWechat(" wx ");
+        request.setIntro(" intro ");
+        request.setDataSource("MANUAL");
+        request.setSyncStatus("SUCCESS");
+
+        when(talentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+        when(talentMapper.insert(any(Talent.class))).thenReturn(1);
+
+        Talent created = talentService.create(request);
+
+        assertThat(created.getId()).isNotNull();
+        assertThat(created.getStatus()).isEqualTo(1);
+        assertThat(created.getNickname()).isEqualTo("nickname");
+        assertThat(created.getContactPhone()).isEqualTo("13800000000");
+        assertThat(created.getContactWechat()).isEqualTo("wx");
+        assertThat(created.getIntro()).isEqualTo("intro");
+        assertThat(created.getDouyinAccount()).isEqualTo("douyin-no");
+        assertThat(created.getTalentUid()).isEqualTo("uid-001");
+        assertThat(created.getUnsupportedFields()).containsExactly("talentLevel", "sales30d");
+        assertThat(created.getLastSyncTime()).isNotNull();
+        verify(talentEnrichTaskMapper, never()).insert(any(TalentEnrichTask.class));
+    }
+
+    @Test
+    void claim_shouldRejectMissingUserLockConflictAndSelfDuplicate() {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Talent talent = talent("dy_claim_conflict", 10L);
+        talent.setId(talentId);
+        talent.setDeleted(0);
+
+        assertThatThrownBy(() -> talentService.claim(talentId, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("缺少登录用户");
+
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.setIfAbsent(any(String.class), any(String.class), anyLong(), eq(TimeUnit.SECONDS)))
+                .thenReturn(false);
+        assertThatThrownBy(() -> talentService.claim(talentId, userId, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("认领处理中");
+
+        when(valueOperations.setIfAbsent(any(String.class), any(String.class), anyLong(), eq(TimeUnit.SECONDS)))
+                .thenReturn(true);
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        TalentClaim selfClaim = new TalentClaim();
+        selfClaim.setTalentId(talentId);
+        selfClaim.setUserId(userId);
+        when(talentClaimMapper.findActiveByTalentAndUser(talentId, userId)).thenReturn(selfClaim);
+
+        assertThatThrownBy(() -> talentService.claim(talentId, userId, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("无需重复认领");
         verify(redisTemplate).delete("talent:claim:lock:" + talentId);
     }
 
@@ -238,6 +429,7 @@ class TalentServiceTest {
         Talent talent = new Talent();
         talent.setId(talentId);
         talent.setDouyinUid("dy_release_self");
+        talent.setNickname("待释放达人");
         talent.setDeleted(0);
 
         TalentClaim selfClaim = new TalentClaim();
@@ -250,7 +442,9 @@ class TalentServiceTest {
         selfClaim.setProtectedUntil(LocalDateTime.now().plusDays(10));
 
         when(talentMapper.selectById(talentId)).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(selfClaim));
+        when(talentClaimMapper.findActiveByTalentId(talentId))
+                .thenReturn(List.of(selfClaim))
+                .thenReturn(List.of());
 
         Talent released = talentService.release(talentId, userId, deptId, List.of("channel_leader"));
 
@@ -258,7 +452,93 @@ class TalentServiceTest {
         assertThat(selfClaim.getStatus()).isEqualTo(3);
         verify(talentClaimMapper).updateById(selfClaim);
         verify(talentMapper).updateById(talent);
+        verify(operationLogService).recordSystemAction(
+                eq(userId), eq("达人管理"), eq("释放达人"), eq("POST"),
+                eq("talent"), eq(talentId.toString()), eq("待释放达人"),
+                contains(userId.toString()));
         assertThat(talent.getOwnerId()).isNull();
+    }
+
+    @Test
+    void release_shouldRejectMissingUserNoActiveClaimAndAllowAdminRelease() {
+        UUID talentId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        Talent talent = talent("dy_release_admin", 10L);
+        talent.setId(talentId);
+        talent.setDeleted(0);
+
+        assertThatThrownBy(() -> talentService.release(talentId, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("缺少登录用户");
+
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of());
+        assertThatThrownBy(() -> talentService.release(talentId, adminId, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("无有效认领记录");
+
+        TalentClaim otherClaim = new TalentClaim();
+        otherClaim.setId(UUID.randomUUID());
+        otherClaim.setTalentId(talentId);
+        otherClaim.setUserId(otherUserId);
+        otherClaim.setStatus(1);
+        otherClaim.setClaimedAt(LocalDateTime.now());
+        when(talentClaimMapper.findActiveByTalentId(talentId))
+                .thenReturn(List.of(otherClaim))
+                .thenReturn(List.of());
+
+        Talent released = talentService.release(talentId, adminId, null, List.of("ADMIN"));
+
+        assertThat(otherClaim.getStatus()).isEqualTo(3);
+        assertThat(released.getOwnerId()).isNull();
+    }
+
+    @Test
+    void release_shouldKeepRemainingClaimOwnerWhenTalentHasMultipleActiveClaims() {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("dy_release_multi_claim");
+        talent.setDeleted(0);
+
+        TalentClaim selfClaim = new TalentClaim();
+        selfClaim.setId(UUID.randomUUID());
+        selfClaim.setTalentId(talentId);
+        selfClaim.setUserId(userId);
+        selfClaim.setDeptId(deptId);
+        selfClaim.setStatus(1);
+        selfClaim.setClaimedAt(LocalDateTime.now().minusDays(1));
+        selfClaim.setProtectedUntil(LocalDateTime.now().plusDays(10));
+
+        TalentClaim otherClaim = new TalentClaim();
+        otherClaim.setId(UUID.randomUUID());
+        otherClaim.setTalentId(talentId);
+        otherClaim.setUserId(otherUserId);
+        otherClaim.setDeptId(deptId);
+        otherClaim.setStatus(1);
+        otherClaim.setClaimedAt(LocalDateTime.now().minusDays(2));
+        otherClaim.setProtectedUntil(LocalDateTime.now().plusDays(9));
+
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentId(talentId))
+                .thenReturn(List.of(selfClaim, otherClaim))
+                .thenReturn(List.of(otherClaim));
+
+        Talent released = talentService.release(talentId, userId, deptId, List.of("channel_leader"));
+
+        assertThat(selfClaim.getStatus()).isEqualTo(3);
+        assertThat(released.getOwnerId()).isEqualTo(otherUserId);
+        verify(talentClaimMapper, times(2)).findActiveByTalentId(talentId);
+        assertThat(released.getClaimedAt()).isEqualTo(otherClaim.getClaimedAt());
+        assertThat(released.getProtectedUntil()).isEqualTo(otherClaim.getProtectedUntil());
+        assertThat(released.getActiveClaimCount()).isEqualTo(1);
+        verify(talentClaimMapper).updateById(selfClaim);
+        verify(talentMapper).updateById(talent);
     }
 
     @Test
@@ -290,7 +570,7 @@ class TalentServiceTest {
                 leaderUserId,
                 deptId,
                 List.of("channel_leader")))
-                .isInstanceOf(BusinessException.class)
+                .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("仅认领人或管理员可以释放达人");
 
         verify(talentClaimMapper, never()).updateById(memberClaim);
@@ -513,6 +793,29 @@ class TalentServiceTest {
         assertThat(result.eligible()).isTrue();
         assertThat(result.serviceFeeRatio()).isEqualTo(70L);
         assertThat(result.monthlySamples()).isEqualTo(15L);
+    }
+
+    @Test
+    void evaluateExclusive_shouldReturnFalseWhenNoServiceFeeAndNullSampleCount() {
+        UUID talentId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        Talent talent = talent("dy_zero", 10L);
+        talent.setId(talentId);
+        talent.setDeleted(0);
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+
+        com.colonel.saas.entity.ColonelsettlementOrder order = new com.colonel.saas.entity.ColonelsettlementOrder();
+        order.setExtraData(Map.of("talent_uid", "dy_zero"));
+        Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 1);
+        orderPage.setRecords(List.of(order));
+        when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
+        when(sampleRequestMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(null);
+
+        TalentService.ExclusiveCheckResult result = talentService.evaluateExclusive(talentId, DataScope.DEPT, null, deptId);
+
+        assertThat(result.eligible()).isFalse();
+        assertThat(result.serviceFeeRatio()).isZero();
+        assertThat(result.monthlySamples()).isZero();
     }
 
     @Test
@@ -751,5 +1054,56 @@ class TalentServiceTest {
                 eq(currentUserId), eq("达人管理"), eq("归属覆盖"), eq("POST"),
                 eq("talent"), eq(talentId.toString()), eq("test-nickname"),
                 eq(String.format("归属覆盖: 新负责人=%s, 原因=%s", newUserId, "测试覆盖")));
+    }
+
+    @Test
+    void privateHelpers_shouldResolveInputValuesRolesAndTalentMatching() {
+        Talent talent = new Talent();
+        talent.setProfileUrl(" profile ");
+        talent.setDouyinNo(" no ");
+        talent.setUid(" uid ");
+        talent.setSecUid(" sec ");
+        talent.setDouyinUid(" dy ");
+
+        assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputValue", talent)).isEqualTo("profile");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputType", talent)).isEqualTo("PROFILE_URL");
+
+        talent.setProfileUrl(null);
+        assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputValue", talent)).isEqualTo("no");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputType", talent)).isEqualTo("DOUYIN_NO");
+        talent.setDouyinNo(null);
+        assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputValue", talent)).isEqualTo("uid");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputType", talent)).isEqualTo("UID");
+        talent.setUid(null);
+        assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputValue", talent)).isEqualTo("sec");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputType", talent)).isEqualTo("SEC_UID");
+        talent.setSecUid(null);
+        assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputValue", talent)).isEqualTo("dy");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputType", talent)).isEqualTo("DOUYIN_UID");
+        talent.setDouyinUid(null);
+        assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputValue", talent)).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputType", talent)).isEqualTo("UNKNOWN");
+
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "hasRole", null, "admin")).isFalse();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "hasRole", List.of("Channel", "ADMIN"), "admin")).isTrue();
+
+        com.colonel.saas.entity.ColonelsettlementOrder order = new com.colonel.saas.entity.ColonelsettlementOrder();
+        order.setExtraData(Map.of("author_id", "dy_match"));
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "matchesTalent", order, "dy_match")).isTrue();
+        order.setExtraData(Map.of("talent_uid", "dy_match"));
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "matchesTalent", order, "dy_match")).isTrue();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "matchesTalent", order, " ")).isFalse();
+        order.setExtraData(null);
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "matchesTalent", order, "dy_match")).isFalse();
+    }
+
+    private Talent talent(String douyinUid, Long fans) {
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        talent.setDouyinUid(douyinUid);
+        talent.setFans(fans);
+        talent.setStatus(1);
+        talent.setDeleted(0);
+        return talent;
     }
 }

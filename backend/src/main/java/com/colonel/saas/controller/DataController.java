@@ -21,6 +21,8 @@ import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.ShortTtlCacheService;
+import com.colonel.saas.vo.ExclusiveMerchantStatusVO;
+import com.colonel.saas.vo.ExclusiveTalentStatusVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -147,7 +149,7 @@ public class DataController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        String cacheKey = METRICS_CACHE_PREFIX + cacheKey(timeField, userId, deptId, dataScope);
+        String cacheKey = METRICS_CACHE_PREFIX + metricsCacheKey(timeField, userId, deptId, dataScope);
         return ok(shortTtlCacheService.get(cacheKey, METRICS_CACHE_TTL, () -> {
         LocalDate today = LocalDate.now();
         LocalDateTime todayStart = today.atStartOfDay();
@@ -318,7 +320,7 @@ public class DataController extends BaseController {
     @Operation(summary = "独家状态监控 - 达人", description = "分页查询达人独家状态监控数据。支持按月份、关键字、状态筛选。")
     @GetMapping("/operations/exclusive-talents")
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
-    public ApiResult<PageResult<ExclusiveTalent>> getExclusiveTalentStatus(
+    public ApiResult<PageResult<ExclusiveTalentStatusVO>> getExclusiveTalentStatus(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,
             @Parameter(description = "生效月份，格式 yyyy-MM。") @RequestParam(required = false) String effectiveMonth,
@@ -341,13 +343,13 @@ public class DataController extends BaseController {
         applyTalentDataScope(wrapper, userId, deptId, dataScope);
         wrapper.orderByDesc(ExclusiveTalent::getCreateTime);
         IPage<ExclusiveTalent> result = exclusiveTalentMapper.selectPage(new Page<>(page, size), wrapper);
-        return okPage(result);
+        return okPage(result.convert(ExclusiveTalentStatusVO::from));
     }
 
     @Operation(summary = "独家状态监控 - 商家", description = "分页查询商家独家状态监控数据。支持按月份、关键字、状态筛选。")
     @GetMapping("/operations/exclusive-merchants")
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
-    public ApiResult<PageResult<ExclusiveMerchant>> getExclusiveMerchantStatus(
+    public ApiResult<PageResult<ExclusiveMerchantStatusVO>> getExclusiveMerchantStatus(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,
             @Parameter(description = "生效月份，格式 yyyy-MM。") @RequestParam(required = false) String effectiveMonth,
@@ -370,7 +372,7 @@ public class DataController extends BaseController {
         applyMerchantDataScope(wrapper, userId, deptId, dataScope);
         wrapper.orderByDesc(ExclusiveMerchant::getCreateTime);
         IPage<ExclusiveMerchant> result = exclusiveMerchantMapper.selectPage(new Page<>(page, size), wrapper);
-        return okPage(result);
+        return okPage(result.convert(ExclusiveMerchantStatusVO::from));
     }
 
     @Operation(summary = "导出活动列表CSV", description = "按活动名称筛选导出活动列表 CSV。")
@@ -440,6 +442,20 @@ public class DataController extends BaseController {
         return builder.toString();
     }
 
+    private String metricsCacheKey(String timeField, UUID userId, UUID deptId, DataScope dataScope) {
+        String timeColumn = resolveTimeColumn(timeField);
+        if (dataScope == DataScope.PERSONAL) {
+            return cacheKey(timeColumn, DataScope.PERSONAL, userId);
+        }
+        if (dataScope == DataScope.DEPT) {
+            return cacheKey(timeColumn, DataScope.DEPT, deptId);
+        }
+        if (dataScope == DataScope.ALL) {
+            return cacheKey(timeColumn, DataScope.ALL);
+        }
+        return cacheKey(timeColumn, "NO_SCOPE");
+    }
+
     private String resolveTimeColumn(String timeField) {
         if (!StringUtils.hasText(timeField)) {
             return "create_time";
@@ -497,7 +513,7 @@ public class DataController extends BaseController {
             case "SHIPPED" -> 2;
             case "FINISHED" -> 3;
             case "CANCELLED" -> 4;
-            default -> throw new BusinessException("非法订单状态: " + status);
+            default -> throw BusinessException.param("非法订单状态: " + status);
         };
     }
 

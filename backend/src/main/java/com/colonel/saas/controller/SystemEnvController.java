@@ -60,6 +60,11 @@ public class SystemEnvController extends BaseController {
         return ok(body);
     }
 
+    @GetMapping("/health")
+    public Map<String, Object> health() {
+        return Map.of("status", "UP");
+    }
+
     private String resolveDatabaseName() {
         if (StringUtils.hasText(dbNameProp)) {
             return dbNameProp.trim();

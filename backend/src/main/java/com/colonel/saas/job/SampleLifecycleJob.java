@@ -1,41 +1,32 @@
 package com.colonel.saas.job;
 
+import com.colonel.saas.service.DistributedJobLockService;
 import com.colonel.saas.service.SampleLifecycleService;
-import io.lettuce.core.RedisCommandExecutionException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.RedisConnectionFailureException;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Component
 public class SampleLifecycleJob {
 
-    private static final String JOB_LOCK_KEY = "sample:lifecycle:job:lock";
+    private static final Duration LOCK_TTL = Duration.ofMinutes(30);
 
     private final SampleLifecycleService sampleLifecycleService;
-    private final RedisTemplate<String, Object> redisTemplate;
-    private final boolean testEnabled;
-    private final AtomicBoolean localLock = new AtomicBoolean(false);
+    private final DistributedJobLockService jobLockService;
 
     public SampleLifecycleJob(
             SampleLifecycleService sampleLifecycleService,
-            RedisTemplate<String, Object> redisTemplate,
-            @Value("${app.test.enabled:false}") boolean testEnabled) {
+            DistributedJobLockService jobLockService) {
         this.sampleLifecycleService = sampleLifecycleService;
-        this.redisTemplate = redisTemplate;
-        this.testEnabled = testEnabled;
+        this.jobLockService = jobLockService;
     }
 
     @Scheduled(cron = "0 0 2 * * ?")
     public void autoCloseTimeoutRequests() {
-        if (!acquireJobLock()) {
+        if (!jobLockService.tryAcquire(JobLockKeys.SAMPLE_LIFECYCLE, LOCK_TTL)) {
             log.info("SampleLifecycleJob skipped, another process is running");
             return;
         }
@@ -53,37 +44,7 @@ public class SampleLifecycleJob {
                 log.error("SampleLifecycleJob auto close ship failed", ex);
             }
         } finally {
-            releaseJobLock();
-        }
-    }
-
-    private boolean acquireJobLock() {
-        try {
-            Boolean locked = redisTemplate.opsForValue().setIfAbsent(
-                    Objects.requireNonNull(JOB_LOCK_KEY),
-                    "1",
-                    Objects.requireNonNull(Duration.ofMinutes(30))
-            );
-            return Boolean.TRUE.equals(locked);
-        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (testEnabled) {
-                log.warn("Redis unavailable in test mode when acquiring sample lifecycle lock, fallback to local lock: {}", ex.getMessage());
-                return localLock.compareAndSet(false, true);
-            }
-            throw ex;
-        }
-    }
-
-    private void releaseJobLock() {
-        localLock.set(false);
-        try {
-            redisTemplate.delete(JOB_LOCK_KEY);
-        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (testEnabled) {
-                log.warn("Redis unavailable in test mode when releasing sample lifecycle lock, local lock already released: {}", ex.getMessage());
-                return;
-            }
-            throw ex;
+            jobLockService.release(JobLockKeys.SAMPLE_LIFECYCLE);
         }
     }
 }

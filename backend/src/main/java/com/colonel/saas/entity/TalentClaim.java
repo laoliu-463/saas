@@ -2,7 +2,7 @@ package com.colonel.saas.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.colonel.saas.common.base.BaseEntity;
+import com.colonel.saas.common.base.VersionedEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -12,7 +12,7 @@ import java.util.UUID;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("talent_claim")
-public class TalentClaim extends BaseEntity {
+public class TalentClaim extends VersionedEntity {
 
     @TableField("talent_id")
     private UUID talentId;

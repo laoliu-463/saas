@@ -31,17 +31,18 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/auth/login",
                                 "/auth/refresh",
-                                "/test/**",
                                 "/douyin/webhooks/**",
                                 "/error",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-resources/**",
                                 "/doc.html",
-                                "/actuator/**",
+                                "/system/health",
+                                "/api/system/health",
                                 "/system/env",
                                 "/api/system/env"
                         ).permitAll()
+                        .requestMatchers("/actuator/**").authenticated()
                         .anyRequest().authenticated())
                 .cors(Customizer.withDefaults());
         return http.build();

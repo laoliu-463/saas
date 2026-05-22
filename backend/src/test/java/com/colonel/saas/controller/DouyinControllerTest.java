@@ -3,6 +3,7 @@ package com.colonel.saas.controller;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
@@ -148,6 +149,18 @@ class DouyinControllerTest {
     }
 
     @Test
+    void huodongXiangqing_failure_returnsGenericErrorFields() {
+        when(douyinActivityGateway.activityDetail("test_app", "54321"))
+                .thenThrow(new BusinessException("activity missing"));
+
+        ApiResult<Map<String, Object>> result = controller.huodongXiangqing("test_app", "54321");
+
+        assertThat(result.getData()).containsEntry("status", "failed");
+        assertThat(result.getData()).containsEntry("message", "activity missing");
+        assertThat(result.getData()).containsEntry("errorType", "BusinessException");
+    }
+
+    @Test
     void huodongXiangqing_standardRestPath_bindsRequestParams() throws Exception {
         when(douyinActivityGateway.activityDetail("test_app", "54321")).thenReturn(Map.of("detail", Map.of()));
 
@@ -174,6 +187,19 @@ class DouyinControllerTest {
     }
 
     @Test
+    void huodongShangpin_failure_returnsErrorStatus() {
+        when(douyinActivityGateway.listActivities(any()))
+                .thenThrow(new IllegalStateException("upstream not ready"));
+
+        ApiResult<Map<String, Object>> result =
+                controller.huodongShangpin("test_app", 1, 2L, 3L, 4L, 20L, "keyword");
+
+        assertThat(result.getData()).containsEntry("status", "failed");
+        assertThat(result.getData()).containsEntry("message", "upstream not ready");
+        assertThat(result.getData()).containsEntry("errorType", "IllegalStateException");
+    }
+
+    @Test
     void shangpinLiebiao_success_returnsSuccessResult() {
         when(douyinProductGateway.queryActivityProducts(any()))
                 .thenReturn(new DouyinProductGateway.ActivityProductListResult(false, 0L, 0L, 0L, null, List.of()));
@@ -184,6 +210,18 @@ class DouyinControllerTest {
         assertThat(result.getData()).containsEntry("endpoint", "alliance.colonelActivityProduct");
         assertThat(result.getData()).containsEntry("activityId", "54321");
         assertThat(result.getData()).containsEntry("status", "success");
+    }
+
+    @Test
+    void shangpinLiebiao_failure_returnsErrorStatus() {
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenThrow(new IllegalArgumentException("activityId invalid"));
+
+        ApiResult<Map<String, Object>> result =
+                controller.shangpinLiebiao("test_app", "bad", 10, "cursor-1");
+
+        assertThat(result.getData()).containsEntry("status", "failed");
+        assertThat(result.getData()).containsEntry("message", "activityId invalid");
     }
 
     @Test
@@ -299,6 +337,42 @@ class DouyinControllerTest {
     }
 
     @Test
+    void dingdanTongbuYuanshi_shouldAcceptDateTimeStringsAndDefaultCount() throws Exception {
+        when(douyinOrderGateway.listSettlement(any()))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(
+                        List.of(), false, null, Map.of("data", Map.of("order_list", List.of()))));
+
+        mockMvc.perform(post("/douyin/order-sync-probes/raw")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "appId", "test_app",
+                                "start_time", "2026-04-01 00:00:00",
+                                "end_time", "2026-04-02 00:00:00"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("success"));
+
+        verify(douyinOrderGateway).listSettlement(argThat(req -> req.count() == 20 && req.cursor() == null));
+    }
+
+    @Test
+    void dingdanTongbuYuanshi_missingStartTime_returnsFailedStatus() throws Exception {
+        mockMvc.perform(post("/douyin/order-sync-probes/raw")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "appId", "test_app",
+                                "start_time", " ",
+                                "end_time", "2026-04-02 00:00:00"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("failed"))
+                .andExpect(jsonPath("$.data.message").value("start_time is required"))
+                .andExpect(jsonPath("$.data.errorType").value("IllegalArgumentException"));
+    }
+
+    @Test
     void quxiaoHuodongShangpin_success_returnsPayload() {
         DouyinController.ActivityProductCancelRequest request = new DouyinController.ActivityProductCancelRequest();
         request.setAppId("test_app");
@@ -327,6 +401,87 @@ class DouyinControllerTest {
     }
 
     @Test
+    void quxiaoHuodongShangpin_withProductIds_buildsProductsPayload() {
+        DouyinController.ActivityProductCancelRequest request = new DouyinController.ActivityProductCancelRequest();
+        request.setAppId("test_app");
+        request.setApplyIds(List.of(100L));
+        request.setProductIds(List.of("1001", "1002"));
+        request.setReason("  终止合作  ");
+        when(douyinActivityGateway.cancelActivityProduct(eq("test_app"), any())).thenReturn(Map.of("ok", true));
+
+        ApiResult<Map<String, Object>> result = controller.quxiaoHuodongShangpin(request);
+
+        assertThat(result.getData()).containsEntry("status", "success");
+        assertThat((Map<String, Object>) result.getData().get("payload"))
+                .containsEntry("apply_ids", List.of(100L))
+                .containsEntry("product_ids", List.of("1001", "1002"))
+                .containsEntry("reason", "终止合作");
+        verify(douyinActivityGateway).cancelActivityProduct(eq("test_app"), argThat(payload ->
+                payload.containsKey("products")));
+    }
+
+    @Test
+    void quxiaoHuodongShangpin_withoutIdentifiers_returnsFailedStatus() {
+        DouyinController.ActivityProductCancelRequest request = new DouyinController.ActivityProductCancelRequest();
+        request.setAppId("test_app");
+
+        ApiResult<Map<String, Object>> result = controller.quxiaoHuodongShangpin(request);
+
+        assertThat(result.getData()).containsEntry("status", "failed");
+        assertThat(result.getData()).containsEntry("message", "activityId, applyIds, productIds at least one required");
+    }
+
+    @Test
+    void quxiaoHuodongShangpinYuanshi_success_trimsAppIdAndPassesPayload() throws Exception {
+        when(douyinActivityGateway.cancelActivityProduct(eq("test_app"), any())).thenReturn(Map.of("ok", true));
+
+        mockMvc.perform(post("/douyin/activity-product-cancellations/raw")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "appId", " test_app ",
+                                "activity_id", 12345L,
+                                "reason", "终止合作"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("success"))
+                .andExpect(jsonPath("$.data.appId").value("test_app"))
+                .andExpect(jsonPath("$.data.payload.activity_id").value(12345));
+
+        verify(douyinActivityGateway).cancelActivityProduct(eq("test_app"), argThat(payload ->
+                payload.containsKey("activity_id") && !payload.containsKey("appId")));
+    }
+
+    @Test
+    void quxiaoHuodongShangpinYuanshi_emptyBody_returnsFailedStatus() throws Exception {
+        mockMvc.perform(post("/douyin/activity-product-cancellations/raw")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("failed"))
+                .andExpect(jsonPath("$.data.message").value("request body is required"));
+    }
+
+    @Test
+    void quxiaoHuodongShangpinYuanshi_nullExceptionMessage_returnsDefaultSdkMessage() throws Exception {
+        when(douyinActivityGateway.cancelActivityProduct(eq("test_app"), any()))
+                .thenThrow(new IllegalStateException());
+
+        mockMvc.perform(post("/douyin/activity-product-cancellations/raw")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "appId", "test_app",
+                                "activity_id", 12345L
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("failed"))
+                .andExpect(jsonPath("$.data.message").value("Douyin SDK call failed"))
+                .andExpect(jsonPath("$.data.errorType").value("IllegalStateException"));
+    }
+
+    @Test
     void chuangjianGengxinHuodong_success_returnsApiResult() {
         DouyinController.ActivityCreateOrUpdateRequest request = new DouyinController.ActivityCreateOrUpdateRequest();
         request.setAppId("test_app");
@@ -347,6 +502,33 @@ class DouyinControllerTest {
 
         assertThat(result.getCode()).isEqualTo(200);
         assertThat(result.getData()).containsEntry("activity_id", 12345L);
+    }
+
+    @Test
+    void gengxinHuodong_standardRestPath_passesPathActivityId() throws Exception {
+        when(douyinActivityGateway.createOrUpdateActivity(any(DouyinActivityGateway.ActivityMutateCommand.class)))
+                .thenReturn(Map.of("activity_id", 67890L));
+        Map<String, Object> request = new java.util.LinkedHashMap<>();
+        request.put("appId", "test_app");
+        request.put("applicationLimited", false);
+        request.put("activityName", "test activity");
+        request.put("activityDesc", "desc");
+        request.put("applyStartTime", "2026-04-01 00:00:00");
+        request.put("applyEndTime", "2026-04-30 23:59:59");
+        request.put("commissionRate", "10");
+        request.put("serviceRate", "5");
+        request.put("estimatedSingleSale", "100");
+        request.put("activityType", 1);
+        request.put("online", true);
+
+        mockMvc.perform(MockMvcRequestBuilders.put("/douyin/activities/67890")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.activity_id").value(67890));
+
+        verify(douyinActivityGateway).createOrUpdateActivity(argThat(command -> command.activityId().equals(67890L)));
     }
 
     @Test
@@ -531,6 +713,40 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.data.remoteResponse.data.pick_source").value("ABC12345"));
 
         verify(douyinPromotionGateway).rawUpstreamPost(eq("test_app"), eq("buyin.instPickSourceConvert"), any());
+    }
+
+    @Test
+    void promotionLinkRawProbe_productSkusBranch_returnsSkuList() throws Exception {
+        when(douyinProductGateway.queryProductSkus("P-1001"))
+                .thenReturn(List.of(new DouyinProductGateway.ProductSkuResult("SKU-1", "规格一", 1000L, 9, "cover")));
+
+        mockMvc.perform(post("/douyin/promotion-link-probes/raw")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "appId", "test_app",
+                                "method", "buyin.productSkus.v2",
+                                "productId", "P-1001"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("success"))
+                .andExpect(jsonPath("$.data.remoteResponse.data.skus[0].skuId").value("SKU-1"));
+
+        verify(douyinProductGateway).queryProductSkus("P-1001");
+    }
+
+    @Test
+    void promotionLinkRawProbe_productSkusBranch_requiresProductId() throws Exception {
+        mockMvc.perform(post("/douyin/promotion-link-probes/raw")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "appId", "test_app",
+                                "method", "buyin.productSkus.v2"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("failed"))
+                .andExpect(jsonPath("$.data.message").value("product_id is required for buyin.productSkus.v2"));
     }
 
     @Test

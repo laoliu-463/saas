@@ -34,6 +34,11 @@ logging:
 
 debug: false
 
+app:
+  cors:
+    # 生产环境通过环境变量注入明确域名，禁止 credentials + 通配符 origin（WebConfig 启动时会校验）
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:https://saas.example.com}
+
 talent:
   enrich:
     mode: ${TALENT_ENRICH_MODE:real}

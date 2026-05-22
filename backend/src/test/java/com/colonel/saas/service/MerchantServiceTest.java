@@ -268,6 +268,7 @@ class MerchantServiceTest {
         Merchant merchant = new Merchant();
         merchant.setMerchantId("m1");
         when(merchantMapper.selectOne(any())).thenReturn(merchant);
+        when(merchantMapper.updateById(any(Merchant.class))).thenReturn(1);
 
         service.overrideMerchantAssignment("m1", userId, "test reason", UUID.randomUUID());
 

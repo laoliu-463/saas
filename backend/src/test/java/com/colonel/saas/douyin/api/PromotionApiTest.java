@@ -2,12 +2,17 @@ package com.colonel.saas.douyin.api;
 
 import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.service.PickSourceMappingService;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
@@ -17,6 +22,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -186,5 +192,74 @@ class PromotionApiTest {
         );
 
         assertThat(result.shortId()).isEqualTo("fallback");
+        assertThat(result.pickSource()).isNull();
+    }
+
+    @Test
+    void promotionLinkResultFrom_shouldLogMalformedPickSourceUrl() {
+        Logger logger = (Logger) LoggerFactory.getLogger(PromotionApi.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            PromotionApi.PromotionLinkResult.from(
+                    Map.of("data", Map.of("promote_link", "ht!tp://bad url")),
+                    "fallback",
+                    "seed"
+            );
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertThat(appender.list)
+                .anySatisfy(event -> {
+                    assertThat(event.getLevel()).isEqualTo(Level.WARN);
+                    assertThat(event.getFormattedMessage()).contains("Failed to parse pick_source");
+                });
+    }
+
+    @Test
+    void generateLink_withContextShouldNotSaveMappingWhenPickSourceCannotBeResolved() {
+        Map<String, Object> response = Map.of(
+                "data",
+                Map.of("converted_link", "ht!tp://bad url")
+        );
+        when(douyinApiClient.post(eq("buyin.instPickSourceConvert"), any())).thenReturn(response);
+
+        PromotionApi.PromotionLinkResult result = promotionApi.generateLink(
+                "ext_ctx",
+                1,
+                List.of("pid_1"),
+                false,
+                new PromotionApi.PromotionContext(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "product_x",
+                        "act_y",
+                        "https://src.url",
+                        "PRODUCT_LIBRARY",
+                        "channel_demo"
+                )
+        );
+
+        assertThat(result.pickSource()).isNull();
+        verify(pickSourceMappingService, never()).saveOrUpdate(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
+        );
     }
 }

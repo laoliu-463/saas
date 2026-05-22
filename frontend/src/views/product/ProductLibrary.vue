@@ -206,11 +206,22 @@ const fetchProducts = async (reset: boolean) => {
 
   try {
     const page = reset ? 1 : Math.floor(products.value.length / PAGE_SIZE) + 1
+    const currentFilters = filters.value
     const res: any = await getProducts({
       page,
       size: PAGE_SIZE,
       keyword: selectedProduct.value || productKeyword.value.trim() || undefined,
-      status: libraryStatus.value ?? undefined
+      status: libraryStatus.value ?? undefined,
+      systemTag: currentFilters.systemTag || undefined,
+      commission: currentFilters.commission || undefined,
+      hasSample: currentFilters.hasSample || undefined,
+      assignee: currentFilters.assignee || undefined,
+      decision: currentFilters.decision || undefined,
+      shopKeyword: currentFilters.shopKeyword || undefined,
+      categoryName: currentFilters.categoryName || undefined,
+      salesRange: currentFilters.salesRange || undefined,
+      promotionLink: currentFilters.promotionLink || undefined,
+      allianceStatus: currentFilters.allianceStatus || undefined
     })
     const data = res?.data || {}
     const records = Array.isArray(data.records) ? data.records : []

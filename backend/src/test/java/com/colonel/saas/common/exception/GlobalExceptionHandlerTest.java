@@ -2,6 +2,7 @@ package com.colonel.saas.common.exception;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
+import com.baomidou.mybatisplus.core.exceptions.MybatisPlusException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.douyin.DouyinApiException;
@@ -12,10 +13,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 
 import java.util.Collections;
@@ -44,12 +48,28 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void handleBusiness_returnsFailResult() {
-        BusinessException ex = new BusinessException("用户名已存在");
+        BusinessException ex = BusinessException.duplicate("用户名已存在");
         ResponseEntity<ApiResult<Void>> response = handler.handleBusiness(ex);
         ApiResult<Void> result = response.getBody();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(result.getCode()).isEqualTo(460);
+        assertThat(result.getCode()).isEqualTo(462);
         assertThat(result.getMsg()).isEqualTo("用户名已存在");
+    }
+
+    @Test
+    void handleBusiness_semanticCodes_preservedInBody() {
+        BusinessException ex = BusinessException.conflict("并发冲突");
+        ApiResult<Void> result = handler.handleBusiness(ex).getBody();
+        assertThat(result.getCode()).isEqualTo(409);
+        assertThat(result.getMsg()).isEqualTo("并发冲突");
+    }
+
+    @Test
+    void handleMybatisPlus_optimisticLock_returnsConflict() {
+        MybatisPlusException ex = new MybatisPlusException("乐观锁异常,更新失败");
+        ApiResult<Void> result = handler.handleMybatisPlus(ex);
+        assertThat(result.getCode()).isEqualTo(409);
+        assertThat(result.getMsg()).contains("刷新");
     }
 
     @Test
@@ -128,6 +148,27 @@ class GlobalExceptionHandlerTest {
         ApiResult<Void> result = handler.handleValidate(ex);
         assertThat(result.getCode()).isEqualTo(400);
         assertThat(result.getMsg()).isEqualTo("custom validation message");
+    }
+
+    @Test
+    void handleMethodNotSupported_returnsParamErrorWithMethod() {
+        HttpRequestMethodNotSupportedException ex = new HttpRequestMethodNotSupportedException("POST");
+
+        ApiResult<Void> result = handler.handleMethodNotSupported(ex);
+
+        assertThat(result.getCode()).isEqualTo(400);
+        assertThat(result.getMsg()).isEqualTo("不支持的请求方法: POST");
+    }
+
+    @Test
+    void handleMediaTypeNotSupported_returnsParamErrorWithContentType() {
+        HttpMediaTypeNotSupportedException ex =
+                new HttpMediaTypeNotSupportedException(MediaType.TEXT_PLAIN, Collections.emptyList());
+
+        ApiResult<Void> result = handler.handleMediaTypeNotSupported(ex);
+
+        assertThat(result.getCode()).isEqualTo(400);
+        assertThat(result.getMsg()).isEqualTo("不支持的 Content-Type: text/plain");
     }
 
     @Test

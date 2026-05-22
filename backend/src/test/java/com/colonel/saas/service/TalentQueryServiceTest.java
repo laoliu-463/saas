@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.SysUser;
@@ -10,6 +11,7 @@ import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -55,6 +58,55 @@ class TalentQueryServiceTest {
                 sysUserMapper,
                 sampleRequestMapper,
                 jdbcTemplate
+        );
+    }
+
+    @Test
+    void assertCanOperate_shouldRejectChannelStaffWithoutOwnActiveClaim() {
+        UUID talentId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        when(talentService.getById(talentId)).thenReturn(talent);
+
+        TalentClaim otherClaim = new TalentClaim();
+        otherClaim.setTalentId(talentId);
+        otherClaim.setUserId(otherUserId);
+        otherClaim.setStatus(1);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(otherClaim));
+
+        assertThatThrownBy(() -> talentQueryService.assertCanOperate(
+                talentId,
+                currentUserId,
+                null,
+                List.of(RoleCodes.CHANNEL_STAFF)
+        ))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权操作该达人");
+    }
+
+    @Test
+    void assertCanOperate_shouldAllowChannelLeaderForOwnDeptClaim() {
+        UUID talentId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        when(talentService.getById(talentId)).thenReturn(talent);
+
+        TalentClaim deptClaim = new TalentClaim();
+        deptClaim.setTalentId(talentId);
+        deptClaim.setDeptId(deptId);
+        deptClaim.setStatus(1);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(deptClaim));
+
+        talentQueryService.assertCanOperate(
+                talentId,
+                UUID.randomUUID(),
+                deptId,
+                List.of(RoleCodes.CHANNEL_LEADER)
         );
     }
 
@@ -433,6 +485,82 @@ class TalentQueryServiceTest {
         assertThatThrownBy(() -> talentQueryService.detail(talentId, viewer, null, DataScope.PERSONAL))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("无权查看");
+    }
+
+    @Test
+    void detail_shouldRedactFrontendHiddenFieldsForPersonalScope() {
+        UUID talentId = UUID.randomUUID();
+        UUID viewer = UUID.randomUUID();
+        LocalDateTime now = LocalDateTime.now();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("sensitive_uid");
+        talent.setSecUid("sec_sensitive");
+        talent.setProfileUrl("https://www.douyin.com/user/sec_sensitive");
+        talent.setNickname("敏感字段达人");
+
+        TalentClaim claim = new TalentClaim();
+        claim.setTalentId(talentId);
+        claim.setUserId(viewer);
+        claim.setStatus(1);
+        claim.setClaimedAt(now.minusDays(2));
+        claim.setProtectedUntil(now.plusDays(28));
+
+        Map<String, Object> orderRow = new LinkedHashMap<>();
+        orderRow.put("order_id", "ORDER-SENSITIVE-001");
+        orderRow.put("product_name", "样例商品");
+        orderRow.put("order_amount", 1000L);
+        orderRow.put("settle_colonel_commission", 100L);
+        orderRow.put("channel_user_name", "不应返回的渠道名");
+        orderRow.put("create_time", Timestamp.valueOf(now.minusHours(1)));
+
+        when(talentService.getById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.selectList(any())).thenReturn(List.of(claim));
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+                .thenReturn(List.of());
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request sr")), eq(talentId)))
+                .thenReturn(List.of());
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("sensitive_uid")))
+                .thenReturn(List.of(orderRow));
+
+        TalentDetailResponse response = talentQueryService.detail(talentId, viewer, null, DataScope.PERSONAL);
+
+        assertThat(response.getTalent().getProfileUrl()).isNull();
+        assertThat(response.getClaim().getActiveClaimOwners()).isEmpty();
+        assertThat(response.getOrders()).hasSize(1);
+        assertThat(response.getOrders().get(0).getChannelName()).isNull();
+    }
+
+    @Test
+    void detail_shouldNotSerializeSecUidForAnyScope() throws Exception {
+        UUID talentId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("sensitive_uid");
+        talent.setSecUid("sec_sensitive");
+        talent.setNickname("敏感字段达人");
+
+        when(talentService.getById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.selectList(any())).thenReturn(List.of());
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request sr")), eq(talentId)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("sensitive_uid")))
+                .thenReturn(List.of());
+
+        TalentDetailResponse response = talentQueryService.detail(talentId, UUID.randomUUID(), null, DataScope.ALL);
+        String json = new ObjectMapper().writeValueAsString(response);
+
+        assertThat(json).doesNotContain("secUid");
+        assertThat(json).doesNotContain("sec_sensitive");
     }
 
     @Test

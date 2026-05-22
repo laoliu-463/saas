@@ -139,41 +139,41 @@ public class ColonelActivityController extends BaseController {
     private BusinessException mapActivityError(DouyinApiException e) {
         String subCode = e.getSubCode() == null ? "" : e.getSubCode();
         if (e.getErrorCode() == 50002 && subCode.contains("4197")) {
-            return new BusinessException("当前账号未完成招商团长授权，请检查抖店授权状态");
+            return BusinessException.stateInvalid("当前账号未完成招商团长授权，请检查抖店授权状态");
         }
         if (e.getErrorCode() == 50002 && subCode.contains("4200")) {
-            return new BusinessException("抖店账号状态异常，请检查账号可用状态");
+            return BusinessException.stateInvalid("抖店账号状态异常，请检查账号可用状态");
         }
         if (e.getErrorCode() == 40004 && subCode.contains("257")) {
-            return new BusinessException("查询参数不合法，请检查筛选条件");
+            return BusinessException.param("查询参数不合法，请检查筛选条件");
         }
         if (e.getErrorCode() == 20000 && subCode.contains("256")) {
-            return new BusinessException("抖店服务异常，请稍后重试");
+            return BusinessException.external("抖店服务异常，请稍后重试");
         }
-        return new BusinessException("团长活动查询失败: " + e.getErrorMsg());
+        return BusinessException.external("团长活动查询失败: " + e.getErrorMsg());
     }
 
     private BusinessException mapProductError(DouyinApiException e) {
         String subCode = e.getSubCode() == null ? "" : e.getSubCode();
         if (e.getErrorCode() == 50002 && subCode.contains("4097")) {
-            return new BusinessException("每页最多查询 20 条商品");
+            return BusinessException.param("每页最多查询 20 条商品");
         }
         if (e.getErrorCode() == 50002 && subCode.contains("8197")) {
-            return new BusinessException("不允许继续翻页，请使用游标模式加载更多");
+            return BusinessException.stateInvalid("不允许继续翻页，请使用游标模式加载更多");
         }
         if (e.getErrorCode() == 50002 && subCode.contains("4197")) {
-            return new BusinessException("当前账号未完成招商团长授权，请检查抖店授权状态");
+            return BusinessException.stateInvalid("当前账号未完成招商团长授权，请检查抖店授权状态");
         }
         if (e.getErrorCode() == 50002 && subCode.contains("4200")) {
-            return new BusinessException("抖店账号状态异常，请检查账号可用状态");
+            return BusinessException.stateInvalid("抖店账号状态异常，请检查账号可用状态");
         }
         if (e.getErrorCode() == 50002 && subCode.contains("257")) {
-            return new BusinessException("查询参数不合法，请检查筛选条件");
+            return BusinessException.param("查询参数不合法，请检查筛选条件");
         }
         if (e.getErrorCode() == 20000 && subCode.contains("256")) {
-            return new BusinessException("抖店服务异常，请稍后重试");
+            return BusinessException.external("抖店服务异常，请稍后重试");
         }
-        return new BusinessException("活动商品查询失败: " + e.getErrorMsg());
+        return BusinessException.external("活动商品查询失败: " + e.getErrorMsg());
     }
 
     private String cacheKey(Object... values) {

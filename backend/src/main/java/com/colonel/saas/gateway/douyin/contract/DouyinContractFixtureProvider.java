@@ -697,7 +697,8 @@ public class DouyinContractFixtureProvider {
             return defaultValue;
         }
         try {
-            return LocalDateTime.parse(value.trim(), DATE_TIME_FORMATTER).atZone(java.time.ZoneId.systemDefault()).toEpochSecond();
+            return com.colonel.saas.common.time.AppZone.toEpochSecond(
+                    LocalDateTime.parse(value.trim(), DATE_TIME_FORMATTER));
         } catch (Exception ignore) {
             return defaultValue;
         }
@@ -707,7 +708,7 @@ public class DouyinContractFixtureProvider {
         if (epochSecond == null) {
             return null;
         }
-        return DATE_TIME_FORMATTER.format(LocalDateTime.ofInstant(Instant.ofEpochSecond(epochSecond), java.time.ZoneId.systemDefault()));
+        return DATE_TIME_FORMATTER.format(com.colonel.saas.common.time.AppZone.fromEpochSecond(epochSecond));
     }
 
     private String digitsOnly(String value) {

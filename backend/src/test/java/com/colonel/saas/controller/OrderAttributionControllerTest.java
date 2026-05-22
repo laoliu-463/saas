@@ -144,5 +144,10 @@ class OrderAttributionControllerTest {
                 .map(QueryWrapper::getSqlSelect)
                 .anyMatch(sql -> sql != null && sql.contains("colonel_user_id AS owner_id"));
         assertThat(usesColonelOwner).isTrue();
+
+        boolean usesAttributedOwner = wrapperCaptor.getAllValues().stream()
+                .map(QueryWrapper::getSqlSelect)
+                .anyMatch(sql -> sql != null && sql.contains("COALESCE(user_id, channel_user_id) AS owner_id"));
+        assertThat(usesAttributedOwner).isTrue();
     }
 }

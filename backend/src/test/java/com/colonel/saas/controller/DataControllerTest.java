@@ -16,6 +16,8 @@ import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.ShortTtlCacheService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -55,6 +57,7 @@ class DataControllerTest {
     private ColonelsettlementActivityMapper activityMapper;
 
     private DataController dataController;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> queryWrapperCaptor() {
         return (ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(QueryWrapper.class);
@@ -197,6 +200,28 @@ class DataControllerTest {
     }
 
     @Test
+    void getMetrics_withAllScope_shouldShareCacheAcrossUsers() {
+        UUID firstUser = UUID.randomUUID();
+        UUID secondUser = UUID.randomUUID();
+        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
+                .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of())
+                .thenReturn(List.of());
+        when(commissionService.calculateByActivityBuckets(any())).thenReturn(
+                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                        java.math.BigDecimal.valueOf(0.15), java.math.BigDecimal.valueOf(0.15)));
+
+        var first = dataController.getMetrics(null, firstUser, UUID.randomUUID(), DataScope.ALL);
+        var second = dataController.getMetrics("createTime", secondUser, UUID.randomUUID(), DataScope.ALL);
+
+        assertThat(first.getCode()).isEqualTo(200);
+        assertThat(second.getCode()).isEqualTo(200);
+        verify(orderMapper, times(4)).selectMaps(any(QueryWrapper.class));
+        verify(commissionService, times(1)).calculateByActivityBuckets(any());
+    }
+
+    @Test
     void getMetrics_withDataScopePersonal_addsUserFilter() {
         UUID userId = UUID.randomUUID();
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
@@ -246,6 +271,37 @@ class DataControllerTest {
     }
 
     @Test
+    void getMetrics_withNoScopeAndSettleAlias_handlesEmptyAndInvalidAggregates() {
+        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(null)
+                .thenReturn(List.of(Map.of("order_count", "not-a-number")))
+                .thenReturn(List.of(Map.of(
+                        "ACTIVITY_ID", "ACT-1",
+                        "service_fee_income", "bad-number",
+                        "tech_service_fee", 100L,
+                        "talent_commission", 200L
+                )))
+                .thenReturn(List.of(Map.of(
+                        "SETTLE_DATE", LocalDate.now().toString(),
+                        "ORDER_COUNT", "bad-number",
+                        "ORDER_AMOUNT_CENT", 100L
+                )));
+        when(commissionService.calculateByActivityBuckets(any())).thenReturn(
+                new CommissionService.CommissionSummary(0L, 100L, 200L, 300L, 150L, 75L, 75L,
+                        java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
+
+        var response = dataController.getMetrics("settle", UUID.randomUUID(), null, null);
+
+        assertThat(response.getCode()).isEqualTo(200);
+        assertThat(response.getData().getTodayOrderCount()).isZero();
+        assertThat(response.getData().getPendingShipCount()).isZero();
+        assertThat(response.getData().getTrend7d().get(6).getOrderCount()).isZero();
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues().get(0).getSqlSegment()).contains("settle_time");
+    }
+
+    @Test
     void getExclusiveTalentStatus_returnsPagedData() {
         Page<ExclusiveTalent> page = new Page<>(1, 10, 1);
         ExclusiveTalent record = new ExclusiveTalent();
@@ -271,6 +327,54 @@ class DataControllerTest {
     }
 
     @Test
+    void getExclusiveTalentStatus_withPersonalScope_addsUserFilter() {
+        Page<ExclusiveTalent> page = new Page<>(1, 10, 0);
+        when(exclusiveTalentMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        var response = dataController.getExclusiveTalentStatus(
+                1,
+                10,
+                null,
+                null,
+                null,
+                UUID.randomUUID(),
+                null,
+                DataScope.PERSONAL
+        );
+
+        assertThat(response.getCode()).isEqualTo(200);
+        verify(exclusiveTalentMapper).selectPage(any(Page.class), any());
+    }
+
+    @Test
+    void getExclusiveTalentStatus_shouldReturnVoWithoutEntityAuditFields() {
+        Page<ExclusiveTalent> page = new Page<>(1, 10, 1);
+        ExclusiveTalent record = new ExclusiveTalent();
+        record.setTalentUid("talent-001");
+        page.setRecords(List.of(record));
+        when(exclusiveTalentMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        var response = dataController.getExclusiveTalentStatus(
+                1,
+                10,
+                null,
+                null,
+                null,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL
+        );
+
+        Object firstRecord = response.getData().getRecords().get(0);
+        Map<String, Object> serialized = objectMapper.convertValue(firstRecord, new TypeReference<>() {
+        });
+
+        assertThat(firstRecord).isNotInstanceOf(ExclusiveTalent.class);
+        assertThat(serialized).containsEntry("talentUid", "talent-001");
+        assertThat(serialized).doesNotContainKeys("createBy", "updateBy", "deleted", "deptId");
+    }
+
+    @Test
     void getExclusiveMerchantStatus_returnsPagedData() {
         Page<ExclusiveMerchant> page = new Page<>(1, 10, 1);
         ExclusiveMerchant record = new ExclusiveMerchant();
@@ -293,6 +397,54 @@ class DataControllerTest {
         assertThat(response.getData()).isNotNull();
         assertThat(response.getData().getRecords()).hasSize(1);
         assertThat(response.getData().getRecords().get(0).getMerchantName()).isEqualTo("商家A");
+    }
+
+    @Test
+    void getExclusiveMerchantStatus_withDeptScope_addsDeptFilter() {
+        Page<ExclusiveMerchant> page = new Page<>(1, 10, 0);
+        when(exclusiveMerchantMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        var response = dataController.getExclusiveMerchantStatus(
+                1,
+                10,
+                null,
+                null,
+                null,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.DEPT
+        );
+
+        assertThat(response.getCode()).isEqualTo(200);
+        verify(exclusiveMerchantMapper).selectPage(any(Page.class), any());
+    }
+
+    @Test
+    void getExclusiveMerchantStatus_shouldReturnVoWithoutEntityAuditFields() {
+        Page<ExclusiveMerchant> page = new Page<>(1, 10, 1);
+        ExclusiveMerchant record = new ExclusiveMerchant();
+        record.setMerchantName("商家A");
+        page.setRecords(List.of(record));
+        when(exclusiveMerchantMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        var response = dataController.getExclusiveMerchantStatus(
+                1,
+                10,
+                null,
+                null,
+                null,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL
+        );
+
+        Object firstRecord = response.getData().getRecords().get(0);
+        Map<String, Object> serialized = objectMapper.convertValue(firstRecord, new TypeReference<>() {
+        });
+
+        assertThat(firstRecord).isNotInstanceOf(ExclusiveMerchant.class);
+        assertThat(serialized).containsEntry("merchantName", "商家A");
+        assertThat(serialized).doesNotContainKeys("createBy", "updateBy", "deleted", "deptId");
     }
 
     @Test
@@ -401,6 +553,65 @@ class DataControllerTest {
     }
 
     @Test
+    void exportOrders_withFiltersAndEscaping_shouldWriteDefaultAttribution() throws Exception {
+        UUID orderPk = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(orderPk);
+        order.setProductName("商品,\"A\"");
+        order.setOrderAmount(1234L);
+        order.setOrderStatus(4);
+        order.setCreateTime(LocalDateTime.of(2026, 5, 5, 10, 0));
+        order.setSettleTime(LocalDateTime.of(2026, 5, 5, 16, 30));
+
+        Page<ColonelsettlementOrder> page = new Page<>(1, 2000, 1);
+        page.setRecords(List.of(order));
+        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        dataController.exportOrders(
+                "CANCELLED",
+                talentId,
+                "merchant_10086",
+                null,
+                null,
+                "settle",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL,
+                response
+        );
+
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        String segment = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(segment).contains("co.settle_time", "co.order_status", "co.talent_id", "merchant_id");
+        String csv = response.getContentAsString();
+        assertThat(csv).contains(orderPk.toString());
+        assertThat(csv).contains("\"商品,\"\"A\"\"\"");
+        assertThat(csv).contains("默认归属");
+        assertThat(csv).contains("CANCELLED");
+    }
+
+    @Test
+    void exportOrders_withInvalidStatus_shouldThrowBusinessException() {
+        assertThatThrownBy(() -> dataController.exportOrders(
+                "UNKNOWN",
+                null,
+                null,
+                null,
+                null,
+                null,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL,
+                new MockHttpServletResponse()
+        )).hasMessageContaining("非法订单状态");
+
+        verify(orderMapper, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+    }
+
+    @Test
     void exportOrders_shouldStreamAcrossMultiplePages() throws Exception {
         ColonelsettlementOrder first = new ColonelsettlementOrder();
         first.setOrderId("ORDER-1");
@@ -471,6 +682,44 @@ class DataControllerTest {
         assertThat(csv).contains("活动ID,活动名称,开始时间,结束时间,状态");
         assertThat(csv).contains("ACT-001");
         assertThat(csv).contains("活动A");
+    }
+
+    @Test
+    void exportActivities_shouldStreamMultiplePagesAndEndedStatus() throws Exception {
+        ColonelsettlementActivity ongoing = new ColonelsettlementActivity();
+        ongoing.setActivityId("ACT-ONGOING");
+        ongoing.setName("活动A");
+        ongoing.setStartTime(LocalDateTime.of(2026, 5, 1, 10, 0));
+        ongoing.setEndTime(LocalDateTime.of(2026, 5, 31, 23, 59));
+        ongoing.setStatus(1);
+        List<ColonelsettlementActivity> fullPage = java.util.Collections.nCopies(2000, ongoing);
+
+        ColonelsettlementActivity ended = new ColonelsettlementActivity();
+        ended.setActivityId("ACT-END");
+        ended.setName("活动,\"B\"");
+        ended.setStartTime(LocalDateTime.of(2026, 4, 1, 10, 0));
+        ended.setEndTime(LocalDateTime.of(2026, 4, 30, 23, 59));
+        ended.setStatus(0);
+
+        when(activityMapper.selectExportPage(any(Long.class), any(Long.class), any(), any()))
+                .thenReturn(fullPage)
+                .thenReturn(List.of(ended));
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        dataController.exportActivities(
+                " ",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL,
+                response
+        );
+
+        verify(activityMapper).selectExportPage(org.mockito.ArgumentMatchers.eq(0L), any(Long.class), org.mockito.ArgumentMatchers.isNull(), any());
+        verify(activityMapper).selectExportPage(org.mockito.ArgumentMatchers.eq(2000L), any(Long.class), org.mockito.ArgumentMatchers.isNull(), any());
+        String csv = response.getContentAsString();
+        assertThat(csv).contains("ACT-END");
+        assertThat(csv).contains("\"活动,\"\"B\"\"\"");
+        assertThat(csv).contains("已结束");
     }
 
     @Test

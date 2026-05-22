@@ -11,7 +11,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -138,15 +137,18 @@ class CommissionServiceTest {
     }
 
     @Test
-    void calculate_shouldThrowWhenRatioQueryFails() {
+    void calculate_shouldFallbackWhenRatioQueryFails() {
         when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.ResultSetExtractor<String>>any(), any()))
                 .thenThrow(new RuntimeException("db offline"));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setSettleColonelCommission(10000L);
 
-        assertThatThrownBy(() -> commissionService.calculate(List.of(order)))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("commission.business_default_ratio");
+        CommissionService.CommissionSummary summary = commissionService.calculate(List.of(order));
+
+        assertThat(summary.bizRatio()).isEqualByComparingTo("0.15");
+        assertThat(summary.channelRatio()).isEqualByComparingTo("0.15");
+        assertThat(summary.bizCommission()).isEqualTo(1500L);
+        assertThat(summary.channelCommission()).isEqualTo(1500L);
     }
 }

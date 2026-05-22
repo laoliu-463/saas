@@ -8,8 +8,14 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html'],
-      include: ['src/router/**/*.ts', 'src/constants/**/*.ts']
+      reporter: ['text', 'html', 'json-summary'],
+      include: ['src/router/**/*.ts', 'src/constants/**/*.ts'],
+      thresholds: {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100
+      }
     }
   }
 })

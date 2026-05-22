@@ -14,6 +14,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -32,18 +33,22 @@ class OrderSyncPersistenceServiceTest {
     @Mock
     private SampleLifecycleService sampleLifecycleService;
     @Mock
+    private OperationLogService operationLogService;
+    @Mock
     private SysUserMapper sysUserMapper;
 
     private OrderSyncPersistenceService service;
 
     @BeforeEach
     void setUp() {
+        lenient().when(orderMapper.updateSyncedById(any(ColonelsettlementOrder.class))).thenReturn(1);
         service = new OrderSyncPersistenceService(
                 orderMapper,
                 orderSyncDedupClaimMapper,
                 pickSourceMappingService,
                 merchantService,
                 sampleLifecycleService,
+                operationLogService,
                 sysUserMapper
         );
     }
@@ -61,6 +66,47 @@ class OrderSyncPersistenceServiceTest {
         verify(pickSourceMappingService).ensureFromOrder(order);
         verify(merchantService).ensureMerchantFromOrder(order);
         verify(sampleLifecycleService).completePendingHomeworkByOrder(order);
+    }
+
+    @Test
+    void persistOrder_shouldRecordAuditLogsForAttributionFollowUps() {
+        UUID channelUserId = UUID.randomUUID();
+        ColonelsettlementOrder order = makeOrder(channelUserId);
+        order.setUserId(channelUserId);
+        order.setProductName("测试商品");
+        when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null);
+        when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(1);
+
+        service.persistOrder(order);
+
+        verify(operationLogService).recordSystemAction(
+                channelUserId,
+                "订单归因",
+                "补齐推广映射",
+                "POST",
+                "order",
+                order.getOrderId(),
+                "测试商品",
+                "订单归因副作用: ensureFromOrder");
+        verify(operationLogService).recordSystemAction(
+                channelUserId,
+                "订单归因",
+                "沉淀商家",
+                "POST",
+                "order",
+                order.getOrderId(),
+                "测试商品",
+                "订单归因副作用: ensureMerchantFromOrder");
+        verify(operationLogService).recordSystemAction(
+                channelUserId,
+                "订单归因",
+                "完成寄样作业",
+                "POST",
+                "order",
+                order.getOrderId(),
+                "测试商品",
+                "订单归因副作用: completePendingHomeworkByOrder");
     }
 
     @Test
@@ -124,6 +170,7 @@ class OrderSyncPersistenceServiceTest {
         order.setId(UUID.randomUUID());
         order.setOrderId("order_" + UUID.randomUUID());
         order.setChannelUserId(channelUserId);
+        order.setUserId(channelUserId);
         order.setPickSource("usr_ABC12345_1712000000");
         order.setShopId(1L);
         order.setShopName("Test Shop");

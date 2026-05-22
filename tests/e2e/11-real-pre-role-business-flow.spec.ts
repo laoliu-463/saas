@@ -180,7 +180,7 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
   try {
     await record(run, '00-env', 'real-pre environment guard', async () => {
       const env = await apiSuccess(api, 'GET', '/api/system/env');
-      const health = await rawApi(api, 'GET', '/api/actuator/health');
+      const health = await rawApi(api, 'GET', '/api/system/health');
       const envData = unwrap(env.body) as JsonMap;
       assertTrue(
         String(envData.environmentLabel || '').toUpperCase() === 'REAL-PRE' ||
@@ -189,7 +189,7 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       );
       assertTrue(envData.appTestEnabled === false, 'APP_TEST_ENABLED must be false');
       assertTrue(envData.douyinTestEnabled === false, 'DOUYIN_TEST_ENABLED must be false');
-      assertTrue(health.ok && (health.body as JsonMap | undefined)?.status === 'UP', 'actuator health must be UP');
+      assertTrue(health.ok && (health.body as JsonMap | undefined)?.status === 'UP', 'system health must be UP');
       return { environment: envData, health: health.body as JsonMap };
     }, undefined, true);
 

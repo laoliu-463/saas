@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.mapper.PickSourceMappingMapper;
@@ -14,6 +15,7 @@ import org.springframework.util.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -275,7 +277,7 @@ public class PickSourceMappingService {
                 resolvedSourceType
         );
         try {
-            pickSourceMappingMapper.updateById(update);
+            persistPickSourceMapping(update);
             logNativeAmbiguousIfNeeded(materializeForLogging(existing, update));
         } catch (DuplicateKeyException ex) {
             PickSourceMapping recovered = recoverNativeConflict(
@@ -470,7 +472,24 @@ public class PickSourceMappingService {
                 .eq(PickSourceMapping::getSourceType, SOURCE_TYPE_NATIVE)
                 .last("limit 1"));
         if (nativeExisting == null) {
-            return null;
+            nativeExisting = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                    .eq(PickSourceMapping::getColonelBuyinId, resolveColonelBuyinId(colonelBuyinId))
+                    .eq(PickSourceMapping::getProductId, productId)
+                    .eq(PickSourceMapping::getActivityId, activityId)
+                    .eq(PickSourceMapping::getSourceType, SOURCE_TYPE_NATIVE)
+                    .last("limit 1"));
+            if (nativeExisting == null) {
+                return null;
+            }
+            log.warn("Native mapping identity conflict recovered without owner overwrite, activityId={}, productId={}, colonelBuyinId={}, existingUserId={}, incomingUserId={}",
+                    activityId,
+                    productId,
+                    resolveColonelBuyinId(colonelBuyinId),
+                    nativeExisting.getUserId(),
+                    userId);
+            PickSourceMapping patch = buildNativeIdentityConflictPatch(nativeExisting);
+            persistPickSourceMapping(patch);
+            return materializeForLogging(nativeExisting, patch);
         }
         PickSourceMapping patch = buildUpdateEntity(
                 nativeExisting,
@@ -492,8 +511,20 @@ public class PickSourceMappingService {
                 pickExtra,
                 resolvedSourceType
         );
-        pickSourceMappingMapper.updateById(patch);
+        persistPickSourceMapping(patch);
         return materializeForLogging(nativeExisting, patch);
+    }
+
+    private void persistPickSourceMapping(PickSourceMapping mapping) {
+        OptimisticLockSupport.requireUpdated(pickSourceMappingMapper.updateById(mapping));
+    }
+
+    private PickSourceMapping buildNativeIdentityConflictPatch(PickSourceMapping existing) {
+        PickSourceMapping patch = new PickSourceMapping();
+        patch.setId(existing.getId());
+        patch.setValidUntil(LocalDateTime.now().plusMonths(validMonths));
+        patch.setStatus(1);
+        return patch;
     }
 
     private boolean shouldPreserveNativeIdentity(
@@ -557,12 +588,23 @@ public class PickSourceMappingService {
     @Transactional(rollbackFor = Exception.class)
     public void ensureFromOrder(ColonelsettlementOrder order) {
         if (order == null
-                || !StringUtils.hasText(order.getPickSource())
                 || !StringUtils.hasText(order.getAttributionStatus())
                 || !"ATTRIBUTED".equalsIgnoreCase(order.getAttributionStatus())
                 || order.getUserId() == null) {
             return;
         }
+        if (StringUtils.hasText(order.getPickSource())) {
+            ensurePickSourceMappingFromOrder(order);
+            return;
+        }
+        if (order.getColonelBuyinId() != null
+                && StringUtils.hasText(order.getProductId())
+                && StringUtils.hasText(order.getActivityId())) {
+            ensureNativeMappingFromOrder(order);
+        }
+    }
+
+    private void ensurePickSourceMappingFromOrder(ColonelsettlementOrder order) {
         PickSourceMapping existingByPickSource = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
                 .eq(PickSourceMapping::getPickSource, order.getPickSource())
                 .last("limit 1"));
@@ -597,6 +639,57 @@ public class PickSourceMappingService {
             pickSourceMappingMapper.insert(mapping);
         } catch (DuplicateKeyException ex) {
             log.debug("Concurrent insert detected for pickSource={}, skipping", order.getPickSource());
+        }
+    }
+
+    private void ensureNativeMappingFromOrder(ColonelsettlementOrder order) {
+        String colonelBuyinId = String.valueOf(order.getColonelBuyinId());
+        String productId = order.getProductId().trim();
+        String activityId = order.getActivityId().trim();
+        PickSourceMapping existing = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                .eq(PickSourceMapping::getSourceType, SOURCE_TYPE_NATIVE)
+                .eq(PickSourceMapping::getColonelBuyinId, colonelBuyinId)
+                .eq(PickSourceMapping::getProductId, productId)
+                .eq(PickSourceMapping::getActivityId, activityId)
+                .eq(PickSourceMapping::getUserId, order.getUserId())
+                .last("limit 1"));
+        if (existing != null) {
+            return;
+        }
+
+        String seedMaterial = colonelBuyinId + ":" + productId + ":" + activityId + ":" + order.getUserId();
+        UUID uuidSeed = UUID.nameUUIDFromBytes(seedMaterial.getBytes(StandardCharsets.UTF_8));
+        String shortId = "N" + uuidSeed.toString().replace("-", "").substring(0, 9).toUpperCase(Locale.ROOT);
+        String syntheticPickSource = "colonel_native_" + shortId;
+        PickSourceMapping existingBySyntheticSource = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                .eq(PickSourceMapping::getPickSource, syntheticPickSource)
+                .last("limit 1"));
+        if (existingBySyntheticSource != null) {
+            return;
+        }
+
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setId(UUID.randomUUID());
+        mapping.setSourceType(SOURCE_TYPE_NATIVE);
+        mapping.setColonelBuyinId(colonelBuyinId);
+        mapping.setShortId(shortId);
+        mapping.setPickSource(syntheticPickSource);
+        mapping.setPickExtra(resolveOrderPickExtra(order));
+        mapping.setUserId(order.getUserId());
+        mapping.setDeptId(order.getDeptId());
+        mapping.setProductId(productId);
+        mapping.setActivityId(activityId);
+        mapping.setSourceUrl(syntheticPickSource);
+        mapping.setConvertedUrl(syntheticPickSource);
+        mapping.setValidFrom(LocalDateTime.now());
+        mapping.setValidUntil(LocalDateTime.now().plusMonths(validMonths));
+        mapping.setStatus(1);
+        mapping.setUuidSeed(uuidSeed);
+        try {
+            pickSourceMappingMapper.insert(mapping);
+        } catch (DuplicateKeyException ex) {
+            log.debug("Concurrent native mapping insert detected for activityId={}, productId={}, colonelBuyinId={}, userId={}, skipping",
+                    activityId, productId, colonelBuyinId, order.getUserId());
         }
     }
 

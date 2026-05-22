@@ -67,7 +67,7 @@ real-pre 回归口径：
 
 - 后端：`http://localhost:8081/api`
 - 前端：`http://localhost:3001`
-- 适用于页面级 E2E 回归、权限验收、部署形态验证和 `/api/actuator/health` 健康检查
+- 适用于页面级 E2E 回归、权限验收、部署形态验证和 `/api/system/health` 健康检查；`/api/actuator/**` 需携带 JWT
 - 当前 `real-pre` 是独立端口/容器拓扑，使用 `SPRING_PROFILES_ACTIVE=real`、`APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`
 - `test` 是 Mock 联调和回归基线，旧 `local-mock` 口径保留为历史脚本、报告和回滚参考
 

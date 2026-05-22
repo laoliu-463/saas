@@ -16,7 +16,7 @@ public class ManualFallbackLogisticsGateway implements LogisticsGateway {
 
     @Override
     public LogisticsResult createShipment(LogisticsCommand command) {
-        throw new BusinessException("物流网关未配置，请手动录入物流信息");
+        throw BusinessException.stateInvalid("物流网关未配置，请手动录入物流信息");
     }
 
     @Override

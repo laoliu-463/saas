@@ -120,20 +120,20 @@ public class SysUserService {
 
     public void assertAssignableUser(UUID targetUserId, List<String> currentRoleCodes, UUID currentDeptId) {
         if (targetUserId == null) {
-            throw new BusinessException("负责人不能为空");
+            throw BusinessException.param("负责人不能为空");
         }
         AssignableScope scope = resolveAssignableScope(currentRoleCodes, currentDeptId);
         if (scope.allowedRoleCodes().isEmpty()) {
-            throw new BusinessException("当前角色不允许分配负责人");
+            throw BusinessException.stateInvalid("当前角色不允许分配负责人");
         }
         SysUser targetUser = requireUser(targetUserId);
         if (scope.deptId() != null && !scope.allowCrossDept() && !Objects.equals(scope.deptId(), targetUser.getDeptId())) {
-            throw new BusinessException("只能分配给本组招商下属");
+            throw BusinessException.forbidden("只能分配给本组招商下属");
         }
 
         List<SysUserRole> relations = sysUserRoleMapper.findByUserId(targetUserId);
         if (relations == null || relations.isEmpty()) {
-            throw new BusinessException("目标负责人未配置可分配角色");
+            throw BusinessException.stateInvalid("目标负责人未配置可分配角色");
         }
         Set<UUID> roleIds = relations.stream()
                 .map(SysUserRole::getRoleId)
@@ -144,7 +144,7 @@ public class SysUserService {
                 : sysRoleMapper.selectBatchIds(roleIds).stream()
                 .collect(Collectors.toMap(SysRole::getId, role -> role));
         if (!matchesAssignableRole(targetUserId, Map.of(targetUserId, relations), roleMap, scope.allowedRoleCodes())) {
-            throw new BusinessException("只能分配给符合规则的招商下属");
+            throw BusinessException.forbidden("只能分配给符合规则的招商下属");
         }
     }
 
@@ -157,7 +157,7 @@ public class SysUserService {
     @Transactional(rollbackFor = Exception.class)
     public SysUserVO create(SysUserCreateRequest request, UUID currentUserId) {
         sysUserMapper.findByUsername(request.username()).ifPresent(existing -> {
-            throw new BusinessException("用户名已存在");
+            throw BusinessException.duplicate("用户名已存在");
         });
 
         List<UUID> roleIds = normalizeRoleIds(request.roleIds());
@@ -218,7 +218,7 @@ public class SysUserService {
     @Transactional(rollbackFor = Exception.class)
     public void delete(UUID id, UUID currentUserId, DataScope dataScope) {
         if (id.equals(currentUserId)) {
-            throw new BusinessException("不能删除当前登录用户");
+            throw BusinessException.stateInvalid("不能删除当前登录用户");
         }
         SysUser user = requireUser(id);
         assertCanAccess(user, currentUserId, dataScope);
@@ -285,17 +285,17 @@ public class SysUserService {
     private SysUser requireUser(UUID id) {
         SysUser user = sysUserMapper.selectById(id);
         if (user == null) {
-            throw new BusinessException("用户不存在");
+            throw BusinessException.notFound("用户不存在");
         }
         return user;
     }
 
     private void assertCanAccess(SysUser user, UUID currentUserId, DataScope dataScope) {
         if (dataScope == null) {
-            throw new BusinessException("无法确认数据权限，拒绝访问");
+            throw BusinessException.forbidden("无法确认数据权限，拒绝访问");
         }
         if (dataScope == DataScope.PERSONAL && !user.getId().equals(currentUserId)) {
-            throw new BusinessException("无权访问该用户");
+            throw BusinessException.forbidden("无权访问该用户");
         }
     }
 
@@ -318,12 +318,12 @@ public class SysUserService {
         }
         List<SysRole> roles = sysRoleMapper.selectBatchIds(roleIds);
         if (roles.size() != roleIds.size()) {
-            throw new BusinessException("角色不存在或已删除");
+            throw BusinessException.notFound("角色不存在或已删除");
         }
         boolean hasDisabledRole = roles.stream()
                 .anyMatch(role -> role.getStatus() == null || role.getStatus() != 1);
         if (hasDisabledRole) {
-            throw new BusinessException("不能分配已禁用角色");
+            throw BusinessException.stateInvalid("不能分配已禁用角色");
         }
         assertSingleAdminUser(roles, targetUserId);
     }
@@ -356,7 +356,7 @@ public class SysUserService {
                 .filter(Objects::nonNull)
                 .anyMatch(user -> user.getDeleted() == null || user.getDeleted() == 0);
         if (hasExistingAdmin) {
-            throw new BusinessException("管理员账号已存在，不能新增或转配第二个管理员");
+            throw BusinessException.duplicate("管理员账号已存在，不能新增或转配第二个管理员");
         }
     }
 
@@ -478,7 +478,7 @@ public class SysUserService {
                 return candidate;
             }
         }
-        throw new BusinessException("生成用户渠道编码失败，请重试");
+        throw BusinessException.conflict("生成用户渠道编码失败，请重试");
     }
 
     private String normalizeChannelCode(String username) {

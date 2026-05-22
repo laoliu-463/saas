@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -56,8 +57,35 @@ public class ProductController extends BaseController {
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") @Min(1) @Max(100) long size,
             @Parameter(description = "商品状态。待确认：取值含义请联系产品。") @RequestParam(required = false) Integer status,
-            @Parameter(description = "商品关键字，可匹配商品名称。") @RequestParam(required = false) String keyword) {
-        IPage<Product> result = productService.getSelectedLibraryPage(page, size, keyword, status);
+            @Parameter(description = "商品关键字，可匹配商品名称、商品 ID、店铺。") @RequestParam(required = false) String keyword,
+            @Parameter(description = "店铺 / 合作方名称关键字。") @RequestParam(required = false) String shopKeyword,
+            @Parameter(description = "抖音同步类目关键字。") @RequestParam(required = false) String categoryName,
+            @Parameter(description = "近 30 天销量区间：lt100/100_999/1k_29k/gte30000。") @RequestParam(required = false) String salesRange,
+            @Parameter(description = "转链状态：PENDING/LINKED/FAILED。") @RequestParam(required = false) String promotionLink,
+            @Parameter(description = "联盟推广状态：promoting/pending_audit/rejected/terminated/expired。") @RequestParam(required = false) String allianceStatus,
+            @Parameter(description = "佣金区间：gt20/10_20/lt10。") @RequestParam(required = false) String commission,
+            @Parameter(description = "是否有寄样规则：1/0。") @RequestParam(required = false) String hasSample,
+            @Parameter(description = "负责人过滤：assigned/unassigned。") @RequestParam(required = false) String assignee,
+            @Parameter(description = "系统标签：high_commission/traffic/new/high_price。") @RequestParam(required = false) String systemTag,
+            @Parameter(description = "推进判断：MAIN/SECONDARY/PAUSE/DROP/NONE。") @RequestParam(required = false) String decision) {
+        IPage<Product> result = productService.getSelectedLibraryPage(
+                page,
+                size,
+                new ProductService.SelectedLibraryFilter(
+                        keyword,
+                        status,
+                        shopKeyword,
+                        categoryName,
+                        salesRange,
+                        promotionLink,
+                        allianceStatus,
+                        commission,
+                        hasSample,
+                        assignee,
+                        systemTag,
+                        decision
+                )
+        );
         return okPage(result);
     }
 
@@ -90,8 +118,10 @@ public class ProductController extends BaseController {
                     required = true,
                     content = @Content(examples = @ExampleObject(value = "{\"activityId\":\"11111111-1111-1111-1111-111111111111\"}"))
             )
-            @Valid @RequestBody BindActivityRequest request) {
-        return ok(productService.bindActivity(id, request.getActivityId()));
+            @Valid @RequestBody BindActivityRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId) {
+        return ok(productService.bindActivity(id, request.getActivityId(), userId, deptId));
     }
 
     @Operation(summary = "[已废弃] 商品分配招商", description = "兼容旧版商品分配招商入口。请迁移到 /colonel/activities/{activityId}/products/{productId}/assignee。")
@@ -132,6 +162,7 @@ public class ProductController extends BaseController {
                     content = @Content(examples = @ExampleObject(value = "{\"scene\":\"PRODUCT_LIBRARY\",\"talentId\":\"test_talent_001\"}"))
             )
             @RequestBody(required = false) PromotionLinkRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId) {
         PromotionLinkRequest safeRequest = request == null ? new PromotionLinkRequest() : request;
@@ -143,7 +174,8 @@ public class ProductController extends BaseController {
                 safeRequest.getPromotionScene(),
                 safeRequest.getNeedShortLink(),
                 safeRequest.getScene(),
-                safeRequest.getTalentId()
+                safeRequest.getTalentId(),
+                idempotencyKey
         );
         return ok(result);
     }

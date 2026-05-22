@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.mapper.ProductOperationLogMapper;
@@ -78,7 +79,7 @@ public class ProductBizStatusService {
             state.setId(UUID.randomUUID());
             operationStateMapper.insert(state);
         } else {
-            operationStateMapper.updateById(state);
+            OptimisticLockSupport.requireUpdated(operationStateMapper.updateById(state));
         }
         writeLog(state.getActivityId(), state.getProductId(), operationType, beforeStatus, targetStatus,
                 operatorId, operatorDeptId, payload, remark, true, null);
@@ -134,7 +135,9 @@ public class ProductBizStatusService {
             case PENDING_AUDIT -> false;
         };
         if (!allowed) {
-            throw new BusinessException("当前状态不允许执行" + operationType + "，当前状态：" + beforeStatus.name());
+            throw BusinessException.stateInvalid("当前状态不允许执行" + operationType
+                    + "，当前状态：" + beforeStatus.name()
+                    + "，目标状态：" + targetStatus.name());
         }
     }
 

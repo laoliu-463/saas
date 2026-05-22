@@ -69,18 +69,20 @@ class ProductControllerTest {
     void bindActivity_shouldCallService() {
         UUID id = UUID.randomUUID();
         UUID activityId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
         Product product = new Product();
         product.setId(id);
         product.setActivityId(activityId);
-        when(productService.bindActivity(id, activityId)).thenReturn(product);
+        when(productService.bindActivity(id, activityId, userId, deptId)).thenReturn(product);
 
         ProductController.BindActivityRequest request = new ProductController.BindActivityRequest();
         request.setActivityId(activityId);
 
-        var response = productController.bindActivity(id, request);
+        var response = productController.bindActivity(id, request, userId, deptId);
 
         assertThat(response.getData().getActivityId()).isEqualTo(activityId);
-        verify(productService).bindActivity(id, activityId);
+        verify(productService).bindActivity(id, activityId, userId, deptId);
     }
 
     @Test
@@ -132,7 +134,7 @@ class ProductControllerTest {
                         "https://p.link",
                         UUID.randomUUID().toString()
                 );
-        when(productService.generatePromotionLink(eq(id), eq(userId), eq(deptId), any(), any(), anyBoolean(), any(), any()))
+        when(productService.generatePromotionLink(eq(id), eq(userId), eq(deptId), any(), any(), anyBoolean(), any(), any(), any()))
                 .thenReturn(result);
 
         ProductController.PromotionLinkRequest request = new ProductController.PromotionLinkRequest();
@@ -140,10 +142,10 @@ class ProductControllerTest {
         request.setPromotionScene(4);
         request.setNeedShortLink(true);
 
-        var response = productController.generatePromotionLink(id, request, userId, deptId);
+        var response = productController.generatePromotionLink(id, request, null, userId, deptId);
 
         assertThat(response.getData().shortId()).isEqualTo("ABC12345");
-        verify(productService).generatePromotionLink(id, userId, deptId, "ext-1", 4, true, "PRODUCT_LIBRARY", null);
+        verify(productService).generatePromotionLink(id, userId, deptId, "ext-1", 4, true, "PRODUCT_LIBRARY", null, null);
     }
 
     @Test
@@ -188,22 +190,56 @@ class ProductControllerTest {
         product.setName("共享商品");
         page.setRecords(List.of(product));
         page.setTotal(1);
-        when(productService.getSelectedLibraryPage(1, 10, "共享", null)).thenReturn(page);
+        when(productService.getSelectedLibraryPage(eq(1L), eq(10L), any(ProductService.SelectedLibraryFilter.class))).thenReturn(page);
 
-        var response = productController.page(1, 10, null, "共享");
+        var response = productController.page(
+                1,
+                10,
+                null,
+                "共享",
+                "测试店铺",
+                "食品",
+                "gte30000",
+                "LINKED",
+                "promoting",
+                "gt20",
+                "1",
+                "assigned",
+                "traffic",
+                "MAIN");
 
         assertThat(response.getData().getTotal()).isEqualTo(1);
         assertThat(response.getData().getRecords().get(0).getName()).isEqualTo("共享商品");
-        verify(productService).getSelectedLibraryPage(1, 10, "共享", null);
+        verify(productService).getSelectedLibraryPage(eq(1L), eq(10L), any(ProductService.SelectedLibraryFilter.class));
     }
 
     @Test
     void controllerRoleAnnotations_shouldKeepSharedLibraryVisibleToBusinessRoles() throws NoSuchMethodException {
-        RequireRoles pageRoles = ProductController.class.getMethod("page", long.class, long.class, Integer.class, String.class)
+        RequireRoles pageRoles = ProductController.class.getMethod(
+                        "page",
+                        long.class,
+                        long.class,
+                        Integer.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class)
                 .getAnnotation(RequireRoles.class);
         RequireRoles detailRoles = ProductController.class.getMethod("detail", UUID.class)
                 .getAnnotation(RequireRoles.class);
-        RequireRoles bindRoles = ProductController.class.getMethod("bindActivity", UUID.class, ProductController.BindActivityRequest.class)
+        RequireRoles bindRoles = ProductController.class.getMethod(
+                        "bindActivity",
+                        UUID.class,
+                        ProductController.BindActivityRequest.class,
+                        UUID.class,
+                        UUID.class)
                 .getAnnotation(RequireRoles.class);
 
         assertThat(pageRoles.value()).containsExactly(

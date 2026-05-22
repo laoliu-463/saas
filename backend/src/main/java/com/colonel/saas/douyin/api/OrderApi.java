@@ -1,5 +1,6 @@
 package com.colonel.saas.douyin.api;
 
+import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
@@ -210,10 +211,7 @@ public class OrderApi {
     }
 
     private String formatEpochSecond(long epochSecond) {
-        return DATE_TIME_FORMATTER.format(LocalDateTime.ofInstant(
-                Instant.ofEpochSecond(epochSecond),
-                ZoneId.systemDefault()
-        ));
+        return DATE_TIME_FORMATTER.format(AppZone.fromEpochSecond(epochSecond));
     }
 
     private boolean hasText(String value) {

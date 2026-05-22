@@ -9,22 +9,28 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class BusinessRuleConfigService {
 
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+    private static final Duration CONFIG_CACHE_TTL = Duration.ofMinutes(5);
+    private static final String CONFIG_CACHE_PREFIX = "biz-config:raw:";
 
     private final SystemConfigMapper systemConfigMapper;
     private final ObjectMapper objectMapper;
-    private final ConcurrentHashMap<String, Optional<String>> rawValueCache = new ConcurrentHashMap<>();
+    private final ShortTtlCacheService shortTtlCacheService;
 
-    public BusinessRuleConfigService(SystemConfigMapper systemConfigMapper, ObjectMapper objectMapper) {
+    public BusinessRuleConfigService(
+            SystemConfigMapper systemConfigMapper,
+            ObjectMapper objectMapper,
+            ShortTtlCacheService shortTtlCacheService) {
         this.systemConfigMapper = systemConfigMapper;
         this.objectMapper = objectMapper;
+        this.shortTtlCacheService = shortTtlCacheService;
     }
 
     public int getTalentProtectionDays() {
@@ -128,19 +134,21 @@ public class BusinessRuleConfigService {
     }
 
     private String getRawValue(String configKey) {
-        return rawValueCache.computeIfAbsent(configKey, this::loadRawValue)
-                .orElse(null);
+        return shortTtlCacheService.get(
+                CONFIG_CACHE_PREFIX + configKey,
+                CONFIG_CACHE_TTL,
+                () -> loadRawValue(configKey).orElse(null));
     }
 
     public void invalidate(String configKey) {
         if (!StringUtils.hasText(configKey)) {
             return;
         }
-        rawValueCache.remove(configKey);
+        shortTtlCacheService.evict(CONFIG_CACHE_PREFIX + configKey);
     }
 
     public void invalidateAll() {
-        rawValueCache.clear();
+        shortTtlCacheService.evictLocalByPrefix(CONFIG_CACHE_PREFIX);
     }
 
     private Optional<String> loadRawValue(String configKey) {
@@ -150,8 +158,7 @@ public class BusinessRuleConfigService {
     }
 
     private String normalizeLevel(Object rawLevel) {
-        String level = String.valueOf(rawLevel).trim().toUpperCase();
-        return StringUtils.hasText(level) ? level : null;
+        return String.valueOf(rawLevel).trim().toUpperCase();
     }
 
     public record SampleDefaultStandardConfig(Long min30DaySales, String minLevel, Map<String, Object> raw) {

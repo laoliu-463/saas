@@ -124,8 +124,8 @@ public class CommissionService {
             }
             return ratio;
         } catch (Exception ex) {
-            log.error("Failed to load commission ratio config: {}", key, ex);
-            throw new IllegalStateException("Failed to load commission ratio config: " + key, ex);
+            log.warn("Failed to load commission ratio config, fallback to default: {}", key, ex);
+            return null;
         }
     }
 

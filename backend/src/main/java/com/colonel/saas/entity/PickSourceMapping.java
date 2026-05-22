@@ -2,7 +2,7 @@ package com.colonel.saas.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.colonel.saas.common.base.BaseEntity;
+import com.colonel.saas.common.base.VersionedEntity;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -13,7 +13,7 @@ import java.util.UUID;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("pick_source_mapping")
-public class PickSourceMapping extends BaseEntity {
+public class PickSourceMapping extends VersionedEntity {
 
     @TableField("user_id")
     private UUID userId;

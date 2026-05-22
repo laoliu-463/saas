@@ -20,7 +20,7 @@ public final class TalentInputParser {
 
     public static TalentInputParseResult parse(String inputValue) {
         if (!StringUtils.hasText(inputValue)) {
-            throw new BusinessException("达人抖音号或链接不能为空");
+            throw BusinessException.param("达人抖音号或链接不能为空");
         }
         String input = inputValue.trim();
 

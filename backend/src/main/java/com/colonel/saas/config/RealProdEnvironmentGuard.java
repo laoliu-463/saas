@@ -24,6 +24,7 @@ public class RealProdEnvironmentGuard {
     private final String douyinAppId;
     private final String douyinClientKey;
     private final String douyinClientSecret;
+    private final String corsAllowedOriginPatterns;
     private static final Set<String> PROTECTED_PROFILES = Set.of("real-pre", "real", "prod");
     private static final Set<String> FORBIDDEN_MOCK_PROFILES = Set.of("local-mock", "test");
 
@@ -35,7 +36,8 @@ public class RealProdEnvironmentGuard {
             @Value("${security.jwt.secret:}") String jwtSecret,
             @Value("${douyin.app.app-id:}") String douyinAppId,
             @Value("${douyin.app.client-key:}") String douyinClientKey,
-            @Value("${douyin.app.client-secret:}") String douyinClientSecret) {
+            @Value("${douyin.app.client-secret:}") String douyinClientSecret,
+            @Value("${app.cors.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*}") String corsAllowedOriginPatterns) {
         this.environment = environment;
         this.appTestEnabled = appTestEnabled;
         this.douyinTestEnabled = douyinTestEnabled;
@@ -44,6 +46,7 @@ public class RealProdEnvironmentGuard {
         this.douyinAppId = douyinAppId;
         this.douyinClientKey = douyinClientKey;
         this.douyinClientSecret = douyinClientSecret;
+        this.corsAllowedOriginPatterns = corsAllowedOriginPatterns;
     }
 
     @PostConstruct
@@ -63,6 +66,32 @@ public class RealProdEnvironmentGuard {
         requireSecret("douyin.app.app-id", douyinAppId, null);
         requireSecret("douyin.app.client-key", douyinClientKey, null);
         requireSecret("douyin.app.client-secret", douyinClientSecret, null);
+        requireSafeCorsOriginPatterns();
+    }
+
+    private void requireSafeCorsOriginPatterns() {
+        if (!StringUtils.hasText(corsAllowedOriginPatterns)) {
+            throw new IllegalStateException(activeProfileLabel(normalizedActiveProfiles())
+                    + " profile requires non-empty app.cors.allowed-origin-patterns");
+        }
+        for (String pattern : corsAllowedOriginPatterns.split(",")) {
+            String trimmed = pattern.trim();
+            if (!StringUtils.hasText(trimmed)) {
+                continue;
+            }
+            if (isUnsafeWildcardOriginPattern(trimmed)) {
+                throw new IllegalStateException(activeProfileLabel(normalizedActiveProfiles())
+                        + " profile does not allow unsafe CORS pattern when credentials are enabled: " + trimmed);
+            }
+        }
+    }
+
+    private static boolean isUnsafeWildcardOriginPattern(String pattern) {
+        return "*".equals(pattern)
+                || "http://*".equalsIgnoreCase(pattern)
+                || "https://*".equalsIgnoreCase(pattern)
+                || "http://*:*".equalsIgnoreCase(pattern)
+                || "https://*:*".equalsIgnoreCase(pattern);
     }
 
     private Set<String> normalizedActiveProfiles() {

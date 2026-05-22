@@ -25,10 +25,7 @@ public class WebConfig implements WebMvcConfigurer {
             @Value("${app.cors.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*}") String allowedOriginPatterns) {
         this.jwtAuthInterceptor = jwtAuthInterceptor;
         this.operationLogInterceptor = operationLogInterceptor;
-        this.allowedOriginPatterns = Objects.requireNonNull(Arrays.stream(allowedOriginPatterns.split(","))
-                .map(String::trim)
-                .filter(pattern -> !pattern.isBlank())
-                .toArray(String[]::new));
+        this.allowedOriginPatterns = parseAllowedOriginPatterns(allowedOriginPatterns);
     }
 
     @Override
@@ -54,7 +51,8 @@ public class WebConfig implements WebMvcConfigurer {
                         "/swagger-ui/**",
                         "/swagger-resources/**",
                         "/doc.html",
-                        "/actuator/**",
+                        "/system/health",
+                        "/api/system/health",
                         "/system/env",
                         "/api/system/env"
                 );
@@ -66,7 +64,32 @@ public class WebConfig implements WebMvcConfigurer {
                         "/swagger-ui/**",
                         "/swagger-resources/**",
                         "/doc.html",
-                        "/actuator/**"
+                        "/system/health",
+                        "/api/system/health"
                 );
+    }
+
+    private static String[] parseAllowedOriginPatterns(String rawPatterns) {
+        String[] patterns = Arrays.stream(Objects.requireNonNullElse(rawPatterns, "").split(","))
+                .map(String::trim)
+                .filter(pattern -> !pattern.isBlank())
+                .toArray(String[]::new);
+        if (patterns.length == 0) {
+            throw new IllegalArgumentException("CORS allowed origin patterns must not be empty when credentials are enabled");
+        }
+        for (String pattern : patterns) {
+            if (isUnsafeWildcardOriginPattern(pattern)) {
+                throw new IllegalArgumentException("CORS allowed origin patterns must not contain wildcard origin '*' when credentials are enabled");
+            }
+        }
+        return patterns;
+    }
+
+    private static boolean isUnsafeWildcardOriginPattern(String pattern) {
+        return "*".equals(pattern)
+                || "http://*".equalsIgnoreCase(pattern)
+                || "https://*".equalsIgnoreCase(pattern)
+                || "http://*:*".equalsIgnoreCase(pattern)
+                || "https://*:*".equalsIgnoreCase(pattern);
     }
 }

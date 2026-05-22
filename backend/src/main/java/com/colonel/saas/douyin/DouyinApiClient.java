@@ -79,7 +79,7 @@ public class DouyinApiClient {
                 if (!isRetryableTransport(ex) || attempt >= attempts) {
                     log.error("Douyin API request failed, method={}, exception={}",
                             method, ex.getClass().getSimpleName());
-                    throw new BusinessException("Douyin API request failed");
+                    throw BusinessException.external("Douyin API request failed");
                 }
                 sleepBeforeRetry(method, attempt, attempts, ex.getClass().getSimpleName());
             }
@@ -88,8 +88,8 @@ public class DouyinApiClient {
             throw douyinApiException;
         }
         throw lastFailure == null
-                ? new BusinessException("Douyin API request failed")
-                : new BusinessException("Douyin API request failed", lastFailure);
+                ? BusinessException.external("Douyin API request failed")
+                : BusinessException.external("Douyin API request failed", lastFailure);
     }
 
     private Map<String, Object> executePost(String method, Map<String, Object> params, String appId, String token) {
@@ -116,7 +116,7 @@ public class DouyinApiClient {
                 Map.class
         );
         if (!(responseObj instanceof Map<?, ?> responseMap)) {
-            throw new BusinessException("Douyin API returned invalid response format");
+            throw BusinessException.external("Douyin API returned invalid response format");
         }
         Map<String, Object> response = castToStringObjectMap(responseMap);
 
@@ -161,7 +161,7 @@ public class DouyinApiClient {
             Thread.sleep(delayMs);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            throw new BusinessException("Douyin API retry interrupted", interrupted);
+            throw BusinessException.external("Douyin API retry interrupted", interrupted);
         }
     }
 
@@ -177,7 +177,7 @@ public class DouyinApiClient {
             appId = douyinConfig.getAppId();
         }
         if (appId == null || appId.isBlank()) {
-            throw new BusinessException("missing douyin.app.app-id/client-key config");
+            throw BusinessException.param("missing douyin.app.app-id/client-key config");
         }
         return appId;
     }
@@ -185,14 +185,14 @@ public class DouyinApiClient {
     private String resolveAppSecret() {
         String appSecret = douyinConfig.getClientSecret();
         if (!StringUtils.hasText(appSecret)) {
-            throw new BusinessException("missing douyin.app.client-secret config");
+            throw BusinessException.param("missing douyin.app.client-secret config");
         }
         return appSecret;
     }
 
     private String resolveUrlPath(String method) {
         if (method == null || method.isBlank()) {
-            throw new BusinessException("Douyin method cannot be blank");
+            throw BusinessException.param("Douyin method cannot be blank");
         }
         String normalized = method.trim();
         if (normalized.startsWith("/")) {
@@ -220,7 +220,7 @@ public class DouyinApiClient {
         try {
             return com.doudian.open.utils.JsonUtil.toJson(payload);
         } catch (Exception e) {
-            throw new BusinessException("Douyin parameter serialization failed", e);
+            throw BusinessException.param("Douyin parameter serialization failed", e);
         }
     }
 

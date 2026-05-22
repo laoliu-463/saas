@@ -89,6 +89,40 @@ class SysConfigServiceTest {
     }
 
     @Test
+    void update_shouldRejectInvalidCommissionRatioConfig() {
+        UUID id = UUID.randomUUID();
+        SystemConfig existing = new SystemConfig();
+        existing.setId(id);
+        existing.setConfigKey("commission.business_default_ratio");
+        existing.setConfigValue("0.15");
+        when(systemConfigMapper.selectById(id)).thenReturn(existing);
+
+        SystemConfig payload = new SystemConfig();
+        payload.setConfigValue("1.2");
+
+        assertThatThrownBy(() -> sysConfigService.update(id, payload, UUID.randomUUID()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("招商默认提成比例");
+    }
+
+    @Test
+    void update_shouldRejectInvalidMerchantExclusiveRatioConfig() {
+        UUID id = UUID.randomUUID();
+        SystemConfig existing = new SystemConfig();
+        existing.setId(id);
+        existing.setConfigKey("merchant.exclusive.service_fee_ratio");
+        existing.setConfigValue("70");
+        when(systemConfigMapper.selectById(id)).thenReturn(existing);
+
+        SystemConfig payload = new SystemConfig();
+        payload.setConfigValue("120");
+
+        assertThatThrownBy(() -> sysConfigService.update(id, payload, UUID.randomUUID()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("独家商家服务费占比阈值");
+    }
+
+    @Test
     void create_shouldRejectInvalidJsonConfig() {
         SystemConfig payload = new SystemConfig();
         payload.setConfigKey("sample.default_standard");

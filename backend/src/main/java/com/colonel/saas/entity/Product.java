@@ -83,6 +83,12 @@ public class Product extends BaseEntity {
     private String category;
 
     @TableField(exist = false)
+    private String categoryName;
+
+    @TableField(exist = false)
+    private String statusText;
+
+    @TableField(exist = false)
     private UUID activityId;
 
     @TableField("check_status")
@@ -160,4 +166,3 @@ public class Product extends BaseEntity {
     @TableField(exist = false)
     private Long sales30d;
 }
-

@@ -310,9 +310,8 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
             return null;
         }
         try {
-            return LocalDateTime.parse(String.valueOf(value).trim(), DATE_TIME_FORMATTER)
-                    .atZone(ZoneId.systemDefault())
-                    .toEpochSecond();
+            return com.colonel.saas.common.time.AppZone.toEpochSecond(
+                    LocalDateTime.parse(String.valueOf(value).trim(), DATE_TIME_FORMATTER));
         } catch (DateTimeParseException ignore) {
             return null;
         }

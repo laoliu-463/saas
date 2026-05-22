@@ -68,6 +68,21 @@ public class ConfigDefinitionRegistry {
                 true,
                 value -> requireRange(value, 0, 10000, "独家达人月寄样数量阈值必须在 0~10000 之间")
         ));
+        register(map, ConfigDefinition.decimal(
+                SystemConfigKeys.MERCHANT_EXCLUSIVE_SERVICE_FEE_RATIO,
+                true,
+                value -> requireDecimalRange(value, 0D, 100D, "独家商家服务费占比阈值必须在 0~100 之间")
+        ));
+        register(map, ConfigDefinition.decimal(
+                SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO,
+                true,
+                value -> requireDecimalRange(value, 0D, 1D, "招商默认提成比例必须在 0~1 之间")
+        ));
+        register(map, ConfigDefinition.decimal(
+                SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO,
+                true,
+                value -> requireDecimalRange(value, 0D, 1D, "渠道默认提成比例必须在 0~1 之间")
+        ));
         register(map, ConfigDefinition.json(
                 SystemConfigKeys.SAMPLE_DEFAULT_STANDARD,
                 true,
@@ -89,10 +104,10 @@ public class ConfigDefinitionRegistry {
         try {
             parsed = Integer.parseInt(value.trim());
         } catch (Exception ex) {
-            throw new BusinessException(message);
+            throw BusinessException.param(message);
         }
         if (parsed < min || parsed > max) {
-            throw new BusinessException(message);
+            throw BusinessException.param(message);
         }
     }
 
@@ -101,10 +116,10 @@ public class ConfigDefinitionRegistry {
         try {
             parsed = Double.parseDouble(value.trim());
         } catch (Exception ex) {
-            throw new BusinessException(message);
+            throw BusinessException.param(message);
         }
         if (parsed < min || parsed > max) {
-            throw new BusinessException(message);
+            throw BusinessException.param(message);
         }
     }
 
@@ -112,25 +127,25 @@ public class ConfigDefinitionRegistry {
         try {
             JsonNode root = objectMapper.readTree(raw);
             if (!root.isObject()) {
-                throw new BusinessException("寄样默认标准必须是 JSON 对象");
+                throw BusinessException.param("寄样默认标准必须是 JSON 对象");
             }
             JsonNode salesNode = root.get("min_30day_sales");
             if (salesNode != null && !salesNode.isNull()) {
                 if (!salesNode.canConvertToLong() || salesNode.longValue() < 0) {
-                    throw new BusinessException("寄样默认标准中的 min_30day_sales 必须是大于等于 0 的整数");
+                    throw BusinessException.param("寄样默认标准中的 min_30day_sales 必须是大于等于 0 的整数");
                 }
             }
             JsonNode levelNode = root.get("min_level");
             if (levelNode != null && !levelNode.isNull()) {
                 String level = levelNode.asText("").trim().toUpperCase(Locale.ROOT);
                 if (StringUtils.hasText(level) && !level.matches("LV\\d+")) {
-                    throw new BusinessException("寄样默认标准中的 min_level 必须为 LV0/LV1/LV2 等格式");
+                    throw BusinessException.param("寄样默认标准中的 min_level 必须为 LV0/LV1/LV2 等格式");
                 }
             }
         } catch (BusinessException ex) {
             throw ex;
         } catch (Exception ex) {
-            throw new BusinessException("寄样默认标准必须是合法 JSON");
+            throw BusinessException.param("寄样默认标准必须是合法 JSON");
         }
     }
 
@@ -154,7 +169,7 @@ public class ConfigDefinitionRegistry {
                 String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
                 if (!"true".equals(normalized) && !"false".equals(normalized)
                         && !"1".equals(normalized) && !"0".equals(normalized)) {
-                    throw new BusinessException("配置值必须是布尔值");
+                    throw BusinessException.param("配置值必须是布尔值");
                 }
             });
         }
@@ -165,7 +180,7 @@ public class ConfigDefinitionRegistry {
 
         public void validate(String value) {
             if (!runtimeEditable) {
-                throw new BusinessException("该配置项不允许运行时修改: " + key);
+                throw BusinessException.stateInvalid("该配置项不允许运行时修改: " + key);
             }
             validator.accept(value == null ? "" : value);
         }

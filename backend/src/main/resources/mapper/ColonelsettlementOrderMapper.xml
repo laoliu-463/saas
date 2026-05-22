@@ -39,6 +39,7 @@
         <result property="attributionRemark" column="attribution_remark"/>
         <result property="createTime" column="create_time"/>
         <result property="updateTime" column="update_time"/>
+        <result property="version" column="version"/>
         <result property="deleted" column="deleted"/>
         <result property="extraData" column="extra_data" typeHandler="com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler"/>
     </resultMap>
@@ -61,7 +62,7 @@
             channel_user_id, channel_user_name, channel_dept_id,
             user_id, dept_id, colonel_user_id, colonel_user_name, promotion_link_id, product_title, talent_name,
             colonel_activity_id, settle_time,
-            attribution_status, attribution_remark, create_time, update_time, deleted, extra_data
+            attribution_status, attribution_remark, create_time, update_time, version, deleted, extra_data
         )
         SELECT
             #{id}, #{orderId}, #{productId}, #{productName}, #{shopId}, #{shopName},
@@ -72,7 +73,8 @@
             #{channelUserId}, #{channelUserName}, #{channelDeptId},
             #{userId}, #{deptId}, #{colonelUserId}, #{colonelUserName}, #{promotionLinkId}, #{productTitle}, #{talentName},
             #{activityId}, #{settleTime},
-            #{attributionStatus}, #{attributionRemark}, #{createTime}, #{updateTime}, #{deleted},
+            #{attributionStatus}, #{attributionRemark}, #{createTime}, #{updateTime},
+            COALESCE(#{version}, 0), #{deleted},
             CAST(#{extraData, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB)
         WHERE NOT EXISTS (
             SELECT 1
@@ -118,9 +120,11 @@
             attribution_status = #{attributionStatus},
             attribution_remark = #{attributionRemark},
             update_time = #{updateTime},
+            version = COALESCE(version, 0) + 1,
             deleted = #{deleted},
             extra_data = CAST(#{extraData, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB)
         WHERE id = #{id}
+          AND version = COALESCE(#{version}, 0)
     </update>
 
     <select id="findPageWithScope" resultMap="ColonelsettlementOrderMap">

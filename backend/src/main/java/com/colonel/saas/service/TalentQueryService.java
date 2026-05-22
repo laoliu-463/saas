@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
@@ -139,12 +140,38 @@ public class TalentQueryService {
                 claimMaps.activeClaimsByTalent().getOrDefault(resolvedTalentId, List.of()));
         enrichTalentCards(List.of(talent), currentUserId, claimMaps);
 
+        boolean redactSensitiveFields = shouldRedactSensitiveFields(dataScope);
         TalentDetailResponse response = new TalentDetailResponse();
-        response.setTalent(toTalentInfo(talent));
-        response.setClaim(toClaimInfo(talent, currentUserId));
+        response.setTalent(toTalentInfo(talent, redactSensitiveFields));
+        response.setClaim(toClaimInfo(talent, currentUserId, redactSensitiveFields));
         response.setSamples(loadSamples(talent));
-        response.setOrders(loadOrders(talent));
+        response.setOrders(loadOrders(talent, redactSensitiveFields));
         return response;
+    }
+
+    public void assertCanOperate(UUID talentId, UUID currentUserId, UUID currentDeptId, Collection<?> roleCodes) {
+        Talent talent = talentService.getById(talentId);
+        UUID resolvedTalentId = talent == null ? null : talent.getId();
+        if (resolvedTalentId == null || hasRole(roleCodes, RoleCodes.ADMIN)) {
+            return;
+        }
+        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(resolvedTalentId);
+        List<TalentClaim> safeActiveClaims = activeClaims == null ? List.of() : activeClaims;
+        if (hasRole(roleCodes, RoleCodes.CHANNEL_LEADER)) {
+            boolean ownedByCurrentDept = currentDeptId != null && safeActiveClaims.stream()
+                    .anyMatch(claim -> currentDeptId.equals(claim.getDeptId()));
+            if (ownedByCurrentDept) {
+                return;
+            }
+        }
+        if (hasRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
+            boolean ownedByCurrentUser = currentUserId != null && safeActiveClaims.stream()
+                    .anyMatch(claim -> currentUserId.equals(claim.getUserId()));
+            if (ownedByCurrentUser) {
+                return;
+            }
+        }
+        throw new ForbiddenException("无权操作该达人");
     }
 
     private void assertCanAccess(Talent talent, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
@@ -177,6 +204,17 @@ public class TalentQueryService {
         if (!ownedByCurrentDept) {
             throw new ForbiddenException("无权查看该达人详情");
         }
+    }
+
+    private boolean hasRole(Collection<?> roleCodes, String expectedRole) {
+        if (roleCodes == null || roleCodes.isEmpty() || !StringUtils.hasText(expectedRole)) {
+            return false;
+        }
+        String normalizedExpected = expectedRole.trim().toLowerCase(Locale.ROOT);
+        return roleCodes.stream()
+                .filter(Objects::nonNull)
+                .map(value -> value.toString().trim().toLowerCase(Locale.ROOT))
+                .anyMatch(normalizedExpected::equals);
     }
 
     private void enrichTalentCards(List<Talent> talents, UUID currentUserId) {
@@ -362,15 +400,16 @@ public class TalentQueryService {
         return partitions;
     }
 
-    private TalentDetailResponse.TalentInfo toTalentInfo(Talent talent) {
+    private TalentDetailResponse.TalentInfo toTalentInfo(Talent talent, boolean redactSensitiveFields) {
         TalentDetailResponse.TalentInfo info = new TalentDetailResponse.TalentInfo();
         info.setId(talent.getId() == null ? null : talent.getId().toString());
         info.setNickname(talent.getNickname());
         info.setDouyinUid(talent.getDouyinUid());
         info.setDouyinNo(talent.getDouyinNo());
         info.setUid(talent.getUid());
-        info.setSecUid(talent.getSecUid());
-        info.setProfileUrl(talent.getProfileUrl());
+        if (!redactSensitiveFields) {
+            info.setProfileUrl(talent.getProfileUrl());
+        }
         info.setFansCount(talent.getFans());
         info.setLikesCount(talent.getLikesCount());
         info.setWorksCount(talent.getWorksCount());
@@ -395,7 +434,7 @@ public class TalentQueryService {
         return info;
     }
 
-    private TalentDetailResponse.ClaimInfo toClaimInfo(Talent talent, UUID currentUserId) {
+    private TalentDetailResponse.ClaimInfo toClaimInfo(Talent talent, UUID currentUserId, boolean redactSensitiveFields) {
         TalentDetailResponse.ClaimInfo info = new TalentDetailResponse.ClaimInfo();
         info.setPoolStatus(talent.getPoolStatus());
         info.setOwnerId(talent.getOwnerId() == null ? null : talent.getOwnerId().toString());
@@ -403,7 +442,7 @@ public class TalentQueryService {
         info.setClaimedAt(talent.getClaimedAt());
         info.setProtectedUntil(talent.getProtectedUntil());
         info.setActiveClaimCount(talent.getActiveClaimCount());
-        info.setActiveClaimOwners(loadActiveClaimOwners(talent.getId(), currentUserId));
+        info.setActiveClaimOwners(redactSensitiveFields ? List.of() : loadActiveClaimOwners(talent.getId(), currentUserId));
         return info;
     }
 
@@ -440,7 +479,7 @@ public class TalentQueryService {
         return items;
     }
 
-    private List<TalentDetailResponse.OrderItem> loadOrders(Talent talent) {
+    private List<TalentDetailResponse.OrderItem> loadOrders(Talent talent, boolean redactSensitiveFields) {
         if (talent == null || !StringUtils.hasText(talent.getDouyinUid())) {
             return List.of();
         }
@@ -465,11 +504,17 @@ public class TalentQueryService {
             item.setProductName(asText(row.get("product_name")));
             item.setOrderAmount(asLong(row.get("order_amount")));
             item.setServiceFee(asLong(row.get("settle_colonel_commission")));
-            item.setChannelName(asText(row.get("channel_user_name")));
+            if (!redactSensitiveFields) {
+                item.setChannelName(asText(row.get("channel_user_name")));
+            }
             item.setCreateTime(toDateTime(row.get("create_time")));
             items.add(item);
         }
         return items;
+    }
+
+    private boolean shouldRedactSensitiveFields(DataScope dataScope) {
+        return dataScope == DataScope.PERSONAL;
     }
 
     private String displayName(SysUser user) {

@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.entity.SysUser;
@@ -92,21 +93,21 @@ public class MerchantService {
     @Transactional(rollbackFor = Exception.class)
     public Merchant overrideMerchantAssignment(String merchantId, UUID newUserId, String reason, UUID currentUserId) {
         if (newUserId == null) {
-            throw new BusinessException("新负责人ID不能为空");
+            throw BusinessException.param("新负责人ID不能为空");
         }
         SysUser targetUser = sysUserMapper.selectById(newUserId);
         if (targetUser == null || targetUser.getDeleted() == 1) {
-            throw new BusinessException("目标负责人不存在");
+            throw BusinessException.notFound("目标负责人不存在");
         }
         Merchant merchant = merchantMapper.selectOne(new LambdaQueryWrapper<Merchant>()
                 .eq(Merchant::getMerchantId, merchantId)
                 .last("limit 1"));
         if (merchant == null) {
-            throw new BusinessException("商家不存在");
+            throw BusinessException.notFound("商家不存在");
         }
         merchant.setOwnerId(newUserId);
         merchant.setOwnerDeptId(targetUser.getDeptId());
-        merchantMapper.updateById(merchant);
+        OptimisticLockSupport.requireUpdated(merchantMapper.updateById(merchant));
 
         operationLogService.recordSystemAction(
                 currentUserId,

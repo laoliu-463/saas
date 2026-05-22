@@ -2,8 +2,10 @@ package com.colonel.saas.job;
 
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.mapper.SampleRequestMapper;
+import com.colonel.saas.service.DistributedJobLockService;
 import com.colonel.saas.service.LogisticsTrackService;
 import io.lettuce.core.RedisCommandExecutionException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +20,7 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -30,20 +33,23 @@ class LogisticsTrackJobTest {
     @Mock
     private SampleRequestMapper sampleRequestMapper;
     @Mock
+    private DistributedJobLockService jobLockService;
+    @Mock
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
     private ValueOperations<String, Object> valueOperations;
 
+    @BeforeEach
+    void grantLock() {
+        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.LOGISTICS_TRACK), any(Duration.class))).thenReturn(true);
+    }
+
     private LogisticsTrackJob newJob() {
-        return new LogisticsTrackJob(logisticsTrackService, sampleRequestMapper, redisTemplate, true, false);
+        return new LogisticsTrackJob(logisticsTrackService, sampleRequestMapper, jobLockService, true);
     }
 
     private LogisticsTrackJob newDisabledJob() {
-        return new LogisticsTrackJob(logisticsTrackService, sampleRequestMapper, redisTemplate, false, false);
-    }
-
-    private LogisticsTrackJob newTestJob() {
-        return new LogisticsTrackJob(logisticsTrackService, sampleRequestMapper, redisTemplate, true, true);
+        return new LogisticsTrackJob(logisticsTrackService, sampleRequestMapper, jobLockService, false);
     }
 
     @Test
@@ -54,16 +60,13 @@ class LogisticsTrackJobTest {
         sample1.setRequestNo("SR-001");
         SampleRequest sample2 = new SampleRequest();
         sample2.setRequestNo("SR-002");
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.setIfAbsent(eq("logistics:track:job:lock"), eq("1"), any(Duration.class)))
-                .thenReturn(true);
         when(sampleRequestMapper.selectList(any())).thenReturn(List.of(sample1, sample2));
 
         job.refreshShippingSamples();
 
         verify(logisticsTrackService).refreshAndProgress(sample1);
         verify(logisticsTrackService).refreshAndProgress(sample2);
-        verify(redisTemplate).delete("logistics:track:job:lock");
+        verify(jobLockService).release(JobLockKeys.LOGISTICS_TRACK);
     }
 
     @Test
@@ -74,9 +77,6 @@ class LogisticsTrackJobTest {
         sample1.setRequestNo("SR-001");
         SampleRequest sample2 = new SampleRequest();
         sample2.setRequestNo("SR-002");
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.setIfAbsent(eq("logistics:track:job:lock"), eq("1"), any(Duration.class)))
-                .thenReturn(true);
         when(sampleRequestMapper.selectList(any())).thenReturn(List.of(sample1, sample2));
         doThrow(new RuntimeException("查询失败")).when(logisticsTrackService).refreshAndProgress(sample1);
 
@@ -84,22 +84,20 @@ class LogisticsTrackJobTest {
 
         verify(logisticsTrackService).refreshAndProgress(sample1);
         verify(logisticsTrackService).refreshAndProgress(sample2);
-        verify(redisTemplate).delete("logistics:track:job:lock");
+        verify(jobLockService).release(JobLockKeys.LOGISTICS_TRACK);
     }
 
     @Test
     @DisplayName("未获取锁时跳过执行")
     void refreshShippingSamples_shouldSkipWhenLockNotAcquired() {
         LogisticsTrackJob job = newJob();
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.setIfAbsent(eq("logistics:track:job:lock"), eq("1"), any(Duration.class)))
-                .thenReturn(false);
+        when(jobLockService.tryAcquire(eq(JobLockKeys.LOGISTICS_TRACK), any(Duration.class))).thenReturn(false);
 
         job.refreshShippingSamples();
 
         verify(sampleRequestMapper, never()).selectList(any());
         verify(logisticsTrackService, never()).refreshAndProgress(any());
-        verify(redisTemplate, never()).delete("logistics:track:job:lock");
+        verify(jobLockService, never()).release(JobLockKeys.LOGISTICS_TRACK);
     }
 
     @Test
@@ -109,17 +107,19 @@ class LogisticsTrackJobTest {
 
         job.refreshShippingSamples();
 
-        verify(redisTemplate, never()).opsForValue();
+        verify(jobLockService, never()).tryAcquire(any(), any());
         verify(sampleRequestMapper, never()).selectList(any());
     }
 
     @Test
     @DisplayName("测试模式下 Redis 不可用时回退到本地锁")
     void refreshShippingSamples_shouldFallbackToLocalLockInTestMode() {
-        LogisticsTrackJob job = newTestJob();
+        DistributedJobLockService realLockService = new DistributedJobLockService(redisTemplate, true);
+        LogisticsTrackJob job = new LogisticsTrackJob(
+                logisticsTrackService, sampleRequestMapper, realLockService, true);
         SampleRequest sample = new SampleRequest();
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.setIfAbsent(eq("logistics:track:job:lock"), eq("1"), any(Duration.class)))
+        when(valueOperations.setIfAbsent(eq(JobLockKeys.LOGISTICS_TRACK), eq("1"), any(Duration.class)))
                 .thenThrow(new RedisCommandExecutionException("redis down"));
         when(sampleRequestMapper.selectList(any())).thenReturn(List.of(sample));
 
@@ -131,9 +131,11 @@ class LogisticsTrackJobTest {
     @Test
     @DisplayName("非测试模式下 Redis 异常应抛出")
     void refreshShippingSamples_shouldThrowWhenRedisFailsInNonTestMode() {
-        LogisticsTrackJob job = newJob();
+        DistributedJobLockService realLockService = new DistributedJobLockService(redisTemplate, false);
+        LogisticsTrackJob job = new LogisticsTrackJob(
+                logisticsTrackService, sampleRequestMapper, realLockService, true);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.setIfAbsent(eq("logistics:track:job:lock"), eq("1"), any(Duration.class)))
+        when(valueOperations.setIfAbsent(eq(JobLockKeys.LOGISTICS_TRACK), eq("1"), any(Duration.class)))
                 .thenThrow(new RedisCommandExecutionException("redis down"));
 
         try {

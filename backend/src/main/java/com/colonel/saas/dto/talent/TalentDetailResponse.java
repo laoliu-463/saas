@@ -20,7 +20,6 @@ public class TalentDetailResponse {
         private String douyinUid;
         private String douyinNo;
         private String uid;
-        private String secUid;
         private String profileUrl;
         private Long fansCount;
         private Long likesCount;

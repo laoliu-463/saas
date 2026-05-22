@@ -107,16 +107,16 @@ public class OrderAttributionController extends BaseController {
 
         QueryWrapper<ColonelsettlementOrder> channelWrapper = buildScopedQuery(userId, deptId, dataScope)
                 .select(
-                        "channel_user_id AS owner_id",
+                        "COALESCE(user_id, channel_user_id) AS owner_id",
                         "COUNT(*) AS order_count",
                         "COALESCE(SUM(order_amount), 0) AS order_amount_cent",
                         "COALESCE(SUM(settle_colonel_commission), 0) AS service_fee_cent"
                 )
                 .eq("attribution_status", "ATTRIBUTED")
-                .isNotNull("channel_user_id")
+                .and(q -> q.isNotNull("user_id").or().isNotNull("channel_user_id"))
                 .ge("settle_time", start)
                 .lt("settle_time", end)
-                .groupBy("channel_user_id");
+                .groupBy("COALESCE(user_id, channel_user_id)");
         summary.setChannelPerformance(toPerformanceList(orderMapper.selectMaps(channelWrapper)));
 
         QueryWrapper<ColonelsettlementOrder> colonelWrapper = buildScopedQuery(userId, deptId, dataScope)

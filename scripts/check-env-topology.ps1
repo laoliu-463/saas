@@ -89,8 +89,8 @@ $portSummary = foreach ($port in $ports) {
 $httpChecks = [ordered]@{
     frontend3000 = Test-HttpOk 'http://localhost:3000'
     frontend3001 = Test-HttpOk 'http://localhost:3001'
-    backend8080 = Test-HttpOk 'http://localhost:8080/api/actuator/health'
-    backend8081 = Test-HttpOk 'http://localhost:8081/api/actuator/health'
+    backend8080 = Test-HttpOk 'http://localhost:8080/api/system/health'
+    backend8081 = Test-HttpOk 'http://localhost:8081/api/system/health'
 }
 
 $violations = New-Object System.Collections.Generic.List[string]

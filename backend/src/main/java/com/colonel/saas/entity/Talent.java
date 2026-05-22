@@ -2,7 +2,7 @@ package com.colonel.saas.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.colonel.saas.common.base.BaseEntity;
+import com.colonel.saas.common.base.VersionedEntity;
 import com.colonel.saas.common.typehandler.JsonbListTypeHandler;
 import com.colonel.saas.common.typehandler.JsonbTypeHandler;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -17,7 +17,7 @@ import java.util.UUID;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName(value = "talent", autoResultMap = true)
-public class Talent extends BaseEntity {
+public class Talent extends VersionedEntity {
 
     @TableField("douyin_uid")
     private String douyinUid;

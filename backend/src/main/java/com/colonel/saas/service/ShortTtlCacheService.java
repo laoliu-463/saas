@@ -57,6 +57,13 @@ public class ShortTtlCacheService {
         publishEviction(prefix);
     }
 
+    public void evict(String key) {
+        if (key == null || key.isBlank()) {
+            return;
+        }
+        cache.remove(key);
+    }
+
     public void evictLocalByPrefix(String prefix) {
         if (prefix == null || prefix.isBlank()) {
             return;

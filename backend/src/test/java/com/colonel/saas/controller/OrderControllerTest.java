@@ -1,15 +1,19 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.DashboardService;
+import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderSyncService;
@@ -21,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -53,13 +58,27 @@ class OrderControllerTest {
     private OrderQueryService orderQueryService;
     @Mock
     private OrderAttributionReplayService orderAttributionReplayService;
+    @Mock
+    private OperationLogService operationLogService;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
+        if (TableInfoHelper.getTableInfo(ColonelsettlementOrder.class) == null) {
+            MybatisConfiguration configuration = new MybatisConfiguration();
+            configuration.getTypeHandlerRegistry().register(java.util.UUID.class, UUIDTypeHandler.class);
+            MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
+            TableInfoHelper.initTableInfo(assistant, ColonelsettlementOrder.class);
+        }
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService, new ShortTtlCacheService()))
+                .standaloneSetup(new OrderController(
+                        orderSyncService,
+                        orderMapper,
+                        orderQueryService,
+                        orderAttributionReplayService,
+                        operationLogService,
+                        new ShortTtlCacheService()))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -92,7 +111,9 @@ class OrderControllerTest {
         OrderSyncService.SyncResult result = new OrderSyncService.SyncResult(0L, 0L, 1, 1, 0, false);
         when(orderSyncService.syncByTimeRange(anyLong(), anyLong())).thenReturn(result);
 
+        java.util.UUID userId = java.util.UUID.randomUUID();
         mockMvc.perform(post("/orders/sync")
+                        .requestAttr("userId", userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"startTime":"2026-04-01 00:00:00","endTime":"2026-04-28 23:59:59"}
@@ -101,6 +122,15 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         verify(orderSyncService).syncByTimeRange(1774972800L, 1777391999L);
+        verify(operationLogService).recordSystemAction(
+                org.mockito.ArgumentMatchers.eq(userId),
+                org.mockito.ArgumentMatchers.eq("订单归因"),
+                org.mockito.ArgumentMatchers.eq("手动同步订单"),
+                org.mockito.ArgumentMatchers.eq("POST"),
+                org.mockito.ArgumentMatchers.eq("order_sync"),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
@@ -108,7 +138,8 @@ class OrderControllerTest {
         OrderSyncService.SyncResult result = new OrderSyncService.SyncResult(0L, 0L, 0, 0, 0, false);
         when(orderSyncService.syncByTimeRange(anyLong(), anyLong())).thenReturn(result);
 
-        mockMvc.perform(post("/orders/sync"))
+        mockMvc.perform(post("/orders/sync")
+                        .requestAttr("userId", java.util.UUID.randomUUID()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
@@ -120,7 +151,10 @@ class OrderControllerTest {
 
     @Test
     void syncOrders_shouldRequireAdminRoleAnnotation() throws Exception {
-        Method syncOrders = OrderController.class.getMethod("syncOrders", OrderController.SyncRequest.class);
+        Method syncOrders = OrderController.class.getMethod(
+                "syncOrders",
+                OrderController.SyncRequest.class,
+                java.util.UUID.class);
         assertThat(syncOrders.getAnnotation(RequireRoles.class)).isNotNull();
         assertThat(syncOrders.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.ADMIN);
     }
@@ -131,7 +165,9 @@ class OrderControllerTest {
                 new OrderAttributionReplayService.ReplayResult(12, 4, 8, 0, true, 0, 0, 0, 0, 0, 8);
         when(orderAttributionReplayService.replay(any(), any(), any(), anyBoolean())).thenReturn(result);
 
+        java.util.UUID userId = java.util.UUID.randomUUID();
         mockMvc.perform(post("/orders/replay-attribution")
+                        .requestAttr("userId", userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"reason":"COLONEL_MAPPING_NOT_FOUND","limit":12,"dryRun":true}
@@ -143,6 +179,117 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.dryRun").value(true));
 
         verify(orderAttributionReplayService).replay(any(), org.mockito.ArgumentMatchers.eq("COLONEL_MAPPING_NOT_FOUND"), org.mockito.ArgumentMatchers.eq(12), org.mockito.ArgumentMatchers.eq(true));
+        verify(operationLogService).recordSystemAction(
+                org.mockito.ArgumentMatchers.eq(userId),
+                org.mockito.ArgumentMatchers.eq("订单归因"),
+                org.mockito.ArgumentMatchers.eq("重算历史订单归因(预览)"),
+                org.mockito.ArgumentMatchers.eq("POST"),
+                org.mockito.ArgumentMatchers.eq("order_attribution"),
+                org.mockito.ArgumentMatchers.eq("COLONEL_MAPPING_NOT_FOUND"),
+                org.mockito.ArgumentMatchers.eq("dry-run"),
+                org.mockito.ArgumentMatchers.contains("scanned=12"));
+    }
+
+    @Test
+    void replayAttribution_shouldApplyAndRecordWhenDryRunMissing() throws Exception {
+        OrderAttributionReplayService.ReplayResult result =
+                new OrderAttributionReplayService.ReplayResult(3, 2, 1, 2, false, 0, 0, 0, 0, 0, 1);
+        when(orderAttributionReplayService.replay(any(), any(), any(), anyBoolean())).thenReturn(result);
+
+        java.util.UUID userId = java.util.UUID.randomUUID();
+        mockMvc.perform(post("/orders/replay-attribution")
+                        .requestAttr("userId", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"orderIds":["order-1","order-2"],"reason":"SYNC_FAILED","limit":2}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.updated").value(2))
+                .andExpect(jsonPath("$.data.dryRun").value(false));
+
+        verify(orderAttributionReplayService).replay(
+                org.mockito.ArgumentMatchers.eq(List.of("order-1", "order-2")),
+                org.mockito.ArgumentMatchers.eq("SYNC_FAILED"),
+                org.mockito.ArgumentMatchers.eq(2),
+                org.mockito.ArgumentMatchers.eq(false));
+        verify(operationLogService).recordSystemAction(
+                org.mockito.ArgumentMatchers.eq(userId),
+                org.mockito.ArgumentMatchers.eq("订单归因"),
+                org.mockito.ArgumentMatchers.eq("重算历史订单归因"),
+                org.mockito.ArgumentMatchers.eq("POST"),
+                org.mockito.ArgumentMatchers.eq("order_attribution"),
+                org.mockito.ArgumentMatchers.eq("SYNC_FAILED"),
+                org.mockito.ArgumentMatchers.eq("apply"),
+                org.mockito.ArgumentMatchers.contains("updated=2"));
+    }
+
+    @Test
+    void getOrders_shouldReturnPagedOrdersAndNormalizeReason() throws Exception {
+        java.util.UUID userId = java.util.UUID.randomUUID();
+        java.util.UUID deptId = java.util.UUID.randomUUID();
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("order-1");
+        order.setAttributionStatus("UNATTRIBUTED");
+        order.setAttributionRemark("SYNC_FAILED");
+
+        when(orderMapper.selectPage(any(), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Page<ColonelsettlementOrder> page = invocation.getArgument(0);
+            page.setRecords(List.of(order));
+            page.setTotal(1);
+            return page;
+        });
+
+        mockMvc.perform(get("/orders")
+                        .param("page", "2")
+                        .param("size", "5")
+                        .param("orderId", "order-1")
+                        .param("attributionStatus", "UNATTRIBUTED")
+                        .param("unattributedReason", "SYNC_FAILED")
+                        .param("activityId", "activity-1")
+                        .param("productId", "product-1")
+                        .param("channelKeyword", "渠道")
+                        .param("colonelKeyword", "团长")
+                        .param("orderStatus", "3")
+                        .param("startTime", "2026-04-01 00:00:00")
+                        .param("endTime", "2026-04-28 23:59:59")
+                        .param("timeField", "settleTime")
+                        .param("dashboardDiagnosis", DashboardService.DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED)
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("dataScope", DataScope.DEPT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.records[0].orderId").value("order-1"))
+                .andExpect(jsonPath("$.data.records[0].unattributedReason").value("SYNC_FAILED"));
+    }
+
+    @Test
+    void getUnattributedOrders_shouldReturnPagedOrdersForPersonalScope() throws Exception {
+        java.util.UUID userId = java.util.UUID.randomUUID();
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("order-unattributed");
+        order.setAttributionRemark("NO_PICK_SOURCE");
+
+        when(orderMapper.selectPage(any(), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Page<ColonelsettlementOrder> page = invocation.getArgument(0);
+            page.setRecords(List.of(order));
+            page.setTotal(1);
+            return page;
+        });
+
+        mockMvc.perform(get("/orders/unattributed")
+                        .param("unattributedReason", "NO_PICK_SOURCE")
+                        .param("timeField", "createTime")
+                        .requestAttr("userId", userId)
+                        .requestAttr("dataScope", DataScope.PERSONAL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.records[0].orderId").value("order-unattributed"))
+                .andExpect(jsonPath("$.data.records[0].unattributedReason").value("NO_PICK_SOURCE"));
     }
 
     @Test
@@ -175,6 +322,31 @@ class OrderControllerTest {
     }
 
     @Test
+    void getStats_shouldIgnoreBlankReasonsAndParseCaseInsensitiveColumns() throws Exception {
+        when(orderMapper.selectMaps(any())).thenReturn(
+                List.of(
+                        Map.of("ATTRIBUTIONSTATUS", "ATTRIBUTED", "TOTAL", "2"),
+                        Map.of("attributionStatus", "UNATTRIBUTED", "total", "bad-number")
+                ),
+                List.of(
+                        Map.of("reason", "", "total", 99L),
+                        Map.of("REASON", "SYNC_FAILED", "TOTAL", "3")
+                )
+        );
+
+        mockMvc.perform(get("/orders/stats")
+                        .requestAttr("deptId", java.util.UUID.randomUUID())
+                        .requestAttr("dataScope", DataScope.DEPT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.totalOrders").value(2))
+                .andExpect(jsonPath("$.data.attributedOrders").value(2))
+                .andExpect(jsonPath("$.data.unattributedOrders").value(0))
+                .andExpect(jsonPath("$.data.syncFailedOrders").value(3))
+                .andExpect(jsonPath("$.data.unattributedReasons[0].reason").value("SYNC_FAILED"));
+    }
+
+    @Test
     void normalizeDiagnosisCategory_shouldWhitelistDashboardCategories() {
         assertThat(DashboardService.normalizeDiagnosisCategory(DashboardService.DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED))
                 .isEqualTo(DashboardService.DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED);
@@ -192,7 +364,13 @@ class OrderControllerTest {
 
     @Test
     void sanitizeDiagnosisSqlPrefix_shouldRejectUnknownAlias() throws Exception {
-        OrderController controller = new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService, new ShortTtlCacheService());
+        OrderController controller = new OrderController(
+                orderSyncService,
+                orderMapper,
+                orderQueryService,
+                orderAttributionReplayService,
+                operationLogService,
+                new ShortTtlCacheService());
         Method method = OrderController.class.getDeclaredMethod("sanitizeDiagnosisSqlPrefix", String.class);
         method.setAccessible(true);
 
@@ -223,5 +401,41 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.unattributedReasons[0].label").value("原生团长订单未找到归因映射"))
                 .andExpect(jsonPath("$.data.unattributedReasons[1].value").value("COLONEL_MAPPING_AMBIGUOUS"))
                 .andExpect(jsonPath("$.data.unattributedReasons[1].label").value("原生团长订单命中多条归因映射"));
+    }
+
+    @Test
+    void getFilterOptions_shouldMapFallbackLabelsAndSkipInvalidValues() throws Exception {
+        when(orderMapper.selectMaps(any())).thenReturn(
+                List.of(Map.of("value", "2"), Map.of("value", "bad")),
+                List.of(Map.of("value", "PARTIAL"), Map.of("value", "FAILED")),
+                List.of(
+                        Map.of("value", "NO_PICK_SOURCE"),
+                        Map.of("value", "自定义原因")
+                ),
+                List.of(
+                        Map.of("value", "P-1", "label", "商品一"),
+                        Map.of("value", "P-2"),
+                        Map.of("value", "")
+                ),
+                List.of(Map.of("value", "渠道甲")),
+                List.of(Map.of("value", "团长甲"))
+        );
+
+        mockMvc.perform(get("/orders/filter-options")
+                        .param("keyword", "甲")
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .requestAttr("dataScope", DataScope.PERSONAL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.orderStatuses[0].value").value("2"))
+                .andExpect(jsonPath("$.data.orderStatuses[0].label").value("已发货"))
+                .andExpect(jsonPath("$.data.orderStatuses.length()").value(1))
+                .andExpect(jsonPath("$.data.attributionStatuses[0].label").value("部分归因"))
+                .andExpect(jsonPath("$.data.attributionStatuses[1].label").value("同步/归因失败"))
+                .andExpect(jsonPath("$.data.unattributedReasons[0].label").value("订单未携带推广参数"))
+                .andExpect(jsonPath("$.data.unattributedReasons[1].label").value("自定义原因"))
+                .andExpect(jsonPath("$.data.products[1].label").value("P-2"))
+                .andExpect(jsonPath("$.data.channels[0].label").value("渠道甲"))
+                .andExpect(jsonPath("$.data.colonels[0].label").value("团长甲"));
     }
 }

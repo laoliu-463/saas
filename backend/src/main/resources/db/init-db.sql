@@ -259,6 +259,7 @@ CREATE TABLE IF NOT EXISTS talent (
     update_time       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     create_by         UUID,
     update_by         UUID,
+    version           INTEGER NOT NULL DEFAULT 0,
     extra_data        JSONB,
     likes_count       BIGINT     DEFAULT 0,               -- 获赞数
     following_count   BIGINT     DEFAULT 0,               -- 关注数
@@ -291,6 +292,7 @@ CREATE TABLE IF NOT EXISTS talent_claim (
     update_time      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     create_by        UUID,
     update_by        UUID,
+    version          INTEGER NOT NULL DEFAULT 0,
     remark           TEXT,
     CONSTRAINT fk_tc_talent FOREIGN KEY (talent_id) REFERENCES talent(id) ON DELETE CASCADE
 );
@@ -325,6 +327,13 @@ CREATE TABLE IF NOT EXISTS exclusive_talent (
     remark             TEXT,
     trigger_type       SMALLINT NOT NULL DEFAULT 1,       -- 1=自动触发, 2=人工审核
     audit_user_id      UUID,                               -- 审核人
+    CONSTRAINT ck_exclusive_talent_non_negative_financials CHECK (
+        service_fee >= 0
+        AND channel_total_fee >= 0
+        AND service_fee_ratio >= 0
+        AND monthly_samples >= 0
+    ),
+    CONSTRAINT ck_exclusive_talent_status CHECK (status IN (0, 1, 2)),
     CONSTRAINT fk_et_talent FOREIGN KEY (talent_id) REFERENCES talent(id) ON DELETE CASCADE,
     CONSTRAINT fk_et_user FOREIGN KEY (user_id) REFERENCES sys_user(id)
 );
@@ -357,7 +366,13 @@ CREATE TABLE IF NOT EXISTS exclusive_merchant (
     update_time         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     create_by           UUID,
     update_by           UUID,
-    remark              TEXT
+    remark              TEXT,
+    CONSTRAINT ck_exclusive_merchant_non_negative_financials CHECK (
+        service_fee >= 0
+        AND business_total_fee >= 0
+        AND service_fee_ratio >= 0
+    ),
+    CONSTRAINT ck_exclusive_merchant_status CHECK (status IN (0, 1, 2))
 );
 CREATE INDEX IF NOT EXISTS idx_em_merchant_id    ON exclusive_merchant(merchant_id);
 CREATE INDEX IF NOT EXISTS idx_em_shop_id        ON exclusive_merchant(shop_id);
@@ -387,6 +402,7 @@ CREATE TABLE IF NOT EXISTS merchant (
     update_time     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     create_by       UUID,
     update_by       UUID,
+    version         INTEGER NOT NULL DEFAULT 0,
     extra_data      JSONB
 );
 CREATE INDEX IF NOT EXISTS idx_merchant_merchant_id ON merchant(merchant_id);
@@ -394,6 +410,17 @@ CREATE INDEX IF NOT EXISTS idx_merchant_shop_id     ON merchant(shop_id);
 CREATE INDEX IF NOT EXISTS idx_merchant_owner_id    ON merchant(owner_id);
 CREATE INDEX IF NOT EXISTS idx_merchant_owner_dept  ON merchant(owner_dept_id);
 CREATE INDEX IF NOT EXISTS idx_merchant_deleted     ON merchant(deleted);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_em_merchant'
+    ) THEN
+        ALTER TABLE exclusive_merchant
+            ADD CONSTRAINT fk_em_merchant
+            FOREIGN KEY (merchant_id) REFERENCES merchant(merchant_id) ON DELETE CASCADE;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS crawler_talent_info (
     id              BIGSERIAL PRIMARY KEY,
@@ -444,7 +471,8 @@ CREATE TABLE IF NOT EXISTS pick_source_mapping (
     create_time      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     create_by        UUID,
-    update_by        UUID
+    update_by        UUID,
+    version          INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_psm_user_id      ON pick_source_mapping(user_id);
 CREATE INDEX IF NOT EXISTS idx_psm_pick_source  ON pick_source_mapping(pick_source);
@@ -506,6 +534,7 @@ CREATE TABLE IF NOT EXISTS sample_request (
     update_time          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     create_by            UUID,
     update_by            UUID,
+    version              INTEGER NOT NULL DEFAULT 0,
     remark               TEXT,
     extra_data           JSONB,
     CONSTRAINT fk_sr_talent FOREIGN KEY (talent_id) REFERENCES talent(id),
@@ -598,6 +627,7 @@ CREATE TABLE IF NOT EXISTS colonelsettlement_order (
     attribution_remark       VARCHAR(255),
     create_time              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    version                  INTEGER NOT NULL DEFAULT 0,
     deleted                  SMALLINT  NOT NULL DEFAULT 0,
     extra_data               JSONB,
     CONSTRAINT pk_cso PRIMARY KEY (id, create_time)
@@ -668,6 +698,20 @@ BEGIN
             ADD CONSTRAINT ck_cso_order_type
             CHECK (order_type IS NULL OR order_type >= 0) NOT VALID;
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_cso_non_negative_financials'
+    ) THEN
+        ALTER TABLE colonelsettlement_order
+            ADD CONSTRAINT ck_cso_non_negative_financials
+            CHECK (
+                (order_amount IS NULL OR order_amount >= 0)
+                AND (actual_amount IS NULL OR actual_amount >= 0)
+                AND (settle_colonel_commission IS NULL OR settle_colonel_commission >= 0)
+                AND (settle_colonel_tech_service_fee IS NULL OR settle_colonel_tech_service_fee >= 0)
+                AND (settle_second_colonel_commission IS NULL OR settle_second_colonel_commission >= 0)
+            ) NOT VALID;
+    END IF;
 END $$;
 
 -- =============================================
@@ -694,6 +738,13 @@ CREATE TABLE IF NOT EXISTS commission_settlement (
     update_by        UUID,
     remark           TEXT,
     extra_data       JSONB,
+    CONSTRAINT ck_commission_settlement_non_negative_financials CHECK (
+        order_count >= 0
+        AND total_order_amount >= 0
+        AND commission_amount >= 0
+        AND tech_service_fee >= 0
+        AND net_commission >= 0
+    ),
     CONSTRAINT fk_comm_user FOREIGN KEY (user_id) REFERENCES sys_user(id)
 );
 CREATE INDEX IF NOT EXISTS idx_comm_settle_month ON commission_settlement(settle_month);

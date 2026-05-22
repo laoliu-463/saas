@@ -88,7 +88,7 @@ function Add-Step {
 }
 
 try {
-    $health = Invoke-RestMethod -Uri ($BaseUrl.TrimEnd("/") + "/actuator/health") -TimeoutSec 10
+    $health = Invoke-RestMethod -Uri ($BaseUrl.TrimEnd("/") + "/system/health") -TimeoutSec 10
     Add-Step "health" "PASS" @{ status = $health.status }
 } catch {
     Add-Step "health" "FAIL" @{ error = $_.Exception.Message }

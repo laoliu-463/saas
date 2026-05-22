@@ -1,8 +1,12 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.entity.SampleRequest;
+import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.SampleRequestMapper;
+import com.colonel.saas.mapper.TalentClaimMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -12,6 +16,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -28,23 +33,30 @@ public class SampleLifecycleService {
     private static final int STATUS_CLOSED = 8;
     private final JdbcTemplate jdbcTemplate;
     private final SampleRequestMapper sampleRequestMapper;
+    private final TalentClaimMapper talentClaimMapper;
     private final SampleStatusLogService sampleStatusLogService;
     private final BusinessRuleConfigService businessRuleConfigService;
 
     public SampleLifecycleService(
             JdbcTemplate jdbcTemplate,
             SampleRequestMapper sampleRequestMapper,
+            TalentClaimMapper talentClaimMapper,
             SampleStatusLogService sampleStatusLogService,
             BusinessRuleConfigService businessRuleConfigService) {
         this.jdbcTemplate = jdbcTemplate;
         this.sampleRequestMapper = sampleRequestMapper;
+        this.talentClaimMapper = talentClaimMapper;
         this.sampleStatusLogService = sampleStatusLogService;
         this.businessRuleConfigService = businessRuleConfigService;
     }
 
     @Transactional(rollbackFor = Exception.class)
     public int completePendingHomeworkByOrder(ColonelsettlementOrder order) {
-        if (order == null || order.getChannelUserId() == null || !StringUtils.hasText(order.getProductId())) {
+        if (order == null || !StringUtils.hasText(order.getProductId())) {
+            return 0;
+        }
+        UUID sampleOwnerId = resolveSampleOwnerForOrderCompletion(order);
+        if (sampleOwnerId == null) {
             return 0;
         }
         String talentUid = resolveTalentUid(order);
@@ -52,10 +64,13 @@ public class SampleLifecycleService {
             return 0;
         }
         List<UUID> requestIds = findPendingHomeworkRequestIds(
-                order.getChannelUserId(),
+                sampleOwnerId,
                 talentUid,
                 order.getProductId()
         );
+        if (requestIds.size() > 1) {
+            requestIds = List.of(requestIds.get(0));
+        }
         String remark = "auto complete by order: " + order.getOrderId();
         return transitionSamples(
                 requestIds,
@@ -142,10 +157,11 @@ public class SampleLifecycleService {
             sample.setUpdateTime(now);
         }
         for (List<SampleRequest> batch : partition(samples, SQL_IN_BATCH_SIZE)) {
-            jdbcTemplate.batchUpdate("""
+            int[][] updated = jdbcTemplate.batchUpdate("""
                     UPDATE sample_request
-                    SET status = ?, complete_time = ?, close_time = ?, close_reason = ?, update_time = ?
-                    WHERE id = ? AND deleted = 0
+                    SET status = ?, complete_time = ?, close_time = ?, close_reason = ?, update_time = ?,
+                        version = COALESCE(version, 0) + 1
+                    WHERE id = ? AND deleted = 0 AND COALESCE(version, 0) = ?
                     """,
                     batch,
                     batch.size(),
@@ -156,8 +172,25 @@ public class SampleLifecycleService {
                         ps.setObject(4, sample.getCloseReason());
                         ps.setObject(5, sample.getUpdateTime());
                         ps.setObject(6, sample.getId());
+                        ps.setObject(7, sample.getVersion() == null ? 0 : sample.getVersion());
                     }
             );
+            if (updated == null || updated.length != batch.size()) {
+                for (SampleRequest sample : batch) {
+                    OptimisticLockSupport.requireUpdated(sampleRequestMapper.updateById(sample));
+                    sample.setVersion((sample.getVersion() == null ? 0 : sample.getVersion()) + 1);
+                }
+                return;
+            }
+            for (int i = 0; i < batch.size(); i++) {
+                int affected = updated[i].length == 0 ? 0 : updated[i][0];
+                if (affected == 0) {
+                    throw BusinessException.conflict(
+                            "寄样单状态已被他人修改，请刷新后重试: " + batch.get(i).getRequestNo());
+                }
+                SampleRequest sample = batch.get(i);
+                sample.setVersion((sample.getVersion() == null ? 0 : sample.getVersion()) + 1);
+            }
         }
     }
 
@@ -176,6 +209,33 @@ public class SampleLifecycleService {
         return matched;
     }
 
+    private UUID resolveSampleOwnerForOrderCompletion(ColonelsettlementOrder order) {
+        UUID attributedOwner = order.getUserId() != null ? order.getUserId() : order.getChannelUserId();
+        if (attributedOwner == null) {
+            return null;
+        }
+        UUID talentId = order.getTalentId();
+        if (talentId == null) {
+            return attributedOwner;
+        }
+        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
+        if (activeClaims == null || activeClaims.isEmpty()) {
+            return attributedOwner;
+        }
+        boolean matchesClaimOwner = activeClaims.stream()
+                .anyMatch(claim -> attributedOwner.equals(claim.getUserId()));
+        if (matchesClaimOwner) {
+            return attributedOwner;
+        }
+        return activeClaims.stream()
+                .filter(claim -> claim.getUserId() != null)
+                .max(Comparator.comparing(
+                        TalentClaim::getClaimedAt,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(TalentClaim::getUserId)
+                .orElse(attributedOwner);
+    }
+
     private List<UUID> findPendingHomeworkRequestIds(UUID channelUserId, String talentUid, String sourceProductId) {
         String sql = """
                 SELECT sr.id
@@ -188,6 +248,7 @@ public class SampleLifecycleService {
                   AND sr.talent_uid = ?
                   AND p.product_id = ?
                 ORDER BY sr.create_time ASC
+                LIMIT 1
                 """;
         return jdbcTemplate.query(sql, (rs, rowNum) -> parseUuid(rs.getString("id")), channelUserId, talentUid, sourceProductId)
                 .stream()

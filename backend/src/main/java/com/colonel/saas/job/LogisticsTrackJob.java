@@ -3,46 +3,37 @@ package com.colonel.saas.job;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.mapper.SampleRequestMapper;
+import com.colonel.saas.service.DistributedJobLockService;
 import com.colonel.saas.service.LogisticsTrackService;
-import io.lettuce.core.RedisCommandExecutionException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.RedisConnectionFailureException;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Component
 public class LogisticsTrackJob {
 
-    private static final String JOB_LOCK_KEY = "logistics:track:job:lock";
+    private static final Duration LOCK_TTL = Duration.ofMinutes(30);
     private static final int STATUS_SHIPPING = 3;
 
     private final LogisticsTrackService logisticsTrackService;
     private final SampleRequestMapper sampleRequestMapper;
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final DistributedJobLockService jobLockService;
     private final boolean jobEnabled;
-    private final boolean testEnabled;
-    private final AtomicBoolean localLock = new AtomicBoolean(false);
 
     public LogisticsTrackJob(
             LogisticsTrackService logisticsTrackService,
             SampleRequestMapper sampleRequestMapper,
-            RedisTemplate<String, Object> redisTemplate,
-            @Value("${app.logistics.refresh-job-enabled:false}") boolean jobEnabled,
-            @Value("${app.test.enabled:false}") boolean testEnabled) {
+            DistributedJobLockService jobLockService,
+            @Value("${app.logistics.refresh-job-enabled:false}") boolean jobEnabled) {
         this.logisticsTrackService = logisticsTrackService;
         this.sampleRequestMapper = sampleRequestMapper;
-        this.redisTemplate = redisTemplate;
+        this.jobLockService = jobLockService;
         this.jobEnabled = jobEnabled;
-        this.testEnabled = testEnabled;
     }
 
     @Scheduled(cron = "0 0 */4 * * ?")
@@ -50,7 +41,7 @@ public class LogisticsTrackJob {
         if (!jobEnabled) {
             return;
         }
-        if (!acquireJobLock()) {
+        if (!jobLockService.tryAcquire(JobLockKeys.LOGISTICS_TRACK, LOCK_TTL)) {
             log.info("LogisticsTrackJob skipped, another process is running");
             return;
         }
@@ -77,37 +68,7 @@ public class LogisticsTrackJob {
             }
             log.info("LogisticsTrackJob completed: success={}, fail={}", success, fail);
         } finally {
-            releaseJobLock();
-        }
-    }
-
-    private boolean acquireJobLock() {
-        try {
-            Boolean locked = redisTemplate.opsForValue().setIfAbsent(
-                    Objects.requireNonNull(JOB_LOCK_KEY),
-                    "1",
-                    Objects.requireNonNull(Duration.ofMinutes(30))
-            );
-            return Boolean.TRUE.equals(locked);
-        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (testEnabled) {
-                log.warn("Redis unavailable in test mode when acquiring logistics track lock, fallback to local lock: {}", ex.getMessage());
-                return localLock.compareAndSet(false, true);
-            }
-            throw ex;
-        }
-    }
-
-    private void releaseJobLock() {
-        localLock.set(false);
-        try {
-            redisTemplate.delete(JOB_LOCK_KEY);
-        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (testEnabled) {
-                log.warn("Redis unavailable in test mode when releasing logistics track lock, local lock already released: {}", ex.getMessage());
-                return;
-            }
-            throw ex;
+            jobLockService.release(JobLockKeys.LOGISTICS_TRACK);
         }
     }
 }

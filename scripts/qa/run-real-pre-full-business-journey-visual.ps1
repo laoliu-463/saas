@@ -8,7 +8,7 @@ Write-Host "== real-pre full business journey visual regression =="
 Write-Host "Root: $Root"
 
 Write-Host "Checking backend 8080..."
-Invoke-WebRequest "$BackendUrl/api/actuator/health" -UseBasicParsing -TimeoutSec 5 | Out-Null
+Invoke-WebRequest "$BackendUrl/api/system/health" -UseBasicParsing -TimeoutSec 5 | Out-Null
 Write-Host "backend 8080 OK"
 
 Write-Host "Checking frontend 3000..."

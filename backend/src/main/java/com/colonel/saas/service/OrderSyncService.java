@@ -3,6 +3,7 @@ package com.colonel.saas.service;
 import com.colonel.saas.config.AppProperties;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.SysUser;
 import io.lettuce.core.RedisCommandExecutionException;
@@ -82,10 +83,10 @@ public class OrderSyncService {
     public SyncResult syncByOrderIds(List<String> orderIds) {
         List<String> normalizedOrderIds = normalizeOrderIds(orderIds);
         if (normalizedOrderIds.isEmpty()) {
-            throw new BusinessException("orderIds is required");
+            throw BusinessException.param("orderIds is required");
         }
         if (!acquireSyncLock()) {
-            throw new BusinessException("Order sync is busy");
+            throw BusinessException.conflict("Order sync is busy");
         }
         try {
             return syncSpecificOrders(normalizedOrderIds);
@@ -99,12 +100,12 @@ public class OrderSyncService {
         if (epochSecond <= 0L) {
             return null;
         }
-        return LocalDateTime.ofInstant(Instant.ofEpochSecond(epochSecond), ZoneId.systemDefault());
+        return AppZone.fromEpochSecond(epochSecond);
     }
 
     public SyncResult syncByTimeRange(long startTime, long endTime) {
         if (startTime <= 0 || endTime <= 0 || startTime >= endTime) {
-            throw new BusinessException("Invalid sync time range");
+            throw BusinessException.param("Invalid sync time range");
         }
         if (!acquireSyncLock()) {
             return new SyncResult(startTime, endTime, 0, 0, 0, true);
@@ -306,9 +307,9 @@ public class OrderSyncService {
         order.setOrderType(asNullableInteger(rawValue(rawPayload, "order_type", "orderType")));
         order.setPickSource(item.pickSource());
         order.setCursor(asString(rawValue(rawPayload, "cursor")));
-        order.setCreateTime(LocalDateTime.ofInstant(Instant.ofEpochSecond(item.createTime()), ZoneId.systemDefault()));
+        order.setCreateTime(AppZone.fromEpochSecond(item.createTime()));
         if (item.settleTime() != null) {
-            order.setSettleTime(LocalDateTime.ofInstant(Instant.ofEpochSecond(item.settleTime()), ZoneId.systemDefault()));
+            order.setSettleTime(AppZone.fromEpochSecond(item.settleTime()));
         }
         order.setAttributionStatus("UNATTRIBUTED");
         order.setUpdateTime(LocalDateTime.now());

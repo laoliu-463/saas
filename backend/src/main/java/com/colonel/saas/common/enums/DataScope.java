@@ -26,6 +26,6 @@ public enum DataScope {
                 return scope;
             }
         }
-        throw new BusinessException("非法数据范围: " + code);
+        throw BusinessException.param("非法数据范围: " + code);
     }
 }

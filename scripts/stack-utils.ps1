@@ -60,7 +60,7 @@ function Get-BackendHealthUrl {
     } else {
         "8080"
     }
-    return "http://localhost:$port/api/actuator/health"
+    return "http://localhost:$port/api/system/health"
 }
 
 function Get-FrontendBaseUrl {

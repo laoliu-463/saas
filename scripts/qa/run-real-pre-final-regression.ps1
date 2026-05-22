@@ -202,7 +202,7 @@ $summary = [ordered]@{
     watcherEvidenceDir = $WatcherEvidenceDir
 }
 
-$health = Invoke-RestMethod -Uri ($BaseUrl.TrimEnd("/") + "/actuator/health")
+$health = Invoke-RestMethod -Uri ($BaseUrl.TrimEnd("/") + "/system/health")
 Write-JsonFile -Path (Join-Path $outputDir "health.json") -Value $health
 $summary.health = $health
 

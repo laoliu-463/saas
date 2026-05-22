@@ -48,8 +48,32 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void systemHealthPath_shouldBypassAuthorizationCheck() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/system/health");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isNotEqualTo(401);
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    @Test
     void testToolPath_shouldRequireAuthorization() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/test/reset");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(chain.getRequest()).isNull();
+    }
+
+    @Test
+    void actuatorPath_shouldRequireAuthorization() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/actuator/health");
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
 

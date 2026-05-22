@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -184,6 +185,8 @@ public class ColonelActivityProductController extends BaseController {
                     content = @Content(examples = @ExampleObject(value = "{\"scene\":\"PRODUCT_LIBRARY\",\"talentId\":\"test_talent_001\"}"))
             )
             @RequestBody(required = false) PromotionLinkRequest request,
+            @Parameter(description = "幂等键，相同键在 24h 内重复提交将返回首次转链结果。")
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestAttribute(value = "userId", required = false) UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId) {
         PromotionLinkRequest safeRequest = request == null ? new PromotionLinkRequest() : request;
@@ -196,7 +199,8 @@ public class ColonelActivityProductController extends BaseController {
                 safeRequest.getPromotionScene(),
                 safeRequest.getNeedShortLink(),
                 safeRequest.getScene(),
-                safeRequest.getTalentId()
+                safeRequest.getTalentId(),
+                idempotencyKey
         );
         return ok(result);
     }

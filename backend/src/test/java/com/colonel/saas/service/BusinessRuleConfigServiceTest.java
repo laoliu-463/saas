@@ -27,7 +27,7 @@ class BusinessRuleConfigServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new BusinessRuleConfigService(systemConfigMapper, new ObjectMapper());
+        service = new BusinessRuleConfigService(systemConfigMapper, new ObjectMapper(), new ShortTtlCacheService());
     }
 
     @Test

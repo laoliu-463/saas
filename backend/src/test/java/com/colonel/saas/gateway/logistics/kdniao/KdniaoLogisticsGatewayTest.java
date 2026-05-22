@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -77,6 +78,169 @@ class KdniaoLogisticsGatewayTest {
         assertThat(result.traces()).hasSize(1);
         assertThat(result.traces().get(0).acceptStation()).contains("签收");
         assertThat(result.rawResponse()).containsEntry("Success", true);
+        server.verify();
+    }
+
+    @Test
+    void queryStatus_requiresCompanyCodeWhenDeprecatedMethodIsUsed() {
+        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(
+                new RestTemplate(),
+                config("https://sandbox.test/kdniao"),
+                new ObjectMapper()
+        );
+
+        assertThatThrownBy(() -> gateway.queryStatus("118650888018"))
+                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
+                .hasMessageContaining("快递公司编码不能为空");
+    }
+
+    @Test
+    void createShipment_isUnsupportedByInstantTrackApi() {
+        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(
+                new RestTemplate(),
+                config("https://sandbox.test/kdniao"),
+                new ObjectMapper()
+        );
+
+        assertThatThrownBy(() -> gateway.createShipment(null))
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessageContaining("不支持创建发货");
+    }
+
+    @Test
+    void queryTrack_rejectsBlankInputsBeforeCallingRemoteApi() {
+        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(
+                new RestTemplate(),
+                config("https://sandbox.test/kdniao"),
+                new ObjectMapper()
+        );
+
+        assertThatThrownBy(() -> gateway.queryTrack("SF", " "))
+                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
+                .hasMessageContaining("物流单号不能为空");
+        assertThatThrownBy(() -> gateway.queryTrack("", "118650888018"))
+                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
+                .hasMessageContaining("快递公司编码不能为空");
+    }
+
+    @Test
+    void queryStatus_buildsReadableMessageFromTrackStateAndLatestTrace() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        KdniaoConfig config = config("https://sandbox.test/kdniao");
+        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(restTemplate, config, new ObjectMapper());
+
+        server.expect(requestTo("https://sandbox.test/kdniao"))
+                .andRespond(withSuccess("""
+                        {
+                          "ShipperCode": "YTO",
+                          "LogisticCode": "YT123",
+                          "Success": true,
+                          "State": "2",
+                          "Traces": [
+                            {
+                              "AcceptTime": "2026-05-14 11:30:00",
+                              "AcceptStation": "快件已到达分拨中心",
+                              "Remark": "scan"
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        var result = gateway.queryStatus("YT123", "YTO");
+
+        assertThat(result.company()).isEqualTo("YTO");
+        assertThat(result.trackingNo()).isEqualTo("YT123");
+        assertThat(result.status()).isEqualTo("IN_TRANSIT");
+        assertThat(result.message()).contains("运输中", "快件已到达分拨中心");
+        server.verify();
+    }
+
+    @Test
+    void queryTrack_usesLastTraceTimeForSignedStateWhenTraceTextDoesNotContainSignedKeyword() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        KdniaoConfig config = config("https://sandbox.test/kdniao");
+        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(restTemplate, config, new ObjectMapper());
+
+        server.expect(requestTo("https://sandbox.test/kdniao"))
+                .andRespond(withSuccess("""
+                        {
+                          "ShipperCode": "JD",
+                          "LogisticCode": "JD001",
+                          "Success": true,
+                          "State": "3",
+                          "Traces": [
+                            {
+                              "AcceptTime": "2026/05/14 09:00:00",
+                              "AcceptStation": "快件离开发货仓"
+                            },
+                            {
+                              "AcceptTime": "2026-05-15 18:45:10",
+                              "AcceptStation": "客户已收货"
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        var result = gateway.queryTrack("JD", "JD001");
+
+        assertThat(result.internalStatus()).isEqualTo("SIGNED");
+        assertThat(result.signedAt()).isEqualTo(LocalDateTime.of(2026, 5, 15, 18, 45, 10));
+        assertThat(result.traces()).extracting("acceptTime")
+                .containsExactly(
+                        LocalDateTime.of(2026, 5, 14, 9, 0),
+                        LocalDateTime.of(2026, 5, 15, 18, 45, 10)
+                );
+        server.verify();
+    }
+
+    @Test
+    void queryTrack_mapsUnknownStateAndUnparseableTraceTime() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        KdniaoConfig config = config("https://sandbox.test/kdniao");
+        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(restTemplate, config, new ObjectMapper());
+
+        server.expect(requestTo("https://sandbox.test/kdniao"))
+                .andRespond(withSuccess("""
+                        {
+                          "ShipperCode": "ZTO",
+                          "LogisticCode": "ZTO001",
+                          "Success": true,
+                          "State": "9",
+                          "Traces": [
+                            {
+                              "AcceptTime": "bad-time",
+                              "AcceptStation": "状态未知"
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        var result = gateway.queryTrack("ZTO", "ZTO001");
+
+        assertThat(result.internalStatus()).isEqualTo("UNKNOWN");
+        assertThat(result.signed()).isFalse();
+        assertThat(result.signedAt()).isNull();
+        assertThat(result.traces()).singleElement()
+                .satisfies(trace -> assertThat(trace.acceptTime()).isNull());
+        server.verify();
+    }
+
+    @Test
+    void queryTrack_wrapsInvalidRemoteJsonAsBusinessException() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        KdniaoConfig config = config("https://sandbox.test/kdniao");
+        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(restTemplate, config, new ObjectMapper());
+
+        server.expect(requestTo("https://sandbox.test/kdniao"))
+                .andRespond(withSuccess("{not-json", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> gateway.queryTrack("SF", "118650888018"))
+                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
+                .hasMessageContaining("快递鸟API请求失败");
         server.verify();
     }
 

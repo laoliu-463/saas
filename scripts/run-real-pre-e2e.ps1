@@ -57,7 +57,7 @@ if (-not (Test-Path -LiteralPath $qaScript)) {
 }
 
 Assert-HttpOk -Name 'real-pre frontend' -Url 'http://localhost:3000'
-Assert-HttpOk -Name 'real-pre backend health' -Url 'http://localhost:8080/api/actuator/health'
+Assert-HttpOk -Name 'real-pre backend health' -Url 'http://localhost:8080/api/system/health'
 
 Push-Location $repoRoot
 try {

@@ -122,7 +122,7 @@ public class SysConfigService {
     public SystemConfig getById(UUID id) {
         SystemConfig config = systemConfigMapper.selectById(id);
         if (config == null) {
-            throw new BusinessException("配置项不存在");
+            throw BusinessException.notFound("配置项不存在");
         }
         return config;
     }
@@ -131,7 +131,7 @@ public class SysConfigService {
     public SystemConfig create(SystemConfig config, UUID userId) {
         validateConfigForWrite(config);
         systemConfigMapper.findByConfigKey(config.getConfigKey()).ifPresent(existing -> {
-            throw new BusinessException("配置键已存在: " + config.getConfigKey());
+            throw BusinessException.duplicate("配置键已存在: " + config.getConfigKey());
         });
         config.setCreateBy(userId);
         config.setUpdateBy(userId);
@@ -157,7 +157,7 @@ public class SysConfigService {
         String previousConfigKey = existing.getConfigKey();
         if (config.getConfigKey() != null && !config.getConfigKey().equals(existing.getConfigKey())) {
             systemConfigMapper.findByConfigKey(config.getConfigKey()).ifPresent(dup -> {
-                throw new BusinessException("配置键已存在: " + config.getConfigKey());
+                throw BusinessException.duplicate("配置键已存在: " + config.getConfigKey());
             });
             existing.setConfigKey(config.getConfigKey());
         }
@@ -204,7 +204,7 @@ public class SysConfigService {
         SystemConfig existing = getById(id);
         int affected = systemConfigMapper.softDeleteById(id, userId);
         if (affected == 0) {
-            throw new BusinessException("配置项不存在");
+            throw BusinessException.notFound("配置项不存在");
         }
         invalidateBusinessRuleCache(existing.getConfigKey());
         operationLogService.recordSystemAction(
@@ -227,7 +227,7 @@ public class SysConfigService {
 
     private void validateConfigForWrite(SystemConfig config) {
         if (config == null || !StringUtils.hasText(config.getConfigKey())) {
-            throw new BusinessException("配置键不能为空");
+            throw BusinessException.param("配置键不能为空");
         }
         configDefinitionRegistry.validateOrThrow(config.getConfigKey(), config.getConfigValue());
     }

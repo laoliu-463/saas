@@ -114,69 +114,69 @@ public class ActivityApi {
 
     private void validateCreateOrUpdate(ActivityCreateOrUpdateCommand command) {
         if (command == null) {
-            throw new BusinessException("createOrUpdate command cannot be null");
+            throw BusinessException.param("createOrUpdate command cannot be null");
         }
         if (command.applicationLimited() == null) {
-            throw new BusinessException("application_limited cannot be null");
+            throw BusinessException.param("application_limited cannot be null");
         }
         if (isBlank(command.activityName())) {
-            throw new BusinessException("activity_name cannot be blank");
+            throw BusinessException.param("activity_name cannot be blank");
         }
         if (isBlank(command.activityDesc())) {
-            throw new BusinessException("activity_desc cannot be blank");
+            throw BusinessException.param("activity_desc cannot be blank");
         }
         if (isBlank(command.applyStartTime())) {
-            throw new BusinessException("apply_start_time cannot be blank");
+            throw BusinessException.param("apply_start_time cannot be blank");
         }
         if (isBlank(command.applyEndTime())) {
-            throw new BusinessException("apply_end_time cannot be blank");
+            throw BusinessException.param("apply_end_time cannot be blank");
         }
         if (isBlank(command.commissionRate())) {
-            throw new BusinessException("commission_rate cannot be blank");
+            throw BusinessException.param("commission_rate cannot be blank");
         }
         if (isBlank(command.serviceRate())) {
-            throw new BusinessException("service_rate cannot be blank");
+            throw BusinessException.param("service_rate cannot be blank");
         }
         if (isBlank(command.estimatedSingleSale())) {
-            throw new BusinessException("estimated_single_sale cannot be blank");
+            throw BusinessException.param("estimated_single_sale cannot be blank");
         }
         if (command.activityType() == null) {
-            throw new BusinessException("activity_type cannot be null");
+            throw BusinessException.param("activity_type cannot be null");
         }
         if (command.online() == null) {
-            throw new BusinessException("online cannot be null");
+            throw BusinessException.param("online cannot be null");
         }
 
         if (Boolean.TRUE.equals(command.applicationLimited())) {
             if (command.isNewShop() == null) {
-                throw new BusinessException("is_new_shop is required when application_limited=true");
+                throw BusinessException.param("is_new_shop is required when application_limited=true");
             }
             if (isBlank(command.shopType())) {
-                throw new BusinessException("shop_type is required when application_limited=true");
+                throw BusinessException.param("shop_type is required when application_limited=true");
             }
         }
 
         if (!VALID_ACTIVITY_TYPES.contains(command.activityType())) {
-            throw new BusinessException("activity_type must be 1 or 2");
+            throw BusinessException.param("activity_type must be 1 or 2");
         }
         if (command.activityType() == 2 && isBlank(command.specifiedShopIds())) {
-            throw new BusinessException("specified_shop_ids is required when activity_type=2");
+            throw BusinessException.param("specified_shop_ids is required when activity_type=2");
         }
 
         if (command.minPromotionDays() != null && !VALID_MIN_PROMOTION_DAYS.contains(command.minPromotionDays())) {
-            throw new BusinessException("min_promotion_days must be one of 30/90/180/360");
+            throw BusinessException.param("min_promotion_days must be one of 30/90/180/360");
         }
         if (command.cosLimitType() != null && !VALID_COS_LIMIT_TYPES.contains(command.cosLimitType())) {
-            throw new BusinessException("cos_limit_type must be one of 1/2/3");
+            throw BusinessException.param("cos_limit_type must be one of 1/2/3");
         }
 
         BigDecimal commission = parseRate(command.commissionRate(), "commission_rate");
         BigDecimal service = parseRate(command.serviceRate(), "service_rate");
         if (commission.compareTo(MAX_COMMISSION_RATE) > 0) {
-            throw new BusinessException("commission_rate cannot exceed 50");
+            throw BusinessException.param("commission_rate cannot exceed 50");
         }
         if (service.compareTo(MAX_SERVICE_RATE) > 0) {
-            throw new BusinessException("service_rate cannot exceed 40");
+            throw BusinessException.param("service_rate cannot exceed 40");
         }
     }
 
@@ -184,11 +184,11 @@ public class ActivityApi {
         try {
             BigDecimal value = new BigDecimal(rawRate.trim());
             if (value.compareTo(BigDecimal.ZERO) < 0) {
-                throw new BusinessException(fieldName + " cannot be negative");
+                throw BusinessException.param(fieldName + " cannot be negative");
             }
             return value;
         } catch (NumberFormatException e) {
-            throw new BusinessException(fieldName + " must be a numeric string", e);
+            throw BusinessException.param(fieldName + " must be a numeric string", e);
         }
     }
 
@@ -212,7 +212,7 @@ public class ActivityApi {
         int value = status == null ? 0 : status;
         List<Integer> valid = List.of(0, 1, 2, 3, 4, 5, 7);
         if (!valid.contains(value)) {
-            throw new BusinessException("status invalid, expected one of 0/1/2/3/4/5/7");
+            throw BusinessException.param("status invalid, expected one of 0/1/2/3/4/5/7");
         }
         return value;
     }
@@ -221,7 +221,7 @@ public class ActivityApi {
         long value = searchType == null ? 0L : searchType;
         List<Long> valid = List.of(0L, 1L, 2L);
         if (!valid.contains(value)) {
-            throw new BusinessException("search_type invalid, expected one of 0/1/2");
+            throw BusinessException.param("search_type invalid, expected one of 0/1/2");
         }
         return value;
     }
@@ -229,7 +229,7 @@ public class ActivityApi {
     private long normalizeSortType(Long sortType) {
         long value = sortType == null ? 1L : sortType;
         if (value != 0L && value != 1L) {
-            throw new BusinessException("sort_type invalid, expected one of 0/1");
+            throw BusinessException.param("sort_type invalid, expected one of 0/1");
         }
         return value;
     }
@@ -237,7 +237,7 @@ public class ActivityApi {
     private long normalizePage(Long page) {
         long value = page == null ? 1L : page;
         if (value < 1L) {
-            throw new BusinessException("page must be >= 1");
+            throw BusinessException.param("page must be >= 1");
         }
         return value;
     }
@@ -245,19 +245,19 @@ public class ActivityApi {
     private long normalizePageSize(Long pageSize) {
         long value = pageSize == null ? 20L : pageSize;
         if (value < 1L || value > 20L) {
-            throw new BusinessException("page_size must be between 1 and 20");
+            throw BusinessException.param("page_size must be between 1 and 20");
         }
         return value;
     }
 
     private long parseActivityId(String activityId) {
         if (isBlank(activityId)) {
-            throw new BusinessException("activity_id cannot be blank");
+            throw BusinessException.param("activity_id cannot be blank");
         }
         try {
             return Long.parseLong(activityId.trim());
         } catch (NumberFormatException e) {
-            throw new BusinessException("activity_id must be numeric", e);
+            throw BusinessException.param("activity_id must be numeric", e);
         }
     }
 

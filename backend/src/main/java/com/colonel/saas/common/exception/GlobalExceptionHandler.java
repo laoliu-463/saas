@@ -1,5 +1,6 @@
 package com.colonel.saas.common.exception;
 
+import com.baomidou.mybatisplus.core.exceptions.MybatisPlusException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.douyin.DouyinApiException;
@@ -8,6 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -16,6 +19,15 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(MybatisPlusException.class)
+    public ApiResult<Void> handleMybatisPlus(MybatisPlusException e) {
+        if (isOptimisticLockFailure(e)) {
+            return ApiResult.of(ResultCode.CONFLICT.getCode(), "数据已被他人修改，请刷新后重试", null);
+        }
+        log.error("MyBatis-Plus 异常", e);
+        return ApiResult.of(ResultCode.SERVER_ERROR, null);
+    }
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResult<Void>> handleBusiness(BusinessException e) {
@@ -62,9 +74,31 @@ public class GlobalExceptionHandler {
         return ApiResult.of(ResultCode.PARAM_ERROR.getCode(), name + " 格式不正确", null);
     }
 
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ApiResult<Void> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+        return ApiResult.of(ResultCode.PARAM_ERROR.getCode(), "不支持的请求方法: " + e.getMethod(), null);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ApiResult<Void> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException e) {
+        return ApiResult.of(ResultCode.PARAM_ERROR.getCode(), "不支持的 Content-Type: " + e.getContentType(), null);
+    }
+
     @ExceptionHandler(Exception.class)
     public ApiResult<Void> handleGeneral(Exception e) {
         log.error("系统异常", e);
         return ApiResult.of(ResultCode.SERVER_ERROR, null);
+    }
+
+    private static boolean isOptimisticLockFailure(Throwable e) {
+        String message = e.getMessage();
+        if (message == null) {
+            return false;
+        }
+        String lower = message.toLowerCase();
+        return lower.contains("乐观锁")
+                || lower.contains("optimistic")
+                || lower.contains("version")
+                || lower.contains("modified");
     }
 }

@@ -1,6 +1,6 @@
 # 09-真实 SDK 联调准备清单
 
-更新时间：2026-05-10
+更新时间：2026-05-21
 
 ## 一、文档目标
 
@@ -17,6 +17,8 @@
 - 哪些东西不能被真实联调反向破坏
 
 ## 当前准备进度（2026-05-08）
+
+> 2026-05-21 起，匿名运行态探针统一使用 `GET /api/system/health`（仅返回 `{"status":"UP"}`）。`/api/actuator/**` 已收紧为需要 JWT 的内部诊断端点；下文历史记录中出现的 `/api/actuator/health` 保留为当时取证口径。
 
 - [x] real-pre 后端 `8081`、PostgreSQL `5433`、Redis `6380` 已稳定可用
 - [x] `GET /api/douyin/tokens`、Webhook 验签与日志脱敏、商品素材状态检查已拿到验证结果；2026-05-08 real-pre `real` profile 复验确认 `buyin.materialsProductStatus` 使用商品详情 URL 入参返回上游 `10000 / success`

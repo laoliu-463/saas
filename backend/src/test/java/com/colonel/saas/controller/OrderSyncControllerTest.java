@@ -2,6 +2,7 @@ package com.colonel.saas.controller;
 
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderSyncService;
@@ -32,13 +33,21 @@ class OrderSyncControllerTest {
     private OrderQueryService orderQueryService;
     @Mock
     private OrderAttributionReplayService orderAttributionReplayService;
+    @Mock
+    private OperationLogService operationLogService;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new OrderController(orderSyncService, orderMapper, orderQueryService, orderAttributionReplayService, new ShortTtlCacheService()))
+                .standaloneSetup(new OrderController(
+                        orderSyncService,
+                        orderMapper,
+                        orderQueryService,
+                        orderAttributionReplayService,
+                        operationLogService,
+                        new ShortTtlCacheService()))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -49,6 +58,7 @@ class OrderSyncControllerTest {
                 .thenReturn(new OrderSyncService.SyncResult(1714492800L, 1714496400L, 1, 2, 0, false));
 
         mockMvc.perform(post("/orders/sync")
+                        .requestAttr("userId", java.util.UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {

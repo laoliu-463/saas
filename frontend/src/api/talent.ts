@@ -54,7 +54,6 @@ export interface TalentListItem {
 export interface TalentProfilePayload {
   douyinAccount?: string | null
   talentUid?: string | null
-  secUid?: string | null
   nickname?: string | null
   avatarUrl?: string | null
   fansCount?: number | null
@@ -85,7 +84,6 @@ export interface TalentDetailResponse {
     douyinUid?: string | null
     douyinNo?: string | null
     uid?: string | null
-    secUid?: string | null
     profileUrl?: string | null
     fansCount?: number | null
     likesCount?: number | null

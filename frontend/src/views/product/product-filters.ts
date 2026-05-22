@@ -127,8 +127,16 @@ const normalizeText = (value?: string | number | null) => {
   return text === 'null' || text === 'undefined' ? '' : text
 }
 
-const resolvePromotionStatus = (item: any) =>
-  normalizeText(item?.promotion?.status || item?.promotionLinkStatus || 'PENDING').toUpperCase()
+const hasPromotionLink = (item: any) =>
+  Boolean(normalizeText(item?.promotion?.link || item?.promotionLink || item?.promoteLink || item?.shortLink))
+
+const resolvePromotionStatus = (item: any) => {
+  const explicitStatus = normalizeText(item?.promotion?.status || item?.promotionLinkStatus).toUpperCase()
+  if (explicitStatus === 'FAILED') return 'FAILED'
+  if (explicitStatus === 'LINKED' || explicitStatus === 'READY' || explicitStatus === 'SUCCESS') return 'LINKED'
+  if (hasPromotionLink(item)) return 'LINKED'
+  return explicitStatus || 'PENDING'
+}
 
 export function matchSystemTag(item: any, systemTag: string | null) {
   if (!systemTag) return true

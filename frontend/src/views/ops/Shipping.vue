@@ -10,7 +10,7 @@
         <n-button type="primary" @click="triggerFileInput">
           批量发货（Excel）
         </n-button>
-        <n-button @click="handleExport">导出发货单</n-button>
+        <n-button v-if="canExportSamples" @click="handleExport">导出发货单</n-button>
       </n-space>
       <input
         ref="fileInputRef"
@@ -21,7 +21,7 @@
       />
     </div>
 
-    <div class="shipping-actions" v-else>
+    <div class="shipping-actions" v-else-if="canExportSamples">
       <n-space>
         <n-button @click="handleExport">导出列表</n-button>
       </n-space>
@@ -70,15 +70,18 @@
 </template>
 
 <script setup lang="ts">
-import { h, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, h, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { NButton, NTag, useMessage } from 'naive-ui';
 import { getSamplePage, batchShipSamples, exportSamples } from '../../api/sample';
 import PageHeader from '../../components/PageHeader.vue';
 import SampleDetail from '../sample/SampleDetail.vue';
 import { parseBatchShipRows, type BatchShipItem, type BatchShipRow } from '../../utils/shippingBatch';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
+import { useAuthStore } from '../../stores/auth';
+import { ROLE_CODES, hasAccess } from '../../constants/rbac';
 
 const message = useMessage();
+const authStore = useAuthStore();
 const loading = ref(false);
 const activeTab = ref('PENDING_SHIP');
 const data = ref<any[]>([]);
@@ -96,6 +99,9 @@ const pagination = reactive(createPaginationState());
 
 const showDetail = ref(false);
 const currentSampleId = ref('');
+const canExportSamples = computed(() =>
+  hasAccess(authStore.roleCodes, [ROLE_CODES.ADMIN, ROLE_CODES.BIZ_LEADER, ROLE_CODES.CHANNEL_LEADER])
+);
 
 // Batch shipping state
 const fileInputRef = ref<HTMLInputElement | null>(null);

@@ -597,7 +597,7 @@ public class DouyinController extends BaseController {
         return java.time.LocalDateTime.parse(
                 value.trim(),
                 java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-        ).atZone(java.time.ZoneId.systemDefault()).toEpochSecond();
+        ).atZone(com.colonel.saas.common.time.AppZone.ZONE).toEpochSecond();
     }
 
     public static class TokenCreateRequest {

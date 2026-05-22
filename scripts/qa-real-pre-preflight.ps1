@@ -307,11 +307,11 @@ try {
         Add-Check -List $checks -Name "runtime_container_env_safe" -Status "SKIP" -Detail "Container '$BackendContainerName' is not running."
     }
 
-    $health = Invoke-ReadOnlyJson -Uri ($BaseUrl.TrimEnd("/") + "/api/actuator/health")
+    $health = Invoke-ReadOnlyJson -Uri ($BaseUrl.TrimEnd("/") + "/api/system/health")
     if ($health) {
         Add-Check -List $checks -Name "runtime_health_up" -Status $(if ($health.status -eq "UP") { "PASS" } else { "FAIL" }) -Detail $health
     } else {
-        Add-Check -List $checks -Name "runtime_health_up" -Status "SKIP" -Detail "GET /api/actuator/health not reachable."
+        Add-Check -List $checks -Name "runtime_health_up" -Status "SKIP" -Detail "GET /api/system/health not reachable."
     }
 
     $systemEnv = Invoke-ReadOnlyJson -Uri ($BaseUrl.TrimEnd("/") + "/api/system/env")

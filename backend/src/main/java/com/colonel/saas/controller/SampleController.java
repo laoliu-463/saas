@@ -9,6 +9,7 @@ import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.ValidateException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
@@ -164,7 +165,7 @@ public class SampleController extends BaseController {
                             .eq(ProductOperationState::getProductId, snapshot.getProductId())
                             .last("LIMIT 1"));
             if (state == null || !Boolean.TRUE.equals(state.getSelectedToLibrary())) {
-                throw new BusinessException("该商品尚未加入商品库，请先审核并加入商品库后再进行寄样操作");
+                throw BusinessException.stateInvalid("该商品尚未加入商品库，请先审核并加入商品库后再进行寄样操作");
             }
         }
         CrawlerTalentInfo talentInfo = resolveSampleTalentInfo(request.getTalentId());
@@ -444,7 +445,7 @@ public class SampleController extends BaseController {
         } else if ("REJECTED".equals(action)) {
             ensureTransition(current, SampleStatus.PENDING_AUDIT);
             if (!StringUtils.hasText(request.getReason())) {
-                throw new BusinessException("reason is required when reject sample request");
+                throw BusinessException.param("reason is required when reject sample request");
             }
             sample.setStatus(SampleStatus.REJECTED.code);
             sample.setRejectReason(request.getReason());
@@ -452,7 +453,7 @@ public class SampleController extends BaseController {
         } else if ("SHIPPING".equals(action)) {
             ensureTransition(current, SampleStatus.PENDING_SHIP);
             if (!StringUtils.hasText(request.getTrackingNo())) {
-                throw new BusinessException("trackingNo is required when shipping");
+                throw BusinessException.param("trackingNo is required when shipping");
             }
             sample.setStatus(SampleStatus.SHIPPING.code);
             sample.setTrackingNo(request.getTrackingNo());
@@ -476,14 +477,15 @@ public class SampleController extends BaseController {
             sample.setStatus(SampleStatus.COMPLETED.code);
             sample.setCompleteTime(now);
         } else if ("CLOSED".equals(action)) {
+            ensureTransition(current, SampleStatus.PENDING_HOMEWORK);
             sample.setStatus(SampleStatus.CLOSED.code);
             sample.setCloseTime(now);
             sample.setCloseReason(request.getReason());
         } else {
-            throw new BusinessException("Unsupported action: " + request.getAction());
+            throw BusinessException.param("Unsupported action: " + request.getAction());
         }
 
-        sampleRequestMapper.updateById(sample);
+        persistSample(sample);
         sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, request.getReason());
         Product product = productMapper.selectById(sample.getProductId());
         return ok(toVO(
@@ -505,7 +507,7 @@ public class SampleController extends BaseController {
         SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
         SampleStatus status = SampleStatus.fromCode(sample.getStatus());
         if (status != SampleStatus.PENDING_AUDIT && status != SampleStatus.REJECTED) {
-            throw new BusinessException("Only pending/rejected sample can be deleted");
+            throw BusinessException.stateInvalid("Only pending/rejected sample can be deleted");
         }
         sampleRequestMapper.deleteById(id);
         return ok();
@@ -552,7 +554,7 @@ public class SampleController extends BaseController {
                 int fromStatus = sample.getStatus();
                 sample.setStatus(SampleStatus.PENDING_SHIP.code);
                 sample.setAuditTime(now);
-                sampleRequestMapper.updateById(sample);
+                persistSample(sample);
                 sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, request.getRemark());
                 success++;
             } catch (BusinessException | ForbiddenException e) {
@@ -573,7 +575,7 @@ public class SampleController extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         if (!StringUtils.hasText(request.getRemark())) {
-            throw new BusinessException("remark is required when batch reject");
+            throw BusinessException.param("remark is required when batch reject");
         }
         ensureActionRolePermission("REJECTED", roleCodes);
         LocalDateTime now = LocalDateTime.now();
@@ -588,7 +590,7 @@ public class SampleController extends BaseController {
                 sample.setStatus(SampleStatus.REJECTED.code);
                 sample.setRejectReason(request.getRemark());
                 sample.setAuditTime(now);
-                sampleRequestMapper.updateById(sample);
+                persistSample(sample);
                 sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, request.getRemark());
                 success++;
             } catch (BusinessException | ForbiddenException e) {
@@ -623,7 +625,7 @@ public class SampleController extends BaseController {
                 sample.setShipperCode(item.getShipperCode());
                 putExtraValue(sample, "logisticsSource", "MANUAL");
                 sample.setShipTime(now);
-                sampleRequestMapper.updateById(sample);
+                persistSample(sample);
                 sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, item.getTrackingNo());
                 success++;
             } catch (BusinessException | ForbiddenException e) {
@@ -724,7 +726,7 @@ public class SampleController extends BaseController {
                 .eq(SampleRequest::getRequestNo, requestNo)
                 .last("LIMIT 1"));
         if (sample == null) {
-            throw new BusinessException("Sample request not found: " + requestNo);
+            throw BusinessException.notFound("Sample request not found: " + requestNo);
         }
         assertCanAccessSample(sample, currentUserId, currentDeptId, dataScope, roleCodes);
         return sample;
@@ -742,14 +744,15 @@ public class SampleController extends BaseController {
 
     private void ensureTransition(SampleStatus current, SampleStatus expected) {
         if (current != expected) {
-            throw new BusinessException("Current status does not allow this action: " + current.apiStatus);
+            throw BusinessException.stateInvalid("Current status does not allow this action: expected "
+                    + expected.apiStatus + " but was " + current.apiStatus);
         }
     }
 
     private SampleRequest requireSample(UUID id, UUID currentUserId, UUID currentDeptId, DataScope dataScope, Object roleCodes) {
         SampleRequest sample = sampleRequestMapper.selectById(id);
         if (sample == null) {
-            throw new BusinessException("Sample request not found");
+            throw BusinessException.notFound("Sample request not found");
         }
         assertCanAccessSample(sample, currentUserId, currentDeptId, dataScope, roleCodes);
         ensureRoleCanAccessSample(sample, roleCodes);
@@ -972,7 +975,7 @@ public class SampleController extends BaseController {
                 .ne(SampleRequest::getStatus, SampleStatus.REJECTED.code)
                 .ge(SampleRequest::getCreateTime, sevenDaysAgo));
         if (count != null && count > 0) {
-            throw new BusinessException("Duplicate sample request is blocked within " + restrictDays + " days");
+            throw BusinessException.duplicate("Duplicate sample request is blocked within " + restrictDays + " days");
         }
     }
 
@@ -1043,7 +1046,7 @@ public class SampleController extends BaseController {
             return result;
         }
         if (!StringUtils.hasText(request.getRemark())) {
-            throw new BusinessException("达人未满足默认寄样标准，请先填写申请原因后再提交");
+            throw BusinessException.stateInvalid("达人未满足默认寄样标准，请先填写申请原因后再提交");
         }
         return result;
     }
@@ -1252,7 +1255,7 @@ public class SampleController extends BaseController {
         try {
             return SampleStatus.fromApiStatus(status.trim().toUpperCase(Locale.ROOT));
         } catch (Exception e) {
-            throw new BusinessException("Invalid status: " + status);
+            throw BusinessException.param("Invalid status: " + status);
         }
     }
 
@@ -1355,7 +1358,7 @@ public class SampleController extends BaseController {
                     return status;
                 }
             }
-            throw new BusinessException("Unknown sample status: " + code);
+            throw BusinessException.param("Unknown sample status: " + code);
         }
 
         static SampleStatus fromApiStatus(String status) {
@@ -1845,5 +1848,9 @@ public class SampleController extends BaseController {
         public void setOperateTime(LocalDateTime operateTime) { this.operateTime = operateTime; }
         public String getRemark() { return remark; }
         public void setRemark(String remark) { this.remark = remark; }
+    }
+
+    private void persistSample(SampleRequest sample) {
+        OptimisticLockSupport.requireUpdated(sampleRequestMapper.updateById(sample));
     }
 }

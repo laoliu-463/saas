@@ -320,7 +320,7 @@ async function roleAction(
 
 async function verifyEnvironment(api: APIRequestContext, run: RunState): Promise<JsonMap> {
   const env = await apiSuccess(api, 'GET', '/api/system/env');
-  const health = await rawApi(api, 'GET', '/api/actuator/health');
+  const health = await rawApi(api, 'GET', '/api/system/health');
   const envData = unwrap(env.body) as JsonMap;
   assertTrue(
     String(envData.environmentLabel || '').toUpperCase() === 'REAL-PRE' ||
@@ -329,7 +329,7 @@ async function verifyEnvironment(api: APIRequestContext, run: RunState): Promise
   );
   assertTrue(envData.appTestEnabled === false, 'APP_TEST_ENABLED must be false');
   assertTrue(envData.douyinTestEnabled === false, 'DOUYIN_TEST_ENABLED must be false');
-  assertTrue(health.ok && (health.body as JsonMap | undefined)?.status === 'UP', 'actuator health must be UP');
+  assertTrue(health.ok && (health.body as JsonMap | undefined)?.status === 'UP', 'system health must be UP');
   run.flow.environmentLabel = envData.environmentLabel || 'REAL-PRE';
   return {
     environment: envData,

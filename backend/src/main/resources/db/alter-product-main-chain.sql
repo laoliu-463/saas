@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS product_operation_state (
     create_time        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     create_by          UUID,
-    update_by          UUID
+    update_by          UUID,
+    version            INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_product_op_state_activity_product

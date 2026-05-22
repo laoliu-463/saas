@@ -4,14 +4,17 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.entity.ProductOperationState;
+import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.PickSourceMappingMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
+import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -29,10 +32,12 @@ public class AttributionService {
     public static final String REASON_CHANNEL_NOT_FOUND = "CHANNEL_NOT_FOUND";
     public static final String REASON_SYNC_FAILED = "SYNC_FAILED";
     public static final String REASON_COLONEL_ORDER_INFO = "COLONEL_ORDER_INFO";
+    public static final String REASON_TALENT_CLAIM_OWNER_CONFLICT = "TALENT_CLAIM_OWNER_CONFLICT";
 
     private final PickSourceMappingMapper pickSourceMappingMapper;
     private final ProductOperationStateMapper operationStateMapper;
     private final TalentMapper talentMapper;
+    private final TalentClaimMapper talentClaimMapper;
     private final ExclusiveTalentService exclusiveTalentService;
     private final ExclusiveMerchantService exclusiveMerchantService;
 
@@ -40,11 +45,13 @@ public class AttributionService {
             PickSourceMappingMapper pickSourceMappingMapper,
             ProductOperationStateMapper operationStateMapper,
             TalentMapper talentMapper,
+            TalentClaimMapper talentClaimMapper,
             ExclusiveTalentService exclusiveTalentService,
             ExclusiveMerchantService exclusiveMerchantService) {
         this.pickSourceMappingMapper = pickSourceMappingMapper;
         this.operationStateMapper = operationStateMapper;
         this.talentMapper = talentMapper;
+        this.talentClaimMapper = talentClaimMapper;
         this.exclusiveTalentService = exclusiveTalentService;
         this.exclusiveMerchantService = exclusiveMerchantService;
     }
@@ -144,7 +151,7 @@ public class AttributionService {
             );
             PickSourceMapping colonelMapping = colonelResolution.mapping();
             if (colonelMapping != null && colonelMapping.getUserId() != null) {
-                return AttributionResult.attributed(
+                return attributedWithClaimGuard(
                         colonelMapping.getUserId(),
                         colonelMapping.getDeptId(),
                         colonelMapping.getUserId(),
@@ -205,7 +212,7 @@ public class AttributionService {
             );
         }
 
-        return AttributionResult.attributed(
+        return attributedWithClaimGuard(
                 mapping.getUserId(),
                 mapping.getDeptId(),
                 mapping.getUserId(),
@@ -224,6 +231,54 @@ public class AttributionService {
 
     protected ExclusiveOwner findExclusiveTalentOwner(String talentUid) {
         return exclusiveTalentService.findActiveOwnerByTalentUid(talentUid);
+    }
+
+    private AttributionResult attributedWithClaimGuard(
+            UUID channelUserId,
+            UUID deptId,
+            UUID userId,
+            UUID talentId,
+            String talentUid,
+            String activityId,
+            UUID colonelUserId,
+            String remark,
+            NativeMappingTrace trace) {
+        if (hasTalentClaimOwnerConflict(talentId, userId)) {
+            return AttributionResult.unattributed(
+                    talentId,
+                    talentUid,
+                    activityId,
+                    colonelUserId,
+                    REASON_TALENT_CLAIM_OWNER_CONFLICT,
+                    trace
+            );
+        }
+        return AttributionResult.attributed(
+                channelUserId,
+                deptId,
+                userId,
+                talentId,
+                talentUid,
+                activityId,
+                colonelUserId,
+                remark,
+                trace
+        );
+    }
+
+    private boolean hasTalentClaimOwnerConflict(UUID talentId, UUID userId) {
+        if (talentId == null || userId == null) {
+            return false;
+        }
+        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
+        if (activeClaims == null || activeClaims.isEmpty()) {
+            return false;
+        }
+        List<UUID> activeClaimUserIds = activeClaims.stream()
+                .map(TalentClaim::getUserId)
+                .filter(Objects::nonNull)
+                .toList();
+        return !activeClaimUserIds.isEmpty() && activeClaimUserIds.stream().noneMatch(userId::equals);
     }
 
     protected NativeColonelMappingResolution resolveNativeColonelAttribution(

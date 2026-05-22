@@ -9,7 +9,7 @@
  *  3. 角色列表可查询，内置角色不可删
  *  4. 系统配置中心可读取内置规则键（寄样限制、保护期等）
  *  5. 管理员可访问抖店联调面板 /system/douyin
- *  6. API 层：管理员可调用健康探针 /actuator/health
+ *  6. API 层：管理员可调用健康探针 /system/health
  *  7. API 层：系统配置 API 管理员有权访问
  */
 import { test, expect } from '@playwright/test';
@@ -115,7 +115,7 @@ test.describe('管理配置链 API 层断言', () => {
   // 7. 健康探针
   // ──────────────────────────────────────────────
   test('后端健康探针可达 (UP)', async () => {
-    const body = (await apiGet('/api/actuator/health', { token: adminToken })) as {
+    const body = (await apiGet('/api/system/health', { token: adminToken })) as {
       status?: string;
     };
     expect(body?.status?.toLowerCase()).toMatch(/up/);

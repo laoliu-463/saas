@@ -205,4 +205,83 @@ class ColonelActivityProductControllerTest {
         assertThat(decisionRoles.value()).containsExactly(RoleCodes.BIZ_STAFF);
         assertThat(libraryRoles.value()).containsExactly(RoleCodes.BIZ_STAFF);
     }
+
+    @Test
+    void promotionLinkRequest_shouldKeepDefaultsAndTreatNullNeedShortLinkAsTrue() {
+        ColonelActivityProductController.PromotionLinkRequest request =
+                new ColonelActivityProductController.PromotionLinkRequest();
+
+        assertThat(request.getPromotionScene()).isEqualTo(4);
+        assertThat(request.getNeedShortLink()).isTrue();
+        assertThat(request.getScene()).isEqualTo("PRODUCT_LIBRARY");
+
+        request.setExternalUniqueId("external-1");
+        request.setPromotionScene(8);
+        request.setNeedShortLink(null);
+        request.setScene("DETAIL");
+        request.setTalentId("talent-1");
+
+        assertThat(request.getExternalUniqueId()).isEqualTo("external-1");
+        assertThat(request.getPromotionScene()).isEqualTo(8);
+        assertThat(request.getNeedShortLink()).isTrue();
+        assertThat(request.getScene()).isEqualTo("DETAIL");
+        assertThat(request.getTalentId()).isEqualTo("talent-1");
+
+        request.setNeedShortLink(Boolean.FALSE);
+        assertThat(request.getNeedShortLink()).isFalse();
+    }
+
+    @Test
+    void auditRequest_shouldNormalizeSupplementMap() {
+        ColonelActivityProductController.AuditRequest request = new ColonelActivityProductController.AuditRequest();
+        request.setApproved(true);
+        request.setReason(" ok ");
+        request.setExclusivePriceRemark("  专属价  ");
+        request.setShippingInfo("  48小时发货  ");
+        request.setPromotionScript("  主打复购  ");
+        request.setRewardRemark("  返佣奖励  ");
+        request.setParticipationRequirements("  食品类目  ");
+        request.setCampaignTimeRemark("  本周  ");
+        request.setSupportsAds(Boolean.TRUE);
+        request.setSampleThresholdSales(30000L);
+        request.setSampleThresholdLevel(2);
+        request.setSampleThresholdRemark("  需出镜  ");
+        request.setSellingPoints(List.of(" 高复购 ", "", "  "));
+        request.setMaterialFiles(List.of(" https://example.test/a.png ", " "));
+
+        Map<String, Object> supplement = request.toSupplementMap();
+
+        assertThat(request.isApproved()).isTrue();
+        assertThat(request.getReason()).isEqualTo(" ok ");
+        assertThat(supplement)
+                .containsEntry("exclusivePriceRemark", "专属价")
+                .containsEntry("shippingInfo", "48小时发货")
+                .containsEntry("promotionScript", "主打复购")
+                .containsEntry("rewardRemark", "返佣奖励")
+                .containsEntry("participationRequirements", "食品类目")
+                .containsEntry("campaignTimeRemark", "本周")
+                .containsEntry("supportsAds", true)
+                .containsEntry("sampleThresholdSales", 30000L)
+                .containsEntry("sampleThresholdLevel", 2)
+                .containsEntry("sampleThresholdRemark", "需出镜")
+                .containsEntry("sellingPoints", List.of("高复购"))
+                .containsEntry("materialFiles", List.of("https://example.test/a.png"));
+    }
+
+    @Test
+    void simpleRequestTypes_shouldExposeAssignedValues() {
+        UUID assigneeId = UUID.randomUUID();
+        ColonelActivityProductController.BindActivityRequest bind = new ColonelActivityProductController.BindActivityRequest();
+        bind.setBoundActivityId("A-100");
+        ColonelActivityProductController.AssignRequest assign = new ColonelActivityProductController.AssignRequest();
+        assign.setAssigneeId(assigneeId);
+        ColonelActivityProductController.DecisionRequest decision = new ColonelActivityProductController.DecisionRequest();
+        decision.setDecisionLevel("MAIN");
+        decision.setReason("佣金高");
+
+        assertThat(bind.getBoundActivityId()).isEqualTo("A-100");
+        assertThat(assign.getAssigneeId()).isEqualTo(assigneeId);
+        assertThat(decision.getDecisionLevel()).isEqualTo("MAIN");
+        assertThat(decision.getReason()).isEqualTo("佣金高");
+    }
 }

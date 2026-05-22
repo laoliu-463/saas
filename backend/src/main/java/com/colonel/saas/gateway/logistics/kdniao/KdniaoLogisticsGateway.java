@@ -58,7 +58,7 @@ public class KdniaoLogisticsGateway implements LogisticsGateway {
 
     @Override
     public LogisticsStatusResult queryStatus(String trackingNo) {
-        throw new BusinessException("快递公司编码不能为空，请调用 queryTrack(companyCode, trackingNo)");
+        throw BusinessException.param("快递公司编码不能为空，请调用 queryTrack(companyCode, trackingNo)");
     }
 
     /**
@@ -82,10 +82,10 @@ public class KdniaoLogisticsGateway implements LogisticsGateway {
     @Override
     public LogisticsTrackResult queryTrack(String companyCode, String trackingNo) {
         if (trackingNo == null || trackingNo.isBlank()) {
-            throw new BusinessException("物流单号不能为空");
+            throw BusinessException.param("物流单号不能为空");
         }
         if (companyCode == null || companyCode.isBlank()) {
-            throw new BusinessException("快递公司编码不能为空，请先识别快递公司");
+            throw BusinessException.param("快递公司编码不能为空，请先识别快递公司");
         }
 
         try {
@@ -101,7 +101,7 @@ public class KdniaoLogisticsGateway implements LogisticsGateway {
         } catch (Exception e) {
             log.error("查询物流状态失败, trackingNo={}, shipperCode={}, error={}",
                     trackingNo, companyCode, e.getMessage(), e);
-            throw new BusinessException("查询物流状态失败: " + e.getMessage());
+            throw BusinessException.external("查询物流状态失败: " + e.getMessage());
         }
     }
 
@@ -136,7 +136,7 @@ public class KdniaoLogisticsGateway implements LogisticsGateway {
 
         } catch (Exception e) {
             log.error("快递鸟API请求失败: {}", e.getMessage(), e);
-            throw new BusinessException("快递鸟API请求失败: " + e.getMessage());
+            throw BusinessException.external("快递鸟API请求失败: " + e.getMessage());
         }
     }
 
@@ -157,7 +157,7 @@ public class KdniaoLogisticsGateway implements LogisticsGateway {
             return Base64.getEncoder().encodeToString(md5Bytes);
 
         } catch (Exception e) {
-            throw new BusinessException("生成签名失败", e);
+            throw BusinessException.external("生成签名失败", e);
         }
     }
 
@@ -267,7 +267,7 @@ public class KdniaoLogisticsGateway implements LogisticsGateway {
         try {
             return objectMapper.writeValueAsString(obj);
         } catch (Exception e) {
-            throw new BusinessException("JSON序列化失败", e);
+            throw BusinessException.param("JSON序列化失败", e);
         }
     }
 
@@ -279,7 +279,7 @@ public class KdniaoLogisticsGateway implements LogisticsGateway {
             return objectMapper.readValue(json, KdniaoResponse.class);
         } catch (Exception e) {
             log.error("解析快递鸟响应失败: {}", json, e);
-            throw new BusinessException("解析物流查询响应失败: " + e.getMessage());
+            throw BusinessException.external("解析物流查询响应失败: " + e.getMessage());
         }
     }
 

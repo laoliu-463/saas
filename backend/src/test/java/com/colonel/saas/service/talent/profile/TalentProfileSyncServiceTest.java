@@ -59,6 +59,7 @@ class TalentProfileSyncServiceTest {
         assertThat(response.getProvider()).isEqualTo("manual");
         assertThat(response.getDataSource()).isEqualTo("manual");
         assertThat(response.getProfile().getNickname()).isEqualTo("手动达人");
+        assertThat(response.getProfile().getSecUid()).isNull();
         assertThat(response.getUnsupportedFields()).contains("talentLevel", "sales30d");
         verify(syncLogMapper).insert(any());
     }

@@ -4,6 +4,7 @@ import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.douyin.util.ShortCodeGenerator;
 import com.colonel.saas.service.PickSourceMappingService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -17,6 +18,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @Service
+@Slf4j
 public class PromotionApi {
 
     private static final String INST_PICK_SOURCE_CONVERT_METHOD = "buyin.instPickSourceConvert";
@@ -95,7 +97,7 @@ public class PromotionApi {
     }
 
     private void saveMappingIfNecessary(PromotionLinkResult result, UUID uuidSeed, PromotionContext context) {
-        if (context == null || context.userId() == null) {
+        if (context == null || context.userId() == null || result == null || !StringUtils.hasText(result.pickSource())) {
             return;
         }
         pickSourceMappingService.saveOrUpdate(
@@ -220,8 +222,7 @@ public class PromotionApi {
             String responsePickExtra = data != null ? asStringOrNull(data.get("pick_extra")) : null;
             String finalPickSource = firstNonBlank(
                     responsePickSource,
-                    extractPickSource(promoteLink),
-                    shortId
+                    extractPickSource(promoteLink)
             );
             String finalPickExtra = firstNonBlank(
                     responsePickExtra,
@@ -267,7 +268,8 @@ public class PromotionApi {
                             }
                         }
                     }
-                } catch (Exception ignore) {
+                } catch (Exception ex) {
+                    logMalformedPromotionLink("pick_source", promoteLink, ex);
                     return null;
                 }
             }
@@ -290,10 +292,27 @@ public class PromotionApi {
                         return URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
                     }
                 }
-            } catch (Exception ignore) {
+            } catch (Exception ex) {
+                logMalformedPromotionLink("pick_extra", promoteLink, ex);
                 return null;
             }
             return null;
+        }
+
+        private static void logMalformedPromotionLink(String field, String promoteLink, Exception ex) {
+            PromotionApi.log.warn(
+                    "Failed to parse {} from promotion link: {}",
+                    field,
+                    describePromotionLink(promoteLink),
+                    ex
+            );
+        }
+
+        private static String describePromotionLink(String promoteLink) {
+            if (!StringUtils.hasText(promoteLink)) {
+                return "blank";
+            }
+            return "length=" + promoteLink.length() + ", hash=" + Integer.toHexString(promoteLink.hashCode());
         }
     }
 

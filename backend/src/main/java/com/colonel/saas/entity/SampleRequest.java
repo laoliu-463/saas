@@ -2,7 +2,7 @@ package com.colonel.saas.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.colonel.saas.common.base.BaseEntity;
+import com.colonel.saas.common.base.VersionedEntity;
 import com.colonel.saas.common.typehandler.JsonbTypeHandler;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -15,7 +15,7 @@ import java.util.UUID;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName(value = "sample_request", autoResultMap = true)
-public class SampleRequest extends BaseEntity {
+public class SampleRequest extends VersionedEntity {
 
     @TableField("request_no")
     private String requestNo;

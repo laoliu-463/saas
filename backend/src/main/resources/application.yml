@@ -43,6 +43,9 @@ management:
     health:
       probes:
         enabled: true
+      show-details: never
+    info:
+      enabled: true
 
 logging:
   level:
@@ -94,6 +97,7 @@ douyin:
     enabled: ${DOUYIN_TEST_ENABLED:false}
   real:
     upstream-mode: ${DOUYIN_REAL_UPSTREAM_MODE:live}
+    promotion-write-enabled: ${DOUYIN_REAL_PROMOTION_WRITE_ENABLED:false}
   token:
     refresh-threshold-seconds: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:300}
     redis-lock-minutes: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:5}

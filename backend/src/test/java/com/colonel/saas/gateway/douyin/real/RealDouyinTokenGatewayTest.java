@@ -17,6 +17,7 @@ import org.springframework.data.redis.core.ValueOperations;
 
 import java.lang.reflect.Constructor;
 import java.time.Instant;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.lenient;
@@ -106,6 +107,147 @@ class RealDouyinTokenGatewayTest {
         DouyinTokenGateway.TokenPayload payload = gateway.ensureToken("app123");
 
         assertThat(payload).isNull();
+    }
+
+    @Test
+    void ensureToken_shouldFallbackToConfiguredAppIdAndContractAppKey() {
+        long expireAt = Instant.now().getEpochSecond() + 600;
+        when(douyinConfig.getClientKey()).thenReturn(" ");
+        when(douyinConfig.getAppId()).thenReturn(" configured-app ");
+        when(valueOperations.get("douyin:token:configured-app")).thenReturn("cached-access");
+        when(valueOperations.get("douyin:refresh:configured-app")).thenReturn("cached-refresh");
+        when(valueOperations.get("douyin:token:expire_at:configured-app")).thenReturn(expireAt);
+
+        DouyinTokenGateway.TokenPayload payload = gateway.ensureToken(null);
+
+        assertThat(payload).isNotNull();
+        assertThat(payload.accessToken()).isEqualTo("cached-access");
+
+        when(douyinConfig.getAppId()).thenReturn(" ");
+        when(contractFixtureProvider.appKey()).thenReturn("contract-app");
+        when(valueOperations.get("douyin:token:contract-app")).thenReturn(null);
+        assertThat(gateway.ensureToken(null)).isNull();
+    }
+
+    @Test
+    void refreshCreateInstitutionAndProbeUseContractFixturesWhenContractModeEnabled() {
+        when(upstreamModeSupport.isContract()).thenReturn(true);
+        when(contractFixtureProvider.buildTokenPayload("app123", "refresh-1"))
+                .thenReturn(new DouyinTokenGateway.TokenPayload(
+                        "contract-access",
+                        "refresh-1",
+                        7200L,
+                        "auth-1",
+                        "institution",
+                        1L
+                ));
+        when(contractFixtureProvider.buildTokenPayload(null, null))
+                .thenReturn(new DouyinTokenGateway.TokenPayload(
+                        "contract-created",
+                        "contract-refresh",
+                        7200L,
+                        "auth-2",
+                        "institution",
+                        1L
+                ));
+        when(contractFixtureProvider.buildInstitutionInfoResponse("app123"))
+                .thenReturn(Map.of("code", 10000, "data", Map.of("app_key", "app123")));
+        when(contractFixtureProvider.authId()).thenReturn("auth-3");
+
+        DouyinTokenGateway.TokenPayload refreshed = gateway.refreshToken("app123", "refresh-1");
+        DouyinTokenGateway.TokenPayload created = gateway.createToken(
+                new DouyinTokenGateway.TokenCreateCommand("code", "authorization_code", "shop", "S1", "AUTH", "Colonel")
+        );
+        Map<String, Object> info = gateway.institutionInfo("app123");
+        DouyinTokenGateway.ProbeTokenCreateResult probe = gateway.probeCreateToken(
+                new DouyinTokenGateway.TokenCreateCommand(" ", "authorization_code", "shop", "S1", " ", "Colonel")
+        );
+
+        assertThat(refreshed.accessToken()).isEqualTo("contract-access");
+        assertThat(created.accessToken()).isEqualTo("contract-created");
+        assertThat(info).containsEntry("code", 10000);
+        assertThat(probe.codeState()).isEqualTo("absent");
+        assertThat(probe.authIdPresent()).isFalse();
+        assertThat(probe.response().authorityId()).isEqualTo("auth-3");
+    }
+
+    @Test
+    void refreshCreateInstitutionAndProbeDelegateToLiveGatewaysWhenLiveModeEnabled() {
+        when(upstreamModeSupport.isContract()).thenReturn(false);
+        when(doudianTokenGateway.refreshToken("refresh-1"))
+                .thenReturn(new DoudianTokenGateway.TokenPayload(
+                        "live-access",
+                        "live-refresh",
+                        3600L,
+                        "auth-live",
+                        "merchant",
+                        2L
+                ));
+        when(doudianTokenGateway.createToken(new DoudianTokenGateway.TokenCreateCommand(
+                "code",
+                "authorization_code",
+                "shop",
+                "S1",
+                "AUTH",
+                "merchant"
+        ))).thenReturn(new DoudianTokenGateway.TokenPayload(
+                "created-access",
+                "created-refresh",
+                1800L,
+                "auth-created",
+                "merchant",
+                1L
+        ));
+        when(institutionApi.info("app123"))
+                .thenReturn(Map.of("code", 10000, "data", Map.of("app_key", "app123")));
+        DoudianTokenGateway.TokenCreateResponseView responseView =
+                new DoudianTokenGateway.TokenCreateResponseView(
+                        "10000",
+                        "success",
+                        null,
+                        null,
+                        "****",
+                        "****",
+                        7200L,
+                        "auth-probe",
+                        "merchant",
+                        1L
+                );
+        when(doudianTokenGateway.probeCreateToken(new DoudianTokenGateway.TokenCreateCommand(
+                "code",
+                "authorization_code",
+                "shop",
+                "S1",
+                "AUTH",
+                "merchant"
+        ))).thenReturn(new DoudianTokenGateway.TokenCreateProbeResult(
+                "authorization_code",
+                "present",
+                "shop",
+                "S1",
+                true,
+                "merchant",
+                null,
+                responseView
+        ));
+
+        DouyinTokenGateway.TokenPayload refreshed = gateway.refreshToken("app123", "refresh-1");
+        DouyinTokenGateway.TokenPayload created = gateway.createToken(
+                new DouyinTokenGateway.TokenCreateCommand("code", "authorization_code", "shop", "S1", "AUTH", "merchant")
+        );
+        Map<String, Object> info = gateway.institutionInfo("app123");
+        DouyinTokenGateway.ProbeTokenCreateResult probe = gateway.probeCreateToken(
+                new DouyinTokenGateway.TokenCreateCommand("code", "authorization_code", "shop", "S1", "AUTH", "merchant")
+        );
+
+        assertThat(refreshed.accessToken()).isEqualTo("live-access");
+        assertThat(refreshed.tokenType()).isEqualTo(2L);
+        assertThat(created.accessToken()).isEqualTo("created-access");
+        assertThat(created.authorityId()).isEqualTo("auth-created");
+        assertThat(info).containsEntry("code", 10000);
+        assertThat(probe.codeState()).isEqualTo("present");
+        assertThat(probe.authIdPresent()).isTrue();
+        assertThat(probe.response().authorityId()).isEqualTo("auth-probe");
     }
 
     @Test

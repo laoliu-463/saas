@@ -122,12 +122,12 @@ public class ProductApi {
 
     private long parseProductId(String productId) {
         if (productId == null || productId.isBlank()) {
-            throw new BusinessException("productId 不能为空");
+            throw BusinessException.param("productId 不能为空");
         }
         try {
             return Long.parseLong(productId.trim());
         } catch (NumberFormatException e) {
-            throw new BusinessException("productId 必须为数字类型", e);
+            throw BusinessException.param("productId 必须为数字类型", e);
         }
     }
 
@@ -152,12 +152,12 @@ public class ProductApi {
 
     private long parseActivityId(String activityId) {
         if (activityId == null || activityId.isBlank()) {
-            throw new BusinessException("activityId 不能为空，且必须为数字");
+            throw BusinessException.param("activityId 不能为空，且必须为数字");
         }
         try {
             return Long.parseLong(activityId.trim());
         } catch (NumberFormatException e) {
-            throw new BusinessException("activityId 必须为数字类型", e);
+            throw BusinessException.param("activityId 必须为数字类型", e);
         }
     }
 
@@ -214,7 +214,7 @@ public class ProductApi {
         int value = status == null ? 0 : status;
         List<Integer> valid = List.of(0, 1, 2, 3, 4, 5, 7);
         if (!valid.contains(value)) {
-            throw new BusinessException("status 非法，可选值：0/1/2/3/4/5/7");
+            throw BusinessException.param("status 非法，可选值：0/1/2/3/4/5/7");
         }
         return value;
     }
@@ -223,7 +223,7 @@ public class ProductApi {
         long value = searchType == null ? 4L : searchType;
         List<Long> valid = List.of(0L, 1L, 2L, 4L);
         if (!valid.contains(value)) {
-            throw new BusinessException("search_type invalid, expected one of 0/1/2/4");
+            throw BusinessException.param("search_type invalid, expected one of 0/1/2/4");
         }
         return value;
     }
@@ -231,7 +231,7 @@ public class ProductApi {
     private long normalizeProductSortType(Long sortType) {
         long value = sortType == null ? 1L : sortType;
         if (value != 0L && value != 1L) {
-            throw new BusinessException("sort_type invalid, expected one of 0/1");
+            throw BusinessException.param("sort_type invalid, expected one of 0/1");
         }
         return value;
     }
@@ -240,7 +240,7 @@ public class ProductApi {
         int value = cooperationType == null ? 0 : cooperationType;
         List<Integer> valid = List.of(0, 1, 2);
         if (!valid.contains(value)) {
-            throw new BusinessException("cooperation_type invalid, expected one of 0/1/2");
+            throw BusinessException.param("cooperation_type invalid, expected one of 0/1/2");
         }
         return value;
     }
@@ -251,7 +251,7 @@ public class ProductApi {
         }
         List<Integer> valid = List.of(0, 1, 2, 3, 4, 6);
         if (!valid.contains(status)) {
-            throw new BusinessException("status invalid, expected one of 0/1/2/3/4/6");
+            throw BusinessException.param("status invalid, expected one of 0/1/2/3/4/6");
         }
         return status;
     }
@@ -259,7 +259,7 @@ public class ProductApi {
     private long normalizeRetrieveMode(Long retrieveMode) {
         long value = retrieveMode == null ? 1L : retrieveMode;
         if (value != 0L && value != 1L) {
-            throw new BusinessException("retrieve_mode invalid, expected one of 0/1");
+            throw BusinessException.param("retrieve_mode invalid, expected one of 0/1");
         }
         return value;
     }
@@ -268,7 +268,7 @@ public class ProductApi {
         long value = searchType == null ? 0L : searchType;
         List<Long> valid = List.of(0L, 1L, 2L);
         if (!valid.contains(value)) {
-            throw new BusinessException("search_type 非法，可选值：0/1/2");
+            throw BusinessException.param("search_type 非法，可选值：0/1/2");
         }
         return value;
     }
@@ -276,7 +276,7 @@ public class ProductApi {
     private long normalizeSortType(Long sortType) {
         long value = sortType == null ? 1L : sortType;
         if (value != 0L && value != 1L) {
-            throw new BusinessException("sort_type 非法，可选值：0/1");
+            throw BusinessException.param("sort_type 非法，可选值：0/1");
         }
         return value;
     }
@@ -284,7 +284,7 @@ public class ProductApi {
     private long normalizePage(Long page) {
         long value = page == null ? 1L : page;
         if (value < 1L) {
-            throw new BusinessException("page 必须大于等于 1");
+            throw BusinessException.param("page 必须大于等于 1");
         }
         return value;
     }
@@ -292,7 +292,7 @@ public class ProductApi {
     private long normalizePageSize(Long pageSize) {
         long value = pageSize == null ? 20L : pageSize;
         if (value < 1L || value > 20L) {
-            throw new BusinessException("page_size 必须在 1~20 之间");
+            throw BusinessException.param("page_size 必须在 1~20 之间");
         }
         return value;
     }

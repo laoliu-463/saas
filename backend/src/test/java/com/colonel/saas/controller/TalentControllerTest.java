@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
@@ -28,7 +29,9 @@ import java.lang.reflect.Method;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -131,10 +134,12 @@ class TalentControllerTest {
         created.setId(id);
         created.setDouyinUid("uid_123");
         created.setNickname("new talent");
+        created.setContactPhone("13800000000");
+        created.setContactWechat("wx-secret");
         when(talentService.create(any(Talent.class))).thenReturn(created);
 
         String body = """
-                {"douyinUid":"uid_123","nickname":"new talent","status":1}
+                {"douyinUid":"uid_123","nickname":"new talent","status":1,"ownerId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","blacklisted":true,"contactPhone":"13800000000","contactWechat":"wx-from-client","rawPayload":{"token":"secret"}}
                 """;
 
         mockMvc.perform(post("/talents")
@@ -142,37 +147,122 @@ class TalentControllerTest {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.douyinUid").value("uid_123"));
+                .andExpect(jsonPath("$.data.douyinUid").value("uid_123"))
+                .andExpect(jsonPath("$.data.contactPhone").doesNotExist())
+                .andExpect(jsonPath("$.data.contactWechat").doesNotExist())
+                .andExpect(jsonPath("$.data.rawPayload").doesNotExist());
+
+        verify(talentService).create(argThat(request ->
+                "uid_123".equals(request.getDouyinUid())
+                        && "new talent".equals(request.getNickname())
+                        && "13800000000".equals(request.getContactPhone())
+                        && request.getContactWechat() == null
+                        && request.getStatus() == null
+                        && request.getOwnerId() == null
+                        && request.getBlacklisted() == null
+                        && request.getRawPayload() == null));
+    }
+
+    @Test
+    void create_shouldRejectBlankIdentityBeforeCallingService() throws Exception {
+        mockMvc.perform(post("/talents")
+                        .contentType("application/json")
+                        .content("{\"nickname\":\"missing identity\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verify(talentService, never()).create(any(Talent.class));
     }
 
     @Test
     void update_validRequest_returnsUpdated() throws Exception {
         UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         Talent updated = new Talent();
         updated.setId(id);
         updated.setNickname("updated");
+        updated.setContactPhone("13900000000");
+        updated.setContactWechat("wx-secret");
         when(talentService.update(any(UUID.class), any(Talent.class))).thenReturn(updated);
 
         String body = """
-                {"nickname":"updated"}
+                {"nickname":"updated","contactPhone":"13900000000","contactWechat":"wx-from-client","blacklisted":true,"ownerId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","rawPayload":{"token":"secret"}}
                 """;
 
         mockMvc.perform(put("/talents/{id}", id)
                         .contentType("application/json")
+                        .requestAttr("userId", userId)
+                        .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_STAFF))
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.nickname").value("updated"));
+                .andExpect(jsonPath("$.data.nickname").value("updated"))
+                .andExpect(jsonPath("$.data.contactPhone").doesNotExist())
+                .andExpect(jsonPath("$.data.contactWechat").doesNotExist())
+                .andExpect(jsonPath("$.data.rawPayload").doesNotExist());
+
+        verify(talentQueryService).assertCanOperate(id, userId, null, List.of(RoleCodes.CHANNEL_STAFF));
+        verify(talentService).update(any(UUID.class), argThat(request ->
+                "updated".equals(request.getNickname())
+                        && "13900000000".equals(request.getContactPhone())
+                        && request.getContactWechat() == null
+                        && request.getOwnerId() == null
+                        && request.getBlacklisted() == null
+                        && request.getRawPayload() == null));
+    }
+
+    @Test
+    void update_shouldRejectWhenTalentIsOutsideClaimScope() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        doThrow(new ForbiddenException("无权操作该达人"))
+                .when(talentQueryService).assertCanOperate(id, userId, deptId, List.of(RoleCodes.CHANNEL_STAFF));
+
+        mockMvc.perform(put("/talents/{id}", id)
+                        .contentType("application/json")
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("dataScope", DataScope.ALL)
+                        .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_STAFF))
+                        .content("{\"nickname\":\"bad-update\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403));
+
+        verify(talentService, never()).update(any(UUID.class), any(Talent.class));
     }
 
     @Test
     void delete_existingTalent_returnsOk() throws Exception {
         UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
 
-        mockMvc.perform(delete("/talents/{id}", id))
+        mockMvc.perform(delete("/talents/{id}", id)
+                        .requestAttr("userId", userId)
+                        .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_STAFF)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
+        verify(talentQueryService).assertCanOperate(id, userId, null, List.of(RoleCodes.CHANNEL_STAFF));
         verify(talentService).delete(id);
+    }
+
+    @Test
+    void delete_shouldRejectWhenTalentIsOutsideClaimScope() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        doThrow(new ForbiddenException("无权操作该达人"))
+                .when(talentQueryService).assertCanOperate(id, userId, deptId, List.of(RoleCodes.CHANNEL_STAFF));
+
+        mockMvc.perform(delete("/talents/{id}", id)
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("dataScope", DataScope.ALL)
+                        .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_STAFF)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403));
+
+        verify(talentService, never()).delete(any(UUID.class));
     }
 
     @Test
@@ -262,6 +352,25 @@ class TalentControllerTest {
     }
 
     @Test
+    void blacklist_shouldRejectTooLongReasonBeforeCallingService() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        String tooLongReason = "违约".repeat(101);
+
+        mockMvc.perform(post("/talents/{id}/blacklist", talentId)
+                        .contentType("application/json")
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("dataScope", DataScope.DEPT)
+                        .content("{\"reason\":\"" + tooLongReason + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verify(talentService, never()).blacklist(any(UUID.class), any(), any(), any(), any());
+    }
+
+    @Test
     void unblacklist_talent_returnsUpdatedTalent() throws Exception {
         UUID talentId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -294,10 +403,12 @@ class TalentControllerTest {
         Talent updated = new Talent();
         updated.setId(talentId);
         updated.setNickname("manual-name");
+        updated.setContactPhone("13700000000");
+        updated.setContactWechat("wx-secret");
         when(talentService.manualFill(any(UUID.class), any(Talent.class))).thenReturn(updated);
 
         String body = """
-                {"nickname":"manual-name","fansCount":1000}
+                {"nickname":"manual-name","fansCount":1000,"contactPhone":"13700000000","contactWechat":"wx-from-client","blacklisted":true,"ownerId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","rawPayload":{"token":"secret"}}
                 """;
 
         mockMvc.perform(put("/talents/{id}/manual-fill", talentId)
@@ -305,7 +416,32 @@ class TalentControllerTest {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.nickname").value("manual-name"));
+                .andExpect(jsonPath("$.data.nickname").value("manual-name"))
+                .andExpect(jsonPath("$.data.contactPhone").doesNotExist())
+                .andExpect(jsonPath("$.data.contactWechat").doesNotExist())
+                .andExpect(jsonPath("$.data.rawPayload").doesNotExist());
+
+        verify(talentService).manualFill(any(UUID.class), argThat(request ->
+                "manual-name".equals(request.getNickname())
+                        && Long.valueOf(1000).equals(request.getFans())
+                        && "13700000000".equals(request.getContactPhone())
+                        && request.getContactWechat() == null
+                        && request.getOwnerId() == null
+                        && request.getBlacklisted() == null
+                        && request.getRawPayload() == null));
+    }
+
+    @Test
+    void manualFill_shouldRejectNegativeFansBeforeCallingService() throws Exception {
+        UUID talentId = UUID.randomUUID();
+
+        mockMvc.perform(put("/talents/{id}/manual-fill", talentId)
+                        .contentType("application/json")
+                        .content("{\"fansCount\":-1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verify(talentService, never()).manualFill(any(UUID.class), any(Talent.class));
     }
 
     @Test

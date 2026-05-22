@@ -110,7 +110,7 @@ public class SysDeptService {
     public void delete(UUID id, UUID currentUserId) {
         SysDept dept = requireDept(id);
         if (sysDeptMapper.softDeleteById(id) <= 0) {
-            throw new BusinessException("部门不存在或已删除");
+            throw BusinessException.notFound("部门不存在或已删除");
         }
         operationLogService.recordSystemAction(
                 currentUserId,
@@ -126,11 +126,11 @@ public class SysDeptService {
 
     private void ensureDeptCodeUnique(String deptCode, UUID excludeId) {
         if (!StringUtils.hasText(deptCode)) {
-            throw new BusinessException("部门编码不能为空");
+            throw BusinessException.param("部门编码不能为空");
         }
         sysDeptMapper.findByDeptCode(deptCode.trim()).ifPresent(existing -> {
             if (excludeId == null || !Objects.equals(existing.getId(), excludeId)) {
-                throw new BusinessException("部门编码已存在: " + deptCode);
+                throw BusinessException.duplicate("部门编码已存在: " + deptCode);
             }
         });
     }
@@ -140,7 +140,7 @@ public class SysDeptService {
             return;
         }
         if (Objects.equals(parentId, selfId)) {
-            throw new BusinessException("上级部门不能选择自己");
+            throw BusinessException.param("上级部门不能选择自己");
         }
         requireDept(parentId);
     }
@@ -148,7 +148,7 @@ public class SysDeptService {
     private SysDept requireDept(UUID id) {
         SysDept dept = sysDeptMapper.selectById(id);
         if (dept == null || Objects.equals(dept.getDeleted(), 1)) {
-            throw new BusinessException("部门不存在");
+            throw BusinessException.notFound("部门不存在");
         }
         return dept;
     }

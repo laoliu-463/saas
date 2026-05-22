@@ -103,10 +103,10 @@ public class SysRoleService {
     public void delete(UUID id, UUID currentUserId) {
         SysRole role = requireRole(id);
         if (SYSTEM_ROLE_CODES.contains(role.getRoleCode())) {
-            throw new BusinessException("系统内置角色不允许删除");
+            throw BusinessException.stateInvalid("系统内置角色不允许删除");
         }
         if (!sysUserRoleMapper.findByRoleId(id).isEmpty()) {
-            throw new BusinessException("角色仍被用户使用，不能删除");
+            throw BusinessException.stateInvalid("角色仍被用户使用，不能删除");
         }
         sysRoleMapper.softDeleteById(id);
         operationLogService.recordSystemAction(
@@ -124,18 +124,18 @@ public class SysRoleService {
     private SysRole requireRole(UUID id) {
         SysRole role = sysRoleMapper.selectById(id);
         if (role == null) {
-            throw new BusinessException("角色不存在");
+            throw BusinessException.notFound("角色不存在");
         }
         return role;
     }
 
     private void ensureRoleCodeUnique(String roleCode, UUID currentId) {
         if (roleCode == null || roleCode.isBlank()) {
-            throw new BusinessException("角色编码不能为空");
+            throw BusinessException.param("角色编码不能为空");
         }
         sysRoleMapper.findByRoleCode(roleCode).ifPresent(exists -> {
             if (currentId == null || !exists.getId().equals(currentId)) {
-                throw new BusinessException("角色编码已存在");
+                throw BusinessException.duplicate("角色编码已存在");
             }
         });
     }

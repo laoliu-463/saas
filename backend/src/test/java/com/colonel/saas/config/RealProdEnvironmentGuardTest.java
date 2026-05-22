@@ -20,6 +20,7 @@ class RealProdEnvironmentGuardTest {
                 "",
                 "",
                 "",
+                "",
                 ""
         );
 
@@ -38,7 +39,8 @@ class RealProdEnvironmentGuardTest {
                 "prod-secret",
                 "appid",
                 "client-key",
-                "client-secret"
+                "client-secret",
+                "https://saas.example.com"
         );
 
         assertThatThrownBy(guard::validate)
@@ -58,7 +60,8 @@ class RealProdEnvironmentGuardTest {
                 "prod-secret",
                 "appid",
                 "client-key",
-                "client-secret"
+                "client-secret",
+                "https://saas.example.com"
         );
 
         assertThatThrownBy(guard::validate)
@@ -78,7 +81,8 @@ class RealProdEnvironmentGuardTest {
                 "dev-secret-key-replace-in-production-with-random-64-char-string",
                 "appid",
                 "client-key",
-                "client-secret"
+                "client-secret",
+                "https://saas.example.com"
         );
 
         assertThatThrownBy(guard::validate)
@@ -98,7 +102,8 @@ class RealProdEnvironmentGuardTest {
                 "super-long-real-secret",
                 "appid",
                 "client-key",
-                "client-secret"
+                "client-secret",
+                "https://saas.example.com"
         );
 
         assertThatThrownBy(guard::validate)
@@ -118,7 +123,8 @@ class RealProdEnvironmentGuardTest {
                 "super-long-real-secret",
                 "appid",
                 "client-key",
-                "client-secret"
+                "client-secret",
+                "https://saas.example.com"
         );
 
         assertThatThrownBy(guard::validate)
@@ -138,7 +144,8 @@ class RealProdEnvironmentGuardTest {
                 "super-long-real-secret",
                 "appid",
                 "client-key",
-                "client-secret"
+                "client-secret",
+                "https://saas.example.com"
         );
 
         assertThatThrownBy(guard::validate)
@@ -158,7 +165,8 @@ class RealProdEnvironmentGuardTest {
                 "super-long-real-secret",
                 "appid",
                 "client-key",
-                "client-secret"
+                "client-secret",
+                "https://saas.example.com"
         );
 
         assertThatThrownBy(guard::validate)
@@ -178,7 +186,8 @@ class RealProdEnvironmentGuardTest {
                 "super-long-real-secret",
                 "appid",
                 "client-key",
-                "client-secret"
+                "client-secret",
+                "https://saas.example.com"
         );
 
         assertThatThrownBy(guard::validate)
@@ -198,7 +207,8 @@ class RealProdEnvironmentGuardTest {
                 "super-long-real-secret",
                 "appid",
                 "client-key",
-                "client-secret"
+                "client-secret",
+                "https://saas.example.com"
         );
 
         assertThatThrownBy(guard::validate)
@@ -218,7 +228,8 @@ class RealProdEnvironmentGuardTest {
                 "super-long-real-secret",
                 "",
                 "",
-                ""
+                "",
+                "https://saas.example.com"
         );
 
         assertThatThrownBy(guard::validate)
@@ -238,9 +249,31 @@ class RealProdEnvironmentGuardTest {
                 "super-long-real-secret",
                 "appid",
                 "client-key",
-                "client-secret"
+                "client-secret",
+                "https://saas.example.com"
         );
 
         assertThatCode(guard::validate).doesNotThrowAnyException();
+    }
+
+    @Test
+    void validate_shouldRejectProdProfileWhenCorsPatternIsBareWildcard() {
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("prod");
+        RealProdEnvironmentGuard guard = new RealProdEnvironmentGuard(
+                environment,
+                false,
+                false,
+                true,
+                "super-long-real-secret",
+                "appid",
+                "client-key",
+                "client-secret",
+                "*"
+        );
+
+        assertThatThrownBy(guard::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("unsafe CORS pattern");
     }
 }

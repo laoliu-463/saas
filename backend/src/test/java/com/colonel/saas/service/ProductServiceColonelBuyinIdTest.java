@@ -64,7 +64,8 @@ class ProductServiceColonelBuyinIdTest {
                 productBizStatusService,
                 colonelActivityMapper,
                 talentFollowService,
-                douyinActivityGateway
+                douyinActivityGateway,
+                new PromotionLinkIdempotencyService(new com.fasterxml.jackson.databind.ObjectMapper())
         );
     }
 

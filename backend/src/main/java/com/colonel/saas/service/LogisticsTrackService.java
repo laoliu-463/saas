@@ -1,10 +1,12 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.gateway.logistics.LogisticsGateway;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -34,6 +36,7 @@ public class LogisticsTrackService {
      * 刷新物流状态，若签收则推进寄样单到 PENDING_HOMEWORK。
      * 幂等：已处于 PENDING_HOMEWORK 的单据不会重复推进。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void refreshAndProgress(SampleRequest sample) {
         String trackingNo = sample.getTrackingNo();
         String shipperCode = sample.getShipperCode();
@@ -78,7 +81,7 @@ public class LogisticsTrackService {
         int fromStatus = sample.getStatus();
         sample.setStatus(STATUS_PENDING_HOMEWORK);
         sample.setDeliverTime(signedAt);
-        sampleRequestMapper.updateById(sample);
+        OptimisticLockSupport.requireUpdated(sampleRequestMapper.updateById(sample));
 
         UUID operatorId = sample.getUserId() != null ? sample.getUserId() : sample.getId();
         sampleStatusLogService.log(sample.getId(), fromStatus, STATUS_PENDING_HOMEWORK, operatorId,

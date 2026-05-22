@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -140,11 +142,166 @@ class OrderQueryServiceTest {
     }
 
     @Test
+    void getOrderDetail_shouldBuildTalentClaimOwnerConflictDiagnosis() {
+        when(jdbcTemplate.queryForList(anyString(), eq("mock-order-4")))
+                .thenReturn(List.of(Map.ofEntries(
+                        Map.entry("order_id", "mock-order-4"),
+                        Map.entry("order_status", 1),
+                        Map.entry("attribution_status", "UNATTRIBUTED"),
+                        Map.entry("attribution_remark", AttributionService.REASON_TALENT_CLAIM_OWNER_CONFLICT),
+                        Map.entry("product_id", "10901828"),
+                        Map.entry("product_name", "达人认领冲突订单"),
+                        Map.entry("activity_id", "REAL_ACTIVITY_Y"),
+                        Map.entry("order_amount", 12900L),
+                        Map.entry("settle_colonel_commission", 1100L),
+                        Map.entry("create_time", Timestamp.valueOf(LocalDateTime.of(2026, 5, 21, 12, 0, 0))),
+                        Map.entry("update_time", Timestamp.valueOf(LocalDateTime.of(2026, 5, 21, 12, 0, 0)))
+                )));
+        when(jdbcTemplate.queryForList(anyString(), eq("10901828")))
+                .thenReturn(List.of());
+
+        OrderDetailResponse detail = service.getOrderDetail("mock-order-4", null, null, DataScope.ALL);
+
+        assertThat(detail.getAttributionStatus()).isEqualTo("UNATTRIBUTED");
+        assertThat(detail.getDiagnosis().getReasonCode()).isEqualTo(AttributionService.REASON_TALENT_CLAIM_OWNER_CONFLICT);
+        assertThat(detail.getDiagnosis().getReasonText()).isEqualTo("归因负责人和达人认领人不一致");
+        assertThat(detail.getDiagnosis().getSuggestion()).contains("有效认领记录");
+    }
+
+    @Test
     void getOrderDetail_shouldThrowWhenMissing() {
         when(jdbcTemplate.queryForList(anyString(), eq("missing-order"))).thenReturn(List.of());
 
         assertThatThrownBy(() -> service.getOrderDetail("missing-order", null, null, DataScope.ALL))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("订单不存在");
+    }
+
+    @Test
+    void getOrderDetail_shouldRejectOutOfScopePersonalAndDeptAccess() {
+        UUID orderUserId = UUID.randomUUID();
+        UUID orderDeptId = UUID.randomUUID();
+        when(jdbcTemplate.queryForList(anyString(), eq("scoped-order")))
+                .thenReturn(List.of(Map.ofEntries(
+                        Map.entry("order_id", "scoped-order"),
+                        Map.entry("order_status", 1),
+                        Map.entry("product_id", "10901829"),
+                        Map.entry("order_user_id", orderUserId),
+                        Map.entry("order_dept_id", orderDeptId)
+                )));
+
+        assertThatThrownBy(() -> service.getOrderDetail("scoped-order", UUID.randomUUID(), orderDeptId, DataScope.PERSONAL))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权查看该订单详情");
+        assertThatThrownBy(() -> service.getOrderDetail("scoped-order", orderUserId, UUID.randomUUID(), DataScope.DEPT))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权查看该订单详情");
+    }
+
+    @Test
+    void privateLabelHelpers_shouldCoverStatusAndDiagnosisMappings() {
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "orderStatusLabel", (Integer) null)).isEqualTo("-");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "orderStatusLabel", 2)).isEqualTo("已发货");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "orderStatusLabel", 3)).isEqualTo("已完成");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "orderStatusLabel", 4)).isEqualTo("已取消");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "orderStatusLabel", 99)).isEqualTo("状态 99");
+
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "attributionStatusLabel", " ")).isEqualTo("-");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "attributionStatusLabel", "ATTRIBUTED")).isEqualTo("已确认业绩");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "attributionStatusLabel", "UNATTRIBUTED")).isEqualTo("待排查订单");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "attributionStatusLabel", "PARTIAL")).isEqualTo("部分归因");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "attributionStatusLabel", "FAILED")).isEqualTo("同步/归因失败");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "attributionStatusLabel", "CUSTOM")).isEqualTo("CUSTOM");
+
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonText", " ")).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonText", AttributionService.REASON_NO_PICK_SOURCE))
+                .isEqualTo("订单未携带推广参数");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonText", "订单未携带推广参数"))
+                .isEqualTo("订单未携带推广参数");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonText", AttributionService.REASON_MAPPING_NOT_FOUND))
+                .isEqualTo("未找到对应推广链接");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonText", AttributionService.REASON_COLONEL_MAPPING_AMBIGUOUS))
+                .isEqualTo("原生团长订单命中多条归因映射");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonText", AttributionService.REASON_PRODUCT_NOT_FOUND))
+                .isEqualTo("未匹配到本地商品库");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonText", AttributionService.REASON_ACTIVITY_NOT_FOUND))
+                .isEqualTo("商品未关联活动");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonText", AttributionService.REASON_CHANNEL_NOT_FOUND))
+                .isEqualTo("未匹配到渠道负责人");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonText", "订单同步失败"))
+                .isEqualTo("订单同步失败");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonText", "UNKNOWN_REASON"))
+                .isEqualTo("UNKNOWN_REASON");
+
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonSuggestion", " ")).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonSuggestion", AttributionService.REASON_NO_PICK_SOURCE))
+                .contains("系统生成的推广链接");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonSuggestion", AttributionService.REASON_MAPPING_NOT_FOUND))
+                .contains("pick_source");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonSuggestion", AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND))
+                .contains("活动、商品和推广映射");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonSuggestion", AttributionService.REASON_COLONEL_MAPPING_AMBIGUOUS))
+                .contains("多条渠道映射");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonSuggestion", AttributionService.REASON_TALENT_CLAIM_OWNER_CONFLICT))
+                .contains("有效认领记录");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonSuggestion", AttributionService.REASON_PRODUCT_NOT_FOUND))
+                .contains("商品主链路");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonSuggestion", AttributionService.REASON_ACTIVITY_NOT_FOUND))
+                .contains("绑定活动");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonSuggestion", AttributionService.REASON_CHANNEL_NOT_FOUND))
+                .contains("渠道负责人");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonSuggestion", "订单同步失败"))
+                .contains("订单同步日志");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "unattributedReasonSuggestion", "UNKNOWN_REASON"))
+                .contains("推广链路");
+    }
+
+    @Test
+    void privateConversionHelpers_shouldNormalizeStatusIdsAndPrimitiveValues() {
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusApi", (Integer) null)).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusApi", 1)).isEqualTo("PENDING_AUDIT");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusApi", 2)).isEqualTo("PENDING_SHIP");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusApi", 3)).isEqualTo("SHIPPED");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusApi", 4)).isEqualTo("SHIPPED");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusApi", 5)).isEqualTo("PENDING_TASK");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusApi", 6)).isEqualTo("FINISHED");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusApi", 7)).isEqualTo("REJECTED");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusApi", 8)).isEqualTo("CLOSED");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusApi", 99)).isEqualTo("99");
+
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusText", " ")).isEqualTo("-");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusText", "PENDING_AUDIT")).isEqualTo("待审核");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusText", "PENDING_SHIP")).isEqualTo("待发货");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusText", "SHIPPED")).isEqualTo("快递中");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusText", "PENDING_TASK")).isEqualTo("待交作业");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusText", "FINISHED")).isEqualTo("已完成");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusText", "REJECTED")).isEqualTo("已拒绝");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusText", "CLOSED")).isEqualTo("已关闭");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "sampleStatusText", "CUSTOM")).isEqualTo("CUSTOM");
+
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "resolveActivityName", " ")).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "resolveActivityName", "MOCK_ACTIVITY_A_B")).isEqualTo("主链路演示活动-A B");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "resolveActivityName", "REAL_ACTIVITY")).isEqualTo("REAL_ACTIVITY");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "firstNonBlank", (Object) null)).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "firstNonBlank", (Object) new String[]{"", " value "})).isEqualTo(" value ");
+        assertThat(ReflectionTestUtils.<Object>invokeMethod(service, "firstNonNull", (Object) null)).isNull();
+        assertThat(ReflectionTestUtils.<Object>invokeMethod(service, "firstNonNull", (Object) new Object[]{null, 12})).isEqualTo(12);
+
+        LocalDateTime now = LocalDateTime.of(2026, 5, 22, 10, 0);
+        assertThat(ReflectionTestUtils.<LocalDateTime>invokeMethod(service, "firstNonNullTime", (Object) null)).isNull();
+        assertThat(ReflectionTestUtils.<LocalDateTime>invokeMethod(service, "firstNonNullTime", (Object) new LocalDateTime[]{null, now})).isEqualTo(now);
+        assertThat(ReflectionTestUtils.<Integer>invokeMethod(service, "asInteger", 12L)).isEqualTo(12);
+        assertThat(ReflectionTestUtils.<Integer>invokeMethod(service, "asInteger", "34")).isEqualTo(34);
+        assertThat(ReflectionTestUtils.<Integer>invokeMethod(service, "asInteger", "bad")).isNull();
+        assertThat(ReflectionTestUtils.<Long>invokeMethod(service, "asLong", 12)).isEqualTo(12L);
+        assertThat(ReflectionTestUtils.<Long>invokeMethod(service, "asLong", "34")).isEqualTo(34L);
+        assertThat(ReflectionTestUtils.<Long>invokeMethod(service, "asLong", "bad")).isNull();
+        assertThat(ReflectionTestUtils.<LocalDateTime>invokeMethod(service, "toDateTime", now)).isEqualTo(now);
+        assertThat(ReflectionTestUtils.<LocalDateTime>invokeMethod(service, "toDateTime", Timestamp.valueOf(now))).isEqualTo(now);
+        assertThat(ReflectionTestUtils.<LocalDateTime>invokeMethod(service, "toDateTime", "bad")).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "uuidText", UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")))
+                .isEqualTo("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(service, "uuidText", " ")).isNull();
+        assertThat(ReflectionTestUtils.<UUID>invokeMethod(service, "uuidValue", "bad")).isNull();
     }
 }

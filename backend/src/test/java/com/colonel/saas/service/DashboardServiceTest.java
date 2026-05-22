@@ -123,6 +123,61 @@ class DashboardServiceTest {
         assertThat(wrapperCaptor.getAllValues()).isNotEmpty();
     }
 
+    @Test
+    void valueObjects_shouldExposeAssignedValues() {
+        DashboardService.PerformanceItem performanceItem = new DashboardService.PerformanceItem();
+        performanceItem.setChannelUserId("channel-1");
+        performanceItem.setChannelUserName("渠道A");
+        performanceItem.setColonelUserId("colonel-1");
+        performanceItem.setColonelUserName("招商A");
+        performanceItem.setOrderCount(1L);
+        performanceItem.setOrderAmount(2L);
+        performanceItem.setServiceFee(3L);
+
+        DashboardService.ActivityProductItem activityProductItem = new DashboardService.ActivityProductItem();
+        DashboardService.DrillDownQuery drillDownQuery =
+                new DashboardService.DrillDownQuery("activity-1", "product-1", null, null, null, "settleTime");
+        activityProductItem.setActivityId("activity-1");
+        activityProductItem.setProductId("product-1");
+        activityProductItem.setProductName("商品A");
+        activityProductItem.setProductCover("https://img.example/a.png");
+        activityProductItem.setBizStatus("LINKED");
+        activityProductItem.setAssigneeName("招商B");
+        activityProductItem.setOrderCount(4L);
+        activityProductItem.setOrderAmount(5L);
+        activityProductItem.setUnattributedOrderCount(6L);
+        activityProductItem.setMappingCount(7L);
+        activityProductItem.setPromotionLinkCount(8L);
+        activityProductItem.setDrillDownQuery(drillDownQuery);
+
+        DashboardService.ActivityProductPage page =
+                new DashboardService.ActivityProductPage(1L, 2L, 3L, List.of(activityProductItem));
+
+        assertThat(performanceItem.getChannelUserId()).isEqualTo("channel-1");
+        assertThat(performanceItem.getChannelUserName()).isEqualTo("渠道A");
+        assertThat(performanceItem.getColonelUserId()).isEqualTo("colonel-1");
+        assertThat(performanceItem.getColonelUserName()).isEqualTo("招商A");
+        assertThat(performanceItem.getOrderCount()).isEqualTo(1L);
+        assertThat(performanceItem.getOrderAmount()).isEqualTo(2L);
+        assertThat(performanceItem.getServiceFee()).isEqualTo(3L);
+        assertThat(activityProductItem.getActivityId()).isEqualTo("activity-1");
+        assertThat(activityProductItem.getProductId()).isEqualTo("product-1");
+        assertThat(activityProductItem.getProductName()).isEqualTo("商品A");
+        assertThat(activityProductItem.getProductCover()).isEqualTo("https://img.example/a.png");
+        assertThat(activityProductItem.getBizStatus()).isEqualTo("LINKED");
+        assertThat(activityProductItem.getAssigneeName()).isEqualTo("招商B");
+        assertThat(activityProductItem.getOrderCount()).isEqualTo(4L);
+        assertThat(activityProductItem.getOrderAmount()).isEqualTo(5L);
+        assertThat(activityProductItem.getUnattributedOrderCount()).isEqualTo(6L);
+        assertThat(activityProductItem.getMappingCount()).isEqualTo(7L);
+        assertThat(activityProductItem.getPromotionLinkCount()).isEqualTo(8L);
+        assertThat(activityProductItem.getDrillDownQuery()).isEqualTo(drillDownQuery);
+        assertThat(page.total()).isEqualTo(1L);
+        assertThat(page.page()).isEqualTo(2L);
+        assertThat(page.size()).isEqualTo(3L);
+        assertThat(page.records()).containsExactly(activityProductItem);
+    }
+
     private void mockBaseOrderAggregates(long attributedCount, long unattributedCount) {
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("ordercount", attributedCount + unattributedCount, "orderamount", 120000L, "servicefee", 2300L)))

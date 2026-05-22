@@ -19,8 +19,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ProductBizStatusServiceTest {
@@ -35,6 +37,7 @@ class ProductBizStatusServiceTest {
     @BeforeEach
     void setUp() {
         service = new ProductBizStatusService(operationStateMapper, operationLogMapper);
+        lenient().when(operationStateMapper.updateById(any(ProductOperationState.class))).thenReturn(1);
     }
 
     @Test

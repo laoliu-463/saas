@@ -50,4 +50,44 @@ class JwtTokenProviderTest {
         assertThatThrownBy(() -> provider.parseClaims(token))
                 .isInstanceOf(RuntimeException.class);
     }
+
+    @Test
+    void shouldGenerateRefreshTokenHashAndRemainingTtl() {
+        JwtTokenProvider provider = new JwtTokenProvider(
+                "unit-test-secret-long-enough-for-32-chars-minimum", 300L, 604800L);
+        UUID userId = UUID.randomUUID();
+
+        String refreshToken = provider.generateRefreshToken(userId);
+        Claims claims = provider.parseClaims(refreshToken);
+
+        assertThat(claims.getSubject()).isEqualTo(userId.toString());
+        assertThat(claims.get("type", String.class)).isEqualTo("refresh");
+        assertThat(provider.parseTokenId(refreshToken)).isNotBlank();
+        assertThat(provider.getTokenHash(refreshToken)).hasSize(64);
+        assertThat(provider.getRemainingSeconds(refreshToken)).isPositive();
+        assertThat(provider.getExpireSeconds()).isEqualTo(300L);
+        assertThat(provider.getRefreshExpireSeconds()).isEqualTo(604800L);
+    }
+
+    @Test
+    void shouldSupportAccessTokenWithNullDeptAndPlaceholderSecret() {
+        JwtTokenProvider provider = new JwtTokenProvider(
+                "dev-secret-key-replace-in-production-with-random-64-char-string", 120L, 240L);
+        UUID userId = UUID.randomUUID();
+
+        String token = provider.generateAccessToken(userId, null, 3, List.of("admin"), "admin");
+        Claims claims = provider.parseClaims(token);
+
+        assertThat(claims.getSubject()).isEqualTo(userId.toString());
+        assertThat(claims.get("deptId")).isNull();
+        assertThat(claims.get("type", String.class)).isEqualTo("access");
+        assertThat(claims.get("username", String.class)).isEqualTo("admin");
+    }
+
+    @Test
+    void shouldRejectShortSecret() {
+        assertThatThrownBy(() -> new JwtTokenProvider("too-short", 1L, 1L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("too short");
+    }
 }

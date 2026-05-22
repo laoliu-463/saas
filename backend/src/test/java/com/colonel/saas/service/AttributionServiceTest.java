@@ -4,8 +4,10 @@ import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.PickSourceMappingMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
+import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,8 @@ class AttributionServiceTest {
     @Mock
     private TalentMapper talentMapper;
     @Mock
+    private TalentClaimMapper talentClaimMapper;
+    @Mock
     private ExclusiveTalentService exclusiveTalentService;
     @Mock
     private ExclusiveMerchantService exclusiveMerchantService;
@@ -47,6 +51,7 @@ class AttributionServiceTest {
                 pickSourceMappingMapper,
                 productOperationStateMapper,
                 talentMapper,
+                talentClaimMapper,
                 exclusiveTalentService,
                 exclusiveMerchantService
         );
@@ -168,6 +173,7 @@ class AttributionServiceTest {
                 pickSourceMappingMapper,
                 productOperationStateMapper,
                 talentMapper,
+                talentClaimMapper,
                 exclusiveTalentService,
                 exclusiveMerchantService
         ) {
@@ -344,6 +350,79 @@ class AttributionServiceTest {
         assertThat(result.userId()).isEqualTo(mappingUser);
         assertThat(result.deptId()).isEqualTo(mappingDept);
         assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+    }
+
+    @Test
+    void resolveAttribution_shouldRejectMappingWhenTalentClaimOwnerDiffers() {
+        UUID talentId = UUID.randomUUID();
+        UUID mappingUser = UUID.randomUUID();
+        UUID claimOwner = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(mappingUser);
+        mapping.setDeptId(UUID.randomUUID());
+        TalentClaim activeClaim = new TalentClaim();
+        activeClaim.setTalentId(talentId);
+        activeClaim.setUserId(claimOwner);
+        activeClaim.setStatus(1);
+
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(activeClaim));
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-claim-conflict");
+        order.setPickSource("pick_claim_conflict");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of("talent_uid", "talent-claim-conflict")
+        );
+
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
+        assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_TALENT_CLAIM_OWNER_CONFLICT);
+        assertThat(result.userId()).isNull();
+        assertThat(result.channelUserId()).isNull();
+        assertThat(result.talentId()).isEqualTo(talentId);
+    }
+
+    @Test
+    void resolveAttribution_shouldAcceptMappingWhenTalentClaimOwnerMatches() {
+        UUID talentId = UUID.randomUUID();
+        UUID mappingUser = UUID.randomUUID();
+        UUID mappingDept = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(mappingUser);
+        mapping.setDeptId(mappingDept);
+        TalentClaim activeClaim = new TalentClaim();
+        activeClaim.setTalentId(talentId);
+        activeClaim.setUserId(mappingUser);
+        activeClaim.setStatus(1);
+
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(activeClaim));
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-claim-match");
+        order.setPickSource("pick_claim_match");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of("talent_uid", "talent-claim-match")
+        );
+
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(result.userId()).isEqualTo(mappingUser);
+        assertThat(result.channelUserId()).isEqualTo(mappingUser);
+        assertThat(result.deptId()).isEqualTo(mappingDept);
     }
 
     @Test

@@ -21,6 +21,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.http.HttpStatus;
 
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -83,6 +84,40 @@ class DouyinApiClientTest {
         douyinApiClient.post("test.method", Map.of("appId", "custom-app"));
 
         verify(douyinTokenService).getValidToken("custom-app");
+    }
+
+    @Test
+    void postWithoutAuth_shouldOmitAccessTokenAndNotRequestToken() {
+        when(douyinConfig.getClientKey()).thenReturn("client-key-123");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com/");
+        when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
+                .thenReturn(Map.of("code", 10000));
+
+        douyinApiClient.postWithoutAuth("/buyin/institutionInfo", Map.of("appId", "client-key-123"));
+
+        ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(douyinRestTemplate).postForObject(urlCaptor.capture(), any(HttpEntity.class), eq(Map.class));
+        assertThat(urlCaptor.getValue()).startsWith("https://openapi-fxg.jinritemai.com/buyin/institutionInfo?");
+        assertThat(urlCaptor.getValue()).doesNotContain("access_token=");
+        verify(douyinTokenService, never()).getValidToken(any());
+    }
+
+    @Test
+    void post_shouldRejectMissingConfigOrBlankMethod() {
+        assertThatThrownBy(() -> douyinApiClient.postWithoutAuth("test.method", Map.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("missing douyin.app.app-id/client-key config");
+
+        when(douyinConfig.getAppId()).thenReturn("app123");
+        assertThatThrownBy(() -> douyinApiClient.postWithoutAuth("test.method", Map.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("missing douyin.app.client-secret config");
+
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        assertThatThrownBy(() -> douyinApiClient.postWithoutAuth(" ", Map.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Douyin method cannot be blank");
     }
 
     @Test
@@ -213,6 +248,46 @@ class DouyinApiClientTest {
     }
 
     @Test
+    void post_shouldRetryOnNestedRetryableTransportErrorThenSucceed() {
+        when(douyinConfig.getAppId()).thenReturn("app123");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
+        when(douyinTokenService.getValidToken("app123")).thenReturn("token");
+        ReflectionTestUtils.setField(douyinApiClient, "retryMaxAttempts", 2);
+        ReflectionTestUtils.setField(douyinApiClient, "retryInitialDelayMs", 0L);
+        when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
+                .thenThrow(new RuntimeException(new ResourceAccessException("nested timeout")))
+                .thenReturn(Map.of("code", 10000));
+
+        Map<String, Object> result = douyinApiClient.post("test", null);
+
+        assertThat(result).containsEntry("code", 10000);
+        verify(douyinRestTemplate, times(2)).postForObject(any(String.class), any(HttpEntity.class), eq(Map.class));
+    }
+
+    @Test
+    void sleepBeforeRetry_shouldRespectZeroDelayAndInterruptedSleep() {
+        ReflectionTestUtils.setField(douyinApiClient, "retryInitialDelayMs", 0L);
+        ReflectionTestUtils.invokeMethod(douyinApiClient, "sleepBeforeRetry", "test.method", 1, 3, "unit-test");
+
+        ReflectionTestUtils.setField(douyinApiClient, "retryInitialDelayMs", 5L);
+        Thread.currentThread().interrupt();
+        try {
+            assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                    douyinApiClient,
+                    "sleepBeforeRetry",
+                    "test.method",
+                    1,
+                    3,
+                    "unit-test"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("retry interrupted");
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
     void post_shouldRetryOnHttp5xxThenSucceed() {
         when(douyinConfig.getAppId()).thenReturn("app123");
         when(douyinConfig.getClientSecret()).thenReturn("secret123");
@@ -266,5 +341,52 @@ class DouyinApiClientTest {
             logger.detachAppender(appender);
             logger.setLevel(originalLevel);
         }
+    }
+
+    @Test
+    void testMode_shouldReturnScenarioSpecificMockResponses() {
+        ReflectionTestUtils.setField(douyinApiClient, "testEnabled", true);
+        when(douyinConfig.getClientKey()).thenReturn("client-key-123");
+
+        Map<String, Object> orders = douyinApiClient.postWithoutAuth("buyin.colonelMultiSettlementOrders", Map.of());
+        Map<String, Object> instituteOrders = douyinApiClient.postWithoutAuth("buyin.instituteOrderColonel", Map.of());
+        Map<String, Object> activities = douyinApiClient.postWithoutAuth("alliance.instituteColonelActivityList", Map.of());
+        Map<String, Object> products = douyinApiClient.postWithoutAuth("alliance.colonelActivityProduct", Map.of());
+        Map<String, Object> defaultResponse = douyinApiClient.postWithoutAuth("unknown.method", Map.of());
+
+        assertThat(orders).containsEntry("test", true).containsEntry("test_app_id", "client-key-123");
+        assertThat((Map<String, Object>) orders.get("data")).containsEntry("order_list", java.util.List.of());
+        assertThat((Map<String, Object>) instituteOrders.get("data")).containsEntry("next_cursor", "0");
+        assertThat((Map<String, Object>) activities.get("data")).containsEntry("total", 2);
+        assertThat((java.util.List<?>) ((Map<String, Object>) products.get("data")).get("data")).hasSize(2);
+        assertThat((Map<String, Object>) defaultResponse.get("data")).containsEntry("ok", true);
+    }
+
+    @Test
+    void privateParsingHelpers_shouldNormalizeEdgeCases() {
+        assertThat(ReflectionTestUtils.<Integer>invokeMethod(douyinApiClient, "parseCode", (Map<String, Object>) null))
+                .isEqualTo(-1);
+        assertThat(ReflectionTestUtils.<Integer>invokeMethod(douyinApiClient, "parseCode", Map.of("err_no", "bad")))
+                .isEqualTo(-1);
+        assertThat(ReflectionTestUtils.<Integer>invokeMethod(douyinApiClient, "parseCode", Map.of("err_no", "429")))
+                .isEqualTo(429);
+        assertThat(ReflectionTestUtils.<String>invokeMethod(douyinApiClient, "parseMessage", (Map<String, Object>) null))
+                .isEqualTo("empty response");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(douyinApiClient, "parseMessage", Map.of("err_msg", "err")))
+                .isEqualTo("err");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(douyinApiClient, "parseMessage", Map.of("message", "message")))
+                .isEqualTo("message");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(douyinApiClient, "parseMessage", Map.of("msg", "msg")))
+                .isEqualTo("msg");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(douyinApiClient, "parseMessage", Map.of()))
+                .isEqualTo("unknown error");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(douyinApiClient, "pickText", null, "msg")).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(douyinApiClient, "pickText", Map.of("msg", " "), "msg")).isNull();
+
+        Map<Object, Object> source = new LinkedHashMap<>();
+        source.put(null, "ignored");
+        source.put(123, "value");
+        Map<String, Object> casted = ReflectionTestUtils.invokeMethod(douyinApiClient, "castToStringObjectMap", source);
+        assertThat(casted).containsEntry("123", "value").doesNotContainKey(null);
     }
 }

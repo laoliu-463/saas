@@ -1,0 +1,59 @@
+package com.colonel.saas.job;
+
+import com.colonel.saas.service.DistributedJobLockService;
+import com.colonel.saas.service.TalentService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.Duration;
+import java.time.LocalDateTime;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class TalentClaimReleaseJobTest {
+
+    @Mock
+    private TalentService talentService;
+    @Mock
+    private DistributedJobLockService jobLockService;
+
+    @BeforeEach
+    void grantLock() {
+        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.TALENT_CLAIM_RELEASE), any(Duration.class))).thenReturn(true);
+    }
+
+    @Test
+    void releaseExpiredClaimsDaily_shouldDelegateWithCurrentTime() {
+        TalentClaimReleaseJob job = new TalentClaimReleaseJob(talentService, jobLockService);
+        LocalDateTime before = LocalDateTime.now().minusSeconds(1);
+
+        job.releaseExpiredClaimsDaily();
+
+        ArgumentCaptor<LocalDateTime> captor = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(talentService).releaseExpiredClaims(captor.capture());
+        assertThat(captor.getValue()).isAfterOrEqualTo(before);
+        assertThat(captor.getValue()).isBeforeOrEqualTo(LocalDateTime.now().plusSeconds(1));
+        verify(jobLockService).release(JobLockKeys.TALENT_CLAIM_RELEASE);
+    }
+
+    @Test
+    void releaseExpiredClaimsDaily_shouldSkipWhenLockNotAcquired() {
+        when(jobLockService.tryAcquire(eq(JobLockKeys.TALENT_CLAIM_RELEASE), any(Duration.class))).thenReturn(false);
+        TalentClaimReleaseJob job = new TalentClaimReleaseJob(talentService, jobLockService);
+
+        job.releaseExpiredClaimsDaily();
+
+        verify(talentService, never()).releaseExpiredClaims(any());
+    }
+}
