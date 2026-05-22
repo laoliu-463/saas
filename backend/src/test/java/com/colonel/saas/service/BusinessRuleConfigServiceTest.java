@@ -51,6 +51,32 @@ class BusinessRuleConfigServiceTest {
     }
 
     @Test
+    void shouldReadDecimalBooleanAliasesAndDeletedRows() {
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.TALENT_EXCLUSIVE_RATIO)).thenReturn(Optional.of(config(" 82.5 ")));
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.TALENT_EXCLUSIVE_MONTHLY_SAMPLES)).thenReturn(Optional.of(config("12")));
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.SAMPLE_RESTRICT_ENABLED)).thenReturn(Optional.of(config("1")));
+        SystemConfig deleted = config("2");
+        deleted.setDeleted(1);
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.SAMPLE_RESTRICT_DAYS)).thenReturn(Optional.of(deleted));
+
+        assertThat(service.getTalentExclusiveRatioThreshold()).isEqualByComparingTo("82.5");
+        assertThat(service.getTalentExclusiveMonthlySamples()).isEqualTo(12);
+        assertThat(service.isSampleRestrictEnabled()).isTrue();
+        assertThat(service.getSampleRestrictDays()).isEqualTo(7);
+    }
+
+    @Test
+    void shouldFallbackForInvalidDecimalBooleanAndJson() {
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.TALENT_EXCLUSIVE_RATIO)).thenReturn(Optional.of(config("bad")));
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.SAMPLE_RESTRICT_ENABLED)).thenReturn(Optional.of(config("maybe")));
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.SAMPLE_DEFAULT_STANDARD)).thenReturn(Optional.of(config("{bad-json")));
+
+        assertThat(service.getTalentExclusiveRatioThreshold()).isEqualByComparingTo("70");
+        assertThat(service.isSampleRestrictEnabled()).isTrue();
+        assertThat(service.getSampleDefaultStandard().raw()).isEmpty();
+    }
+
+    @Test
     void shouldParseSampleDefaultStandard() {
         when(systemConfigMapper.findByConfigKey(SystemConfigKeys.SAMPLE_DEFAULT_STANDARD))
                 .thenReturn(Optional.of(config("{\"min_30day_sales\":30000,\"min_level\":\"LV1\"}")));
@@ -85,6 +111,14 @@ class BusinessRuleConfigServiceTest {
 
         assertThat(service.getSampleRestrictDays()).isEqualTo(9);
         verify(systemConfigMapper, times(2)).findByConfigKey(SystemConfigKeys.SAMPLE_RESTRICT_DAYS);
+    }
+
+    @Test
+    void invalidate_shouldIgnoreBlankAndSupportAllLocalEviction() {
+        service.invalidate(" ");
+        service.invalidateAll();
+
+        assertThat(service.getTalentProtectionDays()).isEqualTo(30);
     }
 
     private SystemConfig config(String value) {

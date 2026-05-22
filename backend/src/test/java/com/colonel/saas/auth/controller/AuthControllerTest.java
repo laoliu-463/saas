@@ -2,6 +2,9 @@ package com.colonel.saas.auth.controller;
 
 import com.colonel.saas.auth.dto.LoginRequest;
 import com.colonel.saas.auth.dto.LoginResponse;
+import com.colonel.saas.auth.dto.LogoutRequest;
+import com.colonel.saas.auth.dto.RefreshRequest;
+import com.colonel.saas.auth.dto.RefreshResponse;
 import com.colonel.saas.auth.service.AuthService;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,6 +21,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -68,5 +72,42 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.token").value("jwt.token.here"))
                 .andExpect(jsonPath("$.data.username").value("alice"))
                 .andExpect(jsonPath("$.data.roleCodes[0]").value("admin"));
+    }
+
+    @Test
+    void refresh_success_returnsNewAccessToken() throws Exception {
+        RefreshResponse response = RefreshResponse.builder()
+                .accessToken("new-access-token")
+                .accessTokenExpiresIn(7200L)
+                .refreshToken("refresh-token")
+                .refreshExpiresIn(604800L)
+                .build();
+        when(authService.refreshToken(any(RefreshRequest.class))).thenReturn(response);
+
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken("refresh-token");
+
+        mockMvc.perform(post("/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.accessToken").value("new-access-token"));
+    }
+
+    @Test
+    void logout_success_revokesTokensAndReturnsEmptyData() throws Exception {
+        LogoutRequest request = new LogoutRequest();
+        request.setAccessToken("access-token");
+        request.setRefreshToken("refresh-token");
+
+        mockMvc.perform(post("/auth/logout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        verify(authService).logout(any(LogoutRequest.class));
     }
 }

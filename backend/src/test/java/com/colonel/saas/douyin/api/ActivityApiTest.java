@@ -105,6 +105,28 @@ class ActivityApiTest {
     }
 
     @Test
+    void listActivities_shouldUseContractFixtureWhenUpstreamModeIsContract() {
+        when(upstreamModeSupport.isContract()).thenReturn(true);
+        when(contractFixtureProvider.buildActivityListResponse("app", 1, 2L, 0L, 3L, 10L, "kw"))
+                .thenReturn(Map.of("contract", true));
+
+        Map<String, Object> result = activityApi.listActivities("app", 1, 2L, 0L, 3L, 10L, "kw");
+
+        assertThat(result).containsEntry("contract", true);
+    }
+
+    @Test
+    void detail_shouldUseContractFixtureWhenUpstreamModeIsContract() {
+        when(upstreamModeSupport.isContract()).thenReturn(true);
+        when(contractFixtureProvider.buildActivityDetailResponse("app", "123"))
+                .thenReturn(Map.of("detail", true));
+
+        Map<String, Object> result = activityApi.detail("app", "123");
+
+        assertThat(result).containsEntry("detail", true);
+    }
+
+    @Test
     void listActivities_shouldMapAllQueryParams() {
         when(douyinApiClient.post(eq("alliance.instituteColonelActivityList"), anyMap()))
                 .thenReturn(Map.of());
@@ -135,6 +157,19 @@ class ActivityApiTest {
         assertThatThrownBy(() -> activityApi.listActivities("app-2", 6, 0L, 1L, 1L, 20L, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("status");
+    }
+
+    @Test
+    void listActivities_shouldRejectUnsupportedSearchSortAndPage() {
+        assertThatThrownBy(() -> activityApi.listActivities("app", 0, 9L, 1L, 1L, 20L, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("search_type");
+        assertThatThrownBy(() -> activityApi.listActivities("app", 0, 0L, 9L, 1L, 20L, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("sort_type");
+        assertThatThrownBy(() -> activityApi.listActivities("app", 0, 0L, 1L, 0L, 20L, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("page");
     }
 
     @Test
@@ -307,5 +342,77 @@ class ActivityApiTest {
         assertThatThrownBy(() -> activityApi.createOrUpdate(command))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("cos_limit_type");
+    }
+
+    @Test
+    void createOrUpdate_shouldRejectInvalidRatesAndActivityTypes() {
+        assertThatThrownBy(() -> activityApi.createOrUpdate(validCommand("bad", "10", 1, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("commission_rate");
+        assertThatThrownBy(() -> activityApi.createOrUpdate(validCommand("-1", "10", 1, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("negative");
+        assertThatThrownBy(() -> activityApi.createOrUpdate(validCommand("51", "10", 1, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("cannot exceed 50");
+        assertThatThrownBy(() -> activityApi.createOrUpdate(validCommand("10", "41", 1, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("cannot exceed 40");
+        assertThatThrownBy(() -> activityApi.createOrUpdate(validCommand("10", "10", 9, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("activity_type");
+        assertThatThrownBy(() -> activityApi.createOrUpdate(validCommand("10", "10", 1, 31)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("min_promotion_days");
+    }
+
+    @Test
+    void cancelActivityProduct_shouldRemoveAppIdFromPayloadBeforePosting() {
+        when(douyinApiClient.post(eq("alliance.colonelActivityProductCancel"), anyMap()))
+                .thenReturn(Map.of("ok", true));
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("appId", "payload-app");
+        payload.put("activity_id", 1001L);
+
+        activityApi.cancelActivityProduct("header-app", payload);
+
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
+        verify(douyinApiClient).post(eq("alliance.colonelActivityProductCancel"), captor.capture());
+        assertThat(captor.getValue()).containsEntry("activity_id", 1001L);
+        assertThat(captor.getValue()).doesNotContainKey("appId");
+    }
+
+    private ActivityApi.ActivityCreateOrUpdateCommand validCommand(
+            String commissionRate,
+            String serviceRate,
+            Integer activityType,
+            Integer minPromotionDays) {
+        return new ActivityApi.ActivityCreateOrUpdateCommand(
+                "app",
+                null,
+                false,
+                null,
+                null,
+                "activity",
+                "desc",
+                "2026-01-01",
+                "2026-12-31",
+                commissionRate,
+                serviceRate,
+                null,
+                null,
+                "1000",
+                activityType,
+                null,
+                true,
+                null,
+                null,
+                minPromotionDays,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 }

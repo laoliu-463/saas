@@ -79,4 +79,37 @@ class SampleEligibilityServiceTest {
         assertThat(result.eligible()).isFalse();
         assertThat(result.reasons()).anyMatch(reason -> reason.contains("达人等级未同步"));
     }
+
+    @Test
+    void shouldUseTalentSalesAndNormalizeLegacyLevelsWithoutQueryingOrders() {
+        when(businessRuleConfigService.getSampleDefaultStandard())
+                .thenReturn(new BusinessRuleConfigService.SampleDefaultStandardConfig(1000L, "LV2", Map.of()));
+        Talent talent = new Talent();
+        talent.setSales30d(1500L);
+        talent.setLevel("S");
+        talent.setUnsupportedFields(java.util.List.of());
+
+        var result = service.evaluate(talent, null);
+
+        assertThat(result.eligible()).isTrue();
+        assertThat(result.actual().monthlySales()).isEqualTo(1500L);
+        assertThat(result.actual().level()).isEqualTo("LV2");
+    }
+
+    @Test
+    void shouldTreatEmptyUnsupportedFieldsAsAllFieldsSupported() {
+        when(businessRuleConfigService.getSampleDefaultStandard())
+                .thenReturn(new BusinessRuleConfigService.SampleDefaultStandardConfig(1000L, "LV1", Map.of()));
+        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<ResultSetExtractor<Long>>any(), any()))
+                .thenReturn(null);
+        Talent talent = new Talent();
+        talent.setDouyinUid("talent_uid");
+        talent.setUnsupportedFields(java.util.List.of());
+
+        var result = service.evaluate(talent, null);
+
+        assertThat(result.eligible()).isFalse();
+        assertThat(result.actual().monthlySales()).isEqualTo(0L);
+        assertThat(result.actual().level()).isNull();
+    }
 }

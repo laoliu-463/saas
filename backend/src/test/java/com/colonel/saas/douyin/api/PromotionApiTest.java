@@ -1,6 +1,7 @@
 package com.colonel.saas.douyin.api;
 
 import com.colonel.saas.douyin.DouyinApiClient;
+import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.service.PickSourceMappingService;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -261,5 +262,63 @@ class PromotionApiTest {
                 any(),
                 any()
         );
+    }
+
+    @Test
+    void generateLink_shouldFallbackWhenLegacyPromotionApiIsOffline() {
+        when(douyinApiClient.post(eq("buyin.promotion.link.generate"), any()))
+                .thenThrow(new DouyinApiException(70000, "API不存在"));
+        when(douyinApiClient.post(eq("buyin.kolProductShare"), any()))
+                .thenThrow(new DouyinApiException(500, "offline", "api-service-off", null, null));
+        when(douyinApiClient.post(eq("buyin.getProductShareMaterial"), any()))
+                .thenReturn(Map.of("data", Map.of("share_link", "https://share.example?pick_source=PS1")));
+
+        PromotionApi.PromotionLinkResult result = promotionApi.generateLink("ext", 1, List.of("p"), true);
+
+        assertThat(result.promoteLink()).contains("pick_source=PS1");
+        assertThat(result.pickSource()).isEqualTo("PS1");
+    }
+
+    @Test
+    void generateLink_shouldPropagateNonOfflinePromotionErrors() {
+        when(douyinApiClient.post(eq("buyin.promotion.link.generate"), any()))
+                .thenThrow(new DouyinApiException(500, "boom"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> promotionApi.generateLink("ext", 1, List.of("p"), true))
+                .isInstanceOf(DouyinApiException.class)
+                .hasMessageContaining("boom");
+    }
+
+    @Test
+    void generateLink_shouldNormalizeLongPickExtraBeforeSavingMapping() {
+        when(douyinApiClient.post(eq("buyin.instPickSourceConvert"), any()))
+                .thenReturn(Map.of("data", Map.of(
+                        "converted_link", "https://promote.example?pick_source=ABC",
+                        "pick_extra", "response-extra"
+                )));
+        UUID userId = UUID.randomUUID();
+
+        PromotionApi.PromotionLinkResult result = promotionApi.generateLink(
+                "ext",
+                1,
+                List.of("p"),
+                false,
+                new PromotionApi.PromotionContext(
+                        userId,
+                        null,
+                        "product",
+                        "activity",
+                        "https://source",
+                        "SCENE",
+                        "channel_very-long-name-with-symbols!"
+                )
+        );
+
+        assertThat(result.pickExtra()).isEqualTo("response-extra");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> paramsCaptor =
+                (ArgumentCaptor<Map<String, Object>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Map.class);
+        verify(douyinApiClient).post(eq("buyin.instPickSourceConvert"), paramsCaptor.capture());
+        assertThat(paramsCaptor.getValue()).containsEntry("pick_extra", "channel_very_long_na");
     }
 }

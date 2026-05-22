@@ -2,6 +2,7 @@ package com.colonel.saas.service.talent.profile.provider;
 
 import cn.hutool.http.Method;
 import com.colonel.saas.service.talent.TalentInputParseResult;
+import com.colonel.saas.service.talent.profile.TalentProfileFieldNames;
 import com.colonel.saas.service.talent.profile.TalentProfileQuery;
 import com.colonel.saas.service.talent.profile.TalentProfileResult;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -15,6 +16,69 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TalentProfileProviderTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void manualProviderShouldSupportOnlyManualPayloadAndMapAllKnownFields() {
+        ManualTalentProvider provider = new ManualTalentProvider();
+        TalentProfileQuery fullPayload = TalentProfileQuery.builder()
+                .input("manual")
+                .manualFill(true)
+                .manualPayload(java.util.Map.ofEntries(
+                        java.util.Map.entry(TalentProfileFieldNames.NICKNAME, " Nick "),
+                        java.util.Map.entry(TalentProfileFieldNames.AVATAR_URL, " https://img.example/a.png "),
+                        java.util.Map.entry(TalentProfileFieldNames.FANS_COUNT, "100"),
+                        java.util.Map.entry(TalentProfileFieldNames.LIKE_COUNT, 200),
+                        java.util.Map.entry(TalentProfileFieldNames.FOLLOWING_COUNT, "30"),
+                        java.util.Map.entry(TalentProfileFieldNames.WORKS_COUNT, 40),
+                        java.util.Map.entry(TalentProfileFieldNames.IP_LOCATION, " 上海 "),
+                        java.util.Map.entry(TalentProfileFieldNames.TALENT_LEVEL, "LV2"),
+                        java.util.Map.entry(TalentProfileFieldNames.SALES_30D, "5000"),
+                        java.util.Map.entry(TalentProfileFieldNames.DOUYIN_ACCOUNT, "account"),
+                        java.util.Map.entry(TalentProfileFieldNames.TALENT_UID, "uid"),
+                        java.util.Map.entry(TalentProfileFieldNames.SEC_UID, "sec")
+                ))
+                .build();
+
+        assertThat(provider.providerCode()).isEqualTo("manual");
+        assertThat(provider.order()).isEqualTo(90);
+        assertThat(provider.supports(null)).isFalse();
+        assertThat(provider.supports(TalentProfileQuery.builder().manualFill(true).manualPayload(java.util.Map.of()).build())).isFalse();
+        assertThat(provider.supports(fullPayload)).isTrue();
+
+        TalentProfileResult result = provider.fetch(fullPayload);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getSyncStatus()).isEqualTo(TalentProfileResult.STATUS_SUCCESS);
+        assertThat(result.getNickname()).isEqualTo("Nick");
+        assertThat(result.getAvatarUrl()).isEqualTo("https://img.example/a.png");
+        assertThat(result.getFansCount()).isEqualTo(100L);
+        assertThat(result.getLikeCount()).isEqualTo(200L);
+        assertThat(result.getFollowingCount()).isEqualTo(30L);
+        assertThat(result.getWorksCount()).isEqualTo(40L);
+        assertThat(result.getIpLocation()).isEqualTo("上海");
+        assertThat(result.getTalentLevel()).isEqualTo("LV2");
+        assertThat(result.getSales30d()).isEqualTo(5000L);
+        assertThat(result.getUnsupportedFields()).isEmpty();
+        assertThat(result.getRawPayload()).containsEntry("dataSource", "manual");
+    }
+
+    @Test
+    void manualProviderShouldFailWhenPayloadHasNoUsableFields() {
+        ManualTalentProvider provider = new ManualTalentProvider();
+        TalentProfileQuery query = TalentProfileQuery.builder()
+                .manualFill(true)
+                .manualPayload(java.util.Map.of(
+                        TalentProfileFieldNames.NICKNAME, " ",
+                        TalentProfileFieldNames.FANS_COUNT, "bad-number"
+                ))
+                .build();
+
+        TalentProfileResult result = provider.fetch(query);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("MANUAL_EMPTY");
+        assertThat(result.getUnsupportedFields()).contains(TalentProfileFieldNames.TALENT_LEVEL, TalentProfileFieldNames.SALES_30D);
+    }
 
     @Test
     void configurableHttpProviderSupportsOnlyEnabledEndpointAndInput() {
@@ -178,6 +242,29 @@ class TalentProfileProviderTest {
     }
 
     @Test
+    void publicWebProviderShouldParseRenderDataAndNodeFallbackText() {
+        PublicWebTalentProvider provider = new PublicWebTalentProvider(objectMapper, true);
+        String html = """
+                <html><script id="RENDER_DATA" type="application/json">
+                {"user":{"nickname":"Node Nick","avatarUrl":"https:\\/\\/img.example\\/node.png"}}
+                </script></html>
+                """;
+
+        TalentProfileResult result = ReflectionTestUtils.invokeMethod(
+                provider,
+                "parseHtml",
+                html,
+                "https://www.douyin.com/user/node",
+                query("node")
+        );
+
+        assertThat(result).isNotNull();
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getNickname()).isEqualTo("Node Nick");
+        assertThat(result.getAvatarUrl()).isEqualTo("https://img.example/node.png");
+    }
+
+    @Test
     void publicWebProviderDecodesEscapedAvatarUrls() {
         PublicWebTalentProvider provider = new PublicWebTalentProvider(objectMapper, true);
 
@@ -196,5 +283,26 @@ class TalentProfileProviderTest {
                 .input(input)
                 .parsed(TalentInputParseResult.builder().uid(uid).build())
                 .build();
+    }
+
+    @Test
+    void talentProfileQueryShouldExposeBuilderAndSetters() {
+        TalentProfileQuery query = TalentProfileQuery.builder()
+                .input("raw")
+                .forceRefresh(true)
+                .talentId(java.util.UUID.randomUUID())
+                .manualFill(true)
+                .parsed(TalentInputParseResult.builder().uid("uid").build())
+                .manualPayload(java.util.Map.of("nickname", "Nick"))
+                .build();
+        query.setInput("updated");
+
+        assertThat(query.getInput()).isEqualTo("updated");
+        assertThat(query.isForceRefresh()).isTrue();
+        assertThat(query.getTalentId()).isNotNull();
+        assertThat(query.isManualFill()).isTrue();
+        assertThat(query.getParsed().getUid()).isEqualTo("uid");
+        assertThat(query.getManualPayload()).containsEntry("nickname", "Nick");
+        assertThat(query.toString()).contains("updated");
     }
 }

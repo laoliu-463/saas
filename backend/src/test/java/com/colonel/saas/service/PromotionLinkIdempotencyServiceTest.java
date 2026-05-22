@@ -4,9 +4,12 @@ import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class PromotionLinkIdempotencyServiceTest {
@@ -43,5 +46,31 @@ class PromotionLinkIdempotencyServiceTest {
         service.markCompleted(scopeKey, new DouyinPromotionGateway.PromotionLinkResult(
                 "pick", null, "short", null, "https://promote", null));
         assertThat(service.tryAcquireInFlight(scopeKey)).isTrue();
+    }
+
+    @Test
+    void blankInputs_shouldBeIgnoredExceptForIdempotencyKeyValidation() {
+        assertThat(service.findCompleted(" ")).isEmpty();
+        assertThat(service.tryAcquireInFlight(" ")).isTrue();
+        service.releaseInFlight(" ");
+        service.markCompleted(" ", new DouyinPromotionGateway.PromotionLinkResult("pick", null, null, null, null, null));
+        service.markCompleted("scope", null);
+
+        assertThatThrownBy(() -> service.buildScopeKey(UUID.randomUUID(), "act", "prod", " "))
+                .hasMessageContaining("Idempotency-Key");
+        assertThatThrownBy(() -> service.buildScopeKey(UUID.randomUUID(), "act", "prod", "x".repeat(129)))
+                .hasMessageContaining("长度不能超过");
+    }
+
+    @Test
+    void findCompleted_shouldDeleteCorruptLocalPayload() {
+        String scopeKey = "scope:corrupt";
+        @SuppressWarnings("unchecked")
+        ConcurrentHashMap<String, String> store =
+                (ConcurrentHashMap<String, String>) ReflectionTestUtils.getField(service, "localStore");
+        store.put(scopeKey + ":completed", "{bad-json");
+
+        assertThat(service.findCompleted(scopeKey)).isEmpty();
+        assertThat(store).doesNotContainKey(scopeKey + ":completed");
     }
 }
