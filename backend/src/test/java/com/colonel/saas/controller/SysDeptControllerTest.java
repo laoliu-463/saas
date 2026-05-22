@@ -1,6 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.colonel.saas.auth.dto.SysDeptCreateRequest;
+import com.colonel.saas.auth.dto.SysDeptUpdateRequest;
 import com.colonel.saas.auth.service.SysDeptService;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
@@ -26,6 +27,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -66,6 +68,35 @@ class SysDeptControllerTest {
     }
 
     @Test
+    void list_returnsAllDepartments() throws Exception {
+        SysDeptVO vo = new SysDeptVO();
+        vo.setId(deptId);
+        vo.setDeptCode("BIZ");
+        vo.setDeptName("招商组");
+        when(sysDeptService.findAll()).thenReturn(List.of(vo));
+
+        mockMvc.perform(get("/departments")
+                        .requestAttr("userId", UUID.randomUUID()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].deptCode").value("BIZ"));
+    }
+
+    @Test
+    void detail_returnsDepartment() throws Exception {
+        SysDeptVO vo = new SysDeptVO();
+        vo.setId(deptId);
+        vo.setDeptCode("BIZ");
+        vo.setDeptName("招商组");
+        when(sysDeptService.getById(deptId)).thenReturn(vo);
+
+        mockMvc.perform(get("/depts/{id}", deptId)
+                        .requestAttr("userId", UUID.randomUUID()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(deptId.toString()))
+                .andExpect(jsonPath("$.data.deptName").value("招商组"));
+    }
+
+    @Test
     void create_returnsCreatedDept() throws Exception {
         SysDeptVO vo = new SysDeptVO();
         vo.setId(deptId);
@@ -94,5 +125,25 @@ class SysDeptControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         verify(sysDeptService).delete(eq(deptId), any());
+    }
+
+    @Test
+    void update_returnsUpdatedDept() throws Exception {
+        SysDeptVO vo = new SysDeptVO();
+        vo.setId(deptId);
+        vo.setDeptCode("BIZ_B");
+        vo.setDeptName("招商二组");
+        when(sysDeptService.update(eq(deptId), any(SysDeptUpdateRequest.class), any())).thenReturn(vo);
+
+        SysDeptUpdateRequest request = new SysDeptUpdateRequest(
+                null, "BIZ_B", "招商二组", null, null, null, 20, 1, "更新");
+
+        mockMvc.perform(put("/departments/{id}", deptId)
+                        .requestAttr("userId", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.deptCode").value("BIZ_B"))
+                .andExpect(jsonPath("$.data.deptName").value("招商二组"));
     }
 }

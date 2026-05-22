@@ -274,6 +274,33 @@ class TalentProfileProviderTest {
                 .isEqualTo(" ");
     }
 
+    @Test
+    void publicWebProviderFailureHelpersShouldReturnStructuredFailures() {
+        PublicWebTalentProvider provider = new PublicWebTalentProvider(objectMapper, true);
+
+        TalentProfileResult noUrl = provider.fetch(TalentProfileQuery.builder().input(" ").build());
+        assertThat(noUrl.isSuccess()).isFalse();
+        assertThat(noUrl.getErrorCode()).isEqualTo("PUBLIC_WEB_NO_URL");
+        assertThat(noUrl.getProviderCode()).isEqualTo("public_web");
+        assertThat(noUrl.getUnsupportedFields()).contains(TalentProfileFieldNames.TALENT_LEVEL, TalentProfileFieldNames.SALES_30D);
+
+        JsonNode invalidRenderData = ReflectionTestUtils.invokeMethod(
+                provider,
+                "extractEmbeddedJson",
+                "<script>RENDER_DATA {not-json}</script>");
+        assertThat(invalidRenderData).isNull();
+
+        TalentProfileResult explicitFailure = ReflectionTestUtils.invokeMethod(
+                provider,
+                "failed",
+                "PUBLIC_WEB_TEST",
+                "test failure");
+        assertThat(explicitFailure).isNotNull();
+        assertThat(explicitFailure.isSuccess()).isFalse();
+        assertThat(explicitFailure.getErrorCode()).isEqualTo("PUBLIC_WEB_TEST");
+        assertThat(explicitFailure.getErrorMessage()).isEqualTo("test failure");
+    }
+
     private TalentProfileQuery query(String input) {
         return TalentProfileQuery.builder().input(input).build();
     }

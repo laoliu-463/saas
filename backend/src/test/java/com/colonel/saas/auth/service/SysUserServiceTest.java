@@ -143,6 +143,20 @@ class SysUserServiceTest {
     }
 
     @Test
+    void findAssignableUsers_returnsEmptyWhenCurrentRoleContextMissing() {
+        SysUser assignee = new SysUser();
+        assignee.setId(UUID.randomUUID());
+        assignee.setUsername("bizstaff");
+        assignee.setStatus(1);
+        when(sysUserMapper.selectList(any())).thenReturn(List.of(assignee));
+
+        List<SysUserVO> result = sysUserService.findAssignableUsers(null, null, deptId);
+
+        assertThat(result).isEmpty();
+        verify(sysUserRoleMapper, never()).findByUserId(any());
+    }
+
+    @Test
     void findAssignableUsers_shouldRestrictLeaderToOwnDept() {
         SysUser sameDept = new SysUser();
         sameDept.setId(UUID.randomUUID());
@@ -219,6 +233,33 @@ class SysUserServiceTest {
     }
 
     @Test
+    void findAssignableUsers_shouldAllowChannelLeaderToAssignOwnDeptChannelStaff() {
+        SysUser sameDept = new SysUser();
+        sameDept.setId(UUID.randomUUID());
+        sameDept.setUsername("channelstaff-a");
+        sameDept.setRealName("渠道A");
+        sameDept.setStatus(1);
+        sameDept.setDeptId(deptId);
+
+        SysUserRole relation = new SysUserRole();
+        relation.setUserId(sameDept.getId());
+        relation.setRoleId(roleId);
+
+        SysRole assignableRole = new SysRole();
+        assignableRole.setId(roleId);
+        assignableRole.setRoleCode(RoleCodes.CHANNEL_STAFF);
+        assignableRole.setStatus(1);
+
+        when(sysUserMapper.selectList(any())).thenReturn(List.of(sameDept));
+        when(sysUserRoleMapper.findByUserId(sameDept.getId())).thenReturn(List.of(relation));
+        when(sysRoleMapper.selectBatchIds(any())).thenReturn(List.of(assignableRole));
+
+        List<SysUserVO> result = sysUserService.findAssignableUsers(null, List.of(RoleCodes.CHANNEL_LEADER), deptId);
+
+        assertThat(result).extracting(SysUserVO::getUsername).containsExactly("channelstaff-a");
+    }
+
+    @Test
     void assertAssignableUser_allowsBizLeaderAssigningOwnDeptBizStaff() {
         UUID assigneeId = UUID.randomUUID();
         SysUser assignee = new SysUser();
@@ -262,6 +303,26 @@ class SysUserServiceTest {
                 deptId
         )).isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("本组招商下属");
+    }
+
+    @Test
+    void assertAssignableUser_rejectsMissingRoleContextAndRolelessTarget() {
+        UUID assigneeId = UUID.randomUUID();
+        SysUser assignee = new SysUser();
+        assignee.setId(assigneeId);
+        assignee.setUsername("bizstaff");
+        assignee.setDeptId(deptId);
+
+        assertThatThrownBy(() -> sysUserService.assertAssignableUser(assigneeId, List.of(), deptId))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("当前角色不允许分配负责人");
+
+        when(sysUserMapper.selectById(assigneeId)).thenReturn(assignee);
+        when(sysUserRoleMapper.findByUserId(assigneeId)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> sysUserService.assertAssignableUser(assigneeId, List.of(RoleCodes.BIZ_LEADER), deptId))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("目标负责人未配置可分配角色");
     }
 
     @Test

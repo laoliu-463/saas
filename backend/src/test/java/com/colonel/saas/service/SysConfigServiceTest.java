@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -69,6 +70,88 @@ class SysConfigServiceTest {
 
         assertThat(grouped.get("douyin")).singleElement().extracting(SystemConfig::getConfigValue).isEqualTo("******");
         assertThat(grouped.get("talent")).singleElement().extracting(SystemConfig::getConfigValue).isEqualTo("30");
+    }
+
+    @Test
+    void findGrouped_shouldKeepSensitiveValuesWhenIncluded() {
+        SystemConfig tokenConfig = new SystemConfig();
+        tokenConfig.setConfigGroup(null);
+        tokenConfig.setConfigKey("douyin.access_token");
+        tokenConfig.setConfigValue("secret-token");
+        tokenConfig.setStatus(1);
+        when(systemConfigMapper.selectList(any())).thenReturn(List.of(tokenConfig));
+
+        Map<String, List<SystemConfig>> grouped = sysConfigService.findGrouped(true);
+
+        assertThat(grouped.get("default")).containsExactly(tokenConfig);
+        assertThat(grouped.get("default").get(0).getConfigValue()).isEqualTo("secret-token");
+    }
+
+    @Test
+    void getById_shouldReturnConfigAndThrowWhenMissing() {
+        UUID id = UUID.randomUUID();
+        SystemConfig config = new SystemConfig();
+        config.setId(id);
+        config.setConfigKey("custom.visible");
+        when(systemConfigMapper.selectById(id)).thenReturn(config).thenReturn(null);
+
+        assertThat(sysConfigService.getById(id)).isSameAs(config);
+        assertThatThrownBy(() -> sysConfigService.getById(id))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("配置项不存在");
+    }
+
+    @Test
+    void create_shouldPersistConfigAndRecordOperation() {
+        UUID userId = UUID.randomUUID();
+        SystemConfig payload = new SystemConfig();
+        payload.setConfigKey("custom.visible");
+        payload.setConfigValue("on");
+        when(systemConfigMapper.findByConfigKey("custom.visible")).thenReturn(Optional.empty());
+
+        SystemConfig created = sysConfigService.create(payload, userId);
+
+        assertThat(created.getId()).isNotNull();
+        assertThat(created.getCreateBy()).isEqualTo(userId);
+        assertThat(created.getUpdateBy()).isEqualTo(userId);
+        verify(systemConfigMapper).insert(created);
+        verify(businessRuleConfigService).invalidate("custom.visible");
+        verify(operationLogService).recordSystemAction(
+                userId,
+                "系统配置",
+                "新建配置",
+                "POST",
+                "SystemConfig",
+                created.getId().toString(),
+                "custom.visible",
+                "新建配置项: custom.visible"
+        );
+    }
+
+    @Test
+    void create_shouldRejectDuplicateConfigKey() {
+        SystemConfig existing = new SystemConfig();
+        existing.setConfigKey("custom.visible");
+        SystemConfig payload = new SystemConfig();
+        payload.setConfigKey("custom.visible");
+        payload.setConfigValue("on");
+        when(systemConfigMapper.findByConfigKey("custom.visible")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> sysConfigService.create(payload, UUID.randomUUID()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("配置键已存在");
+    }
+
+    @Test
+    void getConfigValue_shouldReturnStoredValueOrNull() {
+        SystemConfig config = new SystemConfig();
+        config.setConfigValue("30");
+        when(systemConfigMapper.findByConfigKey("talent.protection_days"))
+                .thenReturn(Optional.of(config))
+                .thenReturn(Optional.empty());
+
+        assertThat(sysConfigService.getConfigValue("talent.protection_days")).isEqualTo("30");
+        assertThat(sysConfigService.getConfigValue("talent.protection_days")).isNull();
     }
 
     @Test

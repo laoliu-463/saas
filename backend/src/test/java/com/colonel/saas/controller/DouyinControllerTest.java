@@ -766,6 +766,63 @@ class DouyinControllerTest {
     }
 
     @Test
+    void activityCreateOrUpdateRequest_shouldExposeAllFields() {
+        DouyinController.ActivityCreateOrUpdateRequest request = new DouyinController.ActivityCreateOrUpdateRequest();
+
+        request.setAppId("test_app");
+        request.setActivityId(12345L);
+        request.setApplicationLimited(Boolean.FALSE);
+        request.setIsNewShop(Boolean.TRUE);
+        request.setShopType("normal");
+        request.setActivityName("测试活动");
+        request.setActivityDesc("联调用活动");
+        request.setApplyStartTime("2026-04-28 10:00:00");
+        request.setApplyEndTime("2026-04-29 10:00:00");
+        request.setCommissionRate("10");
+        request.setServiceRate("5");
+        request.setWechatId("wechat-demo");
+        request.setPhoneNum("13800000000");
+        request.setEstimatedSingleSale("1000");
+        request.setActivityType(1);
+        request.setSpecifiedShopIds("1001,1002");
+        request.setOnline(Boolean.TRUE);
+        request.setCategories("食品");
+        request.setShopScore(90);
+        request.setMinPromotionDays(7);
+        request.setThresholdCrossBorder(0);
+        request.setMinExclusionDuration(1);
+        request.setAdCommissionRate("2");
+        request.setAdServiceRate("1");
+        request.setCosLimitType(3);
+
+        assertThat(request.getAppId()).isEqualTo("test_app");
+        assertThat(request.getActivityId()).isEqualTo(12345L);
+        assertThat(request.getApplicationLimited()).isFalse();
+        assertThat(request.getIsNewShop()).isTrue();
+        assertThat(request.getShopType()).isEqualTo("normal");
+        assertThat(request.getActivityName()).isEqualTo("测试活动");
+        assertThat(request.getActivityDesc()).isEqualTo("联调用活动");
+        assertThat(request.getApplyStartTime()).isEqualTo("2026-04-28 10:00:00");
+        assertThat(request.getApplyEndTime()).isEqualTo("2026-04-29 10:00:00");
+        assertThat(request.getCommissionRate()).isEqualTo("10");
+        assertThat(request.getServiceRate()).isEqualTo("5");
+        assertThat(request.getWechatId()).isEqualTo("wechat-demo");
+        assertThat(request.getPhoneNum()).isEqualTo("13800000000");
+        assertThat(request.getEstimatedSingleSale()).isEqualTo("1000");
+        assertThat(request.getActivityType()).isEqualTo(1);
+        assertThat(request.getSpecifiedShopIds()).isEqualTo("1001,1002");
+        assertThat(request.getOnline()).isTrue();
+        assertThat(request.getCategories()).isEqualTo("食品");
+        assertThat(request.getShopScore()).isEqualTo(90);
+        assertThat(request.getMinPromotionDays()).isEqualTo(7);
+        assertThat(request.getThresholdCrossBorder()).isZero();
+        assertThat(request.getMinExclusionDuration()).isEqualTo(1);
+        assertThat(request.getAdCommissionRate()).isEqualTo("2");
+        assertThat(request.getAdServiceRate()).isEqualTo("1");
+        assertThat(request.getCosLimitType()).isEqualTo(3);
+    }
+
+    @Test
     void douyinController_shouldRequireAdminRoleAnnotation() {
         RequireRoles requireRoles = DouyinController.class.getAnnotation(RequireRoles.class);
         assertThat(requireRoles).isNotNull();

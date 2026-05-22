@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -146,6 +147,57 @@ class ProductControllerTest {
 
         assertThat(response.getData().shortId()).isEqualTo("ABC12345");
         verify(productService).generatePromotionLink(id, userId, deptId, "ext-1", 4, true, "PRODUCT_LIBRARY", null, null);
+    }
+
+    @Test
+    void promotionLinkRequest_shouldKeepDefaultsAndHandleNullNeedShortLink() {
+        ProductController.PromotionLinkRequest request = new ProductController.PromotionLinkRequest();
+
+        assertThat(request.getPromotionScene()).isEqualTo(4);
+        assertThat(request.getNeedShortLink()).isTrue();
+        assertThat(request.getScene()).isEqualTo("PRODUCT_LIBRARY");
+
+        request.setExternalUniqueId("external-1");
+        request.setPromotionScene(8);
+        request.setNeedShortLink(null);
+        request.setScene("DETAIL");
+        request.setTalentId("talent-1");
+
+        assertThat(request.getExternalUniqueId()).isEqualTo("external-1");
+        assertThat(request.getPromotionScene()).isEqualTo(8);
+        assertThat(request.getNeedShortLink()).isTrue();
+        assertThat(request.getScene()).isEqualTo("DETAIL");
+        assertThat(request.getTalentId()).isEqualTo("talent-1");
+
+        request.setNeedShortLink(Boolean.FALSE);
+        assertThat(request.getNeedShortLink()).isFalse();
+    }
+
+    @Test
+    void auditAndFollowRequestTypes_shouldExposeAssignedValues() {
+        UUID talentId = UUID.randomUUID();
+        LocalDateTime nextFollowTime = LocalDateTime.of(2026, 4, 29, 10, 0);
+
+        ProductController.AuditProductRequest audit = new ProductController.AuditProductRequest();
+        audit.setApproved(false);
+        audit.setReason("素材不足");
+
+        ProductController.TalentFollowRequest follow = new ProductController.TalentFollowRequest();
+        follow.setTalentId(talentId);
+        follow.setTalentName("达人A");
+        follow.setFollowStatus("FOLLOWING");
+        follow.setContent("已加微信跟进");
+        follow.setNextFollowTime(nextFollowTime);
+        follow.setOperatorName("渠道A");
+
+        assertThat(audit.isApproved()).isFalse();
+        assertThat(audit.getReason()).isEqualTo("素材不足");
+        assertThat(follow.getTalentId()).isEqualTo(talentId);
+        assertThat(follow.getTalentName()).isEqualTo("达人A");
+        assertThat(follow.getFollowStatus()).isEqualTo("FOLLOWING");
+        assertThat(follow.getContent()).isEqualTo("已加微信跟进");
+        assertThat(follow.getNextFollowTime()).isEqualTo(nextFollowTime);
+        assertThat(follow.getOperatorName()).isEqualTo("渠道A");
     }
 
     @Test

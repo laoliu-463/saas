@@ -33,4 +33,21 @@ class RedisProbeControllerTest {
                 .andExpect(jsonPath("$.data.status").value("success"))
                 .andExpect(jsonPath("$.data.ping").value("PONG"));
     }
+
+    @Test
+    void redisProbe_returnsFailureDetailsWhenConnectionFails() throws Exception {
+        RedisConnectionFactory factory = mock(RedisConnectionFactory.class);
+        when(factory.getConnection()).thenThrow(new IllegalStateException("redis unavailable"));
+
+        RedisProbeController controller = new RedisProbeController(factory);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        mockMvc.perform(get("/ops/redis-probe"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("failed"))
+                .andExpect(jsonPath("$.data.errorType").value("IllegalStateException"))
+                .andExpect(jsonPath("$.data.message").value("redis unavailable"));
+    }
 }

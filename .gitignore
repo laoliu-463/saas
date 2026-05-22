@@ -32,6 +32,7 @@ runtime/qa/*.stdout.log
 runtime/qa/*.stderr.log
 test-results/
 frontend/test-results/
+frontend/coverage/
 node_modules/
 frontend/.pnpm-store/
 playwright-report/

@@ -1,8 +1,10 @@
 package com.colonel.saas.controller;
 
 import com.colonel.saas.annotation.RequireRoles;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.service.ProductService;
@@ -19,8 +21,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -39,11 +43,12 @@ class ColonelActivityControllerTest {
     @Mock
     private ProductService productService;
 
+    private ColonelActivityController controller;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        ColonelActivityController controller = new ColonelActivityController(
+        controller = new ColonelActivityController(
                 douyinActivityGateway,
                 douyinProductGateway,
                 productService,
@@ -170,6 +175,34 @@ class ColonelActivityControllerTest {
     }
 
     @Test
+    void listProducts_shouldUseLocalSnapshotWhenAvailable() throws Exception {
+        Map<String, Object> itemView = new LinkedHashMap<>();
+        itemView.put("productId", 9001L);
+        itemView.put("title", "本地快照商品");
+        itemView.put("bizStatus", "PENDING_AUDIT");
+        Map<String, Object> listView = new LinkedHashMap<>();
+        listView.put("activityId", "100018");
+        listView.put("total", 1);
+        listView.put("items", List.of(itemView));
+
+        when(productService.hasActivitySnapshots("100018")).thenReturn(true);
+        when(productService.buildActivityProductListViewFromDb("100018", 10, "cursor-1", "本地", "PENDING_AUDIT", 1))
+                .thenReturn(listView);
+
+        mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
+                        .param("count", "10")
+                        .param("cursor", "cursor-1")
+                        .param("productInfo", "本地")
+                        .param("bizStatus", "PENDING_AUDIT")
+                        .param("status", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].title").value("本地快照商品"));
+
+        verify(douyinProductGateway, never()).queryActivityProducts(any());
+        verify(productService, never()).upsertSnapshots(eq("100018"), any());
+    }
+
+    @Test
     void listProducts_refreshTrueShouldBypassExistingSnapshotsAndRefreshFromGateway() throws Exception {
         DouyinProductGateway.ActivityProductItem item = new DouyinProductGateway.ActivityProductItem(
                 9002L,
@@ -232,6 +265,78 @@ class ColonelActivityControllerTest {
         verify(douyinProductGateway, never()).queryActivityProducts(any());
         verify(productService, never()).upsertSnapshots(eq("100018"), any());
         verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null);
+    }
+
+    @Test
+    void list_shouldMapActivityGatewayErrorsToBusinessMessages() {
+        record ErrorCase(DouyinApiException exception, String message) {
+        }
+        List<ErrorCase> cases = List.of(
+                new ErrorCase(new DouyinApiException(50002, "UPSTREAM", "isv.business-failed:4197", "log", "activity"), "招商团长授权"),
+                new ErrorCase(new DouyinApiException(50002, "UPSTREAM", "isv.business-failed:4200", "log", "activity"), "账号状态异常"),
+                new ErrorCase(new DouyinApiException(40004, "UPSTREAM", "isv.parameter-invalid:257", "log", "activity"), "查询参数不合法"),
+                new ErrorCase(new DouyinApiException(20000, "UPSTREAM", "isv.system-error:256", "log", "activity"), "抖店服务异常"),
+                new ErrorCase(new DouyinApiException(99999, "fallback", null, "log", "activity"), "团长活动查询失败: fallback")
+        );
+
+        for (ErrorCase item : cases) {
+            DouyinActivityGateway activityGateway = mock(DouyinActivityGateway.class);
+            when(activityGateway.listActivities(any())).thenThrow(item.exception());
+            ColonelActivityController errorController = new ColonelActivityController(
+                    activityGateway,
+                    douyinProductGateway,
+                    productService,
+                    new ShortTtlCacheService());
+
+            assertThatThrownBy(() -> errorController.list(0, 0L, 1L, 1L, 20L, null, null))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining(item.message());
+        }
+    }
+
+    @Test
+    void listProducts_shouldMapProductGatewayErrorsToBusinessMessages() {
+        record ErrorCase(DouyinApiException exception, String message) {
+        }
+        List<ErrorCase> cases = List.of(
+                new ErrorCase(new DouyinApiException(50002, "UPSTREAM", "isv.business-failed:4097", "log", "product"), "每页最多查询 20 条商品"),
+                new ErrorCase(new DouyinApiException(50002, "UPSTREAM", "isv.business-failed:8197", "log", "product"), "不允许继续翻页"),
+                new ErrorCase(new DouyinApiException(50002, "UPSTREAM", "isv.business-failed:4197", "log", "product"), "招商团长授权"),
+                new ErrorCase(new DouyinApiException(50002, "UPSTREAM", "isv.business-failed:4200", "log", "product"), "账号状态异常"),
+                new ErrorCase(new DouyinApiException(50002, "UPSTREAM", "isv.parameter-invalid:257", "log", "product"), "查询参数不合法"),
+                new ErrorCase(new DouyinApiException(20000, "UPSTREAM", "isv.system-error:256", "log", "product"), "抖店服务异常"),
+                new ErrorCase(new DouyinApiException(99999, "fallback", null, "log", "product"), "活动商品查询失败: fallback")
+        );
+
+        for (ErrorCase item : cases) {
+            DouyinProductGateway productGateway = mock(DouyinProductGateway.class);
+            ProductService localProductService = mock(ProductService.class);
+            when(localProductService.hasActivitySnapshots("100018")).thenReturn(false);
+            when(productGateway.queryActivityProducts(any())).thenThrow(item.exception());
+            ColonelActivityController errorController = new ColonelActivityController(
+                    douyinActivityGateway,
+                    productGateway,
+                    localProductService,
+                    new ShortTtlCacheService());
+
+            assertThatThrownBy(() -> errorController.listProducts(
+                    "100018",
+                    4L,
+                    1L,
+                    20,
+                    null,
+                    0,
+                    null,
+                    null,
+                    null,
+                    1L,
+                    null,
+                    null,
+                    null,
+                    false))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining(item.message());
+        }
     }
 
     @Test

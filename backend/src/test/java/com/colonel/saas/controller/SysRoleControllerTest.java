@@ -158,4 +158,33 @@ class SysRoleControllerTest {
 
         verify(sysRoleService).delete(any(), any());
     }
+
+    @Test
+    void getRoleMenus_returnsMenuIds() throws Exception {
+        UUID menuId = UUID.randomUUID();
+        when(sysMenuService.getMenuIdsByRoleId(roleId)).thenReturn(List.of(menuId));
+
+        mockMvc.perform(get("/roles/{id}/menus", roleId)
+                        .requestAttr("userId", UUID.randomUUID())
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0]").value(menuId.toString()));
+    }
+
+    @Test
+    void assignRoleMenus_delegatesToMenuService() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID menuId = UUID.randomUUID();
+        doNothing().when(sysMenuService).assignMenusToRole(roleId, List.of(menuId), userId);
+
+        mockMvc.perform(put("/roles/{id}/menus", roleId)
+                        .requestAttr("userId", userId)
+                        .requestAttr("dataScope", DataScope.ALL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(List.of(menuId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(sysMenuService).assignMenusToRole(roleId, List.of(menuId), userId);
+    }
 }

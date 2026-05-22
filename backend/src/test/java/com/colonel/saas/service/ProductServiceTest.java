@@ -3,6 +3,7 @@ package com.colonel.saas.service;
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.common.result.PageResult;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ProductOperationLog;
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -1753,6 +1755,39 @@ class ProductServiceTest {
         assertThat(result.get("items")).isEqualTo(List.of());
         verify(snapshotMapper, never()).selectCount(any());
         verify(snapshotMapper, never()).selectPage(any(Page.class), any());
+    }
+
+    @Test
+    void bizStatusFilter_shouldCoverAllFilterModes() {
+        ProductOperationState approved = buildState("APPROVED");
+        approved.setProductId("9001");
+        ProductOperationState rejected = buildState("REJECTED");
+        rejected.setProductId("9002");
+        ProductOperationState pending = buildState("PENDING_AUDIT");
+        pending.setProductId("9003");
+        when(operationStateMapper.selectList(any()))
+                .thenReturn(List.of())
+                .thenReturn(List.of())
+                .thenReturn(List.of(approved, rejected, pending))
+                .thenReturn(List.of(approved, rejected, pending));
+
+        Object noActivityFilter = ReflectionTestUtils.invokeMethod(service, "resolveBizStatusFilter", null, "APPROVED");
+        Object pendingWithoutStates = ReflectionTestUtils.invokeMethod(service, "resolveBizStatusFilter", "10001", "PENDING_AUDIT");
+        Object emptyFilter = ReflectionTestUtils.invokeMethod(service, "resolveBizStatusFilter", "10001", "APPROVED");
+        Object includeFilter = ReflectionTestUtils.invokeMethod(service, "resolveBizStatusFilter", "10001", "APPROVED");
+        Object pendingFilter = ReflectionTestUtils.invokeMethod(service, "resolveBizStatusFilter", "10001", "PENDING_AUDIT");
+
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(emptyFilter, "isEmptyFilter")).isTrue();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(noActivityFilter, "isEmptyFilter")).isFalse();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(pendingWithoutStates, "isEmptyFilter")).isFalse();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(includeFilter, "isEmptyFilter")).isFalse();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(pendingFilter, "isEmptyFilter")).isFalse();
+
+        ReflectionTestUtils.invokeMethod(service, "applyBizStatusFilter", null, includeFilter);
+        ReflectionTestUtils.invokeMethod(service, "applyBizStatusFilter", new LambdaQueryWrapper<ProductSnapshot>(), noActivityFilter);
+        ReflectionTestUtils.invokeMethod(service, "applyBizStatusFilter", new LambdaQueryWrapper<ProductSnapshot>(), emptyFilter);
+        ReflectionTestUtils.invokeMethod(service, "applyBizStatusFilter", new LambdaQueryWrapper<ProductSnapshot>(), includeFilter);
+        ReflectionTestUtils.invokeMethod(service, "applyBizStatusFilter", new LambdaQueryWrapper<ProductSnapshot>(), pendingFilter);
     }
 
     @Test
