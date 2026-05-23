@@ -57,6 +57,11 @@ class OrderQueryServiceTest {
                         Map.entry("colonel_user_id", colonelUserId),
                         Map.entry("colonel_user_name", "招商A-美妆组"),
                         Map.entry("order_amount", 19900L),
+                        Map.entry("settle_amount", 18800L),
+                        Map.entry("estimate_service_fee", 2600L),
+                        Map.entry("effective_service_fee", 2400L),
+                        Map.entry("estimate_tech_service_fee", 260L),
+                        Map.entry("effective_tech_service_fee", 240L),
                         Map.entry("settle_colonel_commission", 2600L),
                         Map.entry("create_time", Timestamp.valueOf(LocalDateTime.of(2026, 4, 27, 12, 0, 0))),
                         Map.entry("update_time", Timestamp.valueOf(LocalDateTime.of(2026, 4, 27, 12, 1, 0))),
@@ -79,6 +84,12 @@ class OrderQueryServiceTest {
         assertThat(detail.getAttributionStatus()).isEqualTo("ATTRIBUTED");
         assertThat(detail.getProduct().getActivityName()).isEqualTo("主链路演示活动-A");
         assertThat(detail.getChannel().getChannelName()).isEqualTo("渠道A-华东区域");
+        assertThat(detail.getAmount().getPayAmount()).isEqualTo(19900L);
+        assertThat(detail.getAmount().getSettleAmount()).isEqualTo(18800L);
+        assertThat(detail.getAmount().getEstimateServiceFee()).isEqualTo(2600L);
+        assertThat(detail.getAmount().getEffectiveServiceFee()).isEqualTo(2400L);
+        assertThat(detail.getAmount().getEstimateTechServiceFee()).isEqualTo(260L);
+        assertThat(detail.getAmount().getEffectiveTechServiceFee()).isEqualTo(240L);
         assertThat(detail.getPromotion().isMatched()).isTrue();
         assertThat(detail.getSample().isMatched()).isTrue();
         assertThat(detail.getSample().getSampleStatus()).isEqualTo("FINISHED");

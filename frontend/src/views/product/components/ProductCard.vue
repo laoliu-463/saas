@@ -201,6 +201,28 @@
             <n-space vertical :size="8">
               <n-tag v-if="product.selectedToLibrary" type="success" size="small" round>已入商品库</n-tag>
               <n-button
+                v-if="canPin && !product.pinned"
+                block
+                size="small"
+                secondary
+                type="warning"
+                data-testid="product-pin-button"
+                @click.stop="$emit('pin', product)"
+              >
+                置顶商品
+              </n-button>
+              <n-button
+                v-if="canPin && product.pinned"
+                block
+                size="small"
+                secondary
+                type="warning"
+                data-testid="product-unpin-button"
+                @click.stop="$emit('unpin', product)"
+              >
+                取消置顶
+              </n-button>
+              <n-button
                 v-if="canCopyLink"
                 block
                 size="small"
@@ -219,7 +241,7 @@
                 data-testid="product-quick-sample"
                 @click.stop="$emit('applySample', product)"
               >
-                快速寄样
+                内部寄样
               </n-button>
               <n-button block size="small" @click.stop="$emit('showLogs', product)">
                 查看操作日志
@@ -249,6 +271,7 @@ defineProps<{
   canPutIntoLibrary: boolean
   canCopyLink?: boolean
   canApplySample?: boolean
+  canPin?: boolean
 }>()
 
 defineEmits<{
@@ -260,6 +283,8 @@ defineEmits<{
   putIntoLibrary: [product: any]
   copyLink: [product: any]
   applySample: [product: any]
+  pin: [product: any]
+  unpin: [product: any]
   showLogs: [product: any]
 }>()
 

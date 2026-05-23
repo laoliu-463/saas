@@ -11,6 +11,11 @@
         <result property="shopName" column="shop_name"/>
         <result property="orderAmount" column="order_amount"/>
         <result property="actualAmount" column="actual_amount"/>
+        <result property="settleAmount" column="settle_amount"/>
+        <result property="estimateServiceFee" column="estimate_service_fee"/>
+        <result property="effectiveServiceFee" column="effective_service_fee"/>
+        <result property="estimateTechServiceFee" column="estimate_tech_service_fee"/>
+        <result property="effectiveTechServiceFee" column="effective_tech_service_fee"/>
         <result property="colonelBuyinId" column="colonel_buyin_id"/>
         <result property="settleColonelCommission" column="settle_colonel_commission"/>
         <result property="settleColonelTechServiceFee" column="settle_colonel_tech_service_fee"/>
@@ -55,7 +60,10 @@
     <insert id="insertIgnoreByOrderId" parameterType="com.colonel.saas.entity.ColonelsettlementOrder">
         INSERT INTO colonelsettlement_order (
             id, order_id, product_id, product_name, shop_id, shop_name,
-            order_amount, actual_amount, colonel_buyin_id, settle_colonel_commission, settle_colonel_tech_service_fee,
+            order_amount, actual_amount, settle_amount,
+            estimate_service_fee, effective_service_fee,
+            estimate_tech_service_fee, effective_tech_service_fee,
+            colonel_buyin_id, settle_colonel_commission, settle_colonel_tech_service_fee,
             second_colonel_buyin_id, second_colonel_activity_id, settle_second_colonel_commission, phase_id,
             order_status, order_type, pick_source, cursor,
             talent_id,
@@ -66,7 +74,10 @@
         )
         SELECT
             #{id}, #{orderId}, #{productId}, #{productName}, #{shopId}, #{shopName},
-            #{orderAmount}, #{actualAmount}, #{colonelBuyinId}, #{settleColonelCommission}, #{settleColonelTechServiceFee},
+            #{orderAmount}, #{actualAmount}, #{settleAmount},
+            #{estimateServiceFee}, #{effectiveServiceFee},
+            #{estimateTechServiceFee}, #{effectiveTechServiceFee},
+            #{colonelBuyinId}, #{settleColonelCommission}, #{settleColonelTechServiceFee},
             #{secondColonelBuyinId}, #{secondActivityId}, #{settleSecondColonelCommission}, #{phaseId},
             #{orderStatus}, #{orderType}, #{pickSource}, #{cursor},
             #{talentId},
@@ -93,6 +104,11 @@
             shop_name = #{shopName},
             order_amount = #{orderAmount},
             actual_amount = #{actualAmount},
+            settle_amount = #{settleAmount},
+            estimate_service_fee = #{estimateServiceFee},
+            effective_service_fee = #{effectiveServiceFee},
+            estimate_tech_service_fee = #{estimateTechServiceFee},
+            effective_tech_service_fee = #{effectiveTechServiceFee},
             colonel_buyin_id = #{colonelBuyinId},
             settle_colonel_commission = #{settleColonelCommission},
             settle_colonel_tech_service_fee = #{settleColonelTechServiceFee},
@@ -137,6 +153,11 @@
             co.shop_name,
             co.order_amount,
             co.actual_amount,
+            co.settle_amount,
+            co.estimate_service_fee,
+            co.effective_service_fee,
+            co.estimate_tech_service_fee,
+            co.effective_tech_service_fee,
             co.colonel_buyin_id,
             co.colonel_activity_id,
             co.settle_colonel_commission,

@@ -7,6 +7,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.dto.talent.TalentBatchImportResult;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
@@ -28,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -297,6 +299,177 @@ public class TalentService {
         }
         persistTalent(talent);
         return talent;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public List<String> updateTags(UUID id, List<String> tags) {
+        return updateTags(id, tags, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public List<String> updateTags(UUID id, List<String> tags, UUID operatorId) {
+        Talent talent = getById(id);
+        List<String> normalized = normalizeTalentTags(tags);
+        talent.setTags(normalized);
+        talent.setTagUpdatedBy(operatorId);
+        persistTalent(talent);
+        return normalized;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Talent updateShippingAddress(
+            UUID id,
+            String recipientName,
+            String recipientPhone,
+            String recipientAddress) {
+        Talent talent = getById(id);
+        talent.setShippingRecipientName(trimToNull(recipientName));
+        talent.setShippingRecipientPhone(trimToNull(recipientPhone));
+        talent.setShippingRecipientAddress(trimToNull(recipientAddress));
+        persistTalent(talent);
+        return talent;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Talent updateShippingAddress(
+            UUID id,
+            UUID userId,
+            String recipientName,
+            String recipientPhone,
+            String recipientAddress) {
+        if (userId == null) {
+            return updateShippingAddress(id, recipientName, recipientPhone, recipientAddress);
+        }
+        Talent talent = getById(id);
+        TalentClaim claim = talentClaimMapper.findActiveByTalentAndUser(id, userId);
+        if (claim == null) {
+            throw new ForbiddenException("仅当前认领人可以维护达人收货地址");
+        }
+        // T-04 fix: 地址仅存于 claim 层，不写入 talent 主表，避免非认领人通过达人详情查见
+        String normalizedName = trimToNull(recipientName);
+        String normalizedPhone = trimToNull(recipientPhone);
+        String normalizedAddress = trimToNull(recipientAddress);
+        claim.setRecipientName(normalizedName);
+        claim.setRecipientPhone(normalizedPhone);
+        claim.setRecipientAddress(normalizedAddress);
+        persistTalentClaim(claim);
+        return talent;
+    }
+
+    public Talent getShippingAddress(UUID id, UUID userId) {
+        Talent talent = getById(id);
+        if (userId == null) {
+            return talent;
+        }
+        TalentClaim claim = talentClaimMapper.findActiveByTalentAndUser(id, userId);
+        if (claim == null) {
+            // T-04 fix: 无认领时返回空地址，不再泄露 talent 主表旧数据
+            talent.setShippingRecipientName(null);
+            talent.setShippingRecipientPhone(null);
+            talent.setShippingRecipientAddress(null);
+            return talent;
+        }
+        // T-04 fix: 仅返回答领人地址，不使用 talent 主表兜底
+        talent.setShippingRecipientName(claim.getRecipientName());
+        talent.setShippingRecipientPhone(claim.getRecipientPhone());
+        talent.setShippingRecipientAddress(claim.getRecipientAddress());
+        return talent;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public TalentBatchImportResult batchImport(List<String> accounts, UUID operatorId) {
+        if (accounts == null || accounts.isEmpty()) {
+            return new TalentBatchImportResult(0, 0, 0, 0, List.of());
+        }
+        List<TalentBatchImportResult.TalentBatchImportItemResult> items = new ArrayList<>();
+        int created = 0;
+        int skipped = 0;
+        int failed = 0;
+        for (String rawAccount : accounts) {
+            String account = rawAccount == null ? null : rawAccount.trim();
+            if (!StringUtils.hasText(account)) {
+                failed++;
+                items.add(new TalentBatchImportResult.TalentBatchImportItemResult(
+                        rawAccount, "FAILED", null, "账号为空"));
+                continue;
+            }
+            try {
+                TalentInputParseResult parsed = TalentInputParser.parse(account);
+                if (!StringUtils.hasText(parsed.getDouyinUid())) {
+                    failed++;
+                    items.add(new TalentBatchImportResult.TalentBatchImportItemResult(
+                            account, "FAILED", null, "无法解析达人账号"));
+                    continue;
+                }
+                Talent existing = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
+                        .eq(Talent::getDouyinUid, parsed.getDouyinUid())
+                        .last("limit 1"));
+                if (existing != null) {
+                    skipped++;
+                    items.add(new TalentBatchImportResult.TalentBatchImportItemResult(
+                            account, "SKIPPED", existing.getId(), "达人已存在"));
+                    continue;
+                }
+                Talent request = new Talent();
+                request.setDouyinUid(parsed.getDouyinUid());
+                request.setDouyinNo(parsed.getDouyinNo());
+                request.setUid(parsed.getUid());
+                request.setSecUid(parsed.getSecUid());
+                request.setProfileUrl(parsed.getProfileUrl());
+                Talent saved = create(request);
+                created++;
+                items.add(new TalentBatchImportResult.TalentBatchImportItemResult(
+                        account, "CREATED", saved.getId(), null));
+                operationLogService.recordSystemAction(
+                        operatorId,
+                        "达人批量导入",
+                        "创建达人",
+                        "POST",
+                        "talent",
+                        saved.getId() == null ? account : saved.getId().toString(),
+                        saved.getNickname(),
+                        "batch_import_talents");
+            } catch (RuntimeException ex) {
+                failed++;
+                items.add(new TalentBatchImportResult.TalentBatchImportItemResult(
+                        account, "FAILED", null, ex.getMessage()));
+            }
+        }
+        return new TalentBatchImportResult(accounts.size(), created, skipped, failed, items);
+    }
+
+    public List<String> listPresetTags() {
+        return businessRuleConfigService.getPresetTalentTags();
+    }
+
+    private List<String> normalizeTalentTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return List.of();
+        }
+        java.util.LinkedHashSet<String> unique = new java.util.LinkedHashSet<>();
+        List<String> presets = businessRuleConfigService.getPresetTalentTags();
+        for (String tag : tags) {
+            if (!StringUtils.hasText(tag)) {
+                continue;
+            }
+            String normalized = tag.trim();
+            if (!presets.isEmpty() && !presets.contains(normalized)) {
+                throw com.colonel.saas.common.exception.BusinessException.param("标签必须从预设库选择: " + normalized);
+            }
+            unique.add(normalized);
+            if (unique.size() >= 3) {
+                break;
+            }
+        }
+        return List.copyOf(unique);
+    }
+
+    private String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private String firstNonBlank(String first, String fallback) {
+        return StringUtils.hasText(first) ? first : fallback;
     }
 
     @Transactional(rollbackFor = Exception.class)

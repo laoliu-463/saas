@@ -1,9 +1,12 @@
 package com.colonel.saas.controller;
 
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.ResolveTalentProfileRequest;
 import com.colonel.saas.dto.talent.ResolveTalentProfileResponse;
 import com.colonel.saas.dto.talent.TalentProfilePayload;
+import com.colonel.saas.service.TalentQueryService;
 import com.colonel.saas.service.talent.profile.TalentProfileSyncService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,10 +19,13 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -31,6 +37,8 @@ class TalentProfileControllerTest {
 
     @Mock
     private TalentProfileSyncService talentProfileSyncService;
+    @Mock
+    private TalentQueryService talentQueryService;
 
     private MockMvc mockMvc;
     private ObjectMapper objectMapper;
@@ -39,7 +47,7 @@ class TalentProfileControllerTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new TalentProfileController(talentProfileSyncService))
+                .standaloneSetup(new TalentProfileController(talentProfileSyncService, talentQueryService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -91,6 +99,8 @@ class TalentProfileControllerTest {
     @Test
     void syncProfile_shouldPassIdAndForceRefresh() throws Exception {
         UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
         ResolveTalentProfileResponse response = ResolveTalentProfileResponse.builder()
                 .success(true)
                 .profile(TalentProfilePayload.builder().talentUid(talentId.toString()).nickname("已刷新达人").build())
@@ -98,10 +108,33 @@ class TalentProfileControllerTest {
         when(talentProfileSyncService.syncExistingProfile(talentId, true)).thenReturn(response);
 
         mockMvc.perform(post("/talents/{id}/sync-profile", talentId)
-                        .param("forceRefresh", "true"))
+                        .param("forceRefresh", "true")
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_STAFF)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.profile.nickname").value("已刷新达人"));
 
+        verify(talentQueryService).assertCanOperate(talentId, userId, deptId, List.of(RoleCodes.CHANNEL_STAFF));
         verify(talentProfileSyncService).syncExistingProfile(talentId, true);
+    }
+
+    @Test
+    void syncProfile_shouldRejectWhenTalentIsOutsideClaimScope() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        doThrow(new ForbiddenException("无权操作该达人"))
+                .when(talentQueryService).assertCanOperate(talentId, userId, deptId, List.of(RoleCodes.CHANNEL_STAFF));
+
+        mockMvc.perform(post("/talents/{id}/sync-profile", talentId)
+                        .param("forceRefresh", "true")
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_STAFF)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403));
+
+        verify(talentProfileSyncService, never()).syncExistingProfile(any(UUID.class), eq(true));
     }
 }

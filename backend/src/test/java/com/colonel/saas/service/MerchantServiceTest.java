@@ -6,21 +6,32 @@ import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.MerchantMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.service.OperationLogService;
+import com.colonel.saas.vo.PartnerDetailVO;
+import com.colonel.saas.vo.PartnerProductVO;
+import com.colonel.saas.vo.PartnerVO;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -33,12 +44,14 @@ class MerchantServiceTest {
     private OperationLogService operationLogService;
     @Mock
     private SysUserMapper sysUserMapper;
+    @Mock
+    private JdbcTemplate jdbcTemplate;
 
     private MerchantService service;
 
     @BeforeEach
     void setUp() {
-        service = new MerchantService(merchantMapper, operationLogService, sysUserMapper);
+        service = new MerchantService(merchantMapper, operationLogService, sysUserMapper, jdbcTemplate);
     }
 
     @Test
@@ -231,6 +244,98 @@ class MerchantServiceTest {
 
         assertThat(result.getMerchantId()).isEqualTo(channelId.toString());
         verify(merchantMapper).insert(any(Merchant.class));
+    }
+
+    @Test
+    void listPartners_shouldReturnPagedMerchantPartnersFromSyncedProductData() {
+        LocalDateTime syncTime = LocalDateTime.now();
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("partner_id", "1001");
+        row.put("partner_name", "清风小店");
+        row.put("partner_type", "MERCHANT");
+        row.put("shop_id", 1001L);
+        row.put("shop_name", "清风小店");
+        row.put("product_count", 3L);
+        row.put("latest_sync_time", Timestamp.valueOf(syncTime));
+        row.put("status", 1);
+
+        when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(1L);
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenReturn(List.of(row));
+
+        IPage<PartnerVO> page = service.listPartners("清风", "MERCHANT", 1, 10);
+
+        assertThat(page.getTotal()).isEqualTo(1);
+        assertThat(page.getRecords()).hasSize(1);
+        PartnerVO partner = page.getRecords().get(0);
+        assertThat(partner.getPartnerId()).isEqualTo("1001");
+        assertThat(partner.getPartnerName()).isEqualTo("清风小店");
+        assertThat(partner.getPartnerType()).isEqualTo("MERCHANT");
+        assertThat(partner.getShopId()).isEqualTo(1001L);
+        assertThat(partner.getProductCount()).isEqualTo(3L);
+        assertThat(partner.getLatestSyncTime()).isEqualTo(syncTime);
+    }
+
+    @Test
+    void listPartners_shouldReturnEmptyPageForUnsupportedPartnerType() {
+        IPage<PartnerVO> page = service.listPartners(null, "COLONEL", 1, 10);
+
+        assertThat(page.getTotal()).isZero();
+        assertThat(page.getRecords()).isEmpty();
+        verifyNoInteractions(jdbcTemplate);
+    }
+
+    @Test
+    void getPartnerDetail_shouldReturnMerchantPartnerSummary() {
+        LocalDateTime syncTime = LocalDateTime.now();
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("partner_id", "1001");
+        row.put("partner_name", "清风小店");
+        row.put("partner_type", "MERCHANT");
+        row.put("shop_id", 1001L);
+        row.put("shop_name", "清风小店");
+        row.put("product_count", 3L);
+        row.put("latest_sync_time", Timestamp.valueOf(syncTime));
+        row.put("status", 1);
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenReturn(List.of(row));
+
+        PartnerDetailVO detail = service.getPartnerDetail("1001", "MERCHANT");
+
+        assertThat(detail.getPartnerId()).isEqualTo("1001");
+        assertThat(detail.getPartnerName()).isEqualTo("清风小店");
+        assertThat(detail.getProductCount()).isEqualTo(3L);
+        assertThat(detail.getLatestSyncTime()).isEqualTo(syncTime);
+    }
+
+    @Test
+    void listPartnerProducts_shouldReturnPagedSnapshotProducts() {
+        LocalDateTime syncTime = LocalDateTime.now();
+        Map<String, Object> productRow = new LinkedHashMap<>();
+        productRow.put("product_id", "P-1001");
+        productRow.put("product_name", "夏季爆款水杯");
+        productRow.put("activity_id", "A-1001");
+        productRow.put("cover", "https://img.example/cup.png");
+        productRow.put("price_text", "¥29.90");
+        productRow.put("shop_id", 1001L);
+        productRow.put("shop_name", "清风小店");
+        productRow.put("category_name", "家居");
+        productRow.put("sales", 128L);
+        productRow.put("status", 1);
+        productRow.put("status_text", "推广中");
+        productRow.put("sync_time", Timestamp.valueOf(syncTime));
+        when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(1L);
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenReturn(List.of(productRow));
+
+        IPage<PartnerProductVO> page = service.listPartnerProducts("1001", 1, 10);
+
+        assertThat(page.getTotal()).isEqualTo(1);
+        assertThat(page.getRecords()).hasSize(1);
+        PartnerProductVO product = page.getRecords().get(0);
+        assertThat(product.getProductId()).isEqualTo("P-1001");
+        assertThat(product.getProductName()).isEqualTo("夏季爆款水杯");
+        assertThat(product.getActivityId()).isEqualTo("A-1001");
+        assertThat(product.getShopId()).isEqualTo(1001L);
+        assertThat(product.getSales()).isEqualTo(128L);
+        assertThat(product.getLatestSyncTime()).isEqualTo(syncTime);
     }
 
     @Test

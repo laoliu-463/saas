@@ -7,6 +7,8 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.dto.talent.TalentBatchImportRequest;
+import com.colonel.saas.dto.talent.TalentBatchImportResult;
 import com.colonel.saas.dto.talent.OverrideAssigneeRequest;
 import com.colonel.saas.dto.talent.TalentCreateRequest;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
@@ -37,6 +39,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Validated
@@ -83,6 +86,12 @@ public class TalentController extends BaseController {
         return ok(talentQueryService.detail(id, userId, deptId, dataScope));
     }
 
+    @Operation(summary = "达人认领状态流转矩阵", description = "返回公海、私海、多人认领、保护期和释放相关状态表，供产品、前端和后端按同一口径验收。")
+    @GetMapping("/status-transitions")
+    public ApiResult<TalentStatusTransitionMatrix> statusTransitions() {
+        return ok(TalentStatusTransitionMatrix.defaultMatrix());
+    }
+
     @Operation(summary = "新增达人", description = "手动新增达人基础资料，用于 CRM 人工补录。")
     @PostMapping
     public ApiResult<TalentVO> create(
@@ -111,6 +120,76 @@ public class TalentController extends BaseController {
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
         talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
         return ok(TalentVO.from(talentService.update(id, request.toUpdateTalent())));
+    }
+
+    @Operation(summary = "更新达人标签", description = "最多 3 个标签，后者覆盖同名。")
+    @PutMapping("/{id}/tags")
+    public ApiResult<List<String>> updateTags(
+            @Parameter(description = "达人主键 ID。") @PathVariable UUID id,
+            @RequestBody Map<String, List<String>> body,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        List<String> tags = body == null ? List.of() : body.get("tags");
+        return ok(talentService.updateTags(id, tags, userId));
+    }
+
+    @Operation(summary = "获取达人收货地址", description = "供寄样域 get_talent_address 调用。")
+    @GetMapping("/{id}/shipping-address")
+    public ApiResult<ShippingAddressRequest> getShippingAddress(
+            @Parameter(description = "达人主键 ID。") @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        Talent talent = talentService.getShippingAddress(id, userId);
+        return ok(new ShippingAddressRequest(
+                talent.getShippingRecipientName(),
+                talent.getShippingRecipientPhone(),
+                talent.getShippingRecipientAddress()));
+    }
+
+    @Operation(summary = "维护达人收货地址", description = "认领人维护默认收货信息，供快速寄样带入。")
+    @PutMapping("/{id}/shipping-address")
+    public ApiResult<TalentVO> updateShippingAddress(
+            @Parameter(description = "达人主键 ID。") @PathVariable UUID id,
+            @RequestBody ShippingAddressRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        return ok(TalentVO.from(talentService.updateShippingAddress(
+                id,
+                userId,
+                request == null ? null : request.recipientName(),
+                request == null ? null : request.recipientPhone(),
+                request == null ? null : request.recipientAddress())));
+    }
+
+    public record ShippingAddressRequest(
+            String recipientName,
+            String recipientPhone,
+            String recipientAddress) {
+    }
+
+    @Operation(summary = "批量导入达人", description = "按达人账号/链接批量导入并自动补全（batch_import_talents）。")
+    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.ADMIN})
+    @PostMapping("/batch-import")
+    public ApiResult<TalentBatchImportResult> batchImport(
+            @RequestBody TalentBatchImportRequest request,
+            @RequestAttribute("userId") UUID userId) {
+        List<String> accounts = request == null ? List.of() : request.accounts();
+        return ok(talentService.batchImport(accounts, userId));
+    }
+
+    @Operation(summary = "获取达人预设标签库", description = "V2 预设标签，供渠道从列表中选择（最多 3 个）。")
+    @GetMapping("/preset-tags")
+    public ApiResult<List<String>> presetTags() {
+        return ok(talentService.listPresetTags());
     }
 
     @Operation(summary = "删除达人", description = "删除达人资料。请确认该达人未处于关键业务链路中。")
@@ -193,7 +272,11 @@ public class TalentController extends BaseController {
     @Operation(summary = "刷新达人信息", description = "立即触发单个达人信息刷新，适用于需要同步最新达人资料的场景。")
     @PostMapping("/{id}/refresh")
     public ApiResult<TalentVO> refresh(
-            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId) {
+            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        talentQueryService.assertCanOperate(talentId, userId, deptId, roleCodes);
         return ok(TalentVO.from(talentService.refresh(talentId)));
     }
 
@@ -214,7 +297,11 @@ public class TalentController extends BaseController {
                     required = true,
                     content = @Content(examples = @ExampleObject(value = "{\"nickname\":\"达人A\",\"fans\":20000}"))
             )
-            @Valid @RequestBody TalentUpdateRequest request) {
+            @Valid @RequestBody TalentUpdateRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        talentQueryService.assertCanOperate(talentId, userId, deptId, roleCodes);
         return ok(TalentVO.from(talentService.manualFill(talentId, request.toManualFillTalent())));
     }
 
@@ -233,5 +320,119 @@ public class TalentController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
         return ok(talentService.evaluateExclusive(id, dataScope, userId, deptId));
+    }
+
+    public record TalentStatusTransitionMatrix(
+            String protectionConfigKey,
+            boolean allowMultiClaim,
+            List<TalentClaimStateVO> states,
+            List<TalentClaimTransitionVO> transitions) {
+
+        public static TalentStatusTransitionMatrix defaultMatrix() {
+            List<String> channelRoles = List.of(RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF);
+            List<String> channelAndAdminRoles = List.of(RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN);
+            return new TalentStatusTransitionMatrix(
+                    "talent.protection_days",
+                    true,
+                    List.of(
+                            new TalentClaimStateVO(
+                                    "PUBLIC",
+                                    "公海",
+                                    "无有效认领，或所有认领记录均已释放；渠道可认领。",
+                                    true,
+                                    false,
+                                    channelAndAdminRoles),
+                            new TalentClaimStateVO(
+                                    "PRIVATE_SELF",
+                                    "我的私海",
+                                    "当前登录渠道对该达人存在有效认领记录，处于保护期内。",
+                                    false,
+                                    true,
+                                    channelAndAdminRoles),
+                            new TalentClaimStateVO(
+                                    "PRIVATE_OTHERS",
+                                    "他人已认领",
+                                    "其他渠道存在有效认领记录；多人认领不互斥，当前渠道仍可认领。",
+                                    true,
+                                    false,
+                                    channelAndAdminRoles),
+                            new TalentClaimStateVO(
+                                    "RELEASED",
+                                    "已释放",
+                                    "当前认领记录已释放，可重新认领并重新开始保护期。",
+                                    true,
+                                    false,
+                                    channelAndAdminRoles),
+                            new TalentClaimStateVO(
+                                    "BLACKLIST",
+                                    "黑名单",
+                                    "达人被拉黑后不可认领、不可释放，需先解除黑名单。",
+                                    false,
+                                    false,
+                                    List.of(RoleCodes.CHANNEL_LEADER, RoleCodes.ADMIN))
+                    ),
+                    List.of(
+                            new TalentClaimTransitionVO(
+                                    "PUBLIC",
+                                    "CLAIM",
+                                    "认领达人",
+                                    "PRIVATE_SELF",
+                                    channelRoles,
+                                    "当前用户没有该达人的有效认领记录。",
+                                    "写入有效认领记录，protectedUntil 按 talent.protection_days 计算。"),
+                            new TalentClaimTransitionVO(
+                                    "PRIVATE_OTHERS",
+                                    "CLAIM",
+                                    "继续认领",
+                                    "PRIVATE_SELF",
+                                    channelRoles,
+                                    "其他人已认领不阻塞当前用户认领；同一用户不可重复有效认领。",
+                                    "新增或恢复当前用户认领记录，其他认领人的保护期不受影响。"),
+                            new TalentClaimTransitionVO(
+                                    "PRIVATE_SELF",
+                                    "RELEASE",
+                                    "释放达人",
+                                    "RELEASED",
+                                    channelAndAdminRoles,
+                                    "认领人可释放自己的认领；管理员可释放可操作范围内的认领。",
+                                    "当前认领记录变为已释放；若仍有其他有效认领，达人归属快照切到剩余认领人。"),
+                            new TalentClaimTransitionVO(
+                                    "PRIVATE_SELF",
+                                    "ORDER_RESET_PROTECTION",
+                                    "订单重置保护期",
+                                    "PRIVATE_SELF",
+                                    List.of("system"),
+                                    "认领保护期内产生有效订单。",
+                                    "按订单时间重新计算 protectedUntil。"),
+                            new TalentClaimTransitionVO(
+                                    "PRIVATE_SELF",
+                                    "AUTO_RELEASE_EXPIRED",
+                                    "保护期到期自动释放",
+                                    "RELEASED",
+                                    List.of("system"),
+                                    "保护期到期且未产生可重置保护期的订单。",
+                                    "定时任务将该认领记录标记为已释放。")
+                    )
+            );
+        }
+    }
+
+    public record TalentClaimStateVO(
+            String code,
+            String label,
+            String description,
+            boolean canClaim,
+            boolean canRelease,
+            List<String> visibleToRoles) {
+    }
+
+    public record TalentClaimTransitionVO(
+            String fromState,
+            String action,
+            String actionLabel,
+            String toState,
+            List<String> actorRoles,
+            String condition,
+            String effect) {
     }
 }

@@ -78,7 +78,7 @@ import SampleDetail from '../sample/SampleDetail.vue';
 import { parseBatchShipRows, type BatchShipItem, type BatchShipRow } from '../../utils/shippingBatch';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
 import { useAuthStore } from '../../stores/auth';
-import { ROLE_CODES, hasAccess } from '../../constants/rbac';
+import { canExportSamplesByRole } from '../sample/sample-permissions';
 
 const message = useMessage();
 const authStore = useAuthStore();
@@ -99,9 +99,7 @@ const pagination = reactive(createPaginationState());
 
 const showDetail = ref(false);
 const currentSampleId = ref('');
-const canExportSamples = computed(() =>
-  hasAccess(authStore.roleCodes, [ROLE_CODES.ADMIN, ROLE_CODES.BIZ_LEADER, ROLE_CODES.CHANNEL_LEADER])
-);
+const canExportSamples = computed(() => canExportSamplesByRole(authStore.roleCodes));
 
 // Batch shipping state
 const fileInputRef = ref<HTMLInputElement | null>(null);

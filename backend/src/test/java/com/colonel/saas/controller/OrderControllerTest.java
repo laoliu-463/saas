@@ -16,7 +16,9 @@ import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
+import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,6 +62,10 @@ class OrderControllerTest {
     private OrderAttributionReplayService orderAttributionReplayService;
     @Mock
     private OperationLogService operationLogService;
+    @Mock
+    private CommissionService commissionService;
+    @Mock
+    private PerformanceBackfillService performanceBackfillService;
 
     private MockMvc mockMvc;
 
@@ -78,7 +84,9 @@ class OrderControllerTest {
                         orderQueryService,
                         orderAttributionReplayService,
                         operationLogService,
-                        new ShortTtlCacheService()))
+                        new ShortTtlCacheService(),
+                        commissionService,
+                        performanceBackfillService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -370,7 +378,9 @@ class OrderControllerTest {
                 orderQueryService,
                 orderAttributionReplayService,
                 operationLogService,
-                new ShortTtlCacheService());
+                new ShortTtlCacheService(),
+                commissionService,
+                performanceBackfillService);
         Method method = OrderController.class.getDeclaredMethod("sanitizeDiagnosisSqlPrefix", String.class);
         method.setAccessible(true);
 

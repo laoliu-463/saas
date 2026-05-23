@@ -22,6 +22,7 @@ class SystemConfigKeysTest {
         assertThat(SystemConfigKeys.SAMPLE_DEFAULT_STANDARD).isEqualTo("sample.default_standard");
         assertThat(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO).isEqualTo("commission.business_default_ratio");
         assertThat(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO).isEqualTo("commission.channel_default_ratio");
+        assertThat(SystemConfigKeys.PROMOTION_PICK_EXTRA_RULE).isEqualTo("promotion.pick_extra_rule");
 
         Constructor<SystemConfigKeys> constructor = SystemConfigKeys.class.getDeclaredConstructor();
         constructor.setAccessible(true);

@@ -10,6 +10,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -66,6 +67,49 @@ public class BusinessRuleConfigService {
         Long min30DaySales = asLong(raw.get("min_30day_sales"));
         String minLevel = raw.get("min_level") == null ? null : normalizeLevel(raw.get("min_level"));
         return new SampleDefaultStandardConfig(min30DaySales, minLevel, raw);
+    }
+
+    public String getPromotionCopyBriefTemplate() {
+        String raw = getRawValue(SystemConfigKeys.PROMOTION_COPY_BRIEF_TEMPLATE);
+        if (!StringUtils.hasText(raw)) {
+            return "【{productName}】\n佣金率：{commissionRate}\n短链：{shortLink}";
+        }
+        return raw.trim();
+    }
+
+    public PromotionPickExtraRuleConfig getPromotionPickExtraRule() {
+        Map<String, Object> raw = getJson(SystemConfigKeys.PROMOTION_PICK_EXTRA_RULE);
+        String format = asText(raw.get("format"));
+        String encode = asText(raw.get("encode"));
+        if (!StringUtils.hasText(format)) {
+            format = "channel_{channel_code}";
+        }
+        if (!StringUtils.hasText(encode)) {
+            encode = "none";
+        }
+        return new PromotionPickExtraRuleConfig(format.trim(), encode.trim().toLowerCase(), raw);
+    }
+
+    public List<String> getPresetTalentTags() {
+        String raw = getRawValue(SystemConfigKeys.PRESET_TALENT_TAGS);
+        if (!StringUtils.hasText(raw)) {
+            return List.of();
+        }
+        try {
+            List<String> tags = objectMapper.readValue(raw.trim(), new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+            if (tags == null || tags.isEmpty()) {
+                return List.of();
+            }
+            java.util.LinkedHashSet<String> unique = new java.util.LinkedHashSet<>();
+            for (String tag : tags) {
+                if (StringUtils.hasText(tag)) {
+                    unique.add(tag.trim());
+                }
+            }
+            return List.copyOf(unique);
+        } catch (Exception ex) {
+            return List.of();
+        }
     }
 
     private int getInt(String configKey, int defaultValue) {
@@ -133,6 +177,10 @@ public class BusinessRuleConfigService {
         }
     }
 
+    private String asText(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
     private String getRawValue(String configKey) {
         return shortTtlCacheService.get(
                 CONFIG_CACHE_PREFIX + configKey,
@@ -162,5 +210,8 @@ public class BusinessRuleConfigService {
     }
 
     public record SampleDefaultStandardConfig(Long min30DaySales, String minLevel, Map<String, Object> raw) {
+    }
+
+    public record PromotionPickExtraRuleConfig(String format, String encode, Map<String, Object> raw) {
     }
 }

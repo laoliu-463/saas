@@ -143,7 +143,11 @@ public class TalentQueryService {
         boolean redactSensitiveFields = shouldRedactSensitiveFields(dataScope);
         TalentDetailResponse response = new TalentDetailResponse();
         response.setTalent(toTalentInfo(talent, redactSensitiveFields));
-        response.setClaim(toClaimInfo(talent, currentUserId, redactSensitiveFields));
+        response.setClaim(toClaimInfo(
+                talent,
+                currentUserId,
+                redactSensitiveFields,
+                claimMaps.activeClaimsByTalent().getOrDefault(resolvedTalentId, List.of())));
         response.setSamples(loadSamples(talent));
         response.setOrders(loadOrders(talent, redactSensitiveFields));
         return response;
@@ -431,10 +435,19 @@ public class TalentQueryService {
         info.setContactPhone(firstNonBlank(talent.getContactPhone(), talent.getContactWechat()));
         info.setRemark(talent.getIntro());
         info.setAvatarUrl(talent.getAvatarUrl());
+        info.setTags(talent.getTags());
+        info.setTagUpdatedBy(talent.getTagUpdatedBy() == null ? null : talent.getTagUpdatedBy().toString());
+        info.setShippingRecipientName(talent.getShippingRecipientName());
+        info.setShippingRecipientPhone(talent.getShippingRecipientPhone());
+        info.setShippingRecipientAddress(talent.getShippingRecipientAddress());
         return info;
     }
 
-    private TalentDetailResponse.ClaimInfo toClaimInfo(Talent talent, UUID currentUserId, boolean redactSensitiveFields) {
+    private TalentDetailResponse.ClaimInfo toClaimInfo(
+            Talent talent,
+            UUID currentUserId,
+            boolean redactSensitiveFields,
+            List<TalentClaim> activeClaims) {
         TalentDetailResponse.ClaimInfo info = new TalentDetailResponse.ClaimInfo();
         info.setPoolStatus(talent.getPoolStatus());
         info.setOwnerId(talent.getOwnerId() == null ? null : talent.getOwnerId().toString());
@@ -442,8 +455,28 @@ public class TalentQueryService {
         info.setClaimedAt(talent.getClaimedAt());
         info.setProtectedUntil(talent.getProtectedUntil());
         info.setActiveClaimCount(talent.getActiveClaimCount());
+        TalentClaim claimAddress = resolveClaimAddress(activeClaims, currentUserId);
+        if (claimAddress != null) {
+            info.setRecipientName(claimAddress.getRecipientName());
+            info.setRecipientPhone(claimAddress.getRecipientPhone());
+            info.setRecipientAddress(claimAddress.getRecipientAddress());
+        }
         info.setActiveClaimOwners(redactSensitiveFields ? List.of() : loadActiveClaimOwners(talent.getId(), currentUserId));
         return info;
+    }
+
+    private TalentClaim resolveClaimAddress(List<TalentClaim> activeClaims, UUID currentUserId) {
+        if (activeClaims == null || activeClaims.isEmpty()) {
+            return null;
+        }
+        if (currentUserId != null) {
+            for (TalentClaim claim : activeClaims) {
+                if (currentUserId.equals(claim.getUserId())) {
+                    return claim;
+                }
+            }
+        }
+        return activeClaims.get(0);
     }
 
     private List<TalentDetailResponse.SampleItem> loadSamples(Talent talent) {

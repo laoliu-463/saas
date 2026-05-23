@@ -87,6 +87,91 @@
 
         <section class="detail-section">
           <div class="section-head">
+            <h3 class="section-title">协作信息</h3>
+            <n-space v-if="canEditCollaboration" :size="8">
+              <n-button size="small" secondary data-testid="talent-edit-tags" @click="startTagEdit">编辑标签</n-button>
+              <n-button size="small" secondary data-testid="talent-edit-shipping" @click="startAddressEdit">编辑地址</n-button>
+            </n-space>
+          </div>
+          <div class="collab-grid">
+            <div class="collab-panel">
+              <div class="collab-label">经营标签</div>
+              <n-space v-if="talentTags.length" :size="8" wrap>
+                <n-tag v-for="tag in talentTags" :key="tag" size="small" type="info">{{ tag }}</n-tag>
+              </n-space>
+              <span v-else class="empty-value">-</span>
+              <div v-if="tagEditing" class="edit-stack">
+                <n-select
+                  v-if="presetTags.length > 0"
+                  v-model:value="selectedPresetTags"
+                  multiple
+                  filterable
+                  :max-tag-count="3"
+                  :options="presetTagOptions"
+                  placeholder="从预设标签库选择，最多 3 个"
+                  data-testid="talent-preset-tags-select"
+                />
+                <div v-else class="tag-input-grid">
+                  <n-input
+                    v-for="index in 3"
+                    :key="index"
+                    v-model:value="tagDraft[index - 1]"
+                    size="small"
+                    :maxlength="24"
+                    :placeholder="`标签 ${index}`"
+                  />
+                </div>
+                <n-space :size="8">
+                  <n-button
+                    size="small"
+                    type="primary"
+                    :loading="savingTags"
+                    data-testid="talent-save-tags"
+                    @click="handleSaveTags"
+                  >
+                    保存标签
+                  </n-button>
+                  <n-button size="small" :disabled="savingTags" @click="tagEditing = false">取消</n-button>
+                </n-space>
+              </div>
+            </div>
+            <div class="collab-panel">
+              <div class="collab-label">默认收货地址</div>
+              <div class="address-lines">
+                <div><span>收货人</span><strong>{{ shippingRecipientName || '-' }}</strong></div>
+                <div><span>手机号</span><strong>{{ shippingRecipientPhone || '-' }}</strong></div>
+                <div><span>地址</span><strong>{{ shippingRecipientAddress || '-' }}</strong></div>
+              </div>
+              <div v-if="addressEditing" class="edit-stack">
+                <n-input v-model:value="addressDraft.recipientName" size="small" :maxlength="100" placeholder="收货人" />
+                <n-input v-model:value="addressDraft.recipientPhone" size="small" :maxlength="32" placeholder="手机号" />
+                <n-input
+                  v-model:value="addressDraft.recipientAddress"
+                  type="textarea"
+                  size="small"
+                  :autosize="{ minRows: 2, maxRows: 3 }"
+                  :maxlength="512"
+                  placeholder="地址"
+                />
+                <n-space :size="8">
+                  <n-button
+                    size="small"
+                    type="primary"
+                    :loading="savingAddress"
+                    data-testid="talent-save-shipping"
+                    @click="handleSaveShipping"
+                  >
+                    保存地址
+                  </n-button>
+                  <n-button size="small" :disabled="savingAddress" @click="addressEditing = false">取消</n-button>
+                </n-space>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <div class="section-head">
             <h3 class="section-title">寄样记录</h3>
             <span class="section-meta">{{ detail.samples?.length || 0 }} 条</span>
           </div>
@@ -118,7 +203,14 @@
 import { computed, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { MODAL_WIDTH } from '../../../constants/ui'
-import { getTalentById, refreshTalent, type TalentDetailResponse } from '../../../api/talent'
+import {
+  getTalentById,
+  getPresetTalentTags,
+  refreshTalent,
+  updateTalentShippingAddress,
+  updateTalentTags,
+  type TalentDetailResponse
+} from '../../../api/talent'
 import { useAuthStore } from '../../../stores/auth'
 import { ROLE_CODES } from '../../../constants/rbac'
 import { resolveSafeAvatarUrl } from '../../../utils/media'
@@ -135,6 +227,19 @@ const message = useMessage()
 const authStore = useAuthStore()
 const loading = ref(false)
 const refreshing = ref(false)
+const tagEditing = ref(false)
+const addressEditing = ref(false)
+const savingTags = ref(false)
+const savingAddress = ref(false)
+const tagDraft = ref(['', '', ''])
+const presetTags = ref<string[]>([])
+const selectedPresetTags = ref<string[]>([])
+const presetTagOptions = computed(() => presetTags.value.map(tag => ({ label: tag, value: tag })))
+const addressDraft = ref({
+  recipientName: '',
+  recipientPhone: '',
+  recipientAddress: ''
+})
 const detail = ref<TalentDetailResponse | null>(null)
 const isChannelStaffOnly = computed(() => {
   const roles = authStore.roleCodes
@@ -147,6 +252,16 @@ const canApplySample = computed(() =>
     || authStore.roleCodes.includes(ROLE_CODES.CHANNEL_LEADER)
     || authStore.roleCodes.includes(ROLE_CODES.CHANNEL_STAFF)
 )
+const canEditCollaboration = computed(() => canApplySample.value)
+
+const talentTags = computed(() =>
+  Array.isArray(detail.value?.talent?.tags)
+    ? detail.value.talent.tags.map(tag => String(tag || '').trim()).filter(Boolean).slice(0, 3)
+    : []
+)
+const shippingRecipientName = computed(() => detail.value?.claim?.recipientName || detail.value?.talent?.shippingRecipientName || '')
+const shippingRecipientPhone = computed(() => detail.value?.claim?.recipientPhone || detail.value?.talent?.shippingRecipientPhone || '')
+const shippingRecipientAddress = computed(() => detail.value?.claim?.recipientAddress || detail.value?.talent?.shippingRecipientAddress || '')
 
 const resolvedPoolStatus = computed(() => {
   if (detail.value?.talent?.blacklisted) return 'BLACKLIST'
@@ -203,6 +318,56 @@ function closeModal() {
   emit('update:show', false)
 }
 
+function normalizeTags(values: string[]) {
+  const unique: string[] = []
+  for (const value of values) {
+    const text = String(value || '').trim()
+    if (!text || unique.includes(text)) {
+      continue
+    }
+    unique.push(text)
+    if (unique.length >= 3) {
+      break
+    }
+  }
+  return unique
+}
+
+function startTagEdit() {
+  selectedPresetTags.value = [...talentTags.value]
+  const next = [...talentTags.value]
+  while (next.length < 3) {
+    next.push('')
+  }
+  tagDraft.value = next.slice(0, 3)
+  tagEditing.value = true
+}
+
+function startAddressEdit() {
+  addressDraft.value = {
+    recipientName: shippingRecipientName.value,
+    recipientPhone: shippingRecipientPhone.value,
+    recipientAddress: shippingRecipientAddress.value
+  }
+  addressEditing.value = true
+}
+
+function resetCollaborationEditing() {
+  tagEditing.value = false
+  addressEditing.value = false
+  savingTags.value = false
+  savingAddress.value = false
+}
+
+async function loadPresetTags() {
+  try {
+    const tags = await getPresetTalentTags()
+    presetTags.value = Array.isArray(tags) ? tags.filter(Boolean) : []
+  } catch {
+    presetTags.value = []
+  }
+}
+
 async function loadDetail() {
   if (!props.talentId) {
     detail.value = null
@@ -211,6 +376,7 @@ async function loadDetail() {
   loading.value = true
   try {
     detail.value = await getTalentById(props.talentId)
+    resetCollaborationEditing()
   } catch (error: any) {
     detail.value = null
     message.error(error?.msg || error?.message || '获取达人详情失败')
@@ -233,6 +399,50 @@ async function handleRefresh() {
   }
 }
 
+async function handleSaveTags() {
+  if (!props.talentId || !detail.value?.talent) return
+  savingTags.value = true
+  try {
+    const payload = presetTags.value.length > 0 ? selectedPresetTags.value : tagDraft.value
+    const saved = await updateTalentTags(props.talentId, normalizeTags(payload))
+    detail.value.talent.tags = Array.isArray(saved) ? saved : []
+    tagEditing.value = false
+    message.success('已保存达人标签')
+  } catch (error: any) {
+    message.error(error?.msg || error?.message || '保存达人标签失败')
+  } finally {
+    savingTags.value = false
+  }
+}
+
+async function handleSaveShipping() {
+  if (!props.talentId || !detail.value?.talent) return
+  savingAddress.value = true
+  try {
+    const saved: any = await updateTalentShippingAddress(props.talentId, {
+      recipientName: addressDraft.value.recipientName,
+      recipientPhone: addressDraft.value.recipientPhone,
+      recipientAddress: addressDraft.value.recipientAddress
+    })
+    const savedName = saved?.shippingRecipientName ?? addressDraft.value.recipientName
+    const savedPhone = saved?.shippingRecipientPhone ?? addressDraft.value.recipientPhone
+    const savedAddress = saved?.shippingRecipientAddress ?? addressDraft.value.recipientAddress
+    detail.value.talent.shippingRecipientName = savedName
+    detail.value.talent.shippingRecipientPhone = savedPhone
+    detail.value.talent.shippingRecipientAddress = savedAddress
+    detail.value.claim = detail.value.claim || {}
+    detail.value.claim.recipientName = savedName
+    detail.value.claim.recipientPhone = savedPhone
+    detail.value.claim.recipientAddress = savedAddress
+    addressEditing.value = false
+    message.success('已保存默认收货地址')
+  } catch (error: any) {
+    message.error(error?.msg || error?.message || '保存默认收货地址失败')
+  } finally {
+    savingAddress.value = false
+  }
+}
+
 function handleApplySample() {
   const context = buildTalentSampleContext(detail.value)
   if (!context.query.talentId) {
@@ -246,10 +456,12 @@ watch(
   () => [props.show, props.talentId],
   ([show]) => {
     if (show) {
+      loadPresetTags()
       loadDetail()
       return
     }
     detail.value = null
+    resetCollaborationEditing()
   }
 )
 </script>
@@ -352,6 +564,68 @@ watch(
   color: var(--text-secondary);
 }
 
+.collab-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  gap: 12px;
+}
+
+.collab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.collab-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.empty-value {
+  color: var(--text-secondary);
+}
+
+.edit-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tag-input-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.address-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.address-lines div {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  font-size: var(--text-sm);
+}
+
+.address-lines span {
+  color: var(--text-secondary);
+}
+
+.address-lines strong {
+  min-width: 0;
+  font-weight: 500;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;
@@ -382,6 +656,11 @@ watch(
 
   .hero-metrics {
     min-width: 0;
+  }
+
+  .collab-grid,
+  .tag-input-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -309,7 +309,7 @@ class DouyinControllerTest {
 
     @Test
     void dingdanTongbuYuanshi_standardRestPath_callsInstituteOrderColonel() throws Exception {
-        when(douyinOrderGateway.listSettlement(any()))
+        when(douyinOrderGateway.listInstituteOrders(any()))
                 .thenReturn(new DouyinOrderGateway.OrderListResult(
                         List.of(), false, null, Map.of("data", Map.of("order_list", List.of()))));
 
@@ -330,7 +330,7 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.data.payload.start_time").value(1711900800))
                 .andExpect(jsonPath("$.data.payload.count").value(20));
 
-        verify(douyinOrderGateway).listSettlement(argThat(req ->
+        verify(douyinOrderGateway).listInstituteOrders(argThat(req ->
                 req.startTime() == 1711900800L
                         && req.endTime() == 1711987200L
                         && req.count() == 20));
@@ -338,7 +338,7 @@ class DouyinControllerTest {
 
     @Test
     void dingdanTongbuYuanshi_shouldAcceptDateTimeStringsAndDefaultCount() throws Exception {
-        when(douyinOrderGateway.listSettlement(any()))
+        when(douyinOrderGateway.listInstituteOrders(any()))
                 .thenReturn(new DouyinOrderGateway.OrderListResult(
                         List.of(), false, null, Map.of("data", Map.of("order_list", List.of()))));
 
@@ -353,7 +353,7 @@ class DouyinControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.status").value("success"));
 
-        verify(douyinOrderGateway).listSettlement(argThat(req -> req.count() == 20 && req.cursor() == null));
+        verify(douyinOrderGateway).listInstituteOrders(argThat(req -> req.count() == 20 && req.cursor() == null));
     }
 
     @Test

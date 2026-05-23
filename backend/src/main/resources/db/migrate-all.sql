@@ -501,3 +501,182 @@ COMMENT ON TABLE colonelsettlement_order IS '团长结算订单表（分区表 b
 COMMENT ON COLUMN colonelsettlement_order.order_type     IS 'MAIN=主订单接口录入，SETTLEMENT=结算订单接口录入';
 COMMENT ON COLUMN colonelsettlement_order.colonel_buyin_id IS '抖店19位团长身份码，用于原生归因';
 COMMENT ON COLUMN colonelsettlement_order.pick_source     IS '转链归因短码，优先级低于 colonel_buyin_id';
+
+-- ==== alter-v1-gaps-20260522.sql ====
+ALTER TABLE product_operation_state
+    ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS pinned_until TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS pinned_by UUID;
+
+CREATE INDEX IF NOT EXISTS idx_pos_pinned_by_until
+    ON product_operation_state (pinned_by, pinned_until)
+    WHERE pinned_until IS NOT NULL;
+
+ALTER TABLE talent
+    ADD COLUMN IF NOT EXISTS talent_tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS tag_updated_by UUID,
+    ADD COLUMN IF NOT EXISTS shipping_recipient_name VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS shipping_recipient_phone VARCHAR(32),
+    ADD COLUMN IF NOT EXISTS shipping_recipient_address VARCHAR(512);
+
+ALTER TABLE talent_claim
+    ADD COLUMN IF NOT EXISTS recipient_name VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS recipient_phone VARCHAR(32),
+    ADD COLUMN IF NOT EXISTS recipient_address VARCHAR(512);
+
+CREATE TABLE IF NOT EXISTS dashboard_performance_daily (
+    stat_date DATE NOT NULL PRIMARY KEY,
+    order_count BIGINT NOT NULL DEFAULT 0,
+    order_amount BIGINT NOT NULL DEFAULT 0,
+    service_fee_net BIGINT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO system_config (config_key, config_value, value_type, config_group, description, editable)
+VALUES (
+    'promotion.copy_brief_template',
+    '【{productName}】\n佣金率：{commissionRate}\n短链：{shortLink}',
+    'text',
+    'promotion',
+    '复制讲解模板，占位符：{productName} {commissionRate} {shortLink} {pickSource}',
+    1
+)
+ON CONFLICT (config_key) DO NOTHING;
+
+INSERT INTO sys_role (role_code, role_name, data_scope, status)
+VALUES ('colonel_leader', '招商组长', 2, 1)
+ON CONFLICT (role_code) DO NOTHING;
+
+-- ==== alter-dual-track-performance-20260522.sql ====
+ALTER TABLE colonelsettlement_order
+    ADD COLUMN IF NOT EXISTS settle_amount BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS estimate_service_fee BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS effective_service_fee BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS estimate_tech_service_fee BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS effective_tech_service_fee BIGINT NOT NULL DEFAULT 0;
+
+UPDATE colonelsettlement_order
+SET settle_amount = COALESCE(NULLIF(actual_amount, 0), order_amount, 0),
+    estimate_service_fee = COALESCE(NULLIF(settle_colonel_commission, 0), 0),
+    effective_service_fee = COALESCE(settle_colonel_commission, 0),
+    estimate_tech_service_fee = COALESCE(settle_colonel_tech_service_fee, 0),
+    effective_tech_service_fee = COALESCE(settle_colonel_tech_service_fee, 0)
+WHERE estimate_service_fee = 0
+  AND effective_service_fee = 0;
+
+CREATE TABLE IF NOT EXISTS performance_records (
+    id                              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id                        VARCHAR(50) NOT NULL,
+    order_row_id                    UUID,
+    default_channel_user_id         UUID,
+    default_recruiter_user_id       UUID,
+    final_channel_user_id           UUID,
+    final_recruiter_user_id         UUID,
+    channel_attribution             VARCHAR(32),
+    recruiter_attribution           VARCHAR(32),
+    talent_id                       UUID,
+    partner_id                      BIGINT,
+    product_id                      VARCHAR(50),
+    activity_id                     VARCHAR(50),
+    pay_amount                      BIGINT NOT NULL DEFAULT 0,
+    settle_amount                   BIGINT NOT NULL DEFAULT 0,
+    estimate_service_fee            BIGINT NOT NULL DEFAULT 0,
+    effective_service_fee           BIGINT NOT NULL DEFAULT 0,
+    estimate_tech_service_fee       BIGINT NOT NULL DEFAULT 0,
+    effective_tech_service_fee      BIGINT NOT NULL DEFAULT 0,
+    estimate_service_profit         BIGINT NOT NULL DEFAULT 0,
+    effective_service_profit        BIGINT NOT NULL DEFAULT 0,
+    estimate_recruiter_commission   BIGINT NOT NULL DEFAULT 0,
+    effective_recruiter_commission  BIGINT NOT NULL DEFAULT 0,
+    estimate_channel_commission     BIGINT NOT NULL DEFAULT 0,
+    effective_channel_commission    BIGINT NOT NULL DEFAULT 0,
+    estimate_gross_profit           BIGINT NOT NULL DEFAULT 0,
+    effective_gross_profit          BIGINT NOT NULL DEFAULT 0,
+    recruiter_commission_rate       NUMERIC(8, 4),
+    channel_commission_rate         NUMERIC(8, 4),
+    order_status                    SMALLINT,
+    settle_time                     TIMESTAMP,
+    order_create_time               TIMESTAMP,
+    is_valid                        BOOLEAN NOT NULL DEFAULT TRUE,
+    is_reversed                     BOOLEAN NOT NULL DEFAULT FALSE,
+    calculation_version             INTEGER NOT NULL DEFAULT 1,
+    calculated_at                   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at                      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_performance_records_order_id UNIQUE (order_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_performance_records_settle_time
+    ON performance_records (settle_time DESC);
+
+-- ==== alter-config-change-log-20260522.sql ====
+CREATE TABLE IF NOT EXISTS system_config_change_log (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    config_id     UUID,
+    config_key    VARCHAR(100) NOT NULL,
+    change_action VARCHAR(20)  NOT NULL,
+    old_value     TEXT,
+    new_value     TEXT,
+    source        VARCHAR(50)  NOT NULL,
+    operator_id   UUID,
+    changed_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_sccl_config_key_changed
+    ON system_config_change_log (config_key, changed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_sccl_operator_changed
+    ON system_config_change_log (operator_id, changed_at DESC);
+
+COMMENT ON TABLE system_config_change_log IS '系统配置变更明细，记录旧值、新值、配置键、来源和操作者';
+
+-- ==== alter-v2-config-20260523.sql ====
+CREATE TABLE IF NOT EXISTS commissions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dimension_type VARCHAR(32) NOT NULL,
+    dimension_id VARCHAR(128),
+    commission_type VARCHAR(32) NOT NULL,
+    ratio NUMERIC(10, 4) NOT NULL,
+    effective_start TIMESTAMP,
+    effective_end TIMESTAMP,
+    status SMALLINT NOT NULL DEFAULT 1,
+    deleted SMALLINT NOT NULL DEFAULT 0,
+    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_commissions_dimension_type
+        CHECK (dimension_type IN ('global', 'activity', 'product', 'user')),
+    CONSTRAINT chk_commissions_commission_type
+        CHECK (commission_type IN ('recruiter', 'channel')),
+    CONSTRAINT chk_commissions_ratio_range
+        CHECK (ratio >= 0 AND ratio <= 1)
+);
+
+CREATE INDEX IF NOT EXISTS idx_commissions_dimension_lookup
+    ON commissions (dimension_type, dimension_id, commission_type, status, deleted);
+
+CREATE INDEX IF NOT EXISTS idx_commissions_effective_window
+    ON commissions (effective_start, effective_end);
+
+COMMENT ON TABLE commissions IS 'V2 差异化提成规则（global/activity/product/user × recruiter/channel）';
+
+INSERT INTO system_config (config_key, config_value, value_type, config_group, description, editable)
+VALUES (
+    'talent.preset_tags',
+    '["美妆","高转化","服饰","食品","母婴","家居","数码","本地生活"]',
+    'json',
+    'talent',
+    '达人预设标签库',
+    true
+)
+ON CONFLICT (config_key) DO NOTHING;
+
+INSERT INTO system_config (config_key, config_value, value_type, config_group, description, editable)
+VALUES (
+    'promotion.pick_extra_rule',
+    '{"format":"channel_{channel_code}","encode":"none"}',
+    'json',
+    'promotion',
+    'pick_extra 生成规则',
+    true
+)
+ON CONFLICT (config_key) DO NOTHING;

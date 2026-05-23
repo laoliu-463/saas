@@ -199,6 +199,47 @@ class TalentQueryServiceTest {
     }
 
     @Test
+    void detail_shouldExposeTagsAndShippingAddressForCollaboration() {
+        UUID talentId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("talent_collaboration");
+        talent.setNickname("协作达人");
+        talent.setTags(List.of("美妆", "高转化"));
+        talent.setTagUpdatedBy(viewerId);
+
+        TalentClaim claim = new TalentClaim();
+        claim.setTalentId(talentId);
+        claim.setUserId(viewerId);
+        claim.setStatus(1);
+        claim.setRecipientName("张三");
+        claim.setRecipientPhone("13800000000");
+        claim.setRecipientAddress("上海市浦东新区示例路 1 号");
+
+        when(talentService.getById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.selectList(any())).thenReturn(List.of(claim));
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(claim));
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request sr")), eq(talentId)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("talent_collaboration")))
+                .thenReturn(List.of());
+
+        TalentDetailResponse response = talentQueryService.detail(talentId, viewerId, null, DataScope.ALL);
+
+        assertThat(response.getTalent().getTags()).containsExactly("美妆", "高转化");
+        assertThat(response.getTalent().getTagUpdatedBy()).isEqualTo(viewerId.toString());
+        assertThat(response.getClaim().getRecipientName()).isEqualTo("张三");
+        assertThat(response.getClaim().getRecipientPhone()).isEqualTo("13800000000");
+        assertThat(response.getClaim().getRecipientAddress()).isEqualTo("上海市浦东新区示例路 1 号");
+    }
+
+    @Test
     void detail_shouldExposeMultiClaimOwnersAndKeepPublicViewForOtherUsers() {
         UUID talentId = UUID.randomUUID();
         UUID ownerA = UUID.randomUUID();

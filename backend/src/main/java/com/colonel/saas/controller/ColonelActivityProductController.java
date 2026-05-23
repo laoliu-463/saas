@@ -9,7 +9,9 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
+import com.colonel.saas.service.ProductPinService;
 import com.colonel.saas.service.ProductService;
+import com.colonel.saas.service.PromotionCopyBriefService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -21,6 +23,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -47,10 +50,18 @@ import java.util.UUID;
 public class ColonelActivityProductController extends BaseController {
 
     private final ProductService productService;
+    private final ProductPinService productPinService;
+    private final PromotionCopyBriefService promotionCopyBriefService;
     private final SysUserService sysUserService;
 
-    public ColonelActivityProductController(ProductService productService, SysUserService sysUserService) {
+    public ColonelActivityProductController(
+            ProductService productService,
+            ProductPinService productPinService,
+            PromotionCopyBriefService promotionCopyBriefService,
+            SysUserService sysUserService) {
         this.productService = productService;
+        this.productPinService = productPinService;
+        this.promotionCopyBriefService = promotionCopyBriefService;
         this.sysUserService = sysUserService;
     }
 
@@ -240,6 +251,48 @@ public class ColonelActivityProductController extends BaseController {
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") long size) {
         IPage<ProductOperationLog> result = productService.getOperationLogs(activityId, productId, page, size);
         return okPage(result);
+    }
+
+    @Operation(summary = "渲染复制讲解文案", description = "按系统配置模板 promotion.copy_brief_template 渲染讲解文案（C-05）。")
+    @GetMapping("/{productId}/copy-brief")
+    public ApiResult<Map<String, String>> renderCopyBrief(
+            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
+            @Parameter(description = "商品 ID。") @PathVariable String productId,
+            @RequestParam(required = false) String productName,
+            @RequestParam(required = false) String commissionRate,
+            @RequestParam(required = false) String shortLink,
+            @RequestParam(required = false) String pickSource) {
+        String text = promotionCopyBriefService.render(productName, commissionRate, shortLink, pickSource);
+        return ok(Map.of(
+                "activityId", activityId,
+                "productId", productId,
+                "text", text));
+    }
+
+    @Operation(summary = "招商置顶商品", description = "置顶 24 小时，每位招商最多 10 个规格（P-05）。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @PostMapping("/{productId}/pin")
+    public ApiResult<Map<String, Object>> pinProduct(
+            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
+            @Parameter(description = "商品 ID。") @PathVariable String productId,
+            @RequestAttribute("userId") UUID userId) {
+        var state = productPinService.pin(activityId, productId, userId);
+        return ok(Map.of(
+                "activityId", activityId,
+                "productId", productId,
+                "pinned", true,
+                "pinnedUntil", state.getPinnedUntil()));
+    }
+
+    @Operation(summary = "取消招商置顶", description = "取消当前商品的置顶状态。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @DeleteMapping("/{productId}/pin")
+    public ApiResult<Map<String, Object>> unpinProduct(
+            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
+            @Parameter(description = "商品 ID。") @PathVariable String productId,
+            @RequestAttribute("userId") UUID userId) {
+        productPinService.unpin(activityId, productId, userId);
+        return ok(Map.of("activityId", activityId, "productId", productId, "pinned", false));
     }
 
     @Operation(summary = "加入商品库", description = "将当前选品结果沉淀到共享商品库，供全员查看。")

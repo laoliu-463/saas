@@ -112,6 +112,7 @@ import { MODAL_WIDTH } from '../../constants/ui'
 import { exportOrders, getOrderPage } from '../../api/data'
 import { useAuthStore } from '../../stores/auth'
 import { createPaginationState, normalizePageSize } from '../../utils/pagination'
+import { buildOrderExportParams, buildOrderPageParams } from './order-list-query'
 
 const authStore = useAuthStore()
 const route = useRoute()
@@ -202,24 +203,13 @@ const fetchData = async () => {
   pagination.pageSize = normalizePageSize(pagination.pageSize)
   loading.value = true
   try {
-    let startDate
-    let endDate
-    if (dateRange.value) {
-      startDate = new Date(dateRange.value[0]).toISOString().split('T')[0]
-      endDate = new Date(dateRange.value[1]).toISOString().split('T')[0]
-    }
-
-    const res = await getOrderPage({
+    const res = await getOrderPage(buildOrderPageParams({
       page: pagination.page,
-      size: pagination.pageSize,
-      orderId: searchParams.orderId || undefined,
-      status: searchParams.status,
-      talentId: searchParams.talentId || undefined,
-      merchantId: searchParams.merchantId || undefined,
+      pageSize: pagination.pageSize,
       timeField: timeField.value,
-      startDate,
-      endDate
-    })
+      dateRange: dateRange.value,
+      filters: searchParams
+    }))
 
     const responseData: any = res?.data || res
     if (responseData?.records && Array.isArray(responseData.records)) {
@@ -250,20 +240,11 @@ const handleExport = async () => {
     return
   }
   try {
-    let startDate
-    let endDate
-    if (dateRange.value) {
-      startDate = new Date(dateRange.value[0]).toISOString().split('T')[0]
-      endDate = new Date(dateRange.value[1]).toISOString().split('T')[0]
-    }
-    const res: any = await exportOrders({
-      status: searchParams.status,
-      talentId: searchParams.talentId || undefined,
-      merchantId: searchParams.merchantId || undefined,
+    const res: any = await exportOrders(buildOrderExportParams({
       timeField: timeField.value,
-      startDate,
-      endDate
-    })
+      dateRange: dateRange.value,
+      filters: searchParams
+    }))
     const filename = `orders-${new Date().toISOString().slice(0, 10)}.csv`
     const url = window.URL.createObjectURL(new Blob([res]))
     const link = document.createElement('a')

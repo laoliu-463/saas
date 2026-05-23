@@ -48,6 +48,24 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
         if (upstreamModeSupport.isContract()) {
             return contractFixtureProvider.buildOrderListResult(request);
         }
+        Map<String, Object> response = orderApi.listColonelMultiSettlementOrders(
+                null,
+                request.count(),
+                normalizeCursor(request.cursor()),
+                "update",
+                formatEpochSecond(request.startTime()),
+                formatEpochSecond(request.endTime()),
+                null
+        );
+        return toOrderListResult(response);
+    }
+
+    @Override
+    public OrderListResult listInstituteOrders(DouyinOrderQueryRequest request) {
+        logGateway();
+        if (upstreamModeSupport.isContract()) {
+            return contractFixtureProvider.buildOrderListResult(request);
+        }
         Map<String, Object> response = orderApi.listSettlement(
                 request.startTime(),
                 request.endTime(),
@@ -67,8 +85,9 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
                     new DouyinOrderQueryRequest(startTime, endTime, count == null ? 100 : count, cursor)
             );
         }
-        Map<String, Object> response = orderApi.listSettlementWindow(cursor, count);
-        return toOrderListResult(response);
+        long endTime = System.currentTimeMillis() / 1000;
+        long startTime = endTime - 3600;
+        return listSettlement(new DouyinOrderQueryRequest(startTime, endTime, count == null ? 100 : count, cursor));
     }
 
     @Override
@@ -243,6 +262,14 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
 
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private String formatEpochSecond(long epochSecond) {
+        return DATE_TIME_FORMATTER.format(com.colonel.saas.common.time.AppZone.fromEpochSecond(epochSecond));
+    }
+
+    private String normalizeCursor(String cursor) {
+        return StringUtils.hasText(cursor) ? cursor.trim() : "0";
     }
 
     private List<String> normalizeOrderIds(List<String> orderIds) {

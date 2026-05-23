@@ -133,6 +133,11 @@ const router = createRouter({
           meta: { title: '系统配置', roles: [ROLE.ADMIN] }
         },
         {
+          path: 'system/commission-rules',
+          component: () => import('../views/system/CommissionRuleList.vue'),
+          meta: { title: '提成规则', roles: [ROLE.ADMIN] }
+        },
+        {
           path: 'system/douyin',
           component: () => import('../views/ops/DouyinIntegration.vue'),
           meta: { title: '抖店联调', roles: [ROLE.ADMIN] }
@@ -141,6 +146,11 @@ const router = createRouter({
           path: 'system/operation-logs',
           component: () => import('../views/system/OperationLogList.vue'),
           meta: { title: '操作日志', roles: [ROLE.ADMIN] }
+        },
+        {
+          path: 'profile',
+          component: () => import('../views/profile/UserProfile.vue'),
+          meta: { title: '个人中心' }
         },
         {
           path: 'orders',

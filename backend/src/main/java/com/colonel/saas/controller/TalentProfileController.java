@@ -6,6 +6,7 @@ import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.ResolveTalentProfileRequest;
 import com.colonel.saas.dto.talent.ResolveTalentProfileResponse;
+import com.colonel.saas.service.TalentQueryService;
 import com.colonel.saas.service.talent.profile.TalentProfileSyncService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -17,8 +18,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 @Validated
@@ -29,9 +32,13 @@ import java.util.UUID;
 public class TalentProfileController extends BaseController {
 
     private final TalentProfileSyncService talentProfileSyncService;
+    private final TalentQueryService talentQueryService;
 
-    public TalentProfileController(TalentProfileSyncService talentProfileSyncService) {
+    public TalentProfileController(
+            TalentProfileSyncService talentProfileSyncService,
+            TalentQueryService talentQueryService) {
         this.talentProfileSyncService = talentProfileSyncService;
+        this.talentQueryService = talentQueryService;
     }
 
     @Operation(summary = "解析达人真实资料", description = "输入抖音号/主页链接/分享链接，按 provider 链拉取真实基础资料。")
@@ -51,7 +58,11 @@ public class TalentProfileController extends BaseController {
     @PostMapping("/{id}/sync-profile")
     public ApiResult<ResolveTalentProfileResponse> syncProfile(
             @Parameter(description = "达人主键 ID") @PathVariable UUID id,
-            @RequestParam(defaultValue = "false") boolean forceRefresh) {
+            @RequestParam(defaultValue = "false") boolean forceRefresh,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
         return ok(talentProfileSyncService.syncExistingProfile(id, forceRefresh));
     }
 }

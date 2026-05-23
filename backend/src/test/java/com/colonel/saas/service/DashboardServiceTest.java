@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -31,12 +32,15 @@ class DashboardServiceTest {
     private ColonelsettlementOrderMapper orderMapper;
     @Mock
     private JdbcTemplate jdbcTemplate;
+    @Mock
+    private PerformanceMetricsQueryService performanceMetricsQueryService;
 
     private DashboardService service;
 
     @BeforeEach
     void setUp() {
-        service = new DashboardService(orderMapper, jdbcTemplate);
+        service = new DashboardService(orderMapper, jdbcTemplate, performanceMetricsQueryService);
+        lenient().when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(false);
     }
 
     @Test
@@ -94,6 +98,34 @@ class DashboardServiceTest {
                 .containsExactly(DashboardService.DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED);
         assertThat(summary.getDiagnosticBreakdown().get(0).getDrillDownQuery().attributionStatus()).isNull();
         verify(jdbcTemplate, times(3)).queryForList(anyString(), any(Object[].class));
+    }
+
+    @Test
+    void getSummary_shouldUsePerformanceRecordsWhenAvailable() {
+        when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(true);
+        when(performanceMetricsQueryService.aggregateDashboardSummary(any(), any(), any(), any(), any()))
+                .thenReturn(new PerformanceMetricsQueryService.DashboardPerformanceSummary(
+                        8L,
+                        90000L,
+                        1800L,
+                        List.of(new PerformanceMetricsQueryService.PerformanceLeaderboardItem(
+                                "channel-1", "渠道A", 3L, 30000L, 600L)),
+                        List.of(new PerformanceMetricsQueryService.PerformanceLeaderboardItem(
+                                "colonel-1", "招商A", 2L, 20000L, 400L))));
+        when(orderMapper.selectCount(any(QueryWrapper.class)))
+                .thenReturn(6L)
+                .thenReturn(2L);
+        mockJdbcSequences(List.of(), 0L, List.of());
+
+        DashboardService.Summary summary = service.getSummary(null, null, null, null, DataScope.ALL);
+
+        assertThat(summary.getOrderCount()).isEqualTo(8L);
+        assertThat(summary.getOrderAmount()).isEqualTo(90000L);
+        assertThat(summary.getServiceFee()).isEqualTo(1800L);
+        assertThat(summary.getChannelPerformance()).hasSize(1);
+        assertThat(summary.getChannelPerformance().get(0).getChannelUserName()).isEqualTo("渠道A");
+        assertThat(summary.getColonelPerformance()).hasSize(1);
+        assertThat(summary.getColonelPerformance().get(0).getColonelUserName()).isEqualTo("招商A");
     }
 
     @Test

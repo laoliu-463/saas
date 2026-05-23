@@ -61,4 +61,13 @@ public class ProductOperationState extends VersionedEntity {
 
     @TableField("last_operation_at")
     private LocalDateTime lastOperationAt;
+
+    @TableField("pinned_at")
+    private LocalDateTime pinnedAt;
+
+    @TableField("pinned_until")
+    private LocalDateTime pinnedUntil;
+
+    @TableField("pinned_by")
+    private UUID pinnedBy;
 }

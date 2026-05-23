@@ -3,11 +3,14 @@ package com.colonel.saas.service;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.config.ConfigDefinitionRegistry;
 import com.colonel.saas.entity.SystemConfig;
+import com.colonel.saas.entity.SystemConfigChangeLog;
+import com.colonel.saas.mapper.SystemConfigChangeLogMapper;
 import com.colonel.saas.mapper.SystemConfigMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -29,6 +32,8 @@ class SysConfigServiceTest {
 
     @Mock
     private SystemConfigMapper systemConfigMapper;
+    @Mock
+    private SystemConfigChangeLogMapper systemConfigChangeLogMapper;
 
     private SysConfigService sysConfigService;
     private OperationLogService operationLogService;
@@ -40,6 +45,7 @@ class SysConfigServiceTest {
         businessRuleConfigService = mock(BusinessRuleConfigService.class);
         sysConfigService = new SysConfigService(
                 systemConfigMapper,
+                systemConfigChangeLogMapper,
                 operationLogService,
                 new ConfigDefinitionRegistry(new ObjectMapper()),
                 businessRuleConfigService
@@ -126,6 +132,25 @@ class SysConfigServiceTest {
                 "custom.visible",
                 "新建配置项: custom.visible"
         );
+        ArgumentCaptor<SystemConfigChangeLog> logCaptor = ArgumentCaptor.forClass(SystemConfigChangeLog.class);
+        verify(systemConfigChangeLogMapper).insert(logCaptor.capture());
+        assertThat(logCaptor.getValue())
+                .extracting(
+                        SystemConfigChangeLog::getConfigId,
+                        SystemConfigChangeLog::getConfigKey,
+                        SystemConfigChangeLog::getChangeAction,
+                        SystemConfigChangeLog::getOldValue,
+                        SystemConfigChangeLog::getNewValue,
+                        SystemConfigChangeLog::getSource,
+                        SystemConfigChangeLog::getOperatorId)
+                .containsExactly(
+                        created.getId(),
+                        "custom.visible",
+                        "CREATE",
+                        null,
+                        "on",
+                        "SYS_CONFIG_API",
+                        userId);
     }
 
     @Test
@@ -219,6 +244,7 @@ class SysConfigServiceTest {
     @Test
     void update_shouldInvalidateBusinessRuleCacheForConfigKey() {
         UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         SystemConfig existing = new SystemConfig();
         existing.setId(id);
         existing.setConfigKey("sample.restrict_days");
@@ -228,9 +254,28 @@ class SysConfigServiceTest {
         SystemConfig payload = new SystemConfig();
         payload.setConfigValue("9");
 
-        sysConfigService.update(id, payload, UUID.randomUUID());
+        sysConfigService.update(id, payload, userId);
 
         verify(businessRuleConfigService).invalidate("sample.restrict_days");
+        ArgumentCaptor<SystemConfigChangeLog> logCaptor = ArgumentCaptor.forClass(SystemConfigChangeLog.class);
+        verify(systemConfigChangeLogMapper).insert(logCaptor.capture());
+        assertThat(logCaptor.getValue())
+                .extracting(
+                        SystemConfigChangeLog::getConfigId,
+                        SystemConfigChangeLog::getConfigKey,
+                        SystemConfigChangeLog::getChangeAction,
+                        SystemConfigChangeLog::getOldValue,
+                        SystemConfigChangeLog::getNewValue,
+                        SystemConfigChangeLog::getSource,
+                        SystemConfigChangeLog::getOperatorId)
+                .containsExactly(
+                        id,
+                        "sample.restrict_days",
+                        "UPDATE",
+                        "7",
+                        "9",
+                        "SYS_CONFIG_API",
+                        userId);
     }
 
     @Test
@@ -260,6 +305,7 @@ class SysConfigServiceTest {
         SystemConfig existing = new SystemConfig();
         existing.setId(id);
         existing.setConfigKey("sample.restrict_days");
+        existing.setConfigValue("7");
         when(systemConfigMapper.selectById(id)).thenReturn(existing);
         when(systemConfigMapper.softDeleteById(id, userId)).thenReturn(1);
 
@@ -277,5 +323,24 @@ class SysConfigServiceTest {
                 "sample.restrict_days",
                 "删除配置项: sample.restrict_days"
         );
+        ArgumentCaptor<SystemConfigChangeLog> logCaptor = ArgumentCaptor.forClass(SystemConfigChangeLog.class);
+        verify(systemConfigChangeLogMapper).insert(logCaptor.capture());
+        assertThat(logCaptor.getValue())
+                .extracting(
+                        SystemConfigChangeLog::getConfigId,
+                        SystemConfigChangeLog::getConfigKey,
+                        SystemConfigChangeLog::getChangeAction,
+                        SystemConfigChangeLog::getOldValue,
+                        SystemConfigChangeLog::getNewValue,
+                        SystemConfigChangeLog::getSource,
+                        SystemConfigChangeLog::getOperatorId)
+                .containsExactly(
+                        id,
+                        "sample.restrict_days",
+                        "DELETE",
+                        "7",
+                        null,
+                        "SYS_CONFIG_API",
+                        userId);
     }
 }

@@ -101,6 +101,7 @@ class TalentServiceTest {
         when(businessRuleConfigService.getTalentProtectionDays()).thenReturn(30);
         when(businessRuleConfigService.getTalentExclusiveRatioThreshold()).thenReturn(new java.math.BigDecimal("70"));
         when(businessRuleConfigService.getTalentExclusiveMonthlySamples()).thenReturn(10);
+        lenient().when(businessRuleConfigService.getPresetTalentTags()).thenReturn(List.of());
         lenient().when(talentMapper.updateById(any(Talent.class))).thenReturn(1);
         lenient().when(talentClaimMapper.updateById(any(TalentClaim.class))).thenReturn(1);
         when(talentEnrichTaskMapper.insert(any(TalentEnrichTask.class))).thenAnswer(invocation -> {
@@ -233,6 +234,71 @@ class TalentServiceTest {
 
         talentService.delete(talentId);
         verify(talentMapper).deleteById(talentId);
+    }
+
+    @Test
+    void updateTags_shouldRecordOperatorForAudit() {
+        UUID talentId = UUID.randomUUID();
+        UUID operatorId = UUID.randomUUID();
+        Talent existing = talent("dy_tags_audit", 10L);
+        existing.setId(talentId);
+        existing.setDeleted(0);
+        when(talentMapper.selectById(talentId)).thenReturn(existing);
+
+        List<String> tags = talentService.updateTags(talentId, List.of("美妆", "高转化", "美妆"), operatorId);
+
+        assertThat(tags).containsExactly("美妆", "高转化");
+        assertThat(existing.getTags()).containsExactly("美妆", "高转化");
+        assertThat(existing.getTagUpdatedBy()).isEqualTo(operatorId);
+        verify(talentMapper).updateById(existing);
+    }
+
+    @Test
+    void updateTags_shouldRejectTagsOutsidePresetLibrary() {
+        UUID talentId = UUID.randomUUID();
+        Talent existing = talent("dy_tags_preset", 10L);
+        existing.setId(talentId);
+        existing.setDeleted(0);
+        when(talentMapper.selectById(talentId)).thenReturn(existing);
+        when(businessRuleConfigService.getPresetTalentTags()).thenReturn(List.of("美妆", "高转化"));
+
+        assertThatThrownBy(() -> talentService.updateTags(talentId, List.of("未知标签"), UUID.randomUUID()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("预设库");
+    }
+
+    @Test
+    void updateShippingAddress_shouldPersistAddressOnCurrentUsersActiveClaim() {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Talent existing = talent("dy_claim_address", 10L);
+        existing.setId(talentId);
+        existing.setDeleted(0);
+
+        TalentClaim claim = new TalentClaim();
+        claim.setId(UUID.randomUUID());
+        claim.setTalentId(talentId);
+        claim.setUserId(userId);
+        claim.setStatus(1);
+
+        when(talentMapper.selectById(talentId)).thenReturn(existing);
+        when(talentClaimMapper.findActiveByTalentAndUser(talentId, userId)).thenReturn(claim);
+
+        Talent updated = talentService.updateShippingAddress(
+                talentId,
+                userId,
+                " 张三 ",
+                " 13800000000 ",
+                " 上海市浦东新区示例路 1 号 ");
+
+        assertThat(claim.getRecipientName()).isEqualTo("张三");
+        assertThat(claim.getRecipientPhone()).isEqualTo("13800000000");
+        assertThat(claim.getRecipientAddress()).isEqualTo("上海市浦东新区示例路 1 号");
+        assertThat(updated.getShippingRecipientName()).isEqualTo("张三");
+        assertThat(updated.getShippingRecipientPhone()).isEqualTo("13800000000");
+        assertThat(updated.getShippingRecipientAddress()).isEqualTo("上海市浦东新区示例路 1 号");
+        verify(talentClaimMapper).updateById(claim);
+        verify(talentMapper, never()).updateById(existing);
     }
 
     @Test

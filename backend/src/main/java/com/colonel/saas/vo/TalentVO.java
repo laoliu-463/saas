@@ -4,6 +4,7 @@ import com.colonel.saas.entity.Talent;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class TalentVO {
@@ -42,6 +43,10 @@ public class TalentVO {
     private String videoSalesBand;
     private String videoPlayBand;
     private String videoGpmBand;
+    private List<String> tags;
+    private String shippingRecipientName;
+    private String shippingRecipientPhone;
+    private String shippingRecipientAddress;
 
     public static TalentVO from(Talent talent) {
         if (talent == null) {
@@ -83,6 +88,10 @@ public class TalentVO {
         vo.setVideoSalesBand(talent.getVideoSalesBand());
         vo.setVideoPlayBand(talent.getVideoPlayBand());
         vo.setVideoGpmBand(talent.getVideoGpmBand());
+        vo.setTags(talent.getTags());
+        vo.setShippingRecipientName(talent.getShippingRecipientName());
+        vo.setShippingRecipientPhone(talent.getShippingRecipientPhone());
+        vo.setShippingRecipientAddress(talent.getShippingRecipientAddress());
         return vo;
     }
 }

@@ -12,9 +12,16 @@ import java.util.Map;
 public interface DouyinOrderGateway {
 
     /**
-     * 按时间范围拉取结算订单列表（buyin.instituteOrderColonel）。
+     * 按时间范围拉取官方分次结算订单列表（buyin.colonelMultiSettlementOrders）。
      */
     OrderListResult listSettlement(DouyinOrderQueryRequest request);
+
+    /**
+     * 按时间范围拉取旧团长订单接口，仅供联调 RAW 探针兼容。
+     */
+    default OrderListResult listInstituteOrders(DouyinOrderQueryRequest request) {
+        return listSettlement(request);
+    }
 
     /**
      * 按当前时间窗口拉取最近订单。

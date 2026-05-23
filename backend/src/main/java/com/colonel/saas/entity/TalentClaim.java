@@ -35,5 +35,14 @@ public class TalentClaim extends VersionedEntity {
     @TableField("expire_time")
     private LocalDateTime protectedUntil;
 
+    @TableField("recipient_name")
+    private String recipientName;
+
+    @TableField("recipient_phone")
+    private String recipientPhone;
+
+    @TableField("recipient_address")
+    private String recipientAddress;
+
     private Integer status;
 }

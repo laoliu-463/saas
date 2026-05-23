@@ -54,6 +54,12 @@ public class OrderDetailResponse {
     public static class AmountInfo {
         private Long orderAmount;
         private Long serviceFee;
+        private Long payAmount;
+        private Long settleAmount;
+        private Long estimateServiceFee;
+        private Long effectiveServiceFee;
+        private Long estimateTechServiceFee;
+        private Long effectiveTechServiceFee;
     }
 
     @Data

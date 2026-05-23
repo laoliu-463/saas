@@ -20,6 +20,7 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.service.CommissionService;
+import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import com.colonel.saas.vo.ExclusiveMerchantStatusVO;
 import com.colonel.saas.vo.ExclusiveTalentStatusVO;
@@ -73,6 +74,7 @@ public class DataController extends BaseController {
     private final ExclusiveMerchantMapper exclusiveMerchantMapper;
     private final ColonelsettlementActivityMapper activityMapper;
     private final ShortTtlCacheService shortTtlCacheService;
+    private final PerformanceMetricsQueryService performanceMetricsQueryService;
 
     public DataController(
             ColonelsettlementOrderMapper orderMapper,
@@ -80,13 +82,15 @@ public class DataController extends BaseController {
             ExclusiveTalentMapper exclusiveTalentMapper,
             ExclusiveMerchantMapper exclusiveMerchantMapper,
             ColonelsettlementActivityMapper activityMapper,
-            ShortTtlCacheService shortTtlCacheService) {
+            ShortTtlCacheService shortTtlCacheService,
+            PerformanceMetricsQueryService performanceMetricsQueryService) {
         this.orderMapper = orderMapper;
         this.commissionService = commissionService;
         this.exclusiveTalentMapper = exclusiveTalentMapper;
         this.exclusiveMerchantMapper = exclusiveMerchantMapper;
         this.activityMapper = activityMapper;
         this.shortTtlCacheService = shortTtlCacheService;
+        this.performanceMetricsQueryService = performanceMetricsQueryService;
     }
 
     @Operation(summary = "订单分页", description = "分页查询数据页订单列表。该接口服务于数据分析页面，不等同于订单主链路接口。")
@@ -150,13 +154,61 @@ public class DataController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
         String cacheKey = METRICS_CACHE_PREFIX + metricsCacheKey(timeField, userId, deptId, dataScope);
-        return ok(shortTtlCacheService.get(cacheKey, METRICS_CACHE_TTL, () -> {
+        return ok(shortTtlCacheService.get(cacheKey, METRICS_CACHE_TTL, () -> buildMetrics(timeField, userId, deptId, dataScope)));
+    }
+
+    private MetricsVO buildMetrics(String timeField, UUID userId, UUID deptId, DataScope dataScope) {
         LocalDate today = LocalDate.now();
         LocalDateTime todayStart = today.atStartOfDay();
         LocalDateTime tomorrowStart = today.plusDays(1).atStartOfDay();
         LocalDateTime rollingStart = today.minusDays(29).atStartOfDay();
         String timeColumn = resolveTimeColumn(timeField);
 
+        QueryWrapper<ColonelsettlementOrder> pendingWrapper = buildScopedQuery(userId, deptId, dataScope)
+                .select("COUNT(1) AS order_count")
+                .eq("order_status", toOrderStatusCode("ORDERED"))
+                .ge(timeColumn, rollingStart)
+                .lt(timeColumn, tomorrowStart);
+        Long pendingShipCount = asLong(getSingleAggregate(pendingWrapper), "order_count");
+
+        MetricsVO metrics = new MetricsVO();
+        metrics.setPendingShipCount(pendingShipCount);
+        metrics.setAmountTrack(performanceMetricsQueryService.resolveAmountTrackLabel(timeField));
+
+        if (performanceMetricsQueryService.hasPerformanceRecords()) {
+            PerformanceMetricsQueryService.PerformanceAggregate aggregate =
+                    performanceMetricsQueryService.aggregateRange(todayStart, tomorrowStart, timeField, userId, deptId, dataScope);
+            List<PerformanceMetricsQueryService.TrendPoint> trendPoints = performanceMetricsQueryService.trendByDay(
+                    today.minusDays(6).atStartOfDay(),
+                    tomorrowStart,
+                    timeField,
+                    userId,
+                    deptId,
+                    dataScope);
+
+            metrics.setMetricsSource("performance_records");
+            metrics.setTodayOrderCount(aggregate.orderCount());
+            metrics.setTodayGmv(centToYuan(aggregate.orderAmountCent()));
+            metrics.setTrend7d(trendPoints.stream()
+                    .map(point -> new TrendPointVO(point.date(), point.orderCount(), centToYuan(point.orderAmountCent())))
+                    .toList());
+
+            metrics.setTotalOrders(aggregate.orderCount());
+            metrics.setTotalAmount(centToYuan(aggregate.orderAmountCent()));
+            metrics.setServiceFeeIncome(centToYuan(aggregate.serviceFeeIncomeCent()));
+            metrics.setTechServiceFee(centToYuan(aggregate.techServiceFeeCent()));
+            metrics.setTalentCommission(centToYuan(Math.max(
+                    aggregate.serviceFeeIncomeCent() - aggregate.techServiceFeeCent() - aggregate.serviceProfitCent(),
+                    0L)));
+            metrics.setServiceFee(centToYuan(aggregate.serviceProfitCent()));
+            metrics.setBizCommission(centToYuan(aggregate.recruiterCommissionCent()));
+            metrics.setChannelCommission(centToYuan(aggregate.channelCommissionCent()));
+            metrics.setCommission(centToYuan(aggregate.recruiterCommissionCent() + aggregate.channelCommissionCent()));
+            metrics.setGrossProfit(centToYuan(aggregate.grossProfitCent()));
+            return metrics;
+        }
+
+        metrics.setMetricsSource("orders");
         QueryWrapper<ColonelsettlementOrder> todayAggregateWrapper = buildScopedQuery(userId, deptId, dataScope)
                 .select(
                         "COUNT(*) AS order_count",
@@ -168,12 +220,6 @@ public class DataController extends BaseController {
         Long todayOrders = asLong(todayAggregate, "order_count");
         Long todayGmvCent = asLong(todayAggregate, "order_amount_cent");
 
-        QueryWrapper<ColonelsettlementOrder> pendingWrapper = buildScopedQuery(userId, deptId, dataScope)
-                .select("COUNT(1) AS order_count")
-                .eq("order_status", toOrderStatusCode("ORDERED"))
-                .ge(timeColumn, rollingStart)
-                .lt(timeColumn, tomorrowStart);
-        Long pendingShipCount = asLong(getSingleAggregate(pendingWrapper), "order_count");
         QueryWrapper<ColonelsettlementOrder> commissionWrapper = buildScopedQuery(userId, deptId, dataScope)
                 .select(
                         "COALESCE(colonel_activity_id, '') AS activity_id",
@@ -188,6 +234,8 @@ public class DataController extends BaseController {
                 orderMapper.selectMaps(commissionWrapper).stream()
                         .map(row -> new CommissionService.ActivityCommissionBucket(
                                 asString(row, "activity_id"),
+                                null,
+                                null,
                                 asLong(row, "service_fee_income"),
                                 asLong(row, "tech_service_fee"),
                                 asLong(row, "talent_commission")
@@ -219,13 +267,9 @@ public class DataController extends BaseController {
             trend7d.add(new TrendPointVO(day.toString(), dayOrders, centToYuan(dayGmvCent)));
         }
 
-        MetricsVO metrics = new MetricsVO();
         metrics.setTodayOrderCount(todayOrders);
         metrics.setTodayGmv(centToYuan(todayGmvCent));
-        metrics.setPendingShipCount(pendingShipCount);
         metrics.setTrend7d(trend7d);
-
-        // 兼容当前前端 data/index.vue 的历史字段名。
         metrics.setTotalOrders(todayOrders);
         metrics.setTotalAmount(centToYuan(todayGmvCent));
         metrics.setServiceFeeIncome(centToYuan(commissionSummary.serviceFeeIncome()));
@@ -237,13 +281,13 @@ public class DataController extends BaseController {
         metrics.setCommission(centToYuan(commissionSummary.bizCommission() + commissionSummary.channelCommission()));
         metrics.setGrossProfit(centToYuan(commissionSummary.grossProfit()));
         return metrics;
-        }));
     }
 
     @Operation(summary = "导出订单CSV", description = "按筛选条件导出订单数据页 CSV。")
     @GetMapping("/orders/exports")
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public void exportOrders(
+            @Parameter(description = "订单号，支持模糊匹配。") @RequestParam(required = false) String orderId,
             @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
             @Parameter(description = "达人 ID（UUID），精确匹配。") @RequestParam(required = false) UUID talentId,
             @Parameter(description = "商家 merchant_id（字符串），精确匹配。") @RequestParam(required = false) String merchantId,
@@ -267,6 +311,9 @@ public class DataController extends BaseController {
         wrapper.ge(timeColumn, start)
                 .lt(timeColumn, end);
         applyPageDataScope(wrapper, userId, deptId, dataScope);
+        if (StringUtils.hasText(orderId)) {
+            wrapper.like("co.order_id", orderId.trim());
+        }
         if (StringUtils.hasText(status)) {
             wrapper.eq("co.order_status", toOrderStatusCode(status));
         }
@@ -842,6 +889,8 @@ public class DataController extends BaseController {
         private BigDecimal bizCommission;
         private BigDecimal channelCommission;
         private BigDecimal grossProfit;
+        private String amountTrack;
+        private String metricsSource;
 
         public Long getTodayOrderCount() {
             return todayOrderCount;
@@ -953,6 +1002,22 @@ public class DataController extends BaseController {
 
         public void setGrossProfit(BigDecimal grossProfit) {
             this.grossProfit = grossProfit;
+        }
+
+        public String getAmountTrack() {
+            return amountTrack;
+        }
+
+        public void setAmountTrack(String amountTrack) {
+            this.amountTrack = amountTrack;
+        }
+
+        public String getMetricsSource() {
+            return metricsSource;
+        }
+
+        public void setMetricsSource(String metricsSource) {
+            this.metricsSource = metricsSource;
         }
     }
 

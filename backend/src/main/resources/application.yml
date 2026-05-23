@@ -82,6 +82,9 @@ app:
     talent: ${APP_TEST_TALENT_ENABLED:false}
     logistics: ${APP_TEST_LOGISTICS_ENABLED:false}
 
+exclusive:
+  enabled: ${EXCLUSIVE_ENABLED:false}
+
 douyin:
   app:
     base-url: ${DOUYIN_BASE_URL:https://openapi-fxg.jinritemai.com}

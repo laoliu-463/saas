@@ -1,6 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.dto.SampleApplyRequest;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
 import com.colonel.saas.common.enums.DataScope;
@@ -40,6 +41,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.bind.annotation.GetMapping;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -210,6 +212,93 @@ class SampleControllerTest {
         assertThat(saved.getExtraData()).isNotNull();
         assertThat(((java.util.Map<?, ?>) saved.getExtraData().get("eligibilityCheck")).get("passed")).isEqualTo(true);
         assertThat(((java.util.Map<?, ?>) saved.getExtraData().get("requirementSnapshot")).get("minLevel")).isEqualTo("LV1");
+    }
+
+    @Test
+    void createSample_shouldPersistStructuredRecipientFields() {
+        UUID productId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID talentUuid = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("recipient product");
+
+        CrawlerTalentInfo crawlerTalentInfo = new CrawlerTalentInfo();
+        crawlerTalentInfo.setTalentId("talent_recipient_001");
+        crawlerTalentInfo.setNickname("recipient talent");
+
+        Talent talent = new Talent();
+        talent.setId(talentUuid);
+        talent.setDouyinUid("talent_recipient_001");
+        talent.setNickname("recipient talent");
+
+        SampleApplyRequest request = new SampleApplyRequest();
+        request.setTalentId("talent_recipient_001");
+        request.setProductId(productId);
+        request.setQuantity(1);
+        request.setRecipientName("张三");
+        request.setRecipientPhone("13800138000");
+        request.setRecipientAddress("上海市浦东新区测试路 1 号");
+
+        when(productMapper.selectById(productId)).thenReturn(product);
+        when(crawlerTalentInfoService.findByTalentId("talent_recipient_001")).thenReturn(crawlerTalentInfo);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(mock(com.colonel.saas.entity.TalentClaim.class));
+        when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
+
+        var response = sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
+
+        ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
+        verify(sampleRequestMapper).insert(captor.capture());
+        SampleRequest saved = captor.getValue();
+        assertThat(saved.getRecipientName()).isEqualTo("张三");
+        assertThat(saved.getRecipientPhone()).isEqualTo("13800138000");
+        assertThat(saved.getRecipientAddress()).isEqualTo("上海市浦东新区测试路 1 号");
+        assertThat(response.getData().getRecipientName()).isEqualTo("张三");
+        assertThat(response.getData().getRecipientPhone()).isEqualTo("13800138000");
+        assertThat(response.getData().getRecipientAddress()).isEqualTo("上海市浦东新区测试路 1 号");
+    }
+
+    @Test
+    void createSample_shouldMarkInternalQuickSampleSource() {
+        UUID productId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID talentUuid = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("internal sample product");
+
+        CrawlerTalentInfo crawlerTalentInfo = new CrawlerTalentInfo();
+        crawlerTalentInfo.setTalentId("talent_internal_sample_001");
+        crawlerTalentInfo.setNickname("internal sample talent");
+
+        Talent talent = new Talent();
+        talent.setId(talentUuid);
+        talent.setDouyinUid("talent_internal_sample_001");
+        talent.setNickname("internal sample talent");
+
+        SampleApplyRequest request = new SampleApplyRequest();
+        request.setTalentId("talent_internal_sample_001");
+        request.setProductId(productId);
+        request.setQuantity(1);
+        request.setApplySource("INTERNAL_QUICK_SAMPLE");
+
+        when(productMapper.selectById(productId)).thenReturn(product);
+        when(crawlerTalentInfoService.findByTalentId("talent_internal_sample_001")).thenReturn(crawlerTalentInfo);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(mock(com.colonel.saas.entity.TalentClaim.class));
+        when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
+
+        var response = sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
+
+        ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
+        verify(sampleRequestMapper).insert(captor.capture());
+        SampleRequest saved = captor.getValue();
+        assertThat(saved.getExtraData()).containsEntry("applySource", "INTERNAL_QUICK_SAMPLE");
+        assertThat(saved.getExtraData()).containsEntry("externalApply", false);
+        assertThat(response.getData().getApplySource()).isEqualTo("INTERNAL_QUICK_SAMPLE");
     }
 
     @Test
@@ -605,17 +694,166 @@ class SampleControllerTest {
     }
 
     @Test
-    void exportSamples_shouldRejectOpsStaff() {
+    void exportSamples_shouldRejectChannelRoles() {
         assertThatThrownBy(() -> sampleController.exportSamples(
                 null,
                 null,
                 UUID.randomUUID(),
                 null,
                 DataScope.ALL,
-                List.of(RoleCodes.OPS_STAFF),
+                List.of(RoleCodes.CHANNEL_LEADER),
                 new MockHttpServletResponse()))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("仅管理员、招商组长或渠道组长");
+                .hasMessageContaining("仅管理员、招商或运营");
+    }
+
+    @Test
+    void exportSamples_shouldAllowOpsStaff() throws Exception {
+        Page<SampleRequest> emptyPage = new Page<>(1, 500, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any())).thenReturn(emptyPage);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        sampleController.exportSamples(
+                null,
+                null,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF),
+                response);
+
+        assertThat(response.getContentType()).isEqualTo("text/csv; charset=UTF-8");
+        assertThat(response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).startsWith("\ufeff寄样单号");
+    }
+
+    @Test
+    void sensitiveSampleBatchAndExportEndpoints_shouldDeclareNarrowMethodRoles() throws Exception {
+        RequireRoles batchApprove = SampleController.class
+                .getMethod(
+                        "batchApprove",
+                        SampleController.SampleBatchActionRequest.class,
+                        UUID.class,
+                        UUID.class,
+                        DataScope.class,
+                        Object.class)
+                .getAnnotation(RequireRoles.class);
+        RequireRoles batchReject = SampleController.class
+                .getMethod(
+                        "batchReject",
+                        SampleController.SampleBatchActionRequest.class,
+                        UUID.class,
+                        UUID.class,
+                        DataScope.class,
+                        Object.class)
+                .getAnnotation(RequireRoles.class);
+        RequireRoles batchShip = SampleController.class
+                .getMethod(
+                        "batchShip",
+                        SampleController.SampleBatchShipRequest.class,
+                        UUID.class,
+                        UUID.class,
+                        DataScope.class,
+                        Object.class)
+                .getAnnotation(RequireRoles.class);
+        RequireRoles refreshLogistics = SampleController.class
+                .getMethod(
+                        "refreshLogistics",
+                        UUID.class,
+                        UUID.class,
+                        UUID.class,
+                        DataScope.class,
+                        Object.class)
+                .getAnnotation(RequireRoles.class);
+        RequireRoles exportSamples = SampleController.class
+                .getMethod(
+                        "exportSamples",
+                        String.class,
+                        String.class,
+                        UUID.class,
+                        UUID.class,
+                        UUID.class,
+                        UUID.class,
+                        DataScope.class,
+                        Object.class,
+                        jakarta.servlet.http.HttpServletResponse.class)
+                .getAnnotation(RequireRoles.class);
+
+        assertThat(batchApprove).isNotNull();
+        assertThat(batchApprove.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
+        assertThat(batchReject).isNotNull();
+        assertThat(batchReject.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
+        assertThat(batchShip).isNotNull();
+        assertThat(batchShip.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
+        assertThat(refreshLogistics).isNotNull();
+        assertThat(refreshLogistics.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
+        assertThat(exportSamples).isNotNull();
+        assertThat(exportSamples.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF);
+    }
+
+    @Test
+    void getStatusTransitions_shouldExposeRoleStateAndErrorMatrix() throws Exception {
+        GetMapping mapping = SampleController.class
+                .getMethod("getStatusTransitions")
+                .getAnnotation(GetMapping.class);
+
+        var response = sampleController.getStatusTransitions();
+        Map<String, SampleController.SampleStatusTransitionVO> transitions = response.getData().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        SampleController.SampleStatusTransitionVO::getAction,
+                        transition -> transition));
+
+        assertThat(mapping).isNotNull();
+        assertThat(mapping.value()).containsExactly("/status-transitions");
+        assertThat(response.getData()).hasSize(7);
+
+        SampleController.SampleStatusTransitionVO approve = transitions.get("PENDING_SHIP");
+        assertThat(approve.getAliases()).contains("APPROVED");
+        assertThat(approve.getFromStatuses()).containsExactly("PENDING_AUDIT");
+        assertThat(approve.getToStatus()).isEqualTo("PENDING_SHIP");
+        assertThat(approve.getInternalToStatus()).isEqualTo("PENDING_SHIP");
+        assertThat(approve.getRoleCodes()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
+        assertThat(approve.getBatchEndpoint()).isEqualTo("POST /samples/batch-approve");
+        assertThat(approve.getInvalidStateMessage()).contains("expected PENDING_AUDIT");
+
+        SampleController.SampleStatusTransitionVO reject = transitions.get("REJECTED");
+        assertThat(reject.getFromStatuses()).containsExactly("PENDING_AUDIT");
+        assertThat(reject.getToStatus()).isEqualTo("REJECTED");
+        assertThat(reject.getRequiredFields()).containsExactly("reason");
+        assertThat(reject.getMissingFieldMessage()).isEqualTo("reason is required when reject sample request");
+        assertThat(reject.getRoleCodes()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
+
+        SampleController.SampleStatusTransitionVO shipping = transitions.get("SHIPPING");
+        assertThat(shipping.getAliases()).contains("SHIPPED");
+        assertThat(shipping.getFromStatuses()).containsExactly("PENDING_SHIP");
+        assertThat(shipping.getToStatus()).isEqualTo("SHIPPED");
+        assertThat(shipping.getInternalToStatus()).isEqualTo("SHIPPING");
+        assertThat(shipping.getRequiredFields()).containsExactly("trackingNo");
+        assertThat(shipping.getRoleCodes()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
+        assertThat(shipping.getBatchEndpoint()).isEqualTo("POST /samples/batch-ship");
+
+        SampleController.SampleStatusTransitionVO pendingHomework = transitions.get("PENDING_HOMEWORK");
+        assertThat(pendingHomework.getAliases()).containsExactly("SIGNED", "PENDING_TASK");
+        assertThat(pendingHomework.getFromStatuses()).containsExactly("SHIPPED", "DELIVERED");
+        assertThat(pendingHomework.getToStatus()).isEqualTo("PENDING_TASK");
+        assertThat(pendingHomework.getInternalToStatus()).isEqualTo("PENDING_HOMEWORK");
+        assertThat(pendingHomework.getRoleCodes()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
+
+        SampleController.SampleStatusTransitionVO completed = transitions.get("COMPLETED");
+        assertThat(completed.isUserCallable()).isFalse();
+        assertThat(completed.getActorType()).isEqualTo("SYSTEM");
+        assertThat(completed.getFromStatuses()).containsExactly("PENDING_TASK");
+        assertThat(completed.getToStatus()).isEqualTo("FINISHED");
+        assertThat(completed.getTrigger()).contains("订单同步");
+        assertThat(completed.getForbiddenMessage()).contains("仅允许系统自动推进");
+
+        SampleController.SampleStatusTransitionVO closed = transitions.get("CLOSED");
+        assertThat(closed.isUserCallable()).isFalse();
+        assertThat(closed.getActorType()).isEqualTo("SYSTEM");
+        assertThat(closed.getFromStatuses()).containsExactly("PENDING_TASK");
+        assertThat(closed.getToStatus()).isEqualTo("CLOSED");
+        assertThat(closed.getTrigger()).contains("超时");
     }
 
     @Test
@@ -842,6 +1080,37 @@ class SampleControllerTest {
         assertThat(response.getData().getRecords().get(0).getTalentName()).isEqualTo("达人B-映射缺失订单");
         verify(productMapper).selectList(any(QueryWrapper.class));
         verify(sampleRequestMapper).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+    }
+
+    @Test
+    void getSamplePage_shouldFilterByChannelAndRecruiterUserIds() {
+        UUID channelUserId = UUID.randomUUID();
+        UUID recruiterUserId = UUID.randomUUID();
+        Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(List.of());
+
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class), eq(recruiterUserId)))
+                .thenReturn(emptyPage);
+
+        var response = sampleController.getSamplePage(
+                1,
+                10,
+                null,
+                "PENDING_SHIP",
+                channelUserId,
+                recruiterUserId,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.ADMIN)
+        );
+
+        assertThat(response.getData().getTotal()).isZero();
+        ArgumentCaptor<QueryWrapper<SampleRequest>> wrapperCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(sampleRequestMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture(), eq(recruiterUserId));
+        String sqlSegment = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(sqlSegment).contains("sr.status");
+        assertThat(sqlSegment).contains("sr.channel_user_id");
     }
 
     @Test

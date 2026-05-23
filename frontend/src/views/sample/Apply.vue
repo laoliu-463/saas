@@ -1,6 +1,6 @@
 <template>
   <div class="sample-apply app-page">
-    <n-card title="申请寄样" :bordered="false" class="app-panel apply-card">
+    <n-card :title="applyCardTitle" :bordered="false" class="app-panel apply-card">
       <n-form ref="formRef" :model="formData" :rules="rules" label-placement="top">
         <n-grid :cols="24" :x-gap="12">
           <n-form-item-gi :span="24" label="达人搜索">
@@ -93,11 +93,19 @@ import { computed, h, onMounted, reactive, ref } from 'vue';
 import { NButton, useDialog, useMessage } from 'naive-ui';
 import { useRoute, useRouter } from 'vue-router';
 import { checkSampleEligibility, createSample, searchSampleProducts } from '../../api/sample';
-import { getTalentPage } from '../../api/talent';
+import { getTalentPage, getTalentShippingAddress } from '../../api/talent';
 import { useAuthStore } from '../../stores/auth';
 import { resolveSafeAvatarUrl } from '../../utils/media';
 import { useDebouncedFn } from '../../utils/debounce';
-import { buildSampleRemark, isMainlandMobile, mergeLockedOption, type SampleSelectOption } from './sample-context';
+import {
+  INTERNAL_QUICK_SAMPLE_SOURCE,
+  MANUAL_SAMPLE_APPLY_SOURCE,
+  buildSampleRemark,
+  isMainlandMobile,
+  mergeLockedOption,
+  normalizeSampleApplySource,
+  type SampleSelectOption
+} from './sample-context';
 
 const message = useMessage();
 const route = useRoute();
@@ -195,6 +203,10 @@ const productOptions = ref<{ label: string; value: string }[]>([]);
 const loadingProducts = ref(false);
 const productLocked = ref(false);
 const lockedProductOption = ref<SampleSelectOption | null>(null);
+const applySource = ref(MANUAL_SAMPLE_APPLY_SOURCE);
+const applyCardTitle = computed(() =>
+  applySource.value === INTERNAL_QUICK_SAMPLE_SOURCE ? '内部寄样申请' : '申请寄样'
+);
 
 const getRouteString = (key: string) => {
   const value = route.query[key]
@@ -217,7 +229,9 @@ const getSubmitRemark = () => buildSampleRemark({
   extraRemark: formData.remark
 });
 
-const applyRouteContext = () => {
+const applyRouteContext = async () => {
+  applySource.value = normalizeSampleApplySource(getRouteString('applySource'))
+
   const productId = getRouteString('productId')
   if (productId) {
     const productLabel = getRouteString('productLabel') || productId
@@ -249,6 +263,18 @@ const applyRouteContext = () => {
   formData.receiverName = getRouteString('receiverName') || formData.receiverName
   formData.receiverPhone = getRouteString('receiverPhone') || formData.receiverPhone
   formData.receiverAddress = getRouteString('receiverAddress') || formData.receiverAddress
+
+  const talentUuid = getRouteString('talentUuid')
+  if (talentUuid && !formData.receiverName) {
+    try {
+      const address = await getTalentShippingAddress(talentUuid)
+      formData.receiverName = address?.recipientName || formData.receiverName
+      formData.receiverPhone = address?.recipientPhone || formData.receiverPhone
+      formData.receiverAddress = address?.recipientAddress || formData.receiverAddress
+    } catch {
+      // 地址可选，失败时不阻断寄样申请
+    }
+  }
 }
 
 const fetchProductOptions = async (query: string) => {
@@ -312,7 +338,7 @@ const fetchTalents = async (page = 1) => {
   }
 };
 
-const chooseTalent = (row: any) => {
+const chooseTalent = async (row: any) => {
   selectedTalent.value = row;
   formData.talentId = row.talentId;
   formData.talentNickname = row.nickname;
@@ -322,6 +348,16 @@ const chooseTalent = (row: any) => {
   formData.receiverName = row.receiverName || formData.receiverName;
   formData.receiverPhone = row.receiverPhone || formData.receiverPhone;
   formData.receiverAddress = row.receiverAddress || formData.receiverAddress;
+  if (row.id) {
+    try {
+      const address = await getTalentShippingAddress(row.id);
+      formData.receiverName = address?.recipientName || formData.receiverName;
+      formData.receiverPhone = address?.recipientPhone || formData.receiverPhone;
+      formData.receiverAddress = address?.recipientAddress || formData.receiverAddress;
+    } catch {
+      // ignore
+    }
+  }
 };
 
 const canSubmit = computed(() =>
@@ -340,6 +376,10 @@ const doSubmit = async () => {
       talentMainCategory: formData.talentMainCategory,
       productId: formData.productId,
       quantity: formData.quantity,
+      recipientName: formData.receiverName,
+      recipientPhone: formData.receiverPhone,
+      recipientAddress: formData.receiverAddress,
+      applySource: applySource.value,
       remark
     });
     message.success('寄样申请已提交，状态为待审核');
@@ -386,6 +426,10 @@ const handleSubmit = async () => {
       talentMainCategory: formData.talentMainCategory,
       productId: formData.productId,
       quantity: formData.quantity,
+      recipientName: formData.receiverName,
+      recipientPhone: formData.receiverPhone,
+      recipientAddress: formData.receiverAddress,
+      applySource: applySource.value,
       remark
     })
     eligibility = eligibilityResponse?.data || eligibilityResponse
@@ -416,7 +460,7 @@ const formatFans = (fans?: number) => {
 };
 
 onMounted(async () => {
-  applyRouteContext();
+  await applyRouteContext();
   await fetchTalents(1);
   await fetchProductOptions('');
 });

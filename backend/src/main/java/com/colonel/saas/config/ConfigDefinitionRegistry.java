@@ -88,6 +88,28 @@ public class ConfigDefinitionRegistry {
                 true,
                 this::validateSampleDefaultStandard
         ));
+        register(map, ConfigDefinition.string(
+                SystemConfigKeys.PROMOTION_COPY_BRIEF_TEMPLATE,
+                true,
+                value -> {
+                    if (!StringUtils.hasText(value)) {
+                        throw BusinessException.param("复制讲解模板不能为空");
+                    }
+                    if (value.length() > 4000) {
+                        throw BusinessException.param("复制讲解模板不能超过 4000 字符");
+                    }
+                }
+        ));
+        register(map, ConfigDefinition.json(
+                SystemConfigKeys.PROMOTION_PICK_EXTRA_RULE,
+                true,
+                this::validatePromotionPickExtraRule
+        ));
+        register(map, ConfigDefinition.json(
+                SystemConfigKeys.PRESET_TALENT_TAGS,
+                true,
+                this::validatePresetTalentTags
+        ));
         return Map.copyOf(map);
     }
 
@@ -120,6 +142,57 @@ public class ConfigDefinitionRegistry {
         }
         if (parsed < min || parsed > max) {
             throw BusinessException.param(message);
+        }
+    }
+
+    private void validatePresetTalentTags(String raw) {
+        try {
+            JsonNode root = objectMapper.readTree(raw);
+            if (!root.isArray()) {
+                throw BusinessException.param("达人预设标签库必须是 JSON 数组");
+            }
+            if (root.size() > 50) {
+                throw BusinessException.param("达人预设标签库最多 50 项");
+            }
+            java.util.LinkedHashSet<String> unique = new java.util.LinkedHashSet<>();
+            for (JsonNode node : root) {
+                String tag = node == null || node.isNull() ? "" : node.asText("").trim();
+                if (!StringUtils.hasText(tag)) {
+                    throw BusinessException.param("达人预设标签不能为空字符串");
+                }
+                if (tag.length() > 24) {
+                    throw BusinessException.param("达人预设标签长度不能超过 24 字符: " + tag);
+                }
+                unique.add(tag);
+            }
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw BusinessException.param("达人预设标签库必须是合法 JSON 数组");
+        }
+    }
+
+    private void validatePromotionPickExtraRule(String raw) {
+        try {
+            JsonNode root = objectMapper.readTree(raw);
+            if (!root.isObject()) {
+                throw BusinessException.param("pick_extra 规则必须是 JSON 对象");
+            }
+            String format = root.path("format").asText("").trim();
+            if (!StringUtils.hasText(format)) {
+                throw BusinessException.param("pick_extra 规则 format 不能为空");
+            }
+            if (format.length() > 200) {
+                throw BusinessException.param("pick_extra 规则 format 不能超过 200 字符");
+            }
+            String encode = root.path("encode").asText("none").trim().toLowerCase(Locale.ROOT);
+            if (StringUtils.hasText(encode) && !encode.matches("none|url|base64")) {
+                throw BusinessException.param("pick_extra 规则 encode 仅支持 none/url/base64");
+            }
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw BusinessException.param("pick_extra 规则必须是合法 JSON 对象");
         }
     }
 
@@ -176,6 +249,10 @@ public class ConfigDefinitionRegistry {
 
         public static ConfigDefinition json(String key, boolean runtimeEditable, Consumer<String> validator) {
             return new ConfigDefinition(key, ConfigValueType.JSON, runtimeEditable, false, validator);
+        }
+
+        public static ConfigDefinition string(String key, boolean runtimeEditable, Consumer<String> validator) {
+            return new ConfigDefinition(key, ConfigValueType.STRING, runtimeEditable, false, validator);
         }
 
         public void validate(String value) {

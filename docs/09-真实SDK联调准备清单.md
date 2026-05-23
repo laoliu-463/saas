@@ -21,6 +21,7 @@
 > 2026-05-21 起，匿名运行态探针统一使用 `GET /api/system/health`（仅返回 `{"status":"UP"}`）。`/api/actuator/**` 已收紧为需要 JWT 的内部诊断端点；下文历史记录中出现的 `/api/actuator/health` 保留为当时取证口径。
 
 - [x] real-pre 后端 `8081`、PostgreSQL `5433`、Redis `6380` 已稳定可用
+- [x] real-pre 后端 compose 已移除公开 JDWP debug 端口，不再映射 `5006:5005`；JVM 启动参数保留 `spring.devtools.restart.enabled=false`，不启用远程 debug
 - [x] `GET /api/douyin/tokens`、Webhook 验签与日志脱敏、商品素材状态检查已拿到验证结果；2026-05-08 real-pre `real` profile 复验确认 `buyin.materialsProductStatus` 使用商品详情 URL 入参返回上游 `10000 / success`
 - [x] `backend mvn clean test` 当前基线已更新为 `652 tests, 0 failures, 0 errors`（2026-05-09 全量回归）
 - [x] real-pre 浏览器全路径回归 `45/45` 通过
@@ -35,7 +36,7 @@
 - [x] `GET /api/colonel/activities/3916506/products?count=20&refresh=true` 已完成业务接口刷新闭环：旧快照 10 条，强制刷新后回写为 20 条，随后默认查询也返回 20 条；证据目录 `runtime/qa/out/activity-product-refresh-real-20260507-210819`
 - [x] `POST /api/douyin/product-material-status-checks` 已在 real-pre `real` profile 复验：纯数字商品 ID 返回 `40004 / isv.parameter-invalid:257`，抖店商品详情 URL 入参返回 `code=10000 / msg=success`，数据字段包含 `status / join_alliance / promotion_status / can_share / product_url`
 - [x] `GET /api/douyin/order-settlements` 已完成首轮多结算订单查询取证：上游成功结构键为 `data.cursor / data.orders`，当前 7/30 天窗口样本均为空；已确认超出 `t-90d` 会返回 `40004 / isv.parameter-invalid:1036`
-- [x] `RealDouyinOrderGateway` 已补齐 `buyin.instituteOrderColonel` 真实返回映射；上游订单主接口入参时间必须使用 `yyyy-MM-dd HH:mm:ss` 字符串，秒级 / 毫秒级时间戳会返回 `40004 / isv.parameter-invalid:1034`
+- [x] `RealDouyinOrderGateway` 已补齐真实返回映射，并已将常规时间范围主同步切到 `buyin.colonelMultiSettlementOrders`；旧 `buyin.instituteOrderColonel` 仅保留为 RAW 探针和历史口径对照。多结算接口入参时间必须使用 `yyyy-MM-dd HH:mm:ss` 字符串，非空结算样本仍待上游返回后继续核验字段
 - [x] `POST /api/orders/sync` 已完成 real-pre 30 分钟窗口真实同步：拉取 10 单、落库 10 单、失败 0、归因 0；证据目录 `runtime/qa/out/orders-sync-real-20260507-203422`；2026-05-08 pick_source 重复映射修复后复验：重放同步 `totalFetched=10 / created=4 / updated=6 / attributed=10 / unattributed=0`，全库 `colonel_native` 场景 316 单全部 `ATTRIBUTED`（归因率 100%）
 - [x] 2026-05-08 21:19 real-pre 三方联调二次复验：证据目录 `runtime/qa/out/real-pre-sdk-retest-20260508-211901`；本轮 `POST /api/orders/sync` 7 天窗口返回 `totalFetched=10 / created=10 / updated=0 / attributed=10 / unattributed=0 / failed=0`，全库订单统计更新为 `totalOrders=326 / attributedOrders=326 / unattributedOrders=0 / partialOrders=0 / syncFailedOrders=0`
 - [~] 2026-05-09 15:29 按联盟测范围重新确认：real-pre 后端 `UP`，Token 可用，`buyin.institutionInfo / alliance.instituteColonelActivityList / alliance.colonelActivityProduct / buyin.productSkus.v2` 均返回 `10000`；活动商品样本 `20` 条，SKU 样本 `1` 条；30 分钟订单同步 `totalFetched=10 / created=0 / updated=10 / attributed=10 / unattributed=0 / failed=0`；该条为 15:29 文档快照，后续统计已继续变化

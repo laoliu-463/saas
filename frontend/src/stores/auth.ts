@@ -84,6 +84,13 @@ export const useAuthStore = defineStore('auth', {
             this.userInfo = normalizeUserInfo(userInfo);
             this.persistAuthState();
         },
+        setUserInfo(userInfo: any) {
+            this.userInfo = normalizeUserInfo({
+                ...(this.userInfo || {}),
+                ...(userInfo || {})
+            });
+            this.persistAuthState();
+        },
         updateTokens(payload: {
             token: string;
             refreshToken?: string;

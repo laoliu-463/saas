@@ -72,12 +72,13 @@ const isOpsStaffOnly = computed(() => {
   return roles.includes(ROLE.OPS_STAFF) && !roles.includes(ROLE.ADMIN)
 })
 
-const iconData = (d: string) => () =>
+const iconData = (paths: string | string[]) => () =>
   h(NIcon, null, {
     default: () =>
       h(
         'svg',
         {
+          class: 'nav-icon-svg',
           viewBox: '0 0 24 24',
           fill: 'none',
           stroke: 'currentColor',
@@ -87,19 +88,21 @@ const iconData = (d: string) => () =>
           width: 20,
           height: 20
         },
-        [h('path', { d })]
+        (Array.isArray(paths) ? paths : [paths]).map((d, index) =>
+          h('path', { d, opacity: index === 0 ? 1 : 0.74 })
+        )
       )
   })
 
 const icons = {
-  chart: iconData('M18 20V10M12 20V4M6 20v-6'),
-  bag: iconData('M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z'),
-  user: iconData('M17 21v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z'),
-  gift: iconData('M20 12v8H4v-8M12 2v8M22 12H2M12 2c-2 0-4 4-4 4h4V2zM12 2c2 0 4 4 4 4h-4V2z'),
-  settings: iconData('M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z'),
-  truck: iconData('M1 6h2m0 0h16l4 6v6h-2M3 6v12m18-6h-6m-6 0H3m6 0v6m6-6v6m-6 0a2 2 0 100-4 2 2 0 000 4zm6 0a2 2 0 100-4 2 2 0 000 4z'),
-  shield: iconData('M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'),
-  list: iconData('M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2')
+  chart: iconData(['M5 19V13.5', 'M12 19V5', 'M19 19V9', 'M4 19h16']),
+  bag: iconData(['M6.5 9h11l1.1 11h-13L6.5 9z', 'M9 9V7a3 3 0 016 0v2', 'M10 13h4']),
+  user: iconData(['M12 12a4 4 0 100-8 4 4 0 000 8z', 'M5 20a7 7 0 0114 0', 'M17.5 7.5h3M19 6v3']),
+  gift: iconData(['M4 11h16v9H4v-9z', 'M3 7h18v4H3V7z', 'M12 7v13M8.5 7C7 7 6 6 6 4.8S7.1 3 8.3 3C10.2 3 12 7 12 7M15.5 7C17 7 18 6 18 4.8S16.9 3 15.7 3C13.8 3 12 7 12 7']),
+  settings: iconData(['M12 15.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7z', 'M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.4 1a7 7 0 00-2-1.2L14.2 3h-4.4l-.3 2.7a7 7 0 00-2 1.2l-2.4-1-2 3.4 2 1.5A7 7 0 005 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.4-1a7 7 0 002 1.2l.3 2.7h4.4l.3-2.7a7 7 0 002-1.2l2.4 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z']),
+  truck: iconData(['M3 7h11v9H3V7z', 'M14 10h4l3 3v3h-7v-6z', 'M7 19a2 2 0 100-4 2 2 0 000 4zM17 19a2 2 0 100-4 2 2 0 000 4z']),
+  shield: iconData(['M12 21s7-3.6 7-9.2V5.5L12 3 5 5.5v6.3C5 17.4 12 21 12 21z', 'M9 12l2 2 4-5']),
+  list: iconData(['M8 6h11M8 12h11M8 18h11', 'M4.5 6h.01M4.5 12h.01M4.5 18h.01'])
 }
 
 interface MenuItem extends NavigationMenuItem {
@@ -198,6 +201,7 @@ const rawMenus: MenuItem[] = [
       { label: '角色管理', key: '/system/roles', icon: icons.shield },
       { label: '部门管理', key: '/system/depts', icon: icons.list },
       { label: '系统配置', key: '/system/config', icon: icons.settings },
+      { label: '提成规则', key: '/system/commission-rules', icon: icons.settings },
       { label: '抖店联调', key: '/system/douyin', icon: icons.truck },
       { label: '操作日志', key: '/system/operation-logs', icon: icons.list }
     ]
@@ -356,6 +360,17 @@ function handleMenuClick(key: string) {
 .collapse-trigger svg {
   width: 16px;
   height: 16px;
+}
+
+.app-sider :deep(.nav-icon-svg) {
+  stroke-width: 2.1;
+  transition: transform var(--transition-fast), stroke-width var(--transition-fast);
+}
+
+.app-sider :deep(.n-menu .n-menu-item-content:hover .nav-icon-svg),
+.app-sider :deep(.n-menu .n-menu-item-content--selected .nav-icon-svg) {
+  transform: translateY(-1px);
+  stroke-width: 2.25;
 }
 
 .sider-menu {

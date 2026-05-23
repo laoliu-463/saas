@@ -107,6 +107,17 @@ class TalentControllerTest {
     }
 
     @Test
+    void presetTags_returnsConfiguredPresetTags() throws Exception {
+        when(talentService.listPresetTags()).thenReturn(List.of("美妆", "高转化"));
+
+        mockMvc.perform(get("/talents/preset-tags"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0]").value("美妆"))
+                .andExpect(jsonPath("$.data[1]").value("高转化"));
+    }
+
+    @Test
     void detail_existingTalent_returnsTalent() throws Exception {
         UUID id = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -287,6 +298,21 @@ class TalentControllerTest {
     }
 
     @Test
+    void statusTransitions_returnsClaimStateMatrix() throws Exception {
+        mockMvc.perform(get("/talents/status-transitions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.protectionConfigKey").value("talent.protection_days"))
+                .andExpect(jsonPath("$.data.allowMultiClaim").value(true))
+                .andExpect(jsonPath("$.data.states[?(@.code=='PUBLIC' && @.canClaim==true)]").exists())
+                .andExpect(jsonPath("$.data.states[?(@.code=='PRIVATE_SELF' && @.canRelease==true)]").exists())
+                .andExpect(jsonPath("$.data.states[?(@.code=='PRIVATE_OTHERS' && @.canClaim==true)]").exists())
+                .andExpect(jsonPath("$.data.states[?(@.code=='BLACKLIST' && @.canClaim==false)]").exists())
+                .andExpect(jsonPath("$.data.transitions[?(@.action=='CLAIM' && @.toState=='PRIVATE_SELF')]").exists())
+                .andExpect(jsonPath("$.data.transitions[?(@.action=='AUTO_RELEASE_EXPIRED' && @.toState=='RELEASED')]").exists());
+    }
+
+    @Test
     void claim_talent_returnsClaimedTalent() throws Exception {
         UUID talentId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -318,15 +344,40 @@ class TalentControllerTest {
     @Test
     void refresh_talent_returnsRefreshedTalent() throws Exception {
         UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
         Talent refreshed = new Talent();
         refreshed.setId(talentId);
         refreshed.setNickname("crawler-updated");
         when(talentService.refresh(talentId)).thenReturn(refreshed);
 
-        mockMvc.perform(post("/talents/{id}/refresh", talentId))
+        mockMvc.perform(post("/talents/{id}/refresh", talentId)
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_STAFF)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.nickname").value("crawler-updated"));
+
+        verify(talentQueryService).assertCanOperate(talentId, userId, deptId, List.of(RoleCodes.CHANNEL_STAFF));
+    }
+
+    @Test
+    void refresh_shouldRejectWhenTalentIsOutsideClaimScope() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        doThrow(new ForbiddenException("无权操作该达人"))
+                .when(talentQueryService).assertCanOperate(talentId, userId, deptId, List.of(RoleCodes.CHANNEL_STAFF));
+
+        mockMvc.perform(post("/talents/{id}/refresh", talentId)
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_STAFF)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403));
+
+        verify(talentService, never()).refresh(any(UUID.class));
     }
 
     @Test
@@ -400,6 +451,8 @@ class TalentControllerTest {
     @Test
     void manualFill_talent_returnsUpdatedTalent() throws Exception {
         UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
         Talent updated = new Talent();
         updated.setId(talentId);
         updated.setNickname("manual-name");
@@ -413,6 +466,9 @@ class TalentControllerTest {
 
         mockMvc.perform(put("/talents/{id}/manual-fill", talentId)
                         .contentType("application/json")
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_STAFF))
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
@@ -421,6 +477,7 @@ class TalentControllerTest {
                 .andExpect(jsonPath("$.data.contactWechat").doesNotExist())
                 .andExpect(jsonPath("$.data.rawPayload").doesNotExist());
 
+        verify(talentQueryService).assertCanOperate(talentId, userId, deptId, List.of(RoleCodes.CHANNEL_STAFF));
         verify(talentService).manualFill(any(UUID.class), argThat(request ->
                 "manual-name".equals(request.getNickname())
                         && Long.valueOf(1000).equals(request.getFans())
@@ -429,6 +486,26 @@ class TalentControllerTest {
                         && request.getOwnerId() == null
                         && request.getBlacklisted() == null
                         && request.getRawPayload() == null));
+    }
+
+    @Test
+    void manualFill_shouldRejectWhenTalentIsOutsideClaimScope() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        doThrow(new ForbiddenException("无权操作该达人"))
+                .when(talentQueryService).assertCanOperate(talentId, userId, deptId, List.of(RoleCodes.CHANNEL_STAFF));
+
+        mockMvc.perform(put("/talents/{id}/manual-fill", talentId)
+                        .contentType("application/json")
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_STAFF))
+                        .content("{\"nickname\":\"blocked\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403));
+
+        verify(talentService, never()).manualFill(any(UUID.class), any(Talent.class));
     }
 
     @Test

@@ -56,7 +56,6 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - "8081:8080"
-      - "5006:5005"
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
       SERVER_PORT: 8080
@@ -88,11 +87,12 @@ services:
       TALENT_ENRICH_MODE: ${TALENT_ENRICH_MODE}
       TALENT_PUBLIC_PAGE_CRAWL_ENABLED: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED}
       APP_TEST_ENABLED: ${APP_TEST_ENABLED}
+      EXCLUSIVE_ENABLED: ${EXCLUSIVE_ENABLED:-false}
       DEBUG: "false"
       SPRING_DEVTOOLS_ADD_PROPERTIES: "false"
       LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB_CLIENT_RESTTEMPLATE: "INFO"
       LOGGING_LEVEL_COM_DOUDIAN_OPEN_CORE: "WARN"
-      JAVA_OPTS: -Dspring.devtools.restart.enabled=false -Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=*:5005,suspend=n
+      JAVA_OPTS: -Dspring.devtools.restart.enabled=false
     volumes:
       - ./backend:/app
       - maven_cache_real_pre:/root/.m2

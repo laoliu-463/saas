@@ -16,6 +16,7 @@
         </n-button>
         <n-button type="primary" secondary :loading="loading" data-testid="talent-refresh" @click="fetchData">刷新数据</n-button>
         <n-button type="primary" data-testid="talent-create" @click="showCreate = true">新增达人</n-button>
+        <n-button data-testid="talent-batch-import" @click="showBatchImport = true">批量导入</n-button>
       </template>
     </PageHeader>
 
@@ -80,6 +81,7 @@
     </n-card>
 
     <TalentCreateModal v-model:show="showCreate" @success="handleCreated" />
+    <TalentBatchImportModal v-model:show="showBatchImport" @success="fetchData" />
     <TalentDetailModal
       v-model:show="showDetail"
       :talent-id="activeTalentId"
@@ -106,6 +108,7 @@ import {
 } from '../../api/talent'
 import TalentDetailModal from './components/TalentDetailModal.vue'
 import TalentCreateModal from './components/TalentCreateModal.vue'
+import TalentBatchImportModal from './components/TalentBatchImportModal.vue'
 import TalentBoardTabs from './components/TalentBoardTabs.vue'
 import TalentMetricFilters from './components/TalentMetricFilters.vue'
 import TalentStatusActions from './components/TalentStatusActions.vue'
@@ -134,6 +137,7 @@ const loading = ref(false)
 const tableLoading = useDelayedFlag(loading, 200)
 const weeklyRefreshing = ref(false)
 const showCreate = ref(false)
+const showBatchImport = ref(false)
 const showDetail = ref(false)
 const activeTalentId = ref('')
 const data = ref<TalentListItem[]>([])

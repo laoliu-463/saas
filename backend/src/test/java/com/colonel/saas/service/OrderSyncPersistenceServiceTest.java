@@ -1,15 +1,19 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.OrderSyncDedupClaimMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,6 +40,8 @@ class OrderSyncPersistenceServiceTest {
     private OperationLogService operationLogService;
     @Mock
     private SysUserMapper sysUserMapper;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private OrderSyncPersistenceService service;
 
@@ -49,7 +55,8 @@ class OrderSyncPersistenceServiceTest {
                 merchantService,
                 sampleLifecycleService,
                 operationLogService,
-                sysUserMapper
+                sysUserMapper,
+                eventPublisher
         );
     }
 
@@ -107,6 +114,24 @@ class OrderSyncPersistenceServiceTest {
                 order.getOrderId(),
                 "测试商品",
                 "订单归因副作用: completePendingHomeworkByOrder");
+    }
+
+    @Test
+    void persistOrder_shouldPublishOrderEventWithTalentUidAndRawExtraData() {
+        ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
+        order.setExtraData(Map.of("author_id", "AUTHOR-7788", "merchant_id", "MERCHANT-1"));
+        when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null);
+        when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(1);
+
+        service.persistOrder(order);
+
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue()).isInstanceOf(OrderSyncedEvent.class);
+        OrderSyncedEvent event = (OrderSyncedEvent) eventCaptor.getValue();
+        assertThat(event.talentUid()).isEqualTo("AUTHOR-7788");
+        assertThat(event.extraData()).containsEntry("merchant_id", "MERCHANT-1");
     }
 
     @Test

@@ -60,8 +60,21 @@ class AttributionServiceTest {
         lenient().when(talentMapper.selectOne(any())).thenReturn(talent);
     }
 
+    private AttributionService attributionService(boolean exclusiveEnabled) {
+        return new AttributionService(
+                pickSourceMappingMapper,
+                productOperationStateMapper,
+                talentMapper,
+                talentClaimMapper,
+                exclusiveTalentService,
+                exclusiveMerchantService,
+                exclusiveEnabled
+        );
+    }
+
     @Test
     void resolveAttribution_shouldUseExclusiveMerchantFirst() {
+        service = attributionService(true);
         UUID merchantOwner = UUID.randomUUID();
         UUID merchantDept = UUID.randomUUID();
         when(exclusiveMerchantService.findActiveOwnerByMerchantId("m-1"))
@@ -85,9 +98,10 @@ class AttributionServiceTest {
 
     @Test
     void resolveAttribution_shouldUseExclusiveTalentWhenMerchantNotMatched() {
+        service = attributionService(true);
         UUID talentOwner = UUID.randomUUID();
         UUID talentDept = UUID.randomUUID();
-        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         when(exclusiveTalentService.findActiveOwnerByTalentUid("t-2"))
                 .thenReturn(new AttributionService.ExclusiveOwner(talentOwner, talentDept));
 
@@ -108,9 +122,10 @@ class AttributionServiceTest {
 
     @Test
     void resolveAttribution_shouldUseAuthorBuyinIdForExclusiveTalent() {
+        service = attributionService(true);
         UUID talentOwner = UUID.randomUUID();
         UUID talentDept = UUID.randomUUID();
-        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         when(exclusiveTalentService.findActiveOwnerByTalentUid("7137334329718292775"))
                 .thenReturn(new AttributionService.ExclusiveOwner(talentOwner, talentDept));
 
@@ -127,6 +142,34 @@ class AttributionServiceTest {
         assertThat(result.talentUid()).isEqualTo("7137334329718292775");
         assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
         verify(pickSourceMappingMapper, never()).selectOne(any());
+    }
+
+    @Test
+    void resolveAttribution_shouldSkipExclusiveOwnersByDefaultAndUsePickSourceMapping() {
+        UUID exclusiveOwner = UUID.randomUUID();
+        UUID mappingUser = UUID.randomUUID();
+        UUID mappingDept = UUID.randomUUID();
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(mappingUser);
+        mapping.setDeptId(mappingDept);
+        lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId("merchant-v1"))
+                .thenReturn(new AttributionService.ExclusiveOwner(exclusiveOwner, UUID.randomUUID()));
+        when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("pid-v1");
+        order.setPickSource("pick-v1");
+
+        AttributionService.AttributionResult result = service.resolveAttribution(
+                order,
+                Map.of("merchant_id", "merchant-v1")
+        );
+
+        assertThat(result.userId()).isEqualTo(mappingUser);
+        assertThat(result.deptId()).isEqualTo(mappingDept);
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        verify(exclusiveMerchantService, never()).findActiveOwnerByMerchantId(any());
+        verify(exclusiveTalentService, never()).findActiveOwnerByTalentUid(any());
     }
 
     @Test
@@ -334,8 +377,8 @@ class AttributionServiceTest {
         PickSourceMapping mapping = new PickSourceMapping();
         mapping.setUserId(mappingUser);
         mapping.setDeptId(mappingDept);
-        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
-        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
         when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
@@ -368,8 +411,8 @@ class AttributionServiceTest {
         activeClaim.setStatus(1);
 
         when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
-        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
         when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
         when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(activeClaim));
 
@@ -405,8 +448,8 @@ class AttributionServiceTest {
         activeClaim.setStatus(1);
 
         when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
-        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
         when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
         when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(activeClaim));
 
@@ -432,8 +475,8 @@ class AttributionServiceTest {
         PickSourceMapping exact = new PickSourceMapping();
         exact.setUserId(mappingUser);
         exact.setDeptId(mappingDept);
-        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
-        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
         when(pickSourceMappingMapper.selectOne(any())).thenReturn(exact);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
@@ -460,8 +503,8 @@ class AttributionServiceTest {
         PickSourceMapping mapping = new PickSourceMapping();
         mapping.setUserId(mappingUser);
         mapping.setDeptId(mappingDept);
-        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
-        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
         when(pickSourceMappingMapper.selectOne(any()))
                 .thenReturn(null)
                 .thenReturn(mapping);
@@ -489,8 +532,8 @@ class AttributionServiceTest {
         mapping.setUserId(UUID.randomUUID());
         mapping.setDeptId(UUID.randomUUID());
         when(productOperationStateMapper.selectOne(any())).thenReturn(state);
-        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
-        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
         when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
@@ -505,8 +548,8 @@ class AttributionServiceTest {
 
     @Test
     void resolveAttribution_shouldReturnUnattributedWhenMappingMissing() {
-        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
-        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
         when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
@@ -534,8 +577,8 @@ class AttributionServiceTest {
         second.setActivityId("3859423");
         second.setProductId("3816127512791089531");
         second.setSourceType(PickSourceMappingService.SOURCE_TYPE_NATIVE);
-        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
-        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
         when(pickSourceMappingMapper.selectList(any())).thenReturn(java.util.List.of(first, second));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
@@ -564,8 +607,8 @@ class AttributionServiceTest {
         mapping.setProductId("3816127512791089531");
         mapping.setSourceType(PickSourceMappingService.SOURCE_TYPE_NATIVE);
         mapping.setCreateTime(java.time.LocalDateTime.of(2026, 5, 10, 6, 41, 19));
-        when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
-        when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
+        lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
+        lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
         when(pickSourceMappingMapper.selectList(any()))
                 .thenReturn(java.util.List.of())
                 .thenReturn(java.util.List.of(mapping));

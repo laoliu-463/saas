@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -165,4 +166,10 @@ public class Product extends BaseEntity {
 
     @TableField(exist = false)
     private Long sales30d;
+
+    @TableField(exist = false)
+    private Boolean pinned;
+
+    @TableField(exist = false)
+    private LocalDateTime pinnedUntil;
 }

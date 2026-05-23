@@ -5,7 +5,10 @@
         <span class="logo-icon">
           <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
             <rect width="28" height="28" rx="8" fill="rgba(255,255,255,0.2)" />
-            <path d="M7 20L14 6L21 20H7Z" fill="white" />
+            <path d="M14 5.6L21.2 20.8H6.8L14 5.6Z" fill="white" opacity="0.94" />
+            <path d="M10.2 18.2H17.8" stroke="rgba(255,255,255,0.72)" stroke-width="1.6" stroke-linecap="round" />
+            <circle cx="14" cy="15.3" r="2.2" fill="var(--color-primary)" />
+            <circle cx="14" cy="15.3" r="0.8" fill="white" opacity="0.88" />
           </svg>
         </span>
         <span class="logo-text">Colonel SaaS</span>
@@ -158,7 +161,10 @@ const userInitial = computed(() => {
   return name.charAt(0).toUpperCase()
 })
 
-const userMenuOptions = [{ label: '退出登录', key: 'logout' }]
+const userMenuOptions = [
+  { label: '个人中心', key: 'profile' },
+  { label: '退出登录', key: 'logout' }
+]
 
 const revokeServerSession = async (accessToken: string, refreshToken: string) => {
   if (!accessToken) {
@@ -185,6 +191,10 @@ const revokeServerSession = async (accessToken: string, refreshToken: string) =>
 }
 
 const handleUserMenu = async (key: string) => {
+  if (key === 'profile') {
+    router.push('/profile')
+    return
+  }
   if (key === 'logout') {
     const accessToken = authStore.token || localStorage.getItem('token') || ''
     const refreshToken = authStore.refreshToken || localStorage.getItem('refreshToken') || ''

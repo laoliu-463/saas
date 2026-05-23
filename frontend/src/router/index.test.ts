@@ -117,6 +117,7 @@ describe('router configuration', () => {
         'system/depts',
         'system/departments',
         'system/douyin',
+        'profile',
         'orders',
         'dashboard',
         ''
@@ -133,7 +134,7 @@ describe('router configuration', () => {
       .map((route) => route.component)
       .filter((component): component is () => Promise<unknown> => typeof component === 'function')
 
-    expect(componentLoaders).toHaveLength(23)
+    expect(componentLoaders).toHaveLength(25)
     await Promise.all(componentLoaders.map((loadComponent) => loadComponent()))
 
     const activityRedirect = allRoutes.find((route) => route.path === 'product/activity/:activityId')?.redirect

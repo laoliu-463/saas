@@ -11,7 +11,10 @@ import com.colonel.saas.service.ShortTtlCacheService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,6 +26,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Tag(name = "数据看板", description = "首页看板与归因概览接口。")
+@Validated
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
 @RestController
 @RequestMapping("/dashboard")
@@ -58,8 +62,8 @@ public class DashboardController extends BaseController {
     @Operation(summary = "获取活动商品维度归因聚合", description = "按 activity_id + product_id 聚合订单、商品事实层和映射事实层，用于 Dashboard 穿透和解释层辅助排查。")
     @GetMapping("/activity-products")
     public ApiResult<PageResult<DashboardService.ActivityProductItem>> getActivityProducts(
-            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") long page,
-            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") long size,
+            @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(defaultValue = "1") @Min(1) @Max(1000) long page,
+            @Parameter(description = "每页条数，最大 200。") @RequestParam(defaultValue = "20") @Min(1) @Max(200) long size,
             @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
             @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
             @RequestAttribute(name = "userId", required = false) UUID userId,

@@ -322,27 +322,28 @@ const pageDesc = computed(() => {
 
 const metricLabels = computed(() => {
   const trackSuffix = timeField.value === 'createTime' ? '（创建轨）' : '（结算轨）'
+  const amountSuffix = metrics.value?.amountTrack === 'effective' ? '·结算金额' : metrics.value?.amountTrack === 'estimate' ? '·预估金额' : ''
   if (isChannelStaffOnly.value) {
     return {
       orders: `我的推广订单数${trackSuffix}`,
       amount: `我的订单总额${trackSuffix}`,
-      fee: '我的服务费收入',
-      profit: '我的渠道提成'
+      fee: `我的服务费净收${amountSuffix}`,
+      profit: `我的渠道提成${amountSuffix}`
     }
   }
   if (isBizStaffOnly.value) {
     return {
       orders: `我的订单数${trackSuffix}`,
       amount: `我的订单总额${trackSuffix}`,
-      fee: '我的服务费收入',
-      profit: '我的招商提成'
+      fee: `我的服务费净收${amountSuffix}`,
+      profit: `我的招商提成${amountSuffix}`
     }
   }
   return {
     orders: `今日订单数${trackSuffix}`,
     amount: `今日 GMV${trackSuffix}`,
-    fee: '今日服务费净收',
-    profit: '今日毛利'
+    fee: `今日服务费净收${amountSuffix}`,
+    profit: `今日毛利${amountSuffix}`
   }
 })
 

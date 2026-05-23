@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.times;
@@ -85,6 +86,38 @@ class BusinessRuleConfigServiceTest {
 
         assertThat(standard.min30DaySales()).isEqualTo(30000L);
         assertThat(standard.minLevel()).isEqualTo("LV1");
+    }
+
+    @Test
+    void shouldParsePromotionPickExtraRuleFromConfig() {
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.PROMOTION_PICK_EXTRA_RULE))
+                .thenReturn(Optional.of(config("{\"format\":\"channel_{channel_code}_{product_id}\",\"encode\":\"none\"}")));
+
+        var rule = service.getPromotionPickExtraRule();
+
+        assertThat(rule.format()).isEqualTo("channel_{channel_code}_{product_id}");
+        assertThat(rule.encode()).isEqualTo("none");
+    }
+
+    @Test
+    void shouldFallbackPromotionPickExtraRuleWhenMissingOrInvalid() {
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.PROMOTION_PICK_EXTRA_RULE))
+                .thenReturn(Optional.empty());
+
+        var rule = service.getPromotionPickExtraRule();
+
+        assertThat(rule.format()).isEqualTo("channel_{channel_code}");
+        assertThat(rule.encode()).isEqualTo("none");
+    }
+
+    @Test
+    void shouldParsePresetTalentTagsFromConfig() {
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.PRESET_TALENT_TAGS))
+                .thenReturn(Optional.of(config("[\" 美妆 \",\"高转化\",\"美妆\",\"\"]")));
+
+        List<String> tags = service.getPresetTalentTags();
+
+        assertThat(tags).containsExactly("美妆", "高转化");
     }
 
     @Test

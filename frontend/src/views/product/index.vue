@@ -149,7 +149,13 @@ import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
 import { useAuthStore } from '../../stores/auth'
 import { hasAccess } from '../../constants/rbac'
-import { convertActivityProductLink, getActivityProducts, putActivityProductIntoLibrary } from '../../api/activityProduct'
+import {
+  convertActivityProductLink,
+  getActivityProducts,
+  pinActivityProduct,
+  putActivityProductIntoLibrary,
+  unpinActivityProduct
+} from '../../api/activityProduct'
 import { getColonelActivityPage } from '../../api/activity'
 import { getProducts, getProductPickPage } from '../../api/product'
 import ProductFilters from './components/ProductFilters.vue'
@@ -185,6 +191,7 @@ const products = ref<any[]>([])
 const nextCursor = ref('')
 const hasMore = ref(false)
 const promotionLoadingIds = ref<Set<string>>(new Set())
+const pinLoadingIds = ref<Set<string>>(new Set())
 const selectedProduct = ref<string | null>(null)
 const productKeyword = ref('')
 const productOptions = ref<{ label: string; value: string }[]>([])
@@ -218,6 +225,7 @@ const canDo = (action: string) => {
   if (action === 'assign') return hasAccess(roles, ['biz_leader'])
   if (action === 'auditOwner') return hasAccess(roles, ['biz_leader'])
   if (action === 'promotion') return hasAccess(roles, ['channel_leader', 'channel_staff'])
+  if (action === 'pin') return hasAccess(roles, ['biz_leader', 'biz_staff'])
   if (action === 'libraryEntry') return false
   if (action === 'decision') return false
   return true
@@ -799,6 +807,44 @@ const handlePutIntoLibrary = async (item: any) => {
   }
 }
 
+const updatePinnedState = (item: any, pinned: boolean, pinnedUntil?: string | null) => {
+  const productId = String(item?.productId || '')
+  const merged = normalizeItem({
+    ...item,
+    pinned,
+    pinnedUntil: pinned ? pinnedUntil || item?.pinnedUntil || null : null
+  })
+  products.value = products.value.map((row: any) => (String(row.productId) === productId ? { ...row, ...merged } : row))
+  if (String(currentRow.value?.productId || '') === productId) {
+    currentRow.value = { ...currentRow.value, ...merged }
+  }
+}
+
+const handlePinProduct = async (item: any, pinned: boolean) => {
+  const productId = String(item?.productId || '')
+  const activityId = resolveRowActivityId(item)
+  if (!productId || !activityId) {
+    message.warning('缺少来源活动信息，暂时无法置顶')
+    return
+  }
+  if (pinLoadingIds.value.has(productId)) return
+  pinLoadingIds.value = new Set(pinLoadingIds.value).add(productId)
+  try {
+    const res: any = pinned
+      ? await pinActivityProduct(activityId, productId)
+      : await unpinActivityProduct(activityId, productId)
+    updatePinnedState(item, Boolean(res?.data?.pinned ?? pinned), res?.data?.pinnedUntil || null)
+    detailRefreshKey.value += 1
+    message.success(pinned ? '商品已置顶 24 小时' : '已取消置顶')
+  } catch (error: any) {
+    message.error(error?.response?.data?.msg || error?.message || (pinned ? '置顶失败，请稍后重试' : '取消置顶失败，请稍后重试'))
+  } finally {
+    const next = new Set(pinLoadingIds.value)
+    next.delete(productId)
+    pinLoadingIds.value = next
+  }
+}
+
 const copyPromotionLink = async (item: any) => {
   const productId = String(item?.productId || '')
   const activityId = resolveRowActivityId(item)
@@ -1017,6 +1063,9 @@ const renderActions = (row: any) => {
   buttons.push(renderTextAction('操作日志', () => openDialog('logs', row), false, 'product-action-logs'))
   if (row.selectedToLibrary && canDo('promotion')) {
     buttons.push(renderTextAction('复制讲解 + 短链', () => copyPromotionLink(row), false, 'product-action-copy-link'))
+  }
+  if (row.selectedToLibrary && canDo('pin')) {
+    buttons.push(renderTextAction(row.pinned ? '取消置顶' : '置顶', () => handlePinProduct(row, !row.pinned), false, row.pinned ? 'product-action-unpin' : 'product-action-pin'))
   }
   return h('div', { class: 'table-actions' }, buttons)
 }

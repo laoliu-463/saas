@@ -1,8 +1,13 @@
 package com.colonel.saas.controller;
 
+import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
+import com.colonel.saas.constant.RoleCodes;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -10,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -83,6 +89,33 @@ class SystemEnvControllerTest {
         SystemEnvController controller = new SystemEnvController(environment, "", false, false, "", "");
 
         assertThat(controller.env().getData()).containsEntry("database", "unknown");
+    }
+
+    @Test
+    void env_requiresAdminRoleWhenProdProfileIsActive() {
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("prod");
+        SystemEnvController controller = new SystemEnvController(
+                environment,
+                "prod",
+                false,
+                false,
+                "colonel_saas",
+                ""
+        );
+
+        assertThatThrownBy(controller::env)
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("管理员");
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/system/env");
+        request.setAttribute("roleCodes", List.of(RoleCodes.ADMIN));
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            assertThat(controller.env().getData()).containsEntry("environmentLabel", "PROD");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
     }
 
     @Test

@@ -9,6 +9,8 @@ import com.colonel.saas.mapper.PickSourceMappingMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -40,6 +42,25 @@ public class AttributionService {
     private final TalentClaimMapper talentClaimMapper;
     private final ExclusiveTalentService exclusiveTalentService;
     private final ExclusiveMerchantService exclusiveMerchantService;
+    private final boolean exclusiveEnabled;
+
+    @Autowired
+    public AttributionService(
+            PickSourceMappingMapper pickSourceMappingMapper,
+            ProductOperationStateMapper operationStateMapper,
+            TalentMapper talentMapper,
+            TalentClaimMapper talentClaimMapper,
+            ExclusiveTalentService exclusiveTalentService,
+            ExclusiveMerchantService exclusiveMerchantService,
+            @Value("${exclusive.enabled:false}") boolean exclusiveEnabled) {
+        this.pickSourceMappingMapper = pickSourceMappingMapper;
+        this.operationStateMapper = operationStateMapper;
+        this.talentMapper = talentMapper;
+        this.talentClaimMapper = talentClaimMapper;
+        this.exclusiveTalentService = exclusiveTalentService;
+        this.exclusiveMerchantService = exclusiveMerchantService;
+        this.exclusiveEnabled = exclusiveEnabled;
+    }
 
     public AttributionService(
             PickSourceMappingMapper pickSourceMappingMapper,
@@ -48,12 +69,15 @@ public class AttributionService {
             TalentClaimMapper talentClaimMapper,
             ExclusiveTalentService exclusiveTalentService,
             ExclusiveMerchantService exclusiveMerchantService) {
-        this.pickSourceMappingMapper = pickSourceMappingMapper;
-        this.operationStateMapper = operationStateMapper;
-        this.talentMapper = talentMapper;
-        this.talentClaimMapper = talentClaimMapper;
-        this.exclusiveTalentService = exclusiveTalentService;
-        this.exclusiveMerchantService = exclusiveMerchantService;
+        this(
+                pickSourceMappingMapper,
+                operationStateMapper,
+                talentMapper,
+                talentClaimMapper,
+                exclusiveTalentService,
+                exclusiveMerchantService,
+                false
+        );
     }
 
     public AttributionResult resolveAttribution(ColonelsettlementOrder order, java.util.Map<String, Object> source) {
@@ -226,10 +250,16 @@ public class AttributionService {
     }
 
     protected ExclusiveOwner findExclusiveMerchantOwner(String merchantId) {
+        if (!exclusiveEnabled) {
+            return null;
+        }
         return exclusiveMerchantService.findActiveOwnerByMerchantId(merchantId);
     }
 
     protected ExclusiveOwner findExclusiveTalentOwner(String talentUid) {
+        if (!exclusiveEnabled) {
+            return null;
+        }
         return exclusiveTalentService.findActiveOwnerByTalentUid(talentUid);
     }
 

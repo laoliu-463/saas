@@ -87,7 +87,7 @@ Test 实现不应只是简单的静态返回，应支持：
 当前已知代码缺口：
 
 1. `RealDouyinAuthGateway.ensureToken` 已补为“从 Redis 读取已有 token / refresh_token / expire_at 的非阻塞兜底”，不再固定返回 `null`
-2. `RealDouyinOrderGateway` 已完成订单主同步首轮映射：`buyin.instituteOrderColonel` 真实结构为 `data.cursor / data.orders`，时间参数必须传 `yyyy-MM-dd HH:mm:ss` 字符串；`POST /api/orders/sync` 已在 real-pre 30 分钟窗口入库 10 单
+2. `RealDouyinOrderGateway` 已完成订单主同步映射，并已将常规时间范围同步切到 `buyin.colonelMultiSettlementOrders`；旧 `buyin.instituteOrderColonel` 仅保留为 RAW 探针和历史口径对照。多结算接口时间参数必须传 `yyyy-MM-dd HH:mm:ss` 字符串，`POST /api/orders/sync` 继续通过统一 Gateway 契约落库、归因和触发寄样副作用
 3. 订单归因已补齐抖店原生 `colonel_order_info` 口径：Real 网关会把 `colonel_buyin_id / activity_id` 扁平化到订单 raw payload，主业务归因优先用 `colonel_buyin_id + activity_id + product_id` 做唯一匹配，不再把 19 位 `colonel_buyin_id` 塞进 8-10 位 `short_id`
 4. 当前 real-pre 历史订单仍缺“通过系统推广链接下单后产生的精确活动+商品映射样本”，因此不能把现有未归因真实订单误判为代码归因失败
 5. 商品详情 / SKU 真实样本当前受 `product.detail` 权限包阻塞，不能用活动商品快照替代

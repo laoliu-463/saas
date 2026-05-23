@@ -13,11 +13,13 @@ import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.AttributionService;
+import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -68,6 +70,8 @@ public class OrderController extends BaseController {
     private final OrderAttributionReplayService orderAttributionReplayService;
     private final OperationLogService operationLogService;
     private final ShortTtlCacheService shortTtlCacheService;
+    private final CommissionService commissionService;
+    private final PerformanceBackfillService performanceBackfillService;
 
     public OrderController(
             OrderSyncService orderSyncService,
@@ -75,13 +79,17 @@ public class OrderController extends BaseController {
             OrderQueryService orderQueryService,
             OrderAttributionReplayService orderAttributionReplayService,
             OperationLogService operationLogService,
-            ShortTtlCacheService shortTtlCacheService) {
+            ShortTtlCacheService shortTtlCacheService,
+            CommissionService commissionService,
+            PerformanceBackfillService performanceBackfillService) {
         this.orderSyncService = orderSyncService;
         this.orderMapper = orderMapper;
         this.orderQueryService = orderQueryService;
         this.orderAttributionReplayService = orderAttributionReplayService;
         this.operationLogService = operationLogService;
         this.shortTtlCacheService = shortTtlCacheService;
+        this.commissionService = commissionService;
+        this.performanceBackfillService = performanceBackfillService;
     }
 
     @Operation(summary = "手动同步订单", description = "按时间范围触发订单同步，用于补拉订单或联调真实网关回流数据。")
@@ -156,6 +164,79 @@ public class OrderController extends BaseController {
             evictOrderDerivedCaches();
         }
         return ok(result);
+    }
+
+    @Operation(summary = "回填历史业绩记录", description = "按订单号或结算时间范围批量写入 performance_records，默认仅处理尚未生成业绩记录的订单。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/performance-backfill")
+    public ApiResult<PerformanceBackfillService.BackfillResult> performanceBackfill(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "历史业绩回填请求。可指定 orderIds，或按结算时间范围扫描缺失记录。",
+                    required = false,
+                    content = @Content(examples = @ExampleObject(value = "{\"onlyMissing\":true,\"limit\":200}"))
+            )
+            @RequestBody(required = false) PerformanceBackfillRequest request,
+            @RequestAttribute("userId") UUID userId) {
+        PerformanceBackfillRequest safeRequest = request == null ? new PerformanceBackfillRequest() : request;
+        boolean onlyMissing = safeRequest.getOnlyMissing() == null || Boolean.TRUE.equals(safeRequest.getOnlyMissing());
+        PerformanceBackfillService.BackfillResult result = performanceBackfillService.backfill(
+                safeRequest.getOrderIds(),
+                parseLocalDateTime(safeRequest.getStartTime()),
+                parseLocalDateTime(safeRequest.getEndTime()),
+                safeRequest.getLimit(),
+                onlyMissing);
+        operationLogService.recordSystemAction(
+                userId,
+                "订单业绩",
+                "回填历史业绩记录",
+                "POST",
+                "performance_backfill",
+                null,
+                safeRequest.getStartTime() + " ~ " + safeRequest.getEndTime(),
+                String.format(
+                        "scanned=%d, upserted=%d, failed=%d, onlyMissing=%s",
+                        result.scanned(),
+                        result.upserted(),
+                        result.failed(),
+                        result.onlyMissing()));
+        evictOrderDerivedCaches();
+        return ok(result);
+    }
+
+    @Operation(summary = "批量补全订单业绩", description = "按订单号批量计算并持久化双轨提成到 performance_records（Y-08）；取消/失效订单标记为冲正。")
+    @PostMapping("/commission-batch")
+    public ApiResult<List<CommissionService.OrderCommissionItem>> batchFillCommission(
+            @RequestBody OrderCommissionBatchRequest request) {
+        List<String> orderIds = request == null || request.getOrderIds() == null
+                ? List.of()
+                : request.getOrderIds().stream().filter(StringUtils::hasText).map(String::trim).distinct().toList();
+        if (orderIds.isEmpty()) {
+            return ok(List.of());
+        }
+        List<ColonelsettlementOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
+                .in(ColonelsettlementOrder::getOrderId, orderIds)
+                .eq(ColonelsettlementOrder::getDeleted, 0));
+        return ok(commissionService.batchUpsertPerformanceRecords(orders));
+    }
+
+    @Operation(summary = "管理员单笔重算业绩", description = "传入单个 orderId，重算并回写 performance_records（Y-09）。需 ADMIN 权限。")
+    @PostMapping("/commission-recalculate")
+    @RequireRoles({RoleCodes.ADMIN})
+    public ApiResult<CommissionService.OrderCommissionItem> recalculateSingle(
+            @RequestParam("orderId") String orderId) {
+        if (!StringUtils.hasText(orderId)) {
+            return ok(CommissionService.OrderCommissionItem.reversed(null));
+        }
+        ColonelsettlementOrder order = orderMapper.selectOne(new LambdaQueryWrapper<ColonelsettlementOrder>()
+                .eq(ColonelsettlementOrder::getOrderId, orderId.trim())
+                .eq(ColonelsettlementOrder::getDeleted, 0)
+                .last("limit 1"));
+        if (order == null) {
+            return ok(CommissionService.OrderCommissionItem.reversed(orderId));
+        }
+        List<CommissionService.OrderCommissionItem> results =
+                commissionService.batchUpsertPerformanceRecords(List.of(order));
+        return ok(results.isEmpty() ? CommissionService.OrderCommissionItem.reversed(orderId) : results.get(0));
     }
 
     @Operation(summary = "获取订单列表", description = "分页查询订单归因列表，用于订单主页面。")
@@ -845,6 +926,12 @@ public class OrderController extends BaseController {
     }
 
     @Data
+    public static class OrderCommissionBatchRequest {
+        @Schema(description = "待补全业绩的订单号列表。")
+        private List<String> orderIds;
+    }
+
+    @Data
     public static class ReplayAttributionRequest {
         @Schema(description = "指定需要重算的订单号列表；为空时按未归因订单筛选。")
         private List<String> orderIds;
@@ -857,6 +944,24 @@ public class OrderController extends BaseController {
 
         @Schema(description = "是否仅预演不落库。默认 false。")
         private Boolean dryRun;
+    }
+
+    @Data
+    public static class PerformanceBackfillRequest {
+        @Schema(description = "指定需要回填的订单号列表；为空时按时间范围与 onlyMissing 扫描。")
+        private List<String> orderIds;
+
+        @Schema(description = "结算开始时间，格式 yyyy-MM-dd HH:mm:ss。")
+        private String startTime;
+
+        @Schema(description = "结算结束时间，格式 yyyy-MM-dd HH:mm:ss。")
+        private String endTime;
+
+        @Schema(description = "批量扫描上限，默认 200，最大 2000。仅在未指定 orderIds 时生效。")
+        private Integer limit;
+
+        @Schema(description = "是否仅处理尚未生成 performance_records 的订单。默认 true。")
+        private Boolean onlyMissing;
     }
 
     @Data

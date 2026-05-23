@@ -3,6 +3,7 @@ package com.colonel.saas.config;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.tags.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.Profile;
 
 import java.util.List;
 
@@ -11,6 +12,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SwaggerConfigTest {
 
     private final SwaggerConfig config = new SwaggerConfig();
+
+    @Test
+    void swaggerConfig_shouldNotLoadWhenProdProfileIsActive() {
+        Profile profile = SwaggerConfig.class.getAnnotation(Profile.class);
+
+        assertThat(profile).isNotNull();
+        assertThat(profile.value()).containsExactly("!prod");
+    }
 
     @Test
     void openAPI_declaresJwtBearerSecurityAndApiMetadata() {

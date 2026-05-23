@@ -45,6 +45,21 @@ public class ColonelsettlementOrder implements Serializable {
     @TableField("actual_amount")
     private Long actualAmount;
 
+    @TableField("settle_amount")
+    private Long settleAmount;
+
+    @TableField("estimate_service_fee")
+    private Long estimateServiceFee;
+
+    @TableField("effective_service_fee")
+    private Long effectiveServiceFee;
+
+    @TableField("estimate_tech_service_fee")
+    private Long estimateTechServiceFee;
+
+    @TableField("effective_tech_service_fee")
+    private Long effectiveTechServiceFee;
+
     @TableField("colonel_buyin_id")
     private Long colonelBuyinId;
 

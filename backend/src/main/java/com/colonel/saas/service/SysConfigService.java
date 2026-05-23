@@ -6,11 +6,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.config.ConfigDefinitionRegistry;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.SystemConfig;
+import com.colonel.saas.entity.SystemConfigChangeLog;
+import com.colonel.saas.mapper.SystemConfigChangeLogMapper;
 import com.colonel.saas.mapper.SystemConfigMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -23,17 +26,22 @@ import java.util.stream.Collectors;
 @Service
 public class SysConfigService {
 
+    private static final String CHANGE_SOURCE_API = "SYS_CONFIG_API";
+
     private final SystemConfigMapper systemConfigMapper;
+    private final SystemConfigChangeLogMapper systemConfigChangeLogMapper;
     private final OperationLogService operationLogService;
     private final ConfigDefinitionRegistry configDefinitionRegistry;
     private final BusinessRuleConfigService businessRuleConfigService;
 
     public SysConfigService(
             SystemConfigMapper systemConfigMapper,
+            SystemConfigChangeLogMapper systemConfigChangeLogMapper,
             OperationLogService operationLogService,
             ConfigDefinitionRegistry configDefinitionRegistry,
             BusinessRuleConfigService businessRuleConfigService) {
         this.systemConfigMapper = systemConfigMapper;
+        this.systemConfigChangeLogMapper = systemConfigChangeLogMapper;
         this.operationLogService = operationLogService;
         this.configDefinitionRegistry = configDefinitionRegistry;
         this.businessRuleConfigService = businessRuleConfigService;
@@ -138,6 +146,7 @@ public class SysConfigService {
         config.setId(UUID.randomUUID());
         systemConfigMapper.insert(config);
         businessRuleConfigService.invalidate(config.getConfigKey());
+        recordConfigChange(config, "CREATE", null, config.getConfigValue(), userId);
         operationLogService.recordSystemAction(
                 userId,
                 "系统配置",
@@ -155,6 +164,7 @@ public class SysConfigService {
     public SystemConfig update(UUID id, SystemConfig config, UUID userId) {
         SystemConfig existing = getById(id);
         String previousConfigKey = existing.getConfigKey();
+        String previousConfigValue = existing.getConfigValue();
         if (config.getConfigKey() != null && !config.getConfigKey().equals(existing.getConfigKey())) {
             systemConfigMapper.findByConfigKey(config.getConfigKey()).ifPresent(dup -> {
                 throw BusinessException.duplicate("配置键已存在: " + config.getConfigKey());
@@ -186,6 +196,7 @@ public class SysConfigService {
         existing.setUpdateBy(userId);
         systemConfigMapper.updateById(existing);
         invalidateBusinessRuleCache(previousConfigKey, existing.getConfigKey());
+        recordConfigChange(existing, "UPDATE", previousConfigValue, existing.getConfigValue(), userId);
         operationLogService.recordSystemAction(
                 userId,
                 "系统配置",
@@ -207,6 +218,7 @@ public class SysConfigService {
             throw BusinessException.notFound("配置项不存在");
         }
         invalidateBusinessRuleCache(existing.getConfigKey());
+        recordConfigChange(existing, "DELETE", existing.getConfigValue(), null, userId);
         operationLogService.recordSystemAction(
                 userId,
                 "系统配置",
@@ -243,5 +255,24 @@ public class SysConfigService {
         for (String configKey : uniqueKeys) {
             businessRuleConfigService.invalidate(configKey);
         }
+    }
+
+    private void recordConfigChange(
+            SystemConfig config,
+            String action,
+            String oldValue,
+            String newValue,
+            UUID operatorId) {
+        SystemConfigChangeLog log = new SystemConfigChangeLog();
+        log.setId(UUID.randomUUID());
+        log.setConfigId(config == null ? null : config.getId());
+        log.setConfigKey(config == null ? null : config.getConfigKey());
+        log.setChangeAction(action);
+        log.setOldValue(oldValue);
+        log.setNewValue(newValue);
+        log.setSource(CHANGE_SOURCE_API);
+        log.setOperatorId(operatorId);
+        log.setChangedAt(LocalDateTime.now());
+        systemConfigChangeLogMapper.insert(log);
     }
 }

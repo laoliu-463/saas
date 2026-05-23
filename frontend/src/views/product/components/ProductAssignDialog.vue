@@ -28,8 +28,8 @@
 import { computed, ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
 import { assignActivityProduct, assignActivityProductAuditOwner } from '../../../api/activityProduct';
-import { getAssignableUserOptions } from '../../../api/sys';
 import { useDebouncedFn } from '../../../utils/debounce';
+import { loadProductAssigneeOptions } from '../product-assignee-options';
 
 type AssignMode = 'businessOwner' | 'auditOwner';
 
@@ -80,26 +80,10 @@ watch(() => props.show, async (val) => {
 
 const updateShow = (val: boolean) => emit('update:show', val);
 
-const buildUserOption = (user: any) => {
-  const realName = String(user?.realName || '').trim();
-  const username = String(user?.username || '').trim();
-  const label = realName && username ? `${realName} (${username})` : (realName || username || String(user?.id || '未命名用户'));
-  return {
-    label,
-    value: String(user?.id || '')
-  };
-};
-
 const fetchUsers = async (keyword: string) => {
   loadingUsers.value = true;
   try {
-    const res: any = await getAssignableUserOptions({
-      keyword: keyword || undefined
-    });
-    const records = res?.data || [];
-    userOptions.value = records
-      .map(buildUserOption)
-      .filter((item: { label: string; value: string }) => Boolean(item.value));
+    userOptions.value = await loadProductAssigneeOptions(keyword);
   } catch (error: any) {
     message.error(error?.response?.data?.msg || error?.message || '加载负责人列表失败');
   } finally {

@@ -43,6 +43,34 @@ class ConfigDefinitionRegistryTest {
     }
 
     @Test
+    void validateOrThrowShouldValidatePickExtraRule() {
+        registry.validateOrThrow(
+                SystemConfigKeys.PROMOTION_PICK_EXTRA_RULE,
+                "{\"format\":\"channel_{channel_code}_{product_id}\",\"encode\":\"none\"}");
+
+        assertThatThrownBy(() -> registry.validateOrThrow(SystemConfigKeys.PROMOTION_PICK_EXTRA_RULE, "[]"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("JSON 对象");
+        assertThatThrownBy(() -> registry.validateOrThrow(
+                SystemConfigKeys.PROMOTION_PICK_EXTRA_RULE,
+                "{\"format\":\"\",\"encode\":\"none\"}"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("format");
+    }
+
+    @Test
+    void validateOrThrowShouldValidatePresetTalentTags() {
+        registry.validateOrThrow(SystemConfigKeys.PRESET_TALENT_TAGS, "[\"美妆\",\"高转化\"]");
+
+        assertThatThrownBy(() -> registry.validateOrThrow(SystemConfigKeys.PRESET_TALENT_TAGS, "{\"tag\":\"美妆\"}"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("JSON 数组");
+        assertThatThrownBy(() -> registry.validateOrThrow(SystemConfigKeys.PRESET_TALENT_TAGS, "[\"\"]"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("不能为空");
+    }
+
+    @Test
     void configDefinitionShouldRejectRuntimeWritesWhenNotEditable() {
         var definition = new ConfigDefinitionRegistry.ConfigDefinition(
                 "readonly.key",

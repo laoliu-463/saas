@@ -90,6 +90,15 @@ public class SampleRequest extends VersionedEntity {
 
     private String remark;
 
+    @TableField("recipient_name")
+    private String recipientName;
+
+    @TableField("recipient_phone")
+    private String recipientPhone;
+
+    @TableField("recipient_address")
+    private String recipientAddress;
+
     @TableField(value = "extra_data", typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> extraData;
 }

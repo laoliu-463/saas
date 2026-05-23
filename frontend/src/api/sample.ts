@@ -24,9 +24,18 @@ export const searchSampleTalents = (params: {
 // 寄样看板
 export const getSampleBoard = () => request.get('/samples/board');
 
+// 寄样状态流转矩阵
+export const getSampleStatusTransitions = () => request.get('/samples/status-transitions');
+
 // 寄样状态日志
 export const getSampleStatusLogs = (id: string) => request.get(`/samples/${id}/status-logs`);
 
 // 批量发货（运营）
+export const batchApproveSamples = (data: { requestNos: string[]; remark?: string }) =>
+  request.post('/samples/batch-approve', data);
+
+export const batchRejectSamples = (data: { requestNos: string[]; remark: string }) =>
+  request.post('/samples/batch-reject', data);
+
 export const batchShipSamples = (data: { items: { requestNo: string; trackingNo: string; shipperCode?: string }[] }) =>
   request.post('/samples/batch-ship', data);

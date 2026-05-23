@@ -24,6 +24,28 @@
         <n-input v-model:value="filters.orderId" placeholder="订单 ID" style="width: 200px" />
         <n-input v-model:value="filters.productId" placeholder="商品 ID" style="width: 180px" />
         <n-select
+          v-model:value="filters.channelKeyword"
+          :options="channelOptions"
+          :loading="channelOptionsLoading"
+          filterable
+          remote
+          clearable
+          placeholder="渠道负责人"
+          style="width: 180px"
+          @search="handleChannelSearch"
+        />
+        <n-select
+          v-model:value="filters.colonelKeyword"
+          :options="recruiterOptions"
+          :loading="recruiterOptionsLoading"
+          filterable
+          remote
+          clearable
+          placeholder="招商负责人"
+          style="width: 180px"
+          @search="handleRecruiterSearch"
+        />
+        <n-select
           v-model:value="filters.attributionStatus"
           :options="[
             { label: '已归因', value: 'ATTRIBUTED' },
@@ -67,6 +89,8 @@ import { getOrders, getOrderStats, syncOrders } from '../../api/order'
 import { getAttributionReasonText } from '../../constants/orderAttribution'
 import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 import { useDelayedFlag } from '../../utils/delayedFlag'
+import { useDebouncedFn } from '../../utils/debounce'
+import { loadOrderChannelOptions, loadOrderRecruiterOptions } from './order-user-filter-options'
 
 const message = useMessage()
 const route = useRoute()
@@ -77,6 +101,10 @@ const data = ref([])
 const stats = ref<{ totalOrders?: number; attributedOrders?: number; unattributedOrders?: number; partialOrders?: number } | null>(null)
 const showDetail = ref(false)
 const activeOrderId = ref('')
+const channelOptions = ref<{ label: string; value: string }[]>([])
+const recruiterOptions = ref<{ label: string; value: string }[]>([])
+const channelOptionsLoading = ref(false)
+const recruiterOptionsLoading = ref(false)
 
 const attributionSummary = computed(() => {
   const total = Number(stats.value?.totalOrders || 0)
@@ -97,6 +125,8 @@ const filters = reactive({
   orderId: '',
   activityId: '',
   productId: '',
+  channelKeyword: null as string | null,
+  colonelKeyword: null as string | null,
   attributionStatus: null,
   dateRange: null as [number, number] | null,
   timeField: 'createTime',
@@ -111,9 +141,41 @@ const applyRouteFilters = () => {
   filters.orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
   filters.activityId = typeof route.query.activityId === 'string' ? route.query.activityId : ''
   filters.productId = typeof route.query.productId === 'string' ? route.query.productId : ''
+  filters.channelKeyword = typeof route.query.channelKeyword === 'string' ? route.query.channelKeyword : null
+  filters.colonelKeyword = typeof route.query.colonelKeyword === 'string' ? route.query.colonelKeyword : null
   filters.timeField = typeof route.query.timeField === 'string' ? route.query.timeField : 'createTime'
   filters.dashboardDiagnosis = typeof route.query.dashboardDiagnosis === 'string' ? route.query.dashboardDiagnosis : ''
 }
+
+const fetchChannelOptions = async (keyword: string) => {
+  channelOptionsLoading.value = true
+  try {
+    channelOptions.value = await loadOrderChannelOptions(keyword)
+  } catch (_error) {
+    message.error('加载渠道负责人失败')
+  } finally {
+    channelOptionsLoading.value = false
+  }
+}
+
+const fetchRecruiterOptions = async (keyword: string) => {
+  recruiterOptionsLoading.value = true
+  try {
+    recruiterOptions.value = await loadOrderRecruiterOptions(keyword)
+  } catch (_error) {
+    message.error('加载招商负责人失败')
+  } finally {
+    recruiterOptionsLoading.value = false
+  }
+}
+
+const handleChannelSearch = useDebouncedFn((keyword: string) => {
+  void fetchChannelOptions(keyword)
+}, 250)
+
+const handleRecruiterSearch = useDebouncedFn((keyword: string) => {
+  void fetchRecruiterOptions(keyword)
+}, 250)
 
 function getDiagnosticSummary(row: any) {
   const status = row.attributionStatus || 'UNATTRIBUTED'
@@ -236,6 +298,8 @@ function buildQueryParams() {
     orderId: filters.orderId || undefined,
     activityId: filters.activityId || undefined,
     productId: filters.productId || undefined,
+    channelKeyword: filters.channelKeyword || undefined,
+    colonelKeyword: filters.colonelKeyword || undefined,
     attributionStatus: filters.attributionStatus || undefined,
     timeField: filters.timeField || undefined,
     dashboardDiagnosis: filters.dashboardDiagnosis || undefined,
@@ -252,6 +316,8 @@ const fetchData = async () => {
     attributionStatus: params.attributionStatus,
     activityId: params.activityId,
     productId: params.productId,
+    channelKeyword: params.channelKeyword,
+    colonelKeyword: params.colonelKeyword,
     timeField: params.timeField,
     dashboardDiagnosis: params.dashboardDiagnosis,
     startTime: params.startTime,
@@ -328,6 +394,8 @@ const resetFilters = () => {
   filters.orderId = ''
   filters.activityId = ''
   filters.productId = ''
+  filters.channelKeyword = null
+  filters.colonelKeyword = null
   filters.attributionStatus = null
   filters.dateRange = null
   filters.timeField = 'createTime'
@@ -338,7 +406,15 @@ const resetFilters = () => {
 }
 
 watch(
-  () => [route.query.orderId, route.query.activityId, route.query.productId, route.query.timeField, route.query.dashboardDiagnosis],
+  () => [
+    route.query.orderId,
+    route.query.activityId,
+    route.query.productId,
+    route.query.channelKeyword,
+    route.query.colonelKeyword,
+    route.query.timeField,
+    route.query.dashboardDiagnosis
+  ],
   () => {
     applyRouteFilters()
     pagination.page = 1
@@ -348,6 +424,8 @@ watch(
 
 onMounted(() => {
   applyRouteFilters()
+  void fetchChannelOptions('')
+  void fetchRecruiterOptions('')
   fetchData()
 })
 </script>

@@ -2,21 +2,116 @@ name: saas-prod
 
 services:
   postgres:
+    image: postgres:15-alpine
     environment:
-      POSTGRES_DB: colonel_saas
+      POSTGRES_DB: ${DB_NAME:-colonel_saas}
+      POSTGRES_USER: ${DB_USER:-saas}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+      - ./backend/src/main/resources/db/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./backend/src/main/resources/db/migrate-all.sql:/docker-entrypoint-initdb.d/02-migrate-all.sql:ro
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U saas -d colonel_saas"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-saas} -d ${DB_NAME:-colonel_saas}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: >
+      sh -c 'if [ -n "$${REDIS_PASSWORD}" ]; then
+        redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}";
+      else
+        redis-server --appendonly yes;
+      fi'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    volumes:
+      - redis_prod_data:/data
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "if [ -n \"$${REDIS_PASSWORD}\" ]; then redis-cli -a \"$${REDIS_PASSWORD}\" ping; else redis-cli ping; fi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      DB_NAME: colonel_saas
-      REDIS_DATABASE: 0
-      TALENT_ENRICH_MODE: real
-      TALENT_PUBLIC_PAGE_CRAWL_ENABLED: "false"
+      SERVER_PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-colonel_saas}
+      DB_USER: ${DB_USER:-saas}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DATABASE: ${REDIS_DATABASE:-0}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS}
+      DOUYIN_BASE_URL: ${DOUYIN_BASE_URL:-https://openapi-fxg.jinritemai.com}
+      DOUYIN_APP_ID: ${DOUYIN_APP_ID}
+      DOUYIN_CLIENT_KEY: ${DOUYIN_CLIENT_KEY}
+      DOUYIN_CLIENT_SECRET: ${DOUYIN_CLIENT_SECRET}
+      DOUYIN_SANDBOX: ${DOUYIN_SANDBOX:-false}
+      DOUYIN_TEST_ENABLED: "false"
+      DOUYIN_REAL_UPSTREAM_MODE: ${DOUYIN_REAL_UPSTREAM_MODE:-live}
+      DOUYIN_TOKEN_AUTO_REFRESH_ENABLED: ${DOUYIN_TOKEN_AUTO_REFRESH_ENABLED:-true}
+      DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:-300}
+      DOUYIN_TOKEN_REDIS_LOCK_MINUTES: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:-5}
+      DOUYIN_WEBHOOK_VERIFY_SIGN: "true"
+      ORDER_SYNC_ENABLED: ${ORDER_SYNC_ENABLED:-true}
+      TALENT_ENRICH_MODE: ${TALENT_ENRICH_MODE:-real}
+      TALENT_PUBLIC_PAGE_CRAWL_ENABLED: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:-false}
+      APP_TEST_ENABLED: "false"
+      APP_TEST_SEED_ON_STARTUP: "false"
+      EXCLUSIVE_ENABLED: ${EXCLUSIVE_ENABLED:-false}
+      APP_ENV_LABEL: PROD
+      JAVA_OPTS: ${JAVA_OPTS:--Dspring.devtools.restart.enabled=false}
     ports:
-      - "8080:8080"
+      - "${BACKEND_HOST_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/system/health | grep -q '\"status\":\"UP\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    restart: unless-stopped
 
   frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     environment:
-      VITE_ENV_LABEL: PROD(REAL)
+      VITE_ENV_LABEL: PROD
+    ports:
+      - "${FRONTEND_HOST_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/favicon.svg"]
+      interval: 45s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:

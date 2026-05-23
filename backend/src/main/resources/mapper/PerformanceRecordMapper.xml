@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.colonel.saas.mapper.PerformanceRecordMapper">
+
+    <resultMap id="PerformanceRecordMap" type="com.colonel.saas.entity.PerformanceRecord">
+        <id property="id" column="id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="orderRowId" column="order_row_id"/>
+        <result property="defaultChannelUserId" column="default_channel_user_id"/>
+        <result property="defaultRecruiterUserId" column="default_recruiter_user_id"/>
+        <result property="finalChannelUserId" column="final_channel_user_id"/>
+        <result property="finalRecruiterUserId" column="final_recruiter_user_id"/>
+        <result property="channelAttribution" column="channel_attribution"/>
+        <result property="recruiterAttribution" column="recruiter_attribution"/>
+        <result property="talentId" column="talent_id"/>
+        <result property="partnerId" column="partner_id"/>
+        <result property="productId" column="product_id"/>
+        <result property="activityId" column="activity_id"/>
+        <result property="payAmount" column="pay_amount"/>
+        <result property="settleAmount" column="settle_amount"/>
+        <result property="estimateServiceFee" column="estimate_service_fee"/>
+        <result property="effectiveServiceFee" column="effective_service_fee"/>
+        <result property="estimateTechServiceFee" column="estimate_tech_service_fee"/>
+        <result property="effectiveTechServiceFee" column="effective_tech_service_fee"/>
+        <result property="estimateServiceProfit" column="estimate_service_profit"/>
+        <result property="effectiveServiceProfit" column="effective_service_profit"/>
+        <result property="estimateRecruiterCommission" column="estimate_recruiter_commission"/>
+        <result property="effectiveRecruiterCommission" column="effective_recruiter_commission"/>
+        <result property="estimateChannelCommission" column="estimate_channel_commission"/>
+        <result property="effectiveChannelCommission" column="effective_channel_commission"/>
+        <result property="estimateGrossProfit" column="estimate_gross_profit"/>
+        <result property="effectiveGrossProfit" column="effective_gross_profit"/>
+        <result property="recruiterCommissionRate" column="recruiter_commission_rate"/>
+        <result property="channelCommissionRate" column="channel_commission_rate"/>
+        <result property="orderStatus" column="order_status"/>
+        <result property="settleTime" column="settle_time"/>
+        <result property="orderCreateTime" column="order_create_time"/>
+        <result property="valid" column="is_valid"/>
+        <result property="reversed" column="is_reversed"/>
+        <result property="calculationVersion" column="calculation_version"/>
+        <result property="calculatedAt" column="calculated_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findByOrderId" resultMap="PerformanceRecordMap">
+        SELECT *
+        FROM performance_records
+        WHERE order_id = #{orderId}
+        LIMIT 1
+    </select>
+
+    <insert id="upsert" parameterType="com.colonel.saas.entity.PerformanceRecord">
+        INSERT INTO performance_records (
+            id, order_id, order_row_id,
+            default_channel_user_id, default_recruiter_user_id,
+            final_channel_user_id, final_recruiter_user_id,
+            channel_attribution, recruiter_attribution,
+            talent_id, partner_id, product_id, activity_id,
+            pay_amount, settle_amount,
+            estimate_service_fee, effective_service_fee,
+            estimate_tech_service_fee, effective_tech_service_fee,
+            estimate_service_profit, effective_service_profit,
+            estimate_recruiter_commission, effective_recruiter_commission,
+            estimate_channel_commission, effective_channel_commission,
+            estimate_gross_profit, effective_gross_profit,
+            recruiter_commission_rate, channel_commission_rate,
+            order_status, settle_time, order_create_time,
+            is_valid, is_reversed, calculation_version, calculated_at,
+            created_at, updated_at
+        ) VALUES (
+            #{id}, #{orderId}, #{orderRowId},
+            #{defaultChannelUserId}, #{defaultRecruiterUserId},
+            #{finalChannelUserId}, #{finalRecruiterUserId},
+            #{channelAttribution}, #{recruiterAttribution},
+            #{talentId}, #{partnerId}, #{productId}, #{activityId},
+            #{payAmount}, #{settleAmount},
+            #{estimateServiceFee}, #{effectiveServiceFee},
+            #{estimateTechServiceFee}, #{effectiveTechServiceFee},
+            #{estimateServiceProfit}, #{effectiveServiceProfit},
+            #{estimateRecruiterCommission}, #{effectiveRecruiterCommission},
+            #{estimateChannelCommission}, #{effectiveChannelCommission},
+            #{estimateGrossProfit}, #{effectiveGrossProfit},
+            #{recruiterCommissionRate}, #{channelCommissionRate},
+            #{orderStatus}, #{settleTime}, #{orderCreateTime},
+            #{valid}, #{reversed}, #{calculationVersion}, #{calculatedAt},
+            COALESCE(#{createdAt}, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP
+        )
+        ON CONFLICT (order_id) DO UPDATE SET
+            order_row_id = EXCLUDED.order_row_id,
+            default_channel_user_id = EXCLUDED.default_channel_user_id,
+            default_recruiter_user_id = EXCLUDED.default_recruiter_user_id,
+            final_channel_user_id = EXCLUDED.final_channel_user_id,
+            final_recruiter_user_id = EXCLUDED.final_recruiter_user_id,
+            channel_attribution = EXCLUDED.channel_attribution,
+            recruiter_attribution = EXCLUDED.recruiter_attribution,
+            talent_id = EXCLUDED.talent_id,
+            partner_id = EXCLUDED.partner_id,
+            product_id = EXCLUDED.product_id,
+            activity_id = EXCLUDED.activity_id,
+            pay_amount = EXCLUDED.pay_amount,
+            settle_amount = EXCLUDED.settle_amount,
+            estimate_service_fee = EXCLUDED.estimate_service_fee,
+            effective_service_fee = EXCLUDED.effective_service_fee,
+            estimate_tech_service_fee = EXCLUDED.estimate_tech_service_fee,
+            effective_tech_service_fee = EXCLUDED.effective_tech_service_fee,
+            estimate_service_profit = EXCLUDED.estimate_service_profit,
+            effective_service_profit = EXCLUDED.effective_service_profit,
+            estimate_recruiter_commission = EXCLUDED.estimate_recruiter_commission,
+            effective_recruiter_commission = EXCLUDED.effective_recruiter_commission,
+            estimate_channel_commission = EXCLUDED.estimate_channel_commission,
+            effective_channel_commission = EXCLUDED.effective_channel_commission,
+            estimate_gross_profit = EXCLUDED.estimate_gross_profit,
+            effective_gross_profit = EXCLUDED.effective_gross_profit,
+            recruiter_commission_rate = EXCLUDED.recruiter_commission_rate,
+            channel_commission_rate = EXCLUDED.channel_commission_rate,
+            order_status = EXCLUDED.order_status,
+            settle_time = EXCLUDED.settle_time,
+            order_create_time = EXCLUDED.order_create_time,
+            is_valid = EXCLUDED.is_valid,
+            is_reversed = EXCLUDED.is_reversed,
+            calculation_version = performance_records.calculation_version + 1,
+            calculated_at = EXCLUDED.calculated_at,
+            updated_at = CURRENT_TIMESTAMP
+    </insert>
+</mapper>

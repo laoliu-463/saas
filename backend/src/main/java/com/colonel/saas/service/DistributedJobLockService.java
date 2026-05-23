@@ -31,6 +31,25 @@ public class DistributedJobLockService {
         this.testEnabled = testEnabled;
     }
 
+    /**
+     * 集群锁：Redis 不可用时直接抛出异常，不回退进程内锁（用于订单同步等强一致场景）。
+     */
+    public boolean tryAcquireStrict(String lockKey, Duration ttl) {
+        if (!StringUtils.hasText(lockKey) || ttl == null || ttl.isNegative() || ttl.isZero()) {
+            return false;
+        }
+        try {
+            Boolean locked = redisTemplate.opsForValue().setIfAbsent(
+                    Objects.requireNonNull(lockKey),
+                    "1",
+                    Objects.requireNonNull(ttl));
+            return Boolean.TRUE.equals(locked);
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            log.error("Redis unavailable when acquiring strict job lock {}: {}", lockKey, ex.getMessage());
+            throw ex;
+        }
+    }
+
     public boolean tryAcquire(String lockKey, Duration ttl) {
         if (!StringUtils.hasText(lockKey) || ttl == null || ttl.isNegative() || ttl.isZero()) {
             return false;

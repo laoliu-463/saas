@@ -4,6 +4,12 @@ import request from '../utils/request';
 export const getProducts = (params: any) => request.get('/products', { params });
 export const getProductPickPage = (params: any) => request.get('/products/picks', { params });
 export const getProductDetail = (id: string | number) => request.get(`/products/${id}`);
+export const listPartners = (params: { keyword?: string; type?: string; page?: number; size?: number }) =>
+  request.get('/colonel/partners', { params });
+export const getPartnerDetail = (id: string | number, params?: { type?: string }) =>
+  request.get(`/colonel/partners/${id}`, { params });
+export const getPartnerProducts = (id: string | number, params?: { page?: number; size?: number }) =>
+  request.get(`/colonel/partners/${id}/products`, { params });
 
 // 业务主链路操作
 export const auditProduct = (id: string | number, data: { approved: boolean; reason?: string }) =>

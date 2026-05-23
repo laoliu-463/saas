@@ -15,6 +15,7 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.service.CommissionService;
+import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -55,6 +56,8 @@ class DataControllerTest {
     private ExclusiveMerchantMapper exclusiveMerchantMapper;
     @Mock
     private ColonelsettlementActivityMapper activityMapper;
+    @Mock
+    private PerformanceMetricsQueryService performanceMetricsQueryService;
 
     private DataController dataController;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -71,8 +74,13 @@ class DataControllerTest {
                 exclusiveTalentMapper,
                 exclusiveMerchantMapper,
                 activityMapper,
-                new ShortTtlCacheService()
+                new ShortTtlCacheService(),
+                performanceMetricsQueryService
         );
+        org.mockito.Mockito.lenient().when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(false);
+        org.mockito.Mockito.lenient()
+                .when(performanceMetricsQueryService.resolveAmountTrackLabel(org.mockito.ArgumentMatchers.any()))
+                .thenReturn("estimate");
     }
 
     @Test
@@ -163,6 +171,26 @@ class DataControllerTest {
         var vo = response.getData().getRecords().get(0);
         assertThat(vo.getCreateTime()).isEqualTo(createTime);
         assertThat(vo.getSettleTime()).isEqualTo(settleTime);
+    }
+
+    @Test
+    void getMetrics_withPerformanceRecords_shouldUsePerformanceAggregate() {
+        when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(true);
+        when(performanceMetricsQueryService.resolveAmountTrackLabel("createTime")).thenReturn("estimate");
+        when(performanceMetricsQueryService.aggregateRange(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PerformanceMetricsQueryService.PerformanceAggregate(
+                        3L, 9000L, 900L, 90L, 810L, 81L, 162L, 567L));
+        when(performanceMetricsQueryService.trendByDay(any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(new PerformanceMetricsQueryService.TrendPoint(LocalDate.now().toString(), 3L, 9000L)));
+        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of(Map.of("order_count", 1L)));
+
+        var response = dataController.getMetrics("createTime", UUID.randomUUID(), null, DataScope.ALL);
+
+        assertThat(response.getData().getMetricsSource()).isEqualTo("performance_records");
+        assertThat(response.getData().getAmountTrack()).isEqualTo("estimate");
+        assertThat(response.getData().getGrossProfit()).isEqualByComparingTo("5.67");
+        verify(commissionService, never()).calculateByActivityBuckets(any());
     }
 
     @Test
@@ -537,6 +565,7 @@ class DataControllerTest {
                 null,
                 null,
                 null,
+                null,
                 LocalDate.of(2026, 5, 1),
                 LocalDate.of(2026, 5, 4),
                 null,
@@ -550,6 +579,31 @@ class DataControllerTest {
         verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.user_id");
+    }
+
+    @Test
+    void exportOrders_withOrderIdFilter_appliesSameFilterAsPage() throws Exception {
+        Page<ColonelsettlementOrder> empty = new Page<>(1, 10);
+        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+
+        dataController.exportOrders(
+                "ORDER-7788",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL,
+                new MockHttpServletResponse()
+        );
+
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        String segment = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(segment).contains("co.order_id");
     }
 
     @Test
@@ -570,6 +624,7 @@ class DataControllerTest {
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         dataController.exportOrders(
+                null,
                 "CANCELLED",
                 talentId,
                 "merchant_10086",
@@ -596,6 +651,7 @@ class DataControllerTest {
     @Test
     void exportOrders_withInvalidStatus_shouldThrowBusinessException() {
         assertThatThrownBy(() -> dataController.exportOrders(
+                null,
                 "UNKNOWN",
                 null,
                 null,
@@ -640,6 +696,7 @@ class DataControllerTest {
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         dataController.exportOrders(
+                null,
                 null,
                 null,
                 null,
@@ -726,6 +783,7 @@ class DataControllerTest {
     void sensitiveDataEndpoints_shouldRequireAdminOrLeaderRoles() throws Exception {
         Method exportOrders = DataController.class.getMethod(
                 "exportOrders",
+                String.class,
                 String.class,
                 UUID.class,
                 String.class,

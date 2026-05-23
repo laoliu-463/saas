@@ -33,6 +33,7 @@ export const SECTION_MAP: SectionMapEntry[] = [
   ['/ops/shipping', 'ops'],
   ['/ops/exclusive', 'data'],
   ['/system/config', 'system'],
+  ['/system/commission-rules', 'system'],
   ['/system/douyin', 'system'],
   ['/system/roles', 'system'],
   ['/system/users', 'system'],

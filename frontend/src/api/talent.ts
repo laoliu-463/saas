@@ -106,6 +106,11 @@ export interface TalentDetailResponse {
     contactPhone?: string | null
     remark?: string | null
     avatarUrl?: string | null
+    tags?: string[] | null
+    tagUpdatedBy?: string | null
+    shippingRecipientName?: string | null
+    shippingRecipientPhone?: string | null
+    shippingRecipientAddress?: string | null
     claimTags?: string[] | null
     dataSource?: string | null
     syncStatus?: string | null
@@ -151,11 +156,34 @@ export interface TalentDetailResponse {
   }>
 }
 
+export interface TalentStatusTransitionsResponse {
+  protectionConfigKey: string
+  allowMultiClaim: boolean
+  states: Array<{
+    code: string
+    label: string
+    description: string
+    canClaim: boolean
+    canRelease: boolean
+    visibleToRoles: string[]
+  }>
+  transitions: Array<{
+    fromState: string
+    action: string
+    actionLabel: string
+    toState: string
+    actorRoles: string[]
+    condition: string
+    effect: string
+  }>
+}
+
 // CRM talents
 export const getTalentPage = (params: TalentQueryParams) => request.get('/talents', { params });
 export const getTalentList = (params: any) => getTalentPage(params);
 export const getTalentPublic = (params: any) => request.get('/talents/pools/public', { params });
 export const getTalentPrivate = (params: any) => request.get('/talents/pools/private', { params });
+export const getTalentStatusTransitions = () => request.get('/talents/status-transitions');
 export const getTalentById = (id: string): Promise<TalentDetailResponse> =>
   request.get(`/talents/${id}`).then((res: any) => res.data as TalentDetailResponse);
 export const resolveTalentProfile = (payload: {
@@ -174,6 +202,16 @@ export const updateTalentShippingAddress = (
   id: string,
   payload: { recipientName?: string; recipientPhone?: string; recipientAddress?: string }
 ) => request.put(`/talents/${id}/shipping-address`, payload).then((res: any) => res.data);
+export const getTalentShippingAddress = (id: string) =>
+  request.get(`/talents/${id}/shipping-address`).then((res: any) => res.data as {
+    recipientName?: string | null
+    recipientPhone?: string | null
+    recipientAddress?: string | null
+  });
+export const batchImportTalents = (accounts: string[]) =>
+  request.post('/talents/batch-import', { accounts }).then((res: any) => res.data);
+export const getPresetTalentTags = () =>
+  request.get('/talents/preset-tags').then((res: any) => res.data as string[]);
 export const deleteTalent = (id: string) => request.delete(`/talents/${id}`);
 export const claimTalent = (id: string) => request.post(`/talents/${id}/claims`);
 export const releaseTalent = (id: string) => request.post(`/talents/${id}/release`);

@@ -57,6 +57,15 @@ export const convertActivityProductLink = (
 export const putActivityProductIntoLibrary = (activityId: string | number, productId: string | number) =>
   request.post(`/colonel/activities/${activityId}/products/${productId}/library-entry`);
 
+export const pinActivityProduct = (activityId: string | number, productId: string | number) =>
+  request.post(`/colonel/activities/${activityId}/products/${productId}/pin`);
+
+export const unpinActivityProduct = (activityId: string | number, productId: string | number) =>
+  request.delete(`/colonel/activities/${activityId}/products/${productId}/pin`);
+
+export const getPinnedProducts = () =>
+  request.get('/colonel/pinned-products').then((res: any) => res.data);
+
 export const followActivityProduct = (
   activityId: string | number,
   productId: string | number,

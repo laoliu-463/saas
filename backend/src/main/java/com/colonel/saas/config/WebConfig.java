@@ -1,12 +1,15 @@
 package com.colonel.saas.config;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.StandardEnvironment;
 import org.springframework.lang.NonNull;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import com.colonel.saas.security.JwtAuthInterceptor;
 import com.colonel.saas.security.OperationLogInterceptor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 
 import java.util.Arrays;
@@ -18,14 +21,25 @@ public class WebConfig implements WebMvcConfigurer {
     private final JwtAuthInterceptor jwtAuthInterceptor;
     private final OperationLogInterceptor operationLogInterceptor;
     private final @NonNull String[] allowedOriginPatterns;
+    private final Environment environment;
+
+    @Autowired
+    public WebConfig(
+            @NonNull JwtAuthInterceptor jwtAuthInterceptor,
+            @NonNull OperationLogInterceptor operationLogInterceptor,
+            @Value("${app.cors.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*}") String allowedOriginPatterns,
+            Environment environment) {
+        this.jwtAuthInterceptor = jwtAuthInterceptor;
+        this.operationLogInterceptor = operationLogInterceptor;
+        this.allowedOriginPatterns = parseAllowedOriginPatterns(allowedOriginPatterns);
+        this.environment = environment;
+    }
 
     public WebConfig(
             @NonNull JwtAuthInterceptor jwtAuthInterceptor,
             @NonNull OperationLogInterceptor operationLogInterceptor,
-            @Value("${app.cors.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*}") String allowedOriginPatterns) {
-        this.jwtAuthInterceptor = jwtAuthInterceptor;
-        this.operationLogInterceptor = operationLogInterceptor;
-        this.allowedOriginPatterns = parseAllowedOriginPatterns(allowedOriginPatterns);
+            String allowedOriginPatterns) {
+        this(jwtAuthInterceptor, operationLogInterceptor, allowedOriginPatterns, new StandardEnvironment());
     }
 
     @Override
@@ -42,31 +56,10 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(@NonNull InterceptorRegistry registry) {
         registry.addInterceptor(Objects.requireNonNull(jwtAuthInterceptor))
                 .addPathPatterns("/**")
-                .excludePathPatterns(
-                        "/auth/login",
-                        "/auth/refresh",
-                        "/douyin/webhooks/**",
-                        "/error",
-                        "/v3/api-docs/**",
-                        "/swagger-ui/**",
-                        "/swagger-resources/**",
-                        "/doc.html",
-                        "/system/health",
-                        "/api/system/health",
-                        "/system/env",
-                        "/api/system/env"
-                );
+                .excludePathPatterns(RuntimeExposurePolicy.publicSecurityPatterns(environment));
         registry.addInterceptor(Objects.requireNonNull(operationLogInterceptor))
                 .addPathPatterns("/**")
-                .excludePathPatterns(
-                        "/error",
-                        "/v3/api-docs/**",
-                        "/swagger-ui/**",
-                        "/swagger-resources/**",
-                        "/doc.html",
-                        "/system/health",
-                        "/api/system/health"
-                );
+                .excludePathPatterns(RuntimeExposurePolicy.publicSecurityPatterns(environment));
     }
 
     private static String[] parseAllowedOriginPatterns(String rawPatterns) {

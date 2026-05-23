@@ -36,8 +36,21 @@ class ExclusiveEvaluateJobTest {
         lenient().when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
     }
 
+    private ExclusiveEvaluateJob enabledJob() {
+        return new ExclusiveEvaluateJob(exclusiveTalentService, exclusiveMerchantService, jobLockService, true);
+    }
+
+    @Test
+    void evaluateTalentMonthly_shouldSkipByDefaultWhenExclusiveFeatureDisabled() {
+        job.evaluateTalentMonthly();
+
+        verify(jobLockService, never()).tryAcquire(eq(JobLockKeys.EXCLUSIVE_TALENT_EVALUATE), any(Duration.class));
+        verify(exclusiveTalentService, never()).evaluatePreviousMonthAndApplyCurrentMonth();
+    }
+
     @Test
     void evaluateTalentMonthly_shouldCallService() {
+        job = enabledJob();
         when(exclusiveTalentService.evaluatePreviousMonthAndApplyCurrentMonth()).thenReturn(5);
 
         job.evaluateTalentMonthly();
@@ -48,6 +61,7 @@ class ExclusiveEvaluateJobTest {
 
     @Test
     void evaluateTalentMonthly_shouldSkipWhenLockNotAcquired() {
+        job = enabledJob();
         when(jobLockService.tryAcquire(eq(JobLockKeys.EXCLUSIVE_TALENT_EVALUATE), any(Duration.class))).thenReturn(false);
 
         job.evaluateTalentMonthly();
@@ -57,6 +71,7 @@ class ExclusiveEvaluateJobTest {
 
     @Test
     void evaluateTalentMonthly_shouldCatchException() {
+        job = enabledJob();
         when(exclusiveTalentService.evaluatePreviousMonthAndApplyCurrentMonth())
                 .thenThrow(new RuntimeException("eval failed"));
 
@@ -67,6 +82,7 @@ class ExclusiveEvaluateJobTest {
 
     @Test
     void evaluateMerchantMonthly_shouldCallService() {
+        job = enabledJob();
         when(exclusiveMerchantService.evaluatePreviousMonthAndApplyCurrentMonth()).thenReturn(3);
 
         job.evaluateMerchantMonthly();
@@ -76,6 +92,7 @@ class ExclusiveEvaluateJobTest {
 
     @Test
     void evaluateMerchantMonthly_shouldCatchException() {
+        job = enabledJob();
         when(exclusiveMerchantService.evaluatePreviousMonthAndApplyCurrentMonth())
                 .thenThrow(new RuntimeException("eval failed"));
 

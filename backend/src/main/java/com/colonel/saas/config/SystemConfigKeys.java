@@ -16,6 +16,10 @@ public final class SystemConfigKeys {
     public static final String COMMISSION_BUSINESS_DEFAULT_RATIO = "commission.business_default_ratio";
     public static final String COMMISSION_CHANNEL_DEFAULT_RATIO = "commission.channel_default_ratio";
 
+    public static final String PROMOTION_COPY_BRIEF_TEMPLATE = "promotion.copy_brief_template";
+    public static final String PROMOTION_PICK_EXTRA_RULE = "promotion.pick_extra_rule";
+    public static final String PRESET_TALENT_TAGS = "talent.preset_tags";
+
     private SystemConfigKeys() {
     }
 }

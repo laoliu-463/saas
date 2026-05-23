@@ -115,6 +115,12 @@ public class OrderQueryService {
         OrderDetailResponse.AmountInfo amount = new OrderDetailResponse.AmountInfo();
         amount.setOrderAmount(asLong(row.get("order_amount")));
         amount.setServiceFee(asLong(row.get("settle_colonel_commission")));
+        amount.setPayAmount(asLong(row.get("order_amount")));
+        amount.setSettleAmount(asLong(row.get("settle_amount")));
+        amount.setEstimateServiceFee(asLong(row.get("estimate_service_fee")));
+        amount.setEffectiveServiceFee(asLong(row.get("effective_service_fee")));
+        amount.setEstimateTechServiceFee(asLong(row.get("estimate_tech_service_fee")));
+        amount.setEffectiveTechServiceFee(asLong(row.get("effective_tech_service_fee")));
         response.setAmount(amount);
 
         OrderDetailResponse.PromotionInfo promotion = new OrderDetailResponse.PromotionInfo();
@@ -192,6 +198,11 @@ public class OrderQueryService {
                     co.colonel_user_id,
                     co.colonel_user_name,
                     co.order_amount,
+                    co.settle_amount,
+                    co.estimate_service_fee,
+                    co.effective_service_fee,
+                    co.estimate_tech_service_fee,
+                    co.effective_tech_service_fee,
                     co.settle_colonel_commission,
                     co.settle_time,
                     co.create_time,

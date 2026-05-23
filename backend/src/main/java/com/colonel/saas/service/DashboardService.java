@@ -42,20 +42,29 @@ public class DashboardService {
 
     private final ColonelsettlementOrderMapper orderMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final PerformanceMetricsQueryService performanceMetricsQueryService;
 
-    public DashboardService(ColonelsettlementOrderMapper orderMapper, JdbcTemplate jdbcTemplate) {
+    public DashboardService(
+            ColonelsettlementOrderMapper orderMapper,
+            JdbcTemplate jdbcTemplate,
+            PerformanceMetricsQueryService performanceMetricsQueryService) {
         this.orderMapper = orderMapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.performanceMetricsQueryService = performanceMetricsQueryService;
     }
 
     public Summary getSummary(LocalDateTime startTime, LocalDateTime endTime, UUID userId, UUID deptId, DataScope dataScope) {
-        QueryWrapper<ColonelsettlementOrder> totalWrapper = new QueryWrapper<ColonelsettlementOrder>()
-                .select("count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee");
-        applyRange(totalWrapper, startTime, endTime);
-        applyScope(totalWrapper, userId, deptId, dataScope);
-        Map<String, Object> totalMap = orderMapper.selectMaps(totalWrapper).stream()
-                .findFirst()
-                .orElse(Map.of());
+        boolean usePerformanceRecords = performanceMetricsQueryService.hasPerformanceRecords();
+        Map<String, Object> totalMap = Map.of();
+        if (!usePerformanceRecords) {
+            QueryWrapper<ColonelsettlementOrder> totalWrapper = new QueryWrapper<ColonelsettlementOrder>()
+                    .select("count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee");
+            applyRange(totalWrapper, startTime, endTime);
+            applyScope(totalWrapper, userId, deptId, dataScope);
+            totalMap = orderMapper.selectMaps(totalWrapper).stream()
+                    .findFirst()
+                    .orElse(Map.of());
+        }
 
         QueryWrapper<ColonelsettlementOrder> attributedWrapper = new QueryWrapper<ColonelsettlementOrder>()
                 .eq("attribution_status", AttributionService.STATUS_ATTRIBUTED);
@@ -69,31 +78,50 @@ public class DashboardService {
         applyScope(unattributedWrapper, userId, deptId, dataScope);
         Long unattributedCount = orderMapper.selectCount(unattributedWrapper);
 
-        QueryWrapper<ColonelsettlementOrder> channelWrapper = new QueryWrapper<ColonelsettlementOrder>()
-                .select("channel_user_id as channelUserId", "channel_user_name as channelUserName", "count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee")
-                .isNotNull("channel_user_id")
-                .eq("attribution_status", AttributionService.STATUS_ATTRIBUTED)
-                .groupBy("channel_user_id", "channel_user_name");
-        applyRange(channelWrapper, startTime, endTime);
-        applyScope(channelWrapper, userId, deptId, dataScope);
-        List<PerformanceItem> channelPerformance = orderMapper.selectMaps(channelWrapper).stream()
-                .map(this::toPerformanceItem)
-                .sorted(Comparator.comparingLong(PerformanceItem::getOrderCount).reversed())
-                .limit(10)
-                .toList();
+        List<PerformanceItem> channelPerformance;
+        List<PerformanceItem> colonelPerformance;
+        long orderCount;
+        long orderAmount;
+        long serviceFee;
+        if (usePerformanceRecords) {
+            PerformanceMetricsQueryService.DashboardPerformanceSummary performanceSummary =
+                    performanceMetricsQueryService.aggregateDashboardSummary(startTime, endTime, userId, deptId, dataScope);
+            orderCount = performanceSummary.orderCount();
+            orderAmount = performanceSummary.orderAmountCent();
+            serviceFee = performanceSummary.serviceFeeCent();
+            channelPerformance = toPerformanceItems(performanceSummary.channelPerformance(), true);
+            colonelPerformance = toPerformanceItems(performanceSummary.colonelPerformance(), false);
+        } else {
+            orderCount = asLong(totalMap.get("ordercount"));
+            orderAmount = asLong(totalMap.get("orderamount"));
+            serviceFee = asLong(totalMap.get("servicefee"));
 
-        QueryWrapper<ColonelsettlementOrder> colonelWrapper = new QueryWrapper<ColonelsettlementOrder>()
-                .select("colonel_user_id as colonelUserId", "colonel_user_name as colonelUserName", "count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee")
-                .isNotNull("colonel_user_id")
-                .eq("attribution_status", AttributionService.STATUS_ATTRIBUTED)
-                .groupBy("colonel_user_id", "colonel_user_name");
-        applyRange(colonelWrapper, startTime, endTime);
-        applyScope(colonelWrapper, userId, deptId, dataScope);
-        List<PerformanceItem> colonelPerformance = orderMapper.selectMaps(colonelWrapper).stream()
-                .map(this::toPerformanceItem)
-                .sorted(Comparator.comparingLong(PerformanceItem::getOrderCount).reversed())
-                .limit(10)
-                .toList();
+            QueryWrapper<ColonelsettlementOrder> channelWrapper = new QueryWrapper<ColonelsettlementOrder>()
+                    .select("channel_user_id as channelUserId", "channel_user_name as channelUserName", "count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee")
+                    .isNotNull("channel_user_id")
+                    .eq("attribution_status", AttributionService.STATUS_ATTRIBUTED)
+                    .groupBy("channel_user_id", "channel_user_name");
+            applyRange(channelWrapper, startTime, endTime);
+            applyScope(channelWrapper, userId, deptId, dataScope);
+            channelPerformance = orderMapper.selectMaps(channelWrapper).stream()
+                    .map(this::toPerformanceItem)
+                    .sorted(Comparator.comparingLong(PerformanceItem::getOrderCount).reversed())
+                    .limit(10)
+                    .toList();
+
+            QueryWrapper<ColonelsettlementOrder> colonelWrapper = new QueryWrapper<ColonelsettlementOrder>()
+                    .select("colonel_user_id as colonelUserId", "colonel_user_name as colonelUserName", "count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee")
+                    .isNotNull("colonel_user_id")
+                    .eq("attribution_status", AttributionService.STATUS_ATTRIBUTED)
+                    .groupBy("colonel_user_id", "colonel_user_name");
+            applyRange(colonelWrapper, startTime, endTime);
+            applyScope(colonelWrapper, userId, deptId, dataScope);
+            colonelPerformance = orderMapper.selectMaps(colonelWrapper).stream()
+                    .map(this::toPerformanceItem)
+                    .sorted(Comparator.comparingLong(PerformanceItem::getOrderCount).reversed())
+                    .limit(10)
+                    .toList();
+        }
 
         QueryWrapper<ColonelsettlementOrder> reasonWrapper = new QueryWrapper<ColonelsettlementOrder>()
                 .select("attribution_remark as reason", "count(*) as count")
@@ -119,14 +147,14 @@ public class DashboardService {
         ).records();
 
         Summary summary = new Summary();
-        summary.setOrderCount(asLong(totalMap.get("ordercount")));
-        summary.setOrderAmount(asLong(totalMap.get("orderamount")));
-        summary.setServiceFee(asLong(totalMap.get("servicefee")));
+        summary.setOrderCount(orderCount);
+        summary.setOrderAmount(orderAmount);
+        summary.setServiceFee(serviceFee);
         summary.setAttributedOrderCount(attributedCount);
         summary.setUnattributedOrderCount(unattributedCount);
-        summary.setAttributionRate(summary.getOrderCount() == null || summary.getOrderCount() == 0
+        summary.setAttributionRate(orderCount == 0
                 ? 0D
-                : attributedCount.doubleValue() / summary.getOrderCount().doubleValue());
+                : attributedCount.doubleValue() / (double) orderCount);
         summary.setChannelPerformance(channelPerformance);
         summary.setColonelPerformance(colonelPerformance);
         summary.setUnattributedReasons(unattributedReasons);
@@ -463,6 +491,27 @@ public class DashboardService {
         item.setOrderAmount(asLong(map.get("orderamount")));
         item.setServiceFee(asLong(map.get("servicefee")));
         return item;
+    }
+
+    private List<PerformanceItem> toPerformanceItems(
+            List<PerformanceMetricsQueryService.PerformanceLeaderboardItem> items,
+            boolean channel) {
+        return items.stream()
+                .map(item -> {
+                    PerformanceItem performanceItem = new PerformanceItem();
+                    if (channel) {
+                        performanceItem.setChannelUserId(item.userId());
+                        performanceItem.setChannelUserName(item.userName());
+                    } else {
+                        performanceItem.setColonelUserId(item.userId());
+                        performanceItem.setColonelUserName(item.userName());
+                    }
+                    performanceItem.setOrderCount(item.orderCount());
+                    performanceItem.setOrderAmount(item.orderAmountCent());
+                    performanceItem.setServiceFee(item.serviceFeeCent());
+                    return performanceItem;
+                })
+                .toList();
     }
 
     private ReasonCountItem toReasonCountItem(Map<String, Object> map) {

@@ -29,6 +29,12 @@ export interface OrderDetail {
   amount?: {
     orderAmount?: number | null
     serviceFee?: number | null
+    payAmount?: number | null
+    settleAmount?: number | null
+    estimateServiceFee?: number | null
+    effectiveServiceFee?: number | null
+    estimateTechServiceFee?: number | null
+    effectiveTechServiceFee?: number | null
   }
   promotion?: {
     matched: boolean

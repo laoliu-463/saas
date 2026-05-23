@@ -42,6 +42,8 @@ class OrderSyncServiceTest {
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
     private ValueOperations<String, Object> valueOperations;
+    @Mock
+    private DistributedJobLockService jobLockService;
 
     private AppProperties appProperties;
     private OrderSyncService service;
@@ -50,14 +52,16 @@ class OrderSyncServiceTest {
     void setUp() {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(persistenceService.persistOrder(any())).thenReturn(true);
+        lenient().when(jobLockService.tryAcquireStrict(eq("order:sync:lock"), any(Duration.class))).thenReturn(true);
         appProperties = new AppProperties();
         appProperties.getTest().setEnabled(false);
-        service = new OrderSyncService(douyinOrderGateway, persistenceService, attributionService, redisTemplate, appProperties);
+        service = new OrderSyncService(
+                douyinOrderGateway, persistenceService, attributionService, redisTemplate, jobLockService, appProperties);
     }
 
     @Test
     void syncByTimeRange_shouldReturnLockedWhenLockNotAcquired() {
-        when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(false);
+        when(jobLockService.tryAcquireStrict(eq("order:sync:lock"), any(Duration.class))).thenReturn(false);
 
         OrderSyncService.SyncResult result = service.syncByTimeRange(100L, 200L);
 
@@ -67,7 +71,6 @@ class OrderSyncServiceTest {
 
     @Test
     void syncByTimeRange_shouldPersistLastSyncTimeAndReleaseLock() {
-        when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
         when(douyinOrderGateway.listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(new DouyinOrderGateway.OrderListResult(List.of(), false, "0", Map.of()));
 
@@ -76,13 +79,12 @@ class OrderSyncServiceTest {
         assertThat(result.locked()).isFalse();
         assertThat(result.inserted()).isZero();
         verify(valueOperations).set("order:sync:last_time", "200");
-        verify(redisTemplate).delete("order:sync:lock");
+        verify(jobLockService).release("order:sync:lock");
     }
 
     @Test
     void syncLatestWindow_shouldUseLastSyncWithOverlap() {
         when(valueOperations.get("order:sync:last_time")).thenReturn(12345L);
-        when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
         when(douyinOrderGateway.listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(new DouyinOrderGateway.OrderListResult(List.of(), false, "0", Map.of()));
 
@@ -101,7 +103,6 @@ class OrderSyncServiceTest {
         UUID channelUserId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
         UUID colonelUserId = UUID.randomUUID();
-        when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
         when(douyinOrderGateway.listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(new DouyinOrderGateway.OrderListResult(
                         List.of(new DouyinOrderGateway.DouyinOrderItem(
@@ -135,8 +136,14 @@ class OrderSyncServiceTest {
                         colonelUserId,
                         AttributionService.REASON_ATTRIBUTED
                 ));
-        when(persistenceService.getUser(channelUserId)).thenReturn(user("Channel A"));
-        when(persistenceService.getUser(colonelUserId)).thenReturn(user("Colonel A"));
+        SysUser channelUser = user("Channel A");
+        channelUser.setId(channelUserId);
+        SysUser colonelUser = user("Colonel A");
+        colonelUser.setId(colonelUserId);
+        when(persistenceService.loadUsersByIds(any())).thenReturn(Map.of(
+                channelUserId, channelUser,
+                colonelUserId, colonelUser
+        ));
 
         OrderSyncService.SyncResult result = service.syncByTimeRange(100L, 200L);
 
@@ -155,7 +162,6 @@ class OrderSyncServiceTest {
 
     @Test
     void syncByTimeRange_shouldSkipBlankOrderId() {
-        when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
         when(douyinOrderGateway.listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(new DouyinOrderGateway.OrderListResult(
                         List.of(new DouyinOrderGateway.DouyinOrderItem(
@@ -188,7 +194,6 @@ class OrderSyncServiceTest {
 
     @Test
     void syncByTimeRange_shouldCountFailuresWhenAttributionThrows() {
-        when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
         when(douyinOrderGateway.listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(new DouyinOrderGateway.OrderListResult(
                         List.of(new DouyinOrderGateway.DouyinOrderItem(
@@ -232,7 +237,6 @@ class OrderSyncServiceTest {
 
     @Test
     void syncByOrderIds_shouldUseTargetedGatewayQuery() {
-        when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class))).thenReturn(true);
         when(douyinOrderGateway.listSettlementByOrderIds(List.of("ORDER_1", "ORDER_2")))
                 .thenReturn(new DouyinOrderGateway.OrderListResult(
                         List.of(new DouyinOrderGateway.DouyinOrderItem(
@@ -272,23 +276,18 @@ class OrderSyncServiceTest {
     }
 
     @Test
-    void mockModeShouldFallbackWhenRedisUnavailable() {
-        AppProperties testProps = new AppProperties();
-        testProps.getTest().setEnabled(true);
-        service = new OrderSyncService(douyinOrderGateway, persistenceService, attributionService, redisTemplate, testProps);
-        when(valueOperations.setIfAbsent(eq("order:sync:lock"), eq("1"), any(Duration.class)))
+    void syncByTimeRange_shouldFailWhenStrictLockRedisUnavailable() {
+        when(jobLockService.tryAcquireStrict(eq("order:sync:lock"), any(Duration.class)))
                 .thenThrow(new RedisConnectionFailureException("redis down"));
-        when(douyinOrderGateway.listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
-                .thenReturn(new DouyinOrderGateway.OrderListResult(List.of(), false, "0", Map.of()));
 
-        OrderSyncService.SyncResult result = service.syncByTimeRange(100L, 200L);
-
-        assertThat(result.locked()).isFalse();
-        assertThat(service.getLastSyncTime()).isNotNull();
+        assertThatThrownBy(() -> service.syncByTimeRange(100L, 200L))
+                .isInstanceOf(RedisConnectionFailureException.class);
+        verify(douyinOrderGateway, never()).listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
     }
 
     private SysUser user(String name) {
         SysUser user = new SysUser();
+        user.setId(UUID.randomUUID());
         user.setRealName(name);
         return user;
     }

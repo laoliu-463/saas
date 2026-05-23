@@ -58,6 +58,21 @@ public class Talent extends VersionedEntity {
     @TableField("contact_wechat")
     private String contactWechat;
 
+    @TableField(value = "talent_tags", typeHandler = JsonbListTypeHandler.class)
+    private List<String> tags;
+
+    @TableField("tag_updated_by")
+    private UUID tagUpdatedBy;
+
+    @TableField("shipping_recipient_name")
+    private String shippingRecipientName;
+
+    @TableField("shipping_recipient_phone")
+    private String shippingRecipientPhone;
+
+    @TableField("shipping_recipient_address")
+    private String shippingRecipientAddress;
+
     @TableField("likes_count")
     private Long likesCount;
 

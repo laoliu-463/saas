@@ -81,6 +81,8 @@ class ProductServiceTest {
     private TalentFollowService talentFollowService;
     @Mock
     private DouyinActivityGateway douyinActivityGateway;
+    @Mock
+    private BusinessRuleConfigService businessRuleConfigService;
     private PromotionLinkIdempotencyService promotionLinkIdempotencyService;
 
     private ProductService service;
@@ -103,9 +105,15 @@ class ProductServiceTest {
                 colonelActivityMapper,
                 talentFollowService,
                 douyinActivityGateway,
-                promotionLinkIdempotencyService
+                promotionLinkIdempotencyService,
+                businessRuleConfigService
         );
         lenient().when(operationStateMapper.updateById(any(ProductOperationState.class))).thenReturn(1);
+        lenient().when(businessRuleConfigService.getPromotionPickExtraRule())
+                .thenReturn(new BusinessRuleConfigService.PromotionPickExtraRuleConfig(
+                        "channel_{channel_code}",
+                        "none",
+                        Map.of()));
     }
 
     @Test
@@ -321,6 +329,55 @@ class ProductServiceTest {
         verify(promotionLinkMapper).insert(any(PromotionLink.class));
         verify(pickSourceMappingService).saveOrUpdate(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(productBizStatusService).changeStatus(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void generatePromotionLink_shouldUseConfiguredPickExtraRule() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+        snapshot.setDetailUrl("https://example.com/detail");
+        ProductOperationState state = new ProductOperationState();
+        state.setActivityId("10001");
+        state.setProductId("9001");
+        state.setBizStatus("ASSIGNED");
+        state.setSelectedToLibrary(true);
+        SysUser user = new SysUser();
+        user.setRealName("渠道A");
+        user.setChannelCode("leaderA");
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(businessRuleConfigService.getPromotionPickExtraRule())
+                .thenReturn(new BusinessRuleConfigService.PromotionPickExtraRuleConfig(
+                        "{channel_code}_{product_id}",
+                        "none",
+                        Map.of("format", "{channel_code}_{product_id}")));
+        when(douyinPromotionGateway.generateLink(any()))
+                .thenAnswer(invocation -> {
+                    DouyinPromotionGateway.PromotionLinkCommand command = invocation.getArgument(0);
+                    return new DouyinPromotionGateway.PromotionLinkResult(
+                            "abc12345",
+                            command.context().pickExtra(),
+                            "abc12345",
+                            "https://s.link",
+                            "https://p.link",
+                            "seed"
+                    );
+                });
+
+        DouyinPromotionGateway.PromotionLinkResult result = service.generatePromotionLink(
+                "10001", "9001", userId, deptId, null, null, true
+        );
+
+        assertThat(result.pickExtra()).isEqualTo("leadera_9001");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<DouyinPromotionGateway.PromotionLinkCommand> commandCaptor =
+                ArgumentCaptor.forClass(DouyinPromotionGateway.PromotionLinkCommand.class);
+        verify(douyinPromotionGateway).generateLink(commandCaptor.capture());
+        assertThat(commandCaptor.getValue().context().pickExtra()).isEqualTo("leadera_9001");
     }
 
     @Test

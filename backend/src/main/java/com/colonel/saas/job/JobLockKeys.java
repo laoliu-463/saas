@@ -13,6 +13,8 @@ public final class JobLockKeys {
     public static final String SAMPLE_LIFECYCLE = "sample:lifecycle:job:lock";
     public static final String LOGISTICS_TRACK = "logistics:track:job:lock";
     public static final String LOG_CLEANUP = "operation-log:cleanup:job:lock";
+    public static final String ORDER_SYNC = "order:sync:lock";
+    public static final String PERFORMANCE_BACKFILL = "performance:backfill:job:lock";
 
     private JobLockKeys() {
     }

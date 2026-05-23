@@ -6,7 +6,9 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
+import com.colonel.saas.service.ProductPinService;
 import com.colonel.saas.service.ProductService;
+import com.colonel.saas.service.PromotionCopyBriefService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,12 +33,17 @@ class ColonelActivityProductControllerTest {
     private ProductService productService;
     @Mock
     private SysUserService sysUserService;
+    @Mock
+    private ProductPinService productPinService;
+    @Mock
+    private PromotionCopyBriefService promotionCopyBriefService;
 
     private ColonelActivityProductController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new ColonelActivityProductController(productService, sysUserService);
+        controller = new ColonelActivityProductController(
+                productService, productPinService, promotionCopyBriefService, sysUserService);
     }
 
     @Test

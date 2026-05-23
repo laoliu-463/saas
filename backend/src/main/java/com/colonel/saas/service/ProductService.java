@@ -38,6 +38,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -48,6 +49,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -91,6 +93,7 @@ public class ProductService {
     private final TalentFollowService talentFollowService;
     private final DouyinActivityGateway douyinActivityGateway;
     private final PromotionLinkIdempotencyService promotionLinkIdempotencyService;
+    private final BusinessRuleConfigService businessRuleConfigService;
 
     public ProductService(
             DouyinPromotionGateway douyinPromotionGateway,
@@ -107,7 +110,8 @@ public class ProductService {
             ColonelsettlementActivityMapper colonelActivityMapper,
             TalentFollowService talentFollowService,
             DouyinActivityGateway douyinActivityGateway,
-            PromotionLinkIdempotencyService promotionLinkIdempotencyService) {
+            PromotionLinkIdempotencyService promotionLinkIdempotencyService,
+            BusinessRuleConfigService businessRuleConfigService) {
         this.douyinPromotionGateway = douyinPromotionGateway;
         this.douyinProductGateway = douyinProductGateway;
         this.snapshotMapper = snapshotMapper;
@@ -123,6 +127,7 @@ public class ProductService {
         this.talentFollowService = talentFollowService;
         this.douyinActivityGateway = douyinActivityGateway;
         this.promotionLinkIdempotencyService = promotionLinkIdempotencyService;
+        this.businessRuleConfigService = businessRuleConfigService;
     }
 
     public IPage<Product> getPage(long page, long size, Integer status) {
@@ -247,9 +252,109 @@ public class ProductService {
             statePageNo++;
         }
 
+        pageRecords.sort(this::compareLibraryProducts);
         Page<Product> result = new Page<>(currentPage, pageSize, matchedTotal);
         result.setRecords(pageRecords);
         return result;
+    }
+
+    /**
+     * P-09 fix: 商品库展示优先级规则（优先级递减）：
+     * 1. 置顶商品优先（24h内）
+     * 2. 有推广链接（投流）优先
+     * 3. 高佣金（activityCosRatio 数值大的优先）
+     * 4. 晚上架优先（selectedAt 更晚的优先）
+     * 置顶商品内部再按上述 2-4 规则二次排序。
+     */
+    private int compareLibraryProducts(Product left, Product right) {
+        boolean leftPinned = isPinnedAndNotExpired(left);
+        boolean rightPinned = isPinnedAndNotExpired(right);
+        if (leftPinned != rightPinned) {
+            return leftPinned ? -1 : 1;
+        }
+
+        // 同为置顶或同为非置顶，按 2-4 规则二次排序
+        int sub = compareByPromotionCommissionTime(left, right);
+        if (sub != 0) {
+            return sub;
+        }
+
+        // 最后按 selectedAt 倒序（晚上架优先）
+        if (left.getSelectedAt() == null && right.getSelectedAt() == null) {
+            return 0;
+        }
+        if (left.getSelectedAt() == null) {
+            return 1;
+        }
+        if (right.getSelectedAt() == null) {
+            return -1;
+        }
+        return right.getSelectedAt().compareTo(left.getSelectedAt());
+    }
+
+    private boolean isPinnedAndNotExpired(Product p) {
+        if (!Boolean.TRUE.equals(p.getPinned())) {
+            return false;
+        }
+        if (p.getPinnedUntil() == null) {
+            return true; // 无过期时间，视为有效
+        }
+        return LocalDateTime.now().isBefore(p.getPinnedUntil());
+    }
+
+    /**
+     * 投流优先 > 高佣金优先 > 晚上架优先。
+     */
+    private int compareByPromotionCommissionTime(Product left, Product right) {
+        // 规则2：投流（有推广链接）优先
+        boolean leftPromoted = hasPromotionLink(left);
+        boolean rightPromoted = hasPromotionLink(right);
+        if (leftPromoted != rightPromoted) {
+            return leftPromoted ? -1 : 1;
+        }
+
+        // 规则3：高佣金优先（佣金率高在前）
+        int commissionCompare = compareCommission(left, right);
+        if (commissionCompare != 0) {
+            return commissionCompare;
+        }
+
+        // 规则4：晚上架优先
+        return compareSelectedTime(left, right);
+    }
+
+    private boolean hasPromotionLink(Product p) {
+        // 投流 = 有 promoteLink 或 shortLink
+        return StringUtils.hasText(p.getPromoteLink()) || StringUtils.hasText(p.getShortLink());
+    }
+
+    private int compareCommission(Product left, Product right) {
+        java.math.BigDecimal leftRatio = left.getCosRatio();
+        java.math.BigDecimal rightRatio = right.getCosRatio();
+        if (leftRatio == null && rightRatio == null) {
+            return 0;
+        }
+        if (leftRatio == null) {
+            return 1;
+        }
+        if (rightRatio == null) {
+            return -1;
+        }
+        // 高佣金在前（降序）
+        return rightRatio.compareTo(leftRatio);
+    }
+
+    private int compareSelectedTime(Product left, Product right) {
+        if (left.getSelectedAt() == null && right.getSelectedAt() == null) {
+            return 0;
+        }
+        if (left.getSelectedAt() == null) {
+            return 1;
+        }
+        if (right.getSelectedAt() == null) {
+            return -1;
+        }
+        return right.getSelectedAt().compareTo(left.getSelectedAt());
     }
 
     public PageResult<Map<String, Object>> getPromotionLinkHistory(String productId, long page, long size) {
@@ -1395,7 +1500,7 @@ public class ProductService {
             throw BusinessException.stateInvalid("当前状态不允许执行PROMOTION_LINK，当前状态：" + beforeStatus.name());
         }
         SysUser user = sysUserMapper.selectById(userId);
-        String desiredPickExtra = buildPickExtra(userId);
+        String desiredPickExtra = buildPickExtra(userId, user, snapshot.getProductId(), snapshot.getActivityId());
 
         try {
             DouyinPromotionGateway.PromotionLinkResult result = douyinPromotionGateway.generateLink(
@@ -1555,17 +1660,73 @@ public class ProductService {
         }
     }
 
-    private String buildPickExtra(UUID userId) {
+    private String buildPickExtra(UUID userId, SysUser user, String productId, String activityId) {
         if (userId == null) {
             return null;
         }
-        SysUser user = sysUserMapper.selectById(userId);
-        if (user != null && StringUtils.hasText(user.getChannelCode())) {
-            String candidate = "channel_" + user.getChannelCode().trim().toLowerCase(Locale.ROOT);
-            return candidate.length() <= 20 ? candidate : candidate.substring(0, 20);
+        String compactUserId = userId.toString().replace("-", "");
+        String channelCode = user != null && StringUtils.hasText(user.getChannelCode())
+                ? user.getChannelCode().trim().toLowerCase(Locale.ROOT)
+                : compactUserId;
+        BusinessRuleConfigService.PromotionPickExtraRuleConfig rule =
+                businessRuleConfigService == null ? null : businessRuleConfigService.getPromotionPickExtraRule();
+        String format = rule == null || !StringUtils.hasText(rule.format())
+                ? "channel_{channel_code}"
+                : rule.format().trim();
+        String candidate = format
+                .replace("{channel_code}", channelCode)
+                .replace("{channelCode}", channelCode)
+                .replace("{channel_id}", compactUserId)
+                .replace("{channelId}", compactUserId)
+                .replace("{user_id}", compactUserId)
+                .replace("{userId}", compactUserId)
+                .replace("{product_id}", safePickExtraToken(productId))
+                .replace("{productId}", safePickExtraToken(productId))
+                .replace("{activity_id}", safePickExtraToken(activityId))
+                .replace("{activityId}", safePickExtraToken(activityId));
+        if (!StringUtils.hasText(candidate)) {
+            candidate = "channel_" + channelCode;
         }
-        String fallback = "channel_" + userId.toString().replace("-", "");
-        return fallback.substring(0, Math.min(fallback.length(), 20));
+        return normalizePickExtraValue(encodePickExtra(candidate, rule == null ? "none" : rule.encode()));
+    }
+
+    private String safePickExtraToken(String value) {
+        return StringUtils.hasText(value) ? value.trim() : "";
+    }
+
+    private String encodePickExtra(String candidate, String encode) {
+        if (!StringUtils.hasText(candidate)) {
+            return candidate;
+        }
+        String normalizedEncode = StringUtils.hasText(encode) ? encode.trim().toLowerCase(Locale.ROOT) : "none";
+        return switch (normalizedEncode) {
+            case "url" -> URLEncoder.encode(candidate.trim(), StandardCharsets.UTF_8);
+            case "base64" -> Base64.getUrlEncoder()
+                    .withoutPadding()
+                    .encodeToString(candidate.trim().getBytes(StandardCharsets.UTF_8));
+            default -> candidate;
+        };
+    }
+
+    private String normalizePickExtraValue(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String normalized = value.trim()
+                .replaceAll("[^A-Za-z0-9_]", "_")
+                .toLowerCase(Locale.ROOT);
+        if (normalized.length() <= 20) {
+            return normalized;
+        }
+        if (normalized.startsWith("channel_")) {
+            String tail = normalized.substring("channel_".length());
+            int allowedTailLength = 20 - "channel_".length();
+            if (tail.length() > allowedTailLength) {
+                tail = tail.substring(0, allowedTailLength);
+            }
+            return "channel_" + tail;
+        }
+        return normalized.substring(0, 20);
     }
 
     private String normalizePromotionScene(String scene) {
@@ -2134,6 +2295,8 @@ public class ProductService {
             }
             product.setBizStatus(bizStatus.name());
             product.setBizStatusLabel(bizStatus.getLabel());
+            product.setPinned(ProductPinService.isPinned(state, java.time.LocalDateTime.now()));
+            product.setPinnedUntil(state.getPinnedUntil());
         }
         return product;
     }

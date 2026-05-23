@@ -68,10 +68,13 @@
           :can-put-into-library="false"
           :can-copy-link="canCopyPromotionLink"
           :can-apply-sample="canCopyPromotionLink"
+          :can-pin="canPinProduct"
           @toggle="expandedProductId = $event"
           @detail="openDetail"
           @copy-link="copyPromotionLink"
           @apply-sample="openSampleApply"
+          @pin="pinProduct"
+          @unpin="unpinProduct"
           @show-logs="openDialog('logs', $event)"
         />
       </div>
@@ -114,7 +117,7 @@ import { useMessage } from 'naive-ui'
 import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
 import { getProducts } from '../../api/product'
-import { convertActivityProductLink } from '../../api/activityProduct'
+import { convertActivityProductLink, pinActivityProduct, unpinActivityProduct } from '../../api/activityProduct'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES, hasAccess } from '../../constants/rbac'
 import { useDelayedFlag } from '../../utils/delayedFlag'
@@ -142,6 +145,7 @@ const loading = ref(false)
 const showInitialLoading = useDelayedFlag(loading, 200)
 const loadingMore = ref(false)
 const promotionLoadingIds = ref<Set<string>>(new Set())
+const pinLoadingIds = ref<Set<string>>(new Set())
 const products = ref<any[]>([])
 const hasMore = ref(false)
 const totalCount = ref(0)
@@ -162,6 +166,10 @@ const dialogs = ref({
 
 const canCopyPromotionLink = computed(() =>
   hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
+)
+
+const canPinProduct = computed(() =>
+  hasAccess(authStore.roleCodes, [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF])
 )
 
 const normalizeText = (value?: string | number | null) => {
@@ -400,10 +408,57 @@ const copyPromotionLink = async (item: any) => {
   }
 }
 
+const updatePinnedState = (item: any, pinned: boolean, pinnedUntil?: string | null) => {
+  const productId = String(item?.productId || '')
+  const merged = normalizeItem({
+    ...item,
+    pinned,
+    pinnedUntil: pinned ? pinnedUntil || item?.pinnedUntil || null : null
+  })
+  products.value = products.value.map((row: any) =>
+    String(row.productId) === productId ? { ...row, ...merged } : row
+  )
+  if (String(currentRow.value?.productId || '') === productId) {
+    currentRow.value = { ...currentRow.value, ...merged }
+  }
+}
+
+const setProductPinned = async (item: any, pinned: boolean) => {
+  if (!canPinProduct.value) {
+    message.warning('仅招商角色可以置顶商品')
+    return
+  }
+  const productId = String(item?.productId || '')
+  const activityId = String(item?.sourceActivityId || item?.activityId || '')
+  if (!productId || !activityId) {
+    message.warning('商品缺少来源活动信息，暂时无法置顶')
+    return
+  }
+  if (pinLoadingIds.value.has(productId)) return
+  pinLoadingIds.value = new Set(pinLoadingIds.value).add(productId)
+  try {
+    const res: any = pinned
+      ? await pinActivityProduct(activityId, productId)
+      : await unpinActivityProduct(activityId, productId)
+    updatePinnedState(item, Boolean(res?.data?.pinned ?? pinned), res?.data?.pinnedUntil || null)
+    message.success(pinned ? '商品已置顶 24 小时' : '已取消置顶')
+  } catch (error: any) {
+    message.error(error?.response?.data?.msg || error?.message || (pinned ? '置顶失败，请稍后重试' : '取消置顶失败，请稍后重试'))
+  } finally {
+    const next = new Set(pinLoadingIds.value)
+    next.delete(productId)
+    pinLoadingIds.value = next
+  }
+}
+
+const pinProduct = (item: any) => setProductPinned(item, true)
+
+const unpinProduct = (item: any) => setProductPinned(item, false)
+
 const openSampleApply = (item: any) => {
   const context = buildProductSampleContext(item)
   if (!context.query.productId) {
-    message.warning('商品信息不完整，暂不可快速寄样')
+    message.warning('商品信息不完整，暂不可发起内部寄样')
     return
   }
   router.push({ path: '/sample/apply', query: context.query })

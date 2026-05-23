@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -50,6 +51,34 @@ class JwtAuthenticationFilterTest {
     @Test
     void systemHealthPath_shouldBypassAuthorizationCheck() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/system/health");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isNotEqualTo(401);
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    @Test
+    void systemEnvPath_shouldRequireAuthorizationWhenProdProfileActive() throws Exception {
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("prod");
+        JwtAuthenticationFilter prodFilter =
+                new JwtAuthenticationFilter(jwtTokenProvider, authService, new ObjectMapper(), environment);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/system/env");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        prodFilter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(chain.getRequest()).isNull();
+    }
+
+    @Test
+    void systemEnvPath_shouldStayPublicOutsideProdProfile() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/system/env");
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
 

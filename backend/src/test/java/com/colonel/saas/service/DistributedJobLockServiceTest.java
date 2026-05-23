@@ -26,6 +26,18 @@ class DistributedJobLockServiceTest {
     private ValueOperations<String, Object> valueOperations;
 
     @Test
+    void tryAcquireStrict_shouldThrowWhenRedisUnavailable() {
+        DistributedJobLockService service = new DistributedJobLockService(redisTemplate, false);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.setIfAbsent(eq("job:lock"), eq("1"), any(Duration.class)))
+                .thenThrow(new RedisConnectionFailureException("down", null));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> service.tryAcquireStrict("job:lock", Duration.ofMinutes(5)))
+                .isInstanceOf(RedisConnectionFailureException.class);
+    }
+
+    @Test
     void tryAcquire_shouldReturnTrueWhenRedisLockGranted() {
         DistributedJobLockService service = new DistributedJobLockService(redisTemplate, false);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);

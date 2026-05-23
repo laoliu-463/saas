@@ -11,10 +11,65 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RealDouyinOrderGatewayTest {
+
+    @Test
+    void listSettlement_usesColonelMultiSettlementOrdersForTimeRange() {
+        OrderApi orderApi = mock(OrderApi.class);
+        DouyinUpstreamModeSupport upstreamModeSupport = mock(DouyinUpstreamModeSupport.class);
+        DouyinContractFixtureProvider contractFixtureProvider = mock(DouyinContractFixtureProvider.class);
+        RealDouyinOrderGateway gateway = new RealDouyinOrderGateway(
+                orderApi,
+                upstreamModeSupport,
+                contractFixtureProvider
+        );
+        Map<String, Object> order = new LinkedHashMap<>();
+        order.put("order_id", "4933609365066313446");
+        order.put("product_id", "3810562766247428542");
+        order.put("create_time", "2024-04-01 00:00:00");
+        when(upstreamModeSupport.isContract()).thenReturn(false);
+        when(orderApi.listColonelMultiSettlementOrders(
+                null,
+                20,
+                "0",
+                "update",
+                "2024-04-01 00:00:00",
+                "2024-04-02 00:00:00",
+                null))
+                .thenReturn(Map.of(
+                        "code", 10000,
+                        "data", Map.of(
+                                "orders", List.of(order),
+                                "cursor", "0"
+                        )
+                ));
+
+        DouyinOrderGateway.OrderListResult result = gateway.listSettlement(
+                new DouyinOrderGateway.DouyinOrderQueryRequest(1711900800L, 1711987200L, 20, "0")
+        );
+
+        assertThat(result.orders()).hasSize(1);
+        assertThat(result.orders().get(0).externalOrderId()).isEqualTo("4933609365066313446");
+        verify(orderApi).listColonelMultiSettlementOrders(
+                null,
+                20,
+                "0",
+                "update",
+                "2024-04-01 00:00:00",
+                "2024-04-02 00:00:00",
+                null);
+        verify(orderApi, never()).listSettlement(anyLong(), anyLong(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyString());
+    }
 
     @Test
     void listSettlement_mapsOrderListFromInstituteOrderColonelResponse() {
@@ -40,7 +95,8 @@ class RealDouyinOrderGatewayTest {
         order.put("settle_time", 1711987200L);
         order.put("encrypt_post_receiver_mobile", "#ML3B#cipher#1##");
         when(upstreamModeSupport.isContract()).thenReturn(false);
-        when(orderApi.listSettlement(1711900800L, 1711987200L, 20, "0"))
+        when(orderApi.listColonelMultiSettlementOrders(
+                isNull(), anyInt(), anyString(), eq("update"), anyString(), anyString(), isNull()))
                 .thenReturn(Map.of(
                         "code", 10000,
                         "data", Map.of(
@@ -79,7 +135,8 @@ class RealDouyinOrderGatewayTest {
                 contractFixtureProvider
         );
         when(upstreamModeSupport.isContract()).thenReturn(false);
-        when(orderApi.listSettlement(1L, 2L, 20, "0"))
+        when(orderApi.listColonelMultiSettlementOrders(
+                isNull(), anyInt(), anyString(), eq("update"), anyString(), anyString(), isNull()))
                 .thenReturn(Map.of(
                         "code", 10000,
                         "data", Map.of(
@@ -125,7 +182,8 @@ class RealDouyinOrderGatewayTest {
         order.put("pay_goods_amount", 1990);
         order.put("pay_success_time", "2026-05-07 12:06:34");
         when(upstreamModeSupport.isContract()).thenReturn(false);
-        when(orderApi.listSettlement(1778155464L, 1778157264L, 20, "0"))
+        when(orderApi.listColonelMultiSettlementOrders(
+                isNull(), anyInt(), anyString(), eq("update"), anyString(), anyString(), isNull()))
                 .thenReturn(Map.of(
                         "code", 10000,
                         "data", Map.of(
@@ -164,7 +222,8 @@ class RealDouyinOrderGatewayTest {
                 "activity_id", "3223881"
         ));
         when(upstreamModeSupport.isContract()).thenReturn(false);
-        when(orderApi.listSettlement(1778233653L, 1778237939L, 20, "0"))
+        when(orderApi.listColonelMultiSettlementOrders(
+                isNull(), anyInt(), anyString(), eq("update"), anyString(), anyString(), isNull()))
                 .thenReturn(Map.of(
                         "code", 10000,
                         "data", Map.of(
@@ -207,7 +266,8 @@ class RealDouyinOrderGatewayTest {
                 "activity_id", "3543332"
         ));
         when(upstreamModeSupport.isContract()).thenReturn(false);
-        when(orderApi.listSettlement(1L, 2L, 20, "0"))
+        when(orderApi.listColonelMultiSettlementOrders(
+                isNull(), anyInt(), anyString(), eq("update"), anyString(), anyString(), isNull()))
                 .thenReturn(Map.of(
                         "code", 10000,
                         "data", Map.of(

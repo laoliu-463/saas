@@ -4,6 +4,8 @@ import com.colonel.saas.service.DistributedJobLockService;
 import com.colonel.saas.service.ExclusiveMerchantService;
 import com.colonel.saas.service.ExclusiveTalentService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -18,18 +20,33 @@ public class ExclusiveEvaluateJob {
     private final ExclusiveTalentService exclusiveTalentService;
     private final ExclusiveMerchantService exclusiveMerchantService;
     private final DistributedJobLockService jobLockService;
+    private final boolean exclusiveEnabled;
+
+    @Autowired
+    public ExclusiveEvaluateJob(
+            ExclusiveTalentService exclusiveTalentService,
+            ExclusiveMerchantService exclusiveMerchantService,
+            DistributedJobLockService jobLockService,
+            @Value("${exclusive.enabled:false}") boolean exclusiveEnabled) {
+        this.exclusiveTalentService = exclusiveTalentService;
+        this.exclusiveMerchantService = exclusiveMerchantService;
+        this.jobLockService = jobLockService;
+        this.exclusiveEnabled = exclusiveEnabled;
+    }
 
     public ExclusiveEvaluateJob(
             ExclusiveTalentService exclusiveTalentService,
             ExclusiveMerchantService exclusiveMerchantService,
             DistributedJobLockService jobLockService) {
-        this.exclusiveTalentService = exclusiveTalentService;
-        this.exclusiveMerchantService = exclusiveMerchantService;
-        this.jobLockService = jobLockService;
+        this(exclusiveTalentService, exclusiveMerchantService, jobLockService, false);
     }
 
     @Scheduled(cron = "0 0 3 1 * ?")
     public void evaluateTalentMonthly() {
+        if (!exclusiveEnabled) {
+            log.info("Exclusive talent evaluate job skipped, exclusive.enabled=false");
+            return;
+        }
         if (!jobLockService.tryAcquire(JobLockKeys.EXCLUSIVE_TALENT_EVALUATE, LOCK_TTL)) {
             log.info("Exclusive talent evaluate job skipped, another process is running");
             return;
@@ -46,6 +63,10 @@ public class ExclusiveEvaluateJob {
 
     @Scheduled(cron = "0 30 3 1 * ?")
     public void evaluateMerchantMonthly() {
+        if (!exclusiveEnabled) {
+            log.info("Exclusive merchant evaluate job skipped, exclusive.enabled=false");
+            return;
+        }
         if (!jobLockService.tryAcquire(JobLockKeys.EXCLUSIVE_MERCHANT_EVALUATE, LOCK_TTL)) {
             log.info("Exclusive merchant evaluate job skipped, another process is running");
             return;

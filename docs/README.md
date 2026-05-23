@@ -1,6 +1,6 @@
 # 文档总览
 
-更新时间：2026-05-21
+更新时间：2026-05-22
 
 ## 当前一句话状态
 
@@ -32,6 +32,8 @@
 - 已保留 P3-6 专用轻量观察入口：`scripts/qa/watch-real-pre-pick-source-orders.ps1`
 - 已新增上线前清单：`docs/10-上线前验收清单.md`
 - 下一阶段重点已切到 `P3-6` / `P3-8`，并保留 `P3-7` 只读复跑入口：真实订单归因样本、异常分支证据补齐；Dashboard 数据库口径对账已通过，后续只需随订单池变化定期复跑
+- V1 默认 `EXCLUSIVE_ENABLED=false`，独家商家 / 独家达人不会覆盖订单归因；生产 compose 已补为独立 `docker-compose.prod.yml` + `scripts/start-prod.ps1`，prod 下 `/api/system/env` 仅管理员 JWT 可访问，Swagger / `doc.html` 不加载
+- 七个领域设计原文已纳入 `docs/requirements/domain-design/`，新增 [13-领域设计总览](./13-领域设计总览.md)、[14-领域设计实现核验](./14-领域设计实现核验.md) 与 [24-七域需求代码核验报告](./24-七域需求代码核验报告.md)，用于对照用户、商品、达人、寄样、订单、业绩、配置七域的目标需求与当前代码差距
 
 ## 当前基线
 
@@ -61,7 +63,7 @@
 - test：`.env.test`，`SPRING_PROFILES_ACTIVE=test`，`APP_TEST_ENABLED=true`，`DOUYIN_TEST_ENABLED=true`，数据库 `saas_test`
 - real-pre：`.env.real-pre`，`SPRING_PROFILES_ACTIVE=real-pre`，`APP_TEST_ENABLED=false`，`DOUYIN_TEST_ENABLED=false`，数据库 `saas_real_pre`
 - 登录账号：`admin / admin123`
-- 匿名环境探针：`GET http://localhost:8080/api/system/env` 返回 `200`，仅含 `activeProfiles / environmentLabel / appTestEnabled / douyinTestEnabled / database`
+- 环境探针：`test` / `real-pre` 下 `GET /api/system/env` 匿名返回 `200`，仅含 `activeProfiles / environmentLabel / appTestEnabled / douyinTestEnabled / database`；`prod` 下需管理员 JWT
 - 默认管理员回归入口：`/system`（应自动落到 `/system/users`）
 
 ### 当前口径说明
@@ -71,7 +73,7 @@
 - `real-pre` 仅用于真实 SDK / 真实上游联调
 - 第三方联调当前按精选联盟 / 团长链路统计进度；店铺商品与店铺订单接口不纳入联盟测范围，不依赖权限包的本地收口可继续推进
 
-## 主干文档（19 个）
+## 主干文档（23 个）
 
 当前 `docs/` 根目录主要文档如下：
 
@@ -88,12 +90,16 @@
 11. [10-V2.2场景覆盖矩阵](./10-V2.2场景覆盖矩阵.md)
 12. [11-real-pre证据索引](./11-real-pre证据索引.md)
 13. [12-物流接口适配性调研](./12-物流接口适配性调研.md)
-14. [14-快递鸟物流接口对接预研](./14-快递鸟物流接口对接预研.md)
-15. [16-real-pre联调记录](./16-real-pre联调记录.md)
-16. [18-管理员账户系统功能排查记录](./18-管理员账户系统功能排查记录.md)
-17. [19-TEST-mock-warning专项样本清单](./19-TEST-mock-warning专项样本清单.md)
-18. [20-TEST/mock 最终验收报告](./20-TEST-mock最终验收报告.md)
-19. [21-三方接口缺失降级联调方案](./21-三方接口缺失降级联调方案.md)
+14. [13-领域设计总览](./13-领域设计总览.md)
+15. [14-领域设计实现核验](./14-领域设计实现核验.md)
+16. [14-快递鸟物流接口对接预研](./14-快递鸟物流接口对接预研.md)
+17. [16-real-pre联调记录](./16-real-pre联调记录.md)
+18. [18-管理员账户系统功能排查记录](./18-管理员账户系统功能排查记录.md)
+19. [19-TEST-mock-warning专项样本清单](./19-TEST-mock-warning专项样本清单.md)
+20. [20-TEST/mock 最终验收报告](./20-TEST-mock最终验收报告.md)
+21. [21-三方接口缺失降级联调方案](./21-三方接口缺失降级联调方案.md)
+22. [23-七域需求缺口收口清单](./23-七域需求缺口收口清单.md)
+23. [24-七域需求代码核验报告](./24-七域需求代码核验报告.md)
 
 其余阶段性记录、专项验收、联调实录、整改单统一迁入 [archive/README](./archive/README.md)。
 
@@ -151,7 +157,21 @@
 5. [archive/audits/接口整改-现状vs目标](./archive/audits/接口整改-现状vs目标.md)
 6. [archive/audits/接口整改-决策备忘录](./archive/audits/接口整改-决策备忘录.md)
 
-### 5. 做全量文档口径整合
+### 5. 核对领域需求与实现差距
+
+1. [13-领域设计总览](./13-领域设计总览.md)
+2. [14-领域设计实现核验](./14-领域设计实现核验.md)
+3. [23-七域需求缺口收口清单](./23-七域需求缺口收口清单.md)
+4. [24-七域需求代码核验报告](./24-七域需求代码核验报告.md)
+5. [requirements/domain-design/01-用户域](./requirements/domain-design/01-用户域.md)
+6. [requirements/domain-design/02-商品域](./requirements/domain-design/02-商品域.md)
+7. [requirements/domain-design/03-达人域](./requirements/domain-design/03-达人域.md)
+8. [requirements/domain-design/04-寄样域](./requirements/domain-design/04-寄样域.md)
+9. [requirements/domain-design/05-订单域](./requirements/domain-design/05-订单域.md)
+10. [requirements/domain-design/06-业绩域](./requirements/domain-design/06-业绩域.md)
+11. [requirements/domain-design/07-配置域](./requirements/domain-design/07-配置域.md)
+
+### 6. 做全量文档口径整合
 
 1. [archive/records/28-当前文档整合总览](./archive/records/28-当前文档整合总览.md)
 2. [archive/audits/14-项目级覆盖审计报告](./archive/audits/14-项目级覆盖审计报告.md)

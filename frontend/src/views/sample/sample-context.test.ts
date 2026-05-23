@@ -4,6 +4,7 @@ import {
   buildProductSampleContext,
   buildSampleRemark,
   buildTalentSampleContext,
+  INTERNAL_QUICK_SAMPLE_SOURCE,
   isMainlandMobile,
   mergeLockedOption
 } from './sample-context'
@@ -19,7 +20,8 @@ describe('sample context helpers', () => {
 
     expect(context.query).toMatchObject({
       productId: 'product-record-001',
-      productLabel: '夏季爆款水杯'
+      productLabel: '夏季爆款水杯',
+      applySource: INTERNAL_QUICK_SAMPLE_SOURCE
     })
     expect(context.option).toEqual({
       label: '夏季爆款水杯',
@@ -68,6 +70,27 @@ describe('sample context helpers', () => {
       talentId: 'dy-uid-001',
       nickname: '测品达人',
       fansCount: 52000
+    })
+  })
+
+  it('builds talent context from default talent shipping fields when claim fields are empty', () => {
+    const context = buildTalentSampleContext({
+      talent: {
+        id: 'talent-record-002',
+        douyinUid: 'dy-uid-002',
+        nickname: '默认地址达人',
+        shippingRecipientName: '李四',
+        shippingRecipientPhone: '13900139000',
+        shippingRecipientAddress: '杭州市西湖区示例路 2 号'
+      }
+    })
+
+    expect(context.query).toMatchObject({
+      talentId: 'dy-uid-002',
+      talentNickname: '默认地址达人',
+      receiverName: '李四',
+      receiverPhone: '13900139000',
+      receiverAddress: '杭州市西湖区示例路 2 号'
     })
   })
 

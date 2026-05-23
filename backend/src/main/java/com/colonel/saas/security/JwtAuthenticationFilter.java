@@ -4,12 +4,16 @@ import com.colonel.saas.auth.service.AuthService;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.ResultCode;
+import com.colonel.saas.config.RuntimeExposurePolicy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.StandardEnvironment;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -26,32 +30,28 @@ import java.util.UUID;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private static final List<String> PUBLIC_PATH_PREFIXES = List.of(
-            "/auth/login",
-            "/auth/refresh",
-            "/douyin/webhooks/",
-            "/error",
-            "/v3/api-docs/",
-            "/swagger-ui/",
-            "/swagger-resources/",
-            "/doc.html",
-            "/system/health",
-            "/api/system/health",
-            "/system/env",
-            "/api/system/env"
-    );
-
     private final JwtTokenProvider jwtTokenProvider;
     private final AuthService authService;
     private final ObjectMapper objectMapper;
+    private final Environment environment;
+
+    @Autowired
+    public JwtAuthenticationFilter(
+            JwtTokenProvider jwtTokenProvider,
+            AuthService authService,
+            ObjectMapper objectMapper,
+            Environment environment) {
+        this.jwtTokenProvider = jwtTokenProvider;
+        this.authService = authService;
+        this.objectMapper = objectMapper;
+        this.environment = environment;
+    }
 
     public JwtAuthenticationFilter(
             JwtTokenProvider jwtTokenProvider,
             AuthService authService,
             ObjectMapper objectMapper) {
-        this.jwtTokenProvider = jwtTokenProvider;
-        this.authService = authService;
-        this.objectMapper = objectMapper;
+        this(jwtTokenProvider, authService, objectMapper, new StandardEnvironment());
     }
 
     @Override
@@ -62,8 +62,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (path == null || path.isBlank()) {
             return false;
         }
-        final String normalizedPath = path;
-        return PUBLIC_PATH_PREFIXES.stream().anyMatch(prefix -> normalizedPath.equals(prefix) || normalizedPath.startsWith(prefix));
+        return RuntimeExposurePolicy.shouldBypassAuthentication(environment, path);
     }
 
     @Override

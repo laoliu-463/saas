@@ -5,7 +5,9 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
+import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,10 @@ class OrderSyncControllerTest {
     private OrderAttributionReplayService orderAttributionReplayService;
     @Mock
     private OperationLogService operationLogService;
+    @Mock
+    private CommissionService commissionService;
+    @Mock
+    private PerformanceBackfillService performanceBackfillService;
 
     private MockMvc mockMvc;
 
@@ -47,7 +53,9 @@ class OrderSyncControllerTest {
                         orderQueryService,
                         orderAttributionReplayService,
                         operationLogService,
-                        new ShortTtlCacheService()))
+                        new ShortTtlCacheService(),
+                        commissionService,
+                        performanceBackfillService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

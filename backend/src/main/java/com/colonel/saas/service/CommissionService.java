@@ -3,15 +3,19 @@ package com.colonel.saas.service;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class CommissionService {
@@ -25,42 +29,179 @@ public class CommissionService {
     private static final String KEY_CHANNEL_ACTIVITY_RATIO_PREFIX = "commission.channel_activity_ratio.";
 
     private final JdbcTemplate jdbcTemplate;
+    private final CommissionRuleService commissionRuleService;
+    private final PerformanceCalculationService performanceCalculationService;
 
-    public CommissionService(JdbcTemplate jdbcTemplate) {
+    public CommissionService(JdbcTemplate jdbcTemplate,
+                             CommissionRuleService commissionRuleService,
+                             @Lazy PerformanceCalculationService performanceCalculationService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.commissionRuleService = commissionRuleService;
+        this.performanceCalculationService = performanceCalculationService;
     }
 
     public CommissionSummary calculate(List<ColonelsettlementOrder> orders) {
-        List<ActivityCommissionBucket> buckets = new ArrayList<>();
-        for (Map.Entry<String, List<ColonelsettlementOrder>> entry : groupByActivity(orders).entrySet()) {
-            buckets.add(new ActivityCommissionBucket(
-                    entry.getKey(),
-                    sum(entry.getValue(), ColonelsettlementOrder::getSettleColonelCommission),
-                    sum(entry.getValue(), ColonelsettlementOrder::getSettleColonelTechServiceFee),
-                    sum(entry.getValue(), ColonelsettlementOrder::getSettleSecondColonelCommission)
-            ));
+        return calculateByActivityBuckets(toActivityBuckets(filterCommissionEligible(orders)));
+    }
+
+    /**
+     * 批量补全订单业绩（Y-08）：计算双轨提成。
+     * 取消/失效订单返回 reversed=true（不写 performance_records）。
+     */
+    public List<OrderCommissionItem> batchFillCommission(List<ColonelsettlementOrder> orders) {
+        if (orders == null || orders.isEmpty()) {
+            return List.of();
         }
-        return calculateByActivityBuckets(buckets);
+        List<OrderCommissionItem> items = new ArrayList<>();
+        for (ColonelsettlementOrder order : orders) {
+            if (order == null || !StringUtils.hasText(order.getOrderId())) {
+                continue;
+            }
+            if (!OrderCommissionPolicy.countsTowardCommission(order.getOrderStatus())) {
+                items.add(OrderCommissionItem.reversed(order.getOrderId()));
+                continue;
+            }
+            CommissionSummary summary = calculate(List.of(order));
+            items.add(OrderCommissionItem.of(order.getOrderId(), summary));
+        }
+        return items;
+    }
+
+    /**
+     * 批量补全订单业绩（Y-08）：计算并持久化到 performance_records。
+     * 取消/失效订单写入 is_reversed=true（冲正）。
+     * 返回每笔订单的写入结果。
+     */
+    public List<OrderCommissionItem> batchUpsertPerformanceRecords(List<ColonelsettlementOrder> orders) {
+        if (orders == null || orders.isEmpty()) {
+            return List.of();
+        }
+        List<OrderCommissionItem> items = new ArrayList<>();
+        for (ColonelsettlementOrder order : orders) {
+            if (order == null || !StringUtils.hasText(order.getOrderId())) {
+                continue;
+            }
+            if (!OrderCommissionPolicy.countsTowardCommission(order.getOrderStatus())) {
+                items.add(OrderCommissionItem.reversed(order.getOrderId()));
+                continue;
+            }
+            try {
+                performanceCalculationService.upsertFromOrder(order);
+                CommissionSummary summary = calculate(List.of(order));
+                items.add(OrderCommissionItem.of(order.getOrderId(), summary));
+            } catch (Exception ex) {
+                log.warn("Failed to upsert performance record for orderId={}: {}",
+                        order.getOrderId(), ex.getMessage());
+                items.add(OrderCommissionItem.reversed(order.getOrderId()));
+            }
+        }
+        return items;
+    }
+
+    /**
+     * 单轨提成计算（业绩域双轨公式之一）。
+     */
+    public CommissionSummary calculateTrack(
+            long serviceFeeIncome,
+            long techServiceFee,
+            long talentCommission,
+            String activityId) {
+        return calculateTrack(serviceFeeIncome, techServiceFee, talentCommission, activityId, null, null, null);
+    }
+
+    public CommissionSummary calculateTrack(
+            long serviceFeeIncome,
+            long techServiceFee,
+            long talentCommission,
+            String activityId,
+            String productId,
+            UUID recruiterUserId,
+            LocalDateTime effectiveAt) {
+        String normalizedActivityId = normalizeActivityId(activityId);
+        ActivityCommissionBucket bucket = new ActivityCommissionBucket(
+                normalizedActivityId,
+                normalizeId(productId),
+                recruiterUserId,
+                Math.max(serviceFeeIncome, 0L),
+                Math.max(techServiceFee, 0L),
+                Math.max(talentCommission, 0L));
+        return calculateByActivityBuckets(List.of(bucket), effectiveAt);
+    }
+
+    private List<ColonelsettlementOrder> filterCommissionEligible(List<ColonelsettlementOrder> orders) {
+        if (orders == null || orders.isEmpty()) {
+            return List.of();
+        }
+        return orders.stream()
+                .filter(order -> order != null && OrderCommissionPolicy.countsTowardCommission(order.getOrderStatus()))
+                .toList();
+    }
+
+    private List<ActivityCommissionBucket> toActivityBuckets(List<ColonelsettlementOrder> orders) {
+        Map<String, ActivityCommissionBucket> grouped = new LinkedHashMap<>();
+        if (orders == null || orders.isEmpty()) {
+            grouped.put("", new ActivityCommissionBucket("", null, null, 0L, 0L, 0L));
+            return List.copyOf(grouped.values());
+        }
+        for (ColonelsettlementOrder order : orders) {
+            String key = bucketKey(order);
+            ActivityCommissionBucket existing = grouped.get(key);
+            long serviceFee = nvl(order.getSettleColonelCommission());
+            long techFee = nvl(order.getSettleColonelTechServiceFee());
+            long talentFee = nvl(order.getSettleSecondColonelCommission());
+            if (existing == null) {
+                grouped.put(key, new ActivityCommissionBucket(
+                        normalizeActivityId(order.getActivityId()),
+                        normalizeId(order.getProductId()),
+                        resolveRecruiterUserId(order),
+                        serviceFee,
+                        techFee,
+                        talentFee));
+            } else {
+                grouped.put(key, new ActivityCommissionBucket(
+                        existing.activityId(),
+                        existing.productId(),
+                        existing.recruiterUserId(),
+                        existing.serviceFeeIncome() + serviceFee,
+                        existing.techServiceFee() + techFee,
+                        existing.talentCommission() + talentFee));
+            }
+        }
+        return List.copyOf(grouped.values());
     }
 
     public CommissionSummary calculateByActivityBuckets(List<ActivityCommissionBucket> buckets) {
+        return calculateByActivityBuckets(buckets, null);
+    }
+
+    public CommissionSummary calculateByActivityBuckets(List<ActivityCommissionBucket> buckets, LocalDateTime effectiveAt) {
         long serviceFeeIncome = sumBuckets(buckets, ActivityCommissionBucket::serviceFeeIncome);
         long techServiceFee = sumBuckets(buckets, ActivityCommissionBucket::techServiceFee);
         long talentCommission = sumBuckets(buckets, ActivityCommissionBucket::talentCommission);
 
-        long serviceFeeNet = Math.max(serviceFeeIncome - techServiceFee - talentCommission, 0L);
-        BigDecimal bizRatio = loadRatio(KEY_BIZ_RATIO);
-        BigDecimal channelRatio = loadRatio(KEY_CHANNEL_RATIO);
+        // Y-03/Y-04 fix: 提成基数（serviceFeeNet）= 服务费收入 − 技术服务费，不含达人佣金
+        // 达人佣金(talentCommission)来自抖店结算，不从团长毛利中再扣一次
+        long serviceFeeNet = Math.max(serviceFeeIncome - techServiceFee, 0L);
+        BigDecimal defaultBizRatio = loadRatio(KEY_BIZ_RATIO);
+        BigDecimal defaultChannelRatio = loadRatio(KEY_CHANNEL_RATIO);
 
         long bizCommission = 0L;
         long channelCommission = 0L;
+        BigDecimal lastBizRatio = defaultBizRatio;
+        BigDecimal lastChannelRatio = defaultChannelRatio;
         for (ActivityCommissionBucket bucket : normalizeBuckets(buckets)) {
-            long activityServiceFeeNet = Math.max(bucket.serviceFeeIncome() - bucket.techServiceFee() - bucket.talentCommission(), 0L);
-            BigDecimal activityBizRatio = loadRatio(KEY_BIZ_ACTIVITY_RATIO_PREFIX, bucket.activityId(), bizRatio);
-            BigDecimal activityChannelRatio = loadRatio(KEY_CHANNEL_ACTIVITY_RATIO_PREFIX, bucket.activityId(), channelRatio);
+            // Y-04 fix: 活动级毛利基数 = 该活动收入 − 技术费（不含达人佣金），再减两笔提成
+            long activityServiceFeeNet = Math.max(
+                    bucket.serviceFeeIncome() - bucket.techServiceFee(),
+                    0L);
+            BigDecimal activityBizRatio = resolveBizRatio(bucket, defaultBizRatio, effectiveAt);
+            BigDecimal activityChannelRatio = resolveChannelRatio(bucket, defaultChannelRatio, effectiveAt);
+            lastBizRatio = activityBizRatio;
+            lastChannelRatio = activityChannelRatio;
             bizCommission += multiplyCent(activityServiceFeeNet, activityBizRatio);
             channelCommission += multiplyCent(activityServiceFeeNet, activityChannelRatio);
         }
+        // Y-04: 毛利 = 提成基数 − 两笔提成（服务费净收益 − 招商提成 − 渠道提成）
         long grossProfit = Math.max(serviceFeeNet - bizCommission - channelCommission, 0L);
 
         return new CommissionSummary(
@@ -71,29 +212,71 @@ public class CommissionService {
                 bizCommission,
                 channelCommission,
                 grossProfit,
-                bizRatio,
-                channelRatio
-        );
+                lastBizRatio,
+                lastChannelRatio);
     }
 
-    private Map<String, List<ColonelsettlementOrder>> groupByActivity(List<ColonelsettlementOrder> orders) {
-        Map<String, List<ColonelsettlementOrder>> grouped = new LinkedHashMap<>();
-        if (orders == null || orders.isEmpty()) {
-            grouped.put("", List.of());
-            return grouped;
+    private BigDecimal resolveBizRatio(
+            ActivityCommissionBucket bucket,
+            BigDecimal defaultRatio,
+            LocalDateTime effectiveAt) {
+        BigDecimal ruleRatio = resolveRuleRatio(
+                CommissionRuleService.TYPE_RECRUITER,
+                bucket,
+                effectiveAt);
+        if (ruleRatio != null) {
+            return ruleRatio;
         }
-        for (ColonelsettlementOrder order : orders) {
-            String activityId = normalizeActivityId(order == null ? null : order.getActivityId());
-            grouped.computeIfAbsent(activityId, key -> new java.util.ArrayList<>()).add(order);
-        }
-        return grouped;
+        return loadRatio(KEY_BIZ_ACTIVITY_RATIO_PREFIX, bucket.activityId(), defaultRatio);
     }
 
-    private List<ActivityCommissionBucket> normalizeBuckets(List<ActivityCommissionBucket> buckets) {
-        if (buckets == null || buckets.isEmpty()) {
-            return List.of(new ActivityCommissionBucket("", 0L, 0L, 0L));
+    private BigDecimal resolveChannelRatio(
+            ActivityCommissionBucket bucket,
+            BigDecimal defaultRatio,
+            LocalDateTime effectiveAt) {
+        BigDecimal ruleRatio = resolveRuleRatio(
+                CommissionRuleService.TYPE_CHANNEL,
+                bucket,
+                effectiveAt);
+        if (ruleRatio != null) {
+            return ruleRatio;
         }
-        return buckets;
+        return loadRatio(KEY_CHANNEL_ACTIVITY_RATIO_PREFIX, bucket.activityId(), defaultRatio);
+    }
+
+    private BigDecimal resolveRuleRatio(
+            String commissionType,
+            ActivityCommissionBucket bucket,
+            LocalDateTime effectiveAt) {
+        try {
+            return commissionRuleService.resolveRatio(
+                    commissionType,
+                    new CommissionRuleService.CommissionResolutionContext(
+                            bucket.activityId(),
+                            bucket.productId(),
+                            bucket.recruiterUserId()),
+                    effectiveAt);
+        } catch (Exception ex) {
+            log.warn("Failed to resolve commission rule ratio, fallback to legacy config", ex);
+            return null;
+        }
+    }
+
+    private String bucketKey(ColonelsettlementOrder order) {
+        return normalizeActivityId(order == null ? null : order.getActivityId())
+                + "|"
+                + normalizeId(order == null ? null : order.getProductId())
+                + "|"
+                + (order == null || resolveRecruiterUserId(order) == null
+                ? ""
+                : resolveRecruiterUserId(order).toString());
+    }
+
+    private UUID resolveRecruiterUserId(ColonelsettlementOrder order) {
+        if (order == null) {
+            return null;
+        }
+        return order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();
     }
 
     private BigDecimal loadRatio(String overridePrefix, String activityId, BigDecimal defaultRatio) {
@@ -133,16 +316,19 @@ public class CommissionService {
         return activityId == null ? "" : activityId.trim();
     }
 
-    private long sum(List<ColonelsettlementOrder> rows, java.util.function.Function<ColonelsettlementOrder, Long> getter) {
-        if (rows == null || rows.isEmpty()) {
-            return 0L;
+    private String normalizeId(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private long nvl(Long value) {
+        return value == null ? 0L : value;
+    }
+
+    private List<ActivityCommissionBucket> normalizeBuckets(List<ActivityCommissionBucket> buckets) {
+        if (buckets == null || buckets.isEmpty()) {
+            return List.of(new ActivityCommissionBucket("", null, null, 0L, 0L, 0L));
         }
-        long result = 0L;
-        for (ColonelsettlementOrder row : rows) {
-            Long value = getter.apply(row);
-            result += value == null ? 0L : value;
-        }
-        return result;
+        return buckets;
     }
 
     private long sumBuckets(List<ActivityCommissionBucket> buckets, java.util.function.ToLongFunction<ActivityCommissionBucket> getter) {
@@ -175,15 +361,29 @@ public class CommissionService {
             long channelCommission,
             long grossProfit,
             BigDecimal bizRatio,
-            BigDecimal channelRatio
-    ) {
+            BigDecimal channelRatio) {
     }
 
     public record ActivityCommissionBucket(
             String activityId,
+            String productId,
+            UUID recruiterUserId,
             long serviceFeeIncome,
             long techServiceFee,
-            long talentCommission
-    ) {
+            long talentCommission) {
+    }
+
+    public record OrderCommissionItem(
+            String orderId,
+            boolean reversed,
+            CommissionSummary commission) {
+
+        public static OrderCommissionItem of(String orderId, CommissionSummary commission) {
+            return new OrderCommissionItem(orderId, false, commission);
+        }
+
+        public static OrderCommissionItem reversed(String orderId) {
+            return new OrderCommissionItem(orderId, true, null);
+        }
     }
 }

@@ -247,6 +247,11 @@ CREATE TABLE IF NOT EXISTS talent (
     categories        JSONB,
     contact_phone     VARCHAR(50),
     contact_wechat    VARCHAR(100),
+    talent_tags       JSONB NOT NULL DEFAULT '[]'::jsonb,
+    tag_updated_by    UUID,
+    shipping_recipient_name VARCHAR(100),
+    shipping_recipient_phone VARCHAR(32),
+    shipping_recipient_address VARCHAR(512),
     addr_city         VARCHAR(100),
     addr_district     VARCHAR(100),
     crawl_source      VARCHAR(20),
@@ -273,6 +278,7 @@ CREATE INDEX IF NOT EXISTS idx_talent_status     ON talent(status);
 CREATE INDEX IF NOT EXISTS idx_talent_deleted    ON talent(deleted);
 ALTER TABLE talent ADD COLUMN IF NOT EXISTS blacklisted BOOLEAN DEFAULT FALSE;
 ALTER TABLE talent ADD COLUMN IF NOT EXISTS blacklist_reason VARCHAR(255);
+ALTER TABLE talent ADD COLUMN IF NOT EXISTS tag_updated_by UUID;
 CREATE INDEX IF NOT EXISTS idx_talent_blacklisted ON talent(blacklisted);
 CREATE INDEX IF NOT EXISTS idx_talent_crawl_src  ON talent(crawl_source);
 
@@ -287,6 +293,9 @@ CREATE TABLE IF NOT EXISTS talent_claim (
     apply_time       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     confirm_time     TIMESTAMP,
     expire_time      TIMESTAMP,
+    recipient_name    VARCHAR(100),
+    recipient_phone   VARCHAR(32),
+    recipient_address VARCHAR(512),
     deleted          SMALLINT  NOT NULL DEFAULT 0,
     create_time      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -303,6 +312,9 @@ CREATE INDEX IF NOT EXISTS idx_tc_status     ON talent_claim(status);
 CREATE INDEX IF NOT EXISTS idx_tc_expire     ON talent_claim(expire_time) WHERE status = 1;
 CREATE INDEX IF NOT EXISTS idx_tc_deleted    ON talent_claim(deleted);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_tc_active ON talent_claim(talent_id, user_id) WHERE status IN (1, 2);
+ALTER TABLE talent_claim ADD COLUMN IF NOT EXISTS recipient_name VARCHAR(100);
+ALTER TABLE talent_claim ADD COLUMN IF NOT EXISTS recipient_phone VARCHAR(32);
+ALTER TABLE talent_claim ADD COLUMN IF NOT EXISTS recipient_address VARCHAR(512);
 
 CREATE TABLE IF NOT EXISTS exclusive_talent (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -597,8 +609,13 @@ CREATE TABLE IF NOT EXISTS colonelsettlement_order (
     product_name             VARCHAR(500),
     shop_id                  BIGINT,
     shop_name                VARCHAR(200),
-    order_amount             BIGINT  DEFAULT 0,                -- [V1.3] 订单金额（分）
+    order_amount             BIGINT  DEFAULT 0,                -- [V1.3] 订单金额（分），即 pay_amount
     actual_amount            BIGINT  DEFAULT 0,                -- [V1.3] 实际结算金额（分）
+    settle_amount            BIGINT  DEFAULT 0,                -- [V1.6] 结算订单额（分）
+    estimate_service_fee     BIGINT  DEFAULT 0,                -- [V1.6] 预估服务费（分）
+    effective_service_fee    BIGINT  DEFAULT 0,                -- [V1.6] 结算服务费（分）
+    estimate_tech_service_fee BIGINT DEFAULT 0,                -- [V1.6] 预估技术服务费（分）
+    effective_tech_service_fee BIGINT DEFAULT 0,             -- [V1.6] 结算技术服务费（分）
     colonel_buyin_id         BIGINT,
     colonel_activity_id      VARCHAR(50),
     settle_colonel_commission BIGINT  DEFAULT 0,
@@ -807,6 +824,22 @@ CREATE INDEX IF NOT EXISTS idx_sc_config_group  ON system_config(config_group);
 CREATE INDEX IF NOT EXISTS idx_sc_status        ON system_config(status);
 CREATE INDEX IF NOT EXISTS idx_sc_deleted       ON system_config(deleted);
 
+CREATE TABLE IF NOT EXISTS system_config_change_log (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    config_id     UUID,
+    config_key    VARCHAR(100) NOT NULL,
+    change_action VARCHAR(20)  NOT NULL,
+    old_value     TEXT,
+    new_value     TEXT,
+    source        VARCHAR(50)  NOT NULL,
+    operator_id   UUID,
+    changed_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_sccl_config_key_changed
+    ON system_config_change_log(config_key, changed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sccl_operator_changed
+    ON system_config_change_log(operator_id, changed_at DESC);
+
 -- 种子数据：系统配置
 INSERT INTO system_config (config_key, config_value, config_type, config_group, config_name, status)
 VALUES
@@ -825,7 +858,10 @@ VALUES
     ('sample.default_standard',
      '{"min_30day_sales":30000,"min_level":"LV1"}', 'json', 'sample', '寄样默认标准', 1),
     ('commission.business_default_ratio', '0.15',     'numeric', 'commission', '招商默认提成比例',          1),
-    ('commission.channel_default_ratio',  '0.15',     'numeric', 'commission', '渠道默认提成比例',          1)
+    ('commission.channel_default_ratio',  '0.15',     'numeric', 'commission', '渠道默认提成比例',          1),
+    ('promotion.pick_extra_rule', '{"format":"channel_{channel_code}","encode":"none"}',
+     'json', 'promotion', 'pick_extra 生成规则', 1),
+    ('talent.preset_tags', '["美妆","高转化","服饰","食品","母婴","家居","数码","本地生活"]', 'json', 'talent', '达人预设标签库', 1)
 ON CONFLICT (config_key) DO NOTHING;
 
 -- 种子数据：默认角色

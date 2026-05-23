@@ -1,6 +1,7 @@
 package com.colonel.saas.config;
 
 import com.colonel.saas.security.JwtAuthenticationFilter;
+import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -14,9 +15,11 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final Environment environment;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, Environment environment) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.environment = environment;
     }
 
     @Bean
@@ -28,20 +31,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(
-                                "/auth/login",
-                                "/auth/refresh",
-                                "/douyin/webhooks/**",
-                                "/error",
-                                "/v3/api-docs/**",
-                                "/swagger-ui/**",
-                                "/swagger-resources/**",
-                                "/doc.html",
-                                "/system/health",
-                                "/api/system/health",
-                                "/system/env",
-                                "/api/system/env"
-                        ).permitAll()
+                        .requestMatchers(RuntimeExposurePolicy.publicSecurityPatterns(environment)).permitAll()
                         .requestMatchers("/actuator/**").authenticated()
                         .anyRequest().authenticated())
                 .cors(Customizer.withDefaults());

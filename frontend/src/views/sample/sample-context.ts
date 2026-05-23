@@ -21,6 +21,9 @@ export interface SampleRemarkInput {
   extraRemark?: string | null
 }
 
+export const INTERNAL_QUICK_SAMPLE_SOURCE = 'INTERNAL_QUICK_SAMPLE'
+export const MANUAL_SAMPLE_APPLY_SOURCE = 'MANUAL'
+
 const cleanText = (value: unknown) => {
   if (value === null || value === undefined) return ''
   const text = String(value).trim()
@@ -42,6 +45,11 @@ const setQuery = (query: Record<string, string>, key: string, value: unknown) =>
 
 export const isMainlandMobile = (value?: string | null) => /^1\d{10}$/.test(cleanText(value))
 
+export const normalizeSampleApplySource = (value?: string | null) => {
+  const normalized = cleanText(value).toUpperCase()
+  return normalized === INTERNAL_QUICK_SAMPLE_SOURCE ? INTERNAL_QUICK_SAMPLE_SOURCE : MANUAL_SAMPLE_APPLY_SOURCE
+}
+
 export function buildProductSampleContext(product: any): SampleContextResult {
   const productId = firstText(
     product?.id,
@@ -57,6 +65,7 @@ export function buildProductSampleContext(product: any): SampleContextResult {
   setQuery(query, 'productLabel', label)
   setQuery(query, 'productExternalId', product?.productId)
   setQuery(query, 'shopName', product?.shopName)
+  setQuery(query, 'applySource', INTERNAL_QUICK_SAMPLE_SOURCE)
 
   return {
     query,
@@ -72,13 +81,14 @@ export function buildTalentSampleContext(detail: any): TalentSampleContextResult
   const query: Record<string, string> = {}
 
   setQuery(query, 'talentId', talentId)
+  setQuery(query, 'talentUuid', talent?.id)
   setQuery(query, 'talentNickname', nickname)
   setQuery(query, 'talentFansCount', talent?.fansCount)
   setQuery(query, 'talentCreditScore', talent?.creditScore)
   setQuery(query, 'talentMainCategory', talent?.mainCategory)
-  setQuery(query, 'receiverName', claim?.recipientName ?? talent?.recipientName)
-  setQuery(query, 'receiverPhone', claim?.recipientPhone ?? talent?.recipientPhone)
-  setQuery(query, 'receiverAddress', claim?.recipientAddress ?? talent?.recipientAddress)
+  setQuery(query, 'receiverName', claim?.recipientName ?? talent?.shippingRecipientName ?? talent?.recipientName)
+  setQuery(query, 'receiverPhone', claim?.recipientPhone ?? talent?.shippingRecipientPhone ?? talent?.recipientPhone)
+  setQuery(query, 'receiverAddress', claim?.recipientAddress ?? talent?.shippingRecipientAddress ?? talent?.recipientAddress)
 
   return {
     query,

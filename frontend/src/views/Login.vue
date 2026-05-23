@@ -6,8 +6,10 @@
         <div class="brand-logo">
           <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
             <rect width="48" height="48" rx="12" fill="rgba(255,255,255,0.2)"/>
-            <path d="M14 34L24 14L34 34H14Z" fill="white" opacity="0.9"/>
-            <circle cx="24" cy="26" r="3" fill="var(--color-primary)"/>
+            <path d="M24 11L36 36H12L24 11Z" fill="white" opacity="0.92"/>
+            <path d="M17 32H31" stroke="rgba(255,255,255,0.72)" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="24" cy="27" r="4" fill="var(--color-primary)"/>
+            <circle cx="24" cy="27" r="1.4" fill="white" opacity="0.9"/>
           </svg>
         </div>
         <h1 class="brand-title">抖音团长 SaaS</h1>

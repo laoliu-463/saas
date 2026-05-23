@@ -52,7 +52,7 @@
                 secondary
                 @click="goToSampleApply"
               >
-                快速寄样
+                内部寄样
               </n-button>
             </n-space>
           </div>
@@ -838,7 +838,7 @@ const goToSampleApply = () => {
     id: detail.value?.id || detail.value?.productRecordId || props.productId
   });
   if (!context.query.productId) {
-    message.warning('商品信息不完整，暂不可快速寄样');
+    message.warning('商品信息不完整，暂不可发起内部寄样');
     return;
   }
   router.push({ path: '/sample/apply', query: context.query });

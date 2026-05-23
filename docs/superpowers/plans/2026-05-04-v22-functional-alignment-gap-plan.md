@@ -116,7 +116,7 @@ Expected: PASS
 Run:
 
 ```bash
-node .codex-run/product-browser-check-4/result.json
+cat runtime/qa/out/<product-browser-check-run>/result.json
 ```
 
 Expected: 结果文件中 `activity-entry-action`、`detail-drawer`、`library-search` 均为 `true`

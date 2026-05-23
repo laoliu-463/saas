@@ -15,6 +15,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
 @RestControllerAdvice
@@ -82,6 +83,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public ApiResult<Void> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException e) {
         return ApiResult.of(ResultCode.PARAM_ERROR.getCode(), "不支持的 Content-Type: " + e.getContentType(), null);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ApiResult<Void> handleNoResourceFound(NoResourceFoundException e) {
+        // #region agent log
+        com.colonel.saas.debug.DebugSessionLog.write(
+                "H2",
+                "GlobalExceptionHandler.handleNoResourceFound",
+                "missing api route treated as static resource",
+                java.util.Map.of("resourcePath", String.valueOf(e.getResourcePath())));
+        // #endregion
+        log.warn("接口不存在: {}", e.getResourcePath());
+        return ApiResult.of(ResultCode.PARAM_ERROR.getCode(), "接口不存在: " + e.getResourcePath(), null);
     }
 
     @ExceptionHandler(Exception.class)

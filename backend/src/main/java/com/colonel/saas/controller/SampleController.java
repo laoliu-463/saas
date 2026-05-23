@@ -52,6 +52,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -95,6 +96,8 @@ public class SampleController extends BaseController {
     private static final long BOARD_BATCH_SIZE = 2000L;
     private static final long PRODUCT_KEYWORD_BATCH_SIZE = 500L;
     private static final long EXPORT_BATCH_SIZE = 2000L;
+    private static final String APPLY_SOURCE_MANUAL = "MANUAL";
+    private static final String APPLY_SOURCE_INTERNAL_QUICK_SAMPLE = "INTERNAL_QUICK_SAMPLE";
 
     private final SampleRequestMapper sampleRequestMapper;
     private final ProductMapper productMapper;
@@ -191,6 +194,9 @@ public class SampleController extends BaseController {
         sample.setChannelDeptId(currentDeptId);
         sample.setExpectedSampleNum(request.getQuantity());
         sample.setActualSampleNum(0);
+        sample.setRecipientName(trimToNull(request.getRecipientName()));
+        sample.setRecipientPhone(trimToNull(request.getRecipientPhone()));
+        sample.setRecipientAddress(trimToNull(request.getRecipientAddress()));
         sample.setStatus(SampleStatus.PENDING_AUDIT.code);
         sample.setRemark(request.getRemark());
         sample.setExtraData(buildSampleExtraData(request, eligibility));
@@ -218,6 +224,8 @@ public class SampleController extends BaseController {
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
             @Parameter(description = "关键字，可匹配达人昵称、达人 UID、寄样单号或商品名称。") @RequestParam(required = false) String keyword,
             @Parameter(description = "寄样状态。可用值包括 PENDING_AUDIT、PENDING_SHIP、SHIPPING、DELIVERED、PENDING_HOMEWORK、COMPLETED、REJECTED、CLOSED。") @RequestParam(required = false) String status,
+            @Parameter(description = "渠道负责人用户 ID。") @RequestParam(required = false) UUID channelUserId,
+            @Parameter(description = "招商负责人用户 ID。") @RequestParam(required = false) UUID recruiterUserId,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) com.colonel.saas.common.enums.DataScope dataScope,
@@ -237,29 +245,18 @@ public class SampleController extends BaseController {
             status = "PENDING_AUDIT";
         }
 
-        if (StringUtils.hasText(status)) {
-            wrapper.eq("status", parseStatus(status).code);
-        }
-        if (StringUtils.hasText(keyword)) {
-            Set<UUID> matchedProductIds = loadMatchedProductIds(keyword.trim());
-            wrapper.and(query -> {
-                query.like("talent_nickname", keyword.trim())
-                        .or()
-                        .like("talent_uid", keyword.trim())
-                        .or()
-                        .like("request_no", keyword.trim());
-                if (!matchedProductIds.isEmpty()) {
-                    query.or().in("product_id", matchedProductIds);
-                }
-            });
-        }
+        applySampleQueryFilters(wrapper, status, keyword, channelUserId);
 
         IPage<SampleRequest> samplePage;
         // 招商专员且数据范围为个人：按“我负责的商品”过滤
         if (dataScope == com.colonel.saas.common.enums.DataScope.PERSONAL && hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) && !hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
-            samplePage = sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper);
+            samplePage = recruiterUserId == null
+                    ? sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper)
+                    : sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper, recruiterUserId);
         } else {
-            samplePage = sampleRequestMapper.findPageWithScope(pageReq, wrapper);
+            samplePage = recruiterUserId == null
+                    ? sampleRequestMapper.findPageWithScope(pageReq, wrapper)
+                    : sampleRequestMapper.findPageWithScope(pageReq, wrapper, recruiterUserId);
         }
 
         Map<UUID, Product> productMap = loadProducts(samplePage.getRecords().stream()
@@ -277,6 +274,18 @@ public class SampleController extends BaseController {
         Page<SampleVO> voPage = new Page<>(samplePage.getCurrent(), samplePage.getSize(), samplePage.getTotal());
         voPage.setRecords(records);
         return okPage(voPage);
+    }
+
+    public ApiResult<PageResult<SampleVO>> getSamplePage(
+            long page,
+            long size,
+            String keyword,
+            String status,
+            UUID userId,
+            UUID deptId,
+            com.colonel.saas.common.enums.DataScope dataScope,
+            Object roleCodes) {
+        return getSamplePage(page, size, keyword, status, null, null, userId, deptId, dataScope, roleCodes);
     }
 
     @Operation(summary = "寄样达人搜索", description = "搜索可用于寄样申请的达人候选数据，数据来源于达人抓取结果。")
@@ -349,6 +358,12 @@ public class SampleController extends BaseController {
 
     ApiResult<Map<String, List<SampleBoardCard>>> getSampleBoard(UUID userId, UUID deptId, DataScope dataScope) {
         return getSampleBoard(userId, deptId, dataScope, null);
+    }
+
+    @Operation(summary = "寄样状态流转矩阵", description = "返回寄样状态机的动作、前置状态、后置状态、角色、必填字段和错误文案，用于前端按钮与验收核验。")
+    @GetMapping("/status-transitions")
+    public ApiResult<List<SampleStatusTransitionVO>> getStatusTransitions() {
+        return ok(buildStatusTransitions());
     }
 
     private List<SampleRequest> loadBoardSamples(QueryWrapper<SampleRequest> wrapper) {
@@ -514,6 +529,7 @@ public class SampleController extends BaseController {
     }
 
     @Operation(summary = "手动刷新物流状态", description = "手动触发物流状态查询，若已签收则自动推进寄样单状态。")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
     @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics/refresh")
     @Transactional(rollbackFor = Exception.class)
     public ApiResult<SampleVO> refreshLogistics(
@@ -534,6 +550,7 @@ public class SampleController extends BaseController {
     }
 
     @Operation(summary = "批量审批通过", description = "批量将 PENDING_AUDIT 的寄样申请审批为待发货。仅招商角色可操作。")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_STAFF})
     @PostMapping("/batch-approve")
     @Transactional(rollbackFor = Exception.class)
     public ApiResult<Map<String, Integer>> batchApprove(
@@ -566,6 +583,7 @@ public class SampleController extends BaseController {
     }
 
     @Operation(summary = "批量驳回", description = "批量将 PENDING_AUDIT 的寄样申请驳回。仅招商角色可操作，驳回原因必填。")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_STAFF})
     @PostMapping("/batch-reject")
     @Transactional(rollbackFor = Exception.class)
     public ApiResult<Map<String, Integer>> batchReject(
@@ -602,6 +620,7 @@ public class SampleController extends BaseController {
     }
 
     @Operation(summary = "批量发货", description = "批量将 PENDING_SHIP 的寄样单标记为发货（SHIPPING），同时录入物流单号。仅运营角色可操作。")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
     @PostMapping("/batch-ship")
     @Transactional(rollbackFor = Exception.class)
     public ApiResult<Map<String, Integer>> batchShip(
@@ -637,10 +656,13 @@ public class SampleController extends BaseController {
     }
 
     @Operation(summary = "寄样导出 CSV", description = "导出寄样申请列表为 CSV 文件，支持状态筛选和关键字搜索。")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF})
     @GetMapping("/exports")
     public void exportSamples(
             @Parameter(description = "寄样状态。") @RequestParam(required = false) String status,
             @Parameter(description = "关键字。") @RequestParam(required = false) String keyword,
+            @Parameter(description = "渠道负责人用户 ID。") @RequestParam(required = false) UUID channelUserId,
+            @Parameter(description = "招商负责人用户 ID。") @RequestParam(required = false) UUID recruiterUserId,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
@@ -653,35 +675,22 @@ public class SampleController extends BaseController {
         }
 
         QueryWrapper<SampleRequest> wrapper = new QueryWrapper<>();
-        if (StringUtils.hasText(status)) {
-            wrapper.eq("status", SampleStatus.fromApiStatus(status).code);
-        }
-        if (StringUtils.hasText(keyword)) {
-            Set<UUID> matchedProductIds = loadMatchedProductIds(keyword.trim());
-            wrapper.and(query -> {
-                query.like("talent_nickname", keyword.trim())
-                        .or()
-                        .like("talent_uid", keyword.trim())
-                        .or()
-                        .like("request_no", keyword.trim());
-                if (!matchedProductIds.isEmpty()) {
-                    query.or().in("product_id", matchedProductIds);
-                }
-            });
-        }
+        applySampleQueryFilters(wrapper, status, keyword, channelUserId);
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"samples.csv\"");
         PrintWriter writer = response.getWriter();
         try {
             writer.write('\ufeff');
-            writer.println("寄样单号,达人昵称,商品名称,状态,招商负责人,物流单号,驳回原因,备注,创建时间");
+            writer.println("寄样单号,达人昵称,商品名称,状态,招商负责人,收件人,收件电话,收件地址,物流单号,驳回原因,备注,创建时间");
 
             Map<UUID, Product> productCache = new HashMap<>();
             long current = 1L;
             while (true) {
-                IPage<SampleRequest> pageResult = sampleRequestMapper.findPageWithScope(
-                        new Page<>(current, EXPORT_BATCH_SIZE), wrapper);
+                Page<SampleRequest> exportPage = new Page<>(current, EXPORT_BATCH_SIZE);
+                IPage<SampleRequest> pageResult = recruiterUserId == null
+                        ? sampleRequestMapper.findPageWithScope(exportPage, wrapper)
+                        : sampleRequestMapper.findPageWithScope(exportPage, wrapper, recruiterUserId);
                 List<SampleRequest> records = pageResult.getRecords();
                 if (records == null || records.isEmpty()) {
                     break;
@@ -694,12 +703,15 @@ public class SampleController extends BaseController {
                 for (SampleRequest sample : records) {
                     Product product = productCache.get(sample.getProductId());
                     SampleStatus s = SampleStatus.fromCode(sample.getStatus());
-                    writer.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
+                    writer.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
                             csvEscape(sample.getRequestNo()),
                             csvEscape(sample.getTalentNickname()),
                             csvEscape(product == null ? null : product.getName()),
                             csvEscape(s.apiStatus),
                             csvEscape(resolveUserDisplayName(sample.getChannelUserId())),
+                            csvEscape(sample.getRecipientName()),
+                            csvEscape(sample.getRecipientPhone()),
+                            csvEscape(sample.getRecipientAddress()),
                             csvEscape(sample.getTrackingNo()),
                             csvEscape(sample.getRejectReason()),
                             csvEscape(sample.getRemark()),
@@ -719,6 +731,17 @@ public class SampleController extends BaseController {
             return;
         }
         writer.flush();
+    }
+
+    public void exportSamples(
+            String status,
+            String keyword,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes,
+            HttpServletResponse response) throws IOException {
+        exportSamples(status, keyword, null, null, userId, deptId, dataScope, roleCodes, response);
     }
 
     private SampleRequest requireSampleByRequestNo(String requestNo, UUID currentUserId, UUID currentDeptId, DataScope dataScope, Object roleCodes) {
@@ -856,9 +879,132 @@ public class SampleController extends BaseController {
         }
     }
 
+    private List<SampleStatusTransitionVO> buildStatusTransitions() {
+        return List.of(
+                new SampleStatusTransitionVO(
+                        "PENDING_SHIP",
+                        "审核通过",
+                        List.of("APPROVED"),
+                        List.of("PENDING_AUDIT"),
+                        "PENDING_SHIP",
+                        "PENDING_SHIP",
+                        List.of(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF),
+                        "USER",
+                        true,
+                        List.of(),
+                        null,
+                        "expected PENDING_AUDIT but was {actual}",
+                        null,
+                        "PUT /samples/{id}/status",
+                        "POST /samples/batch-approve",
+                        "招商审核通过"),
+                new SampleStatusTransitionVO(
+                        "REJECTED",
+                        "审核拒绝",
+                        List.of(),
+                        List.of("PENDING_AUDIT"),
+                        "REJECTED",
+                        "REJECTED",
+                        List.of(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF),
+                        "USER",
+                        true,
+                        List.of("reason"),
+                        "reason is required when reject sample request",
+                        "expected PENDING_AUDIT but was {actual}",
+                        null,
+                        "PUT /samples/{id}/status",
+                        "POST /samples/batch-reject",
+                        "招商审核拒绝"),
+                new SampleStatusTransitionVO(
+                        "SHIPPING",
+                        "录入物流",
+                        List.of("SHIPPED"),
+                        List.of("PENDING_SHIP"),
+                        "SHIPPED",
+                        "SHIPPING",
+                        List.of(RoleCodes.ADMIN, RoleCodes.OPS_STAFF),
+                        "USER",
+                        true,
+                        List.of("trackingNo"),
+                        "trackingNo is required when shipping",
+                        "expected PENDING_SHIP but was {actual}",
+                        null,
+                        "PUT /samples/{id}/status",
+                        "POST /samples/batch-ship",
+                        "运营录入物流单号"),
+                new SampleStatusTransitionVO(
+                        "DELIVERED",
+                        "物流签收",
+                        List.of(),
+                        List.of("SHIPPED"),
+                        "SHIPPED",
+                        "DELIVERED",
+                        List.of(RoleCodes.ADMIN, RoleCodes.OPS_STAFF),
+                        "USER",
+                        true,
+                        List.of(),
+                        null,
+                        "expected SHIPPING but was {actual}",
+                        null,
+                        "PUT /samples/{id}/status",
+                        null,
+                        "物流签收回调或运营确认签收"),
+                new SampleStatusTransitionVO(
+                        "PENDING_HOMEWORK",
+                        "待交作业",
+                        List.of("SIGNED", "PENDING_TASK"),
+                        List.of("SHIPPED", "DELIVERED"),
+                        "PENDING_TASK",
+                        "PENDING_HOMEWORK",
+                        List.of(RoleCodes.ADMIN, RoleCodes.OPS_STAFF),
+                        "USER",
+                        true,
+                        List.of(),
+                        null,
+                        "expected DELIVERED but was {actual}",
+                        null,
+                        "PUT /samples/{id}/status",
+                        null,
+                        "签收后进入待交作业"),
+                new SampleStatusTransitionVO(
+                        "COMPLETED",
+                        "作业完成",
+                        List.of("FINISHED"),
+                        List.of("PENDING_TASK"),
+                        "FINISHED",
+                        "COMPLETED",
+                        List.of(),
+                        "SYSTEM",
+                        false,
+                        List.of(),
+                        null,
+                        "expected PENDING_HOMEWORK but was {actual}",
+                        "完成与关闭状态仅允许系统自动推进",
+                        null,
+                        null,
+                        "订单同步自动完成"),
+                new SampleStatusTransitionVO(
+                        "CLOSED",
+                        "超时关闭",
+                        List.of(),
+                        List.of("PENDING_TASK"),
+                        "CLOSED",
+                        "CLOSED",
+                        List.of(),
+                        "SYSTEM",
+                        false,
+                        List.of("reason"),
+                        null,
+                        "expected PENDING_HOMEWORK but was {actual}",
+                        "完成与关闭状态仅允许系统自动推进",
+                        null,
+                        null,
+                        "待交作业超时自动关闭"));
+    }
+
     private void ensureSampleExportPermission(Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER)) {
-            throw new ForbiddenException("仅管理员、招商组长或渠道组长可导出寄样数据");
+        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF)) {
+            throw new ForbiddenException("仅管理员、招商或运营可导出寄样数据");
         }
     }
 
@@ -1059,11 +1205,25 @@ public class SampleController extends BaseController {
         eligibilityCheck.put("passed", eligibility.eligible());
         eligibilityCheck.put("failedRules", classifyEligibilityFailures(eligibility.reasons()));
         eligibilityCheck.put("reasons", eligibility.reasons());
+        String applySource = normalizeApplySource(request.getApplySource());
         extra.put("eligibilityCheck", eligibilityCheck);
         extra.put("applyReason", StringUtils.hasText(request.getRemark()) ? request.getRemark().trim() : null);
         extra.put("requirementSnapshot", buildRequirementSnapshot(eligibility));
         extra.put("addressSource", "manual");
+        extra.put("applySource", applySource);
+        extra.put("externalApply", false);
+        extra.put("applyChannel", "INTERNAL_SAMPLE_REQUEST");
         return extra;
+    }
+
+    private String normalizeApplySource(String applySource) {
+        if (!StringUtils.hasText(applySource)) {
+            return APPLY_SOURCE_MANUAL;
+        }
+        String normalized = applySource.trim().toUpperCase(Locale.ROOT);
+        return APPLY_SOURCE_INTERNAL_QUICK_SAMPLE.equals(normalized)
+                ? APPLY_SOURCE_INTERNAL_QUICK_SAMPLE
+                : APPLY_SOURCE_MANUAL;
     }
 
     private Map<String, Object> buildRequirementSnapshot(SampleEligibilityService.EligibilityResult eligibility) {
@@ -1144,6 +1304,32 @@ public class SampleController extends BaseController {
                 .collect(Collectors.toSet());
     }
 
+    private void applySampleQueryFilters(
+            QueryWrapper<SampleRequest> wrapper,
+            String status,
+            String keyword,
+            UUID channelUserId) {
+        if (StringUtils.hasText(status)) {
+            wrapper.eq("sr.status", parseStatus(status).code);
+        }
+        if (StringUtils.hasText(keyword)) {
+            Set<UUID> matchedProductIds = loadMatchedProductIds(keyword.trim());
+            wrapper.and(query -> {
+                query.like("sr.talent_nickname", keyword.trim())
+                        .or()
+                        .like("sr.talent_uid", keyword.trim())
+                        .or()
+                        .like("sr.request_no", keyword.trim());
+                if (!matchedProductIds.isEmpty()) {
+                    query.or().in("sr.product_id", matchedProductIds);
+                }
+            });
+        }
+        if (channelUserId != null) {
+            wrapper.eq("sr.channel_user_id", channelUserId);
+        }
+    }
+
     private SampleVO toVO(SampleRequest sample, Product product, String productName, String talentName) {
         Product resolvedProduct = product;
         if (resolvedProduct == null && sample.getProductId() != null) {
@@ -1164,11 +1350,15 @@ public class SampleController extends BaseController {
         vo.setColonelUserName(resolveUserDisplayName(colonelUserId));
         vo.setTrackingNo(sample.getTrackingNo());
         vo.setShipperCode(sample.getShipperCode());
+        vo.setRecipientName(sample.getRecipientName());
+        vo.setRecipientPhone(sample.getRecipientPhone());
+        vo.setRecipientAddress(sample.getRecipientAddress());
         vo.setLogisticsSource(readExtraText(sample.getExtraData(), "logisticsSource"));
         vo.setRejectReason(sample.getRejectReason());
         vo.setCloseReason(sample.getCloseReason());
         vo.setRemark(sample.getRemark());
         vo.setApplyReason(readExtraText(sample.getExtraData(), "applyReason"));
+        vo.setApplySource(readExtraText(sample.getExtraData(), "applySource"));
         vo.setEligibilityCheck(readExtraMap(sample.getExtraData(), "eligibilityCheck"));
         vo.setRequirementSnapshot(readExtraMap(sample.getExtraData(), "requirementSnapshot"));
         vo.setCreateTime(sample.getCreateTime());
@@ -1249,6 +1439,13 @@ public class SampleController extends BaseController {
 
     private String normalizeDisplayText(String value) {
         return value == null ? null : value.trim();
+    }
+
+    private String trimToNull(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
     }
 
     private SampleStatus parseStatus(String status) {
@@ -1496,6 +1693,61 @@ public class SampleController extends BaseController {
         }
     }
 
+    @Getter
+    public static class SampleStatusTransitionVO {
+        private final String action;
+        private final String label;
+        private final List<String> aliases;
+        private final List<String> fromStatuses;
+        private final String toStatus;
+        private final String internalToStatus;
+        private final List<String> roleCodes;
+        private final String actorType;
+        private final boolean userCallable;
+        private final List<String> requiredFields;
+        private final String missingFieldMessage;
+        private final String invalidStateMessage;
+        private final String forbiddenMessage;
+        private final String endpoint;
+        private final String batchEndpoint;
+        private final String trigger;
+
+        public SampleStatusTransitionVO(
+                String action,
+                String label,
+                List<String> aliases,
+                List<String> fromStatuses,
+                String toStatus,
+                String internalToStatus,
+                List<String> roleCodes,
+                String actorType,
+                boolean userCallable,
+                List<String> requiredFields,
+                String missingFieldMessage,
+                String invalidStateMessage,
+                String forbiddenMessage,
+                String endpoint,
+                String batchEndpoint,
+                String trigger) {
+            this.action = action;
+            this.label = label;
+            this.aliases = aliases;
+            this.fromStatuses = fromStatuses;
+            this.toStatus = toStatus;
+            this.internalToStatus = internalToStatus;
+            this.roleCodes = roleCodes;
+            this.actorType = actorType;
+            this.userCallable = userCallable;
+            this.requiredFields = requiredFields;
+            this.missingFieldMessage = missingFieldMessage;
+            this.invalidStateMessage = invalidStateMessage;
+            this.forbiddenMessage = forbiddenMessage;
+            this.endpoint = endpoint;
+            this.batchEndpoint = batchEndpoint;
+            this.trigger = trigger;
+        }
+    }
+
     public static class SampleVO {
         private UUID id;
         private String requestNo;
@@ -1510,12 +1762,16 @@ public class SampleController extends BaseController {
         private String colonelUserName;
         private String trackingNo;
         private String shipperCode;
+        private String recipientName;
+        private String recipientPhone;
+        private String recipientAddress;
         private String logisticsCompany;
         private String logisticsSource;
         private String rejectReason;
         private String closeReason;
         private String remark;
         private String applyReason;
+        private String applySource;
         private Map<String, Object> eligibilityCheck;
         private Map<String, Object> requirementSnapshot;
         private String status;
@@ -1627,6 +1883,30 @@ public class SampleController extends BaseController {
             this.shipperCode = shipperCode;
         }
 
+        public String getRecipientName() {
+            return recipientName;
+        }
+
+        public void setRecipientName(String recipientName) {
+            this.recipientName = recipientName;
+        }
+
+        public String getRecipientPhone() {
+            return recipientPhone;
+        }
+
+        public void setRecipientPhone(String recipientPhone) {
+            this.recipientPhone = recipientPhone;
+        }
+
+        public String getRecipientAddress() {
+            return recipientAddress;
+        }
+
+        public void setRecipientAddress(String recipientAddress) {
+            this.recipientAddress = recipientAddress;
+        }
+
         public String getLogisticsCompany() {
             return logisticsCompany;
         }
@@ -1673,6 +1953,14 @@ public class SampleController extends BaseController {
 
         public void setApplyReason(String applyReason) {
             this.applyReason = applyReason;
+        }
+
+        public String getApplySource() {
+            return applySource;
+        }
+
+        public void setApplySource(String applySource) {
+            this.applySource = applySource;
         }
 
         public Map<String, Object> getEligibilityCheck() {

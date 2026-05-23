@@ -6,16 +6,19 @@ import com.colonel.saas.auth.dto.LogoutRequest;
 import com.colonel.saas.auth.dto.RefreshRequest;
 import com.colonel.saas.auth.dto.RefreshResponse;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.SysRoleMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.security.JwtTokenProvider;
+import com.colonel.saas.service.OperationLogService;
 import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -51,6 +54,8 @@ class AuthServiceTest {
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
     private ValueOperations<String, Object> valueOperations;
+    @Mock
+    private OperationLogService operationLogService;
 
     private PasswordEncoder passwordEncoder;
     private AuthService authService;
@@ -58,7 +63,7 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
-        authService = new AuthService(sysUserMapper, sysRoleMapper, jwtTokenProvider, passwordEncoder, redisTemplate);
+        authService = new AuthService(sysUserMapper, sysRoleMapper, jwtTokenProvider, passwordEncoder, redisTemplate, operationLogService);
     }
 
     private void stubJwtTokenGeneration() {
@@ -105,6 +110,15 @@ class AuthServiceTest {
         assertThat(response.getUsername()).isEqualTo("alice");
         assertThat(response.getRoleCodes()).contains("admin");
         verify(sysUserMapper).updateById(any(SysUser.class));
+        ArgumentCaptor<OperationLog> logCaptor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(logCaptor.capture());
+        OperationLog log = logCaptor.getValue();
+        assertThat(log.getModule()).isEqualTo("用户域");
+        assertThat(log.getAction()).isEqualTo("登录成功");
+        assertThat(log.getUsername()).isEqualTo("alice");
+        assertThat(log.getResponseCode()).isEqualTo("SUCCESS");
+        assertThat(log.getRequestBody()).containsEntry("username", "alice");
+        assertThat(log.getRequestBody()).doesNotContainKey("password");
     }
 
     @Test
@@ -142,6 +156,11 @@ class AuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("用户名或密码错误");
         verify(valueOperations).increment("auth:login:fail:bob");
+        ArgumentCaptor<OperationLog> logCaptor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(logCaptor.capture());
+        assertThat(logCaptor.getValue().getAction()).isEqualTo("登录失败");
+        assertThat(logCaptor.getValue().getResponseCode()).isEqualTo("FAILED");
+        assertThat(logCaptor.getValue().getRequestBody()).doesNotContainKey("password");
     }
 
     @Test
@@ -162,6 +181,9 @@ class AuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("用户名或密码错误");
         verify(valueOperations).set("auth:login:lock:bob", "1", 15L, TimeUnit.MINUTES);
+        ArgumentCaptor<OperationLog> logCaptor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(logCaptor.capture());
+        assertThat(logCaptor.getValue().getAction()).isEqualTo("登录锁定");
     }
 
     @Test
@@ -177,6 +199,9 @@ class AuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("登录失败次数过多");
         verify(sysUserMapper, never()).findByUsername(anyString());
+        ArgumentCaptor<OperationLog> logCaptor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(logCaptor.capture());
+        assertThat(logCaptor.getValue().getAction()).isEqualTo("登录锁定");
     }
 
     @Test
@@ -307,7 +332,11 @@ class AuthServiceTest {
     @Test
     @DisplayName("登出成功将令牌加入黑名单并吊销刷新令牌")
     void logout_success_shouldBlacklistTokenAndRevokeRefresh() {
-        when(jwtTokenProvider.parseClaims("valid.access.token")).thenReturn(org.mockito.Mockito.mock(Claims.class));
+        UUID userId = UUID.randomUUID();
+        Claims accessClaims = org.mockito.Mockito.mock(Claims.class);
+        when(accessClaims.getSubject()).thenReturn(userId.toString());
+        when(accessClaims.get("username", String.class)).thenReturn("alice");
+        when(jwtTokenProvider.parseClaims("valid.access.token")).thenReturn(accessClaims);
         when(jwtTokenProvider.getTokenHash("valid.access.token")).thenReturn("accessHash");
         when(jwtTokenProvider.getRemainingSeconds("valid.access.token")).thenReturn(3600L);
 
@@ -325,6 +354,11 @@ class AuthServiceTest {
 
         verify(valueOperations).set(eq("auth:blacklist:accessHash"), eq("1"), eq(3600L), eq(TimeUnit.SECONDS));
         verify(valueOperations).set(eq("auth:refresh:refreshHash"), eq("1"), eq(604800L), eq(TimeUnit.SECONDS));
+        ArgumentCaptor<OperationLog> logCaptor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(logCaptor.capture());
+        assertThat(logCaptor.getValue().getAction()).isEqualTo("登出");
+        assertThat(logCaptor.getValue().getUserId()).isEqualTo(userId);
+        assertThat(logCaptor.getValue().getUsername()).isEqualTo("alice");
     }
 
     @Test

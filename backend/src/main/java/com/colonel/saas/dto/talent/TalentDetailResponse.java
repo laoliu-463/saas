@@ -42,6 +42,11 @@ public class TalentDetailResponse {
         private String contactPhone;
         private String remark;
         private String avatarUrl;
+        private List<String> tags;
+        private String tagUpdatedBy;
+        private String shippingRecipientName;
+        private String shippingRecipientPhone;
+        private String shippingRecipientAddress;
     }
 
     @Data
@@ -53,6 +58,9 @@ public class TalentDetailResponse {
         private LocalDateTime protectedUntil;
         private Integer activeClaimCount;
         private List<ClaimOwnerItem> activeClaimOwners;
+        private String recipientName;
+        private String recipientPhone;
+        private String recipientAddress;
     }
 
     @Data

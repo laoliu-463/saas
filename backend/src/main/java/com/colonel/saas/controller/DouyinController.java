@@ -24,6 +24,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -196,11 +198,11 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
-    @Operation(summary = "[联调] 查询团长分次结算订单", description = "验证上游 buyin.colonelMultiSettlementOrders 团长分次结算订单查询能力。该接口依赖当前 access_token 对应主体已完成团长授权，仅作为结算订单补充样本来源，不替代订单主同步接口 buyin.instituteOrderColonel。")
+    @Operation(summary = "[联调] 查询团长分次结算订单", description = "验证上游 buyin.colonelMultiSettlementOrders 团长分次结算订单查询能力。RealDouyinOrderGateway 的订单主同步时间范围查询已使用该接口；旧 buyin.instituteOrderColonel 仅保留 RAW 探针对照。")
     @GetMapping("/order-settlements")
     public ApiResult<Map<String, Object>> dingdanJiesuan(
             @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
-            @Parameter(description = "每次拉取条数。") @RequestParam(required = false, defaultValue = "20") Integer size,
+            @Parameter(description = "每次拉取条数，最大 100。") @RequestParam(required = false, defaultValue = "20") @Min(1) @Max(100) Integer size,
             @Parameter(description = "游标，继续翻页时使用。") @RequestParam(required = false, defaultValue = "0") String cursor,
             @Parameter(description = "时间类型，如 update。待确认：更多取值请参考上游 SDK 文档。") @RequestParam(required = false, defaultValue = "update") String timeType,
             @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
@@ -372,7 +374,7 @@ public class DouyinController extends BaseController {
             int count = request.get("count") instanceof Number number ? number.intValue() : 20;
             result.put("appId", appId);
             result.put("payload", request);
-            result.put("remoteResponse", douyinOrderGateway.listSettlement(
+            result.put("remoteResponse", douyinOrderGateway.listInstituteOrders(
                     new DouyinOrderGateway.DouyinOrderQueryRequest(
                             parseFlexibleEpoch(startRaw, "start_time"),
                             parseFlexibleEpoch(endRaw, "end_time"),
@@ -451,7 +453,7 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
-    @Operation(summary = "[联调] 初始化 Token", description = "使用 authorization code 或 refresh_token 初始化 Token，适用于真实联调前的授权准备。联调接口，无需角色校验。")
+    @Operation(summary = "[联调] 初始化 Token", description = "使用 authorization code 或 refresh_token 初始化 Token，适用于真实联调前的授权准备。联调接口，仅管理员可操作。")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Token 初始化成功")
     })

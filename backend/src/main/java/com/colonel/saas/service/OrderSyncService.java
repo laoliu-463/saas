@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.config.AppProperties;
+import com.colonel.saas.job.JobLockKeys;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.time.AppZone;
@@ -17,19 +18,21 @@ import java.time.Instant;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Service
 public class OrderSyncService {
 
     private static final String LAST_SYNC_TIME_KEY = "order:sync:last_time";
-    private static final String SYNC_LOCK_KEY = "order:sync:lock";
+    private static final Duration SYNC_LOCK_TTL = Duration.ofMinutes(10);
     private static final long WINDOW_SECONDS = 600L;
     private static final long OVERLAP_SECONDS = 60L;
     private static final long LAG_SECONDS = 60L;
@@ -40,8 +43,8 @@ public class OrderSyncService {
     private final OrderSyncPersistenceService persistenceService;
     private final AttributionService attributionService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final DistributedJobLockService jobLockService;
     private final AppProperties appProperties;
-    private final AtomicBoolean localLock = new AtomicBoolean(false);
     private volatile long localLastSyncTime;
 
     public OrderSyncService(
@@ -49,11 +52,13 @@ public class OrderSyncService {
             OrderSyncPersistenceService persistenceService,
             AttributionService attributionService,
             RedisTemplate<String, Object> redisTemplate,
+            DistributedJobLockService jobLockService,
             AppProperties appProperties) {
         this.douyinOrderGateway = douyinOrderGateway;
         this.persistenceService = persistenceService;
         this.attributionService = attributionService;
         this.redisTemplate = redisTemplate;
+        this.jobLockService = jobLockService;
         this.appProperties = appProperties;
     }
 
@@ -133,20 +138,7 @@ public class OrderSyncService {
     }
 
     private boolean acquireSyncLock() {
-        try {
-            Boolean locked = redisTemplate.opsForValue().setIfAbsent(
-                    Objects.requireNonNull(SYNC_LOCK_KEY),
-                    "1",
-                    Objects.requireNonNull(Duration.ofMinutes(10))
-            );
-            return Boolean.TRUE.equals(locked);
-        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (testEnabled()) {
-                log.warn("Redis unavailable in test mode when acquiring sync lock, fallback to local lock: {}", ex.getMessage());
-                return localLock.compareAndSet(false, true);
-            }
-            throw ex;
-        }
+        return jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC, SYNC_LOCK_TTL);
     }
 
     private void persistLastSyncTime(long endTime) {
@@ -163,16 +155,7 @@ public class OrderSyncService {
     }
 
     private void releaseSyncLock() {
-        localLock.set(false);
-        try {
-            redisTemplate.delete(SYNC_LOCK_KEY);
-        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
-            if (testEnabled()) {
-                log.warn("Redis unavailable in test mode when releasing sync lock, local lock already released: {}", ex.getMessage());
-                return;
-            }
-            throw ex;
-        }
+        jobLockService.release(JobLockKeys.ORDER_SYNC);
     }
 
     private SyncResult syncRange(long startTime, long endTime, int count) {
@@ -221,13 +204,15 @@ public class OrderSyncService {
             pages++;
             totalFetched += items.size();
 
+            List<ColonelsettlementOrder> pageOrders = new ArrayList<>();
             for (DouyinOrderGateway.DouyinOrderItem item : items) {
                 try {
                     ColonelsettlementOrder order = mapOrder(item);
                     if (!StringUtils.hasText(order.getOrderId())) {
                         continue;
                     }
-                    AttributionService.AttributionResult attribution = attributionService.resolveAttribution(order, item.rawPayload());
+                    AttributionService.AttributionResult attribution =
+                            attributionService.resolveAttribution(order, item.rawPayload());
                     order.setChannelUserId(attribution.channelUserId());
                     order.setChannelDeptId(attribution.deptId());
                     order.setUserId(attribution.userId());
@@ -239,16 +224,37 @@ public class OrderSyncService {
                     order.setAttributionRemark(attribution.attributionRemark());
                     order.setProductTitle(order.getProductName());
                     order.setTalentName(item.talentName());
-                    // talent_name 应由达人信息补全，此处不写入不可靠的uid值
+                    pageOrders.add(order);
+                } catch (BusinessException e) {
+                    failedCount++;
+                    log.warn("Skip order during sync, reason={}, orderId={}", e.getMessage(), item.externalOrderId());
+                } catch (Exception e) {
+                    failedCount++;
+                    log.error("Unexpected error processing order, orderId={}, type={}",
+                            item.externalOrderId(), e.getClass().getSimpleName(), e);
+                }
+            }
 
-                    // 补全人名
-                    if (order.getChannelUserId() != null) {
-                        SysUser u = persistenceService.getUser(order.getChannelUserId());
-                        if (u != null) order.setChannelUserName(u.getRealName());
+            Set<UUID> userIds = new HashSet<>();
+            for (ColonelsettlementOrder order : pageOrders) {
+                if (order.getChannelUserId() != null) {
+                    userIds.add(order.getChannelUserId());
+                }
+                if (order.getColonelUserId() != null) {
+                    userIds.add(order.getColonelUserId());
+                }
+            }
+            Map<UUID, SysUser> usersById = persistenceService.loadUsersByIds(userIds);
+
+            for (ColonelsettlementOrder order : pageOrders) {
+                try {
+                    SysUser channelUser = usersById.get(order.getChannelUserId());
+                    if (channelUser != null) {
+                        order.setChannelUserName(channelUser.getRealName());
                     }
-                    if (order.getColonelUserId() != null) {
-                        SysUser u = persistenceService.getUser(order.getColonelUserId());
-                        if (u != null) order.setColonelUserName(u.getRealName());
+                    SysUser colonelUser = usersById.get(order.getColonelUserId());
+                    if (colonelUser != null) {
+                        order.setColonelUserName(colonelUser.getRealName());
                     }
 
                     if ("ATTRIBUTED".equals(order.getAttributionStatus())) {
@@ -265,10 +271,11 @@ public class OrderSyncService {
                     }
                 } catch (BusinessException e) {
                     failedCount++;
-                    log.warn("Skip order during sync, reason={}, orderId={}", e.getMessage(), item.externalOrderId());
+                    log.warn("Skip order during sync, reason={}, orderId={}", e.getMessage(), order.getOrderId());
                 } catch (Exception e) {
                     failedCount++;
-                    log.error("Unexpected error processing order, orderId={}, type={}", item.externalOrderId(), e.getClass().getSimpleName(), e);
+                    log.error("Unexpected error persisting order, orderId={}, type={}",
+                            order.getOrderId(), e.getClass().getSimpleName(), e);
                 }
             }
 
@@ -296,10 +303,12 @@ public class OrderSyncService {
         order.setProductName(rawPayload != null ? asString(rawValue(rawPayload, "product_name", "productName")) : null);
         order.setShopId(parseMerchantId(item.merchantId()));
         order.setShopName(item.merchantName());
-        order.setOrderAmount(item.orderAmount());
-        order.setActualAmount(resolveActualAmount(item));
+        OrderDualTrackAmountResolver.DualTrackAmounts dualTrack = OrderDualTrackAmountResolver.resolve(
+                rawPayload,
+                item.orderAmount(),
+                item.serviceFee());
+        OrderDualTrackAmountResolver.applyToOrder(order, dualTrack);
         order.setColonelBuyinId(asNullableLong(rawOrderInfoValue(rawPayload, "colonel_buyin_id", "colonelBuyinId")));
-        order.setSettleColonelCommission(item.serviceFee());
         order.setSecondColonelBuyinId(asNullableLong(rawOrderInfoValue(rawPayload, "second_colonel_buyin_id", "secondColonelBuyinId")));
         order.setSecondActivityId(asString(rawOrderInfoValue(rawPayload, "second_colonel_activity_id", "secondColonelActivityId")));
         order.setPhaseId(asString(rawValue(rawPayload, "phase_id", "phaseId")));
