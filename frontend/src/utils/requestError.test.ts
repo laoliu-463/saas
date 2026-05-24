@@ -9,6 +9,7 @@ import {
   isPermissionDeniedError,
   isRequestErrorNotified,
   notifyClientPermission,
+  notifyApiFailure,
   resetPermissionHints,
   shouldShowPermissionHint
 } from './requestError'
@@ -113,5 +114,32 @@ describe('request error helpers', () => {
     expect(globalPermissionHint.value).toBe('当前角色无权导出寄样单')
     notifyClientPermission('当前角色无权导出寄样单')
     expect(globalPermissionHint.value).toBe('当前角色无权导出寄样单')
+  })
+
+  it('notifyApiFailure routes permission failures to global and local hints without toast', () => {
+    const toastMessages: string[] = []
+    const localHints: string[] = []
+
+    notifyApiFailure(
+      { response: { status: 403, data: { code: 403, msg: '渠道专员不可访问订单同步' } } },
+      { error: (message) => toastMessages.push(message) },
+      { onPermissionHint: (message) => localHints.push(message) }
+    )
+
+    expect(globalPermissionHint.value).toBe('渠道专员不可访问订单同步')
+    expect(localHints).toEqual(['渠道专员不可访问订单同步'])
+    expect(toastMessages).toEqual([])
+  })
+
+  it('notifyApiFailure skips toast for cancelled requests already handled by interceptor', () => {
+    const toastMessages: string[] = []
+
+    notifyApiFailure(
+      new axios.CanceledError('cancelled by route change'),
+      { error: (message) => toastMessages.push(message) },
+      { fallbackMessage: '商品查询失败' }
+    )
+
+    expect(toastMessages).toEqual([])
   })
 })

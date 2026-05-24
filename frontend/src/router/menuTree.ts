@@ -180,9 +180,9 @@ export function filterMenuTreeByRoles(
     .map((node) => {
       if (!node.children?.length) return cloneWithoutMeta(node)
       const children = filterMenuTreeByRoles(node.children, roleList)
-      return cloneWithoutMeta({ ...node, children })
+      return { ...cloneWithoutMeta(node), children }
     })
-    .filter((node) => !node.children?.length || node.children.length > 0)
+    .filter((node) => !Array.isArray(node.children) || node.children.length > 0)
 }
 
 export function buildAccessibleMenuTree(roles: readonly string[]): MenuTreeNode[] {
