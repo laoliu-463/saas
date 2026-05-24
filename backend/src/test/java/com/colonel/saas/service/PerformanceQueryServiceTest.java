@@ -18,6 +18,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -64,7 +67,21 @@ class PerformanceQueryServiceTest {
                 List.of("channel_staff")));
 
         assertThat(response.getOrderId()).isEqualTo("ORDER-1");
+        assertThat(response.getProductId()).isEqualTo("P-1");
         assertThat(response.getProductName()).isEqualTo("商品A");
+        assertThat(response.getPartnerName()).isEqualTo("合作方A");
+        assertThat(response.getDefaultChannelName()).isEqualTo("默认渠道");
+        assertThat(response.getFinalChannelName()).isEqualTo("最终渠道");
+        assertThat(response.getDefaultRecruiterName()).isEqualTo("默认招商");
+        assertThat(response.getFinalRecruiterName()).isEqualTo("最终招商");
+        assertThat(response.getChannelAttributionType()).isEqualTo("pick_source");
+        assertThat(response.getRecruiterAttributionType()).isEqualTo("activity_owner");
+        assertThat(response.getPayAmount()).isEqualTo(12345L);
+        assertThat(response.getEstimateGrossProfit()).isEqualTo(600L);
+        assertThat(response.getRecruiterCommissionRate()).isEqualByComparingTo("0.10");
+        assertThat(response.getOrderStatus()).isEqualTo("FINISHED");
+        assertThat(response.getPayTime()).isEqualTo(LocalDateTime.of(2026, 5, 24, 10, 30, 45));
+        assertThat(response.getSettleTime()).isEqualTo(LocalDateTime.of(2026, 5, 25, 11, 5, 6));
     }
 
     @Test
@@ -163,10 +180,36 @@ class PerformanceQueryServiceTest {
                     org.mockito.Mockito.lenient().when(rs.getString("order_id")).thenReturn(orderId);
                     org.mockito.Mockito.lenient().when(rs.getString("product_id")).thenReturn("P-1");
                     org.mockito.Mockito.lenient().when(rs.getString("product_name")).thenReturn(productName);
+                    org.mockito.Mockito.lenient().when(rs.getString("activity_id")).thenReturn("ACT-1");
+                    org.mockito.Mockito.lenient().when(rs.getString("activity_name")).thenReturn("春季活动");
                     org.mockito.Mockito.lenient().when(rs.getString("partner_name")).thenReturn("合作方A");
                     org.mockito.Mockito.lenient().when(rs.getString("talent_name")).thenReturn("达人A");
+                    org.mockito.Mockito.lenient().when(rs.getString("default_channel_name")).thenReturn("默认渠道");
+                    org.mockito.Mockito.lenient().when(rs.getString("default_recruiter_name")).thenReturn("默认招商");
+                    org.mockito.Mockito.lenient().when(rs.getString("final_channel_name_resolved")).thenReturn("最终渠道");
+                    org.mockito.Mockito.lenient().when(rs.getString("final_recruiter_name_resolved")).thenReturn("最终招商");
                     org.mockito.Mockito.lenient().when(rs.getString("channel_attribution")).thenReturn("pick_source");
                     org.mockito.Mockito.lenient().when(rs.getString("recruiter_attribution")).thenReturn("activity_owner");
+                    org.mockito.Mockito.lenient().when(rs.getObject("order_status")).thenReturn(3);
+                    org.mockito.Mockito.lenient().when(rs.getLong("pay_amount")).thenReturn(12345L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("settle_amount")).thenReturn(12000L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("estimate_service_fee")).thenReturn(2345L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("effective_service_fee")).thenReturn(2200L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("estimate_tech_service_fee")).thenReturn(345L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("effective_tech_service_fee")).thenReturn(300L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("estimate_service_profit")).thenReturn(2000L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("effective_service_profit")).thenReturn(1900L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("estimate_recruiter_commission")).thenReturn(800L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("effective_recruiter_commission")).thenReturn(700L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("estimate_channel_commission")).thenReturn(600L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("effective_channel_commission")).thenReturn(500L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("estimate_gross_profit")).thenReturn(600L);
+                    org.mockito.Mockito.lenient().when(rs.getLong("effective_gross_profit")).thenReturn(700L);
+                    org.mockito.Mockito.lenient().when(rs.getBigDecimal("recruiter_commission_rate")).thenReturn(new BigDecimal("0.10"));
+                    org.mockito.Mockito.lenient().when(rs.getBigDecimal("channel_commission_rate")).thenReturn(new BigDecimal("0.20"));
+                    org.mockito.Mockito.lenient().when(rs.getTimestamp("pay_time")).thenReturn(Timestamp.valueOf("2026-05-24 10:30:45"));
+                    org.mockito.Mockito.lenient().when(rs.getTimestamp("settle_time")).thenReturn(Timestamp.valueOf("2026-05-25 11:05:06"));
+                    org.mockito.Mockito.lenient().when(rs.getTimestamp("calculated_at")).thenReturn(Timestamp.valueOf("2026-05-25 12:00:00"));
                     org.mockito.Mockito.lenient().when(rs.getBoolean("is_valid")).thenReturn(true);
                     return List.of(mapper.mapRow(rs, 0));
                 });

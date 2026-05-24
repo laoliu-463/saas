@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.UUID;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -102,5 +103,54 @@ class PerformanceCalculationServiceTest {
         assertThat(saved.getValid()).isFalse();
         assertThat(saved.getEstimateGrossProfit()).isZero();
         assertThat(saved.getEffectiveGrossProfit()).isZero();
+    }
+
+    @Test
+    void upsertFromOrder_shouldPreserveExistingRecordAndFallbackSettleAmount() {
+        UUID existingId = UUID.randomUUID();
+        UUID orderRowId = UUID.randomUUID();
+        UUID recruiterId = UUID.randomUUID();
+        LocalDateTime createdAt = LocalDateTime.of(2026, 5, 1, 9, 0);
+        PerformanceRecord existing = new PerformanceRecord();
+        existing.setId(existingId);
+        existing.setCreatedAt(createdAt);
+        existing.setCalculationVersion(3);
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(orderRowId);
+        order.setOrderId("ORD-RECALC");
+        order.setUserId(recruiterId);
+        order.setOrderStatus(1);
+        order.setOrderAmount(15000L);
+        order.setSettleAmount(0L);
+        order.setActualAmount(12300L);
+        order.setEstimateServiceFee(0L);
+        order.setEffectiveServiceFee(0L);
+        order.setEstimateTechServiceFee(0L);
+        order.setEffectiveTechServiceFee(0L);
+
+        when(performanceRecordMapper.findByOrderId("ORD-RECALC")).thenReturn(existing);
+        when(performanceRecordMapper.upsert(any())).thenReturn(1);
+
+        PerformanceRecord saved = service.upsertFromOrder(order);
+
+        ArgumentCaptor<PerformanceRecord> captor = ArgumentCaptor.forClass(PerformanceRecord.class);
+        verify(performanceRecordMapper).upsert(captor.capture());
+        PerformanceRecord record = captor.getValue();
+        assertThat(saved).isSameAs(record);
+        assertThat(record.getId()).isEqualTo(existingId);
+        assertThat(record.getOrderRowId()).isEqualTo(orderRowId);
+        assertThat(record.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(record.getCalculationVersion()).isEqualTo(4);
+        assertThat(record.getPayAmount()).isEqualTo(15000L);
+        assertThat(record.getSettleAmount()).isEqualTo(12300L);
+        assertThat(record.getDefaultChannelUserId()).isNull();
+        assertThat(record.getFinalChannelUserId()).isNull();
+        assertThat(record.getChannelAttribution()).isEqualTo("unattributed");
+        assertThat(record.getDefaultRecruiterUserId()).isEqualTo(recruiterId);
+        assertThat(record.getFinalRecruiterUserId()).isEqualTo(recruiterId);
+        assertThat(record.getRecruiterAttribution()).isEqualTo("activity_owner");
+        assertThat(record.getValid()).isTrue();
+        assertThat(record.getReversed()).isFalse();
     }
 }
