@@ -53,6 +53,7 @@ import PageHeader from '../../components/PageHeader.vue';
 import { MODAL_WIDTH } from '../../constants/ui';
 import { getRolePage, createRole, updateRole, deleteRole } from '../../api/sys';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
+import { sanitizeRoleName } from './user-list-options';
 
 const message = useMessage();
 
@@ -62,6 +63,7 @@ const pagination = reactive(createPaginationState());
 
 const dataScopeOptions = [
   { label: '全部数据', value: 3 },
+  { label: '本组数据', value: 2 },
   { label: '仅本人数据', value: 1 }
 ];
 
@@ -146,7 +148,7 @@ const openModal = (type: 'add'|'edit', row?: any) => {
     Object.assign(formData, {
       id: row.id,
       roleCode: row.roleCode,
-      roleName: row.roleName,
+      roleName: sanitizeRoleName(row),
       dataScope: row.dataScope,
       status: row.status,
       remark: row.remark
@@ -198,11 +200,11 @@ const handleDelete = async (id: string) => {
   }
 };
 
-const scopeMap: Record<number, string> = { 1: '仅本人', 3: '全部数据' };
+const scopeMap: Record<number, string> = { 1: '仅本人', 2: '本组数据', 3: '全部数据' };
 
 const columns = [
   { title: '角色编码', key: 'roleCode' },
-  { title: '角色名称', key: 'roleName' },
+  { title: '角色名称', key: 'roleName', render(row: any) { return sanitizeRoleName(row); } },
   { title: '数据范围', key: 'dataScope', render(row: any) { return scopeMap[row.dataScope] || '-'; } },
   { title: '状态', key: 'status', render(row: any) { return h(NTag, { type: row.status ? 'success' : 'error' }, { default: () => (row.status ? '正常' : '停用') }); } },
   { title: '创建时间', key: 'createTime' },

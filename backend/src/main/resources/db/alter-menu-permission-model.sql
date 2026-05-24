@@ -36,33 +36,42 @@ CREATE INDEX IF NOT EXISTS idx_sys_role_menu_menu_id ON sys_role_menu (menu_id);
 
 -- 初始化默认菜单数据
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
-VALUES
-    (gen_random_uuid(), '系统管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/system', null, 'setting', 90, null, 1, 1)
-ON CONFLICT DO NOTHING;
+SELECT gen_random_uuid(), '系统管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/system', null, 'setting', 90, null, 1, 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM sys_menu WHERE deleted = 0 AND parent_id = '00000000-0000-0000-0000-000000000000' AND path = '/system'
+);
 
 -- 子菜单: 用户管理
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
 SELECT gen_random_uuid(), '用户管理', 'MENU', m.id, '/system/user', 'system/UserManagement', 'user', 1, null, 1, 1
 FROM sys_menu m WHERE m.menu_name = '系统管理' AND m.parent_id = '00000000-0000-0000-0000-000000000000'
-ON CONFLICT DO NOTHING;
+  AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE deleted = 0 AND path = '/system/user')
+ORDER BY m.create_time ASC
+LIMIT 1;
 
 -- 子菜单: 角色管理
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
 SELECT gen_random_uuid(), '角色管理', 'MENU', m.id, '/system/role', 'system/RoleManagement', 'team', 2, null, 1, 1
 FROM sys_menu m WHERE m.menu_name = '系统管理' AND m.parent_id = '00000000-0000-0000-0000-000000000000'
-ON CONFLICT DO NOTHING;
+  AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE deleted = 0 AND path = '/system/role')
+ORDER BY m.create_time ASC
+LIMIT 1;
 
 -- 子菜单: 菜单管理
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
 SELECT gen_random_uuid(), '菜单管理', 'MENU', m.id, '/system/menu', 'system/MenuManagement', 'menu', 3, null, 1, 1
 FROM sys_menu m WHERE m.menu_name = '系统管理' AND m.parent_id = '00000000-0000-0000-0000-000000000000'
-ON CONFLICT DO NOTHING;
+  AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE deleted = 0 AND path = '/system/menu')
+ORDER BY m.create_time ASC
+LIMIT 1;
 
 -- 子菜单: 操作日志
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
 SELECT gen_random_uuid(), '操作日志', 'MENU', m.id, '/system/logs', 'system/OperationLog', 'file-text', 4, null, 1, 1
 FROM sys_menu m WHERE m.menu_name = '系统管理' AND m.parent_id = '00000000-0000-0000-0000-000000000000'
-ON CONFLICT DO NOTHING;
+  AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE deleted = 0 AND path = '/system/logs')
+ORDER BY m.create_time ASC
+LIMIT 1;
 
 -- 业务菜单: 达人管理
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)

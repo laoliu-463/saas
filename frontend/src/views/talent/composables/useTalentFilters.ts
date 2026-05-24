@@ -1,22 +1,43 @@
 import { computed, reactive } from 'vue'
 import { DEFAULT_TALENT_FILTERS } from '../constants'
+import { resolveFansBandRange, type TalentFansBand } from '../talent-filter-options'
 
 export interface TalentFiltersState {
-  keyword: string
   category: string | null
-  claimStatus: string | null
-  minFans: number | null
-  maxFans: number | null
+  liveSalesBand: string | null
+  liveViewBand: string | null
+  liveGpmBand: string | null
+  videoSalesBand: string | null
+  videoPlayBand: string | null
+  videoGpmBand: string | null
+  level: string | null
+  fansBand: string | null
+  gender: string | null
   region: string
+  douyinNo: string
+  nickname: string
+  contactStatus: string | null
+  claimStatus: string | null
+  keyword: string
 }
 
-const defaults = () => ({
-  keyword: DEFAULT_TALENT_FILTERS.keyword,
+const defaults = (): TalentFiltersState => ({
   category: DEFAULT_TALENT_FILTERS.category,
+  liveSalesBand: DEFAULT_TALENT_FILTERS.liveSalesBand,
+  liveViewBand: DEFAULT_TALENT_FILTERS.liveViewBand,
+  liveGpmBand: DEFAULT_TALENT_FILTERS.liveGpmBand,
+  videoSalesBand: DEFAULT_TALENT_FILTERS.videoSalesBand,
+  videoPlayBand: DEFAULT_TALENT_FILTERS.videoPlayBand,
+  videoGpmBand: DEFAULT_TALENT_FILTERS.videoGpmBand,
+  level: DEFAULT_TALENT_FILTERS.level,
+  fansBand: DEFAULT_TALENT_FILTERS.fansBand,
+  gender: DEFAULT_TALENT_FILTERS.gender,
+  region: DEFAULT_TALENT_FILTERS.region,
+  douyinNo: DEFAULT_TALENT_FILTERS.douyinNo,
+  nickname: DEFAULT_TALENT_FILTERS.nickname,
+  contactStatus: DEFAULT_TALENT_FILTERS.contactStatus,
   claimStatus: DEFAULT_TALENT_FILTERS.claimStatus,
-  minFans: DEFAULT_TALENT_FILTERS.minFans,
-  maxFans: DEFAULT_TALENT_FILTERS.maxFans,
-  region: DEFAULT_TALENT_FILTERS.region
+  keyword: DEFAULT_TALENT_FILTERS.keyword
 })
 
 export function useTalentFilters() {
@@ -24,12 +45,22 @@ export function useTalentFilters() {
 
   const hasActiveFilters = computed(() =>
     Boolean(
-      filters.keyword ||
       filters.category ||
+      filters.liveSalesBand ||
+      filters.liveViewBand ||
+      filters.liveGpmBand ||
+      filters.videoSalesBand ||
+      filters.videoPlayBand ||
+      filters.videoGpmBand ||
+      filters.level ||
+      filters.fansBand ||
+      filters.gender ||
+      filters.region.trim() ||
+      filters.douyinNo.trim() ||
+      filters.nickname.trim() ||
+      filters.contactStatus ||
       filters.claimStatus ||
-      filters.region ||
-      filters.minFans !== null ||
-      filters.maxFans !== null
+      filters.keyword.trim()
     )
   )
 
@@ -38,36 +69,77 @@ export function useTalentFilters() {
   }
 
   function applyQuery(query: Record<string, unknown>) {
-    filters.keyword = typeof query.keyword === 'string' ? query.keyword : ''
     filters.category = typeof query.category === 'string' ? query.category : null
-    filters.claimStatus = typeof query.claimStatus === 'string' ? query.claimStatus : null
+    filters.liveSalesBand = parseNullableString(query.liveSalesBand)
+    filters.liveViewBand = parseNullableString(query.liveViewBand)
+    filters.liveGpmBand = parseNullableString(query.liveGpmBand)
+    filters.videoSalesBand = parseNullableString(query.videoSalesBand)
+    filters.videoPlayBand = parseNullableString(query.videoPlayBand)
+    filters.videoGpmBand = parseNullableString(query.videoGpmBand)
+    filters.level = parseNullableString(query.level)
+    filters.fansBand = parseNullableString(query.fansBand)
+    filters.gender = parseNullableString(query.gender)
+    filters.claimStatus = parseNullableString(query.claimStatus)
+    filters.contactStatus = parseNullableString(query.contactStatus)
     filters.region = typeof query.region === 'string' ? query.region : ''
-    filters.minFans = parseQueryNumber(query.minFans)
-    filters.maxFans = parseQueryNumber(query.maxFans)
+    filters.douyinNo = typeof query.douyinNo === 'string' ? query.douyinNo : ''
+    filters.nickname = typeof query.nickname === 'string' ? query.nickname : ''
+    filters.keyword = typeof query.keyword === 'string' ? query.keyword : ''
+    if (!filters.douyinNo && !filters.nickname && filters.keyword) {
+      filters.nickname = filters.keyword
+    }
   }
 
   function toRequestParams(activeView: string) {
-    const params: Record<string, string | number> = {
-      view: activeView
-    }
-    if (filters.keyword.trim()) params.keyword = filters.keyword.trim()
+    const params: Record<string, string | number> = { view: activeView }
     if (filters.category) params.category = filters.category
     if (filters.claimStatus) params.claimStatus = filters.claimStatus
     if (filters.region.trim()) params.region = filters.region.trim()
-    if (filters.minFans !== null && filters.minFans > 0) params.minFans = filters.minFans
-    if (filters.maxFans !== null && filters.maxFans > 0) params.maxFans = filters.maxFans
+    const douyinNo = filters.douyinNo.trim()
+    const nickname = filters.nickname.trim()
+    if (douyinNo) params.douyinNo = douyinNo
+    if (nickname) params.nickname = nickname
+    if (douyinNo || nickname) {
+      params.keyword = nickname || douyinNo
+    } else if (filters.keyword.trim()) {
+      params.keyword = filters.keyword.trim()
+    }
+    if (filters.liveSalesBand) params.liveSalesBand = filters.liveSalesBand
+    if (filters.liveViewBand) params.liveViewBand = filters.liveViewBand
+    if (filters.liveGpmBand) params.liveGpmBand = filters.liveGpmBand
+    if (filters.videoSalesBand) params.videoSalesBand = filters.videoSalesBand
+    if (filters.videoPlayBand) params.videoPlayBand = filters.videoPlayBand
+    if (filters.videoGpmBand) params.videoGpmBand = filters.videoGpmBand
+    if (filters.level) params.level = filters.level
+    if (filters.gender) params.gender = filters.gender
+    if (filters.contactStatus) params.contactStatus = filters.contactStatus
+
+    const fansRange = resolveFansBandRange(filters.fansBand as TalentFansBand)
+    if (fansRange.minFans !== undefined) params.minFans = fansRange.minFans
+    if (fansRange.maxFans !== undefined) params.maxFans = fansRange.maxFans
+
     return params
   }
 
   function toRouteQuery(activeView: string) {
     return {
       view: activeView,
-      keyword: filters.keyword || undefined,
       category: filters.category || undefined,
+      liveSalesBand: filters.liveSalesBand || undefined,
+      liveViewBand: filters.liveViewBand || undefined,
+      liveGpmBand: filters.liveGpmBand || undefined,
+      videoSalesBand: filters.videoSalesBand || undefined,
+      videoPlayBand: filters.videoPlayBand || undefined,
+      videoGpmBand: filters.videoGpmBand || undefined,
+      level: filters.level || undefined,
+      fansBand: filters.fansBand || undefined,
+      gender: filters.gender || undefined,
+      contactStatus: filters.contactStatus || undefined,
       claimStatus: filters.claimStatus || undefined,
       region: filters.region || undefined,
-      minFans: filters.minFans !== null && filters.minFans > 0 ? filters.minFans : undefined,
-      maxFans: filters.maxFans !== null && filters.maxFans > 0 ? filters.maxFans : undefined
+      douyinNo: filters.douyinNo || undefined,
+      nickname: filters.nickname || undefined,
+      keyword: filters.keyword || undefined
     }
   }
 
@@ -81,9 +153,6 @@ export function useTalentFilters() {
   }
 }
 
-function parseQueryNumber(value: unknown) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null
-  if (typeof value !== 'string' || !value.trim()) return null
-  const num = Number(value)
-  return Number.isFinite(num) ? num : null
+function parseNullableString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value : null
 }

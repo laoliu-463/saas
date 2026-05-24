@@ -9,7 +9,8 @@
           :options="deptTreeOptions"
           clearable
           filterable
-          placeholder="所属部门"
+          :disabled="!deptTreeOptions.length"
+          :placeholder="deptTreeOptions.length ? '所属部门' : '暂无部门，可直接选组别'"
           style="width: 200px"
           @update:value="handleSearchDeptChange"
         />
@@ -20,7 +21,7 @@
           filterable
           placeholder="所属组别"
           style="width: 180px"
-          :disabled="!searchParams.deptId"
+          :disabled="!searchParams.deptId && !searchGroupOptions.length"
         />
         <n-select
           v-model:value="searchParams.roleId"
@@ -73,7 +74,8 @@
             :options="deptTreeOptions"
             clearable
             filterable
-            placeholder="选择部门"
+            :disabled="!deptTreeOptions.length"
+            :placeholder="deptTreeOptions.length ? '选择部门' : '暂无部门，可直接选择组别'"
             @update:value="handleFormDeptChange"
           />
         </n-form-item>
@@ -84,7 +86,7 @@
             clearable
             filterable
             placeholder="运营人员可留空"
-            :disabled="!formData.parentDeptId"
+            :disabled="!formData.parentDeptId && !formGroupOptions.length"
           />
         </n-form-item>
         <n-form-item label="角色分配" path="roleIds">
@@ -147,37 +149,14 @@ import {
   getDeptGroups
 } from '../../api/sys';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
-
-const DEPT_TYPE_DEPARTMENT = 'department';
-
-function flattenDeptTree(nodes: any[], bucket: any[] = []) {
-  for (const node of nodes || []) {
-    bucket.push(node);
-    if (Array.isArray(node.children) && node.children.length) {
-      flattenDeptTree(node.children, bucket);
-    }
-  }
-  return bucket;
-}
-
-function toTreeSelectOptions(nodes: any[], predicate: (node: any) => boolean): any[] {
-  return (nodes || [])
-    .map((node) => {
-      const children = toTreeSelectOptions(node.children || [], predicate);
-      const allowed = predicate(node);
-      if (!allowed && !children.length) {
-        return null;
-      }
-      return {
-        key: String(node.id),
-        label: node.deptName,
-        value: String(node.id),
-        disabled: !allowed,
-        children: children.length ? children : undefined
-      };
-    })
-    .filter(Boolean);
-}
+import {
+  flattenDeptTree,
+  groupTypeLabel,
+  isDepartmentNode,
+  sanitizeRoleName,
+  toGroupSelectOptions,
+  toTreeSelectOptions
+} from './user-list-options';
 
 const route = useRoute();
 
@@ -198,6 +177,7 @@ const searchParams = reactive({
 });
 const flatDepts = ref<any[]>([]);
 const deptTreeOptions = ref<any[]>([]);
+const allGroupOptions = ref<{ label: string; value: string }[]>([]);
 const searchGroupOptions = ref<{ label: string; value: string }[]>([]);
 const formGroupOptions = ref<{ label: string; value: string }[]>([]);
 const statusOptions = [
@@ -210,24 +190,24 @@ const roleNameMap = computed<Record<string, string>>(() => {
   const map: Record<string, string> = {};
   for (const role of roleOptions.value as any[]) {
     if (role?.id) {
-      map[String(role.id)] = role.roleName || role.roleCode || String(role.id);
+      map[String(role.id)] = sanitizeRoleName(role) || String(role.id);
     }
   }
   return map;
 });
 const roleDescriptionMap: Record<string, string> = {
   admin: '可访问全部菜单与系统管理能力',
-  biz_leader: '落地首页 /dashboard，可看归因与订单工作台',
+  biz_leader: '落地首页 /data，可看数据看板、归因与订单工作台',
   colonel_leader: '兼容旧招商组长角色，前台按 biz_leader 口径展示与落地',
   biz_staff: '落地首页 /data，可看数据平台与商品寄样',
-  channel_leader: '落地首页 /dashboard，可看归因、达人与寄样',
+  channel_leader: '落地首页 /data，可看数据看板、归因、达人与寄样',
   channel_staff: '落地首页 /product，可做选品、达人跟进、寄样申请与个人业绩查看',
   ops_staff: '落地首页 /ops/shipping，仅负责寄样发货、物流录入与签收跟进'
 };
 const roleSelectOptions = computed(() =>
   (roleOptions.value as any[]).map((role) => ({
     value: String(role.id),
-    label: String(role.roleName || role.roleCode || ''),
+    label: sanitizeRoleName(role),
     roleCode: String(role.roleCode || ''),
     description: roleDescriptionMap[String(role.roleCode || '')] || '用于控制菜单与首页落地路径'
   }))
@@ -323,9 +303,9 @@ const formData = reactive({
 const loadGroupOptions = async (deptId: string | null, target: 'search' | 'form') => {
   if (!deptId) {
     if (target === 'search') {
-      searchGroupOptions.value = [];
+      searchGroupOptions.value = allGroupOptions.value;
     } else {
-      formGroupOptions.value = [];
+      formGroupOptions.value = allGroupOptions.value;
     }
     return;
   }
@@ -350,13 +330,6 @@ const loadGroupOptions = async (deptId: string | null, target: 'search' | 'form'
   }
 };
 
-const groupTypeLabel = (deptType: string) => {
-  if (deptType === 'recruiter_group') return '招商组';
-  if (deptType === 'channel_group') return '渠道组';
-  if (deptType === 'ops_group') return '运营组';
-  return deptType;
-};
-
 const handleSearchDeptChange = async (deptId: string | null) => {
   searchParams.groupId = null;
   await loadGroupOptions(deptId, 'search');
@@ -372,13 +345,20 @@ const loadDeptTree = async () => {
     const res: any = await getDeptTree();
     const tree = Array.isArray(res?.data) ? res.data : [];
     flatDepts.value = flattenDeptTree(tree);
-    deptTreeOptions.value = toTreeSelectOptions(tree, (node) => {
-      const type = String(node.deptType || DEPT_TYPE_DEPARTMENT);
-      return type === DEPT_TYPE_DEPARTMENT || type === 'BUSINESS';
-    });
+    deptTreeOptions.value = toTreeSelectOptions(tree, isDepartmentNode);
+    allGroupOptions.value = toGroupSelectOptions(tree);
+    if (!searchParams.deptId) {
+      searchGroupOptions.value = allGroupOptions.value;
+    }
+    if (!formData.parentDeptId) {
+      formGroupOptions.value = allGroupOptions.value;
+    }
   } catch {
     flatDepts.value = [];
     deptTreeOptions.value = [];
+    allGroupOptions.value = [];
+    searchGroupOptions.value = [];
+    formGroupOptions.value = [];
   }
 };
 

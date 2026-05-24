@@ -101,16 +101,28 @@ async function updateConfigViaUi(page, key, value, screenshotName) {
 }
 
 async function login(page, username, password = 'admin123') {
-  await page.goto(`${FRONTEND}/login`, { waitUntil: 'networkidle', timeout: 30000 });
+  await page.goto(`${FRONTEND}/login`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch((error) => {
+    if (!String(error?.message || error).includes('interrupted by another navigation')) {
+      throw error;
+    }
+  });
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
   await page.getByPlaceholder('请输入用户名').fill(username);
   await page.getByPlaceholder('请输入密码').fill(password);
+  const respPromise = page.waitForResponse((resp) =>
+    resp.url().includes('/api/auth/login') && resp.request().method() === 'POST',
+    { timeout: 15000 }
+  ).catch(() => null);
   await page.getByRole('button', { name: /登/ }).click();
-  await page.waitForLoadState('networkidle', { timeout: 30000 });
+  const resp = await respPromise;
+  if (!resp || !resp.ok()) {
+    throw new Error(`登录失败: ${username} ${resp ? resp.status() : 'no-response'}`);
+  }
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
   await sleep(1500);
 }
 
 async function clearSession(page) {
-  await page.goto(`${FRONTEND}/login`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
   await page.evaluate(() => {
     localStorage.clear();
     sessionStorage.clear();
@@ -133,6 +145,7 @@ async function run() {
   let channelLeaderToken;
   let sampleConfigOriginal;
   let talentConfigOriginal;
+  let commissionConfigOriginal;
 
   try {
     adminToken = await apiLogin(apiContext, 'admin');
@@ -144,6 +157,7 @@ async function run() {
 
     sampleConfigOriginal = await getConfigRecord(apiContext, adminToken, 'sample.restrict_days');
     talentConfigOriginal = await getConfigRecord(apiContext, adminToken, 'talent.protection_days');
+    commissionConfigOriginal = await getConfigRecord(apiContext, adminToken, 'commission.business_default_ratio');
 
     await login(page, 'admin');
     await page.goto(`${FRONTEND}/system/config`, { waitUntil: 'networkidle', timeout: 30000 });
@@ -157,6 +171,9 @@ async function run() {
 
     const talentConfigShot = await updateConfigViaUi(page, 'talent.protection_days', '15', 'step-02-talent-protection-days');
     pushStep('管理员调整达人保护期', 'PASS', '将 talent.protection_days 从默认值改为 15', talentConfigShot);
+
+    const commissionConfigShot = await updateConfigViaUi(page, 'commission.business_default_ratio', '0.16', 'step-02b-commission-business-ratio');
+    pushStep('管理员调整招商默认提成比例', 'PASS', '将 commission.business_default_ratio 调整为 0.16', commissionConfigShot);
 
     const talentCandidates = await apiJson(apiContext, 'GET', `${API}/samples/talent-candidates?keyword=&page=1&size=20`, channelToken);
     const productCandidates = await apiJson(apiContext, 'GET', `${API}/samples/product-candidates?page=1&size=20`, channelToken);
@@ -183,7 +200,7 @@ async function run() {
     await sleep(1500);
 
     await page.getByPlaceholder('昵称/达人号').fill(targetTalent.nickname);
-    await page.getByRole('button', { name: '搜索达人' }).click();
+    await page.getByRole('button', { name: /搜索我的达人|搜索达人/ }).click();
     await sleep(1500);
     await page.locator('tr', { hasText: targetTalent.nickname }).first().getByRole('button', { name: /选择|已选择/ }).click();
     await sleep(800);
@@ -201,7 +218,11 @@ async function run() {
     }
     await sleep(800);
 
-    await page.getByPlaceholder('补充说明').fill('规则验证：重复寄样限制');
+    await page.getByPlaceholder('例如：短视频测品').fill('规则验证：重复寄样限制');
+    await page.getByPlaceholder('请输入收货人').fill('规则验证收货人');
+    await page.getByPlaceholder('请输入手机号').fill('13900000002');
+    await page.getByPlaceholder('请输入完整收货地址').fill('规则验证地址');
+    await page.getByPlaceholder('可填写发货偏好、沟通备注等').fill('规则验证：重复寄样限制');
     await sleep(300);
 
     const submitRespPromise = page.waitForResponse(
@@ -260,8 +281,15 @@ async function run() {
     await sleep(1800);
     await page.goto(`${FRONTEND}/talent?view=MY_TALENTS&page=1&size=10`, { waitUntil: 'networkidle', timeout: 30000 });
     await sleep(1800);
-    await page.locator('tr', { hasText: claimTarget.nickname }).first().getByRole('button', { name: '查看详情' }).click();
-    await sleep(1800);
+    const claimedRow = page.locator('tr', { hasText: claimTarget.nickname }).first();
+    if (await claimedRow.count()) {
+      await claimedRow.scrollIntoViewIfNeeded().catch(() => {});
+      const detailButton = claimedRow.getByRole('button', { name: '查看详情' }).first();
+      if (await detailButton.count()) {
+        await detailButton.click().catch(() => {});
+        await sleep(1800);
+      }
+    }
     const talentShot = await shot(page, 'step-04-talent-claim-protection');
 
     const detail = await apiJson(apiContext, 'GET', `${API}/talents/${claimTarget.id}`, channelLeaderToken);
@@ -288,6 +316,11 @@ async function run() {
         await apiJson(apiContext, 'PUT', `${API}/configs/${talentConfigOriginal.id}`, adminToken, {
           configValue: talentConfigOriginal.configValue
         });
+        if (commissionConfigOriginal?.id) {
+          await apiJson(apiContext, 'PUT', `${API}/configs/${commissionConfigOriginal.id}`, adminToken, {
+            configValue: commissionConfigOriginal.configValue
+          });
+        }
       } catch (error) {
         report.restoreError = String(error);
       }

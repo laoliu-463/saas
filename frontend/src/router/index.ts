@@ -5,7 +5,7 @@ import { nowMs, recordFrontendTiming } from '../utils/performanceTiming'
 import { createGuardWarningDeduper, resolveGuardDecision, type GuardRedirectDecision } from './guard'
 
 const ROLE = ROLE_CODES
-const HOME_CANDIDATES = ['/dashboard', '/orders', '/data', '/product', '/product/manage', '/product/manage/products', '/talent', '/ops/shipping', '/sample', '/system/users']
+const HOME_CANDIDATES = ['/data', '/orders', '/product', '/product/manage', '/product/manage/products', '/talent', '/ops/shipping', '/sample', '/system/users']
 const CHANNEL_STAFF_HOME_CANDIDATES = ['/product', '/talent', '/sample', '/data']
 const BIZ_STAFF_HOME_CANDIDATES = ['/product/manage/products', '/sample', '/data']
 const OPS_STAFF_HOME_CANDIDATES = ['/ops/shipping']
@@ -167,7 +167,7 @@ const router = createRouter({
           component: () => import('../views/dashboard/index.vue'),
           meta: { title: '归因概览', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
         },
-        { path: '', redirect: '/dashboard' }
+        { path: '', redirect: '/data' }
       ]
     },
     { path: '/:pathMatch(.*)*', redirect: '/data' }

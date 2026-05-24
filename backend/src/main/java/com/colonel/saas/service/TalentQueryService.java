@@ -73,11 +73,12 @@ public class TalentQueryService {
         long current = 1L;
         long pages = 1L;
         DataScope baseScope = resolveBaseScope(query);
+        String listKeyword = resolveListKeyword(query);
         while (current <= pages) {
             IPage<Talent> batchPage = talentService.page(
                     current,
                     fetchSize,
-                    query.getKeyword(),
+                    listKeyword,
                     query.getRegion(),
                     query.getMinFans(),
                     query.getMaxFans(),
@@ -90,10 +91,20 @@ public class TalentQueryService {
                 if (!matchesPoolStatus(talent, query.getPoolStatus())
                         || !matchesOwnerKeyword(talent, query.getOwnerKeyword())
                         || !matchesView(talent, query)
+                        || !matchesPlatform(query.getPlatform())
                         || !matchesClaimStatus(talent, query.getClaimStatus())
                         || !matchesCategory(talent, query.getCategory())
                         || !matchesLevel(talent, query.getLevel())
-                        || !matchesRegion(talent, query.getRegion())) {
+                        || !matchesRegion(talent, query.getRegion())
+                        || !matchesDouyinNo(talent, query.getDouyinNo())
+                        || !matchesNickname(talent, query.getNickname())
+                        || !matchesMetricBand(talent.getLiveSalesBand(), query.getLiveSalesBand())
+                        || !matchesMetricBand(talent.getLiveViewBand(), query.getLiveViewBand())
+                        || !matchesMetricBand(talent.getLiveGpmBand(), query.getLiveGpmBand())
+                        || !matchesMetricBand(talent.getVideoSalesBand(), query.getVideoSalesBand())
+                        || !matchesMetricBand(talent.getVideoPlayBand(), query.getVideoPlayBand())
+                        || !matchesMetricBand(talent.getVideoGpmBand(), query.getVideoGpmBand())
+                        || !matchesContactStatus(talent, query.getContactStatus())) {
                     continue;
                 }
                 if (filteredTotal >= fromIndex && filteredTotal < toIndexExclusive) {
@@ -707,15 +718,49 @@ public class TalentQueryService {
         if (!StringUtils.hasText(category)) {
             return true;
         }
-        String mainCategory = firstNonBlank(talent.getMainCategory(), talent.getCategories(), "");
-        return mainCategory.contains(category);
+        String needle = category.trim();
+        String mainCategory = firstNonBlank(
+                talent.getMainCategory(),
+                resolveMainCategory(talent.getCategories()),
+                "");
+        if (mainCategory.contains(needle)) {
+            return true;
+        }
+        return firstNonBlank(talent.getCategories(), "").contains(needle);
     }
 
     private boolean matchesLevel(Talent talent, String level) {
         if (!StringUtils.hasText(level)) {
             return true;
         }
-        return level.equalsIgnoreCase(firstNonBlank(talent.getLevel(), ""));
+        String expected = level.trim();
+        String actual = firstNonBlank(talent.getLevel(), talent.getTalentLevel(), "");
+        if (!StringUtils.hasText(actual)) {
+            return false;
+        }
+        if (expected.equalsIgnoreCase(actual)) {
+            return true;
+        }
+        String expectedDigits = expected.replaceAll("(?i)^lv", "");
+        String actualDigits = actual.replaceAll("(?i)^lv", "");
+        return expectedDigits.equalsIgnoreCase(actual)
+                || expectedDigits.equalsIgnoreCase(actualDigits);
+    }
+
+    private String resolveListKeyword(TalentPageQuery query) {
+        if (query == null) {
+            return null;
+        }
+        if (StringUtils.hasText(query.getKeyword())) {
+            return query.getKeyword().trim();
+        }
+        if (StringUtils.hasText(query.getNickname())) {
+            return query.getNickname().trim();
+        }
+        if (StringUtils.hasText(query.getDouyinNo())) {
+            return query.getDouyinNo().trim();
+        }
+        return null;
     }
 
     private boolean matchesRegion(Talent talent, String region) {
@@ -723,6 +768,49 @@ public class TalentQueryService {
             return true;
         }
         return firstNonBlank(talent.getIpLocation(), "").contains(region);
+    }
+
+    private boolean matchesPlatform(String platform) {
+        if (!StringUtils.hasText(platform)) {
+            return true;
+        }
+        return !"kuaishou".equalsIgnoreCase(platform.trim());
+    }
+
+    private boolean matchesDouyinNo(Talent talent, String douyinNo) {
+        if (!StringUtils.hasText(douyinNo)) {
+            return true;
+        }
+        String normalized = douyinNo.trim();
+        return firstNonBlank(talent.getDouyinNo(), talent.getDouyinUid(), talent.getUid(), "")
+                .contains(normalized);
+    }
+
+    private boolean matchesNickname(Talent talent, String nickname) {
+        if (!StringUtils.hasText(nickname)) {
+            return true;
+        }
+        return firstNonBlank(talent.getNickname(), "").contains(nickname.trim());
+    }
+
+    private boolean matchesMetricBand(String actual, String expected) {
+        if (!StringUtils.hasText(expected)) {
+            return true;
+        }
+        return expected.equals(actual);
+    }
+
+    private boolean matchesContactStatus(Talent talent, String contactStatus) {
+        if (!StringUtils.hasText(contactStatus)) {
+            return true;
+        }
+        boolean hasContact = StringUtils.hasText(talent.getContactPhone())
+                || StringUtils.hasText(talent.getContactWechat());
+        return switch (contactStatus) {
+            case "HAS_CONTACT" -> hasContact;
+            case "NO_CONTACT" -> !hasContact;
+            default -> true;
+        };
     }
 
     private String resolveMainCategory(String categories) {

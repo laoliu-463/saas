@@ -36,14 +36,23 @@ export const CLAIM_STATUS_OPTIONS = [
 
 export const CATEGORY_OPTIONS = [
   { label: '全部经营分类', value: null },
-  { label: '食品饮料', value: '食品饮料' },
-  { label: '美妆', value: '美妆' },
-  { label: '个护家清', value: '个护家清' },
-  { label: '母婴宠物', value: '母婴宠物' },
-  { label: '服饰内衣', value: '服饰内衣' },
-  { label: '鞋靴箱包', value: '鞋靴箱包' },
-  { label: '智能家居', value: '智能家居' },
-  { label: '3C数码家电', value: '3C数码家电' }
+  ...[
+    '玩具乐器',
+    '服饰内衣',
+    '个护家清',
+    '智能家居',
+    '生鲜',
+    '美妆',
+    '母婴宠物',
+    '鲜花园艺',
+    '本地生活',
+    '食品饮料',
+    '3C数码家电',
+    '图书教育',
+    '鞋靴箱包',
+    '虚拟充值',
+    '运动户外'
+  ].map((value) => ({ label: value, value }))
 ]
 
 export const TALENT_VIEW_HELP_MAP: Record<string, string> = {
@@ -55,12 +64,23 @@ export const TALENT_VIEW_HELP_MAP: Record<string, string> = {
 }
 
 export const DEFAULT_TALENT_FILTERS = {
-  keyword: '',
   category: null as string | null,
+  liveSalesBand: null as string | null,
+  liveViewBand: null as string | null,
+  liveGpmBand: null as string | null,
+  videoSalesBand: null as string | null,
+  videoPlayBand: null as string | null,
+  videoGpmBand: null as string | null,
+  level: null as string | null,
+  fansBand: null as string | null,
+  gender: null as string | null,
+  region: '',
+  douyinNo: '',
+  nickname: '',
+  contactStatus: null as string | null,
   claimStatus: null as string | null,
-  minFans: null as number | null,
-  maxFans: null as number | null,
-  region: ''
+  /** @deprecated 保留路由兼容，优先使用 douyinNo / nickname */
+  keyword: ''
 }
 
 export function formatFans(value?: number | null) {

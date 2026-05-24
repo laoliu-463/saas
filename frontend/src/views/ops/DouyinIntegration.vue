@@ -167,6 +167,7 @@ import { useMessage } from 'naive-ui';
 import PageHeader from '../../components/PageHeader.vue';
 import { getActivityProducts } from '../../api/activityProduct';
 import { getMetrics } from '../../api/data';
+import { pickDashboardTrack } from '../data/dashboard-metrics';
 import { getOrders, syncOrders } from '../../api/order';
 import {
   createDouyinToken,
@@ -869,7 +870,7 @@ const runFullCheck = async () => {
     const metricsResponse = await getMetrics({ timeField: 'createTime' }, {
       timeout: REAL_PRE_REQUEST_TIMEOUT_MS
     });
-    const metricsData = unwrapApiData<any>(metricsResponse);
+    const metricsData = pickDashboardTrack(metricsResponse, 'createTime');
     const dashboardOrders = normalizeNumber(metricsData?.todayOrderCount ?? metricsData?.totalOrders);
     const dashboardAmount = String(metricsData?.todayGmv ?? metricsData?.totalAmount ?? '0.00');
     setCheck(

@@ -3,32 +3,69 @@
     <PageHeader
       title="活动列表"
       description="同步并查看抖音官方报名的团长活动，进入活动商品推进工作台处理入库与分配。"
-    />
+    >
+      <template #actions>
+        <n-button :loading="loading" data-testid="activity-refresh" @click="fetchData">刷新数据</n-button>
+      </template>
+    </PageHeader>
 
-    <div class="toolbar app-toolbar">
-      <n-space>
-        <n-input-group>
-          <n-input v-model:value="filters.activityId" placeholder="活动 ID" style="width: 200px" />
-          <n-input v-model:value="filters.activityName" placeholder="活动名称" style="width: 240px" />
-        </n-input-group>
-        <n-select
-          v-model:value="filters.status"
-          :options="statusOptions"
-          placeholder="活动状态"
+    <section class="filter-panel app-panel">
+      <div class="filter-grid">
+        <n-input
+          v-model:value="filters.activityId"
           clearable
-          style="width: 160px"
+          placeholder="活动 ID"
+          data-testid="activity-id-filter"
         />
-        <n-button type="primary" data-testid="activity-search-submit" @click="fetchData">查询</n-button>
-        <n-button @click="resetFilters">重置</n-button>
-        <n-button type="info" :loading="exporting" @click="handleExport">导出 CSV</n-button>
-      </n-space>
-    </div>
+        <n-input
+          v-model:value="filters.activityName"
+          clearable
+          placeholder="活动名称"
+          data-testid="activity-name-filter"
+        />
+      </div>
+      <div class="filter-actions">
+        <n-button secondary data-testid="activity-filter-reset" @click="resetFilters">重置</n-button>
+        <n-button type="primary" data-testid="activity-filter-search" @click="handleFilterSearch">搜索</n-button>
+      </div>
+    </section>
 
-    <n-alert type="warning" class="app-page-alert">
-      当前为 Test 测试环境，活动数据来自后端 Test 服务。联调 Real 环境时将实时请求抖店开放平台。
+    <n-alert :type="activityAlertType" class="app-page-alert" data-testid="activity-env-hint">
+      {{ activityDataSourceHint }}
     </n-alert>
 
-    <n-card :bordered="false" class="main-card app-panel app-table-shell">
+    <section class="list-panel app-panel app-table-shell">
+      <div class="table-actions">
+        <div class="status-funnel" role="tablist" aria-label="活动状态筛选" data-testid="activity-status-funnel">
+          <button
+            v-for="tab in ACTIVITY_STATUS_TABS"
+            :key="tab.status"
+            type="button"
+            role="tab"
+            class="status-step"
+            :class="{ active: activeStatus === tab.status }"
+            :data-testid="`activity-status-tab-${tab.status}`"
+            :aria-selected="activeStatus === tab.status"
+            @click="selectStatusTab(tab.status)"
+          >
+            {{ tab.label }}<span v-if="activeStatus === tab.status">({{ pagination.itemCount }})</span>
+          </button>
+        </div>
+        <n-space>
+          <n-dropdown :options="batchOptions" trigger="click" @select="handleBatchAction">
+            <n-button secondary data-testid="activity-batch-actions">批量操作</n-button>
+          </n-dropdown>
+          <n-button
+            type="primary"
+            :loading="loading"
+            data-testid="activity-sync-latest"
+            @click="syncLatestActivities"
+          >
+            同步最新活动列表
+          </n-button>
+        </n-space>
+      </div>
+
       <n-data-table
         remote
         data-testid="activity-table"
@@ -36,39 +73,64 @@
         :data="data"
         :loading="loading"
         :pagination="pagination"
-        :row-key="(row: any) => row.activityId"
+        :row-key="(row: ActivityRow) => String(row.activityId)"
+        :checked-row-keys="checkedRowKeys"
         :scroll-x="ACTIVITY_TABLE_SCROLL_X"
+        :single-line="false"
         :scrollbar-props="{ trigger: 'none' }"
+        @update:checked-row-keys="handleCheckedRowKeysUpdate"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       />
-    </n-card>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { h, onMounted, reactive, ref } from 'vue'
-import { NButton, NTag, useMessage } from 'naive-ui'
+import { computed, h, onMounted, reactive, ref } from 'vue'
+import { NButton, useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import { getColonelActivityPage } from '../../api/activity'
+import { getActivityProducts } from '../../api/activityProduct'
+import { getDouyinInstitutionInfo } from '../../api/douyin'
 import { exportActivities } from '../../api/data'
+import { useRuntimeEnvironment } from '../../composables/useRuntimeEnvironment'
 import { DEFAULT_PAGE, normalizePageSize } from '../../utils/pagination'
 import { notifyApiFailure } from '../../utils/requestError'
+import {
+  ACTIVITY_STATUS_TABS,
+  type ActivityProductStats,
+  type ActivityRow,
+  buildBuyinActivityUrl,
+  countActivityProductStats,
+  extractInstitutionName,
+  formatActivityCategories,
+  formatDateRange,
+  formatMechanismSummary,
+  resolveActivityRequirement,
+  resolveActivityStatusLabel,
+  resolveColonelName
+} from './activity-list-display'
 
-const ACTIVITY_TABLE_SCROLL_X = 1140
-const ACTIVITY_PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const
+const ACTIVITY_TABLE_SCROLL_X = 1880
+const ACTIVITY_PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 
 const message = useMessage()
 const router = useRouter()
+const { activityDataSourceHint, activityAlertType } = useRuntimeEnvironment()
+
 const loading = ref(false)
 const exporting = ref(false)
-const data = ref([])
+const data = ref<ActivityRow[]>([])
+const checkedRowKeys = ref<Array<string | number>>([])
+const activeStatus = ref(0)
+const institutionName = ref('')
+const productStatsMap = ref<Record<string, ActivityProductStats>>({})
 
 const filters = reactive({
   activityId: '',
-  activityName: '',
-  status: null
+  activityName: ''
 })
 
 const pagination = reactive({
@@ -79,48 +141,214 @@ const pagination = reactive({
   pageSizes: [...ACTIVITY_PAGE_SIZE_OPTIONS]
 })
 
-const statusOptions = [
-  { label: '未开始', value: 1 },
-  { label: '进行中', value: 2 },
-  { label: '报名中', value: 3 },
-  { label: '推广未开始', value: 4 },
-  { label: '推广中', value: 5 },
-  { label: '已结束', value: 6 }
-]
+const batchOptions = computed(() => [
+  { label: '导出当前筛选 CSV', key: 'export-all' },
+  {
+    label: '导出已选活动 CSV',
+    key: 'export-selected',
+    disabled: !checkedRowKeys.value.length
+  }
+])
+
+const renderCellLines = (lines: Array<{ label?: string; value?: string; link?: boolean; onClick?: () => void }>) =>
+  h(
+    'div',
+    { class: 'activity-cell-lines' },
+    lines.map((line, index) => {
+      if (line.link && line.onClick) {
+        return h(
+          'button',
+          {
+            key: `link-${index}`,
+            type: 'button',
+            class: 'activity-cell-link',
+            onClick: (event: MouseEvent) => {
+              event.stopPropagation()
+              line.onClick?.()
+            }
+          },
+          line.value || '—'
+        )
+      }
+      return h('div', { key: `line-${index}`, class: 'activity-cell-line' }, [
+        line.label ? h('span', { class: 'activity-cell-label' }, `${line.label}：`) : null,
+        h('span', { class: 'activity-cell-value' }, line.value || '—')
+      ])
+    })
+  )
+
+const copyText = async (text: string, successMessage: string) => {
+  const value = String(text || '').trim()
+  if (!value) {
+    message.warning('暂无可复制内容')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(value)
+    message.success(successMessage)
+  } catch {
+    message.warning('浏览器未允许写入剪贴板')
+  }
+}
+
+const openBuyinActivity = (row: ActivityRow) => {
+  const url = buildBuyinActivityUrl(String(row.activityId ?? ''))
+  if (!url) {
+    message.warning('暂无百应活动链接')
+    return
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+const getProductStats = (activityId: string | number | undefined) =>
+  productStatsMap.value[String(activityId ?? '')] || { promoting: null, pending: null }
 
 const columns = [
-  { title: '活动 ID', key: 'activityId', width: 180 },
-  { title: '活动名称', key: 'activityName', minWidth: 240 },
+  { type: 'selection' as const, fixed: 'left' as const, width: 48 },
   {
-    title: '状态',
-    key: 'activityStatus',
+    title: '活动名称',
+    key: 'activityName',
+    width: 220,
+    fixed: 'left' as const,
+    render: (row: ActivityRow) =>
+      renderCellLines([
+        { label: '活动名称', value: String(row.activityName ?? '—') },
+        { label: '', value: '去百应', link: true, onClick: () => openBuyinActivity(row) },
+        { label: '团长名称', value: resolveColonelName(row, institutionName.value) },
+        { label: '百应活动ID', value: String(row.activityId ?? '—') }
+      ])
+  },
+  {
+    title: '商品数',
+    key: 'productCount',
     width: 120,
-    render: (row: any) => {
-      const option = statusOptions.find(o => o.value === row.activityStatus)
-      const type = row.activityStatus === 2 || row.activityStatus === 5 ? 'success' : 'default'
-      return h(NTag, { type, size: 'small', round: true }, { default: () => option?.label || '未知' })
+    render: (row: ActivityRow) => {
+      const stats = getProductStats(row.activityId as string | number)
+      const promoting = stats.promoting == null ? '—' : String(stats.promoting)
+      const pending = stats.pending == null ? '—' : String(stats.pending)
+      return renderCellLines([
+        { label: '推广中', value: promoting },
+        { label: '待审核', value: pending }
+      ])
     }
   },
-  { title: '起止时间', key: 'timeRange', width: 320, render: (row: any) => `${row.startTime || '-'} 至 ${row.endTime || '-'}` },
-  { title: '同步时间', key: 'createTime', width: 160 },
+  {
+    title: '招商经理',
+    key: 'recruiterName',
+    width: 100,
+    render: (row: ActivityRow) =>
+      String(row.recruiterName ?? row.assigneeName ?? row.managerName ?? '—')
+  },
+  {
+    title: '活动状态',
+    key: 'activityStatus',
+    width: 100,
+    render: (row: ActivityRow) => resolveActivityStatusLabel(row)
+  },
+  {
+    title: '招商类目',
+    key: 'categoriesLimit',
+    width: 260,
+    render: (row: ActivityRow) =>
+      h('div', { class: 'activity-cell-wrap' }, formatActivityCategories(row.categoriesLimit))
+  },
+  {
+    title: '报名时间',
+    key: 'applicationTime',
+    width: 150,
+    render: (row: ActivityRow) => {
+      const range = formatDateRange(row.applicationStartTime ?? row.applyStartTime, row.applicationEndTime ?? row.applyEndTime)
+      return renderCellLines([
+        { label: '开始', value: range.start },
+        { label: '结束', value: range.end }
+      ])
+    }
+  },
+  {
+    title: '商品机制',
+    key: 'mechanism',
+    width: 220,
+    render: (row: ActivityRow) => {
+      const mechanism = formatMechanismSummary(row)
+      return renderCellLines([
+        { label: '类型', value: mechanism.typeLabel },
+        { label: '佣金率', value: mechanism.commissionLine },
+        { label: '服务费率', value: mechanism.serviceLine }
+      ])
+    }
+  },
+  {
+    title: '活动要求',
+    key: 'activityRequirement',
+    width: 180,
+    render: (row: ActivityRow) =>
+      h('div', { class: 'activity-cell-wrap' }, resolveActivityRequirement(row))
+  },
   {
     title: '操作',
     key: 'actions',
-    width: 120,
-    fixed: 'right',
-    render: (row: any) => {
-      return h(NButton, {
-        size: 'small',
-        type: 'primary',
-        quaternary: true,
-        'data-testid': 'activity-view-products',
-        onClick: () => {
-          router.push(`/product/manage/${row.activityId}`)
-        }
-      }, { default: () => '进入工作台' })
-    }
+    width: 110,
+    fixed: 'right' as const,
+    render: (row: ActivityRow) =>
+      h('div', { class: 'activity-action-links' }, [
+        h(
+          NButton,
+          {
+            text: true,
+            type: 'error',
+            size: 'small',
+            'data-testid': 'activity-copy-link',
+            onClick: () => copyText(buildBuyinActivityUrl(String(row.activityId ?? '')), '已复制活动链接')
+          },
+          { default: () => '复制链接' }
+        ),
+        h(
+          NButton,
+          {
+            text: true,
+            type: 'error',
+            size: 'small',
+            'data-testid': 'activity-view-products',
+            onClick: () => router.push(`/product/manage/${row.activityId}`)
+          },
+          { default: () => '商品信息' }
+        )
+      ])
   }
 ]
+
+const hydrateProductStats = async (rows: ActivityRow[]) => {
+  if (!rows.length) return
+  const entries = await Promise.all(
+    rows.map(async (row) => {
+      const activityId = String(row.activityId ?? '').trim()
+      if (!activityId) return [activityId, { promoting: null, pending: null }] as const
+      try {
+        const res: any = await getActivityProducts(activityId, { count: 20, refresh: false })
+        const payload = res?.data ?? res ?? {}
+        const items = Array.isArray(payload.items)
+          ? payload.items
+          : Array.isArray(payload.data)
+            ? payload.data
+            : []
+        return [activityId, countActivityProductStats(items)] as const
+      } catch {
+        return [activityId, { promoting: null, pending: null }] as const
+      }
+    })
+  )
+  const next: Record<string, ActivityProductStats> = { ...productStatsMap.value }
+  entries.forEach(([activityId, stats]) => {
+    if (activityId) next[activityId] = stats
+  })
+  productStatsMap.value = next
+}
+
+const buildActivityInfoKeyword = () => {
+  const activityId = String(filters.activityId || '').trim()
+  const activityName = String(filters.activityName || '').trim()
+  return activityId || activityName || undefined
+}
 
 const fetchData = async () => {
   loading.value = true
@@ -128,18 +356,48 @@ const fetchData = async () => {
     const res: any = await getColonelActivityPage({
       page: pagination.page,
       pageSize: pagination.pageSize,
-      activityId: filters.activityId || undefined,
-      activityName: filters.activityName || undefined,
-      status: filters.status || undefined
+      status: activeStatus.value,
+      searchType: 0,
+      sortType: 1,
+      activityInfo: buildActivityInfoKeyword()
     })
     const result = res.data || {}
-    data.value = result.activityList || []
-    pagination.itemCount = result.total || 0
+    const rows = (result.activityList || []) as ActivityRow[]
+    data.value = rows
+    pagination.itemCount = Number(result.total || rows.length || 0)
+    checkedRowKeys.value = checkedRowKeys.value.filter((key) =>
+      rows.some((row) => String(row.activityId) === String(key))
+    )
+    void hydrateProductStats(rows)
   } catch (err: any) {
     notifyApiFailure(err, message, { fallbackMessage: '加载活动列表失败' })
   } finally {
     loading.value = false
   }
+}
+
+const selectStatusTab = (status: number) => {
+  if (activeStatus.value === status) return
+  activeStatus.value = status
+  pagination.page = 1
+  fetchData()
+}
+
+const handleFilterSearch = () => {
+  pagination.page = 1
+  fetchData()
+}
+
+const resetFilters = () => {
+  filters.activityId = ''
+  filters.activityName = ''
+  pagination.page = 1
+  fetchData()
+}
+
+const syncLatestActivities = () => {
+  pagination.page = 1
+  fetchData()
 }
 
 const handlePageChange = (page: number) => {
@@ -153,20 +411,49 @@ const handlePageSizeChange = (pageSize: number) => {
   fetchData()
 }
 
-const resetFilters = () => {
-  filters.activityId = ''
-  filters.activityName = ''
-  filters.status = null
-  pagination.page = 1
-  fetchData()
+const handleCheckedRowKeysUpdate = (keys: Array<string | number>) => {
+  checkedRowKeys.value = keys
 }
 
-const handleExport = async () => {
+const exportRowsToCsv = (rows: ActivityRow[]) => {
+  const header = '活动ID,活动名称,开始时间,结束时间,状态'
+  const lines = rows.map((row) => {
+    const values = [
+      String(row.activityId ?? ''),
+      String(row.activityName ?? ''),
+      String(row.applicationStartTime ?? row.startTime ?? ''),
+      String(row.applicationEndTime ?? row.endTime ?? ''),
+      resolveActivityStatusLabel(row)
+    ]
+    return values.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')
+  })
+  const content = `\ufeff${header}\n${lines.join('\n')}`
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', `activities-selected-${new Date().toISOString().slice(0, 10)}.csv`)
+  document.body.appendChild(link)
+  link.click()
+  link.parentNode?.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
+
+const handleExport = async (activityIds?: Array<string | number>) => {
+  if (activityIds?.length) {
+    const selected = data.value.filter((row) => activityIds.some((id) => String(id) === String(row.activityId)))
+    if (!selected.length) {
+      message.warning('当前页未找到已选活动')
+      return
+    }
+    exportRowsToCsv(selected)
+    message.success('导出成功')
+    return
+  }
+
   exporting.value = true
   try {
-    const res: any = await exportActivities({
-      activityName: filters.activityName || undefined
-    })
+    const res: any = await exportActivities({})
     const filename = `activities-${new Date().toISOString().slice(0, 10)}.csv`
     const url = window.URL.createObjectURL(new Blob([res]))
     const link = document.createElement('a')
@@ -184,10 +471,163 @@ const handleExport = async () => {
   }
 }
 
-onMounted(fetchData)
+const handleBatchAction = (key: string) => {
+  if (key === 'export-all') {
+    void handleExport()
+    return
+  }
+  if (key === 'export-selected') {
+    if (!checkedRowKeys.value.length) {
+      message.warning('请先选择活动')
+      return
+    }
+    void handleExport(checkedRowKeys.value)
+  }
+}
+
+const loadInstitutionName = async () => {
+  try {
+    const res = await getDouyinInstitutionInfo()
+    institutionName.value = extractInstitutionName(res)
+  } catch {
+    institutionName.value = ''
+  }
+}
+
+onMounted(async () => {
+  await loadInstitutionName()
+  await fetchData()
+})
 </script>
 
 <style scoped>
-.activity-page { padding: 24px; }
-.toolbar { margin-bottom: 16px; background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); }
+.activity-page {
+  padding: 24px;
+}
+
+.filter-panel {
+  padding: 20px 24px;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 14px 18px;
+}
+
+.filter-actions,
+.table-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.list-panel {
+  padding: 20px 24px 24px;
+}
+
+.table-actions {
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 18px;
+}
+
+.status-funnel {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.status-step {
+  position: relative;
+  min-width: 126px;
+  height: 44px;
+  padding: 0 22px;
+  border: 0;
+  background: #f1f4f7;
+  color: var(--text-primary);
+  cursor: pointer;
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%, 16px 50%);
+}
+
+.status-step:first-child {
+  border-radius: 22px 0 0 22px;
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%);
+}
+
+.status-step.active {
+  background: #fff1f1;
+  color: #f5222d;
+  font-weight: 700;
+}
+
+:deep(.activity-cell-lines) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+:deep(.activity-cell-line) {
+  color: #333;
+}
+
+:deep(.activity-cell-label) {
+  color: #666;
+}
+
+:deep(.activity-cell-value) {
+  color: #333;
+  word-break: break-all;
+}
+
+:deep(.activity-cell-wrap) {
+  display: block;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #333;
+  word-break: break-word;
+}
+
+:deep(.activity-cell-link) {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #e53935;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  text-align: left;
+}
+
+:deep(.activity-cell-link:hover) {
+  text-decoration: underline;
+}
+
+:deep(.activity-action-links) {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+@media (max-width: 1200px) {
+  .filter-grid {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+
+  .table-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 720px) {
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

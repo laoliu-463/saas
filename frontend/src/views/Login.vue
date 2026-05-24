@@ -130,7 +130,7 @@ const handleLogin = () => {
       if (res.code === 200 && res.data?.token) {
         authStore.login(res.data.token, res.data)
         message.success('登录成功')
-        router.push('/')
+        router.push('/data')
       } else if (res.code === 200 && !res.data?.token) {
         message.error('登录成功但未返回访问令牌，请联系管理员排查')
       } else {

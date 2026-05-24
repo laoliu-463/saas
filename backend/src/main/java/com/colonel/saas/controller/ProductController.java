@@ -190,7 +190,8 @@ public class ProductController extends BaseController {
         return ok(new ProductFilterOptionsDTO(categories));
     }
 
-    @Operation(summary = "商品库团长筛选项", description = "从团长主数据表按名称搜索，供商品库筛选下拉使用。")
+    @Deprecated(since = "2026-05-24", forRemoval = true)
+    @Operation(summary = "[已废弃] 商品库团长筛选项", description = "请改用 GET /colonel/partners。前端商品库已走 colonel 主数据路径。")
     @GetMapping("/filter-options/colonel-partners")
     public ApiResult<List<ColonelPartner>> colonelPartnerFilterOptions(
             @RequestParam(required = false) String keyword,

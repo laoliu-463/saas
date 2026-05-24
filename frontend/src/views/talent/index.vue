@@ -22,11 +22,6 @@
 
     <div class="summary-grid">
       <n-card :bordered="false" class="summary-card app-panel">
-        <div class="summary-label">当前视图</div>
-        <div class="summary-value">{{ currentViewLabel }}</div>
-        <div class="summary-help">{{ currentViewHelp }}</div>
-      </n-card>
-      <n-card :bordered="false" class="summary-card app-panel">
         <div class="summary-label">列表总量</div>
         <div class="summary-value">{{ pagination.itemCount }}</div>
         <div class="summary-help">当前经营视图下满足筛选条件的达人数量</div>
@@ -43,7 +38,6 @@
       </n-card>
     </div>
 
-    <TalentBoardTabs v-model="activeView" :summary="viewSummary" :tabs="availableViewOptions" />
     <TalentMetricFilters
       :filters="filters"
       @update:filters="handleFilterPatch"
@@ -68,7 +62,7 @@
       <PageEmpty
         v-if="!loading && data.length === 0"
         title="当前视图暂无达人"
-        description="可调整经营筛选条件，或切换视图查看其他达人池。"
+        description="可调整经营筛选条件，或通过左侧菜单切换达人池。"
         icon="CRM"
       >
         <template #action>
@@ -110,7 +104,6 @@ import {
 import TalentDetailModal from './components/TalentDetailModal.vue'
 import TalentCreateModal from './components/TalentCreateModal.vue'
 import TalentBatchImportModal from './components/TalentBatchImportModal.vue'
-import TalentBoardTabs from './components/TalentBoardTabs.vue'
 import TalentMetricFilters from './components/TalentMetricFilters.vue'
 import TalentStatusActions from './components/TalentStatusActions.vue'
 import { resolveSafeAvatarUrl } from '../../utils/media'
@@ -123,9 +116,7 @@ import {
   formatMoney,
   getPoolLabel,
   getPoolTagType,
-  TALENT_VIEW_HELP_MAP,
   TALENT_VIEW_LABEL_MAP,
-  TALENT_VIEW_OPTIONS,
   getAccessibleTalentViewOptions
 } from './constants'
 
@@ -143,13 +134,6 @@ const showBatchImport = ref(false)
 const showDetail = ref(false)
 const activeTalentId = ref('')
 const data = ref<TalentListItem[]>([])
-const viewSummary = reactive<Record<string, number>>(
-  TALENT_VIEW_OPTIONS.reduce<Record<string, number>>((acc, item) => {
-    acc[item.value] = 0
-    return acc
-  }, {})
-)
-
 const {
   filters,
   resetFilters,
@@ -160,16 +144,18 @@ const {
 
 const pagination = reactive(createPaginationState())
 
-const currentViewLabel = computed(() => TALENT_VIEW_LABEL_MAP[activeView.value] || '达人经营台')
-const currentViewHelp = computed(() => TALENT_VIEW_HELP_MAP[activeView.value] || '')
-
 const isChannelStaffOnly = computed(() => {
   const roles = authStore.roleCodes
   return roles.includes('channel_staff') && !roles.includes('channel_leader') && !authStore.isAdmin
 })
 const canManageBlacklist = computed(() => authStore.isAdmin || authStore.roleCodes.includes('channel_leader'))
 
-const pageTitle = computed(() => isChannelStaffOnly.value ? '我的达人管理' : '达人经营台')
+const pageTitle = computed(() => {
+  if (isChannelStaffOnly.value && activeView.value === 'MY_TALENTS') {
+    return '我的达人管理'
+  }
+  return TALENT_VIEW_LABEL_MAP[activeView.value] || '达人经营台'
+})
 const pageDesc = computed(() => isChannelStaffOnly.value
   ? '管理我认领的合作达人，跟进合作状态与产出数据，或从公海中发掘新达人。'
   : '围绕团队公海、我的达人、本组达人、自然出单达人和黑名单，完成认领、释放与风险处置闭环。'
@@ -178,6 +164,7 @@ const availableViewOptions = computed(() =>
   getAccessibleTalentViewOptions(authStore.roleCodes, authStore.isAdmin)
 )
 const activeView = ref(resolveView(route.query.view))
+const syncingRoute = ref(false)
 const pageOrderTalentCount = computed(() => data.value.filter((item) => Number(item.orderCount || 0) > 0).length)
 const pageServiceFeeText = computed(() => {
   const total = data.value.reduce((sum, item) => sum + Number(item.serviceFeeContribution || 0), 0)
@@ -197,14 +184,19 @@ function syncFromRoute() {
   pagination.pageSize = normalizePageSize(route.query.size)
 }
 
-function syncRoute() {
-  router.replace({
-    query: {
-      ...toRouteQuery(activeView.value),
-      page: pagination.page,
-      size: pagination.pageSize
-    }
-  })
+async function syncRoute() {
+  syncingRoute.value = true
+  try {
+    await router.replace({
+      query: {
+        ...toRouteQuery(activeView.value),
+        page: String(pagination.page),
+        size: String(pagination.pageSize)
+      }
+    })
+  } finally {
+    syncingRoute.value = false
+  }
 }
 
 function isMine(row: TalentListItem) {
@@ -245,8 +237,7 @@ async function fetchData() {
     const payload = res?.data || {}
     data.value = Array.isArray(payload.records) ? payload.records : []
     pagination.itemCount = Number(payload.total || 0)
-    viewSummary[activeView.value] = pagination.itemCount
-    syncRoute()
+    await syncRoute()
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '加载达人列表失败' })
   } finally {
@@ -269,7 +260,7 @@ async function handleWeeklyRefresh() {
 
 function handleSearch() {
   pagination.page = 1
-  fetchData()
+  void fetchData()
 }
 
 function handleReset() {
@@ -477,15 +468,14 @@ const columns: DataTableColumns<TalentListItem> = [
   }
 ]
 
-watch(activeView, () => {
-  pagination.page = 1
-  fetchData()
-})
-
 watch(
-  () => route.query,
-  () => {
+  () => route.fullPath,
+  (_path, previousPath) => {
+    if (previousPath === undefined || syncingRoute.value) {
+      return
+    }
     syncFromRoute()
+    fetchData()
   }
 )
 
@@ -494,7 +484,8 @@ watch(
   (options) => {
     if (!options.some((item) => item.value === activeView.value)) {
       activeView.value = options[0]?.value || 'TEAM_PUBLIC'
-      syncRoute()
+      pagination.page = 1
+      void fetchData()
     }
   },
   { immediate: true }
@@ -515,7 +506,7 @@ onMounted(() => {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 

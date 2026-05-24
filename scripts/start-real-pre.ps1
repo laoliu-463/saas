@@ -12,11 +12,34 @@ if (-not (Test-Path -LiteralPath $envFile)) {
     throw "Env file not found: $envFile"
 }
 
+function Get-DotEnvValue {
+    param(
+        [string]$Path,
+        [string]$Name,
+        [string]$Default
+    )
+
+    $line = Get-Content -LiteralPath $Path |
+        Where-Object { $_ -match "^\s*$([regex]::Escape($Name))\s*=" } |
+        Select-Object -First 1
+
+    if (-not $line) {
+        return $Default
+    }
+
+    $value = ($line -split "=", 2)[1].Trim()
+    return $value.Trim("'`"")
+}
+
 & (Join-Path $scriptDir "stop-all.ps1")
 
 Push-Location $repoRoot
 try {
     docker compose --env-file $envFile --project-name saas-active -f $composeFile up -d --build
+    & (Join-Path $scriptDir "apply-test-db-patches.ps1") `
+        -ContainerName "saas-active-postgres-real-pre-1" `
+        -Database (Get-DotEnvValue -Path $envFile -Name "DB_NAME" -Default "saas_real_pre") `
+        -User (Get-DotEnvValue -Path $envFile -Name "DB_USER" -Default "saas")
     docker compose --env-file $envFile --project-name saas-active -f $composeFile ps
 }
 finally {

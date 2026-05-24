@@ -253,7 +253,8 @@ public class ColonelActivityProductController extends BaseController {
         return okPage(result);
     }
 
-    @Operation(summary = "渲染复制讲解文案", description = "按系统配置模板 promotion.copy_brief_template 渲染讲解文案（C-05）。")
+    @Deprecated(since = "2026-05-24", forRemoval = true)
+    @Operation(summary = "[已废弃] 渲染复制讲解文案", description = "请改用 POST .../promotion-links + 前端模板渲染。保留仅为兼容旧调用。")
     @GetMapping("/{productId}/copy-brief")
     public ApiResult<Map<String, String>> renderCopyBrief(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,

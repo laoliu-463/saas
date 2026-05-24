@@ -2,6 +2,10 @@
   "name": "colonel-saas-e2e",
   "private": true,
   "scripts": {
+    "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-hot-reload.ps1",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "mvn -f backend -DskipTests spring-boot:run -Dspring-boot.run.fork=true",
+    "dev:backend:hot": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-hot-reload.ps1 -BackendOnly",
     "build": "npm --prefix frontend run build",
     "e2e": "playwright test",
     "e2e:smoke": "playwright test --project=chromium",

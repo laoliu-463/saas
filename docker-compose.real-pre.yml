@@ -8,6 +8,7 @@ services:
     volumes:
       - postgres_real_pre_data:/var/lib/postgresql/data
       - ./backend/src/main/resources/db/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./backend/src/main/resources/db/migrate-all.sql:/docker-entrypoint-initdb.d/99-migrate-all.sql
       - ./backend/src/main/resources/db/alter-product-main-chain.sql:/docker-entrypoint-initdb.d/02-alter-product-main-chain.sql
       - ./backend/src/main/resources/db/alter-product-biz-status.sql:/docker-entrypoint-initdb.d/03-alter-product-biz-status.sql
       - ./backend/src/main/resources/db/alter-product-following.sql:/docker-entrypoint-initdb.d/04-alter-product-following.sql
@@ -98,6 +99,7 @@ services:
       LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB_CLIENT_RESTTEMPLATE: "INFO"
       LOGGING_LEVEL_COM_DOUDIAN_OPEN_CORE: "WARN"
       JAVA_OPTS: -Dspring.devtools.restart.enabled=false
+    entrypoint: ["sh", "/app/scripts/run-jar.sh"]
     volumes:
       - ./backend:/app
       - maven_cache_real_pre:/root/.m2

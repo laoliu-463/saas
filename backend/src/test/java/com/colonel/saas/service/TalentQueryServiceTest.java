@@ -605,6 +605,39 @@ class TalentQueryServiceTest {
     }
 
     @Test
+    void page_shouldFilterByNicknameKeywordAndCategoryJson() {
+        UUID myUserId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        talent.setDouyinUid("uid_food");
+        talent.setDouyinNo("douyin-demo-food");
+        talent.setNickname("食品达人");
+        talent.setCategories("[\"食品饮料\"]");
+        talent.setFans(120000L);
+        talent.setPoolStatus("PUBLIC");
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<Talent> basePage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 200, 1);
+        basePage.setRecords(List.of(talent));
+
+        TalentPageQuery query = new TalentPageQuery();
+        query.setNickname("食品");
+        query.setCategory("食品饮料");
+        query.setUserId(myUserId);
+
+        when(talentService.page(1, 10, "食品", null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
+        when(talentClaimMapper.selectList(any())).thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+                .thenReturn(List.of());
+
+        var page = talentQueryService.page(query);
+
+        assertThat(page.getRecords()).hasSize(1);
+    }
+
+    @Test
     void page_shouldApplyBusinessFilters() {
         UUID myUserId = UUID.randomUUID();
         Talent talent = new Talent();

@@ -198,8 +198,8 @@ describe('router guards', () => {
 
     const result = beforeEachHook?.(route('/', {}), route('/login'))
 
-    expect(result).toBe('/dashboard')
-    expect(resolveCalls).toEqual(['/dashboard'])
+    expect(result).toBe('/data')
+    expect(resolveCalls).toEqual(['/data'])
   })
 
   it('falls back to login when no home candidates are accessible', () => {
@@ -209,9 +209,8 @@ describe('router guards', () => {
 
     expect(result).toBe('/login')
     expect(resolveCalls).toEqual([
-      '/dashboard',
-      '/orders',
       '/data',
+      '/orders',
       '/product',
       '/product/manage',
       '/product/manage/products',

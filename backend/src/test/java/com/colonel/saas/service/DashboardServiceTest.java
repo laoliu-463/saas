@@ -15,6 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -153,6 +154,80 @@ class DashboardServiceTest {
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(orderMapper, times(2)).selectCount(wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues()).isNotEmpty();
+    }
+
+    @Test
+    void getSummary_shouldReturnZeroAttributionRateWhenThereAreNoOrders() {
+        mockBaseOrderAggregates(0L, 0L);
+        mockJdbcSequences(List.of(), 0L, List.of());
+
+        DashboardService.Summary summary = service.getSummary(null, null, null, null, DataScope.ALL);
+
+        assertThat(summary.getOrderCount()).isZero();
+        assertThat(summary.getAttributedOrderCount()).isZero();
+        assertThat(summary.getUnattributedOrderCount()).isZero();
+        assertThat(summary.getAttributionRate()).isZero();
+    }
+
+    @Test
+    void getActivityProductBreakdown_shouldNormalizePagingAndApplyPersonalScope() {
+        UUID userId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class)))
+                .thenReturn(List.of(Map.of("total_count", 1L)))
+                .thenReturn(List.of(productRow("activity-1", "product-1", "个人范围商品")));
+
+        DashboardService.ActivityProductPage page =
+                service.getActivityProductBreakdown(null, null, userId, null, DataScope.PERSONAL, 0, 0);
+
+        assertThat(page.page()).isEqualTo(1L);
+        assertThat(page.size()).isEqualTo(1L);
+        assertThat(page.total()).isEqualTo(1L);
+        assertThat(page.records()).hasSize(1);
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbcTemplate, times(2)).queryForList(sqlCaptor.capture(), argsCaptor.capture());
+        assertThat(sqlCaptor.getAllValues().get(0)).contains("co.user_id = ?");
+        assertThat(argsCaptor.getAllValues().get(0)).containsExactly(userId);
+        assertThat(argsCaptor.getAllValues().get(1)).containsExactly(userId, 1L, 0L);
+    }
+
+    @Test
+    void getActivityProductBreakdown_shouldApplyRangeAndDeptScopeBeforePagingArgs() {
+        LocalDateTime start = LocalDateTime.of(2026, 5, 1, 0, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 5, 31, 23, 59);
+        UUID deptId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class)))
+                .thenReturn(List.of(Map.of("total_count", 0L)))
+                .thenReturn(List.of());
+
+        DashboardService.ActivityProductPage page =
+                service.getActivityProductBreakdown(start, end, null, deptId, DataScope.DEPT, 2, 3);
+
+        assertThat(page.page()).isEqualTo(2L);
+        assertThat(page.size()).isEqualTo(3L);
+        assertThat(page.records()).isEmpty();
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbcTemplate, times(2)).queryForList(sqlCaptor.capture(), argsCaptor.capture());
+        assertThat(sqlCaptor.getAllValues().get(0))
+                .contains("co.settle_time >= ?")
+                .contains("co.settle_time <= ?")
+                .contains("co.dept_id = ?");
+        assertThat(argsCaptor.getAllValues().get(0)).containsExactly(start, end, deptId);
+        assertThat(argsCaptor.getAllValues().get(1)).containsExactly(start, end, deptId, 3L, 3L);
+    }
+
+    @Test
+    void normalizeDiagnosisCategory_shouldAcceptOnlyKnownCategoriesAndLegacyAlias() {
+        assertThat(DashboardService.normalizeDiagnosisCategory(null)).isNull();
+        assertThat(DashboardService.normalizeDiagnosisCategory("   ")).isNull();
+        assertThat(DashboardService.normalizeDiagnosisCategory("UNSAFE_BECAUSE_CREATED_AFTER_ORDER"))
+                .isEqualTo(DashboardService.DIAGNOSIS_MECHANISM_HIT_HISTORY_UNSAFE);
+        assertThat(DashboardService.normalizeDiagnosisCategory(" " + DashboardService.DIAGNOSIS_NATIVE_KEY_MISMATCH + " "))
+                .isEqualTo(DashboardService.DIAGNOSIS_NATIVE_KEY_MISMATCH);
+        assertThat(DashboardService.normalizeDiagnosisCategory("UPSTREAM_PRODUCT_UNCOVERED' OR '1'='1")).isNull();
     }
 
     @Test

@@ -167,64 +167,80 @@ CREATE INDEX IF NOT EXISTS idx_sys_role_menu_menu_id ON sys_role_menu (menu_id);
 
 -- 菜单种子数据 (来源: alter-menu-permission-model.sql)
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
-VALUES
-    (gen_random_uuid(), '系统管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/system', null, 'setting', 90, null, 1, 1)
-ON CONFLICT DO NOTHING;
+SELECT gen_random_uuid(), '系统管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/system', null, 'setting', 90, null, 1, 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM sys_menu WHERE deleted = 0 AND parent_id = '00000000-0000-0000-0000-000000000000' AND path = '/system'
+);
 
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
 SELECT gen_random_uuid(), '用户管理', 'MENU', m.id, '/system/user', 'system/UserManagement', 'user', 1, null, 1, 1
 FROM sys_menu m WHERE m.menu_name = '系统管理' AND m.parent_id = '00000000-0000-0000-0000-000000000000'
-ON CONFLICT DO NOTHING;
+  AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE deleted = 0 AND path = '/system/user')
+ORDER BY m.create_time ASC
+LIMIT 1;
 
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
 SELECT gen_random_uuid(), '角色管理', 'MENU', m.id, '/system/role', 'system/RoleManagement', 'team', 2, null, 1, 1
 FROM sys_menu m WHERE m.menu_name = '系统管理' AND m.parent_id = '00000000-0000-0000-0000-000000000000'
-ON CONFLICT DO NOTHING;
+  AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE deleted = 0 AND path = '/system/role')
+ORDER BY m.create_time ASC
+LIMIT 1;
 
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
 SELECT gen_random_uuid(), '菜单管理', 'MENU', m.id, '/system/menu', 'system/MenuManagement', 'menu', 3, null, 1, 1
 FROM sys_menu m WHERE m.menu_name = '系统管理' AND m.parent_id = '00000000-0000-0000-0000-000000000000'
-ON CONFLICT DO NOTHING;
+  AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE deleted = 0 AND path = '/system/menu')
+ORDER BY m.create_time ASC
+LIMIT 1;
 
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
 SELECT gen_random_uuid(), '操作日志', 'MENU', m.id, '/system/logs', 'system/OperationLog', 'file-text', 4, null, 1, 1
 FROM sys_menu m WHERE m.menu_name = '系统管理' AND m.parent_id = '00000000-0000-0000-0000-000000000000'
-ON CONFLICT DO NOTHING;
+  AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE deleted = 0 AND path = '/system/logs')
+ORDER BY m.create_time ASC
+LIMIT 1;
 
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
-VALUES
-    (gen_random_uuid(), '达人管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/talent', null, 'star', 10, null, 1, 1)
-ON CONFLICT DO NOTHING;
+SELECT gen_random_uuid(), '达人管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/talent', null, 'star', 10, null, 1, 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM sys_menu WHERE deleted = 0 AND parent_id = '00000000-0000-0000-0000-000000000000' AND path = '/talent'
+);
 
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
-VALUES
-    (gen_random_uuid(), '商品管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/product', null, 'shopping', 20, null, 1, 1)
-ON CONFLICT DO NOTHING;
+SELECT gen_random_uuid(), '商品管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/product', null, 'shopping', 20, null, 1, 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM sys_menu WHERE deleted = 0 AND parent_id = '00000000-0000-0000-0000-000000000000' AND path = '/product'
+);
 
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
-VALUES
-    (gen_random_uuid(), '商品管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/product/manage', null, 'shopping', 21, null, 1, 1)
-ON CONFLICT DO NOTHING;
+SELECT gen_random_uuid(), '商品管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/product/manage', null, 'shopping', 21, null, 1, 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM sys_menu WHERE deleted = 0 AND parent_id = '00000000-0000-0000-0000-000000000000' AND path = '/product/manage'
+);
 
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
-VALUES
-    (gen_random_uuid(), '订单管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/order', null, 'file-done', 30, null, 1, 1)
-ON CONFLICT DO NOTHING;
+SELECT gen_random_uuid(), '订单管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/order', null, 'file-done', 30, null, 1, 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM sys_menu WHERE deleted = 0 AND parent_id = '00000000-0000-0000-0000-000000000000' AND path = '/order'
+);
 
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
-VALUES
-    (gen_random_uuid(), '样品管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/sample', null, 'gift', 40, null, 1, 1)
-ON CONFLICT DO NOTHING;
+SELECT gen_random_uuid(), '样品管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/sample', null, 'gift', 40, null, 1, 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM sys_menu WHERE deleted = 0 AND parent_id = '00000000-0000-0000-0000-000000000000' AND path = '/sample'
+);
 
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
-VALUES
-    (gen_random_uuid(), '数据看板', 'MENU', '00000000-0000-0000-0000-000000000000', '/dashboard', null, 'bar-chart', 50, null, 1, 1)
-ON CONFLICT DO NOTHING;
+SELECT gen_random_uuid(), '数据看板', 'MENU', '00000000-0000-0000-0000-000000000000', '/dashboard', null, 'bar-chart', 50, null, 1, 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM sys_menu WHERE deleted = 0 AND parent_id = '00000000-0000-0000-0000-000000000000' AND path = '/dashboard'
+);
 
 INSERT INTO sys_menu (id, menu_name, menu_type, parent_id, path, component, icon, sort_order, permission_code, visible, status)
-VALUES
-    (gen_random_uuid(), '活动管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/activity', null, 'trophy', 60, null, 1, 1)
-ON CONFLICT DO NOTHING;
+SELECT gen_random_uuid(), '活动管理', 'MENU', '00000000-0000-0000-0000-000000000000', '/activity', null, 'trophy', 60, null, 1, 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM sys_menu WHERE deleted = 0 AND parent_id = '00000000-0000-0000-0000-000000000000' AND path = '/activity'
+);
 
 -- 为 admin 角色分配全部菜单
 INSERT INTO sys_role_menu (role_id, menu_id)

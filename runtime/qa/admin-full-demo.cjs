@@ -154,7 +154,10 @@ async function apiRequest(apiContext, method, url, token, data) {
 }
 
 async function searchUser(page, username) {
-  const filter = page.getByPlaceholder('请输入用户名').first();
+  const filter = page
+    .locator('[data-testid="system-users-page"] input[placeholder*="用户名"], [data-testid="system-users-page"] input[placeholder*="姓名"], [data-testid="system-users-page"] input[placeholder*="手机"]')
+    .first();
+  await filter.waitFor({ state: 'visible', timeout: 10000 });
   await filter.fill(username);
   await page.getByRole('button', { name: '查询' }).click({ force: true });
   await waitForIdle(page);

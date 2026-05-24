@@ -18,6 +18,9 @@ public class TalentPageQuery {
     private long size = 10;
 
     private String keyword;
+    private String douyinNo;
+    private String nickname;
+    private String platform;
     private String region;
     private String poolStatus;
     private String ownerKeyword;

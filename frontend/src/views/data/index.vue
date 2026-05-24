@@ -84,6 +84,16 @@
         <span class="metric-scope-copy">{{ timeScopeDescription }}</span>
       </div>
 
+      <n-alert
+        v-if="showEmptyDataHint"
+        type="warning"
+        :bordered="false"
+        class="dashboard-empty-hint"
+        data-testid="dashboard-empty-data-hint"
+      >
+        {{ emptyDataHint }}
+      </n-alert>
+
       <div class="metric-cards" data-testid="dashboard-metric-cards">
         <div
           class="metric-card app-metric-card clickable"
@@ -283,7 +293,9 @@ import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import PageHeader from '../../components/PageHeader.vue'
 import { getMetrics } from '../../api/data'
-import { centToYuan, getPerformanceSummary, type PerformanceSummary } from '../../api/performance'
+  import { centToYuan, getPerformanceSummary, type PerformanceSummary } from '../../api/performance'
+  import { useRuntimeEnvironment } from '../../composables/useRuntimeEnvironment'
+  import { resolveDualTrackMetrics } from './dashboard-metrics'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES } from '../../constants/rbac'
 import { useDelayedFlag } from '../../utils/delayedFlag'
@@ -292,6 +304,7 @@ import { handleApiFailure } from '../../utils/requestError'
 const message = useMessage()
 const router = useRouter()
 const authStore = useAuthStore()
+const { usesRealDouyinUpstream, environmentLabel } = useRuntimeEnvironment()
 const loading = ref(false)
 const delayedLoading = useDelayedFlag(loading, 200)
 const initialized = ref(false)
@@ -511,6 +524,22 @@ const trendTotalOrders = computed(() => trendPoints.value.reduce((total, item) =
 
 const trendTotalGmv = computed(() => trendPoints.value.reduce((total, item) => total + item.gmv, 0))
 
+const metricsAreEmpty = computed(() => {
+  const createOrders = toNumber(dualTrackCreate.value?.todayOrderCount ?? dualTrackCreate.value?.totalOrders)
+  const settleOrders = toNumber(dualTrackSettle.value?.todayOrderCount ?? dualTrackSettle.value?.totalOrders)
+  return createOrders === 0 && settleOrders === 0 && trendTotalOrders.value === 0
+})
+
+const showEmptyDataHint = computed(() => initialized.value && !loading.value && metricsAreEmpty.value)
+
+const emptyDataHint = computed(() => {
+  if (usesRealDouyinUpstream.value) {
+    const label = environmentLabel.value || 'REAL-PRE'
+    return `当前 ${label} 环境尚未回流订单（常见原因：抖店 Token 未授权或尚未执行订单同步）。请先到「系统 → 抖店联调」完成授权并同步订单，然后刷新本页。`
+  }
+  return '当前环境暂无订单数据。若预期应有数据，请确认测试种子是否已写入，或检查订单同步任务是否正常运行。'
+})
+
 const peakTrendPoint = computed(() => (
   trendPoints.value.reduce<TrendPoint | null>((peak, item) => {
     if (!peak || item.orderCount > peak.orderCount) return item
@@ -669,17 +698,6 @@ const buildSummaryParams = (): import('../../api/performance').PerformanceListPa
 
 const loadMetrics = async () => {
   loading.value = true
-  const settleMetricsPromise = getMetrics(buildMetricsParams('settleTime'))
-    .then((settleRes: any) => {
-      metricsSettle.value = settleRes?.data || settleRes || {}
-    })
-    .catch((error: any) => {
-      handleApiFailure(error, {
-        permissionFallback: '当前角色无权查看数据看板',
-        onFallback: (msg) => message.warning(msg),
-        fallbackMessage: '获取结算时间指标异常'
-      })
-    })
 
   const summaryPromise = getPerformanceSummary(buildSummaryParams())
     .then((summaryRes: any) => {
@@ -690,20 +708,21 @@ const loadMetrics = async () => {
     })
 
   try {
-    const createRes = await getMetrics(buildMetricsParams('createTime'))
-    metricsCreate.value = createRes?.data || createRes || {}
+    const metricsRes = await getMetrics(buildMetricsParams('createTime'))
+    const { estimate, settle } = resolveDualTrackMetrics(metricsRes)
+    metricsCreate.value = estimate
+    metricsSettle.value = settle
   } catch (error: any) {
     handleApiFailure(error, {
       permissionFallback: '当前角色无权查看数据看板',
       onFallback: (msg) => message.warning(msg),
-      fallbackMessage: '获取创建时间指标异常'
+      fallbackMessage: '获取数据看板指标异常'
     })
   } finally {
     initialized.value = true
     loading.value = false
     void renderTrendChart()
   }
-  void settleMetricsPromise.finally(() => renderTrendChart())
   void summaryPromise
 }
 
@@ -829,6 +848,10 @@ watch(timeField, () => {
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-color);
   background: var(--bg-page);
+}
+
+.dashboard-empty-hint {
+  margin-bottom: var(--spacing-md);
 }
 
 .metric-scope-badge {

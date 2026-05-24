@@ -65,6 +65,9 @@ export default defineConfig(() => {
       host: '0.0.0.0',
       port: resolveDevPort(),
       strictPort: false,
+      hmr: {
+        overlay: true
+      },
       watch: usePolling
         ? {
             usePolling,

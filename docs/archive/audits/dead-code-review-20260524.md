@@ -158,4 +158,4 @@ cd .. && npx playwright test tests/e2e/22-v1-admin-config-chain.spec.ts tests/e2
 ---
 
 **审查人**：AI 交叉验证（2026-05-24）
-**状态**：Phase A 待实施；Phase B 需产品确认；Phase C 待重扫
+**状态**：Phase A **已实施**（2026-05-24）；Phase B 需产品确认；Phase C 待重扫

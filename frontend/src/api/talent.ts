@@ -12,6 +12,17 @@ export interface TalentQueryParams {
   region?: string
   poolStatus?: string
   ownerKeyword?: string
+  douyinNo?: string
+  nickname?: string
+  liveSalesBand?: string
+  liveViewBand?: string
+  liveGpmBand?: string
+  videoSalesBand?: string
+  videoPlayBand?: string
+  videoGpmBand?: string
+  level?: string
+  gender?: string
+  contactStatus?: string
 }
 
 export interface TalentListItem {
@@ -180,7 +191,6 @@ export interface TalentStatusTransitionsResponse {
 
 // CRM talents
 export const getTalentPage = (params: TalentQueryParams) => request.get('/talents', { params });
-export const getTalentList = (params: any) => getTalentPage(params);
 export const getTalentPublic = (params: any) => request.get('/talents/pools/public', { params });
 export const getTalentPrivate = (params?: Record<string, unknown>) =>
   request.get('/talents/pools/private', { params });

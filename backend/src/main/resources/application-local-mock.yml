@@ -1,6 +1,11 @@
 spring:
   devtools:
     restart:
+      # 本地默认开启类路径热重启；test/real/real-pre 仍关闭。可用 SPRING_DEVTOOLS_RESTART_ENABLED=false 关闭。
+      enabled: ${SPRING_DEVTOOLS_RESTART_ENABLED:true}
+      poll-interval: ${SPRING_DEVTOOLS_POLL_INTERVAL:3s}
+      quiet-period: ${SPRING_DEVTOOLS_QUIET_PERIOD:2s}
+    livereload:
       enabled: false
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:colonel_saas}

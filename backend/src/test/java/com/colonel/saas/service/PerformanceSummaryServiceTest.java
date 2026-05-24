@@ -1,22 +1,30 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.performance.PerformanceSummaryQuery;
 import com.colonel.saas.dto.performance.PerformanceTrackSummaryDTO;
 import com.colonel.saas.service.performance.PerformanceAccessContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -79,5 +87,150 @@ class PerformanceSummaryServiceTest {
 
         assertThat(track.getOrderCount()).isEqualTo(2L);
         assertThat(track.getServiceFeeIncome()).isEqualTo(400L);
+    }
+
+    @Test
+    void getSummary_shouldUseSafeEmptyQueryAndMapInvalidNumbers() {
+        when(jdbcTemplate.queryForMap(contains("pr.estimate_service_fee"), any(Object[].class)))
+                .thenReturn(Map.of(
+                        "order_count", "bad-number",
+                        "service_fee_income", "1200",
+                        "tech_service_fee", 80L,
+                        "service_fee_profit", "bad-profit",
+                        "recruiter_commission", 30L,
+                        "channel_commission", 12L,
+                        "gross_profit", 99L));
+        when(jdbcTemplate.queryForMap(contains("pr.effective_service_fee"), any(Object[].class)))
+                .thenReturn(summaryRow(1L, 2000L, 160L, 16L, 144L, 14L, 7L, 123L));
+
+        var summary = service.getSummary(
+                null,
+                PerformanceAccessContext.of(null, null, DataScope.ALL, List.of(RoleCodes.ADMIN)));
+
+        assertThat(summary.getEstimate().getOrderCount()).isZero();
+        assertThat(summary.getEstimate().getOrderAmount()).isZero();
+        assertThat(summary.getEstimate().getServiceFeeIncome()).isEqualTo(1200L);
+        assertThat(summary.getEstimate().getServiceFeeProfit()).isZero();
+        assertThat(summary.getEstimate().getServiceFeeExpense()).isEqualTo(42L);
+        assertThat(summary.getEffective().getGrossProfit()).isEqualTo(123L);
+    }
+
+    @Test
+    void aggregateEstimate_shouldTrimFiltersMapStatusAndUsePayCohort() {
+        LocalDateTime start = LocalDateTime.of(2026, 5, 1, 0, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 6, 1, 0, 0);
+        UUID talentId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        PerformanceSummaryQuery query = new PerformanceSummaryQuery();
+        query.setActivityId(" ACT-1 ");
+        query.setProductId(" P-1 ");
+        query.setPartnerId(9L);
+        query.setTalentId(talentId);
+        query.setOrderStatus(" shipped ");
+        query.setTimeFilterType("pay");
+        query.setTimeStart(start);
+        query.setTimeEnd(end);
+        when(jdbcTemplate.queryForMap(contains("pr.estimate_service_fee"), any(Object[].class)))
+                .thenReturn(summaryRow(1L, 100L, 10L, 1L, 9L, 2L, 3L, 4L));
+
+        service.aggregateEstimate(
+                query,
+                PerformanceAccessContext.of(null, null, DataScope.ALL, List.of(RoleCodes.ADMIN)));
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
+        assertThat(sqlCaptor.getValue())
+                .contains("pr.activity_id = ?")
+                .contains("pr.product_id = ?")
+                .contains("pr.partner_id = ?")
+                .contains("pr.talent_id = ?")
+                .contains("pr.order_status = ?")
+                .contains("COALESCE(pr.order_create_time, co.create_time) >= ?")
+                .contains("COALESCE(pr.order_create_time, co.create_time) < ?")
+                .doesNotContain("AND pr.settle_time IS NOT NULL");
+        assertThat(argsCaptor.getValue())
+                .containsExactly("ACT-1", "P-1", 9L, talentId, 2, start, end);
+    }
+
+    @Test
+    void aggregateEffective_shouldUseSettleCohortAndRequireSettledRows() {
+        LocalDateTime start = LocalDateTime.of(2026, 5, 1, 0, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 6, 1, 0, 0);
+        PerformanceSummaryQuery query = new PerformanceSummaryQuery();
+        query.setTimeFilterType("settle");
+        query.setTimeStart(start);
+        query.setTimeEnd(end);
+        when(jdbcTemplate.queryForMap(contains("pr.effective_service_fee"), any(Object[].class)))
+                .thenReturn(summaryRow(1L, 100L, 10L, 1L, 9L, 2L, 3L, 4L));
+
+        service.aggregateEffective(
+                query,
+                PerformanceAccessContext.of(null, null, DataScope.ALL, List.of(RoleCodes.ADMIN)));
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
+        assertThat(sqlCaptor.getValue())
+                .contains("pr.settle_time >= ?")
+                .contains("pr.settle_time < ?")
+                .contains("AND pr.settle_time IS NOT NULL")
+                .contains("AND (pr.settle_time IS NOT NULL OR pr.effective_service_fee > 0)");
+        assertThat(argsCaptor.getValue()).containsExactly(start, end);
+    }
+
+    @Test
+    void aggregateEstimate_shouldApplyChannelStaffScopeBeforeSummaryFilters() {
+        UUID userId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        PerformanceSummaryQuery query = new PerformanceSummaryQuery();
+        query.setChannelId(userId);
+        when(jdbcTemplate.queryForMap(contains("pr.estimate_service_fee"), any(Object[].class)))
+                .thenReturn(summaryRow(1L, 100L, 10L, 1L, 9L, 2L, 3L, 4L));
+
+        service.aggregateEstimate(
+                query,
+                PerformanceAccessContext.of(userId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)));
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
+        assertThat(sqlCaptor.getValue())
+                .contains("pr.final_channel_user_id = ?")
+                .contains("AND pr.final_channel_user_id = ?");
+        assertThat(argsCaptor.getValue()).containsExactly(userId, userId);
+    }
+
+    @Test
+    void getSummary_shouldRejectCrossChannelFilterForChannelStaff() {
+        PerformanceSummaryQuery query = new PerformanceSummaryQuery();
+        query.setChannelId(UUID.fromString("33333333-3333-3333-3333-333333333333"));
+        PerformanceAccessContext context = PerformanceAccessContext.of(
+                UUID.fromString("44444444-4444-4444-4444-444444444444"),
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThatThrownBy(() -> service.getSummary(query, context))
+                .isInstanceOf(BusinessException.class);
+        verifyNoInteractions(jdbcTemplate);
+    }
+
+    private static Map<String, Object> summaryRow(
+            long orderCount,
+            long orderAmount,
+            long serviceFeeIncome,
+            long techServiceFee,
+            long serviceFeeProfit,
+            long recruiterCommission,
+            long channelCommission,
+            long grossProfit) {
+        return Map.of(
+                "order_count", orderCount,
+                "order_amount", orderAmount,
+                "service_fee_income", serviceFeeIncome,
+                "tech_service_fee", techServiceFee,
+                "service_fee_profit", serviceFeeProfit,
+                "recruiter_commission", recruiterCommission,
+                "channel_commission", channelCommission,
+                "gross_profit", grossProfit);
     }
 }
