@@ -1,5 +1,7 @@
 import axios from 'axios'
 
+import { globalPermissionHint } from '../stores/permissionHint'
+
 const TRACE_BODY_KEYS = ['traceId', 'trace_id', 'requestId', 'request_id']
 const TRACE_HEADER_KEYS = ['x-trace-id', 'x-request-id', 'trace-id', 'request-id']
 
@@ -76,10 +78,35 @@ export function applyPermissionHint(
 ): boolean {
   if (!isPermissionDeniedError(error)) return false
   const message = extractRequestErrorMessage(error, fallback)
-  if (shouldShowPermissionHint(message)) {
-    setHint(message)
-  }
+  if (!shouldShowPermissionHint(message)) return true
+  setHint(message)
   return true
+}
+
+export function notifyClientPermission(message: string) {
+  const text = cleanText(message)
+  if (!text || !shouldShowPermissionHint(text)) return
+  globalPermissionHint.value = text
+}
+
+export function notifyApiFailure(
+  error: unknown,
+  messageApi: { error: (msg: string) => void },
+  options?: {
+    onPermissionHint?: (message: string) => void
+    permissionFallback?: string
+    fallbackMessage?: string
+  }
+): void {
+  handleApiFailure(error, {
+    onPermissionHint: (msg) => {
+      globalPermissionHint.value = msg
+      options?.onPermissionHint?.(msg)
+    },
+    permissionFallback: options?.permissionFallback,
+    onFallback: (msg) => messageApi.error(msg),
+    fallbackMessage: options?.fallbackMessage
+  })
 }
 
 /** True when the global axios interceptor already handled the error (toast or silent permission). */
