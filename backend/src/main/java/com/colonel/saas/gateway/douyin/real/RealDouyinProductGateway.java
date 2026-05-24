@@ -21,6 +21,8 @@ import java.util.Map;
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "false", matchIfMissing = true)
 public class RealDouyinProductGateway implements DouyinProductGateway {
 
+    private static final String SKU_SPEC_KEY = "_spec_key";
+
     private final ProductApi productApi;
     private final DouyinUpstreamModeSupport upstreamModeSupport;
     private final DouyinContractFixtureProvider contractFixtureProvider;
@@ -70,6 +72,8 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
         }
         Map<String, Object> response = productApi.getProductSkusV2(productId);
         Map<String, Object> dataNode = asMap(response.get("data"));
+        Map<String, String> specItemNames = buildSpecItemNameMap(dataNode);
+        Map<String, Object> pictures = asMap(dataNode.get("pictures"));
         List<Map<String, Object>> skuRows = extractBuyinSkuRows(dataNode);
         return skuRows.stream().map(sku -> {
             String skuId = firstNonBlank(
@@ -80,19 +84,22 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
             String spec1 = firstNonBlank(asString(sku.get("spec_detail_name1")), asString(sku.get("specName1")));
             String spec2 = firstNonBlank(asString(sku.get("spec_detail_name2")), asString(sku.get("specName2")));
             String spec3 = firstNonBlank(asString(sku.get("spec_detail_name3")), asString(sku.get("specName3")));
+            String specKey = asString(sku.get(SKU_SPEC_KEY));
             String skuName = firstNonBlank(
                     asString(sku.get("sku_name")),
                     asString(sku.get("skuName")),
                     buildSkuName(null, spec1, spec2, spec3),
+                    buildSkuNameFromSpecKey(specKey, specItemNames),
                     skuId
             );
             return new ProductSkuResult(
                     skuId,
                     skuName,
-                    asLong(pick(sku, "price", "sku_price", "skuPrice"), 0L),
+                    asLong(pick(sku, "effective_price", "effectivePrice", "price", "sku_price", "skuPrice"), 0L),
                     toInt(pick(sku, "stock_num", "stockNum", "stock", "stock_count"), 0),
                     firstNonBlank(
-                            asString(pick(sku, "picture_url", "pictureUrl", "cover", "image", "pic"))
+                            asString(pick(sku, "picture_url", "pictureUrl", "cover", "image", "pic")),
+                            resolvePictureUrl(sku, pictures, specKey)
                     )
             );
         }).toList();
@@ -110,8 +117,11 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
                 if (sku.isEmpty()) {
                     continue;
                 }
-                if (!sku.containsKey("sku_id") && entry.getKey() != null) {
+                if (entry.getKey() != null) {
                     sku = new LinkedHashMap<>(sku);
+                    sku.put(SKU_SPEC_KEY, String.valueOf(entry.getKey()));
+                }
+                if (!sku.containsKey("sku_id") && entry.getKey() != null) {
                     sku.put("sku_id", String.valueOf(entry.getKey()));
                 }
                 result.add(sku);
@@ -119,6 +129,67 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
             return result;
         }
         return List.of();
+    }
+
+    private Map<String, String> buildSpecItemNameMap(Map<String, Object> dataNode) {
+        Map<String, String> result = new LinkedHashMap<>();
+        for (Object specObject : asList(pick(dataNode, "specs", "spec_list", "specList"))) {
+            Map<String, Object> spec = asMap(specObject);
+            for (Object itemObject : asList(pick(spec, "spec_items", "specItems", "items", "list"))) {
+                Map<String, Object> item = asMap(itemObject);
+                String id = asString(pick(item, "id", "spec_item_id", "specItemId"));
+                String name = asString(pick(item, "name", "spec_item_name", "specItemName"));
+                if (id != null && name != null) {
+                    result.put(id, name);
+                }
+            }
+        }
+        return result;
+    }
+
+    private String buildSkuNameFromSpecKey(String specKey, Map<String, String> specItemNames) {
+        if (specKey == null || specItemNames.isEmpty()) {
+            return null;
+        }
+        List<String> names = new ArrayList<>();
+        for (String id : specKey.split("[_,|;:\\s]+")) {
+            String name = specItemNames.get(id);
+            if (name != null && !name.isBlank()) {
+                names.add(name);
+            }
+        }
+        return names.isEmpty() ? null : String.join(" / ", names);
+    }
+
+    private String resolvePictureUrl(Map<String, Object> sku, Map<String, Object> pictures, String specKey) {
+        String fromSkuPicture = pickPictureUrl(pick(sku, "pictures", "picture", "pic_info", "picInfo"));
+        if (fromSkuPicture != null) {
+            return fromSkuPicture;
+        }
+        if (pictures.isEmpty()) {
+            return null;
+        }
+        if (specKey != null) {
+            for (String id : specKey.split("[_,|;:\\s]+")) {
+                String picture = pickPictureUrl(pictures.get(id));
+                if (picture != null) {
+                    return picture;
+                }
+            }
+        }
+        return pickPictureUrl(pictures);
+    }
+
+    private String pickPictureUrl(Object value) {
+        Map<String, Object> map = asMap(value);
+        if (!map.isEmpty()) {
+            return firstNonBlank(
+                    asString(pick(map, "big_picture", "bigPicture")),
+                    asString(pick(map, "little_picture", "littlePicture")),
+                    asString(pick(map, "picture_url", "pictureUrl", "url", "cover", "image", "pic"))
+            );
+        }
+        return asString(value);
     }
 
     private String firstNonBlank(String... values) {

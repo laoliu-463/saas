@@ -28,10 +28,12 @@
       </n-form-item>
       <n-form-item label="商品规格">
         <ProductSpecSelector
-          v-model="form.specification"
+          v-model="form.skuId"
           :skus="skuOptions"
           :loading="skuLoading"
+          value-field="skuId"
           data-testid="quick-sample-spec"
+          @select="handleSkuSelect"
         />
       </n-form-item>
       <n-form-item label="数量" required>
@@ -114,6 +116,7 @@ const loadSkus = async () => {
 
 const form = ref({
   talentIds: [] as string[],
+  skuId: '',
   specification: '',
   quantity: 1,
   recipientName: '',
@@ -121,6 +124,10 @@ const form = ref({
   recipientAddress: '',
   remark: ''
 })
+
+const handleSkuSelect = (sku: any | null) => {
+  form.value.specification = String(sku?.skuName || '').trim()
+}
 
 const loadTalents = async () => {
   talentLoading.value = true
@@ -150,7 +157,7 @@ watch(visible, (show) => {
 })
 
 const resetForm = () => {
-  form.value = { talentIds: [], specification: '', quantity: 1, recipientName: '', recipientPhone: '', recipientAddress: '', remark: '' }
+  form.value = { talentIds: [], skuId: '', specification: '', quantity: 1, recipientName: '', recipientPhone: '', recipientAddress: '', remark: '' }
   skuOptions.value = []
 }
 
@@ -167,6 +174,7 @@ const submit = async () => {
   try {
     const res: any = await applyQuickSample(relationId.value, {
       talentIds: form.value.talentIds,
+      skuId: form.value.skuId || undefined,
       specification: form.value.specification || undefined,
       quantity: form.value.quantity,
       recipientName: form.value.recipientName || undefined,

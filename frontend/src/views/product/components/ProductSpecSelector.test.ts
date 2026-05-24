@@ -26,4 +26,34 @@ describe('ProductSpecSelector', () => {
     expect(select.text()).toContain('红色/L（¥99.00）')
     expect(select.text()).toContain('蓝色/M（¥89.00）')
   })
+
+  it('can use skuId as selected value and emits the selected sku row', async () => {
+    const wrapper = mount(ProductSpecSelector, {
+      props: {
+        modelValue: '',
+        valueField: 'skuId',
+        skus: [
+          { skuId: 'SKU-1', skuName: '红色/L', priceText: '¥99.00' },
+          { skuId: 'SKU-2', skuName: '蓝色/M', priceText: '¥89.00' }
+        ]
+      },
+      global: {
+        stubs: {
+          NSelect: {
+            props: ['options', 'value'],
+            emits: ['update:value'],
+            template:
+              '<select data-testid="product-spec-selector" :value="value" @change="$emit(\'update:value\', $event.target.value)"><option v-for="opt in options" :key="opt.value" :value="opt.value">{{ opt.label }}</option></select>'
+          }
+        }
+      }
+    })
+
+    await wrapper.get('[data-testid="product-spec-selector"]').setValue('SKU-2')
+
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['SKU-2'])
+    expect(wrapper.emitted('select')?.[0]).toEqual([
+      { skuId: 'SKU-2', skuName: '蓝色/M', priceText: '¥89.00' }
+    ])
+  })
 })

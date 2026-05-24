@@ -205,6 +205,53 @@ class RealDouyinProductGatewayTest {
     }
 
     @Test
+    void queryProductSkus_mapsOfficialBuyinSpecPicturesAndEffectivePrice() {
+        ProductApi productApi = mock(ProductApi.class);
+        DouyinUpstreamModeSupport upstreamModeSupport = mock(DouyinUpstreamModeSupport.class);
+        DouyinContractFixtureProvider contractFixtureProvider = mock(DouyinContractFixtureProvider.class);
+        RealDouyinProductGateway gateway = new RealDouyinProductGateway(
+                productApi,
+                upstreamModeSupport,
+                contractFixtureProvider
+        );
+        when(upstreamModeSupport.isContract()).thenReturn(false);
+        when(productApi.getProductSkusV2("3553361443837581161"))
+                .thenReturn(Map.of("data", Map.of(
+                        "specs", List.of(
+                                Map.of("name", "机身颜色", "spec_items", List.of(
+                                        Map.of("id", "1712481022018592", "name", "粉色")
+                                )),
+                                Map.of("name", "存储容量", "spec_items", List.of(
+                                        Map.of("id", "1712481022018593", "name", "128G")
+                                ))
+                        ),
+                        "pictures", Map.of(
+                                "1712481022018592", Map.of(
+                                        "little_picture", "https://img.example/little.webp",
+                                        "big_picture", "https://img.example/big.webp"
+                                )
+                        ),
+                        "skus", Map.of(
+                                "1712481022018592_1712481022018593", Map.of(
+                                        "sku_id", 4837561284389766L,
+                                        "effective_price", 1000,
+                                        "stock_num", 100
+                                )
+                        )
+                )));
+
+        List<DouyinProductGateway.ProductSkuResult> skus = gateway.queryProductSkus("3553361443837581161");
+
+        assertThat(skus).singleElement().satisfies(sku -> {
+            assertThat(sku.skuId()).isEqualTo("4837561284389766");
+            assertThat(sku.skuName()).isEqualTo("粉色 / 128G");
+            assertThat(sku.price()).isEqualTo(1000L);
+            assertThat(sku.stock()).isEqualTo(100);
+            assertThat(sku.cover()).isEqualTo("https://img.example/big.webp");
+        });
+    }
+
+    @Test
     void queryProductSkus_mapsListRowsAndFallbackValues() {
         ProductApi productApi = mock(ProductApi.class);
         DouyinUpstreamModeSupport upstreamModeSupport = mock(DouyinUpstreamModeSupport.class);
