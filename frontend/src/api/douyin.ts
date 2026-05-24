@@ -17,6 +17,12 @@ export interface DouyinTokenCreateRequest {
   grantType?: 'authorization_code' | string;
 }
 
+export interface DouyinOAuthAuthorizeUrl {
+  authorizeUrl: string;
+  state: string;
+  redirectUri: string;
+}
+
 export interface DouyinDebugResult<T = any> {
   status?: string;
   message?: string;
@@ -53,6 +59,10 @@ export function refreshDouyinToken(appId?: string) {
 
 export function createDouyinToken(data: DouyinTokenCreateRequest) {
   return request.post('/douyin/tokens', data, { timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinTokenStatus>(res));
+}
+
+export function getDouyinAuthorizeUrl(appId?: string) {
+  return request.get('/douyin/oauth/authorize-url', { params: { appId }, timeout: REAL_PRE_REQUEST_TIMEOUT_MS }).then((res) => unwrap<DouyinOAuthAuthorizeUrl>(res));
 }
 
 export function getDouyinActivityTest(appId?: string) {

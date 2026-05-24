@@ -14,6 +14,8 @@ public final class RuntimeExposurePolicy {
             "/auth/login",
             "/auth/refresh",
             "/douyin/webhooks/**",
+            "/douyin/oauth/callback",
+            "/api/douyin/oauth/callback",
             "/error",
             "/system/health",
             "/api/system/health"

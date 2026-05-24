@@ -62,6 +62,7 @@
       <n-tab-pane name="token" tab="Token 管理">
         <div class="tool-panel">
           <div class="tool-actions">
+            <n-button type="success" :loading="loading.oauth" @click="startDouyinOAuth">去抖店授权</n-button>
             <n-button type="primary" :loading="loading.status" @click="checkTokenStatus">查询状态</n-button>
             <n-button type="warning" :loading="loading.refresh" @click="refreshToken">刷新 Token</n-button>
           </div>
@@ -161,6 +162,7 @@
 <script setup lang="ts">
 import { notifyApiFailure } from '../../utils/requestError'
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { useMessage } from 'naive-ui';
 import PageHeader from '../../components/PageHeader.vue';
 import { getActivityProducts } from '../../api/activityProduct';
@@ -168,6 +170,7 @@ import { getMetrics } from '../../api/data';
 import { getOrders, syncOrders } from '../../api/order';
 import {
   createDouyinToken,
+  getDouyinAuthorizeUrl,
   getDouyinActivityProductList,
   getDouyinActivityTest,
   getDouyinInstitutionInfo,
@@ -203,6 +206,7 @@ interface LastRunSummary {
 }
 
 const message = useMessage();
+const route = useRoute();
 const REAL_PRE_REQUEST_TIMEOUT_MS = 120_000;
 const appId = ref('');
 const activityId = ref('3916506');
@@ -239,6 +243,7 @@ const loading = reactive({
   status: false,
   refresh: false,
   create: false,
+  oauth: false,
   activity: false,
   productActivities: false,
   activityProductList: false,
@@ -539,6 +544,23 @@ const createToken = async () => {
     notifyApiFailure(error, message, { fallbackMessage: mapCreateTokenError(raw) });
   } finally {
     loading.create = false;
+  }
+};
+
+const startDouyinOAuth = async () => {
+  loading.oauth = true;
+  try {
+    const result = await getDouyinAuthorizeUrl(appId.value || undefined);
+    if (!result.authorizeUrl) {
+      message.error('未获取到抖店授权地址');
+      return;
+    }
+    window.location.href = result.authorizeUrl;
+  } catch (error: any) {
+    setCheck('token', 'error', '授权地址生成失败', extractErrorMessage(error, '抖店授权地址生成失败'));
+    notifyApiFailure(error, message, { fallbackMessage: '抖店授权地址生成失败' });
+  } finally {
+    loading.oauth = false;
   }
 };
 
@@ -893,6 +915,12 @@ const runFullCheck = async () => {
 };
 
 onMounted(() => {
+  const oauthResult = String(route.query.oauth || '');
+  if (oauthResult === 'success') {
+    message.success('抖店授权成功，正在刷新 Token 状态');
+  } else if (oauthResult === 'failed') {
+    message.error('抖店授权失败，请重新发起授权或使用手动 code 兜底');
+  }
   checkTokenStatus();
 });
 </script>

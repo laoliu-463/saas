@@ -127,6 +127,12 @@ douyin:
     sandbox: ${DOUYIN_SANDBOX:false}
     connect-timeout: ${DOUYIN_CONNECT_TIMEOUT:3s}
     read-timeout: ${DOUYIN_READ_TIMEOUT:5s}
+  oauth:
+    authorize-url: ${DOUYIN_OAUTH_AUTHORIZE_URL:https://op.jinritemai.com/oauth2/authorize}
+    redirect-uri: ${DOUYIN_OAUTH_REDIRECT_URI:http://localhost:8081/api/douyin/oauth/callback}
+    frontend-success-url: ${DOUYIN_OAUTH_FRONTEND_SUCCESS_URL:http://localhost:3001/system/douyin?oauth=success}
+    frontend-failure-url: ${DOUYIN_OAUTH_FRONTEND_FAILURE_URL:http://localhost:3001/system/douyin?oauth=failed}
+    state-ttl-minutes: ${DOUYIN_OAUTH_STATE_TTL_MINUTES:10}
   webhook:
     verify-sign: ${DOUYIN_WEBHOOK_VERIFY_SIGN:true}
   test:
