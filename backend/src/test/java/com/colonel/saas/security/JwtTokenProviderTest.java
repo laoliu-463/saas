@@ -85,6 +85,18 @@ class JwtTokenProviderTest {
     }
 
     @Test
+    void shouldIncludePendingActivationClaimWhenRequested() {
+        JwtTokenProvider provider = new JwtTokenProvider(
+                "unit-test-secret-long-enough-for-32-chars-minimum", 120L, 240L);
+        UUID userId = UUID.randomUUID();
+
+        String token = provider.generateAccessToken(userId, null, 1, List.of("biz_staff"), "pending", true);
+        Claims claims = provider.parseClaims(token);
+
+        assertThat(claims.get("pendingActivation", Boolean.class)).isTrue();
+    }
+
+    @Test
     void shouldRejectShortSecret() {
         assertThatThrownBy(() -> new JwtTokenProvider("too-short", 1L, 1L))
                 .isInstanceOf(IllegalStateException.class)

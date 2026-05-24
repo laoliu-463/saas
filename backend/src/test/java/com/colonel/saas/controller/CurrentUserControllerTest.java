@@ -64,7 +64,9 @@ class CurrentUserControllerTest {
                         2,
                         "group",
                         List.of(RoleCodes.CHANNEL_LEADER),
-                        Map.of("operations", Map.of("talent", List.of("claim", "tag")))
+                        Map.of("operations", Map.of("talent", List.of("claim", "tag"))),
+                        1,
+                        false
                 ));
 
         mockMvc.perform(get("/users/current")

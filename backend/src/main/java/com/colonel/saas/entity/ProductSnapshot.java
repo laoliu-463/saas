@@ -80,5 +80,11 @@ public class ProductSnapshot extends BaseEntity {
 
     @TableField("sync_time")
     private LocalDateTime syncTime;
+
+    /**
+     * 保护期月数，来自 colonel_activity.months_of_protection，非数据库持久化字段。
+     */
+    @TableField(exist = false)
+    private Integer monthsOfProtection;
 }
 

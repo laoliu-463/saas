@@ -75,7 +75,7 @@ test('system group menu navigates to users page', () => {
   expect(resolveMenuNavigateTarget('system-group')).toBe('/system/users')
 })
 
-test('admin keeps system menu visible on data section', () => {
+test('admin keeps only data section menus on data section', () => {
   const menus = filterAccessibleMenus(
     [
       { label: '数据平台', key: 'data-group', _section: 'data', roles: [ROLE_CODES.ADMIN] },
@@ -84,10 +84,10 @@ test('admin keeps system menu visible on data section', () => {
     [ROLE_CODES.ADMIN],
     'data'
   )
-  expect(menus.map((menu) => menu.key)).toEqual(['data-group', 'system-group'])
+  expect(menus.map((menu) => menu.key)).toEqual(['data-group'])
 })
 
-test('sidebar menu filtering falls back to permitted menus when section is unknown', () => {
+test('sidebar menu filtering returns empty list when section is unknown', () => {
   const menus = filterAccessibleMenus(
     [
       { label: '数据平台', key: 'data-group', _section: 'data', roles: [ROLE_CODES.BIZ_STAFF] },
@@ -99,7 +99,7 @@ test('sidebar menu filtering falls back to permitted menus when section is unkno
     null
   )
 
-  expect(menus.map((menu) => menu.key)).toEqual(['data-group', 'product-manage-group', '/sample'])
+  expect(menus).toEqual([])
 })
 
 test('router guard waits for usable roles before home redirects', () => {

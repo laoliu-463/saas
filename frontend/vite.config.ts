@@ -57,6 +57,10 @@ export default defineConfig(() => {
 
   return {
     plugins: [vue()],
+    cacheDir: process.env.VITE_CACHE_DIR || undefined,
+    optimizeDeps: {
+      include: ['vue', 'vue-router', 'pinia', 'naive-ui', 'echarts', 'axios', 'dayjs', 'xlsx']
+    },
     server: {
       host: '0.0.0.0',
       port: resolveDevPort(),

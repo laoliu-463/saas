@@ -1,5 +1,6 @@
 package com.colonel.saas.event;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -23,6 +24,7 @@ public record OrderSyncedEvent(
         long settleColonelTechServiceFee,
         long settleSecondColonelCommission,
         Integer orderStatus,
+        LocalDateTime orderCreateTime,
         String talentUid,
         Map<String, Object> extraData) {
 }

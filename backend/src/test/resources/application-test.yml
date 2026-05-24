@@ -1,0 +1,106 @@
+security:
+  jwt:
+    secret: test-jwt-secret-for-unit-testing-only-32+chars
+
+spring:
+  main:
+    banner-mode: off
+    log-startup-info: false
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:colonel_saas}
+    username: ${DB_USER:saas}
+    password: ${DB_PASSWORD:saas123}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:1}
+      timeout: 5000ms
+  task:
+    scheduling:
+      enabled: false
+  devtools:
+    restart:
+      enabled: false
+  security:
+    user:
+      name: test-admin
+      password: test-admin123
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+app:
+  short-ttl-cache:
+    redis-invalidation-enabled: false
+  domain-event:
+    dispatch-enabled: false
+  test:
+    enabled: true
+    seed-on-startup: true
+    douyin: true
+    promotion: true
+    order: true
+    talent: true
+    logistics: true
+
+talent:
+  profile:
+    schema-bootstrap:
+      enabled: false
+  enrich:
+    mode: ${TALENT_ENRICH_MODE:test}
+  collect:
+    mode: mock
+    api:
+      enabled: false
+  refresh:
+    enabled: false
+  data:
+    public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
+
+douyin:
+  test:
+    enabled: true
+  token:
+    auto-refresh:
+      enabled: false
+
+mybatis-plus:
+  global-config:
+    banner: false
+
+logging:
+  level:
+    root: info
+    com.colonel.saas: info
+    com.baomidou.mybatisplus: warn
+    com.zaxxer.hikari: warn
+    org.mybatis: warn
+    org.springframework: info
+    org.springframework.boot: info
+    org.springframework.boot.autoconfigure.logging.ConditionEvaluationReportLogger: error
+    org.springframework.boot.devtools: warn
+    org.springframework.data.repository.config: warn
+    org.springframework.jdbc.core: warn
+    org.springframework.test: info
+    org.springframework.test.web.servlet: warn
+    org.springframework.mock.web: warn
+    org.springframework.security: warn
+    org.springframework.web: info
+
+debug: false

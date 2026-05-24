@@ -70,4 +70,40 @@ public class ProductOperationState extends VersionedEntity {
 
     @TableField("pinned_by")
     private UUID pinnedBy;
+
+    @TableField("display_status")
+    private String displayStatus;
+
+    @TableField("first_displayed_at")
+    private LocalDateTime firstDisplayedAt;
+
+    @TableField("last_displayed_at")
+    private LocalDateTime lastDisplayedAt;
+
+    @TableField("hidden_reason")
+    private String hiddenReason;
+
+    @TableField("display_reason")
+    private String displayReason;
+
+    @TableField("display_rule_version")
+    private Integer displayRuleVersion;
+
+    @TableField("force_display")
+    private Boolean forceDisplay;
+
+    @TableField("force_display_by")
+    private UUID forceDisplayBy;
+
+    @TableField("force_display_reason")
+    private String forceDisplayReason;
+
+    @TableField("force_display_until")
+    private LocalDateTime forceDisplayUntil;
+
+    @TableField("display_priority")
+    private Integer displayPriority;
+
+    @TableField("manual_disabled")
+    private Boolean manualDisabled;
 }

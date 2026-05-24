@@ -95,6 +95,10 @@ class DataControllerTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
                 LocalDate.of(2026, 4, 1),
                 LocalDate.of(2026, 4, 30),
                 null,
@@ -118,6 +122,10 @@ class DataControllerTest {
         dataController.getOrderPage(
                 1,
                 10,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -159,6 +167,10 @@ class DataControllerTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
                 LocalDate.of(2026, 5, 10),
                 LocalDate.of(2026, 5, 10),
                 "settleTime",
@@ -185,11 +197,11 @@ class DataControllerTest {
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 1L)));
 
-        var response = dataController.getMetrics("createTime", UUID.randomUUID(), null, DataScope.ALL);
+        var response = dataController.getMetrics(UUID.randomUUID(), null, DataScope.ALL);
 
-        assertThat(response.getData().getMetricsSource()).isEqualTo("performance_records");
-        assertThat(response.getData().getAmountTrack()).isEqualTo("estimate");
-        assertThat(response.getData().getGrossProfit()).isEqualByComparingTo("5.67");
+        assertThat(response.getData().getEstimate().getMetricsSource()).isEqualTo("performance_records");
+        assertThat(response.getData().getEstimate().getAmountTrack()).isEqualTo("estimate");
+        assertThat(response.getData().getEstimate().getGrossProfit()).isEqualByComparingTo("5.67");
         verify(commissionService, never()).calculateByActivityBuckets(any());
     }
 
@@ -197,6 +209,20 @@ class DataControllerTest {
     void getMetrics_returnsMetricsWithTrendData() {
         UUID userId = UUID.randomUUID();
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of(Map.of("order_count", 2L, "order_amount_cent", 3000L)))
+                .thenReturn(List.of(Map.of(
+                        "activity_id", "ACT-1",
+                        "service_fee_income", 100000L,
+                        "tech_service_fee", 20000L,
+                        "talent_commission", 30000L
+                )))
+                .thenReturn(List.of(Map.of(
+                        "settle_date", LocalDate.now().toString(),
+                        "order_count", 2L,
+                        "order_amount_cent", 3000L
+                )))
+                .thenReturn(List.of(Map.of("order_count", 0L)))
                 .thenReturn(List.of(Map.of("order_count", 2L, "order_amount_cent", 3000L)))
                 .thenReturn(List.of(Map.of(
                         "activity_id", "ACT-1",
@@ -215,16 +241,16 @@ class DataControllerTest {
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25));
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(summary);
 
-        var response = dataController.getMetrics(null, userId, null, DataScope.ALL);
+        var response = dataController.getMetrics(userId, null, DataScope.ALL);
 
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData()).isNotNull();
-        assertThat(response.getData().getTrend7d()).hasSize(7);
-        assertThat(response.getData().getTodayGmv()).isNotNull();
-        assertThat(response.getData().getServiceFee()).isNotNull();
+        assertThat(response.getData().getEstimate().getTrend7d()).hasSize(7);
+        assertThat(response.getData().getEstimate().getTodayGmv()).isNotNull();
+        assertThat(response.getData().getEstimate().getServiceFee()).isNotNull();
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
-        assertThat(wrapperCaptor.getAllValues().get(0).getSqlSegment()).contains("create_time");
+        verify(orderMapper, times(8)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues().get(4).getSqlSegment()).contains("create_time");
     }
 
     @Test
@@ -232,21 +258,25 @@ class DataControllerTest {
         UUID firstUser = UUID.randomUUID();
         UUID secondUser = UUID.randomUUID();
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of(Map.of("order_count", 0L)))
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
                 .thenReturn(List.of(Map.of("order_count", 0L)))
                 .thenReturn(List.of())
+                .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
+                .thenReturn(List.of(Map.of("order_count", 0L)))
                 .thenReturn(List.of());
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
                 new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.15), java.math.BigDecimal.valueOf(0.15)));
 
-        var first = dataController.getMetrics(null, firstUser, UUID.randomUUID(), DataScope.ALL);
-        var second = dataController.getMetrics("createTime", secondUser, UUID.randomUUID(), DataScope.ALL);
+        var first = dataController.getMetrics(firstUser, UUID.randomUUID(), DataScope.ALL);
+        var second = dataController.getMetrics(secondUser, UUID.randomUUID(), DataScope.ALL);
 
         assertThat(first.getCode()).isEqualTo(200);
         assertThat(second.getCode()).isEqualTo(200);
-        verify(orderMapper, times(4)).selectMaps(any(QueryWrapper.class));
-        verify(commissionService, times(1)).calculateByActivityBuckets(any());
+        verify(orderMapper, times(8)).selectMaps(any(QueryWrapper.class));
+        verify(commissionService, times(2)).calculateByActivityBuckets(any());
     }
 
     @Test
@@ -260,7 +290,7 @@ class DataControllerTest {
                 new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
 
-        var response = dataController.getMetrics(null, userId, UUID.randomUUID(), DataScope.PERSONAL);
+        var response = dataController.getMetrics(userId, UUID.randomUUID(), DataScope.PERSONAL);
 
         assertThat(response.getCode()).isEqualTo(200);
     }
@@ -277,7 +307,7 @@ class DataControllerTest {
                 new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
 
-        var response = dataController.getMetrics(null, userId, deptId, DataScope.DEPT);
+        var response = dataController.getMetrics(userId, deptId, DataScope.DEPT);
 
         assertThat(response.getCode()).isEqualTo(200);
     }
@@ -292,7 +322,7 @@ class DataControllerTest {
                 new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.15), java.math.BigDecimal.valueOf(0.15)));
 
-        var response = dataController.getMetrics("createTime", UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
+        var response = dataController.getMetrics(UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
 
         assertThat(response.getCode()).isEqualTo(200);
         verify(orderMapper, never()).selectPage(any(Page.class), any());
@@ -313,19 +343,32 @@ class DataControllerTest {
                         "SETTLE_DATE", LocalDate.now().toString(),
                         "ORDER_COUNT", "bad-number",
                         "ORDER_AMOUNT_CENT", 100L
+                )))
+                .thenReturn(null)
+                .thenReturn(List.of(Map.of("order_count", "not-a-number")))
+                .thenReturn(List.of(Map.of(
+                        "ACTIVITY_ID", "ACT-1",
+                        "service_fee_income", "bad-number",
+                        "tech_service_fee", 100L,
+                        "talent_commission", 200L
+                )))
+                .thenReturn(List.of(Map.of(
+                        "SETTLE_DATE", LocalDate.now().toString(),
+                        "ORDER_COUNT", "bad-number",
+                        "ORDER_AMOUNT_CENT", 100L
                 )));
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
                 new CommissionService.CommissionSummary(0L, 100L, 200L, 300L, 150L, 75L, 75L,
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
 
-        var response = dataController.getMetrics("settle", UUID.randomUUID(), null, null);
+        var response = dataController.getMetrics(UUID.randomUUID(), null, null);
 
         assertThat(response.getCode()).isEqualTo(200);
-        assertThat(response.getData().getTodayOrderCount()).isZero();
-        assertThat(response.getData().getPendingShipCount()).isZero();
-        assertThat(response.getData().getTrend7d().get(6).getOrderCount()).isZero();
+        assertThat(response.getData().getSettle().getTodayOrderCount()).isZero();
+        assertThat(response.getData().getSettle().getPendingShipCount()).isZero();
+        assertThat(response.getData().getSettle().getTrend7d().get(6).getOrderCount()).isZero();
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
+        verify(orderMapper, times(8)).selectMaps(wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues().get(0).getSqlSegment()).contains("settle_time");
     }
 
@@ -480,7 +523,8 @@ class DataControllerTest {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
-        dataController.getOrderPage(1, 10, null, "SHIPPED", null, null, null, null, null,
+        dataController.getOrderPage(1, 10, null, "SHIPPED", null, null, null, null, null, null,
+                null, null, null,
                 UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
@@ -494,7 +538,8 @@ class DataControllerTest {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
-        dataController.getOrderPage(1, 10, "MOCK_GEN_ATTR", null, null, null, null, null, null,
+        dataController.getOrderPage(1, 10, "MOCK_GEN_ATTR", null, null, null, null, null, null, null,
+                null, null, null,
                 UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
@@ -511,6 +556,10 @@ class DataControllerTest {
         var response = dataController.getOrderPage(
                 1,
                 10,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -540,6 +589,10 @@ class DataControllerTest {
                 null,
                 talentId,
                 "merchant_10086",
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,

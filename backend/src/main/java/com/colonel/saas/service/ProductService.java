@@ -3,8 +3,12 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.common.enums.ProductBizStatus;
+import com.colonel.saas.common.result.PageResult;
+import com.colonel.saas.constant.ProductDisplayStatus;
+import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.colonel.saas.dto.product.ProductFilterOptionItem;
+import com.colonel.saas.dto.product.ProductFilterOptionsDTO;
 import com.colonel.saas.common.enums.TalentFollowStatus;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
@@ -94,6 +98,9 @@ public class ProductService {
     private final DouyinActivityGateway douyinActivityGateway;
     private final PromotionLinkIdempotencyService promotionLinkIdempotencyService;
     private final BusinessRuleConfigService businessRuleConfigService;
+    private final ProductDisplayRuleService productDisplayRuleService;
+    private final ColonelPartnerSyncService colonelPartnerSyncService;
+    private final ProductDomainEventPublisher productDomainEventPublisher;
 
     public ProductService(
             DouyinPromotionGateway douyinPromotionGateway,
@@ -111,7 +118,10 @@ public class ProductService {
             TalentFollowService talentFollowService,
             DouyinActivityGateway douyinActivityGateway,
             PromotionLinkIdempotencyService promotionLinkIdempotencyService,
-            BusinessRuleConfigService businessRuleConfigService) {
+            BusinessRuleConfigService businessRuleConfigService,
+            ProductDisplayRuleService productDisplayRuleService,
+            ColonelPartnerSyncService colonelPartnerSyncService,
+            ProductDomainEventPublisher productDomainEventPublisher) {
         this.douyinPromotionGateway = douyinPromotionGateway;
         this.douyinProductGateway = douyinProductGateway;
         this.snapshotMapper = snapshotMapper;
@@ -128,6 +138,9 @@ public class ProductService {
         this.douyinActivityGateway = douyinActivityGateway;
         this.promotionLinkIdempotencyService = promotionLinkIdempotencyService;
         this.businessRuleConfigService = businessRuleConfigService;
+        this.productDisplayRuleService = productDisplayRuleService;
+        this.colonelPartnerSyncService = colonelPartnerSyncService;
+        this.productDomainEventPublisher = productDomainEventPublisher;
     }
 
     public IPage<Product> getPage(long page, long size, Integer status) {
@@ -190,20 +203,7 @@ public class ProductService {
     }
 
     public IPage<Product> getSelectedLibraryPage(long page, long size, String keyword, Integer status) {
-        return getSelectedLibraryPage(page, size, new SelectedLibraryFilter(
-                keyword,
-                status,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        ));
+        return getSelectedLibraryPage(page, size, SelectedLibraryFilter.of(keyword, status));
     }
 
     public IPage<Product> getSelectedLibraryPage(long page, long size, SelectedLibraryFilter filter) {
@@ -213,17 +213,30 @@ public class ProductService {
         long fromIndex = (currentPage - 1) * pageSize;
         List<Product> pageRecords = new ArrayList<>();
         long matchedTotal = 0L;
+        Set<String> colonelPartnerProductIds = resolveColonelPartnerProductScope(safeFilter);
+        Set<String> colonelNameProductIds = resolveColonelNameProductScope(safeFilter);
+        if (StringUtils.hasText(safeFilter.assigneeId()) && parseAssigneeFilterId(safeFilter.assigneeId()) == null) {
+            return emptySelectedLibraryPage(currentPage, pageSize);
+        }
 
         long statePageNo = 1L;
         boolean hasMore = true;
         while (hasMore) {
             Page<ProductOperationState> requestPage = new Page<>(statePageNo, SELECTED_LIBRARY_BATCH_SIZE);
+            LambdaQueryWrapper<ProductOperationState> stateQuery = new LambdaQueryWrapper<ProductOperationState>()
+                    .eq(ProductOperationState::getSelectedToLibrary, true)
+                    .eq(ProductOperationState::getDisplayStatus, ProductDisplayStatus.DISPLAYING.name())
+                    .eq(StringUtils.hasText(safeFilter.activityId()),
+                            ProductOperationState::getActivityId,
+                            safeFilter.activityId())
+                    .eq(parseAssigneeFilterId(safeFilter.assigneeId()) != null,
+                            ProductOperationState::getAssigneeId,
+                            parseAssigneeFilterId(safeFilter.assigneeId()))
+                    .orderByDesc(ProductOperationState::getSelectedAt)
+                    .orderByDesc(ProductOperationState::getUpdateTime);
             Page<ProductOperationState> statePage = (Page<ProductOperationState>) operationStateMapper.selectPage(
                     requestPage,
-                    new LambdaQueryWrapper<ProductOperationState>()
-                            .eq(ProductOperationState::getSelectedToLibrary, true)
-                            .orderByDesc(ProductOperationState::getSelectedAt)
-                            .orderByDesc(ProductOperationState::getUpdateTime)
+                    stateQuery
             );
             List<ProductOperationState> stateBatch = statePage.getRecords();
             if (stateBatch == null || stateBatch.isEmpty()) {
@@ -239,6 +252,12 @@ public class ProductService {
                 if (snapshot == null) {
                     continue;
                 }
+                if (colonelPartnerProductIds != null && !colonelPartnerProductIds.contains(snapshot.getProductId())) {
+                    continue;
+                }
+                if (colonelNameProductIds != null && !colonelNameProductIds.contains(snapshot.getProductId())) {
+                    continue;
+                }
                 Product product = toLegacyProduct(snapshot, state, assigneeNameMap);
                 if (!matchesSelectedLibraryFilters(product, snapshot, state, safeFilter)) {
                     continue;
@@ -252,7 +271,13 @@ public class ProductService {
             statePageNo++;
         }
 
-        pageRecords.sort(this::compareLibraryProducts);
+        if ("latest".equals(safeFilter.sortBy())) {
+            pageRecords.sort(Comparator.comparing(
+                    Product::getSelectedAt,
+                    Comparator.nullsLast(Comparator.reverseOrder())));
+        } else {
+            pageRecords.sort(this::compareLibraryProducts);
+        }
         Page<Product> result = new Page<>(currentPage, pageSize, matchedTotal);
         result.setRecords(pageRecords);
         return result;
@@ -402,7 +427,7 @@ public class ProductService {
         if (snapshotIds.isEmpty()) {
             return Map.of();
         }
-        return snapshotMapper.selectBatchIds(snapshotIds).stream()
+        Map<String, ProductSnapshot> result = snapshotMapper.selectBatchIds(snapshotIds).stream()
                 .filter(snapshot -> StringUtils.hasText(snapshot.getActivityId()) && StringUtils.hasText(snapshot.getProductId()))
                 .collect(Collectors.toMap(
                         snapshot -> stateBatchKey(snapshot.getActivityId(), snapshot.getProductId()),
@@ -410,6 +435,28 @@ public class ProductService {
                         (left, right) -> left,
                         LinkedHashMap::new
                 ));
+
+        // 回填 colonel_activity.months_of_protection（非持久化字段）
+        Set<String> activityIds = result.values().stream()
+                .map(ProductSnapshot::getActivityId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
+        if (!activityIds.isEmpty()) {
+            Map<String, Integer> protectionMap = new LinkedHashMap<>();
+            for (String activityId : activityIds) {
+                ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(activityId);
+                if (activity != null && activity.getMonthsOfProtection() != null) {
+                    protectionMap.put(activityId, activity.getMonthsOfProtection());
+                }
+            }
+            result.values().forEach(snapshot -> {
+                Integer protection = protectionMap.get(snapshot.getActivityId());
+                if (protection != null) {
+                    snapshot.setMonthsOfProtection(protection);
+                }
+            });
+        }
+        return result;
     }
 
     private Map<String, ProductOperationState> loadOperationStatesForSnapshots(List<ProductSnapshot> snapshots) {
@@ -481,7 +528,17 @@ public class ProductService {
         if (StringUtils.hasText(filter.shopKeyword()) && !containsIgnoreCase(snapshot.getShopName(), filter.shopKeyword())) {
             return false;
         }
-        if (StringUtils.hasText(filter.categoryName()) && !containsIgnoreCase(snapshot.getCategoryName(), filter.categoryName())) {
+        if (!matchesCategoriesFilter(snapshot, filter.categories(), filter.categoryName())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.activityId())
+                && !filter.activityId().trim().equals(snapshot.getActivityId())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.serviceFee()) && !matchesServiceFeeFilter(snapshot, filter.serviceFee())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.supportsAds()) && !matchesSupportsAdsFilter(state, snapshot, filter.supportsAds())) {
             return false;
         }
         if (StringUtils.hasText(filter.salesRange()) && !matchesSalesRange(snapshot.getSales(), filter.salesRange())) {
@@ -499,13 +556,121 @@ public class ProductService {
         if (StringUtils.hasText(filter.hasSample()) && !matchesHasSampleFilter(snapshot, filter.hasSample())) {
             return false;
         }
+        if (StringUtils.hasText(filter.assigneeId()) && !matchesAssigneeIdFilter(state, filter.assigneeId())) {
+            return false;
+        }
         if (StringUtils.hasText(filter.assignee()) && !matchesAssigneeFilter(state, filter.assignee())) {
             return false;
         }
         if (StringUtils.hasText(filter.systemTag()) && !matchesSystemTagFilter(snapshot, filter.systemTag())) {
             return false;
         }
+        if (StringUtils.hasText(filter.partnerId())
+                && !"COLONEL".equals(filter.partnerType())
+                && !matchesMerchantPartnerFilter(snapshot, filter.partnerId())) {
+            return false;
+        }
+        if (!matchesAuditTagFilters(state, normalizeTagFilter(filter.goodsTags()), normalizeTagFilter(filter.productTags()))) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.colonelName()) && !StringUtils.hasText(snapshot.getProductId())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.published()) && !matchesPublishedFilter(state, filter.published())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.listed()) && !matchesListedFilter(snapshot, filter.listed())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.freeSample()) && !matchesFreeSampleFilter(state, filter.freeSample())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.cooperationType()) && !matchesCooperationTypeFilter(snapshot, filter.cooperationType())) {
+            return false;
+        }
+        if (!matchesLivePriceRange(snapshot, filter.livePriceMin(), filter.livePriceMax())) {
+            return false;
+        }
+        if (!matchesCommissionRange(snapshot, filter.commissionMin(), filter.commissionMax())) {
+            return false;
+        }
+        if (!matchesSampleSalesRange(state, snapshot, filter.sampleSalesMin(), filter.sampleSalesMax())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.materialDownload()) && !matchesMaterialDownloadFilter(state, filter.materialDownload())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.exclusivePrice()) && !matchesExclusivePriceFilter(state, filter.exclusivePrice())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.productChain()) && !matchesSupplementBooleanOrProductTag(state, List.of("productChainGroup", "productChain"), "商品链组", filter.productChain())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.handCard()) && !matchesHandCardFilter(state, filter.handCard())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.doubleCommission()) && !matchesSupplementBooleanOrProductTag(state, List.of("doubleCommission"), "双佣金", filter.doubleCommission())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.notInLibrary()) && !matchesNotInLibraryFilter(state, filter.notInLibrary())) {
+            return false;
+        }
+        if (StringUtils.hasText(filter.dedup()) && !matchesAuditCheckboxAny(state, List.of("dedupeSelection", "dedup"), filter.dedup())) {
+            return false;
+        }
+        if (!matchesRecruitActivityFilter(snapshot, filter.recruitActivityId(), filter.recruitActivityName())) {
+            return false;
+        }
         return !StringUtils.hasText(filter.decision()) || matchesDecisionFilter(snapshot.getActivityId(), snapshot.getProductId(), filter.decision());
+    }
+
+    private Set<String> resolveColonelNameProductScope(SelectedLibraryFilter filter) {
+        if (!StringUtils.hasText(filter.colonelName())) {
+            return null;
+        }
+        return colonelPartnerSyncService.resolveProductIdsByColonelName(filter.colonelName());
+    }
+
+    private Set<String> resolveColonelPartnerProductScope(SelectedLibraryFilter filter) {
+        if (!"COLONEL".equals(filter.partnerType()) || !StringUtils.hasText(filter.partnerId())) {
+            return null;
+        }
+        Set<String> productIds = new LinkedHashSet<>(pickSourceMappingService.listProductIdsByColonelBuyinId(filter.partnerId()));
+        Long buyinId = parseColonelBuyinId(filter.partnerId());
+        if (buyinId == null) {
+            return productIds;
+        }
+        orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
+                        .select(ColonelsettlementOrder::getProductId)
+                        .eq(ColonelsettlementOrder::getDeleted, 0)
+                        .isNotNull(ColonelsettlementOrder::getProductId)
+                        .and(wrapper -> wrapper
+                                .eq(ColonelsettlementOrder::getColonelBuyinId, buyinId)
+                                .or()
+                                .eq(ColonelsettlementOrder::getSecondColonelBuyinId, buyinId)))
+                .stream()
+                .map(ColonelsettlementOrder::getProductId)
+                .filter(StringUtils::hasText)
+                .forEach(productIds::add);
+        return productIds;
+    }
+
+    private Long parseColonelBuyinId(String colonelBuyinId) {
+        if (!StringUtils.hasText(colonelBuyinId)) {
+            return null;
+        }
+        try {
+            return Long.parseLong(colonelBuyinId.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private boolean matchesMerchantPartnerFilter(ProductSnapshot snapshot, String partnerId) {
+        if (snapshot.getShopId() != null && partnerId.equals(String.valueOf(snapshot.getShopId()))) {
+            return true;
+        }
+        return StringUtils.hasText(snapshot.getShopName()) && partnerId.equalsIgnoreCase(snapshot.getShopName().trim());
     }
 
     private boolean containsIgnoreCase(String value, String keyword) {
@@ -513,6 +678,244 @@ public class ProductService {
             return false;
         }
         return value.toLowerCase(Locale.ROOT).contains(keyword.toLowerCase(Locale.ROOT));
+    }
+
+    private boolean matchesPublishedFilter(ProductOperationState state, String published) {
+        boolean linked = state != null && (StringUtils.hasText(state.getPromoteLink()) || StringUtils.hasText(state.getShortLink()));
+        return "1".equals(published) ? linked : !linked;
+    }
+
+    private boolean matchesListedFilter(ProductSnapshot snapshot, String listed) {
+        boolean upstreamListed = snapshot != null && Integer.valueOf(1).equals(snapshot.getStatus());
+        return "1".equals(listed) ? upstreamListed : !upstreamListed;
+    }
+
+    private boolean matchesFreeSampleFilter(ProductOperationState state, String freeSample) {
+        Map<String, Object> supplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
+        boolean free = "FREE".equalsIgnoreCase(readString(supplement, "sampleType"))
+                || Boolean.TRUE.equals(readBoolean(supplement, "sampleFree"))
+                || Boolean.TRUE.equals(readBoolean(supplement, "sample_free"))
+                || Boolean.TRUE.equals(readBoolean(supplement, "freeSample"));
+        return "1".equals(freeSample) ? free : !free;
+    }
+
+    private boolean matchesCooperationTypeFilter(ProductSnapshot snapshot, String cooperationType) {
+        if (snapshot.getCosType() != null && cooperationType.equals(String.valueOf(snapshot.getCosType()))) {
+            return true;
+        }
+        return StringUtils.hasText(snapshot.getCosTypeText())
+                && snapshot.getCosTypeText().toLowerCase(Locale.ROOT).contains(cooperationType.toLowerCase(Locale.ROOT));
+    }
+
+    private boolean matchesLivePriceRange(ProductSnapshot snapshot, String minRaw, String maxRaw) {
+        BigDecimal min = parseMoneyFilter(minRaw);
+        BigDecimal max = parseMoneyFilter(maxRaw);
+        if (min == null && max == null) {
+            return true;
+        }
+        BigDecimal price = snapshot.getPrice() == null
+                ? parsePriceText(snapshot.getPriceText())
+                : BigDecimal.valueOf(snapshot.getPrice()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        if (min != null && price.compareTo(min) < 0) {
+            return false;
+        }
+        return max == null || price.compareTo(max) <= 0;
+    }
+
+    private boolean matchesCommissionRange(ProductSnapshot snapshot, String minRaw, String maxRaw) {
+        BigDecimal min = parseRatioFilter(minRaw);
+        BigDecimal max = parseRatioFilter(maxRaw);
+        if (min == null && max == null) {
+            return true;
+        }
+        BigDecimal rate = resolveCommissionRate(snapshot);
+        if (min != null && rate.compareTo(min) < 0) {
+            return false;
+        }
+        return max == null || rate.compareTo(max) <= 0;
+    }
+
+    private boolean matchesSampleSalesRange(ProductOperationState state, ProductSnapshot snapshot, String minRaw, String maxRaw) {
+        Long min = parseLongFilter(minRaw);
+        Long max = parseLongFilter(maxRaw);
+        if (min == null && max == null) {
+            return true;
+        }
+        long sales = resolveSampleSalesThreshold(state, snapshot);
+        if (min != null && sales < min) {
+            return false;
+        }
+        return max == null || sales <= max;
+    }
+
+    private long resolveSampleSalesThreshold(ProductOperationState state, ProductSnapshot snapshot) {
+        Map<String, Object> supplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
+        Long fromSupplement = readLong(supplement, "sampleSales", "sampleSales30d", "minSampleSales30d", "sample_sales");
+        if (fromSupplement != null) {
+            return fromSupplement;
+        }
+        return snapshot != null && snapshot.getSales() != null ? snapshot.getSales() : 0L;
+    }
+
+    private Boolean firstBoolean(Map<String, Object> supplement, String... keys) {
+        if (supplement == null || supplement.isEmpty() || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            Boolean value = readBoolean(supplement, key);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private boolean matchesAuditCheckbox(ProductOperationState state, String key, String expected) {
+        return matchesAuditCheckboxAny(state, List.of(key), expected);
+    }
+
+    private boolean matchesAuditCheckboxAny(ProductOperationState state, List<String> keys, String expected) {
+        Map<String, Object> supplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
+        boolean enabled = keys.stream().anyMatch(key -> Boolean.TRUE.equals(readBoolean(supplement, key)));
+        return "1".equals(expected) ? enabled : !enabled;
+    }
+
+    private boolean matchesMaterialDownloadFilter(ProductOperationState state, String expected) {
+        Map<String, Object> supplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
+        boolean enabled = Boolean.TRUE.equals(readBoolean(supplement, "materialDownloadAvailable"))
+                || Boolean.TRUE.equals(readBoolean(supplement, "materialDownload"))
+                || !readStringList(supplement, "materialFiles").isEmpty();
+        return "1".equals(expected) ? enabled : !enabled;
+    }
+
+    private boolean matchesExclusivePriceFilter(ProductOperationState state, String expected) {
+        Map<String, Object> supplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
+        boolean enabled = Boolean.TRUE.equals(readBoolean(supplement, "exclusivePrice"))
+                || StringUtils.hasText(readString(supplement, "exclusivePriceRemark"))
+                || readProductTags(state).contains("专属价");
+        return "1".equals(expected) ? enabled : !enabled;
+    }
+
+    private boolean matchesHandCardFilter(ProductOperationState state, String expected) {
+        Map<String, Object> supplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
+        boolean enabled = Boolean.TRUE.equals(readBoolean(supplement, "handCardAvailable"))
+                || Boolean.TRUE.equals(readBoolean(supplement, "handCard"))
+                || !readStringList(supplement, "handCardFiles").isEmpty()
+                || readProductTags(state).contains("手卡");
+        return "1".equals(expected) ? enabled : !enabled;
+    }
+
+    private boolean matchesSupplementBooleanOrProductTag(
+            ProductOperationState state,
+            List<String> keys,
+            String tag,
+            String expected) {
+        Map<String, Object> supplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
+        boolean enabled = keys.stream().anyMatch(key -> Boolean.TRUE.equals(readBoolean(supplement, key)))
+                || readProductTags(state).contains(tag);
+        return "1".equals(expected) ? enabled : !enabled;
+    }
+
+    private boolean matchesProductTagCheckbox(ProductOperationState state, String tag, String expected) {
+        List<String> tags = readProductTags(state);
+        boolean matched = tags.contains(tag);
+        return "1".equals(expected) ? matched : !matched;
+    }
+
+    private boolean matchesNotInLibraryFilter(ProductOperationState state, String expected) {
+        if (state == null) {
+            return "1".equals(expected); // null state means not in library
+        }
+        Map<String, Object> supplement = parseAuditPayload(state.getAuditPayload());
+        Boolean notInPool = firstBoolean(supplement, "notInProductPool", "notInLibrary");
+        if (notInPool != null) {
+            return "1".equals(expected) ? notInPool : !notInPool;
+        }
+        boolean inLibrary = Boolean.TRUE.equals(state.getSelectedToLibrary());
+        return "1".equals(expected) ? !inLibrary : inLibrary;
+    }
+
+    private boolean matchesRecruitActivityFilter(ProductSnapshot snapshot, String recruitActivityId, String recruitActivityName) {
+        // recruitActivityId: exact match on activityId
+        if (StringUtils.hasText(recruitActivityId)) {
+            if (!StringUtils.hasText(snapshot.getActivityId()) || !snapshot.getActivityId().equals(recruitActivityId.trim())) {
+                return false;
+            }
+        }
+        // recruitActivityName: fuzzy match via ColonelSettlementActivity lookup (expensive, only when name is provided)
+        if (StringUtils.hasText(recruitActivityName) && StringUtils.hasText(snapshot.getActivityId())) {
+            ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(snapshot.getActivityId());
+            if (activity == null || activity.getName() == null
+                    || !activity.getName().toLowerCase(Locale.ROOT).contains(recruitActivityName.toLowerCase(Locale.ROOT))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private List<String> readProductTags(ProductOperationState state) {
+        Map<String, Object> supplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
+        Object raw = supplement.get("productTags");
+        if (raw == null) {
+            raw = supplement.get("product_tags");
+        }
+        if (raw instanceof List<?> list) {
+            return list.stream().map(String::valueOf).toList();
+        }
+        return raw == null ? List.of() : List.of(String.valueOf(raw));
+    }
+
+    private BigDecimal parseDecimalFilter(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        try {
+            return new BigDecimal(raw.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private Long parseLongFilter(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private BigDecimal parseMoneyFilter(String raw) {
+        Long cents = parseLongFilter(raw);
+        if (cents == null) {
+            return null;
+        }
+        return BigDecimal.valueOf(cents).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal parseRatioFilter(String raw) {
+        Long value = parseLongFilter(raw);
+        if (value == null) {
+            return null;
+        }
+        return normalizeRatioNumber(value);
+    }
+
+    private BigDecimal parsePriceText(String priceText) {
+        if (!StringUtils.hasText(priceText)) {
+            return BigDecimal.ZERO;
+        }
+        String normalized = priceText.replaceAll("[^\\d.]", "");
+        if (!StringUtils.hasText(normalized)) {
+            return BigDecimal.ZERO;
+        }
+        try {
+            return new BigDecimal(normalized);
+        } catch (NumberFormatException ex) {
+            return BigDecimal.ZERO;
+        }
     }
 
     private boolean matchesSalesRange(Long sales, String salesRange) {
@@ -599,6 +1002,99 @@ public class ProductService {
             case "unassigned" -> !assigned;
             default -> true;
         };
+    }
+
+    private boolean matchesAssigneeIdFilter(ProductOperationState state, String assigneeId) {
+        UUID expected = parseAssigneeFilterId(assigneeId);
+        if (expected == null) {
+            return false;
+        }
+        return state != null && expected.equals(state.getAssigneeId());
+    }
+
+    private UUID parseAssigneeFilterId(String assigneeId) {
+        if (!StringUtils.hasText(assigneeId)) {
+            return null;
+        }
+        try {
+            return UUID.fromString(assigneeId.trim());
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    private boolean matchesCategoriesFilter(ProductSnapshot snapshot, String categories, String legacyCategoryName) {
+        List<String> tokens = parseCsvTokens(categories);
+        if (tokens.isEmpty() && StringUtils.hasText(legacyCategoryName)) {
+            tokens = List.of(legacyCategoryName.trim());
+        }
+        if (tokens.isEmpty()) {
+            return true;
+        }
+        if (!StringUtils.hasText(snapshot.getCategoryName())) {
+            return false;
+        }
+        String categoryName = snapshot.getCategoryName().toLowerCase(Locale.ROOT);
+        return tokens.stream().anyMatch(token -> {
+            String normalized = token.toLowerCase(Locale.ROOT);
+            return categoryName.equals(normalized) || categoryName.contains(normalized);
+        });
+    }
+
+    private boolean matchesServiceFeeFilter(ProductSnapshot snapshot, String serviceFee) {
+        BigDecimal rate = resolveServiceFeeRate(snapshot);
+        return switch (serviceFee) {
+            case "gt20" -> rate.compareTo(BigDecimal.valueOf(20)) >= 0;
+            case "10_20" -> rate.compareTo(BigDecimal.TEN) >= 0 && rate.compareTo(BigDecimal.valueOf(20)) < 0;
+            case "lt10" -> rate.compareTo(BigDecimal.TEN) < 0;
+            default -> true;
+        };
+    }
+
+    private boolean matchesSupportsAdsFilter(ProductOperationState state, ProductSnapshot snapshot, String supportsAds) {
+        boolean adsEnabled = supportsAdsEnabled(state, snapshot);
+        return "1".equals(supportsAds) ? adsEnabled : !adsEnabled;
+    }
+
+    private boolean supportsAdsEnabled(ProductOperationState state, ProductSnapshot snapshot) {
+        Map<String, Object> supplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
+        if (Boolean.TRUE.equals(readBoolean(supplement, "supportsAds"))) {
+            return true;
+        }
+        if (state != null && (StringUtils.hasText(state.getPromoteLink()) || StringUtils.hasText(state.getShortLink()))) {
+            return true;
+        }
+        return snapshot.getActivityAdCosRatio() != null && snapshot.getActivityAdCosRatio() > 0;
+    }
+
+    private List<String> parseCsvTokens(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+    }
+
+    public List<String> listLibraryCategories() {
+        List<String> categories = snapshotMapper.listDisplayingLibraryCategoryNames();
+        if (categories == null || categories.isEmpty()) {
+            return List.of();
+        }
+        return categories.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+    }
+
+    private Page<Product> emptySelectedLibraryPage(long currentPage, long pageSize) {
+        Page<Product> result = new Page<>(currentPage, pageSize, 0L);
+        result.setRecords(List.of());
+        return result;
     }
 
     private boolean matchesSystemTagFilter(ProductSnapshot snapshot, String systemTag) {
@@ -762,12 +1258,21 @@ public class ProductService {
 
     @Transactional(rollbackFor = Exception.class)
     public void upsertSnapshots(String activityId, List<DouyinProductGateway.ActivityProductItem> items) {
+        upsertSnapshotsWithStats(activityId, items);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    ActivitySnapshotUpsertStats upsertSnapshotsWithStats(String activityId, List<DouyinProductGateway.ActivityProductItem> items) {
         if (!StringUtils.hasText(activityId) || items == null || items.isEmpty()) {
-            return;
+            return new ActivitySnapshotUpsertStats(0, 0, items == null ? 0 : items.size());
         }
+        int created = 0;
+        int updated = 0;
+        int skipped = 0;
         for (DouyinProductGateway.ActivityProductItem item : items) {
             String productId = String.valueOf(item.productId());
             if (!StringUtils.hasText(productId)) {
+                skipped++;
                 continue;
             }
             UUID snapshotId = buildSnapshotId(activityId, productId);
@@ -777,12 +1282,16 @@ public class ProductService {
                 snapshot.setId(snapshotId);
                 snapshot.setActivityId(activityId);
                 snapshot.setProductId(productId);
+                created++;
+            } else {
+                updated++;
             }
             fillSnapshot(snapshot, item);
             snapshotMapper.upsert(snapshot);
             ProductOperationState existingState = getOperationState(activityId, productId);
             productBizStatusService.initStateIfAbsent(existingState, activityId, productId, null, null, "活动商品同步");
         }
+        return new ActivitySnapshotUpsertStats(created, updated, skipped);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -794,6 +1303,9 @@ public class ProductService {
         String cursor = request.cursor();
         Set<String> seenProductKeys = new LinkedHashSet<>();
         int maxPages = 100;
+        int createdCount = 0;
+        int updatedCount = 0;
+        int skippedCount = 0;
 
         for (int pageNo = 0; pageNo < maxPages; pageNo++) {
             DouyinProductGateway.ActivityProductListResult result = douyinProductGateway.queryActivityProducts(
@@ -816,7 +1328,10 @@ public class ProductService {
             if (items == null || items.isEmpty()) {
                 break;
             }
-            upsertSnapshots(request.activityId(), items);
+            ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), items);
+            createdCount += stats.createdCount();
+            updatedCount += stats.updatedCount();
+            skippedCount += stats.skippedCount();
 
             int newItems = 0;
             for (DouyinProductGateway.ActivityProductItem item : items) {
@@ -835,7 +1350,21 @@ public class ProductService {
             }
             cursor = nextCursor;
         }
+        productDisplayRuleService.applyForActivityId(request.activityId());
+        ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(request.activityId());
+        productDomainEventPublisher.publishActivitySyncCompleted(
+                request.activityId(),
+                activity == null ? null : activity.getName(),
+                "FULL",
+                createdCount,
+                updatedCount,
+                skippedCount,
+                "SUCCESS",
+                null);
         return seenProductKeys.size();
+    }
+
+    record ActivitySnapshotUpsertStats(int createdCount, int updatedCount, int skippedCount) {
     }
 
     public Map<String, Object> buildActivityProductListView(
@@ -903,10 +1432,40 @@ public class ProductService {
             String productInfo,
             String bizStatus,
             Integer promotionStatus) {
+        return buildActivityProductListViewFromDb(
+                activityId, count, cursor, productInfo, bizStatus, promotionStatus, "default", null, null);
+    }
+
+    public Map<String, Object> buildActivityProductListViewFromDb(
+            String activityId,
+            Integer count,
+            String cursor,
+            String productInfo,
+            String bizStatus,
+            Integer promotionStatus,
+            String sortBy) {
+        return buildActivityProductListViewFromDb(
+                activityId, count, cursor, productInfo, bizStatus, promotionStatus, sortBy, null, null);
+    }
+
+    public Map<String, Object> buildActivityProductListViewFromDb(
+            String activityId,
+            Integer count,
+            String cursor,
+            String productInfo,
+            String bizStatus,
+            Integer promotionStatus,
+            String sortBy,
+            String goodsTags,
+            String productTags) {
         int pageSize = Math.min(Math.max(count == null ? 20 : count, 1), 20);
         int offset = parseCursor(cursor);
         BizStatusFilter bizStatusFilter = resolveBizStatusFilter(activityId, bizStatus);
         if (bizStatusFilter.isEmptyFilter()) {
+            return emptyActivityProductListView(activityId);
+        }
+        Set<String> auditTagProductScope = resolveActivityAuditTagProductScope(activityId, goodsTags, productTags);
+        if (auditTagProductScope != null && auditTagProductScope.isEmpty()) {
             return emptyActivityProductListView(activityId);
         }
 
@@ -919,6 +1478,7 @@ public class ProductService {
                         .or()
                         .like(ProductSnapshot::getShopName, productInfo.trim()));
         applyBizStatusFilter(countWrapper, bizStatusFilter);
+        applyProductIdScope(countWrapper, auditTagProductScope);
         Long total = snapshotMapper.selectCount(countWrapper);
 
         Page<ProductSnapshot> snapshotPage = new Page<>(offset / pageSize + 1, pageSize);
@@ -933,6 +1493,7 @@ public class ProductService {
                 .orderByDesc(ProductSnapshot::getSyncTime)
                 .orderByDesc(ProductSnapshot::getCreateTime);
         applyBizStatusFilter(queryWrapper, bizStatusFilter);
+        applyProductIdScope(queryWrapper, auditTagProductScope);
         List<ProductSnapshot> snapshots = snapshotMapper.selectPage(snapshotPage, queryWrapper).getRecords();
 
         if (snapshots.isEmpty()) {
@@ -967,9 +1528,10 @@ public class ProductService {
                         decisionSummaryMap.get(snapshot.getProductId()),
                         orderSummaryMap.get(snapshot.getProductId()),
                         promotionSummaryMap.get(snapshot.getProductId()),
-                        merchantMap.get(snapshot.getShopId()),
+                        lookupMerchant(merchantMap, snapshot.getShopId()),
                         assigneeNameMap))
-                .toList();
+                .collect(Collectors.toCollection(ArrayList::new));
+        sortActivityProductItems(items, normalizeActivityProductSortBy(sortBy));
 
         int nextOffset = offset + snapshots.size();
         boolean hasMore = total != null && nextOffset < total;
@@ -1094,6 +1656,7 @@ public class ProductService {
             Map<String, Object> detail = getActivityProductDetail(activityId, productId);
             detail.put("selectedToLibrary", true);
             detail.put("libraryVisible", true);
+            productDisplayRuleService.applyForProductId(productId);
             return detail;
         } else if (state.getId() == null) {
             operationStateMapper.insert(state);
@@ -1117,6 +1680,7 @@ public class ProductService {
         Map<String, Object> detail = getActivityProductDetail(activityId, productId);
         detail.put("selectedToLibrary", true);
         detail.put("libraryVisible", true);
+        productDisplayRuleService.applyForProductId(productId);
         return detail;
     }
 
@@ -1174,6 +1738,7 @@ public class ProductService {
         ProductOperationState state = getOrInitOperationState(activityId, productId);
         ensurePostAuditLibraryFlag(state, operatorId);
         requireSelectedToLibrary(state, "分配招商");
+        UUID oldAssigneeId = state.getAssigneeId();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("assigneeId", assigneeId);
         payload.put("assigneeName", resolveUserDisplayName(assigneeId));
@@ -1190,6 +1755,14 @@ public class ProductService {
                 "分配招商成功",
                 current -> current.setAssigneeId(assigneeId)
         );
+        if (!java.util.Objects.equals(oldAssigneeId, assigneeId)) {
+            productDomainEventPublisher.publishProductOwnerChanged(
+                    activityId,
+                    productId,
+                    oldAssigneeId,
+                    assigneeId,
+                    operatorId);
+        }
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -1311,6 +1884,7 @@ public class ProductService {
             Map<String, Object> detail = getActivityProductDetail(activityId, productId);
             detail.put("selectedToLibrary", true);
             detail.put("libraryVisible", true);
+            productDisplayRuleService.applyForProductId(productId);
             return detail;
         }
 
@@ -1790,6 +2364,8 @@ public class ProductService {
         if (!StringUtils.hasText(activityId)) {
             return null;
         }
+        ColonelsettlementActivity previous = colonelActivityMapper.selectByActivityId(activityId);
+        LocalDateTime previousEndTime = previous == null ? null : previous.getEndTime();
         try {
             Map<String, Object> response = douyinActivityGateway.activityDetail(null, activityId);
             Map<String, Object> data = readPrimaryDataNode(response);
@@ -1797,6 +2373,7 @@ public class ProductService {
             if (colonelBuyinId == null || colonelBuyinId <= 0L) {
                 return null;
             }
+            LocalDateTime newEndTime = parseDateTimeValue(readString(data, "activity_end_time", "activityEndTime", "end_time", "endTime"));
             colonelActivityMapper.upsertRealActivityMeta(
                     UUID.nameUUIDFromBytes(("real-activity-" + activityId).getBytes(StandardCharsets.UTF_8)),
                     activityId,
@@ -1807,16 +2384,33 @@ public class ProductService {
                     readRateDecimal(data, "commission_rate", "commissionRate"),
                     readRateDecimal(data, "service_rate", "serviceRate"),
                     parseDateTimeValue(readString(data, "activity_start_time", "activityStartTime", "start_time", "startTime")),
-                    parseDateTimeValue(readString(data, "activity_end_time", "activityEndTime", "end_time", "endTime")),
+                    newEndTime,
                     readString(data, "status_text", "statusText", "status"),
                     LocalDateTime.now(),
                     data
             );
+            detectAndPublishActivityExtended(activityId, previousEndTime, newEndTime);
             return String.valueOf(colonelBuyinId);
         } catch (Exception ex) {
             // 真实活动详情补水仅作为 native 映射生成前的兜底，不阻断转链主流程。
             log.warn("Hydrate colonel activity meta failed, activityId={}", activityId, ex);
             return null;
+        }
+    }
+
+    private void detectAndPublishActivityExtended(String activityId, LocalDateTime previousEndTime, LocalDateTime newEndTime) {
+        if (newEndTime == null) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        boolean wasExpired = previousEndTime != null && previousEndTime.isBefore(now);
+        boolean nowActive = newEndTime.isAfter(now);
+        if (wasExpired && nowActive) {
+            productDomainEventPublisher.publishActivityExtended(
+                    activityId,
+                    previousEndTime.toString(),
+                    newEndTime.toString());
+            productDisplayRuleService.applyForActivityId(activityId);
         }
     }
 
@@ -2289,6 +2883,14 @@ public class ProductService {
             product.setSelectedAt(state.getSelectedAt());
             Map<String, Object> auditSupplement = parseAuditPayload(state.getAuditPayload());
             product.setAuditSupplement(auditSupplement);
+            Boolean supportsAds = readBoolean(auditSupplement, "supportsAds");
+            if (supportsAds != null) {
+                product.setSupportsAds(supportsAds);
+            }
+            String adsRule = readString(auditSupplement, "adsRule");
+            if (StringUtils.hasText(adsRule)) {
+                product.setAdsRule(adsRule);
+            }
             ProductBizStatus bizStatus = productBizStatusService.readBizStatus(state);
             if (bizStatus == null) {
                 bizStatus = ProductBizStatus.PENDING_AUDIT;
@@ -2297,6 +2899,10 @@ public class ProductService {
             product.setBizStatusLabel(bizStatus.getLabel());
             product.setPinned(ProductPinService.isPinned(state, java.time.LocalDateTime.now()));
             product.setPinnedUntil(state.getPinnedUntil());
+            ProductDisplayStatus displayStatus = ProductDisplayStatus.fromCode(state.getDisplayStatus());
+            product.setDisplayStatus(displayStatus.name());
+            product.setDisplayStatusLabel(displayStatus.getLabel());
+            product.setHiddenReason(state.getHiddenReason());
         }
         return product;
     }
@@ -2382,6 +2988,22 @@ public class ProductService {
             view.put("selectedToLibrary", Boolean.TRUE.equals(state.getSelectedToLibrary()));
             view.put("libraryVisible", Boolean.TRUE.equals(state.getSelectedToLibrary()));
             view.put("selectedAt", state.getSelectedAt());
+            view.put("pinned", ProductPinService.isPinned(state, LocalDateTime.now()));
+            view.put("pinnedUntil", state.getPinnedUntil());
+            Map<String, Object> auditSupplement = parseAuditPayload(state.getAuditPayload());
+            view.put("auditSupplementSummary", buildAuditSupplementSummary(auditSupplement));
+            view.put("auditSupplementComplete", isAuditSupplementComplete(auditSupplement));
+            Boolean supportsAds = readBoolean(auditSupplement, "supportsAds");
+            if (supportsAds != null) {
+                view.put("supportsAds", supportsAds);
+            }
+            String adsRule = readString(auditSupplement, "adsRule");
+            if (StringUtils.hasText(adsRule)) {
+                view.put("adsRule", adsRule);
+            }
+            applyDisplayMark(view, state);
+        } else {
+            applyDisplayMark(view, null);
         }
         applyDecisionSummary(view, decisionSummary);
 
@@ -2584,6 +3206,67 @@ public class ProductService {
                 wrapper.notIn(ProductSnapshot::getProductId, excludeIds);
             }
         }
+    }
+
+    private Set<String> resolveActivityAuditTagProductScope(String activityId, String goodsTags, String productTags) {
+        List<String> expectedGoodsTags = normalizeTagFilter(goodsTags);
+        List<String> expectedProductTags = normalizeTagFilter(productTags);
+        if (expectedGoodsTags.isEmpty() && expectedProductTags.isEmpty()) {
+            return null;
+        }
+        if (!StringUtils.hasText(activityId)) {
+            return Set.of();
+        }
+        return operationStateMapper.selectList(new LambdaQueryWrapper<ProductOperationState>()
+                        .eq(ProductOperationState::getActivityId, activityId))
+                .stream()
+                .filter(state -> matchesAuditTagFilters(state, expectedGoodsTags, expectedProductTags))
+                .map(ProductOperationState::getProductId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private void applyProductIdScope(LambdaQueryWrapper<ProductSnapshot> wrapper, Set<String> productIds) {
+        if (wrapper != null && productIds != null) {
+            wrapper.in(ProductSnapshot::getProductId, productIds);
+        }
+    }
+
+    private boolean matchesAuditTagFilters(
+            ProductOperationState state,
+            List<String> expectedGoodsTags,
+            List<String> expectedProductTags) {
+        Map<String, Object> auditSupplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
+        return matchesTagFilter(readStringList(auditSupplement, "goodsTags"), expectedGoodsTags)
+                && matchesTagFilter(readStringList(auditSupplement, "productTags"), expectedProductTags);
+    }
+
+    private boolean matchesTagFilter(List<String> actualTags, List<String> expectedTags) {
+        if (expectedTags == null || expectedTags.isEmpty()) {
+            return true;
+        }
+        Set<String> actual = actualTags == null ? Set.of() : actualTags.stream()
+                .filter(StringUtils::hasText)
+                .map(tag -> tag.trim().toLowerCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+        if (actual.isEmpty()) {
+            return false;
+        }
+        return expectedTags.stream()
+                .filter(StringUtils::hasText)
+                .map(tag -> tag.trim().toLowerCase(Locale.ROOT))
+                .anyMatch(actual::contains);
+    }
+
+    private List<String> normalizeTagFilter(String rawTags) {
+        if (!StringUtils.hasText(rawTags)) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(rawTags.split("[,，\\n]"))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
     }
 
     private TalentFollowStatus normalizeFollowStatus(String rawStatus) {
@@ -2880,6 +3563,13 @@ public class ProductService {
                 ));
     }
 
+    private Merchant lookupMerchant(Map<Long, Merchant> merchantMap, Long shopId) {
+        if (shopId == null || merchantMap == null || merchantMap.isEmpty()) {
+            return null;
+        }
+        return merchantMap.get(shopId);
+    }
+
     private Merchant findMerchant(Long shopId) {
         if (shopId == null || shopId <= 0) {
             return null;
@@ -2940,6 +3630,10 @@ public class ProductService {
         pack.put("promoteLink", state == null ? null : state.getPromoteLink());
         pack.put("shortLink", state == null ? null : state.getShortLink());
         pack.put("supportsAds", readBoolean(auditSupplement, "supportsAds"));
+        String adsRule = readString(auditSupplement, "adsRule");
+        if (StringUtils.hasText(adsRule)) {
+            pack.put("adsRule", adsRule);
+        }
         pack.put("materialFiles", readStringList(auditSupplement, "materialFiles"));
         return pack;
     }
@@ -3044,6 +3738,166 @@ public class ProductService {
         }
     }
 
+    private String normalizeActivityProductSortBy(String sortBy) {
+        if (!StringUtils.hasText(sortBy)) {
+            return "default";
+        }
+        String normalized = sortBy.trim().toLowerCase(Locale.ROOT);
+        return "latest".equals(normalized) ? "latest" : "default";
+    }
+
+    private void sortActivityProductItems(List<Map<String, Object>> items, String sortBy) {
+        if (items == null || items.size() <= 1) {
+            return;
+        }
+        if ("latest".equals(sortBy)) {
+            items.sort(Comparator.comparing(
+                    item -> asMapDateTime(item.get("syncTime")),
+                    Comparator.nullsLast(Comparator.reverseOrder())));
+            return;
+        }
+        items.sort(this::compareActivityProductItems);
+    }
+
+    private int compareActivityProductItems(Map<String, Object> left, Map<String, Object> right) {
+        boolean leftPinned = Boolean.TRUE.equals(left.get("pinned"));
+        boolean rightPinned = Boolean.TRUE.equals(right.get("pinned"));
+        if (leftPinned != rightPinned) {
+            return leftPinned ? -1 : 1;
+        }
+        boolean leftPromoted = hasActivityPromotionLink(left);
+        boolean rightPromoted = hasActivityPromotionLink(right);
+        if (leftPromoted != rightPromoted) {
+            return leftPromoted ? -1 : 1;
+        }
+        BigDecimal leftCommission = parsePercentText(asMapText(left.get("activityCosRatioText")));
+        BigDecimal rightCommission = parsePercentText(asMapText(right.get("activityCosRatioText")));
+        int commissionCompare = rightCommission.compareTo(leftCommission);
+        if (commissionCompare != 0) {
+            return commissionCompare;
+        }
+        LocalDateTime leftSync = asMapDateTime(left.get("syncTime"));
+        LocalDateTime rightSync = asMapDateTime(right.get("syncTime"));
+        if (leftSync == null && rightSync == null) {
+            return 0;
+        }
+        if (leftSync == null) {
+            return 1;
+        }
+        if (rightSync == null) {
+            return -1;
+        }
+        return rightSync.compareTo(leftSync);
+    }
+
+    private boolean hasActivityPromotionLink(Map<String, Object> item) {
+        return StringUtils.hasText(asMapText(item.get("promoteLink")))
+                || StringUtils.hasText(asMapText(item.get("shortLink")))
+                || StringUtils.hasText(asMapText(item.get("promotionLink")));
+    }
+
+    private String asMapText(Object value) {
+        return value == null ? null : String.valueOf(value).trim();
+    }
+
+    private LocalDateTime asMapDateTime(Object value) {
+        if (value instanceof LocalDateTime dateTime) {
+            return dateTime;
+        }
+        if (value instanceof java.sql.Timestamp timestamp) {
+            return timestamp.toLocalDateTime();
+        }
+        return null;
+    }
+
+    private BigDecimal parsePercentText(String text) {
+        if (!StringUtils.hasText(text)) {
+            return BigDecimal.ZERO;
+        }
+        String normalized = text.replace("%", "").trim();
+        try {
+            return new BigDecimal(normalized);
+        } catch (NumberFormatException ex) {
+            return BigDecimal.ZERO;
+        }
+    }
+
+    private void applyDisplayMark(Map<String, Object> view, ProductOperationState state) {
+        ProductDisplayStatus displayStatus;
+        if (state == null || !Boolean.TRUE.equals(state.getSelectedToLibrary())) {
+            displayStatus = ProductDisplayStatus.PENDING;
+        } else {
+            displayStatus = ProductDisplayStatus.fromCode(state.getDisplayStatus());
+        }
+        view.put("displayStatus", displayStatus.name());
+        view.put("displayMark", toLegacyDisplayMark(displayStatus));
+        view.put("displayMarkLabel", displayStatus.getLabel());
+        if (state != null) {
+            view.put("hiddenReason", state.getHiddenReason());
+            view.put("firstDisplayedAt", state.getFirstDisplayedAt());
+            view.put("lastDisplayedAt", state.getLastDisplayedAt());
+            view.put("libraryVisible", displayStatus == ProductDisplayStatus.DISPLAYING);
+        }
+    }
+
+    private String toLegacyDisplayMark(ProductDisplayStatus displayStatus) {
+        return switch (displayStatus) {
+            case DISPLAYING -> "SHOWING";
+            case HIDDEN -> "HIDDEN";
+            case PENDING -> "PENDING";
+        };
+    }
+
+    private Map<String, Object> buildAuditSupplementSummary(Map<String, Object> auditSupplement) {
+        if (auditSupplement == null || auditSupplement.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> summary = new LinkedHashMap<>();
+        copyAuditSummaryField(summary, auditSupplement, "sampleThresholdRemark");
+        copyAuditSummaryField(summary, auditSupplement, "promotionScript");
+        copyAuditSummaryField(summary, auditSupplement, "shippingInfo");
+        copyAuditSummaryField(summary, auditSupplement, "rewardRemark");
+        copyAuditSummaryField(summary, auditSupplement, "participationRequirements");
+        copyAuditSummaryField(summary, auditSupplement, "campaignTimeRemark");
+        if (auditSupplement.containsKey("supportsAds")) {
+            summary.put("supportsAds", auditSupplement.get("supportsAds"));
+        }
+        copyAuditSummaryField(summary, auditSupplement, "adsRule");
+        List<String> sellingPoints = readStringList(auditSupplement, "sellingPoints");
+        if (!sellingPoints.isEmpty()) {
+            summary.put("sellingPointCount", sellingPoints.size());
+            summary.put("sellingPointsPreview", sellingPoints.stream().limit(2).toList());
+        }
+        List<String> materialFiles = readStringList(auditSupplement, "materialFiles");
+        if (!materialFiles.isEmpty()) {
+            summary.put("materialFileCount", materialFiles.size());
+        }
+        List<String> goodsTags = readStringList(auditSupplement, "goodsTags");
+        if (!goodsTags.isEmpty()) {
+            summary.put("goodsTags", goodsTags);
+        }
+        List<String> productTags = readStringList(auditSupplement, "productTags");
+        if (!productTags.isEmpty()) {
+            summary.put("productTags", productTags);
+        }
+        return summary;
+    }
+
+    private void copyAuditSummaryField(Map<String, Object> target, Map<String, Object> source, String key) {
+        Object value = source.get(key);
+        if (value != null && StringUtils.hasText(String.valueOf(value))) {
+            target.put(key, String.valueOf(value).trim());
+        }
+    }
+
+    private boolean isAuditSupplementComplete(Map<String, Object> auditSupplement) {
+        if (auditSupplement == null || auditSupplement.isEmpty()) {
+            return false;
+        }
+        return StringUtils.hasText(readString(auditSupplement, "sampleThresholdRemark"))
+                && StringUtils.hasText(readString(auditSupplement, "promotionScript"));
+    }
+
     private Map<String, Object> parseAuditPayload(String rawPayload) {
         if (!StringUtils.hasText(rawPayload)) {
             return Map.of();
@@ -3075,9 +3929,47 @@ public class ProductService {
         if (!materialFiles.isEmpty()) {
             normalized.put("materialFiles", materialFiles);
         }
+        List<String> goodsTags = normalizeStringList(supplement.get("goodsTags"));
+        if (goodsTags.isEmpty()) {
+            goodsTags = normalizeStringList(supplement.get("goods_tags"));
+        }
+        if (!goodsTags.isEmpty()) {
+            normalized.put("goodsTags", goodsTags);
+        }
+        List<String> productTags = normalizeStringList(supplement.get("productTags"));
+        if (productTags.isEmpty()) {
+            productTags = normalizeStringList(supplement.get("product_tags"));
+        }
+        if (!productTags.isEmpty()) {
+            normalized.put("productTags", productTags);
+        }
         if (supplement.containsKey("supportsAds") && supplement.get("supportsAds") != null) {
             normalized.put("supportsAds", Boolean.parseBoolean(String.valueOf(supplement.get("supportsAds"))));
         }
+        putNormalizedText(normalized, "adsRule", supplement.get("adsRule"));
+        if (!normalized.containsKey("adsRule")) {
+            putNormalizedText(normalized, "adsRule", supplement.get("投流规则"));
+        }
+        putNormalizedBoolean(normalized, "freeSample", supplement.get("freeSample"));
+        putNormalizedBoolean(normalized, "sampleFree", supplement.get("sampleFree"));
+        putNormalizedBoolean(normalized, "sample_free", supplement.get("sample_free"));
+        putNormalizedText(normalized, "sampleType", supplement.get("sampleType"));
+        putNormalizedBoolean(normalized, "materialDownloadAvailable", supplement.get("materialDownloadAvailable"));
+        putNormalizedBoolean(normalized, "materialDownload", supplement.get("materialDownload"));
+        putNormalizedBoolean(normalized, "exclusivePrice", supplement.get("exclusivePrice"));
+        putNormalizedBoolean(normalized, "handCardAvailable", supplement.get("handCardAvailable"));
+        putNormalizedBoolean(normalized, "handCard", supplement.get("handCard"));
+        List<String> handCardFiles = normalizeStringList(supplement.get("handCardFiles"));
+        if (!handCardFiles.isEmpty()) {
+            normalized.put("handCardFiles", handCardFiles);
+        }
+        putNormalizedBoolean(normalized, "productChainGroup", supplement.get("productChainGroup"));
+        putNormalizedBoolean(normalized, "productChain", supplement.get("productChain"));
+        putNormalizedBoolean(normalized, "doubleCommission", supplement.get("doubleCommission"));
+        putNormalizedBoolean(normalized, "dedupeSelection", supplement.get("dedupeSelection"));
+        putNormalizedBoolean(normalized, "dedup", supplement.get("dedup"));
+        putNormalizedBoolean(normalized, "notInProductPool", supplement.get("notInProductPool"));
+        putNormalizedBoolean(normalized, "notInLibrary", supplement.get("notInLibrary"));
         putNormalizedNumber(normalized, "sampleThresholdSales", supplement.get("sampleThresholdSales"));
         putNormalizedNumber(normalized, "sampleThresholdLevel", supplement.get("sampleThresholdLevel"));
         return normalized;
@@ -3107,6 +3999,21 @@ public class ProductService {
         } catch (NumberFormatException ex) {
             payload.put(key, value);
         }
+    }
+
+    private void putNormalizedBoolean(Map<String, Object> payload, String key, Object rawValue) {
+        if (rawValue == null) {
+            return;
+        }
+        if (rawValue instanceof Boolean b) {
+            payload.put(key, b);
+            return;
+        }
+        String value = String.valueOf(rawValue).trim();
+        if (!StringUtils.hasText(value)) {
+            return;
+        }
+        payload.put(key, Boolean.parseBoolean(value));
     }
 
     private String readString(Map<String, Object> payload, String key) {
@@ -3452,6 +4359,11 @@ public class ProductService {
             Integer status,
             String shopKeyword,
             String categoryName,
+            String categories,
+            String activityId,
+            String assigneeId,
+            String serviceFee,
+            String supportsAds,
             String salesRange,
             String promotionLink,
             String allianceStatus,
@@ -3459,10 +4371,86 @@ public class ProductService {
             String hasSample,
             String assignee,
             String systemTag,
-            String decision
+            String decision,
+            String partnerId,
+            String partnerType,
+            String sortBy,
+            String goodsTags,
+            String productTags,
+            String colonelName,
+            String published,
+            String cooperationType,
+            String livePriceMin,
+            String livePriceMax,
+            String commissionMin,
+            String commissionMax,
+            String sampleSalesMin,
+            String sampleSalesMax,
+            String materialDownload,
+            String exclusivePrice,
+            String productChain,
+            String handCard,
+            String doubleCommission,
+            String notInLibrary,
+            String dedup,
+            String recruitActivityId,
+            String recruitActivityName,
+            String listed,
+            String freeSample
     ) {
         public static SelectedLibraryFilter empty() {
-            return new SelectedLibraryFilter(null, null, null, null, null, null, null, null, null, null, null, null);
+            return new SelectedLibraryFilter(
+                    null, null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null);
+        }
+
+        public static SelectedLibraryFilter of(String keyword, Integer status) {
+            SelectedLibraryFilter empty = empty();
+            return new SelectedLibraryFilter(
+                    trimToNull(keyword),
+                    status,
+                    empty.shopKeyword(),
+                    empty.categoryName(),
+                    empty.categories(),
+                    empty.activityId(),
+                    empty.assigneeId(),
+                    empty.serviceFee(),
+                    empty.supportsAds(),
+                    empty.salesRange(),
+                    empty.promotionLink(),
+                    empty.allianceStatus(),
+                    empty.commission(),
+                    empty.hasSample(),
+                    empty.assignee(),
+                    empty.systemTag(),
+                    empty.decision(),
+                    empty.partnerId(),
+                    empty.partnerType(),
+                    empty.sortBy(),
+                    empty.goodsTags(),
+                    empty.productTags(),
+                    empty.colonelName(),
+                    empty.published(),
+                    empty.cooperationType(),
+                    empty.livePriceMin(),
+                    empty.livePriceMax(),
+                    empty.commissionMin(),
+                    empty.commissionMax(),
+                    empty.sampleSalesMin(),
+                    empty.sampleSalesMax(),
+                    empty.materialDownload(),
+                    empty.exclusivePrice(),
+                    empty.productChain(),
+                    empty.handCard(),
+                    empty.doubleCommission(),
+                    empty.notInLibrary(),
+                    empty.dedup(),
+                    empty.recruitActivityId(),
+                    empty.recruitActivityName(),
+                    empty.listed(),
+                    empty.freeSample());
         }
 
         public SelectedLibraryFilter normalized() {
@@ -3471,6 +4459,11 @@ public class ProductService {
                     status,
                     trimToNull(shopKeyword),
                     trimToNull(categoryName),
+                    trimToNull(categories),
+                    trimToNull(activityId),
+                    trimToNull(assigneeId),
+                    normalizeToken(serviceFee),
+                    normalizeToken(supportsAds),
                     normalizeToken(salesRange),
                     normalizeToken(promotionLink),
                     normalizeToken(allianceStatus),
@@ -3478,8 +4471,59 @@ public class ProductService {
                     normalizeToken(hasSample),
                     normalizeToken(assignee),
                     normalizeToken(systemTag),
-                    normalizeToken(decision)
+                    normalizeToken(decision),
+                    trimToNull(partnerId),
+                    normalizePartnerType(partnerType),
+                    normalizeSortBy(sortBy),
+                    normalizeToken(goodsTags),
+                    normalizeToken(productTags),
+                    trimToNull(colonelName),
+                    normalizeToken(published),
+                    normalizeToken(cooperationType),
+                    trimToNull(livePriceMin),
+                    trimToNull(livePriceMax),
+                    trimToNull(commissionMin),
+                    trimToNull(commissionMax),
+                    trimToNull(sampleSalesMin),
+                    trimToNull(sampleSalesMax),
+                    normalizeToken(materialDownload),
+                    normalizeToken(exclusivePrice),
+                    normalizeToken(productChain),
+                    normalizeToken(handCard),
+                    normalizeToken(doubleCommission),
+                    normalizeToken(notInLibrary),
+                    normalizeToken(dedup),
+                    trimToNull(recruitActivityId),
+                    trimToNull(recruitActivityName),
+                    normalizeToken(listed),
+                    normalizeToken(freeSample)
             );
+        }
+
+        private static String normalizePartnerType(String partnerType) {
+            String trimmed = trimToNull(partnerType);
+            if (trimmed == null) {
+                return null;
+            }
+            String upper = trimmed.toUpperCase(Locale.ROOT);
+            if ("COLONEL".equals(upper) || "团长".equals(trimmed)) {
+                return "COLONEL";
+            }
+            if ("MERCHANT".equals(upper) || "SHOP".equals(upper) || "商家".equals(trimmed)) {
+                return "MERCHANT";
+            }
+            return upper;
+        }
+
+        private static String normalizeSortBy(String sortBy) {
+            String trimmed = normalizeToken(sortBy);
+            if (trimmed == null || "default".equals(trimmed) || "pinned".equals(trimmed)) {
+                return "default";
+            }
+            if ("latest".equals(trimmed)) {
+                return "latest";
+            }
+            return trimmed;
         }
 
         private static String trimToNull(String value) {

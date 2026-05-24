@@ -1,11 +1,15 @@
 package com.colonel.saas.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.auth.dto.SysDeptCreateRequest;
 import com.colonel.saas.auth.dto.SysDeptUpdateRequest;
 import com.colonel.saas.auth.service.SysDeptService;
+import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.vo.DeptStatsVO;
 import com.colonel.saas.vo.SysDeptVO;
+import com.colonel.saas.vo.SysUserVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +40,8 @@ class SysDeptControllerTest {
 
     @Mock
     private SysDeptService sysDeptService;
+    @Mock
+    private SysUserService sysUserService;
 
     private MockMvc mockMvc;
     private ObjectMapper objectMapper;
@@ -44,7 +50,7 @@ class SysDeptControllerTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        SysDeptController controller = new SysDeptController(sysDeptService);
+        SysDeptController controller = new SysDeptController(sysDeptService, sysUserService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -105,7 +111,7 @@ class SysDeptControllerTest {
         when(sysDeptService.create(any(SysDeptCreateRequest.class), any())).thenReturn(vo);
 
         SysDeptCreateRequest request = new SysDeptCreateRequest(
-                null, "BIZ_A", "招商一组", null, null, null, 10, 1, null);
+                null, "BIZ_A", "招商一组", null, null, null, 10, 1, null, "recruiter_group", null);
 
         mockMvc.perform(post("/depts")
                         .requestAttr("userId", UUID.randomUUID())
@@ -128,6 +134,39 @@ class SysDeptControllerTest {
     }
 
     @Test
+    void stats_returnsDeptStats() throws Exception {
+        DeptStatsVO stats = new DeptStatsVO();
+        stats.setDeptId(deptId);
+        stats.setMemberCount(5);
+        stats.setRecruiterGroupCount(2);
+        stats.setChannelGroupCount(1);
+        when(sysDeptService.getStats(deptId)).thenReturn(stats);
+
+        mockMvc.perform(get("/depts/{id}/stats", deptId)
+                        .requestAttr("userId", UUID.randomUUID()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.memberCount").value(5))
+                .andExpect(jsonPath("$.data.recruiterGroupCount").value(2));
+    }
+
+    @Test
+    void members_returnsPagedUsers() throws Exception {
+        SysUserVO user = new SysUserVO();
+        user.setId(UUID.randomUUID());
+        user.setUsername("member1");
+        Page<SysUserVO> page = new Page<>(1, 10, 1);
+        page.setRecords(List.of(user));
+        when(sysDeptService.findMembers(eq(deptId), any())).thenReturn(page);
+
+        mockMvc.perform(get("/depts/{id}/members", deptId)
+                        .param("page", "1")
+                        .param("size", "10")
+                        .requestAttr("userId", UUID.randomUUID()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records[0].username").value("member1"));
+    }
+
+    @Test
     void update_returnsUpdatedDept() throws Exception {
         SysDeptVO vo = new SysDeptVO();
         vo.setId(deptId);
@@ -136,7 +175,7 @@ class SysDeptControllerTest {
         when(sysDeptService.update(eq(deptId), any(SysDeptUpdateRequest.class), any())).thenReturn(vo);
 
         SysDeptUpdateRequest request = new SysDeptUpdateRequest(
-                null, "BIZ_B", "招商二组", null, null, null, 20, 1, "更新");
+                null, "BIZ_B", "招商二组", null, null, null, 20, 1, "更新", null, null);
 
         mockMvc.perform(put("/departments/{id}", deptId)
                         .requestAttr("userId", UUID.randomUUID())

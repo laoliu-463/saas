@@ -206,7 +206,7 @@ class AuthDtoTest {
 
             var req = new SysUserCreateRequest(
                     "zhangsan", "Passw0rd!", "张三",
-                    "13800138000", "zhangsan@test.com", deptId, roleIds);
+                    "13800138000", "zhangsan@test.com", null, null, deptId, roleIds);
 
             assertThat(req.username()).isEqualTo("zhangsan");
             assertThat(req.password()).isEqualTo("Passw0rd!");
@@ -224,7 +224,7 @@ class AuthDtoTest {
 
         @Test
         void recordAccessors() {
-            var req = new SysUserPageRequest(2, 20, "admin", 1, null);
+            var req = new SysUserPageRequest(2, 20, "admin", 1, null, null, null, null);
 
             assertThat(req.page()).isEqualTo(2);
             assertThat(req.size()).isEqualTo(20);
@@ -233,14 +233,14 @@ class AuthDtoTest {
 
         @Test
         void pageNo_default() {
-            var req = new SysUserPageRequest(null, null, null, null, null);
+            var req = new SysUserPageRequest(null, null, null, null, null, null, null, null);
             assertThat(req.pageNo()).isEqualTo(1L);
             assertThat(req.pageSize()).isEqualTo(10L);
         }
 
         @Test
         void pageNo_fromPage() {
-            var req = new SysUserPageRequest(5, 20, null, null, null);
+            var req = new SysUserPageRequest(5, 20, null, null, null, null, null, null);
             assertThat(req.pageNo()).isEqualTo(5L);
             assertThat(req.pageSize()).isEqualTo(20L);
         }
@@ -252,7 +252,7 @@ class AuthDtoTest {
 
         @Test
         void recordAccessors() {
-            var req = new SysUserUpdateRequest("张三", "13800138000", "test@test.com", 1);
+            var req = new SysUserUpdateRequest("张三", "13800138000", "test@test.com", 1, null, null, null);
 
             assertThat(req.realName()).isEqualTo("张三");
             assertThat(req.phone()).isEqualTo("13800138000");

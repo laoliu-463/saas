@@ -172,4 +172,19 @@ public class Product extends BaseEntity {
 
     @TableField(exist = false)
     private LocalDateTime pinnedUntil;
+
+    @TableField(exist = false)
+    private String displayStatus;
+
+    @TableField(exist = false)
+    private String displayStatusLabel;
+
+    @TableField(exist = false)
+    private String hiddenReason;
+
+    @TableField(exist = false)
+    private Boolean supportsAds;
+
+    @TableField(exist = false)
+    private String adsRule;
 }

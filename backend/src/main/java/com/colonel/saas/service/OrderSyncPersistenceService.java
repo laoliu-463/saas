@@ -127,6 +127,7 @@ public class OrderSyncPersistenceService {
                 order.getSettleColonelTechServiceFee() == null ? 0L : order.getSettleColonelTechServiceFee(),
                 order.getSettleSecondColonelCommission() == null ? 0L : order.getSettleSecondColonelCommission(),
                 order.getOrderStatus(),
+                order.getCreateTime(),
                 resolveTalentUid(order.getExtraData()),
                 order.getExtraData()));
     }

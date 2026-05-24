@@ -1,6 +1,7 @@
 package com.colonel.saas.service.talent.profile.provider;
 
 import cn.hutool.http.Method;
+import com.colonel.saas.config.TalentCollectProperties;
 import com.colonel.saas.service.talent.TalentInputParseResult;
 import com.colonel.saas.service.talent.profile.TalentProfileFieldNames;
 import com.colonel.saas.service.talent.profile.TalentProfileQuery;
@@ -16,6 +17,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TalentProfileProviderTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private TalentCollectProperties apiCollectProps() {
+        TalentCollectProperties properties = new TalentCollectProperties();
+        properties.setMode("api");
+        properties.getApi().setEnabled(true);
+        return properties;
+    }
+
+    private TalentCollectProperties crawlerCollectProps() {
+        TalentCollectProperties properties = new TalentCollectProperties();
+        properties.setMode("crawler");
+        return properties;
+    }
 
     @Test
     void manualProviderShouldSupportOnlyManualPayloadAndMapAllKnownFields() {
@@ -83,11 +97,11 @@ class TalentProfileProviderTest {
     @Test
     void configurableHttpProviderSupportsOnlyEnabledEndpointAndInput() {
         ConfigurableHttpTalentProvider disabled =
-                new ConfigurableHttpTalentProvider(objectMapper, false, "https://api.example/profile", "GET", "", "");
+                new ConfigurableHttpTalentProvider(objectMapper, apiCollectProps(), false, "https://api.example/profile", "GET", "", "");
         ConfigurableHttpTalentProvider missingEndpoint =
-                new ConfigurableHttpTalentProvider(objectMapper, true, " ", "GET", "", "");
+                new ConfigurableHttpTalentProvider(objectMapper, apiCollectProps(), true, " ", "GET", "", "");
         ConfigurableHttpTalentProvider enabled =
-                new ConfigurableHttpTalentProvider(objectMapper, true, "https://api.example/profile", "GET", "token", "");
+                new ConfigurableHttpTalentProvider(objectMapper, apiCollectProps(), true, "https://api.example/profile", "GET", "token", "");
 
         assertThat(disabled.providerCode()).isEqualTo("configurable_http");
         assertThat(disabled.order()).isEqualTo(10);
@@ -100,7 +114,7 @@ class TalentProfileProviderTest {
     @Test
     void configurableHttpProviderMapsSuccessfulProfileResponses() {
         ConfigurableHttpTalentProvider provider =
-                new ConfigurableHttpTalentProvider(objectMapper, true, "https://api.example/profile", "POST", "", "Bearer explicit");
+                new ConfigurableHttpTalentProvider(objectMapper, apiCollectProps(), true, "https://api.example/profile", "POST", "", "Bearer explicit");
         String body = """
                 {
                   "data": {
@@ -144,7 +158,7 @@ class TalentProfileProviderTest {
     @Test
     void configurableHttpProviderFailsEmptyProfilesAndParsesHttpMethods() {
         ConfigurableHttpTalentProvider provider =
-                new ConfigurableHttpTalentProvider(objectMapper, true, "https://api.example/profile", "GET", "", "");
+                new ConfigurableHttpTalentProvider(objectMapper, apiCollectProps(), true, "https://api.example/profile", "GET", "", "");
 
         TalentProfileResult empty = ReflectionTestUtils.invokeMethod(provider, "mapResponse", "{\"data\":{}}", "uid-a");
 
@@ -159,8 +173,8 @@ class TalentProfileProviderTest {
 
     @Test
     void publicWebProviderSupportsAndResolvesTargetUrls() {
-        PublicWebTalentProvider enabled = new PublicWebTalentProvider(objectMapper, true);
-        PublicWebTalentProvider disabled = new PublicWebTalentProvider(objectMapper, false);
+        PublicWebTalentProvider enabled = new PublicWebTalentProvider(objectMapper, crawlerCollectProps(), true);
+        PublicWebTalentProvider disabled = new PublicWebTalentProvider(objectMapper, crawlerCollectProps(), false);
         TalentProfileQuery parsedUrl = TalentProfileQuery.builder()
                 .input("ignored")
                 .parsed(TalentInputParseResult.builder().profileUrl(" https://profile.example/u ").build())
@@ -170,7 +184,7 @@ class TalentProfileProviderTest {
                 .parsed(TalentInputParseResult.builder().secUid("SEC123").build())
                 .build();
 
-        assertThat(enabled.providerCode()).isEqualTo("public_web");
+        assertThat(enabled.providerCode()).isEqualTo("CRAWLER");
         assertThat(enabled.order()).isEqualTo(20);
         assertThat(disabled.supports(query("uid-1"))).isFalse();
         assertThat(enabled.supports(query("uid-1"))).isTrue();
@@ -187,7 +201,7 @@ class TalentProfileProviderTest {
 
     @Test
     void publicWebProviderParsesHtmlProfileFieldsAndFailureCases() {
-        PublicWebTalentProvider provider = new PublicWebTalentProvider(objectMapper, true);
+        PublicWebTalentProvider provider = new PublicWebTalentProvider(objectMapper, crawlerCollectProps(), true);
         String html = """
                 <html><script>{
                   "nickname": "Nick Web",
@@ -212,7 +226,7 @@ class TalentProfileProviderTest {
 
         assertThat(result).isNotNull();
         assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getProviderCode()).isEqualTo("public_web");
+        assertThat(result.getProviderCode()).isEqualTo("CRAWLER");
         assertThat(result.getSyncStatus()).isEqualTo(TalentProfileResult.STATUS_PARTIAL_SUCCESS);
         assertThat(result.getTalentUid()).isEqualTo("uid-web");
         assertThat(result.getNickname()).isEqualTo("Nick Web");
@@ -243,7 +257,7 @@ class TalentProfileProviderTest {
 
     @Test
     void publicWebProviderShouldParseRenderDataAndNodeFallbackText() {
-        PublicWebTalentProvider provider = new PublicWebTalentProvider(objectMapper, true);
+        PublicWebTalentProvider provider = new PublicWebTalentProvider(objectMapper, crawlerCollectProps(), true);
         String html = """
                 <html><script id="RENDER_DATA" type="application/json">
                 {"user":{"nickname":"Node Nick","avatarUrl":"https:\\/\\/img.example\\/node.png"}}
@@ -266,7 +280,7 @@ class TalentProfileProviderTest {
 
     @Test
     void publicWebProviderDecodesEscapedAvatarUrls() {
-        PublicWebTalentProvider provider = new PublicWebTalentProvider(objectMapper, true);
+        PublicWebTalentProvider provider = new PublicWebTalentProvider(objectMapper, crawlerCollectProps(), true);
 
         assertThat(ReflectionTestUtils.<String>invokeMethod(provider, "decodeUrl", "https:\\u002F\\u002Fimg.example\\/a.png"))
                 .isEqualTo("https://img.example/a.png");
@@ -276,12 +290,12 @@ class TalentProfileProviderTest {
 
     @Test
     void publicWebProviderFailureHelpersShouldReturnStructuredFailures() {
-        PublicWebTalentProvider provider = new PublicWebTalentProvider(objectMapper, true);
+        PublicWebTalentProvider provider = new PublicWebTalentProvider(objectMapper, crawlerCollectProps(), true);
 
         TalentProfileResult noUrl = provider.fetch(TalentProfileQuery.builder().input(" ").build());
         assertThat(noUrl.isSuccess()).isFalse();
         assertThat(noUrl.getErrorCode()).isEqualTo("PUBLIC_WEB_NO_URL");
-        assertThat(noUrl.getProviderCode()).isEqualTo("public_web");
+        assertThat(noUrl.getProviderCode()).isEqualTo("CRAWLER");
         assertThat(noUrl.getUnsupportedFields()).contains(TalentProfileFieldNames.TALENT_LEVEL, TalentProfileFieldNames.SALES_30D);
 
         JsonNode invalidRenderData = ReflectionTestUtils.invokeMethod(

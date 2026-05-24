@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,6 +48,12 @@ class ProductServiceColonelBuyinIdTest {
     private com.colonel.saas.gateway.douyin.DouyinActivityGateway douyinActivityGateway;
     @Mock
     private BusinessRuleConfigService businessRuleConfigService;
+    @Mock
+    private ProductDisplayRuleService productDisplayRuleService;
+    @Mock
+    private ColonelPartnerSyncService colonelPartnerSyncService;
+    @Mock
+    private ProductDomainEventPublisher productDomainEventPublisher;
 
     private ProductService productService;
 
@@ -68,7 +75,10 @@ class ProductServiceColonelBuyinIdTest {
                 talentFollowService,
                 douyinActivityGateway,
                 new PromotionLinkIdempotencyService(new com.fasterxml.jackson.databind.ObjectMapper()),
-                businessRuleConfigService
+                businessRuleConfigService,
+                productDisplayRuleService,
+                colonelPartnerSyncService,
+                productDomainEventPublisher
         );
     }
 

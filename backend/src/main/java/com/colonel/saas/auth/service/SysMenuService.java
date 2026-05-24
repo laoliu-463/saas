@@ -9,7 +9,9 @@ import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.mapper.SysMenuMapper;
 import com.colonel.saas.mapper.SysRoleMapper;
 import com.colonel.saas.mapper.SysRoleMenuMapper;
+import com.colonel.saas.domain.user.PermissionEventHasher;
 import com.colonel.saas.service.OperationLogService;
+import com.colonel.saas.service.UserDomainEventPublisher;
 import com.colonel.saas.vo.SysMenuVO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,16 +28,19 @@ public class SysMenuService {
     private final SysRoleMapper sysRoleMapper;
     private final SysRoleMenuMapper sysRoleMenuMapper;
     private final OperationLogService operationLogService;
+    private final UserDomainEventPublisher userDomainEventPublisher;
 
     public SysMenuService(
             SysMenuMapper sysMenuMapper,
             SysRoleMapper sysRoleMapper,
             SysRoleMenuMapper sysRoleMenuMapper,
-            OperationLogService operationLogService) {
+            OperationLogService operationLogService,
+            UserDomainEventPublisher userDomainEventPublisher) {
         this.sysMenuMapper = sysMenuMapper;
         this.sysRoleMapper = sysRoleMapper;
         this.sysRoleMenuMapper = sysRoleMenuMapper;
         this.operationLogService = operationLogService;
+        this.userDomainEventPublisher = userDomainEventPublisher;
     }
 
     /**
@@ -89,8 +94,17 @@ public class SysMenuService {
      */
     @Transactional
     public void assignMenusToRole(UUID roleId, List<UUID> menuIds, UUID currentUserId) {
+        SysRole role = sysRoleMapper.selectById(roleId);
+        if (role == null) {
+            throw BusinessException.notFound("角色不存在");
+        }
+        List<UUID> oldMenuIds = sysRoleMenuMapper.findMenuIdsByRoleId(roleId);
+        String oldHash = PermissionEventHasher.hashRolePermissions(role.getPermissions(), oldMenuIds);
+
         sysRoleMenuMapper.deleteByRoleId(roleId);
+        int menuCount = 0;
         if (menuIds != null && !menuIds.isEmpty()) {
+            menuCount = menuIds.size();
             for (UUID menuId : menuIds) {
                 SysRoleMenu rm = new SysRoleMenu();
                 rm.setRoleId(roleId);
@@ -98,6 +112,8 @@ public class SysMenuService {
                 sysRoleMenuMapper.insert(rm);
             }
         }
+        String newHash = PermissionEventHasher.hashRolePermissions(role.getPermissions(), menuIds);
+
         operationLogService.recordSystemAction(
                 currentUserId,
                 "角色菜单管理",
@@ -106,8 +122,16 @@ public class SysMenuService {
                 "SysRoleMenu",
                 roleId.toString(),
                 null,
-                "分配角色菜单: roleId=" + roleId + ", menuCount=" + (menuIds == null ? 0 : menuIds.size())
+                "分配角色菜单: roleId=" + roleId + ", menuCount=" + menuCount
         );
+        if (!Objects.equals(oldHash, newHash)) {
+            userDomainEventPublisher.publishRolePermissionUpdated(
+                    roleId,
+                    role.getRoleCode(),
+                    oldHash,
+                    newHash,
+                    currentUserId);
+        }
     }
 
     /**

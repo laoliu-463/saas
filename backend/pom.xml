@@ -28,6 +28,7 @@
         <hutool.version>5.8.26</hutool.version>
         <knife4j.version>4.5.0</knife4j.version>
         <lombok.version>1.18.32</lombok.version>
+        <testcontainers.version>1.19.8</testcontainers.version>
     </properties>
 
     <repositories>
@@ -96,7 +97,6 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
         </dependency>
 
         <dependency>
@@ -147,6 +147,12 @@
         </dependency>
 
         <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+
+        <dependency>
             <groupId>commons-codec</groupId>
             <artifactId>commons-codec</artifactId>
         </dependency>
@@ -156,9 +162,30 @@
             <artifactId>open-sdk</artifactId>
             <version>1.1.0</version>
         </dependency>
+
+        <!-- Test dependencies -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
+        <finalName>colonel-saas</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

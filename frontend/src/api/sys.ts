@@ -38,6 +38,15 @@ export const getDeptById = (id: string) => request.get(`/depts/${id}`);
 export const createDept = (data: any) => request.post('/depts', data);
 export const updateDept = (id: string, data: any) => request.put(`/depts/${id}`, data);
 export const deleteDept = (id: string) => request.delete(`/depts/${id}`);
+export const getDeptStats = (id: string) => request.get(`/depts/${id}/stats`);
+export const getDeptMembers = (id: string, params?: Record<string, unknown>) =>
+  request.get(`/depts/${id}/members`, { params });
+export const getDeptGroups = (id: string, params?: { deptType?: string }) =>
+  request.get(`/depts/${id}/groups`, { params });
+export const addDeptGroupMembers = (groupId: string, data: { userIds: string[] }) =>
+  request.post(`/depts/groups/${groupId}/members`, data);
+export const removeDeptGroupMembers = (groupId: string, data: { userIds: string[] }) =>
+  request.delete(`/depts/groups/${groupId}/members`, { data });
 
 // 配置
 export const getConfigPage = (params: any) => request.get('/configs', { params });

@@ -7,6 +7,7 @@ import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
+import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -36,18 +37,21 @@ public class SampleLifecycleService {
     private final TalentClaimMapper talentClaimMapper;
     private final SampleStatusLogService sampleStatusLogService;
     private final BusinessRuleConfigService businessRuleConfigService;
+    private final SampleDomainEventPublisher sampleDomainEventPublisher;
 
     public SampleLifecycleService(
             JdbcTemplate jdbcTemplate,
             SampleRequestMapper sampleRequestMapper,
             TalentClaimMapper talentClaimMapper,
             SampleStatusLogService sampleStatusLogService,
-            BusinessRuleConfigService businessRuleConfigService) {
+            BusinessRuleConfigService businessRuleConfigService,
+            SampleDomainEventPublisher sampleDomainEventPublisher) {
         this.jdbcTemplate = jdbcTemplate;
         this.sampleRequestMapper = sampleRequestMapper;
         this.talentClaimMapper = talentClaimMapper;
         this.sampleStatusLogService = sampleStatusLogService;
         this.businessRuleConfigService = businessRuleConfigService;
+        this.sampleDomainEventPublisher = sampleDomainEventPublisher;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -72,7 +76,7 @@ public class SampleLifecycleService {
             requestIds = List.of(requestIds.get(0));
         }
         String remark = "auto complete by order: " + order.getOrderId();
-        return transitionSamples(
+        int completed = transitionSamples(
                 requestIds,
                 STATUS_PENDING_HOMEWORK,
                 sample -> {
@@ -83,6 +87,16 @@ public class SampleLifecycleService {
                 STATUS_COMPLETED,
                 remark
         );
+        if (completed > 0) {
+            for (UUID requestId : requestIds) {
+                SampleRequest sample = sampleRequestMapper.selectById(requestId);
+                if (sample != null && sample.getStatus() != null && sample.getStatus() == STATUS_COMPLETED) {
+                    sampleDomainEventPublisher.publishSampleCompleted(
+                            sample, order.getOrderId(), sample.getCompleteTime());
+                }
+            }
+        }
+        return completed;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -113,7 +127,7 @@ public class SampleLifecycleService {
 
     private int closeSamples(List<UUID> requestIds, int fromStatus, String closeReason) {
         LocalDateTime now = LocalDateTime.now();
-        return transitionSamples(
+        int closed = transitionSamples(
                 requestIds,
                 fromStatus,
                 sample -> {
@@ -125,6 +139,15 @@ public class SampleLifecycleService {
                 STATUS_CLOSED,
                 closeReason
         );
+        if (closed > 0) {
+            for (UUID requestId : requestIds) {
+                SampleRequest sample = sampleRequestMapper.selectById(requestId);
+                if (sample != null && sample.getStatus() != null && sample.getStatus() == STATUS_CLOSED) {
+                    sampleDomainEventPublisher.publishSampleClosed(sample, closeReason, sample.getCloseTime());
+                }
+            }
+        }
+        return closed;
     }
 
     private int transitionSamples(

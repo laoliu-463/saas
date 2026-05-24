@@ -8,6 +8,7 @@ import com.colonel.saas.auth.dto.SysUserCreateRequest;
 import com.colonel.saas.auth.dto.SysUserPageRequest;
 import com.colonel.saas.auth.dto.SysUserResetPasswordRequest;
 import com.colonel.saas.auth.dto.SysUserUpdateRequest;
+import com.colonel.saas.constant.SysUserStatus;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
@@ -17,7 +18,12 @@ import com.colonel.saas.entity.SysUserRole;
 import com.colonel.saas.mapper.SysRoleMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.SysUserRoleMapper;
+import com.colonel.saas.auth.dto.DeptMemberPageRequest;
+import com.colonel.saas.auth.service.OrgStructureService.ResolvedAssignment;
+import com.colonel.saas.auth.service.OrgStructureService.SplitAssignment;
 import com.colonel.saas.service.OperationLogService;
+import com.colonel.saas.service.UserDomainEventPublisher;
+import com.colonel.saas.service.UserPermissionCacheService;
 import com.colonel.saas.vo.SysUserVO;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -50,18 +56,27 @@ public class SysUserService {
     private final SysUserRoleMapper sysUserRoleMapper;
     private final PasswordEncoder passwordEncoder;
     private final OperationLogService operationLogService;
+    private final UserDomainEventPublisher userDomainEventPublisher;
+    private final OrgStructureService orgStructureService;
+    private final UserPermissionCacheService userPermissionCacheService;
 
     public SysUserService(
             SysUserMapper sysUserMapper,
             SysRoleMapper sysRoleMapper,
             SysUserRoleMapper sysUserRoleMapper,
             PasswordEncoder passwordEncoder,
-            OperationLogService operationLogService) {
+            OperationLogService operationLogService,
+            UserDomainEventPublisher userDomainEventPublisher,
+            OrgStructureService orgStructureService,
+            UserPermissionCacheService userPermissionCacheService) {
         this.sysUserMapper = sysUserMapper;
         this.sysRoleMapper = sysRoleMapper;
         this.sysUserRoleMapper = sysUserRoleMapper;
         this.passwordEncoder = passwordEncoder;
         this.operationLogService = operationLogService;
+        this.userDomainEventPublisher = userDomainEventPublisher;
+        this.orgStructureService = orgStructureService;
+        this.userPermissionCacheService = userPermissionCacheService;
     }
 
     public IPage<SysUserVO> findPage(
@@ -72,7 +87,21 @@ public class SysUserService {
         QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
         IPage<SysUserVO> result = sysUserMapper.findPage(page, request, wrapper);
         fillRoleIds(result.getRecords());
+        orgStructureService.enrichUserList(result.getRecords());
         return result;
+    }
+
+    public IPage<SysUserVO> findDeptMembers(UUID deptId, DeptMemberPageRequest request) {
+        SysUserPageRequest pageRequest = new SysUserPageRequest(
+                (int) request.pageNo(),
+                (int) request.pageSize(),
+                request.keyword(),
+                request.status(),
+                deptId,
+                request.groupId(),
+                request.roleId(),
+                request.roleCode());
+        return findPage(null, DataScope.ALL, pageRequest);
     }
 
     public List<SysUserVO> findAssignableUsers(String keyword, List<String> currentRoleCodes, UUID currentDeptId) {
@@ -151,7 +180,7 @@ public class SysUserService {
     public SysUserVO getById(UUID id, UUID currentUserId, DataScope dataScope) {
         SysUser user = requireUser(id);
         assertCanAccess(user, currentUserId, dataScope);
-        return toVO(user);
+        return orgStructureService.enrichUser(toVO(user));
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -170,8 +199,13 @@ public class SysUserService {
         user.setRealName(request.realName());
         user.setPhone(request.phone());
         user.setEmail(request.email());
-        user.setDeptId(request.deptId());
-        user.setStatus(1);
+        ResolvedAssignment assignment = resolveAssignment(
+                request.parentDeptId(),
+                request.groupId(),
+                request.deptId());
+        user.setDeptId(assignment.effectiveDeptId());
+        user.setStatus(SysUserStatus.PENDING_ACTIVATION);
+        user.setForcePasswordChange(true);
         user.setChannelCode(generateUniqueChannelCode(request.username()));
         sysUserMapper.insert(user);
 
@@ -186,7 +220,18 @@ public class SysUserService {
                 user.getUsername(),
                 "新建用户: " + user.getUsername()
         );
-        return toVO(user);
+        SysRole primaryRole = resolvePrimaryRole(roleIds);
+        userDomainEventPublisher.publishUserCreated(
+                user.getId(),
+                user.getUsername(),
+                user.getRealName(),
+                primaryRole == null ? null : primaryRole.getId(),
+                primaryRole == null ? null : primaryRole.getRoleCode(),
+                user.getDeptId(),
+                user.getDeptId(),
+                user.getStatus(),
+                currentUserId);
+        return orgStructureService.enrichUser(toVO(user));
     }
 
     public SysUserVO update(
@@ -197,11 +242,24 @@ public class SysUserService {
         SysUser user = requireUser(id);
         assertCanAccess(user, currentUserId, dataScope);
 
+        Integer previousStatus = user.getStatus();
+        UUID previousDeptId = user.getDeptId();
+
         user.setRealName(request.realName());
         user.setPhone(request.phone());
         user.setEmail(request.email());
-        user.setStatus(request.status());
+        if (request.status() != null) {
+            user.setStatus(request.status());
+        }
+        if (request.parentDeptId() != null || request.groupId() != null || request.deptId() != null) {
+            ResolvedAssignment assignment = resolveAssignment(
+                    request.parentDeptId(),
+                    request.groupId(),
+                    request.deptId());
+            user.setDeptId(assignment.effectiveDeptId());
+        }
         sysUserMapper.updateById(user);
+        recordOrgChangeIfNeeded(user, previousDeptId, user.getDeptId(), currentUserId);
         operationLogService.recordSystemAction(
                 currentUserId,
                 "用户管理",
@@ -212,7 +270,46 @@ public class SysUserService {
                 user.getUsername(),
                 "更新用户: " + user.getUsername()
         );
-        return toVO(user);
+        if (becameDisabled(previousStatus, user.getStatus())) {
+            userDomainEventPublisher.publishUserDisabled(
+                    user.getId(),
+                    previousStatus,
+                    user.getStatus(),
+                    currentUserId);
+        }
+        userPermissionCacheService.invalidateUser(user.getId());
+        userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, user.getDeptId());
+        return orgStructureService.enrichUser(toVO(user));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void assignUsersToGroup(UUID groupId, List<UUID> userIds, UUID currentUserId) {
+        ResolvedAssignment groupAssignment = orgStructureService.resolveAssignment(null, groupId);
+        for (UUID targetUserId : userIds) {
+            SysUser user = requireUser(targetUserId);
+            UUID previousDeptId = user.getDeptId();
+            user.setDeptId(groupAssignment.effectiveDeptId());
+            sysUserMapper.updateById(user);
+            recordOrgChangeIfNeeded(user, previousDeptId, user.getDeptId(), currentUserId);
+            userPermissionCacheService.invalidateUser(user.getId());
+            userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, user.getDeptId());
+        }
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void removeUsersFromGroup(UUID groupId, List<UUID> userIds, UUID currentUserId) {
+        for (UUID targetUserId : userIds) {
+            SysUser user = requireUser(targetUserId);
+            if (!Objects.equals(user.getDeptId(), groupId)) {
+                continue;
+            }
+            UUID previousDeptId = user.getDeptId();
+            user.setDeptId(null);
+            sysUserMapper.updateById(user);
+            recordOrgChangeIfNeeded(user, previousDeptId, null, currentUserId);
+            userPermissionCacheService.invalidateUser(user.getId());
+            userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, null);
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -270,6 +367,10 @@ public class SysUserService {
         List<UUID> roleIds = normalizeRoleIds(request.roleIds());
         validateRoleIds(roleIds, id);
         replaceUserRoles(id, roleIds);
+        userPermissionCacheService.invalidateUser(id);
+        for (UUID roleId : roleIds) {
+            userPermissionCacheService.invalidateRole(roleId);
+        }
         operationLogService.recordSystemAction(
                 currentUserId,
                 "用户管理",
@@ -381,6 +482,7 @@ public class SysUserService {
         vo.setEmail(user.getEmail());
         vo.setDeptId(user.getDeptId());
         vo.setStatus(user.getStatus());
+        vo.setForcePasswordChange(user.getForcePasswordChange());
         vo.setLastLoginAt(user.getLastLoginAt());
         vo.setCreateTime(user.getCreateTime());
 
@@ -456,6 +558,28 @@ public class SysUserService {
         return false;
     }
 
+    private boolean becameDisabled(Integer previousStatus, Integer newStatus) {
+        if (newStatus == null || newStatus != SysUserStatus.DISABLED) {
+            return false;
+        }
+        return previousStatus == null || previousStatus != SysUserStatus.DISABLED;
+    }
+
+    private boolean deptChanged(UUID previousDeptId, UUID newDeptId) {
+        return !Objects.equals(previousDeptId, newDeptId);
+    }
+
+    private SysRole resolvePrimaryRole(List<UUID> roleIds) {
+        if (roleIds == null || roleIds.isEmpty()) {
+            return null;
+        }
+        List<SysRole> roles = sysRoleMapper.selectBatchIds(roleIds);
+        if (roles == null || roles.isEmpty()) {
+            return null;
+        }
+        return roles.get(0);
+    }
+
     private record AssignableScope(Set<String> allowedRoleCodes, UUID deptId, boolean allowCrossDept) {
         private static AssignableScope empty() {
             return new AssignableScope(Collections.emptySet(), null, false);
@@ -491,5 +615,51 @@ public class SysUserService {
 
     private boolean channelCodeExists(String channelCode) {
         return sysUserMapper.existsByChannelCodeIncludingDeleted(channelCode);
+    }
+
+    private ResolvedAssignment resolveAssignment(UUID parentDeptId, UUID groupId, UUID legacyDeptId) {
+        if (parentDeptId != null || groupId != null) {
+            return orgStructureService.resolveAssignment(parentDeptId, groupId);
+        }
+        if (legacyDeptId != null) {
+            SplitAssignment split = orgStructureService.splitAssignment(legacyDeptId);
+            return new ResolvedAssignment(
+                    legacyDeptId,
+                    split.parentDeptId() != null ? split.parentDeptId() : legacyDeptId,
+                    split.groupId());
+        }
+        return new ResolvedAssignment(null, null, null);
+    }
+
+    private void recordOrgChangeIfNeeded(
+            SysUser user,
+            UUID previousEffectiveDeptId,
+            UUID newEffectiveDeptId,
+            UUID operatorId) {
+        if (!deptChanged(previousEffectiveDeptId, newEffectiveDeptId)) {
+            return;
+        }
+        SplitAssignment oldSplit = orgStructureService.splitAssignment(previousEffectiveDeptId);
+        SplitAssignment newSplit = orgStructureService.splitAssignment(newEffectiveDeptId);
+        operationLogService.recordSystemAction(
+                operatorId,
+                "用户管理",
+                "组织归属变更",
+                "PUT",
+                "SysUser",
+                user.getId() == null ? null : user.getId().toString(),
+                user.getUsername(),
+                orgStructureService.formatOrgChangeRemark(
+                        user.getId(),
+                        previousEffectiveDeptId,
+                        newEffectiveDeptId,
+                        operatorId));
+        userDomainEventPublisher.publishUserGroupChanged(
+                user.getId(),
+                oldSplit.groupId(),
+                newSplit.groupId(),
+                oldSplit.parentDeptId(),
+                newSplit.parentDeptId(),
+                operatorId);
     }
 }

@@ -3,12 +3,17 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.config.ConfigChangedEventFactory;
 import com.colonel.saas.config.ConfigDefinitionRegistry;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.domain.event.ConfigChangedEventPayload;
+import com.colonel.saas.domain.event.DomainEventOutboxService;
 import com.colonel.saas.entity.SystemConfig;
 import com.colonel.saas.entity.SystemConfigChangeLog;
+import com.colonel.saas.event.ConfigChangedApplicationEvent;
 import com.colonel.saas.mapper.SystemConfigChangeLogMapper;
 import com.colonel.saas.mapper.SystemConfigMapper;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -26,25 +31,32 @@ import java.util.stream.Collectors;
 @Service
 public class SysConfigService {
 
-    private static final String CHANGE_SOURCE_API = "SYS_CONFIG_API";
+    public static final String CHANGE_SOURCE_API = "SYS_CONFIG_API";
+    public static final String CHANGE_SOURCE_RULE_CENTER = "RULE_CENTER";
 
     private final SystemConfigMapper systemConfigMapper;
     private final SystemConfigChangeLogMapper systemConfigChangeLogMapper;
     private final OperationLogService operationLogService;
     private final ConfigDefinitionRegistry configDefinitionRegistry;
-    private final BusinessRuleConfigService businessRuleConfigService;
+    private final ConfigChangedEventFactory configChangedEventFactory;
+    private final DomainEventOutboxService domainEventOutboxService;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public SysConfigService(
             SystemConfigMapper systemConfigMapper,
             SystemConfigChangeLogMapper systemConfigChangeLogMapper,
             OperationLogService operationLogService,
             ConfigDefinitionRegistry configDefinitionRegistry,
-            BusinessRuleConfigService businessRuleConfigService) {
+            ConfigChangedEventFactory configChangedEventFactory,
+            DomainEventOutboxService domainEventOutboxService,
+            ApplicationEventPublisher applicationEventPublisher) {
         this.systemConfigMapper = systemConfigMapper;
         this.systemConfigChangeLogMapper = systemConfigChangeLogMapper;
         this.operationLogService = operationLogService;
         this.configDefinitionRegistry = configDefinitionRegistry;
-        this.businessRuleConfigService = businessRuleConfigService;
+        this.configChangedEventFactory = configChangedEventFactory;
+        this.domainEventOutboxService = domainEventOutboxService;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     public IPage<SystemConfig> findPage(String configGroup, String keyword, int pageNo, int pageSize) {
@@ -144,9 +156,15 @@ public class SysConfigService {
         config.setCreateBy(userId);
         config.setUpdateBy(userId);
         config.setId(UUID.randomUUID());
+        config.setConfigVersion(1);
         systemConfigMapper.insert(config);
-        businessRuleConfigService.invalidate(config.getConfigKey());
-        recordConfigChange(config, "CREATE", null, config.getConfigValue(), userId);
+        publishConfigChanged(
+                List.of(new ConfigChangedEventFactory.ConfigChangeContext(
+                        config.getConfigKey(), null, config.getConfigValue(), 1)),
+                userId,
+                null,
+                CHANGE_SOURCE_API,
+                "CREATE");
         operationLogService.recordSystemAction(
                 userId,
                 "系统配置",
@@ -194,9 +212,18 @@ public class SysConfigService {
         }
         validateConfigForWrite(existing);
         existing.setUpdateBy(userId);
+        bumpConfigVersion(existing);
         systemConfigMapper.updateById(existing);
-        invalidateBusinessRuleCache(previousConfigKey, existing.getConfigKey());
-        recordConfigChange(existing, "UPDATE", previousConfigValue, existing.getConfigValue(), userId);
+        publishConfigChanged(
+                List.of(new ConfigChangedEventFactory.ConfigChangeContext(
+                        existing.getConfigKey(),
+                        previousConfigValue,
+                        existing.getConfigValue(),
+                        existing.getConfigVersion() == null ? 1 : existing.getConfigVersion())),
+                userId,
+                null,
+                CHANGE_SOURCE_API,
+                "UPDATE");
         operationLogService.recordSystemAction(
                 userId,
                 "系统配置",
@@ -217,8 +244,14 @@ public class SysConfigService {
         if (affected == 0) {
             throw BusinessException.notFound("配置项不存在");
         }
-        invalidateBusinessRuleCache(existing.getConfigKey());
-        recordConfigChange(existing, "DELETE", existing.getConfigValue(), null, userId);
+        publishConfigChanged(
+                List.of(new ConfigChangedEventFactory.ConfigChangeContext(
+                        existing.getConfigKey(), existing.getConfigValue(), null,
+                        existing.getConfigVersion() == null ? 1 : existing.getConfigVersion())),
+                userId,
+                null,
+                CHANGE_SOURCE_API,
+                "DELETE");
         operationLogService.recordSystemAction(
                 userId,
                 "系统配置",
@@ -237,6 +270,94 @@ public class SysConfigService {
                 .orElse(null);
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public BatchUpdateConfigResult batchUpdateByKeys(
+            Map<String, String> updates,
+            UUID userId,
+            String operatorName,
+            String source,
+            String changeReason) {
+        if (updates == null || updates.isEmpty()) {
+            throw BusinessException.param("至少修改一项配置");
+        }
+        List<ConfigChangedEventFactory.ConfigChangeContext> changes = new java.util.ArrayList<>();
+        UUID eventId = UUID.randomUUID();
+        for (Map.Entry<String, String> entry : updates.entrySet()) {
+            String configKey = entry.getKey();
+            String newValue = entry.getValue();
+            SystemConfig existing = systemConfigMapper.findByConfigKey(configKey)
+                    .orElseThrow(() -> BusinessException.notFound("配置项不存在: " + configKey));
+            String oldValue = existing.getConfigValue();
+            if (Objects.equals(oldValue, newValue)) {
+                continue;
+            }
+            existing.setConfigValue(newValue);
+            validateConfigForWrite(existing);
+            existing.setUpdateBy(userId);
+            bumpConfigVersion(existing);
+            systemConfigMapper.updateById(existing);
+            recordConfigChange(existing, "UPDATE", oldValue, newValue, userId, eventId, source, changeReason);
+            changes.add(new ConfigChangedEventFactory.ConfigChangeContext(
+                    configKey, oldValue, newValue, existing.getConfigVersion()));
+        }
+        if (changes.isEmpty()) {
+            return new BatchUpdateConfigResult(eventId, List.of(), List.of());
+        }
+        ConfigChangedEventPayload payload = configChangedEventFactory.create(
+                eventId, userId, operatorName, changeReason, source, changes);
+        domainEventOutboxService.saveConfigChangedEvent(payload, userId);
+        Set<String> changedKeys = changes.stream()
+                .map(ConfigChangedEventFactory.ConfigChangeContext::configKey)
+                .collect(Collectors.toSet());
+        applicationEventPublisher.publishEvent(new ConfigChangedApplicationEvent(changedKeys));
+        return new BatchUpdateConfigResult(
+                eventId,
+                List.copyOf(changedKeys),
+                payload.impact().needManualRecalculate() ? List.of("提成比例变更只影响后续计算或手动重算") : List.of());
+    }
+
+    public record BatchUpdateConfigResult(
+            UUID eventId,
+            List<String> changedKeys,
+            List<String> warnings) {
+    }
+
+    private void publishConfigChanged(
+            List<ConfigChangedEventFactory.ConfigChangeContext> changes,
+            UUID userId,
+            String operatorName,
+            String source,
+            String changeAction) {
+        if (changes == null || changes.isEmpty()) {
+            return;
+        }
+        UUID eventId = UUID.randomUUID();
+        for (ConfigChangedEventFactory.ConfigChangeContext change : changes) {
+            SystemConfig config = systemConfigMapper.findByConfigKey(change.configKey()).orElse(null);
+            recordConfigChange(
+                    config,
+                    changeAction,
+                    change.oldValue(),
+                    change.newValue(),
+                    userId,
+                    eventId,
+                    source,
+                    null);
+        }
+        ConfigChangedEventPayload payload = configChangedEventFactory.create(
+                eventId, userId, operatorName, null, source, changes);
+        domainEventOutboxService.saveConfigChangedEvent(payload, userId);
+        Set<String> changedKeys = changes.stream()
+                .map(ConfigChangedEventFactory.ConfigChangeContext::configKey)
+                .collect(Collectors.toSet());
+        applicationEventPublisher.publishEvent(new ConfigChangedApplicationEvent(changedKeys));
+    }
+
+    private void bumpConfigVersion(SystemConfig config) {
+        int current = config.getConfigVersion() == null ? 0 : config.getConfigVersion();
+        config.setConfigVersion(current + 1);
+    }
+
     private void validateConfigForWrite(SystemConfig config) {
         if (config == null || !StringUtils.hasText(config.getConfigKey())) {
             throw BusinessException.param("配置键不能为空");
@@ -244,25 +365,15 @@ public class SysConfigService {
         configDefinitionRegistry.validateOrThrow(config.getConfigKey(), config.getConfigValue());
     }
 
-    private void invalidateBusinessRuleCache(String... configKeys) {
-        if (configKeys == null || configKeys.length == 0) {
-            return;
-        }
-        Set<String> uniqueKeys = java.util.Arrays.stream(configKeys)
-                .filter(StringUtils::hasText)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        for (String configKey : uniqueKeys) {
-            businessRuleConfigService.invalidate(configKey);
-        }
-    }
-
     private void recordConfigChange(
             SystemConfig config,
             String action,
             String oldValue,
             String newValue,
-            UUID operatorId) {
+            UUID operatorId,
+            UUID eventId,
+            String source,
+            String changeReason) {
         SystemConfigChangeLog log = new SystemConfigChangeLog();
         log.setId(UUID.randomUUID());
         log.setConfigId(config == null ? null : config.getId());
@@ -270,9 +381,12 @@ public class SysConfigService {
         log.setChangeAction(action);
         log.setOldValue(oldValue);
         log.setNewValue(newValue);
-        log.setSource(CHANGE_SOURCE_API);
+        log.setSource(source == null ? CHANGE_SOURCE_API : source);
         log.setOperatorId(operatorId);
         log.setChangedAt(LocalDateTime.now());
+        log.setEventId(eventId);
+        log.setChangeReason(changeReason);
+        log.setConfigVersion(config == null ? null : config.getConfigVersion());
         systemConfigChangeLogMapper.insert(log);
     }
 }

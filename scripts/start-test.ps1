@@ -31,6 +31,9 @@ Push-Location $repoRoot
 try {
     docker compose --env-file $envFile --project-name $projectName -f $composeFile up -d --build
     Assert-LastExitCode -CommandName "docker compose up -d --build"
+
+    & (Join-Path $scriptDir "apply-test-db-patches.ps1") -ContainerName "$projectName-postgres-1"
+
     $health = Wait-HttpHealth -Url $healthUrl -TimeoutSeconds $timeoutSeconds -PollIntervalMilliseconds 2000
     $frontend = Wait-HttpOk -Url $frontendUrl -TimeoutSeconds $timeoutSeconds -PollIntervalMilliseconds 2000
 

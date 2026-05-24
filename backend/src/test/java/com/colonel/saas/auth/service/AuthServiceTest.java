@@ -12,6 +12,7 @@ import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.SysRoleMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.security.JwtTokenProvider;
+import com.colonel.saas.service.BusinessRuleConfigService;
 import com.colonel.saas.service.OperationLogService;
 import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -56,6 +58,8 @@ class AuthServiceTest {
     private ValueOperations<String, Object> valueOperations;
     @Mock
     private OperationLogService operationLogService;
+    @Mock
+    private BusinessRuleConfigService businessRuleConfigService;
 
     private PasswordEncoder passwordEncoder;
     private AuthService authService;
@@ -63,11 +67,20 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
-        authService = new AuthService(sysUserMapper, sysRoleMapper, jwtTokenProvider, passwordEncoder, redisTemplate, operationLogService);
+        lenient().when(businessRuleConfigService.getLoginMaxFailures()).thenReturn(5);
+        lenient().when(businessRuleConfigService.getLoginLockMinutes()).thenReturn(15);
+        authService = new AuthService(
+                sysUserMapper,
+                sysRoleMapper,
+                jwtTokenProvider,
+                passwordEncoder,
+                redisTemplate,
+                operationLogService,
+                businessRuleConfigService);
     }
 
     private void stubJwtTokenGeneration() {
-        when(jwtTokenProvider.generateAccessToken(any(), any(), any(Integer.class), any(), any())).thenReturn("jwt.token.here");
+        when(jwtTokenProvider.generateAccessToken(any(), any(), any(Integer.class), any(), any(), any(Boolean.class))).thenReturn("jwt.token.here");
         when(jwtTokenProvider.generateRefreshToken(any())).thenReturn("refresh.token.here");
         when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
         when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
@@ -244,6 +257,28 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("待激活用户可登录并返回受限态标记")
+    void login_pendingActivationUser_shouldReturnTokenWithPendingFlag() {
+        SysUser user = createActiveUser("pending");
+        user.setStatus(2);
+        user.setForcePasswordChange(true);
+
+        when(sysUserMapper.findByUsername("pending")).thenReturn(Optional.of(user));
+        when(sysRoleMapper.findByUserId(user.getId())).thenReturn(List.of());
+        stubJwtTokenGeneration();
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername("pending");
+        request.setPassword("password");
+
+        LoginResponse response = authService.login(request);
+
+        assertThat(response.getStatus()).isEqualTo(2);
+        assertThat(response.getForcePasswordChange()).isTrue();
+        assertThat(response.getPendingActivation()).isTrue();
+    }
+
+    @Test
     @DisplayName("登录 - admin角色dataScope提权到3")
     void login_adminRole_shouldEscalateDataScopeToAll() {
         SysUser user = createActiveUser("admin");
@@ -299,7 +334,7 @@ class AuthServiceTest {
         user.setUsername("testuser");
         when(sysUserMapper.selectById(userId)).thenReturn(user);
         when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of());
-        when(jwtTokenProvider.generateAccessToken(eq(userId), any(), any(Integer.class), any(), any())).thenReturn("new.access.token");
+        when(jwtTokenProvider.generateAccessToken(eq(userId), any(), any(Integer.class), any(), any(), any(Boolean.class))).thenReturn("new.access.token");
         when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
         when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
 

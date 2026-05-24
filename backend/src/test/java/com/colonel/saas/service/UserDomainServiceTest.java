@@ -107,6 +107,7 @@ class UserDomainServiceTest {
         verify(sysUserMapper).updateById(captor.capture());
         assertThat(captor.getValue().getId()).isEqualTo(userId);
         assertThat(captor.getValue().getPassword()).isEqualTo("$2a$encoded-new");
+        assertThat(captor.getValue().getForcePasswordChange()).isFalse();
         verify(operationLogService).recordSystemAction(
                 userId,
                 "用户域",
@@ -117,6 +118,23 @@ class UserDomainServiceTest {
                 "channel_staff",
                 "用户修改自己的登录密码"
         );
+    }
+
+    @Test
+    void changePassword_shouldActivatePendingUserAfterFirstChange() {
+        SysUser user = user("pending", "待激活", deptId, "$2a$encoded-old");
+        user.setStatus(2);
+        user.setForcePasswordChange(true);
+        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(passwordEncoder.matches("old-pass", "$2a$encoded-old")).thenReturn(true);
+        when(passwordEncoder.encode("new-pass-123")).thenReturn("$2a$encoded-new");
+
+        userDomainService.changePassword(userId, new ChangePasswordRequest("old-pass", "new-pass-123"));
+
+        ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
+        verify(sysUserMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(1);
+        assertThat(captor.getValue().getForcePasswordChange()).isFalse();
     }
 
     @Test

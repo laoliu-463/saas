@@ -1,12 +1,17 @@
 package com.colonel.saas.auth.service;
 
+import com.colonel.saas.auth.dto.DeptMemberPageRequest;
 import com.colonel.saas.auth.dto.SysDeptCreateRequest;
 import com.colonel.saas.auth.dto.SysDeptUpdateRequest;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.colonel.saas.constant.DeptType;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.SysDept;
 import com.colonel.saas.mapper.SysDeptMapper;
 import com.colonel.saas.service.OperationLogService;
+import com.colonel.saas.vo.DeptStatsVO;
 import com.colonel.saas.vo.SysDeptVO;
+import com.colonel.saas.vo.SysUserVO;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -22,10 +27,18 @@ public class SysDeptService {
 
     private final SysDeptMapper sysDeptMapper;
     private final OperationLogService operationLogService;
+    private final OrgStructureService orgStructureService;
+    private final SysUserService sysUserService;
 
-    public SysDeptService(SysDeptMapper sysDeptMapper, OperationLogService operationLogService) {
+    public SysDeptService(
+            SysDeptMapper sysDeptMapper,
+            OperationLogService operationLogService,
+            OrgStructureService orgStructureService,
+            SysUserService sysUserService) {
         this.sysDeptMapper = sysDeptMapper;
         this.operationLogService = operationLogService;
+        this.orgStructureService = orgStructureService;
+        this.sysUserService = sysUserService;
     }
 
     public List<SysDeptVO> findTree() {
@@ -49,6 +62,31 @@ public class SysDeptService {
         return sysDeptMapper.findAllActive().stream().map(this::toVO).toList();
     }
 
+    public List<SysDeptVO> findGroupsByParent(UUID parentId, String deptType) {
+        requireDept(parentId);
+        return sysDeptMapper.findByParentId(parentId).stream()
+                .filter(dept -> !StringUtils.hasText(deptType)
+                        || DeptType.normalize(deptType).equals(DeptType.normalize(dept.getDeptType())))
+                .filter(dept -> DeptType.isGroup(dept.getDeptType()))
+                .map(this::toVO)
+                .toList();
+    }
+
+    public DeptStatsVO getStats(UUID deptId) {
+        requireDept(deptId);
+        DeptStatsVO stats = new DeptStatsVO();
+        stats.setDeptId(deptId);
+        stats.setMemberCount(sysDeptMapper.countMembersUnderDept(deptId));
+        stats.setRecruiterGroupCount(sysDeptMapper.countChildGroupsByType(deptId, DeptType.RECRUITER_GROUP));
+        stats.setChannelGroupCount(sysDeptMapper.countChildGroupsByType(deptId, DeptType.CHANNEL_GROUP));
+        return stats;
+    }
+
+    public IPage<SysUserVO> findMembers(UUID deptId, DeptMemberPageRequest request) {
+        requireDept(deptId);
+        return sysUserService.findDeptMembers(deptId, request);
+    }
+
     public SysDeptVO getById(UUID id) {
         return toVO(requireDept(id));
     }
@@ -60,6 +98,11 @@ public class SysDeptService {
         dept.setParentId(request.parentId());
         dept.setDeptCode(request.deptCode().trim());
         dept.setDeptName(request.deptName().trim());
+        dept.setDeptType(resolveDeptType(request.deptType()));
+        dept.setLeaderUserId(request.leaderUserId());
+        if (request.leaderUserId() != null) {
+            orgStructureService.validateGroupLeader(request.leaderUserId(), dept.getDeptType());
+        }
         dept.setLeader(request.leader());
         dept.setPhone(request.phone());
         dept.setEmail(request.email());
@@ -87,6 +130,11 @@ public class SysDeptService {
         dept.setParentId(request.parentId());
         dept.setDeptCode(request.deptCode().trim());
         dept.setDeptName(request.deptName().trim());
+        dept.setDeptType(resolveDeptType(request.deptType()));
+        dept.setLeaderUserId(request.leaderUserId());
+        if (request.leaderUserId() != null) {
+            orgStructureService.validateGroupLeader(request.leaderUserId(), dept.getDeptType());
+        }
         dept.setLeader(request.leader());
         dept.setPhone(request.phone());
         dept.setEmail(request.email());
@@ -109,6 +157,7 @@ public class SysDeptService {
 
     public void delete(UUID id, UUID currentUserId) {
         SysDept dept = requireDept(id);
+        orgStructureService.assertCanDeleteDept(id);
         if (sysDeptMapper.softDeleteById(id) <= 0) {
             throw BusinessException.notFound("部门不存在或已删除");
         }
@@ -159,6 +208,8 @@ public class SysDeptService {
         vo.setParentId(dept.getParentId());
         vo.setDeptCode(dept.getDeptCode());
         vo.setDeptName(dept.getDeptName());
+        vo.setDeptType(dept.getDeptType());
+        vo.setLeaderUserId(dept.getLeaderUserId());
         vo.setLeader(dept.getLeader());
         vo.setPhone(dept.getPhone());
         vo.setEmail(dept.getEmail());
@@ -166,5 +217,13 @@ public class SysDeptService {
         vo.setStatus(dept.getStatus());
         vo.setRemark(dept.getRemark());
         return vo;
+    }
+
+    private String resolveDeptType(String deptType) {
+        String normalized = DeptType.normalize(deptType);
+        if (!DeptType.isAllowed(normalized)) {
+            throw BusinessException.param("组织类型非法: " + deptType);
+        }
+        return normalized;
     }
 }

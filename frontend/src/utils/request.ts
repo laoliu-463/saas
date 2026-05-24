@@ -3,7 +3,7 @@ import { createDiscreteApi } from 'naive-ui';
 import { h } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { nowMs, recordFrontendTiming } from './performanceTiming';
-import { extractTraceId } from './requestError';
+import { extractTraceId, FORBIDDEN_BUSINESS_CODE } from './requestError';
 
 const { loadingBar, message: discreteMessage } = createDiscreteApi(['loadingBar', 'message']);
 
@@ -304,8 +304,12 @@ request.interceptors.response.use(
       loadingBar.error();
       const msg = normalizeServerMessage(String(response?.data?.msg || '请求失败，请稍后重试'));
       const traceId = extractTraceId(response);
+      const payload = { ...response.data, traceId, msg };
+      if (businessCode === FORBIDDEN_BUSINESS_CODE) {
+        return Promise.reject({ ...payload, __permissionDenied: true });
+      }
       showErrorNotice(msg, traceId);
-      return Promise.reject({ ...response.data, traceId });
+      return Promise.reject(payload);
     }
     loadingBar.finish();
     return response.data;
@@ -343,6 +347,14 @@ request.interceptors.response.use(
         showErrorNotice('登录失效或未授权，请重新登录', extractTraceId(error));
         redirectToLogin();
       }
+    } else if (error?.response?.status === FORBIDDEN_BUSINESS_CODE) {
+      return Promise.reject({
+        ...(error.response?.data || {}),
+        msg,
+        traceId: extractTraceId(error),
+        __permissionDenied: true,
+        response: error.response
+      });
     } else {
       showErrorNotice(msg, extractTraceId(error));
     }

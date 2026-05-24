@@ -39,7 +39,12 @@
             <n-descriptions-item v-if="!isChannelStaffOnly" label="主页链接">{{ detail.talent?.profileUrl || '-' }}</n-descriptions-item>
             <n-descriptions-item label="获赞数">{{ formatFans(detail.talent?.likesCount) }}</n-descriptions-item>
             <n-descriptions-item label="作品数">{{ detail.talent?.worksCount ?? '-' }}</n-descriptions-item>
-            <n-descriptions-item label="达人等级">{{ detail.talent?.level || '-' }}</n-descriptions-item>
+            <n-descriptions-item label="达人等级">{{ detail.talent?.level || detail.talent?.talentLevel || '-' }}</n-descriptions-item>
+            <n-descriptions-item label="数据来源">{{ dataSourceLabel }}</n-descriptions-item>
+            <n-descriptions-item label="同步状态">{{ detail.talent?.syncStatus || '-' }}</n-descriptions-item>
+            <n-descriptions-item v-if="detail.talent?.syncErrorMessage" label="采集说明" :span="2">
+              <n-text type="warning">{{ detail.talent.syncErrorMessage }}</n-text>
+            </n-descriptions-item>
             <n-descriptions-item label="联系方式">{{ detail.talent?.contactPhone || '-' }}</n-descriptions-item>
             <n-descriptions-item label="备注" :span="2">{{ detail.talent?.remark || '-' }}</n-descriptions-item>
           </n-descriptions>
@@ -191,7 +196,9 @@
 
     <template #footer>
       <div class="footer-actions">
-        <n-button secondary :loading="refreshing" @click="handleRefresh">刷新达人信息</n-button>
+        <n-button secondary :loading="refreshing" data-testid="talent-detail-refresh" @click="handleRefresh">
+          刷新达人信息
+        </n-button>
         <n-button v-if="canApplySample && detail" type="primary" secondary @click="handleApplySample">快速寄样</n-button>
         <n-button @click="closeModal">关闭</n-button>
       </div>
@@ -206,7 +213,7 @@ import { MODAL_WIDTH } from '../../../constants/ui'
 import {
   getTalentById,
   getPresetTalentTags,
-  refreshTalent,
+  syncTalentProfile,
   updateTalentShippingAddress,
   updateTalentTags,
   type TalentDetailResponse
@@ -271,6 +278,22 @@ const resolvedPoolStatus = computed(() => {
 
 const poolLabel = computed(() => getPoolLabel(resolvedPoolStatus.value))
 const poolTagType = computed(() => getPoolTagType(resolvedPoolStatus.value))
+
+const dataSourceLabel = computed(() => {
+  const source = detail.value?.talent?.dataSource
+  if (!source) return '-'
+  const map: Record<string, string> = {
+    API: '官方 API',
+    CRAWLER: '公开页爬虫',
+    public_web: '公开页爬虫',
+    manual: '手动补录',
+    MANUAL: '手动补录',
+    MOCK: 'Mock 数据',
+    configurable_http: '可配置 HTTP',
+    stub: '内部同步'
+  }
+  return map[source] || source
+})
 
 const sampleColumns = [
   { title: '寄样单 ID', key: 'sampleRequestId', width: 180 },
@@ -387,12 +410,25 @@ async function loadDetail() {
 
 async function handleRefresh() {
   if (!props.talentId) return
+  const previous = detail.value?.talent ? { ...detail.value.talent } : null
   refreshing.value = true
   try {
-    await refreshTalent(props.talentId)
-    message.success('已刷新达人信息')
+    const syncResult = await syncTalentProfile(props.talentId, true)
     await loadDetail()
+    if (syncResult?.success) {
+      message.success('已刷新达人资料')
+      return
+    }
+    const reason = syncResult?.syncErrorMessage || syncResult?.syncErrorCode || '采集未成功'
+    message.warning(`刷新未完成：${reason}（已保留原有资料）`)
+    if (!detail.value?.talent?.nickname && previous?.nickname) {
+      detail.value = detail.value || {}
+      detail.value.talent = { ...previous, ...detail.value?.talent }
+    }
   } catch (error: any) {
+    if (previous && detail.value?.talent) {
+      detail.value.talent = { ...previous, ...detail.value.talent }
+    }
     message.error(error?.msg || error?.message || '刷新达人信息失败')
   } finally {
     refreshing.value = false

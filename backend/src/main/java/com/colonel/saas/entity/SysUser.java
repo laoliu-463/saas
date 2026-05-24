@@ -32,9 +32,13 @@ public class SysUser extends com.colonel.saas.common.base.BaseEntity {
     /** 渠道短码，用于 pick_extra 生成（≤16字符） */
     private String channelCode;
 
-    /** 状态：1=启用, 0=禁用 */
+    /** 状态：2=待激活, 1=正常, 0=已禁用 */
     @TableField("status")
     private Integer status = 1;
+
+    /** 是否强制改密（新建待激活用户默认为 true） */
+    @TableField("force_password_change")
+    private Boolean forcePasswordChange = false;
 
     /** 最后登录时间 */
     private LocalDateTime lastLoginAt;

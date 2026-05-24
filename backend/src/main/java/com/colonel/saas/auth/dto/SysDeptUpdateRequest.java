@@ -14,6 +14,8 @@ public record SysDeptUpdateRequest(
         @Size(max = 100) String email,
         Integer sortOrder,
         Integer status,
-        @Size(max = 255) String remark
+        @Size(max = 255) String remark,
+        @Size(max = 32) String deptType,
+        UUID leaderUserId
 ) {
 }

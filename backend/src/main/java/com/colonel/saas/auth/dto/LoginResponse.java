@@ -134,4 +134,13 @@ public class LoginResponse {
 
     @Schema(description = "Access Token 有效期（秒）", example = "7200")
     private Long accessTokenExpiresIn;
+
+    @Schema(description = "账号状态：2=待激活，1=正常，0=已禁用", example = "1")
+    private Integer status;
+
+    @Schema(description = "是否必须修改密码", example = "false")
+    private Boolean forcePasswordChange;
+
+    @Schema(description = "是否处于待激活受限访问态", example = "false")
+    private Boolean pendingActivation;
 }

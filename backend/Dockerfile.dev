@@ -1,17 +1,16 @@
 # ============================================================
-# Development image: hot-reload via volume mount
-# Usage: docker compose up backend
-#   - Mount backend/src as volume for source code hot-reload
-#   - Spring Boot DevTools auto-restarts on classpath changes
+# Dev runtime image — does NOT compile.
+# Host compiles:  mvn package -DskipTests
+# Container only starts:  java -jar target/colonel-saas.jar
 # ============================================================
-FROM eclipse-temurin:17-jdk-alpine
+FROM eclipse-temurin:17-jre-alpine
 
-RUN apk add --no-cache maven bash findutils coreutils
+RUN apk add --no-cache bash
 
 WORKDIR /app
 
-# Use shell entrypoint so JAVA_OPTS env can be expanded.
-# /app is bind-mounted from host by docker-compose for hot-reload.
-ENTRYPOINT ["sh", "-c", "sh /app/scripts/dev-hot-reload.sh"]
+RUN mkdir -p /app/target
+
+ENTRYPOINT ["sh", "/app/scripts/run-jar.sh"]
 
 EXPOSE 8080 5005

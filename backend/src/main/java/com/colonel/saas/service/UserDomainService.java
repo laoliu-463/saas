@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.colonel.saas.constant.SysUserStatus;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
@@ -54,7 +55,7 @@ public class UserDomainService {
             UUID deptId,
             DataScope requestScope,
             List<String> requestRoleCodes) {
-        SysUser user = requireActiveUser(userId);
+        SysUser user = requireLoginEligibleUser(userId);
         List<SysRole> roles = activeRoles(userId);
         List<String> roleCodes = resolveRoleCodes(roles, requestRoleCodes);
         int dataScopeCode = resolveDataScopeCode(roles, requestScope, roleCodes);
@@ -66,19 +67,25 @@ public class UserDomainService {
                 dataScopeCode,
                 scopeName(dataScopeCode),
                 roleCodes,
-                mergePermissions(roles, dataScopeCode)
+                mergePermissions(roles, dataScopeCode),
+                user.getStatus() == null ? SysUserStatus.ACTIVE : user.getStatus(),
+                Boolean.TRUE.equals(user.getForcePasswordChange())
         );
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void changePassword(UUID userId, ChangePasswordRequest request) {
-        SysUser user = requireActiveUser(userId);
+        SysUser user = requireLoginEligibleUser(userId);
         if (!passwordEncoder.matches(request.oldPassword(), user.getPassword())) {
             throw BusinessException.forbidden("原密码错误");
         }
         SysUser update = new SysUser();
         update.setId(userId);
         update.setPassword(passwordEncoder.encode(request.newPassword()));
+        if (SysUserStatus.isPendingActivation(user.getStatus())) {
+            update.setStatus(SysUserStatus.ACTIVE);
+        }
+        update.setForcePasswordChange(false);
         sysUserMapper.updateById(update);
         operationLogService.recordSystemAction(
                 userId,
@@ -128,7 +135,7 @@ public class UserDomainService {
         return new CheckPermissionResponse(resource, action, allowed);
     }
 
-    private SysUser requireActiveUser(UUID userId) {
+    private SysUser requireLoginEligibleUser(UUID userId) {
         if (userId == null) {
             throw BusinessException.forbidden("无法识别当前用户");
         }
@@ -136,7 +143,7 @@ public class UserDomainService {
         if (user == null || user.getDeleted() != null && user.getDeleted() != 0) {
             throw BusinessException.notFound("用户不存在");
         }
-        if (user.getStatus() == null || user.getStatus() != 1) {
+        if (!SysUserStatus.canLogin(user.getStatus())) {
             throw BusinessException.forbidden("账号已停用");
         }
         return user;

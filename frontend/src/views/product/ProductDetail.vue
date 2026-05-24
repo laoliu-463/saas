@@ -8,6 +8,9 @@
             <n-tag :type="statusBadgeClass(detail?.bizStatus)" size="small" round>
               {{ getStatusLabel(detail?.bizStatus) }}
             </n-tag>
+            <n-tag v-if="detail?.pinned" type="error" size="small" round data-testid="product-detail-pinned-badge">
+              置顶
+            </n-tag>
           </n-space>
         </div>
       </template>
@@ -45,6 +48,9 @@
               </n-button>
               <n-tag v-if="businessReady" type="success" size="small" round>
                 已入商品库
+              </n-tag>
+              <n-tag v-if="detail.pinned" type="error" size="small" round data-testid="product-detail-pinned-tag">
+                {{ pinnedStatusText }}
               </n-tag>
               <n-button
                 v-if="businessReady && canDo('promotion')"
@@ -85,6 +91,9 @@
                       {{ detail.assigneeName || (detail.bizStatus === 'PENDING_AUDIT' ? '未分配审核人' : '未分配') }}
                     </n-descriptions-item>
                     <n-descriptions-item label="来源活动">{{ detail.activityId || '-' }}</n-descriptions-item>
+                    <n-descriptions-item v-if="detail.pinned" label="置顶状态">
+                      <n-tag type="error" size="tiny" round>{{ pinnedStatusText }}</n-tag>
+                    </n-descriptions-item>
                   </n-descriptions>
                 </n-card>
 
@@ -166,9 +175,13 @@
                 <div class="basic-info-grid">
                   <div class="info-image">
                     <n-image :src="detail.cover" width="120" height="120" object-fit="cover" />
+                    <span v-if="detail.pinned" class="detail-pin-badge" data-testid="product-detail-cover-pinned-badge">置顶</span>
                   </div>
                   <div class="info-main">
-                    <h3 class="product-title">{{ detail.title }}</h3>
+                    <div class="product-title-row">
+                      <h3 class="product-title">{{ detail.title }}</h3>
+                      <n-tag v-if="detail.pinned" type="error" size="small" round>置顶</n-tag>
+                    </div>
                     <n-descriptions label-placement="left" :column="2" size="small" style="margin-top: 12px;">
                       <n-descriptions-item label="商品ID">{{ detail.productId }}</n-descriptions-item>
                       <n-descriptions-item label="联盟推广状态">
@@ -186,6 +199,9 @@
                       <n-descriptions-item label="累计销量">{{ detail.sales30d ?? detail.sales ?? 0 }}</n-descriptions-item>
                       <n-descriptions-item label="活动剩余">{{ detail.timeLeft || '长期' }}</n-descriptions-item>
                       <n-descriptions-item label="同步时间">{{ detail.syncTime || '-' }}</n-descriptions-item>
+                      <n-descriptions-item v-if="detail.pinned" label="置顶状态">
+                        <n-tag type="error" size="tiny" round>{{ pinnedStatusText }}</n-tag>
+                      </n-descriptions-item>
                       <n-descriptions-item label="详情链接">
                         <n-button text type="primary" size="tiny" tag="a" :href="detail.detailUrl" target="_blank">点击跳转</n-button>
                       </n-descriptions-item>
@@ -194,6 +210,9 @@
                 </div>
 
                 <n-card title="SKU 规格" size="small" style="margin-top: 16px;">
+                  <n-form-item v-if="productSkus.length" label="选择规格" label-placement="left" label-width="80">
+                    <ProductSpecSelector v-model="selectedSkuName" :skus="productSkus" :loading="skusLoading" />
+                  </n-form-item>
                   <n-spin :show="skusLoading">
                     <n-data-table
                       v-if="productSkus.length"
@@ -298,6 +317,9 @@
                       </n-tag>
                       <span v-else>-</span>
                     </n-descriptions-item>
+                    <n-descriptions-item v-if="auditSupplement.supportsAds" label="投流规则" :span="2">
+                      {{ auditSupplement.adsRule || '暂未补充' }}
+                    </n-descriptions-item>
                     <n-descriptions-item label="活动时间">
                       {{ auditSupplement.campaignTimeRemark || '-' }}
                     </n-descriptions-item>
@@ -389,6 +411,7 @@ import { useAuthStore } from '../../stores/auth';
 import { hasAccess } from '../../constants/rbac';
 import { copyProductBriefWithLink } from './product-copy';
 import { buildProductSampleContext } from '../sample/sample-context';
+import ProductSpecSelector from './components/ProductSpecSelector.vue';
 
 const props = defineProps<{
   show: boolean;
@@ -423,6 +446,7 @@ const briefCopying = ref(false);
 const decisionSaving = ref(false);
 const detail = ref<any>(null);
 const productSkus = ref<any[]>([]);
+const selectedSkuName = ref('');
 
 const skuColumns = [
   { title: 'SKU ID', key: 'skuId', width: 180, ellipsis: { tooltip: true } },
@@ -449,6 +473,22 @@ const currentStep = computed(() => statusMap[detail.value?.bizStatus || 'PENDING
 const libraryReadyStatuses = new Set(['APPROVED', 'BOUND', 'ASSIGNED', 'LINKED', 'FOLLOWING']);
 const isLibraryReadyStatus = (statusCode?: string | null) => libraryReadyStatuses.has(String(statusCode || ''));
 const businessReady = computed(() => Boolean(detail.value?.selectedToLibrary || detail.value?.libraryVisible || isLibraryReadyStatus(detail.value?.bizStatus)));
+
+const formatPinnedUntil = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+const pinnedStatusText = computed(() => {
+  if (!detail.value?.pinned) return '';
+  return detail.value?.pinnedUntil
+    ? `置顶至 ${formatPinnedUntil(detail.value.pinnedUntil)}`
+    : '当前商品已置顶';
+});
+
 const canAssignDetail = computed(() =>
   businessReady.value &&
   ['APPROVED', 'BOUND', 'ASSIGNED'].includes(String(detail.value?.bizStatus || '')) &&
@@ -632,6 +672,7 @@ watch(() => props.show, (val) => {
     detail.value = null;
     operationLogs.value = [];
     productSkus.value = [];
+    selectedSkuName.value = '';
   }
 });
 
@@ -1030,8 +1071,23 @@ const isHttpLink = (value?: string | null) => /^https?:\/\//i.test(normalizeText
 .decision-form { display: flex; flex-direction: column; gap: 10px; }
 .decision-actions { display: flex; justify-content: flex-end; }
 .basic-info-grid { display: flex; gap: 24px; }
-.info-image { flex-shrink: 0; border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; padding: 4px; background: var(--bg-card); }
+.info-image { position: relative; flex-shrink: 0; border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; padding: 4px; background: var(--bg-card); }
+.detail-pin-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: #d92d20;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  box-shadow: 0 2px 8px rgba(217, 45, 32, 0.22);
+}
 .info-main { flex: 1; }
+.product-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .product-title { font-size: var(--text-base); font-weight: 600; color: var(--text-primary); margin: 0; line-height: 1.4; }
 .highlight-text { color: var(--color-primary); font-weight: 600; }
 .summary-panel { margin-top: 16px; padding: 16px; background: var(--bg-sidebar); border-radius: var(--radius-md); }

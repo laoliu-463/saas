@@ -26,4 +26,10 @@ public class SystemConfig extends com.colonel.saas.common.base.BaseEntity {
     private Integer status = 1;
 
     private String remark;
+
+    private Integer configVersion = 1;
+
+    private Boolean enabled = true;
+
+    private Boolean visibleInRuleCenter = true;
 }

@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.io.ClassPathResource;
@@ -14,6 +15,10 @@ import java.util.List;
 
 @Slf4j
 @Component
+@ConditionalOnProperty(
+        name = "talent.profile.schema-bootstrap.enabled",
+        havingValue = "true",
+        matchIfMissing = true)
 public class TalentProfileSchemaBootstrap implements ApplicationRunner {
 
     private final JdbcTemplate jdbcTemplate;

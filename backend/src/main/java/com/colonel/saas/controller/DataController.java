@@ -102,6 +102,10 @@ public class DataController extends BaseController {
             @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
             @Parameter(description = "达人 ID（UUID），精确匹配。") @RequestParam(required = false) UUID talentId,
             @Parameter(description = "商家 merchant_id（字符串），精确匹配。") @RequestParam(required = false) String merchantId,
+            @Parameter(description = "商品名称/标题，模糊匹配。") @RequestParam(required = false) String productName,
+            @Parameter(description = "店铺名称，模糊匹配。") @RequestParam(required = false) String shopName,
+            @Parameter(description = "团长活动 ID，精确匹配。") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "招商类型：MERCHANT（商家型招商单） 或 PROMOTION（推广单）。") @RequestParam(required = false) String recruitType,
             @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @Parameter(description = "时间字段：createTime（默认）或 settleTime。") @RequestParam(required = false) String timeField,
@@ -139,6 +143,19 @@ public class DataController extends BaseController {
                     shopIdText
             );
         }
+        if (StringUtils.hasText(productName)) {
+            wrapper.and(w -> w.like("co.product_name", productName.trim())
+                    .or().like("co.product_title", productName.trim()));
+        }
+        if (StringUtils.hasText(shopName)) {
+            wrapper.like("co.shop_name", shopName.trim());
+        }
+        if (StringUtils.hasText(colonelActivityId)) {
+            wrapper.eq("co.colonel_activity_id", colonelActivityId.trim());
+        }
+        if (StringUtils.hasText(recruitType)) {
+            wrapper.eq("co.order_type", toOrderTypeCode(recruitType));
+        }
 
         IPage<ColonelsettlementOrder> orderPage = orderMapper.findPageWithScope(new Page<>(page, size), wrapper);
         Page<OrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
@@ -146,15 +163,24 @@ public class DataController extends BaseController {
         return okPage(voPage);
     }
 
-    @Operation(summary = "核心指标", description = "查询数据页首页核心指标与近 7 天趋势。该接口面向数据看板展示，不承担订单归因主逻辑。")
+    @Operation(summary = "核心指标", description = "查询数据页首页核心指标与近 7 天趋势，支持双轨（结算/预估）并行返回。")
     @GetMapping("/dashboard/metrics")
-    public ApiResult<MetricsVO> getMetrics(
-            @Parameter(description = "时间字段：createTime（默认）或 settleTime。") @RequestParam(required = false) String timeField,
+    public ApiResult<DualTrackMetricsVO> getMetrics(
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        String cacheKey = METRICS_CACHE_PREFIX + metricsCacheKey(timeField, userId, deptId, dataScope);
-        return ok(shortTtlCacheService.get(cacheKey, METRICS_CACHE_TTL, () -> buildMetrics(timeField, userId, deptId, dataScope)));
+        String cacheKeySettle = METRICS_CACHE_PREFIX + metricsCacheKey("settleTime", userId, deptId, dataScope);
+        String cacheKeyEstimate = METRICS_CACHE_PREFIX + metricsCacheKey("createTime", userId, deptId, dataScope);
+
+        MetricsVO settleMetrics = shortTtlCacheService.get(cacheKeySettle, METRICS_CACHE_TTL,
+                () -> buildMetrics("settleTime", userId, deptId, dataScope));
+        MetricsVO estimateMetrics = shortTtlCacheService.get(cacheKeyEstimate, METRICS_CACHE_TTL,
+                () -> buildMetrics("createTime", userId, deptId, dataScope));
+
+        DualTrackMetricsVO result = new DualTrackMetricsVO();
+        result.setSettle(settleMetrics);
+        result.setEstimate(estimateMetrics);
+        return ok(result);
     }
 
     private MetricsVO buildMetrics(String timeField, UUID userId, UUID deptId, DataScope dataScope) {
@@ -174,6 +200,7 @@ public class DataController extends BaseController {
         MetricsVO metrics = new MetricsVO();
         metrics.setPendingShipCount(pendingShipCount);
         metrics.setAmountTrack(performanceMetricsQueryService.resolveAmountTrackLabel(timeField));
+        metrics.setTrack(timeField);
 
         if (performanceMetricsQueryService.hasPerformanceRecords()) {
             PerformanceMetricsQueryService.PerformanceAggregate aggregate =
@@ -564,6 +591,22 @@ public class DataController extends BaseController {
         };
     }
 
+    /**
+     * 订单类型映射（order_type 字段）：
+     * 1 = 商家型招商单（MERCHANT），2 = 推广单（PROMOTION），3 = 混合，4 = 团长型
+     */
+    private Integer toOrderTypeCode(String recruitType) {
+        if (recruitType == null) return null;
+        String normalized = recruitType.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "MERCHANT" -> 1;
+            case "PROMOTION" -> 2;
+            case "MIXED" -> 3;
+            case "COLONEL" -> 4;
+            default -> throw BusinessException.param("非法招商类型: " + recruitType);
+        };
+    }
+
     private String fromOrderStatusCode(Integer statusCode) {
         if (statusCode == null) {
             return "ORDERED";
@@ -891,6 +934,7 @@ public class DataController extends BaseController {
         private BigDecimal grossProfit;
         private String amountTrack;
         private String metricsSource;
+        private String track;
 
         public Long getTodayOrderCount() {
             return todayOrderCount;
@@ -1018,6 +1062,35 @@ public class DataController extends BaseController {
 
         public void setMetricsSource(String metricsSource) {
             this.metricsSource = metricsSource;
+        }
+
+        public String getTrack() {
+            return track;
+        }
+
+        public void setTrack(String track) {
+            this.track = track;
+        }
+    }
+
+    public static class DualTrackMetricsVO {
+        private MetricsVO settle;
+        private MetricsVO estimate;
+
+        public MetricsVO getSettle() {
+            return settle;
+        }
+
+        public void setSettle(MetricsVO settle) {
+            this.settle = settle;
+        }
+
+        public MetricsVO getEstimate() {
+            return estimate;
+        }
+
+        public void setEstimate(MetricsVO estimate) {
+            this.estimate = estimate;
         }
     }
 

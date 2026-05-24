@@ -6,6 +6,7 @@ import com.colonel.saas.auth.dto.SysUserCreateRequest;
 import com.colonel.saas.auth.dto.SysUserResetPasswordRequest;
 import com.colonel.saas.auth.dto.SysUserUpdateRequest;
 import com.colonel.saas.auth.service.SysUserService;
+import com.colonel.saas.auth.support.AuthTestFixtures;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.constant.RoleCodes;
@@ -131,7 +132,7 @@ class SysUserControllerTest {
     @Test
     void create_returnsCreatedUser() throws Exception {
         SysUserCreateRequest request = new SysUserCreateRequest(
-                "newuser", "password123", "新用户", "13800138000", "newuser@test.com", deptId, List.of(UUID.randomUUID()));
+                "newuser", "password123", "新用户", "13800138000", "newuser@test.com", null, null, deptId, List.of(UUID.randomUUID()));
 
         SysUserVO vo = new SysUserVO();
         vo.setId(UUID.randomUUID());
@@ -150,8 +151,8 @@ class SysUserControllerTest {
 
     @Test
     void update_returnsUpdatedUser() throws Exception {
-        SysUserUpdateRequest request = new SysUserUpdateRequest(
-                "新名字", "13900139000", "new@test.com", 1);
+        SysUserUpdateRequest request = AuthTestFixtures.updateRequest(
+                "新名字", "13900139000", "new@test.com", 1, null);
 
         SysUserVO vo = new SysUserVO();
         vo.setId(testUserId);

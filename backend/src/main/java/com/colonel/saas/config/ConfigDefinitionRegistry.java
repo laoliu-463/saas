@@ -110,6 +110,16 @@ public class ConfigDefinitionRegistry {
                 true,
                 this::validatePresetTalentTags
         ));
+        register(map, ConfigDefinition.integer(
+                SystemConfigKeys.LOGIN_MAX_FAILURES,
+                true,
+                value -> requireRange(value, 1, 20, "登录失败锁定次数必须在 1~20 之间")
+        ));
+        register(map, ConfigDefinition.integer(
+                SystemConfigKeys.LOGIN_LOCK_MINUTES,
+                true,
+                value -> requireRange(value, 1, 1440, "登录锁定时长必须在 1~1440 分钟之间")
+        ));
         return Map.copyOf(map);
     }
 

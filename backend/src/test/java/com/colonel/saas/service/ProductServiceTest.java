@@ -24,6 +24,7 @@ import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.PromotionLinkMapper;
 import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -83,6 +84,12 @@ class ProductServiceTest {
     private DouyinActivityGateway douyinActivityGateway;
     @Mock
     private BusinessRuleConfigService businessRuleConfigService;
+    @Mock
+    private ProductDisplayRuleService productDisplayRuleService;
+    @Mock
+    private ColonelPartnerSyncService colonelPartnerSyncService;
+    @Mock
+    private ProductDomainEventPublisher productDomainEventPublisher;
     private PromotionLinkIdempotencyService promotionLinkIdempotencyService;
 
     private ProductService service;
@@ -106,7 +113,10 @@ class ProductServiceTest {
                 talentFollowService,
                 douyinActivityGateway,
                 promotionLinkIdempotencyService,
-                businessRuleConfigService
+                businessRuleConfigService,
+                productDisplayRuleService,
+                colonelPartnerSyncService,
+                productDomainEventPublisher
         );
         lenient().when(operationStateMapper.updateById(any(ProductOperationState.class))).thenReturn(1);
         lenient().when(businessRuleConfigService.getPromotionPickExtraRule())
@@ -1233,6 +1243,7 @@ class ProductServiceTest {
         selectedState.setActivityId("10001");
         selectedState.setProductId("9001");
         selectedState.setSelectedToLibrary(true);
+        selectedState.setDisplayStatus("DISPLAYING");
         selectedState.setAssigneeId(assigneeId);
 
         SysUser assignee = new SysUser();
@@ -1268,6 +1279,7 @@ class ProductServiceTest {
         selectedState.setActivityId("10001");
         selectedState.setProductId("3811666925088539057");
         selectedState.setSelectedToLibrary(true);
+        selectedState.setDisplayStatus("DISPLAYING");
 
         Page<ProductOperationState> statePage = new Page<>(1, 200, 1);
         statePage.setRecords(List.of(selectedState));
@@ -1313,12 +1325,14 @@ class ProductServiceTest {
         matchedState.setActivityId("10001");
         matchedState.setProductId("9001");
         matchedState.setSelectedToLibrary(true);
+        matchedState.setDisplayStatus("DISPLAYING");
         matchedState.setPromoteLink("https://example.com/link");
 
         ProductOperationState ignoredState = buildState("APPROVED");
         ignoredState.setActivityId("10001");
         ignoredState.setProductId("9002");
         ignoredState.setSelectedToLibrary(true);
+        ignoredState.setDisplayStatus("DISPLAYING");
 
         Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
         statePage.setRecords(List.of(matchedState, ignoredState));
@@ -1332,6 +1346,11 @@ class ProductServiceTest {
                 null,
                 "好店",
                 "食品",
+                null,
+                null,
+                null,
+                null,
+                null,
                 "gte30000",
                 "LINKED",
                 "promoting",
@@ -1339,7 +1358,13 @@ class ProductServiceTest {
                 "1",
                 null,
                 "traffic",
-                null
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
         ));
 
         assertThat(result.getTotal()).isEqualTo(1);
@@ -1349,6 +1374,71 @@ class ProductServiceTest {
                     assertThat(product.getCategoryName()).isEqualTo("食品饮料");
                     assertThat(product.getStatusText()).isEqualTo("推广中");
                     assertThat(product.getSales30d()).isEqualTo(40000L);
+                });
+    }
+
+    @Test
+    void getSelectedLibraryPage_shouldApplyCoreBusinessFilters() {
+        UUID assigneeId = UUID.randomUUID();
+        ProductSnapshot matched = selectedLibrarySnapshot("A100", "P100", "核心筛选商品");
+        matched.setCategoryName("食品饮料");
+        matched.setActivityCosRatioText("25%");
+        matched.setAdServiceRatio("8%");
+
+        ProductSnapshot ignored = selectedLibrarySnapshot("A200", "P200", "被过滤商品");
+        ignored.setCategoryName("美妆护肤");
+        ignored.setActivityCosRatioText("12%");
+        ignored.setAdServiceRatio("3%");
+
+        ProductOperationState matchedState = selectedLibraryState("APPROVED", "A100", "P100");
+        matchedState.setAssigneeId(assigneeId);
+        matchedState.setDisplayStatus(com.colonel.saas.constant.ProductDisplayStatus.DISPLAYING.name());
+        matchedState.setAuditPayload("{\"supportsAds\":true}");
+
+        ProductOperationState ignoredState = selectedLibraryState("APPROVED", "A200", "P200");
+        ignoredState.setAssigneeId(UUID.randomUUID());
+        ignoredState.setDisplayStatus(com.colonel.saas.constant.ProductDisplayStatus.HIDDEN.name());
+        ignoredState.setAuditPayload("{\"supportsAds\":false}");
+
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 1);
+        statePage.setRecords(List.of(matchedState));
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(matched, ignored));
+        when(productBizStatusService.readBizStatus(matchedState)).thenReturn(ProductBizStatus.APPROVED);
+
+        var result = service.getSelectedLibraryPage(1, 10, new ProductService.SelectedLibraryFilter(
+                null,
+                null,
+                null,
+                null,
+                "食品饮料",
+                "A100",
+                assigneeId.toString(),
+                null,
+                "1",
+                null,
+                null,
+                null,
+                "gt20",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
+        ));
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getRecords()).singleElement()
+                .satisfies(product -> {
+                    assertThat(product.getProductId()).isEqualTo("P100");
+                    assertThat(product.getCategoryName()).isEqualTo("食品饮料");
+                    assertThat(product.getAssigneeId()).isEqualTo(assigneeId);
+                    assertThat(product.getDisplayStatus()).isEqualTo(com.colonel.saas.constant.ProductDisplayStatus.DISPLAYING.name());
                 });
     }
 
@@ -1365,6 +1455,7 @@ class ProductServiceTest {
         state.setActivityId("10001");
         state.setProductId("9001");
         state.setSelectedToLibrary(true);
+        state.setDisplayStatus("DISPLAYING");
 
         Page<ProductOperationState> statePage = new Page<>(1, 200, 1);
         statePage.setRecords(List.of(state));
@@ -1378,13 +1469,24 @@ class ProductServiceTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 "FAILED",
                 null,
                 null,
                 null,
                 null,
                 null,
-                null
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
         ));
 
         assertThat(result.getTotal()).isEqualTo(1);
@@ -1398,11 +1500,13 @@ class ProductServiceTest {
         firstState.setActivityId("10001");
         firstState.setProductId("9001");
         firstState.setSelectedToLibrary(true);
+        firstState.setDisplayStatus("DISPLAYING");
 
         ProductOperationState secondState = buildState("APPROVED");
         secondState.setActivityId("10001");
         secondState.setProductId("9002");
         secondState.setSelectedToLibrary(true);
+        secondState.setDisplayStatus("DISPLAYING");
 
         Page<ProductOperationState> firstPage = new Page<>(1, 200);
         firstPage.setTotal(201);
@@ -1457,6 +1561,7 @@ class ProductServiceTest {
         state.setActivityId("10001");
         state.setProductId("9001");
         state.setSelectedToLibrary(true);
+        state.setDisplayStatus("DISPLAYING");
 
         Page<ProductOperationState> statePage = new Page<>(1, 200, 1);
         statePage.setRecords(List.of(state));
@@ -1486,6 +1591,11 @@ class ProductServiceTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 "lt100",
                 "PENDING",
                 "pending_audit",
@@ -1493,7 +1603,13 @@ class ProductServiceTest {
                 "0",
                 "unassigned",
                 "new",
-                "NONE"
+                "NONE",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
         ));
 
         assertThat(result.getTotal()).isEqualTo(1);
@@ -1532,6 +1648,11 @@ class ProductServiceTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 "100_999",
                 null,
                 "rejected",
@@ -1539,7 +1660,13 @@ class ProductServiceTest {
                 "1",
                 "assigned",
                 "unknown_tag",
-                "MAIN"
+                "MAIN",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
         ));
 
         assertThat(result.getTotal()).isEqualTo(1);
@@ -1566,6 +1693,11 @@ class ProductServiceTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 "1k_29k",
                 null,
                 "terminated",
@@ -1573,7 +1705,13 @@ class ProductServiceTest {
                 null,
                 null,
                 "high_price",
-                null
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
         ));
 
         assertThat(result.getTotal()).isEqualTo(1);
@@ -1596,6 +1734,11 @@ class ProductServiceTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 "gte30000",
                 null,
                 "expired",
@@ -1603,7 +1746,13 @@ class ProductServiceTest {
                 null,
                 null,
                 "high_commission",
-                null
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
         ));
 
         assertThat(result.getTotal()).isEqualTo(1);
@@ -1944,6 +2093,7 @@ class ProductServiceTest {
 
         ProductOperationState state = buildState("APPROVED");
         state.setSelectedToLibrary(true);
+        state.setDisplayStatus("DISPLAYING");
 
         Page<ProductSnapshot> snapshotPage = new Page<>(1, 20, 1);
         snapshotPage.setRecords(List.of(snapshot));
@@ -1954,7 +2104,6 @@ class ProductServiceTest {
         when(operationLogMapper.selectList(any())).thenReturn(List.of());
         when(orderMapper.selectList(any())).thenReturn(List.of());
         when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
-        when(merchantMapper.selectList(any())).thenReturn(List.of());
         when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.APPROVED);
 
         Map<String, Object> result = service.buildActivityProductListViewFromDb(
@@ -1970,6 +2119,153 @@ class ProductServiceTest {
         assertThat(item.get("selectedToLibrary")).isEqualTo(true);
         assertThat(item.get("libraryVisible")).isEqualTo(true);
         assertThat(item.get("bizStatus")).isEqualTo("APPROVED");
+        assertThat(item.get("displayMark")).isEqualTo("SHOWING");
+        assertThat(item.get("displayMarkLabel")).isEqualTo("展示中");
+    }
+
+    @Test
+    void buildActivityProductListViewFromDb_shouldExposeAuditSummaryAndPinnedFields() {
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+        snapshot.setTitle("审核资料商品");
+        snapshot.setActivityCosRatioText("30%");
+        snapshot.setSyncTime(LocalDateTime.now().minusHours(1));
+
+        ProductOperationState state = buildState("APPROVED");
+        state.setAuditPayload("""
+                {"sampleThresholdRemark":"近30天销量≥3W","promotionScript":"超值好物","supportsAds":true,
+                "sellingPoints":["卖点1","卖点2"],"materialFiles":["https://img/a.png"],
+                "goodsTags":["家居","零食"],"productTags":["主推"]}
+                """);
+        state.setPinnedAt(LocalDateTime.now());
+        state.setPinnedUntil(LocalDateTime.now().plusHours(24));
+
+        Page<ProductSnapshot> snapshotPage = new Page<>(1, 20, 1);
+        snapshotPage.setRecords(List.of(snapshot));
+
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(state));
+        when(snapshotMapper.selectCount(any())).thenReturn(1L);
+        when(snapshotMapper.selectPage(any(Page.class), any())).thenReturn(snapshotPage);
+        when(operationLogMapper.selectList(any())).thenReturn(List.of());
+        when(orderMapper.selectList(any())).thenReturn(List.of());
+        when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
+
+        Map<String, Object> result = service.buildActivityProductListViewFromDb(
+                "10001", 20, null, null, null, null, "default");
+
+        Map<?, ?> item = (Map<?, ?>) ((List<?>) result.get("items")).get(0);
+        assertThat(item.get("pinned")).isEqualTo(true);
+        assertThat(item.get("auditSupplementComplete")).isEqualTo(true);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> summary = (Map<String, Object>) item.get("auditSupplementSummary");
+        assertThat(summary.get("sampleThresholdRemark")).isEqualTo("近30天销量≥3W");
+        assertThat(summary.get("supportsAds")).isEqualTo(true);
+        assertThat(summary.get("sellingPointCount")).isEqualTo(2);
+        assertThat(summary.get("goodsTags")).isEqualTo(List.of("家居", "零食"));
+        assertThat(summary.get("productTags")).isEqualTo(List.of("主推"));
+        assertThat(item.get("displayMark")).isEqualTo("PENDING");
+    }
+
+    @Test
+    void buildActivityProductListViewFromDb_shouldFilterByAuditGoodsAndProductTags() {
+        ProductSnapshot matched = new ProductSnapshot();
+        matched.setActivityId("10001");
+        matched.setProductId("9001");
+        matched.setTitle("家居主推商品");
+        matched.setShopId(3001L);
+        matched.setShopName("测试店铺");
+
+        ProductOperationState matchedState = buildState("APPROVED");
+        matchedState.setProductId("9001");
+        matchedState.setAuditPayload("""
+                {"sampleThresholdRemark":"寄样门槛","promotionScript":"推广话术",
+                 "goodsTags":["家居","零食"],"productTags":["主推"]}
+                """);
+
+        ProductOperationState ignoredState = buildState("APPROVED");
+        ignoredState.setProductId("9002");
+        ignoredState.setAuditPayload("""
+                {"sampleThresholdRemark":"寄样门槛","promotionScript":"推广话术",
+                 "goodsTags":["美妆"],"productTags":["次推"]}
+                """);
+
+        Page<ProductSnapshot> snapshotPage = new Page<>(1, 20, 1);
+        snapshotPage.setRecords(List.of(matched));
+
+        when(operationStateMapper.selectList(any()))
+                .thenReturn(List.of(matchedState, ignoredState))
+                .thenReturn(List.of(matchedState));
+        when(snapshotMapper.selectCount(any())).thenReturn(1L);
+        when(snapshotMapper.selectPage(any(Page.class), any())).thenReturn(snapshotPage);
+        when(operationLogMapper.selectList(any())).thenReturn(List.of());
+        when(orderMapper.selectList(any())).thenReturn(List.of());
+        when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
+        when(merchantMapper.selectList(any())).thenReturn(List.of());
+
+        Map<String, Object> result = service.buildActivityProductListViewFromDb(
+                "10001",
+                20,
+                null,
+                null,
+                null,
+                null,
+                "default",
+                "家居",
+                "主推"
+        );
+
+        assertThat(result.get("total")).isEqualTo(1L);
+        Map<?, ?> item = (Map<?, ?>) ((List<?>) result.get("items")).get(0);
+        assertThat(item.get("productId")).isEqualTo("9001");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> summary = (Map<String, Object>) item.get("auditSupplementSummary");
+        assertThat(summary.get("goodsTags")).isEqualTo(List.of("家居", "零食"));
+        assertThat(summary.get("productTags")).isEqualTo(List.of("主推"));
+    }
+
+    @Test
+    void buildActivityProductListViewFromDb_shouldSortPinnedProductsBeforeOthers() {
+        ProductSnapshot pinnedSnapshot = new ProductSnapshot();
+        pinnedSnapshot.setId(UUID.randomUUID());
+        pinnedSnapshot.setActivityId("10001");
+        pinnedSnapshot.setProductId("9001");
+        pinnedSnapshot.setTitle("置顶商品");
+        pinnedSnapshot.setActivityCosRatioText("10%");
+        pinnedSnapshot.setSyncTime(LocalDateTime.now());
+
+        ProductSnapshot normalSnapshot = new ProductSnapshot();
+        normalSnapshot.setId(UUID.randomUUID());
+        normalSnapshot.setActivityId("10001");
+        normalSnapshot.setProductId("9002");
+        normalSnapshot.setTitle("普通商品");
+        normalSnapshot.setActivityCosRatioText("30%");
+        normalSnapshot.setSyncTime(LocalDateTime.now().plusHours(1));
+
+        ProductOperationState pinnedState = buildState("APPROVED");
+        pinnedState.setProductId("9001");
+        pinnedState.setPinnedAt(LocalDateTime.now());
+        pinnedState.setPinnedUntil(LocalDateTime.now().plusHours(24));
+
+        ProductOperationState normalState = buildState("APPROVED");
+        normalState.setProductId("9002");
+
+        Page<ProductSnapshot> snapshotPage = new Page<>(1, 20, 2);
+        snapshotPage.setRecords(List.of(normalSnapshot, pinnedSnapshot));
+
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(pinnedState, normalState));
+        when(snapshotMapper.selectCount(any())).thenReturn(2L);
+        when(snapshotMapper.selectPage(any(Page.class), any())).thenReturn(snapshotPage);
+        when(operationLogMapper.selectList(any())).thenReturn(List.of());
+        when(orderMapper.selectList(any())).thenReturn(List.of());
+        when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
+
+        Map<String, Object> result = service.buildActivityProductListViewFromDb(
+                "10001", 20, null, null, null, null, "default");
+
+        List<?> items = (List<?>) result.get("items");
+        assertThat(items).hasSize(2);
+        assertThat(((Map<?, ?>) items.get(0)).get("productId")).isEqualTo("9001");
     }
 
     @Test
@@ -2030,9 +2326,18 @@ class ProductServiceTest {
         when(talentFollowService.listByProduct("10001", "9001")).thenReturn(List.of());
         when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.LINKED);
 
+        state.setAuditPayload("""
+                {"sampleThresholdRemark":"寄样门槛","promotionScript":"推广话术","supportsAds":true}
+                """);
+
         Map<String, Object> detail = service.getActivityProductDetail("10001", "9001");
 
         assertThat(detail.get("bizStatus")).isEqualTo("LINKED");
+        assertThat(detail.get("auditSupplement")).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> auditSupplement = (Map<String, Object>) detail.get("auditSupplement");
+        assertThat(auditSupplement.get("promotionScript")).isEqualTo("推广话术");
+        assertThat(detail.get("promotionMaterialPack")).isInstanceOf(Map.class);
         assertThat(detail.get("promotionLinkCount")).isEqualTo(1);
         assertThat(detail.get("orderCount")).isEqualTo(1L);
         assertThat(detail.get("merchantName")).isEqualTo("测试商家");
@@ -2084,6 +2389,7 @@ class ProductServiceTest {
         state.setActivityId(activityId);
         state.setProductId(productId);
         state.setSelectedToLibrary(true);
+        state.setDisplayStatus("DISPLAYING");
         return state;
     }
 

@@ -14,9 +14,12 @@ import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -715,6 +718,22 @@ public class PickSourceMappingService {
             }
         }
         return null;
+    }
+
+    public Set<String> listProductIdsByColonelBuyinId(String colonelBuyinId) {
+        String resolved = resolveColonelBuyinId(colonelBuyinId);
+        if (!StringUtils.hasText(resolved)) {
+            return Set.of();
+        }
+        return pickSourceMappingMapper.selectList(new LambdaQueryWrapper<PickSourceMapping>()
+                        .select(PickSourceMapping::getProductId)
+                        .eq(PickSourceMapping::getDeleted, 0)
+                        .eq(PickSourceMapping::getColonelBuyinId, resolved)
+                        .isNotNull(PickSourceMapping::getProductId))
+                .stream()
+                .map(PickSourceMapping::getProductId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     private String extractShortId(String pickSource) {

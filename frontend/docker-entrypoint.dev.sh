@@ -27,7 +27,12 @@ if [ ! -d node_modules/.pnpm ] || [ "$installed_hash" != "$lock_hash" ]; then
 fi
 
 if [ "${FRONTEND_SERVE_MODE:-dev}" = "preview" ]; then
-  pnpm build
+  # Skip build if dist already exists (host-compile mode via dev-up.sh)
+  if [ ! -d dist ] || [ -z "$(ls -A dist 2>/dev/null)" ]; then
+    pnpm build
+  else
+    echo "[frontend-dev] dist/ already exists, skipping build (host-compile mode)"
+  fi
   exec pnpm preview --host 0.0.0.0 --port "${VITE_DEV_PORT:-3000}"
 fi
 

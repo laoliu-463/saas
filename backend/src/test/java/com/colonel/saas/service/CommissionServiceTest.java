@@ -59,10 +59,10 @@ class CommissionServiceTest {
         assertThat(summary.serviceFeeIncome()).isEqualTo(10000L);
         assertThat(summary.techServiceFee()).isEqualTo(1000L);
         assertThat(summary.talentCommission()).isEqualTo(2000L);
-        assertThat(summary.serviceFeeNet()).isEqualTo(7000L);
-        assertThat(summary.bizCommission()).isEqualTo(700L);
-        assertThat(summary.channelCommission()).isEqualTo(1400L);
-        assertThat(summary.grossProfit()).isEqualTo(4900L);
+        assertThat(summary.serviceFeeNet()).isEqualTo(9000L);
+        assertThat(summary.bizCommission()).isEqualTo(900L);
+        assertThat(summary.channelCommission()).isEqualTo(1800L);
+        assertThat(summary.grossProfit()).isEqualTo(6300L);
     }
 
     @Test
@@ -97,10 +97,10 @@ class CommissionServiceTest {
 
         CommissionService.CommissionSummary summary = commissionService.calculate(List.of(order));
 
-        assertThat(summary.serviceFeeNet()).isEqualTo(7000L);
-        assertThat(summary.bizCommission()).isEqualTo(2100L);
-        assertThat(summary.channelCommission()).isEqualTo(2800L);
-        assertThat(summary.grossProfit()).isEqualTo(2100L);
+        assertThat(summary.serviceFeeNet()).isEqualTo(9000L);
+        assertThat(summary.bizCommission()).isEqualTo(2700L);
+        assertThat(summary.channelCommission()).isEqualTo(3600L);
+        assertThat(summary.grossProfit()).isEqualTo(2700L);
     }
 
     @Test
@@ -127,10 +127,10 @@ class CommissionServiceTest {
 
         CommissionService.CommissionSummary summary = commissionService.calculate(List.of(activityOrder, defaultOrder));
 
-        assertThat(summary.serviceFeeNet()).isEqualTo(13000L);
-        assertThat(summary.bizCommission()).isEqualTo(2700L);
-        assertThat(summary.channelCommission()).isEqualTo(4000L);
-        assertThat(summary.grossProfit()).isEqualTo(6300L);
+        assertThat(summary.serviceFeeNet()).isEqualTo(16000L);
+        assertThat(summary.bizCommission()).isEqualTo(3400L);
+        assertThat(summary.channelCommission()).isEqualTo(5000L);
+        assertThat(summary.grossProfit()).isEqualTo(7600L);
     }
 
     @Test
@@ -145,10 +145,10 @@ class CommissionServiceTest {
                 new CommissionService.ActivityCommissionBucket("ACTIVITY_001", null, null, 10000L, 1000L, 2000L)
         ));
 
-        assertThat(summary.serviceFeeNet()).isEqualTo(7000L);
-        assertThat(summary.bizCommission()).isEqualTo(2100L);
-        assertThat(summary.channelCommission()).isEqualTo(2800L);
-        assertThat(summary.grossProfit()).isEqualTo(2100L);
+        assertThat(summary.serviceFeeNet()).isEqualTo(9000L);
+        assertThat(summary.bizCommission()).isEqualTo(2700L);
+        assertThat(summary.channelCommission()).isEqualTo(3600L);
+        assertThat(summary.grossProfit()).isEqualTo(2700L);
     }
 
     @Test

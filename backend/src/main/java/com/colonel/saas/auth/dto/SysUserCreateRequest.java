@@ -33,7 +33,13 @@ public record SysUserCreateRequest(
         @Size(max = 100, message = "邮箱长度不能超过100字符")
         String email,
 
-        @Schema(description = "部门 ID")
+        @Schema(description = "所属部门 ID（department）")
+        UUID parentDeptId,
+
+        @Schema(description = "所属业务组 ID（recruiter_group/channel_group/ops_group）")
+        UUID groupId,
+
+        @Schema(description = "兼容字段：直接指定 sys_user.dept_id，若同时传 parentDeptId/groupId 则忽略")
         UUID deptId,
 
         @Schema(description = "角色 ID 列表")

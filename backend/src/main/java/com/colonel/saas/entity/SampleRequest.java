@@ -101,4 +101,43 @@ public class SampleRequest extends VersionedEntity {
 
     @TableField(value = "extra_data", typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> extraData;
+
+    @TableField("apply_source")
+    private String applySource;
+
+    @TableField("external_apply_id")
+    private String externalApplyId;
+
+    @TableField("external_status")
+    private String externalStatus;
+
+    @TableField("external_error_code")
+    private String externalErrorCode;
+
+    @TableField("external_error_message")
+    private String externalErrorMessage;
+
+    @TableField(value = "external_raw_payload", typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> externalRawPayload;
+
+    @TableField("logistics_status")
+    private String logisticsStatus;
+
+    @TableField("logistics_status_name")
+    private String logisticsStatusName;
+
+    @TableField("logistics_last_query_at")
+    private LocalDateTime logisticsLastQueryAt;
+
+    @TableField("logistics_last_error")
+    private String logisticsLastError;
+
+    @TableField(value = "logistics_raw_payload", typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> logisticsRawPayload;
+
+    @TableField("signed_at")
+    private LocalDateTime signedAt;
+
+    @TableField("external_last_sync_at")
+    private LocalDateTime externalLastSyncAt;
 }

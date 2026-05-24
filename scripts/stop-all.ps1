@@ -39,7 +39,6 @@ Push-Location $repoRoot
 try {
     Invoke-ComposeDown -ProjectName "saas-test" -ComposeFile (Join-Path $repoRoot "docker-compose.test.yml") -EnvFile (Join-Path $repoRoot ".env.test")
     Invoke-ComposeDown -ProjectName "saas-active" -ComposeFile (Join-Path $repoRoot "docker-compose.real-pre.yml") -EnvFile (Join-Path $repoRoot ".env.real-pre")
-    Invoke-ComposeDown -ProjectName "saas-prod" -ComposeFile (Join-Path $repoRoot "docker-compose.prod.yml") -EnvFile (Join-Path $repoRoot ".env.prod")
 
     @(
         "saas-test-frontend-1",
@@ -49,11 +48,7 @@ try {
         "saas-frontend-real-pre-1",
         "saas-backend-real-pre-1",
         "saas-postgres-real-pre-1",
-        "saas-redis-real-pre-1",
-        "saas-prod-frontend-1",
-        "saas-prod-backend-1",
-        "saas-prod-postgres-1",
-        "saas-prod-redis-1"
+        "saas-redis-real-pre-1"
     ) | ForEach-Object { Remove-ContainerIfExists -Name $_ }
 
     Wait-ContainersStopped -TimeoutSeconds 120 -PollIntervalMilliseconds 2000 -CheckScript {

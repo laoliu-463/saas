@@ -11,7 +11,11 @@ import com.colonel.saas.entity.SysUserRole;
 import com.colonel.saas.mapper.SysRoleMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.SysUserRoleMapper;
+import com.colonel.saas.constant.SysUserStatus;
+import com.colonel.saas.auth.support.AuthTestFixtures;
 import com.colonel.saas.service.OperationLogService;
+import com.colonel.saas.service.UserDomainEventPublisher;
+import com.colonel.saas.service.UserPermissionCacheService;
 import com.colonel.saas.vo.SysUserVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +43,9 @@ class SysUserServiceTest {
     @Spy private SysUserRoleMapper sysUserRoleMapper;
     @Spy private PasswordEncoder passwordEncoder;
     @Mock private OperationLogService operationLogService;
+    @Mock private UserDomainEventPublisher userDomainEventPublisher;
+    @Mock private OrgStructureService orgStructureService;
+    @Mock private UserPermissionCacheService userPermissionCacheService;
 
     private SysUserService sysUserService;
 
@@ -54,7 +61,10 @@ class SysUserServiceTest {
                 sysRoleMapper,
                 sysUserRoleMapper,
                 passwordEncoder,
-                operationLogService
+                operationLogService,
+                userDomainEventPublisher,
+                orgStructureService,
+                userPermissionCacheService
         );
         testUser = new SysUser();
         testUser.setId(userId);
@@ -65,11 +75,20 @@ class SysUserServiceTest {
         testUser.setDeptId(deptId);
         testUser.setStatus(1);
         testUser.setChannelCode("testadmin");
+
+        lenient().when(orgStructureService.enrichUser(any(SysUserVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().doAnswer(invocation -> {
+                    invocation.getArgument(0);
+                    return null;
+                })
+                .when(orgStructureService)
+                .enrichUserList(anyList());
     }
 
     @Test
     void findPage_returnsPageWithData() {
-        SysUserPageRequest request = new SysUserPageRequest(1, 10, null, null, null);
+        SysUserPageRequest request = AuthTestFixtures.pageRequest(1, 10, null, null, null);
         SysUserVO vo = new SysUserVO();
         vo.setId(userId);
         vo.setUsername("testadmin");
@@ -362,7 +381,9 @@ class SysUserServiceTest {
         
         when(sysUserRoleMapper.findByUserId(any())).thenReturn(Collections.emptyList());
 
-        SysUserCreateRequest request = new SysUserCreateRequest(
+        when(orgStructureService.splitAssignment(deptId))
+                .thenReturn(new OrgStructureService.SplitAssignment(deptId, null, "部门", null, null));
+        SysUserCreateRequest request = AuthTestFixtures.createRequest(
                 "newuser", "PlainPassword123", "新用户", "13800138000", "newuser@test.com", deptId, List.of(roleId));
 
         SysUserVO result = sysUserService.create(request, UUID.randomUUID());
@@ -373,14 +394,26 @@ class SysUserServiceTest {
         assertThat(captor.getValue().getPassword()).isEqualTo("$2a$10$encoded");
         assertThat(captor.getValue().getPhone()).isEqualTo("13800138000");
         assertThat(captor.getValue().getEmail()).isEqualTo("newuser@test.com");
+        assertThat(captor.getValue().getStatus()).isEqualTo(2);
+        assertThat(captor.getValue().getForcePasswordChange()).isTrue();
         assertThat(result.getUsername()).isEqualTo("newuser");
+        verify(userDomainEventPublisher).publishUserCreated(
+                any(),
+                eq("newuser"),
+                eq("新用户"),
+                eq(roleId),
+                any(),
+                eq(deptId),
+                eq(deptId),
+                eq(SysUserStatus.PENDING_ACTIVATION),
+                any());
     }
 
     @Test
     void create_throwsWhenUsernameExists() {
         when(sysUserMapper.findByUsername("existing")).thenReturn(Optional.of(testUser));
 
-        SysUserCreateRequest request = new SysUserCreateRequest(
+        SysUserCreateRequest request = AuthTestFixtures.createRequest(
                 "existing", "password123", "测试", null, null, deptId, List.of(roleId));
 
         assertThatThrownBy(() -> sysUserService.create(request, UUID.randomUUID()))
@@ -409,7 +442,7 @@ class SysUserServiceTest {
         when(sysUserRoleMapper.findByRoleId(adminRoleId)).thenReturn(List.of(adminRelation));
         when(sysUserMapper.selectBatchIds(List.of(existingAdmin.getId()))).thenReturn(List.of(existingAdmin));
 
-        SysUserCreateRequest request = new SysUserCreateRequest(
+        SysUserCreateRequest request = AuthTestFixtures.createRequest(
                 "newadmin", "password123", "第二管理员", null, null, deptId, List.of(adminRoleId));
 
         assertThatThrownBy(() -> sysUserService.create(request, UUID.randomUUID()))
@@ -422,19 +455,83 @@ class SysUserServiceTest {
         when(sysUserMapper.selectById(userId)).thenReturn(testUser);
         when(sysUserRoleMapper.findByUserId(userId)).thenReturn(Collections.emptyList());
 
-        SysUserUpdateRequest request = new SysUserUpdateRequest("新名字", "13900139000", "new@test.com", 1);
+        SysUserUpdateRequest request = AuthTestFixtures.updateRequest("新名字", "13900139000", "new@test.com", 1, null);
 
         SysUserVO result = sysUserService.update(userId, request, userId, DataScope.ALL);
 
         verify(sysUserMapper).updateById(any());
         assertThat(result.getRealName()).isEqualTo("新名字");
+        verify(userDomainEventPublisher, never()).publishUserDisabled(any(), any(), any(), any());
+    }
+
+    @Test
+    void update_shouldPublishUserDisabledWhenStatusBecomesZero() {
+        testUser.setStatus(1);
+        when(sysUserMapper.selectById(userId)).thenReturn(testUser);
+        when(sysUserRoleMapper.findByUserId(userId)).thenReturn(Collections.emptyList());
+
+        SysUserUpdateRequest request = AuthTestFixtures.updateRequest(null, null, null, 0, null);
+        sysUserService.update(userId, request, userId, DataScope.ALL);
+
+        verify(userDomainEventPublisher).publishUserDisabled(
+                eq(userId),
+                eq(1),
+                eq(0),
+                eq(userId));
+    }
+
+    @Test
+    void update_assignsParentDeptAndGroupId() {
+        UUID parentId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        when(sysUserMapper.selectById(userId)).thenReturn(testUser);
+        when(sysUserRoleMapper.findByUserId(userId)).thenReturn(Collections.emptyList());
+        when(orgStructureService.resolveAssignment(parentId, groupId))
+                .thenReturn(new OrgStructureService.ResolvedAssignment(groupId, parentId, groupId));
+        when(orgStructureService.splitAssignment(deptId))
+                .thenReturn(new OrgStructureService.SplitAssignment(deptId, null, "旧部门", null, null));
+        when(orgStructureService.splitAssignment(groupId))
+                .thenReturn(new OrgStructureService.SplitAssignment(parentId, groupId, "部门", "新组", "recruiter_group"));
+
+        SysUserUpdateRequest request = AuthTestFixtures.updateOrgRequest(parentId, groupId);
+        sysUserService.update(userId, request, userId, DataScope.ALL);
+
+        ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
+        verify(sysUserMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getDeptId()).isEqualTo(groupId);
+        verify(userPermissionCacheService).invalidateUser(userId);
+    }
+
+    @Test
+    void update_shouldPublishUserGroupChangedWhenDeptIdChanges() {
+        UUID newGroupId = UUID.randomUUID();
+        testUser.setDeptId(deptId);
+        when(sysUserMapper.selectById(userId)).thenReturn(testUser);
+        when(sysUserRoleMapper.findByUserId(userId)).thenReturn(Collections.emptyList());
+
+        when(orgStructureService.splitAssignment(deptId))
+                .thenReturn(new OrgStructureService.SplitAssignment(deptId, null, "旧部门", null, null));
+        when(orgStructureService.splitAssignment(newGroupId))
+                .thenReturn(new OrgStructureService.SplitAssignment(deptId, newGroupId, "旧部门", "新组", "recruiter_group"));
+        when(orgStructureService.formatOrgChangeRemark(any(), any(), any(), any())).thenReturn("org-change");
+
+        SysUserUpdateRequest request = AuthTestFixtures.updateRequest(null, null, null, null, newGroupId);
+        sysUserService.update(userId, request, userId, DataScope.ALL);
+
+        verify(userDomainEventPublisher).publishUserGroupChanged(
+                eq(userId),
+                isNull(),
+                eq(newGroupId),
+                eq(deptId),
+                eq(deptId),
+                eq(userId));
     }
 
     @Test
     void update_throwsWhenUserNotFound() {
         when(sysUserMapper.selectById(userId)).thenReturn(null);
 
-        SysUserUpdateRequest request = new SysUserUpdateRequest("新名字", null, null, 1);
+        SysUserUpdateRequest request = AuthTestFixtures.updateRequest("新名字", null, null, 1, null);
 
         assertThatThrownBy(() -> sysUserService.update(userId, request, userId, DataScope.ALL))
                 .isInstanceOf(RuntimeException.class)

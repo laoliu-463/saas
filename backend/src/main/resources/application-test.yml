@@ -7,7 +7,7 @@ spring:
     banner-mode: off
     log-startup-info: false
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:saas_test}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:colonel_saas_test}
     username: ${DB_USER:saas}
     password: ${DB_PASSWORD:saas123}
     driver-class-name: org.postgresql.Driver
@@ -45,6 +45,10 @@ knife4j:
     language: zh_cn
 
 app:
+  short-ttl-cache:
+    redis-invalidation-enabled: false
+  domain-event:
+    dispatch-enabled: false
   test:
     enabled: true
     seed-on-startup: true
@@ -55,8 +59,17 @@ app:
     logistics: true
 
 talent:
+  profile:
+    schema-bootstrap:
+      enabled: false
   enrich:
     mode: ${TALENT_ENRICH_MODE:test}
+  collect:
+    mode: mock
+    api:
+      enabled: false
+  refresh:
+    enabled: false
   data:
     public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
 

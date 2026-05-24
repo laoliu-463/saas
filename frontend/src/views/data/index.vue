@@ -188,6 +188,29 @@
         ></div>
       </div>
 
+      <!-- 业绩域双轨汇总（performance_records） -->
+      <div v-if="performanceSummary" class="breakdown-section app-section-panel" data-testid="dashboard-performance-summary">
+        <h3 class="section-title">业绩双轨汇总</h3>
+        <div class="breakdown-tags">
+          <div class="breakdown-item">
+            <span class="breakdown-label">预估轨订单数</span>
+            <span class="breakdown-value">{{ performanceSummary.estimate?.orderCount ?? 0 }}</span>
+          </div>
+          <div class="breakdown-item">
+            <span class="breakdown-label">预估轨毛利</span>
+            <span class="breakdown-value accent">¥{{ centToYuan(performanceSummary.estimate?.grossProfit) }}</span>
+          </div>
+          <div class="breakdown-item">
+            <span class="breakdown-label">结算轨订单数</span>
+            <span class="breakdown-value">{{ performanceSummary.effective?.orderCount ?? 0 }}</span>
+          </div>
+          <div class="breakdown-item">
+            <span class="breakdown-label">结算轨毛利</span>
+            <span class="breakdown-value accent">¥{{ centToYuan(performanceSummary.effective?.grossProfit) }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- 业绩分拆标签组 -->
       <div class="breakdown-section app-section-panel">
         <h3 class="section-title">{{ isChannelStaffOnly ? '我的收益分拆' : '收入分拆' }}</h3>
@@ -260,6 +283,7 @@ import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import PageHeader from '../../components/PageHeader.vue'
 import { getMetrics } from '../../api/data'
+import { centToYuan, getPerformanceSummary, type PerformanceSummary } from '../../api/performance'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES } from '../../constants/rbac'
 import { useDelayedFlag } from '../../utils/delayedFlag'
@@ -272,6 +296,7 @@ const delayedLoading = useDelayedFlag(loading, 200)
 const initialized = ref(false)
 const metricsCreate = ref<Record<string, any>>({})
 const metricsSettle = ref<Record<string, any>>({})
+const performanceSummary = ref<PerformanceSummary | null>(null)
 const timeField = ref<'settleTime' | 'createTime'>('createTime')
 const metrics = computed(() => (
   timeField.value === 'settleTime' ? metricsSettle.value : metricsCreate.value
@@ -624,6 +649,23 @@ const goToOrderDetails = () => {
   })
 }
 
+const formatLocalDateTime = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+const buildSummaryParams = (): import('../../api/performance').PerformanceListParams => {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const tomorrow = new Date(today)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  return {
+    timeFilterType: timeField.value === 'settleTime' ? 'settle' : 'pay',
+    timeStart: formatLocalDateTime(today),
+    timeEnd: formatLocalDateTime(tomorrow)
+  }
+}
+
 const loadMetrics = async () => {
   loading.value = true
   const settleMetricsPromise = getMetrics(buildMetricsParams('settleTime'))
@@ -632,6 +674,14 @@ const loadMetrics = async () => {
     })
     .catch((error: any) => {
       message.warning(error?.message || '获取结算时间指标异常')
+    })
+
+  const summaryPromise = getPerformanceSummary(buildSummaryParams())
+    .then((summaryRes: any) => {
+      performanceSummary.value = summaryRes?.data || summaryRes || null
+    })
+    .catch(() => {
+      performanceSummary.value = null
     })
 
   try {
@@ -645,6 +695,7 @@ const loadMetrics = async () => {
     void renderTrendChart()
   }
   void settleMetricsPromise.finally(() => renderTrendChart())
+  void summaryPromise
 }
 
 onMounted(() => {
@@ -664,6 +715,13 @@ watch(trendPoints, () => {
 
 watch(timeField, () => {
   void renderTrendChart()
+  void getPerformanceSummary(buildSummaryParams())
+    .then((summaryRes: any) => {
+      performanceSummary.value = summaryRes?.data || summaryRes || null
+    })
+    .catch(() => {
+      performanceSummary.value = null
+    })
 })
 </script>
 

@@ -41,6 +41,12 @@ app:
 talent:
   enrich:
     mode: ${TALENT_ENRICH_MODE:real}
+  collect:
+    mode: ${TALENT_COLLECT_MODE:api_then_crawler}
+    api:
+      enabled: ${TALENT_COLLECT_API_ENABLED:false}
+  refresh:
+    enabled: ${TALENT_REFRESH_ENABLED:false}
   data:
     public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
 

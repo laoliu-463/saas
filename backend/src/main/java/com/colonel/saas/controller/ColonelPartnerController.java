@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Validated
 @RestController
-@Tag(name = "商品域合作方", description = "商品域 list_partners 等接口，底层复用商家沉淀数据。")
+@Tag(name = "商品域合作方", description = "商品域 list_partners 等接口；商家型来自商品快照/商家表，团长型来自订单/活动/归因映射聚合。")
 @RequestMapping("/colonel/partners")
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.ADMIN})
 public class ColonelPartnerController extends BaseController {
@@ -57,8 +57,9 @@ public class ColonelPartnerController extends BaseController {
     @GetMapping("/{id}/products")
     public ApiResult<PageResult<PartnerProductVO>> listPartnerProducts(
             @Parameter(description = "合作方 ID。") @PathVariable("id") String partnerId,
+            @RequestParam(name = "type", required = false) String partnerType,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size) {
-        return okPage(merchantService.listPartnerProducts(partnerId, page, size));
+        return okPage(merchantService.listPartnerProducts(partnerId, partnerType, page, size));
     }
 }

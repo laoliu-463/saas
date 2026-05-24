@@ -65,7 +65,8 @@ class SampleLifecycleServiceTest {
                 sampleRequestMapper,
                 talentClaimMapper,
                 sampleStatusLogService,
-                businessRuleConfigService);
+                businessRuleConfigService,
+                org.mockito.Mockito.mock(com.colonel.saas.domain.sample.event.SampleDomainEventPublisher.class));
         lenient().when(jdbcTemplate.batchUpdate(
                 anyString(),
                 anyList(),

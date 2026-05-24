@@ -1,6 +1,15 @@
 <template>
   <n-modal :show="effectiveShow" preset="card" title="寄样详情" :style="{ width: MODAL_WIDTH.lg }" @update:show="closeDetail">
     <n-spin :show="loading || actionLoading">
+      <n-alert
+        v-if="detailLoadError"
+        type="warning"
+        :bordered="false"
+        data-testid="sample-detail-permission-hint"
+        style="margin-bottom: 12px"
+      >
+        {{ detailLoadError }}
+      </n-alert>
       <div v-if="detail" class="detail-body">
         <section class="detail-section">
           <h3 class="section-title">状态流程</h3>
@@ -31,6 +40,9 @@
             <n-descriptions-item label="商品名称">{{ detail.productName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="达人昵称">{{ detail.talentName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="物流单号">{{ detail.trackingNo || '-' }}</n-descriptions-item>
+            <n-descriptions-item label="物流状态">{{ detail.logisticsStatusName || detail.logisticsStatus || '-' }}</n-descriptions-item>
+            <n-descriptions-item label="最近同步">{{ formatDateTime(detail.logisticsLastQueryAt) }}</n-descriptions-item>
+            <n-descriptions-item label="签收时间">{{ formatDateTime(detail.signedAt) }}</n-descriptions-item>
             <n-descriptions-item label="申请时间">{{ formatDateTime(detail.createTime) }}</n-descriptions-item>
             <n-descriptions-item label="更新时间">{{ formatDateTime(detail.updateTime) }}</n-descriptions-item>
             <n-descriptions-item label="完成时间">{{ formatDateTime(detail.completeTime) }}</n-descriptions-item>
@@ -41,6 +53,32 @@
               {{ detail.closeReason }}
             </n-descriptions-item>
           </n-descriptions>
+        </section>
+
+        <section v-if="detail.trackingNo" class="detail-section">
+          <div class="section-title-row">
+            <h3 class="section-title">物流轨迹</h3>
+            <n-button
+              v-if="canShip"
+              size="small"
+              :loading="logisticsLoading"
+              data-testid="sample-logistics-refresh"
+              @click="refreshLogistics"
+            >
+              刷新物流
+            </n-button>
+          </div>
+          <n-alert v-if="logisticsError" type="warning" style="margin-bottom: 12px">{{ logisticsError }}</n-alert>
+          <div v-if="logisticsTraces.length" class="log-timeline">
+            <div v-for="(trace, index) in logisticsTraces" :key="index" class="log-item">
+              <div class="log-dot" />
+              <div class="log-content">
+                <div class="log-action">{{ trace.traceContent || '-' }}</div>
+                <div class="log-meta">{{ formatDateTime(trace.traceTime) }}</div>
+              </div>
+            </div>
+          </div>
+          <n-empty v-else description="暂无物流轨迹，可点击刷新查询" />
         </section>
 
         <section v-if="showEligibilitySection" class="detail-section">
@@ -85,6 +123,7 @@
 
         <section class="detail-section">
           <h3 class="section-title">{{ isChannelStaffOnly ? '当前处理状态' : '可执行操作' }}</h3>
+          <n-alert v-if="actionError" type="warning" :bordered="false" style="margin-bottom: 12px">{{ actionError }}</n-alert>
           <n-space>
             <n-button v-if="canAudit && detail.status === 'PENDING_AUDIT'" type="success" @click="handleAction('APPROVED')">
               审核通过
@@ -128,7 +167,7 @@
           <n-empty v-else description="暂无操作日志" />
         </section>
       </div>
-      <n-empty v-else description="暂无寄样数据" />
+      <n-empty v-else-if="!detailLoadError" description="暂无寄样数据" />
     </n-spin>
 
     <template #footer>
@@ -144,10 +183,11 @@ import { computed, h, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NInput, useDialog, useMessage } from 'naive-ui'
 import { MODAL_WIDTH } from '../../constants/ui'
-import { actionSample, getSampleById, getSampleStatusLogs } from '../../api/sample'
+import { actionSample, getSampleById, getSampleLogistics, getSampleStatusLogs, syncSampleLogistics } from '../../api/sample'
 import StatusTag from '../../components/StatusTag.vue'
 import { ROLE_CODES } from '../../constants/rbac'
 import { useAuthStore } from '../../stores/auth'
+import { handleApiFailure } from '../../utils/requestError'
 import type { SampleItem } from '../../types'
 
 const props = withDefaults(defineProps<{ show?: boolean; sampleId?: string }>(), {
@@ -166,6 +206,11 @@ const loading = ref(false)
 const actionLoading = ref(false)
 const detail = ref<SampleItem | null>(null)
 const statusLogs = ref<any[]>([])
+const logisticsTraces = ref<any[]>([])
+const logisticsLoading = ref(false)
+const logisticsError = ref('')
+const detailLoadError = ref('')
+const actionError = ref('')
 const shippingDraft = ref('')
 const shippingError = ref('')
 
@@ -261,6 +306,46 @@ function statusLabel(status?: string) {
   return STATUS_LABELS[status] || status
 }
 
+async function loadLogistics() {
+  if (!effectiveSampleId.value || !isUuid(effectiveSampleId.value)) {
+    logisticsTraces.value = []
+    logisticsError.value = ''
+    return
+  }
+  try {
+    const res: any = await getSampleLogistics(effectiveSampleId.value)
+    const data = res?.data || res
+    logisticsTraces.value = Array.isArray(data?.traces) ? data.traces : []
+    logisticsError.value = data?.querySuccess === false ? (data?.queryErrorMessage || data?.logisticsLastError || '') : (data?.logisticsLastError || '')
+  } catch {
+    logisticsTraces.value = []
+  }
+}
+
+async function refreshLogistics() {
+  if (!effectiveSampleId.value) return
+  logisticsLoading.value = true
+  logisticsError.value = ''
+  try {
+    const res: any = await syncSampleLogistics(effectiveSampleId.value)
+    const data = res?.data || res
+    logisticsTraces.value = Array.isArray(data?.traces) ? data.traces : []
+    if (data?.querySuccess === false) {
+      logisticsError.value = data?.queryErrorMessage || '物流查询失败'
+      message.warning(logisticsError.value)
+    } else {
+      message.success('物流状态已刷新')
+    }
+    emit('refresh')
+    await loadDetail()
+  } catch (error: any) {
+    logisticsError.value = error?.response?.data?.msg || error?.message || '物流刷新失败'
+    message.error(logisticsError.value)
+  } finally {
+    logisticsLoading.value = false
+  }
+}
+
 async function loadStatusLogs() {
   if (!effectiveSampleId.value || !isUuid(effectiveSampleId.value)) {
     statusLogs.value = []
@@ -284,13 +369,20 @@ async function loadDetail() {
     return
   }
   loading.value = true
+  detailLoadError.value = ''
   try {
     const res = await getSampleById(effectiveSampleId.value)
     detail.value = (res?.data || res) as SampleItem
     await loadStatusLogs()
+    await loadLogistics()
   } catch (error: any) {
     detail.value = null
-    message.error(error?.message || '无法获取寄样详情')
+    handleApiFailure(error, {
+      onPermissionHint: (msg) => { detailLoadError.value = msg; },
+      permissionFallback: '无权查看该寄样单',
+      onFallback: (msg) => { detailLoadError.value = msg; },
+      fallbackMessage: '无法获取寄样详情'
+    })
   } finally {
     loading.value = false
   }
@@ -299,13 +391,19 @@ async function loadDetail() {
 async function doActionSample(payload: any) {
   if (!effectiveSampleId.value) return
   actionLoading.value = true
+  actionError.value = ''
   try {
     await actionSample(effectiveSampleId.value, payload)
     message.success('状态流转成功')
     emit('refresh')
     await loadDetail()
   } catch (error: any) {
-    message.error(error?.message || '操作失败')
+    handleApiFailure(error, {
+      onPermissionHint: (msg) => { actionError.value = msg; },
+      permissionFallback: '当前角色无权执行此操作',
+      onFallback: (msg) => message.error(msg),
+      fallbackMessage: '操作失败'
+    })
   } finally {
     actionLoading.value = false
   }

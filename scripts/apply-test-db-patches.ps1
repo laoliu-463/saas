@@ -47,22 +47,22 @@ function Wait-ContainerRunning {
 }
 
 $repoRoot = Get-RepoRoot
-$sqlPath = Join-Path $repoRoot "backend\src\main\resources\db\alter-test-existing-volumes-20260504.sql"
+$sqlPath = Join-Path $repoRoot "backend\src\main\resources\db\migrate-all.sql"
 if (-not (Test-Path $sqlPath)) {
-    throw "Patch SQL not found: $sqlPath"
+    throw "Migration SQL not found: $sqlPath"
 }
 
 Assert-DockerAvailable
 Wait-ContainerRunning -Name $ContainerName -TimeoutSeconds $TimeoutSeconds
 
-$sql = [System.IO.File]::ReadAllText($sqlPath)
+$sql = [System.IO.File]::ReadAllText($sqlPath, [System.Text.UTF8Encoding]::new($false))
 if (-not $sql.Trim()) {
-    throw "Patch SQL is empty: $sqlPath"
+    throw "Migration SQL is empty: $sqlPath"
 }
 
-$sql | & docker.exe exec -i $ContainerName psql -U $User -d $Database
+$sql | & docker.exe exec -i $ContainerName psql -U $User -d $Database -v ON_ERROR_STOP=1
 if ($LASTEXITCODE -ne 0) {
-    throw "Applying test DB patches failed."
+    throw "Applying test DB migrations failed."
 }
 
-Write-Host "Applied test DB patches from $sqlPath" -ForegroundColor Green
+Write-Host "Applied idempotent migrations from $sqlPath" -ForegroundColor Green

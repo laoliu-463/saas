@@ -15,6 +15,11 @@ public final class JobLockKeys {
     public static final String LOG_CLEANUP = "operation-log:cleanup:job:lock";
     public static final String ORDER_SYNC = "order:sync:lock";
     public static final String PERFORMANCE_BACKFILL = "performance:backfill:job:lock";
+    public static final String PERFORMANCE_CACHE_WARMUP = "performance:cache:warmup:job:lock";
+    public static final String PERFORMANCE_RECALCULATE_FAILED = "performance:recalculate-failed:job:lock";
+    public static final String PRODUCT_DISPLAY_RULE = "product:display:rule:job:lock";
+    public static final String PRODUCT_PIN_EXPIRE = "product:pin:expire:job:lock";
+    public static final String COLONEL_PARTNER_SYNC = "colonel:partner:sync:job:lock";
 
     private JobLockKeys() {
     }

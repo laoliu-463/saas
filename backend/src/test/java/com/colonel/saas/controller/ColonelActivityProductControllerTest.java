@@ -232,6 +232,30 @@ class ColonelActivityProductControllerTest {
     }
 
     @Test
+    void batchAssign_shouldAssignEachProductAndReportCounts() {
+        UUID assigneeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        List<String> roles = List.of(RoleCodes.BIZ_LEADER);
+        when(productService.assignProduct("10001", "9001", assigneeId, userId, deptId))
+                .thenReturn(Map.of("productId", "9001"));
+        when(productService.assignProduct("10001", "9002", assigneeId, userId, deptId))
+                .thenReturn(Map.of("productId", "9002"));
+        ColonelActivityProductController.BatchAssignRequest request = new ColonelActivityProductController.BatchAssignRequest();
+        request.setProductIds(List.of("9001", "9002"));
+        request.setAssigneeId(assigneeId);
+
+        var response = controller.batchAssign("10001", request, userId, deptId, roles);
+
+        assertThat(response.getData().get("total")).isEqualTo(2);
+        assertThat(response.getData().get("succeeded")).isEqualTo(2);
+        assertThat(response.getData().get("failed")).isEqualTo(0);
+        verify(sysUserService).assertAssignableUser(assigneeId, roles, deptId);
+        verify(productService).assignProduct("10001", "9001", assigneeId, userId, deptId);
+        verify(productService).assignProduct("10001", "9002", assigneeId, userId, deptId);
+    }
+
+    @Test
     void generatePromotionLink_shouldUseDefaultsWhenRequestMissing() {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
@@ -340,6 +364,8 @@ class ColonelActivityProductControllerTest {
         request.setSampleThresholdRemark("  需出镜  ");
         request.setSellingPoints(List.of(" 高复购 ", "", "  "));
         request.setMaterialFiles(List.of(" https://example.test/a.png ", " "));
+        request.setGoodsTags(List.of(" 家居 ", "", " 零食 "));
+        request.setProductTags(List.of(" 主推 ", " "));
 
         Map<String, Object> supplement = request.toSupplementMap();
 
@@ -357,7 +383,9 @@ class ColonelActivityProductControllerTest {
                 .containsEntry("sampleThresholdLevel", 2)
                 .containsEntry("sampleThresholdRemark", "需出镜")
                 .containsEntry("sellingPoints", List.of("高复购"))
-                .containsEntry("materialFiles", List.of("https://example.test/a.png"));
+                .containsEntry("materialFiles", List.of("https://example.test/a.png"))
+                .containsEntry("goodsTags", List.of("家居", "零食"))
+                .containsEntry("productTags", List.of("主推"));
     }
 
     @Test

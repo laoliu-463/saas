@@ -30,6 +30,12 @@ public record CurrentUserResponse(
         List<String> roleCodes,
 
         @Schema(description = "聚合后的权限包")
-        Map<String, Object> permissions
+        Map<String, Object> permissions,
+
+        @Schema(description = "账号状态：2=待激活，1=正常，0=已禁用")
+        int status,
+
+        @Schema(description = "是否必须修改密码")
+        boolean forcePasswordChange
 ) {
 }

@@ -32,11 +32,15 @@ authStore.setupCrossTabSync(() => {
 
 app.mount('#app')
 
-router.isReady().finally(() => {
+const dismissBootLoading = () => {
   window.requestAnimationFrame(() => {
     document.body.classList.add('app-ready')
     window.setTimeout(() => {
       document.getElementById('boot-loading')?.remove()
     }, 220)
   })
-})
+}
+
+router.isReady().finally(dismissBootLoading)
+// Docker + Windows 卷挂载时 Vite 首包可能极慢，避免 boot 层无限遮挡
+window.setTimeout(dismissBootLoading, 45_000)

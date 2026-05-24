@@ -86,6 +86,53 @@
     />
 
     <n-card :bordered="false" class="main-card app-panel app-table-shell">
+      <div
+        v-if="showBatchToolbar"
+        class="batch-toolbar"
+        data-testid="activity-product-batch-toolbar"
+      >
+        <span class="batch-toolbar-summary">已选 {{ checkedRowKeys.length }} 项</span>
+        <n-space>
+          <n-button
+            v-if="canBatchAssign"
+            size="small"
+            :disabled="!checkedRowKeys.length"
+            data-testid="batch-assign-button"
+            @click="openBatchAssignDialog"
+          >
+            批量分配招商
+          </n-button>
+          <n-button
+            v-if="canBatchLibraryEntry"
+            size="small"
+            :disabled="!checkedRowKeys.length"
+            :loading="batchLoading === 'library'"
+            data-testid="batch-library-entry-button"
+            @click="handleBatchLibraryEntry"
+          >
+            批量加入商品库
+          </n-button>
+          <n-button
+            v-if="canBatchPin"
+            size="small"
+            :disabled="!checkedRowKeys.length"
+            :loading="batchLoading === 'pin'"
+            data-testid="batch-pin-button"
+            @click="handleBatchPin"
+          >
+            批量置顶
+          </n-button>
+          <n-button
+            size="small"
+            quaternary
+            :disabled="!checkedRowKeys.length"
+            data-testid="batch-clear-selection-button"
+            @click="clearBatchSelection"
+          >
+            清空选择
+          </n-button>
+        </n-space>
+      </div>
       <n-data-table
         v-if="products.length"
         data-testid="product-table"
@@ -93,7 +140,9 @@
         :data="products"
         :loading="loading"
         :row-key="(row: any) => row.productId"
+        :checked-row-keys="checkedRowKeys"
         :single-line="false"
+        @update:checked-row-keys="handleCheckedRowKeysUpdate"
       />
 
       <PageEmpty v-else-if="!loading" title="暂无商品数据" :description="emptyDescription" class="table-empty">
@@ -133,6 +182,12 @@
       :mode="assignDialogMode"
       @success="(payload: any) => handleActionSuccess(assignDialogMode === 'auditOwner' ? 'auditOwner' : 'assign', payload)"
     />
+    <ProductBatchAssignDialog
+      v-model:show="dialogs.batchAssign"
+      :activity-id="resolvedActivityId || null"
+      :product-ids="checkedRowKeys"
+      @success="handleBatchActionSuccess"
+    />
     <ProductOperationLogDrawer
       v-model:show="dialogs.logs"
       :product-id="currentRow?.productId ?? null"
@@ -150,6 +205,8 @@ import PageHeader from '../../components/PageHeader.vue'
 import { useAuthStore } from '../../stores/auth'
 import { hasAccess } from '../../constants/rbac'
 import {
+  batchPinActivityProducts,
+  batchPutActivityProductsIntoLibrary,
   convertActivityProductLink,
   getActivityProducts,
   pinActivityProduct,
@@ -163,6 +220,7 @@ import {
   applyProductFilters,
   allianceStatusToUpstreamStatus,
   buildActivityProductInfoQuery,
+  buildProductLibraryQueryParams,
   DEFAULT_PRODUCT_FILTERS,
   formatGmv30d,
   formatSales30d,
@@ -171,7 +229,14 @@ import {
 import ProductDetail from './ProductDetail.vue'
 import ProductAuditDialog from './components/ProductAuditDialog.vue'
 import ProductAssignDialog from './components/ProductAssignDialog.vue'
+import ProductBatchAssignDialog from './components/ProductBatchAssignDialog.vue'
 import ProductOperationLogDrawer from './components/ProductOperationLogDrawer.vue'
+import {
+  formatBatchResultMessage,
+  MAX_BATCH_PRODUCT_IDS,
+  normalizeBatchProductIds,
+  type BatchActionResult
+} from './product-batch'
 import { copyProductBriefWithLink } from './product-copy'
 import { useDebouncedFn } from '../../utils/debounce'
 
@@ -192,6 +257,8 @@ const nextCursor = ref('')
 const hasMore = ref(false)
 const promotionLoadingIds = ref<Set<string>>(new Set())
 const pinLoadingIds = ref<Set<string>>(new Set())
+const checkedRowKeys = ref<string[]>([])
+const batchLoading = ref<'library' | 'pin' | null>(null)
 const selectedProduct = ref<string | null>(null)
 const productKeyword = ref('')
 const productOptions = ref<{ label: string; value: string }[]>([])
@@ -207,7 +274,8 @@ const assignDialogMode = ref<AssignDialogMode>('businessOwner')
 const dialogs = ref({
   audit: false,
   assign: false,
-  logs: false
+  logs: false,
+  batchAssign: false
 })
 
 const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
@@ -238,6 +306,12 @@ const isActivityProductMode = computed(() => hasExplicitActivityRoute.value)
 const isPickLibraryMode = computed(() => route.path === '/product/manage/products' || (!isSharedLibraryMode.value && !isActivityProductMode.value))
 const isBizLeader = computed(() => authStore.roleCodes.includes('biz_leader') || authStore.isAdmin)
 const isBizStaffOnly = computed(() => authStore.roleCodes.includes('biz_staff') && !isBizLeader.value)
+const showBatchSelection = computed(() => !isSharedLibraryMode.value)
+const showBatchToolbar = computed(() => showBatchSelection.value && (canBatchAssign.value || canBatchLibraryEntry.value || canBatchPin.value))
+const canBatchAssign = computed(() => canDo('assign'))
+const canBatchLibraryEntry = computed(() => hasAccess(authStore.roleCodes, ['biz_staff']))
+const canBatchPin = computed(() => canDo('pin'))
+const selectedBatchProductIds = computed(() => normalizeBatchProductIds(checkedRowKeys.value))
 
 const pageTitle = computed(() => {
   if (isActivityProductMode.value) return '活动商品推进'
@@ -507,18 +581,18 @@ const fetchProducts = async (reset: boolean, forceRemote = false): Promise<boole
   try {
     if (isSharedLibraryMode.value) {
       const page = reset ? 1 : Math.floor(products.value.length / 20) + 1
-      const res: any = await getProducts({
+      const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
         page,
         size: 20,
         keyword: selectedProduct.value || productKeyword.value.trim() || undefined
-      })
+      }))
       const data = res?.data || {}
       const records = Array.isArray(data.records) ? data.records : []
-      const items = applyFilters(records.map((p: any) => normalizeItem({
+      const items = records.map((p: any) => normalizeItem({
         ...p,
         title: p.title || p.name || '未命名商品',
         productId: String(p.productId || '')
-      })))
+      }))
       products.value = reset ? items : products.value.concat(items)
       const currentPage = Number(data.page || page || 1)
       const pageSize = Number(data.size || 20)
@@ -542,6 +616,8 @@ const fetchProducts = async (reset: boolean, forceRemote = false): Promise<boole
         status: filters.value.allianceStatus
           ? allianceStatusToUpstreamStatus[filters.value.allianceStatus]
           : undefined,
+        goodsTags: filters.value.goodsTags?.length ? filters.value.goodsTags.join(',') : undefined,
+        productTags: filters.value.productTags?.length ? filters.value.productTags.join(',') : undefined,
         retrieveMode: 1,
         refresh: forceRemote || undefined
       })
@@ -700,6 +776,7 @@ const resetFilters = () => {
 }
 
 const refreshProducts = async () => {
+  clearBatchSelection()
   await fetchProducts(true)
 }
 
@@ -845,6 +922,77 @@ const handlePinProduct = async (item: any, pinned: boolean) => {
   }
 }
 
+const handleCheckedRowKeysUpdate = (keys: Array<string | number>) => {
+  checkedRowKeys.value = keys.map((key) => String(key))
+}
+
+const clearBatchSelection = () => {
+  checkedRowKeys.value = []
+}
+
+const resolveBatchContext = (): { activityId: string; productIds: string[] } | null => {
+  const productIds = selectedBatchProductIds.value
+  if (!productIds.length) {
+    message.warning('请先选择商品')
+    return null
+  }
+  const activityId = resolvedActivityId.value
+  if (!activityId) {
+    message.warning('缺少活动 ID，暂不可批量操作')
+    return null
+  }
+  if (checkedRowKeys.value.length > MAX_BATCH_PRODUCT_IDS) {
+    message.warning(`单次最多处理 ${MAX_BATCH_PRODUCT_IDS} 个商品，已自动截断前 ${MAX_BATCH_PRODUCT_IDS} 项`)
+  }
+  return { activityId, productIds }
+}
+
+const openBatchAssignDialog = () => {
+  if (!resolveBatchContext()) return
+  dialogs.value.batchAssign = true
+}
+
+const handleBatchActionSuccess = async (_payload: BatchActionResult) => {
+  clearBatchSelection()
+  await refreshProducts()
+}
+
+const handleBatchLibraryEntry = async () => {
+  const context = resolveBatchContext()
+  if (!context) return
+  batchLoading.value = 'library'
+  try {
+    const res: any = await batchPutActivityProductsIntoLibrary(context.activityId, {
+      productIds: context.productIds
+    })
+    message.success(formatBatchResultMessage((res?.data || {}) as BatchActionResult, '批量加入商品库'))
+    clearBatchSelection()
+    await refreshProducts()
+  } catch (error: any) {
+    message.error(error?.response?.data?.msg || error?.message || '批量加入商品库失败')
+  } finally {
+    batchLoading.value = null
+  }
+}
+
+const handleBatchPin = async () => {
+  const context = resolveBatchContext()
+  if (!context) return
+  batchLoading.value = 'pin'
+  try {
+    const res: any = await batchPinActivityProducts(context.activityId, {
+      productIds: context.productIds
+    })
+    message.success(formatBatchResultMessage((res?.data || {}) as BatchActionResult, '批量置顶'))
+    clearBatchSelection()
+    await refreshProducts()
+  } catch (error: any) {
+    message.error(error?.response?.data?.msg || error?.message || '批量置顶失败')
+  } finally {
+    batchLoading.value = null
+  }
+}
+
 const copyPromotionLink = async (item: any) => {
   const productId = String(item?.productId || '')
   const activityId = resolveRowActivityId(item)
@@ -937,28 +1085,51 @@ const renderTextAction = (label: string, onClick?: (event: MouseEvent) => void, 
     }
   )
 
+const formatPinnedUntil = (value?: string | null) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 const renderProductInfo = (row: any) =>
   h('div', { class: 'table-product' }, [
     h(
       'div',
       { class: 'table-product-cover' },
-      row.cover
-        ? h('img', {
-            class: 'img',
-            src: row.cover,
-            alt: row.title || row.name || '商品图片',
-            style: {
-              width: '68px',
-              height: '68px',
-              objectFit: 'contain',
-              display: 'block',
-              background: '#f5f6fa'
-            }
-          })
-        : h('div', { class: 'table-product-fallback' }, '暂无图片')
+      [
+        row.cover
+          ? h('img', {
+              class: 'img',
+              src: row.cover,
+              alt: row.title || row.name || '商品图片',
+              style: {
+                width: '68px',
+                height: '68px',
+                objectFit: 'contain',
+                display: 'block',
+                background: '#f5f6fa'
+              }
+            })
+          : h('div', { class: 'table-product-fallback' }, '暂无图片'),
+        row.pinned
+          ? h('span', { class: 'table-product-pin-badge', 'data-testid': 'product-pinned-badge' }, '置顶')
+          : null
+      ]
     ),
     h('div', { class: 'table-product-body' }, [
-      h('div', { class: 'table-product-title' }, row.title || row.name || '-'),
+      h('div', { class: 'table-product-title-row' }, [
+        h('div', { class: 'table-product-title' }, row.title || row.name || '-'),
+        row.pinned ? h('span', { class: 'table-inline-badge table-inline-badge-pin' }, '置顶') : null
+      ]),
+      row.pinned
+        ? h(
+            'div',
+            { class: 'table-product-meta table-product-pin-meta' },
+            row.pinnedUntil ? `置顶至 ${formatPinnedUntil(row.pinnedUntil)}` : '当前商品已置顶'
+          )
+        : null,
       h('div', { class: 'table-product-meta' }, `商品ID：${row.productId || '-'}`),
       h('div', { class: 'table-product-meta' }, `店铺：${row.shopName || '未识别店铺'}`),
       h('div', { class: 'table-product-meta' }, `类目：${row.categoryName || '-'}`),
@@ -1071,11 +1242,13 @@ const renderActions = (row: any) => {
 }
 
 const columns = computed(() => [
-  {
-    type: 'selection',
-    width: 42,
-    multiple: true
-  },
+  ...(showBatchSelection.value
+    ? [{
+        type: 'selection' as const,
+        width: 42,
+        multiple: true
+      }]
+    : []),
   {
     title: '商品信息',
     key: 'product',
@@ -1245,6 +1418,21 @@ watch(
   overflow: hidden;
 }
 
+.batch-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 0;
+  flex-wrap: wrap;
+}
+
+.batch-toolbar-summary {
+  color: #374151;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .table-empty {
   padding: 48px 0;
 }
@@ -1257,6 +1445,7 @@ watch(
 }
 
 :deep(.table-product-cover) {
+  position: relative;
   width: 68px;
   height: 68px;
   border-radius: 0;
@@ -1267,6 +1456,21 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+:deep(.table-product-pin-badge) {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #d92d20;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  box-shadow: 0 2px 8px rgba(217, 45, 32, 0.22);
 }
 
 :deep(.table-product-cover img),
@@ -1292,16 +1496,28 @@ watch(
   min-width: 0;
 }
 
+:deep(.table-product-title-row) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-bottom: 2px;
+}
+
 :deep(.table-product-title) {
   color: #ef4444;
   font-size: 14px;
   font-weight: 600;
   line-height: 1.4;
-  margin-bottom: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 260px;
+  max-width: 220px;
+}
+
+:deep(.table-product-pin-meta) {
+  color: #d92d20;
+  font-weight: 600;
 }
 
 :deep(.table-product-meta),
@@ -1359,6 +1575,12 @@ watch(
   font-size: 12px;
   font-weight: 600;
   width: fit-content;
+}
+
+:deep(.table-inline-badge-pin) {
+  background: #fee4e2;
+  color: #d92d20;
+  flex-shrink: 0;
 }
 
 :deep(.table-link-action-button) {

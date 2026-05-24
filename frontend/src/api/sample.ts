@@ -2,6 +2,7 @@ import request from '../utils/request';
 
 // 寄样单 CRUD
 export const getSamplePage = (params: any) => request.get('/samples', { params });
+export const getSampleFilterOptions = () => request.get('/samples/filter-options');
 export const getSampleById = (id: string) => request.get(`/samples/${id}`);
 export const createSample = (data: any) => request.post('/samples', data);
 export const checkSampleEligibility = (data: any) => request.post('/samples/eligibility-check', data);
@@ -39,3 +40,20 @@ export const batchRejectSamples = (data: { requestNos: string[]; remark: string 
 
 export const batchShipSamples = (data: { items: { requestNo: string; trackingNo: string; shipperCode?: string }[] }) =>
   request.post('/samples/batch-ship', data);
+
+export const syncSampleLogistics = (id: string) => request.post(`/samples/${id}/logistics/sync`);
+
+export const getSampleLogistics = (id: string) => request.get(`/samples/${id}/logistics`);
+
+export const syncAllSampleLogistics = () => request.post('/admin/samples/logistics/sync');
+
+export const downloadLogisticsImportTemplate = () =>
+  request.get('/samples/logistics/import-template', { responseType: 'blob' });
+
+export const importSampleLogistics = (file: File, allowOverwrite = false) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request.post(`/samples/logistics/import?allowOverwrite=${allowOverwrite}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+};

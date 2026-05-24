@@ -1,6 +1,7 @@
 package com.colonel.saas.testsupport;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.entity.Product;
@@ -823,14 +824,17 @@ public class TestDataService implements ApplicationRunner {
             String auditRemark) {
         boolean selectedToLibrary = auditStatus == 2;
         LocalDateTime selectedAt = selectedToLibrary ? LocalDateTime.now() : null;
+        String displayStatus = selectedToLibrary
+                ? ProductDisplayStatus.DISPLAYING.name()
+                : ProductDisplayStatus.PENDING.name();
         UUID id = jdbcTemplate.query(
                 """
                 INSERT INTO product_operation_state (
                     id, activity_id, product_id, assignee_id, biz_status,
                     audit_status, audit_remark, selected_to_library, selected_at, selected_by,
-                    last_operation_at, deleted,
+                    display_status, last_operation_at, deleted,
                     create_time, update_time
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (activity_id, product_id) DO UPDATE SET
                     assignee_id = EXCLUDED.assignee_id,
                     biz_status = EXCLUDED.biz_status,
@@ -839,6 +843,7 @@ public class TestDataService implements ApplicationRunner {
                     selected_to_library = EXCLUDED.selected_to_library,
                     selected_at = EXCLUDED.selected_at,
                     selected_by = EXCLUDED.selected_by,
+                    display_status = EXCLUDED.display_status,
                     last_operation_at = EXCLUDED.last_operation_at,
                     deleted = 0,
                     update_time = CURRENT_TIMESTAMP
@@ -855,6 +860,7 @@ public class TestDataService implements ApplicationRunner {
                 selectedToLibrary,
                 selectedAt,
                 assigneeId,
+                displayStatus,
                 LocalDateTime.now()
         );
         return productOperationStateMapper.selectById(id);

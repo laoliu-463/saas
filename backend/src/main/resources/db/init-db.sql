@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS sys_dept (
     parent_id     UUID,
     dept_code     VARCHAR(50) NOT NULL UNIQUE,
     dept_name     VARCHAR(100) NOT NULL,
+    dept_type     VARCHAR(32) NOT NULL DEFAULT 'department',
+    leader_user_id UUID,
     leader        VARCHAR(100),
     phone         VARCHAR(20),
     email         VARCHAR(100),
@@ -32,6 +34,7 @@ CREATE TABLE IF NOT EXISTS sys_dept (
 CREATE INDEX IF NOT EXISTS idx_sys_dept_parent_id ON sys_dept(parent_id);
 CREATE INDEX IF NOT EXISTS idx_sys_dept_status    ON sys_dept(status);
 CREATE INDEX IF NOT EXISTS idx_sys_dept_deleted   ON sys_dept(deleted);
+CREATE INDEX IF NOT EXISTS idx_sys_dept_type      ON sys_dept(dept_type);
 
 CREATE TABLE IF NOT EXISTS sys_user (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -42,7 +45,8 @@ CREATE TABLE IF NOT EXISTS sys_user (
     email         VARCHAR(100),
     dept_id       UUID,
     channel_code  VARCHAR(16)  NOT NULL UNIQUE,     -- [V1.2] 渠道短码，用于 pick_extra 生成（channel_{code} ≤20字符）
-    status        SMALLINT    NOT NULL DEFAULT 1,  -- 1=启用, 0=禁用
+    status        SMALLINT    NOT NULL DEFAULT 1,  -- 2=待激活, 1=正常, 0=禁用
+    force_password_change BOOLEAN NOT NULL DEFAULT FALSE,
     deleted       SMALLINT    NOT NULL DEFAULT 0,
     create_time   TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time   TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -861,7 +865,7 @@ VALUES
     ('commission.channel_default_ratio',  '0.15',     'numeric', 'commission', '渠道默认提成比例',          1),
     ('promotion.pick_extra_rule', '{"format":"channel_{channel_code}","encode":"none"}',
      'json', 'promotion', 'pick_extra 生成规则', 1),
-    ('talent.preset_tags', '["美妆","高转化","服饰","食品","母婴","家居","数码","本地生活"]', 'json', 'talent', '达人预设标签库', 1)
+    ('talent.preset_tags', '["高意向","已合作","待跟进","寄样中","已出单","低意向","重点达人","直播达人","短视频达人","带货能力强","价格敏感","需要复盘"]', 'json', 'talent', '达人预设标签库', 1)
 ON CONFLICT (config_key) DO NOTHING;
 
 -- 种子数据：默认角色
@@ -874,11 +878,11 @@ INSERT INTO sys_role (role_code, role_name, data_scope, status) VALUES
 ON CONFLICT (role_code) DO NOTHING;
 
 -- 种子数据：默认业务组（技术上复用 sys_dept 承载“本组”概念）
-INSERT INTO sys_dept (id, parent_id, dept_code, dept_name, sort_order, status)
+INSERT INTO sys_dept (id, parent_id, dept_code, dept_name, dept_type, sort_order, status)
 VALUES
-    ('11111111-1111-1111-1111-111111111111', NULL, 'BIZ', '招商组', 10, 1),
-    ('22222222-2222-2222-2222-222222222222', NULL, 'CHANNEL', '渠道组', 20, 1),
-    ('33333333-3333-3333-3333-333333333333', NULL, 'OPS', '运营组', 30, 1)
+    ('11111111-1111-1111-1111-111111111111', NULL, 'BIZ', '招商组', 'recruiter_group', 10, 1),
+    ('22222222-2222-2222-2222-222222222222', NULL, 'CHANNEL', '渠道组', 'channel_group', 20, 1),
+    ('33333333-3333-3333-3333-333333333333', NULL, 'OPS', '运营组', 'ops_group', 30, 1)
 ON CONFLICT (dept_code) DO NOTHING;
 
 -- 种子数据：默认管理员（仅开发环境）

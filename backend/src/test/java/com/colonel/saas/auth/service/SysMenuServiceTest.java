@@ -10,6 +10,7 @@ import com.colonel.saas.mapper.SysMenuMapper;
 import com.colonel.saas.mapper.SysRoleMapper;
 import com.colonel.saas.mapper.SysRoleMenuMapper;
 import com.colonel.saas.service.OperationLogService;
+import com.colonel.saas.service.UserDomainEventPublisher;
 import com.colonel.saas.vo.SysMenuVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -43,6 +45,8 @@ class SysMenuServiceTest {
     SysRoleMenuMapper sysRoleMenuMapper;
     @Mock
     OperationLogService operationLogService;
+    @Mock
+    UserDomainEventPublisher userDomainEventPublisher;
 
     private SysMenuService service;
     private UUID userId;
@@ -52,7 +56,12 @@ class SysMenuServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SysMenuService(sysMenuMapper, sysRoleMapper, sysRoleMenuMapper, operationLogService);
+        service = new SysMenuService(
+                sysMenuMapper,
+                sysRoleMapper,
+                sysRoleMenuMapper,
+                operationLogService,
+                userDomainEventPublisher);
         userId = UUID.fromString("11111111-1111-1111-1111-111111111111");
         roleId = UUID.fromString("22222222-2222-2222-2222-222222222222");
         rootId = UUID.fromString("33333333-3333-3333-3333-333333333333");
@@ -108,6 +117,11 @@ class SysMenuServiceTest {
         UUID menuA = UUID.randomUUID();
         UUID menuB = UUID.randomUUID();
         ArgumentCaptor<SysRoleMenu> captor = ArgumentCaptor.forClass(SysRoleMenu.class);
+        SysRole role = new SysRole();
+        role.setId(roleId);
+        role.setRoleCode("biz_staff");
+        when(sysRoleMapper.selectById(roleId)).thenReturn(role);
+        when(sysRoleMenuMapper.findMenuIdsByRoleId(roleId)).thenReturn(List.of());
 
         service.assignMenusToRole(roleId, List.of(menuA, menuB), userId);
 
@@ -124,6 +138,12 @@ class SysMenuServiceTest {
                 null,
                 "分配角色菜单: roleId=" + roleId + ", menuCount=2"
         );
+        verify(userDomainEventPublisher).publishRolePermissionUpdated(
+                eq(roleId),
+                eq("biz_staff"),
+                any(),
+                any(),
+                eq(userId));
     }
 
     @Test

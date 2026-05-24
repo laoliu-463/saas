@@ -112,6 +112,14 @@ public class BusinessRuleConfigService {
         }
     }
 
+    public int getLoginMaxFailures() {
+        return getInt(SystemConfigKeys.LOGIN_MAX_FAILURES, 5);
+    }
+
+    public int getLoginLockMinutes() {
+        return getInt(SystemConfigKeys.LOGIN_LOCK_MINUTES, 15);
+    }
+
     private int getInt(String configKey, int defaultValue) {
         String raw = getRawValue(configKey);
         if (!StringUtils.hasText(raw)) {

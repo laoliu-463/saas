@@ -1,7 +1,8 @@
 <template>
   <n-modal :show="show" preset="card" title="批量导入达人" :style="{ width: MODAL_WIDTH.lg }" @update:show="closeModal">
     <n-alert type="info" :show-icon="false" style="margin-bottom: 16px">
-      上传 Excel（.xlsx/.xls）或 CSV，读取第一列或「抖音号/账号/account」列作为抖音号；也可在下方粘贴，每行一个账号。
+      支持 .xlsx / .xls / .csv（≤10MB）。读取第一列或「抖音号 / 账号 / account」列；也可在下方粘贴，每行一个账号。
+      必填：达人账号 / 抖音号 / 主页链接（三选一，按后端解析规则）。可选：昵称、备注、标签等请在导入后于详情中维护。
     </n-alert>
 
     <n-space vertical :size="16">
@@ -15,6 +16,7 @@
       />
       <n-space>
         <n-button data-testid="talent-batch-import-choose" @click="triggerFileInput">选择文件</n-button>
+        <n-button tertiary data-testid="talent-batch-import-template" @click="downloadTemplate">下载模板</n-button>
         <n-text v-if="selectedFileName" depth="3">已选：{{ selectedFileName }}</n-text>
       </n-space>
 
@@ -30,10 +32,27 @@
         <div v-for="(err, idx) in parseErrors" :key="idx">{{ err }}</div>
       </n-alert>
 
-      <n-alert v-if="importResult" type="success" :show-icon="false" data-testid="talent-batch-import-result">
+      <n-alert v-if="importResult" type="info" :show-icon="false" data-testid="talent-batch-import-result">
         共 {{ importResult.total }} 条：新建 {{ importResult.created }}，跳过 {{ importResult.skipped }}，失败
         {{ importResult.failed }}
       </n-alert>
+
+      <div v-if="failedItems.length > 0">
+        <n-space justify="space-between" align="center" style="margin-bottom: 8px">
+          <n-text strong>失败明细（{{ failedItems.length }}）</n-text>
+          <n-button size="small" tertiary data-testid="talent-batch-import-download-failures" @click="downloadFailures">
+            下载失败明细
+          </n-button>
+        </n-space>
+        <n-data-table
+          size="small"
+          :columns="failureColumns"
+          :data="failedItems"
+          :pagination="false"
+          :max-height="220"
+          data-testid="talent-batch-import-failures"
+        />
+      </div>
     </n-space>
 
     <template #footer>
@@ -54,27 +73,62 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { h, ref, watch } from 'vue'
+import { NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { MODAL_WIDTH } from '../../../constants/ui'
 import { batchImportTalents } from '../../../api/talent'
+
+export interface TalentBatchImportItemResult {
+  account: string
+  status: string
+  talentId?: string | null
+  message?: string | null
+}
+
+export interface TalentBatchImportResult {
+  total: number
+  created: number
+  skipped: number
+  failed: number
+  items?: TalentBatchImportItemResult[]
+}
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{ 'update:show': [value: boolean]; success: [] }>()
 
 const message = useMessage()
+const MAX_FILE_BYTES = 10 * 1024 * 1024
+const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.csv']
+
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const pasteText = ref('')
 const selectedFileName = ref('')
 const parseErrors = ref<string[]>([])
 const parsedAccounts = ref<string[]>([])
 const submitting = ref(false)
-const importResult = ref<{
-  total: number
-  created: number
-  skipped: number
-  failed: number
-} | null>(null)
+const importResult = ref<TalentBatchImportResult | null>(null)
+const failedItems = ref<TalentBatchImportItemResult[]>([])
+
+const failureColumns: DataTableColumns<TalentBatchImportItemResult> = [
+  { title: '账号', key: 'account', ellipsis: { tooltip: true } },
+  {
+    title: '状态',
+    key: 'status',
+    width: 90,
+    render: (row: TalentBatchImportItemResult) =>
+      h(
+        NTag,
+        { size: 'small', type: row.status === 'FAILED' ? 'error' : 'default' },
+        { default: () => row.status }
+      )
+  },
+  {
+    title: '原因',
+    key: 'message',
+    ellipsis: { tooltip: true },
+    render: (row: TalentBatchImportItemResult) => row.message || '-'
+  }
+]
 
 const ACCOUNT_HEADERS = new Set(['抖音号', '账号', 'account', 'douyin', 'douyinno', 'douyin_no'])
 
@@ -97,6 +151,7 @@ function resetState() {
   parseErrors.value = []
   parsedAccounts.value = []
   importResult.value = null
+  failedItems.value = []
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
   }
@@ -108,6 +163,11 @@ function closeModal() {
 
 function triggerFileInput() {
   fileInputRef.value?.click()
+}
+
+function isAllowedFile(file: File): boolean {
+  const lower = file.name.toLowerCase()
+  return ALLOWED_EXTENSIONS.some((ext) => lower.endsWith(ext))
 }
 
 function normalizeAccount(value: unknown): string | null {
@@ -179,6 +239,48 @@ function mergeParsedAccounts(accounts: string[]) {
   parsedAccounts.value = dedupeAccounts([...parsedAccounts.value, ...accounts])
 }
 
+function downloadTemplate() {
+  const header = '抖音号\n'
+  const sample = '123456789\n987654321\n'
+  const blob = new Blob(['\ufeff' + header + sample], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'talent-import-template.csv'
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function downloadFailures() {
+  if (failedItems.value.length === 0) {
+    return
+  }
+  const lines = ['账号,状态,原因', ...failedItems.value.map((item) => {
+    const reason = (item.message || '').replace(/"/g, '""')
+    return `"${item.account}","${item.status}","${reason}"`
+  })]
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'talent-import-failures.csv'
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function applyImportResult(result: TalentBatchImportResult, submittedCount: number): TalentBatchImportResult {
+  const summary: TalentBatchImportResult = {
+    total: result.total ?? submittedCount,
+    created: result.created ?? 0,
+    skipped: result.skipped ?? 0,
+    failed: result.failed ?? 0,
+    items: Array.isArray(result.items) ? result.items : []
+  }
+  importResult.value = summary
+  failedItems.value = summary.items?.filter((item) => item.status === 'FAILED') ?? []
+  return summary
+}
+
 async function handleFileChange(event: Event) {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
@@ -189,6 +291,18 @@ async function handleFileChange(event: Event) {
   selectedFileName.value = file.name
   parseErrors.value = []
   importResult.value = null
+  failedItems.value = []
+
+  if (!isAllowedFile(file)) {
+    message.error('仅支持 .xlsx / .xls / .csv 文件')
+    target.value = ''
+    return
+  }
+  if (file.size > MAX_FILE_BYTES) {
+    message.error('文件不能超过 10MB')
+    target.value = ''
+    return
+  }
 
   try {
     const lowerName = file.name.toLowerCase()
@@ -231,20 +345,24 @@ async function submit() {
 
   submitting.value = true
   importResult.value = null
+  failedItems.value = []
   try {
-    const result = await batchImportTalents(accounts)
-    importResult.value = {
-      total: result?.total ?? accounts.length,
-      created: result?.created ?? 0,
-      skipped: result?.skipped ?? 0,
-      failed: result?.failed ?? 0
+    const result = (await batchImportTalents(accounts)) as TalentBatchImportResult
+    const summary = applyImportResult(result, accounts.length)
+    if (summary.failed > 0) {
+      message.warning(
+        `导入完成：新建 ${summary.created}，跳过 ${summary.skipped}，失败 ${summary.failed}（见下方明细）`
+      )
+    } else {
+      message.success(
+        `导入完成：新建 ${summary.created}，跳过 ${summary.skipped}，失败 ${summary.failed}`
+      )
     }
-    message.success(
-      `导入完成：新建 ${importResult.value.created}，跳过 ${importResult.value.skipped}，失败 ${importResult.value.failed}`
-    )
-    emit('success')
+    if (summary.created > 0 || summary.skipped > 0) {
+      emit('success')
+    }
   } catch (error: any) {
-    message.error(error?.message || '批量导入失败')
+    message.error(error?.message || error?.msg || '批量导入失败')
   } finally {
     submitting.value = false
   }

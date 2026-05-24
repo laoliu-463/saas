@@ -20,9 +20,9 @@
         v-for="tab in visibleTabs"
         :key="tab.key"
         class="nav-tab"
-        :class="{ active: isActiveTab(tab) }"
+        :class="{ active: isTopMenuActive(tab.key, route.path) }"
         :data-testid="tab.testId"
-        @click="handleTabClick(tab)"
+        @click="handleTopMenuClick(tab.key)"
       >
         {{ tab.label }}
       </div>
@@ -52,7 +52,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NIcon, useMessage } from 'naive-ui'
 import { useAuthStore } from '../../stores/auth'
-import { ROLE_CODES, hasAccess } from '../../constants/rbac'
+import { ROLE_CODES } from '../../constants/rbac'
+import { getTopMenus, isTopMenuActive, resolveTopMenuDefaultPath } from '../../router/menuTree'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -74,6 +75,7 @@ const isOpsStaffOnly = computed(() => {
   const roles = authStore.roleCodes
   return roles.includes(ROLE.OPS_STAFF) && !roles.includes(ROLE.ADMIN)
 })
+
 const rawEnvLabel = import.meta.env.VITE_ENV_LABEL as string | undefined
 const serverEnvLabel = ref('')
 onMounted(async () => {
@@ -94,66 +96,28 @@ const envLabel = computed(() => {
   return String(rawEnvLabel || '').trim().toUpperCase()
 })
 
-interface NavTab {
-  label: string
-  key: string
-  roles: string[]
-  testId: string
-}
-
-const navTabs: NavTab[] = [
-  { label: '数据看板', key: '/data', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.ADMIN], testId: 'nav-dashboard' },
-  { label: '商品库', key: '/product', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF], testId: 'nav-product' },
-  { label: '商品管理', key: '/product/manage', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF], testId: 'nav-activity-product' },
-  { label: '达人 CRM', key: '/talent', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF], testId: 'nav-talent' },
-  { label: '寄样审核', key: '/sample', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF], testId: 'nav-sample' },
-  { label: '寄样发货台', key: '/ops/shipping', roles: [ROLE.OPS_STAFF], testId: 'nav-shipping' },
-  { label: '系统管理', key: '/system/users', roles: [ROLE.ADMIN], testId: 'nav-system' }
-]
-
 const visibleTabs = computed(() =>
-  navTabs
-    .filter((tab) => hasAccess(authStore.roleCodes, tab.roles))
-    .map((tab) => {
-      if (isChannelStaffOnly.value) {
-        if (tab.key === '/data') return { ...tab, label: '我的业绩' }
-        if (tab.key === '/talent') return { ...tab, label: '我的达人' }
-        if (tab.key === '/sample') return { ...tab, label: '寄样台' }
-      }
-      if (isBizStaffOnly.value) {
-        if (tab.key === '/data') return { ...tab, label: '我的业绩' }
-        if (tab.key === '/sample') return { ...tab, label: '寄样台' }
-      }
-      if (isOpsStaffOnly.value && tab.key === '/ops/shipping') {
-        return { ...tab, label: '寄样发货台' }
-      }
-      return tab
-    })
+  getTopMenus(authStore.roleCodes).map((tab) => {
+    if (isChannelStaffOnly.value) {
+      if (tab.key === 'data') return { ...tab, label: '我的业绩' }
+      if (tab.key === 'talent') return { ...tab, label: '我的达人' }
+      if (tab.key === 'sample') return { ...tab, label: '寄样台' }
+    }
+    if (isBizStaffOnly.value) {
+      if (tab.key === 'data') return { ...tab, label: '我的业绩' }
+      if (tab.key === 'sample') return { ...tab, label: '寄样台' }
+    }
+    if (isOpsStaffOnly.value && tab.key === 'ops') {
+      return { ...tab, label: '寄样发货台' }
+    }
+    return tab
+  })
 )
 
-const isActiveTab = (tab: NavTab) => {
-  if (tab.key === '/system/users') {
-    return route.path.startsWith('/system')
-  }
-  if (tab.key === '/data') {
-    return route.path.startsWith('/data')
-  }
-  if (tab.key === '/ops/shipping') return route.path.startsWith('/ops/shipping')
-  if (tab.key === '/product') {
-    return route.path === '/product'
-  }
-  if (tab.key === '/product/manage') {
-    return route.path.startsWith('/product/manage')
-  }
-  return route.path.startsWith(tab.key) && !route.path.startsWith('/data/orders') && !route.path.startsWith('/product/manage')
-}
-
-const handleTabClick = (tab: NavTab) => {
-  if (tab.key === '/product/manage' && authStore.roleCodes.includes(ROLE.BIZ_STAFF) && !authStore.roleCodes.includes(ROLE.BIZ_LEADER)) {
-    router.push('/product/manage/products')
-    return
-  }
-  router.push(tab.key)
+const handleTopMenuClick = (topKey: string) => {
+  const target = resolveTopMenuDefaultPath(topKey, authStore.roleCodes)
+  if (!target) return
+  router.push(target)
 }
 
 const userInitial = computed(() => {

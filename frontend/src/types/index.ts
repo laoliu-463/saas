@@ -91,6 +91,11 @@ export interface SampleItem {
   trackingNo?: string;
   shipperCode?: string;
   logisticsSource?: 'MANUAL' | 'MOCK' | string;
+  logisticsStatus?: string;
+  logisticsStatusName?: string;
+  logisticsLastQueryAt?: string;
+  logisticsLastError?: string;
+  signedAt?: string;
   rejectReason?: string;
   closeReason?: string;
   applyReason?: string;

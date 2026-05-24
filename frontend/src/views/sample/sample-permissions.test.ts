@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import { ROLE_CODES } from '../../constants/rbac'
-import { canExportSamplesByRole } from './sample-permissions'
+import {
+  canExportSamplesByRole,
+  filterSampleTabsForOps,
+  OPS_HIDDEN_SAMPLE_STATUSES,
+  OPS_SHIPPING_TABS
+} from './sample-permissions'
 
 describe('sample permissions', () => {
   it('allows admins, biz roles, and ops staff to export samples', () => {
@@ -14,5 +19,19 @@ describe('sample permissions', () => {
   it('keeps channel roles from exporting samples', () => {
     expect(canExportSamplesByRole([ROLE_CODES.CHANNEL_LEADER])).toBe(false)
     expect(canExportSamplesByRole([ROLE_CODES.CHANNEL_STAFF])).toBe(false)
+  })
+
+  it('hides audit-stage tabs from ops shipping views', () => {
+    expect(OPS_HIDDEN_SAMPLE_STATUSES.has('PENDING_AUDIT')).toBe(true)
+    expect(OPS_HIDDEN_SAMPLE_STATUSES.has('REJECTED')).toBe(true)
+    expect(OPS_SHIPPING_TABS.map((tab) => tab.value)).not.toContain('REJECTED')
+    expect(OPS_SHIPPING_TABS.map((tab) => tab.value)).not.toContain('PENDING_AUDIT')
+
+    const filtered = filterSampleTabsForOps([
+      { label: '待审核', value: 'PENDING_AUDIT' },
+      { label: '待发货', value: 'PENDING_SHIP' },
+      { label: '已拒绝', value: 'REJECTED' }
+    ])
+    expect(filtered).toEqual([{ label: '待发货', value: 'PENDING_SHIP' }])
   })
 })

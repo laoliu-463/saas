@@ -78,6 +78,73 @@ public class MerchantService {
             )
             """;
 
+    private static final String COLONEL_PARTNER_CTE = """
+            WITH colonel_sources AS (
+                SELECT
+                    CAST(o.second_colonel_buyin_id AS TEXT) AS source_key,
+                    NULL::TEXT AS colonel_display_name,
+                    COUNT(DISTINCT o.product_id) AS product_count,
+                    MAX(COALESCE(o.update_time, o.create_time)) AS latest_sync_time,
+                    1 AS status
+                FROM colonelsettlement_order o
+                WHERE o.deleted = 0
+                  AND o.second_colonel_buyin_id IS NOT NULL
+                GROUP BY o.second_colonel_buyin_id
+                UNION ALL
+                SELECT
+                    CAST(o.colonel_buyin_id AS TEXT),
+                    MAX(NULLIF(TRIM(o.colonel_user_name), '')),
+                    COUNT(DISTINCT o.product_id),
+                    MAX(COALESCE(o.update_time, o.create_time)),
+                    1
+                FROM colonelsettlement_order o
+                WHERE o.deleted = 0
+                  AND o.colonel_buyin_id IS NOT NULL
+                GROUP BY o.colonel_buyin_id
+                UNION ALL
+                SELECT
+                    CAST(ca.colonel_buyin_id AS TEXT),
+                    MAX(NULLIF(TRIM(ca.activity_name), '')),
+                    COUNT(DISTINCT cap.product_id),
+                    MAX(COALESCE(ca.last_sync_at, ca.update_time)),
+                    1
+                FROM colonel_activity ca
+                LEFT JOIN colonel_activity_product cap
+                    ON cap.activity_id = ca.activity_id AND cap.deleted = 0
+                WHERE ca.deleted = 0
+                  AND ca.colonel_buyin_id IS NOT NULL
+                GROUP BY ca.colonel_buyin_id
+                UNION ALL
+                SELECT
+                    NULLIF(TRIM(m.colonel_buyin_id), ''),
+                    MAX(NULLIF(TRIM(m.channel_user_name), '')),
+                    COUNT(DISTINCT m.product_id),
+                    MAX(COALESCE(m.update_time, m.create_time)),
+                    CASE WHEN MAX(COALESCE(m.status, 1)) > 0 THEN 1 ELSE 0 END
+                FROM pick_source_mapping m
+                WHERE m.deleted = 0
+                  AND NULLIF(TRIM(m.colonel_buyin_id), '') IS NOT NULL
+                GROUP BY NULLIF(TRIM(m.colonel_buyin_id), '')
+            ),
+            partners AS (
+                SELECT
+                    source_key AS partner_id,
+                    COALESCE(
+                        MAX(NULLIF(TRIM(colonel_display_name), '')),
+                        '团长 ' || source_key
+                    ) AS partner_name,
+                    'COLONEL' AS partner_type,
+                    NULL::BIGINT AS shop_id,
+                    NULL::TEXT AS shop_name,
+                    COALESCE(SUM(product_count), 0) AS product_count,
+                    MAX(latest_sync_time) AS latest_sync_time,
+                    COALESCE(MAX(status), 1) AS status
+                FROM colonel_sources
+                WHERE source_key IS NOT NULL
+                GROUP BY source_key
+            )
+            """;
+
     private final MerchantMapper merchantMapper;
     private final OperationLogService operationLogService;
     private final SysUserMapper sysUserMapper;
@@ -164,32 +231,36 @@ public class MerchantService {
         long normalizedPage = Math.max(page, 1L);
         long normalizedSize = Math.min(Math.max(size, 1L), 100L);
         String normalizedType = normalizePartnerType(partnerType);
-        if (PARTNER_TYPE_COLONEL.equals(normalizedType) || (normalizedType != null && !PARTNER_TYPE_MERCHANT.equals(normalizedType))) {
+        if (normalizedType != null && !PARTNER_TYPE_MERCHANT.equals(normalizedType) && !PARTNER_TYPE_COLONEL.equals(normalizedType)) {
             Page<PartnerVO> empty = new Page<>(normalizedPage, normalizedSize, 0);
             empty.setRecords(List.of());
             return empty;
         }
+        String partnerCte = PARTNER_TYPE_COLONEL.equals(normalizedType) ? COLONEL_PARTNER_CTE : PARTNER_CTE;
+        return queryPartnerPage(partnerCte, keyword, normalizedPage, normalizedSize);
+    }
 
+    private IPage<PartnerVO> queryPartnerPage(String partnerCte, String keyword, long page, long size) {
         Objects.requireNonNull(jdbcTemplate, "jdbcTemplate is required to list partners");
         List<Object> args = new ArrayList<>();
         String where = buildPartnerWhere(keyword, args);
         Long total = jdbcTemplate.queryForObject(
-                PARTNER_CTE + "SELECT COUNT(1) FROM partners " + where,
+                partnerCte + "SELECT COUNT(1) FROM partners " + where,
                 Long.class,
                 args.toArray()
         );
 
-        Page<PartnerVO> result = new Page<>(normalizedPage, normalizedSize, total == null ? 0L : total);
+        Page<PartnerVO> result = new Page<>(page, size, total == null ? 0L : total);
         if (result.getTotal() <= 0) {
             result.setRecords(List.of());
             return result;
         }
 
         List<Object> listArgs = new ArrayList<>(args);
-        listArgs.add(normalizedSize);
-        listArgs.add((normalizedPage - 1L) * normalizedSize);
+        listArgs.add(size);
+        listArgs.add((page - 1L) * size);
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                PARTNER_CTE + """
+                partnerCte + """
                         SELECT
                             partner_id,
                             partner_name,
@@ -210,14 +281,15 @@ public class MerchantService {
     public PartnerDetailVO getPartnerDetail(String partnerId, String partnerType) {
         String normalizedType = normalizePartnerType(partnerType);
         if (!StringUtils.hasText(partnerId)
-                || PARTNER_TYPE_COLONEL.equals(normalizedType)
-                || (normalizedType != null && !PARTNER_TYPE_MERCHANT.equals(normalizedType))) {
+                || (normalizedType != null
+                && !PARTNER_TYPE_MERCHANT.equals(normalizedType)
+                && !PARTNER_TYPE_COLONEL.equals(normalizedType))) {
             throw BusinessException.notFound("合作方不存在或类型暂不支持");
         }
-
+        String partnerCte = PARTNER_TYPE_COLONEL.equals(normalizedType) ? COLONEL_PARTNER_CTE : PARTNER_CTE;
         Objects.requireNonNull(jdbcTemplate, "jdbcTemplate is required to get partner detail");
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                PARTNER_CTE + """
+                partnerCte + """
                         SELECT
                             partner_id,
                             partner_name,
@@ -240,11 +312,23 @@ public class MerchantService {
     }
 
     public IPage<PartnerProductVO> listPartnerProducts(String partnerId, long page, long size) {
+        return listPartnerProducts(partnerId, null, page, size);
+    }
+
+    public IPage<PartnerProductVO> listPartnerProducts(String partnerId, String partnerType, long page, long size) {
         if (!StringUtils.hasText(partnerId)) {
             Page<PartnerProductVO> empty = new Page<>(Math.max(page, 1L), Math.min(Math.max(size, 1L), 100L), 0);
             empty.setRecords(List.of());
             return empty;
         }
+        String normalizedType = normalizePartnerType(partnerType);
+        if (PARTNER_TYPE_COLONEL.equals(normalizedType)) {
+            return listColonelPartnerProducts(partnerId, page, size);
+        }
+        return listMerchantPartnerProducts(partnerId, page, size);
+    }
+
+    private IPage<PartnerProductVO> listMerchantPartnerProducts(String partnerId, long page, long size) {
         long normalizedPage = Math.max(page, 1L);
         long normalizedSize = Math.min(Math.max(size, 1L), 100L);
         Objects.requireNonNull(jdbcTemplate, "jdbcTemplate is required to list partner products");
@@ -266,12 +350,67 @@ public class MerchantService {
                 )
                 WHERE ps.deleted = 0
                 """;
+        return queryPartnerProductPage(partnerProductsCte, fromWhere, partnerId, normalizedPage, normalizedSize);
+    }
+
+    private IPage<PartnerProductVO> listColonelPartnerProducts(String partnerId, long page, long size) {
+        long normalizedPage = Math.max(page, 1L);
+        long normalizedSize = Math.min(Math.max(size, 1L), 100L);
+        Objects.requireNonNull(jdbcTemplate, "jdbcTemplate is required to list partner products");
+
+        String partnerProductsCte = """
+                WITH target_colonel AS (
+                    SELECT ?::TEXT AS colonel_buyin_id
+                )
+                """;
+        String fromWhere = """
+                FROM product_snapshot ps
+                CROSS JOIN target_colonel target
+                WHERE ps.deleted = 0
+                  AND (
+                    EXISTS (
+                        SELECT 1
+                        FROM pick_source_mapping m
+                        WHERE m.deleted = 0
+                          AND m.colonel_buyin_id = target.colonel_buyin_id
+                          AND m.product_id = ps.product_id
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM colonel_activity ca
+                        JOIN colonel_activity_product cap
+                            ON cap.activity_id = ca.activity_id AND cap.deleted = 0
+                        WHERE ca.deleted = 0
+                          AND CAST(ca.colonel_buyin_id AS TEXT) = target.colonel_buyin_id
+                          AND cap.product_id = ps.product_id
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM colonelsettlement_order o
+                        WHERE o.deleted = 0
+                          AND o.product_id = ps.product_id
+                          AND (
+                              CAST(o.second_colonel_buyin_id AS TEXT) = target.colonel_buyin_id
+                              OR CAST(o.colonel_buyin_id AS TEXT) = target.colonel_buyin_id
+                          )
+                    )
+                  )
+                """;
+        return queryPartnerProductPage(partnerProductsCte, fromWhere, partnerId, normalizedPage, normalizedSize);
+    }
+
+    private IPage<PartnerProductVO> queryPartnerProductPage(
+            String ctePrefix,
+            String fromWhere,
+            String partnerId,
+            long page,
+            long size) {
         Long total = jdbcTemplate.queryForObject(
-                partnerProductsCte + "SELECT COUNT(1) " + fromWhere,
+                ctePrefix + "SELECT COUNT(1) " + fromWhere,
                 Long.class,
                 partnerId
         );
-        Page<PartnerProductVO> result = new Page<>(normalizedPage, normalizedSize, total == null ? 0L : total);
+        Page<PartnerProductVO> result = new Page<>(page, size, total == null ? 0L : total);
         if (result.getTotal() <= 0) {
             result.setRecords(List.of());
             return result;
@@ -279,10 +418,10 @@ public class MerchantService {
 
         List<Object> args = new ArrayList<>();
         args.add(partnerId);
-        args.add(normalizedSize);
-        args.add((normalizedPage - 1L) * normalizedSize);
+        args.add(size);
+        args.add((page - 1L) * size);
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                partnerProductsCte + """
+                ctePrefix + """
                         SELECT
                             ps.product_id,
                             ps.title AS product_name,

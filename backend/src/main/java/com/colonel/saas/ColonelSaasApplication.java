@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
-@MapperScan("com.colonel.saas.mapper")
+@MapperScan({"com.colonel.saas.mapper", "com.colonel.saas.domain.event"})
 @EnableScheduling
 @EnableAsync
 public class ColonelSaasApplication {

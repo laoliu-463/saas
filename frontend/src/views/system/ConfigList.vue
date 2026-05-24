@@ -1,6 +1,6 @@
 <template>
   <div class="config-list app-page" data-testid="system-config-page">
-    <PageHeader title="系统配置" description="维护业务参数键值，支持分组筛选与启停。" />
+    <PageHeader title="高级配置" description="技术管理员兜底入口，维护原始配置键值。" />
     <div class="app-toolbar">
       <n-space wrap :size="10">
         <n-select

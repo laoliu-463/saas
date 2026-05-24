@@ -124,7 +124,8 @@ import {
   getPoolTagType,
   TALENT_VIEW_HELP_MAP,
   TALENT_VIEW_LABEL_MAP,
-  TALENT_VIEW_OPTIONS
+  TALENT_VIEW_OPTIONS,
+  getAccessibleTalentViewOptions
 } from './constants'
 
 const message = useMessage()
@@ -173,9 +174,7 @@ const pageDesc = computed(() => isChannelStaffOnly.value
   : '围绕团队公海、我的达人、本组达人、自然出单达人和黑名单，完成认领、释放与风险处置闭环。'
 )
 const availableViewOptions = computed(() =>
-  authStore.roleCodes.includes('channel_leader')
-    ? TALENT_VIEW_OPTIONS
-    : TALENT_VIEW_OPTIONS.filter((item) => ['TEAM_PUBLIC', 'MY_TALENTS'].includes(item.value))
+  getAccessibleTalentViewOptions(authStore.roleCodes, authStore.isAdmin)
 )
 const activeView = ref(resolveView(route.query.view))
 const pageOrderTalentCount = computed(() => data.value.filter((item) => Number(item.orderCount || 0) > 0).length)

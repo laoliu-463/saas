@@ -20,10 +20,13 @@ export const auditActivityProduct = (
     sellingPoints?: string[];
     promotionScript?: string;
     supportsAds?: boolean;
+    adsRule?: string;
     rewardRemark?: string;
     participationRequirements?: string;
     campaignTimeRemark?: string;
     materialFiles?: string[];
+    goodsTags?: string[];
+    productTags?: string[];
     sampleThresholdSales?: number;
     sampleThresholdLevel?: number;
     sampleThresholdRemark?: string;
@@ -35,6 +38,11 @@ export const assignActivityProduct = (
   productId: string | number,
   data: { assigneeId: string }
 ) => request.put(`/colonel/activities/${activityId}/products/${productId}/assignee`, data);
+
+export const batchAssignActivityProducts = (
+  activityId: string | number,
+  data: { productIds: string[]; assigneeId: string }
+) => request.post(`/colonel/activities/${activityId}/products/batch-assign`, data);
 
 export const assignActivityProductAuditOwner = (
   activityId: string | number,
@@ -57,11 +65,21 @@ export const convertActivityProductLink = (
 export const putActivityProductIntoLibrary = (activityId: string | number, productId: string | number) =>
   request.post(`/colonel/activities/${activityId}/products/${productId}/library-entry`);
 
+export const batchPutActivityProductsIntoLibrary = (
+  activityId: string | number,
+  data: { productIds: string[] }
+) => request.post(`/colonel/activities/${activityId}/products/batch-library-entry`, data);
+
 export const pinActivityProduct = (activityId: string | number, productId: string | number) =>
   request.post(`/colonel/activities/${activityId}/products/${productId}/pin`);
 
 export const unpinActivityProduct = (activityId: string | number, productId: string | number) =>
   request.delete(`/colonel/activities/${activityId}/products/${productId}/pin`);
+
+export const batchPinActivityProducts = (
+  activityId: string | number,
+  data: { productIds: string[] }
+) => request.post(`/colonel/activities/${activityId}/products/batch-pin`, data);
 
 export const getPinnedProducts = () =>
   request.get('/colonel/pinned-products').then((res: any) => res.data);

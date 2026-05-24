@@ -53,7 +53,7 @@ describe('ProductCard pin action', () => {
     })
 
     const button = wrapper.get('[data-testid="product-quick-sample"]')
-    expect(button.text()).toContain('内部寄样')
+    expect(button.text()).toContain('快速寄样')
 
     await button.trigger('click')
 
@@ -81,5 +81,51 @@ describe('ProductCard pin action', () => {
     await wrapper.get('[data-testid="product-unpin-button"]').trigger('click')
 
     expect(wrapper.emitted('unpin')?.[0]).toEqual([product])
+  })
+
+  it('opens ads rule modal when the ads tag is clicked', async () => {
+    const product = {
+      ...baseProps.product,
+      supportsAds: true,
+      adsRule: '投流比例1:0.5，保量10万曝光'
+    }
+    const wrapper = mount(ProductCard, {
+      props: { ...baseProps, product },
+      global: {
+        stubs: {
+          ...naiveStubs,
+          AdsRuleDetailModal: {
+            props: ['show', 'ruleText'],
+            template: '<div v-if="show" data-testid="ads-rule-detail-modal">{{ ruleText }}</div>'
+          }
+        }
+      }
+    })
+
+    await wrapper.get('[data-testid="product-ads-rule-tag"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="ads-rule-detail-modal"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="ads-rule-detail-modal"]').text()).toContain('投流比例1:0.5')
+  })
+
+  it('shows empty rule fallback when adsRule is missing', async () => {
+    const product = { ...baseProps.product, supportsAds: true }
+    const wrapper = mount(ProductCard, {
+      props: { ...baseProps, product },
+      global: {
+        stubs: {
+          ...naiveStubs,
+          AdsRuleDetailModal: {
+            props: ['show', 'ruleText', 'loading'],
+            template: '<section v-if="show" data-testid="ads-rule-detail-modal"><span data-testid="ads-rule-empty" v-if="!ruleText">暂无投流规则</span><span v-else>{{ ruleText }}</span></section>'
+          }
+        }
+      }
+    })
+
+    await wrapper.get('[data-testid="product-ads-rule-tag"]').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-testid="ads-rule-empty"]').text()).toBe('暂无投流规则')
   })
 })

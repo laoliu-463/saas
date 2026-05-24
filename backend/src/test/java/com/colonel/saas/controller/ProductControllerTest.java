@@ -4,8 +4,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.dto.product.ProductFilterOptionItem;
+import com.colonel.saas.dto.product.ProductFilterOptionsDTO;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
+import com.colonel.saas.service.ColonelPartnerSyncService;
+import com.colonel.saas.service.ProductQuickSampleService;
 import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +18,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -31,12 +37,15 @@ class ProductControllerTest {
 
     @Mock
     private ProductService productService;
+    private ProductQuickSampleService productQuickSampleService;
+    @Mock
+    private ColonelPartnerSyncService colonelPartnerSyncService;
 
     private ProductController productController;
 
     @BeforeEach
     void setUp() {
-        productController = new ProductController(productService);
+        productController = new ProductController(productService, productQuickSampleService, colonelPartnerSyncService);
     }
 
     @Test
@@ -245,20 +254,11 @@ class ProductControllerTest {
         when(productService.getSelectedLibraryPage(eq(1L), eq(10L), any(ProductService.SelectedLibraryFilter.class))).thenReturn(page);
 
         var response = productController.page(
-                1,
-                10,
-                null,
-                "共享",
-                "测试店铺",
-                "食品",
-                "gte30000",
-                "LINKED",
-                "promoting",
-                "gt20",
-                "1",
-                "assigned",
-                "traffic",
-                "MAIN");
+                1, 10,
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null);
 
         assertThat(response.getData().getTotal()).isEqualTo(1);
         assertThat(response.getData().getRecords().get(0).getName()).isEqualTo("共享商品");
@@ -266,24 +266,38 @@ class ProductControllerTest {
     }
 
     @Test
+    void libraryCategories_shouldReturnDistinctCategoryNames() {
+        when(productService.listLibraryCategories()).thenReturn(List.of("食品饮料", "美妆护肤"));
+
+        var response = productController.libraryCategories();
+
+        assertThat(response.getData()).containsExactly("食品饮料", "美妆护肤");
+        verify(productService).listLibraryCategories();
+    }
+
+    @Test
+    void filterOptions_shouldReturnCategoryOptions() {
+        when(productService.listLibraryCategories()).thenReturn(List.of("食品饮料", "美妆护肤"));
+
+        var response = productController.filterOptions();
+
+        assertThat(response.getData()).isInstanceOf(ProductFilterOptionsDTO.class);
+        assertThat(response.getData().categories())
+                .extracting(ProductFilterOptionItem::label)
+                .containsExactly("食品饮料", "美妆护肤");
+        assertThat(response.getData().categories())
+                .extracting(ProductFilterOptionItem::value)
+                .containsExactly("食品饮料", "美妆护肤");
+    }
+
+    @Test
     void controllerRoleAnnotations_shouldKeepSharedLibraryVisibleToBusinessRoles() throws NoSuchMethodException {
-        RequireRoles pageRoles = ProductController.class.getMethod(
-                        "page",
-                        long.class,
-                        long.class,
-                        Integer.class,
-                        String.class,
-                        String.class,
-                        String.class,
-                        String.class,
-                        String.class,
-                        String.class,
-                        String.class,
-                        String.class,
-                        String.class,
-                        String.class,
-                        String.class)
-                .getAnnotation(RequireRoles.class);
+        Method pageMethod = Arrays.stream(ProductController.class.getDeclaredMethods())
+                .filter(method -> "page".equals(method.getName()))
+                .filter(method -> method.getParameterTypes().length > 2)
+                .findFirst()
+                .orElseThrow(() -> new NoSuchMethodException("page"));
+        RequireRoles pageRoles = pageMethod.getAnnotation(RequireRoles.class);
         RequireRoles detailRoles = ProductController.class.getMethod("detail", UUID.class)
                 .getAnnotation(RequireRoles.class);
         RequireRoles bindRoles = ProductController.class.getMethod(

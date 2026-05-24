@@ -1,4 +1,4 @@
-import { hasAccess, ROLE_CODES } from '../constants/rbac'
+import { hasAccess } from '../constants/rbac'
 
 export type SectionMapEntry = readonly [string, string]
 
@@ -14,6 +14,7 @@ export const MENU_GROUP_DEFAULT_ROUTE: Record<string, string> = {
 export interface NavigationMenuItem {
   label: string
   key: string
+  path?: string
   roles?: string[]
   children?: NavigationMenuItem[]
   _section?: string
@@ -35,6 +36,7 @@ export const SECTION_MAP: SectionMapEntry[] = [
   ['/system/config', 'system'],
   ['/system/commission-rules', 'system'],
   ['/system/douyin', 'system'],
+  ['/system/rule-center', 'system'],
   ['/system/roles', 'system'],
   ['/system/users', 'system'],
   ['/data/orders', 'data'],
@@ -70,28 +72,32 @@ export function resolveMenuNavigateTarget(key: string): string | null {
 export function shouldShowMenuInSection(
   menu: NavigationMenuItem,
   activeSection: string | null | undefined,
-  roles: readonly string[]
+  _roles: readonly string[]
 ): boolean {
-  if (!activeSection || !menu._section || menu._section === activeSection) {
-    return true
+  if (!activeSection) {
+    return false
   }
-  return roles.includes(ROLE_CODES.ADMIN) && menu._section === 'system'
+  if (!menu._section) {
+    return false
+  }
+  return menu._section === activeSection
 }
 
 export function filterAccessibleMenus<T extends NavigationMenuItem>(
   menus: readonly T[],
   roles: readonly string[],
-  activeSection?: string | null
+  activeSection?: string | null,
+  applySectionFilter = true
 ): T[] {
   const roleList = [...roles]
   return menus
     .filter((menu) => hasAccess(roleList, menu.roles))
-    .filter((menu) => shouldShowMenuInSection(menu, activeSection, roleList))
+    .filter((menu) => !applySectionFilter || shouldShowMenuInSection(menu, activeSection, roleList))
     .map((menu) => {
       if (!menu.children?.length) return menu
       return {
         ...menu,
-        children: filterAccessibleMenus(menu.children, roleList)
+        children: filterAccessibleMenus(menu.children, roleList, activeSection, false)
       }
     })
     .filter((menu) => !menu.children?.length || menu.children.length > 0)

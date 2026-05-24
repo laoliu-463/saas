@@ -8,6 +8,13 @@ import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
+import com.colonel.saas.dto.product.ProductFilterOptionItem;
+import com.colonel.saas.dto.product.ProductFilterOptionsDTO;
+import com.colonel.saas.dto.product.QuickSampleApplyRequest;
+import com.colonel.saas.dto.product.QuickSampleApplyResponse;
+import com.colonel.saas.entity.ColonelPartner;
+import com.colonel.saas.service.ColonelPartnerSyncService;
+import com.colonel.saas.service.ProductQuickSampleService;
 import com.colonel.saas.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -45,9 +52,16 @@ import java.util.UUID;
 public class ProductController extends BaseController {
 
     private final ProductService productService;
+    private final ProductQuickSampleService productQuickSampleService;
+    private final ColonelPartnerSyncService colonelPartnerSyncService;
 
-    public ProductController(ProductService productService) {
+    public ProductController(
+            ProductService productService,
+            ProductQuickSampleService productQuickSampleService,
+            ColonelPartnerSyncService colonelPartnerSyncService) {
         this.productService = productService;
+        this.productQuickSampleService = productQuickSampleService;
+        this.colonelPartnerSyncService = colonelPartnerSyncService;
     }
 
     @Operation(summary = "商品库分页", description = "查询已从选品库沉淀到共享商品库的商品列表，对全员可见。")
@@ -59,7 +73,12 @@ public class ProductController extends BaseController {
             @Parameter(description = "商品状态。待确认：取值含义请联系产品。") @RequestParam(required = false) Integer status,
             @Parameter(description = "商品关键字，可匹配商品名称、商品 ID、店铺。") @RequestParam(required = false) String keyword,
             @Parameter(description = "店铺 / 合作方名称关键字。") @RequestParam(required = false) String shopKeyword,
-            @Parameter(description = "抖音同步类目关键字。") @RequestParam(required = false) String categoryName,
+            @Parameter(description = "抖音同步类目关键字（单选兼容）。") @RequestParam(required = false) String categoryName,
+            @Parameter(description = "商品类目多选，英文逗号分隔。") @RequestParam(required = false) String categories,
+            @Parameter(description = "来源活动 ID。") @RequestParam(required = false) String activityId,
+            @Parameter(description = "招商负责人用户 ID。") @RequestParam(required = false) String assigneeId,
+            @Parameter(description = "服务费率区间：gt20/10_20/lt10。") @RequestParam(required = false) String serviceFee,
+            @Parameter(description = "是否支持投流：1/0。") @RequestParam(required = false) String supportsAds,
             @Parameter(description = "近 30 天销量区间：lt100/100_999/1k_29k/gte30000。") @RequestParam(required = false) String salesRange,
             @Parameter(description = "转链状态：PENDING/LINKED/FAILED。") @RequestParam(required = false) String promotionLink,
             @Parameter(description = "联盟推广状态：promoting/pending_audit/rejected/terminated/expired。") @RequestParam(required = false) String allianceStatus,
@@ -67,7 +86,32 @@ public class ProductController extends BaseController {
             @Parameter(description = "是否有寄样规则：1/0。") @RequestParam(required = false) String hasSample,
             @Parameter(description = "负责人过滤：assigned/unassigned。") @RequestParam(required = false) String assignee,
             @Parameter(description = "系统标签：high_commission/traffic/new/high_price。") @RequestParam(required = false) String systemTag,
-            @Parameter(description = "推进判断：MAIN/SECONDARY/PAUSE/DROP/NONE。") @RequestParam(required = false) String decision) {
+            @Parameter(description = "推进判断：MAIN/SECONDARY/PAUSE/DROP/NONE。") @RequestParam(required = false) String decision,
+            @Parameter(description = "合作方 ID；商家型为 shop_id，团长型为 colonel_buyin_id。") @RequestParam(required = false) String partnerId,
+            @Parameter(description = "合作方类型：MERCHANT/COLONEL。") @RequestParam(name = "partnerType", required = false) String partnerType,
+            @Parameter(description = "排序：default（置顶优先）/ latest（晚上架优先）。") @RequestParam(name = "sortBy", required = false) String sortBy,
+            @Parameter(description = "货品标签，多选时用英文逗号分隔。") @RequestParam(required = false) String goodsTags,
+            @Parameter(description = "商品标签，多选时用英文逗号分隔。") @RequestParam(required = false) String productTags,
+            @Parameter(description = "团长名称关键字。") @RequestParam(required = false) String colonelName,
+            @Parameter(description = "是否已发布转链：1/0。") @RequestParam(required = false) String published,
+            @Parameter(description = "合作类型。") @RequestParam(required = false) String cooperationType,
+            @Parameter(description = "直播价格下限。") @RequestParam(required = false) String livePriceMin,
+            @Parameter(description = "直播价格上限。") @RequestParam(required = false) String livePriceMax,
+            @Parameter(description = "佣金率下限。") @RequestParam(required = false) String commissionMin,
+            @Parameter(description = "佣金率上限。") @RequestParam(required = false) String commissionMax,
+            @Parameter(description = "寄样销售额下限。") @RequestParam(required = false) String sampleSalesMin,
+            @Parameter(description = "寄样销售额上限。") @RequestParam(required = false) String sampleSalesMax,
+            @Parameter(description = "素材下载：1/0。") @RequestParam(required = false) String materialDownload,
+            @Parameter(description = "专属价：1/0。") @RequestParam(required = false) String exclusivePrice,
+            @Parameter(description = "商品链组：1/0。") @RequestParam(required = false) String productChain,
+            @Parameter(description = "手卡：1/0。") @RequestParam(required = false) String handCard,
+            @Parameter(description = "双佣金：1/0。") @RequestParam(required = false) String doubleCommission,
+            @Parameter(description = "仅未加入货盘：1/0。") @RequestParam(required = false) String notInLibrary,
+            @Parameter(description = "选品去重：1/0。") @RequestParam(required = false) String dedup,
+            @Parameter(description = "招商活动ID。") @RequestParam(required = false) String recruitActivityId,
+            @Parameter(description = "招商活动名称关键字。") @RequestParam(required = false) String recruitActivityName,
+            @Parameter(description = "是否已挂车：1/0。") @RequestParam(required = false) String listed,
+            @Parameter(description = "是否有免费样：1/0。") @RequestParam(required = false) String freeSample) {
         IPage<Product> result = productService.getSelectedLibraryPage(
                 page,
                 size,
@@ -76,6 +120,11 @@ public class ProductController extends BaseController {
                         status,
                         shopKeyword,
                         categoryName,
+                        categories,
+                        activityId,
+                        assigneeId,
+                        serviceFee,
+                        supportsAds,
                         salesRange,
                         promotionLink,
                         allianceStatus,
@@ -83,10 +132,70 @@ public class ProductController extends BaseController {
                         hasSample,
                         assignee,
                         systemTag,
-                        decision
+                        decision,
+                        partnerId,
+                        partnerType,
+                        sortBy,
+                        goodsTags,
+                        productTags,
+                        colonelName,
+                        published,
+                        cooperationType,
+                        livePriceMin,
+                        livePriceMax,
+                        commissionMin,
+                        commissionMax,
+                        sampleSalesMin,
+                        sampleSalesMax,
+                        materialDownload,
+                        exclusivePrice,
+                        productChain,
+                        handCard,
+                        doubleCommission,
+                        notInLibrary,
+                        dedup,
+                        recruitActivityId,
+                        recruitActivityName,
+                        listed,
+                        freeSample
                 )
         );
         return okPage(result);
+    }
+
+    @Operation(summary = "快速寄样", description = "商品库弹窗式快速寄样，支持私海达人多选逐个创建寄样申请。")
+    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @PostMapping({"/{relationId}/quick-sample", "/{relationId}/quick-sample-apply"})
+    public ApiResult<QuickSampleApplyResponse> quickSample(
+            @Parameter(description = "商品关联主键（product_snapshot.id）。") @PathVariable UUID relationId,
+            @Valid @RequestBody QuickSampleApplyRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        return ok(productQuickSampleService.applyQuickSample(relationId, request, userId, deptId, roleCodes));
+    }
+
+    @Operation(summary = "商品库类目选项", description = "从当前展示中的商品库记录动态聚合类目，供筛选多选使用。")
+    @GetMapping("/categories")
+    public ApiResult<List<String>> libraryCategories() {
+        return ok(productService.listLibraryCategories());
+    }
+
+    @Operation(summary = "商品库筛选项", description = "返回商品库动态筛选项，当前包含类目。")
+    @GetMapping("/filter-options")
+    public ApiResult<ProductFilterOptionsDTO> filterOptions() {
+        List<ProductFilterOptionItem> categories = productService.listLibraryCategories().stream()
+                .map(category -> new ProductFilterOptionItem(category, category, null))
+                .toList();
+        return ok(new ProductFilterOptionsDTO(categories));
+    }
+
+    @Operation(summary = "商品库团长筛选项", description = "从团长主数据表按名称搜索，供商品库筛选下拉使用。")
+    @GetMapping("/filter-options/colonel-partners")
+    public ApiResult<List<ColonelPartner>> colonelPartnerFilterOptions(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "50") int limit) {
+        return ok(colonelPartnerSyncService.listByNameKeyword(keyword, limit));
     }
 
     @Operation(summary = "[已废弃] 选品候选分页", description = "兼容 Token 缺失场景下的本地选品候选列表。")

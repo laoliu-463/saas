@@ -6,6 +6,21 @@ export const TALENT_VIEW_OPTIONS = [
   { label: '达人黑名单', value: 'BLACKLIST' }
 ] as const
 
+export type TalentViewValue = (typeof TALENT_VIEW_OPTIONS)[number]['value']
+
+const CHANNEL_STAFF_TALENT_VIEWS: TalentViewValue[] = ['TEAM_PUBLIC', 'MY_TALENTS']
+
+/** 与侧边栏、页内 Tab 可见性保持一致：组长/管理员全视图，渠道专员仅公海+私海。 */
+export function getAccessibleTalentViewOptions(
+  roleCodes: readonly string[],
+  isAdmin = false
+): Array<{ label: string; value: TalentViewValue }> {
+  if (isAdmin || roleCodes.includes('channel_leader')) {
+    return [...TALENT_VIEW_OPTIONS]
+  }
+  return TALENT_VIEW_OPTIONS.filter((item) => CHANNEL_STAFF_TALENT_VIEWS.includes(item.value))
+}
+
 export const TALENT_VIEW_LABEL_MAP = TALENT_VIEW_OPTIONS.reduce<Record<string, string>>((acc, item) => {
   acc[item.value] = item.label
   return acc

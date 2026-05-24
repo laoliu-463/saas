@@ -12,6 +12,8 @@ public class SysDeptVO {
     private UUID parentId;
     private String deptCode;
     private String deptName;
+    private String deptType;
+    private UUID leaderUserId;
     private String leader;
     private String phone;
     private String email;

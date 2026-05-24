@@ -116,6 +116,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             List<String> roleCodes = claims.get("roleCodes", List.class);
             String username = claims.get("username", String.class);
+            Boolean pendingActivation = claims.get("pendingActivation", Boolean.class);
+
+            if (Boolean.TRUE.equals(pendingActivation)) {
+                String servletPath = request.getServletPath();
+                String requestUri = request.getRequestURI();
+                String path = (servletPath != null && !servletPath.isBlank()) ? servletPath : requestUri;
+                if (!PendingActivationAccessPolicy.isAllowed(request.getMethod(), path)) {
+                    writeForbidden(response, "账号待激活，请先修改密码后再访问业务功能");
+                    return;
+                }
+            }
 
             // Set SecurityContext for Spring Security .authenticated() check
             UsernamePasswordAuthenticationToken authentication =
@@ -140,6 +151,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         ApiResult<Void> result = ApiResult.of(ResultCode.UNAUTHORIZED.getCode(), msg, null);
+        response.getWriter().write(objectMapper.writeValueAsString(result));
+    }
+
+    private void writeForbidden(HttpServletResponse response, String msg) throws IOException {
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        ApiResult<Void> result = ApiResult.of(ResultCode.FORBIDDEN.getCode(), msg, null);
         response.getWriter().write(objectMapper.writeValueAsString(result));
     }
 }

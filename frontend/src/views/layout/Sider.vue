@@ -20,15 +20,16 @@
     <div class="sider-menu">
       <n-menu
         v-if="menuOptions.length"
+        :key="activeTopKey || 'empty'"
         :options="menuOptions"
-        :value="activeMenuKey"
+        :value="activeLeftKey"
         :expanded-keys="expandedKeys"
         :collapsed="appStore.collapsed"
         :collapsed-width="64"
         :collapsed-icon-size="22"
         :indent="18"
         data-testid="sidebar-menu"
-        @update:value="handleMenuClick"
+        @update:value="handleLeftMenuClick"
         @update:expanded-keys="handleExpandedKeys"
       />
       <div v-else class="empty-tip">当前账号没有可见菜单</div>
@@ -37,17 +38,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NIcon } from 'naive-ui'
-import { ROLE_CODES, hasAccess } from '../../constants/rbac'
+import { ROLE_CODES } from '../../constants/rbac'
 import {
-  filterAccessibleMenus,
-  isRoutePathUnderPrefix,
-  resolveActiveSection,
-  resolveMenuNavigateTarget,
-  type NavigationMenuItem
-} from '../../router/navigation'
+  buildAccessibleMenuTree,
+  getLeftMenus,
+  resolveActiveLeftKey,
+  resolveActiveTopKey,
+  TALENT_MENU_KEYS,
+  type MenuTreeNode
+} from '../../router/menuTree'
+import { resolveMenuNavigateTarget } from '../../router/navigation'
+import { getAccessibleTalentViewOptions } from '../talent/constants'
 import { useAppStore } from '../../stores/app'
 import { useAuthStore } from '../../stores/auth'
 
@@ -105,199 +109,111 @@ const icons = {
   list: iconData(['M8 6h11M8 12h11M8 18h11', 'M4.5 6h.01M4.5 12h.01M4.5 18h.01'])
 }
 
-interface MenuItem extends NavigationMenuItem {
+const ICON_BY_KEY: Record<string, () => unknown> = {
+  '/dashboard': icons.chart,
+  '/orders': icons.truck,
+  '/data': icons.chart,
+  '/data/orders': icons.list,
+  '/ops/exclusive': icons.shield,
+  '/ops/shipping': icons.truck,
+  '/product': icons.bag,
+  '/product/manage': icons.list,
+  '/product/manage/products': icons.bag,
+  '/sample': icons.gift,
+  '/system/users': icons.user,
+  '/system/roles': icons.shield,
+  '/system/depts': icons.list,
+  '/system/rule-center': icons.settings,
+  '/system/config': icons.settings,
+  '/system/commission-rules': icons.settings,
+  '/system/douyin': icons.truck,
+  '/system/operation-logs': icons.list,
+  [TALENT_MENU_KEYS.teamPublic]: icons.user,
+  [TALENT_MENU_KEYS.myTalents]: icons.user,
+  [TALENT_MENU_KEYS.naturalOrders]: icons.chart,
+  [TALENT_MENU_KEYS.blacklist]: icons.shield
+}
+
+interface SidebarMenuOption {
   label: string
   key: string
-  icon?: () => any
-  roles?: string[]
-  children?: MenuItem[]
-  _section?: string
+  icon?: () => unknown
+  children?: SidebarMenuOption[]
 }
 
-const TALENT_MENU_KEYS = {
-  teamPublic: '/talent?view=TEAM_PUBLIC',
-  myTalents: '/talent?view=MY_TALENTS',
-  naturalOrders: '/talent?view=NATURAL_ORDERS',
-  blacklist: '/talent?view=BLACKLIST'
-} as const
+const accessibleMenuTree = computed(() => buildAccessibleMenuTree(authStore.roleCodes))
 
-const rawMenus: MenuItem[] = [
-  {
-    label: '归因工作台',
-    key: 'attribution-group',
-    icon: icons.shield,
-    _section: 'attribution',
-    roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN],
-    children: [
-      { label: '归因概览', key: '/dashboard', icon: icons.chart },
-      { label: '订单工作台', key: '/orders', icon: icons.truck }
-    ]
-  },
-  {
-    label: '数据平台',
-    key: 'data-group',
-    icon: icons.chart,
-    _section: 'data',
-    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
-    children: [
-      { label: '核心看板', key: '/data', icon: icons.chart },
-      { label: '订单明细', key: '/data/orders', icon: icons.list },
-      { label: '独家状态', key: '/ops/exclusive', icon: icons.shield, roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
-    ]
-  },
-  {
-    label: '寄样发货台',
-    key: '/ops/shipping',
-    icon: icons.truck,
-    _section: 'ops',
-    roles: [ROLE.OPS_STAFF]
-  },
-  {
-    label: '商品库',
-    key: '/product',
-    icon: icons.bag,
-    _section: 'product',
-    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF]
-  },
-  {
-    label: '商品管理',
-    key: 'product-manage-group',
-    icon: icons.list,
-    _section: 'product-manage',
-    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF],
-    children: [
-      { label: '活动列表', key: '/product/manage', icon: icons.list, roles: [ROLE.BIZ_LEADER] },
-      { label: '商品列表', key: '/product/manage/products', icon: icons.bag, roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
-    ]
-  },
-  {
-    label: '达人 CRM',
-    key: 'talent-group',
-    icon: icons.user,
-    _section: 'talent',
-    roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
-    children: [
-      { label: '团队公海', key: TALENT_MENU_KEYS.teamPublic, icon: icons.user },
-      { label: '我的达人', key: TALENT_MENU_KEYS.myTalents, icon: icons.user },
-      { label: '自然出单达人', key: TALENT_MENU_KEYS.naturalOrders, icon: icons.chart },
-      { label: '达人黑名单', key: TALENT_MENU_KEYS.blacklist, icon: icons.shield }
-    ]
-  },
-  {
-    label: '寄样审核',
-    key: '/sample',
-    icon: icons.gift,
-    _section: 'sample',
-    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF]
-  },
-  {
-    label: '系统管理',
-    key: 'system-group',
-    icon: icons.settings,
-    _section: 'system',
-    roles: [ROLE.ADMIN],
-    children: [
-      { label: '用户管理', key: '/system/users', icon: icons.user },
-      { label: '角色管理', key: '/system/roles', icon: icons.shield },
-      { label: '部门管理', key: '/system/depts', icon: icons.list },
-      { label: '系统配置', key: '/system/config', icon: icons.settings },
-      { label: '提成规则', key: '/system/commission-rules', icon: icons.settings },
-      { label: '抖店联调', key: '/system/douyin', icon: icons.truck },
-      { label: '操作日志', key: '/system/operation-logs', icon: icons.list }
-    ]
-  }
-]
+const activeTopKey = computed(() => resolveActiveTopKey(route.path))
 
-const menuOptions = computed(() => {
-  const roles = authStore.roleCodes
-  const section = resolveActiveSection(route.path)
-  return filterAccessibleMenus(rawMenus, roles, section)
-    .map(({ roles: _roles, _section: _s, children, ...menu }) => {
-      const localizedMenu = { ...menu }
-      if (isChannelStaffOnly.value && localizedMenu.key === 'talent-group') {
-        localizedMenu.label = '我的达人'
-      }
-      if ((isChannelStaffOnly.value || isBizStaffOnly.value) && localizedMenu.key === 'data-group') {
-        localizedMenu.label = '我的业绩'
-      }
-      if (isOpsStaffOnly.value && localizedMenu.key === '/ops/shipping') {
-        localizedMenu.label = '寄样发货台'
-      }
-      if (!children?.length) return localizedMenu
-      let filteredChildren = children.filter((child) => hasAccess(roles, child.roles))
-      if (isChannelStaffOnly.value && localizedMenu.key === 'talent-group') {
-        filteredChildren = filteredChildren.filter((child) =>
-          [TALENT_MENU_KEYS.teamPublic, TALENT_MENU_KEYS.myTalents].includes(child.key as any)
-        )
-      }
-      if (isChannelStaffOnly.value || isBizStaffOnly.value) {
-        filteredChildren = filteredChildren.map((child) => {
-          if (child.key === '/data') return { ...child, label: '我的业绩' }
-          if (isChannelStaffOnly.value && child.key === TALENT_MENU_KEYS.myTalents) return { ...child, label: '我的达人' }
-          if (isChannelStaffOnly.value && child.key === TALENT_MENU_KEYS.teamPublic) return { ...child, label: '公海达人' }
-          return child
-        })
-      }
-      return {
-        ...localizedMenu,
-        children: filteredChildren
-      }
-    })
-    .filter((menu) => !('children' in menu) || !Array.isArray(menu.children) || menu.children.length > 0)
+const activeLeftKey = computed(() => {
+  const view = typeof route.query.view === 'string' ? route.query.view : null
+  return resolveActiveLeftKey(route.path, view)
 })
 
-const activeMenuKey = computed(() => {
-  if (isRoutePathUnderPrefix(route.path, '/ops/shipping')) return '/ops/shipping'
-  if (isRoutePathUnderPrefix(route.path, '/ops/exclusive')) return '/ops/exclusive'
-  if (isRoutePathUnderPrefix(route.path, '/system/depts')) return '/system/depts'
-  if (isRoutePathUnderPrefix(route.path, '/system/config')) return '/system/config'
-  if (isRoutePathUnderPrefix(route.path, '/system/douyin')) return '/system/douyin'
-  if (isRoutePathUnderPrefix(route.path, '/system/operation-logs')) return '/system/operation-logs'
-  if (isRoutePathUnderPrefix(route.path, '/system/roles')) return '/system/roles'
-  if (isRoutePathUnderPrefix(route.path, '/system/users')) return '/system/users'
-  if (route.path === '/data/orders') return '/data/orders'
-  if (route.path === '/product/manage/products') return '/product/manage/products'
-  if (route.path === '/product/manage') return '/product/manage'
-  if (isRoutePathUnderPrefix(route.path, '/product/manage')) return '/product/manage'
-  if (isRoutePathUnderPrefix(route.path, '/product/activity')) return '/product/manage'
-  if (isRoutePathUnderPrefix(route.path, '/product/review')) return '/product/manage/products'
-  if (isRoutePathUnderPrefix(route.path, '/product/library')) return '/product'
-  if (isRoutePathUnderPrefix(route.path, '/talent')) {
-    const view = typeof route.query.view === 'string' ? route.query.view : 'TEAM_PUBLIC'
-    if (view === 'MY_TALENTS') return TALENT_MENU_KEYS.myTalents
-    if (view === 'NATURAL_ORDERS') return TALENT_MENU_KEYS.naturalOrders
-    if (view === 'BLACKLIST') return TALENT_MENU_KEYS.blacklist
-    return TALENT_MENU_KEYS.teamPublic
-  }
-  return route.path
-})
-
-// 父菜单组 key -> section 的映射
-const GROUP_KEY_TO_SECTION: Record<string, string> = {
-  'attribution-group': 'attribution',
-  'data-group': 'data',
-  'product-manage-group': 'product-manage',
-  'talent-group': 'talent',
-  '/system': 'system'
-}
-
-// 受控展开 keys：当前 section 对应的父组自动展开，同时保留用户手动展开的其他组
 const manualExpandedKeys = ref<string[]>([])
 
+watch(activeTopKey, () => {
+  manualExpandedKeys.value = []
+})
+
+function localizeLeftMenu(node: MenuTreeNode): SidebarMenuOption {
+  let label = node.label
+  if (isChannelStaffOnly.value) {
+    if (node.key === '/data') label = '我的业绩'
+    if (node.key === TALENT_MENU_KEYS.myTalents) label = '我的达人'
+    if (node.key === TALENT_MENU_KEYS.teamPublic) label = '公海达人'
+  }
+  if (isBizStaffOnly.value && node.key === '/data') {
+    label = '我的业绩'
+  }
+  if (isOpsStaffOnly.value && node.key === '/ops/shipping') {
+    label = '寄样发货台'
+  }
+
+  const option: SidebarMenuOption = {
+    label,
+    key: node.key,
+    icon: ICON_BY_KEY[node.key]
+  }
+
+  if (node.children?.length) {
+    option.children = node.children.map(localizeLeftMenu)
+  }
+
+  return option
+}
+
+const accessibleTalentViewValues = computed(() =>
+  new Set<string>(getAccessibleTalentViewOptions(authStore.roleCodes, authStore.isAdmin).map((item) => item.value))
+)
+
+const menuOptions = computed(() => {
+  const leftMenus = getLeftMenus(accessibleMenuTree.value, activeTopKey.value)
+  if (activeTopKey.value === 'talent') {
+  const allowedViews = accessibleTalentViewValues.value
+    return leftMenus
+      .filter((item) => {
+        if (!item.key.startsWith('/talent?view=')) return true
+        const view = item.key.replace('/talent?view=', '')
+        return allowedViews.has(view)
+      })
+      .map(localizeLeftMenu)
+  }
+  return leftMenus.map(localizeLeftMenu)
+})
+
 const expandedKeys = computed(() => {
-  const section = resolveActiveSection(route.path)
-  const autoKeys = Object.entries(GROUP_KEY_TO_SECTION)
-    .filter(([, s]) => s === section)
-    .map(([k]) => k)
-  const combined = new Set([...autoKeys, ...manualExpandedKeys.value])
-  return [...combined]
+  const expandable = menuOptions.value
+    .filter((item) => item.children?.length)
+    .map((item) => item.key)
+  return [...new Set([...expandable, ...manualExpandedKeys.value])]
 })
 
 function handleExpandedKeys(keys: string[]) {
   manualExpandedKeys.value = keys
 }
 
-function handleMenuClick(key: string) {
+function handleLeftMenuClick(key: string) {
   if (key.startsWith('/talent?view=')) {
     const view = key.replace('/talent?view=', '')
     router.push({ path: '/talent', query: { view } })

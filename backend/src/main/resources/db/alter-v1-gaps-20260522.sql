@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS dashboard_performance_daily (
 
 COMMENT ON TABLE dashboard_performance_daily IS '看板日汇总（订单同步事件增量维护，A-05）';
 
-INSERT INTO system_config (config_key, config_value, value_type, config_group, description, editable)
+INSERT INTO system_config (config_key, config_value, config_type, config_group, config_name, status)
 VALUES (
     'promotion.copy_brief_template',
     '【{productName}】\n佣金率：{commissionRate}\n短链：{shortLink}',

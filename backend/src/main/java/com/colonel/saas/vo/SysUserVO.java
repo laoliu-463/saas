@@ -13,8 +13,18 @@ public class SysUserVO {
     private String realName;
     private String phone;
     private String email;
+    /** 持久化组织节点 ID（业务组或部门），用于 data_scope 本组过滤 */
     private UUID deptId;
+    private UUID parentDeptId;
+    private String parentDeptName;
+    private UUID groupId;
+    private String groupName;
+    private String groupType;
+    private UUID roleId;
+    private String roleCode;
+    private String roleName;
     private Integer status;
+    private Boolean forcePasswordChange;
     private LocalDateTime lastLoginAt;
     private LocalDateTime createTime;
     private List<UUID> roleIds;

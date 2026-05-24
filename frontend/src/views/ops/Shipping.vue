@@ -5,10 +5,23 @@
       description="集中处理待发货及后续物流中的寄样单，录入单号、跟踪签收进度，并处理物流异常。"
     />
 
-    <div class="shipping-actions" v-if="activeTab === 'PENDING_SHIP'">
+    <n-alert
+      v-if="permissionHint"
+      type="warning"
+      :bordered="false"
+      class="sample-permission-hint"
+      data-testid="ops-shipping-permission-hint"
+    >
+      {{ permissionHint }}
+    </n-alert>
+
+    <div v-if="activeTab === 'PENDING_SHIP'" class="shipping-actions">
       <n-space>
-        <n-button type="primary" @click="triggerFileInput">
-          批量发货（Excel）
+        <n-button type="primary" data-testid="ops-logistics-import" @click="showImportModal = true">
+          批量导入物流单号
+        </n-button>
+        <n-button @click="triggerFileInput">
+          批量发货（Excel 预览）
         </n-button>
         <n-button v-if="canExportSamples" @click="handleExport">导出发货单</n-button>
       </n-space>
@@ -66,6 +79,7 @@
     </div>
 
     <SampleDetail v-model:show="showDetail" :sample-id="currentSampleId" @refresh="fetchData" />
+    <SampleLogisticsImportModal v-model:show="showImportModal" @success="fetchData" />
   </div>
 </template>
 
@@ -75,10 +89,12 @@ import { NButton, NTag, useMessage } from 'naive-ui';
 import { getSamplePage, batchShipSamples, exportSamples } from '../../api/sample';
 import PageHeader from '../../components/PageHeader.vue';
 import SampleDetail from '../sample/SampleDetail.vue';
+import SampleLogisticsImportModal from '../sample/SampleLogisticsImportModal.vue';
 import { parseBatchShipRows, type BatchShipItem, type BatchShipRow } from '../../utils/shippingBatch';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
 import { useAuthStore } from '../../stores/auth';
-import { canExportSamplesByRole } from '../sample/sample-permissions';
+import { canExportSamplesByRole, OPS_SHIPPING_TABS } from '../sample/sample-permissions';
+import { handleApiFailure } from '../../utils/requestError';
 
 const message = useMessage();
 const authStore = useAuthStore();
@@ -86,18 +102,12 @@ const loading = ref(false);
 const activeTab = ref('PENDING_SHIP');
 const data = ref<any[]>([]);
 
-const tabList = [
-  { label: '待发货', value: 'PENDING_SHIP' },
-  { label: '快递中', value: 'SHIPPED' },
-  { label: '待交作业', value: 'PENDING_TASK' },
-  { label: '已完成', value: 'FINISHED' },
-  { label: '已拒绝', value: 'REJECTED' },
-  { label: '已关闭', value: 'CLOSED' }
-];
+const tabList = OPS_SHIPPING_TABS;
 
 const pagination = reactive(createPaginationState());
 
 const showDetail = ref(false);
+const showImportModal = ref(false);
 const currentSampleId = ref('');
 const canExportSamples = computed(() => canExportSamplesByRole(authStore.roleCodes));
 
@@ -106,6 +116,7 @@ const fileInputRef = ref<HTMLInputElement | null>(null);
 const batchItems = ref<BatchShipItem[]>([]);
 const parseErrors = ref<string[]>([]);
 const batchSubmitting = ref(false);
+const permissionHint = ref('');
 
 const batchColumns = [
   { title: '寄样单号', key: 'requestNo' },
@@ -130,12 +141,20 @@ const fetchData = async () => {
     if (responseData?.records && Array.isArray(responseData.records)) {
       data.value = responseData.records;
       pagination.itemCount = responseData.total || 0;
+      permissionHint.value = '';
     } else {
       data.value = [];
       pagination.itemCount = 0;
     }
   } catch (error: any) {
-    message.error(error?.message || '获取物流列表失败');
+    data.value = [];
+    pagination.itemCount = 0;
+    handleApiFailure(error, {
+      onPermissionHint: (msg) => { permissionHint.value = msg; },
+      permissionFallback: '当前角色无权查看此物流列表',
+      onFallback: (msg) => message.error(msg),
+      fallbackMessage: '获取物流列表失败'
+    });
   } finally {
     loading.value = false;
   }
@@ -230,7 +249,12 @@ const handleExport = async () => {
     a.click();
     URL.revokeObjectURL(url);
   } catch (error: any) {
-    message.error(error?.message || '导出失败');
+    handleApiFailure(error, {
+      onPermissionHint: (msg) => { permissionHint.value = msg; },
+      permissionFallback: '当前角色无权导出寄样数据',
+      onFallback: (msg) => message.error(msg),
+      fallbackMessage: '导出失败'
+    });
   }
 };
 
@@ -250,6 +274,8 @@ const columns = [
   { title: '申请渠道', key: 'channelUserName', render: (row: any) => row.channelUserName || '-' },
   { title: '数量', key: 'quantity' },
   { title: '快递单号', key: 'trackingNo', render: (row: any) => row.trackingNo || '-' },
+  { title: '物流状态', key: 'logisticsStatusName', render: (row: any) => row.logisticsStatusName || row.logisticsStatus || '-' },
+  { title: '最近同步', key: 'logisticsLastQueryAt', render: (row: any) => row.logisticsLastQueryAt || '-' },
   {
     title: '状态',
     key: 'status',
@@ -289,6 +315,10 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.sample-permission-hint {
+  margin-bottom: var(--content-gap);
+}
+
 .shipping-actions {
   margin-bottom: var(--content-gap);
 }

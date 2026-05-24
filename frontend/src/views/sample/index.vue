@@ -4,6 +4,9 @@
       <template #actions>
         <n-button v-if="canApplySample" type="primary" data-testid="sample-apply" @click="$router.push('/sample/apply')">申请寄样</n-button>
         <n-button v-if="canExportSamples" type="info" data-testid="sample-export" @click="handleExport">导出寄样单</n-button>
+        <n-button v-if="canImportLogistics" type="primary" secondary data-testid="sample-logistics-import" @click="showLogisticsImport = true">
+          批量导入物流单号
+        </n-button>
         <n-button
           v-if="showBatchAuditActions"
           type="success"
@@ -20,13 +23,23 @@
           :disabled="selectedRequestNos.length === 0"
           :loading="batchSubmitting"
           data-testid="sample-batch-reject"
-          @click="handleBatchReject"
+          @click="openBatchRejectModal"
         >
           批量拒绝
         </n-button>
         <n-button :loading="loading" data-testid="sample-refresh" @click="fetchData">刷新数据</n-button>
       </template>
     </PageHeader>
+
+    <n-alert
+      v-if="permissionHint"
+      type="warning"
+      :bordered="false"
+      class="sample-permission-hint"
+      data-testid="sample-permission-hint"
+    >
+      {{ permissionHint }}
+    </n-alert>
 
     <div class="shipping-table-card app-panel">
       <div class="sample-filter-toolbar">
@@ -78,22 +91,32 @@
     </div>
 
     <SampleDetail v-model:show="showDetail" :sample-id="currentSampleId" @refresh="fetchData" />
+    <SampleLogisticsImportModal v-model:show="showLogisticsImport" @success="handleLogisticsImportSuccess" />
+    <SampleBatchRejectModal
+      v-model:show="showBatchReject"
+      :request-nos="selectedRequestNos"
+      :submitting="batchSubmitting"
+      @submit="handleBatchRejectSubmit"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, h, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { NButton, NTag, useMessage } from 'naive-ui';
-import { batchApproveSamples, batchRejectSamples, exportSamples, getSamplePage } from '../../api/sample';
+import { batchApproveSamples, batchRejectSamples, exportSamples, getSampleFilterOptions, getSamplePage } from '../../api/sample';
 import PageHeader from '../../components/PageHeader.vue';
 import SampleDetail from './SampleDetail.vue';
+import SampleLogisticsImportModal from './SampleLogisticsImportModal.vue';
+import SampleBatchRejectModal from './SampleBatchRejectModal.vue';
 import type { SampleItem } from '../../types';
 import { useAuthStore } from '../../stores/auth';
 import { ROLE_CODES } from '../../constants/rbac';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
 import { useDelayedFlag } from '../../utils/delayedFlag';
-import { canExportSamplesByRole } from './sample-permissions';
-import { loadSampleChannelOptions, loadSampleRecruiterOptions } from './sample-user-filter-options';
+import { canExportSamplesByRole, filterSampleTabsForOps } from './sample-permissions';
+import { handleApiFailure } from '../../utils/requestError';
+import { loadSampleChannelOptions, loadSampleRecruiterOptions, mapFilterOptionItems } from './sample-user-filter-options';
 
 const message = useMessage();
 const authStore = useAuthStore();
@@ -117,11 +140,9 @@ const ALL_TABS = [
   { label: '已关闭', value: 'CLOSED' }
 ];
 
-const OPS_HIDDEN_TABS = new Set(['PENDING_AUDIT']);
-
 const tabList = computed(() =>
   isOpsStaffOnly.value
-    ? ALL_TABS.filter((t) => !OPS_HIDDEN_TABS.has(t.value))
+    ? filterSampleTabsForOps(ALL_TABS)
     : ALL_TABS
 );
 
@@ -141,6 +162,9 @@ const pagination = reactive(createPaginationState());
 
 const showDetail = ref(false);
 const currentSampleId = ref('');
+const showLogisticsImport = ref(false);
+const showBatchReject = ref(false);
+const permissionHint = ref('');
 
 const isBizStaffOnly = computed(() => {
   const roles = authStore.roleCodes;
@@ -171,6 +195,7 @@ const canApplySample = computed(() => {
   return roles.includes(ROLE_CODES.CHANNEL_LEADER) || roles.includes(ROLE_CODES.CHANNEL_STAFF);
 });
 const canExportSamples = computed(() => canExportSamplesByRole(authStore.roleCodes));
+const canImportLogistics = computed(() => authStore.isAdmin || authStore.roleCodes.includes(ROLE_CODES.OPS_STAFF));
 const canBatchAudit = computed(() => authStore.isAdmin || authStore.roleCodes.includes(ROLE_CODES.BIZ_STAFF));
 const showBatchAuditActions = computed(() => canBatchAudit.value && activeTab.value === 'PENDING_AUDIT');
 const selectedRequestNos = computed(() => checkedRowKeys.value.map((key) => String(key)).filter(Boolean));
@@ -214,6 +239,21 @@ const fetchRecruiterOptions = async (keyword = '') => {
   }
 };
 
+const initFilterOptions = async () => {
+  try {
+    const res: any = await getSampleFilterOptions();
+    const data = res?.data || res;
+    if (data?.channels?.length) {
+      channelOptions.value = mapFilterOptionItems(data.channels);
+    }
+    if (data?.recruiters?.length) {
+      recruiterOptions.value = mapFilterOptionItems(data.recruiters);
+    }
+  } catch {
+    // 接口失败时降级到人员主数据接口，不影响页面加载
+  }
+};
+
 const handleChannelSearch = (keyword: string) => {
   fetchChannelOptions(keyword);
 };
@@ -246,12 +286,20 @@ const fetchData = async () => {
     if (responseData?.records && Array.isArray(responseData.records)) {
       data.value = responseData.records;
       pagination.itemCount = responseData.total || 0;
+      permissionHint.value = '';
     } else {
       data.value = [];
       pagination.itemCount = 0;
     }
   } catch (error: any) {
-    message.error(error?.message || '获取寄样列表失败');
+    data.value = [];
+    pagination.itemCount = 0;
+    handleApiFailure(error, {
+      onPermissionHint: (message) => { permissionHint.value = message; },
+      permissionFallback: '当前角色无权查看此寄样列表',
+      onFallback: (msg) => message.error(msg),
+      fallbackMessage: '获取寄样列表失败'
+    });
   } finally {
     loading.value = false;
   }
@@ -283,9 +331,26 @@ const handleExport = async () => {
     window.URL.revokeObjectURL(url);
     message.success('寄样单导出成功');
   } catch (error: any) {
-    message.error(error?.message || '寄样单导出失败');
+    handleApiFailure(error, {
+      onPermissionHint: (msg) => { permissionHint.value = msg; },
+      permissionFallback: '当前角色无权导出寄样数据',
+      onFallback: (msg) => message.error(msg),
+      fallbackMessage: '寄样单导出失败'
+    });
   }
 };
+
+const handleLogisticsImportSuccess = () => {
+  pagination.page = 1;
+  fetchData();
+};
+
+function formatDateTime(value?: string) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('zh-CN', { hour12: false });
+}
 
 const batchResultText = (result: any) => {
   const success = result?.success ?? 0;
@@ -309,22 +374,30 @@ const handleBatchApprove = async () => {
     checkedRowKeys.value = [];
     fetchData();
   } catch (error: any) {
-    message.error(error?.message || '批量通过失败');
+    handleApiFailure(error, {
+      onPermissionHint: (msg) => { permissionHint.value = msg; },
+      permissionFallback: '当前角色无权审核寄样',
+      onFallback: (msg) => message.error(msg),
+      fallbackMessage: '批量通过失败'
+    });
   } finally {
     batchSubmitting.value = false;
   }
 };
 
-const handleBatchReject = async () => {
+const openBatchRejectModal = () => {
   if (!selectedRequestNos.value.length) {
     message.warning('请先选择待审核寄样单');
     return;
   }
-  const remark = window.prompt('请输入批量拒绝原因')?.trim();
-  if (!remark) {
-    message.warning('批量拒绝原因不能为空');
+  if (selectedRequestNos.value.length > 100) {
+    message.warning('单次最多批量拒绝 100 条，请减少选择数量');
     return;
   }
+  showBatchReject.value = true;
+};
+
+const handleBatchRejectSubmit = async (remark: string) => {
   batchSubmitting.value = true;
   try {
     const res: any = await batchRejectSamples({
@@ -334,9 +407,15 @@ const handleBatchReject = async () => {
     const result = res?.data || res;
     message.success(`批量拒绝完成：${batchResultText(result)}`);
     checkedRowKeys.value = [];
+    showBatchReject.value = false;
     fetchData();
   } catch (error: any) {
-    message.error(error?.message || '批量拒绝失败');
+    handleApiFailure(error, {
+      onPermissionHint: (msg) => { permissionHint.value = msg; },
+      permissionFallback: '当前角色无权审核寄样',
+      onFallback: (msg) => message.error(msg),
+      fallbackMessage: '批量拒绝失败'
+    });
   } finally {
     batchSubmitting.value = false;
   }
@@ -392,6 +471,9 @@ const columns = computed(() => [
   },
   { title: '数量', key: 'quantity' },
   { title: '快递单号', key: 'trackingNo', render: (row: any) => row.trackingNo || '-' },
+  { title: '物流状态', key: 'logisticsStatus', render: (row: any) => row.logisticsStatusName || row.logisticsStatus || '-' },
+  { title: '最近同步', key: 'logisticsLastQueryAt', render: (row: any) => formatDateTime(row.logisticsLastQueryAt) },
+  { title: '签收时间', key: 'signedAt', render: (row: any) => formatDateTime(row.signedAt) },
   {
     title: '申请说明',
     key: 'applyReason',
@@ -418,9 +500,14 @@ const handleVisibilityChange = () => {
   }
 };
 
-onMounted(() => {
-  fetchChannelOptions();
-  fetchRecruiterOptions();
+onMounted(async () => {
+  await initFilterOptions();
+  if (!channelOptions.value.length) {
+    fetchChannelOptions();
+  }
+  if (!recruiterOptions.value.length) {
+    fetchRecruiterOptions();
+  }
   fetchData();
   document.addEventListener('visibilitychange', handleVisibilityChange);
 });
@@ -431,6 +518,10 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.sample-permission-hint {
+  margin-bottom: var(--content-gap);
+}
+
 .shipping-table-card {
   padding: 4px 16px 16px;
 }

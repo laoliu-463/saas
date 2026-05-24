@@ -19,6 +19,8 @@
       :product-options-loading="productOptionsLoading"
       :loading="loading"
       :show-assignee-filter="false"
+      :library-category-options="libraryCategoryOptions"
+      :recruiter-options="recruiterOptions"
       @update:filters="filters = $event"
       @update:selected-product="selectedProduct = $event"
       @update:library-status="libraryStatus = $event"
@@ -107,38 +109,42 @@
       :product-id="currentRow?.productId ?? null"
       :activity-id="currentRow?.sourceActivityId || currentRow?.activityId || null"
     />
+    <QuickSampleModal v-model:show="quickSampleVisible" :product="quickSampleProduct" @success="refreshProducts" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
-import { getProducts } from '../../api/product'
+import { getProducts, getProductLibraryCategories } from '../../api/product'
+import { getUserMasterRecruiters } from '../../api/sys'
 import { convertActivityProductLink, pinActivityProduct, unpinActivityProduct } from '../../api/activityProduct'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES, hasAccess } from '../../constants/rbac'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 import { useDebouncedFn } from '../../utils/debounce'
+import { MAX_PAGE_SIZE } from '../../utils/pagination'
 
 import ProductFilters from './components/ProductFilters.vue'
 import ProductCard from './components/ProductCard.vue'
+import QuickSampleModal from './components/QuickSampleModal.vue'
 import ProductDetail from './ProductDetail.vue'
 import ProductOperationLogDrawer from './components/ProductOperationLogDrawer.vue'
 import {
-  applyProductFilters,
+  buildProductLibraryQueryParams,
   DEFAULT_PRODUCT_FILTERS,
+  productDomainCategoryOptions,
   type ProductFilterState
 } from './product-filters'
 import { copyProductBriefWithLink } from './product-copy'
-import { buildProductSampleContext } from '../sample/sample-context'
 
 const PAGE_SIZE = 12
 
 const message = useMessage()
-const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const loading = ref(false)
@@ -153,9 +159,13 @@ const selectedProduct = ref<string | null>(null)
 const productKeyword = ref('')
 const libraryStatus = ref<number | null>(null)
 const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
+const libraryCategoryOptions = ref<{ label: string; value: string }[]>([])
+const recruiterOptions = ref<{ label: string; value: string }[]>([])
 const productOptions = ref<{ label: string; value: string }[]>([])
 const productOptionsLoading = ref(false)
 const currentRow = ref<any | null>(null)
+const quickSampleVisible = ref(false)
+const quickSampleProduct = ref<any | null>(null)
 const expandedProductId = ref<string | null>(null)
 const showDetail = ref(false)
 const detailRefreshKey = ref(0)
@@ -214,34 +224,22 @@ const fetchProducts = async (reset: boolean) => {
 
   try {
     const page = reset ? 1 : Math.floor(products.value.length / PAGE_SIZE) + 1
-    const currentFilters = filters.value
-    const res: any = await getProducts({
+    const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
       page,
       size: PAGE_SIZE,
       keyword: selectedProduct.value || productKeyword.value.trim() || undefined,
       status: libraryStatus.value ?? undefined,
-      systemTag: currentFilters.systemTag || undefined,
-      commission: currentFilters.commission || undefined,
-      hasSample: currentFilters.hasSample || undefined,
-      assignee: currentFilters.assignee || undefined,
-      decision: currentFilters.decision || undefined,
-      shopKeyword: currentFilters.shopKeyword || undefined,
-      categoryName: currentFilters.categoryName || undefined,
-      salesRange: currentFilters.salesRange || undefined,
-      promotionLink: currentFilters.promotionLink || undefined,
-      allianceStatus: currentFilters.allianceStatus || undefined
-    })
+      partnerId: route.query.partnerId as string | undefined,
+      partnerType: route.query.partnerType as string | undefined,
+      sortBy: (route.query.sortBy as string | undefined) || 'default'
+    }))
     const data = res?.data || {}
     const records = Array.isArray(data.records) ? data.records : []
-    const items = applyProductFilters(
-      records.map((p: any) => normalizeItem({
-        ...p,
-        title: p.title || p.name || '未命名商品',
-        productId: String(p.productId || '')
-      })),
-      filters.value,
-      null
-    )
+    const items = records.map((p: any) => normalizeItem({
+      ...p,
+      title: p.title || p.name || '未命名商品',
+      productId: String(p.productId || '')
+    }))
     products.value = reset ? items : products.value.concat(items)
     const currentPage = Number(data.page || page || 1)
     const pageSize = Number(data.size || PAGE_SIZE)
@@ -456,17 +454,58 @@ const pinProduct = (item: any) => setProductPinned(item, true)
 const unpinProduct = (item: any) => setProductPinned(item, false)
 
 const openSampleApply = (item: any) => {
-  const context = buildProductSampleContext(item)
-  if (!context.query.productId) {
-    message.warning('商品信息不完整，暂不可发起内部寄样')
+  if (!item?.id) {
+    message.warning('商品信息不完整，暂不可发起快速寄样')
     return
   }
-  router.push({ path: '/sample/apply', query: context.query })
+  quickSampleProduct.value = item
+  quickSampleVisible.value = true
+}
+
+const mergeCategoryOptions = (dynamicNames: string[]) => {
+  const seen = new Set<string>()
+  const options: { label: string; value: string }[] = []
+  const append = (name: string) => {
+    const normalized = String(name || '').trim()
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized)
+      options.push({ label: normalized, value: normalized })
+    }
+  }
+  productDomainCategoryOptions.forEach((item) => append(item.value))
+  dynamicNames.forEach(append)
+  return options
+}
+
+const loadFilterOptions = async () => {
+  let categoryFailed = false
+  try {
+    const [categoryRes, recruiterRes]: any[] = await Promise.all([
+      getProductLibraryCategories(),
+      getUserMasterRecruiters({ limit: MAX_PAGE_SIZE })
+    ])
+    const categories = Array.isArray(categoryRes?.data) ? categoryRes.data : []
+    libraryCategoryOptions.value = mergeCategoryOptions(categories)
+    const recruiters = Array.isArray(recruiterRes?.data) ? recruiterRes.data : []
+    recruiterOptions.value = recruiters
+      .map((item: any) => ({
+        label: String(item?.label || item?.realName || item?.username || '').trim(),
+        value: String(item?.id || item?.userId || '').trim()
+      }))
+      .filter((item: { label: string; value: string }) => item.label && item.value)
+  } catch {
+    categoryFailed = true
+    libraryCategoryOptions.value = []
+    recruiterOptions.value = []
+  }
+  if (categoryFailed) {
+    message.warning('类目选项加载失败，可继续浏览商品库')
+  }
 }
 
 onMounted(async () => {
   try {
-    await refreshProducts()
+    await Promise.all([loadFilterOptions(), refreshProducts()])
   } catch (error: any) {
     message.error(error?.response?.data?.msg || error?.message || '页面初始化失败')
   }

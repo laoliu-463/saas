@@ -2,6 +2,7 @@ package com.colonel.saas.service.talent.profile.provider;
 
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
+import com.colonel.saas.config.TalentCollectProperties;
 import com.colonel.saas.service.talent.TalentInputParseResult;
 import com.colonel.saas.service.talent.profile.TalentProfileFieldNames;
 import com.colonel.saas.service.talent.profile.TalentProfileProvider;
@@ -31,17 +32,20 @@ public class PublicWebTalentProvider implements TalentProfileProvider {
 
     private final ObjectMapper objectMapper;
     private final boolean enabled;
+    private final TalentCollectProperties collectProperties;
 
     public PublicWebTalentProvider(
             ObjectMapper objectMapper,
+            TalentCollectProperties collectProperties,
             @Value("${talent.profile.public-web.enabled:true}") boolean enabled) {
         this.objectMapper = objectMapper;
+        this.collectProperties = collectProperties;
         this.enabled = enabled;
     }
 
     @Override
     public String providerCode() {
-        return "public_web";
+        return "CRAWLER";
     }
 
     @Override
@@ -51,7 +55,12 @@ public class PublicWebTalentProvider implements TalentProfileProvider {
 
     @Override
     public boolean supports(TalentProfileQuery query) {
-        return enabled && query != null && StringUtils.hasText(query.getInput());
+        return enabled
+                && collectProperties.isCrawlerAllowed()
+                && !collectProperties.isMockOnly()
+                && query != null
+                && StringUtils.hasText(query.getInput())
+                && !query.isManualFill();
     }
 
     @Override

@@ -36,6 +36,17 @@
               {{ tag.text }}
             </n-tag>
             <n-tag
+              v-if="resolveSupportsAds(product)"
+              type="info"
+              size="small"
+              bordered
+              style="cursor: pointer"
+              data-testid="product-ads-rule-tag"
+              @click.stop="openAdsRuleModal(product)"
+            >
+              可投流
+            </n-tag>
+            <n-tag
               v-if="product.latestDecisionLabel"
               :type="decisionTagType(product.latestDecisionLevel)"
               size="small"
@@ -241,7 +252,7 @@
                 data-testid="product-quick-sample"
                 @click.stop="$emit('applySample', product)"
               >
-                内部寄样
+                快速寄样
               </n-button>
               <n-button block size="small" @click.stop="$emit('showLogs', product)">
                 查看操作日志
@@ -254,11 +265,23 @@
         </div>
       </div>
     </div>
+    <AdsRuleDetailModal
+      v-model:show="adsRuleModalVisible"
+      :rule-text="adsRuleText"
+      :loading="adsRuleLoading"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { formatSales30d } from '../product-filters'
+import { getActivityProductDetail } from '../../../api/activityProduct'
+import AdsRuleDetailModal from './AdsRuleDetailModal.vue'
+
+const adsRuleModalVisible = ref(false)
+const adsRuleText = ref('')
+const adsRuleLoading = ref(false)
 
 defineProps<{
   product: any
@@ -400,8 +423,49 @@ const cardTags = (item: any) => {
   if (!hasSampleThreshold(item) && !item.hasSampleRule) tags.push({ text: '暂无寄样要求', type: 'warning' })
   if (!item.assigneeName) tags.push({ text: '待分配负责人', type: 'error' })
   if (item.selectedToLibrary) tags.push({ text: '商品库可见', type: 'success' })
-  if (item.supportsAds === true) tags.push({ text: '可投流', type: 'info' })
   return tags
+}
+
+const resolveSupportsAds = (item: any) => {
+  if (item?.supportsAds === true) return true
+  if (item?.auditSupplement?.supportsAds === true) return true
+  if (item?.auditSupplementSummary?.supportsAds === true) return true
+  return false
+}
+
+const resolveAdsRule = (item: any) => {
+  const candidates = [item?.adsRule, item?.auditSupplement?.adsRule, item?.auditSupplementSummary?.adsRule]
+  for (const value of candidates) {
+    const text = String(value || '').trim()
+    if (text) return text
+  }
+  return ''
+}
+
+const openAdsRuleModal = async (item: any) => {
+  adsRuleModalVisible.value = true
+  const localRule = resolveAdsRule(item)
+  if (localRule) {
+    adsRuleText.value = localRule
+    adsRuleLoading.value = false
+    return
+  }
+  adsRuleText.value = ''
+  const activityId = String(item?.activityId || item?.sourceActivityId || '').trim()
+  const productId = String(item?.productId || '').trim()
+  if (!activityId || !productId) {
+    adsRuleLoading.value = false
+    return
+  }
+  adsRuleLoading.value = true
+  try {
+    const res: any = await getActivityProductDetail(activityId, productId)
+    adsRuleText.value = resolveAdsRule(res?.data || {})
+  } catch {
+    adsRuleText.value = ''
+  } finally {
+    adsRuleLoading.value = false
+  }
 }
 
 const handleImageError = (event: Event) => {

@@ -1,4 +1,7 @@
-/** 商品列表筛选口径（前端聚合；部分维度依赖已加载列表做客户端过滤） */
+/** 商品列表筛选口径（前端聚合；商品库主链路走后端 GET /products 服务端过滤） */
+
+/** @deprecated 仅测试/历史兼容；商品库类目请使用 GET /products/categories 动态加载，禁止作为主数据来源 */
+export const libraryCategoryOptionsPreset: { label: string; value: string }[] = []
 
 export interface ProductFilterState {
   /** 系统人工标签（原 category 字段） */
@@ -9,14 +12,64 @@ export interface ProductFilterState {
   decision: string | null
   /** 店铺 / 合作方名称模糊匹配 */
   shopKeyword: string | null
-  /** 抖音同步类目（categoryName） */
+  /** 抖音同步类目（单选兼容，活动商品页） */
   categoryName: string | null
+  /** 商品库类目多选 */
+  categories: string[]
+  /** 来源活动 ID */
+  activityId: string | null
+  /** 招商负责人用户 ID */
+  assigneeId: string | null
+  /** 服务费率区间 */
+  serviceFee: string | null
+  /** 是否支持投流 */
+  supportsAds: string | null
   /** 近 30 天销量区间 */
   salesRange: string | null
   /** 系统转链状态 */
   promotionLink: string | null
   /** 联盟侧推广状态文案（statusText） */
   allianceStatus: string | null
+  /** 审核补充信息中的货品标签 */
+  goodsTags: string[]
+  /** 审核补充信息中的商品标签 */
+  productTags: string[]
+  /** 团长名称 */
+  colonelName: string | null
+  /** 已发布转链 */
+  published: string | null
+  /** 联盟侧已挂车/推广中（upstream status=1） */
+  listed: string | null
+  /** 免费寄样（supplement sampleType=FREE） */
+  freeSample: string | null
+  /** 合作类型 */
+  cooperationType: string | null
+  /** 直播价格下限 */
+  livePriceMin: string | null
+  /** 直播价格上限 */
+  livePriceMax: string | null
+  /** 佣金率下限 */
+  commissionMin: string | null
+  /** 佣金率上限 */
+  commissionMax: string | null
+  /** 寄样销售额下限 */
+  sampleSalesMin: string | null
+  /** 寄样销售额上限 */
+  sampleSalesMax: string | null
+  /** 其他筛选 Checkbox（AND） */
+  materialDownload: boolean
+  exclusivePrice: boolean
+  productChain: boolean
+  handCard: boolean
+  doubleCommission: boolean
+  /** 仅未加入货盘 */
+  notInLibrary: boolean
+  /** 选品去重 */
+  dedup: boolean
+  /** 招商活动 ID */
+  recruitActivityId: string | null
+  /** 招商活动名称关键字 */
+  recruitActivityName: string | null
 }
 
 export const DEFAULT_PRODUCT_FILTERS = (): ProductFilterState => ({
@@ -27,9 +80,36 @@ export const DEFAULT_PRODUCT_FILTERS = (): ProductFilterState => ({
   decision: null,
   shopKeyword: null,
   categoryName: null,
+  categories: [],
+  activityId: null,
+  assigneeId: null,
+  serviceFee: null,
+  supportsAds: null,
   salesRange: null,
   promotionLink: null,
-  allianceStatus: null
+  allianceStatus: null,
+  goodsTags: [],
+  productTags: [],
+  colonelName: null,
+  published: null,
+  listed: null,
+  freeSample: null,
+  cooperationType: null,
+  livePriceMin: null,
+  livePriceMax: null,
+  commissionMin: null,
+  commissionMax: null,
+  sampleSalesMin: null,
+  sampleSalesMax: null,
+  materialDownload: false,
+  exclusivePrice: false,
+  productChain: false,
+  handCard: false,
+  doubleCommission: false,
+  notInLibrary: false,
+  dedup: false,
+  recruitActivityId: null,
+  recruitActivityName: null
 })
 
 export const systemTagOptions = [
@@ -73,16 +153,45 @@ export const bizStatusOptions = [
   { label: '已转交达人 CRM', value: 'FOLLOWING' }
 ]
 
-/** 常见抖音类目（可与列表中的 categoryName 叠加使用） */
-export const categoryNameOptions = [
-  { label: '玩具乐器', value: '玩具' },
-  { label: '智能家居', value: '家居' },
-  { label: '美妆护肤', value: '美妆' },
-  { label: '食品饮料', value: '食品' },
-  { label: '服饰内衣', value: '服饰' },
-  { label: '母婴宠物', value: '母婴' },
-  { label: '数码家电', value: '数码' }
+export const serviceFeeOptions = [
+  { label: '20%以上', value: 'gt20' },
+  { label: '10% - 20%', value: '10_20' },
+  { label: '10%以下', value: 'lt10' }
 ]
+
+export const supportsAdsOptions = [
+  { label: '支持投流', value: '1' },
+  { label: '不支持投流', value: '0' }
+]
+
+/** 商品域预设 22 类目（§2.8），与 GET /products/categories 动态结果合并使用 */
+export const productDomainCategoryOptions: { label: string; value: string }[] = [
+  { label: '玩具乐器', value: '玩具乐器' },
+  { label: '服饰内衣', value: '服饰内衣' },
+  { label: '个护家清', value: '个护家清' },
+  { label: '智能家居', value: '智能家居' },
+  { label: '生鲜', value: '生鲜' },
+  { label: '美妆', value: '美妆' },
+  { label: '母婴宠物', value: '母婴宠物' },
+  { label: '鲜花园艺', value: '鲜花园艺' },
+  { label: '本地生活', value: '本地生活' },
+  { label: '食品饮料', value: '食品饮料' },
+  { label: '3C数码家电', value: '3C数码家电' },
+  { label: '图书教育', value: '图书教育' },
+  { label: '鞋靴箱包', value: '鞋靴箱包' },
+  { label: '虚拟充值', value: '虚拟充值' },
+  { label: '运动户外', value: '运动户外' },
+  { label: '钟表配饰', value: '钟表配饰' },
+  { label: '珠宝文玩', value: '珠宝文玩' },
+  { label: '医疗健康', value: '医疗健康' },
+  { label: '酒类', value: '酒类' },
+  { label: '滋补保健', value: '滋补保健' },
+  { label: '原料包装', value: '原料包装' },
+  { label: '餐饮外卖', value: '餐饮外卖' }
+]
+
+/** 类目名称筛选（活动商品页）；与 productDomainCategoryOptions 对齐 */
+export const categoryNameOptions = productDomainCategoryOptions
 
 export const salesRangeOptions = [
   { label: '近30天销量 < 100', value: 'lt100' },
@@ -95,6 +204,28 @@ export const promotionLinkOptions = [
   { label: '未生成转链', value: 'PENDING' },
   { label: '已生成转链', value: 'LINKED' },
   { label: '转链失败', value: 'FAILED' }
+]
+
+export const goodsTagOptions = [
+  { label: '家居', value: '家居' },
+  { label: '零食', value: '零食' },
+  { label: '美妆', value: '美妆' },
+  { label: '母婴', value: '母婴' },
+  { label: '服饰', value: '服饰' },
+  { label: '数码', value: '数码' },
+  { label: '高复购', value: '高复购' },
+  { label: '新品', value: '新品' }
+]
+
+export const productTagOptions = [
+  { label: '主推', value: '主推' },
+  { label: '次推', value: '次推' },
+  { label: '商品链组', value: '商品链组' },
+  { label: '同款高价', value: '同款高价' },
+  { label: '全网低价', value: '全网低价' },
+  { label: '手卡', value: '手卡' },
+  { label: '专属价', value: '专属价' },
+  { label: '双佣金', value: '双佣金' }
 ]
 
 /** 联盟推广状态码（与抖店 upstream status / product_snapshot.status 一致） */
@@ -216,6 +347,93 @@ export function matchAllianceStatus(item: any, allianceStatus: string | null) {
   return keywords.some((word) => text.includes(word))
 }
 
+const normalizeTagList = (value: any): string[] => {
+  if (Array.isArray(value)) return value.map((item) => normalizeText(item)).filter(Boolean)
+  const text = normalizeText(value)
+  return text ? text.split(/[,，\n]/).map((item) => normalizeText(item)).filter(Boolean) : []
+}
+
+const getAuditTags = (item: any, key: 'goodsTags' | 'productTags') => {
+  const supplement = item?.auditSupplement || item?.auditSupplementSummary || {}
+  const legacyKey = key === 'goodsTags' ? 'goods_tags' : 'product_tags'
+  return normalizeTagList(supplement?.[key] ?? supplement?.[legacyKey] ?? item?.[key] ?? item?.[legacyKey])
+}
+
+export function matchAuditTags(item: any, goodsTags: string[] = [], productTags: string[] = []) {
+  const expectedGoods = normalizeTagList(goodsTags)
+  const expectedProducts = normalizeTagList(productTags)
+  const matches = (actual: string[], expected: string[]) =>
+    !expected.length || expected.some((tag) => actual.includes(tag))
+  return matches(getAuditTags(item, 'goodsTags'), expectedGoods) &&
+    matches(getAuditTags(item, 'productTags'), expectedProducts)
+}
+
+export type ProductLibraryQueryExtra = {
+  page?: number
+  size?: number
+  keyword?: string
+  status?: number | null
+  partnerId?: string | null
+  partnerType?: string | null
+  sortBy?: string | null
+}
+
+/** 商品库 GET /products 查询参数，与后端 SelectedLibraryFilter 字段一一对应。 */
+export function buildProductLibraryQueryParams(
+  filters: ProductFilterState,
+  extra: ProductLibraryQueryExtra = {}
+) {
+  const keyword = normalizeText(extra.keyword)
+  const partnerId = normalizeText(extra.partnerId)
+  const partnerType = normalizeText(extra.partnerType)
+  return {
+    page: extra.page,
+    size: extra.size,
+    keyword: keyword || undefined,
+    status: extra.status ?? undefined,
+    shopKeyword: filters.shopKeyword || undefined,
+    categoryName: filters.categoryName || undefined,
+    categories: filters.categories?.length ? filters.categories.join(',') : undefined,
+    activityId: filters.activityId || undefined,
+    assigneeId: filters.assigneeId || undefined,
+    serviceFee: filters.serviceFee || undefined,
+    supportsAds: filters.supportsAds || undefined,
+    salesRange: filters.salesRange || undefined,
+    promotionLink: filters.promotionLink || undefined,
+    allianceStatus: filters.allianceStatus || undefined,
+    commission: filters.commission || undefined,
+    hasSample: filters.hasSample || undefined,
+    assignee: filters.assignee || undefined,
+    systemTag: filters.systemTag || undefined,
+    decision: filters.decision || undefined,
+    partnerId: partnerId || undefined,
+    partnerType: partnerType || undefined,
+    sortBy: extra.sortBy || undefined,
+    goodsTags: filters.goodsTags?.length ? filters.goodsTags.join(',') : undefined,
+    productTags: filters.productTags?.length ? filters.productTags.join(',') : undefined,
+    colonelName: filters.colonelName || undefined,
+    published: filters.published || undefined,
+    listed: filters.listed || undefined,
+    freeSample: filters.freeSample || undefined,
+    cooperationType: filters.cooperationType || undefined,
+    livePriceMin: filters.livePriceMin || undefined,
+    livePriceMax: filters.livePriceMax || undefined,
+    commissionMin: filters.commissionMin || undefined,
+    commissionMax: filters.commissionMax || undefined,
+    sampleSalesMin: filters.sampleSalesMin || undefined,
+    sampleSalesMax: filters.sampleSalesMax || undefined,
+    materialDownload: filters.materialDownload ? '1' : undefined,
+    exclusivePrice: filters.exclusivePrice ? '1' : undefined,
+    productChain: filters.productChain ? '1' : undefined,
+    handCard: filters.handCard ? '1' : undefined,
+    doubleCommission: filters.doubleCommission ? '1' : undefined,
+    notInLibrary: filters.notInLibrary ? '1' : undefined,
+    dedup: filters.dedup ? '1' : undefined,
+    recruitActivityId: filters.recruitActivityId || undefined,
+    recruitActivityName: filters.recruitActivityName || undefined
+  }
+}
+
 export function applyProductFilters(
   items: any[],
   filters: ProductFilterState,
@@ -230,9 +448,11 @@ export function applyProductFilters(
     if (!matchDecision(item, filters.decision)) return false
     if (!matchShopKeyword(item, filters.shopKeyword)) return false
     if (!matchCategoryName(item, filters.categoryName)) return false
+    if (filters.categories?.length && !filters.categories.some((category) => matchCategoryName(item, category))) return false
     if (!matchSalesRange(item, filters.salesRange)) return false
     if (!matchPromotionLink(item, filters.promotionLink)) return false
     if (!matchAllianceStatus(item, filters.allianceStatus)) return false
+    if (!matchAuditTags(item, filters.goodsTags, filters.productTags)) return false
     return true
   })
 }

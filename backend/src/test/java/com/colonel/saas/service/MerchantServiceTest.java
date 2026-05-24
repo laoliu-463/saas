@@ -276,8 +276,36 @@ class MerchantServiceTest {
     }
 
     @Test
+    void listPartners_shouldReturnPagedColonelPartnersFromSettlementAndMappingData() {
+        LocalDateTime syncTime = LocalDateTime.now();
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("partner_id", "7351155267604218149");
+        row.put("partner_name", "二级团长甲");
+        row.put("partner_type", "COLONEL");
+        row.put("shop_id", null);
+        row.put("shop_name", null);
+        row.put("product_count", 2L);
+        row.put("latest_sync_time", Timestamp.valueOf(syncTime));
+        row.put("status", 1);
+
+        when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(1L);
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenReturn(List.of(row));
+
+        IPage<PartnerVO> page = service.listPartners("团长", "COLONEL", 1, 10);
+
+        assertThat(page.getTotal()).isEqualTo(1);
+        assertThat(page.getRecords()).hasSize(1);
+        PartnerVO partner = page.getRecords().get(0);
+        assertThat(partner.getPartnerId()).isEqualTo("7351155267604218149");
+        assertThat(partner.getPartnerName()).isEqualTo("二级团长甲");
+        assertThat(partner.getPartnerType()).isEqualTo("COLONEL");
+        assertThat(partner.getShopId()).isNull();
+        assertThat(partner.getProductCount()).isEqualTo(2L);
+    }
+
+    @Test
     void listPartners_shouldReturnEmptyPageForUnsupportedPartnerType() {
-        IPage<PartnerVO> page = service.listPartners(null, "COLONEL", 1, 10);
+        IPage<PartnerVO> page = service.listPartners(null, "UNKNOWN", 1, 10);
 
         assertThat(page.getTotal()).isZero();
         assertThat(page.getRecords()).isEmpty();
@@ -304,6 +332,27 @@ class MerchantServiceTest {
         assertThat(detail.getPartnerName()).isEqualTo("清风小店");
         assertThat(detail.getProductCount()).isEqualTo(3L);
         assertThat(detail.getLatestSyncTime()).isEqualTo(syncTime);
+    }
+
+    @Test
+    void getPartnerDetail_shouldReturnColonelPartnerSummary() {
+        LocalDateTime syncTime = LocalDateTime.now();
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("partner_id", "7351155267604218149");
+        row.put("partner_name", "二级团长甲");
+        row.put("partner_type", "COLONEL");
+        row.put("shop_id", null);
+        row.put("shop_name", null);
+        row.put("product_count", 2L);
+        row.put("latest_sync_time", Timestamp.valueOf(syncTime));
+        row.put("status", 1);
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenReturn(List.of(row));
+
+        PartnerDetailVO detail = service.getPartnerDetail("7351155267604218149", "COLONEL");
+
+        assertThat(detail.getPartnerId()).isEqualTo("7351155267604218149");
+        assertThat(detail.getPartnerType()).isEqualTo("COLONEL");
+        assertThat(detail.getProductCount()).isEqualTo(2L);
     }
 
     @Test
@@ -336,6 +385,32 @@ class MerchantServiceTest {
         assertThat(product.getShopId()).isEqualTo(1001L);
         assertThat(product.getSales()).isEqualTo(128L);
         assertThat(product.getLatestSyncTime()).isEqualTo(syncTime);
+    }
+
+    @Test
+    void listPartnerProducts_shouldReturnPagedProductsForColonelPartner() {
+        LocalDateTime syncTime = LocalDateTime.now();
+        Map<String, Object> productRow = new LinkedHashMap<>();
+        productRow.put("product_id", "P-2001");
+        productRow.put("product_name", "团长活动商品");
+        productRow.put("activity_id", "3543332");
+        productRow.put("cover", "https://img.example/item.png");
+        productRow.put("price_text", "¥19.90");
+        productRow.put("shop_id", 2001L);
+        productRow.put("shop_name", "示例店");
+        productRow.put("category_name", "食品");
+        productRow.put("sales", 50L);
+        productRow.put("status", 1);
+        productRow.put("status_text", "推广中");
+        productRow.put("sync_time", Timestamp.valueOf(syncTime));
+        when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(1L);
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenReturn(List.of(productRow));
+
+        IPage<PartnerProductVO> page = service.listPartnerProducts("7351155267604218149", "COLONEL", 1, 10);
+
+        assertThat(page.getTotal()).isEqualTo(1);
+        assertThat(page.getRecords()).hasSize(1);
+        assertThat(page.getRecords().get(0).getProductId()).isEqualTo("P-2001");
     }
 
     @Test

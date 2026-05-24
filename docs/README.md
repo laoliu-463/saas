@@ -32,7 +32,7 @@
 - 已保留 P3-6 专用轻量观察入口：`scripts/qa/watch-real-pre-pick-source-orders.ps1`
 - 已新增上线前清单：`docs/10-上线前验收清单.md`
 - 下一阶段重点已切到 `P3-6` / `P3-8`，并保留 `P3-7` 只读复跑入口：真实订单归因样本、异常分支证据补齐；Dashboard 数据库口径对账已通过，后续只需随订单池变化定期复跑
-- V1 默认 `EXCLUSIVE_ENABLED=false`，独家商家 / 独家达人不会覆盖订单归因；生产 compose 已补为独立 `docker-compose.prod.yml` + `scripts/start-prod.ps1`，prod 下 `/api/system/env` 仅管理员 JWT 可访问，Swagger / `doc.html` 不加载
+- V1 默认 `EXCLUSIVE_ENABLED=false`，独家商家 / 独家达人不会覆盖订单归因；当前本机只保留 `test` 与 `real-pre` 两条 Docker 联调入口
 - 七个领域设计原文已纳入 `docs/requirements/domain-design/`，新增 [13-领域设计总览](./13-领域设计总览.md)、[14-领域设计实现核验](./14-领域设计实现核验.md) 与 [24-七域需求代码核验报告](./24-七域需求代码核验报告.md)，用于对照用户、商品、达人、寄样、订单、业绩、配置七域的目标需求与当前代码差距
 
 ## 当前基线

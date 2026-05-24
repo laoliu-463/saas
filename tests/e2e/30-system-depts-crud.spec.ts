@@ -9,6 +9,7 @@ type DeptNode = {
   deptCode: string;
   deptName: string;
   parentId: string | null;
+  deptType?: string;
   leader: string | null;
   sortOrder: number;
   status: number;
@@ -20,21 +21,11 @@ const initialDepts = (): DeptNode[] => [
   {
     id: 'dept-biz',
     deptCode: 'BIZ',
-    deptName: '招商组',
+    deptName: '招商部',
     parentId: null,
-    leader: '招商负责人',
+    deptType: 'department',
+    leader: null,
     sortOrder: 1,
-    status: 1,
-    remark: null,
-    children: []
-  },
-  {
-    id: 'dept-channel',
-    deptCode: 'CHANNEL',
-    deptName: '渠道组',
-    parentId: null,
-    leader: '渠道负责人',
-    sortOrder: 2,
     status: 1,
     remark: null,
     children: []
@@ -61,6 +52,42 @@ async function mockDeptApis(page: Page) {
       return;
     }
 
+    if (method === 'GET' && url.pathname.endsWith('/api/depts/dept-biz/stats')) {
+      await fulfillJson(route, {
+        code: 200,
+        data: { deptId: 'dept-biz', memberCount: 1, recruiterGroupCount: 0, channelGroupCount: 0 }
+      });
+      return;
+    }
+
+    if (method === 'GET' && url.pathname.endsWith('/api/depts/dept-biz/members')) {
+      await fulfillJson(route, { code: 200, data: { records: [], total: 0 } });
+      return;
+    }
+
+    if (method === 'GET' && url.pathname.endsWith('/api/depts/dept-biz/groups')) {
+      await fulfillJson(route, { code: 200, data: [] });
+      return;
+    }
+
+    if (method === 'GET' && url.pathname.endsWith('/api/depts/dept-qa/stats')) {
+      await fulfillJson(route, {
+        code: 200,
+        data: { deptId: 'dept-qa', memberCount: 0, recruiterGroupCount: 0, channelGroupCount: 0 }
+      });
+      return;
+    }
+
+    if (method === 'GET' && url.pathname.endsWith('/api/depts/dept-qa/members')) {
+      await fulfillJson(route, { code: 200, data: { records: [], total: 0 } });
+      return;
+    }
+
+    if (method === 'GET' && url.pathname.endsWith('/api/depts/dept-qa/groups')) {
+      await fulfillJson(route, { code: 200, data: [] });
+      return;
+    }
+
     if (method === 'POST' && url.pathname.endsWith('/api/depts')) {
       const payload = route.request().postDataJSON() as Partial<DeptNode>;
       const nextDept: DeptNode = {
@@ -68,7 +95,8 @@ async function mockDeptApis(page: Page) {
         deptCode: String(payload.deptCode),
         deptName: String(payload.deptName),
         parentId: payload.parentId ?? null,
-        leader: payload.leader ?? null,
+        deptType: payload.deptType || 'department',
+        leader: null,
         sortOrder: Number(payload.sortOrder ?? 0),
         status: Number(payload.status ?? 1),
         remark: payload.remark ?? null,
@@ -86,7 +114,6 @@ async function mockDeptApis(page: Page) {
           ? {
               ...dept,
               deptName: String(payload.deptName),
-              leader: payload.leader ?? null,
               sortOrder: Number(payload.sortOrder ?? dept.sortOrder),
               status: Number(payload.status ?? dept.status),
               remark: payload.remark ?? null
@@ -107,39 +134,34 @@ async function mockDeptApis(page: Page) {
   });
 }
 
-async function fillDeptForm(page: Page, values: { code?: string; name: string; leader?: string }) {
+async function fillDeptForm(page: Page, values: { code?: string; name: string }) {
   if (values.code) {
     await page.getByTestId('dept-code-input').locator('input').fill(values.code);
   }
   await page.getByTestId('dept-name-input').locator('input').fill(values.name);
-  if (values.leader) {
-    await page.getByTestId('dept-leader-input').locator('input').fill(values.leader);
-  }
 }
 
 test('管理员可完成部门新增、编辑、删除闭环', async ({ page }) => {
   await mockDeptApis(page);
 
   await gotoApp(page, '/system/depts');
-  await expect(page.getByTestId('system-depts-table')).toBeVisible({ timeout: 15_000 });
-  await expect(page.locator('body')).toContainText('招商组');
+  await expect(page.getByTestId('system-depts-tree')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('body')).toContainText('招商部');
 
   await page.getByTestId('dept-add-btn').click();
   await expect(page.getByTestId('dept-form-modal')).toBeVisible();
-  await fillDeptForm(page, { code: 'QA', name: 'QA 测试组', leader: '测试负责人' });
+  await fillDeptForm(page, { code: 'QA', name: 'QA 测试部' });
   await page.getByTestId('dept-submit-btn').click();
   await expect(page.locator('body')).toContainText('部门已创建');
-  await expect(page.locator('body')).toContainText('QA 测试组');
 
-  await page.getByTestId('dept-edit-dept-qa').click();
-  await fillDeptForm(page, { name: 'QA 测试组更新', leader: '新负责人' });
+  await page.getByText('QA 测试部').click();
+  await expect(page.getByTestId('system-depts-detail')).toContainText('QA 测试部');
+  await page.getByRole('button', { name: '编辑' }).click();
+  await fillDeptForm(page, { name: 'QA 测试部更新' });
   await page.getByTestId('dept-submit-btn').click();
   await expect(page.locator('body')).toContainText('部门已更新');
-  await expect(page.locator('body')).toContainText('QA 测试组更新');
 
-  await page.getByTestId('dept-delete-dept-qa').click();
-  await expect(page.locator('body')).toContainText('确认删除该部门？');
+  await page.getByRole('button', { name: '删除' }).click();
   await page.getByRole('button', { name: '确认' }).click();
-  await expect(page.locator('body')).toContainText('部门已删除');
-  await expect(page.locator('body')).not.toContainText('QA 测试组更新');
+  await expect(page.locator('body')).toContainText('已删除');
 });

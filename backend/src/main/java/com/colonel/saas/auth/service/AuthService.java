@@ -5,6 +5,7 @@ import com.colonel.saas.auth.dto.LoginResponse;
 import com.colonel.saas.auth.dto.LogoutRequest;
 import com.colonel.saas.auth.dto.RefreshRequest;
 import com.colonel.saas.auth.dto.RefreshResponse;
+import com.colonel.saas.constant.SysUserStatus;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.constant.RoleCodes;
@@ -14,6 +15,7 @@ import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.SysRoleMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.security.JwtTokenProvider;
+import com.colonel.saas.service.BusinessRuleConfigService;
 import com.colonel.saas.service.OperationLogService;
 import io.jsonwebtoken.Claims;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -36,9 +38,6 @@ public class AuthService {
     private static final String REDIS_REFRESH_PREFIX = "auth:refresh:";
     private static final String REDIS_LOGIN_FAIL_PREFIX = "auth:login:fail:";
     private static final String REDIS_LOGIN_LOCK_PREFIX = "auth:login:lock:";
-    private static final int MAX_LOGIN_FAILURES = 5;
-    private static final long LOGIN_FAILURE_WINDOW_MINUTES = 15L;
-    private static final long LOGIN_LOCK_MINUTES = 15L;
 
     private final SysUserMapper sysUserMapper;
     private final SysRoleMapper sysRoleMapper;
@@ -46,6 +45,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final RedisTemplate<String, Object> redisTemplate;
     private final OperationLogService operationLogService;
+    private final BusinessRuleConfigService businessRuleConfigService;
 
     public AuthService(
             SysUserMapper sysUserMapper,
@@ -53,13 +53,15 @@ public class AuthService {
             JwtTokenProvider jwtTokenProvider,
             PasswordEncoder passwordEncoder,
             RedisTemplate<String, Object> redisTemplate,
-            OperationLogService operationLogService) {
+            OperationLogService operationLogService,
+            BusinessRuleConfigService businessRuleConfigService) {
         this.sysUserMapper = sysUserMapper;
         this.sysRoleMapper = sysRoleMapper;
         this.jwtTokenProvider = jwtTokenProvider;
         this.passwordEncoder = passwordEncoder;
         this.redisTemplate = redisTemplate;
         this.operationLogService = operationLogService;
+        this.businessRuleConfigService = businessRuleConfigService;
     }
 
     public LoginResponse login(LoginRequest request) {
@@ -80,7 +82,7 @@ public class AuthService {
                     return new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "用户名或密码错误");
                 });
 
-        if (user.getStatus() == null || user.getStatus() != 1) {
+        if (!SysUserStatus.canLogin(user.getStatus())) {
             recordAuthEvent(user.getId(), user.getUsername(), "登录失败", "POST", "/api/auth/login",
                     false, "账号已停用", "账号已停用");
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "账号已停用");
@@ -116,12 +118,15 @@ public class AuthService {
             dataScope = 3;
         }
 
+        boolean pendingActivation = SysUserStatus.isPendingActivation(user.getStatus());
+
         String accessToken = jwtTokenProvider.generateAccessToken(
                 user.getId(),
                 user.getDeptId(),
                 dataScope,
                 roleCodes,
-                user.getUsername()
+                user.getUsername(),
+                pendingActivation
         );
 
         String refreshToken = jwtTokenProvider.generateRefreshToken(user.getId());
@@ -146,6 +151,9 @@ public class AuthService {
                 .roleCodes(roleCodes)
                 .username(user.getUsername())
                 .realName(user.getRealName())
+                .status(user.getStatus())
+                .forcePasswordChange(Boolean.TRUE.equals(user.getForcePasswordChange()))
+                .pendingActivation(pendingActivation)
                 .build();
     }
 
@@ -171,9 +179,11 @@ public class AuthService {
 
         java.util.UUID userId = java.util.UUID.fromString(claims.getSubject());
         SysUser user = sysUserMapper.selectById(userId);
-        if (user == null || user.getStatus() == null || user.getStatus() != 1) {
+        if (user == null || !SysUserStatus.canLogin(user.getStatus())) {
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "账号已停用");
         }
+
+        boolean pendingActivation = SysUserStatus.isPendingActivation(user.getStatus());
 
         List<SysRole> roles = sysRoleMapper.findByUserId(userId);
         int dataScope = roles.stream()
@@ -200,7 +210,8 @@ public class AuthService {
                 user.getDeptId(),
                 dataScope,
                 roleCodes,
-                user.getUsername()
+                user.getUsername(),
+                pendingActivation
         );
 
         return RefreshResponse.builder()
@@ -260,13 +271,15 @@ public class AuthService {
     }
 
     private boolean recordLoginFailure(String loginKey) {
+        int maxFailures = businessRuleConfigService.getLoginMaxFailures();
+        long lockMinutes = businessRuleConfigService.getLoginLockMinutes();
         String failKey = loginFailKey(loginKey);
         Long attempts = redisTemplate.opsForValue().increment(failKey);
         if (attempts != null && attempts == 1L) {
-            redisTemplate.expire(failKey, LOGIN_FAILURE_WINDOW_MINUTES, TimeUnit.MINUTES);
+            redisTemplate.expire(failKey, lockMinutes, TimeUnit.MINUTES);
         }
-        if (attempts != null && attempts >= MAX_LOGIN_FAILURES) {
-            redisTemplate.opsForValue().set(loginLockKey(loginKey), "1", LOGIN_LOCK_MINUTES, TimeUnit.MINUTES);
+        if (attempts != null && attempts >= maxFailures) {
+            redisTemplate.opsForValue().set(loginLockKey(loginKey), "1", lockMinutes, TimeUnit.MINUTES);
             redisTemplate.delete(failKey);
             return true;
         }

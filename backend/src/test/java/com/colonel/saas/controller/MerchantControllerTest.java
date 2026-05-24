@@ -102,13 +102,13 @@ class MerchantControllerTest {
         product.setProductName("夏季爆款水杯");
         Page<PartnerProductVO> page = new Page<>(1, 10, 1);
         page.setRecords(List.of(product));
-        when(merchantService.listPartnerProducts("1001", 1, 10)).thenReturn(page);
+        when(merchantService.listPartnerProducts("1001", null, 1, 10)).thenReturn(page);
 
-        var response = controller.listPartnerProducts("1001", 1, 10);
+        var response = controller.listPartnerProducts("1001", null, 1, 10);
 
         assertThat(response.getData().getTotal()).isEqualTo(1);
         assertThat(response.getData().getRecords()).containsExactly(product);
-        verify(merchantService).listPartnerProducts("1001", 1, 10);
+        verify(merchantService).listPartnerProducts("1001", null, 1, 10);
     }
 
     @Test

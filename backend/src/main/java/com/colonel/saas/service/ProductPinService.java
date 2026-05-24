@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.ProductOperationState;
@@ -136,6 +137,27 @@ public class ProductPinService {
         return state != null
                 && state.getPinnedUntil() != null
                 && state.getPinnedUntil().isAfter(now == null ? LocalDateTime.now() : now);
+    }
+
+    /**
+     * 清理已过期的置顶标记，避免 pinned_until 长期残留。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int expirePinnedProducts() {
+        return expirePinnedProducts(LocalDateTime.now());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public int expirePinnedProducts(LocalDateTime now) {
+        LocalDateTime cutoff = now == null ? LocalDateTime.now() : now;
+        UpdateWrapper<ProductOperationState> update = new UpdateWrapper<ProductOperationState>()
+                .set("pinned_at", null)
+                .set("pinned_until", null)
+                .set("pinned_by", null)
+                .isNotNull("pinned_until")
+                .le("pinned_until", cutoff)
+                .eq("deleted", 0);
+        return operationStateMapper.update(null, update);
     }
 
     private ProductOperationState requireState(String activityId, String productId) {

@@ -89,7 +89,10 @@ public class ColonelActivityController extends BaseController {
             @Parameter(description = "游标，继续翻页时使用。") @RequestParam(required = false) String cursor,
             @Parameter(description = "页码。当前仅在部分上游模式下使用。") @RequestParam(required = false) @Min(1) Long page,
             @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
-            @Parameter(description = "是否绕过本地快照并强制刷新上游数据。") @RequestParam(defaultValue = "false") Boolean refresh) {
+            @Parameter(description = "是否绕过本地快照并强制刷新上游数据。") @RequestParam(defaultValue = "false") Boolean refresh,
+            @Parameter(description = "本地视图排序：default（置顶/转链/佣金优先）/ latest（同步时间倒序）。") @RequestParam(name = "sortBy", required = false) String sortBy,
+            @Parameter(description = "货品标签，多选时用英文逗号分隔。") @RequestParam(required = false) String goodsTags,
+            @Parameter(description = "商品标签，多选时用英文逗号分隔。") @RequestParam(required = false) String productTags) {
         try {
             if (!Boolean.TRUE.equals(refresh) && productService.hasActivitySnapshots(activityId)) {
                 return ok(productService.buildActivityProductListViewFromDb(
@@ -98,7 +101,10 @@ public class ColonelActivityController extends BaseController {
                         cursor,
                         productInfo,
                         bizStatus,
-                        status
+                        status,
+                        sortBy,
+                        goodsTags,
+                        productTags
                 ));
             }
             DouyinProductGateway.ActivityProductQueryRequest queryRequest =
@@ -129,7 +135,10 @@ public class ColonelActivityController extends BaseController {
                     cursor,
                     productInfo,
                     bizStatus,
-                    status
+                    status,
+                    sortBy,
+                    goodsTags,
+                    productTags
             ));
         } catch (DouyinApiException e) {
             throw mapProductError(e);

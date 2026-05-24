@@ -306,6 +306,109 @@ public class ColonelActivityProductController extends BaseController {
         return ok(productService.putIntoLibrary(activityId, productId, userId, deptId));
     }
 
+    @Operation(summary = "批量分配招商", description = "批量为活动商品指定招商负责人；单个商品失败不影响其他商品。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER})
+    @PostMapping("/batch-assign")
+    public ApiResult<Map<String, Object>> batchAssign(
+            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
+            @Valid @RequestBody BatchAssignRequest request,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        sysUserService.assertAssignableUser(request.getAssigneeId(), roleCodes, deptId);
+        return ok(runProductBatch(request.getProductIds(), productId ->
+                productService.assignProduct(activityId, productId, request.getAssigneeId(), userId, deptId)));
+    }
+
+    @Operation(summary = "批量加入商品库", description = "批量将活动商品沉淀为共享商品库展示资产；单个商品失败不影响其他商品。")
+    @RequireRoles({RoleCodes.BIZ_STAFF})
+    @PostMapping("/batch-library-entry")
+    public ApiResult<Map<String, Object>> batchPutIntoLibrary(
+            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
+            @Valid @RequestBody BatchProductIdsRequest request,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId) {
+        return ok(runProductBatch(request.getProductIds(), productId ->
+                productService.putIntoLibrary(activityId, productId, userId, deptId)));
+    }
+
+    @Operation(summary = "批量置顶商品", description = "批量置顶活动商品 24 小时；单个商品失败不影响其他商品。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @PostMapping("/batch-pin")
+    public ApiResult<Map<String, Object>> batchPin(
+            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
+            @Valid @RequestBody BatchProductIdsRequest request,
+            @RequestAttribute("userId") UUID userId) {
+        return ok(runProductBatch(request.getProductIds(), productId -> {
+            var state = productPinService.pin(activityId, productId, userId);
+            return Map.of(
+                    "activityId", activityId,
+                    "productId", productId,
+                    "pinned", true,
+                    "pinnedUntil", state.getPinnedUntil());
+        }));
+    }
+
+    private Map<String, Object> runProductBatch(List<String> rawProductIds, ProductBatchAction action) {
+        List<String> productIds = normalizeBatchProductIds(rawProductIds);
+        List<Map<String, Object>> items = new ArrayList<>();
+        List<Map<String, Object>> failures = new ArrayList<>();
+        int succeeded = 0;
+        for (String productId : productIds) {
+            try {
+                Map<String, Object> data = action.apply(productId);
+                items.add(Map.of(
+                        "productId", productId,
+                        "success", true,
+                        "data", data == null ? Map.of() : data));
+                succeeded++;
+            } catch (Exception ex) {
+                String reason = StringUtils.hasText(ex.getMessage()) ? ex.getMessage() : ex.getClass().getSimpleName();
+                Map<String, Object> failure = Map.of(
+                        "productId", productId,
+                        "success", false,
+                        "reason", reason);
+                items.add(failure);
+                failures.add(failure);
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", productIds.size());
+        result.put("succeeded", succeeded);
+        result.put("failed", failures.size());
+        result.put("items", items);
+        result.put("failures", failures);
+        return result;
+    }
+
+    private List<String> normalizeBatchProductIds(List<String> rawProductIds) {
+        if (rawProductIds == null || rawProductIds.isEmpty()) {
+            throw com.colonel.saas.common.exception.BusinessException.param("productIds 不能为空");
+        }
+        List<String> productIds = new ArrayList<>();
+        for (String rawProductId : rawProductIds) {
+            if (!StringUtils.hasText(rawProductId)) {
+                continue;
+            }
+            String productId = rawProductId.trim();
+            if (!productIds.contains(productId)) {
+                productIds.add(productId);
+            }
+        }
+        if (productIds.isEmpty()) {
+            throw com.colonel.saas.common.exception.BusinessException.param("productIds 不能为空");
+        }
+        if (productIds.size() > 100) {
+            throw com.colonel.saas.common.exception.BusinessException.param("单次批量商品操作最多 100 个");
+        }
+        return productIds;
+    }
+
+    @FunctionalInterface
+    private interface ProductBatchAction {
+        Map<String, Object> apply(String productId);
+    }
+
     public static class BindActivityRequest {
         @Schema(description = "要绑定的活动 ID。", example = "ACTIVITY_001")
         @NotBlank(message = "boundActivityId 不能为空")
@@ -321,6 +424,33 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     public static class AssignRequest {
+        @Schema(description = "招商负责人用户 ID，使用 UUID 格式。", example = "22222222-2222-2222-2222-222222222222")
+        @NotNull(message = "assigneeId 不能为空")
+        private UUID assigneeId;
+
+        public UUID getAssigneeId() {
+            return assigneeId;
+        }
+
+        public void setAssigneeId(UUID assigneeId) {
+            this.assigneeId = assigneeId;
+        }
+    }
+
+    public static class BatchProductIdsRequest {
+        @Schema(description = "商品 ID 列表，单次最多 100 个。", example = "[\"9001\",\"9002\"]")
+        private List<String> productIds;
+
+        public List<String> getProductIds() {
+            return productIds;
+        }
+
+        public void setProductIds(List<String> productIds) {
+            this.productIds = productIds;
+        }
+    }
+
+    public static class BatchAssignRequest extends BatchProductIdsRequest {
         @Schema(description = "招商负责人用户 ID，使用 UUID 格式。", example = "22222222-2222-2222-2222-222222222222")
         @NotNull(message = "assigneeId 不能为空")
         private UUID assigneeId;
@@ -356,6 +486,9 @@ public class ColonelActivityProductController extends BaseController {
         @Schema(description = "是否支持投流。", example = "true")
         private Boolean supportsAds;
 
+        @Schema(description = "投流规则说明。", example = "投流比例1:0.5，保量10万曝光")
+        private String adsRule;
+
         @Schema(description = "奖励说明。", example = "破 3 万 GMV 额外返 2 个点。")
         private String rewardRemark;
 
@@ -367,6 +500,12 @@ public class ColonelActivityProductController extends BaseController {
 
         @Schema(description = "手卡或素材文件列表。", example = "[\"https://example.com/material-1.png\"]")
         private List<String> materialFiles;
+
+        @Schema(description = "货品标签列表。", example = "[\"家居\", \"零食\"]")
+        private List<String> goodsTags;
+
+        @Schema(description = "商品标签列表。", example = "[\"主推\", \"商品链组\"]")
+        private List<String> productTags;
 
         @Schema(description = "30天销售额门槛。", example = "30000")
         private Long sampleThresholdSales;
@@ -433,6 +572,14 @@ public class ColonelActivityProductController extends BaseController {
             this.supportsAds = supportsAds;
         }
 
+        public String getAdsRule() {
+            return adsRule;
+        }
+
+        public void setAdsRule(String adsRule) {
+            this.adsRule = adsRule;
+        }
+
         public String getRewardRemark() {
             return rewardRemark;
         }
@@ -463,6 +610,22 @@ public class ColonelActivityProductController extends BaseController {
 
         public void setMaterialFiles(List<String> materialFiles) {
             this.materialFiles = materialFiles;
+        }
+
+        public List<String> getGoodsTags() {
+            return goodsTags;
+        }
+
+        public void setGoodsTags(List<String> goodsTags) {
+            this.goodsTags = goodsTags;
+        }
+
+        public List<String> getProductTags() {
+            return productTags;
+        }
+
+        public void setProductTags(List<String> productTags) {
+            this.productTags = productTags;
         }
 
         public Long getSampleThresholdSales() {
@@ -501,6 +664,7 @@ public class ColonelActivityProductController extends BaseController {
             if (supportsAds != null) {
                 supplement.put("supportsAds", supportsAds);
             }
+            putText(supplement, "adsRule", adsRule);
             if (sampleThresholdSales != null) {
                 supplement.put("sampleThresholdSales", sampleThresholdSales);
             }
@@ -514,6 +678,14 @@ public class ColonelActivityProductController extends BaseController {
             List<String> normalizedMaterialFiles = normalizeList(materialFiles);
             if (!normalizedMaterialFiles.isEmpty()) {
                 supplement.put("materialFiles", normalizedMaterialFiles);
+            }
+            List<String> normalizedGoodsTags = normalizeList(goodsTags);
+            if (!normalizedGoodsTags.isEmpty()) {
+                supplement.put("goodsTags", normalizedGoodsTags);
+            }
+            List<String> normalizedProductTags = normalizeList(productTags);
+            if (!normalizedProductTags.isEmpty()) {
+                supplement.put("productTags", normalizedProductTags);
             }
             return supplement;
         }

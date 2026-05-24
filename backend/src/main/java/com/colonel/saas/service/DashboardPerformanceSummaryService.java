@@ -28,7 +28,9 @@ public class DashboardPerformanceSummaryService {
                         - event.settleColonelTechServiceFee()
                         - event.settleSecondColonelCommission(),
                 0L);
-        LocalDate today = LocalDate.now();
+        LocalDate statDate = event.orderCreateTime() == null
+                ? LocalDate.now()
+                : event.orderCreateTime().toLocalDate();
         jdbcTemplate.update("""
                 INSERT INTO dashboard_performance_daily (
                     stat_date, order_count, order_amount, service_fee_net, updated_at
@@ -39,7 +41,7 @@ public class DashboardPerformanceSummaryService {
                     service_fee_net = dashboard_performance_daily.service_fee_net + EXCLUDED.service_fee_net,
                     updated_at = CURRENT_TIMESTAMP
                 """,
-                today,
+                statDate,
                 Math.max(event.orderAmount(), 0L),
                 serviceFeeNet);
     }

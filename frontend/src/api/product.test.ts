@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import request from '../utils/request'
-import { getPartnerDetail, getPartnerProducts, listPartners } from './product'
+import { getPartnerDetail, getPartnerProducts, getProductFilterOptions, listPartners } from './product'
 
 vi.mock('../utils/request', () => ({
   default: {
@@ -32,5 +32,11 @@ describe('product domain API', () => {
     expect(request.get).toHaveBeenCalledWith('/colonel/partners/1001/products', {
       params: { page: 1, size: 10 }
     })
+  })
+
+  it('calls the dynamic product filter options endpoint', () => {
+    getProductFilterOptions()
+
+    expect(request.get).toHaveBeenCalledWith('/products/filter-options')
   })
 })

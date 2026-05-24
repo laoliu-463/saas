@@ -54,6 +54,17 @@
               </n-radio-group>
             </n-form-item>
           </n-gi>
+          <n-gi v-if="form.supportsAds" :span="2">
+            <n-form-item label="投流规则">
+              <n-input
+                v-model:value="form.adsRule"
+                type="textarea"
+                :rows="2"
+                placeholder="如：投流比例1:0.5，保量10万曝光"
+                data-testid="audit-ads-rule"
+              />
+            </n-form-item>
+          </n-gi>
           <n-gi>
             <n-form-item label="活动时间">
               <n-input v-model:value="form.campaignTimeRemark" placeholder="如：长期在线" />
@@ -72,6 +83,59 @@
           <n-gi :span="2">
             <n-form-item label="手卡素材">
               <n-input v-model:value="materialFilesText" type="textarea" :rows="2" placeholder="每行填写一个素材链接或文件名" />
+            </n-form-item>
+          </n-gi>
+          <n-gi :span="2">
+            <n-form-item label="筛选标记">
+              <n-space wrap>
+                <n-checkbox v-model:checked="form.materialDownloadAvailable">可下载素材</n-checkbox>
+                <n-checkbox v-model:checked="form.exclusivePrice">专属价</n-checkbox>
+                <n-checkbox v-model:checked="form.productChainGroup">商品链组</n-checkbox>
+                <n-checkbox v-model:checked="form.handCardAvailable">手卡</n-checkbox>
+                <n-checkbox v-model:checked="form.doubleCommission">双佣金</n-checkbox>
+                <n-checkbox v-model:checked="form.notInProductPool">未加入货盘</n-checkbox>
+                <n-checkbox v-model:checked="form.dedupeSelection">选品去重</n-checkbox>
+              </n-space>
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="寄样类型">
+              <n-select
+                v-model:value="form.sampleType"
+                :options="[
+                  { label: '免费寄样', value: 'FREE' },
+                  { label: '付费寄样', value: 'PAID' },
+                  { label: '无寄样', value: 'NONE' }
+                ]"
+                clearable
+                placeholder="选择寄样类型"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="货品标签">
+              <n-select
+                v-model:value="form.goodsTags"
+                :options="goodsTagOptions"
+                multiple
+                tag
+                filterable
+                clearable
+                placeholder="选择或输入货品标签"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi>
+            <n-form-item label="商品标签">
+              <n-select
+                v-model:value="form.productTags"
+                :options="productTagOptions"
+                multiple
+                tag
+                filterable
+                clearable
+                placeholder="选择或输入商品标签"
+              />
             </n-form-item>
           </n-gi>
         </n-grid>
@@ -115,6 +179,7 @@ import { reactive, ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
 import { MODAL_WIDTH } from '../../../constants/ui';
 import { auditActivityProduct } from '../../../api/activityProduct';
+import { goodsTagOptions, productTagOptions } from '../product-filters';
 
 const props = defineProps<{
   show: boolean;
@@ -135,12 +200,23 @@ const form = reactive({
   shippingInfo: '',
   promotionScript: '',
   supportsAds: true,
+  adsRule: '',
   rewardRemark: '',
   participationRequirements: '',
   campaignTimeRemark: '',
   sampleThresholdSales: 30000,
   sampleThresholdLevel: 1,
-  sampleThresholdRemark: ''
+  sampleThresholdRemark: '',
+  sampleType: 'FREE' as string | null,
+  materialDownloadAvailable: false,
+  exclusivePrice: false,
+  productChainGroup: false,
+  handCardAvailable: false,
+  doubleCommission: false,
+  notInProductPool: false,
+  dedupeSelection: false,
+  goodsTags: [] as string[],
+  productTags: [] as string[]
 });
 
 const resetForm = () => {
@@ -152,12 +228,23 @@ const resetForm = () => {
   form.shippingInfo = '';
   form.promotionScript = '';
   form.supportsAds = true;
+  form.adsRule = '';
   form.rewardRemark = '';
   form.participationRequirements = '';
   form.campaignTimeRemark = '';
   form.sampleThresholdSales = 30000;
   form.sampleThresholdLevel = 1;
   form.sampleThresholdRemark = '';
+  form.sampleType = 'FREE';
+  form.materialDownloadAvailable = false;
+  form.exclusivePrice = false;
+  form.productChainGroup = false;
+  form.handCardAvailable = false;
+  form.doubleCommission = false;
+  form.notInProductPool = false;
+  form.dedupeSelection = false;
+  form.goodsTags = [];
+  form.productTags = [];
 };
 
 watch(
@@ -218,14 +305,25 @@ const handleSubmit = async () => {
       sellingPoints: auditApproved.value ? sellingPoints : undefined,
       promotionScript: auditApproved.value ? form.promotionScript : undefined,
       supportsAds: auditApproved.value ? form.supportsAds : undefined,
+      adsRule: auditApproved.value && form.supportsAds ? form.adsRule : undefined,
       rewardRemark: auditApproved.value ? form.rewardRemark : undefined,
       participationRequirements: auditApproved.value ? form.participationRequirements : undefined,
       campaignTimeRemark: auditApproved.value ? form.campaignTimeRemark : undefined,
       materialFiles: auditApproved.value ? materialFiles : undefined,
+      goodsTags: auditApproved.value ? form.goodsTags : undefined,
+      productTags: auditApproved.value ? form.productTags : undefined,
       // 门槛信息
       sampleThresholdSales: auditApproved.value ? form.sampleThresholdSales : undefined,
       sampleThresholdLevel: auditApproved.value ? form.sampleThresholdLevel : undefined,
-      sampleThresholdRemark: auditApproved.value ? form.sampleThresholdRemark : undefined
+      sampleThresholdRemark: auditApproved.value ? form.sampleThresholdRemark : undefined,
+      sampleType: auditApproved.value ? form.sampleType : undefined,
+      materialDownloadAvailable: auditApproved.value ? form.materialDownloadAvailable : undefined,
+      exclusivePrice: auditApproved.value ? form.exclusivePrice : undefined,
+      productChainGroup: auditApproved.value ? form.productChainGroup : undefined,
+      handCardAvailable: auditApproved.value ? form.handCardAvailable : undefined,
+      doubleCommission: auditApproved.value ? form.doubleCommission : undefined,
+      notInProductPool: auditApproved.value ? form.notInProductPool : undefined,
+      dedupeSelection: auditApproved.value ? form.dedupeSelection : undefined
     };
 
     const res: any = await auditActivityProduct(props.activityId, props.productId, payload);

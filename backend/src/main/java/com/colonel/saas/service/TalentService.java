@@ -353,6 +353,9 @@ public class TalentService {
         claim.setRecipientPhone(normalizedPhone);
         claim.setRecipientAddress(normalizedAddress);
         persistTalentClaim(claim);
+        talent.setShippingRecipientName(normalizedName);
+        talent.setShippingRecipientPhone(normalizedPhone);
+        talent.setShippingRecipientAddress(normalizedAddress);
         return talent;
     }
 

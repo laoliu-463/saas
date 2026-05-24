@@ -5,9 +5,11 @@ import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.vo.PinnedProductVO;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -17,6 +19,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,5 +60,22 @@ class ProductPinServiceListTest {
         assertThat(pinned).hasSize(1);
         assertThat(pinned.get(0).productName()).isEqualTo("测试商品");
         assertThat(pinned.get(0).activityId()).isEqualTo("ACT-1");
+    }
+
+    @Test
+    void expirePinnedProducts_shouldClearExpiredPinColumns() {
+        LocalDateTime now = LocalDateTime.of(2026, 5, 23, 10, 0);
+        when(operationStateMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(3);
+
+        int expired = service.expirePinnedProducts(now);
+
+        assertThat(expired).isEqualTo(3);
+        ArgumentCaptor<UpdateWrapper<ProductOperationState>> captor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        org.mockito.Mockito.verify(operationStateMapper).update(isNull(), captor.capture());
+        String sql = captor.getValue().getSqlSet();
+        assertThat(sql)
+                .contains("pinned_at")
+                .contains("pinned_until")
+                .contains("pinned_by");
     }
 }

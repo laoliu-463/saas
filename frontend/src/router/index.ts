@@ -128,9 +128,14 @@ const router = createRouter({
           meta: { title: '部门管理', roles: [ROLE.ADMIN] }
         },
         {
+          path: 'system/rule-center',
+          component: () => import('../views/system/rule-center/index.vue'),
+          meta: { title: '规则中心', roles: [ROLE.ADMIN] }
+        },
+        {
           path: 'system/config',
           component: () => import('../views/system/ConfigList.vue'),
-          meta: { title: '系统配置', roles: [ROLE.ADMIN] }
+          meta: { title: '高级配置', roles: [ROLE.ADMIN] }
         },
         {
           path: 'system/commission-rules',

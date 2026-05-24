@@ -49,6 +49,12 @@ app:
 talent:
   enrich:
     mode: test
+  collect:
+    mode: mock
+    api:
+      enabled: false
+  refresh:
+    enabled: false
   data:
     public-page-crawl-enabled: false
 

@@ -25,6 +25,14 @@ public class SysDept extends BaseEntity {
     @TableField("dept_name")
     private String deptName;
 
+    /** 组织单元类型：department / recruiter_group / channel_group / ops_group */
+    @TableField("dept_type")
+    private String deptType = "department";
+
+    /** 组长用户 ID（结构化关联，leader 字段保留展示名） */
+    @TableField("leader_user_id")
+    private UUID leaderUserId;
+
     private String leader;
 
     private String phone;

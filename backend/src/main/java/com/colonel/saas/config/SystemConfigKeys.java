@@ -20,6 +20,9 @@ public final class SystemConfigKeys {
     public static final String PROMOTION_PICK_EXTRA_RULE = "promotion.pick_extra_rule";
     public static final String PRESET_TALENT_TAGS = "talent.preset_tags";
 
+    public static final String LOGIN_MAX_FAILURES = "auth.login_max_failures";
+    public static final String LOGIN_LOCK_MINUTES = "auth.login_lock_minutes";
+
     private SystemConfigKeys() {
     }
 }

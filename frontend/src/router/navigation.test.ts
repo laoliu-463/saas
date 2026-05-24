@@ -26,46 +26,43 @@ describe('resolveMenuNavigateTarget', () => {
 })
 
 describe('shouldShowMenuInSection', () => {
-  it('shows menus when active section or menu section is missing', () => {
+  it('hides menus when active section is missing', () => {
     expect(
       shouldShowMenuInSection(
         { label: '数据平台', key: 'data-group', _section: 'data' },
         null,
         [ROLE_CODES.BIZ_STAFF]
       )
-    ).toBe(true)
+    ).toBe(false)
     expect(
       shouldShowMenuInSection(
         { label: '普通菜单', key: '/orders' },
         'data',
         [ROLE_CODES.BIZ_STAFF]
       )
-    ).toBe(true)
+    ).toBe(false)
   })
 
-  it('keeps system menu visible for admin on non-system pages', () => {
+  it('shows only menus in the active section', () => {
+    expect(
+      shouldShowMenuInSection(
+        { label: '数据平台', key: 'data-group', _section: 'data' },
+        'data',
+        [ROLE_CODES.BIZ_STAFF]
+      )
+    ).toBe(true)
     expect(
       shouldShowMenuInSection(
         { label: '系统管理', key: 'system-group', _section: 'system' },
         'data',
         [ROLE_CODES.ADMIN]
       )
-    ).toBe(true)
-  })
-
-  it('hides system menu for non-admin on other sections', () => {
-    expect(
-      shouldShowMenuInSection(
-        { label: '系统管理', key: 'system-group', _section: 'system' },
-        'data',
-        [ROLE_CODES.BIZ_STAFF]
-      )
     ).toBe(false)
   })
 })
 
 describe('filterAccessibleMenus', () => {
-  it('includes admin system menu while viewing data section', () => {
+  it('includes only current section menus for admin on data section', () => {
     const menus = filterAccessibleMenus(
       [
         { label: '数据平台', key: 'data-group', _section: 'data', roles: [ROLE_CODES.ADMIN] },
@@ -74,7 +71,7 @@ describe('filterAccessibleMenus', () => {
       [ROLE_CODES.ADMIN],
       'data'
     )
-    expect(menus.map((menu) => menu.key)).toEqual(['data-group', 'system-group'])
+    expect(menus.map((menu) => menu.key)).toEqual(['data-group'])
   })
 
   it('filters nested children by role while preserving accessible parents', () => {

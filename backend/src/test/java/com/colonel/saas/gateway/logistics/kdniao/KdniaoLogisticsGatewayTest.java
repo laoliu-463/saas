@@ -1,5 +1,7 @@
 package com.colonel.saas.gateway.logistics.kdniao;
 
+import com.colonel.saas.gateway.logistics.kdniao.KdniaoConfig;
+import com.colonel.saas.gateway.logistics.kdniao.KdniaoLogisticsGateway;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;

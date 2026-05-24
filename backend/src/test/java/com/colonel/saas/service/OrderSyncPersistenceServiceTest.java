@@ -13,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -119,6 +120,8 @@ class OrderSyncPersistenceServiceTest {
     @Test
     void persistOrder_shouldPublishOrderEventWithTalentUidAndRawExtraData() {
         ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
+        LocalDateTime orderCreateTime = LocalDateTime.of(2026, 4, 17, 10, 30);
+        order.setCreateTime(orderCreateTime);
         order.setExtraData(Map.of("author_id", "AUTHOR-7788", "merchant_id", "MERCHANT-1"));
         when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
         when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null);
@@ -131,6 +134,7 @@ class OrderSyncPersistenceServiceTest {
         assertThat(eventCaptor.getValue()).isInstanceOf(OrderSyncedEvent.class);
         OrderSyncedEvent event = (OrderSyncedEvent) eventCaptor.getValue();
         assertThat(event.talentUid()).isEqualTo("AUTHOR-7788");
+        assertThat(event.orderCreateTime()).isEqualTo(orderCreateTime);
         assertThat(event.extraData()).containsEntry("merchant_id", "MERCHANT-1");
     }
 

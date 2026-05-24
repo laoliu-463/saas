@@ -31,6 +31,10 @@ class SysDeptServiceTest {
     SysDeptMapper sysDeptMapper;
     @Mock
     OperationLogService operationLogService;
+    @Mock
+    OrgStructureService orgStructureService;
+    @Mock
+    SysUserService sysUserService;
 
     private SysDeptService service;
     private UUID userId;
@@ -39,7 +43,7 @@ class SysDeptServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SysDeptService(sysDeptMapper, operationLogService);
+        service = new SysDeptService(sysDeptMapper, operationLogService, orgStructureService, sysUserService);
         userId = UUID.fromString("11111111-1111-1111-1111-111111111111");
         rootId = UUID.fromString("22222222-2222-2222-2222-222222222222");
         childId = UUID.fromString("33333333-3333-3333-3333-333333333333");
@@ -87,7 +91,9 @@ class SysDeptServiceTest {
                 "mail@example.com",
                 null,
                 null,
-                "remark"
+                "remark",
+                "recruiter_group",
+                null
         );
 
         SysDeptVO created = service.create(request, userId);
@@ -97,6 +103,7 @@ class SysDeptServiceTest {
         assertThat(created.getDeptName()).isEqualTo("New Dept");
         assertThat(created.getSortOrder()).isZero();
         assertThat(created.getStatus()).isEqualTo(1);
+        assertThat(created.getDeptType()).isEqualTo("recruiter_group");
         verify(sysDeptMapper).insert(any(SysDept.class));
         verify(operationLogService).recordSystemAction(
                 userId,
@@ -124,6 +131,8 @@ class SysDeptServiceTest {
                 null,
                 5,
                 0,
+                null,
+                null,
                 null
         );
 
@@ -140,7 +149,9 @@ class SysDeptServiceTest {
                 "a@example.com",
                 5,
                 0,
-                "remark"
+                "remark",
+                null,
+                null
         );
         when(sysDeptMapper.selectById(rootId)).thenReturn(dept(rootId, null, "ROOT", "Root"));
 
@@ -167,13 +178,13 @@ class SysDeptServiceTest {
     void createAndUpdateRejectDuplicateOrBlankCodesAndMissingParents() {
         SysDept existing = dept(rootId, null, "ROOT", "Root");
         when(sysDeptMapper.findByDeptCode("ROOT")).thenReturn(Optional.of(existing));
-        SysDeptCreateRequest duplicate = new SysDeptCreateRequest(null, " ROOT ", "Duplicate", null, null, null, null, null, null);
+        SysDeptCreateRequest duplicate = new SysDeptCreateRequest(null, " ROOT ", "Duplicate", null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.create(duplicate, userId))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("部门编码已存在");
 
-        SysDeptCreateRequest blank = new SysDeptCreateRequest(null, " ", "Blank", null, null, null, null, null, null);
+        SysDeptCreateRequest blank = new SysDeptCreateRequest(null, " ", "Blank", null, null, null, null, null, null, null, null);
         assertThatThrownBy(() -> service.create(blank, userId))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("部门编码不能为空");
@@ -181,7 +192,7 @@ class SysDeptServiceTest {
         UUID missingParent = UUID.randomUUID();
         when(sysDeptMapper.findByDeptCode("NEW")).thenReturn(Optional.empty());
         when(sysDeptMapper.selectById(missingParent)).thenReturn(null);
-        SysDeptCreateRequest missing = new SysDeptCreateRequest(missingParent, "NEW", "New", null, null, null, null, null, null);
+        SysDeptCreateRequest missing = new SysDeptCreateRequest(missingParent, "NEW", "New", null, null, null, null, null, null, null, null);
         assertThatThrownBy(() -> service.create(missing, userId))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("部门不存在");

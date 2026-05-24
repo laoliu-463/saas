@@ -184,6 +184,44 @@ class TalentProfileSyncServiceTest {
     }
 
     @Test
+    void syncExistingProfile_shouldFallbackToCrawlerAfterApiFailure() {
+        UUID talentId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinNo("account_fb");
+        when(talentService.getById(talentId)).thenReturn(talent);
+
+        TalentProfileProvider apiProvider = new StubProvider(true, TalentProfileResult.builder()
+                .success(false)
+                .providerCode("API")
+                .syncStatus(TalentProfileResult.STATUS_FAILED)
+                .errorCode("UNSUPPORTED")
+                .errorMessage("no official profile api")
+                .unsupportedFields(TalentProfileResult.DEFAULT_UNSUPPORTED)
+                .build());
+        TalentProfileProvider crawlerProvider = new StubProvider(true, TalentProfileResult.builder()
+                .success(true)
+                .providerCode("CRAWLER")
+                .syncStatus(TalentProfileResult.STATUS_SUCCESS)
+                .nickname("爬虫昵称")
+                .fansCount(1000L)
+                .fetchedFields(List.of("nickname"))
+                .unsupportedFields(List.of())
+                .build());
+        TalentProfileSyncService customService = new TalentProfileSyncService(
+                List.of(apiProvider, crawlerProvider),
+                talentMapper,
+                syncLogMapper,
+                talentService);
+
+        ResolveTalentProfileResponse response = customService.syncExistingProfile(talentId, true);
+
+        assertThat(response.isSuccess()).isTrue();
+        assertThat(response.getProvider()).isEqualTo("CRAWLER");
+        assertThat(response.getProfile().getNickname()).isEqualTo("爬虫昵称");
+    }
+
+    @Test
     void applyManualProfile_shouldPersistFailureWhenPayloadIsEmpty() {
         UUID talentId = UUID.randomUUID();
         Talent talent = new Talent();

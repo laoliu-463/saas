@@ -14,7 +14,10 @@ import com.colonel.saas.common.exception.ValidateException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.dto.SampleApplyRequest;
+import com.colonel.saas.dto.sample.LogisticsImportResult;
+import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
+import com.colonel.saas.gateway.logistics.query.LogisticsQueryResult;
+import com.colonel.saas.entity.SampleLogisticsTrace;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Product;
@@ -37,7 +40,9 @@ import com.colonel.saas.service.BusinessRuleConfigService;
 import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.SampleStatusLogService;
 import com.colonel.saas.service.SampleEligibilityService;
-import com.colonel.saas.service.LogisticsTrackService;
+import com.colonel.saas.dto.SampleApplyRequest;
+import com.colonel.saas.service.SampleLogisticsImportService;
+import com.colonel.saas.service.SampleLogisticsSyncService;
 import com.colonel.saas.vo.SampleTalentVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -66,7 +71,9 @@ import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -112,7 +119,9 @@ public class SampleController extends BaseController {
     private final BusinessRuleConfigService businessRuleConfigService;
     private final ProductService productService;
     private final SampleEligibilityService sampleEligibilityService;
-    private final LogisticsTrackService logisticsTrackService;
+    private final SampleLogisticsSyncService sampleLogisticsSyncService;
+    private final SampleLogisticsImportService sampleLogisticsImportService;
+    private final SampleDomainEventPublisher sampleDomainEventPublisher;
 
     public SampleController(
             SampleRequestMapper sampleRequestMapper,
@@ -128,7 +137,9 @@ public class SampleController extends BaseController {
             BusinessRuleConfigService businessRuleConfigService,
             ProductService productService,
             SampleEligibilityService sampleEligibilityService,
-            LogisticsTrackService logisticsTrackService) {
+            SampleLogisticsSyncService sampleLogisticsSyncService,
+            SampleLogisticsImportService sampleLogisticsImportService,
+            SampleDomainEventPublisher sampleDomainEventPublisher) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productMapper = productMapper;
         this.productOperationStateMapper = productOperationStateMapper;
@@ -142,7 +153,9 @@ public class SampleController extends BaseController {
         this.businessRuleConfigService = businessRuleConfigService;
         this.productService = productService;
         this.sampleEligibilityService = sampleEligibilityService;
-        this.logisticsTrackService = logisticsTrackService;
+        this.sampleLogisticsSyncService = sampleLogisticsSyncService;
+        this.sampleLogisticsImportService = sampleLogisticsImportService;
+        this.sampleDomainEventPublisher = sampleDomainEventPublisher;
     }
 
     @Operation(summary = "创建寄样申请", description = "发起寄样申请并初始化寄样状态，用于达人寄样闭环的起点。")
@@ -202,6 +215,12 @@ public class SampleController extends BaseController {
         sample.setExtraData(buildSampleExtraData(request, eligibility));
         sampleRequestMapper.insert(sample);
         sampleStatusLogService.log(sample.getId(), null, sample.getStatus(), userId, "create sample request");
+        sampleDomainEventPublisher.publishSampleCreated(
+                sample,
+                product.getName(),
+                resolveUserDisplayName(userId),
+                resolveColonelUserId(product),
+                product.getActivityId() == null ? null : String.valueOf(product.getActivityId()));
 
         return ok(toVO(sample, product, product.getName(), sample.getTalentNickname()));
     }
@@ -502,6 +521,7 @@ public class SampleController extends BaseController {
 
         persistSample(sample);
         sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, request.getReason());
+        publishActionDomainEvent(action, sample, userId, now, request.getReason());
         Product product = productMapper.selectById(sample.getProductId());
         return ok(toVO(
                 sample,
@@ -530,6 +550,23 @@ public class SampleController extends BaseController {
 
     @Operation(summary = "手动刷新物流状态", description = "手动触发物流状态查询，若已签收则自动推进寄样单状态。")
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics/sync")
+    @Transactional(rollbackFor = Exception.class)
+    public ApiResult<SampleLogisticsVO> syncLogistics(
+            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
+        ensureLogisticsSyncPermission(roleCodes);
+        LogisticsQueryResult result = sampleLogisticsSyncService.syncOne(sample.getId());
+        sample = sampleRequestMapper.selectById(id);
+        return ok(toLogisticsVO(sample, result));
+    }
+
+    @Operation(summary = "手动刷新物流状态（兼容路径）", description = "与 /logistics/sync 等价。")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
     @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics/refresh")
     @Transactional(rollbackFor = Exception.class)
     public ApiResult<SampleVO> refreshLogistics(
@@ -539,7 +576,7 @@ public class SampleController extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
-        logisticsTrackService.refreshAndProgress(sample);
+        sampleLogisticsSyncService.syncOne(sample.getId());
         sample = sampleRequestMapper.selectById(id);
         Product product = productMapper.selectById(sample.getProductId());
         return ok(toVO(
@@ -547,6 +584,55 @@ public class SampleController extends BaseController {
                 product,
                 product == null ? null : product.getName(),
                 sample.getTalentNickname()));
+    }
+
+    @Operation(summary = "查看物流轨迹", description = "返回寄样单物流状态与轨迹时间线。")
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics")
+    public ApiResult<SampleLogisticsVO> getSampleLogistics(
+            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
+        List<SampleLogisticsTrace> traces = sampleLogisticsSyncService.listTraces(id);
+        return ok(toLogisticsVO(sample, traces));
+    }
+
+    @Operation(summary = "批量同步物流", description = "运营/管理员批量同步快递中寄样单物流状态。")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @PostMapping("/logistics/sync-all")
+    public ApiResult<Map<String, Integer>> syncAllLogistics(
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        ensureLogisticsSyncPermission(roleCodes);
+        SampleLogisticsSyncService.SyncBatchSummary summary = sampleLogisticsSyncService.syncPendingInTransit(100);
+        return ok(Map.of(
+                "total", summary.total(),
+                "success", summary.success(),
+                "failed", summary.failed(),
+                "skipped", summary.skipped()));
+    }
+
+    @Operation(summary = "下载物流导入模板", description = "下载 Excel 批量导入物流单号模板。")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @GetMapping("/logistics/import-template")
+    public void downloadLogisticsImportTemplate(HttpServletResponse response) throws IOException {
+        byte[] bytes = sampleLogisticsImportService.generateTemplate();
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=\"sample-logistics-import-template.xlsx\"");
+        response.getOutputStream().write(bytes);
+        response.flushBuffer();
+    }
+
+    @Operation(summary = "Excel 批量导入物流单号", description = "逐行校验，部分成功部分失败。")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @PostMapping(value = "/logistics/import", consumes = "multipart/form-data")
+    public ApiResult<LogisticsImportResult> importLogisticsTracking(
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(defaultValue = "false") boolean allowOverwrite,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ok(sampleLogisticsImportService.importTrackingNumbers(file, userId, roleCodes, allowOverwrite));
     }
 
     @Operation(summary = "批量审批通过", description = "批量将 PENDING_AUDIT 的寄样申请审批为待发货。仅招商角色可操作。")
@@ -573,6 +659,8 @@ public class SampleController extends BaseController {
                 sample.setAuditTime(now);
                 persistSample(sample);
                 sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, request.getRemark());
+                sampleDomainEventPublisher.publishSampleApproved(
+                        sample, resolveColonelUserId(productMapper.selectById(sample.getProductId())), userId, now);
                 success++;
             } catch (BusinessException | ForbiddenException e) {
                 log.warn("Batch approve failed for requestNo={}: {}", requestNo, e.getMessage());
@@ -610,6 +698,7 @@ public class SampleController extends BaseController {
                 sample.setAuditTime(now);
                 persistSample(sample);
                 sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, request.getRemark());
+                sampleDomainEventPublisher.publishSampleRejected(sample, userId, request.getRemark(), now);
                 success++;
             } catch (BusinessException | ForbiddenException e) {
                 log.warn("Batch reject failed for requestNo={}: {}", requestNo, e.getMessage());
@@ -646,6 +735,7 @@ public class SampleController extends BaseController {
                 sample.setShipTime(now);
                 persistSample(sample);
                 sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, item.getTrackingNo());
+                sampleDomainEventPublisher.publishSampleShipped(sample, userId, now);
                 success++;
             } catch (BusinessException | ForbiddenException e) {
                 log.warn("Batch ship failed for requestNo={}: {}", item.getRequestNo(), e.getMessage());
@@ -1002,6 +1092,48 @@ public class SampleController extends BaseController {
                         "待交作业超时自动关闭"));
     }
 
+    private void ensureLogisticsSyncPermission(Object roleCodes) {
+        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
+            throw new ForbiddenException("仅运营或管理员可触发物流同步");
+        }
+    }
+
+    private SampleLogisticsVO toLogisticsVO(SampleRequest sample, LogisticsQueryResult queryResult) {
+        SampleLogisticsVO vo = toLogisticsVO(sample, sampleLogisticsSyncService.listTraces(sample.getId()));
+        if (queryResult != null) {
+            vo.setQuerySuccess(queryResult.isSuccess());
+            vo.setQueryErrorCode(queryResult.getErrorCode());
+            vo.setQueryErrorMessage(queryResult.getErrorMessage());
+            vo.setProvider(queryResult.getProvider());
+        }
+        return vo;
+    }
+
+    private SampleLogisticsVO toLogisticsVO(SampleRequest sample, List<SampleLogisticsTrace> traces) {
+        SampleLogisticsVO vo = new SampleLogisticsVO();
+        vo.setSampleRequestId(sample.getId());
+        vo.setRequestNo(sample.getRequestNo());
+        vo.setTrackingNo(sample.getTrackingNo());
+        vo.setLogisticsCompany(sample.getShipperCode());
+        vo.setLogisticsStatus(sample.getLogisticsStatus());
+        vo.setLogisticsStatusName(sample.getLogisticsStatusName());
+        vo.setLogisticsLastQueryAt(sample.getLogisticsLastQueryAt());
+        vo.setLogisticsLastError(sample.getLogisticsLastError());
+        vo.setSignedAt(sample.getSignedAt());
+        vo.setStatus(toLegacyStatus(SampleStatus.fromCode(sample.getStatus())));
+        if (traces != null) {
+            vo.setTraces(traces.stream().map(trace -> {
+                LogisticsTraceVO item = new LogisticsTraceVO();
+                item.setTraceTime(trace.getTraceTime());
+                item.setTraceContent(trace.getTraceContent());
+                item.setStatusCode(trace.getStatusCode());
+                item.setStatusName(trace.getStatusName());
+                return item;
+            }).toList());
+        }
+        return vo;
+    }
+
     private void ensureSampleExportPermission(Object roleCodes) {
         if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF)) {
             throw new ForbiddenException("仅管理员、招商或运营可导出寄样数据");
@@ -1354,6 +1486,11 @@ public class SampleController extends BaseController {
         vo.setRecipientPhone(sample.getRecipientPhone());
         vo.setRecipientAddress(sample.getRecipientAddress());
         vo.setLogisticsSource(readExtraText(sample.getExtraData(), "logisticsSource"));
+        vo.setLogisticsStatus(sample.getLogisticsStatus());
+        vo.setLogisticsStatusName(sample.getLogisticsStatusName());
+        vo.setLogisticsLastQueryAt(sample.getLogisticsLastQueryAt());
+        vo.setLogisticsLastError(sample.getLogisticsLastError());
+        vo.setSignedAt(sample.getSignedAt());
         vo.setRejectReason(sample.getRejectReason());
         vo.setCloseReason(sample.getCloseReason());
         vo.setRemark(sample.getRemark());
@@ -1402,6 +1539,27 @@ public class SampleController extends BaseController {
                 : new LinkedHashMap<>(sample.getExtraData());
         extra.putIfAbsent(key, value);
         sample.setExtraData(extra);
+    }
+
+    private void publishActionDomainEvent(
+            String action,
+            SampleRequest sample,
+            UUID userId,
+            LocalDateTime now,
+            String reason) {
+        Product product = productMapper.selectById(sample.getProductId());
+        UUID recruiterId = resolveColonelUserId(product);
+        switch (action) {
+            case "PENDING_SHIP" -> sampleDomainEventPublisher.publishSampleApproved(sample, recruiterId, userId, now);
+            case "REJECTED" -> sampleDomainEventPublisher.publishSampleRejected(sample, userId, reason, now);
+            case "SHIPPING" -> sampleDomainEventPublisher.publishSampleShipped(sample, userId, now);
+            case "PENDING_HOMEWORK" -> sampleDomainEventPublisher.publishSampleSigned(
+                    sample, sample.getSignedAt() != null ? sample.getSignedAt() : now);
+            case "COMPLETED" -> sampleDomainEventPublisher.publishSampleCompleted(sample, null, now);
+            case "CLOSED" -> sampleDomainEventPublisher.publishSampleClosed(sample, reason, now);
+            default -> {
+            }
+        }
     }
 
     private UUID resolveColonelUserId(Product product) {
@@ -1767,6 +1925,11 @@ public class SampleController extends BaseController {
         private String recipientAddress;
         private String logisticsCompany;
         private String logisticsSource;
+        private String logisticsStatus;
+        private String logisticsStatusName;
+        private LocalDateTime logisticsLastQueryAt;
+        private String logisticsLastError;
+        private LocalDateTime signedAt;
         private String rejectReason;
         private String closeReason;
         private String remark;
@@ -1921,6 +2084,46 @@ public class SampleController extends BaseController {
 
         public void setLogisticsSource(String logisticsSource) {
             this.logisticsSource = logisticsSource;
+        }
+
+        public String getLogisticsStatus() {
+            return logisticsStatus;
+        }
+
+        public void setLogisticsStatus(String logisticsStatus) {
+            this.logisticsStatus = logisticsStatus;
+        }
+
+        public String getLogisticsStatusName() {
+            return logisticsStatusName;
+        }
+
+        public void setLogisticsStatusName(String logisticsStatusName) {
+            this.logisticsStatusName = logisticsStatusName;
+        }
+
+        public LocalDateTime getLogisticsLastQueryAt() {
+            return logisticsLastQueryAt;
+        }
+
+        public void setLogisticsLastQueryAt(LocalDateTime logisticsLastQueryAt) {
+            this.logisticsLastQueryAt = logisticsLastQueryAt;
+        }
+
+        public String getLogisticsLastError() {
+            return logisticsLastError;
+        }
+
+        public void setLogisticsLastError(String logisticsLastError) {
+            this.logisticsLastError = logisticsLastError;
+        }
+
+        public LocalDateTime getSignedAt() {
+            return signedAt;
+        }
+
+        public void setSignedAt(LocalDateTime signedAt) {
+            this.signedAt = signedAt;
         }
 
         public String getRejectReason() {
@@ -2114,6 +2317,71 @@ public class SampleController extends BaseController {
         public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
         public LocalDateTime getStateEnterTime() { return stateEnterTime; }
         public void setStateEnterTime(LocalDateTime stateEnterTime) { this.stateEnterTime = stateEnterTime; }
+    }
+
+    public static class SampleLogisticsVO {
+        private UUID sampleRequestId;
+        private String requestNo;
+        private String trackingNo;
+        private String logisticsCompany;
+        private String logisticsStatus;
+        private String logisticsStatusName;
+        private LocalDateTime logisticsLastQueryAt;
+        private String logisticsLastError;
+        private LocalDateTime signedAt;
+        private String status;
+        private Boolean querySuccess;
+        private String queryErrorCode;
+        private String queryErrorMessage;
+        private String provider;
+        private List<LogisticsTraceVO> traces;
+
+        public UUID getSampleRequestId() { return sampleRequestId; }
+        public void setSampleRequestId(UUID sampleRequestId) { this.sampleRequestId = sampleRequestId; }
+        public String getRequestNo() { return requestNo; }
+        public void setRequestNo(String requestNo) { this.requestNo = requestNo; }
+        public String getTrackingNo() { return trackingNo; }
+        public void setTrackingNo(String trackingNo) { this.trackingNo = trackingNo; }
+        public String getLogisticsCompany() { return logisticsCompany; }
+        public void setLogisticsCompany(String logisticsCompany) { this.logisticsCompany = logisticsCompany; }
+        public String getLogisticsStatus() { return logisticsStatus; }
+        public void setLogisticsStatus(String logisticsStatus) { this.logisticsStatus = logisticsStatus; }
+        public String getLogisticsStatusName() { return logisticsStatusName; }
+        public void setLogisticsStatusName(String logisticsStatusName) { this.logisticsStatusName = logisticsStatusName; }
+        public LocalDateTime getLogisticsLastQueryAt() { return logisticsLastQueryAt; }
+        public void setLogisticsLastQueryAt(LocalDateTime logisticsLastQueryAt) { this.logisticsLastQueryAt = logisticsLastQueryAt; }
+        public String getLogisticsLastError() { return logisticsLastError; }
+        public void setLogisticsLastError(String logisticsLastError) { this.logisticsLastError = logisticsLastError; }
+        public LocalDateTime getSignedAt() { return signedAt; }
+        public void setSignedAt(LocalDateTime signedAt) { this.signedAt = signedAt; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        public Boolean getQuerySuccess() { return querySuccess; }
+        public void setQuerySuccess(Boolean querySuccess) { this.querySuccess = querySuccess; }
+        public String getQueryErrorCode() { return queryErrorCode; }
+        public void setQueryErrorCode(String queryErrorCode) { this.queryErrorCode = queryErrorCode; }
+        public String getQueryErrorMessage() { return queryErrorMessage; }
+        public void setQueryErrorMessage(String queryErrorMessage) { this.queryErrorMessage = queryErrorMessage; }
+        public String getProvider() { return provider; }
+        public void setProvider(String provider) { this.provider = provider; }
+        public List<LogisticsTraceVO> getTraces() { return traces; }
+        public void setTraces(List<LogisticsTraceVO> traces) { this.traces = traces; }
+    }
+
+    public static class LogisticsTraceVO {
+        private LocalDateTime traceTime;
+        private String traceContent;
+        private String statusCode;
+        private String statusName;
+
+        public LocalDateTime getTraceTime() { return traceTime; }
+        public void setTraceTime(LocalDateTime traceTime) { this.traceTime = traceTime; }
+        public String getTraceContent() { return traceContent; }
+        public void setTraceContent(String traceContent) { this.traceContent = traceContent; }
+        public String getStatusCode() { return statusCode; }
+        public void setStatusCode(String statusCode) { this.statusCode = statusCode; }
+        public String getStatusName() { return statusName; }
+        public void setStatusName(String statusName) { this.statusName = statusName; }
     }
 
     public static class StatusLogVO {

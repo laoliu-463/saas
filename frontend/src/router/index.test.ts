@@ -134,7 +134,7 @@ describe('router configuration', () => {
       .map((route) => route.component)
       .filter((component): component is () => Promise<unknown> => typeof component === 'function')
 
-    expect(componentLoaders).toHaveLength(25)
+    expect(componentLoaders).toHaveLength(26)
     await Promise.all(componentLoaders.map((loadComponent) => loadComponent()))
 
     const activityRedirect = allRoutes.find((route) => route.path === 'product/activity/:activityId')?.redirect

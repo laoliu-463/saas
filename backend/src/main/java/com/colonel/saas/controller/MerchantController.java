@@ -63,10 +63,11 @@ public class MerchantController extends BaseController {
     @GetMapping("/{id}/products")
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     public ApiResult<PageResult<PartnerProductVO>> listPartnerProducts(
-            @Parameter(description = "合作方 ID，当前按 shop_id 或 shop_name 匹配商品快照。") @PathVariable("id") String partnerId,
+            @Parameter(description = "合作方 ID；商家型为 shop_id/merchant_id，团长型为 colonel_buyin_id。") @PathVariable("id") String partnerId,
+            @RequestParam(name = "type", required = false) String partnerType,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size) {
-        return okPage(merchantService.listPartnerProducts(partnerId, page, size));
+        return okPage(merchantService.listPartnerProducts(partnerId, partnerType, page, size));
     }
 
     @Operation(summary = "归属覆盖", description = "组长级别手动覆盖商家的当前归属人，同时记录覆盖原因。")

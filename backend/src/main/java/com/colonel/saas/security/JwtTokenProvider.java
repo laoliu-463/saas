@@ -70,6 +70,16 @@ public class JwtTokenProvider {
             int dataScope,
             List<String> roleCodes,
             String username) {
+        return generateAccessToken(userId, deptId, dataScope, roleCodes, username, false);
+    }
+
+    public String generateAccessToken(
+            UUID userId,
+            UUID deptId,
+            int dataScope,
+            List<String> roleCodes,
+            String username,
+            boolean pendingActivation) {
         Instant now = Instant.now();
         Instant expireAt = now.plusSeconds(expireSeconds);
 
@@ -80,6 +90,7 @@ public class JwtTokenProvider {
                 .claim("dataScope", dataScope)
                 .claim("roleCodes", roleCodes)
                 .claim("username", username)
+                .claim("pendingActivation", pendingActivation)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expireAt))
                 .signWith(secretKey)

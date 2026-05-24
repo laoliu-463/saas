@@ -3,6 +3,7 @@ package com.colonel.saas.service.talent.profile.provider;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.Method;
+import com.colonel.saas.config.TalentCollectProperties;
 import com.colonel.saas.service.talent.profile.TalentProfileFieldNames;
 import com.colonel.saas.service.talent.profile.TalentProfileProvider;
 import com.colonel.saas.service.talent.profile.TalentProfileQuery;
@@ -22,6 +23,7 @@ import java.util.Map;
 public class ConfigurableHttpTalentProvider implements TalentProfileProvider {
 
     private final ObjectMapper objectMapper;
+    private final TalentCollectProperties collectProperties;
     private final boolean enabled;
     private final String endpoint;
     private final String method;
@@ -30,12 +32,14 @@ public class ConfigurableHttpTalentProvider implements TalentProfileProvider {
 
     public ConfigurableHttpTalentProvider(
             ObjectMapper objectMapper,
+            TalentCollectProperties collectProperties,
             @Value("${talent.profile.http.enabled:false}") boolean enabled,
             @Value("${talent.profile.http.endpoint:}") String endpoint,
             @Value("${talent.profile.http.method:GET}") String method,
             @Value("${talent.profile.http.token:}") String token,
             @Value("${talent.profile.http.header-authorization:}") String authorizationHeader) {
         this.objectMapper = objectMapper;
+        this.collectProperties = collectProperties;
         this.enabled = enabled;
         this.endpoint = endpoint;
         this.method = method;
@@ -60,7 +64,13 @@ public class ConfigurableHttpTalentProvider implements TalentProfileProvider {
 
     @Override
     public boolean supports(TalentProfileQuery query) {
-        return enabled && StringUtils.hasText(endpoint) && query != null && StringUtils.hasText(query.getInput());
+        return enabled
+                && collectProperties.isApiAllowed()
+                && !collectProperties.isMockOnly()
+                && StringUtils.hasText(endpoint)
+                && query != null
+                && StringUtils.hasText(query.getInput())
+                && !query.isManualFill();
     }
 
     @Override

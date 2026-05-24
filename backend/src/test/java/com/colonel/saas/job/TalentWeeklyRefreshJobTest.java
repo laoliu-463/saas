@@ -35,7 +35,19 @@ class TalentWeeklyRefreshJobTest {
 
     private TalentWeeklyRefreshJob newJob() {
         Executor directExecutor = Runnable::run;
-        return new TalentWeeklyRefreshJob(talentService, jobLockService, directExecutor, 2);
+        return new TalentWeeklyRefreshJob(talentService, jobLockService, directExecutor, true, 2, 2);
+    }
+
+    @Test
+    void weeklyRefreshActiveTalents_shouldSkipWhenDisabled() {
+        Executor directExecutor = Runnable::run;
+        TalentWeeklyRefreshJob job = new TalentWeeklyRefreshJob(
+                talentService, jobLockService, directExecutor, false, 2, 50);
+
+        job.weeklyRefreshActiveTalents();
+
+        verify(talentService, never()).findActiveTalentIdsForRefresh();
+        verify(jobLockService, never()).tryAcquire(any(), any());
     }
 
     @Test

@@ -3,6 +3,8 @@ package com.colonel.saas.controller;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.dto.SampleApplyRequest;
+import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
+import com.colonel.saas.dto.sample.SampleFilterOptionItem;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.ForbiddenException;
@@ -23,10 +25,14 @@ import com.colonel.saas.mapper.SampleStatusLogMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
-import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.service.BusinessRuleConfigService;
-import com.colonel.saas.service.LogisticsTrackService;
+import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.controller.SampleFilterOptionsController;
+import com.colonel.saas.service.SampleFilterOptionsService;
+import com.colonel.saas.service.SampleLogisticsImportService;
+import com.colonel.saas.service.SampleLogisticsSyncService;
 import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.SampleEligibilityService;
 import com.colonel.saas.service.SampleStatusLogService;
@@ -90,7 +96,11 @@ class SampleControllerTest {
     @Mock
     private SampleEligibilityService sampleEligibilityService;
     @Mock
-    private LogisticsTrackService logisticsTrackService;
+    private SampleLogisticsSyncService sampleLogisticsSyncService;
+    @Mock
+    private SampleLogisticsImportService sampleLogisticsImportService;
+    @Mock
+    private SampleDomainEventPublisher sampleDomainEventPublisher;
 
     private SampleController sampleController;
 
@@ -110,7 +120,9 @@ class SampleControllerTest {
                 businessRuleConfigService,
                 productService,
                 sampleEligibilityService,
-                logisticsTrackService
+                sampleLogisticsSyncService,
+                sampleLogisticsImportService,
+                sampleDomainEventPublisher
         );
         lenient().when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(true);
         lenient().when(businessRuleConfigService.getSampleRestrictDays()).thenReturn(7);
@@ -854,6 +866,28 @@ class SampleControllerTest {
         assertThat(closed.getFromStatuses()).containsExactly("PENDING_TASK");
         assertThat(closed.getToStatus()).isEqualTo("CLOSED");
         assertThat(closed.getTrigger()).contains("超时");
+    }
+
+    @Test
+    void filterOptions_shouldDelegateToSampleFilterOptionsService() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        SampleFilterOptionsDTO options = new SampleFilterOptionsDTO();
+        options.setStatuses(List.of(new SampleFilterOptionItem("待审核", "PENDING_AUDIT")));
+        SampleFilterOptionsService filterOptionsService = org.mockito.Mockito.mock(SampleFilterOptionsService.class);
+        SampleFilterOptionsController controller = new SampleFilterOptionsController(filterOptionsService);
+        when(filterOptionsService.buildOptions(userId, deptId, DataScope.ALL, List.of(RoleCodes.BIZ_STAFF)))
+                .thenReturn(options);
+
+        GetMapping mapping = SampleFilterOptionsController.class
+                .getMethod("filterOptions", UUID.class, UUID.class, DataScope.class, Object.class)
+                .getAnnotation(GetMapping.class);
+        var response = controller.filterOptions(userId, deptId, DataScope.ALL, List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(mapping).isNotNull();
+        assertThat(mapping.value()).containsExactly("/filter-options");
+        assertThat(response.getData()).isSameAs(options);
+        verify(filterOptionsService).buildOptions(userId, deptId, DataScope.ALL, List.of(RoleCodes.BIZ_STAFF));
     }
 
     @Test
@@ -1627,7 +1661,7 @@ class SampleControllerTest {
 
         assertThat(response.getData().getStatus()).isEqualTo("PENDING_TASK");
         assertThat(response.getData().getProductName()).isEqualTo("测试商品");
-        verify(logisticsTrackService).refreshAndProgress(sample);
+        verify(sampleLogisticsSyncService).syncOne(sampleId);
     }
 
     @Test

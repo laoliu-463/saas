@@ -30,4 +30,10 @@ public class SystemConfigChangeLog {
     private UUID operatorId;
 
     private LocalDateTime changedAt;
+
+    private UUID eventId;
+
+    private String changeReason;
+
+    private Integer configVersion;
 }

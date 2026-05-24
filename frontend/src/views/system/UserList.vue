@@ -3,7 +3,33 @@
     <PageHeader title="用户管理" description="管理系统账号、角色分配与登录状态。" />
     <div class="app-toolbar">
       <n-space wrap :size="10">
-        <n-input v-model:value="searchParams.username" placeholder="请输入用户名" clearable style="width: 180px" />
+        <n-input v-model:value="searchParams.keyword" placeholder="用户名/姓名/手机" clearable style="width: 180px" />
+        <n-tree-select
+          v-model:value="searchParams.deptId"
+          :options="deptTreeOptions"
+          clearable
+          filterable
+          placeholder="所属部门"
+          style="width: 200px"
+          @update:value="handleSearchDeptChange"
+        />
+        <n-select
+          v-model:value="searchParams.groupId"
+          :options="searchGroupOptions"
+          clearable
+          filterable
+          placeholder="所属组别"
+          style="width: 180px"
+          :disabled="!searchParams.deptId"
+        />
+        <n-select
+          v-model:value="searchParams.roleId"
+          :options="roleFilterOptions"
+          clearable
+          filterable
+          placeholder="角色"
+          style="width: 160px"
+        />
         <n-select v-model:value="searchParams.status" :options="statusOptions" placeholder="全部状态" style="width: 110px;" clearable />
         <n-button type="primary" size="small" @click="fetchData">查询</n-button>
         <n-button type="primary" size="small" @click="openModal('add')">新增用户</n-button>
@@ -40,6 +66,26 @@
         </n-form-item>
         <n-form-item label="邮箱" path="email">
           <n-input v-model:value="formData.email" placeholder="请输入邮箱" />
+        </n-form-item>
+        <n-form-item label="所属部门" path="parentDeptId">
+          <n-tree-select
+            v-model:value="formData.parentDeptId"
+            :options="deptTreeOptions"
+            clearable
+            filterable
+            placeholder="选择部门"
+            @update:value="handleFormDeptChange"
+          />
+        </n-form-item>
+        <n-form-item label="所属组别" path="groupId">
+          <n-select
+            v-model:value="formData.groupId"
+            :options="formGroupOptions"
+            clearable
+            filterable
+            placeholder="运营人员可留空"
+            :disabled="!formData.parentDeptId"
+          />
         </n-form-item>
         <n-form-item label="角色分配" path="roleIds">
           <n-select
@@ -84,11 +130,55 @@
 
 <script setup lang="ts">
 import { ref, reactive, h, onMounted, computed, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui';
 import PageHeader from '../../components/PageHeader.vue';
 import { MODAL_WIDTH } from '../../constants/ui';
-import { getUserPage, createUser, updateUser, deleteUser, resetUserPassword, getRoleAll, assignUserRoles } from '../../api/sys';
+import {
+  getUserPage,
+  createUser,
+  updateUser,
+  deleteUser,
+  resetUserPassword,
+  getRoleAll,
+  assignUserRoles,
+  getDeptTree,
+  getDeptGroups
+} from '../../api/sys';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
+
+const DEPT_TYPE_DEPARTMENT = 'department';
+
+function flattenDeptTree(nodes: any[], bucket: any[] = []) {
+  for (const node of nodes || []) {
+    bucket.push(node);
+    if (Array.isArray(node.children) && node.children.length) {
+      flattenDeptTree(node.children, bucket);
+    }
+  }
+  return bucket;
+}
+
+function toTreeSelectOptions(nodes: any[], predicate: (node: any) => boolean): any[] {
+  return (nodes || [])
+    .map((node) => {
+      const children = toTreeSelectOptions(node.children || [], predicate);
+      const allowed = predicate(node);
+      if (!allowed && !children.length) {
+        return null;
+      }
+      return {
+        key: String(node.id),
+        label: node.deptName,
+        value: String(node.id),
+        disabled: !allowed,
+        children: children.length ? children : undefined
+      };
+    })
+    .filter(Boolean);
+}
+
+const route = useRoute();
 
 const message = useMessage();
 
@@ -99,9 +189,16 @@ const pagination = reactive(createPaginationState());
 
 // Search params
 const searchParams = reactive({
-  username: '',
-  status: null
+  keyword: '',
+  deptId: null as string | null,
+  groupId: null as string | null,
+  roleId: null as string | null,
+  status: null as number | null
 });
+const flatDepts = ref<any[]>([]);
+const deptTreeOptions = ref<any[]>([]);
+const searchGroupOptions = ref<{ label: string; value: string }[]>([]);
+const formGroupOptions = ref<{ label: string; value: string }[]>([]);
 const statusOptions = [
   { label: '正常', value: 1 },
   { label: '停用', value: 0 }
@@ -134,6 +231,9 @@ const roleSelectOptions = computed(() =>
     description: roleDescriptionMap[String(role.roleCode || '')] || '用于控制菜单与首页落地路径'
   }))
 );
+const roleFilterOptions = computed(() =>
+  roleSelectOptions.value.map((role) => ({ label: role.label, value: role.value }))
+);
 const visibleRoleSelectOptions = computed(() =>
   roleSelectOptions.value.filter((role) => role.roleCode !== 'admin' || selectedRoleId.value === role.value)
 );
@@ -163,8 +263,11 @@ const fetchData = async () => {
     const res = await getUserPage({
       page: pagination.page,
       size: pagination.pageSize,
-      keyword: searchParams.username || undefined,
-      status: searchParams.status
+      keyword: searchParams.keyword || undefined,
+      status: searchParams.status ?? undefined,
+      deptId: searchParams.deptId || undefined,
+      groupId: searchParams.groupId || undefined,
+      roleId: searchParams.roleId || undefined
     });
     // 处理多种响应格式
     const responseData = res?.data || res;
@@ -210,9 +313,73 @@ const formData = reactive({
   realName: '',
   phone: '',
   email: '',
+  parentDeptId: null as string | null,
+  groupId: null as string | null,
   roleIds: [] as string[],
   status: 1
 });
+
+const loadGroupOptions = async (deptId: string | null, target: 'search' | 'form') => {
+  if (!deptId) {
+    if (target === 'search') {
+      searchGroupOptions.value = [];
+    } else {
+      formGroupOptions.value = [];
+    }
+    return;
+  }
+  try {
+    const res: any = await getDeptGroups(deptId);
+    const groups = Array.isArray(res?.data) ? res.data : [];
+    const options = groups.map((item: any) => ({
+      label: `${item.deptName}${item.deptType ? ` (${groupTypeLabel(item.deptType)})` : ''}`,
+      value: String(item.id)
+    }));
+    if (target === 'search') {
+      searchGroupOptions.value = options;
+    } else {
+      formGroupOptions.value = options;
+    }
+  } catch {
+    if (target === 'search') {
+      searchGroupOptions.value = [];
+    } else {
+      formGroupOptions.value = [];
+    }
+  }
+};
+
+const groupTypeLabel = (deptType: string) => {
+  if (deptType === 'recruiter_group') return '招商组';
+  if (deptType === 'channel_group') return '渠道组';
+  if (deptType === 'ops_group') return '运营组';
+  return deptType;
+};
+
+const handleSearchDeptChange = async (deptId: string | null) => {
+  searchParams.groupId = null;
+  await loadGroupOptions(deptId, 'search');
+};
+
+const handleFormDeptChange = async (deptId: string | null) => {
+  formData.groupId = null;
+  await loadGroupOptions(deptId, 'form');
+};
+
+const loadDeptTree = async () => {
+  try {
+    const res: any = await getDeptTree();
+    const tree = Array.isArray(res?.data) ? res.data : [];
+    flatDepts.value = flattenDeptTree(tree);
+    deptTreeOptions.value = toTreeSelectOptions(tree, (node) => {
+      const type = String(node.deptType || DEPT_TYPE_DEPARTMENT);
+      return type === DEPT_TYPE_DEPARTMENT || type === 'BUSINESS';
+    });
+  } catch {
+    flatDepts.value = [];
+    deptTreeOptions.value = [];
+  }
+};
 
 const isValidationFailure = (error: unknown): boolean => Array.isArray(error);
 
@@ -234,8 +401,20 @@ const openModal = async (type: 'add'|'edit', row?: any) => {
   modalTitle.value = type === 'add' ? '新增用户' : '编辑用户';
   
   if (type === 'add') {
-    Object.assign(formData, { id: undefined, username: '', password: '', realName: '', phone: '', email: '', roleIds: [], status: 1 });
+    Object.assign(formData, {
+      id: undefined,
+      username: '',
+      password: '',
+      realName: '',
+      phone: '',
+      email: '',
+      parentDeptId: searchParams.deptId,
+      groupId: searchParams.groupId,
+      roleIds: [],
+      status: 1
+    });
     selectedRoleId.value = null;
+    await loadGroupOptions(formData.parentDeptId, 'form');
   } else if (row) {
     const normalizedRoleIds = normalizeRoleIds(
       Array.isArray(row.roleIds)
@@ -248,10 +427,13 @@ const openModal = async (type: 'add'|'edit', row?: any) => {
       realName: row.realName,
       phone: row.phone,
       email: row.email,
+      parentDeptId: row.parentDeptId ? String(row.parentDeptId) : null,
+      groupId: row.groupId ? String(row.groupId) : null,
       roleIds: normalizedRoleIds.slice(0, 1),
       status: row.status
     });
     selectedRoleId.value = normalizedRoleIds[0] || null;
+    await loadGroupOptions(formData.parentDeptId, 'form');
   }
   
   showModal.value = true;
@@ -272,15 +454,26 @@ const handleSubmit = async () => {
   try {
     const targetUsername = formData.username;
     const roleLabel = selectedRoleLabel.value;
+    const payload = {
+      username: formData.username,
+      password: formData.password,
+      realName: formData.realName,
+      phone: formData.phone,
+      email: formData.email,
+      parentDeptId: formData.parentDeptId || null,
+      groupId: formData.groupId || null,
+      status: formData.status,
+      roleIds: formData.roleIds
+    };
     if (modalType.value === 'add') {
-      await createUser(formData);
+      await createUser(payload);
       pagination.page = 1;
-      searchParams.username = targetUsername;
+      searchParams.keyword = targetUsername;
       searchParams.status = null;
     } else {
-      await updateUser(formData.id!, formData);
+      await updateUser(formData.id!, payload);
       await assignUserRoles(formData.id!, { roleIds: formData.roleIds });
-      searchParams.username = targetUsername;
+      searchParams.keyword = targetUsername;
     }
     await fetchData();
     showModal.value = false;
@@ -352,6 +545,16 @@ const columns = [
   { title: '状态', key: 'status', render(row: any) { return h(NTag, { type: row.status ? 'success' : 'error' }, { default: () => (row.status ? '正常' : '停用') }); } },
   { title: '用户名', key: 'username' },
   { title: '真实姓名', key: 'realName' },
+  { title: '所属部门', key: 'parentDeptName', render: (row: any) => row.parentDeptName || '-' },
+  {
+    title: '所属组别',
+    key: 'groupName',
+    render: (row: any) => {
+      if (!row.groupName) return '-';
+      const typeLabel = row.groupType ? groupTypeLabel(row.groupType) : '';
+      return typeLabel ? `${row.groupName} (${typeLabel})` : row.groupName;
+    }
+  },
   {
     title: '角色',
     key: 'roleIds',
@@ -414,6 +617,11 @@ const columns = [
 ];
 
 onMounted(async () => {
+  const queryDeptId = route.query.deptId;
+  if (typeof queryDeptId === 'string' && queryDeptId) {
+    searchParams.deptId = queryDeptId;
+    await loadGroupOptions(queryDeptId, 'search');
+  }
   try {
     const roleRes = await getRoleAll();
     const roleData = roleRes.data || roleRes;
@@ -421,6 +629,7 @@ onMounted(async () => {
   } catch (error: any) {
     message.error(error?.message || '加载角色列表失败');
   }
+  await loadDeptTree();
   fetchData();
 });
 </script>
