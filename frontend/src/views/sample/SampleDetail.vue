@@ -187,7 +187,7 @@ import { actionSample, getSampleById, getSampleLogistics, getSampleStatusLogs, s
 import StatusTag from '../../components/StatusTag.vue'
 import { ROLE_CODES } from '../../constants/rbac'
 import { useAuthStore } from '../../stores/auth'
-import { handleApiFailure } from '../../utils/requestError'
+import { handleApiFailure, notifyApiFailure } from '../../utils/requestError'
 import type { SampleItem } from '../../types'
 
 const props = withDefaults(defineProps<{ show?: boolean; sampleId?: string }>(), {
@@ -339,8 +339,12 @@ async function refreshLogistics() {
     emit('refresh')
     await loadDetail()
   } catch (error: any) {
-    logisticsError.value = error?.response?.data?.msg || error?.message || '物流刷新失败'
-    message.error(logisticsError.value)
+    handleApiFailure(error, {
+      onPermissionHint: (msg) => { logisticsError.value = msg },
+      permissionFallback: '当前角色无权同步物流',
+      onFallback: (msg) => { logisticsError.value = msg },
+      fallbackMessage: '物流刷新失败'
+    })
   } finally {
     logisticsLoading.value = false
   }
@@ -377,10 +381,9 @@ async function loadDetail() {
     await loadLogistics()
   } catch (error: any) {
     detail.value = null
-    handleApiFailure(error, {
-      onPermissionHint: (msg) => { detailLoadError.value = msg; },
+    notifyApiFailure(error, message, {
+      onPermissionHint: (msg) => { detailLoadError.value = msg },
       permissionFallback: '无权查看该寄样单',
-      onFallback: (msg) => { detailLoadError.value = msg; },
       fallbackMessage: '无法获取寄样详情'
     })
   } finally {
@@ -398,10 +401,9 @@ async function doActionSample(payload: any) {
     emit('refresh')
     await loadDetail()
   } catch (error: any) {
-    handleApiFailure(error, {
-      onPermissionHint: (msg) => { actionError.value = msg; },
+    notifyApiFailure(error, message, {
+      onPermissionHint: (msg) => { actionError.value = msg },
       permissionFallback: '当前角色无权执行此操作',
-      onFallback: (msg) => message.error(msg),
       fallbackMessage: '操作失败'
     })
   } finally {

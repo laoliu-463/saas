@@ -41,6 +41,12 @@ CREATE INDEX IF NOT EXISTS idx_product_display_audit_product_time
 
 -- 3. product_operation_state 扩展
 ALTER TABLE product_operation_state
+    ADD COLUMN IF NOT EXISTS display_status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    ADD COLUMN IF NOT EXISTS first_displayed_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS last_displayed_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS hidden_reason VARCHAR(128),
+    ADD COLUMN IF NOT EXISTS display_rule_version INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS selected_to_library BOOLEAN DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS display_reason VARCHAR(128),
     ADD COLUMN IF NOT EXISTS force_display BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS force_display_by UUID,
@@ -51,6 +57,14 @@ ALTER TABLE product_operation_state
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_pos_one_displaying_per_product
     ON product_operation_state (product_id)
+    WHERE deleted = 0 AND display_status = 'DISPLAYING';
+
+CREATE INDEX IF NOT EXISTS idx_pos_product_display_status
+    ON product_operation_state (product_id, display_status)
+    WHERE deleted = 0;
+
+CREATE INDEX IF NOT EXISTS idx_pos_displaying_library
+    ON product_operation_state (display_status, selected_to_library)
     WHERE deleted = 0 AND display_status = 'DISPLAYING';
 
 -- 4. domain_event_outbox 扩展（幂等键、重试调度）
@@ -65,7 +79,36 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_domain_event_outbox_event_key
     WHERE event_key IS NOT NULL;
 
 -- 5. colonel_partner 扩展
+CREATE TABLE IF NOT EXISTS colonel_partner (
+    id UUID PRIMARY KEY,
+    colonel_buyin_id VARCHAR(64) NOT NULL,
+    colonel_name VARCHAR(256),
+    contact_name VARCHAR(128),
+    contact_phone VARCHAR(64),
+    source_updated_at TIMESTAMP,
+    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    create_by UUID,
+    update_by UUID,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_colonel_partner_buyin_id
+    ON colonel_partner (colonel_buyin_id)
+    WHERE deleted = 0;
+
+CREATE INDEX IF NOT EXISTS idx_colonel_partner_name
+    ON colonel_partner (colonel_name)
+    WHERE deleted = 0;
+
 ALTER TABLE colonel_partner
+    ADD COLUMN IF NOT EXISTS create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS create_by UUID,
+    ADD COLUMN IF NOT EXISTS update_by UUID,
     ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(512),
     ADD COLUMN IF NOT EXISTS contact_wechat VARCHAR(100),
     ADD COLUMN IF NOT EXISTS contact_remark TEXT,

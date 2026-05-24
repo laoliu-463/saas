@@ -1080,14 +1080,42 @@ class SampleControllerTest {
 
         Product product = new Product();
         product.setId(productId);
+        product.setProductId("10901825");
         product.setName("排查演示商品-推广映射缺失");
+        product.setCover("https://example.test/product.png");
+        product.setPrice(2190L);
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(productId);
+        snapshot.setProductId("3650575210828268564");
+        snapshot.setCover("https://example.test/snapshot.png");
+        snapshot.setPriceText("¥21.9");
+        snapshot.setShopId(123456L);
+        snapshot.setShopName("演示店铺");
 
         SampleRequest sample = new SampleRequest();
         sample.setId(UUID.randomUUID());
         sample.setProductId(productId);
+        sample.setUserId(UUID.randomUUID());
         sample.setTalentNickname("达人B-映射缺失订单");
         sample.setTalentUid("talent_test_b");
+        sample.setTalentFansCount(8056733L);
+        sample.setTalentCreditScore(new BigDecimal("4.90"));
+        sample.setTalentMainCategory("食品饮料");
         sample.setRequestNo("TEST-SAMPLE-SHIP-001");
+        sample.setTrackingNo("SF123456789");
+        sample.setShipperCode("SF");
+        sample.setRecipientName("张三");
+        sample.setRecipientPhone("13800138000");
+        sample.setRecipientAddress("上海市测试路 1 号");
+        sample.setShipTime(LocalDateTime.of(2026, 5, 1, 10, 0));
+        sample.setDeliverTime(LocalDateTime.of(2026, 5, 2, 10, 0));
+        sample.setExtraData(Map.of(
+                "applySource", "INTERNAL_QUICK_SAMPLE",
+                "cooperationType", "FREE_SAMPLE",
+                "sampleOwnerType", "MERCHANT",
+                "homeworkType", "HAS_ORDER"
+        ));
         sample.setStatus(5);
 
         IPage<SampleRequest> page = new Page<>(1, 10);
@@ -1096,6 +1124,7 @@ class SampleControllerTest {
 
         when(productMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(product));
         when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
+        when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
 
         var response = sampleController.getSamplePage(
@@ -1111,7 +1140,26 @@ class SampleControllerTest {
 
         assertThat(response.getData().getTotal()).isEqualTo(1L);
         assertThat(response.getData().getRecords()).hasSize(1);
-        assertThat(response.getData().getRecords().get(0).getTalentName()).isEqualTo("达人B-映射缺失订单");
+        var record = response.getData().getRecords().get(0);
+        assertThat(record.getTalentName()).isEqualTo("达人B-映射缺失订单");
+        assertThat(record.getTalentUid()).isEqualTo("talent_test_b");
+        assertThat(record.getTalentFansCount()).isEqualTo(8056733L);
+        assertThat(record.getTalentCreditScore()).isEqualTo("4.90");
+        assertThat(record.getTalentMainCategory()).isEqualTo("食品饮料");
+        assertThat(record.getProductExternalId()).isEqualTo("10901825");
+        assertThat(record.getProductCover()).isEqualTo("https://example.test/product.png");
+        assertThat(record.getProductPriceText()).isEqualTo("¥21.9");
+        assertThat(record.getShopId()).isEqualTo("123456");
+        assertThat(record.getShopName()).isEqualTo("演示店铺");
+        assertThat(record.getApplicantUserId()).isEqualTo(sample.getUserId());
+        assertThat(record.getLogisticsCompany()).isEqualTo("SF");
+        assertThat(record.getRecipientName()).isEqualTo("张三");
+        assertThat(record.getApplySourceLabel()).isEqualTo("内部寄样");
+        assertThat(record.getCooperationTypeLabel()).isEqualTo("免费寄样");
+        assertThat(record.getSampleOwnerTypeLabel()).isEqualTo("商家");
+        assertThat(record.getHomeworkTypeLabel()).isEqualTo("有订单");
+        assertThat(record.getShipTime()).isEqualTo(LocalDateTime.of(2026, 5, 1, 10, 0));
+        assertThat(record.getDeliverTime()).isEqualTo(LocalDateTime.of(2026, 5, 2, 10, 0));
         verify(productMapper).selectList(any(QueryWrapper.class));
         verify(sampleRequestMapper).findPageWithScope(any(Page.class), any(QueryWrapper.class));
     }
@@ -1145,6 +1193,76 @@ class SampleControllerTest {
         String sqlSegment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(sqlSegment).contains("sr.status");
         assertThat(sqlSegment).contains("sr.channel_user_id");
+    }
+
+    @Test
+    void getSamplePage_shouldPassCooperationWorkbenchFilters() {
+        UUID channelUserId = UUID.randomUUID();
+        UUID recruiterUserId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("合作单筛选商品");
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(productId);
+        snapshot.setShopId(998877L);
+        snapshot.setShopName("合作单店铺");
+        Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(List.of());
+
+        when(productMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(product));
+        when(productSnapshotMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(snapshot));
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class), eq(recruiterUserId)))
+                .thenReturn(emptyPage);
+
+        var response = sampleController.getSamplePage(
+                1,
+                10,
+                null,
+                "PENDING_SHIP",
+                channelUserId,
+                recruiterUserId,
+                "合作单筛选商品",
+                "合作单店铺",
+                "SF123",
+                "TEST-SAMPLE-001",
+                "达人A",
+                "FREE_SAMPLE",
+                "MERCHANT",
+                "HAS_ORDER",
+                "张三",
+                "13800138000",
+                LocalDateTime.of(2026, 5, 1, 0, 0),
+                LocalDateTime.of(2026, 5, 2, 0, 0),
+                LocalDateTime.of(2026, 5, 3, 0, 0),
+                LocalDateTime.of(2026, 5, 4, 0, 0),
+                "SF",
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.ADMIN)
+        );
+
+        assertThat(response.getData().getTotal()).isZero();
+        ArgumentCaptor<QueryWrapper<SampleRequest>> wrapperCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(sampleRequestMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture(), eq(recruiterUserId));
+        String sqlSegment = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(sqlSegment)
+                .contains("sr.status")
+                .contains("sr.channel_user_id")
+                .contains("sr.product_id")
+                .contains("sr.tracking_no")
+                .contains("sr.request_no")
+                .contains("sr.talent_nickname")
+                .contains("sr.talent_uid")
+                .contains("cooperationType")
+                .contains("sampleOwnerType")
+                .contains("sr.recipient_name")
+                .contains("sr.recipient_phone")
+                .contains("sr.create_time")
+                .contains("sr.complete_time")
+                .contains("sr.signed_at")
+                .contains("sr.shipper_code");
     }
 
     @Test

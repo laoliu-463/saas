@@ -175,10 +175,12 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../../utils/requestError'
 import { reactive, ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
 import { MODAL_WIDTH } from '../../../constants/ui';
 import { auditActivityProduct } from '../../../api/activityProduct';
+import { formatLibraryEntrySuccessMessage } from '../product-library-display';
 import { goodsTagOptions, productTagOptions } from '../product-filters';
 
 const props = defineProps<{
@@ -327,12 +329,17 @@ const handleSubmit = async () => {
     };
 
     const res: any = await auditActivityProduct(props.activityId, props.productId, payload);
-    message.success(auditApproved.value ? '审核通过，商品已自动加入商品库' : '审核驳回');
+    if (auditApproved.value) {
+      const entryMessage = formatLibraryEntrySuccessMessage(res?.data || {})
+      message[res?.data?.libraryVisible === false ? 'warning' : 'success'](entryMessage)
+    } else {
+      message.success('审核驳回')
+    }
     emit('success', res?.data);
     updateShow(false);
     return true;
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '审核失败');
+    notifyApiFailure(error, message, { fallbackMessage: '审核失败' });
     return false;
   }
 };

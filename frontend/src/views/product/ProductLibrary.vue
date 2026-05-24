@@ -57,27 +57,17 @@
 
     <n-spin :show="showInitialLoading">
       <div v-if="products.length" class="product-grid" data-testid="product-grid">
-        <ProductCard
+        <ProductSelectionCard
           v-for="item in products"
-          :key="item.productId"
-          :product="item"
-          :expanded="expandedProductId === item.productId"
-          :can-audit="false"
-          :can-assign="false"
-          :can-assign-audit-owner="false"
-          :pick-mode="false"
-          :library-mode="true"
-          :can-put-into-library="false"
-          :can-copy-link="canCopyPromotionLink"
-          :can-apply-sample="canCopyPromotionLink"
-          :can-pin="canPinProduct"
-          @toggle="expandedProductId = $event"
+          :key="`${item.card.productId}-${item.card.activityId || item.card.id}`"
+          :card="item.card"
+          :can-copy-brief="canCopyPromotionLink"
+          :can-quick-sample="canQuickSample"
+          :copy-brief-loading="promotionLoadingIds.has(item.card.productId)"
           @detail="openDetail"
-          @copy-link="copyPromotionLink"
-          @apply-sample="openSampleApply"
-          @pin="pinProduct"
-          @unpin="unpinProduct"
-          @show-logs="openDialog('logs', $event)"
+          @copy-brief="copyPromotionLink"
+          @quick-sample="openSampleApply"
+          @refresh="refreshProductRow"
         />
       </div>
 
@@ -104,16 +94,12 @@
       :refresh-key="detailRefreshKey"
       @action="handleDetailAction"
     />
-    <ProductOperationLogDrawer
-      v-model:show="dialogs.logs"
-      :product-id="currentRow?.productId ?? null"
-      :activity-id="currentRow?.sourceActivityId || currentRow?.activityId || null"
-    />
     <QuickSampleModal v-model:show="quickSampleVisible" :product="quickSampleProduct" @success="refreshProducts" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { handleApiFailure, notifyApiFailure } from '../../utils/requestError'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessage } from 'naive-ui'
@@ -121,7 +107,7 @@ import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
 import { getProducts, getProductLibraryCategories } from '../../api/product'
 import { getUserMasterRecruiters } from '../../api/sys'
-import { convertActivityProductLink, pinActivityProduct, unpinActivityProduct } from '../../api/activityProduct'
+import { convertActivityProductLink } from '../../api/activityProduct'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES, hasAccess } from '../../constants/rbac'
 import { useDelayedFlag } from '../../utils/delayedFlag'
@@ -129,10 +115,9 @@ import { useDebouncedFn } from '../../utils/debounce'
 import { MAX_PAGE_SIZE } from '../../utils/pagination'
 
 import ProductFilters from './components/ProductFilters.vue'
-import ProductCard from './components/ProductCard.vue'
+import ProductSelectionCard from '../../components/product/ProductSelectionCard.vue'
 import QuickSampleModal from './components/QuickSampleModal.vue'
 import ProductDetail from './ProductDetail.vue'
-import ProductOperationLogDrawer from './components/ProductOperationLogDrawer.vue'
 import {
   buildProductLibraryQueryParams,
   DEFAULT_PRODUCT_FILTERS,
@@ -140,6 +125,7 @@ import {
   type ProductFilterState
 } from './product-filters'
 import { copyProductBriefWithLink } from './product-copy'
+import { mergeLibraryDisplayFields, normalizeProductCard } from './product-library-display'
 
 const PAGE_SIZE = 12
 
@@ -151,7 +137,6 @@ const loading = ref(false)
 const showInitialLoading = useDelayedFlag(loading, 200)
 const loadingMore = ref(false)
 const promotionLoadingIds = ref<Set<string>>(new Set())
-const pinLoadingIds = ref<Set<string>>(new Set())
 const products = ref<any[]>([])
 const hasMore = ref(false)
 const totalCount = ref(0)
@@ -166,21 +151,15 @@ const productOptionsLoading = ref(false)
 const currentRow = ref<any | null>(null)
 const quickSampleVisible = ref(false)
 const quickSampleProduct = ref<any | null>(null)
-const expandedProductId = ref<string | null>(null)
 const showDetail = ref(false)
 const detailRefreshKey = ref(0)
-
-const dialogs = ref({
-  logs: false
-})
 
 const canCopyPromotionLink = computed(() =>
   hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
 )
 
-const canPinProduct = computed(() =>
-  hasAccess(authStore.roleCodes, [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF])
-)
+/** 与旧版 ProductCard「快速寄样」一致：仅渠道角色可发起（后端 quick-sample 接口同限） */
+const canQuickSample = canCopyPromotionLink
 
 const normalizeText = (value?: string | number | null) => {
   if (value === null || value === undefined) return ''
@@ -188,35 +167,55 @@ const normalizeText = (value?: string | number | null) => {
   return text === 'null' || text === 'undefined' ? '' : text
 }
 
-const normalizeItem = (item: any) => ({
-  ...item,
-  bizStatus: item?.bizStatus || 'PENDING_AUDIT',
-  bizStatusLabel: item?.bizStatusLabel || '',
-  productId: String(item?.productId ?? ''),
-  activityId: item?.activityId ? String(item.activityId) : '',
-  sourceActivityId: item?.sourceActivityId ? String(item.sourceActivityId) : item?.activityId ? String(item.activityId) : '',
-  shopName: normalizeText(item?.shopName) || item?.shopName,
-  categoryName: normalizeText(item?.categoryName) || item?.categoryName,
-  statusText: normalizeText(item?.statusText) || item?.statusText,
-  sales30d: item?.sales30d ?? item?.sales ?? 0,
-  gmv30d: item?.gmv30d ?? '0.00',
-  estimatedServiceFee: item?.estimatedServiceFee ?? item?.estimatedServiceFeeAmount ?? '0.00',
-  hasMaterial: item?.hasMaterial ?? false,
-  hasSampleRule: item?.hasSampleRule ?? true,
-  activityExpired: Boolean(item?.activityExpired),
-  selectedToLibrary: true,
-  systemTags: Array.isArray(item?.systemTags) ? item.systemTags : [],
-  alertTags: Array.isArray(item?.alertTags) ? item.alertTags : [],
-  promotionLink: item?.promotionLink || item?.promoteLink || item?.shortLink || null,
-  promotion: item?.promotion || {
-    status: item?.promotionLinkStatus || 'PENDING',
-    statusLabel: item?.promotionLinkStatusLabel || '未生成',
-    link: item?.promotionLink || item?.promoteLink || item?.shortLink || null,
-    generatedAt: item?.promotionLinkGeneratedAt || null,
-    expireAt: item?.promotionLinkExpireAt || null,
-    failReason: item?.promotionLinkFailReason || null
+const normalizeItem = (item: any) => {
+  const base = mergeLibraryDisplayFields({
+    ...item,
+    bizStatus: item?.bizStatus || 'PENDING_AUDIT',
+    bizStatusLabel: item?.bizStatusLabel || '',
+    productId: String(item?.productId ?? ''),
+    title: item?.title || item?.name || item?.productName || '未命名商品',
+    activityId: item?.activityId ? String(item.activityId) : '',
+    sourceActivityId: item?.sourceActivityId
+      ? String(item.sourceActivityId)
+      : item?.activityId
+        ? String(item.activityId)
+        : '',
+    shopName: normalizeText(item?.shopName) || item?.shopName,
+    categoryName: normalizeText(item?.categoryName) || item?.categoryName,
+    statusText: normalizeText(item?.statusText) || item?.statusText,
+    sales30d: item?.sales30d ?? item?.sales ?? 0,
+    gmv30d: item?.gmv30d ?? '0.00',
+    estimatedServiceFee: item?.estimatedServiceFee ?? item?.estimatedServiceFeeAmount ?? '0.00',
+    hasMaterial: item?.hasMaterial ?? false,
+    hasSampleRule: item?.hasSampleRule ?? true,
+    activityExpired: Boolean(item?.activityExpired),
+    selectedToLibrary: item?.selectedToLibrary ?? true,
+    systemTags: Array.isArray(item?.systemTags) ? item.systemTags : [],
+    alertTags: Array.isArray(item?.alertTags) ? item.alertTags : [],
+    promotionLink: item?.promotionLink || item?.promoteLink || item?.shortLink || null,
+    promotion: item?.promotion || {
+      status: item?.promotionLinkStatus || 'PENDING',
+      statusLabel: item?.promotionLinkStatusLabel || '未生成',
+      link: item?.promotionLink || item?.promoteLink || item?.shortLink || null,
+      generatedAt: item?.promotionLinkGeneratedAt || null,
+      expireAt: item?.promotionLinkExpireAt || null,
+      failReason: item?.promotionLinkFailReason || null
+    }
+  })
+  return {
+    ...base,
+    card: normalizeProductCard(base)
   }
-})
+}
+
+const replaceProductRow = (productId: string, nextRow: any) => {
+  products.value = products.value.map((row: any) =>
+    String(row.productId) === productId ? nextRow : row
+  )
+  if (String(currentRow.value?.productId || '') === productId) {
+    currentRow.value = { ...nextRow }
+  }
+}
 
 const fetchProducts = async (reset: boolean) => {
   if (reset) loading.value = true
@@ -235,11 +234,12 @@ const fetchProducts = async (reset: boolean) => {
     }))
     const data = res?.data || {}
     const records = Array.isArray(data.records) ? data.records : []
-    const items = records.map((p: any) => normalizeItem({
-      ...p,
-      title: p.title || p.name || '未命名商品',
-      productId: String(p.productId || '')
-    }))
+    const items = records.map((p: any) =>
+      normalizeItem({
+        ...p,
+        productId: String(p.productId || '')
+      })
+    )
     products.value = reset ? items : products.value.concat(items)
     const currentPage = Number(data.page || page || 1)
     const pageSize = Number(data.size || PAGE_SIZE)
@@ -247,7 +247,7 @@ const fetchProducts = async (reset: boolean) => {
     totalCount.value = total
     hasMore.value = currentPage * pageSize < total
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '商品查询失败')
+    notifyApiFailure(error, message, { fallbackMessage: '商品查询失败' })
     if (reset) {
       products.value = []
       hasMore.value = false
@@ -287,7 +287,11 @@ const loadProductOptions = async (keyword: string) => {
       }))
       .filter((item: { label: string; value: string }) => Boolean(item.value))
   } catch (error: any) {
-    message.warning(error?.response?.data?.msg || '商品搜索暂不可用')
+    handleApiFailure(error, {
+      permissionFallback: '当前角色无权搜索商品',
+      onFallback: (msg) => message.warning(msg),
+      fallbackMessage: '商品搜索暂不可用'
+    })
     productOptions.value = []
   } finally {
     productOptionsLoading.value = false
@@ -322,11 +326,6 @@ const loadMore = () => {
 const openDetail = (row: any) => {
   currentRow.value = { ...row }
   showDetail.value = true
-}
-
-const openDialog = (type: keyof typeof dialogs.value, row: any) => {
-  currentRow.value = { ...row }
-  dialogs.value[type] = true
 }
 
 const handleDetailAction = (_payload: { action: string; row: any }) => {
@@ -382,23 +381,18 @@ const copyPromotionLink = async (item: any) => {
         promotionLinkStatusLabel: data.statusLabel || '已生成',
         promotionLinkFailReason: null
       })
-      products.value = products.value.map((row: any) =>
-        String(row.productId) === productId ? { ...row, ...merged } : row
-      )
-      if (String(currentRow.value?.productId || '') === productId) {
-        currentRow.value = { ...currentRow.value, ...merged }
-      }
+      replaceProductRow(productId, normalizeItem(merged))
     }
 
     if (clipboardWriteFailed) {
-      message.warning('讲解已生成，但浏览器未允许写入剪贴板，请手动复制')
+      message.warning('简介已生成，但浏览器未允许写入剪贴板，请手动复制')
     } else if (result.linkGenerationFailed) {
-      message.error('短链生成失败，已复制讲解（不含短链）')
+      message.warning('短链生成失败，已复制简介（不含短链）')
     } else {
-      message.success('讲解 + 短链已复制')
+      message.success('已复制简介')
     }
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '讲解复制失败，请稍后重试')
+    notifyApiFailure(error, message, { fallbackMessage: '讲解复制失败，请稍后重试' })
   } finally {
     const next = new Set(promotionLoadingIds.value)
     next.delete(productId)
@@ -406,55 +400,35 @@ const copyPromotionLink = async (item: any) => {
   }
 }
 
-const updatePinnedState = (item: any, pinned: boolean, pinnedUntil?: string | null) => {
+const refreshProductRow = async (item: any) => {
   const productId = String(item?.productId || '')
-  const merged = normalizeItem({
-    ...item,
-    pinned,
-    pinnedUntil: pinned ? pinnedUntil || item?.pinnedUntil || null : null
-  })
-  products.value = products.value.map((row: any) =>
-    String(row.productId) === productId ? { ...row, ...merged } : row
-  )
-  if (String(currentRow.value?.productId || '') === productId) {
-    currentRow.value = { ...currentRow.value, ...merged }
-  }
-}
-
-const setProductPinned = async (item: any, pinned: boolean) => {
-  if (!canPinProduct.value) {
-    message.warning('仅招商角色可以置顶商品')
+  if (!productId) {
+    message.warning('商品信息不完整，无法刷新')
     return
   }
-  const productId = String(item?.productId || '')
-  const activityId = String(item?.sourceActivityId || item?.activityId || '')
-  if (!productId || !activityId) {
-    message.warning('商品缺少来源活动信息，暂时无法置顶')
-    return
-  }
-  if (pinLoadingIds.value.has(productId)) return
-  pinLoadingIds.value = new Set(pinLoadingIds.value).add(productId)
   try {
-    const res: any = pinned
-      ? await pinActivityProduct(activityId, productId)
-      : await unpinActivityProduct(activityId, productId)
-    updatePinnedState(item, Boolean(res?.data?.pinned ?? pinned), res?.data?.pinnedUntil || null)
-    message.success(pinned ? '商品已置顶 24 小时' : '已取消置顶')
+    const res: any = await getProducts(
+      buildProductLibraryQueryParams(filters.value, {
+        page: 1,
+        size: 1,
+        keyword: productId
+      })
+    )
+    const record = Array.isArray(res?.data?.records) ? res.data.records[0] : null
+    if (!record) {
+      message.warning('未找到该商品，请稍后重试')
+      return
+    }
+    replaceProductRow(productId, normalizeItem({ ...record, productId }))
+    message.success('商品信息已刷新')
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || (pinned ? '置顶失败，请稍后重试' : '取消置顶失败，请稍后重试'))
-  } finally {
-    const next = new Set(pinLoadingIds.value)
-    next.delete(productId)
-    pinLoadingIds.value = next
+    notifyApiFailure(error, message, { fallbackMessage: '刷新商品失败' })
   }
 }
-
-const pinProduct = (item: any) => setProductPinned(item, true)
-
-const unpinProduct = (item: any) => setProductPinned(item, false)
 
 const openSampleApply = (item: any) => {
-  if (!item?.id) {
+  const relationId = String(item?.id || item?.relationId || '')
+  if (!relationId) {
     message.warning('商品信息不完整，暂不可发起快速寄样')
     return
   }
@@ -507,7 +481,7 @@ onMounted(async () => {
   try {
     await Promise.all([loadFilterOptions(), refreshProducts()])
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '页面初始化失败')
+    notifyApiFailure(error, message, { fallbackMessage: '页面初始化失败' })
   }
 })
 </script>
@@ -552,8 +526,20 @@ onMounted(async () => {
 
 .product-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--spacing-md);
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
   align-items: start;
+}
+
+@media (min-width: 1280px) {
+  .product-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .product-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

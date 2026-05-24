@@ -18,7 +18,7 @@
     </PageHeader>
 
     <n-alert v-if="hasExplicitActivityRoute" type="info" class="page-alert app-page-alert">
-      当前活动按“组长分配审核人、招商审核、自动入库、分配招商、渠道转链”推进。待审核商品可在这里先指定审核负责人。
+      当前活动按“组长分配审核人、招商审核、自动入库、分配招商、渠道转链”推进。带「审核入库后可展示」标签的商品，审核通过并入库后会出现在共享商品库列表；「入库后不可展示」表示联盟状态或推广期不满足展示规则。
       <template #action>
         <n-space>
           <n-button size="small" @click="router.push('/product/manage')">返回活动列表</n-button>
@@ -36,12 +36,15 @@
         <div>
           <div class="activity-workbench-title">活动商品推进</div>
           <div class="activity-workbench-subtitle">
-            已加载 {{ activityStats.total }} 个商品，优先处理待审核分配、待分配招商和已分配后的复核。
+            已加载 {{ activityStats.total }} 个商品；其中 {{ activityStats.displayReady }} 个审核入库后可在共享商品库展示。
           </div>
         </div>
         <div class="activity-workbench-actions">
           <n-button size="small" secondary data-testid="activity-filter-all" @click="applyActivityQuickFilter('all')">
             全部
+          </n-button>
+          <n-button size="small" type="success" secondary data-testid="activity-filter-display-ready" @click="applyActivityQuickFilter('displayReady')">
+            只看可展示
           </n-button>
           <n-button size="small" type="warning" secondary data-testid="activity-filter-pending-audit" @click="applyActivityQuickFilter('pendingAudit')">
             只看待审核
@@ -142,6 +145,8 @@
         :row-key="(row: any) => row.productId"
         :checked-row-keys="checkedRowKeys"
         :single-line="false"
+        :scroll-x="productTableScrollX"
+        :scrollbar-props="{ trigger: 'none' }"
         @update:checked-row-keys="handleCheckedRowKeysUpdate"
       />
 
@@ -192,11 +197,13 @@
       v-model:show="dialogs.logs"
       :product-id="currentRow?.productId ?? null"
       :activity-id="detailActivityId"
+      :product-title="currentRow?.title"
     />
   </div>
 </template>
 
 <script setup lang="ts">
+import { handleApiFailure, notifyApiFailure } from '../../utils/requestError'
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
@@ -232,6 +239,12 @@ import ProductAssignDialog from './components/ProductAssignDialog.vue'
 import ProductBatchAssignDialog from './components/ProductBatchAssignDialog.vue'
 import ProductOperationLogDrawer from './components/ProductOperationLogDrawer.vue'
 import {
+  formatLibraryEntrySuccessMessage,
+  mergeLibraryDisplayFields,
+  resolveProductLibraryDisplay,
+  resolveProductLibraryReadiness
+} from './product-library-display'
+import {
   formatBatchResultMessage,
   MAX_BATCH_PRODUCT_IDS,
   normalizeBatchProductIds,
@@ -242,7 +255,11 @@ import { useDebouncedFn } from '../../utils/debounce'
 
 type ProductAction = 'audit' | 'assign' | 'auditOwner'
 type AssignDialogMode = 'businessOwner' | 'auditOwner'
-type ActivityStageKey = 'all' | 'pendingAudit' | 'readyAssign' | 'assigned' | 'linked'
+type ActivityStageKey = 'all' | 'pendingAudit' | 'readyAssign' | 'assigned' | 'linked' | 'displayReady'
+
+const PRODUCT_LIST_PAGE_SIZE = 5
+const PRODUCT_TABLE_SCROLL_X = 1968
+const PRODUCT_TABLE_SCROLL_X_WITH_SELECTION = 2010
 
 const message = useMessage()
 const route = useRoute()
@@ -307,6 +324,9 @@ const isPickLibraryMode = computed(() => route.path === '/product/manage/product
 const isBizLeader = computed(() => authStore.roleCodes.includes('biz_leader') || authStore.isAdmin)
 const isBizStaffOnly = computed(() => authStore.roleCodes.includes('biz_staff') && !isBizLeader.value)
 const showBatchSelection = computed(() => !isSharedLibraryMode.value)
+const productTableScrollX = computed(() =>
+  showBatchSelection.value ? PRODUCT_TABLE_SCROLL_X_WITH_SELECTION : PRODUCT_TABLE_SCROLL_X
+)
 const showBatchToolbar = computed(() => showBatchSelection.value && (canBatchAssign.value || canBatchLibraryEntry.value || canBatchPin.value))
 const canBatchAssign = computed(() => canDo('assign'))
 const canBatchLibraryEntry = computed(() => hasAccess(authStore.roleCodes, ['biz_staff']))
@@ -360,7 +380,8 @@ const activityStats = computed(() => {
     pendingAudit: count((row) => row.bizStatus === 'PENDING_AUDIT'),
     readyAssign: count((row) => row.selectedToLibrary && ['APPROVED', 'BOUND'].includes(String(row.bizStatus || '')) && !row.assigneeName),
     assigned: count((row) => row.bizStatus === 'ASSIGNED'),
-    linked: count((row) => ['LINKED', 'FOLLOWING'].includes(String(row.bizStatus || '')))
+    linked: count((row) => ['LINKED', 'FOLLOWING'].includes(String(row.bizStatus || ''))),
+    displayReady: count((row) => resolveProductLibraryReadiness(row).canDisplayAfterEntry || resolveProductLibraryDisplay(row).libraryVisible)
   }
 })
 
@@ -541,7 +562,7 @@ const ensureActivityId = async () => {
   return ''
 }
 
-const normalizeItem = (item: any) => ({
+const normalizeItem = (item: any) => mergeLibraryDisplayFields({
   ...item,
   cover: resolveProductImage(item),
   bizStatus: item?.bizStatus || 'PENDING_AUDIT',
@@ -558,8 +579,6 @@ const normalizeItem = (item: any) => ({
   hasMaterial: item?.hasMaterial ?? false,
   hasSampleRule: item?.hasSampleRule ?? true,
   activityExpired: Boolean(item?.activityExpired),
-  selectedToLibrary: Boolean(item?.selectedToLibrary || item?.libraryVisible || isLibraryReadyStatus(item?.bizStatus)),
-  libraryVisible: Boolean(item?.libraryVisible || item?.selectedToLibrary || isLibraryReadyStatus(item?.bizStatus)),
   systemTags: Array.isArray(item?.systemTags) ? item.systemTags : [],
   alertTags: Array.isArray(item?.alertTags) ? item.alertTags : [],
   promotion: item?.promotion || {
@@ -572,7 +591,17 @@ const normalizeItem = (item: any) => ({
   }
 })
 
-const applyFilters = (items: any[]) => applyProductFilters(items, filters.value, status.value)
+const applyFilters = (items: any[]) => {
+  let result = applyProductFilters(items, filters.value, status.value)
+  if (activeStage.value === 'displayReady') {
+    result = result.filter((item) => {
+      const readiness = resolveProductLibraryReadiness(item)
+      const display = resolveProductLibraryDisplay(item)
+      return readiness.canDisplayAfterEntry || display.libraryVisible
+    })
+  }
+  return result
+}
 
 const fetchProducts = async (reset: boolean, forceRemote = false): Promise<boolean> => {
   if (reset) loading.value = true
@@ -580,10 +609,10 @@ const fetchProducts = async (reset: boolean, forceRemote = false): Promise<boole
 
   try {
     if (isSharedLibraryMode.value) {
-      const page = reset ? 1 : Math.floor(products.value.length / 20) + 1
+      const page = reset ? 1 : Math.floor(products.value.length / PRODUCT_LIST_PAGE_SIZE) + 1
       const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
         page,
-        size: 20,
+        size: PRODUCT_LIST_PAGE_SIZE,
         keyword: selectedProduct.value || productKeyword.value.trim() || undefined
       }))
       const data = res?.data || {}
@@ -595,7 +624,7 @@ const fetchProducts = async (reset: boolean, forceRemote = false): Promise<boole
       }))
       products.value = reset ? items : products.value.concat(items)
       const currentPage = Number(data.page || page || 1)
-      const pageSize = Number(data.size || 20)
+      const pageSize = Number(data.size || PRODUCT_LIST_PAGE_SIZE)
       const total = Number(data.total || 0)
       hasMore.value = currentPage * pageSize < total
       nextCursor.value = ''
@@ -605,7 +634,7 @@ const fetchProducts = async (reset: boolean, forceRemote = false): Promise<boole
     const activityId = await ensureActivityId()
     if (!isPickLibraryMode.value && activityId) {
       const res: any = await getActivityProducts(activityId, {
-        count: 20,
+        count: PRODUCT_LIST_PAGE_SIZE,
         cursor: reset ? undefined : nextCursor.value,
         productInfo: buildActivityProductInfoQuery(
           selectedProduct.value,
@@ -629,8 +658,8 @@ const fetchProducts = async (reset: boolean, forceRemote = false): Promise<boole
       return true
     }
 
-    const page = reset ? 1 : Math.floor(products.value.length / 20) + 1
-    const res: any = await getProductPickPage({ page, size: 20 })
+    const page = reset ? 1 : Math.floor(products.value.length / PRODUCT_LIST_PAGE_SIZE) + 1
+    const res: any = await getProductPickPage({ page, size: PRODUCT_LIST_PAGE_SIZE })
     const data = res?.data || {}
     const records = Array.isArray(data.records) ? data.records : []
     const items = applyFilters(records.map((p: any) => normalizeItem({
@@ -645,7 +674,7 @@ const fetchProducts = async (reset: boolean, forceRemote = false): Promise<boole
     })))
     products.value = reset ? items : products.value.concat(items)
     const currentPage = Number(data.page || page || 1)
-    const pageSize = Number(data.size || 20)
+    const pageSize = Number(data.size || PRODUCT_LIST_PAGE_SIZE)
     const total = Number(data.total || 0)
     hasMore.value = currentPage * pageSize < total
     nextCursor.value = ''
@@ -656,7 +685,7 @@ const fetchProducts = async (reset: boolean, forceRemote = false): Promise<boole
       nextCursor.value = ''
       hasMore.value = false
     } else {
-      message.error(error?.response?.data?.msg || error?.message || '商品查询失败')
+      notifyApiFailure(error, message, { fallbackMessage: '商品查询失败' })
       if (reset) {
         products.value = []
         nextCursor.value = ''
@@ -719,7 +748,11 @@ const loadProductOptions = async (keyword: string) => {
       .map((p: any) => ({ label: String(p.name || p.title || ''), value: String(p.productId || '') }))
       .filter((item: { label: string; value: string }) => Boolean(item.value))
   } catch (error: any) {
-    message.warning(error?.response?.data?.msg || '商品搜索暂不可用')
+    handleApiFailure(error, {
+      permissionFallback: '当前角色无权搜索商品',
+      onFallback: (msg) => message.warning(msg),
+      fallbackMessage: '商品搜索暂不可用'
+    })
     productOptions.value = []
   } finally {
     productOptionsLoading.value = false
@@ -761,6 +794,9 @@ const applyActivityQuickFilter = (stage: ActivityStageKey) => {
     filters.value = { ...filters.value, assignee: 'assigned' }
   } else if (stage === 'linked') {
     status.value = 'LINKED'
+    filters.value = { ...filters.value, assignee: null }
+  } else if (stage === 'displayReady') {
+    status.value = null
     filters.value = { ...filters.value, assignee: null }
   }
   refreshProducts()
@@ -869,8 +905,6 @@ const handlePutIntoLibrary = async (item: any) => {
     const merged = normalizeItem({
       ...item,
       ...data,
-      selectedToLibrary: true,
-      libraryVisible: true,
       sourceActivityId: activityId
     })
     products.value = products.value.map((row: any) => (String(row.productId) === productId ? { ...row, ...merged } : row))
@@ -878,9 +912,10 @@ const handlePutIntoLibrary = async (item: any) => {
       currentRow.value = { ...currentRow.value, ...merged }
     }
     detailRefreshKey.value += 1
-    message.success('已加入商品库，当前商品对全员可见')
+    const entryDisplay = resolveProductLibraryDisplay(merged)
+    message[entryDisplay.libraryVisible ? 'success' : 'warning'](formatLibraryEntrySuccessMessage(merged))
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '加入商品库失败，请稍后重试')
+    notifyApiFailure(error, message, { fallbackMessage: '加入商品库失败，请稍后重试' })
   }
 }
 
@@ -912,9 +947,10 @@ const handlePinProduct = async (item: any, pinned: boolean) => {
       : await unpinActivityProduct(activityId, productId)
     updatePinnedState(item, Boolean(res?.data?.pinned ?? pinned), res?.data?.pinnedUntil || null)
     detailRefreshKey.value += 1
+    await refreshProducts()
     message.success(pinned ? '商品已置顶 24 小时' : '已取消置顶')
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || (pinned ? '置顶失败，请稍后重试' : '取消置顶失败，请稍后重试'))
+    notifyApiFailure(error, message, { fallbackMessage: pinned ? '置顶失败，请稍后重试' : '取消置顶失败，请稍后重试' })
   } finally {
     const next = new Set(pinLoadingIds.value)
     next.delete(productId)
@@ -969,7 +1005,7 @@ const handleBatchLibraryEntry = async () => {
     clearBatchSelection()
     await refreshProducts()
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '批量加入商品库失败')
+    notifyApiFailure(error, message, { fallbackMessage: '批量加入商品库失败' })
   } finally {
     batchLoading.value = null
   }
@@ -987,7 +1023,7 @@ const handleBatchPin = async () => {
     clearBatchSelection()
     await refreshProducts()
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '批量置顶失败')
+    notifyApiFailure(error, message, { fallbackMessage: '批量置顶失败' })
   } finally {
     batchLoading.value = null
   }
@@ -1057,7 +1093,7 @@ const copyPromotionLink = async (item: any) => {
       message.success('讲解 + 短链已复制')
     }
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '讲解复制失败，请稍后重试')
+    notifyApiFailure(error, message, { fallbackMessage: '讲解复制失败，请稍后重试' })
   } finally {
     const next = new Set(promotionLoadingIds.value)
     next.delete(productId)
@@ -1138,16 +1174,19 @@ const renderProductInfo = (row: any) =>
     ])
   ])
 
-const renderMetrics = (row: any) =>
-  renderLineList(
+const renderMetrics = (row: any) => {
+  const readiness = resolveProductLibraryReadiness(row)
+  return renderLineList(
     [
       `近30天销量：${formatSales30d(row)}`,
       `近30天 GMV：${formatGmv30d(row)}`,
       `联盟状态：${normalizeText(row.statusText) || '-'}`,
+      `商品库展示：${readiness.label}`,
       `转链：${normalizeText(row.promotion?.statusLabel || row.promotionLinkStatusLabel) || '未生成'}`
     ],
     'table-stack compact'
   )
+}
 
 const renderTagList = (row: any) => {
   const firstLabel = Array.isArray(row.systemTags) && row.systemTags.length
@@ -1156,6 +1195,7 @@ const renderTagList = (row: any) => {
       ? row.alertTags[0]
       : '暂无标签'
   const secondaryLabel = normalizeText(row.latestDecisionLabel)
+  const libraryDisplay = resolveProductLibraryDisplay(row)
   const canShowLibraryEntry =
     !row.selectedToLibrary &&
     ['APPROVED', 'BOUND'].includes(String(row.bizStatus || '')) &&
@@ -1167,10 +1207,21 @@ const renderTagList = (row: any) => {
       h('div', { class: 'table-stack-line' }, firstLabel),
       secondaryLabel ? h('div', { class: 'table-stack-line muted' }, secondaryLabel) : null,
       row.selectedToLibrary
-        ? renderTextAction('已入商品库', undefined, true)
-        : canShowLibraryEntry
-          ? renderTextAction('加入商品库', () => handlePutIntoLibrary(row))
-          : null
+        ? renderTextAction(
+            libraryDisplay.entryLabel,
+            undefined,
+            !libraryDisplay.hiddenFromList
+          )
+        : resolveProductLibraryReadiness(row).code === 'READY_AFTER_ENTRY'
+          ? renderTextAction(resolveProductLibraryReadiness(row).label, undefined, false)
+          : resolveProductLibraryReadiness(row).code === 'BLOCKED_AFTER_ENTRY'
+            ? renderTextAction(resolveProductLibraryReadiness(row).label, undefined, true)
+            : canShowLibraryEntry
+              ? renderTextAction('加入商品库', () => handlePutIntoLibrary(row))
+              : null,
+      row.libraryHiddenFromList
+        ? h('div', { class: 'table-stack-line muted' }, libraryDisplay.listVisibilityLabel)
+        : null
     ]
   )
 }
@@ -1309,7 +1360,7 @@ onMounted(async () => {
   try {
     await refreshProducts()
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '页面初始化失败')
+    notifyApiFailure(error, message, { fallbackMessage: '页面初始化失败' })
   }
 })
 

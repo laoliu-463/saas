@@ -1,140 +1,173 @@
 <template>
   <n-drawer :show="show" :width="DRAWER_WIDTH_PX.md" placement="right" @update:show="updateShow">
-    <n-drawer-content title="操作日志" closable>
-      <n-spin :show="loading">
-        <n-data-table :columns="columns" :data="logs" :pagination="false" size="small" />
-        <div v-if="!logs.length && !loading" class="empty-state">
-          暂无操作日志
+    <n-drawer-content closable>
+      <template #header>
+        <div class="drawer-header">
+          <div class="drawer-title">操作日志</div>
+          <div v-if="headerSubtitle" class="drawer-subtitle">{{ headerSubtitle }}</div>
         </div>
+      </template>
+
+      <n-spin :show="loading">
+        <div v-if="logViews.length" class="log-list">
+          <div v-for="item in logViews" :key="item.id" class="log-item">
+            <div class="log-item__time">{{ item.timeLabel }}</div>
+            <div class="log-item__body">
+              <div class="log-item__head">
+                <n-tag size="small" :type="item.eventTagType" :bordered="false">{{ item.eventLabel }}</n-tag>
+                <n-tag v-if="!item.success" size="small" type="error" :bordered="false">失败</n-tag>
+              </div>
+              <div class="log-item__summary">{{ item.summary }}</div>
+              <div v-if="item.statusFlow" class="log-item__meta">状态变更：{{ item.statusFlow }}</div>
+              <div v-for="line in item.detailLines" :key="line" class="log-item__meta">{{ line }}</div>
+              <div v-if="item.failureReason" class="log-item__error">{{ item.failureReason }}</div>
+              <div class="log-item__operator">操作人：{{ item.operatorLabel }}</div>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="!loading" class="empty-state">暂无操作日志</div>
       </n-spin>
     </n-drawer-content>
   </n-drawer>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { useMessage } from 'naive-ui';
-import { DRAWER_WIDTH_PX } from '../../../constants/ui';
-import { getActivityProductOperationLogs } from '../../../api/activityProduct';
+import { notifyApiFailure } from '../../../utils/requestError'
+import { computed, ref, watch } from 'vue'
+import { useMessage } from 'naive-ui'
+import { DRAWER_WIDTH_PX } from '../../../constants/ui'
+import { getActivityProductOperationLogs } from '../../../api/activityProduct'
+import {
+  mapProductOperationLogViews,
+  normalizeLogText,
+  type ProductOperationLogRow,
+  type ProductOperationLogView
+} from '../product-operation-log-display'
 
-const props = defineProps<{ show: boolean; activityId: string | number | null; productId: string | number | null }>();
-const emit = defineEmits(['update:show']);
-const message = useMessage();
+const props = defineProps<{
+  show: boolean
+  activityId: string | number | null
+  productId: string | number | null
+  productTitle?: string | null
+}>()
 
-const loading = ref(false);
-const logs = ref<any[]>([]);
+const emit = defineEmits(['update:show'])
+const message = useMessage()
 
-const normalizeText = (value?: string | null) => {
-  if (!value) return '';
-  const text = String(value).trim();
-  return text && text !== 'null' && text !== 'undefined' ? text : '';
-};
+const loading = ref(false)
+const logs = ref<ProductOperationLogRow[]>([])
 
-const parseOperationPayload = (raw?: string | null) => {
-  const payload: Record<string, string> = {};
-  const text = normalizeText(raw);
-  if (!text) return payload;
-  const trimmed = text.startsWith('{') && text.endsWith('}') ? text.slice(1, -1) : text;
-  trimmed.split(', ').forEach((pair) => {
-    const index = pair.indexOf('=');
-    if (index <= 0) return;
-    const key = pair.slice(0, index).trim();
-    const value = pair.slice(index + 1).trim();
-    if (key) payload[key] = value;
-  });
-  return payload;
-};
+const headerSubtitle = computed(() => {
+  const parts = [normalizeLogText(props.productTitle), normalizeLogText(String(props.productId || ''))]
+    .filter(Boolean)
+  return parts.join(' · ')
+})
 
-const operationTypeLabel = (type?: string) => {
-  const map: Record<string, string> = {
-    ASSIGN: '分配招商',
-    AUDIT: '商品审核',
-    SYNC: '同步商品',
-    LINK: '生成推广链接',
-    PROMOTION_LINK: '生成推广链接',
-    TALENT_FOLLOW: '达人跟进',
-    TALENT_FOLLOW_APPEND: '追加跟进'
-  };
-  return map[type || ''] || type || '未知事件';
-};
-
-const statusLabel = (status?: string | null) => {
-  const map: Record<string, string> = {
-    PENDING_AUDIT: '待审核',
-    APPROVED: '审核通过',
-    REJECTED: '审核拒绝',
-    BOUND: '历史已绑定',
-    ASSIGNED: '已分配招商',
-    LINKED: '已转链',
-    FOLLOWING: '已转交达人 CRM'
-  };
-  return map[status || ''] || status || '-';
-};
-
-const formatStatusFlow = (beforeStatus?: string | null, afterStatus?: string | null) => {
-  return `${statusLabel(beforeStatus)} -> ${statusLabel(afterStatus)}`;
-};
-
-const isUuidLike = (value?: string | null) => {
-  const text = normalizeText(value);
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text);
-};
-
-const formatOperatorDisplay = (row: any) => {
-  const payload = parseOperationPayload(row?.operationPayload);
-  if (payload.operatorName) return payload.operatorName;
-  if (row?.operationType === 'SYNC') return '系统';
-  if (isUuidLike(row?.operatorId)) return '历史记录';
-  return normalizeText(row?.operatorId) || '-';
-};
-
-const buildSummary = (row: any) => {
-  const payload = parseOperationPayload(row?.operationPayload);
-  if (row?.operationType === 'ASSIGN') {
-    return row?.operationRemark || `已分配给 ${payload.assigneeName || '负责人'}`;
-  }
-  return row?.operationRemark || normalizeText(row?.operationPayload) || '-';
-};
-
-const columns = [
-  { title: '时间', key: 'createTime', width: 180 },
-  { title: '事件', key: 'operationType', width: 140, render: (row: any) => operationTypeLabel(row?.operationType) },
-  { title: '状态流转', key: 'statusFlow', width: 180, render: (row: any) => formatStatusFlow(row?.beforeStatus, row?.afterStatus) },
-  { title: '操作说明', key: 'operationRemark', width: 220, render: (row: any) => buildSummary(row) },
-  { title: '操作人', key: 'operatorId', width: 140, render: (row: any) => formatOperatorDisplay(row) },
-  { title: '内容', key: 'operationPayload', minWidth: 220, render: (row: any) => normalizeText(row?.operationPayload) || '-' }
-];
+const logViews = computed<ProductOperationLogView[]>(() => mapProductOperationLogViews(logs.value))
 
 const fetchLogs = async () => {
-  if (!props.activityId || !props.productId) return;
-  loading.value = true;
-  const activityId = props.activityId;
-  const productId = props.productId;
+  if (!props.activityId || !props.productId) return
+  loading.value = true
   try {
-    const res: any = await getActivityProductOperationLogs(activityId, productId, {
+    const res: any = await getActivityProductOperationLogs(props.activityId, props.productId, {
       page: 1,
       size: 100
-    });
-    logs.value = res?.data?.records || [];
+    })
+    logs.value = res?.data?.records || []
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '加载操作日志失败');
+    notifyApiFailure(error, message, { fallbackMessage: '加载操作日志失败' })
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
-watch(() => props.show, (val) => {
-  if (val) {
-    fetchLogs();
-  } else {
-    logs.value = [];
+watch(
+  () => props.show,
+  (val) => {
+    if (val) {
+      fetchLogs()
+    } else {
+      logs.value = []
+    }
   }
-});
+)
 
-const updateShow = (val: boolean) => emit('update:show', val);
+const updateShow = (val: boolean) => emit('update:show', val)
 </script>
 
 <style scoped>
+.drawer-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drawer-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.drawer-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.log-item {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.06));
+}
+
+.log-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.log-item__time {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.log-item__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.log-item__summary {
+  font-size: 14px;
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.log-item__meta,
+.log-item__operator {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.log-item__error {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--error-color, #d03050);
+  line-height: 1.5;
+}
+
 .empty-state {
   text-align: center;
   padding: 40px;

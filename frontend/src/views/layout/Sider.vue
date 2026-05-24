@@ -167,7 +167,7 @@ function localizeLeftMenu(node: MenuTreeNode): SidebarMenuOption {
     label = '我的业绩'
   }
   if (isOpsStaffOnly.value && node.key === '/ops/shipping') {
-    label = '寄样发货台'
+    label = '发货台'
   }
 
   const option: SidebarMenuOption = {

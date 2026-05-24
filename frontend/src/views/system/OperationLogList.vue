@@ -41,6 +41,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { h, onMounted, reactive, ref } from 'vue'
 import type { DataTableColumns } from 'naive-ui'
 import { NTag, useMessage } from 'naive-ui'
@@ -160,7 +161,7 @@ const fetchData = async () => {
   } catch (error: any) {
     data.value = []
     pagination.itemCount = 0
-    message.error(error?.message || '获取操作日志失败')
+    notifyApiFailure(error, message, { fallbackMessage: '获取操作日志失败' })
   } finally {
     loading.value = false
   }

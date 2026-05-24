@@ -125,6 +125,8 @@ describe('router configuration', () => {
     )
     expect(layout.children.find((route) => route.path === 'system/departments')?.redirect).toBe('/system/depts')
     expect(layout.children.find((route) => route.path === 'system/douyin')?.meta?.title).toBe('抖店联调')
+    expect(layout.children.find((route) => route.path === 'sample')?.meta?.title).toBe('合作单')
+    expect(layout.children.find((route) => route.path === 'ops/shipping')?.meta?.title).toBe('发货台')
     expect((routesConfig[2] as { redirect: string }).redirect).toBe('/data')
   })
 

@@ -79,9 +79,11 @@ public class RuleCenterSchemaRegistry {
         registerGroup(groupMap, itemMap, group(
                 "talent",
                 "达人规则",
-                "达人认领保护期等业务规则",
+                "达人认领保护期与标签预设库",
                 item(SystemConfigKeys.TALENT_PROTECTION_DAYS, "达人保护期", ConfigValueType.INTEGER,
-                        List.of(ConfigConsumerDomain.TALENT), true, 1, 365, "天", null)));
+                        List.of(ConfigConsumerDomain.TALENT), true, 1, 365, "天", null),
+                item(SystemConfigKeys.PRESET_TALENT_TAGS, "达人预设标签库", ConfigValueType.JSON,
+                        List.of(ConfigConsumerDomain.TALENT), true)));
 
         registerGroup(groupMap, itemMap, group(
                 "exclusive",

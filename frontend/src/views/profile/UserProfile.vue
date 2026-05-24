@@ -112,6 +112,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import PageHeader from '../../components/PageHeader.vue'
@@ -209,7 +210,7 @@ const loadProfile = async () => {
     scopeResponse.value = unwrapData(scopeRes)
     syncCurrentUserToAuthStore(currentUser.value)
   } catch (error: any) {
-    message.error(error?.message || '加载个人资料失败')
+    notifyApiFailure(error, message, { fallbackMessage: '加载个人资料失败' })
   } finally {
     loading.value = false
   }
@@ -227,7 +228,7 @@ const handlePermissionCheck = async () => {
     const res = await checkCurrentUserPermission({ resource, action })
     permissionResult.value = unwrapData(res)
   } catch (error: any) {
-    message.error(error?.message || '权限检查失败')
+    notifyApiFailure(error, message, { fallbackMessage: '权限检查失败' })
   } finally {
     checkingPermission.value = false
   }
@@ -255,7 +256,7 @@ const handleChangePassword = async () => {
     passwordForm.confirmPassword = ''
     message.success('密码已更新')
   } catch (error: any) {
-    message.error(error?.message || '密码更新失败')
+    notifyApiFailure(error, message, { fallbackMessage: '密码更新失败' })
   } finally {
     changingPassword.value = false
   }

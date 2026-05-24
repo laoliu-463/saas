@@ -1541,6 +1541,51 @@ class ProductServiceTest {
     }
 
     @Test
+    void getSelectedLibraryPage_shouldSortPinnedProductsFirstAcrossBatches() {
+        ProductOperationState normalState = buildState("APPROVED");
+        normalState.setActivityId("10001");
+        normalState.setProductId("9001");
+        normalState.setSelectedToLibrary(true);
+        normalState.setDisplayStatus("DISPLAYING");
+        normalState.setSelectedAt(LocalDateTime.now());
+
+        ProductOperationState pinnedState = buildState("APPROVED");
+        pinnedState.setActivityId("10001");
+        pinnedState.setProductId("9002");
+        pinnedState.setSelectedToLibrary(true);
+        pinnedState.setDisplayStatus("DISPLAYING");
+        pinnedState.setSelectedAt(LocalDateTime.now().minusDays(7));
+        pinnedState.setPinnedAt(LocalDateTime.now());
+        pinnedState.setPinnedUntil(LocalDateTime.now().plusHours(24));
+
+        Page<ProductOperationState> firstPage = new Page<>(1, 200);
+        firstPage.setTotal(201);
+        firstPage.setRecords(List.of(normalState));
+        Page<ProductOperationState> secondPage = new Page<>(2, 200);
+        secondPage.setTotal(201);
+        secondPage.setRecords(List.of(pinnedState));
+
+        ProductSnapshot normalSnapshot = selectedLibrarySnapshot("10001", "9001", "普通商品");
+        ProductSnapshot pinnedSnapshot = selectedLibrarySnapshot("10001", "9002", "置顶商品");
+
+        doAnswer(invocation -> {
+            Page<ProductOperationState> requestedPage = invocation.getArgument(0);
+            return requestedPage.getCurrent() <= 1 ? firstPage : secondPage;
+        }).when(operationStateMapper).selectPage(any(Page.class), any());
+        when(snapshotMapper.selectBatchIds(any()))
+                .thenReturn(List.of(normalSnapshot))
+                .thenReturn(List.of(pinnedSnapshot));
+        when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
+
+        var result = service.getSelectedLibraryPage(1, 10, null, null);
+
+        assertThat(result.getTotal()).isEqualTo(2);
+        assertThat(result.getRecords()).extracting(com.colonel.saas.entity.Product::getProductId)
+                .containsExactly("9002", "9001");
+        assertThat(result.getRecords().get(0).getPinned()).isTrue();
+    }
+
+    @Test
     void getSelectedLibraryPage_withNullFilterAndNullStateRecords_shouldReturnEmptyNormalizedPage() {
         Page<ProductOperationState> statePage = new Page<>(1, 200, 0);
         statePage.setRecords(null);

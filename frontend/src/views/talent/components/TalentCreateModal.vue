@@ -42,6 +42,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../../utils/requestError'
 import { reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { MODAL_WIDTH } from '../../../constants/ui'
@@ -102,7 +103,7 @@ async function submit() {
     emit('success')
     closeModal()
   } catch (error: any) {
-    message.error(error?.message || '新增达人失败')
+    notifyApiFailure(error, message, { fallbackMessage: '新增达人失败' })
   } finally {
     submitting.value = false
   }

@@ -202,6 +202,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { computed, h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
@@ -422,7 +423,7 @@ const fetchTree = async () => {
       }
     }
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || '加载组织树失败')
+    notifyApiFailure(error, message, { fallbackMessage: '加载组织树失败' })
     treeData.value = []
     flatDepts.value = []
   } finally {
@@ -480,7 +481,7 @@ const loadMembers = async (deptId: string) => {
     memberRows.value = Array.isArray(data?.records) ? data.records : []
     memberPagination.itemCount = Number(data?.total ?? memberRows.value.length)
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || '加载成员失败')
+    notifyApiFailure(error, message, { fallbackMessage: '加载成员失败' })
     memberRows.value = []
     memberPagination.itemCount = 0
   } finally {
@@ -577,7 +578,7 @@ const submitDeptForm = async () => {
     showDeptModal.value = false
     await fetchTree()
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || '保存失败')
+    notifyApiFailure(error, message, { fallbackMessage: '保存失败' })
   } finally {
     submitting.value = false
   }
@@ -657,7 +658,7 @@ const submitGroupForm = async () => {
       await loadGroups(String(selectedNode.value.id))
     }
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || '保存失败')
+    notifyApiFailure(error, message, { fallbackMessage: '保存失败' })
   } finally {
     submitting.value = false
   }
@@ -697,7 +698,7 @@ const submitAddMembers = async () => {
     showAddMembersModal.value = false
     await loadGroupMembers(String(selectedNode.value.id))
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || '添加失败')
+    notifyApiFailure(error, message, { fallbackMessage: '添加失败' })
   } finally {
     submitting.value = false
   }
@@ -710,7 +711,7 @@ const removeGroupMember = async (userId: string) => {
     message.success('已移出该组')
     await loadGroupMembers(String(selectedNode.value.id))
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || '移除失败')
+    notifyApiFailure(error, message, { fallbackMessage: '移除失败' })
   }
 }
 
@@ -722,7 +723,7 @@ const handleDelete = async (row: any) => {
     selectedNode.value = null
     await fetchTree()
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || '删除失败')
+    notifyApiFailure(error, message, { fallbackMessage: '删除失败' })
   }
 }
 

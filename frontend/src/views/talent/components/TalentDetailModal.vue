@@ -207,6 +207,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../../utils/requestError'
 import { computed, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { MODAL_WIDTH } from '../../../constants/ui'
@@ -402,7 +403,7 @@ async function loadDetail() {
     resetCollaborationEditing()
   } catch (error: any) {
     detail.value = null
-    message.error(error?.msg || error?.message || '获取达人详情失败')
+    notifyApiFailure(error, message, { fallbackMessage: '获取达人详情失败' })
   } finally {
     loading.value = false
   }
@@ -429,7 +430,7 @@ async function handleRefresh() {
     if (previous && detail.value?.talent) {
       detail.value.talent = { ...previous, ...detail.value.talent }
     }
-    message.error(error?.msg || error?.message || '刷新达人信息失败')
+    notifyApiFailure(error, message, { fallbackMessage: '刷新达人信息失败' })
   } finally {
     refreshing.value = false
   }
@@ -445,7 +446,7 @@ async function handleSaveTags() {
     tagEditing.value = false
     message.success('已保存达人标签')
   } catch (error: any) {
-    message.error(error?.msg || error?.message || '保存达人标签失败')
+    notifyApiFailure(error, message, { fallbackMessage: '保存达人标签失败' })
   } finally {
     savingTags.value = false
   }
@@ -473,7 +474,7 @@ async function handleSaveShipping() {
     addressEditing.value = false
     message.success('已保存默认收货地址')
   } catch (error: any) {
-    message.error(error?.msg || error?.message || '保存默认收货地址失败')
+    notifyApiFailure(error, message, { fallbackMessage: '保存默认收货地址失败' })
   } finally {
     savingAddress.value = false
   }

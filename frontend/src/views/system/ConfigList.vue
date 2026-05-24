@@ -86,6 +86,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { ref, reactive, h, onMounted } from 'vue'
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui'
 import PageHeader from '../../components/PageHeader.vue'
@@ -109,6 +110,9 @@ const groupOptions = [
   { label: '商家', value: 'merchant' },
   { label: '寄样', value: 'sample' },
   { label: '佣金', value: 'commission' },
+  { label: '推广', value: 'promotion' },
+  { label: '安全', value: 'security' },
+  { label: '认证', value: 'auth' },
   { label: '抖音', value: 'douyin' }
 ]
 
@@ -125,6 +129,9 @@ const groupLabelMap: Record<string, string> = {
   merchant: '商家',
   sample: '寄样',
   commission: '佣金',
+  promotion: '推广',
+  security: '安全',
+  auth: '认证',
   douyin: '抖音'
 }
 
@@ -154,7 +161,7 @@ const fetchData = async () => {
       pagination.itemCount = 0
     }
   } catch (error: any) {
-    message.error(error?.message || '获取配置列表失败')
+    notifyApiFailure(error, message, { fallbackMessage: '获取配置列表失败' })
     data.value = []
     pagination.itemCount = 0
   } finally {
@@ -284,7 +291,7 @@ const handleSubmit = async () => {
     message.success(modalType.value === 'add' ? '配置已创建' : '配置已更新')
   } catch (error: any) {
     if (!error?.response?.data?.msg && !error?.msg) {
-      message.error(error?.message || '保存失败')
+      notifyApiFailure(error, message, { fallbackMessage: '保存失败' })
     }
   } finally {
     submitting.value = false
@@ -297,7 +304,7 @@ const handleDelete = async (id: string) => {
     message.success('删除成功')
     await fetchData()
   } catch (error: any) {
-    message.error(error?.message || '删除失败')
+    notifyApiFailure(error, message, { fallbackMessage: '删除失败' })
   }
 }
 

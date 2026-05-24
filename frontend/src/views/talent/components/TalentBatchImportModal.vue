@@ -73,6 +73,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../../utils/requestError'
 import { h, ref, watch } from 'vue'
 import { NTag, useMessage, type DataTableColumns } from 'naive-ui'
 import { MODAL_WIDTH } from '../../../constants/ui'
@@ -362,7 +363,7 @@ async function submit() {
       emit('success')
     }
   } catch (error: any) {
-    message.error(error?.message || error?.msg || '批量导入失败')
+    notifyApiFailure(error, message, { fallbackMessage: '批量导入失败' })
   } finally {
     submitting.value = false
   }

@@ -166,18 +166,18 @@ const quickEntries = computed(() => {
     { label: '我的商品', path: '/product/manage/products', roles: [ROLE.BIZ_STAFF] },
     { label: '达人 CRM', path: '/talent', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
     { label: '数据看板', path: '/data', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
-    { label: '寄样台', path: '/sample', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+    { label: '合作单', path: '/sample', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
   ]
     .filter((entry) => hasAccess(roles, entry.roles))
     .map((entry) => {
       if (isChannelStaffOnly.value) {
         if (entry.path === '/talent') return { ...entry, label: '我的达人' }
         if (entry.path === '/data') return { ...entry, label: '我的业绩' }
-        if (entry.path === '/sample') return { ...entry, label: '寄样台' }
+        if (entry.path === '/sample') return { ...entry, label: '合作单' }
       }
       if (isBizStaffOnly.value) {
         if (entry.path === '/data') return { ...entry, label: '我的业绩' }
-        if (entry.path === '/sample') return { ...entry, label: '寄样台' }
+        if (entry.path === '/sample') return { ...entry, label: '合作单' }
       }
       return entry
     })

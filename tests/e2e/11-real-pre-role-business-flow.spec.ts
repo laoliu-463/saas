@@ -149,8 +149,8 @@ const ROLE_CASES: RoleCase[] = [
     expectedDataScope: 3,
     allowedPages: ['/ops/shipping'],
     forbiddenPages: ['/system/users', '/product', '/sample'],
-    expectedMenuText: ['寄样发货台'],
-    forbiddenMenuText: ['系统管理', '商品库', '寄样审核', '达人 CRM'],
+    expectedMenuText: ['合作管理', '发货台'],
+    forbiddenMenuText: ['系统管理', '商品库', '合作单', '达人 CRM'],
     allowedApi: '/samples?page=1&size=5&status=PENDING_SHIP',
     protectedApiAfterLogout: '/samples?page=1&size=1&status=PENDING_SHIP'
   },

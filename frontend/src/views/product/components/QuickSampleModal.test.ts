@@ -6,7 +6,7 @@ vi.mock('naive-ui', async (importOriginal) => {
   const actual = await importOriginal<typeof import('naive-ui')>()
   return {
     ...actual,
-    useMessage: () => ({ error: vi.fn(), success: vi.fn(), warning: vi.fn() })
+    useMessage: () => ({ error: vi.fn(), success: vi.fn(), warning: vi.fn(), info: vi.fn() })
   }
 })
 

@@ -133,12 +133,20 @@
                 {{ product.assigneeName || product.bizStatus === 'ASSIGNED' ? '重新分配' : '分配招商' }}
               </n-button>
               <n-tag
-                v-if="product.selectedToLibrary"
+                v-if="resolveLibraryDisplay(product).selectedToLibrary"
                 size="small"
-                type="success"
+                :type="resolveLibraryDisplay(product).entryTagType"
                 bordered
               >
-                已入商品库
+                {{ resolveLibraryDisplay(product).entryLabel }}
+              </n-tag>
+              <n-tag
+                v-else-if="!libraryMode && resolveLibraryReadiness(product).code !== 'REJECTED'"
+                size="small"
+                :type="resolveLibraryReadiness(product).tagType"
+                bordered
+              >
+                {{ resolveLibraryReadiness(product).label }}
               </n-tag>
               <n-button size="small" quaternary data-testid="product-detail-button" @click.stop="$emit('detail', product)">详情</n-button>
             </div>
@@ -210,7 +218,14 @@
           <div class="qv-section">
             <div class="section-label">快速操作</div>
             <n-space vertical :size="8">
-              <n-tag v-if="product.selectedToLibrary" type="success" size="small" round>已入商品库</n-tag>
+              <n-tag
+                v-if="resolveLibraryDisplay(product).selectedToLibrary"
+                :type="resolveLibraryDisplay(product).entryTagType"
+                size="small"
+                round
+              >
+                {{ resolveLibraryDisplay(product).entryLabel }}
+              </n-tag>
               <n-button
                 v-if="canPin && !product.pinned"
                 block
@@ -276,6 +291,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { formatSales30d } from '../product-filters'
+import { getLibraryDisplayTags, resolveProductLibraryDisplay, resolveProductLibraryReadiness } from '../product-library-display'
 import { getActivityProductDetail } from '../../../api/activityProduct'
 import AdsRuleDetailModal from './AdsRuleDetailModal.vue'
 
@@ -283,7 +299,7 @@ const adsRuleModalVisible = ref(false)
 const adsRuleText = ref('')
 const adsRuleLoading = ref(false)
 
-defineProps<{
+const props = defineProps<{
   product: any
   expanded: boolean
   canAudit: boolean
@@ -415,16 +431,19 @@ const getSampleThresholdText = (item: any) => {
 }
 
 const cardTags = (item: any) => {
-  const tags: Array<{ text: string; type: 'error' | 'warning' | 'info' | 'success' }> = []
+  const tags: Array<{ text: string; type: 'error' | 'warning' | 'info' | 'success' | 'default' }> = []
   if (!item.promotion?.link && !item.promotionLink && (item.promotion?.status || item.promotionLinkStatus) === 'FAILED') {
     tags.push({ text: '链接生成失败', type: 'error' })
   }
   if (!item.hasMaterial) tags.push({ text: '缺少话术素材', type: 'warning' })
   if (!hasSampleThreshold(item) && !item.hasSampleRule) tags.push({ text: '暂无寄样要求', type: 'warning' })
   if (!item.assigneeName) tags.push({ text: '待分配负责人', type: 'error' })
-  if (item.selectedToLibrary) tags.push({ text: '商品库可见', type: 'success' })
+  tags.push(...getLibraryDisplayTags(item, { manageMode: !props.libraryMode }))
   return tags
 }
+
+const resolveLibraryDisplay = (item: any) => resolveProductLibraryDisplay(item)
+const resolveLibraryReadiness = (item: any) => resolveProductLibraryReadiness(item)
 
 const resolveSupportsAds = (item: any) => {
   if (item?.supportsAds === true) return true

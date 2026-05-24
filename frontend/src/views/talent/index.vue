@@ -91,6 +91,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { NAvatar, NButton, NSpace, NTag, useDialog, useMessage, type DataTableColumns } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
@@ -247,7 +248,7 @@ async function fetchData() {
     viewSummary[activeView.value] = pagination.itemCount
     syncRoute()
   } catch (error: any) {
-    message.error(error?.msg || error?.message || '加载达人列表失败')
+    notifyApiFailure(error, message, { fallbackMessage: '加载达人列表失败' })
   } finally {
     loading.value = false
   }
@@ -260,7 +261,7 @@ async function handleWeeklyRefresh() {
     message.success('已触发达人周更任务')
     fetchData()
   } catch (error: any) {
-    message.error(error?.msg || error?.message || '触发周更失败')
+    notifyApiFailure(error, message, { fallbackMessage: '触发周更失败' })
   } finally {
     weeklyRefreshing.value = false
   }
@@ -315,7 +316,7 @@ function handleClaim(row: TalentListItem) {
           message.warning('该达人在保护期内')
           return
         }
-        message.error(msg)
+        notifyApiFailure(error, message, { fallbackMessage: '认领失败' })
       }
     }
   })
@@ -333,7 +334,7 @@ function handleRelease(row: TalentListItem) {
         message.success('释放成功，该达人已回到团队公海')
         fetchData()
       } catch (error: any) {
-        message.error(error?.msg || error?.message || '释放失败')
+        notifyApiFailure(error, message, { fallbackMessage: '释放失败' })
       }
     }
   })
@@ -351,7 +352,7 @@ function handleBlacklist(row: TalentListItem) {
         message.success('已拉黑该达人')
         fetchData()
       } catch (error: any) {
-        message.error(error?.msg || error?.message || '拉黑失败')
+        notifyApiFailure(error, message, { fallbackMessage: '拉黑失败' })
       }
     }
   })
@@ -369,7 +370,7 @@ function handleUnblacklist(row: TalentListItem) {
         message.success('已解除拉黑')
         fetchData()
       } catch (error: any) {
-        message.error(error?.msg || error?.message || '解除拉黑失败')
+        notifyApiFailure(error, message, { fallbackMessage: '解除拉黑失败' })
       }
     }
   })

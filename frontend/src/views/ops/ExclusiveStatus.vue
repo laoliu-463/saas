@@ -38,6 +38,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { h, ref, onMounted } from 'vue';
 import { NTag, useMessage } from 'naive-ui';
 import { getExclusiveTalentStatus, getExclusiveMerchantStatus } from '../../api/data';
@@ -97,7 +98,7 @@ onMounted(async () => {
     talentData.value = resolveRecords(tRes as any);
     merchantData.value = resolveRecords(mRes as any);
   } catch (error: any) {
-    message.error('加载独家状态失败');
+    notifyApiFailure(error, message, { fallbackMessage: '加载独家状态失败' });
   } finally {
     loading.value = false;
   }

@@ -112,6 +112,7 @@ import { MODAL_WIDTH } from '../../constants/ui'
 import { exportOrders, getOrderPage } from '../../api/data'
 import { useAuthStore } from '../../stores/auth'
 import { createPaginationState, normalizePageSize } from '../../utils/pagination'
+import { notifyApiFailure, notifyClientPermission } from '../../utils/requestError'
 import { buildOrderExportParams, buildOrderPageParams } from './order-list-query'
 
 const authStore = useAuthStore()
@@ -220,7 +221,7 @@ const fetchData = async () => {
       pagination.itemCount = 0
     }
   } catch (error: any) {
-    message.error(error?.message || '获取订单列表失败')
+    notifyApiFailure(error, message, { fallbackMessage: '获取订单列表失败' })
   } finally {
     loading.value = false
   }
@@ -228,7 +229,7 @@ const fetchData = async () => {
 
 const handleExport = async () => {
   if (!canExport.value) {
-    message.warning('当前角色无权导出订单数据')
+    notifyClientPermission('当前角色无权导出订单数据')
     return
   }
   if (!data.value.length) {
@@ -255,8 +256,8 @@ const handleExport = async () => {
     link.parentNode?.removeChild(link)
     window.URL.revokeObjectURL(url)
     message.success('导出成功')
-  } catch {
-    message.error('导出失败')
+  } catch (error) {
+    notifyApiFailure(error, message, { fallbackMessage: '导出失败' })
   }
 }
 

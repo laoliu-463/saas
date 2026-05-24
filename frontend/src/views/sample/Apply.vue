@@ -96,6 +96,7 @@ import { checkSampleEligibility, createSample, searchSampleProducts } from '../.
 import { getTalentPage, getTalentShippingAddress } from '../../api/talent';
 import { useAuthStore } from '../../stores/auth';
 import { resolveSafeAvatarUrl } from '../../utils/media';
+import { notifyApiFailure, notifyClientPermission } from '../../utils/requestError';
 import { useDebouncedFn } from '../../utils/debounce';
 import {
   INTERNAL_QUICK_SAMPLE_SOURCE,
@@ -295,7 +296,7 @@ const fetchProductOptions = async (query: string) => {
 
 const debouncedFetchProductOptions = useDebouncedFn((query: string) => {
   fetchProductOptions(query).catch((error: any) => {
-    message.error(error?.message || '搜索商品失败');
+    notifyApiFailure(error, message, { fallbackMessage: '搜索商品失败' });
   });
 }, 250);
 
@@ -332,7 +333,7 @@ const fetchTalents = async (page = 1) => {
   } catch (error: any) {
     talentRows.value = [];
     talentQuery.total = 0;
-    message.error(error?.message || '获取达人失败');
+    notifyApiFailure(error, message, { fallbackMessage: '获取达人失败' });
   } finally {
     loadingTalents.value = false;
   }
@@ -385,7 +386,7 @@ const doSubmit = async () => {
     message.success('寄样申请已提交，状态为待审核');
     router.push('/sample');
   } catch (error: any) {
-    message.error(error?.message || '提交失败');
+    notifyApiFailure(error, message, { fallbackMessage: '提交失败' });
   } finally {
     submitting.value = false;
   }
@@ -406,7 +407,7 @@ const openEligibilityWarning = (eligibility: any) => {
 
 const handleSubmit = async () => {
   if (!canSubmit.value) {
-    message.warning('当前角色无权提交寄样申请');
+    notifyClientPermission('当前角色无权提交寄样申请');
     return;
   }
   try {
@@ -434,7 +435,7 @@ const handleSubmit = async () => {
     })
     eligibility = eligibilityResponse?.data || eligibilityResponse
   } catch (error: any) {
-    message.error(error?.message || '寄样资格检查失败')
+    notifyApiFailure(error, message, { fallbackMessage: '寄样资格检查失败' })
     return
   }
 

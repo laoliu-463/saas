@@ -20,7 +20,11 @@
           filterable
           placeholder="选择当前渠道已认领达人"
           data-testid="quick-sample-talents"
-        />
+        >
+          <template #empty>
+            {{ talentEmptyHint }}
+          </template>
+        </n-select>
       </n-form-item>
       <n-form-item label="商品规格">
         <ProductSpecSelector
@@ -59,12 +63,12 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../../utils/requestError'
 import { computed, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { applyQuickSample } from '../../../api/product'
 import { getActivityProductSkus } from '../../../api/activityProduct'
-import { getTalentPrivate } from '../../../api/talent'
-import { MAX_PAGE_SIZE } from '../../../utils/pagination'
+import { getTalentPrivate, parsePrivateTalentPoolResponse, toPrivateTalentSelectOption } from '../../../api/talent'
 import ProductSpecSelector from './ProductSpecSelector.vue'
 
 const props = defineProps<{ product: any | null }>()
@@ -74,7 +78,13 @@ const visible = defineModel<boolean>('show', { default: false })
 const message = useMessage()
 const submitting = ref(false)
 const talentLoading = ref(false)
+const talentLoadFailed = ref(false)
 const talentOptions = ref<Array<{ label: string; value: string }>>([])
+const talentEmptyHint = computed(() => {
+  if (talentLoading.value) return '加载中…'
+  if (talentLoadFailed.value) return '加载失败，请关闭弹窗后重试'
+  return '暂无私海达人，请先在「达人」页认领后再选'
+})
 const skuOptions = ref<any[]>([])
 const skuLoading = ref(false)
 
@@ -114,18 +124,19 @@ const form = ref({
 
 const loadTalents = async () => {
   talentLoading.value = true
+  talentLoadFailed.value = false
   try {
-    const res: any = await getTalentPrivate({ page: 1, size: MAX_PAGE_SIZE })
-    const records = Array.isArray(res?.data?.records) ? res.data.records : []
-    talentOptions.value = records
-      .map((item: any) => ({
-        label: String(item?.nickname || item?.talentName || item?.douyinUid || '').trim(),
-        value: String(item?.douyinUid || item?.talentId || item?.id || '').trim()
-      }))
+    const res: any = await getTalentPrivate()
+    talentOptions.value = parsePrivateTalentPoolResponse(res)
+      .map((item: any) => toPrivateTalentSelectOption(item))
       .filter((item: { label: string; value: string }) => item.label && item.value)
+    if (!talentOptions.value.length) {
+      message.info('当前账号私海暂无达人，请先在达人页认领')
+    }
   } catch (error: any) {
     talentOptions.value = []
-    message.error(error?.response?.data?.msg || error?.message || '加载私海达人失败')
+    talentLoadFailed.value = true
+    notifyApiFailure(error, message, { fallbackMessage: '加载私海达人失败' })
   } finally {
     talentLoading.value = false
   }
@@ -172,7 +183,7 @@ const submit = async () => {
     visible.value = false
     emit('success')
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '快速寄样失败')
+    notifyApiFailure(error, message, { fallbackMessage: '快速寄样失败' })
   } finally {
     submitting.value = false
   }

@@ -37,6 +37,8 @@
         :loading="loading"
         :pagination="pagination"
         :row-key="(row: any) => row.activityId"
+        :scroll-x="ACTIVITY_TABLE_SCROLL_X"
+        :scrollbar-props="{ trigger: 'none' }"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       />
@@ -51,7 +53,11 @@ import { useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import { getColonelActivityPage } from '../../api/activity'
 import { exportActivities } from '../../api/data'
-import { createPaginationState, normalizePageSize } from '../../utils/pagination'
+import { DEFAULT_PAGE, normalizePageSize } from '../../utils/pagination'
+import { notifyApiFailure } from '../../utils/requestError'
+
+const ACTIVITY_TABLE_SCROLL_X = 1140
+const ACTIVITY_PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const
 
 const message = useMessage()
 const router = useRouter()
@@ -65,7 +71,13 @@ const filters = reactive({
   status: null
 })
 
-const pagination = reactive(createPaginationState())
+const pagination = reactive({
+  page: DEFAULT_PAGE,
+  pageSize: ACTIVITY_PAGE_SIZE_OPTIONS[0] as number,
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [...ACTIVITY_PAGE_SIZE_OPTIONS]
+})
 
 const statusOptions = [
   { label: '未开始', value: 1 },
@@ -124,7 +136,7 @@ const fetchData = async () => {
     data.value = result.activityList || []
     pagination.itemCount = result.total || 0
   } catch (err: any) {
-    message.error('加载活动列表失败')
+    notifyApiFailure(err, message, { fallbackMessage: '加载活动列表失败' })
   } finally {
     loading.value = false
   }
@@ -166,7 +178,7 @@ const handleExport = async () => {
     window.URL.revokeObjectURL(url)
     message.success('导出成功')
   } catch (err: any) {
-    message.error(err?.message || '导出失败')
+    notifyApiFailure(err, message, { fallbackMessage: '导出失败' })
   } finally {
     exporting.value = false
   }

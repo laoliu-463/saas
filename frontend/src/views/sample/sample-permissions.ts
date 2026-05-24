@@ -9,7 +9,7 @@ const SAMPLE_EXPORT_ROLES = new Set<string>([
 
 export type SampleTabOption = { label: string; value: string };
 
-/** 运营发货台仅处理审核通过后的物流履约，不含审核阶段状态。 */
+/** 运营侧发货台仅处理审核通过后的物流履约，不含审核阶段状态。 */
 export const OPS_HIDDEN_SAMPLE_STATUSES = new Set(['PENDING_AUDIT', 'REJECTED']);
 
 export const OPS_SHIPPING_TABS: SampleTabOption[] = [

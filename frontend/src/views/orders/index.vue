@@ -80,6 +80,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { h, computed, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NSpace, NTag, NText, useMessage } from 'naive-ui'
 import { useRoute } from 'vue-router'
@@ -151,8 +152,8 @@ const fetchChannelOptions = async (keyword: string) => {
   channelOptionsLoading.value = true
   try {
     channelOptions.value = await loadOrderChannelOptions(keyword)
-  } catch (_error) {
-    message.error('加载渠道负责人失败')
+  } catch (error) {
+    notifyApiFailure(error, message, { fallbackMessage: '加载渠道负责人失败' })
   } finally {
     channelOptionsLoading.value = false
   }
@@ -162,8 +163,8 @@ const fetchRecruiterOptions = async (keyword: string) => {
   recruiterOptionsLoading.value = true
   try {
     recruiterOptions.value = await loadOrderRecruiterOptions(keyword)
-  } catch (_error) {
-    message.error('加载招商负责人失败')
+  } catch (error) {
+    notifyApiFailure(error, message, { fallbackMessage: '加载招商负责人失败' })
   } finally {
     recruiterOptionsLoading.value = false
   }
@@ -345,7 +346,7 @@ const fetchData = async () => {
   } catch (err: any) {
     if (currentFetch === fetchVersion) {
       stats.value = null
-      message.error('加载订单列表失败')
+      notifyApiFailure(err, message, { fallbackMessage: '加载订单列表失败' })
     }
   } finally {
     if (currentFetch === fetchVersion) {
@@ -384,7 +385,7 @@ const handleSync = async () => {
     message.success('已触发同步，订单回流中...')
     setTimeout(fetchData, 1000)
   } catch (err: any) {
-    message.error('同步失败')
+    notifyApiFailure(err, message, { fallbackMessage: '同步失败' })
   } finally {
     syncLoading.value = false
   }

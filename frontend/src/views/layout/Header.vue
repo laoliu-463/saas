@@ -101,14 +101,14 @@ const visibleTabs = computed(() =>
     if (isChannelStaffOnly.value) {
       if (tab.key === 'data') return { ...tab, label: '我的业绩' }
       if (tab.key === 'talent') return { ...tab, label: '我的达人' }
-      if (tab.key === 'sample') return { ...tab, label: '寄样台' }
+      if (tab.key === 'sample') return { ...tab, label: '合作管理' }
     }
     if (isBizStaffOnly.value) {
       if (tab.key === 'data') return { ...tab, label: '我的业绩' }
-      if (tab.key === 'sample') return { ...tab, label: '寄样台' }
+      if (tab.key === 'sample') return { ...tab, label: '合作管理' }
     }
-    if (isOpsStaffOnly.value && tab.key === 'ops') {
-      return { ...tab, label: '寄样发货台' }
+    if (isOpsStaffOnly.value && tab.key === 'sample') {
+      return { ...tab, label: '合作管理' }
     }
     return tab
   })

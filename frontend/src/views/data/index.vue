@@ -287,6 +287,7 @@ import { centToYuan, getPerformanceSummary, type PerformanceSummary } from '../.
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES } from '../../constants/rbac'
 import { useDelayedFlag } from '../../utils/delayedFlag'
+import { handleApiFailure } from '../../utils/requestError'
 
 const message = useMessage()
 const router = useRouter()
@@ -673,7 +674,11 @@ const loadMetrics = async () => {
       metricsSettle.value = settleRes?.data || settleRes || {}
     })
     .catch((error: any) => {
-      message.warning(error?.message || '获取结算时间指标异常')
+      handleApiFailure(error, {
+        permissionFallback: '当前角色无权查看数据看板',
+        onFallback: (msg) => message.warning(msg),
+        fallbackMessage: '获取结算时间指标异常'
+      })
     })
 
   const summaryPromise = getPerformanceSummary(buildSummaryParams())
@@ -688,7 +693,11 @@ const loadMetrics = async () => {
     const createRes = await getMetrics(buildMetricsParams('createTime'))
     metricsCreate.value = createRes?.data || createRes || {}
   } catch (error: any) {
-    message.warning(error?.message || '获取创建时间指标异常')
+    handleApiFailure(error, {
+      permissionFallback: '当前角色无权查看数据看板',
+      onFallback: (msg) => message.warning(msg),
+      fallbackMessage: '获取创建时间指标异常'
+    })
   } finally {
     initialized.value = true
     loading.value = false

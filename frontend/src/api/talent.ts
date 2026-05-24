@@ -182,7 +182,30 @@ export interface TalentStatusTransitionsResponse {
 export const getTalentPage = (params: TalentQueryParams) => request.get('/talents', { params });
 export const getTalentList = (params: any) => getTalentPage(params);
 export const getTalentPublic = (params: any) => request.get('/talents/pools/public', { params });
-export const getTalentPrivate = (params: any) => request.get('/talents/pools/private', { params });
+export const getTalentPrivate = (params?: Record<string, unknown>) =>
+  request.get('/talents/pools/private', { params });
+
+/** 私海接口返回 data 为数组（非分页 records），统一解析为列表 */
+export function parsePrivateTalentPoolResponse(res: { data?: unknown } | null | undefined) {
+  const data = res?.data
+  if (Array.isArray(data)) return data
+  if (data && typeof data === 'object' && Array.isArray((data as { records?: unknown[] }).records)) {
+    return (data as { records: unknown[] }).records
+  }
+  return []
+}
+
+export function toPrivateTalentSelectOption(item: Record<string, unknown>) {
+  const nickname = String(item?.nickname || item?.talentName || '').trim()
+  const douyinUid = String(item?.douyinUid || item?.uid || item?.talentId || '').trim()
+  const douyinNo = String(item?.douyinNo || '').trim()
+  const labelBase = nickname || douyinNo || douyinUid
+  const label = douyinNo && labelBase !== douyinNo ? `${labelBase}（${douyinNo}）` : labelBase
+  return {
+    label,
+    value: douyinUid
+  }
+}
 export const getTalentStatusTransitions = () => request.get('/talents/status-transitions');
 export const getTalentById = (id: string): Promise<TalentDetailResponse> =>
   request.get(`/talents/${id}`).then((res: any) => res.data as TalentDetailResponse);

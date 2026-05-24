@@ -6,8 +6,17 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+
+import static com.colonel.saas.gateway.douyin.test.TestMockActivityProductSupport.asLong;
+import static com.colonel.saas.gateway.douyin.test.TestMockActivityProductSupport.formatPriceText;
+import static com.colonel.saas.gateway.douyin.test.TestMockActivityProductSupport.mockActivityEndDate;
+import static com.colonel.saas.gateway.douyin.test.TestMockActivityProductSupport.mockActivityStartDate;
+import static com.colonel.saas.gateway.douyin.test.TestMockActivityProductSupport.mockPromotionEndDate;
+import static com.colonel.saas.gateway.douyin.test.TestMockActivityProductSupport.mockPromotionStartDate;
+import static com.colonel.saas.gateway.douyin.test.TestMockActivityProductSupport.parseCursor;
+import static com.colonel.saas.gateway.douyin.test.TestMockActivityProductSupport.productStatusText;
+import static com.colonel.saas.gateway.douyin.test.TestMockActivityProductSupport.resolveMockProductStatus;
 
 @Component
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "true")
@@ -21,14 +30,7 @@ public class TestDouyinProductGateway implements DouyinProductGateway {
         List<ActivityProductItem> all = new ArrayList<>();
         for (int i = 1; i <= 80; i++) {
             int rank = i + seedOffset;
-            int itemStatus = switch (rank % 6) {
-                case 0 -> 0;
-                case 1 -> 1;
-                case 2 -> 2;
-                case 3 -> 3;
-                case 4 -> 6;
-                default -> 4;
-            };
+            int itemStatus = resolveMockProductStatus(activitySeed, rank);
             long productId = 900000L + rank + activitySeed * 100L;
             long price = 9900L + rank * 13L + seedOffset * 17L;
             int shopIndex = (rank + shopOffset) % 9;
@@ -37,7 +39,7 @@ public class TestDouyinProductGateway implements DouyinProductGateway {
                     buildProductTitle(i, rank),
                     "https://example.com/test-product-" + i + ".png",
                     price,
-                    String.format(Locale.ROOT, "%.2f", price / 100.0),
+                    formatPriceText(price),
                     10L + (rank % 20),
                     1000L + rank * 11L + seedOffset * 7L,
                     1000L + (rank % 20) * 100L,
@@ -57,10 +59,10 @@ public class TestDouyinProductGateway implements DouyinProductGateway {
                     rank % 2 == 0 ? "美妆个护" : "女装穿搭",
                     String.valueOf(Math.max(1000 - rank, 0)),
                     i % 2 == 0 ? "满199减20" : "满299减40",
-                    String.format("2026-04-%02d", 1 + (seedOffset % 9)),
-                    String.format("2026-05-%02d", 10 + (seedOffset % 9)),
-                    String.format("2026-04-%02d", 1 + (seedOffset % 9)),
-                    String.format("2026-05-%02d", 10 + (seedOffset % 9)),
+                    mockActivityStartDate(),
+                    mockActivityEndDate(),
+                    mockPromotionStartDate(),
+                    mockPromotionEndDate(),
                     "https://example.com/test-detail/" + productId,
                     String.valueOf(46128341673481000L + (productId % 1000)),
                     Map.of("origin_colonel_buyin_id", String.valueOf(46128341673481000L + (productId % 1000)))
@@ -72,8 +74,8 @@ public class TestDouyinProductGateway implements DouyinProductGateway {
                     if (request.productInfo() == null || request.productInfo().isBlank()) {
                         return true;
                     }
-                    String keyword = request.productInfo().trim().toLowerCase(Locale.ROOT);
-                    return item.title().toLowerCase(Locale.ROOT).contains(keyword)
+                    String keyword = request.productInfo().trim().toLowerCase(java.util.Locale.ROOT);
+                    return item.title().toLowerCase(java.util.Locale.ROOT).contains(keyword)
                             || String.valueOf(item.productId()).contains(keyword);
                 })
                 .toList();
@@ -118,39 +120,4 @@ public class TestDouyinProductGateway implements DouyinProductGateway {
         };
         return shopNames[Math.floorMod(shopIndex, shopNames.length)];
     }
-
-    private int parseCursor(String cursor) {
-        if (cursor == null || cursor.isBlank()) {
-            return 0;
-        }
-        try {
-            return Math.max(Integer.parseInt(cursor.trim()), 0);
-        } catch (Exception e) {
-            return 0;
-        }
-    }
-
-    private long asLong(String value, long defaultValue) {
-        if (value == null || value.isBlank()) {
-            return defaultValue;
-        }
-        try {
-            return Long.parseLong(value.trim());
-        } catch (Exception e) {
-            return defaultValue;
-        }
-    }
-
-    private String productStatusText(int status) {
-        return switch (status) {
-            case 0 -> "待审核";
-            case 1 -> "推广中";
-            case 2 -> "申请未通过";
-            case 3 -> "合作已终止";
-            case 4 -> "合作前取消";
-            case 6 -> "合作已到期";
-            default -> "未知状态";
-        };
-    }
 }
-

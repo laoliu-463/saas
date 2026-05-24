@@ -26,6 +26,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../../utils/requestError'
 import { ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { batchAssignActivityProducts } from '../../../api/activityProduct'
@@ -67,7 +68,7 @@ const fetchUsers = async (keyword: string) => {
   try {
     userOptions.value = await loadProductAssigneeOptions(keyword)
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '加载负责人列表失败')
+    notifyApiFailure(error, message, { fallbackMessage: '加载负责人列表失败' })
   } finally {
     loadingUsers.value = false
   }
@@ -107,7 +108,7 @@ const handleSubmit = async () => {
     updateShow(false)
     return true
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '批量分配招商失败')
+    notifyApiFailure(error, message, { fallbackMessage: '批量分配招商失败' })
     return false
   }
 }

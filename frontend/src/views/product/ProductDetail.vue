@@ -46,8 +46,14 @@
               >
                 {{ detail.assigneeName || detail.bizStatus === 'ASSIGNED' ? '重新分配' : '分配招商' }}
               </n-button>
-              <n-tag v-if="businessReady" type="success" size="small" round>
-                已入商品库
+              <n-tag
+                v-if="libraryDisplay.selectedToLibrary"
+                :type="libraryDisplay.entryTagType"
+                size="small"
+                round
+                data-testid="product-library-entry-tag"
+              >
+                {{ libraryDisplay.entryLabel }}
               </n-tag>
               <n-tag v-if="detail.pinned" type="error" size="small" round data-testid="product-detail-pinned-tag">
                 {{ pinnedStatusText }}
@@ -61,6 +67,21 @@
                 内部寄样
               </n-button>
             </n-space>
+          </div>
+
+          <div v-if="libraryDisplay.hiddenFromList" class="library-visibility-alert">
+            <n-alert type="warning" title="已入库，但共享商品库列表不可见" bordered>
+              {{ libraryDisplay.visibilityHint }}
+            </n-alert>
+          </div>
+          <div v-else-if="!libraryDisplay.selectedToLibrary && libraryReadiness.code !== 'REJECTED'" class="library-visibility-alert">
+            <n-alert
+              :type="libraryReadiness.canDisplayAfterEntry ? 'success' : 'warning'"
+              :title="libraryReadiness.label"
+              bordered
+            >
+              {{ libraryReadiness.hint }}
+            </n-alert>
           </div>
 
           <n-tabs type="segment" animated style="margin-top: 12px;">
@@ -99,8 +120,8 @@
 
                 <n-card title="推进判断" size="small" style="margin-top: 16px;">
                   <div class="decision-card">
-                    <n-alert v-if="!businessReady" type="info" :bordered="false">
-                      商品通过审核后会自动进入商品库，进入商品库后再继续分配、推进判断和转链等后续动作。
+                    <n-alert v-if="!libraryDisplay.selectedToLibrary" type="info" :bordered="false">
+                      商品通过审核后会自动进入商品库；仅当满足联盟「推广中」等展示规则时，才会出现在共享商品库列表。
                     </n-alert>
                     <div class="decision-current">
                       <n-tag :type="decisionTagType(latestDecision?.level)" size="small" round>
@@ -189,6 +210,15 @@
                         <template v-if="detail.status !== undefined && detail.status !== null">
                           （{{ detail.status }}）
                         </template>
+                      </n-descriptions-item>
+                      <n-descriptions-item label="商品库展示">
+                        {{ libraryDisplay.selectedToLibrary ? libraryDisplay.listVisibilityLabel : libraryReadiness.label }}
+                        <template v-if="libraryDisplay.displayStatusLabel && libraryDisplay.selectedToLibrary">
+                          （{{ libraryDisplay.displayStatusLabel }}）
+                        </template>
+                      </n-descriptions-item>
+                      <n-descriptions-item v-if="libraryReadiness.hint && !libraryDisplay.selectedToLibrary" label="展示说明" :span="2">
+                        {{ libraryReadiness.hint }}
                       </n-descriptions-item>
                       <n-descriptions-item label="店铺名称">{{ detail.shopName || '-' }}</n-descriptions-item>
                       <n-descriptions-item label="商家信息">{{ detail.merchantName || detail.merchantShopName || '-' }}</n-descriptions-item>
@@ -402,6 +432,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useMessage } from 'naive-ui';
@@ -410,6 +441,18 @@ import { convertActivityProductLink, getActivityProductDetail, getActivityProduc
 import { useAuthStore } from '../../stores/auth';
 import { hasAccess } from '../../constants/rbac';
 import { copyProductBriefWithLink } from './product-copy';
+import { mergeLibraryDisplayFields, resolveProductLibraryDisplay, resolveProductLibraryReadiness } from './product-library-display';
+import {
+  buildOperationSummary,
+  formatOperationTime,
+  formatOperatorLabel,
+  formatStatusFlow,
+  getBizStatusLabel,
+  getDecisionLevelLabel,
+  getOperationTypeLabel,
+  normalizeLogText,
+  parseOperationPayload
+} from './product-operation-log-display';
 import { buildProductSampleContext } from '../sample/sample-context';
 import ProductSpecSelector from './components/ProductSpecSelector.vue';
 
@@ -470,9 +513,9 @@ const statusMap: Record<string, number> = {
 };
 
 const currentStep = computed(() => statusMap[detail.value?.bizStatus || 'PENDING_AUDIT'] ?? 0);
-const libraryReadyStatuses = new Set(['APPROVED', 'BOUND', 'ASSIGNED', 'LINKED', 'FOLLOWING']);
-const isLibraryReadyStatus = (statusCode?: string | null) => libraryReadyStatuses.has(String(statusCode || ''));
-const businessReady = computed(() => Boolean(detail.value?.selectedToLibrary || detail.value?.libraryVisible || isLibraryReadyStatus(detail.value?.bizStatus)));
+const libraryDisplay = computed(() => resolveProductLibraryDisplay(detail.value));
+const libraryReadiness = computed(() => resolveProductLibraryReadiness(detail.value));
+const businessReady = computed(() => libraryDisplay.value.selectedToLibrary);
 
 const formatPinnedUntil = (value?: string | null) => {
   if (!value) return '';
@@ -546,6 +589,39 @@ const promotionLinks = computed(() => {
   return [];
 });
 
+const getStatusLabel = getBizStatusLabel;
+const normalizeText = normalizeLogText;
+const decisionLabel = getDecisionLevelLabel;
+const formatOperatorDisplay = formatOperatorLabel;
+
+const operationLogContext = computed(() => ({
+  assigneeName: detail.value?.assigneeName
+}));
+
+const buildOperationSummaryForRow = (row: any) => buildOperationSummary(row, operationLogContext.value);
+
+const buildTimelineMeta = (type: string, operatorName: string, assigneeName: string) => {
+  if (type === 'DECISION') {
+    return `${operatorName} 更新了商品推进判断`;
+  }
+  if (type === 'ASSIGN_AUDIT') {
+    return `${operatorName} 指定审核负责人：${assigneeName}`;
+  }
+  if (type === 'ASSIGN') {
+    return `${operatorName} 完成分配，当前负责人：${assigneeName}`;
+  }
+  if (type === 'AUDIT') {
+    return `${operatorName} 完成审核判断`;
+  }
+  if (type === 'TALENT_FOLLOW' || type === 'TALENT_FOLLOW_APPEND') {
+    return `${operatorName} 更新了达人推进动作`;
+  }
+  if (type === 'PROMOTION_LINK' || type === 'LINK') {
+    return `${operatorName} 完成推广链接准备`;
+  }
+  return `${operatorName} 记录了一次业务动作`;
+};
+
 const latestDecision = computed(() => {
   const log = operationLogs.value.find((item: any) => item?.operationType === 'DECISION');
   if (!log) return null;
@@ -597,10 +673,12 @@ const timelineEvents = computed(() => {
     const assigneeName = payload.assigneeName || detail.value?.assigneeName || '未识别负责人';
     const operatorName = formatOperatorDisplay(log);
     const titles: Record<string, string> = {
+      LIBRARY_ENTRY: '商品已加入商品库',
       ASSIGN_AUDIT: `商品已分配给审核人 ${assigneeName}`,
       ASSIGN: `商品已分配给 ${assigneeName}`,
       AUDIT: log?.afterStatus === 'REJECTED' ? '商品审核被拒绝' : '商品审核通过',
       DECISION: payload.eventLabel || '商品推进判断已更新',
+      BIND_ACTIVITY: '商品活动绑定已更新',
       LINK: '商品推广链接已准备',
       PROMOTION_LINK: '商品推广链接已准备',
       TALENT_FOLLOW: '商品进入达人跟进',
@@ -609,7 +687,7 @@ const timelineEvents = computed(() => {
     };
     return {
       key: `${log?.id || type}-${index}`,
-      title: titles[type] || log?.operationRemark || '记录了新的推进动作',
+      title: titles[type] || buildOperationSummaryForRow(log),
       time: log?.createTime || '-',
       meta: buildTimelineMeta(type, operatorName, assigneeName),
       remark: normalizeText(log?.operationRemark),
@@ -619,12 +697,12 @@ const timelineEvents = computed(() => {
 });
 
 const logColumns = [
-  { title: '时间', key: 'createTime', width: 160 },
-  { title: '事件', key: 'operationTypeLabel', width: 160, render: (row: any) => mapOperationTypeLabel(row?.operationType) },
-  { title: '状态流转', key: 'statusFlow', width: 180, render: (row: any) => formatStatusFlow(row?.beforeStatus, row?.afterStatus) },
-  { title: '结果', key: 'success', width: 80, render: (row: any) => (row.success ? '成功' : '失败') },
+  { title: '时间', key: 'createTime', width: 160, render: (row: any) => formatOperationTime(row?.createTime) },
+  { title: '事件', key: 'operationTypeLabel', width: 140, render: (row: any) => getOperationTypeLabel(row?.operationType) },
+  { title: '状态变更', key: 'statusFlow', width: 180, render: (row: any) => formatStatusFlow(row?.beforeStatus, row?.afterStatus) || '—' },
+  { title: '结果', key: 'success', width: 80, render: (row: any) => (row.success === false ? '失败' : '成功') },
   { title: '操作人', key: 'operatorName', width: 140, render: (row: any) => formatOperatorDisplay(row) },
-  { title: '说明', key: 'operationRemark', minWidth: 220, render: (row: any) => buildOperationSummary(row) }
+  { title: '说明', key: 'operationRemark', minWidth: 260, render: (row: any) => buildOperationSummaryForRow(row) }
 ];
 
 const promotionColumns = [
@@ -655,12 +733,12 @@ const fetchData = async () => {
   loading.value = true;
   try {
     const detailRes: any = await getActivityProductDetail(props.activityId, props.productId);
-    detail.value = detailRes?.data || {};
+    detail.value = mergeLibraryDisplayFields(detailRes?.data || {});
     const logsRes: any = await getActivityProductOperationLogs(props.activityId, props.productId, { page: 1, size: 50 });
     operationLogs.value = logsRes?.data?.records || [];
     await loadSkus();
-  } catch {
-    message.error('加载商品详情失败');
+  } catch (error) {
+    notifyApiFailure(error, message, { fallbackMessage: '加载商品详情失败' });
   } finally {
     loading.value = false;
   }
@@ -682,126 +760,6 @@ watch(() => props.refreshKey, () => {
 
 const updateShow = (val: boolean) => emit('update:show', val);
 
-const getStatusLabel = (status?: string) => {
-  const map: Record<string, string> = {
-    PENDING_AUDIT: '待审核',
-    APPROVED: '审核通过',
-    REJECTED: '审核拒绝',
-    BOUND: '历史已绑定',
-    ASSIGNED: '已分配招商',
-    LINKED: '已转链',
-    FOLLOWING: '已转交达人 CRM'
-  };
-  return map[status || ''] || status || '未知';
-};
-
-const mapOperationTypeLabel = (type?: string) => {
-  const map: Record<string, string> = {
-    ASSIGN_AUDIT: '分配审核人',
-    ASSIGN: '分配招商',
-    AUDIT: '商品审核',
-    DECISION: '推进判断',
-    SYNC: '同步商品',
-    LINK: '生成推广链接',
-    PROMOTION_LINK: '生成推广链接',
-    TALENT_FOLLOW: '达人跟进',
-    TALENT_FOLLOW_APPEND: '追加跟进'
-  };
-  return map[type || ''] || type || '未知事件';
-};
-
-const normalizeText = (value?: string | null) => {
-  if (!value) return '';
-  const text = String(value).trim();
-  return text && text !== 'null' && text !== 'undefined' ? text : '';
-};
-
-const isUuidLike = (value?: string | null) => {
-  const text = normalizeText(value);
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text);
-};
-
-const formatStatusFlow = (beforeStatus?: string | null, afterStatus?: string | null) => {
-  return `${getStatusLabel(beforeStatus || '')} -> ${getStatusLabel(afterStatus || '')}`;
-};
-
-const simplifyUserDisplay = (value?: string | null) => {
-  const text = normalizeText(value);
-  return text || '';
-};
-
-const formatOperatorDisplay = (row: any) => {
-  const payload = parseOperationPayload(row?.operationPayload);
-  if (payload.operatorName) return payload.operatorName;
-  if (row?.operationType === 'SYNC') return '系统';
-  if (isUuidLike(row?.operatorId)) return '历史记录';
-  return simplifyUserDisplay(row?.operatorId) || '-';
-};
-
-const parseOperationPayload = (raw?: string | null) => {
-  const payload: Record<string, string> = {};
-  const text = normalizeText(raw);
-  if (!text) return payload;
-  const trimmed = text.startsWith('{') && text.endsWith('}') ? text.slice(1, -1) : text;
-  trimmed.split(', ').forEach((pair) => {
-    const index = pair.indexOf('=');
-    if (index <= 0) return;
-    const key = pair.slice(0, index).trim();
-    const value = pair.slice(index + 1).trim();
-    if (key) payload[key] = value;
-  });
-  return payload;
-};
-
-const buildTimelineMeta = (type: string, operatorName: string, assigneeName: string) => {
-  if (type === 'DECISION') {
-    return `${operatorName} 更新了商品推进判断`;
-  }
-  if (type === 'ASSIGN_AUDIT') {
-    return `${operatorName} 指定审核负责人：${assigneeName}`;
-  }
-  if (type === 'ASSIGN') {
-    return `${operatorName} 完成分配，当前负责人：${assigneeName}`;
-  }
-  if (type === 'AUDIT') {
-    return `${operatorName} 完成审核判断`;
-  }
-  if (type === 'TALENT_FOLLOW' || type === 'TALENT_FOLLOW_APPEND') {
-    return `${operatorName} 更新了达人推进动作`;
-  }
-  if (type === 'PROMOTION_LINK' || type === 'LINK') {
-    return `${operatorName} 完成推广链接准备`;
-  }
-  return `${operatorName} 记录了一次业务动作`;
-};
-
-const buildOperationSummary = (row: any) => {
-  const payload = parseOperationPayload(row?.operationPayload);
-  const type = String(row?.operationType || '');
-  if (type === 'DECISION') {
-    return row?.operationRemark || `${payload.decisionLabel || '推进判断'}：未填写原因`;
-  }
-  if (type === 'ASSIGN_AUDIT') {
-    return row?.operationRemark || `已分配给审核人 ${payload.assigneeName || detail.value?.assigneeName || '负责人'}`;
-  }
-  if (type === 'ASSIGN') {
-    return row?.operationRemark || `已分配给 ${payload.assigneeName || detail.value?.assigneeName || '负责人'}`;
-  }
-  if (type === 'AUDIT' && row?.afterStatus === 'REJECTED') {
-    return row?.operationRemark || '审核拒绝';
-  }
-  if (type === 'AUDIT') {
-    return row?.operationRemark || '审核通过';
-  }
-  if (type === 'PROMOTION_LINK' || type === 'LINK') {
-    return row?.operationRemark || '已生成推广链接';
-  }
-  if (type === 'TALENT_FOLLOW' || type === 'TALENT_FOLLOW_APPEND') {
-    return row?.operationRemark || '已更新达人跟进';
-  }
-  return row?.operationRemark || normalizeText(row?.operationPayload) || '-';
-};
-
 const statusBadgeClass = (status?: string) => {
   if (status === 'PENDING_AUDIT') return 'warning';
   if (['LINKED', 'FOLLOWING'].includes(status || '')) return 'success';
@@ -813,16 +771,6 @@ const promotionTagType = (status?: string) => {
   if (status === 'READY') return 'success';
   if (status === 'FAILED') return 'error';
   return 'warning';
-};
-
-const decisionLabel = (level?: string) => {
-  const map: Record<string, string> = {
-    MAIN: '主推',
-    SECONDARY: '次推',
-    PAUSE: '暂缓',
-    DROP: '放弃'
-  };
-  return map[level || ''] || '暂无判断';
 };
 
 const decisionTagType = (level?: string) => {
@@ -861,7 +809,7 @@ const saveDecision = async () => {
     decisionForm.value.reason = '';
     await fetchData();
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '推进判断保存失败，请稍后重试');
+    notifyApiFailure(error, message, { fallbackMessage: '推进判断保存失败，请稍后重试' });
   } finally {
     decisionSaving.value = false;
   }
@@ -945,7 +893,7 @@ const copyPromotionLink = async () => {
     }
     await fetchData();
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '推广链接生成失败，请稍后重试');
+    notifyApiFailure(error, message, { fallbackMessage: '推广链接生成失败，请稍后重试' });
   } finally {
     promotionGenerating.value = false;
   }
@@ -1011,7 +959,7 @@ const copyProductBrief = async () => {
       message.success('讲解 + 短链已复制');
     }
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '讲解复制失败，请稍后重试');
+    notifyApiFailure(error, message, { fallbackMessage: '讲解复制失败，请稍后重试' });
   } finally {
     briefCopying.value = false;
   }
@@ -1031,6 +979,7 @@ const isHttpLink = (value?: string | null) => /^https?:\/\//i.test(normalizeText
 .drawer-title { font-size: var(--text-xl); font-weight: 600; color: var(--text-primary); }
 .detail-container { display: flex; flex-direction: column; gap: 16px; }
 .action-bar { padding: 12px; background: var(--bg-sidebar); border-radius: var(--radius-md); border: 1px dashed var(--border-color); }
+.library-visibility-alert { margin-top: -4px; }
 .pane-content { padding: 16px 4px; }
 .biz-steps { margin: 20px 0 32px; padding: 4px 2px 0; }
 .biz-steps :deep(.n-step) {

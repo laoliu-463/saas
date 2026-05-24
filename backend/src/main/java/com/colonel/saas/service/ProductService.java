@@ -210,14 +210,29 @@ public class ProductService {
         SelectedLibraryFilter safeFilter = filter == null ? SelectedLibraryFilter.empty() : filter.normalized();
         long currentPage = Math.max(page, 1);
         long pageSize = Math.max(size, 1);
-        long fromIndex = (currentPage - 1) * pageSize;
-        List<Product> pageRecords = new ArrayList<>();
-        long matchedTotal = 0L;
-        Set<String> colonelPartnerProductIds = resolveColonelPartnerProductScope(safeFilter);
-        Set<String> colonelNameProductIds = resolveColonelNameProductScope(safeFilter);
         if (StringUtils.hasText(safeFilter.assigneeId()) && parseAssigneeFilterId(safeFilter.assigneeId()) == null) {
             return emptySelectedLibraryPage(currentPage, pageSize);
         }
+
+        List<Product> allMatched = collectSelectedLibraryProducts(safeFilter);
+        sortSelectedLibraryProducts(allMatched, safeFilter.sortBy());
+
+        long total = allMatched.size();
+        int fromIndex = (int) Math.min((currentPage - 1) * pageSize, total);
+        int toIndex = (int) Math.min(fromIndex + pageSize, total);
+        List<Product> pageRecords = fromIndex < toIndex
+                ? new ArrayList<>(allMatched.subList(fromIndex, toIndex))
+                : List.of();
+
+        Page<Product> result = new Page<>(currentPage, pageSize, total);
+        result.setRecords(pageRecords);
+        return result;
+    }
+
+    private List<Product> collectSelectedLibraryProducts(SelectedLibraryFilter safeFilter) {
+        List<Product> matched = new ArrayList<>();
+        Set<String> colonelPartnerProductIds = resolveColonelPartnerProductScope(safeFilter);
+        Set<String> colonelNameProductIds = resolveColonelNameProductScope(safeFilter);
 
         long statePageNo = 1L;
         boolean hasMore = true;
@@ -262,25 +277,25 @@ public class ProductService {
                 if (!matchesSelectedLibraryFilters(product, snapshot, state, safeFilter)) {
                     continue;
                 }
-                if (matchedTotal >= fromIndex && pageRecords.size() < pageSize) {
-                    pageRecords.add(product);
-                }
-                matchedTotal++;
+                matched.add(product);
             }
             hasMore = statePage.getTotal() > statePageNo * SELECTED_LIBRARY_BATCH_SIZE;
             statePageNo++;
         }
+        return matched;
+    }
 
-        if ("latest".equals(safeFilter.sortBy())) {
-            pageRecords.sort(Comparator.comparing(
+    private void sortSelectedLibraryProducts(List<Product> products, String sortBy) {
+        if (products == null || products.size() <= 1) {
+            return;
+        }
+        if ("latest".equals(sortBy)) {
+            products.sort(Comparator.comparing(
                     Product::getSelectedAt,
                     Comparator.nullsLast(Comparator.reverseOrder())));
-        } else {
-            pageRecords.sort(this::compareLibraryProducts);
+            return;
         }
-        Page<Product> result = new Page<>(currentPage, pageSize, matchedTotal);
-        result.setRecords(pageRecords);
-        return result;
+        products.sort(this::compareLibraryProducts);
     }
 
     /**
@@ -1481,7 +1496,6 @@ public class ProductService {
         applyProductIdScope(countWrapper, auditTagProductScope);
         Long total = snapshotMapper.selectCount(countWrapper);
 
-        Page<ProductSnapshot> snapshotPage = new Page<>(offset / pageSize + 1, pageSize);
         LambdaQueryWrapper<ProductSnapshot> queryWrapper = new LambdaQueryWrapper<ProductSnapshot>()
                 .eq(ProductSnapshot::getActivityId, activityId)
                 .eq(promotionStatus != null, ProductSnapshot::getStatus, promotionStatus)
@@ -1494,16 +1508,55 @@ public class ProductService {
                 .orderByDesc(ProductSnapshot::getCreateTime);
         applyBizStatusFilter(queryWrapper, bizStatusFilter);
         applyProductIdScope(queryWrapper, auditTagProductScope);
-        List<ProductSnapshot> snapshots = snapshotMapper.selectPage(snapshotPage, queryWrapper).getRecords();
 
-        if (snapshots.isEmpty()) {
-            return emptyActivityProductListView(activityId, total == null ? 0 : total);
+        String normalizedSortBy = normalizeActivityProductSortBy(sortBy);
+        List<ProductSnapshot> snapshots;
+        List<Map<String, Object>> items;
+        int nextOffset;
+        boolean hasMore;
+        if ("latest".equals(normalizedSortBy)) {
+            Page<ProductSnapshot> snapshotPage = new Page<>(offset / pageSize + 1, pageSize);
+            snapshots = snapshotMapper.selectPage(snapshotPage, queryWrapper).getRecords();
+            if (snapshots.isEmpty()) {
+                return emptyActivityProductListView(activityId, total == null ? 0 : total);
+            }
+            items = buildActivityProductItems(activityId, snapshots);
+            sortActivityProductItems(items, normalizedSortBy);
+            nextOffset = offset + snapshots.size();
+            hasMore = total != null && nextOffset < total;
+        } else {
+            List<ProductSnapshot> allSnapshots = loadAllActivitySnapshots(queryWrapper);
+            if (allSnapshots.isEmpty()) {
+                return emptyActivityProductListView(activityId, total == null ? 0 : total);
+            }
+            List<Map<String, Object>> sortedItems = buildActivityProductItems(activityId, allSnapshots);
+            sortActivityProductItems(sortedItems, normalizedSortBy);
+            int totalItems = sortedItems.size();
+            int safeOffset = Math.max(offset, 0);
+            int fromIndex = Math.min(safeOffset, totalItems);
+            int toIndex = Math.min(fromIndex + pageSize, totalItems);
+            items = fromIndex < toIndex ? new ArrayList<>(sortedItems.subList(fromIndex, toIndex)) : List.of();
+            nextOffset = fromIndex + items.size();
+            hasMore = nextOffset < totalItems;
         }
 
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("activityId", activityId);
+        result.put("institutionId", 0);
+        result.put("total", total == null ? items.size() : total);
+        result.put("nextCursor", hasMore ? String.valueOf(nextOffset) : "");
+        result.put("hasMore", hasMore);
+        result.put("items", items);
+        return result;
+    }
+
+    private List<Map<String, Object>> buildActivityProductItems(String activityId, List<ProductSnapshot> snapshots) {
+        if (snapshots == null || snapshots.isEmpty()) {
+            return List.of();
+        }
         Set<String> productIds = snapshots.stream()
                 .map(ProductSnapshot::getProductId)
                 .collect(Collectors.toCollection(HashSet::new));
-
         Map<String, ProductOperationState> stateMap = operationStateMapper.selectList(
                         new LambdaQueryWrapper<ProductOperationState>()
                                 .eq(ProductOperationState::getActivityId, activityId)
@@ -1520,8 +1573,7 @@ public class ProductService {
         Map<Long, Merchant> merchantMap = buildMerchantMap(snapshots.stream()
                 .map(ProductSnapshot::getShopId)
                 .collect(Collectors.toCollection(HashSet::new)));
-
-        List<Map<String, Object>> items = snapshots.stream()
+        return snapshots.stream()
                 .map(snapshot -> toActivityProductView(
                         snapshot,
                         stateMap.get(snapshot.getProductId()),
@@ -1531,19 +1583,28 @@ public class ProductService {
                         lookupMerchant(merchantMap, snapshot.getShopId()),
                         assigneeNameMap))
                 .collect(Collectors.toCollection(ArrayList::new));
-        sortActivityProductItems(items, normalizeActivityProductSortBy(sortBy));
+    }
 
-        int nextOffset = offset + snapshots.size();
-        boolean hasMore = total != null && nextOffset < total;
+    private static final long ACTIVITY_SNAPSHOT_BATCH_SIZE = 200L;
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("activityId", activityId);
-        result.put("institutionId", 0);
-        result.put("total", total == null ? items.size() : total);
-        result.put("nextCursor", hasMore ? String.valueOf(nextOffset) : "");
-        result.put("hasMore", hasMore);
-        result.put("items", items);
-        return result;
+    private List<ProductSnapshot> loadAllActivitySnapshots(LambdaQueryWrapper<ProductSnapshot> queryWrapper) {
+        List<ProductSnapshot> all = new ArrayList<>();
+        long pageNo = 1L;
+        while (true) {
+            Page<ProductSnapshot> page = snapshotMapper.selectPage(
+                    new Page<>(pageNo, ACTIVITY_SNAPSHOT_BATCH_SIZE),
+                    queryWrapper);
+            List<ProductSnapshot> records = page.getRecords();
+            if (records == null || records.isEmpty()) {
+                break;
+            }
+            all.addAll(records);
+            if (page.getTotal() <= pageNo * ACTIVITY_SNAPSHOT_BATCH_SIZE) {
+                break;
+            }
+            pageNo++;
+        }
+        return all;
     }
 
     private Map<String, Object> emptyActivityProductListView(String activityId) {

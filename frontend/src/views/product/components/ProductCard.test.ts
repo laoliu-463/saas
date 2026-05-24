@@ -29,6 +29,8 @@ const baseProps = {
     shopName: '测试店铺',
     bizStatus: 'APPROVED',
     selectedToLibrary: true,
+    libraryVisible: true,
+    displayStatus: 'DISPLAYING',
     priceText: '¥99.00',
     activityCosRatioText: '20%',
     estimatedServiceFee: '19.80'
@@ -81,6 +83,39 @@ describe('ProductCard pin action', () => {
     await wrapper.get('[data-testid="product-unpin-button"]').trigger('click')
 
     expect(wrapper.emitted('unpin')?.[0]).toEqual([product])
+  })
+
+  it('shows ready-after-entry tag for promoting products in manage mode', () => {
+    const product = {
+      ...baseProps.product,
+      selectedToLibrary: false,
+      status: 1,
+      statusText: '推广中',
+      promotionEndTime: '2026-12-31'
+    }
+    const wrapper = mount(ProductCard, {
+      props: { ...baseProps, product, libraryMode: false },
+      global: { stubs: naiveStubs }
+    })
+
+    expect(wrapper.text()).toContain('审核入库后可展示')
+  })
+
+  it('shows hidden-from-library warning tag when product is stored but not list-visible', () => {
+    const product = {
+      ...baseProps.product,
+      selectedToLibrary: true,
+      libraryVisible: false,
+      displayStatus: 'HIDDEN',
+      hiddenReason: 'NOT_ELIGIBLE',
+      statusText: '申请未通过'
+    }
+    const wrapper = mount(ProductCard, {
+      props: { ...baseProps, product },
+      global: { stubs: naiveStubs }
+    })
+
+    expect(wrapper.text()).toContain('已入库·列表不可见')
   })
 
   it('opens ads rule modal when the ads tag is clicked', async () => {

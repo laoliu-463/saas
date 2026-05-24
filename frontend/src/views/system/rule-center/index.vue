@@ -156,7 +156,38 @@
               <div>旧值：{{ log.oldValue || '（空）' }}</div>
               <div>新值：{{ log.newValue || '（空）' }}</div>
               <div v-if="log.changeReason" class="rule-center__log-reason">原因：{{ log.changeReason }}</div>
-              <div v-if="log.eventId" class="rule-center__log-event">事件：{{ log.eventId }}</div>
+              <div v-if="log.eventId" class="rule-center__log-event">
+                <span>事件：{{ log.eventId }}</span>
+                <n-button
+                  text
+                  size="tiny"
+                  :loading="loadingEventId === log.eventId"
+                  @click="loadEventStatus(log.eventId)"
+                >
+                  查看事件状态
+                </n-button>
+              </div>
+              <div v-if="log.eventId && eventStatusMap[log.eventId]" class="rule-center__event-status">
+                <div>
+                  Outbox：{{ eventStatusMap[log.eventId].status || '-' }}
+                  <span v-if="eventStatusMap[log.eventId].retryCount != null">
+                    · 重试 {{ eventStatusMap[log.eventId].retryCount }} 次
+                  </span>
+                </div>
+                <div v-if="eventStatusMap[log.eventId].errorMessage">
+                  错误：{{ eventStatusMap[log.eventId].errorMessage }}
+                </div>
+                <div v-if="eventStatusMap[log.eventId].consumers?.length">
+                  消费者：
+                  <span
+                    v-for="consumer in eventStatusMap[log.eventId].consumers"
+                    :key="consumer.consumerName"
+                    class="rule-center__consumer"
+                  >
+                    {{ consumer.consumerName }} / {{ consumer.status }}
+                  </span>
+                </div>
+              </div>
             </n-timeline-item>
           </n-timeline>
         </n-spin>
@@ -166,6 +197,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../../utils/requestError'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import PageHeader from '../../../components/PageHeader.vue'
@@ -174,6 +206,7 @@ import { MODAL_WIDTH } from '../../../constants/ui'
 import {
   batchUpdateRuleCenter,
   getRuleCenterChangeLogs,
+  getRuleCenterEventStatus,
   getRuleCenterSchema,
   getRuleCenterValues,
   validateRuleCenter
@@ -213,6 +246,8 @@ const showLogs = ref(false)
 const logsLoading = ref(false)
 const changeLogs = ref<any[]>([])
 const logTitle = ref('变更历史')
+const loadingEventId = ref('')
+const eventStatusMap = reactive<Record<string, any>>({})
 
 const groupMenuOptions = computed(() =>
   groups.value.map((group) => ({ label: group.groupName, key: group.groupCode }))
@@ -264,7 +299,7 @@ async function fetchData() {
       activeGroup.value = groups.value[0].groupCode
     }
   } catch (error: any) {
-    message.error(error?.message || '加载规则中心失败')
+    notifyApiFailure(error, message, { fallbackMessage: '加载规则中心失败' })
   } finally {
     loading.value = false
   }
@@ -307,7 +342,7 @@ async function openConfirm(group: RuleGroup) {
     pendingGroup.value = group
     showConfirm.value = true
   } catch (error: any) {
-    message.error(error?.message || '校验失败')
+    notifyApiFailure(error, message, { fallbackMessage: '校验失败' })
   }
 }
 
@@ -327,7 +362,7 @@ async function confirmSave() {
     showConfirm.value = false
     message.success(warnings.length ? `保存成功：${warnings.join('；')}` : '保存成功')
   } catch (error: any) {
-    message.error(error?.message || '保存失败')
+    notifyApiFailure(error, message, { fallbackMessage: '保存失败' })
   } finally {
     saving.value = false
   }
@@ -342,9 +377,22 @@ async function openChangeLogs(configKey: string) {
     const res: any = await getRuleCenterChangeLogs({ key: configKey, page: 1, size: 20 })
     changeLogs.value = res?.data?.records || res?.data?.list || []
   } catch (error: any) {
-    message.error(error?.message || '加载变更历史失败')
+    notifyApiFailure(error, message, { fallbackMessage: '加载变更历史失败' })
   } finally {
     logsLoading.value = false
+  }
+}
+
+async function loadEventStatus(eventId: string) {
+  if (!eventId || eventStatusMap[eventId]) return
+  loadingEventId.value = eventId
+  try {
+    const res: any = await getRuleCenterEventStatus(eventId)
+    eventStatusMap[eventId] = res?.data || {}
+  } catch (error: any) {
+    notifyApiFailure(error, message, { fallbackMessage: '加载事件状态失败' })
+  } finally {
+    loadingEventId.value = ''
   }
 }
 
@@ -430,6 +478,27 @@ onMounted(fetchData)
   margin-top: 4px;
   font-size: 12px;
   color: var(--n-text-color-3);
+}
+
+.rule-center__log-event {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.rule-center__event-status {
+  margin-top: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--n-color);
+  color: var(--n-text-color-2);
+  font-size: 12px;
+}
+
+.rule-center__consumer {
+  display: inline-block;
+  margin-right: 8px;
 }
 
 @media (max-width: 960px) {

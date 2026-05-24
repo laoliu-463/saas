@@ -1288,7 +1288,8 @@ ALTER TABLE product_operation_state
     ADD COLUMN IF NOT EXISTS first_displayed_at TIMESTAMP,
     ADD COLUMN IF NOT EXISTS last_displayed_at TIMESTAMP,
     ADD COLUMN IF NOT EXISTS hidden_reason VARCHAR(128),
-    ADD COLUMN IF NOT EXISTS display_rule_version INTEGER NOT NULL DEFAULT 1;
+    ADD COLUMN IF NOT EXISTS display_rule_version INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS selected_to_library BOOLEAN DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_pos_product_display_status
     ON product_operation_state (product_id, display_status)
@@ -1306,6 +1307,10 @@ CREATE TABLE IF NOT EXISTS colonel_partner (
     contact_name VARCHAR(128),
     contact_phone VARCHAR(64),
     source_updated_at TIMESTAMP,
+    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    create_by UUID,
+    update_by UUID,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted INTEGER NOT NULL DEFAULT 0,
@@ -1387,6 +1392,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_domain_event_outbox_event_key
 
 -- 5. colonel_partner ??
 ALTER TABLE colonel_partner
+    ADD COLUMN IF NOT EXISTS create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS create_by UUID,
+    ADD COLUMN IF NOT EXISTS update_by UUID,
     ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(512),
     ADD COLUMN IF NOT EXISTS contact_wechat VARCHAR(100),
     ADD COLUMN IF NOT EXISTS contact_remark TEXT,

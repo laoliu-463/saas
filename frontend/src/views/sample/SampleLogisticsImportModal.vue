@@ -38,6 +38,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { computed, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import { downloadLogisticsImportTemplate, importSampleLogistics } from '../../api/sample'
@@ -76,7 +77,7 @@ const downloadTemplate = async () => {
     a.click()
     URL.revokeObjectURL(url)
   } catch (error: any) {
-    message.error(error?.message || '模板下载失败')
+    notifyApiFailure(error, message, { fallbackMessage: '模板下载失败' })
   }
 }
 
@@ -105,7 +106,7 @@ const handleUpload = async ({ file, onFinish, onError }: any) => {
     emit('success')
     onFinish?.()
   } catch (error: any) {
-    message.error(error?.response?.data?.msg || error?.message || '导入失败')
+    notifyApiFailure(error, message, { fallbackMessage: '导入失败' })
     onError?.()
   } finally {
     uploading.value = false

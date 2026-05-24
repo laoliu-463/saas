@@ -159,6 +159,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useMessage } from 'naive-ui';
 import PageHeader from '../../components/PageHeader.vue';
@@ -510,7 +511,7 @@ const checkTokenStatus = async () => {
     message.success('Token 状态已更新');
   } catch (error: any) {
     setCheck('token', 'error', 'Token 查询异常', extractErrorMessage(error, 'Token 状态查询失败'));
-    message.error(extractErrorMessage(error, 'Token 状态查询失败'));
+    notifyApiFailure(error, message, { fallbackMessage: 'Token 状态查询失败' });
   } finally {
     loading.status = false;
   }
@@ -535,7 +536,7 @@ const createToken = async () => {
   } catch (error: any) {
     const raw = extractErrorMessage(error, 'Token 创建失败');
     setCheck('token', 'error', 'Token 创建失败', mapCreateTokenError(raw));
-    message.error(mapCreateTokenError(raw));
+    notifyApiFailure(error, message, { fallbackMessage: mapCreateTokenError(raw) });
   } finally {
     loading.create = false;
   }
@@ -549,7 +550,7 @@ const refreshToken = async () => {
     message.success('Token 已刷新');
   } catch (error: any) {
     setCheck('token', 'error', 'Token 刷新异常', extractErrorMessage(error, 'Token 刷新失败'));
-    message.error(extractErrorMessage(error, 'Token 刷新失败'));
+    notifyApiFailure(error, message, { fallbackMessage: 'Token 刷新失败' });
   } finally {
     loading.refresh = false;
   }
@@ -566,7 +567,7 @@ const testActivityList = async () => {
     message.success(result.status === 'success' ? '活动列表联调成功' : '活动列表已命中后端，结果见下方');
   } catch (error: any) {
     debugResult.value = null;
-    message.error(extractErrorMessage(error, '活动列表联调失败'));
+    notifyApiFailure(error, message, { fallbackMessage: '活动列表联调失败' });
   } finally {
     loading.activity = false;
   }
@@ -581,7 +582,7 @@ const testProductActivities = async () => {
     message.success(result.status === 'success' ? '活动商品活动列表联调成功' : '活动商品接口已命中后端，结果见下方');
   } catch (error: any) {
     debugResult.value = null;
-    message.error(extractErrorMessage(error, '活动商品联调失败'));
+    notifyApiFailure(error, message, { fallbackMessage: '活动商品联调失败' });
   } finally {
     loading.productActivities = false;
   }
@@ -605,7 +606,7 @@ const testActivityProductList = async () => {
     message.success(`指定活动商品联调完成，当前返回 ${productCount} 条`);
   } catch (error: any) {
     debugResult.value = null;
-    message.error(extractErrorMessage(error, '指定活动商品联调失败'));
+    notifyApiFailure(error, message, { fallbackMessage: '指定活动商品联调失败' });
   } finally {
     loading.activityProductList = false;
   }
@@ -651,7 +652,7 @@ const testOrderSettlements = async () => {
     }
   } catch (error: any) {
     debugResult.value = null;
-    message.error(extractErrorMessage(error, '分次结算订单查询失败'));
+    notifyApiFailure(error, message, { fallbackMessage: '分次结算订单查询失败' });
   } finally {
     loading.orderSettlements = false;
   }
@@ -686,7 +687,7 @@ const probeProductSkus = async () => {
   } catch (error: any) {
     debugResult.value = null;
     setCheck('productSkus', 'error', '商品 SKU 探针异常', extractErrorMessage(error, '商品 SKU 探针失败'));
-    message.error(extractErrorMessage(error, '商品 SKU 探针失败'));
+    notifyApiFailure(error, message, { fallbackMessage: '商品 SKU 探针失败' });
   } finally {
     loading.productSkuProbe = false;
   }
@@ -885,7 +886,7 @@ const runFullCheck = async () => {
       ...summary,
       error: extractErrorMessage(error, '联调状态刷新失败')
     }, null, 2);
-    message.error(extractErrorMessage(error, '联调状态刷新失败'));
+    notifyApiFailure(error, message, { fallbackMessage: '联调状态刷新失败' });
   } finally {
     loading.fullCheck = false;
   }

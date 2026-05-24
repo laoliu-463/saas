@@ -70,7 +70,7 @@ const router = createRouter({
         {
           path: 'sample',
           component: () => import('../views/sample/index.vue'),
-          meta: { title: '寄样台', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '合作单', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'sample/apply',
@@ -90,7 +90,7 @@ const router = createRouter({
         {
           path: 'ops/shipping',
           component: () => import('../views/ops/Shipping.vue'),
-          meta: { title: '物流发货', roles: [ROLE.OPS_STAFF] }
+          meta: { title: '发货台', roles: [ROLE.OPS_STAFF] }
         },
         {
           path: 'data',

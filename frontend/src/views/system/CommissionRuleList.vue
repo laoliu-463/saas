@@ -74,6 +74,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { h, onMounted, reactive, ref } from 'vue'
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui'
 import PageHeader from '../../components/PageHeader.vue'
@@ -134,7 +135,7 @@ const fetchData = async () => {
     data.value = responseData?.records || []
     pagination.itemCount = responseData?.total || 0
   } catch (error: any) {
-    message.error(error?.message || '获取提成规则失败')
+    notifyApiFailure(error, message, { fallbackMessage: '获取提成规则失败' })
     data.value = []
     pagination.itemCount = 0
   } finally {
@@ -241,7 +242,7 @@ const handleSubmit = async () => {
     showModal.value = false
     await fetchData()
   } catch (error: any) {
-    message.error(error?.message || '保存失败')
+    notifyApiFailure(error, message, { fallbackMessage: '保存失败' })
   } finally {
     submitting.value = false
   }
@@ -253,7 +254,7 @@ const handleDelete = async (id: string) => {
     message.success('删除成功')
     await fetchData()
   } catch (error: any) {
-    message.error(error?.message || '删除失败')
+    notifyApiFailure(error, message, { fallbackMessage: '删除失败' })
   }
 }
 

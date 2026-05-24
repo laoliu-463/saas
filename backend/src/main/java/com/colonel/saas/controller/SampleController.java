@@ -57,8 +57,10 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
+import lombok.Data;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
@@ -245,6 +247,21 @@ public class SampleController extends BaseController {
             @Parameter(description = "寄样状态。可用值包括 PENDING_AUDIT、PENDING_SHIP、SHIPPING、DELIVERED、PENDING_HOMEWORK、COMPLETED、REJECTED、CLOSED。") @RequestParam(required = false) String status,
             @Parameter(description = "渠道负责人用户 ID。") @RequestParam(required = false) UUID channelUserId,
             @Parameter(description = "招商负责人用户 ID。") @RequestParam(required = false) UUID recruiterUserId,
+            @Parameter(description = "商品 ID 或商品名称。") @RequestParam(required = false) String productKeyword,
+            @Parameter(description = "店铺 ID 或店铺名称。") @RequestParam(required = false) String shopKeyword,
+            @Parameter(description = "物流单号。") @RequestParam(required = false) String trackingNo,
+            @Parameter(description = "申请编号 / 合作单号。") @RequestParam(required = false) String requestNo,
+            @Parameter(description = "达人昵称或达人号。") @RequestParam(required = false) String talentKeyword,
+            @Parameter(description = "合作类型。") @RequestParam(required = false) String cooperationType,
+            @Parameter(description = "寄样负责方。") @RequestParam(required = false) String sampleOwnerType,
+            @Parameter(description = "交作业类型。") @RequestParam(required = false) String homeworkType,
+            @Parameter(description = "收货人姓名。") @RequestParam(required = false) String recipientName,
+            @Parameter(description = "收货人手机号。") @RequestParam(required = false) String recipientPhone,
+            @Parameter(description = "申请开始时间。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime applyStartTime,
+            @Parameter(description = "申请结束时间。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime applyEndTime,
+            @Parameter(description = "交作业 / 完成开始时间。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime homeworkStartTime,
+            @Parameter(description = "交作业 / 完成结束时间。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime homeworkEndTime,
+            @Parameter(description = "物流公司。") @RequestParam(required = false) String logisticsCompany,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) com.colonel.saas.common.enums.DataScope dataScope,
@@ -264,7 +281,26 @@ public class SampleController extends BaseController {
             status = "PENDING_AUDIT";
         }
 
-        applySampleQueryFilters(wrapper, status, keyword, channelUserId);
+        applySampleQueryFilters(
+                wrapper,
+                status,
+                keyword,
+                channelUserId,
+                productKeyword,
+                shopKeyword,
+                trackingNo,
+                requestNo,
+                talentKeyword,
+                cooperationType,
+                sampleOwnerType,
+                homeworkType,
+                recipientName,
+                recipientPhone,
+                applyStartTime,
+                applyEndTime,
+                homeworkStartTime,
+                homeworkEndTime,
+                logisticsCompany);
 
         IPage<SampleRequest> samplePage;
         // 招商专员且数据范围为个人：按“我负责的商品”过滤
@@ -305,6 +341,24 @@ public class SampleController extends BaseController {
             com.colonel.saas.common.enums.DataScope dataScope,
             Object roleCodes) {
         return getSamplePage(page, size, keyword, status, null, null, userId, deptId, dataScope, roleCodes);
+    }
+
+    public ApiResult<PageResult<SampleVO>> getSamplePage(
+            long page,
+            long size,
+            String keyword,
+            String status,
+            UUID channelUserId,
+            UUID recruiterUserId,
+            UUID userId,
+            UUID deptId,
+            com.colonel.saas.common.enums.DataScope dataScope,
+            Object roleCodes) {
+        return getSamplePage(
+                page, size, keyword, status, channelUserId, recruiterUserId,
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null,
+                userId, deptId, dataScope, roleCodes);
     }
 
     @Operation(summary = "寄样达人搜索", description = "搜索可用于寄样申请的达人候选数据，数据来源于达人抓取结果。")
@@ -753,6 +807,21 @@ public class SampleController extends BaseController {
             @Parameter(description = "关键字。") @RequestParam(required = false) String keyword,
             @Parameter(description = "渠道负责人用户 ID。") @RequestParam(required = false) UUID channelUserId,
             @Parameter(description = "招商负责人用户 ID。") @RequestParam(required = false) UUID recruiterUserId,
+            @Parameter(description = "商品 ID 或商品名称。") @RequestParam(required = false) String productKeyword,
+            @Parameter(description = "店铺 ID 或店铺名称。") @RequestParam(required = false) String shopKeyword,
+            @Parameter(description = "物流单号。") @RequestParam(required = false) String trackingNo,
+            @Parameter(description = "申请编号 / 合作单号。") @RequestParam(required = false) String requestNo,
+            @Parameter(description = "达人昵称或达人号。") @RequestParam(required = false) String talentKeyword,
+            @Parameter(description = "合作类型。") @RequestParam(required = false) String cooperationType,
+            @Parameter(description = "寄样负责方。") @RequestParam(required = false) String sampleOwnerType,
+            @Parameter(description = "交作业类型。") @RequestParam(required = false) String homeworkType,
+            @Parameter(description = "收货人姓名。") @RequestParam(required = false) String recipientName,
+            @Parameter(description = "收货人手机号。") @RequestParam(required = false) String recipientPhone,
+            @Parameter(description = "申请开始时间。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime applyStartTime,
+            @Parameter(description = "申请结束时间。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime applyEndTime,
+            @Parameter(description = "交作业 / 完成开始时间。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime homeworkStartTime,
+            @Parameter(description = "交作业 / 完成结束时间。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime homeworkEndTime,
+            @Parameter(description = "物流公司。") @RequestParam(required = false) String logisticsCompany,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
@@ -765,7 +834,26 @@ public class SampleController extends BaseController {
         }
 
         QueryWrapper<SampleRequest> wrapper = new QueryWrapper<>();
-        applySampleQueryFilters(wrapper, status, keyword, channelUserId);
+        applySampleQueryFilters(
+                wrapper,
+                status,
+                keyword,
+                channelUserId,
+                productKeyword,
+                shopKeyword,
+                trackingNo,
+                requestNo,
+                talentKeyword,
+                cooperationType,
+                sampleOwnerType,
+                homeworkType,
+                recipientName,
+                recipientPhone,
+                applyStartTime,
+                applyEndTime,
+                homeworkStartTime,
+                homeworkEndTime,
+                logisticsCompany);
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"samples.csv\"");
@@ -832,6 +920,24 @@ public class SampleController extends BaseController {
             Object roleCodes,
             HttpServletResponse response) throws IOException {
         exportSamples(status, keyword, null, null, userId, deptId, dataScope, roleCodes, response);
+    }
+
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF})
+    public void exportSamples(
+            String status,
+            String keyword,
+            UUID channelUserId,
+            UUID recruiterUserId,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes,
+            HttpServletResponse response) throws IOException {
+        exportSamples(
+                status, keyword, channelUserId, recruiterUserId,
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null,
+                userId, deptId, dataScope, roleCodes, response);
     }
 
     private SampleRequest requireSampleByRequestNo(String requestNo, UUID currentUserId, UUID currentDeptId, DataScope dataScope, Object roleCodes) {
@@ -1440,7 +1546,22 @@ public class SampleController extends BaseController {
             QueryWrapper<SampleRequest> wrapper,
             String status,
             String keyword,
-            UUID channelUserId) {
+            UUID channelUserId,
+            String productKeyword,
+            String shopKeyword,
+            String trackingNo,
+            String requestNo,
+            String talentKeyword,
+            String cooperationType,
+            String sampleOwnerType,
+            String homeworkType,
+            String recipientName,
+            String recipientPhone,
+            LocalDateTime applyStartTime,
+            LocalDateTime applyEndTime,
+            LocalDateTime homeworkStartTime,
+            LocalDateTime homeworkEndTime,
+            String logisticsCompany) {
         if (StringUtils.hasText(status)) {
             wrapper.eq("sr.status", parseStatus(status).code);
         }
@@ -1460,6 +1581,92 @@ public class SampleController extends BaseController {
         if (channelUserId != null) {
             wrapper.eq("sr.channel_user_id", channelUserId);
         }
+        if (StringUtils.hasText(productKeyword)) {
+            applyProductIdsFilter(wrapper, loadMatchedProductIds(productKeyword.trim()));
+        }
+        if (StringUtils.hasText(shopKeyword)) {
+            applyProductIdsFilter(wrapper, loadMatchedProductIdsByShop(shopKeyword.trim()));
+        }
+        if (StringUtils.hasText(trackingNo)) {
+            wrapper.like("sr.tracking_no", trackingNo.trim());
+        }
+        if (StringUtils.hasText(requestNo)) {
+            wrapper.like("sr.request_no", requestNo.trim());
+        }
+        if (StringUtils.hasText(talentKeyword)) {
+            String trimmed = talentKeyword.trim();
+            wrapper.and(query -> query.like("sr.talent_nickname", trimmed).or().like("sr.talent_uid", trimmed));
+        }
+        if (StringUtils.hasText(cooperationType)) {
+            wrapper.apply("sr.extra_data ->> 'cooperationType' = {0}", cooperationType.trim());
+        }
+        if (StringUtils.hasText(sampleOwnerType)) {
+            wrapper.apply("sr.extra_data ->> 'sampleOwnerType' = {0}", sampleOwnerType.trim());
+        }
+        if (StringUtils.hasText(homeworkType)) {
+            String normalized = homeworkType.trim().toUpperCase(Locale.ROOT);
+            if ("HAS_ORDER".equals(normalized)) {
+                wrapper.eq("sr.status", SampleStatus.COMPLETED.code);
+            } else if ("NO_ORDER".equals(normalized)) {
+                wrapper.eq("sr.status", SampleStatus.PENDING_HOMEWORK.code);
+            } else {
+                wrapper.apply("sr.extra_data ->> 'homeworkType' = {0}", homeworkType.trim());
+            }
+        }
+        if (StringUtils.hasText(recipientName)) {
+            wrapper.like("sr.recipient_name", recipientName.trim());
+        }
+        if (StringUtils.hasText(recipientPhone)) {
+            wrapper.like("sr.recipient_phone", recipientPhone.trim());
+        }
+        if (applyStartTime != null) {
+            wrapper.ge("sr.create_time", applyStartTime);
+        }
+        if (applyEndTime != null) {
+            wrapper.le("sr.create_time", applyEndTime);
+        }
+        if (homeworkStartTime != null) {
+            wrapper.and(query -> query.ge("sr.complete_time", homeworkStartTime).or().ge("sr.signed_at", homeworkStartTime));
+        }
+        if (homeworkEndTime != null) {
+            wrapper.and(query -> query.le("sr.complete_time", homeworkEndTime).or().le("sr.signed_at", homeworkEndTime));
+        }
+        if (StringUtils.hasText(logisticsCompany)) {
+            wrapper.eq("sr.shipper_code", logisticsCompany.trim());
+        }
+    }
+
+    private void applyProductIdsFilter(QueryWrapper<SampleRequest> wrapper, Set<UUID> productIds) {
+        if (productIds.isEmpty()) {
+            wrapper.apply("1 = 0");
+            return;
+        }
+        wrapper.in("sr.product_id", productIds);
+    }
+
+    private Set<UUID> loadMatchedProductIdsByShop(String keyword) {
+        QueryWrapper<ProductSnapshot> wrapper = new QueryWrapper<ProductSnapshot>()
+                .select("id")
+                .and(query -> {
+                    query.like("shop_name", keyword);
+                    Long shopId = parseLongOrNull(keyword);
+                    if (shopId != null) {
+                        query.or().eq("shop_id", shopId);
+                    }
+                })
+                .last("LIMIT " + PRODUCT_KEYWORD_BATCH_SIZE);
+        return productSnapshotMapper.selectList(wrapper).stream()
+                .map(ProductSnapshot::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+    }
+
+    private Long parseLongOrNull(String value) {
+        try {
+            return StringUtils.hasText(value) ? Long.parseLong(value.trim()) : null;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private SampleVO toVO(SampleRequest sample, Product product, String productName, String talentName) {
@@ -1467,21 +1674,36 @@ public class SampleController extends BaseController {
         if (resolvedProduct == null && sample.getProductId() != null) {
             resolvedProduct = productMapper.selectById(sample.getProductId());
         }
+        ProductSnapshot snapshot = resolvedProduct == null || resolvedProduct.getId() == null
+                ? null
+                : productSnapshotMapper.selectById(resolvedProduct.getId());
         UUID colonelUserId = resolveColonelUserId(resolvedProduct);
         SampleVO vo = new SampleVO();
         vo.setId(sample.getId());
         vo.setRequestNo(sample.getRequestNo());
         vo.setTalentId(sample.getTalentId());
+        vo.setTalentUid(sample.getTalentUid());
+        vo.setTalentFansCount(sample.getTalentFansCount());
+        vo.setTalentCreditScore(sample.getTalentCreditScore() == null ? null : sample.getTalentCreditScore().toPlainString());
+        vo.setTalentMainCategory(sample.getTalentMainCategory());
         vo.setTalentName(StringUtils.hasText(talentName) ? talentName : sample.getTalentNickname());
         vo.setProductId(sample.getProductId());
+        vo.setProductExternalId(resolveProductExternalId(resolvedProduct, snapshot));
         vo.setProductName(productName);
+        vo.setProductCover(resolveProductCover(resolvedProduct, snapshot));
+        vo.setProductPriceText(resolveProductPriceText(resolvedProduct, snapshot));
+        vo.setShopId(snapshot == null || snapshot.getShopId() == null ? null : String.valueOf(snapshot.getShopId()));
+        vo.setShopName(snapshot == null ? null : snapshot.getShopName());
         vo.setQuantity(sample.getExpectedSampleNum() == null ? 1 : sample.getExpectedSampleNum());
+        vo.setApplicantUserId(sample.getUserId());
+        vo.setApplicantName(resolveUserDisplayName(sample.getUserId()));
         vo.setChannelUserId(sample.getChannelUserId());
         vo.setChannelUserName(resolveUserDisplayName(sample.getChannelUserId()));
         vo.setColonelUserId(colonelUserId);
         vo.setColonelUserName(resolveUserDisplayName(colonelUserId));
         vo.setTrackingNo(sample.getTrackingNo());
         vo.setShipperCode(sample.getShipperCode());
+        vo.setLogisticsCompany(sample.getShipperCode());
         vo.setRecipientName(sample.getRecipientName());
         vo.setRecipientPhone(sample.getRecipientPhone());
         vo.setRecipientAddress(sample.getRecipientAddress());
@@ -1496,13 +1718,85 @@ public class SampleController extends BaseController {
         vo.setRemark(sample.getRemark());
         vo.setApplyReason(readExtraText(sample.getExtraData(), "applyReason"));
         vo.setApplySource(readExtraText(sample.getExtraData(), "applySource"));
+        vo.setApplySourceLabel(resolveApplySourceLabel(vo.getApplySource()));
+        vo.setCooperationType(readExtraText(sample.getExtraData(), "cooperationType"));
+        vo.setCooperationTypeLabel(resolveOptionLabel(vo.getCooperationType(), "免费寄样"));
+        vo.setSampleOwnerType(readExtraText(sample.getExtraData(), "sampleOwnerType"));
+        vo.setSampleOwnerTypeLabel(resolveOptionLabel(vo.getSampleOwnerType(), "商家"));
+        vo.setHomeworkType(readExtraText(sample.getExtraData(), "homeworkType"));
+        vo.setHomeworkTypeLabel(resolveHomeworkTypeLabel(vo.getHomeworkType(), sample));
         vo.setEligibilityCheck(readExtraMap(sample.getExtraData(), "eligibilityCheck"));
         vo.setRequirementSnapshot(readExtraMap(sample.getExtraData(), "requirementSnapshot"));
         vo.setCreateTime(sample.getCreateTime());
         vo.setUpdateTime(sample.getUpdateTime());
+        vo.setShipTime(sample.getShipTime());
+        vo.setDeliverTime(sample.getDeliverTime());
         vo.setCompleteTime(sample.getCompleteTime());
         vo.setStatus(toLegacyStatus(SampleStatus.fromCode(sample.getStatus())));
         return vo;
+    }
+
+    private String resolveProductExternalId(Product product, ProductSnapshot snapshot) {
+        if (product != null && StringUtils.hasText(product.getProductId())) {
+            return product.getProductId();
+        }
+        return snapshot == null ? null : snapshot.getProductId();
+    }
+
+    private String resolveProductCover(Product product, ProductSnapshot snapshot) {
+        if (product != null && StringUtils.hasText(product.getCover())) {
+            return product.getCover();
+        }
+        return snapshot == null ? null : snapshot.getCover();
+    }
+
+    private String resolveProductPriceText(Product product, ProductSnapshot snapshot) {
+        if (snapshot != null && StringUtils.hasText(snapshot.getPriceText())) {
+            return snapshot.getPriceText();
+        }
+        Long price = product == null ? null : product.getPrice();
+        return price == null ? null : "¥" + (price / 100.0);
+    }
+
+    private String resolveApplySourceLabel(String applySource) {
+        if (APPLY_SOURCE_INTERNAL_QUICK_SAMPLE.equals(applySource)) {
+            return "内部寄样";
+        }
+        return "手动申请";
+    }
+
+    private String resolveOptionLabel(String value, String fallback) {
+        if (!StringUtils.hasText(value)) {
+            return fallback;
+        }
+        return switch (value) {
+            case "FREE_SAMPLE" -> "免费寄样";
+            case "PAID_SAMPLE" -> "付费寄样";
+            case "EXCHANGE_SAMPLE" -> "置换寄样";
+            case "MERCHANT" -> "商家";
+            case "COLONEL" -> "团长";
+            case "OTHER" -> "其他";
+            default -> value;
+        };
+    }
+
+    private String resolveHomeworkTypeLabel(String homeworkType, SampleRequest sample) {
+        if (StringUtils.hasText(homeworkType)) {
+            return switch (homeworkType) {
+                case "HAS_ORDER" -> "有订单";
+                case "NO_ORDER" -> "无订单";
+                case "PARTIAL" -> "部分完成";
+                default -> homeworkType;
+            };
+        }
+        SampleStatus status = SampleStatus.fromCode(sample.getStatus());
+        if (status == SampleStatus.COMPLETED) {
+            return "有订单";
+        }
+        if (status == SampleStatus.PENDING_HOMEWORK) {
+            return "待交作业";
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")
@@ -1906,14 +2200,26 @@ public class SampleController extends BaseController {
         }
     }
 
+    @Data
     public static class SampleVO {
         private UUID id;
         private String requestNo;
         private UUID talentId;
+        private String talentUid;
         private String talentName;
+        private Long talentFansCount;
+        private String talentCreditScore;
+        private String talentMainCategory;
         private UUID productId;
+        private String productExternalId;
         private String productName;
+        private String productCover;
+        private String productPriceText;
+        private String shopId;
+        private String shopName;
         private Integer quantity;
+        private UUID applicantUserId;
+        private String applicantName;
         private UUID channelUserId;
         private String channelUserName;
         private UUID colonelUserId;
@@ -1935,11 +2241,20 @@ public class SampleController extends BaseController {
         private String remark;
         private String applyReason;
         private String applySource;
+        private String applySourceLabel;
+        private String cooperationType;
+        private String cooperationTypeLabel;
+        private String sampleOwnerType;
+        private String sampleOwnerTypeLabel;
+        private String homeworkType;
+        private String homeworkTypeLabel;
         private Map<String, Object> eligibilityCheck;
         private Map<String, Object> requirementSnapshot;
         private String status;
         private LocalDateTime createTime;
         private LocalDateTime updateTime;
+        private LocalDateTime shipTime;
+        private LocalDateTime deliverTime;
         private LocalDateTime completeTime;
 
         public UUID getId() {

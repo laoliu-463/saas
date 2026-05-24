@@ -8,13 +8,16 @@ import {
   handleApiFailure,
   isPermissionDeniedError,
   isRequestErrorNotified,
+  notifyClientPermission,
   resetPermissionHints,
   shouldShowPermissionHint
 } from './requestError'
+import { globalPermissionHint } from '../stores/permissionHint'
 
 describe('request error helpers', () => {
   beforeEach(() => {
     resetPermissionHints()
+    globalPermissionHint.value = ''
   })
 
   it('extracts trace id from response body fields', () => {
@@ -102,5 +105,13 @@ describe('request error helpers', () => {
     )
 
     expect(permissionHints).toEqual(['无权导出寄样数据'])
+  })
+
+  it('sets global permission hint once via notifyClientPermission', () => {
+    globalPermissionHint.value = ''
+    notifyClientPermission('当前角色无权导出寄样单')
+    expect(globalPermissionHint.value).toBe('当前角色无权导出寄样单')
+    notifyClientPermission('当前角色无权导出寄样单')
+    expect(globalPermissionHint.value).toBe('当前角色无权导出寄样单')
   })
 })

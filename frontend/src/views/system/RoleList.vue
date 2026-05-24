@@ -46,6 +46,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { ref, reactive, h, onMounted } from 'vue';
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui';
 import PageHeader from '../../components/PageHeader.vue';
@@ -93,7 +94,7 @@ const fetchData = async () => {
       message.warning('未获取到角色数据');
     }
   } catch (error: any) {
-    message.error(error?.message || '获取角色列表失败');
+    notifyApiFailure(error, message, { fallbackMessage: '获取角色列表失败' });
     data.value = [];
     pagination.itemCount = 0;
   } finally {
@@ -179,7 +180,7 @@ const handleSubmit = async () => {
     await fetchData();
   } catch (error: any) {
     if (!error?.response?.data?.msg && !error?.msg) {
-      message.error(error?.message || '保存失败');
+      notifyApiFailure(error, message, { fallbackMessage: '保存失败' });
     }
   } finally {
     submitting.value = false;
@@ -193,7 +194,7 @@ const handleDelete = async (id: string) => {
     message.success('删除成功');
     await fetchData();
   } catch (error: any) {
-    message.error(error?.message || '删除失败');
+    notifyApiFailure(error, message, { fallbackMessage: '删除失败' });
   }
 };
 

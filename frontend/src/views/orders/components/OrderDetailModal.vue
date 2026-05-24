@@ -134,6 +134,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../../utils/requestError'
 import { computed, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { MODAL_WIDTH } from '../../../constants/ui'
@@ -278,7 +279,7 @@ async function loadDetail() {
     detail.value = await getOrderDetail(props.orderId)
   } catch (error: any) {
     detail.value = null
-    message.error(error?.message || '订单详情加载失败，请稍后重试')
+    notifyApiFailure(error, message, { fallbackMessage: '订单详情加载失败，请稍后重试' })
   } finally {
     loading.value = false
   }

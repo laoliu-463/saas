@@ -129,6 +129,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyApiFailure } from '../../utils/requestError'
 import { ref, reactive, h, onMounted, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui';
@@ -280,7 +281,7 @@ const fetchData = async () => {
       message.warning('未获取到用户数据');
     }
   } catch (error: any) {
-    message.error(error?.message || '获取用户列表失败');
+    notifyApiFailure(error, message, { fallbackMessage: '获取用户列表失败' });
     data.value = [];
     pagination.itemCount = 0;
   } finally {
@@ -484,7 +485,7 @@ const handleSubmit = async () => {
     }
   } catch (error: any) {
     if (!error?.response?.data?.msg && !error?.msg) {
-      message.error(error?.message || '保存失败');
+      notifyApiFailure(error, message, { fallbackMessage: '保存失败' });
     }
   } finally {
     submitting.value = false;
@@ -498,7 +499,7 @@ const handleDelete = async (id: string) => {
     message.success('删除成功');
     await fetchData();
   } catch (error: any) {
-    message.error(error?.message || '删除失败');
+    notifyApiFailure(error, message, { fallbackMessage: '删除失败' });
   }
 };
 
@@ -534,7 +535,7 @@ const handleResetSubmit = async () => {
     showResetModal.value = false;
   } catch (error: any) {
     if (!error?.response?.data?.msg && !error?.msg) {
-      message.error(error?.message || '重置失败');
+      notifyApiFailure(error, message, { fallbackMessage: '重置失败' });
     }
   } finally {
     submitting.value = false;
@@ -627,7 +628,7 @@ onMounted(async () => {
     const roleData = roleRes.data || roleRes;
     roleOptions.value = Array.isArray(roleData) ? roleData : (roleData.records || []);
   } catch (error: any) {
-    message.error(error?.message || '加载角色列表失败');
+    notifyApiFailure(error, message, { fallbackMessage: '加载角色列表失败' });
   }
   await loadDeptTree();
   fetchData();

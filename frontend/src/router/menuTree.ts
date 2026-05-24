@@ -60,15 +60,6 @@ export const MENU_TREE: MenuTreeNode[] = [
     ]
   },
   {
-    label: '寄样发货台',
-    key: 'ops',
-    topKey: 'ops',
-    testId: 'nav-shipping',
-    showInTop: true,
-    roles: [ROLE.OPS_STAFF],
-    children: [{ label: '寄样发货台', key: '/ops/shipping', topKey: 'ops', path: '/ops/shipping' }]
-  },
-  {
     label: '商品库',
     key: 'product',
     topKey: 'product',
@@ -110,13 +101,35 @@ export const MENU_TREE: MenuTreeNode[] = [
     ]
   },
   {
-    label: '寄样审核',
+    label: '合作管理',
     key: 'sample',
     topKey: 'sample',
     testId: 'nav-sample',
     showInTop: true,
-    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
-    children: [{ label: '寄样审核', key: '/sample', topKey: 'sample', path: '/sample' }]
+    roles: [
+      ROLE.BIZ_LEADER,
+      ROLE.BIZ_STAFF,
+      ROLE.CHANNEL_LEADER,
+      ROLE.CHANNEL_STAFF,
+      ROLE.OPS_STAFF
+    ],
+    children: [
+      {
+        label: '合作单',
+        key: '/sample',
+        topKey: 'sample',
+        path: '/sample',
+        roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF]
+      },
+      {
+        label: '发货台',
+        key: '/ops/shipping',
+        topKey: 'sample',
+        path: '/ops/shipping',
+        roles: [ROLE.OPS_STAFF],
+        testId: 'nav-shipping'
+      }
+    ]
   },
   {
     label: '系统管理',

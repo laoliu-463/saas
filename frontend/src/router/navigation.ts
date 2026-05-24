@@ -31,7 +31,7 @@ export const SECTION_MAP: SectionMapEntry[] = [
   ['/product/review', 'product-manage'],
   ['/product/library', 'product'],
   ['/product/manage', 'product-manage'],
-  ['/ops/shipping', 'ops'],
+  ['/ops/shipping', 'sample'],
   ['/ops/exclusive', 'data'],
   ['/system/config', 'system'],
   ['/system/commission-rules', 'system'],
