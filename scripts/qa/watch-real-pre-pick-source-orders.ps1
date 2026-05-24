@@ -1,5 +1,5 @@
 param(
-    [string]$BaseUrl = "http://localhost:8080/api",
+    [string]$BaseUrl = "http://localhost:8081/api",
     [string]$AdminUsername = "admin",
     [string]$AdminPassword = "admin123",
     [int]$SyncWindowMinutes = 30,

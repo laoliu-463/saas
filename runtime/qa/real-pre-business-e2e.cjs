@@ -9,6 +9,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { applyRealPreEnv } = require('./real-pre-env.cjs');
+const { assertRealPrePreflight } = require('./real-pre-preflight.cjs');
 
 const root = path.join(__dirname, '..', '..');
 const timestamp = formatLocalTimestamp(new Date());
@@ -21,32 +23,35 @@ process.env.E2E_REAL_PRE_BUSINESS = 'true';
 process.env.E2E_BUSINESS_EVIDENCE_DIR = evidenceDir;
 process.env.PLAYWRIGHT_HTML_OUTPUT_DIR = path.join(evidenceDir, 'playwright-report');
 process.env.PLAYWRIGHT_HTML_OPEN = 'never';
-if (!process.env.E2E_BASE_URL) {
-  process.env.E2E_BASE_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
-}
-if (!process.env.E2E_BACKEND_URL) {
-  process.env.E2E_BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8081';
-}
+applyRealPreEnv(process.env);
 const extraArgs = normalizePlaywrightArgs(process.argv.slice(2));
 
-const result = spawnSync(
-  'npx',
-  [
-    'playwright',
-    'test',
-    '--project=real-pre-business',
-    'tests/e2e/10-real-pre-business-flow.spec.ts',
-    ...extraArgs
-  ],
-  {
-    cwd: root,
-    stdio: 'inherit',
-    shell: true,
-    env: process.env
-  }
-);
+runCli().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(error?.summary?.status === 'BLOCKED' || error?.summary?.status === 'PENDING' ? 2 : 1);
+});
 
-process.exit(result.status === null ? 1 : result.status);
+async function runCli() {
+  await assertRealPrePreflight({ root });
+  const result = spawnSync(
+    'npx',
+    [
+      'playwright',
+      'test',
+      '--project=real-pre-business',
+      'tests/e2e/10-real-pre-business-flow.spec.ts',
+      ...extraArgs
+    ],
+    {
+      cwd: root,
+      stdio: 'inherit',
+      shell: true,
+      env: process.env
+    }
+  );
+
+  process.exit(result.status === null ? 1 : result.status);
+}
 
 function formatLocalTimestamp(date) {
   const pad = (value) => String(value).padStart(2, '0');

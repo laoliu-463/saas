@@ -10,26 +10,35 @@
 
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { applyRealPreEnv } = require('./real-pre-env.cjs');
+const { assertRealPrePreflight } = require('./real-pre-preflight.cjs');
 
 const root = path.join(__dirname, '..', '..');
 
-process.env.E2E_REAL_PRE = 'true';
-if (!process.env.E2E_BASE_URL) {
-  process.env.E2E_BASE_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
-}
-if (!process.env.E2E_BACKEND_URL) {
-  process.env.E2E_BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8081';
-}
+const urls = applyRealPreEnv(process.env);
 
-const result = spawnSync(
-  'npx',
-  ['playwright', 'test', '--project=real-pre', 'tests/e2e/08-real-pre-douyin-integration.spec.ts'],
-  {
-    cwd: root,
-    stdio: 'inherit',
-    shell: true,
-    env: process.env
-  }
-);
+runCli().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(error?.summary?.status === 'BLOCKED' || error?.summary?.status === 'PENDING' ? 2 : 1);
+});
 
-process.exit(result.status === null ? 1 : result.status);
+async function runCli() {
+  await assertRealPrePreflight({
+    frontendUrl: urls.frontendUrl,
+    backendUrl: urls.backendUrl,
+    root
+  });
+
+  const result = spawnSync(
+    'npx',
+    ['playwright', 'test', '--project=real-pre', 'tests/e2e/08-real-pre-douyin-integration.spec.ts'],
+    {
+      cwd: root,
+      stdio: 'inherit',
+      shell: true,
+      env: process.env
+    }
+  );
+
+  process.exit(result.status === null ? 1 : result.status);
+}

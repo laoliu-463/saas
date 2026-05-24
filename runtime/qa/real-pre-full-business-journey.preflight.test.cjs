@@ -8,9 +8,9 @@ const {
 
 test('runJourneyPreflight passes when frontend, backend, real-pre env, accounts, and gitignore are ready', async () => {
   const fetchImpl = createFetchStub({
-    'GET http://localhost:3000/login': htmlResponse(),
-    'GET http://localhost:8080/api/actuator/health': jsonResponse({ status: 'UP' }),
-    'GET http://localhost:8080/api/system/env': jsonResponse({
+    'GET http://localhost:3001/login': htmlResponse(),
+    'GET http://localhost:8081/api/actuator/health': jsonResponse({ status: 'UP' }),
+    'GET http://localhost:8081/api/system/env': jsonResponse({
       code: 200,
       data: {
         environmentLabel: 'REAL-PRE',
@@ -20,15 +20,15 @@ test('runJourneyPreflight passes when frontend, backend, real-pre env, accounts,
         database: 'saas_real_pre'
       }
     }),
-    'POST http://localhost:8080/api/auth/login': jsonResponse({
+    'POST http://localhost:8081/api/auth/login': jsonResponse({
       code: 200,
       data: { token: 'token-value' }
     })
   });
 
   const report = await runJourneyPreflight({
-    frontendUrl: 'http://localhost:3000',
-    backendUrl: 'http://localhost:8080',
+    frontendUrl: 'http://localhost:3001',
+    backendUrl: 'http://localhost:8081',
     root: 'D:/Projects/SAAS',
     fetchImpl,
     spawnSyncImpl: () => ({ status: 0 }),
@@ -41,9 +41,9 @@ test('runJourneyPreflight passes when frontend, backend, real-pre env, accounts,
 
 test('runJourneyPreflight fails before Playwright when frontend login is unreachable', async () => {
   const fetchImpl = createFetchStub({
-    'GET http://localhost:3000/login': Promise.reject(new Error('connect ECONNREFUSED')),
-    'GET http://localhost:8080/api/actuator/health': jsonResponse({ status: 'UP' }),
-    'GET http://localhost:8080/api/system/env': jsonResponse({
+    'GET http://localhost:3001/login': Promise.reject(new Error('connect ECONNREFUSED')),
+    'GET http://localhost:8081/api/actuator/health': jsonResponse({ status: 'UP' }),
+    'GET http://localhost:8081/api/system/env': jsonResponse({
       code: 200,
       data: {
         environmentLabel: 'REAL-PRE',
@@ -52,15 +52,15 @@ test('runJourneyPreflight fails before Playwright when frontend login is unreach
         douyinTestEnabled: false
       }
     }),
-    'POST http://localhost:8080/api/auth/login': jsonResponse({
+    'POST http://localhost:8081/api/auth/login': jsonResponse({
       code: 200,
       data: { token: 'token-value' }
     })
   });
 
   const report = await runJourneyPreflight({
-    frontendUrl: 'http://localhost:3000',
-    backendUrl: 'http://localhost:8080',
+    frontendUrl: 'http://localhost:3001',
+    backendUrl: 'http://localhost:8081',
     root: 'D:/Projects/SAAS',
     fetchImpl,
     spawnSyncImpl: () => ({ status: 0 }),
@@ -68,16 +68,16 @@ test('runJourneyPreflight fails before Playwright when frontend login is unreach
   });
 
   assert.equal(report.ok, false);
-  assert.equal(report.checks[0].name, 'frontend 3000');
+  assert.equal(report.checks[0].name, 'frontend 3001');
   assert.equal(report.checks[0].status, 'FAIL');
-  assert.match(summarizePreflightFailure(report), /frontend 3000/);
+  assert.match(summarizePreflightFailure(report), /frontend 3001/);
 });
 
 test('runJourneyPreflight rejects non real-pre backend env and unignored real-pre env file', async () => {
   const fetchImpl = createFetchStub({
-    'GET http://localhost:3000/login': htmlResponse(),
-    'GET http://localhost:8080/api/actuator/health': jsonResponse({ status: 'UP' }),
-    'GET http://localhost:8080/api/system/env': jsonResponse({
+    'GET http://localhost:3001/login': htmlResponse(),
+    'GET http://localhost:8081/api/actuator/health': jsonResponse({ status: 'UP' }),
+    'GET http://localhost:8081/api/system/env': jsonResponse({
       code: 200,
       data: {
         environmentLabel: 'TEST',
@@ -86,15 +86,15 @@ test('runJourneyPreflight rejects non real-pre backend env and unignored real-pr
         douyinTestEnabled: true
       }
     }),
-    'POST http://localhost:8080/api/auth/login': jsonResponse({
+    'POST http://localhost:8081/api/auth/login': jsonResponse({
       code: 200,
       data: { token: 'token-value' }
     })
   });
 
   const report = await runJourneyPreflight({
-    frontendUrl: 'http://localhost:3000',
-    backendUrl: 'http://localhost:8080',
+    frontendUrl: 'http://localhost:3001',
+    backendUrl: 'http://localhost:8081',
     root: 'D:/Projects/SAAS',
     fetchImpl,
     spawnSyncImpl: () => ({ status: 1 }),

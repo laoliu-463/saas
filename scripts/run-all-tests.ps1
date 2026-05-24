@@ -8,7 +8,7 @@
 #   L1  环境就绪探针           — 需要 Docker + saas-active 全栈
 #   L2  API 冒烟 + Mock 回归   — 需要后端 8080 在线
 #   L3  浏览器 E2E             — 需要前端 3000 + 后端 8080
-#   L4  real-pre 专项          — 需要真实 Token，默认跳过
+#   L4  real-pre 专项          — 需要 real-pre 3001/8081、真实 Token，默认跳过
 #
 # 用法：
 #   # 只跑 L0 单元（最常用，秒级）
@@ -23,7 +23,7 @@
 #   # 包含 real-pre
 #   .\scripts\run-all-tests.ps1 -IncludeRealPre
 #
-#   # 指定后端地址（默认 http://localhost:8080）
+#   # 指定本地 test 后端地址（默认 http://localhost:8080）
 #   .\scripts\run-all-tests.ps1 -ApiBaseUrl http://localhost:8081
 
 param(
@@ -118,6 +118,8 @@ if (Should-RunLayer "L0") {
         "runtime\qa\business-state-flow-regression.test.cjs",
         "runtime\qa\page-role-business-smoke.test.cjs",
         "runtime\qa\dashboard-reconcile.test.cjs",
+        "runtime\qa\real-pre-env.test.cjs",
+        "runtime\qa\real-pre-preflight.test.cjs",
         "runtime\qa\real-pre-full-business-journey.preflight.test.cjs",
         "runtime\qa\real-pre-safe-upstream.test.cjs",
         "runtime\qa\real-pre-cleanup-plan.test.cjs"
@@ -218,11 +220,21 @@ if (Should-RunLayer "L3") {
 if ($IncludeRealPre) {
     Write-Section "L4 - real-pre (requires token)"
 
-    Invoke-Step -Layer "L4" -Name "npm run e2e:real-pre" -Action {
+    $realPrePreflightOk = Invoke-Step -Layer "L4" -Name "npm run e2e:real-pre:preflight" -Action {
         Push-Location $repoRoot
-        try { & npm run e2e:real-pre }
+        try { & npm run e2e:real-pre:preflight }
         finally { Pop-Location }
-    } | Out-Null
+    }
+
+    if ($realPrePreflightOk) {
+        Invoke-Step -Layer "L4" -Name "npm run e2e:real-pre:all" -Action {
+            Push-Location $repoRoot
+            try { & npm run e2e:real-pre:all }
+            finally { Pop-Location }
+        } | Out-Null
+    } else {
+        Write-Host "  [SKIP] npm run e2e:real-pre:all (preflight did not pass)" -ForegroundColor Yellow
+    }
 } else {
     if (Should-RunLayer "L4") {
         Write-Host ""

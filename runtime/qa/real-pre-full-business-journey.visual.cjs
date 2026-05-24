@@ -5,6 +5,8 @@ const {
   DEFAULT_JOURNEY_ACCOUNTS,
   assertJourneyPreflight
 } = require('./real-pre-full-business-journey.preflight.cjs');
+const { applyRealPreEnv } = require('./real-pre-env.cjs');
+const { assertRealPrePreflight } = require('./real-pre-preflight.cjs');
 
 const root = path.join(__dirname, '..', '..');
 const timestamp = formatLocalTimestamp(new Date());
@@ -31,13 +33,9 @@ async function runCli() {
   process.env.PW_SLOWMO_MS = process.env.PW_SLOWMO_MS || '700';
   process.env.PW_STEP_PAUSE_MS = process.env.PW_STEP_PAUSE_MS || '900';
   process.env.PW_AFTER_ACTION_PAUSE_MS = process.env.PW_AFTER_ACTION_PAUSE_MS || '700';
-  if (!process.env.E2E_BASE_URL) {
-    process.env.E2E_BASE_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
-  }
-  if (!process.env.E2E_BACKEND_URL) {
-    process.env.E2E_BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8081';
-  }
+  applyRealPreEnv(process.env);
 
+  await assertRealPrePreflight({ root });
   await assertJourneyPreflight({
     frontendUrl: process.env.E2E_BASE_URL,
     backendUrl: process.env.E2E_BACKEND_URL,

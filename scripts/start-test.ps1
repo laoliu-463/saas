@@ -4,7 +4,7 @@ $scriptDir = Split-Path -Parent $PSCommandPath
 $repoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
 $composeFile = Join-Path $repoRoot "docker-compose.test.yml"
 $envFile = Join-Path $repoRoot ".env.test"
-$projectName = "saas-active"
+$projectName = "saas-test"
 $timeoutSeconds = 120
 
 . (Join-Path $scriptDir "stack-utils.ps1")
@@ -66,4 +66,4 @@ Write-Host "SAAS TEST environment is running as project '$projectName'." -Foregr
 Write-Host "Default for system features, permission checks, and browser E2E."
 Write-Host "Frontend: $frontendUrl"
 Write-Host "Backend health: $healthUrl"
-Write-Host "Containers: saas-frontend, saas-backend, saas-postgres, saas-redis"
+Write-Host "Containers: saas-test-frontend-1, saas-test-backend-1, saas-test-postgres-1, saas-test-redis-1"

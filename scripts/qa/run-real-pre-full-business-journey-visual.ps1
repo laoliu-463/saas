@@ -7,13 +7,13 @@ $FrontendUrl = if ($env:E2E_BASE_URL) { $env:E2E_BASE_URL.TrimEnd("/") } elseif 
 Write-Host "== real-pre full business journey visual regression =="
 Write-Host "Root: $Root"
 
-Write-Host "Checking backend 8080..."
+Write-Host "Checking backend 8081..."
 Invoke-WebRequest "$BackendUrl/api/system/health" -UseBasicParsing -TimeoutSec 5 | Out-Null
-Write-Host "backend 8080 OK"
+Write-Host "backend 8081 OK"
 
-Write-Host "Checking frontend 3000..."
+Write-Host "Checking frontend 3001..."
 Invoke-WebRequest "$FrontendUrl/login" -UseBasicParsing -TimeoutSec 5 | Out-Null
-Write-Host "frontend 3000 OK"
+Write-Host "frontend 3001 OK"
 
 if (-not $env:PW_SLOWMO_MS) {
   $env:PW_SLOWMO_MS = "700"

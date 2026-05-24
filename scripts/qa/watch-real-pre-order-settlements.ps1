@@ -1,5 +1,5 @@
 param(
-    [string]$BaseUrl = "http://localhost:8080/api",
+    [string]$BaseUrl = "http://localhost:8081/api",
     [string]$Username = "admin",
     [string]$Password = "admin123",
     [int]$SettlementWindowDays = 30,

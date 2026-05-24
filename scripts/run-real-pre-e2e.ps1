@@ -37,7 +37,7 @@ function Get-LatestReportPath {
     param([string]$OutRoot)
 
     $dir = Get-ChildItem -LiteralPath $OutRoot -Directory |
-        Where-Object { $_.Name -like 'e2e-*' } |
+        Where-Object { $_.Name -like 'real-pre-all-*' -or $_.Name -like 'e2e-*' } |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
 
@@ -49,15 +49,15 @@ function Get-LatestReportPath {
 }
 
 $repoRoot = Get-RepoRoot
-$qaScript = Join-Path $repoRoot 'runtime\qa\full-browser-e2e.cjs'
+$qaScript = Join-Path $repoRoot 'runtime\qa\real-pre-all.cjs'
 $outRoot = Join-Path $repoRoot 'runtime\qa\out'
 
 if (-not (Test-Path -LiteralPath $qaScript)) {
     throw "QA script not found: $qaScript"
 }
 
-Assert-HttpOk -Name 'real-pre frontend' -Url 'http://localhost:3000'
-Assert-HttpOk -Name 'real-pre backend health' -Url 'http://localhost:8080/api/system/health'
+Assert-HttpOk -Name 'real-pre frontend' -Url 'http://localhost:3001/login'
+Assert-HttpOk -Name 'real-pre backend health' -Url 'http://localhost:8081/api/system/health'
 
 Push-Location $repoRoot
 try {

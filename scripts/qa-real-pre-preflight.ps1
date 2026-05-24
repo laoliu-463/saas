@@ -1,7 +1,7 @@
 param(
     [string]$EnvFile = ".env.real-pre",
-    [string]$BaseUrl = "http://127.0.0.1:8080",
-    [string]$BackendContainerName = "saas-backend"
+    [string]$BaseUrl = "http://127.0.0.1:8081",
+    [string]$BackendContainerName = "saas-active-backend-real-pre-1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -233,10 +233,10 @@ try {
     if ($envMap.ContainsKey("SPRING_PROFILES_ACTIVE")) {
         $configuredProfile = "$($envMap["SPRING_PROFILES_ACTIVE"])".Trim().ToLowerInvariant()
     }
-    $profileOk = $configuredProfile -eq "real-pre"
+    $profileOk = $configuredProfile -eq "real-pre" -or $configuredProfile -eq "real"
     Add-Check -List $checks -Name "configured_active_profile" -Status $(if ($profileOk) { "PASS" } else { "FAIL" }) -Detail @{
         configured = $configuredProfile
-        expected   = @("real-pre")
+        expected   = @("real-pre", "real")
     }
 
     $appTestEnabled = Normalize-BoolString ($envMap["APP_TEST_ENABLED"])
@@ -295,7 +295,7 @@ try {
         $runtimeDouyinTest = Normalize-BoolString ($containerEnv["DOUYIN_TEST_ENABLED"])
         $runtimeSeed = Normalize-BoolString ($containerEnv["APP_TEST_SEED_ON_STARTUP"])
         $runtimeSeedDisabled = $runtimeSeed -eq "false" -or (-not $runtimeSeed -and $profileDefaults.seedOnStartupFalse)
-        $runtimeOk = ($runtimeProfile -eq "real-pre") -and $runtimeAppTest -eq "false" -and $runtimeDouyinTest -eq "false" -and $runtimeSeedDisabled
+        $runtimeOk = ($runtimeProfile -eq "real-pre" -or $runtimeProfile -eq "real") -and $runtimeAppTest -eq "false" -and $runtimeDouyinTest -eq "false" -and $runtimeSeedDisabled
         Add-Check -List $checks -Name "runtime_container_env_safe" -Status $(if ($runtimeOk) { "PASS" } else { "FAIL" }) -Detail @{
             SPRING_PROFILES_ACTIVE = $runtimeProfile
             APP_TEST_ENABLED = $runtimeAppTest
@@ -318,7 +318,7 @@ try {
     if ($systemEnv) {
         $profiles = Get-ActiveProfiles -EnvResponse $systemEnv
         $data = if ($systemEnv.data -and $systemEnv.data -is [object]) { $systemEnv.data } else { $systemEnv }
-        $runtimeApiProfileOk = (($profiles | Where-Object { $_ -eq "real-pre" }).Count -gt 0) -and (($profiles | Where-Object { $_ -eq "test" }).Count -eq 0)
+        $runtimeApiProfileOk = (($profiles | Where-Object { $_ -eq "real-pre" -or $_ -eq "real" }).Count -gt 0) -and (($profiles | Where-Object { $_ -eq "test" }).Count -eq 0)
         $runtimeApiAppTest = Normalize-BoolString $data.appTestEnabled
         $runtimeApiDouyinTest = Normalize-BoolString $data.douyinTestEnabled
         $runtimeApiOk = $runtimeApiProfileOk -and $runtimeApiAppTest -eq "false" -and $runtimeApiDouyinTest -eq "false"

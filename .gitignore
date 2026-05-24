@@ -21,6 +21,8 @@ runtime/*
 !runtime/qa/
 runtime/qa/*
 !runtime/qa/*.cjs
+!runtime/qa/baiying-visible-copy-snippet.js
+!runtime/qa/baiying-talent.manual-import.example.json
 !runtime/qa/business-crud-cases.json
 !runtime/qa/mock-scenario-matrix.json
 !runtime/qa/role-page-cases.json

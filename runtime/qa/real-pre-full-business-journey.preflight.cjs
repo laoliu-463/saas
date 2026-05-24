@@ -87,7 +87,7 @@ async function checkRealPreEnv(backendUrl, fetchImpl, timeoutMs) {
   const env = unwrap(response.body);
   const activeProfiles = asStringArray(env?.activeProfiles);
   const label = String(env?.environmentLabel || '').toUpperCase();
-  if (!response.ok || !(label === 'REAL-PRE' || activeProfiles.includes('real-pre'))) {
+  if (!response.ok || label !== 'REAL-PRE' || !(activeProfiles.includes('real-pre') || activeProfiles.includes('real'))) {
     throw new Error(`expected REAL-PRE env, got ${JSON.stringify(env)}`);
   }
   if (env?.appTestEnabled !== false) {
@@ -95,6 +95,9 @@ async function checkRealPreEnv(backendUrl, fetchImpl, timeoutMs) {
   }
   if (env?.douyinTestEnabled !== false) {
     throw new Error('DOUYIN_TEST_ENABLED must be false');
+  }
+  if (env?.database !== 'saas_real_pre') {
+    throw new Error(`database must be saas_real_pre, got ${env?.database || 'unknown'}`);
   }
   return {
     environmentLabel: env.environmentLabel,

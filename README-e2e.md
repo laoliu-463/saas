@@ -87,18 +87,22 @@ npx playwright test --project=v1-p0 tests/e2e/24-v1-performance-dashboard.spec.t
 | `24-v1-performance-dashboard` | admin + channel_leader | 指标卡、时间口径、API 对账、DataScope 差异 |
 
 
-### Real-pre 抖店联调（真实 upstream / 单活 3000/8080）
+### Real-pre 抖店联调（真实 upstream / 3001/8081）
 
 逻辑已并入 Playwright：`tests/e2e/08-real-pre-douyin-integration.spec.ts`。默认 **`npm run e2e` 会跳过**该文件（需 `E2E_REAL_PRE=true`）。
 
 ```bash
-# 推荐：脚本自动设置默认 3000 / 8080 并开启标记
+# 推荐：先做只读预检，再跑真实联调页面
+npm run e2e:real-pre:preflight
 npm run e2e:real-pre
+
+# 一键跑 real-pre 预检 + 抖店联调 + 业务闭环 + 角色流 + 可视化旅程
+npm run e2e:real-pre:all
 
 # 或手动指定前后端
 set E2E_REAL_PRE=true
-set E2E_BASE_URL=http://localhost:3000
-set E2E_BACKEND_URL=http://localhost:8080
+set E2E_BASE_URL=http://localhost:3001
+set E2E_BACKEND_URL=http://localhost:8081
 npm run e2e -- --project=real-pre tests/e2e/08-real-pre-douyin-integration.spec.ts
 ```
 
@@ -126,9 +130,13 @@ npm run e2e:real-pre:roles -- --headed --workers=1 --trace on --video on --scree
 ```
 
 - `e2e:real-pre:visual` 默认会开启 `headed`、`workers=1`、`trace/video/screenshot on`，并把证据写到 `runtime/qa/out/real-pre-visual-regression-时间戳/`
-- `e2e:real-pre:journey:visual` 默认会先检查 frontend `3000`、backend `8080`、real-pre env guard、六类账号登录与 `.env.real-pre` gitignore，再开启 `headed`、`workers=1`、`trace/video/screenshot on`，并把证据写到 `runtime/qa/out/real-pre-full-business-journey-时间戳/`
+- `e2e:real-pre:*` 入口默认会先执行 real-pre 预检：frontend `3001`、backend `8081`、`/api/system/env=REAL-PRE`、`APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`、数据库 `saas_real_pre`、Token 可用、关键迁移表/字段存在、可复用推广映射存在、清理计划为 PlanOnly。
+- real-pre 后台抖店授权入口位于 `/system/douyin` 的 Token 管理区；本地调试时抖店官方后台的 OAuth 授权回调地址填 `http://localhost:8081/api/douyin/oauth/callback`。若官方后台不接受 `localhost`，使用公网 HTTPS 测试域名并保持路径 `/api/douyin/oauth/callback`。
+- Webhook 消息回调与 OAuth 授权回调不是同一个地址；Webhook 仍使用 `/api/douyin/webhooks/colonel-open-events`。
+- `e2e:real-pre:journey:visual` 还会检查六类账号登录与 `.env.real-pre` gitignore，再开启 `headed`、`workers=1`、`trace/video/screenshot on`，并把证据写到 `runtime/qa/out/real-pre-full-business-journey-时间戳/`
 - `e2e:real-pre:business` 会把业务闭环证据写到 `runtime/qa/out/real-pre-business-e2e-时间戳/`
 - `e2e:real-pre:roles` 会把角色业务流证据写到 `runtime/qa/out/real-pre-role-business-e2e-时间戳/`
+- `e2e:real-pre:all` 会把统一报告写到 `runtime/qa/out/real-pre-all-时间戳/`；缺真实 Token、上游样本或可复用 `pick_source` 时输出 `BLOCKED/PENDING`，不能计为业务流 PASS。
 - `10/11/12` 均采用生产安全上游模式：只复用 real-pre 已存在的 `pick_source_mapping` / `promotion_link`，若缺少可复用映射则阻塞并提示前置条件，不自动调用真实上游创建转链。
 - `10/11/12` 的结论在清理执行前会标记为 `PASS_NEEDS_CLEANUP`；必须先导出清理计划，经人工审核后显式执行清理，并确认残留为 0，才能宣称本次 real-pre 业务 run 完成。
 - 若想放慢浏览器动作，可先设置 `PW_SLOWMO_MS`
