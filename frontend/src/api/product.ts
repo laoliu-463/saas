@@ -5,7 +5,6 @@ export const getProducts = (params: any) => request.get('/products', { params })
 export const getProductFilterOptions = () => request.get('/products/filter-options');
 export const getProductLibraryCategories = () => request.get('/products/categories');
 export const getProductPickPage = (params: any) => request.get('/products/picks', { params });
-export const getProductDetail = (id: string | number) => request.get(`/products/${id}`);
 export const applyQuickSample = (relationId: string, data: any) =>
   request.post(`/products/${relationId}/quick-sample`, data);
 export const listPartners = (params: { keyword?: string; type?: string; page?: number; size?: number }) =>
