@@ -58,22 +58,22 @@ Test 实现不应只是简单的静态返回，应支持：
 
 | 项目 | `test` | 当前 `real-pre` |
 | :--- | :--- | :--- |
-| `SPRING_PROFILES_ACTIVE` | `test` | `real-pre` |
+| `SPRING_PROFILES_ACTIVE` | `test` | `real` 或 `real-pre`（运行态必须标识为 `REAL-PRE`） |
 | `APP_TEST_ENABLED` | `true` | `false` |
 | `DOUYIN_TEST_ENABLED` | `true` | `false` |
 | `DB_NAME` | `saas_test` | `saas_real_pre` |
 | `REDIS_DATABASE` | `1` | `0` |
-| 前端端口 | `3000` | `3000`（单活环境，不与 test 同时运行） |
-| 后端端口 | `8080` | `8080`（单活环境，不与 test 同时运行） |
+| 前端端口 | `3000` | `3001` |
+| 后端端口 | `8080` | `8081` |
 | `/api/test/**` | 可用 | 不作为 real-pre 联调入口 |
 | 当前职责 | 系统功能 / 权限测试 / 自动化验证 / Mock 基线 | 真实 SDK 联调 |
 
-固定容器命名如下，环境切换时复用同一组名字，不再同时保留 test / real-pre 双套 backend/frontend：
+当前本机标准拓扑保留 test / real-pre 双轨端口，但运行 real-pre 脚本前必须确认只连 `3001/8081` 这一组真实联调入口：
 
-- `saas-frontend`
-- `saas-backend`
-- `saas-postgres`
-- `saas-redis`
+- `saas-active-frontend-real-pre-1`
+- `saas-active-backend-real-pre-1`
+- `saas-active-postgres-real-pre-1`
+- `saas-active-redis-real-pre-1`
 
 执行约束：
 
@@ -83,6 +83,7 @@ Test 实现不应只是简单的静态返回，应支持：
 4. 所有真实联调记录统一回写到 `docs/archive/records/14-抖店SDK全量梳理与逐接口联调规划.md`
 5. 后续真实 Gateway 联调环境必须关闭 Spring Boot DEBUG、`RestTemplate` DEBUG 与抖店 SDK INFO 原始报文日志，避免 `access_token`、`refresh_token`、签名或 JWT 出现在日志中
 6. 若 Token 失效或重建缓存，应先暂停订单自动同步或确认 `ORDER_SYNC_ENABLED` 不会反复触发无效 Real Gateway 调用
+7. real-pre 测试脚本必须先跑预检：`npm run e2e:real-pre:preflight` 或由 `npm run e2e:real-pre:*` 自动触发；缺 Token、上游样本或可复用 `pick_source` 时只能输出 `BLOCKED/PENDING`，不能宣称业务流 PASS
 
 当前已知代码缺口：
 

@@ -25,10 +25,12 @@
 - [x] `GET /api/douyin/tokens`、Webhook 验签与日志脱敏、商品素材状态检查已拿到验证结果；2026-05-08 real-pre `real` profile 复验确认 `buyin.materialsProductStatus` 使用商品详情 URL 入参返回上游 `10000 / success`
 - [x] `backend mvn clean test` 当前基线已更新为 `652 tests, 0 failures, 0 errors`（2026-05-09 全量回归）
 - [x] real-pre 浏览器全路径回归 `45/45` 通过
+- [x] 2026-05-24 real-pre 测试脚本口径收口：本地 test/mock 继续固定 `3000/8080`，real-pre 脚本固定 `3001/8081`；新增 `npm run e2e:real-pre:preflight` 与 `npm run e2e:real-pre:all`，预检覆盖运行态、Token、关键迁移表/字段、可复用推广映射与 PlanOnly 清理计划。缺真实 Token、上游样本或 pick_source 时输出 `BLOCKED/PENDING`，不计为业务流 PASS。
 - [x] `real-pre` 已切换为 `SPRING_PROFILES_ACTIVE=real`，并补齐 `application-real.yml`；当前真实联调开关为 `DOUYIN_TEST_ENABLED=false`、`APP_TEST_ENABLED=false`、`ORDER_SYNC_ENABLED=true`
 - [x] 当前 real-pre Redis DB 0 已存在真实 `access_token / refresh_token / expire_at` 缓存
 - [x] `POST /api/douyin/token-refreshes` 已完成真实刷新链路验证：HTTP 200、统一响应 `code=200`、未触发重新授权
 - [x] `GET /api/douyin/institution-info` 已完成授权主体确认：HTTP 200、上游 `code=10000 / msg=success`，返回机构 / 团长身份信息
+- [x] 管理后台已补一键 OAuth 授权入口：`/system/douyin` 点击“去抖店授权”会请求 `GET /api/douyin/oauth/authorize-url`，抖店回调 `GET /api/douyin/oauth/callback` 校验 Redis `state` 后复用 `DouyinTokenService.exchangeCodeAndBootstrap(...)` 写入 Token，再跳回前端。官方后台本地授权回调地址填写 `http://localhost:8081/api/douyin/oauth/callback`；如平台不接受 `localhost`，使用公网 HTTPS 测试域名并保持 `/api/douyin/oauth/callback` 路径。
 - [x] `GET /api/douyin/activities` 已完成活动列表联调接口采样：上游 `code=10000 / msg=success`，首批 `activity_list` 20 条，已拿到可用于后续接口的真实 `activity_id`
 - [x] `GET /api/colonel/activities` 已完成活动列表业务接口对照：`data.total=21`、`data.activityList[0].activityId=3916506`，并已补齐 `activityStatus / startTime / endTime` 兼容字段避免当前页面列渲染错位
 - [x] `GET /api/douyin/activities/3916506` 已完成活动详情采样：上游 `code=10000 / msg=success`，已确认详情字段口径与列表字段存在差异
@@ -124,6 +126,7 @@
 ### 4. real-pre 写入与清理边界（2026-05-21 补充）
 
 - real-pre 完整业务流程、RBAC 与浏览器可视化旅程不得自动新建不可回滚的真实抖店上游转链；转链步骤只允许复用已有 real-pre `pick_source_mapping` / `promotion_link`，缺少可复用映射时按前置条件阻塞。
+- 运行 real-pre 业务脚本前先执行 `npm run e2e:real-pre:preflight`；一键验收使用 `npm run e2e:real-pre:all`，统一报告位于 `runtime/qa/out/real-pre-all-*`。
 - 本地 QA 写入必须携带 `runId=QA...` 或写入 `journey-state.json`，并在清理前导出 `cleanup-plan.json` / `cleanup-plan.sql` / `cleanup-verify.sql`。
 - 清理默认只 PlanOnly；人工审核确认只包含本次 runId 数据后，才允许使用 `scripts/qa/cleanup-real-pre-journey.ps1 -Execute -RunId <runId>` 执行。
 - 清理器必须同时守住 `/api/system/env=REAL-PRE`、数据库 `saas_real_pre`、非 prod/production 容器或连接；清理后 SQL 复核本次 runId 残留为 `0` 前，不得宣称本次 real-pre run 完成。
@@ -134,7 +137,8 @@
 ### 1. 环境准备
 
 - [ ] 明确真实联调环境地址
-- [ ] 明确回调地址 / Webhook 地址
+- [x] 明确 OAuth 授权回调地址：本地 real-pre 为 `http://localhost:8081/api/douyin/oauth/callback`；公网调试域名使用 `https://<域名>/api/douyin/oauth/callback`
+- [ ] 明确 Webhook 地址 / 网络策略：Webhook 与 OAuth 不共用地址，路径为 `/api/douyin/webhooks/colonel-open-events`
 - [ ] 明确网络访问策略与白名单
 - [ ] 明确真实环境是否需要固定出口 IP
 
