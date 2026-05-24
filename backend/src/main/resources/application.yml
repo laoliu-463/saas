@@ -23,7 +23,7 @@ spring:
 
 mybatis-plus:
   mapper-locations: classpath:/mapper/**/*.xml
-  type-aliases-package: com.colonel.saas.entity
+  type-aliases-package: com.colonel.saas.entity,com.colonel.saas.domain.event
   type-handlers-package: com.colonel.saas.common.handler
   global-config:
     db-config:
@@ -64,6 +64,17 @@ security:
     secret: ${JWT_SECRET:dev-secret-key-replace-in-production-with-random-64-char-string}
     expire-seconds: ${JWT_EXPIRE_SECONDS:7200}
 
+performance:
+  cache:
+    warmup:
+      enabled: ${PERFORMANCE_CACHE_WARMUP_ENABLED:false}
+      cron: ${PERFORMANCE_CACHE_WARMUP_CRON:0 0 3 * * ?}
+      days: ${PERFORMANCE_CACHE_WARMUP_DAYS:7}
+  recalculate-failed:
+    enabled: ${PERFORMANCE_RECALCULATE_FAILED_ENABLED:false}
+    cron: ${PERFORMANCE_RECALCULATE_FAILED_CRON:0 */10 * * * ?}
+    limit: ${PERFORMANCE_RECALCULATE_FAILED_LIMIT:100}
+
 app:
   performance:
     slow-query-threshold-ms: ${APP_SLOW_QUERY_THRESHOLD_MS:500}
@@ -71,6 +82,28 @@ app:
     max-entries: ${APP_SHORT_TTL_CACHE_MAX_ENTRIES:1024}
   logistics:
     refresh-job-enabled: ${APP_LOGISTICS_REFRESH_JOB_ENABLED:false}
+
+logistics:
+  provider: ${LOGISTICS_PROVIDER:mock}
+  query:
+    timeout-seconds: ${LOGISTICS_QUERY_TIMEOUT_SECONDS:10}
+    retry-count: ${LOGISTICS_QUERY_RETRY_COUNT:1}
+  kdn:
+    enabled: ${LOGISTICS_KDN_ENABLED:false}
+    ebusiness-id: ${LOGISTICS_KDN_EBUSINESS_ID:}
+    api-key: ${LOGISTICS_KDN_API_KEY:}
+    endpoint: ${LOGISTICS_KDN_ENDPOINT:https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx}
+    sandbox-enabled: ${LOGISTICS_KDN_SANDBOX_ENABLED:false}
+  kd100:
+    enabled: ${LOGISTICS_KD100_ENABLED:false}
+    customer: ${LOGISTICS_KD100_CUSTOMER:}
+    key: ${LOGISTICS_KD100_KEY:}
+    endpoint: ${LOGISTICS_KD100_ENDPOINT:https://poll.kuaidi100.com/poll/query.do}
+    sandbox-enabled: ${LOGISTICS_KD100_SANDBOX_ENABLED:false}
+  sync:
+    enabled: ${LOGISTICS_SYNC_ENABLED:false}
+    cron: ${LOGISTICS_SYNC_CRON:0 */30 * * * ?}
+    batch-size: ${LOGISTICS_SYNC_BATCH_SIZE:100}
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
   test:
@@ -115,6 +148,17 @@ order:
 talent:
   enrich:
     mode: ${TALENT_ENRICH_MODE:real}
+  collect:
+    mode: ${TALENT_COLLECT_MODE:api_then_crawler}
+    api:
+      enabled: ${TALENT_COLLECT_API_ENABLED:false}
+    timeout-seconds: ${TALENT_COLLECT_TIMEOUT_SECONDS:10}
+    retry: ${TALENT_COLLECT_RETRY:2}
+  refresh:
+    enabled: ${TALENT_REFRESH_ENABLED:false}
+    cron: ${TALENT_REFRESH_CRON:0 0 3 ? * MON}
+    batch-size: ${TALENT_REFRESH_BATCH_SIZE:50}
+    weekly-concurrency: ${TALENT_REFRESH_WEEKLY_CONCURRENCY:4}
   data:
     public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
   profile:
