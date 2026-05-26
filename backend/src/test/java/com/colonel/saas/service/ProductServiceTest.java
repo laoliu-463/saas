@@ -1021,6 +1021,51 @@ class ProductServiceTest {
     }
 
     @Test
+    void startTalentFollow_shouldAppendStatusLogWhenAlreadyFollowing() {
+        UUID productId = UUID.randomUUID();
+        UUID operatorId = UUID.randomUUID();
+        ProductSnapshot snapshot = buildSnapshot(productId);
+        ProductOperationState state = buildState("FOLLOWING");
+        state.setSelectedToLibrary(true);
+        TalentFollowRecord record = new TalentFollowRecord();
+        record.setId(UUID.randomUUID());
+        when(snapshotMapper.selectById(productId)).thenReturn(snapshot);
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(talentFollowService.createRecord(any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(record);
+        when(talentFollowService.listByProduct(any(), any())).thenReturn(List.of(record));
+        when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.FOLLOWING);
+
+        Map<String, Object> result = service.startTalentFollow(
+                productId,
+                null,
+                "达人A",
+                "INVITED",
+                "追加邀约",
+                null,
+                operatorId,
+                "操作人"
+        );
+
+        assertThat(result).containsKey("followRecords");
+        verify(productBizStatusService).logStatusChange(
+                eq(snapshot.getActivityId()),
+                eq(snapshot.getProductId()),
+                eq("TALENT_FOLLOW_APPEND"),
+                eq(ProductBizStatus.FOLLOWING),
+                eq(ProductBizStatus.FOLLOWING),
+                eq(operatorId),
+                eq(null),
+                any(),
+                eq("追加达人跟进记录"),
+                eq(true),
+                eq(null)
+        );
+        verify(productBizStatusService, never()).changeStatus(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(productBizStatusService, never()).logFailure(any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     void buildActivityProductListView_shouldExposeBizStatusFields() {
         UUID assigneeId = UUID.randomUUID();
         ProductOperationState state = buildState("LINKED");

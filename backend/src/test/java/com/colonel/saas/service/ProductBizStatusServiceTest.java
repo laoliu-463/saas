@@ -12,7 +12,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.UUID;
 
@@ -311,6 +314,27 @@ class ProductBizStatusServiceTest {
         assertThat(log.getErrorMessage()).isEqualTo("连接超时");
         assertThat(log.getBeforeStatus()).isEqualTo(ProductBizStatus.PENDING_AUDIT.name());
         assertThat(log.getAfterStatus()).isEqualTo(ProductBizStatus.PENDING_AUDIT.name());
+    }
+
+    @Test
+    void logFailure_shouldUseRequiresNewTransactionForFailureAudit() throws NoSuchMethodException {
+        Method method = ProductBizStatusService.class.getMethod(
+                "logFailure",
+                String.class,
+                String.class,
+                ProductBizStatus.class,
+                String.class,
+                UUID.class,
+                UUID.class,
+                Map.class,
+                String.class,
+                String.class
+        );
+
+        Transactional transactional = method.getAnnotation(Transactional.class);
+
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
     }
 
     private void assertIllegal(ProductBizStatus from, ProductBizStatus to, String operationType) {

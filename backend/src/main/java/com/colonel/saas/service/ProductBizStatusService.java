@@ -8,6 +8,7 @@ import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.mapper.ProductOperationLogMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -86,7 +87,7 @@ public class ProductBizStatusService {
         return state;
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public void logFailure(
             String activityId,
             String productId,

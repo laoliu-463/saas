@@ -2778,15 +2778,17 @@ public class ProductService {
         payload.put("followStatus", normalizedStatus.name());
         payload.put("recordId", record.getId());
         if (beforeStatus == ProductBizStatus.FOLLOWING) {
-            productBizStatusService.logFailure(
+            productBizStatusService.logStatusChange(
                     activityId,
                     productId,
-                    beforeStatus,
                     "TALENT_FOLLOW_APPEND",
+                    beforeStatus,
+                    ProductBizStatus.FOLLOWING,
                     operatorId,
                     null,
                     payload,
                     "追加达人跟进记录",
+                    true,
                     null
             );
         } else {
