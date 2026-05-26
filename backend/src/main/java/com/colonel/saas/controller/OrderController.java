@@ -8,10 +8,13 @@ import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
+import com.colonel.saas.constant.DeptType;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.SysDept;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.SysDeptMapper;
 import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.DashboardService;
@@ -72,6 +75,7 @@ public class OrderController extends BaseController {
     private final ShortTtlCacheService shortTtlCacheService;
     private final CommissionService commissionService;
     private final PerformanceBackfillService performanceBackfillService;
+    private final SysDeptMapper sysDeptMapper;
 
     public OrderController(
             OrderSyncService orderSyncService,
@@ -81,7 +85,8 @@ public class OrderController extends BaseController {
             OperationLogService operationLogService,
             ShortTtlCacheService shortTtlCacheService,
             CommissionService commissionService,
-            PerformanceBackfillService performanceBackfillService) {
+            PerformanceBackfillService performanceBackfillService,
+            SysDeptMapper sysDeptMapper) {
         this.orderSyncService = orderSyncService;
         this.orderMapper = orderMapper;
         this.orderQueryService = orderQueryService;
@@ -90,6 +95,7 @@ public class OrderController extends BaseController {
         this.shortTtlCacheService = shortTtlCacheService;
         this.commissionService = commissionService;
         this.performanceBackfillService = performanceBackfillService;
+        this.sysDeptMapper = sysDeptMapper;
     }
 
     @Operation(summary = "手动同步订单", description = "按时间范围触发订单同步，用于补拉订单或联调真实网关回流数据。")
@@ -256,6 +262,8 @@ public class OrderController extends BaseController {
             @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
             @Parameter(description = "时间字段，支持 createTime 或 settleTime。默认 createTime。") @RequestParam(required = false) String timeField,
             @Parameter(description = "Dashboard 诊断分类过滤。") @RequestParam(required = false) String dashboardDiagnosis,
+            @Parameter(description = "招商部门 ID 列表（dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(required = false) String recruiterDeptIds,
+            @Parameter(description = "渠道部门 ID 列表（channel_dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(required = false) String channelDeptIds,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
@@ -272,7 +280,9 @@ public class OrderController extends BaseController {
                 startTime,
                 endTime,
                 timeField,
-                dashboardDiagnosis
+                dashboardDiagnosis,
+                parseUuidCsv(recruiterDeptIds),
+                parseUuidCsv(channelDeptIds)
         );
         selectOrderListColumns(wrapper);
         applyDataScope(wrapper, userId, deptId, dataScope);
@@ -299,10 +309,12 @@ public class OrderController extends BaseController {
             @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
             @Parameter(description = "时间字段，支持 createTime 或 settleTime。默认 createTime。") @RequestParam(required = false) String timeField,
             @Parameter(description = "Dashboard 诊断分类过滤。") @RequestParam(required = false) String dashboardDiagnosis,
+            @Parameter(description = "招商部门 ID 列表（dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(required = false) String recruiterDeptIds,
+            @Parameter(description = "渠道部门 ID 列表（channel_dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(required = false) String channelDeptIds,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
-        return getOrders(page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, activityId, productId, channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField, dashboardDiagnosis, userId, deptId, dataScope);
+        return getOrders(page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, activityId, productId, channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField, dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope);
     }
 
     @Operation(summary = "获取订单详情", description = "查询单个订单详情，返回订单基础信息、归因结果、推广映射、达人与寄样关联信息。")
@@ -330,9 +342,13 @@ public class OrderController extends BaseController {
             @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
             @Parameter(description = "时间字段，支持 createTime 或 settleTime。默认 createTime。") @RequestParam(required = false) String timeField,
             @Parameter(description = "Dashboard 诊断分类过滤。") @RequestParam(required = false) String dashboardDiagnosis,
+            @Parameter(description = "招商部门 ID 列表（dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(required = false) String recruiterDeptIds,
+            @Parameter(description = "渠道部门 ID 列表（channel_dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(required = false) String channelDeptIds,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        List<UUID> parsedRecruiterDeptIds = parseUuidCsv(recruiterDeptIds);
+        List<UUID> parsedChannelDeptIds = parseUuidCsv(channelDeptIds);
         QueryWrapper<ColonelsettlementOrder> statusWrapper = buildStatsWrapper(
                 orderId,
                 attributionStatus,
@@ -345,7 +361,9 @@ public class OrderController extends BaseController {
                 startTime,
                 endTime,
                 timeField,
-                dashboardDiagnosis
+                dashboardDiagnosis,
+                parsedRecruiterDeptIds,
+                parsedChannelDeptIds
         );
         applyQueryDataScope(statusWrapper, userId, deptId, dataScope);
         OrderStats stats = new OrderStats();
@@ -384,7 +402,9 @@ public class OrderController extends BaseController {
                 startTime,
                 endTime,
                 timeField,
-                dashboardDiagnosis
+                dashboardDiagnosis,
+                parsedRecruiterDeptIds,
+                parsedChannelDeptIds
         );
         applyQueryDataScope(reasonWrapper, userId, deptId, dataScope);
         reasonWrapper.eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED)
@@ -504,8 +524,30 @@ public class OrderController extends BaseController {
                 .map(this::toOptionItem)
                 .filter(item -> StringUtils.hasText(item.value()))
                 .toList());
+
+        // 部门下拉：按 dept_type 拆成"招商部门 / 渠道部门"两组。
+        // 这里只列出 status=1 且未删除的业务组，order by sort_order, dept_name。
+        // 元数据全量返回；订单维度的可见性由 applyDataScope 兜底，不会越权。
+        options.setRecruiterDepartments(loadDeptOptions(DeptType.RECRUITER_GROUP));
+        options.setChannelDepartments(loadDeptOptions(DeptType.CHANNEL_GROUP));
         return options;
         }));
+    }
+
+    private List<OptionItem> loadDeptOptions(String deptType) {
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SysDept> wrapper =
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SysDept>()
+                        .eq("deleted", 0)
+                        .eq("status", 1)
+                        .eq("dept_type", deptType)
+                        .orderByAsc("sort_order")
+                        .orderByAsc("dept_name");
+        return sysDeptMapper.selectList(wrapper).stream()
+                .map(dept -> new OptionItem(
+                        dept.getId() == null ? "" : dept.getId().toString(),
+                        StringUtils.hasText(dept.getDeptName()) ? dept.getDeptName() : dept.getDeptCode()))
+                .filter(item -> StringUtils.hasText(item.value()))
+                .toList();
     }
 
     private LambdaQueryWrapper<ColonelsettlementOrder> buildWrapper(
@@ -520,9 +562,13 @@ public class OrderController extends BaseController {
             String startTime,
             String endTime,
             String timeField,
-            String dashboardDiagnosis) {
+            String dashboardDiagnosis,
+            List<UUID> recruiterDeptIds,
+            List<UUID> channelDeptIds) {
         LocalDateTime start = parseLocalDateTime(startTime);
         LocalDateTime end = parseLocalDateTime(endTime);
+        List<UUID> normalizedRecruiterDeptIds = normalizeUuidList(recruiterDeptIds);
+        List<UUID> normalizedChannelDeptIds = normalizeUuidList(channelDeptIds);
         LambdaQueryWrapper<ColonelsettlementOrder> wrapper = new LambdaQueryWrapper<ColonelsettlementOrder>()
                 .eq(ColonelsettlementOrder::getDeleted, 0)
                 .eq(StringUtils.hasText(orderId), ColonelsettlementOrder::getOrderId, orderId)
@@ -530,6 +576,8 @@ public class OrderController extends BaseController {
                 .eq(StringUtils.hasText(activityId), ColonelsettlementOrder::getActivityId, activityId)
                 .eq(StringUtils.hasText(productId), ColonelsettlementOrder::getProductId, productId)
                 .eq(orderStatus != null, ColonelsettlementOrder::getOrderStatus, orderStatus)
+                .in(!normalizedRecruiterDeptIds.isEmpty(), ColonelsettlementOrder::getDeptId, normalizedRecruiterDeptIds)
+                .in(!normalizedChannelDeptIds.isEmpty(), ColonelsettlementOrder::getChannelDeptId, normalizedChannelDeptIds)
                 .and(StringUtils.hasText(channelKeyword), nested -> nested
                         .like(ColonelsettlementOrder::getChannelUserName, channelKeyword)
                         .or()
@@ -542,6 +590,39 @@ public class OrderController extends BaseController {
         applyTimeRange(wrapper, resolveTimeField(timeField), start, end);
         applyDashboardDiagnosisFilter(wrapper, null, dashboardDiagnosis);
         return wrapper;
+    }
+
+    /**
+     * 仅保留非空 UUID，避免 IN 子句被空集合拖成 1=0 或抛 NPE。
+     */
+    private static List<UUID> normalizeUuidList(List<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return ids.stream().filter(Objects::nonNull).distinct().toList();
+    }
+
+    /**
+     * 把前端 CSV 形式（"a,b,c"）或重复同名参数（Spring 自动合并为 "a,b,c"）解析成 UUID 列表。
+     * 非法 UUID 直接忽略，不向用户抛 400 —— 业务上等价于"该值没生效"，前端筛选不应因为一个脏值彻底失败。
+     */
+    private static List<UUID> parseUuidCsv(String csv) {
+        if (!StringUtils.hasText(csv)) {
+            return List.of();
+        }
+        List<UUID> result = new ArrayList<>();
+        for (String token : csv.split(",")) {
+            String trimmed = token.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            try {
+                result.add(UUID.fromString(trimmed));
+            } catch (IllegalArgumentException ignored) {
+                // 非法 UUID 跳过，不影响其他合法值
+            }
+        }
+        return result;
     }
 
     private String cacheKey(Object... values) {
@@ -573,9 +654,13 @@ public class OrderController extends BaseController {
             String startTime,
             String endTime,
             String timeField,
-            String dashboardDiagnosis) {
+            String dashboardDiagnosis,
+            List<UUID> recruiterDeptIds,
+            List<UUID> channelDeptIds) {
         LocalDateTime start = parseLocalDateTime(startTime);
         LocalDateTime end = parseLocalDateTime(endTime);
+        List<UUID> normalizedRecruiterDeptIds = normalizeUuidList(recruiterDeptIds);
+        List<UUID> normalizedChannelDeptIds = normalizeUuidList(channelDeptIds);
         QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
         wrapper.eq("deleted", 0)
                 .eq(StringUtils.hasText(orderId), "order_id", orderId)
@@ -583,6 +668,8 @@ public class OrderController extends BaseController {
                 .eq(StringUtils.hasText(activityId), "colonel_activity_id", activityId)
                 .eq(StringUtils.hasText(productId), "product_id", productId)
                 .eq(orderStatus != null, "order_status", orderStatus)
+                .in(!normalizedRecruiterDeptIds.isEmpty(), "dept_id", normalizedRecruiterDeptIds)
+                .in(!normalizedChannelDeptIds.isEmpty(), "channel_dept_id", normalizedChannelDeptIds)
                 .and(StringUtils.hasText(channelKeyword), nested -> nested
                         .like("channel_user_name", channelKeyword)
                         .or()
@@ -986,6 +1073,12 @@ public class OrderController extends BaseController {
         private List<OptionItem> products;
         private List<OptionItem> channels;
         private List<OptionItem> colonels;
+        // 部门下拉（多选过滤用）。
+        // value = sys_dept.id (UUID 字符串)，label = sys_dept.dept_name。
+        // 注意：部门列表本身全量返回（不按 DataScope 过滤元数据），
+        // 订单查询的可见性仍由 applyDataScope(...) 兜底，避免越权。
+        private List<OptionItem> recruiterDepartments;
+        private List<OptionItem> channelDepartments;
     }
 
     public record OptionItem(String value, String label) {

@@ -68,15 +68,8 @@ public class PerformanceQueryService {
         }
         String normalized = orderId.trim();
         PerformanceRecord record = performanceRecordMapper.findByOrderId(normalized);
-        if (record == null) {
-            ColonelsettlementOrder order = orderMapper.selectOne(new LambdaQueryWrapper<ColonelsettlementOrder>()
-                    .eq(ColonelsettlementOrder::getOrderId, normalized)
-                    .eq(ColonelsettlementOrder::getDeleted, 0)
-                    .last("LIMIT 1"));
-            if (order == null) {
-                throw BusinessException.notFound("订单不存在: " + normalized);
-            }
-            throw BusinessException.stateInvalid("PERFORMANCE_NOT_CALCULATED");
+        if (!hasCurrentPerformance(record)) {
+            throwPerformanceUnavailable(normalized);
         }
         if (!PerformanceAccessScope.canAccessRecord(record, context) && !canAccessRecordByScopedSql(normalized, context)) {
             throw BusinessException.forbidden("无权查看该订单业绩");
@@ -105,7 +98,7 @@ public class PerformanceQueryService {
             PerformanceDetailDTO detail = detailMap.get(orderId);
             if (detail == null) {
                 PerformanceRecord record = performanceRecordMapper.findByOrderId(orderId);
-                if (record == null) {
+                if (!hasCurrentPerformance(record)) {
                     item.setFound(false);
                     item.setAuthorized(true);
                     item.setMessage("PERFORMANCE_NOT_CALCULATED");
@@ -366,7 +359,7 @@ public class PerformanceQueryService {
         Map<String, PerformanceDetailDTO> mapped = new LinkedHashMap<>();
         for (String orderId : orderIds) {
             PerformanceRecord record = performanceRecordMapper.findByOrderId(orderId);
-            if (record != null) {
+            if (hasCurrentPerformance(record)) {
                 mapped.put(orderId, loadDetailByOrderId(orderId));
             }
         }
@@ -378,7 +371,7 @@ public class PerformanceQueryService {
             return false;
         }
         List<Object> args = new ArrayList<>();
-        StringBuilder where = new StringBuilder(" WHERE pr.order_id = ? ");
+        StringBuilder where = new StringBuilder(" WHERE pr.order_id = ? AND pr.is_valid = TRUE ");
         args.add(orderId);
         PerformanceAccessScope.appendScopeCondition(where, args, context, "pr");
         Long count = jdbcTemplate.queryForObject(
@@ -389,8 +382,23 @@ public class PerformanceQueryService {
     }
 
     private boolean canAccessBatchRecord(String orderId, PerformanceRecord record, PerformanceAccessContext context) {
-        return PerformanceAccessScope.canAccessRecord(record, context)
+        return (hasCurrentPerformance(record) && PerformanceAccessScope.canAccessRecord(record, context))
                 || canAccessRecordByScopedSql(orderId, context);
+    }
+
+    private boolean hasCurrentPerformance(PerformanceRecord record) {
+        return record != null && Boolean.TRUE.equals(record.getValid());
+    }
+
+    private void throwPerformanceUnavailable(String orderId) {
+        ColonelsettlementOrder order = orderMapper.selectOne(new LambdaQueryWrapper<ColonelsettlementOrder>()
+                .eq(ColonelsettlementOrder::getOrderId, orderId)
+                .eq(ColonelsettlementOrder::getDeleted, 0)
+                .last("LIMIT 1"));
+        if (order == null) {
+            throw BusinessException.notFound("订单不存在: " + orderId);
+        }
+        throw BusinessException.stateInvalid("PERFORMANCE_NOT_CALCULATED");
     }
 
     private PerformanceDetailDTO loadDetailByOrderId(String orderId) {
@@ -411,6 +419,7 @@ public class PerformanceQueryService {
                  LEFT JOIN sys_user fc ON fc.id = pr.final_channel_user_id
                  LEFT JOIN sys_user fr ON fr.id = pr.final_recruiter_user_id
                  WHERE pr.order_id = ?
+                   AND pr.is_valid = TRUE
                  LIMIT 1
                 """;
         List<PerformanceDetailDTO> rows = jdbcTemplate.query(sql, (rs, rowNum) -> {

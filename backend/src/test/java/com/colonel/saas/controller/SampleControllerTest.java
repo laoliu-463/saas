@@ -5,18 +5,23 @@ import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.dto.SampleApplyRequest;
 import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
 import com.colonel.saas.dto.sample.SampleFilterOptionItem;
+import com.colonel.saas.dto.sample.LogisticsImportResult;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
+import com.colonel.saas.entity.SampleLogisticsTrace;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.SampleStatusLog;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
+import com.colonel.saas.gateway.logistics.query.LogisticsQueryResult;
+import com.colonel.saas.gateway.logistics.query.LogisticsStatusCode;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
@@ -32,6 +37,7 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.controller.SampleFilterOptionsController;
 import com.colonel.saas.service.SampleFilterOptionsService;
 import com.colonel.saas.service.SampleLogisticsImportService;
+import com.colonel.saas.service.SampleLogisticsSubscriptionService;
 import com.colonel.saas.service.SampleLogisticsSyncService;
 import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.SampleEligibilityService;
@@ -40,6 +46,7 @@ import com.colonel.saas.vo.SampleTalentVO;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockMultipartFile;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,6 +57,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 
 import java.math.BigDecimal;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -63,6 +72,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -100,6 +110,8 @@ class SampleControllerTest {
     @Mock
     private SampleLogisticsImportService sampleLogisticsImportService;
     @Mock
+    private SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService;
+    @Mock
     private SampleDomainEventPublisher sampleDomainEventPublisher;
 
     private SampleController sampleController;
@@ -122,6 +134,7 @@ class SampleControllerTest {
                 sampleEligibilityService,
                 sampleLogisticsSyncService,
                 sampleLogisticsImportService,
+                sampleLogisticsSubscriptionService,
                 sampleDomainEventPublisher
         );
         lenient().when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(true);
@@ -578,6 +591,104 @@ class SampleControllerTest {
         assertThat(response.getData().getApplyReason()).isEqualTo("潜力达人，申请破格寄样");
         assertThat(response.getData().getEligibilityCheck()).containsEntry("passed", false);
         assertThat(response.getData().getRequirementSnapshot()).containsEntry("actualLevel", "LV0");
+    }
+
+    @Test
+    void getSampleById_shouldAllowPersonalBizStaffWhenProductAssignedToUser() {
+        UUID sampleId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setProductId(productId);
+        sample.setChannelUserId(UUID.randomUUID());
+        sample.setStatus(1);
+        sample.setTalentNickname("达人甲");
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setProductId("source-product-1");
+        product.setName("负责商品");
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productMapper.selectById(productId)).thenReturn(product, product);
+        when(productOperationStateMapper.selectCount(any())).thenReturn(1L);
+
+        var response = sampleController.getSampleById(
+                sampleId,
+                viewerId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getData().getProductName()).isEqualTo("负责商品");
+        verify(productOperationStateMapper).selectCount(any());
+    }
+
+    @Test
+    void getSampleById_shouldAllowPersonalBizStaffWhenSnapshotProductAssignedToUser() {
+        UUID sampleId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setProductId(productId);
+        sample.setChannelUserId(UUID.randomUUID());
+        sample.setStatus(1);
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(productId);
+        snapshot.setProductId("snapshot-source-1");
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("快照负责商品");
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productMapper.selectById(productId)).thenReturn(null, product);
+        when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
+        when(productOperationStateMapper.selectCount(any())).thenReturn(1L);
+
+        var response = sampleController.getSampleById(
+                sampleId,
+                viewerId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getData().getProductName()).isEqualTo("快照负责商品");
+        verify(productSnapshotMapper, times(2)).selectById(productId);
+    }
+
+    @Test
+    void getSampleById_shouldRejectPersonalBizStaffWhenProductHasNoSourceMapping() {
+        UUID sampleId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setProductId(productId);
+        sample.setChannelUserId(UUID.randomUUID());
+        sample.setStatus(1);
+
+        Product product = new Product();
+        product.setId(productId);
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(productId);
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
+
+        assertThatThrownBy(() -> sampleController.getSampleById(
+                sampleId,
+                viewerId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权访问该寄样单");
+
+        verify(productOperationStateMapper, never()).selectCount(any());
     }
 
     @Test
@@ -1196,6 +1307,55 @@ class SampleControllerTest {
     }
 
     @Test
+    void getSamplePage_shouldUseAuditorQueryForPersonalBizStaffDefaultPendingAudit() {
+        UUID userId = UUID.randomUUID();
+        Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        var response = sampleController.getSamplePage(
+                1,
+                10,
+                null,
+                null,
+                userId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getData().getTotal()).isZero();
+        ArgumentCaptor<QueryWrapper<SampleRequest>> wrapperCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getValue().getSqlSegment()).contains("sr.status");
+    }
+
+    @Test
+    void getSamplePage_shouldUseAuditorQueryWithRecruiterForPersonalBizStaff() {
+        UUID userId = UUID.randomUUID();
+        UUID recruiterUserId = UUID.randomUUID();
+        Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class), eq(recruiterUserId)))
+                .thenReturn(emptyPage);
+
+        var response = sampleController.getSamplePage(
+                1,
+                10,
+                null,
+                "PENDING_AUDIT",
+                null,
+                recruiterUserId,
+                userId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getData().getTotal()).isZero();
+        verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class), eq(recruiterUserId));
+    }
+
+    @Test
     void getSamplePage_shouldPassCooperationWorkbenchFilters() {
         UUID channelUserId = UUID.randomUUID();
         UUID recruiterUserId = UUID.randomUUID();
@@ -1263,6 +1423,73 @@ class SampleControllerTest {
                 .contains("sr.complete_time")
                 .contains("sr.signed_at")
                 .contains("sr.shipper_code");
+    }
+
+    @Test
+    void getSamplePage_shouldApplyNoOrderAndCustomHomeworkFilters() {
+        Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(emptyPage)
+                .thenReturn(emptyPage);
+
+        sampleController.getSamplePage(
+                1,
+                10,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "NO_ORDER",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.ADMIN));
+        sampleController.getSamplePage(
+                1,
+                10,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "CUSTOM_HOMEWORK",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.ADMIN));
+
+        ArgumentCaptor<QueryWrapper<SampleRequest>> wrapperCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(sampleRequestMapper, times(2)).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues().get(0).getSqlSegment()).contains("sr.status");
+        assertThat(wrapperCaptor.getAllValues().get(1).getSqlSegment()).contains("homeworkType");
     }
 
     @Test
@@ -1381,6 +1608,7 @@ class SampleControllerTest {
         assertThat(sample.getExtraData()).containsEntry("logisticsSource", "MANUAL");
         verify(sampleRequestMapper).updateById(sample);
         verify(sampleStatusLogService).log(sampleId, 2, 3, userId, null);
+        verify(sampleLogisticsSubscriptionService).subscribeAfterShipment(sample);
     }
 
     @Test
@@ -1417,6 +1645,37 @@ class SampleControllerTest {
         assertThat(response.getData().getLogisticsSource()).isEqualTo("MANUAL");
         assertThat(sample.getExtraData()).containsEntry("logisticsSource", "MANUAL");
         verify(sampleStatusLogService).log(sampleId, 3, 5, userId, null);
+    }
+
+    @Test
+    void actionSample_shouldAllowOpsMoveDeliveredToPendingHomeworkWithoutOverwritingSource() {
+        UUID sampleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setStatus(4);
+        sample.setRequestNo("SR-DELIVERED");
+        sample.setExtraData(Map.of("logisticsSource", "CALLBACK"));
+
+        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        request.setAction("PENDING_HOMEWORK");
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        var response = sampleController.actionSample(
+                sampleId,
+                request,
+                userId,
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF));
+
+        assertThat(response.getData().getStatus()).isEqualTo("PENDING_TASK");
+        assertThat(sample.getStatus()).isEqualTo(5);
+        assertThat(sample.getExtraData()).containsEntry("logisticsSource", "CALLBACK");
+        assertThat(sample.getDeliverTime()).isNull();
+        verify(sampleStatusLogService).log(sampleId, 4, 5, userId, null);
+        verify(sampleDomainEventPublisher).publishSampleSigned(eq(sample), any());
     }
 
     @Test
@@ -1673,6 +1932,7 @@ class SampleControllerTest {
         assertThat(sample.getShipTime()).isNotNull();
         verify(sampleRequestMapper).updateById(sample);
         verify(sampleStatusLogService).log(sampleId, 2, 3, userId, "SF123456");
+        verify(sampleLogisticsSubscriptionService).subscribeAfterShipment(sample);
     }
 
     @Test
@@ -1780,6 +2040,156 @@ class SampleControllerTest {
         assertThat(response.getData().getStatus()).isEqualTo("PENDING_TASK");
         assertThat(response.getData().getProductName()).isEqualTo("测试商品");
         verify(sampleLogisticsSyncService).syncOne(sampleId);
+    }
+
+    @Test
+    void syncLogistics_shouldReturnQueryMetadataAndTraceList() {
+        UUID sampleId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        SampleRequest before = new SampleRequest();
+        before.setId(sampleId);
+        before.setStatus(3);
+        before.setProductId(productId);
+        before.setRequestNo("SR-LOG-1");
+        before.setTrackingNo("SF123");
+        before.setShipperCode("shunfeng");
+        before.setTalentNickname("达人甲");
+
+        SampleRequest after = new SampleRequest();
+        after.setId(sampleId);
+        after.setStatus(3);
+        after.setProductId(productId);
+        after.setRequestNo("SR-LOG-1");
+        after.setTrackingNo("SF123");
+        after.setShipperCode("shunfeng");
+        after.setLogisticsStatus("IN_TRANSIT");
+        after.setLogisticsStatusName("运输中");
+        after.setLogisticsLastError(null);
+        after.setTalentNickname("达人甲");
+
+        SampleLogisticsTrace trace = new SampleLogisticsTrace();
+        trace.setTraceTime(LocalDateTime.of(2026, 5, 25, 10, 0));
+        trace.setTraceContent("已揽收");
+        trace.setStatusCode("IN_TRANSIT");
+        trace.setStatusName("运输中");
+
+        LogisticsQueryResult queryResult = LogisticsQueryResult.builder()
+                .success(true)
+                .provider("kuaidi100")
+                .trackingNo("SF123")
+                .logisticsCompany("shunfeng")
+                .statusCode(LogisticsStatusCode.IN_TRANSIT)
+                .statusName("运输中")
+                .signed(false)
+                .traces(List.of())
+                .queriedAt(LocalDateTime.now())
+                .build();
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(before, after);
+        when(sampleLogisticsSyncService.syncOne(sampleId)).thenReturn(queryResult);
+        when(sampleLogisticsSyncService.listTraces(sampleId)).thenReturn(List.of(trace));
+
+        var response = sampleController.syncLogistics(
+                sampleId,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF));
+
+        assertThat(response.getData().getQuerySuccess()).isTrue();
+        assertThat(response.getData().getProvider()).isEqualTo("kuaidi100");
+        assertThat(response.getData().getTrackingNo()).isEqualTo("SF123");
+        assertThat(response.getData().getTraces()).hasSize(1);
+        assertThat(response.getData().getTraces().get(0).getTraceContent()).isEqualTo("已揽收");
+        verify(sampleLogisticsSyncService).syncOne(sampleId);
+    }
+
+    @Test
+    void getSampleLogistics_shouldReturnStoredTraceList() {
+        UUID sampleId = UUID.randomUUID();
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setStatus(3);
+        sample.setRequestNo("SR-LOG-2");
+        sample.setTrackingNo("YT123");
+        sample.setShipperCode("yuantong");
+        sample.setLogisticsStatus("IN_TRANSIT");
+        sample.setLogisticsStatusName("运输中");
+        sample.setLogisticsLastQueryAt(LocalDateTime.of(2026, 5, 25, 11, 0));
+        sample.setLogisticsLastError("last error");
+
+        SampleLogisticsTrace trace = new SampleLogisticsTrace();
+        trace.setTraceTime(LocalDateTime.of(2026, 5, 25, 11, 30));
+        trace.setTraceContent("到达转运中心");
+        trace.setStatusCode("IN_TRANSIT");
+        trace.setStatusName("运输中");
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(sampleLogisticsSyncService.listTraces(sampleId)).thenReturn(List.of(trace));
+
+        var response = sampleController.getSampleLogistics(
+                sampleId,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF));
+
+        assertThat(response.getData().getRequestNo()).isEqualTo("SR-LOG-2");
+        assertThat(response.getData().getLogisticsLastError()).isEqualTo("last error");
+        assertThat(response.getData().getTraces()).hasSize(1);
+        verify(sampleLogisticsSyncService).listTraces(sampleId);
+    }
+
+    @Test
+    void syncAllLogistics_shouldReturnSummaryAndRejectUnauthorizedRole() {
+        when(sampleLogisticsSyncService.syncPendingInTransit(100))
+                .thenReturn(new SampleLogisticsSyncService.SyncBatchSummary(4, 2, 1, 1));
+
+        var response = sampleController.syncAllLogistics(List.of(RoleCodes.ADMIN));
+
+        assertThat(response.getData())
+                .containsEntry("total", 4)
+                .containsEntry("success", 2)
+                .containsEntry("failed", 1)
+                .containsEntry("skipped", 1);
+
+        assertThatThrownBy(() -> sampleController.syncAllLogistics(List.of(RoleCodes.CHANNEL_STAFF)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("仅运营或管理员可触发物流同步");
+    }
+
+    @Test
+    void logisticsImportTemplateAndUpload_shouldDelegateToServices() throws Exception {
+        byte[] template = new byte[] {1, 2, 3};
+        when(sampleLogisticsImportService.generateTemplate()).thenReturn(template);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        sampleController.downloadLogisticsImportTemplate(response);
+
+        assertThat(response.getContentType()).isEqualTo("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        assertThat(response.getHeader("Content-Disposition")).contains("sample-logistics-import-template.xlsx");
+        assertThat(response.getContentAsByteArray()).containsExactly(template);
+
+        LogisticsImportResult importResult = LogisticsImportResult.builder()
+                .total(1)
+                .successCount(1)
+                .failedCount(0)
+                .items(List.of())
+                .build();
+        MockMultipartFile file = new MockMultipartFile("file", "import.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", template);
+        UUID userId = UUID.randomUUID();
+        when(sampleLogisticsImportService.importTrackingNumbers(file, userId, List.of(RoleCodes.OPS_STAFF), true))
+                .thenReturn(importResult);
+
+        var uploadResponse = sampleController.importLogisticsTracking(
+                file,
+                true,
+                userId,
+                List.of(RoleCodes.OPS_STAFF));
+
+        assertThat(uploadResponse.getData()).isSameAs(importResult);
+        verify(sampleLogisticsImportService).importTrackingNumbers(file, userId, List.of(RoleCodes.OPS_STAFF), true);
     }
 
     @Test
@@ -1945,6 +2355,37 @@ class SampleControllerTest {
     }
 
     @Test
+    void privateSampleStatusEnum_shouldMapCodesAliasesAndUnknownValues() throws Exception {
+        Class<?> statusClass = Class.forName("com.colonel.saas.controller.SampleController$SampleStatus");
+        Method fromCode = statusClass.getDeclaredMethod("fromCode", Integer.class);
+        Method fromApiStatus = statusClass.getDeclaredMethod("fromApiStatus", String.class);
+        fromCode.setAccessible(true);
+        fromApiStatus.setAccessible(true);
+
+        assertThat(((Enum<?>) fromCode.invoke(null, 1)).name()).isEqualTo("PENDING_AUDIT");
+        assertThat(((Enum<?>) fromCode.invoke(null, 2)).name()).isEqualTo("PENDING_SHIP");
+        assertThat(((Enum<?>) fromCode.invoke(null, 3)).name()).isEqualTo("SHIPPING");
+        assertThat(((Enum<?>) fromCode.invoke(null, 4)).name()).isEqualTo("DELIVERED");
+        assertThat(((Enum<?>) fromCode.invoke(null, 5)).name()).isEqualTo("PENDING_HOMEWORK");
+        assertThat(((Enum<?>) fromCode.invoke(null, 6)).name()).isEqualTo("COMPLETED");
+        assertThat(((Enum<?>) fromCode.invoke(null, 7)).name()).isEqualTo("REJECTED");
+        assertThat(((Enum<?>) fromCode.invoke(null, 8)).name()).isEqualTo("CLOSED");
+
+        assertThat(((Enum<?>) fromApiStatus.invoke(null, "PENDING_TASK")).name()).isEqualTo("PENDING_HOMEWORK");
+        assertThat(((Enum<?>) fromApiStatus.invoke(null, "SHIPPED")).name()).isEqualTo("SHIPPING");
+        assertThat(((Enum<?>) fromApiStatus.invoke(null, "FINISHED")).name()).isEqualTo("COMPLETED");
+        assertThat(((Enum<?>) fromApiStatus.invoke(null, "PENDING_AUDIT")).name()).isEqualTo("PENDING_AUDIT");
+
+        assertThatThrownBy(() -> fromCode.invoke(null, 99))
+                .isInstanceOf(InvocationTargetException.class)
+                .hasCauseInstanceOf(BusinessException.class)
+                .hasRootCauseMessage("Unknown sample status: 99");
+        assertThatThrownBy(() -> fromApiStatus.invoke(null, "UNKNOWN"))
+                .isInstanceOf(InvocationTargetException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void privateEligibilityHelpers_shouldBuildFailureSnapshotAndReasonRequirement() {
         SampleEligibilityService.EligibilityResult ineligible = new SampleEligibilityService.EligibilityResult(
                 false,
@@ -2050,6 +2491,9 @@ class SampleControllerTest {
     void privateLoadAndBoardHelpers_shouldHandleEmptyAndMappedValues() {
         assertThat(ReflectionTestUtils.<Map<UUID, Product>>invokeMethod(sampleController, "loadProducts", (Object) null)).isEmpty();
         assertThat(ReflectionTestUtils.<Set<UUID>>invokeMethod(sampleController, "loadMatchedProductIds", " ")).isEmpty();
+        assertThat(ReflectionTestUtils.<Long>invokeMethod(sampleController, "parseLongOrNull", " 12345 ")).isEqualTo(12345L);
+        assertThat(ReflectionTestUtils.<Long>invokeMethod(sampleController, "parseLongOrNull", "not-number")).isNull();
+        assertThat(ReflectionTestUtils.<Long>invokeMethod(sampleController, "parseLongOrNull", " ")).isNull();
 
         UUID productId = UUID.randomUUID();
         Product product = new Product();
@@ -2063,6 +2507,28 @@ class SampleControllerTest {
                 .containsEntry(productId, product);
         assertThat(ReflectionTestUtils.<Set<UUID>>invokeMethod(sampleController, "loadMatchedProductIds", "商品"))
                 .containsExactly(productId);
+
+        UUID snapshotId = UUID.randomUUID();
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(snapshotId);
+        snapshot.setProductId("SNAP-1");
+        snapshot.setTitle(" ");
+        snapshot.setStatus(null);
+        when(productMapper.selectById(snapshotId)).thenReturn(null);
+        when(productSnapshotMapper.selectById(snapshotId)).thenReturn(snapshot);
+        when(productMapper.selectOne(any())).thenReturn(null);
+
+        Product materialized = ReflectionTestUtils.invokeMethod(sampleController, "requireProduct", snapshotId);
+
+        assertThat(materialized.getName()).isEqualTo("SNAP-1");
+        assertThat(materialized.getStatus()).isEqualTo(1);
+        verify(productMapper).insert(materialized);
+
+        Product noAssigneeProduct = new Product();
+        noAssigneeProduct.setProductId("P-NO-ASSIGNEE");
+        noAssigneeProduct.setActivityId(UUID.randomUUID());
+        when(productOperationStateMapper.selectOne(any())).thenReturn(null);
+        assertThat(ReflectionTestUtils.<UUID>invokeMethod(sampleController, "resolveColonelUserId", noAssigneeProduct)).isNull();
 
         SampleRequest sample = new SampleRequest();
         sample.setId(UUID.randomUUID());
@@ -2100,5 +2566,113 @@ class SampleControllerTest {
             throw new AssertionError(e);
         }
         assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "generateRequestNo")).startsWith("SM");
+    }
+
+    @Test
+    void privatePresentationAndEventHelpers_shouldCoverFallbackBranches() {
+        Product priceProduct = new Product();
+        priceProduct.setPrice(2190L);
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveProductPriceText", priceProduct, null))
+                .isEqualTo("¥21.9");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveProductPriceText", null, null))
+                .isNull();
+
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveApplySourceLabel", "INTERNAL_QUICK_SAMPLE"))
+                .isEqualTo("内部寄样");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveApplySourceLabel", "MANUAL"))
+                .isEqualTo("手动申请");
+
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", null, "默认"))
+                .isEqualTo("默认");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "PAID_SAMPLE", "默认"))
+                .isEqualTo("付费寄样");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "EXCHANGE_SAMPLE", "默认"))
+                .isEqualTo("置换寄样");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "COLONEL", "默认"))
+                .isEqualTo("团长");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "OTHER", "默认"))
+                .isEqualTo("其他");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "CUSTOM", "默认"))
+                .isEqualTo("CUSTOM");
+
+        SampleRequest completed = new SampleRequest();
+        completed.setStatus(6);
+        SampleRequest pendingHomework = new SampleRequest();
+        pendingHomework.setStatus(5);
+        SampleRequest pendingShip = new SampleRequest();
+        pendingShip.setStatus(2);
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", "NO_ORDER", pendingShip))
+                .isEqualTo("无订单");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", "PARTIAL", pendingShip))
+                .isEqualTo("部分完成");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", "CUSTOM", pendingShip))
+                .isEqualTo("CUSTOM");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", null, completed))
+                .isEqualTo("有订单");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", null, pendingHomework))
+                .isEqualTo("待交作业");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", null, pendingShip))
+                .isNull();
+
+        assertThat(ReflectionTestUtils.<Map<String, Object>>invokeMethod(sampleController, "readExtraMap", (Map<String, Object>) null, "x"))
+                .isEmpty();
+        assertThat(ReflectionTestUtils.<Map<String, Object>>invokeMethod(sampleController, "readExtraMap", Map.of("x", "not-map"), "x"))
+                .isEmpty();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "readExtraText", (Map<String, Object>) null, "x"))
+                .isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "readExtraText", Map.of("x", 123), "x"))
+                .isEqualTo("123");
+
+        UUID realNameOnlyId = UUID.randomUUID();
+        UUID usernameOnlyId = UUID.randomUUID();
+        UUID blankUserId = UUID.randomUUID();
+        SysUser realNameOnly = new SysUser();
+        realNameOnly.setId(realNameOnlyId);
+        realNameOnly.setRealName("张三");
+        SysUser usernameOnly = new SysUser();
+        usernameOnly.setId(usernameOnlyId);
+        usernameOnly.setUsername("zhangsan");
+        SysUser blankUser = new SysUser();
+        blankUser.setId(blankUserId);
+        when(sysUserMapper.selectById(realNameOnlyId)).thenReturn(realNameOnly);
+        when(sysUserMapper.selectById(usernameOnlyId)).thenReturn(usernameOnly);
+        when(sysUserMapper.selectById(blankUserId)).thenReturn(blankUser);
+
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveUserDisplayName", (UUID) null)).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveUserDisplayName", realNameOnlyId)).isEqualTo("张三");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveUserDisplayName", usernameOnlyId)).isEqualTo("zhangsan");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveUserDisplayName", blankUserId)).isNull();
+
+        UUID assigneeId = UUID.randomUUID();
+        Product assignedProduct = new Product();
+        assignedProduct.setProductId("P-ASSIGNED");
+        assignedProduct.setActivityId(UUID.randomUUID());
+        ProductOperationState state = new ProductOperationState();
+        state.setAssigneeId(assigneeId);
+        when(productOperationStateMapper.selectOne(any())).thenReturn(state);
+        assertThat(ReflectionTestUtils.<UUID>invokeMethod(sampleController, "resolveColonelUserId", assignedProduct))
+                .isEqualTo(assigneeId);
+
+        CrawlerTalentInfo crawlerTalentInfo = new CrawlerTalentInfo();
+        crawlerTalentInfo.setTalentId("talent-ok");
+        when(crawlerTalentInfoService.findByTalentId("talent-ok")).thenReturn(crawlerTalentInfo);
+        when(crawlerTalentInfoService.findByTalentId("talent-missing")).thenReturn(null);
+        assertThat(ReflectionTestUtils.<CrawlerTalentInfo>invokeMethod(sampleController, "requireCrawlerTalent", "talent-ok"))
+                .isSameAs(crawlerTalentInfo);
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(sampleController, "requireCrawlerTalent", "talent-missing"))
+                .hasMessageContaining("Selected talent does not exist");
+
+        UUID productId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        LocalDateTime now = LocalDateTime.of(2026, 5, 25, 12, 0);
+        SampleRequest sample = new SampleRequest();
+        sample.setId(UUID.randomUUID());
+        sample.setProductId(productId);
+        when(productMapper.selectById(productId)).thenReturn(null);
+        ReflectionTestUtils.invokeMethod(sampleController, "publishActionDomainEvent", "COMPLETED", sample, userId, now, null);
+        ReflectionTestUtils.invokeMethod(sampleController, "publishActionDomainEvent", "CLOSED", sample, userId, now, "超时关闭");
+        ReflectionTestUtils.invokeMethod(sampleController, "publishActionDomainEvent", "UNKNOWN", sample, userId, now, null);
+        verify(sampleDomainEventPublisher).publishSampleCompleted(sample, null, now);
+        verify(sampleDomainEventPublisher).publishSampleClosed(sample, "超时关闭", now);
     }
 }

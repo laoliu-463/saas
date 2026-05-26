@@ -1,7 +1,12 @@
 package com.colonel.saas;
 
+import com.colonel.saas.service.DouyinWebhookSchemaBootstrap;
+import com.colonel.saas.service.OrderSyncDedupSchemaBootstrap;
+import com.colonel.saas.service.TalentPresetTagsBootstrap;
+import com.colonel.saas.testsupport.TestDataService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(properties = {
@@ -16,6 +21,18 @@ import org.springframework.test.context.ActiveProfiles;
 })
 @ActiveProfiles("test")
 class ColonelSaasApplicationTests {
+
+    @MockBean
+    private DouyinWebhookSchemaBootstrap douyinWebhookSchemaBootstrap;
+
+    @MockBean
+    private OrderSyncDedupSchemaBootstrap orderSyncDedupSchemaBootstrap;
+
+    @MockBean
+    private TalentPresetTagsBootstrap talentPresetTagsBootstrap;
+
+    @MockBean
+    private TestDataService testDataService;
 
     @Test
     void contextLoads() {

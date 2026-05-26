@@ -14,8 +14,7 @@ import java.util.List;
  * - message: 状态信息
  * - com: 快递公司编码
  * - nu: 运单号
- * - condition: 快递状态条件码
- * - ischeck: 是否签收（0=未签收，1=已签收）
+ * - state: 快递单当前状态，0=在途，3=签收，5=派件等
  * - data: 物流轨迹列表（按时间升序）
  */
 @Data
@@ -39,6 +38,9 @@ public class Kuaidi100Response {
     @JsonProperty("ischeck")
     private String isCheck;
 
+    @JsonProperty("state")
+    private String state;
+
     @JsonProperty("data")
     private List<TraceNode> data;
 
@@ -48,10 +50,19 @@ public class Kuaidi100Response {
         @JsonProperty("time")
         private String time;
 
+        @JsonProperty("ftime")
+        private String formattedTime;
+
         @JsonProperty("context")
         private String context;
 
         @JsonProperty("location")
         private String location;
+
+        @JsonProperty("status")
+        private String status;
+
+        @JsonProperty("statusCode")
+        private String statusCode;
     }
 }

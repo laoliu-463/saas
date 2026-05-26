@@ -172,12 +172,16 @@ class PerformanceAccessScopeTest {
     }
 
     @Test
-    void appendScopeCondition_shouldSkipScopedFiltersWhenUserOrDeptMissing() {
+    void appendScopeCondition_shouldFailClosedWhenUserOrDeptMissing() {
         PerformanceAccessContext noUser = PerformanceAccessContext.of(null, DEPT, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
         PerformanceAccessContext noDept = PerformanceAccessContext.of(USER, null, DataScope.DEPT, List.of(RoleCodes.CHANNEL_LEADER));
 
-        assertThat(append(noUser, "pr").where()).isEqualTo("WHERE 1=1");
-        assertThat(append(noDept, "pr").where()).isEqualTo("WHERE 1=1");
+        assertThatThrownBy(() -> append(noUser, "pr"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("缺少用户上下文");
+        assertThatThrownBy(() -> append(noDept, "pr"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("缺少部门上下文");
     }
 
     private PerformanceAccessContext context(List<String> roles, DataScope scope) {

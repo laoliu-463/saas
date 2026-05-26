@@ -49,6 +49,31 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void publicLogoutPath_shouldBypassAuthorizationCheckEvenWhenAccessTokenExpired() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/auth/logout");
+        request.addHeader("Authorization", "Bearer expired.access.token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isNotEqualTo(401);
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    @Test
+    void publicApiLogoutPath_shouldBypassAuthorizationCheck() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/logout");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isNotEqualTo(401);
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    @Test
     void systemHealthPath_shouldBypassAuthorizationCheck() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/system/health");
         MockHttpServletResponse response = new MockHttpServletResponse();

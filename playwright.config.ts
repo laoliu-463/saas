@@ -61,7 +61,8 @@ export default defineConfig({
         /11-real-pre-role-business-flow\.spec\.ts/,
         /12-real-pre-full-business-journey\.visual\.spec\.ts/,
         /09-full-user-journey\.spec\.ts/,
-        /2[0-4]-v1-.*\.spec\.ts/
+        /2[0-4]-v1-.*\.spec\.ts/,
+        /3[1-6]-real-pre-.*\.spec\.ts/
       ],
       use: { ...devices['Desktop Chrome'] }
     },
@@ -76,6 +77,14 @@ export default defineConfig({
     {
       name: 'real-pre',
       testMatch: /08-real-pre-douyin-integration\.spec\.ts/,
+      dependencies: [],
+      use: { ...devices['Desktop Chrome'] }
+    },
+    {
+      // real-pre P0 验收级套件：商品链 / 订单归因 / 寄样链 / 业绩看板 / RBAC / 清理计划
+      // 与 v1-p0 (test/mock) 完全互不重叠；只允许在 real-pre 环境真实联调使用。
+      name: 'real-pre-p0',
+      testMatch: /3[1-6]-real-pre-.*\.spec\.ts/,
       dependencies: [],
       use: { ...devices['Desktop Chrome'] }
     },

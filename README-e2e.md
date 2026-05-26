@@ -34,12 +34,21 @@ npx playwright install
 | 套件 | 脚本 | 文件范围 | 用途 |
 |------|------|---------|------|
 | **CI 烟测层** | `npm run e2e:smoke` | `00~07` + `10-navigation-regression` | 日常开发保底，页面不炸 |
-| **V1-P0 验收层** | `npm run e2e:v1-p0` | `20~24` | 上线前必跑，三链闭环 + 权限 + 看板 |
+| **V1-P0 验收层** | `npm run e2e:v1-p0` | `20~24` | test/mock 基线三链闭环 + 权限 + 看板 |
+| **real-pre P0 验收层** | `npm run e2e:real-pre:p0` | `31~36` | real-pre 联调验收：商品链/订单/寄样/业绩/RBAC/清理 |
 | **全旅程层** | `npm run e2e:journey` | `09-full-user-journey` | 多角色完整链路手动验证 |
-| **real-pre 专项** | `npm run e2e:real-pre` 等 | `08/10/11/12` | 真实环境联调，需 Token |
+| **real-pre 既有专项** | `npm run e2e:real-pre` 等 | `08/10/11/12` | 真实环境联调，需 Token；保留为细分入口 |
 
 > **日常 CI 推荐流程**：`npm run e2e:smoke` → 通过后 `npm run e2e:v1-p0`
-> **上线前必跑**：`npm run e2e:v1-p0`（三链闭环 + RBAC + 看板对账）
+> **test/mock 基线上线前必跑**：`npm run e2e:v1-p0`（三链闭环 + RBAC + 看板对账）
+> **real-pre 联调上线前必跑**：`npm run e2e:real-pre:p0`（统一入口，串行 preflight + 31~36）
+
+### 入口边界（强制约束）
+
+- `20~24-v1-*` 只允许跑 test/mock 基线，不代表 real-pre 联调验收。
+- `31~36-real-pre-*` 才是 real-pre P0 验收套件，必须在 real-pre 栈（前端 3001 / 后端 8081）运行。
+- `npm run e2e:smoke` 的 `chromium` project 已通过 `testIgnore` 排除 08/09/10/11/12 与 20~24 与 31~36，普通烟测不会误触真实环境。
+- `v1-p0` 与 `real-pre-p0` 两个 Playwright project 的 `testMatch` 完全互斥（`2[0-4]-v1-*` vs `3[1-6]-real-pre-*`）。
 
 ---
 
@@ -86,6 +95,61 @@ npx playwright test --project=v1-p0 tests/e2e/24-v1-performance-dashboard.spec.t
 | `23-v1-rbac-scope` | 全角色 API | 5 类角色权限边界（~25 个 403/401 断言） |
 | `24-v1-performance-dashboard` | admin + channel_leader | 指标卡、时间口径、API 对账、DataScope 差异 |
 
+
+### Real-pre P0 统一验收（推荐）
+
+```bash
+# 只跑 real-pre P0 预检
+npm run e2e:real-pre:p0:preflight
+
+# 跑统一 real-pre P0 验收（preflight + 08 + 31~36）
+npm run e2e:real-pre:p0
+
+# 有头浏览器调试，可放慢动作和录全量 trace/video/screenshot
+npm run e2e:real-pre:p0:headed
+```
+
+real-pre P0 套件结构：
+
+| 文件 | 角色 | 覆盖内容 |
+|------|------|---------|
+| `08-real-pre-douyin-integration` | admin | 抖店一键刷新联调状态 + 后端探针 |
+| `31-real-pre-product-chain` | admin | 商品链：Token/活动/活动商品/本地业务商品/详情/页面 smoke |
+| `32-real-pre-order-attribution` | admin | 订单同步、归因字段、双轨金额、可复用 pick_source_mapping |
+| `33-real-pre-sample-chain` | channel + biz + ops | 寄样状态机、7 天重复限制、物流单号、自动完成依赖真实成交 |
+| `34-real-pre-performance-dashboard` | admin | dashboard/metrics、summary、performance 公式与页面 smoke |
+| `35-real-pre-rbac-scope` | 6 类账号 | 登录、菜单、页面、API 越权、数据范围 |
+| `36-real-pre-cleanup-plan` | n/a | 生成 PlanOnly cleanup 计划，禁止高危语句 |
+
+`npm run e2e:real-pre:p0` 内部串行执行 preflight → 08 → 31 → 32 → 33 → 34 → 35 → 36，并把统一报告写到：
+
+```
+runtime/qa/out/real-pre-p0-YYYYMMDD-HHmmss/
+├── summary.json
+├── report.md
+└── steps/
+    ├── 01-preflight/...
+    ├── 02-08-douyin-integration/...
+    ├── 03-31-product-chain/...
+    └── ...
+```
+
+real-pre P0 结论按以下规则归类，与 V1-P0 的 test/mock 验收口径完全分离：
+
+- **PASS**：所有步骤通过，且 cleanup 计划已经过人工审核并执行且残留为 0。
+- **PASS_NEEDS_CLEANUP**：业务步骤通过，但 cleanup-plan 仅生成、未执行；需要人工审核 `cleanup-plan.json/sql`。
+- **BLOCKED**：缺真实 Token / 缺授权 / 活动权限受限 / 无可复用 `pick_source_mapping` / 关键角色无法登录等外部前置条件缺失。
+- **PENDING**：环境与代码链路正常，但当前窗口缺真实订单 / 缺 `pick_source` 样本 / 缺成交触发寄样自动完成。
+- **FAIL**：连接了非 real-pre 环境、`APP_TEST_ENABLED`/`DOUYIN_TEST_ENABLED` 不是 false、`/api/system/env` 不是 `REAL-PRE`、健康检查失败、页面运行时错误、权限越权、订单同步 failed > 0 无法解释、业绩公式错误、cleanup-plan 命中危险语句。
+
+退出码：PASS / PASS_NEEDS_CLEANUP → `0`；BLOCKED / PENDING → `2`；FAIL → `1`。
+
+**real-pre 安全规则**：
+
+- 不真实删除（cleanup 仅 PlanOnly；执行需 `scripts/qa/cleanup-real-pre-journey.ps1 -Execute`）。
+- 不重置数据库（连接库强制为 `saas_real_pre`，容器名拒绝含 prod/production/formal）。
+- 不默认创建真实上游转链（只复用 `pick_source_mapping`，缺映射时直接 BLOCKED）。
+- 不把 BLOCKED / PENDING 当 PASS（结论以 `summary.json` 的 `finalStatus` 为准）。
 
 ### Real-pre 抖店联调（真实 upstream / 3001/8081）
 

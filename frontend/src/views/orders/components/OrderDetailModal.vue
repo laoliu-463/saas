@@ -40,9 +40,17 @@
             <n-descriptions-item label="订单状态">{{ detail.orderStatusText || '-' }}</n-descriptions-item>
             <n-descriptions-item label="下单时间">{{ formatDateTime(detail.time?.createTime) }}</n-descriptions-item>
             <n-descriptions-item label="结算时间">{{ formatDateTime(detail.time?.settleTime) }}</n-descriptions-item>
-            <n-descriptions-item label="同步时间">{{ formatDateTime(detail.time?.syncTime) }}</n-descriptions-item>
+            <n-descriptions-item label="同步时间" :span="2">{{ formatDateTime(detail.time?.syncTime) }}</n-descriptions-item>
+          </n-descriptions>
+        </section>
+
+        <section class="detail-section">
+          <h3 class="section-title">费用信息</h3>
+          <n-descriptions bordered :column="2">
             <n-descriptions-item label="订单金额">{{ formatMoney(detail.amount?.orderAmount) }}</n-descriptions-item>
-            <n-descriptions-item label="服务费">{{ formatMoney(detail.amount?.serviceFee) }}</n-descriptions-item>
+            <n-descriptions-item label="结算金额">{{ formatMoney(detail.amount?.settleAmount) }}</n-descriptions-item>
+            <n-descriptions-item label="预估服务费">{{ formatMoney(detail.amount?.estimateServiceFee) }}</n-descriptions-item>
+            <n-descriptions-item label="结算服务费">{{ formatMoney(detail.amount?.effectiveServiceFee) }}</n-descriptions-item>
           </n-descriptions>
         </section>
 
@@ -53,16 +61,16 @@
               <StatusTag scene="attribution" :status="detail.attributionStatus" />
             </n-descriptions-item>
             <n-descriptions-item label="归因方式">
-              {{ detail.attributionStatus === 'ATTRIBUTED' ? 'pick_source_mapping' : '-' }}
+              {{ resolveAttributionMethod(detail) }}
             </n-descriptions-item>
             <n-descriptions-item label="渠道">{{ detail.channel?.channelName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="渠道 ID">{{ detail.channel?.channelUserId || '-' }}</n-descriptions-item>
             <n-descriptions-item label="pick_source">{{ detail.pickSource || '-' }}</n-descriptions-item>
             <n-descriptions-item v-if="detail.attributionStatus !== 'ATTRIBUTED'" label="未归因原因">
-              {{ getAttributionReasonText(detail.diagnosis?.reasonCode || detail.attributionRemark) }}
+              {{ resolveReasonText(detail) }}
             </n-descriptions-item>
             <n-descriptions-item v-if="detail.attributionStatus !== 'ATTRIBUTED'" label="处理建议" :span="2">
-              {{ getAttributionReasonSuggestion(detail.diagnosis?.reasonCode || detail.attributionRemark) }}
+              {{ resolveReasonSuggestion(detail) }}
             </n-descriptions-item>
           </n-descriptions>
         </section>
@@ -127,6 +135,14 @@
 
     <template #footer>
       <div class="footer-actions">
+        <n-button
+          :loading="loading"
+          :disabled="!orderId"
+          data-testid="order-detail-refresh"
+          @click="loadDetail"
+        >
+          刷新
+        </n-button>
         <n-button @click="closeModal">关闭</n-button>
       </div>
     </template>
@@ -158,7 +174,29 @@ const message = useMessage()
 const loading = ref(false)
 const detail = ref<OrderDetail | null>(null)
 
-const diagnosisCode = computed(() => detail.value?.diagnosis?.reasonCode || detail.value?.attributionRemark || '')
+// 后端权威优先：模板优先展示 detail.diagnosis.reasonText / suggestion（已由 OrderQueryService 翻译）。
+// 仅在后端字段缺失时 fallback 到前端 constants/orderAttribution 的 map（兼容旧契约）。
+function resolveReasonText(d: OrderDetail | null) {
+  if (!d) return '-'
+  const backend = d.diagnosis?.reasonText
+  if (backend && backend.trim()) return backend
+  return getAttributionReasonText(d.diagnosis?.reasonCode || d.attributionRemark)
+}
+
+function resolveReasonSuggestion(d: OrderDetail | null) {
+  if (!d) return '-'
+  const backend = d.diagnosis?.suggestion
+  if (backend && backend.trim()) return backend
+  return getAttributionReasonSuggestion(d.diagnosis?.reasonCode || d.attributionRemark)
+}
+
+// 归因方式：已归因 + 命中推广映射 → 推广映射归因；其余场景显示 "-"。
+// 后续后端补 attributionMethod 字段后，此处改为直接读后端字段。
+function resolveAttributionMethod(d: OrderDetail | null) {
+  if (!d || d.attributionStatus !== 'ATTRIBUTED') return '-'
+  if (d.promotion?.mappingId) return '推广映射归因'
+  return '-'
+}
 
 const caseSummary = computed(() => {
   if (!detail.value) {
@@ -185,9 +223,9 @@ const caseSummary = computed(() => {
   return {
     type: 'warning' as const,
     title: '当前订单待排查',
-    description: `原因：${getAttributionReasonText(diagnosisCode.value)}。建议先顺着下方排查路径定位卡点。`,
+    description: `原因：${resolveReasonText(detail.value)}。建议先顺着下方排查路径定位卡点。`,
     actions: [
-      getAttributionReasonSuggestion(diagnosisCode.value),
+      resolveReasonSuggestion(detail.value),
       '优先核对订单是否携带 pick_source，再确认系统内是否存在对应推广映射',
       '如果链路字段都正常，再回看商品活动绑定、招商负责人和达人使用链路是否一致'
     ]

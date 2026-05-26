@@ -146,12 +146,12 @@ class AuthDtoTest {
         }
 
         @Test
-        void refreshToken_isOptional() {
+        void accessToken_isOptional() {
             LogoutRequest req = new LogoutRequest();
-            req.setAccessToken("access_token");
+            req.setRefreshToken("refresh_token");
 
-            assertThat(req.getAccessToken()).isEqualTo("access_token");
-            assertThat(req.getRefreshToken()).isNull();
+            assertThat(req.getAccessToken()).isNull();
+            assertThat(req.getRefreshToken()).isEqualTo("refresh_token");
         }
     }
 

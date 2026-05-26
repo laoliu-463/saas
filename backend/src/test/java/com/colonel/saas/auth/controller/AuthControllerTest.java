@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -109,5 +110,20 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data").doesNotExist());
 
         verify(authService).logout(any(LogoutRequest.class));
+    }
+
+    @Test
+    void logout_missingRefreshToken_shouldRejectBeforeService() throws Exception {
+        LogoutRequest request = new LogoutRequest();
+        request.setAccessToken("access-token");
+
+        mockMvc.perform(post("/auth/logout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("refreshToken 不能为空"));
+
+        verify(authService, never()).logout(any(LogoutRequest.class));
     }
 }

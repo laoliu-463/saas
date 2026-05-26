@@ -638,6 +638,68 @@ class TalentQueryServiceTest {
     }
 
     @Test
+    void page_shouldNotFailWhenCategoryFilterAndTalentHasNoCategoryFields() {
+        UUID myUserId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        talent.setDouyinUid("uid_no_category");
+        talent.setNickname("无类目达人");
+        talent.setPoolStatus("PUBLIC");
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<Talent> basePage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 200, 1);
+        basePage.setRecords(List.of(talent));
+
+        TalentPageQuery query = new TalentPageQuery();
+        query.setCategory("玩具乐器");
+        query.setUserId(myUserId);
+
+        when(talentService.page(1, 10, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
+        when(talentClaimMapper.selectList(any())).thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+                .thenReturn(List.of());
+
+        var page = talentQueryService.page(query);
+
+        assertThat(page.getRecords()).isEmpty();
+        assertThat(page.getTotal()).isZero();
+    }
+
+    @Test
+    void page_shouldNotFailWhenRegionFilterAndTalentHasNoLocation() {
+        UUID myUserId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        talent.setDouyinUid("uid_no_region");
+        talent.setNickname("无地域达人");
+        talent.setPoolStatus("PRIVATE");
+        talent.setOwnerId(myUserId);
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<Talent> basePage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 200, 1);
+        basePage.setRecords(List.of(talent));
+
+        TalentPageQuery query = new TalentPageQuery();
+        query.setView("MY_TALENTS");
+        query.setRegion("广东");
+        query.setUserId(myUserId);
+
+        when(talentService.page(1, 10, null, "广东", null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
+        when(talentClaimMapper.selectList(any())).thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+                .thenReturn(List.of());
+
+        var page = talentQueryService.page(query);
+
+        assertThat(page.getRecords()).isEmpty();
+        assertThat(page.getTotal()).isZero();
+    }
+
+    @Test
     void page_shouldApplyBusinessFilters() {
         UUID myUserId = UUID.randomUUID();
         Talent talent = new Talent();

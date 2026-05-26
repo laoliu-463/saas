@@ -96,46 +96,58 @@ public final class PerformanceAccessScope {
         UUID userId = context.userId();
         UUID deptId = context.deptId();
         if (isChannelStaffOnly(context)) {
-            if (userId != null) {
-                where.append(" AND ").append(pr).append(".final_channel_user_id = ?");
-                args.add(userId);
-            }
+            where.append(" AND ").append(pr).append(".final_channel_user_id = ?");
+            args.add(requireScopeUser(userId));
             return;
         }
         if (isRecruiterStaffOnly(context)) {
-            if (userId != null) {
-                where.append(" AND ").append(pr).append(".final_recruiter_user_id = ?");
-                args.add(userId);
-            }
+            where.append(" AND ").append(pr).append(".final_recruiter_user_id = ?");
+            args.add(requireScopeUser(userId));
             return;
         }
-        if (isChannelLeader(context) && deptId != null) {
+        if (isChannelLeader(context)) {
             where.append(" AND ").append(pr).append(".final_channel_user_id IN (")
                     .append(deptUserSubquery()).append(")");
-            args.add(deptId);
+            args.add(requireScopeDept(deptId));
             return;
         }
-        if (isRecruiterLeader(context) && deptId != null) {
+        if (isRecruiterLeader(context)) {
             where.append(" AND ").append(pr).append(".final_recruiter_user_id IN (")
                     .append(deptUserSubquery()).append(")");
-            args.add(deptId);
+            args.add(requireScopeDept(deptId));
             return;
         }
-        if (context.dataScope() == DataScope.DEPT && deptId != null) {
+        if (context.dataScope() == DataScope.DEPT) {
             where.append(" AND (").append(pr).append(".final_channel_user_id IN (")
                     .append(deptUserSubquery()).append(")")
                     .append(" OR ").append(pr).append(".final_recruiter_user_id IN (")
                     .append(deptUserSubquery()).append("))");
-            args.add(deptId);
-            args.add(deptId);
+            UUID requiredDeptId = requireScopeDept(deptId);
+            args.add(requiredDeptId);
+            args.add(requiredDeptId);
             return;
         }
-        if (context.dataScope() == DataScope.PERSONAL && userId != null) {
+        if (context.dataScope() == DataScope.PERSONAL) {
             where.append(" AND (").append(pr).append(".final_channel_user_id = ? OR ")
                     .append(pr).append(".final_recruiter_user_id = ?)");
-            args.add(userId);
-            args.add(userId);
+            UUID requiredUserId = requireScopeUser(userId);
+            args.add(requiredUserId);
+            args.add(requiredUserId);
         }
+    }
+
+    private static UUID requireScopeUser(UUID userId) {
+        if (userId == null) {
+            throw BusinessException.forbidden("数据权限异常：缺少用户上下文");
+        }
+        return userId;
+    }
+
+    private static UUID requireScopeDept(UUID deptId) {
+        if (deptId == null) {
+            throw BusinessException.forbidden("数据权限异常：缺少部门上下文");
+        }
+        return deptId;
     }
 
     private static String deptUserSubquery() {

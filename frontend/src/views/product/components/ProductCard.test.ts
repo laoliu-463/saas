@@ -1,7 +1,11 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import ProductCard from './ProductCard.vue'
+
+vi.mock('../../../api/activityProduct', () => ({
+  getActivityProductDetail: vi.fn().mockResolvedValue({ data: {} })
+}))
 
 const naiveStubs = {
   NButton: {
@@ -18,6 +22,12 @@ const naiveStubs = {
   },
   NGi: {
     template: '<div><slot /></div>'
+  },
+  NSpin: {
+    template: '<div><slot /></div>'
+  },
+  NModal: {
+    template: '<div v-if="$attrs.show"><slot /></div>'
   }
 }
 

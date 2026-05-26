@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
@@ -250,7 +251,17 @@ class DataControllerTest {
         assertThat(response.getData().getEstimate().getServiceFee()).isNotNull();
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
         verify(orderMapper, times(8)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues().get(1).getSqlSelect()).contains("settle_amount");
+        assertThat(wrapperCaptor.getAllValues().get(2).getSqlSelect())
+                .contains("effective_service_fee")
+                .contains("effective_tech_service_fee");
+        assertThat(wrapperCaptor.getAllValues().get(3).getSqlSelect()).contains("settle_amount");
         assertThat(wrapperCaptor.getAllValues().get(4).getSqlSegment()).contains("create_time");
+        assertThat(wrapperCaptor.getAllValues().get(5).getSqlSelect()).contains("order_amount");
+        assertThat(wrapperCaptor.getAllValues().get(6).getSqlSelect())
+                .contains("estimate_service_fee")
+                .contains("estimate_tech_service_fee");
+        assertThat(wrapperCaptor.getAllValues().get(7).getSqlSelect()).contains("order_amount");
     }
 
     @Test
@@ -310,6 +321,24 @@ class DataControllerTest {
         var response = dataController.getMetrics(userId, deptId, DataScope.DEPT);
 
         assertThat(response.getCode()).isEqualTo(200);
+    }
+
+    @Test
+    void getMetrics_withPersonalScopeAndMissingUser_shouldFailClosed() {
+        assertThatThrownBy(() -> dataController.getMetrics(null, UUID.randomUUID(), DataScope.PERSONAL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("缺少用户上下文");
+
+        verify(orderMapper, never()).selectMaps(any(QueryWrapper.class));
+    }
+
+    @Test
+    void getMetrics_withDeptScopeAndMissingDept_shouldFailClosed() {
+        assertThatThrownBy(() -> dataController.getMetrics(UUID.randomUUID(), null, DataScope.DEPT))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("缺少部门上下文");
+
+        verify(orderMapper, never()).selectMaps(any(QueryWrapper.class));
     }
 
     @Test
@@ -549,11 +578,8 @@ class DataControllerTest {
     }
 
     @Test
-    void getOrderPage_withDeptScopeAndMissingDeptId_doesNotThrow() {
-        IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
-
-        var response = dataController.getOrderPage(
+    void getOrderPage_withDeptScopeAndMissingDeptId_shouldFailClosed() {
+        assertThatThrownBy(() -> dataController.getOrderPage(
                 1,
                 10,
                 null,
@@ -570,10 +596,11 @@ class DataControllerTest {
                 UUID.randomUUID(),
                 null,
                 DataScope.DEPT
-        );
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("缺少部门上下文");
 
-        assertThat(response.getCode()).isEqualTo(200);
-        verify(orderMapper).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+        verify(orderMapper, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
     }
 
     @Test
@@ -606,6 +633,259 @@ class DataControllerTest {
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.talent_id");
         assertThat(segment).contains("merchant_id");
+    }
+
+    @Test
+    void getOrderSummary_returnsTotalsAndDailyRowsWithSupportedFilters() {
+        UUID recruiterId = UUID.randomUUID();
+        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of(Map.of(
+                        "order_count", 2L,
+                        "talent_promoter_count", 1L,
+                        "colonel_promoter_count", 1L,
+                        "product_count", 1L,
+                        "order_amount_cent", 10000L,
+                        "actual_amount_cent", 8000L,
+                        "service_fee_income_cent", 500L,
+                        "tech_service_fee_cent", 100L,
+                        "talent_commission_cent", 0L
+                )))
+                .thenReturn(List.of(Map.of(
+                        "stat_date", "2026-05-25",
+                        "order_count", 2L,
+                        "talent_promoter_count", 1L,
+                        "colonel_promoter_count", 1L,
+                        "product_count", 1L,
+                        "order_amount_cent", 10000L,
+                        "actual_amount_cent", 8000L,
+                        "service_fee_income_cent", 500L,
+                        "tech_service_fee_cent", 100L,
+                        "talent_commission_cent", 0L
+                )))
+                .thenReturn(List.of(Map.of(
+                        "activity_id", "ACT-1",
+                        "product_id", "P-1",
+                        "recruiter_user_id", recruiterId.toString(),
+                        "service_fee_income", 500L,
+                        "tech_service_fee", 100L,
+                        "talent_commission", 0L
+                )))
+                .thenReturn(List.of(Map.of(
+                        "stat_date", "2026-05-25",
+                        "activity_id", "ACT-1",
+                        "product_id", "P-1",
+                        "recruiter_user_id", recruiterId.toString(),
+                        "service_fee_income", 500L,
+                        "tech_service_fee", 100L,
+                        "talent_commission", 0L
+                )));
+        when(commissionService.calculateByActivityBuckets(any())).thenReturn(
+                new CommissionService.CommissionSummary(500L, 100L, 0L, 400L, 40L, 60L, 300L,
+                        java.math.BigDecimal.valueOf(0.1), java.math.BigDecimal.valueOf(0.15)));
+
+        var response = dataController.getOrderSummary(
+                "ORDER-1",
+                "FINISHED",
+                null,
+                "merchant_1",
+                "P-1",
+                "商品",
+                "店铺",
+                "达人",
+                "招商",
+                "渠道",
+                "ACT-1",
+                "PROMOTION",
+                LocalDate.of(2026, 5, 25),
+                LocalDate.of(2026, 5, 31),
+                "createTime",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL
+        );
+
+        assertThat(response.getCode()).isEqualTo(200);
+        assertThat(response.getData().getTotal().getOrderCount()).isEqualTo(2L);
+        assertThat(response.getData().getTotal().getOrderAmount()).isEqualByComparingTo("100.00");
+        assertThat(response.getData().getTotal().getProductAverageServiceFeeRate()).isEqualByComparingTo("6.25");
+        assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("5.00");
+        assertThat(response.getData().getTotal().getServiceFeeExpense()).isEqualByComparingTo("1.00");
+        assertThat(response.getData().getTotal().getServiceFeeProfit()).isEqualByComparingTo("4.00");
+        assertThat(response.getData().getTotal().getGrossProfit()).isEqualByComparingTo("3.00");
+        assertThat(response.getData().getRecords()).hasSize(1);
+        assertThat(response.getData().getRecords().get(0).getDate()).isEqualTo("2026-05-25");
+
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
+        String segment = wrapperCaptor.getAllValues().get(0).getSqlSegment();
+        assertThat(segment).contains("product_id");
+        assertThat(segment).contains("product_name");
+        assertThat(segment).contains("shop_name");
+        assertThat(segment).contains("talent_name");
+        assertThat(segment).contains("colonel_user_name");
+        assertThat(segment).contains("colonel_activity_id");
+        assertThat(segment).contains("order_type");
+    }
+
+    @Test
+    void getOrderSummary_withEmptyResult_returnsZeroSummary() {
+        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of())
+                .thenReturn(List.of())
+                .thenReturn(List.of())
+                .thenReturn(List.of());
+
+        var response = dataController.getOrderSummary(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2026, 5, 25),
+                LocalDate.of(2026, 5, 31),
+                "createTime",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL
+        );
+
+        assertThat(response.getCode()).isEqualTo(200);
+        assertThat(response.getData().getTotal().getOrderCount()).isZero();
+        assertThat(response.getData().getTotal().getOrderAmount()).isEqualByComparingTo("0.00");
+        assertThat(response.getData().getTotal().getProductAverageServiceFeeRate()).isEqualByComparingTo("0.00");
+        assertThat(response.getData().getTotal().getServiceFeeIncome()).isEqualByComparingTo("0.00");
+        assertThat(response.getData().getRecords()).isEmpty();
+        verify(orderMapper, times(4)).selectMaps(any(QueryWrapper.class));
+    }
+
+    @Test
+    void getOrderSummary_shouldExcludeDeletedOrdersLikeOrderPage() {
+        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of())
+                .thenReturn(List.of())
+                .thenReturn(List.of())
+                .thenReturn(List.of());
+
+        dataController.getOrderSummary(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2026, 5, 25),
+                LocalDate.of(2026, 5, 31),
+                "createTime",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL
+        );
+
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues())
+                .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment()).contains("deleted"));
+    }
+
+    @Test
+    void getOrderSummary_withSettleTimeField_usesEffectiveTrackColumns() {
+        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of(Map.of(
+                        "order_count", 1L,
+                        "talent_promoter_count", 1L,
+                        "colonel_promoter_count", 0L,
+                        "product_count", 1L,
+                        "order_amount_cent", 9000L,
+                        "actual_amount_cent", 10000L,
+                        "service_fee_income_cent", 450L,
+                        "tech_service_fee_cent", 50L,
+                        "talent_commission_cent", 0L
+                )))
+                .thenReturn(List.of())
+                .thenReturn(List.of(Map.of(
+                        "activity_id", "ACT-1",
+                        "product_id", "P-1",
+                        "service_fee_income", 450L,
+                        "tech_service_fee", 50L,
+                        "talent_commission", 0L
+                )))
+                .thenReturn(List.of());
+        when(commissionService.calculateByActivityBuckets(any())).thenReturn(
+                new CommissionService.CommissionSummary(450L, 50L, 0L, 400L, 40L, 40L, 320L,
+                        java.math.BigDecimal.valueOf(0.1), java.math.BigDecimal.valueOf(0.1)));
+
+        var response = dataController.getOrderSummary(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2026, 5, 25),
+                LocalDate.of(2026, 5, 31),
+                "settleTime",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL
+        );
+
+        assertThat(response.getCode()).isEqualTo(200);
+        assertThat(response.getData().getTotal().getOrderAmount()).isEqualByComparingTo("90.00");
+        assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("5.00");
+
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
+        QueryWrapper<ColonelsettlementOrder> aggregateWrapper = wrapperCaptor.getAllValues().get(0);
+        assertThat(aggregateWrapper.getSqlSegment()).contains("settle_time");
+        assertThat(aggregateWrapper.getSqlSelect()).contains("settle_amount");
+        assertThat(aggregateWrapper.getSqlSelect()).contains("effective_service_fee");
+        assertThat(aggregateWrapper.getSqlSelect()).contains("effective_tech_service_fee");
+    }
+
+    @Test
+    void getOrderSummary_withInvalidTimeField_shouldThrowBusinessException() {
+        assertThatThrownBy(() -> dataController.getOrderSummary(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2026, 5, 25),
+                LocalDate.of(2026, 5, 31),
+                "paidAt",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("非法时间字段");
+        verify(orderMapper, never()).selectMaps(any());
     }
 
     @Test

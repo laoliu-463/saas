@@ -1,0 +1,300 @@
+/**
+ * real-pre P0 / 31 / 商品链
+ *
+ * 验证 real-pre 下：
+ *   - 管理员登录可用
+ *   - 抖店 Token 已授权（缺则 BLOCKED_AUTH）
+ *   - 真实活动列表可读（缺权限 -> BLOCKED_UPSTREAM_ACTIVITY_AUTH）
+ *   - 真实活动商品可读（空 -> PENDING_NO_ACTIVITY_PRODUCTS）
+ *   - 本地业务商品视图可读
+ *   - 商品详情可读且字段完整
+ *   - /product 与 /system/douyin 页面不出现运行时错误
+ *
+ * 不会真实创建上游转链，不会修改真实业务数据。
+ * 结论 PASS / BLOCKED / PENDING / FAIL 通过 step-summary.json 输出。
+ */
+import { test, expect, request as playwrightRequest, type APIRequestContext, type Page } from '@playwright/test';
+import { accounts } from './helpers/test-data';
+import { apiLogin } from './helpers/real-pre-api';
+import {
+  createRealPreP0Step,
+  ensureRealPreP0Env,
+  markBlocked,
+  markFail,
+  markPending,
+  persistStepSummary,
+  setDetail,
+  shouldRunRealPreP0,
+  safeUnwrap,
+  isUpstreamSuccess,
+  findDeepValue
+} from './helpers/real-pre-p0-step';
+
+type JsonMap = Record<string, unknown>;
+
+const BUSINESS_READY = new Set(['PENDING_AUDIT', 'APPROVED', 'BOUND', 'ASSIGNED', 'LINKED', 'FOLLOWING']);
+const FATAL_TEXT = /Unexpected Application Error|Application Error|Bad Gateway|Internal Server Error/i;
+const REAL_PRE_NAV_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NAV_TIMEOUT_MS || 120_000);
+const REAL_PRE_NETWORK_IDLE_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NETWORK_IDLE_TIMEOUT_MS || 30_000);
+
+test('real-pre P0 / 31 / 商品链', async ({ page }, testInfo) => {
+  test.skip(!shouldRunRealPreP0('31-real-pre-product-chain'), 'Run via npm run e2e:real-pre:p0 or set E2E_REAL_PRE_P0=true');
+  test.setTimeout(15 * 60_000);
+  ensureRealPreP0Env();
+
+  const ctx = createRealPreP0Step('31-real-pre-product-chain', 'real-pre-p0/31/product-chain');
+  const backend = (process.env.E2E_BACKEND_URL || 'http://localhost:8081').replace(/\/$/, '');
+  const api = await playwrightRequest.newContext({ baseURL: backend, ignoreHTTPSErrors: true });
+
+  try {
+    const admin = await apiLogin(`${backend}/api`, accounts.admin.username, accounts.admin.password);
+    setDetail(ctx, 'admin', { userId: String(admin.userId || admin.id || ''), username: String(admin.username || accounts.admin.username) });
+
+    const tokenResult = await rawApi(api, 'GET', '/api/douyin/tokens', String(admin.token || ''));
+    const tokenData = safeUnwrap<JsonMap>(tokenResult.body) || {};
+    const tokenReady =
+      tokenData.hasAccessToken === true &&
+      tokenData.hasRefreshToken === true &&
+      tokenData.reauthorizeRequired !== true;
+    setDetail(ctx, 'tokenStatus', {
+      hasAccessToken: tokenData.hasAccessToken === true,
+      hasRefreshToken: tokenData.hasRefreshToken === true,
+      reauthorizeRequired: tokenData.reauthorizeRequired === true,
+      appId: tokenData.appId
+    });
+    if (!tokenResult.ok) {
+      markFail(ctx, `GET /api/douyin/tokens HTTP ${tokenResult.status}`);
+    } else if (!tokenReady) {
+      markBlocked(ctx, 'BLOCKED_AUTH: real-pre 抖店 Token 缺失或需要重新授权');
+      persistStepSummary(ctx);
+      // 已经 BLOCKED，仍可继续打开页面做最低限度可达性检查，但不算 PASS
+    }
+
+    let activityId: string | null = null;
+    if (tokenReady) {
+      const activitiesResult = await rawApi(api, 'GET', '/api/douyin/activities', String(admin.token || ''));
+      const activitiesData = safeUnwrap<JsonMap>(activitiesResult.body) || {};
+      const upstreamOk = activitiesResult.ok && isUpstreamSuccess(activitiesData);
+      activityId = process.env.E2E_ACTIVITY_ID || findActivityId(activitiesData);
+      setDetail(ctx, 'activitiesProbe', {
+        status: activitiesResult.status,
+        upstreamOk,
+        remoteCode: findDeepValue(activitiesData, ['code', 'err_no']),
+        activityId
+      });
+      if (!upstreamOk) {
+        markBlocked(ctx, 'BLOCKED_UPSTREAM_ACTIVITY_AUTH: 抖音联盟活动列表上游失败（可能官方权限或限流）');
+      }
+    }
+
+    let rawProductCount = 0;
+    if (tokenReady && activityId && ctx.summary.conclusion !== 'BLOCKED') {
+      const rawProducts = await rawApi(api, 'GET', '/api/douyin/activity-product-list', String(admin.token || ''), {
+        params: { activityId, count: 20 }
+      });
+      const rawProductsData = safeUnwrap<JsonMap>(rawProducts.body) || {};
+      const upstreamOk = rawProducts.ok && isUpstreamSuccess(rawProductsData);
+      const productArray = findProductArray(rawProductsData);
+      rawProductCount = productArray.length;
+      setDetail(ctx, 'rawActivityProducts', {
+        status: rawProducts.status,
+        upstreamOk,
+        count: rawProductCount,
+        remoteCode: findDeepValue(rawProductsData, ['code', 'err_no'])
+      });
+      if (!upstreamOk) {
+        markBlocked(ctx, 'BLOCKED_UPSTREAM_ACTIVITY_AUTH: 活动商品上游失败');
+      } else if (rawProductCount === 0) {
+        markPending(ctx, 'PENDING_NO_ACTIVITY_PRODUCTS: 当前活动上游商品列表为空，无法验证商品链');
+      }
+    }
+
+    let candidateProductId: string | null = null;
+    let businessProductCount = 0;
+    let initialBizStatus: string | null = null;
+    if (tokenReady && activityId && ctx.summary.conclusion === 'PASS') {
+      const businessResult = await rawApi(api, 'GET', `/api/colonel/activities/${activityId}/products`, String(admin.token || ''), {
+        params: { count: 20, refresh: true }
+      });
+      if (!businessResult.ok) {
+        markFail(ctx, `GET /api/colonel/activities/${activityId}/products HTTP ${businessResult.status}`);
+      } else {
+        const businessData = safeUnwrap<JsonMap>(businessResult.body) || {};
+        const items = Array.isArray((businessData as JsonMap).items)
+          ? ((businessData as JsonMap).items as JsonMap[])
+          : findProductArray(businessData);
+        businessProductCount = items.length;
+        const candidate = selectCandidate(items);
+        candidateProductId = candidate ? String(candidate.productId ?? candidate.product_id ?? '') : null;
+        initialBizStatus = candidate ? String(candidate.bizStatus ?? '') : null;
+        setDetail(ctx, 'businessProducts', {
+          status: businessResult.status,
+          count: businessProductCount,
+          productId: candidateProductId,
+          bizStatus: initialBizStatus
+        });
+        if (businessProductCount === 0) {
+          markPending(ctx, 'PENDING_NO_ACTIVITY_PRODUCTS: 本地业务商品视图为空');
+        } else if (!candidateProductId) {
+          markPending(ctx, 'PENDING_NO_ACTIVITY_PRODUCTS: 找不到任何包含 productId 的候选商品');
+        } else if (!BUSINESS_READY.has(String(initialBizStatus || 'PENDING_AUDIT'))) {
+          markPending(ctx, `PENDING_NO_ACTIVITY_PRODUCTS: 候选商品 bizStatus=${initialBizStatus} 不在合法状态集合`);
+        }
+      }
+    }
+
+    if (tokenReady && activityId && candidateProductId && ctx.summary.conclusion === 'PASS') {
+      const detailResult = await rawApi(api, 'GET', `/api/colonel/activities/${activityId}/products/${candidateProductId}`, String(admin.token || ''));
+      if (!detailResult.ok) {
+        markFail(ctx, `GET product detail HTTP ${detailResult.status}`);
+      } else {
+        const detailData = safeUnwrap<JsonMap>(detailResult.body) || {};
+        const productId = String(detailData.productId ?? detailData.product_id ?? '');
+        const productName = String(detailData.productName ?? detailData.product_name ?? detailData.title ?? '');
+        const bizStatus = String(detailData.bizStatus ?? '');
+        const hasRequired = Boolean(productId) && Boolean(productName);
+        setDetail(ctx, 'productDetail', {
+          productId,
+          productName,
+          bizStatus,
+          selectedToLibrary: Boolean(detailData.selectedToLibrary || detailData.libraryVisible)
+        });
+        if (!hasRequired) {
+          markFail(ctx, 'product detail 缺少 productId/productName 等关键字段');
+        } else if (!BUSINESS_READY.has(bizStatus || 'PENDING_AUDIT')) {
+          markFail(ctx, `product detail bizStatus=${bizStatus} 不在合法状态集合`);
+        }
+      }
+    }
+
+    // 页面 smoke：始终尝试，无论上面是 BLOCKED/PENDING 还是 PASS，
+    // 因为 /product 与 /system/douyin 在 BLOCKED/PENDING 下也必须不崩溃。
+    await installAuth(page, admin);
+    const productPage = await openAndAssertNoFatal(page, '/product');
+    const douyinPage = await openAndAssertNoFatal(page, '/system/douyin');
+    setDetail(ctx, 'pageCheck', { productPage, douyinPage });
+    if (productPage.runtimeError) markFail(ctx, '/product 出现运行时错误');
+    if (douyinPage.runtimeError) markFail(ctx, '/system/douyin 出现运行时错误');
+
+    setDetail(ctx, 'activityId', activityId);
+    setDetail(ctx, 'rawProductCount', rawProductCount);
+    setDetail(ctx, 'businessProductCount', businessProductCount);
+  } catch (error) {
+    markFail(ctx, error instanceof Error ? error.message : String(error));
+  } finally {
+    persistStepSummary(ctx);
+    await api.dispose();
+    await testInfo.attach('step-summary.json', {
+      body: JSON.stringify(ctx.summary, null, 2),
+      contentType: 'application/json'
+    });
+  }
+
+  // FAIL 时让 Playwright 失败；BLOCKED/PENDING 走 step-summary 由 orchestrator 解读，
+  // 不在这里抛错，避免 orchestrator 把 BLOCKED 误判为 FAIL。
+  expect(
+    ctx.summary.conclusion === 'FAIL'
+      ? ctx.summary.failures.join('; ')
+      : 'OK',
+    `real-pre 31 商品链 conclusion=${ctx.summary.conclusion}`
+  ).toBe('OK');
+});
+
+async function rawApi(
+  api: APIRequestContext,
+  method: 'GET' | 'POST' | 'PUT',
+  path: string,
+  token: string,
+  options: { data?: JsonMap; params?: JsonMap } = {}
+): Promise<{ status: number; ok: boolean; body: unknown }> {
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const requestOptions = {
+    headers,
+    data: options.data,
+    params: options.params as Record<string, string | number | boolean> | undefined
+  };
+  const response = method === 'GET'
+    ? await api.get(path, requestOptions)
+    : method === 'POST'
+      ? await api.post(path, requestOptions)
+      : await api.put(path, requestOptions);
+  const body = await response.json().catch(async () => ({ rawText: await response.text().catch(() => '') }));
+  return { status: response.status(), ok: response.ok(), body };
+}
+
+function findActivityId(input: unknown): string | null {
+  const list = findDeepValue(input, ['activity_list', 'activityList', 'activities', 'data']);
+  if (Array.isArray(list)) {
+    const first = list.find((item) => item && typeof item === 'object') as JsonMap | undefined;
+    const value = first?.activity_id ?? first?.activityId ?? first?.id;
+    return value ? String(value) : null;
+  }
+  const value = findDeepValue(input, ['activity_id', 'activityId']);
+  return value ? String(value) : null;
+}
+
+function findProductArray(input: unknown, seen = new Set<unknown>()): JsonMap[] {
+  if (!input || seen.has(input)) return [];
+  if (Array.isArray(input)) {
+    const first = input[0] as JsonMap | undefined;
+    if (!first || typeof first !== 'object') return input as JsonMap[];
+    if ('product_id' in first || 'productId' in first || 'title' in first || 'productName' in first) {
+      return input as JsonMap[];
+    }
+  }
+  if (typeof input !== 'object') return [];
+  seen.add(input);
+  for (const value of Object.values(input as JsonMap)) {
+    const found = findProductArray(value, seen);
+    if (found.length) return found;
+  }
+  return [];
+}
+
+function selectCandidate(items: JsonMap[]): JsonMap | null {
+  if (!items.length) return null;
+  const preferredProductId = process.env.E2E_PRODUCT_ID;
+  if (preferredProductId) {
+    const preferred = items.find((item) => String(item.productId ?? item.product_id) === preferredProductId);
+    if (preferred) return preferred;
+  }
+  const linkable = items.find((row) => isLinkableContext(row) && (row.productId || row.product_id));
+  if (linkable) return linkable;
+  const priorities = ['PENDING_AUDIT', 'APPROVED', 'BOUND', 'ASSIGNED', 'LINKED', 'FOLLOWING'];
+  for (const status of priorities) {
+    const item = items.find((row) => String(row.bizStatus || 'PENDING_AUDIT') === status && (row.productId || row.product_id));
+    if (item) return item;
+  }
+  return items.find((row) => row.productId || row.product_id) || null;
+}
+
+function isLinkableContext(row: JsonMap): boolean {
+  const hasUrlContext = Boolean(row.detailUrl || row.promoteLink || row.promotionUrl);
+  const hasOriginContext = Boolean(row.originColonelBuyinId || row.origin_buyin_id || row.colonelBuyinId);
+  const hasLinkedState = ['LINKED', 'FOLLOWING'].includes(String(row.bizStatus || ''));
+  return hasLinkedState || hasUrlContext || hasOriginContext;
+}
+
+async function installAuth(page: Page, auth: Record<string, unknown>): Promise<void> {
+  await page.addInitScript((payload: Record<string, unknown>) => {
+    localStorage.setItem('token', String(payload.token ?? ''));
+    if (payload.refreshToken) localStorage.setItem('refreshToken', String(payload.refreshToken));
+    if (payload.refreshExpiresIn) localStorage.setItem('refreshExpiresIn', String(payload.refreshExpiresIn));
+    if (payload.accessTokenExpiresIn || payload.expiresIn) {
+      localStorage.setItem('accessTokenExpiresIn', String(payload.accessTokenExpiresIn ?? payload.expiresIn ?? ''));
+    }
+    localStorage.setItem('userInfo', JSON.stringify(payload));
+  }, auth);
+}
+
+async function openAndAssertNoFatal(page: Page, route: string): Promise<{ route: string; finalPath: string; runtimeError: boolean }> {
+  await page.goto(route, { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
+  await page.waitForLoadState('networkidle', { timeout: REAL_PRE_NETWORK_IDLE_TIMEOUT_MS }).catch(() => undefined);
+  const bodyText = await page.locator('body').innerText({ timeout: 10_000 }).catch(() => '');
+  const finalPath = new URL(page.url()).pathname;
+  return {
+    route,
+    finalPath,
+    runtimeError: FATAL_TEXT.test(bodyText)
+  };
+}

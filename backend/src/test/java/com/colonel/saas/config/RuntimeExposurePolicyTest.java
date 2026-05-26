@@ -14,6 +14,17 @@ class RuntimeExposurePolicyTest {
 
         assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(environment, "/douyin/oauth/callback")).isTrue();
         assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(environment, "/api/douyin/oauth/callback")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(environment, "/public/logistics/kuaidi100/callback")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(environment, "/api/public/logistics/kuaidi100/callback")).isTrue();
+    }
+
+    @Test
+    void shouldBypassAuthentication_shouldAllowLogoutInAllProfiles() {
+        MockEnvironment prod = new MockEnvironment();
+        prod.setActiveProfiles("prod");
+
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(prod, "/auth/logout")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(prod, "/api/auth/logout")).isTrue();
     }
 
     @Test

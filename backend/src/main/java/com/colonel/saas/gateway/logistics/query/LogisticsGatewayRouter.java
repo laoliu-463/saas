@@ -1,6 +1,7 @@
 package com.colonel.saas.gateway.logistics.query;
 
 import com.colonel.saas.config.LogisticsProperties;
+import com.colonel.saas.gateway.logistics.LogisticsTrackCommand;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
@@ -39,6 +40,12 @@ public class LogisticsGatewayRouter implements LogisticsQueryGateway {
     public LogisticsQueryResult query(String logisticsCompany, String trackingNo) {
         LogisticsQueryGateway gateway = resolveGateway();
         return gateway.query(logisticsCompany, trackingNo);
+    }
+
+    @Override
+    public LogisticsQueryResult query(LogisticsTrackCommand command) {
+        LogisticsQueryGateway gateway = resolveGateway();
+        return gateway.query(command);
     }
 
     @Override

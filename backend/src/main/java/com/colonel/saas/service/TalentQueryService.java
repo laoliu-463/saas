@@ -674,7 +674,7 @@ public class TalentQueryService {
         if (!"PRIVATE".equalsIgnoreCase(firstNonBlank(talent.getPoolStatus(), "PUBLIC"))) {
             return false;
         }
-        String ownerName = firstNonBlank(talent.getOwnerName(), "");
+        String ownerName = textOrEmpty(talent.getOwnerName());
         return ownerName.toLowerCase(Locale.ROOT).contains(ownerKeyword.toLowerCase(Locale.ROOT));
     }
 
@@ -721,12 +721,12 @@ public class TalentQueryService {
         String needle = category.trim();
         String mainCategory = firstNonBlank(
                 talent.getMainCategory(),
-                resolveMainCategory(talent.getCategories()),
-                "");
-        if (mainCategory.contains(needle)) {
+                resolveMainCategory(talent.getCategories()));
+        if (StringUtils.hasText(mainCategory) && mainCategory.contains(needle)) {
             return true;
         }
-        return firstNonBlank(talent.getCategories(), "").contains(needle);
+        String categories = firstNonBlank(talent.getCategories());
+        return StringUtils.hasText(categories) && categories.contains(needle);
     }
 
     private boolean matchesLevel(Talent talent, String level) {
@@ -767,7 +767,7 @@ public class TalentQueryService {
         if (!StringUtils.hasText(region)) {
             return true;
         }
-        return firstNonBlank(talent.getIpLocation(), "").contains(region);
+        return textOrEmpty(talent.getIpLocation()).contains(region.trim());
     }
 
     private boolean matchesPlatform(String platform) {
@@ -782,15 +782,14 @@ public class TalentQueryService {
             return true;
         }
         String normalized = douyinNo.trim();
-        return firstNonBlank(talent.getDouyinNo(), talent.getDouyinUid(), talent.getUid(), "")
-                .contains(normalized);
+        return textOrEmpty(talent.getDouyinNo(), talent.getDouyinUid(), talent.getUid()).contains(normalized);
     }
 
     private boolean matchesNickname(Talent talent, String nickname) {
         if (!StringUtils.hasText(nickname)) {
             return true;
         }
-        return firstNonBlank(talent.getNickname(), "").contains(nickname.trim());
+        return textOrEmpty(talent.getNickname()).contains(nickname.trim());
     }
 
     private boolean matchesMetricBand(String actual, String expected) {
@@ -922,6 +921,11 @@ public class TalentQueryService {
             }
         }
         return null;
+    }
+
+    private String textOrEmpty(String... values) {
+        String value = firstNonBlank(values);
+        return value == null ? "" : value;
     }
 
     private String asText(Object raw) {

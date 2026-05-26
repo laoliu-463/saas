@@ -9,9 +9,9 @@ import lombok.Data;
 public class LogoutRequest {
 
     @Schema(description = "Access Token")
-    @NotBlank(message = "accessToken 不能为空")
     private String accessToken;
 
-    @Schema(description = "Refresh Token（可选）")
+    @Schema(description = "Refresh Token")
+    @NotBlank(message = "refreshToken 不能为空")
     private String refreshToken;
 }

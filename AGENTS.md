@@ -1,7 +1,7 @@
-# AGENTS.md — 抖音团长 SaaS V2.2 开发地图
+# AGENTS.md — 抖音团长 SaaS V1 Harness Engineering 开发地图
 
-**版本**：V2.2 维护版  
-**最后更新**：2026-05-09（事实口径与 `docs/README.md`、`docs/04-开发进度.md` 对齐）  
+**版本**：V1 Harness Engineering 维护版
+**最后更新**：2026-05-26（事实口径与 `CLAUDE.md`、`docs/README.md` 对齐）
 **适用对象**：AI 智能体 / 开发者
 
 ---
@@ -18,13 +18,33 @@
 
 ### Domain docs
 
-当前仓库按单上下文布局接入：根目录 `CONTEXT.md` 提供术语表，主业务与执行口径仍以 `AGENTS.md` 和 `docs/*.md` 为准。见 `docs/agents/domain.md`。
+当前仓库按单上下文布局接入：根目录 `CONTEXT.md` 提供术语表，主业务与执行口径以 `AGENTS.md`、`CLAUDE.md` 和 `docs/*.md` 为准。见 `docs/agents/domain.md`。
+
+### Codex Harness 工作台
+
+本项目已经建立 Harness Engineering 工作台：
+
+- `CLAUDE.md`：只做地图，告诉智能体先读什么、怎么找证据、如何进入任务。
+- `.claude/`：存放智能体工作台文档，包括 hooks、skills、plugins、LSP、MCP、subagents、commands、memory、qa、templates。
+- `docs/`：存放事实、领域合同、流程、接口、事件、数据模型、验收、部署和 ADR。
+
+Codex 在本项目执行任务时默认按以下顺序进入：
+
+1. 先读 `CLAUDE.md`，确认当前任务入口和禁止越界项。
+2. 再读 `docs/README.md`，进入对应主干文档或专题目录。
+3. 如果用户要求审计、验收、排障、文档重构，优先读取 `.claude/commands/` 中同名命令文档。
+4. 如果任务需要复用方法，读取 `.claude/skills/` 下对应 `SKILL.md`。
+5. 如果需要分领域检查，按 `.claude/subagents/` 中的代理职责拆分证据，不自行扩展业务规则。
+
+注意：`.claude/hooks/*.md`、`.claude/commands/*.md`、`.claude/subagents/*.md` 在 Codex 中是可读工作流文档，不是自动执行机制。用户说“按 CLAUDE.md 执行”或“按某个 command/skill 执行”时，Codex 必须显式读取并遵循。
 
 ---
 
 ## 1. 当前执行口径
 
 本项目采用 Harness Engineering：
+- 地图入口：`CLAUDE.md`
+- 智能体工作台：`.claude/**/*.md`
 - 文档主源：`docs/*.md`
 - 代码事实来源：`backend/src/**` + `frontend/src/**`
 
@@ -35,14 +55,17 @@
 执行时不要只看“接口通了、页面有了、按钮能点”，而要看用户是否能完成真实业务动作，是否减少重复记录、重复沟通和线下补表。
 
 文档优先级：
-1. `docs/README.md`
-2. `docs/00-项目总览.md` ~ `docs/06-部署与对接计划.md`
-3. 当前阶段直接相关的主干文档：`docs/09-真实SDK联调准备清单.md`、`docs/10-V2.2场景覆盖矩阵.md`
-4. 归档与专项记录：`docs/archive/*.md`
-5. 当前代码可验证事实
+1. `CLAUDE.md`
+2. `docs/README.md`
+3. `docs/00-项目总览.md` ~ `docs/10-部署运行总览.md`
+4. `docs/领域/`、`docs/流程/`、`docs/对接/`、`docs/验收/`、`docs/决策/`
+5. `.claude/commands/`、`.claude/skills/`、`.claude/hooks/`、`.claude/subagents/`、`.claude/mcp/`
+6. `docs/归档/` 与 `docs/archive/` 中的历史资料
+7. 当前代码和测试结果
 
 补充要求：
-- 进入真实 SDK 联调、P0 验收、乱码治理等专项任务时，必须同时阅读对应主干文档或 `docs/archive/` 中对应专项记录，不能只按 `00~06` 执行。
+- 进入真实 SDK 联调、P0 验收、乱码治理等专项任务时，必须同时阅读 `CLAUDE.md`、`docs/README.md` 和对应专题目录，不能只按单个旧文档执行。
+- 旧 V2.2 完整方案、FastAPI、Celery、Python 爬虫等历史口径只能作为归档背景，不得写成当前事实。
 - 当前打开中的任务文档、当前里程碑引用的补充文档，默认视为本次任务约束的一部分。
 
 ---
@@ -53,7 +76,7 @@
 - 已完成：V1.0 到 M1.5（SDK 封装、订单同步、爬虫、寄样真实数据接入、寄样自动闭环）
 - 已完成：P0/P1 本地 Mock 收口（环境口径统一、数据基线固化、日志降噪、SOP 文档化）
 - 已完成：real-pre 环境浏览器 E2E 全路径自动化联调（2026-05-02 首轮 10/10 PASS；2026-05-03 全量 45/45 PASS）
-- 进行中：P2 工程治理（权限注解口径统一）；real-pre 订单归因与看板口径收口（详见 `docs/04-开发进度.md`）
+- 进行中：P2 工程治理（权限注解口径统一）；real-pre 订单归因与看板口径收口（当前入口见 `docs/验收/real-pre联调手册.md`、`docs/决策/ADR-002-V1范围优先级.md`）
 - 待完成：M1.6 数据看板真实化**剩余项**、M1.7 部署验证；联盟侧能力中仍依赖外部 Token / 权限包 / 真实样本的分支（见 `docs/09`）
 
 关键说明：
@@ -70,19 +93,35 @@
 
 ```text
 SAAS/
+├── CLAUDE.md                   # Codex / 智能体地图入口
+├── .claude/                    # 智能体工作台文档
+│   ├── commands/               # 审计、E2E、real-pre、文档重构等命令说明
+│   ├── skills/                 # 需求对齐、领域审计、real-pre 验收等技能说明
+│   ├── hooks/                  # 变更前、测试前、提交前守卫说明
+│   ├── subagents/              # 分领域代理职责说明
+│   ├── mcp/                    # MCP 使用和安全边界
+│   └── qa/                     # P0、E2E、覆盖率、证据映射
 ├── backend/                    # Spring Boot 后端
 ├── frontend/                   # Vue3 前端
-├── docs/                       # 项目主文档（根目录收敛为 10 个）
+├── docs/                       # 项目主文档与事实层
 │   ├── README.md
 │   ├── 00-项目总览.md
-│   ├── 01-业务闭环.md
-│   ├── 02-架构设计.md
-│   ├── 03-Test与Real网关契约.md
-│   ├── 04-开发进度.md
-│   ├── 05-接口与数据模型.md
-│   ├── 06-部署与对接计划.md
-│   ├── 09-真实SDK联调准备清单.md
-│   ├── 10-V2.2场景覆盖矩阵.md
+│   ├── 01-V1交付范围与边界.md
+│   ├── 02-业务闭环总览.md
+│   ├── 03-领域架构总览.md
+│   ├── 04-事件契约总表.md
+│   ├── 05-API契约总表.md
+│   ├── 06-数据模型总表.md
+│   ├── 07-权限与数据范围.md
+│   ├── 08-第三方对接总览.md
+│   ├── 09-测试验收总览.md
+│   ├── 10-部署运行总览.md
+│   ├── 领域/
+│   ├── 流程/
+│   ├── 对接/
+│   ├── 验收/
+│   ├── 决策/
+│   ├── 归档/
 │   └── archive/
 ├── scripts/
 └── docker-compose.test.yml
@@ -93,26 +132,27 @@ SAAS/
 ## 4. 文档阅读入口
 
 ### 开发新功能
-1. 先读 `docs/04-开发进度.md` 确认当前阶段和里程碑
-2. 再读 `docs/01-业务闭环.md`、`docs/02-架构设计.md`
-3. 如涉及接口、环境、联调，再补读 `docs/03`、`docs/05`、`docs/06`
-4. 如涉及专项任务，再补读 `docs/09`、`docs/10` 或 `docs/archive/` 中对应专项文档
-5. 对照当前代码实现落地
-6. 增加 / 更新测试并完成最小验证
+1. 先读 `CLAUDE.md` 和 `docs/README.md`。
+2. 再读 `docs/01-V1交付范围与边界.md`、`docs/02-业务闭环总览.md`、`docs/03-领域架构总览.md`。
+3. 涉及领域职责时读 `docs/领域/` 对应领域合同。
+4. 涉及业务链路时读 `docs/流程/` 对应流程。
+5. 涉及接口、事件、数据、权限时读 `docs/04-事件契约总表.md`、`docs/05-API契约总表.md`、`docs/06-数据模型总表.md`、`docs/07-权限与数据范围.md`。
+6. 涉及第三方或 real-pre 时读 `docs/08-第三方对接总览.md`、`docs/对接/` 和 `docs/验收/real-pre联调手册.md`。
+7. 对照当前代码实现落地，增加 / 更新测试并完成最小验证。
 
 ### 修复 Bug
 1. 定位模块
-2. 查对应主文档和专项文档
+2. 查 `CLAUDE.md`、`docs/README.md`、对应领域合同、流程文档和验收文档
 3. 修复 + 回归测试
-4. 更新 `docs/04-开发进度.md`（如影响阶段结论）
+4. 如影响接口、事件、数据、验收或 ADR，必须同步对应 `docs/*.md`
 
 ### 文档维护
-1. 改实现后必须同步对应 `docs/*.md`
-2. 涉及 SDK / Gateway 时同步 `docs/03-Test与Real网关契约.md`、`docs/06-部署与对接计划.md`
-3. 涉及真实联调时同步 `docs/09-真实SDK联调准备清单.md`
-4. 涉及场景覆盖与验收口径时同步 `docs/10-V2.2场景覆盖矩阵.md`，必要时补记 `docs/archive/runbooks/11-P0测试数据收口清单.md`
-5. 涉及乱码、编码、文档可读性治理时同步 `docs/archive/audits/12-文档编码乱码问题分析报告.md`
-6. 重大里程碑完成后更新 `docs/README.md` 和 `docs/04-开发进度.md`
+1. 改实现后必须同步对应 `docs/*.md`。
+2. 涉及 SDK / Gateway 时同步 `docs/08-第三方对接总览.md` 和 `docs/对接/`。
+3. 涉及真实联调时同步 `docs/验收/real-pre联调手册.md` 与 `docs/验收/验收证据索引.md`。
+4. 涉及 P0 / E2E 验收时同步 `docs/09-测试验收总览.md`、`docs/验收/` 与 `.claude/qa/`。
+5. 涉及领域边界时同步 `docs/领域/` 和 `docs/决策/`。
+6. 涉及乱码、编码、文档可读性治理时对照 `docs/archive/audits/12-文档编码乱码问题分析报告.md`。
 
 ---
 
@@ -129,13 +169,16 @@ SAAS/
 
 ## 6. 强制规则速查
 
-1. Test / Real 必须共用 Gateway 契约：`docs/03-Test与Real网关契约.md`
-2. 前端只调用内部 API：`docs/05-接口与数据模型.md`
-3. 商品主链路按统一闭环推进：`docs/01-业务闭环.md`
-4. 部署和联调按环境切换路径执行：`docs/06-部署与对接计划.md`
-5. 真实 SDK 联调前先过准备清单：`docs/09-真实SDK联调准备清单.md`
-6. P0 / 场景验收以覆盖矩阵和收口清单为准：`docs/10-V2.2场景覆盖矩阵.md`、`docs/archive/runbooks/11-P0测试数据收口清单.md`
-7. 文档修改需避免乱码回归，必要时对照：`docs/archive/audits/12-文档编码乱码问题分析报告.md`
+1. Codex 任务先读 `CLAUDE.md`，再读 `docs/README.md`。
+2. V1 范围以 `docs/01-V1交付范围与边界.md` 为准，旧 V2.2 只能作为归档背景。
+3. 前端只调用内部 API：`docs/05-API契约总表.md`。
+4. 事件契约以 `docs/04-事件契约总表.md` 为入口。
+5. 数据模型以 `docs/06-数据模型总表.md` 为入口。
+6. 权限与数据范围以 `docs/07-权限与数据范围.md` 为入口。
+7. 第三方对接以 `docs/08-第三方对接总览.md` 与 `docs/对接/` 为入口。
+8. P0 / E2E / real-pre 验收以 `docs/09-测试验收总览.md` 与 `docs/验收/` 为准。
+9. 部署和联调按 `docs/10-部署运行总览.md` 执行。
+10. 发现 V1/V2 或当前事实冲突时，写入 `docs/决策/ADR-002-V1范围优先级.md`。
 
 ---
 

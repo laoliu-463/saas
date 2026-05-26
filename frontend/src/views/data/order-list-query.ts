@@ -3,6 +3,14 @@ export interface OrderListFilters {
   status: string | null
   talentId: string
   merchantId: string
+  activityId: string
+  shopName: string
+  productId: string
+  productName: string
+  talentName: string
+  colonelName: string
+  channelName: string
+  recruitType: string | null
 }
 
 export type OrderTimeField = 'createTime' | 'settleTime'
@@ -41,9 +49,17 @@ export function buildOrderExportParams(input: BaseOrderQueryInput) {
   const { filters, timeField, dateRange } = input
   return {
     orderId: filters.orderId || undefined,
-    status: filters.status,
+    status: filters.status || undefined,
     talentId: filters.talentId || undefined,
     merchantId: filters.merchantId || undefined,
+    colonelActivityId: filters.activityId || undefined,
+    shopName: filters.shopName || undefined,
+    productId: filters.productId || undefined,
+    productName: filters.productName || undefined,
+    talentName: filters.talentName || undefined,
+    colonelName: filters.colonelName || undefined,
+    channelName: filters.channelName || undefined,
+    recruitType: filters.recruitType || undefined,
     timeField,
     ...resolveDateParams(dateRange)
   }

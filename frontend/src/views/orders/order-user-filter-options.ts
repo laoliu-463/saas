@@ -6,7 +6,7 @@ const buildUserOption = (user: any) => {
   const label = realName && username ? `${realName} (${username})` : (realName || username || String(user?.id || '未命名用户'));
   return {
     label,
-    value: String(user?.id || '')
+    value: realName || username || String(user?.id || '')
   };
 };
 

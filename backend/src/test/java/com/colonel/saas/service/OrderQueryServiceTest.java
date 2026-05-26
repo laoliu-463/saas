@@ -97,6 +97,48 @@ class OrderQueryServiceTest {
     }
 
     @Test
+    void getOrderDetail_amountFieldsShouldPreserveCentUnitAndCurrentMapping() {
+        // 用差异化数值区分每个金额字段的来源列，防止"沉默换算/换列"漂移。
+        when(jdbcTemplate.queryForList(anyString(), eq("amount-mapping-order")))
+                .thenReturn(List.of(Map.ofEntries(
+                        Map.entry("order_id", "amount-mapping-order"),
+                        Map.entry("order_status", 1),
+                        Map.entry("attribution_status", "ATTRIBUTED"),
+                        Map.entry("attribution_remark", "ATTRIBUTED"),
+                        Map.entry("product_id", "P-AMT"),
+                        Map.entry("activity_id", "REAL_ACT_AMT"),
+                        Map.entry("order_amount", 6900L),
+                        Map.entry("settle_amount", 6500L),
+                        Map.entry("estimate_service_fee", 800L),
+                        Map.entry("effective_service_fee", 700L),
+                        Map.entry("estimate_tech_service_fee", 80L),
+                        Map.entry("effective_tech_service_fee", 70L),
+                        Map.entry("settle_colonel_commission", 600L),
+                        Map.entry("create_time", Timestamp.valueOf(LocalDateTime.of(2026, 5, 26, 12, 0, 0))),
+                        Map.entry("update_time", Timestamp.valueOf(LocalDateTime.of(2026, 5, 26, 12, 1, 0)))
+                )));
+        when(jdbcTemplate.queryForList(anyString(), eq("P-AMT"))).thenReturn(List.of());
+
+        OrderDetailResponse.AmountInfo amount =
+                service.getOrderDetail("amount-mapping-order", null, null, DataScope.ALL).getAmount();
+
+        // 单位：DB 列均为"分"，DTO 原样下发，前端按 /100 渲染。任何换算应被此测试发现。
+        assertThat(amount.getOrderAmount()).isEqualTo(6900L);
+        // payAmount 当前实现复用 order_amount 列（schema 注释：order_amount 即 pay_amount）。
+        assertThat(amount.getPayAmount()).isEqualTo(6900L);
+        assertThat(amount.getSettleAmount()).isEqualTo(6500L);
+        // 双轨服务费：预估 / 结算。
+        assertThat(amount.getEstimateServiceFee()).isEqualTo(800L);
+        assertThat(amount.getEffectiveServiceFee()).isEqualTo(700L);
+        assertThat(amount.getEstimateTechServiceFee()).isEqualTo(80L);
+        assertThat(amount.getEffectiveTechServiceFee()).isEqualTo(70L);
+        // serviceFee 对齐业绩域双轨口径：取 effective_service_fee（结算服务费 = 700L），
+        // 而非历史口径 settle_colonel_commission（团长结算佣金 = 600L）。
+        // 若回退到团长佣金口径，应改回 row.get("settle_colonel_commission")，并同步前端 label。
+        assertThat(amount.getServiceFee()).isEqualTo(700L);
+    }
+
+    @Test
     void getOrderDetail_shouldBuildUnattributedDiagnosis() {
         when(jdbcTemplate.queryForList(anyString(), eq("mock-order-2")))
                 .thenReturn(List.of(Map.ofEntries(

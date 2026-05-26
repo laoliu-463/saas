@@ -138,6 +138,30 @@ public class SampleRequest extends VersionedEntity {
     @TableField("signed_at")
     private LocalDateTime signedAt;
 
+    @TableField("logistics_provider")
+    private String logisticsProvider;
+
+    @TableField("logistics_subscribe_status")
+    private String logisticsSubscribeStatus;
+
+    @TableField("logistics_subscribed_at")
+    private LocalDateTime logisticsSubscribedAt;
+
+    @TableField("logistics_last_subscribe_at")
+    private LocalDateTime logisticsLastSubscribeAt;
+
+    @TableField("logistics_last_callback_at")
+    private LocalDateTime logisticsLastCallbackAt;
+
+    @TableField("logistics_callback_status")
+    private String logisticsCallbackStatus;
+
+    @TableField("logistics_callback_message")
+    private String logisticsCallbackMessage;
+
+    @TableField("logistics_exception_reason")
+    private String logisticsExceptionReason;
+
     @TableField("external_last_sync_at")
     private LocalDateTime externalLastSyncAt;
 }

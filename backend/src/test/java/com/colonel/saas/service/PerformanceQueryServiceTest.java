@@ -99,6 +99,22 @@ class PerformanceQueryServiceTest {
     }
 
     @Test
+    void getPerformance_shouldReturnNotCalculatedWhenPerformanceRecordInvalid() {
+        PerformanceRecord invalid = record("ORDER-REVERSED", UUID.randomUUID(), UUID.randomUUID());
+        invalid.setValid(false);
+        when(performanceRecordMapper.findByOrderId("ORDER-REVERSED")).thenReturn(invalid);
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORDER-REVERSED");
+        when(orderMapper.selectOne(any())).thenReturn(order);
+
+        assertThatThrownBy(() -> service.getPerformance("ORDER-REVERSED", admin()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("PERFORMANCE_NOT_CALCULATED");
+
+        verify(jdbcTemplate, never()).query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<?>>any(), any(Object[].class));
+    }
+
+    @Test
     void batchGetPerformance_shouldLimitRequestSizeAndHideUnauthorizedRows() {
         PerformanceBatchRequest request = new PerformanceBatchRequest();
         request.setOrderIds(List.of("ORDER-A", "ORDER-B"));
@@ -119,6 +135,24 @@ class PerformanceQueryServiceTest {
         assertThat(result.getItems().get(1).isFound()).isTrue();
         assertThat(result.getItems().get(1).isAuthorized()).isFalse();
         assertThat(result.getItems().get(1).getPerformance()).isNull();
+    }
+
+    @Test
+    void batchGetPerformance_shouldTreatInvalidPerformanceRecordAsNotCalculated() {
+        PerformanceBatchRequest request = new PerformanceBatchRequest();
+        request.setOrderIds(List.of("ORDER-REVERSED"));
+        PerformanceRecord invalid = record("ORDER-REVERSED", UUID.randomUUID(), UUID.randomUUID());
+        invalid.setValid(false);
+        when(performanceRecordMapper.findByOrderId("ORDER-REVERSED")).thenReturn(invalid);
+
+        var result = service.batchGetPerformance(request, admin());
+
+        assertThat(result.getItems()).hasSize(1);
+        assertThat(result.getItems().get(0).isFound()).isFalse();
+        assertThat(result.getItems().get(0).isAuthorized()).isTrue();
+        assertThat(result.getItems().get(0).getMessage()).isEqualTo("PERFORMANCE_NOT_CALCULATED");
+        assertThat(result.getItems().get(0).getPerformance()).isNull();
+        verify(jdbcTemplate, never()).query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<?>>any(), any(Object[].class));
     }
 
     @Test

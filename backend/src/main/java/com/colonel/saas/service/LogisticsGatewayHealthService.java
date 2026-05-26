@@ -4,6 +4,7 @@ import com.colonel.saas.config.LogisticsProperties;
 import com.colonel.saas.dto.logistics.LogisticsGatewayHealthResponse;
 import com.colonel.saas.dto.logistics.LogisticsGatewayTestRequest;
 import com.colonel.saas.dto.logistics.LogisticsGatewayTestResponse;
+import com.colonel.saas.gateway.logistics.LogisticsTrackCommand;
 import com.colonel.saas.gateway.logistics.query.Kuaidi100LogisticsQueryGateway;
 import com.colonel.saas.gateway.logistics.query.KuaidiNiaoLogisticsQueryGateway;
 import com.colonel.saas.gateway.logistics.query.LogisticsGatewayHealthStatus;
@@ -93,7 +94,13 @@ public class LogisticsGatewayHealthService {
         log.info("Logistics gateway test: provider={}, company={}, trackingNo={}, testEnabled={}",
                 provider, request.getLogisticsCompany(), maskedTracking, testEnabled);
 
-        LogisticsQueryResult result = gateway.query(request.getLogisticsCompany(), request.getTrackingNo());
+        LogisticsQueryResult result = gateway.query(LogisticsTrackCommand.builder()
+                .companyCode(request.getLogisticsCompany())
+                .trackingNo(request.getTrackingNo())
+                .phone(request.getPhone())
+                .from(request.getFrom())
+                .to(request.getTo())
+                .build());
         long elapsed = System.currentTimeMillis() - started;
         log.info("Logistics gateway test finished: provider={}, success={}, statusCode={}, elapsedMs={}",
                 provider, result.isSuccess(),

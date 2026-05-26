@@ -2,6 +2,7 @@ package com.colonel.saas.controller;
 
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.SysDeptMapper;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
@@ -41,6 +42,8 @@ class OrderSyncControllerTest {
     private CommissionService commissionService;
     @Mock
     private PerformanceBackfillService performanceBackfillService;
+    @Mock
+    private SysDeptMapper sysDeptMapper;
 
     private MockMvc mockMvc;
 
@@ -55,7 +58,8 @@ class OrderSyncControllerTest {
                         operationLogService,
                         new ShortTtlCacheService(),
                         commissionService,
-                        performanceBackfillService))
+                        performanceBackfillService,
+                        sysDeptMapper))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

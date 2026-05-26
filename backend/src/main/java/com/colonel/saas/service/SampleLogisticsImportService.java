@@ -51,14 +51,17 @@ public class SampleLogisticsImportService {
     private final SampleRequestMapper sampleRequestMapper;
     private final SampleStatusLogService sampleStatusLogService;
     private final SampleDomainEventPublisher sampleDomainEventPublisher;
+    private final SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService;
 
     public SampleLogisticsImportService(
             SampleRequestMapper sampleRequestMapper,
             SampleStatusLogService sampleStatusLogService,
-            SampleDomainEventPublisher sampleDomainEventPublisher) {
+            SampleDomainEventPublisher sampleDomainEventPublisher,
+            SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.sampleStatusLogService = sampleStatusLogService;
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
+        this.sampleLogisticsSubscriptionService = sampleLogisticsSubscriptionService;
     }
 
     public byte[] generateTemplate() throws IOException {
@@ -209,6 +212,7 @@ public class SampleLogisticsImportService {
         sampleStatusLogService.log(sample.getId(), fromStatus, STATUS_SHIPPING, currentUserId,
                 "Excel 批量导入物流: " + row.getTrackingNo());
         sampleDomainEventPublisher.publishSampleShipped(sample, currentUserId, now);
+        sampleLogisticsSubscriptionService.subscribeAfterShipment(sample);
         return itemResult(row, sample.getId(), true, "OK");
     }
 

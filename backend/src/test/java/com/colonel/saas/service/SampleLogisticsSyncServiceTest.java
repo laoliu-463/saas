@@ -1,8 +1,10 @@
 package com.colonel.saas.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.entity.SampleLogisticsTrace;
 import com.colonel.saas.entity.SampleRequest;
+import com.colonel.saas.gateway.logistics.LogisticsTrackCommand;
 import com.colonel.saas.gateway.logistics.query.LogisticsQueryGateway;
 import com.colonel.saas.gateway.logistics.query.LogisticsQueryResult;
 import com.colonel.saas.gateway.logistics.query.LogisticsStatusCode;
@@ -14,6 +16,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -22,6 +26,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -35,17 +40,23 @@ class SampleLogisticsSyncServiceTest {
     @Mock private SampleStatusLogService sampleStatusLogService;
     @Mock private LogisticsQueryGateway logisticsQueryGateway;
     @Mock private SampleDomainEventPublisher sampleDomainEventPublisher;
+    @Mock private TransactionOperations transactionOperations;
 
     private SampleLogisticsSyncService service;
 
     @BeforeEach
     void setUp() {
+        lenient().when(transactionOperations.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
         service = new SampleLogisticsSyncService(
                 logisticsQueryGateway,
                 sampleRequestMapper,
                 sampleLogisticsTraceMapper,
                 sampleStatusLogService,
-                sampleDomainEventPublisher);
+                sampleDomainEventPublisher,
+                transactionOperations);
     }
 
     @Test
@@ -55,7 +66,7 @@ class SampleLogisticsSyncServiceTest {
         sample.setId(id);
 
         when(sampleRequestMapper.selectById(id)).thenReturn(sample);
-        when(logisticsQueryGateway.query("SF", "MOCK-SIGNED")).thenReturn(signedResult("MOCK-SIGNED"));
+        when(logisticsQueryGateway.query(command(sample))).thenReturn(signedResult("MOCK-SIGNED"));
         when(logisticsQueryGateway.providerName()).thenReturn("MOCK");
         when(sampleRequestMapper.updateById(any())).thenReturn(1);
 
@@ -77,7 +88,7 @@ class SampleLogisticsSyncServiceTest {
         sample.setId(id);
 
         when(sampleRequestMapper.selectById(id)).thenReturn(sample);
-        when(logisticsQueryGateway.query("SF", "FAIL-001"))
+        when(logisticsQueryGateway.query(command(sample)))
                 .thenReturn(LogisticsQueryResult.queryFailed("MOCK", "SF", "FAIL-001", "REMOTE_ERROR", "查询失败"));
         when(sampleRequestMapper.updateById(any())).thenReturn(1);
 
@@ -219,8 +230,64 @@ class SampleLogisticsSyncServiceTest {
         assertThat(traceCaptor.getAllValues())
                 .extracting(SampleLogisticsTrace::getTraceContent)
                 .containsExactly("已揽收", "运输中");
+        assertThat(traceCaptor.getAllValues())
+                .extracting(SampleLogisticsTrace::getLocation)
+                .containsExactly("杭州", "上海");
+        assertThat(traceCaptor.getAllValues())
+                .extracting(SampleLogisticsTrace::getNodeHash)
+                .doesNotContainNull()
+                .doesNotHaveDuplicates();
         assertThat(sample.getLogisticsRawPayload()).containsEntry("state", "moving");
         verify(sampleStatusLogService, never()).log(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void syncOne_shouldPassRecipientPhoneAndAddressToGatewayCommand() {
+        UUID id = UUID.randomUUID();
+        SampleRequest sample = sample(3, "SF123");
+        sample.setId(id);
+        sample.setRecipientPhone("13800138000");
+        sample.setRecipientAddress("广东省深圳市南山区");
+
+        when(sampleRequestMapper.selectById(id)).thenReturn(sample);
+        when(logisticsQueryGateway.query(LogisticsTrackCommand.builder()
+                .companyCode("SF")
+                .trackingNo("SF123")
+                .phone("13800138000")
+                .to("广东省深圳市南山区")
+                .build())).thenReturn(successResult("SF123"));
+        when(sampleRequestMapper.updateById(any())).thenReturn(1);
+
+        LogisticsQueryResult result = service.syncOne(id);
+
+        assertThat(result.isSuccess()).isTrue();
+        verify(logisticsQueryGateway).query(LogisticsTrackCommand.builder()
+                .companyCode("SF")
+                .trackingNo("SF123")
+                .phone("13800138000")
+                .to("广东省深圳市南山区")
+                .build());
+    }
+
+    @Test
+    void syncOne_shouldFallbackToAutoCompanyWhenShipperCodeBlank() {
+        UUID id = UUID.randomUUID();
+        SampleRequest sample = sample(3, "SF-AUTO");
+        sample.setId(id);
+        sample.setShipperCode(" ");
+
+        LogisticsTrackCommand expected = LogisticsTrackCommand.builder()
+                .companyCode("AUTO")
+                .trackingNo("SF-AUTO")
+                .build();
+        when(sampleRequestMapper.selectById(id)).thenReturn(sample);
+        when(logisticsQueryGateway.query(expected)).thenReturn(successResult("SF-AUTO"));
+        when(sampleRequestMapper.updateById(any())).thenReturn(1);
+
+        LogisticsQueryResult result = service.syncOne(id);
+
+        assertThat(result.isSuccess()).isTrue();
+        verify(logisticsQueryGateway).query(expected);
     }
 
     @Test
@@ -240,18 +307,92 @@ class SampleLogisticsSyncServiceTest {
     }
 
     @Test
+    void handleLogisticsResult_signedPendingShipWithoutSignedAt_shouldUseNowAndSampleIdOperator() {
+        SampleRequest sample = sample(2, "MOCK-FALLBACK");
+        sample.setUserId(null);
+        sample.setExtraData(Map.of("keep", "yes"));
+        when(sampleRequestMapper.updateById(any())).thenReturn(1);
+        when(logisticsQueryGateway.providerName()).thenReturn("MOCK");
+        LogisticsQueryResult result = LogisticsQueryResult.builder()
+                .success(true)
+                .provider("MOCK")
+                .trackingNo("MOCK-FALLBACK")
+                .logisticsCompany("SF")
+                .signed(true)
+                .signedAt(null)
+                .traces(null)
+                .rawPayload(Map.of())
+                .queriedAt(LocalDateTime.now())
+                .build();
+
+        service.handleLogisticsResult(sample, result);
+
+        assertThat(sample.getStatus()).isEqualTo(5);
+        assertThat(sample.getSignedAt()).isNotNull();
+        assertThat(sample.getDeliverTime()).isEqualTo(sample.getSignedAt());
+        assertThat(sample.getLogisticsStatus()).isNull();
+        assertThat(sample.getExtraData()).containsEntry("keep", "yes")
+                .containsEntry("logisticsSource", "MOCK");
+        verify(sampleLogisticsTraceMapper).delete(any());
+        verify(sampleStatusLogService).log(sample.getId(), 2, 5, sample.getId(), "物流签收自动推进");
+        verify(sampleDomainEventPublisher).publishSampleSigned(sample, sample.getSignedAt());
+    }
+
+    @Test
+    void handleLogisticsResult_signed_shouldNotProgressWhenStatusIsNull() {
+        SampleRequest sample = sample(3, "MOCK-NULL-STATUS");
+        sample.setStatus(null);
+        when(sampleRequestMapper.updateById(any())).thenReturn(1);
+
+        service.handleLogisticsResult(sample, signedResult("MOCK-NULL-STATUS"));
+
+        assertThat(sample.getStatus()).isNull();
+        assertThat(sample.getSignedAt()).isNull();
+        verify(sampleStatusLogService, never()).log(any(), any(), any(), any(), any());
+        verify(sampleDomainEventPublisher, never()).publishSampleSigned(any(), any());
+    }
+
+    @Test
+    void handleLogisticsResult_shouldInsertTraceWithNullStatusCode() {
+        SampleRequest sample = sample(3, "MOCK-UNKNOWN");
+        when(sampleRequestMapper.updateById(any())).thenReturn(1);
+        LogisticsQueryResult result = LogisticsQueryResult.builder()
+                .success(true)
+                .provider("MOCK")
+                .trackingNo("MOCK-UNKNOWN")
+                .logisticsCompany("SF")
+                .statusCode(null)
+                .statusName("未知")
+                .signed(false)
+                .traces(List.of(LogisticsQueryResult.LogisticsTraceItem.builder()
+                        .traceTime(LocalDateTime.now())
+                        .traceContent("状态未知")
+                        .build()))
+                .rawPayload(Map.of())
+                .queriedAt(LocalDateTime.now())
+                .build();
+
+        service.handleLogisticsResult(sample, result);
+
+        ArgumentCaptor<SampleLogisticsTrace> captor = ArgumentCaptor.forClass(SampleLogisticsTrace.class);
+        verify(sampleLogisticsTraceMapper).insert(captor.capture());
+        assertThat(captor.getValue().getStatusCode()).isNull();
+        assertThat(captor.getValue().getStatusName()).isEqualTo("未知");
+    }
+
+    @Test
     void syncPendingInTransit_shouldCountSuccessFailedSkippedAndExceptions() {
         SampleRequest success = sample(3, "OK");
         SampleRequest skipped = sample(3, "SKIP");
         SampleRequest failed = sample(3, "FAIL");
         SampleRequest exception = sample(3, "EX");
         when(sampleRequestMapper.selectList(any())).thenReturn(List.of(success, skipped, failed, exception));
-        when(logisticsQueryGateway.query("SF", "OK")).thenReturn(successResult("OK"));
-        when(logisticsQueryGateway.query("SF", "SKIP"))
+        when(logisticsQueryGateway.query(command(success))).thenReturn(successResult("OK"));
+        when(logisticsQueryGateway.query(command(skipped)))
                 .thenReturn(LogisticsQueryResult.notConfigured("MOCK", "SF", "SKIP"));
-        when(logisticsQueryGateway.query("SF", "FAIL"))
+        when(logisticsQueryGateway.query(command(failed)))
                 .thenReturn(LogisticsQueryResult.queryFailed("MOCK", "SF", "FAIL", "REMOTE_ERROR", "查询失败"));
-        when(logisticsQueryGateway.query("SF", "EX")).thenThrow(new IllegalStateException("boom"));
+        when(logisticsQueryGateway.query(command(exception))).thenThrow(new IllegalStateException("boom"));
         when(sampleRequestMapper.updateById(any())).thenReturn(1);
 
         SampleLogisticsSyncService.SyncBatchSummary summary = service.syncPendingInTransit(0);
@@ -261,6 +402,20 @@ class SampleLogisticsSyncServiceTest {
         assertThat(summary.failed()).isEqualTo(2);
         assertThat(summary.skipped()).isEqualTo(1);
         verify(sampleRequestMapper, times(3)).updateById(any());
+    }
+
+    @Test
+    void syncPendingInTransit_shouldApplyPersistentQueryThrottleAndCallbackDelay() {
+        when(sampleRequestMapper.selectList(any())).thenReturn(List.of());
+
+        service.syncPendingInTransit(10);
+
+        ArgumentCaptor<QueryWrapper<SampleRequest>> wrapperCaptor =
+                ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(sampleRequestMapper).selectList(wrapperCaptor.capture());
+        String sqlSegment = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(sqlSegment).contains("logistics_last_query_at");
+        assertThat(sqlSegment).contains("logistics_last_callback_at");
     }
 
     @Test
@@ -286,6 +441,15 @@ class SampleLogisticsSyncServiceTest {
         sample.setUserId(UUID.randomUUID());
         sample.setVersion(0);
         return sample;
+    }
+
+    private LogisticsTrackCommand command(SampleRequest sample) {
+        return LogisticsTrackCommand.builder()
+                .companyCode(sample.getShipperCode())
+                .trackingNo(sample.getTrackingNo())
+                .phone(sample.getRecipientPhone())
+                .to(sample.getRecipientAddress())
+                .build();
     }
 
     private LogisticsQueryResult successResult(String trackingNo) {

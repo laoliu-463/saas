@@ -223,41 +223,43 @@ public class AuthService {
     }
 
     public void logout(LogoutRequest request) {
-        String accessToken = request.getAccessToken();
-        Claims accessClaims;
-        try {
-            accessClaims = jwtTokenProvider.parseClaims(accessToken);
-        } catch (Exception e) {
-            throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "Token 无效");
+        String refreshToken = request.getRefreshToken();
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "refreshToken 不能为空");
         }
 
-        String accessTokenHash = jwtTokenProvider.getTokenHash(accessToken);
-        long remainingSeconds = jwtTokenProvider.getRemainingSeconds(accessToken);
+        Claims refreshClaims;
+        try {
+            refreshClaims = jwtTokenProvider.parseClaims(refreshToken);
+        } catch (Exception e) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "Refresh Token 无效或已过期");
+        }
+
+        String refreshTokenType = refreshClaims.get("type", String.class);
+        if (!"refresh".equals(refreshTokenType)) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "Token 类型错误，需要 refresh token");
+        }
+
+        String refreshTokenHash = jwtTokenProvider.getTokenHash(refreshToken);
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(REDIS_REFRESH_PREFIX + refreshTokenHash))) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "Refresh Token 已吊销");
+        }
+        long refreshRemaining = jwtTokenProvider.getRemainingSeconds(refreshToken);
         redisTemplate.opsForValue().set(
-                REDIS_BLACKLIST_PREFIX + accessTokenHash,
+                REDIS_REFRESH_PREFIX + refreshTokenHash,
                 "1",
-                remainingSeconds,
+                refreshRemaining,
                 TimeUnit.SECONDS
         );
 
-        String refreshToken = request.getRefreshToken();
-        if (refreshToken != null && !refreshToken.isBlank()) {
-            try {
-                jwtTokenProvider.parseClaims(refreshToken);
-                String refreshTokenHash = jwtTokenProvider.getTokenHash(refreshToken);
-                long refreshRemaining = jwtTokenProvider.getRemainingSeconds(refreshToken);
-                redisTemplate.opsForValue().set(
-                        REDIS_REFRESH_PREFIX + refreshTokenHash,
-                        "1",
-                        refreshRemaining,
-                        TimeUnit.SECONDS
-                );
-            } catch (Exception ignored) {
-                // refresh token 无效时忽略，access token 已吊销
-            }
+        Claims accessClaims = null;
+        String accessToken = request.getAccessToken();
+        if (accessToken != null && !accessToken.isBlank()) {
+            accessClaims = revokeAccessTokenBestEffort(accessToken);
         }
-        UUID userId = extractUserId(accessClaims);
-        String username = extractUsername(accessClaims);
+
+        UUID userId = extractUserId(accessClaims != null ? accessClaims : refreshClaims);
+        String username = extractUsername(accessClaims != null ? accessClaims : refreshClaims);
         recordAuthEvent(userId, username, "登出", "POST", "/api/auth/logout",
                 true, "用户登出并吊销令牌", null);
     }
@@ -362,6 +364,27 @@ public class AuthService {
         }
         try {
             return claims.get("username", String.class);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Claims revokeAccessTokenBestEffort(String accessToken) {
+        try {
+            Claims accessClaims = jwtTokenProvider.parseClaims(accessToken);
+            String accessTokenType = accessClaims.get("type", String.class);
+            if (accessTokenType != null && !"access".equals(accessTokenType)) {
+                return null;
+            }
+            String accessTokenHash = jwtTokenProvider.getTokenHash(accessToken);
+            long remainingSeconds = jwtTokenProvider.getRemainingSeconds(accessToken);
+            redisTemplate.opsForValue().set(
+                    REDIS_BLACKLIST_PREFIX + accessTokenHash,
+                    "1",
+                    remainingSeconds,
+                    TimeUnit.SECONDS
+            );
+            return accessClaims;
         } catch (Exception ignored) {
             return null;
         }

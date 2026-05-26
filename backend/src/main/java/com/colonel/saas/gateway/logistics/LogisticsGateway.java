@@ -9,6 +9,10 @@ public interface LogisticsGateway {
 
     LogisticsResult createShipment(LogisticsCommand command);
 
+    default LogisticsSubscribeResult subscribeTrack(LogisticsSubscribeCommand command) {
+        throw new UnsupportedOperationException("当前物流网关不支持轨迹订阅");
+    }
+
     /**
      * @deprecated 快递鸟等物流服务商需要快递公司编码，请使用 {@link #queryTrack(String, String)}。
      */
@@ -16,6 +20,13 @@ public interface LogisticsGateway {
     LogisticsStatusResult queryStatus(String trackingNo);
 
     LogisticsTrackResult queryTrack(String companyCode, String trackingNo);
+
+    default LogisticsTrackResult queryTrack(LogisticsTrackCommand command) {
+        if (command == null) {
+            return queryTrack(null, null);
+        }
+        return queryTrack(command.getCompanyCode(), command.getTrackingNo());
+    }
 
     record LogisticsCommand(
             UUID sampleRequestId,

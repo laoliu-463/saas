@@ -371,13 +371,17 @@ class AuthServiceTest {
         Claims accessClaims = org.mockito.Mockito.mock(Claims.class);
         when(accessClaims.getSubject()).thenReturn(userId.toString());
         when(accessClaims.get("username", String.class)).thenReturn("alice");
+        when(accessClaims.get("type", String.class)).thenReturn("access");
         when(jwtTokenProvider.parseClaims("valid.access.token")).thenReturn(accessClaims);
         when(jwtTokenProvider.getTokenHash("valid.access.token")).thenReturn("accessHash");
         when(jwtTokenProvider.getRemainingSeconds("valid.access.token")).thenReturn(3600L);
 
-        when(jwtTokenProvider.parseClaims("valid.refresh.token")).thenReturn(org.mockito.Mockito.mock(Claims.class));
+        Claims refreshClaims = org.mockito.Mockito.mock(Claims.class);
+        when(refreshClaims.get("type", String.class)).thenReturn("refresh");
+        when(jwtTokenProvider.parseClaims("valid.refresh.token")).thenReturn(refreshClaims);
         when(jwtTokenProvider.getTokenHash("valid.refresh.token")).thenReturn("refreshHash");
         when(jwtTokenProvider.getRemainingSeconds("valid.refresh.token")).thenReturn(604800L);
+        when(redisTemplate.hasKey("auth:refresh:refreshHash")).thenReturn(false);
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
@@ -397,16 +401,70 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("登出 - 令牌已过期则抛出异常")
-    void logout_expiredToken_shouldThrow() {
-        when(jwtTokenProvider.parseClaims("expired.token")).thenThrow(new RuntimeException("expired"));
+    @DisplayName("登出 - access已过期仍应吊销refresh")
+    void logout_expiredAccessToken_shouldStillRevokeRefreshToken() {
+        UUID userId = UUID.randomUUID();
+        Claims refreshClaims = org.mockito.Mockito.mock(Claims.class);
+        when(refreshClaims.getSubject()).thenReturn(userId.toString());
+        when(refreshClaims.get("type", String.class)).thenReturn("refresh");
+        when(refreshClaims.get("username", String.class)).thenReturn("alice");
+        when(jwtTokenProvider.parseClaims("valid.refresh.token")).thenReturn(refreshClaims);
+        when(jwtTokenProvider.getTokenHash("valid.refresh.token")).thenReturn("refreshHash");
+        when(jwtTokenProvider.getRemainingSeconds("valid.refresh.token")).thenReturn(604800L);
+        when(redisTemplate.hasKey("auth:refresh:refreshHash")).thenReturn(false);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(jwtTokenProvider.parseClaims("expired.access.token")).thenThrow(new RuntimeException("expired"));
 
         LogoutRequest request = new LogoutRequest();
-        request.setAccessToken("expired.token");
+        request.setAccessToken("expired.access.token");
+        request.setRefreshToken("valid.refresh.token");
+
+        authService.logout(request);
+
+        verify(valueOperations).set(eq("auth:refresh:refreshHash"), eq("1"), eq(604800L), eq(TimeUnit.SECONDS));
+        ArgumentCaptor<OperationLog> logCaptor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(logCaptor.capture());
+        assertThat(logCaptor.getValue().getAction()).isEqualTo("登出");
+        assertThat(logCaptor.getValue().getUserId()).isEqualTo(userId);
+        assertThat(logCaptor.getValue().getUsername()).isEqualTo("alice");
+    }
+
+    @Test
+    @DisplayName("登出 - 缺少refresh token时拒绝")
+    void logout_missingRefreshToken_shouldThrow() {
+        LogoutRequest request = new LogoutRequest();
+        request.setAccessToken("valid.access.token");
 
         assertThatThrownBy(() -> authService.logout(request))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Token 无效");
+                .hasMessageContaining("refreshToken 不能为空");
+
+        verify(redisTemplate, never()).opsForValue();
+    }
+
+    @Test
+    @DisplayName("登出 - refresh token吊销后不能继续刷新")
+    void refreshToken_revokedByLogout_shouldThrow() {
+        UUID userId = UUID.randomUUID();
+        Claims refreshClaims = org.mockito.Mockito.mock(Claims.class);
+        when(refreshClaims.getSubject()).thenReturn(userId.toString());
+        when(refreshClaims.get("type", String.class)).thenReturn("refresh");
+        when(jwtTokenProvider.parseClaims("valid.refresh.token")).thenReturn(refreshClaims);
+        when(jwtTokenProvider.getTokenHash("valid.refresh.token")).thenReturn("refreshHash");
+        when(jwtTokenProvider.getRemainingSeconds("valid.refresh.token")).thenReturn(604800L);
+        when(redisTemplate.hasKey("auth:refresh:refreshHash")).thenReturn(false, true);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        LogoutRequest logoutRequest = new LogoutRequest();
+        logoutRequest.setRefreshToken("valid.refresh.token");
+        authService.logout(logoutRequest);
+
+        RefreshRequest refreshRequest = new RefreshRequest();
+        refreshRequest.setRefreshToken("valid.refresh.token");
+
+        assertThatThrownBy(() -> authService.refreshToken(refreshRequest))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Refresh Token 已吊销");
     }
 
     // ==================== IsTokenBlacklisted Tests ====================

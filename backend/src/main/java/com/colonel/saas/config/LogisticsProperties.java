@@ -35,9 +35,14 @@ public class LogisticsProperties {
     @Data
     public static class Kd100 {
         private boolean enabled;
+        private boolean subscribeEnabled;
         private String customer;
         private String key;
         private String endpoint = "https://poll.kuaidi100.com/poll/query.do";
+        private String subscribeEndpoint = "https://poll.kuaidi100.com/poll";
+        private String callbackUrl;
+        private String callbackSalt;
+        private String resultV2 = "4";
         private boolean sandboxEnabled;
     }
 

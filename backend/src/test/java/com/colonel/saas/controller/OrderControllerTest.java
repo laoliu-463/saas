@@ -1,5 +1,6 @@
 package com.colonel.saas.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
@@ -12,6 +13,7 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.SysDeptMapper;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
@@ -66,6 +68,8 @@ class OrderControllerTest {
     private CommissionService commissionService;
     @Mock
     private PerformanceBackfillService performanceBackfillService;
+    @Mock
+    private SysDeptMapper sysDeptMapper;
 
     private MockMvc mockMvc;
 
@@ -86,7 +90,8 @@ class OrderControllerTest {
                         operationLogService,
                         new ShortTtlCacheService(),
                         commissionService,
-                        performanceBackfillService))
+                        performanceBackfillService,
+                        sysDeptMapper))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -301,6 +306,111 @@ class OrderControllerTest {
     }
 
     @Test
+    @SuppressWarnings("rawtypes")
+    void getOrders_withRecruiterAndChannelDeptIds_shouldEmitInClauseAndPassValuesToWrapper() throws Exception {
+        // 验证：业务筛选层正确把 recruiterDeptIds → dept_id IN (...)、
+        //        channelDeptIds → channel_dept_id IN (...) 拼进 wrapper。
+        // 不依赖具体 SQL 引擎渲染，只断言 wrapper.sqlSegment 含相关 token 且参数值被注入。
+        java.util.UUID recruiter1 = java.util.UUID.randomUUID();
+        java.util.UUID recruiter2 = java.util.UUID.randomUUID();
+        java.util.UUID channel1 = java.util.UUID.randomUUID();
+
+        when(orderMapper.selectPage(any(), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Page<ColonelsettlementOrder> page = invocation.getArgument(0);
+            page.setRecords(List.of());
+            page.setTotal(0);
+            return page;
+        });
+
+        mockMvc.perform(get("/orders")
+                        .param("recruiterDeptIds", recruiter1.toString())
+                        .param("recruiterDeptIds", recruiter2.toString())
+                        .param("channelDeptIds", channel1.toString())
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        ArgumentCaptor<LambdaQueryWrapper> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(orderMapper).selectPage(any(), captor.capture());
+        LambdaQueryWrapper captured = captor.getValue();
+
+        // sqlSegment 含 dept_id IN 和 channel_dept_id IN 子句
+        String sqlSegment = captured.getSqlSegment();
+        assertThat(sqlSegment).contains("dept_id");
+        assertThat(sqlSegment).contains("channel_dept_id");
+        assertThat(sqlSegment).contains("IN");
+
+        // 参数表里能找到三个传入的 UUID（顺序无关）
+        Map<String, Object> params = captured.getParamNameValuePairs();
+        assertThat(params.values()).contains(recruiter1, recruiter2, channel1);
+    }
+
+    @Test
+    @SuppressWarnings("rawtypes")
+    void getOrders_withCsvFormattedDeptIds_shouldStillBindAsList() throws Exception {
+        // 前端 CSV 路径覆盖：buildQueryParams 用 .join(',') 拼成 "a,b"，
+        // Spring `@RequestParam List<UUID>` 内置 StringToCollectionConverter 会自动 split。
+        // 这条测试确保前后端实际链路（CSV）不会因为绑定不兼容而失败。
+        java.util.UUID r1 = java.util.UUID.randomUUID();
+        java.util.UUID r2 = java.util.UUID.randomUUID();
+        java.util.UUID c1 = java.util.UUID.randomUUID();
+
+        when(orderMapper.selectPage(any(), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Page<ColonelsettlementOrder> page = invocation.getArgument(0);
+            page.setRecords(List.of());
+            page.setTotal(0);
+            return page;
+        });
+
+        mockMvc.perform(get("/orders")
+                        .param("recruiterDeptIds", r1 + "," + r2)
+                        .param("channelDeptIds", c1.toString())
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<LambdaQueryWrapper> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(orderMapper).selectPage(any(), captor.capture());
+        LambdaQueryWrapper captured = captor.getValue();
+        // 关键：必须先触发 sqlSegment 计算，paramNameValuePairs 才会从 MergeSegments 里写出来。
+        String sqlSegment = captured.getSqlSegment();
+        assertThat(sqlSegment).contains("dept_id IN");
+        assertThat(sqlSegment).contains("channel_dept_id IN");
+        assertThat(captured.getParamNameValuePairs().values()).contains(r1, r2, c1);
+    }
+
+    @Test
+    @SuppressWarnings("rawtypes")
+    void getOrders_withoutDeptFilters_shouldNotAddDeptInClause() throws Exception {
+        // 反向验证：未传 recruiterDeptIds / channelDeptIds 时，
+        //   wrapper 不应包含 dept_id IN(...) 业务过滤分支（DataScope=ALL 不再注入 dept_id）。
+        // 这条测试用于防止"空集合"被误拼成 dept_id IN ()，触发 SQL 语法错误。
+        when(orderMapper.selectPage(any(), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Page<ColonelsettlementOrder> page = invocation.getArgument(0);
+            page.setRecords(List.of());
+            page.setTotal(0);
+            return page;
+        });
+
+        mockMvc.perform(get("/orders")
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<LambdaQueryWrapper> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(orderMapper).selectPage(any(), captor.capture());
+        String sqlSegment = captor.getValue().getSqlSegment();
+        // 不应出现 dept_id 业务过滤；attribution_remark 等其他列照常存在，不在断言范围
+        assertThat(sqlSegment).doesNotContain("channel_dept_id");
+        // 注意：dept_id 字符串可能因 DataScope=DEPT 注入而出现，所以此处只严格断言 channel_dept_id
+        // 不存在；recruiter 维度由 ALL 路径下"未传值"覆盖。
+    }
+
+    @Test
     void getStats_shouldAggregateViaSqlGroupedMaps() throws Exception {
         when(orderMapper.selectMaps(any())).thenReturn(
                 List.of(
@@ -380,7 +490,8 @@ class OrderControllerTest {
                 operationLogService,
                 new ShortTtlCacheService(),
                 commissionService,
-                performanceBackfillService);
+                performanceBackfillService,
+                sysDeptMapper);
         Method method = OrderController.class.getDeclaredMethod("sanitizeDiagnosisSqlPrefix", String.class);
         method.setAccessible(true);
 

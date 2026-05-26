@@ -46,6 +46,28 @@
           @search="handleRecruiterSearch"
         />
         <n-select
+          v-model:value="filters.recruiterDeptIds"
+          :options="recruiterDeptOptions"
+          multiple
+          filterable
+          clearable
+          max-tag-count="responsive"
+          placeholder="招商部门"
+          style="min-width: 200px"
+          data-testid="orders-recruiter-dept-filter"
+        />
+        <n-select
+          v-model:value="filters.channelDeptIds"
+          :options="channelDeptOptions"
+          multiple
+          filterable
+          clearable
+          max-tag-count="responsive"
+          placeholder="渠道部门"
+          style="min-width: 200px"
+          data-testid="orders-channel-dept-filter"
+        />
+        <n-select
           v-model:value="filters.attributionStatus"
           :options="[
             { label: '已归因', value: 'ATTRIBUTED' },
@@ -86,7 +108,7 @@ import { NButton, NSpace, NTag, NText, useMessage } from 'naive-ui'
 import { useRoute } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import OrderDetailModal from './components/OrderDetailModal.vue'
-import { getOrders, getOrderStats, syncOrders } from '../../api/order'
+import { getOrders, getOrderFilterOptions, getOrderStats, syncOrders } from '../../api/order'
 import { getAttributionReasonText } from '../../constants/orderAttribution'
 import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 import { useDelayedFlag } from '../../utils/delayedFlag'
@@ -99,7 +121,7 @@ const loading = ref(false)
 const tableLoading = useDelayedFlag(loading, 200)
 const syncLoading = ref(false)
 const data = ref([])
-const stats = ref<{ totalOrders?: number; attributedOrders?: number; unattributedOrders?: number; partialOrders?: number } | null>(null)
+const stats = ref<{ totalOrders?: number; attributedOrders?: number; unattributedOrders?: number; partialOrders?: number; lastSyncTime?: string | null } | null>(null)
 const showDetail = ref(false)
 const activeOrderId = ref('')
 const channelOptions = ref<{ label: string; value: string }[]>([])
@@ -128,11 +150,16 @@ const filters = reactive({
   productId: '',
   channelKeyword: null as string | null,
   colonelKeyword: null as string | null,
+  recruiterDeptIds: [] as string[],
+  channelDeptIds: [] as string[],
   attributionStatus: null,
   dateRange: null as [number, number] | null,
   timeField: 'createTime',
   dashboardDiagnosis: ''
 })
+
+const recruiterDeptOptions = ref<{ label: string; value: string }[]>([])
+const channelDeptOptions = ref<{ label: string; value: string }[]>([])
 
 const pagination = reactive(createPaginationState())
 
@@ -178,6 +205,11 @@ const handleRecruiterSearch = useDebouncedFn((keyword: string) => {
   void fetchRecruiterOptions(keyword)
 }, 250)
 
+function formatMoney(value?: number | null) {
+  if (value === null || value === undefined) return '-'
+  return `¥${(Number(value) / 100).toFixed(2)}`
+}
+
 function getDiagnosticSummary(row: any) {
   const status = row.attributionStatus || 'UNATTRIBUTED'
   const reason = row.unattributedReason || row.attributionRemark
@@ -219,7 +251,7 @@ const columns = [
     h('div', { style: 'font-size: var(--text-xs); color: var(--text-tertiary)' }, row.settleTime || '-')
   ]) },
   { title: '商品信息', key: 'productTitle', minWidth: 200, ellipsis: true },
-  { title: '订单金额', key: 'orderAmount', width: 100, render: (row: any) => `¥${row.orderAmount || 0}` },
+  { title: '订单金额', key: 'orderAmount', width: 100, render: (row: any) => formatMoney(row.orderAmount) },
   {
     title: '归因状态',
     key: 'attributionStatus',
@@ -301,6 +333,10 @@ function buildQueryParams() {
     productId: filters.productId || undefined,
     channelKeyword: filters.channelKeyword || undefined,
     colonelKeyword: filters.colonelKeyword || undefined,
+    // 用 CSV（逗号分隔）传给后端：Spring `@RequestParam List<UUID>` 自带 CSV 解析能力，
+    // 避免依赖 axios 数组序列化（axios 1.x 默认会拼 `key[]=`，与 Spring 默认 binder 不兼容）。
+    recruiterDeptIds: filters.recruiterDeptIds.length ? filters.recruiterDeptIds.join(',') : undefined,
+    channelDeptIds: filters.channelDeptIds.length ? filters.channelDeptIds.join(',') : undefined,
     attributionStatus: filters.attributionStatus || undefined,
     timeField: filters.timeField || undefined,
     dashboardDiagnosis: filters.dashboardDiagnosis || undefined,
@@ -319,6 +355,8 @@ const fetchData = async () => {
     productId: params.productId,
     channelKeyword: params.channelKeyword,
     colonelKeyword: params.colonelKeyword,
+    recruiterDeptIds: params.recruiterDeptIds,
+    channelDeptIds: params.channelDeptIds,
     timeField: params.timeField,
     dashboardDiagnosis: params.dashboardDiagnosis,
     startTime: params.startTime,
@@ -366,6 +404,13 @@ const handlePageSizeChange = (pageSize: number) => {
   fetchData()
 }
 
+// 同步触发后轮询窗口：
+//   - 间隔 2s，避免压垮 stats 接口
+//   - 超时 12s 兜底强刷，防止后端长时间未推进时无限等待
+//   - 命中"lastSyncTime 变化"立即拉列表，体感比固定 1s setTimeout 更准
+const SYNC_POLL_INTERVAL_MS = 2000
+const SYNC_POLL_TIMEOUT_MS = 12000
+
 const handleSync = async () => {
   syncLoading.value = true
   try {
@@ -383,7 +428,28 @@ const handleSync = async () => {
         }
     await syncOrders(range.startTime, range.endTime)
     message.success('已触发同步，订单回流中...')
-    setTimeout(fetchData, 1000)
+
+    const baselineSyncTime = stats.value?.lastSyncTime ?? null
+    const startedAt = Date.now()
+    const pollSync = async (): Promise<void> => {
+      try {
+        const res: any = await getOrderStats(buildQueryParams())
+        const latest = res?.data?.lastSyncTime ?? null
+        if (latest && latest !== baselineSyncTime) {
+          await fetchData()
+          return
+        }
+      } catch (err) {
+        // 轮询自身失败不打扰用户，超时分支兜底强刷
+        console.warn('[orders] poll stats during sync failed', err)
+      }
+      if (Date.now() - startedAt < SYNC_POLL_TIMEOUT_MS) {
+        setTimeout(pollSync, SYNC_POLL_INTERVAL_MS)
+      } else {
+        await fetchData()
+      }
+    }
+    setTimeout(pollSync, SYNC_POLL_INTERVAL_MS)
   } catch (err: any) {
     notifyApiFailure(err, message, { fallbackMessage: '同步失败' })
   } finally {
@@ -397,6 +463,8 @@ const resetFilters = () => {
   filters.productId = ''
   filters.channelKeyword = null
   filters.colonelKeyword = null
+  filters.recruiterDeptIds = []
+  filters.channelDeptIds = []
   filters.attributionStatus = null
   filters.dateRange = null
   filters.timeField = 'createTime'
@@ -423,10 +491,28 @@ watch(
   }
 )
 
+async function fetchDeptFilterOptions() {
+  try {
+    const res: any = await getOrderFilterOptions()
+    const payload = res?.data || {}
+    const map = (list: any): { label: string; value: string }[] => Array.isArray(list)
+      ? list
+          .filter((item: any) => item && item.value)
+          .map((item: any) => ({ label: String(item.label || item.value), value: String(item.value) }))
+      : []
+    recruiterDeptOptions.value = map(payload.recruiterDepartments)
+    channelDeptOptions.value = map(payload.channelDepartments)
+  } catch (err) {
+    // 部门下拉失败不阻塞页面主流程，仅提示一次
+    notifyApiFailure(err as any, message, { fallbackMessage: '加载部门筛选项失败' })
+  }
+}
+
 onMounted(() => {
   applyRouteFilters()
   void fetchChannelOptions('')
   void fetchRecruiterOptions('')
+  void fetchDeptFilterOptions()
   fetchData()
 })
 </script>

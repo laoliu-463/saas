@@ -131,19 +131,22 @@ const userMenuOptions = [
 ]
 
 const revokeServerSession = async (accessToken: string, refreshToken: string) => {
-  if (!accessToken) {
+  if (!refreshToken) {
     return
   }
   try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    }
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`
+    }
     const response = await fetch('/api/auth/logout', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`
-      },
+      headers,
       body: JSON.stringify({
-        accessToken,
-        refreshToken: refreshToken || undefined
+        accessToken: accessToken || undefined,
+        refreshToken
       })
     })
     if (!response.ok) {

@@ -13,9 +13,13 @@ public final class RuntimeExposurePolicy {
     private static final List<String> BASE_PUBLIC_PATTERNS = List.of(
             "/auth/login",
             "/auth/refresh",
+            "/auth/logout",
+            "/api/auth/logout",
             "/douyin/webhooks/**",
             "/douyin/oauth/callback",
             "/api/douyin/oauth/callback",
+            "/public/logistics/kuaidi100/callback",
+            "/api/public/logistics/kuaidi100/callback",
             "/error",
             "/system/health",
             "/api/system/health"

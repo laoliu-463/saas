@@ -42,6 +42,7 @@ import com.colonel.saas.service.SampleStatusLogService;
 import com.colonel.saas.service.SampleEligibilityService;
 import com.colonel.saas.dto.SampleApplyRequest;
 import com.colonel.saas.service.SampleLogisticsImportService;
+import com.colonel.saas.service.SampleLogisticsSubscriptionService;
 import com.colonel.saas.service.SampleLogisticsSyncService;
 import com.colonel.saas.vo.SampleTalentVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -123,6 +124,7 @@ public class SampleController extends BaseController {
     private final SampleEligibilityService sampleEligibilityService;
     private final SampleLogisticsSyncService sampleLogisticsSyncService;
     private final SampleLogisticsImportService sampleLogisticsImportService;
+    private final SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService;
     private final SampleDomainEventPublisher sampleDomainEventPublisher;
 
     public SampleController(
@@ -141,6 +143,7 @@ public class SampleController extends BaseController {
             SampleEligibilityService sampleEligibilityService,
             SampleLogisticsSyncService sampleLogisticsSyncService,
             SampleLogisticsImportService sampleLogisticsImportService,
+            SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService,
             SampleDomainEventPublisher sampleDomainEventPublisher) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productMapper = productMapper;
@@ -157,6 +160,7 @@ public class SampleController extends BaseController {
         this.sampleEligibilityService = sampleEligibilityService;
         this.sampleLogisticsSyncService = sampleLogisticsSyncService;
         this.sampleLogisticsImportService = sampleLogisticsImportService;
+        this.sampleLogisticsSubscriptionService = sampleLogisticsSubscriptionService;
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
     }
 
@@ -576,6 +580,9 @@ public class SampleController extends BaseController {
         persistSample(sample);
         sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, request.getReason());
         publishActionDomainEvent(action, sample, userId, now, request.getReason());
+        if ("SHIPPING".equals(action)) {
+            sampleLogisticsSubscriptionService.subscribeAfterShipment(sample);
+        }
         Product product = productMapper.selectById(sample.getProductId());
         return ok(toVO(
                 sample,
@@ -790,6 +797,7 @@ public class SampleController extends BaseController {
                 persistSample(sample);
                 sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, item.getTrackingNo());
                 sampleDomainEventPublisher.publishSampleShipped(sample, userId, now);
+                sampleLogisticsSubscriptionService.subscribeAfterShipment(sample);
                 success++;
             } catch (BusinessException | ForbiddenException e) {
                 log.warn("Batch ship failed for requestNo={}: {}", item.getRequestNo(), e.getMessage());

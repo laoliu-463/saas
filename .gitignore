@@ -1,7 +1,7 @@
 .env
 .env.*
 !.env.example
-!.env.local-mock.example
+!.env.local-dev.example
 !.env.test.example
 !.env.real.example
 !.env.real-pre.example
@@ -46,6 +46,8 @@ tests/e2e/.auth/
 dump.rdb
 # IDE / AI tool configs
 .claude/
+!.claude/
+!.claude/**/*.md
 .cursor/
 .gemini/
 .kiro/

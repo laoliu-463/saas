@@ -24,8 +24,8 @@ describe('order user filter options', () => {
       limit: 50
     })
     expect(options).toEqual([
-      { label: '渠道甲 (channel_a)', value: 'CHANNEL-1' },
-      { label: 'channel_b', value: 'CHANNEL-2' }
+      { label: '渠道甲 (channel_a)', value: '渠道甲' },
+      { label: 'channel_b', value: 'channel_b' }
     ])
   })
 
@@ -43,7 +43,7 @@ describe('order user filter options', () => {
       limit: 50
     })
     expect(options).toEqual([
-      { label: '招商甲 (biz_a)', value: 'BIZ-1' }
+      { label: '招商甲 (biz_a)', value: '招商甲' }
     ])
   })
 })

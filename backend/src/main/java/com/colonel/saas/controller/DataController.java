@@ -52,6 +52,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -102,8 +103,12 @@ public class DataController extends BaseController {
             @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
             @Parameter(description = "达人 ID（UUID），精确匹配。") @RequestParam(required = false) UUID talentId,
             @Parameter(description = "商家 merchant_id（字符串），精确匹配。") @RequestParam(required = false) String merchantId,
+            @Parameter(description = "商品 ID，精确匹配。") @RequestParam(required = false) String productId,
             @Parameter(description = "商品名称/标题，模糊匹配。") @RequestParam(required = false) String productName,
             @Parameter(description = "店铺名称，模糊匹配。") @RequestParam(required = false) String shopName,
+            @Parameter(description = "达人昵称，模糊匹配。") @RequestParam(required = false) String talentName,
+            @Parameter(description = "团长/招商负责人名称，模糊匹配。") @RequestParam(required = false) String colonelName,
+            @Parameter(description = "渠道负责人名称，模糊匹配。") @RequestParam(required = false) String channelName,
             @Parameter(description = "团长活动 ID，精确匹配。") @RequestParam(required = false) String colonelActivityId,
             @Parameter(description = "招商类型：MERCHANT（商家型招商单） 或 PROMOTION（推广单）。") @RequestParam(required = false) String recruitType,
             @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -119,48 +124,196 @@ public class DataController extends BaseController {
                 ? LocalDate.now().plusDays(1).atStartOfDay()
                 : endDate.plusDays(1).atStartOfDay();
 
-        String timeColumn = resolveAliasedOrderTimeColumn(timeField);
-        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
-        wrapper.ge(timeColumn, start)
-                .lt(timeColumn, end);
-        applyPageDataScope(wrapper, userId, deptId, dataScope);
-        if (StringUtils.hasText(orderId)) {
-            wrapper.like("co.order_id", orderId.trim());
-        }
-        if (StringUtils.hasText(status)) {
-            wrapper.eq("co.order_status", toOrderStatusCode(status));
-        }
-        if (talentId != null) {
-            wrapper.eq("co.talent_id", talentId);
-        }
-        if (StringUtils.hasText(merchantId)) {
-            String normalized = merchantId.trim();
-            String digits = normalized.replaceAll("\\D", "");
-            String shopIdText = StringUtils.hasText(digits) ? digits : normalized;
-            wrapper.apply(
-                    "(co.extra_data->>'merchant_id' = {0} OR CAST(co.shop_id AS TEXT) = {1})",
-                    normalized,
-                    shopIdText
-            );
-        }
-        if (StringUtils.hasText(productName)) {
-            wrapper.and(w -> w.like("co.product_name", productName.trim())
-                    .or().like("co.product_title", productName.trim()));
-        }
-        if (StringUtils.hasText(shopName)) {
-            wrapper.like("co.shop_name", shopName.trim());
-        }
-        if (StringUtils.hasText(colonelActivityId)) {
-            wrapper.eq("co.colonel_activity_id", colonelActivityId.trim());
-        }
-        if (StringUtils.hasText(recruitType)) {
-            wrapper.eq("co.order_type", toOrderTypeCode(recruitType));
-        }
+        QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
+                true,
+                timeField,
+                start,
+                end,
+                orderId,
+                status,
+                talentId,
+                merchantId,
+                productId,
+                productName,
+                shopName,
+                talentName,
+                colonelName,
+                channelName,
+                colonelActivityId,
+                recruitType,
+                userId,
+                deptId,
+                dataScope);
 
         IPage<ColonelsettlementOrder> orderPage = orderMapper.findPageWithScope(new Page<>(page, size), wrapper);
         Page<OrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
         voPage.setRecords(orderPage.getRecords().stream().map(this::toOrderVO).toList());
         return okPage(voPage);
+    }
+
+    ApiResult<PageResult<OrderVO>> getOrderPage(
+            long page,
+            long size,
+            String orderId,
+            String status,
+            UUID talentId,
+            String merchantId,
+            String productName,
+            String shopName,
+            String colonelActivityId,
+            String recruitType,
+            LocalDate startDate,
+            LocalDate endDate,
+            String timeField,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        return getOrderPage(
+                page,
+                size,
+                orderId,
+                status,
+                talentId,
+                merchantId,
+                null,
+                productName,
+                shopName,
+                null,
+                null,
+                null,
+                colonelActivityId,
+                recruitType,
+                startDate,
+                endDate,
+                timeField,
+                userId,
+                deptId,
+                dataScope);
+    }
+
+    @Operation(summary = "订单明细汇总", description = "按数据页筛选条件返回订单汇总与按日明细。该接口用于订单明细页顶部汇总条和默认表格。")
+    @GetMapping("/data/orders/summary")
+    public ApiResult<OrderSummaryVO> getOrderSummary(
+            @Parameter(description = "订单号，支持模糊匹配。") @RequestParam(required = false) String orderId,
+            @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
+            @Parameter(description = "达人 ID（UUID），精确匹配。") @RequestParam(required = false) UUID talentId,
+            @Parameter(description = "商家 merchant_id（字符串），精确匹配。") @RequestParam(required = false) String merchantId,
+            @Parameter(description = "商品 ID，精确匹配。") @RequestParam(required = false) String productId,
+            @Parameter(description = "商品名称/标题，模糊匹配。") @RequestParam(required = false) String productName,
+            @Parameter(description = "店铺名称，模糊匹配。") @RequestParam(required = false) String shopName,
+            @Parameter(description = "达人昵称，模糊匹配。") @RequestParam(required = false) String talentName,
+            @Parameter(description = "团长/招商负责人名称，模糊匹配。") @RequestParam(required = false) String colonelName,
+            @Parameter(description = "渠道负责人名称，模糊匹配。") @RequestParam(required = false) String channelName,
+            @Parameter(description = "团长活动 ID，精确匹配。") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "招商类型：MERCHANT（商家型招商单） 或 PROMOTION（推广单）。") @RequestParam(required = false) String recruitType,
+            @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "时间字段：createTime（默认）或 settleTime。") @RequestParam(required = false) String timeField,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        LocalDateTime start = startDate == null
+                ? LocalDate.now().minusDays(30).atStartOfDay()
+                : startDate.atStartOfDay();
+        LocalDateTime end = endDate == null
+                ? LocalDate.now().plusDays(1).atStartOfDay()
+                : endDate.plusDays(1).atStartOfDay();
+
+        OrderTrackColumns columns = resolveOrderTrackColumns(timeField);
+        List<Map<String, Object>> totalRows = queryOrderSummaryAggregates(
+                false,
+                columns,
+                timeField,
+                start,
+                end,
+                orderId,
+                status,
+                talentId,
+                merchantId,
+                productId,
+                productName,
+                shopName,
+                talentName,
+                colonelName,
+                channelName,
+                colonelActivityId,
+                recruitType,
+                userId,
+                deptId,
+                dataScope);
+        List<Map<String, Object>> dailyRows = queryOrderSummaryAggregates(
+                true,
+                columns,
+                timeField,
+                start,
+                end,
+                orderId,
+                status,
+                talentId,
+                merchantId,
+                productId,
+                productName,
+                shopName,
+                talentName,
+                colonelName,
+                channelName,
+                colonelActivityId,
+                recruitType,
+                userId,
+                deptId,
+                dataScope);
+        CommissionService.CommissionSummary totalCommission = queryOrderSummaryCommission(
+                false,
+                null,
+                columns,
+                timeField,
+                start,
+                end,
+                orderId,
+                status,
+                talentId,
+                merchantId,
+                productId,
+                productName,
+                shopName,
+                talentName,
+                colonelName,
+                channelName,
+                colonelActivityId,
+                recruitType,
+                userId,
+                deptId,
+                dataScope);
+        Map<String, CommissionService.CommissionSummary> dailyCommission = queryDailyOrderSummaryCommission(
+                columns,
+                timeField,
+                start,
+                end,
+                orderId,
+                status,
+                talentId,
+                merchantId,
+                productId,
+                productName,
+                shopName,
+                talentName,
+                colonelName,
+                channelName,
+                colonelActivityId,
+                recruitType,
+                userId,
+                deptId,
+                dataScope);
+
+        OrderSummaryVO vo = new OrderSummaryVO();
+        vo.setTotal(toOrderSummaryRow(firstRow(totalRows), totalCommission, null));
+        vo.setRecords(dailyRows.stream()
+                .map(row -> {
+                    String date = asString(row, "stat_date");
+                    return toOrderSummaryRow(row, dailyCommission.get(date), date);
+                })
+                .toList());
+        return ok(vo);
     }
 
     @Operation(summary = "核心指标", description = "查询数据页首页核心指标与近 7 天趋势，支持双轨（结算/预估）并行返回。")
@@ -188,7 +341,8 @@ public class DataController extends BaseController {
         LocalDateTime todayStart = today.atStartOfDay();
         LocalDateTime tomorrowStart = today.plusDays(1).atStartOfDay();
         LocalDateTime rollingStart = today.minusDays(29).atStartOfDay();
-        String timeColumn = resolveTimeColumn(timeField);
+        OrderTrackColumns columns = resolveOrderTrackColumns(timeField);
+        String timeColumn = columns.timeColumn();
 
         QueryWrapper<ColonelsettlementOrder> pendingWrapper = buildScopedQuery(userId, deptId, dataScope)
                 .select("COUNT(1) AS order_count")
@@ -239,7 +393,7 @@ public class DataController extends BaseController {
         QueryWrapper<ColonelsettlementOrder> todayAggregateWrapper = buildScopedQuery(userId, deptId, dataScope)
                 .select(
                         "COUNT(*) AS order_count",
-                        "COALESCE(SUM(order_amount), 0) AS order_amount_cent"
+                        "COALESCE(SUM(" + columns.amountColumn() + "), 0) AS order_amount_cent"
                 )
                 .ge(timeColumn, todayStart)
                 .lt(timeColumn, tomorrowStart);
@@ -250,8 +404,8 @@ public class DataController extends BaseController {
         QueryWrapper<ColonelsettlementOrder> commissionWrapper = buildScopedQuery(userId, deptId, dataScope)
                 .select(
                         "COALESCE(colonel_activity_id, '') AS activity_id",
-                        "COALESCE(SUM(settle_colonel_commission), 0) AS service_fee_income",
-                        "COALESCE(SUM(settle_colonel_tech_service_fee), 0) AS tech_service_fee",
+                        "COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income",
+                        "COALESCE(SUM(" + columns.techFeeColumn() + "), 0) AS tech_service_fee",
                         "COALESCE(SUM(settle_second_colonel_commission), 0) AS talent_commission"
                 )
                 .ge(timeColumn, todayStart)
@@ -275,7 +429,7 @@ public class DataController extends BaseController {
                 .select(
                         String.format("DATE(%s) AS settle_date", timeColumn),
                         "COUNT(*) AS order_count",
-                        "COALESCE(SUM(order_amount), 0) AS order_amount_cent"
+                        "COALESCE(SUM(" + columns.amountColumn() + "), 0) AS order_amount_cent"
                 )
                 .ge(timeColumn, weekStart)
                 .lt(timeColumn, tomorrowStart)
@@ -318,6 +472,14 @@ public class DataController extends BaseController {
             @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
             @Parameter(description = "达人 ID（UUID），精确匹配。") @RequestParam(required = false) UUID talentId,
             @Parameter(description = "商家 merchant_id（字符串），精确匹配。") @RequestParam(required = false) String merchantId,
+            @Parameter(description = "商品 ID，精确匹配。") @RequestParam(required = false) String productId,
+            @Parameter(description = "商品名称/标题，模糊匹配。") @RequestParam(required = false) String productName,
+            @Parameter(description = "店铺名称，模糊匹配。") @RequestParam(required = false) String shopName,
+            @Parameter(description = "达人昵称，模糊匹配。") @RequestParam(required = false) String talentName,
+            @Parameter(description = "团长/招商负责人名称，模糊匹配。") @RequestParam(required = false) String colonelName,
+            @Parameter(description = "渠道负责人名称，模糊匹配。") @RequestParam(required = false) String channelName,
+            @Parameter(description = "团长活动 ID，精确匹配。") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "招商类型：MERCHANT（商家型招商单） 或 PROMOTION（推广单）。") @RequestParam(required = false) String recruitType,
             @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @Parameter(description = "时间字段：createTime（默认）或 settleTime。") @RequestParam(required = false) String timeField,
@@ -333,30 +495,26 @@ public class DataController extends BaseController {
                 ? LocalDate.now().plusDays(1).atStartOfDay()
                 : endDate.plusDays(1).atStartOfDay();
 
-        String timeColumn = resolveAliasedOrderTimeColumn(timeField);
-        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
-        wrapper.ge(timeColumn, start)
-                .lt(timeColumn, end);
-        applyPageDataScope(wrapper, userId, deptId, dataScope);
-        if (StringUtils.hasText(orderId)) {
-            wrapper.like("co.order_id", orderId.trim());
-        }
-        if (StringUtils.hasText(status)) {
-            wrapper.eq("co.order_status", toOrderStatusCode(status));
-        }
-        if (talentId != null) {
-            wrapper.eq("co.talent_id", talentId);
-        }
-        if (StringUtils.hasText(merchantId)) {
-            String normalized = merchantId.trim();
-            String digits = normalized.replaceAll("\\D", "");
-            String shopIdText = StringUtils.hasText(digits) ? digits : normalized;
-            wrapper.apply(
-                    "(co.extra_data->>'merchant_id' = {0} OR CAST(co.shop_id AS TEXT) = {1})",
-                    normalized,
-                    shopIdText
-            );
-        }
+        QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
+                true,
+                timeField,
+                start,
+                end,
+                orderId,
+                status,
+                talentId,
+                merchantId,
+                productId,
+                productName,
+                shopName,
+                talentName,
+                colonelName,
+                channelName,
+                colonelActivityId,
+                recruitType,
+                userId,
+                deptId,
+                dataScope);
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"orders.csv\"");
@@ -389,6 +547,41 @@ public class DataController extends BaseController {
             current++;
         }
         writer.flush();
+    }
+
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    public void exportOrders(
+            String orderId,
+            String status,
+            UUID talentId,
+            String merchantId,
+            LocalDate startDate,
+            LocalDate endDate,
+            String timeField,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            HttpServletResponse response) throws IOException {
+        exportOrders(
+                orderId,
+                status,
+                talentId,
+                merchantId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                startDate,
+                endDate,
+                timeField,
+                userId,
+                deptId,
+                dataScope,
+                response);
     }
 
     @Operation(summary = "独家状态监控 - 达人", description = "分页查询达人独家状态监控数据。支持按月份、关键字、状态筛选。")
@@ -538,7 +731,7 @@ public class DataController extends BaseController {
         return switch (normalized) {
             case "createtime", "create_time", "create" -> "create_time";
             case "settletime", "settle_time", "settle" -> "settle_time";
-            default -> "create_time";
+            default -> throw BusinessException.param("非法时间字段: " + timeField);
         };
     }
 
@@ -643,6 +836,412 @@ public class DataController extends BaseController {
         return rows.get(0);
     }
 
+    private List<Map<String, Object>> queryOrderSummaryAggregates(
+            boolean daily,
+            OrderTrackColumns columns,
+            String timeField,
+            LocalDateTime start,
+            LocalDateTime end,
+            String orderId,
+            String status,
+            UUID talentId,
+            String merchantId,
+            String productId,
+            String productName,
+            String shopName,
+            String talentName,
+            String colonelName,
+            String channelName,
+            String colonelActivityId,
+            String recruitType,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
+                false,
+                timeField,
+                start,
+                end,
+                orderId,
+                status,
+                talentId,
+                merchantId,
+                productId,
+                productName,
+                shopName,
+                talentName,
+                colonelName,
+                channelName,
+                colonelActivityId,
+                recruitType,
+                userId,
+                deptId,
+                dataScope);
+        List<String> selects = new ArrayList<>();
+        String dayExpr = "DATE(" + columns.timeColumn() + ")";
+        if (daily) {
+            selects.add(dayExpr + " AS stat_date");
+        }
+        selects.add("COUNT(1) AS order_count");
+        selects.add("COUNT(DISTINCT talent_id) AS talent_promoter_count");
+        selects.add("COUNT(DISTINCT COALESCE(colonel_buyin_id, second_colonel_buyin_id)) AS colonel_promoter_count");
+        selects.add("COUNT(DISTINCT product_id) AS product_count");
+        selects.add("COALESCE(SUM(" + columns.amountColumn() + "), 0) AS order_amount_cent");
+        selects.add("COALESCE(SUM(actual_amount), 0) AS actual_amount_cent");
+        selects.add("COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income_cent");
+        selects.add("COALESCE(SUM(" + columns.techFeeColumn() + "), 0) AS tech_service_fee_cent");
+        selects.add("COALESCE(SUM(settle_second_colonel_commission), 0) AS talent_commission_cent");
+        wrapper.select(selects.toArray(String[]::new));
+        if (daily) {
+            wrapper.groupBy(dayExpr).orderByDesc(dayExpr);
+        }
+        List<Map<String, Object>> rows = orderMapper.selectMaps(wrapper);
+        return rows == null ? List.of() : rows;
+    }
+
+    private CommissionService.CommissionSummary queryOrderSummaryCommission(
+            boolean daily,
+            String date,
+            OrderTrackColumns columns,
+            String timeField,
+            LocalDateTime start,
+            LocalDateTime end,
+            String orderId,
+            String status,
+            UUID talentId,
+            String merchantId,
+            String productId,
+            String productName,
+            String shopName,
+            String talentName,
+            String colonelName,
+            String channelName,
+            String colonelActivityId,
+            String recruitType,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        List<Map<String, Object>> rows = queryOrderSummaryCommissionBuckets(
+                daily,
+                columns,
+                timeField,
+                start,
+                end,
+                orderId,
+                status,
+                talentId,
+                merchantId,
+                productId,
+                productName,
+                shopName,
+                talentName,
+                colonelName,
+                channelName,
+                colonelActivityId,
+                recruitType,
+                userId,
+                deptId,
+                dataScope);
+        List<CommissionService.ActivityCommissionBucket> buckets = rows.stream()
+                .filter(row -> !daily || date == null || date.equals(asString(row, "stat_date")))
+                .map(this::toActivityCommissionBucket)
+                .toList();
+        return calculateCommissionSummary(buckets);
+    }
+
+    private Map<String, CommissionService.CommissionSummary> queryDailyOrderSummaryCommission(
+            OrderTrackColumns columns,
+            String timeField,
+            LocalDateTime start,
+            LocalDateTime end,
+            String orderId,
+            String status,
+            UUID talentId,
+            String merchantId,
+            String productId,
+            String productName,
+            String shopName,
+            String talentName,
+            String colonelName,
+            String channelName,
+            String colonelActivityId,
+            String recruitType,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        List<Map<String, Object>> rows = queryOrderSummaryCommissionBuckets(
+                true,
+                columns,
+                timeField,
+                start,
+                end,
+                orderId,
+                status,
+                talentId,
+                merchantId,
+                productId,
+                productName,
+                shopName,
+                talentName,
+                colonelName,
+                channelName,
+                colonelActivityId,
+                recruitType,
+                userId,
+                deptId,
+                dataScope);
+        Map<String, List<CommissionService.ActivityCommissionBucket>> grouped = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            String date = asString(row, "stat_date");
+            grouped.computeIfAbsent(date, ignored -> new ArrayList<>())
+                    .add(toActivityCommissionBucket(row));
+        }
+        Map<String, CommissionService.CommissionSummary> result = new LinkedHashMap<>();
+        grouped.forEach((key, buckets) -> result.put(key, calculateCommissionSummary(buckets)));
+        return result;
+    }
+
+    private List<Map<String, Object>> queryOrderSummaryCommissionBuckets(
+            boolean daily,
+            OrderTrackColumns columns,
+            String timeField,
+            LocalDateTime start,
+            LocalDateTime end,
+            String orderId,
+            String status,
+            UUID talentId,
+            String merchantId,
+            String productId,
+            String productName,
+            String shopName,
+            String talentName,
+            String colonelName,
+            String channelName,
+            String colonelActivityId,
+            String recruitType,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
+                false,
+                timeField,
+                start,
+                end,
+                orderId,
+                status,
+                talentId,
+                merchantId,
+                productId,
+                productName,
+                shopName,
+                talentName,
+                colonelName,
+                channelName,
+                colonelActivityId,
+                recruitType,
+                userId,
+                deptId,
+                dataScope);
+        String dayExpr = "DATE(" + columns.timeColumn() + ")";
+        String recruiterExpr = "COALESCE(colonel_user_id, user_id)";
+        List<String> selects = new ArrayList<>();
+        if (daily) {
+            selects.add(dayExpr + " AS stat_date");
+        }
+        selects.add("COALESCE(colonel_activity_id, '') AS activity_id");
+        selects.add("COALESCE(product_id, '') AS product_id");
+        selects.add(recruiterExpr + " AS recruiter_user_id");
+        selects.add("COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income");
+        selects.add("COALESCE(SUM(" + columns.techFeeColumn() + "), 0) AS tech_service_fee");
+        selects.add("COALESCE(SUM(settle_second_colonel_commission), 0) AS talent_commission");
+        wrapper.select(selects.toArray(String[]::new));
+        if (daily) {
+            wrapper.groupBy(dayExpr, "colonel_activity_id", "product_id", recruiterExpr)
+                    .orderByDesc(dayExpr);
+        } else {
+            wrapper.groupBy("colonel_activity_id", "product_id", recruiterExpr);
+        }
+        List<Map<String, Object>> rows = orderMapper.selectMaps(wrapper);
+        return rows == null ? List.of() : rows;
+    }
+
+    private QueryWrapper<ColonelsettlementOrder> buildOrderFilterWrapper(
+            boolean aliased,
+            String timeField,
+            LocalDateTime start,
+            LocalDateTime end,
+            String orderId,
+            String status,
+            UUID talentId,
+            String merchantId,
+            String productId,
+            String productName,
+            String shopName,
+            String talentName,
+            String colonelName,
+            String channelName,
+            String colonelActivityId,
+            String recruitType,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
+        String timeColumn = column(aliased, resolveTimeColumn(timeField));
+        wrapper.eq(column(aliased, "deleted"), 0)
+                .ge(timeColumn, start)
+                .lt(timeColumn, end);
+        applyOrderDataScope(wrapper, aliased, userId, deptId, dataScope);
+        if (StringUtils.hasText(orderId)) {
+            wrapper.like(column(aliased, "order_id"), orderId.trim());
+        }
+        if (StringUtils.hasText(status)) {
+            wrapper.eq(column(aliased, "order_status"), toOrderStatusCode(status));
+        }
+        if (talentId != null) {
+            wrapper.eq(column(aliased, "talent_id"), talentId);
+        }
+        if (StringUtils.hasText(merchantId)) {
+            String normalized = merchantId.trim();
+            String digits = normalized.replaceAll("\\D", "");
+            String shopIdText = StringUtils.hasText(digits) ? digits : normalized;
+            String prefix = aliased ? "co." : "";
+            wrapper.apply(
+                    "(" + prefix + "extra_data->>'merchant_id' = {0} OR CAST(" + prefix + "shop_id AS TEXT) = {1})",
+                    normalized,
+                    shopIdText
+            );
+        }
+        if (StringUtils.hasText(productId)) {
+            wrapper.eq(column(aliased, "product_id"), productId.trim());
+        }
+        if (StringUtils.hasText(productName)) {
+            String normalized = productName.trim();
+            wrapper.and(w -> w.like(column(aliased, "product_name"), normalized)
+                    .or().like(column(aliased, "product_title"), normalized));
+        }
+        if (StringUtils.hasText(shopName)) {
+            wrapper.like(column(aliased, "shop_name"), shopName.trim());
+        }
+        if (StringUtils.hasText(talentName)) {
+            wrapper.like(column(aliased, "talent_name"), talentName.trim());
+        }
+        if (StringUtils.hasText(colonelName)) {
+            wrapper.like(column(aliased, "colonel_user_name"), colonelName.trim());
+        }
+        if (StringUtils.hasText(channelName)) {
+            wrapper.like(column(aliased, "channel_user_name"), channelName.trim());
+        }
+        if (StringUtils.hasText(colonelActivityId)) {
+            wrapper.eq(column(aliased, "colonel_activity_id"), colonelActivityId.trim());
+        }
+        if (StringUtils.hasText(recruitType)) {
+            wrapper.eq(column(aliased, "order_type"), toOrderTypeCode(recruitType));
+        }
+        return wrapper;
+    }
+
+    private void applyOrderDataScope(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            boolean aliased,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        switch (dataScope) {
+            case PERSONAL -> wrapper.eq(column(aliased, "user_id"), requireScopeUser(userId));
+            case DEPT -> wrapper.eq(column(aliased, "dept_id"), requireScopeDept(deptId));
+            case ALL -> {
+                // no filter
+            }
+        }
+    }
+
+    private String column(boolean aliased, String column) {
+        return aliased ? "co." + column : column;
+    }
+
+    private OrderTrackColumns resolveOrderTrackColumns(String timeField) {
+        String timeColumn = resolveTimeColumn(timeField);
+        if ("settle_time".equals(timeColumn)) {
+            return new OrderTrackColumns(
+                    timeColumn,
+                    "settle_amount",
+                    "effective_service_fee",
+                    "effective_tech_service_fee");
+        }
+        return new OrderTrackColumns(
+                timeColumn,
+                "order_amount",
+                "estimate_service_fee",
+                "estimate_tech_service_fee");
+    }
+
+    private OrderSummaryRowVO toOrderSummaryRow(
+            Map<String, Object> row,
+            CommissionService.CommissionSummary commissionSummary,
+            String date) {
+        CommissionService.CommissionSummary summary = commissionSummary == null
+                ? zeroCommissionSummary()
+                : commissionSummary;
+        long orderAmount = asLong(row, "order_amount_cent");
+        long actualAmount = asLong(row, "actual_amount_cent");
+        long serviceFeeIncome = asLong(row, "service_fee_income_cent");
+        OrderSummaryRowVO vo = new OrderSummaryRowVO();
+        vo.setDate(date);
+        vo.setTalentPromoterCount(asLong(row, "talent_promoter_count"));
+        vo.setColonelPromoterCount(asLong(row, "colonel_promoter_count"));
+        vo.setProductCount(asLong(row, "product_count"));
+        vo.setOrderCount(asLong(row, "order_count"));
+        vo.setOrderAmount(centToYuan(orderAmount));
+        vo.setProductAverageServiceFeeRate(percent(serviceFeeIncome, actualAmount));
+        vo.setOrderAverageServiceFeeRate(percent(serviceFeeIncome, orderAmount));
+        vo.setServiceFeeIncome(centToYuan(serviceFeeIncome));
+        vo.setTechServiceFee(centToYuan(asLong(row, "tech_service_fee_cent")));
+        vo.setServiceFeeExpense(centToYuan(summary.bizCommission() + summary.channelCommission()));
+        vo.setServiceFeeProfit(centToYuan(summary.serviceFeeNet()));
+        vo.setGrossProfit(centToYuan(summary.grossProfit()));
+        return vo;
+    }
+
+    private CommissionService.ActivityCommissionBucket toActivityCommissionBucket(Map<String, Object> row) {
+        String productId = asString(row, "product_id");
+        return new CommissionService.ActivityCommissionBucket(
+                asString(row, "activity_id"),
+                StringUtils.hasText(productId) ? productId : null,
+                asUuid(row, "recruiter_user_id"),
+                asLong(row, "service_fee_income"),
+                asLong(row, "tech_service_fee"),
+                asLong(row, "talent_commission"));
+    }
+
+    private CommissionService.CommissionSummary calculateCommissionSummary(
+            List<CommissionService.ActivityCommissionBucket> buckets) {
+        CommissionService.CommissionSummary summary = commissionService.calculateByActivityBuckets(buckets);
+        return summary == null ? zeroCommissionSummary() : summary;
+    }
+
+    private CommissionService.CommissionSummary zeroCommissionSummary() {
+        return new CommissionService.CommissionSummary(
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO);
+    }
+
+    private Map<String, Object> firstRow(List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return Map.of();
+        }
+        return rows.get(0);
+    }
+
     private Long asLong(Map<String, Object> row, String key) {
         Object value = readValue(row, key);
         if (value instanceof Number number) {
@@ -661,6 +1260,30 @@ public class DataController extends BaseController {
     private String asString(Map<String, Object> row, String key) {
         Object value = readValue(row, key);
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private UUID asUuid(Map<String, Object> row, String key) {
+        Object value = readValue(row, key);
+        if (value instanceof UUID uuid) {
+            return uuid;
+        }
+        if (value == null || !StringUtils.hasText(String.valueOf(value))) {
+            return null;
+        }
+        try {
+            return UUID.fromString(String.valueOf(value));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private BigDecimal percent(long numerator, long denominator) {
+        if (denominator <= 0L || numerator <= 0L) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return BigDecimal.valueOf(numerator)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(denominator), 2, RoundingMode.HALF_UP);
     }
 
     private Object readValue(Map<String, Object> row, String key) {
@@ -687,16 +1310,8 @@ public class DataController extends BaseController {
             return;
         }
         switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq("co.user_id", userId);
-                }
-            }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq("co.dept_id", deptId);
-                }
-            }
+            case PERSONAL -> wrapper.eq("co.user_id", requireScopeUser(userId));
+            case DEPT -> wrapper.eq("co.dept_id", requireScopeDept(deptId));
             case ALL -> {
                 // no filter
             }
@@ -712,16 +1327,8 @@ public class DataController extends BaseController {
             return;
         }
         switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq("user_id", userId);
-                }
-            }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq("dept_id", deptId);
-                }
-            }
+            case PERSONAL -> wrapper.eq("user_id", requireScopeUser(userId));
+            case DEPT -> wrapper.eq("dept_id", requireScopeDept(deptId));
             case ALL -> {
                 // no filter
             }
@@ -737,16 +1344,8 @@ public class DataController extends BaseController {
             return;
         }
         switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq(ExclusiveTalent::getUserId, userId);
-                }
-            }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq(ExclusiveTalent::getDeptId, deptId);
-                }
-            }
+            case PERSONAL -> wrapper.eq(ExclusiveTalent::getUserId, requireScopeUser(userId));
+            case DEPT -> wrapper.eq(ExclusiveTalent::getDeptId, requireScopeDept(deptId));
             case ALL -> {
                 // no filter
             }
@@ -762,19 +1361,173 @@ public class DataController extends BaseController {
             return;
         }
         switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq(ExclusiveMerchant::getUserId, userId);
-                }
-            }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq(ExclusiveMerchant::getDeptId, deptId);
-                }
-            }
+            case PERSONAL -> wrapper.eq(ExclusiveMerchant::getUserId, requireScopeUser(userId));
+            case DEPT -> wrapper.eq(ExclusiveMerchant::getDeptId, requireScopeDept(deptId));
             case ALL -> {
                 // no filter
             }
+        }
+    }
+
+    private UUID requireScopeUser(UUID userId) {
+        if (userId == null) {
+            throw BusinessException.forbidden("数据权限异常：缺少用户上下文");
+        }
+        return userId;
+    }
+
+    private UUID requireScopeDept(UUID deptId) {
+        if (deptId == null) {
+            throw BusinessException.forbidden("数据权限异常：缺少部门上下文");
+        }
+        return deptId;
+    }
+
+    private record OrderTrackColumns(
+            String timeColumn,
+            String amountColumn,
+            String serviceFeeColumn,
+            String techFeeColumn) {
+    }
+
+    public static class OrderSummaryVO {
+        private OrderSummaryRowVO total;
+        private List<OrderSummaryRowVO> records;
+
+        public OrderSummaryRowVO getTotal() {
+            return total;
+        }
+
+        public void setTotal(OrderSummaryRowVO total) {
+            this.total = total;
+        }
+
+        public List<OrderSummaryRowVO> getRecords() {
+            return records;
+        }
+
+        public void setRecords(List<OrderSummaryRowVO> records) {
+            this.records = records;
+        }
+    }
+
+    public static class OrderSummaryRowVO {
+        private String date;
+        private Long talentPromoterCount;
+        private Long colonelPromoterCount;
+        private Long productCount;
+        private Long orderCount;
+        private BigDecimal orderAmount;
+        private BigDecimal productAverageServiceFeeRate;
+        private BigDecimal orderAverageServiceFeeRate;
+        private BigDecimal serviceFeeIncome;
+        private BigDecimal techServiceFee;
+        private BigDecimal serviceFeeExpense;
+        private BigDecimal serviceFeeProfit;
+        private BigDecimal grossProfit;
+
+        public String getDate() {
+            return date;
+        }
+
+        public void setDate(String date) {
+            this.date = date;
+        }
+
+        public Long getTalentPromoterCount() {
+            return talentPromoterCount;
+        }
+
+        public void setTalentPromoterCount(Long talentPromoterCount) {
+            this.talentPromoterCount = talentPromoterCount;
+        }
+
+        public Long getColonelPromoterCount() {
+            return colonelPromoterCount;
+        }
+
+        public void setColonelPromoterCount(Long colonelPromoterCount) {
+            this.colonelPromoterCount = colonelPromoterCount;
+        }
+
+        public Long getProductCount() {
+            return productCount;
+        }
+
+        public void setProductCount(Long productCount) {
+            this.productCount = productCount;
+        }
+
+        public Long getOrderCount() {
+            return orderCount;
+        }
+
+        public void setOrderCount(Long orderCount) {
+            this.orderCount = orderCount;
+        }
+
+        public BigDecimal getOrderAmount() {
+            return orderAmount;
+        }
+
+        public void setOrderAmount(BigDecimal orderAmount) {
+            this.orderAmount = orderAmount;
+        }
+
+        public BigDecimal getProductAverageServiceFeeRate() {
+            return productAverageServiceFeeRate;
+        }
+
+        public void setProductAverageServiceFeeRate(BigDecimal productAverageServiceFeeRate) {
+            this.productAverageServiceFeeRate = productAverageServiceFeeRate;
+        }
+
+        public BigDecimal getOrderAverageServiceFeeRate() {
+            return orderAverageServiceFeeRate;
+        }
+
+        public void setOrderAverageServiceFeeRate(BigDecimal orderAverageServiceFeeRate) {
+            this.orderAverageServiceFeeRate = orderAverageServiceFeeRate;
+        }
+
+        public BigDecimal getServiceFeeIncome() {
+            return serviceFeeIncome;
+        }
+
+        public void setServiceFeeIncome(BigDecimal serviceFeeIncome) {
+            this.serviceFeeIncome = serviceFeeIncome;
+        }
+
+        public BigDecimal getTechServiceFee() {
+            return techServiceFee;
+        }
+
+        public void setTechServiceFee(BigDecimal techServiceFee) {
+            this.techServiceFee = techServiceFee;
+        }
+
+        public BigDecimal getServiceFeeExpense() {
+            return serviceFeeExpense;
+        }
+
+        public void setServiceFeeExpense(BigDecimal serviceFeeExpense) {
+            this.serviceFeeExpense = serviceFeeExpense;
+        }
+
+        public BigDecimal getServiceFeeProfit() {
+            return serviceFeeProfit;
+        }
+
+        public void setServiceFeeProfit(BigDecimal serviceFeeProfit) {
+            this.serviceFeeProfit = serviceFeeProfit;
+        }
+
+        public BigDecimal getGrossProfit() {
+            return grossProfit;
+        }
+
+        public void setGrossProfit(BigDecimal grossProfit) {
+            this.grossProfit = grossProfit;
         }
     }
 

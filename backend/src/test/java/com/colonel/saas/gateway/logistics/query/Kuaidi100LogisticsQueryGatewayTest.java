@@ -1,7 +1,10 @@
 package com.colonel.saas.gateway.logistics.query;
 
 import com.colonel.saas.config.LogisticsProperties;
+import com.colonel.saas.gateway.logistics.LogisticsTrackCommand;
 import com.colonel.saas.gateway.logistics.LogisticsGateway;
+import com.colonel.saas.gateway.logistics.kuaidi100.Kuaidi100LogisticsGateway;
+import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,15 +17,19 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class Kuaidi100LogisticsQueryGatewayTest {
 
     @Mock
-    private LogisticsGateway delegate;
+    private Kuaidi100LogisticsGateway delegate;
+    @Mock
+    private ObjectProvider<Kuaidi100LogisticsGateway> delegateProvider;
 
     private LogisticsProperties properties;
     private Kuaidi100LogisticsQueryGateway gateway;
@@ -30,7 +37,8 @@ class Kuaidi100LogisticsQueryGatewayTest {
     @BeforeEach
     void setUp() {
         properties = new LogisticsProperties();
-        gateway = new Kuaidi100LogisticsQueryGateway(properties, delegate);
+        lenient().when(delegateProvider.getIfAvailable()).thenReturn(delegate);
+        gateway = new Kuaidi100LogisticsQueryGateway(properties, delegateProvider);
     }
 
     @Test
@@ -43,6 +51,21 @@ class Kuaidi100LogisticsQueryGatewayTest {
         assertThat(result.getErrorCode()).isEqualTo("NOT_CONFIGURED");
         assertThat(gateway.isSupported()).isFalse();
         verify(delegate, never()).queryTrack("SF", "SF123");
+    }
+
+    @Test
+    void query_shouldReturnNotConfiguredWhenConcreteKuaidi100GatewayMissing() {
+        enableKd100();
+        when(delegateProvider.getIfAvailable()).thenReturn(null);
+
+        LogisticsQueryResult result = gateway.query("YTO", "YT123");
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getProvider()).isEqualTo("KUAIDI100");
+        assertThat(result.getStatusCode()).isEqualTo(LogisticsStatusCode.NOT_CONFIGURED);
+        assertThat(result.getErrorCode()).isEqualTo("NOT_CONFIGURED");
+        assertThat(gateway.isSupported()).isFalse();
+        verify(delegate, never()).queryTrack(any(LogisticsTrackCommand.class));
     }
 
     @Test
@@ -59,13 +82,25 @@ class Kuaidi100LogisticsQueryGatewayTest {
     }
 
     @Test
+    void query_shouldRejectMissingCompanyBeforeCallingDelegate() {
+        enableKd100();
+
+        LogisticsQueryResult result = gateway.query(" ", "SF123");
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("INVALID_PARAM");
+        assertThat(result.getErrorMessage()).contains("快递公司编码");
+        verify(delegate, never()).queryTrack("AUTO", "SF123");
+    }
+
+    @Test
     void query_shouldTrimInputsAndMapSuccessfulTrackWithTraceFallbacks() {
         enableKd100();
         LocalDateTime traceTime = LocalDateTime.of(2026, 5, 24, 10, 30);
         LocalDateTime signedAt = LocalDateTime.of(2026, 5, 24, 12, 0);
-        when(delegate.queryTrack("AUTO", "SF123")).thenReturn(new LogisticsGateway.LogisticsTrackResult(
-                "",
-                "SF123",
+        when(delegate.queryTrack(command("YTO", "YT123"))).thenReturn(new LogisticsGateway.LogisticsTrackResult(
+                "YTO",
+                "YT123",
                 true,
                 null,
                 "F00",
@@ -75,12 +110,12 @@ class Kuaidi100LogisticsQueryGatewayTest {
                 List.of(new LogisticsGateway.LogisticsTraceNode(traceTime, "已签收", "深圳")),
                 Map.of("status", "200")));
 
-        LogisticsQueryResult result = gateway.query(" ", " SF123 ");
+        LogisticsQueryResult result = gateway.query(" YTO ", " YT123 ");
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getProvider()).isEqualTo("KUAIDI100");
-        assertThat(result.getLogisticsCompany()).isEqualTo("AUTO");
-        assertThat(result.getTrackingNo()).isEqualTo("SF123");
+        assertThat(result.getLogisticsCompany()).isEqualTo("YTO");
+        assertThat(result.getTrackingNo()).isEqualTo("YT123");
         assertThat(result.getStatusCode()).isEqualTo(LogisticsStatusCode.SIGNED);
         assertThat(result.isSigned()).isTrue();
         assertThat(result.getSignedAt()).isEqualTo(signedAt);
@@ -93,11 +128,102 @@ class Kuaidi100LogisticsQueryGatewayTest {
     }
 
     @Test
+    void query_shouldPassPhoneAndAddressToDelegateCommand() {
+        enableKd100();
+        when(delegate.queryTrack(LogisticsTrackCommand.builder()
+                .companyCode("SF")
+                .trackingNo("SF123")
+                .phone("13800138000")
+                .to("广东省深圳市南山区")
+                .resultV2("4")
+                .build())).thenReturn(successTrack("IN_TRANSIT", "SF123"));
+
+        LogisticsQueryResult result = gateway.query(LogisticsTrackCommand.builder()
+                .companyCode(" SF ")
+                .trackingNo(" SF123 ")
+                .phone("13800138000")
+                .to("广东省深圳市南山区")
+                .build());
+
+        assertThat(result.isSuccess()).isTrue();
+        verify(delegate).queryTrack(LogisticsTrackCommand.builder()
+                .companyCode("SF")
+                .trackingNo("SF123")
+                .phone("13800138000")
+                .to("广东省深圳市南山区")
+                .resultV2("4")
+                .build());
+    }
+
+    @Test
+    void query_shouldThrottleRepeatedTrackingNoBeforeCallingDelegateAgain() {
+        enableKd100();
+        when(delegate.queryTrack(LogisticsTrackCommand.builder()
+                .companyCode("YTO")
+                .trackingNo("YT001")
+                .resultV2("4")
+                .build())).thenReturn(successTrack("IN_TRANSIT", "YT001"));
+
+        LogisticsQueryResult first = gateway.query("YTO", "YT001");
+        LogisticsQueryResult second = gateway.query("YTO", "YT001");
+
+        assertThat(first.isSuccess()).isTrue();
+        assertThat(second.isSuccess()).isFalse();
+        assertThat(second.getErrorCode()).isEqualTo("QUERY_THROTTLED");
+        assertThat(second.getErrorMessage()).contains("30分钟");
+        verify(delegate).queryTrack(LogisticsTrackCommand.builder()
+                .companyCode("YTO")
+                .trackingNo("YT001")
+                .resultV2("4")
+                .build());
+    }
+
+    @Test
+    void query_shouldRejectPhoneRequiredCompanyBeforeThrottleAndAllowCorrectedRequest() {
+        enableKd100();
+
+        LogisticsQueryResult missingPhone = gateway.query(LogisticsTrackCommand.builder()
+                .companyCode("SF")
+                .trackingNo("SF001")
+                .build());
+
+        assertThat(missingPhone.isSuccess()).isFalse();
+        assertThat(missingPhone.getErrorCode()).isEqualTo("INVALID_PARAM");
+        assertThat(missingPhone.getErrorMessage()).contains("手机号");
+        verify(delegate, never()).queryTrack(LogisticsTrackCommand.builder()
+                .companyCode("SF")
+                .trackingNo("SF001")
+                .resultV2("4")
+                .build());
+
+        when(delegate.queryTrack(LogisticsTrackCommand.builder()
+                .companyCode("SF")
+                .trackingNo("SF001")
+                .phone("13800138000")
+                .resultV2("4")
+                .build())).thenReturn(successTrack("SF", "IN_TRANSIT", "SF001"));
+
+        LogisticsQueryResult corrected = gateway.query(LogisticsTrackCommand.builder()
+                .companyCode("SF")
+                .trackingNo("SF001")
+                .phone("13800138000")
+                .build());
+
+        assertThat(corrected.isSuccess()).isTrue();
+        verify(delegate).queryTrack(LogisticsTrackCommand.builder()
+                .companyCode("SF")
+                .trackingNo("SF001")
+                .phone("13800138000")
+                .resultV2("4")
+                .build());
+    }
+
+    @Test
     void query_shouldMapFailedAndNullUpstreamResponses() {
         enableKd100();
-        when(delegate.queryTrack("SF", "EMPTY")).thenReturn(null);
-        when(delegate.queryTrack("SF", "FAIL")).thenReturn(new LogisticsGateway.LogisticsTrackResult(
-                "SF",
+        when(delegate.queryTrack(command("YTO", "EMPTY"))).thenReturn(null);
+        when(delegate.queryTrack(command("YTO", "FAIL"))).thenReturn(new LogisticsGateway.LogisticsTrackResult(
+                "YTO",
                 "FAIL",
                 false,
                 "暂无轨迹",
@@ -108,8 +234,8 @@ class Kuaidi100LogisticsQueryGatewayTest {
                 null,
                 null));
 
-        LogisticsQueryResult empty = gateway.query("SF", "EMPTY");
-        LogisticsQueryResult failed = gateway.query("SF", "FAIL");
+        LogisticsQueryResult empty = gateway.query("YTO", "EMPTY");
+        LogisticsQueryResult failed = gateway.query("YTO", "FAIL");
 
         assertThat(empty.isSuccess()).isFalse();
         assertThat(empty.getErrorCode()).isEqualTo("UPSTREAM_FAILED");
@@ -121,14 +247,14 @@ class Kuaidi100LogisticsQueryGatewayTest {
     @Test
     void query_shouldWrapDelegateExceptionAsQueryError() {
         enableKd100();
-        when(delegate.queryTrack("SF", "ERR")).thenThrow(new IllegalStateException("remote timeout"));
+        when(delegate.queryTrack(command("YTO", "ERR"))).thenThrow(new IllegalStateException("remote timeout"));
 
-        LogisticsQueryResult result = gateway.query("SF", "ERR");
+        LogisticsQueryResult result = gateway.query("YTO", "ERR");
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getErrorCode()).isEqualTo("QUERY_ERROR");
         assertThat(result.getErrorMessage()).isEqualTo("remote timeout");
-        assertThat(result.getLogisticsCompany()).isEqualTo("SF");
+        assertThat(result.getLogisticsCompany()).isEqualTo("YTO");
     }
 
     @Test
@@ -149,9 +275,9 @@ class Kuaidi100LogisticsQueryGatewayTest {
         int index = 0;
         for (Map.Entry<String, LogisticsStatusCode> entry : cases.entrySet()) {
             String trackingNo = "TRACK-" + index++;
-            when(delegate.queryTrack("SF", trackingNo)).thenReturn(successTrack(entry.getKey(), trackingNo));
+            when(delegate.queryTrack(command("YTO", trackingNo))).thenReturn(successTrack("YTO", entry.getKey(), trackingNo));
 
-            LogisticsQueryResult result = gateway.query("SF", trackingNo);
+            LogisticsQueryResult result = gateway.query("YTO", trackingNo);
 
             assertThat(result.getStatusCode()).isEqualTo(entry.getValue());
             assertThat(result.getStatusName()).isEqualTo(entry.getValue().name());
@@ -161,9 +287,9 @@ class Kuaidi100LogisticsQueryGatewayTest {
     @Test
     void query_shouldMapNullStatusAndNullRawPayloadToUnknownAndEmptyPayload() {
         enableKd100();
-        when(delegate.queryTrack("SF", "NULL-STATUS")).thenReturn(successTrack(null, "NULL-STATUS"));
+        when(delegate.queryTrack(command("YTO", "NULL-STATUS"))).thenReturn(successTrack("YTO", null, "NULL-STATUS"));
 
-        LogisticsQueryResult result = gateway.query("SF", "NULL-STATUS");
+        LogisticsQueryResult result = gateway.query("YTO", "NULL-STATUS");
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getStatusCode()).isEqualTo(LogisticsStatusCode.UNKNOWN);
@@ -178,8 +304,12 @@ class Kuaidi100LogisticsQueryGatewayTest {
     }
 
     private LogisticsGateway.LogisticsTrackResult successTrack(String internalStatus, String trackingNo) {
+        return successTrack("SF", internalStatus, trackingNo);
+    }
+
+    private LogisticsGateway.LogisticsTrackResult successTrack(String companyCode, String internalStatus, String trackingNo) {
         return new LogisticsGateway.LogisticsTrackResult(
-                "SF",
+                companyCode,
                 trackingNo,
                 true,
                 null,
@@ -189,5 +319,13 @@ class Kuaidi100LogisticsQueryGatewayTest {
                 null,
                 null,
                 null);
+    }
+
+    private LogisticsTrackCommand command(String companyCode, String trackingNo) {
+        return LogisticsTrackCommand.builder()
+                .companyCode(companyCode)
+                .trackingNo(trackingNo)
+                .resultV2("4")
+                .build();
     }
 }

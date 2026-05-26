@@ -96,9 +96,14 @@ logistics:
     sandbox-enabled: ${LOGISTICS_KDN_SANDBOX_ENABLED:false}
   kd100:
     enabled: ${LOGISTICS_KD100_ENABLED:false}
+    subscribe-enabled: ${LOGISTICS_KD100_SUBSCRIBE_ENABLED:false}
     customer: ${LOGISTICS_KD100_CUSTOMER:}
     key: ${LOGISTICS_KD100_KEY:}
     endpoint: ${LOGISTICS_KD100_ENDPOINT:https://poll.kuaidi100.com/poll/query.do}
+    subscribe-endpoint: ${LOGISTICS_KD100_SUBSCRIBE_ENDPOINT:https://poll.kuaidi100.com/poll}
+    callback-url: ${LOGISTICS_KD100_CALLBACK_URL:}
+    callback-salt: ${LOGISTICS_KD100_CALLBACK_SALT:}
+    result-v2: ${LOGISTICS_KD100_RESULT_V2:4}
     sandbox-enabled: ${LOGISTICS_KD100_SANDBOX_ENABLED:false}
   sync:
     enabled: ${LOGISTICS_SYNC_ENABLED:false}

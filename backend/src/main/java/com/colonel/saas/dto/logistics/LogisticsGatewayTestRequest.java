@@ -11,4 +11,7 @@ public class LogisticsGatewayTestRequest {
     private String logisticsCompany;
     @NotBlank
     private String trackingNo;
+    private String phone;
+    private String from;
+    private String to;
 }

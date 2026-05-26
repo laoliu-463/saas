@@ -39,6 +39,12 @@ public class SampleLogisticsTrace {
     @TableField("trace_content")
     private String traceContent;
 
+    @TableField("node_hash")
+    private String nodeHash;
+
+    @TableField("location")
+    private String location;
+
     @TableField(value = "raw_payload", typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> rawPayload;
 

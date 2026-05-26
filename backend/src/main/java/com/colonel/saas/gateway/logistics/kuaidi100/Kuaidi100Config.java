@@ -1,7 +1,6 @@
 package com.colonel.saas.gateway.logistics.kuaidi100;
 
-import lombok.Data;
-import org.springframework.boot.context.properties.ConfigurationProperties;
+import com.colonel.saas.config.LogisticsProperties;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,25 +9,19 @@ import org.springframework.web.client.RestTemplate;
 import java.time.Duration;
 
 /**
- * 快递100配置
- * 文档：https://www.kuaidi100.com/openapi/
+ * 快递100 HTTP 客户端配置。业务配置统一使用 logistics.kd100.*。
  */
-@Data
 @Configuration
-@ConfigurationProperties(prefix = "kuaidi100")
 public class Kuaidi100Config {
 
-    private String requestUrl = "https://poll.kuaidi100.com/poll/query";
-    private String customer;
-    private String secret;
-    private Duration connectTimeout = Duration.ofSeconds(5);
-    private Duration readTimeout = Duration.ofSeconds(10);
-
     @Bean
-    public RestTemplate kuaidi100RestTemplate(RestTemplateBuilder restTemplateBuilder) {
+    public RestTemplate kuaidi100RestTemplate(
+            RestTemplateBuilder restTemplateBuilder,
+            LogisticsProperties logisticsProperties) {
+        Duration timeout = Duration.ofSeconds(Math.max(1, logisticsProperties.getQuery().getTimeoutSeconds()));
         return restTemplateBuilder
-                .setConnectTimeout(connectTimeout)
-                .setReadTimeout(readTimeout)
+                .setConnectTimeout(timeout)
+                .setReadTimeout(timeout)
                 .build();
     }
 }

@@ -114,7 +114,9 @@ public class OrderQueryService {
 
         OrderDetailResponse.AmountInfo amount = new OrderDetailResponse.AmountInfo();
         amount.setOrderAmount(asLong(row.get("order_amount")));
-        amount.setServiceFee(asLong(row.get("settle_colonel_commission")));
+        // serviceFee 对齐业绩域双轨口径：取 effective_service_fee（结算服务费）。
+        // 历史口径曾取 settle_colonel_commission（结算给团长的佣金），二者语义不同。
+        amount.setServiceFee(asLong(row.get("effective_service_fee")));
         amount.setPayAmount(asLong(row.get("order_amount")));
         amount.setSettleAmount(asLong(row.get("settle_amount")));
         amount.setEstimateServiceFee(asLong(row.get("estimate_service_fee")));

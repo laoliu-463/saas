@@ -23,8 +23,8 @@ describe('ProductFilters library mode', () => {
 
   const globalStubs = {
     NSpace: { template: '<div><slot /></div>' },
-    NSelect: { template: '<select />' },
-    NInput: { template: '<input />' },
+    NSelect: { template: '<div v-bind="$attrs"><slot /></div>' },
+    NInput: { template: '<div v-bind="$attrs"><slot /></div>' },
     NButton: { template: '<button><slot /></button>' },
     NCheckbox: { template: '<input type="checkbox" />' }
   }
