@@ -1,3 +1,8 @@
+name: ${COMPOSE_PROJECT_NAME:-saas}
+
+x-real-pre-env-file: &real_pre_env_file
+  - ${REAL_PRE_ENV_FILE:-.env.real-pre}
+
 services:
   postgres-real-pre:
     image: postgres:15-alpine
@@ -5,60 +10,69 @@ services:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     volumes:
       - postgres_real_pre_data:/var/lib/postgresql/data
-      - ./backend/src/main/resources/db/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./backend/src/main/resources/db/migrate-all.sql:/docker-entrypoint-initdb.d/99-migrate-all.sql
-      - ./backend/src/main/resources/db/alter-product-main-chain.sql:/docker-entrypoint-initdb.d/02-alter-product-main-chain.sql
-      - ./backend/src/main/resources/db/alter-product-biz-status.sql:/docker-entrypoint-initdb.d/03-alter-product-biz-status.sql
-      - ./backend/src/main/resources/db/alter-product-following.sql:/docker-entrypoint-initdb.d/04-alter-product-following.sql
-      - ./backend/src/main/resources/db/alter-talent-enrich.sql:/docker-entrypoint-initdb.d/05-alter-talent-enrich.sql
-      - ./backend/src/main/resources/db/alter-talent-crm-gap-fill.sql:/docker-entrypoint-initdb.d/06-alter-talent-crm-gap-fill.sql
-      - ./backend/src/main/resources/db/alter-product-test-columns.sql:/docker-entrypoint-initdb.d/07-alter-product-test-columns.sql
-      - ./backend/src/main/resources/db/alter-order-attribution-mvp.sql:/docker-entrypoint-initdb.d/08-alter-order-attribution-mvp.sql
-      - ./backend/src/main/resources/db/alter-order-attribution-mvp-v2.sql:/docker-entrypoint-initdb.d/09-alter-order-attribution-mvp-v2.sql
-      - ./backend/src/main/resources/db/alter-sample-shipper-code.sql:/docker-entrypoint-initdb.d/10-alter-sample-shipper-code.sql
-      - ./backend/src/main/resources/db/alter-order-pick-source-length.sql:/docker-entrypoint-initdb.d/10-alter-order-pick-source-length.sql
-      - ./backend/src/main/resources/db/alter-pick-source-mapping-colonel-buyin-id.sql:/docker-entrypoint-initdb.d/11-alter-pick-source-mapping-colonel-buyin-id.sql
-      - ./backend/src/main/resources/db/alter-pick-source-mapping-duplicate-pick-source.sql:/docker-entrypoint-initdb.d/12-alter-pick-source-mapping-duplicate-pick-source.sql
-      - ./backend/src/main/resources/db/backfill-pick-source-mapping-colonel-buyin-id.sql:/docker-entrypoint-initdb.d/13-backfill-pick-source-mapping-colonel-buyin-id.sql
-      - ./backend/src/main/resources/db/backfill-pick-source-mapping-from-promotion-link.sql:/docker-entrypoint-initdb.d/14-backfill-pick-source-mapping-from-promotion-link.sql
-      - ./backend/src/main/resources/db/backfill-order-attribution-colonel-reasons.sql:/docker-entrypoint-initdb.d/15-backfill-order-attribution-colonel-reasons.sql
-      - ./backend/src/main/resources/db/seed-colonel-buyin-mappings.sql:/docker-entrypoint-initdb.d/16-seed-colonel-buyin-mappings.sql
-      - ./backend/src/main/resources/db/create-douyin-webhook-event.sql:/docker-entrypoint-initdb.d/17-create-douyin-webhook-event.sql
-      - ./backend/src/main/resources/db/create-order-sync-dedup-claim.sql:/docker-entrypoint-initdb.d/18-create-order-sync-dedup-claim.sql
-      - ./backend/src/main/resources/db/alter-talent-profile-sync.sql:/docker-entrypoint-initdb.d/19-alter-talent-profile-sync.sql
-      - ./backend/src/main/resources/db/alter-db-performance-contract-20260521.sql:/docker-entrypoint-initdb.d/20-alter-db-performance-contract-20260521.sql
-    ports:
-      - "5433:5432"
+      - ./backend/src/main/resources/db/00-set-env.sh:/docker-entrypoint-initdb.d/00-set-env.sh:ro
+      - ./backend/src/main/resources/db/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./backend/src/main/resources/db/migrate-all.sql:/docker-entrypoint-initdb.d/99-migrate-all.sql:ro
+      - ./backend/src/main/resources/db/alter-product-main-chain.sql:/docker-entrypoint-initdb.d/02-alter-product-main-chain.sql:ro
+      - ./backend/src/main/resources/db/alter-product-biz-status.sql:/docker-entrypoint-initdb.d/03-alter-product-biz-status.sql:ro
+      - ./backend/src/main/resources/db/alter-product-following.sql:/docker-entrypoint-initdb.d/04-alter-product-following.sql:ro
+      - ./backend/src/main/resources/db/alter-talent-enrich.sql:/docker-entrypoint-initdb.d/05-alter-talent-enrich.sql:ro
+      - ./backend/src/main/resources/db/alter-talent-crm-gap-fill.sql:/docker-entrypoint-initdb.d/06-alter-talent-crm-gap-fill.sql:ro
+      - ./backend/src/main/resources/db/alter-product-test-columns.sql:/docker-entrypoint-initdb.d/07-alter-product-test-columns.sql:ro
+      - ./backend/src/main/resources/db/alter-order-attribution-mvp.sql:/docker-entrypoint-initdb.d/08-alter-order-attribution-mvp.sql:ro
+      - ./backend/src/main/resources/db/alter-order-attribution-mvp-v2.sql:/docker-entrypoint-initdb.d/09-alter-order-attribution-mvp-v2.sql:ro
+      - ./backend/src/main/resources/db/alter-sample-shipper-code.sql:/docker-entrypoint-initdb.d/10-alter-sample-shipper-code.sql:ro
+      - ./backend/src/main/resources/db/alter-order-pick-source-length.sql:/docker-entrypoint-initdb.d/10-alter-order-pick-source-length.sql:ro
+      - ./backend/src/main/resources/db/alter-pick-source-mapping-colonel-buyin-id.sql:/docker-entrypoint-initdb.d/11-alter-pick-source-mapping-colonel-buyin-id.sql:ro
+      - ./backend/src/main/resources/db/alter-pick-source-mapping-duplicate-pick-source.sql:/docker-entrypoint-initdb.d/12-alter-pick-source-mapping-duplicate-pick-source.sql:ro
+      - ./backend/src/main/resources/db/backfill-pick-source-mapping-colonel-buyin-id.sql:/docker-entrypoint-initdb.d/13-backfill-pick-source-mapping-colonel-buyin-id.sql:ro
+      - ./backend/src/main/resources/db/backfill-pick-source-mapping-from-promotion-link.sql:/docker-entrypoint-initdb.d/14-backfill-pick-source-mapping-from-promotion-link.sql:ro
+      - ./backend/src/main/resources/db/backfill-order-attribution-colonel-reasons.sql:/docker-entrypoint-initdb.d/15-backfill-order-attribution-colonel-reasons.sql:ro
+      - ./backend/src/main/resources/db/seed-colonel-buyin-mappings.sql:/docker-entrypoint-initdb.d/16-seed-colonel-buyin-mappings.sql:ro
+      - ./backend/src/main/resources/db/create-douyin-webhook-event.sql:/docker-entrypoint-initdb.d/17-create-douyin-webhook-event.sql:ro
+      - ./backend/src/main/resources/db/create-order-sync-dedup-claim.sql:/docker-entrypoint-initdb.d/18-create-order-sync-dedup-claim.sql:ro
+      - ./backend/src/main/resources/db/alter-talent-profile-sync.sql:/docker-entrypoint-initdb.d/19-alter-talent-profile-sync.sql:ro
+      - ./backend/src/main/resources/db/alter-db-performance-contract-20260521.sql:/docker-entrypoint-initdb.d/20-alter-db-performance-contract-20260521.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
-      retries: 5
-    restart: on-failure
+      retries: 10
+    restart: always
+    networks:
+      - real-pre-net
 
   redis-real-pre:
     image: redis:7-alpine
-    ports:
-      - "6380:6379"
+    env_file: *real_pre_env_file
+    command: >
+      sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then
+        exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD";
+      else
+        exec redis-server --appendonly yes;
+      fi'
     volumes:
       - redis_real_pre_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG; else redis-cli ping | grep -q PONG; fi"]
       interval: 10s
       timeout: 5s
-      retries: 5
-    restart: on-failure
+      retries: 10
+    restart: always
+    networks:
+      - real-pre-net
 
   backend-real-pre:
+    image: colonel-saas/backend:${IMAGE_TAG:-real-pre}
     build:
       context: ./backend
-      dockerfile: Dockerfile.dev
-    ports:
-      - "8081:8080"
+      dockerfile: Dockerfile
+    env_file: *real_pre_env_file
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-real-pre}
       SERVER_PORT: 8080
       DB_HOST: postgres-real-pre
       DB_PORT: 5432
@@ -67,33 +81,43 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       REDIS_HOST: redis-real-pre
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DATABASE: ${REDIS_DATABASE}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DATABASE: ${REDIS_DATABASE:-0}
       JWT_SECRET: ${JWT_SECRET}
-      DOUYIN_BASE_URL: ${DOUYIN_BASE_URL}
-      DOUYIN_APP_ID: ${DOUYIN_APP_ID}
-      DOUYIN_CLIENT_KEY: ${DOUYIN_CLIENT_KEY}
-      DOUYIN_CLIENT_SECRET: ${DOUYIN_CLIENT_SECRET}
-      DOUYIN_SANDBOX: ${DOUYIN_SANDBOX}
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS}
+      DOUYIN_BASE_URL: ${DOUYIN_BASE_URL:-https://openapi-fxg.jinritemai.com}
+      DOUYIN_APP_ID: ${DOUYIN_APP_ID:-}
+      DOUYIN_CLIENT_KEY: ${DOUYIN_CLIENT_KEY:-}
+      DOUYIN_CLIENT_SECRET: ${DOUYIN_CLIENT_SECRET:-}
+      DOUYIN_SANDBOX: ${DOUYIN_SANDBOX:-false}
       DOUYIN_OAUTH_AUTHORIZE_URL: ${DOUYIN_OAUTH_AUTHORIZE_URL:-https://op.jinritemai.com/oauth2/authorize}
-      DOUYIN_OAUTH_REDIRECT_URI: ${DOUYIN_OAUTH_REDIRECT_URI:-http://localhost:8081/api/douyin/oauth/callback}
-      DOUYIN_OAUTH_FRONTEND_SUCCESS_URL: ${DOUYIN_OAUTH_FRONTEND_SUCCESS_URL:-http://localhost:3001/system/douyin?oauth=success}
-      DOUYIN_OAUTH_FRONTEND_FAILURE_URL: ${DOUYIN_OAUTH_FRONTEND_FAILURE_URL:-http://localhost:3001/system/douyin?oauth=failed}
+      DOUYIN_OAUTH_REDIRECT_URI: ${DOUYIN_OAUTH_REDIRECT_URI}
+      DOUYIN_OAUTH_FRONTEND_SUCCESS_URL: ${DOUYIN_OAUTH_FRONTEND_SUCCESS_URL}
+      DOUYIN_OAUTH_FRONTEND_FAILURE_URL: ${DOUYIN_OAUTH_FRONTEND_FAILURE_URL}
       DOUYIN_OAUTH_STATE_TTL_MINUTES: ${DOUYIN_OAUTH_STATE_TTL_MINUTES:-10}
       DOUYIN_CONNECT_TIMEOUT: ${DOUYIN_CONNECT_TIMEOUT:-3s}
       DOUYIN_READ_TIMEOUT: ${DOUYIN_READ_TIMEOUT:-5s}
-      DOUYIN_TEST_ENABLED: ${DOUYIN_TEST_ENABLED}
-      DOUYIN_REAL_UPSTREAM_MODE: ${DOUYIN_REAL_UPSTREAM_MODE}
+      DOUYIN_TEST_ENABLED: ${DOUYIN_TEST_ENABLED:-false}
+      DOUYIN_REAL_UPSTREAM_MODE: ${DOUYIN_REAL_UPSTREAM_MODE:-live}
       DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:-300}
       DOUYIN_TOKEN_REDIS_LOCK_MINUTES: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:-5}
-      DOUYIN_TOKEN_AUTO_REFRESH_ENABLED: ${DOUYIN_TOKEN_AUTO_REFRESH_ENABLED}
-      DOUYIN_TOKEN_AUTO_REFRESH_CRON: ${DOUYIN_TOKEN_AUTO_REFRESH_CRON}
-      DOUYIN_WEBHOOK_VERIFY_SIGN: ${DOUYIN_WEBHOOK_VERIFY_SIGN}
-      ORDER_SYNC_ENABLED: ${ORDER_SYNC_ENABLED}
-      TALENT_ENRICH_MODE: ${TALENT_ENRICH_MODE}
-      TALENT_PUBLIC_PAGE_CRAWL_ENABLED: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED}
-      APP_TEST_ENABLED: ${APP_TEST_ENABLED}
-      LOGISTICS_PROVIDER: ${LOGISTICS_PROVIDER:-mock}
+      DOUYIN_TOKEN_AUTO_REFRESH_ENABLED: ${DOUYIN_TOKEN_AUTO_REFRESH_ENABLED:-true}
+      DOUYIN_TOKEN_AUTO_REFRESH_CRON: "${DOUYIN_TOKEN_AUTO_REFRESH_CRON:-0 */10 * * * ?}"
+      DOUYIN_WEBHOOK_VERIFY_SIGN: ${DOUYIN_WEBHOOK_VERIFY_SIGN:-true}
+      ORDER_SYNC_ENABLED: ${ORDER_SYNC_ENABLED:-true}
+      TALENT_ENRICH_MODE: ${TALENT_ENRICH_MODE:-real}
+      TALENT_COLLECT_MODE: ${TALENT_COLLECT_MODE:-api}
+      TALENT_COLLECT_API_ENABLED: ${TALENT_COLLECT_API_ENABLED:-false}
+      TALENT_PUBLIC_PAGE_CRAWL_ENABLED: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:-false}
+      TALENT_PROFILE_PUBLIC_WEB_ENABLED: ${TALENT_PROFILE_PUBLIC_WEB_ENABLED:-false}
+      TALENT_PROFILE_HTTP_ENABLED: ${TALENT_PROFILE_HTTP_ENABLED:-false}
+      TALENT_PROFILE_HTTP_ENDPOINT: ${TALENT_PROFILE_HTTP_ENDPOINT:-}
+      TALENT_PROFILE_HTTP_METHOD: ${TALENT_PROFILE_HTTP_METHOD:-GET}
+      TALENT_PROFILE_HTTP_TOKEN: ${TALENT_PROFILE_HTTP_TOKEN:-}
+      TALENT_PROFILE_HTTP_AUTHORIZATION: ${TALENT_PROFILE_HTTP_AUTHORIZATION:-}
+      APP_TEST_ENABLED: ${APP_TEST_ENABLED:-false}
+      APP_TEST_SEED_ON_STARTUP: ${APP_TEST_SEED_ON_STARTUP:-false}
+      LOGISTICS_PROVIDER: ${LOGISTICS_PROVIDER:-kuaidi100}
       LOGISTICS_KD100_ENABLED: ${LOGISTICS_KD100_ENABLED:-false}
       LOGISTICS_KD100_SUBSCRIBE_ENABLED: ${LOGISTICS_KD100_SUBSCRIBE_ENABLED:-false}
       LOGISTICS_KD100_CUSTOMER: ${LOGISTICS_KD100_CUSTOMER:-}
@@ -105,15 +129,14 @@ services:
       LOGISTICS_KD100_RESULT_V2: ${LOGISTICS_KD100_RESULT_V2:-4}
       LOGISTICS_KD100_SANDBOX_ENABLED: ${LOGISTICS_KD100_SANDBOX_ENABLED:-false}
       EXCLUSIVE_ENABLED: ${EXCLUSIVE_ENABLED:-false}
+      SAAS_ENV_LABEL: ${APP_ENV_LABEL:-REAL-PRE}
       DEBUG: "false"
       SPRING_DEVTOOLS_ADD_PROPERTIES: "false"
       LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB_CLIENT_RESTTEMPLATE: "INFO"
       LOGGING_LEVEL_COM_DOUDIAN_OPEN_CORE: "WARN"
-      JAVA_OPTS: -Dspring.devtools.restart.enabled=false
-    entrypoint: ["sh", "/app/scripts/run-jar.sh"]
-    volumes:
-      - ./backend:/app
-      - maven_cache_real_pre:/root/.m2
+      JAVA_OPTS: "-Dspring.devtools.restart.enabled=false -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
+    ports:
+      - "${BACKEND_HOST_PORT:-8081}:8080"
     depends_on:
       postgres-real-pre:
         condition: service_healthy
@@ -123,38 +146,57 @@ services:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/system/health | grep -q '\"status\":\"UP\"'"]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 90s
-    restart: on-failure
+      retries: 8
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
+        reservations:
+          memory: 512M
+    restart: always
+    networks:
+      - real-pre-net
 
   frontend-real-pre:
+    image: colonel-saas/frontend:${IMAGE_TAG:-real-pre}
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
-    ports:
-      - "3001:3000"
+      dockerfile: Dockerfile
+      args:
+        VITE_ENV_LABEL: ${VITE_ENV_LABEL:-REAL-PRE}
     environment:
-      VITE_PROXY_TARGET: http://backend-real-pre:8080
-      VITE_API_BASE_URL: http://localhost:8081/api
-      VITE_ENV_LABEL: REAL-PRE
-      FRONTEND_SERVE_MODE: preview
-      CHOKIDAR_USEPOLLING: "true"
-      CHOKIDAR_INTERVAL: "300"
-    volumes:
-      - ./frontend:/app
-      - frontend_real_pre_node_modules:/app/node_modules
+      DOMAIN: ${FRONTEND_DOMAIN:-_}
+      BACKEND_UPSTREAM: ${BACKEND_UPSTREAM:-backend-real-pre:8080}
+      VITE_ENV_LABEL: ${VITE_ENV_LABEL:-REAL-PRE}
+    ports:
+      - "${FRONTEND_HOST_PORT:-3001}:80"
     depends_on:
       backend-real-pre:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/favicon.svg"]
-      interval: 45s
-      timeout: 20s
-      retries: 5
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:80/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 8
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+        reservations:
+          memory: 128M
+    restart: always
+    networks:
+      - real-pre-net
 
 volumes:
   postgres_real_pre_data:
   redis_real_pre_data:
-  maven_cache_real_pre:
-  frontend_real_pre_node_modules:
+
+networks:
+  real-pre-net:
+    name: ${COMPOSE_PROJECT_NAME:-saas}_real_pre_net
+    driver: bridge

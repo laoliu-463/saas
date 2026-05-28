@@ -46,6 +46,7 @@ class DouyinOAuthServiceTest {
 
         properties = new DouyinOAuthProperties();
         properties.setAuthorizeUrl("https://op.jinritemai.com/oauth2/authorize");
+        properties.setPowerManageUrl("https://buyin.jinritemai.com/dashboard/institution/power-manage");
         properties.setRedirectUri("http://localhost:8081/api/douyin/oauth/callback");
         properties.setFrontendSuccessUrl("http://localhost:3001/system/douyin?oauth=success");
         properties.setFrontendFailureUrl("http://localhost:3001/system/douyin?oauth=failed");
@@ -64,6 +65,7 @@ class DouyinOAuthServiceTest {
         assertThat(result.authorizeUrl()).contains("redirect_uri=http%3A%2F%2Flocalhost%3A8081%2Fapi%2Fdouyin%2Foauth%2Fcallback");
         assertThat(result.authorizeUrl()).contains("state=" + result.state());
         assertThat(result.redirectUri()).isEqualTo("http://localhost:8081/api/douyin/oauth/callback");
+        assertThat(result.powerManageUrl()).isEqualTo("https://buyin.jinritemai.com/dashboard/institution/power-manage");
         assertThat(result.state()).isNotBlank();
 
         ArgumentCaptor<Duration> durationCaptor = ArgumentCaptor.forClass(Duration.class);

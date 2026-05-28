@@ -1,15 +1,14 @@
 .env
 .env.*
-!.env.example
-!.env.local-dev.example
 !.env.test.example
-!.env.real.example
 !.env.real-pre.example
-!.env.prod.example
-!.env.e2e.example
 
 .idea/
 .vscode/
+backend/.classpath
+backend/.factorypath
+backend/.project
+backend/.settings/
 backend/target/
 backend/*.log
 backend/temp-*.log
@@ -58,6 +57,7 @@ dump.rdb
 
 # Debug logs
 debug-*.log
+jmeter.log
 
 # Added by code-review-graph
 .code-review-graph/

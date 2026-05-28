@@ -18,15 +18,43 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * 独家商家评估服务，按月评估商家是否满足独家条件并写入 exclusive_merchants 表。
+ *
+ * <p>核心逻辑：统计指定月份内每位招商员在每个商家的服务费收入，计算商家服务费占该招商员
+ * 总收入的比例，达到阈值则认定为独家商家并在下月生效。</p>
+ *
+ * <ul>
+ *   <li>提供 {@link #evaluatePreviousMonthAndApplyCurrentMonth} 评估上月数据并应用到当月</li>
+ *   <li>提供 {@link #evaluateMonth} 评估指定月份数据并应用到目标月份</li>
+ *   <li>提供 {@link #findActiveOwnerByMerchantId} 查询商家当月独家归属人</li>
+ *   <li>阈值从 system_config 表读取，默认 70%</li>
+ * </ul>
+ *
+ * <p><b>业务领域：</b>配置域 — 独家商家评估</p>
+ * <p><b>协作关系：</b>依赖 {@link ExclusiveMerchantMapper} 持久化独家商家记录；
+ * 依赖 {@link JdbcTemplate} 执行原生 SQL 聚合查询</p>
+ *
+ * @see ExclusiveMerchantMapper
+ * @see ExclusiveMerchantQueryService
+ */
 @Slf4j
 @Service
 public class ExclusiveMerchantService {
 
+    /** 系统配置键：商家独家服务费比例阈值 */
     private static final String KEY_RATIO_THRESHOLD = "merchant.exclusive.service_fee_ratio";
+
+    /** 默认服务费比例阈值：70% */
     private static final BigDecimal DEFAULT_RATIO_THRESHOLD = new BigDecimal("70");
+
+    /** 月份格式化器，用于格式化 "yyyy-MM" */
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
 
+    /** JDBC 模板，执行原生 SQL 聚合查询 */
     private final JdbcTemplate jdbcTemplate;
+
+    /** 独家商家 Mapper，操作 exclusive_merchants 表 */
     private final ExclusiveMerchantMapper exclusiveMerchantMapper;
 
     public ExclusiveMerchantService(JdbcTemplate jdbcTemplate, ExclusiveMerchantMapper exclusiveMerchantMapper) {
@@ -34,6 +62,11 @@ public class ExclusiveMerchantService {
         this.exclusiveMerchantMapper = exclusiveMerchantMapper;
     }
 
+    /**
+     * 评估上月数据并应用独家商家结果到当月。
+     *
+     * @return 成功写入/更新的独家商家记录数
+     */
     @Transactional(rollbackFor = Exception.class)
     public int evaluatePreviousMonthAndApplyCurrentMonth() {
         YearMonth statsMonth = YearMonth.now().minusMonths(1);
@@ -41,16 +74,34 @@ public class ExclusiveMerchantService {
         return evaluateMonth(statsMonth, applyMonth);
     }
 
+    /**
+     * 评估指定月份的商家独家状态并写入目标月份的独家记录。
+     *
+     * <ol>
+     *   <li>第一步：从 system_config 加载服务费比例阈值（默认 70%）</li>
+     *   <li>第二步：查询统计月份内每位招商员的总服务费收入</li>
+     *   <li>第三步：查询统计月份内每个商家-招商员组合的服务费收入</li>
+     *   <li>第四步：计算商家服务费占招商员总收入的比例，达到阈值则写入独家记录</li>
+     * </ol>
+     *
+     * @param statsMonth 统计月份（数据来源月份）
+     * @param applyMonth 生效月份（独家记录生效的月份）
+     * @return 成功写入/更新的独家商家记录数
+     */
     @Transactional(rollbackFor = Exception.class)
     public int evaluateMonth(YearMonth statsMonth, YearMonth applyMonth) {
+        // 第一步：加载服务费比例阈值
         BigDecimal threshold = loadRatioThreshold();
 
+        // 第二步：查询每位招商员的总服务费收入
         List<UserTotalFeeRow> userTotalFeeRows = loadUserTotalFee(statsMonth);
         Map<UUID, Long> totalByUser = userTotalFeeRows.stream()
                 .collect(Collectors.toMap(UserTotalFeeRow::userId, UserTotalFeeRow::totalFee));
 
+        // 第三步：查询每个商家-招商员组合的服务费收入
         List<MerchantUserFeeRow> merchantRows = loadMerchantUserFee(statsMonth);
         int upserted = 0;
+        // 第四步：逐条计算比例，达到阈值则写入独家记录
         for (MerchantUserFeeRow row : merchantRows) {
             if (!StringUtils.hasText(row.merchantId()) || row.userId() == null) {
                 continue;
@@ -72,6 +123,12 @@ public class ExclusiveMerchantService {
         return upserted;
     }
 
+    /**
+     * 查询商家当月独家归属人（招商员），用于归因时优先分配给独家持有人。
+     *
+     * @param merchantId 商家 ID
+     * @return 独家归属人信息（用户 ID + 部门 ID），无独家记录时返回 null
+     */
     public AttributionService.ExclusiveOwner findActiveOwnerByMerchantId(String merchantId) {
         if (!StringUtils.hasText(merchantId)) {
             return null;
@@ -90,6 +147,9 @@ public class ExclusiveMerchantService {
         return new AttributionService.ExclusiveOwner(match.getUserId(), match.getDeptId());
     }
 
+    /**
+     * 写入或更新独家商家记录（upsert），以 merchantId + effectiveMonth 为去重键。
+     */
     private void upsertExclusive(MerchantUserFeeRow row, long totalFee, BigDecimal ratio, YearMonth applyMonth) {
         String effectiveMonth = applyMonth.format(MONTH_FORMATTER);
         ExclusiveMerchant existing = exclusiveMerchantMapper.selectOne(new LambdaQueryWrapper<ExclusiveMerchant>()
@@ -121,6 +181,9 @@ public class ExclusiveMerchantService {
         }
     }
 
+    /**
+     * 查询指定月份内每位招商员的总服务费收入（按 user_id 分组聚合）。
+     */
     private List<UserTotalFeeRow> loadUserTotalFee(YearMonth month) {
         String sql = """
                 SELECT user_id, SUM(COALESCE(settle_colonel_commission, 0)) AS total_fee
@@ -137,6 +200,9 @@ public class ExclusiveMerchantService {
         ), month.atDay(1).atStartOfDay(), month.plusMonths(1).atDay(1).atStartOfDay());
     }
 
+    /**
+     * 查询指定月份内每个商家-招商员组合的服务费收入（按 merchantId + shopId + userId 分组聚合）。
+     */
     private List<MerchantUserFeeRow> loadMerchantUserFee(YearMonth month) {
         String sql = """
                 SELECT COALESCE(extra_data->>'merchant_id', CAST(shop_id AS TEXT)) AS merchant_id,
@@ -163,6 +229,9 @@ public class ExclusiveMerchantService {
         ), month.atDay(1).atStartOfDay(), month.plusMonths(1).atDay(1).atStartOfDay());
     }
 
+    /**
+     * 从 system_config 表加载商家独家服务费比例阈值，读取失败则返回默认值 {@value DEFAULT_RATIO_THRESHOLD}。
+     */
     private BigDecimal loadRatioThreshold() {
         try {
             String sql = "SELECT config_value FROM system_config WHERE config_key = ? AND deleted = 0 LIMIT 1";
@@ -176,6 +245,9 @@ public class ExclusiveMerchantService {
         }
     }
 
+    /**
+     * null 安全的 UUID 解析，解析失败返回 null。
+     */
     private UUID parseUuid(String text) {
         if (!StringUtils.hasText(text)) {
             return null;
@@ -187,6 +259,9 @@ public class ExclusiveMerchantService {
         }
     }
 
+    /**
+     * null 安全的 Object 转 Long，支持 Number 类型和字符串解析。
+     */
     private Long asLongObject(Object value) {
         if (value == null) {
             return null;
@@ -201,9 +276,11 @@ public class ExclusiveMerchantService {
         }
     }
 
+    /** 招商员总服务费行记录 */
     private record UserTotalFeeRow(UUID userId, long totalFee) {
     }
 
+    /** 商家-招商员服务费行记录 */
     private record MerchantUserFeeRow(
             String merchantId,
             Long shopId,

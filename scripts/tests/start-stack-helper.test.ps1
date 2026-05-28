@@ -37,10 +37,10 @@ try {
     Assert-Equal -Actual $envMap["BACKEND_HOST_PORT"] -Expected "8080" -Message "Read-EnvFile should parse BACKEND_HOST_PORT"
 
     $healthUrl = Get-BackendHealthUrl -EnvMap $envMap
-    Assert-Equal -Actual $healthUrl -Expected "http://localhost:8080/api/system/health" -Message "Get-BackendHealthUrl should respect .env backend port"
+    Assert-Equal -Actual $healthUrl -Expected "http://127.0.0.1:8080/api/system/health" -Message "Get-BackendHealthUrl should respect .env backend port"
 
     $frontendUrl = Get-FrontendBaseUrl -EnvMap $envMap
-    Assert-Equal -Actual $frontendUrl -Expected "http://localhost:3000" -Message "Get-FrontendBaseUrl should respect .env frontend port"
+    Assert-Equal -Actual $frontendUrl -Expected "http://127.0.0.1:3000" -Message "Get-FrontendBaseUrl should respect .env frontend port"
 
     $decoded = Convert-HttpContentToString -Content ([System.Text.Encoding]::UTF8.GetBytes('{"status":"UP"}'))
     Assert-Equal -Actual $decoded -Expected '{"status":"UP"}' -Message "Convert-HttpContentToString should decode byte arrays"

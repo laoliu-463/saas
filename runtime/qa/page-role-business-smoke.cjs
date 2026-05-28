@@ -4,7 +4,7 @@ const { chromium } = require('@playwright/test');
 
 const SCRIPT_NAME = 'page-role-business-smoke';
 const OUT_ROOT = path.join(__dirname, 'out');
-const API_BASE_URL = normalizeBaseUrl(process.env.API_BASE_URL || 'http://localhost:8080');
+const API_BASE_URL = normalizeBaseUrl(process.env.API_BASE_URL || 'http://127.0.0.1:8080');
 const FRONTEND_URL = normalizeBaseUrl(process.env.QA_FRONTEND || process.env.E2E_BASE_URL || 'http://127.0.0.1:3000');
 const REQUEST_TIMEOUT_MS = Number(process.env.QA_REQUEST_TIMEOUT_MS || 20000);
 const ACTIVITY_ID = process.env.QA_TEST_ACTIVITY_ID || 'TEST_ACTIVITY_A';
@@ -36,8 +36,8 @@ const ROLE_BUSINESS_CASES = {
     username: 'channel_leader',
     password: 'admin123',
     home: '/sample',
-    allowedOperation: { name: '导出寄样数据', method: 'GET', path: '/samples/exports', expect: { ok: true } },
-    forbiddenOperation: { name: '禁止审核商品', method: 'PUT', path: `/colonel/activities/${ACTIVITY_ID}/products/${PRODUCT_PENDING}/audit-result`, body: { approved: false, reason: 'channel_leader should not audit' }, expect: { forbidden: true } }
+    allowedOperation: { name: '查看寄样列表', method: 'GET', path: '/samples?page=1&size=5', expect: { ok: true } },
+    forbiddenOperation: { name: '禁止导出寄样数据', method: 'GET', path: '/samples/exports', expect: { forbidden: true } }
   },
   channel_staff: {
     username: 'channel_staff',
@@ -62,6 +62,10 @@ function timestamp(date = new Date()) {
 
 function normalizeBaseUrl(value) {
   return String(value || '').replace(/\/+$/, '');
+}
+
+function isIgnorableConsoleError(text) {
+  return /ResizeObserver|favicon\.ico|net::ERR_CONNECTION_CLOSED/.test(String(text || ''));
 }
 
 function ensureDir(dir) {
@@ -218,9 +222,9 @@ async function ensureTestEnvironment(ctx) {
   if (!envResult.ok) throw new Error(`/api/system/env failed with HTTP ${envResult.status}`);
   ctx.environment = normalizeEnv(envResult.body);
   if (!ctx.environment.isTest) throw new Error(`Refusing to run outside TEST/mock environment: ${JSON.stringify(ctx.environment)}`);
-  const health = await apiRequest('GET', '/actuator/health');
+  const health = await apiRequest('GET', '/system/health');
   ctx.health = health.body;
-  if (!health.ok || health.body?.status !== 'UP') throw new Error(`/api/actuator/health is not UP`);
+  if (!health.ok || health.body?.status !== 'UP') throw new Error(`/api/system/health is not UP`);
 }
 
 async function login(account) {
@@ -360,7 +364,7 @@ async function collectUiForRole(ctx, role, caseDef, loginResult) {
   const page = await context.newPage();
   const consoleErrors = [];
   page.on('console', (msg) => {
-    if (msg.type() === 'error' && !/ResizeObserver|favicon\.ico/.test(msg.text())) {
+    if (msg.type() === 'error' && !isIgnorableConsoleError(msg.text())) {
       consoleErrors.push(msg.text());
     }
   });
@@ -528,5 +532,6 @@ module.exports = {
   ROLE_BUSINESS_CASES,
   normalizeRoleAlias,
   evaluateOperation,
+  isIgnorableConsoleError,
   summarizeRoleResults
 };

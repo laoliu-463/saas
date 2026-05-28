@@ -126,21 +126,69 @@ public class LoginResponse {
     @Schema(description = "真实姓名", example = "系统管理员")
     private String realName;
 
+    /**
+     * Refresh Token，用于无感刷新 Access Token。
+     * <p>前端在 Access Token 即将过期时，使用此 Token 调用刷新接口获取新的 Access Token，
+     * 避免用户频繁重新登录。
+     * <p>Refresh Token 有效期较长（默认 7 天），与 Access Token 独立管理。
+     *
+     * @see #refreshExpiresIn
+     */
     @Schema(description = "Refresh Token，用于无感刷新 Access Token")
     private String refreshToken;
 
+    /**
+     * Refresh Token 的有效期（秒），默认 604800 秒（7 天）。
+     * <p>前端可据此计算 Refresh Token 的过期时间，在过期前提前刷新；
+     * 若 Refresh Token 也已过期，则需要用户重新登录。
+     *
+     * @see #refreshToken
+     */
     @Schema(description = "Refresh Token 有效期（秒）", example = "604800")
     private Long refreshExpiresIn;
 
+    /**
+     * Access Token 的有效期（秒），默认 7200 秒（2 小时）。
+     * <p>与 {@link #expiresIn} 含义相同，为双令牌模式下的补充字段，
+     * 前端可统一使用此字段计算 Access Token 过期时间。
+     *
+     * @see #expiresIn
+     * @see #accessTokenExpiresIn
+     */
     @Schema(description = "Access Token 有效期（秒）", example = "7200")
     private Long accessTokenExpiresIn;
 
+    /**
+     * 账号状态码，用于前端判断用户当前账号阶段。
+     * <ul>
+     *   <li>{@code 0} = 已禁用，账号被管理员停用，禁止登录</li>
+     *   <li>{@code 1} = 正常，账号处于活跃状态</li>
+     *   <li>{@code 2} = 待激活，账号已创建但尚未激活，功能受限</li>
+     * </ul>
+     * <p>前端可根据此状态引导用户完成激活流程或提示账号已禁用。
+     */
     @Schema(description = "账号状态：2=待激活，1=正常，0=已禁用", example = "1")
     private Integer status;
 
+    /**
+     * 是否强制要求用户修改密码。
+     * <p>当值为 {@code true} 时，前端应在登录后立即弹出修改密码对话框，
+     * 阻止用户访问其他功能直至密码修改完成。
+     * <p>典型场景：管理员重置密码后，用户首次登录必须修改初始密码。
+     *
+     * @see com.colonel.saas.auth.dto.SysUserResetPasswordRequest
+     */
     @Schema(description = "是否必须修改密码", example = "false")
     private Boolean forcePasswordChange;
 
+    /**
+     * 是否处于待激活受限访问态。
+     * <p>当值为 {@code true} 时，用户已通过身份认证但功能受限，
+     * 前端应展示受限页面并引导用户完成激活流程。
+     * <p>与 {@link #status} 配合使用：status=2 时此字段通常为 true。
+     *
+     * @see #status
+     */
     @Schema(description = "是否处于待激活受限访问态", example = "false")
     private Boolean pendingActivation;
 }

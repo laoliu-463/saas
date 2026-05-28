@@ -37,27 +37,75 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * 商品库展示去重规则：同 product_id 最多一条 {@link ProductDisplayStatus#DISPLAYING}。
- * 选择优先级：投流优先 → 佣金率高 → 晚上架；保护期内禁止普通切换，优势条件可覆盖。
+ * 商品库展示去重规则引擎服务。
+ * <p>
+ * 核心规则：同一 {@code product_id} 下的所有运营状态记录中，最多只能有一条处于
+ * {@link ProductDisplayStatus#DISPLAYING}（展示中）状态，其余合格记录自动降级为
+ * {@code HIDDEN}（隐藏）。这确保了商品在前端展示中不会出现重复。
+ * </p>
+ * <h3>选择优先级（由高到低）</h3>
+ * <ol>
+ *   <li><strong>强制展示</strong>（{@code forceDisplay=true}）— 管理员手动指定，优先级最高</li>
+ *   <li><strong>投流支持</strong>（{@code supportsAds=true}）— 支持广告投放的候选优先</li>
+ *   <li><strong>佣金率高</strong>（{@code commissionRatio} 降序）— 佣金比例越高越优先</li>
+ *   <li><strong>服务费率低</strong>（{@code serviceFeeRatio} 升序）— 服务费率越低越优先</li>
+ *   <li><strong>上架时间早</strong>（{@code shelfTime} 升序）— 上架越早越优先</li>
+ * </ol>
+ * <h3>保护期机制</h3>
+ * <p>
+ * 默认保护期为 {@value DEFAULT_PROTECTION_MONTHS} 个月（可按活动配置）。保护期内，
+ * 当前展示中的候选不会被普通优先级替换，只有"优势条件"（更高佣金率或更低服务费率或投流支持）
+ * 才能覆盖保护期内的候选。保护期结束后，按正常优先级规则重新选择。
+ * </p>
+ * <h3>触发场景</h3>
+ * <ul>
+ *   <li>按商品 ID 触发（{@link #applyForProductId}）— 单个商品的展示决策</li>
+ *   <li>按活动 ID 触发（{@link #applyForActivityId}）— 活动维度批量触发</li>
+ *   <li>全量对账（{@link #reconcileAll}）— 定时任务定期对账所有已入商品库的商品</li>
+ * </ul>
+ * <h3>审计与事件</h3>
+ * <p>
+ * 当展示决策发生切换（DISPLAYING 的记录发生变化）时，会同时写入审计日志
+ * （{@link ProductDisplayAuditService}）并发布领域事件
+ * （{@link ProductDomainEventPublisher}），用于下游订阅和合规追溯。
+ * </p>
+ *
+ * @see ProductDisplayStatus
+ * @see DisplayCandidate
+ * @see ProductDisplayAuditService
+ * @see ProductBizStatusService
  */
 @Slf4j
 @Service
 public class ProductDisplayRuleService {
 
+    /** 展示规则引擎版本号，每次规则变更时递增，用于审计和事件追踪 */
     public static final int DISPLAY_RULE_VERSION = 3;
+    /** 默认保护期月数：当前展示候选在保护期内不会被普通优先级替换 */
     public static final int DEFAULT_PROTECTION_MONTHS = 3;
 
+    /** 隐藏原因：被更高优先级的候选替换 */
     public static final String HIDDEN_REASON_REPLACED = "REPLACED_BY_HIGHER_PRIORITY";
+    /** 隐藏原因：被具备优势条件的候选覆盖（保护期内仍可被优势条件替换） */
     public static final String HIDDEN_REASON_REPLACED_BY_ADVANTAGE = "REPLACED_BY_ADVANTAGE";
+    /** 隐藏原因：不满足展示资格（未通过审核、商品未推广、已手动禁用等） */
     public static final String HIDDEN_REASON_NOT_ELIGIBLE = "NOT_ELIGIBLE";
+    /** 隐藏原因：活动已过期（推广结束时间早于当前时间） */
     public static final String HIDDEN_REASON_ACTIVITY_EXPIRED = "ACTIVITY_EXPIRED";
+    /** 隐藏原因：被管理员强制替换 */
     public static final String HIDDEN_REASON_ADMIN_FORCE = "ADMIN_FORCE_REPLACED";
+    /** 展示原因：管理员强制展示 */
     public static final String DISPLAY_REASON_FORCE = "ADMIN_FORCE";
+    /** 展示原因：优势条件覆盖（保护期内被更高佣金/更低费率/投流支持的候选替换） */
     public static final String DISPLAY_REASON_ADVANTAGE = "ADVANTAGE_OVERRIDE";
+    /** 展示原因：规则引擎正常选择（基于优先级比较器选出最优候选） */
     public static final String DISPLAY_REASON_RULE = "RULE_ENGINE";
 
+    /** 商品推广中状态码（snapshot.status == 1 表示商品正在推广） */
     private static final int PROMOTING_STATUS = 1;
+    /** JSON 序列化/反序列化工具，用于解析审核附加数据 payload */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    /** 多格式时间解析器列表，按优先级尝试解析各种日期时间格式 */
     private static final List<DateTimeFormatter> TIME_FORMATTERS = List.of(
             DateTimeFormatter.ISO_LOCAL_DATE_TIME,
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
@@ -65,13 +113,29 @@ public class ProductDisplayRuleService {
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSX")
     );
 
+    /** 商品运营状态 Mapper（查询/更新展示状态、保护期等字段） */
     private final ProductOperationStateMapper operationStateMapper;
+    /** 商品快照 Mapper（获取佣金率、推广状态、活动信息等快照数据） */
     private final ProductSnapshotMapper snapshotMapper;
+    /** 商品业务状态服务（读取审核状态，判断是否 APPROVED） */
     private final ProductBizStatusService productBizStatusService;
+    /** 团长结算活动 Mapper（查询活动级别的保护期配置） */
     private final ColonelsettlementActivityMapper colonelActivityMapper;
+    /** 商品领域事件发布器（发布展示/隐藏/规则应用等事件） */
     private final ProductDomainEventPublisher productDomainEventPublisher;
+    /** 展示审计日志服务（记录展示切换事件，用于合规追溯） */
     private final ProductDisplayAuditService productDisplayAuditService;
 
+    /**
+     * 构造注入所有依赖。
+     *
+     * @param operationStateMapper      商品运营状态 Mapper
+     * @param snapshotMapper            商品快照 Mapper
+     * @param productBizStatusService   商品业务状态服务
+     * @param colonelActivityMapper     团长结算活动 Mapper
+     * @param productDomainEventPublisher 商品领域事件发布器
+     * @param productDisplayAuditService  展示审计日志服务
+     */
     public ProductDisplayRuleService(
             ProductOperationStateMapper operationStateMapper,
             ProductSnapshotMapper snapshotMapper,
@@ -87,16 +151,34 @@ public class ProductDisplayRuleService {
         this.productDisplayAuditService = productDisplayAuditService;
     }
 
+    /**
+     * 按商品 ID 触发展示去重规则（使用系统默认操作者上下文）。
+     *
+     * @param productId 商品 ID
+     * @see #applyForProductId(String, DisplayRuleOperatorContext)
+     */
     @Transactional(rollbackFor = Exception.class)
     public void applyForProductId(String productId) {
         applyForProductId(productId, DisplayRuleOperatorContext.system());
     }
 
+    /**
+     * 按商品 ID 触发展示去重规则。
+     * <p>
+     * 查询该商品下所有运营状态记录（按创建时间升序），然后执行核心去重逻辑。
+     * 当商品 ID 为空或不存在任何运营状态时直接返回。
+     * </p>
+     *
+     * @param productId 商品 ID
+     * @param operator  操作者上下文（用于审计日志记录谁触发了规则）
+     */
     @Transactional(rollbackFor = Exception.class)
     public void applyForProductId(String productId, DisplayRuleOperatorContext operator) {
+        /* 空值防御：商品 ID 为空时直接跳过 */
         if (!StringUtils.hasText(productId)) {
             return;
         }
+        /* 查询该商品下所有运营状态，按创建时间排序（先创建的优先考虑） */
         List<ProductOperationState> states = operationStateMapper.selectList(
                 new LambdaQueryWrapper<ProductOperationState>()
                         .eq(ProductOperationState::getProductId, productId.trim())
@@ -104,49 +186,90 @@ public class ProductDisplayRuleService {
         if (states.isEmpty()) {
             return;
         }
+        /* 进入核心去重决策流程 */
         applyForStates(productId.trim(), states, operator);
     }
 
+    /**
+     * 按活动 ID 批量触发展示去重规则（使用系统默认操作者上下文）。
+     *
+     * @param activityId 活动 ID
+     * @see #applyForActivityId(String, DisplayRuleOperatorContext)
+     */
     @Transactional(rollbackFor = Exception.class)
     public void applyForActivityId(String activityId) {
         applyForActivityId(activityId, DisplayRuleOperatorContext.system());
     }
 
+    /**
+     * 按活动 ID 批量触发展示去重规则。
+     * <p>
+     * 查询该活动下所有已入商品库（{@code selectedToLibrary=true}）的运营状态，
+     * 提取去重后的商品 ID 集合，然后逐个商品调用 {@link #applyForProductId} 执行去重。
+     * </p>
+     *
+     * @param activityId 活动 ID
+     * @param operator   操作者上下文
+     */
     @Transactional(rollbackFor = Exception.class)
     public void applyForActivityId(String activityId, DisplayRuleOperatorContext operator) {
         if (!StringUtils.hasText(activityId)) {
             return;
         }
+        /* 查询该活动下已入商品库的运营状态（仅选取 productId 字段以减少 IO） */
         List<ProductOperationState> states = operationStateMapper.selectList(
                 new LambdaQueryWrapper<ProductOperationState>()
                         .eq(ProductOperationState::getActivityId, activityId.trim())
                         .eq(ProductOperationState::getSelectedToLibrary, true)
                         .select(ProductOperationState::getProductId));
+        /* 提取去重后的商品 ID 集合（LinkedHashSet 保持插入顺序） */
         Set<String> productIds = states.stream()
                 .map(ProductOperationState::getProductId)
                 .filter(StringUtils::hasText)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
+        /* 逐个商品执行展示去重规则 */
         for (String productId : productIds) {
             applyForProductId(productId, operator);
         }
     }
 
+    /**
+     * 全量对账：重新执行所有已入商品库的商品的展示去重规则（使用定时任务操作者上下文）。
+     * <p>
+     * 通常由定时任务调用，确保即使存在数据不一致也能在对账周期内自动修正。
+     * </p>
+     *
+     * @return 处理的商品数量
+     */
     @Transactional(rollbackFor = Exception.class)
     public int reconcileAll() {
         return reconcileAll(DisplayRuleOperatorContext.job());
     }
 
+    /**
+     * 全量对账：重新执行所有已入商品库的商品的展示去重规则。
+     * <p>
+     * 查询所有 {@code selectedToLibrary=true} 的运营状态，提取去重后的商品 ID 集合，
+     * 逐个商品调用 {@link #applyForProductId} 执行去重决策。
+     * </p>
+     *
+     * @param operator 操作者上下文
+     * @return 处理的商品数量
+     */
     @Transactional(rollbackFor = Exception.class)
     public int reconcileAll(DisplayRuleOperatorContext operator) {
+        /* 查询所有已入商品库的运营状态（仅选取 productId 字段） */
         List<ProductOperationState> libraryStates = operationStateMapper.selectList(
                 new LambdaQueryWrapper<ProductOperationState>()
                         .eq(ProductOperationState::getSelectedToLibrary, true)
                         .select(ProductOperationState::getProductId));
+        /* 提取去重后的商品 ID 集合 */
         Set<String> productIds = libraryStates.stream()
                 .map(ProductOperationState::getProductId)
                 .filter(StringUtils::hasText)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         int processed = 0;
+        /* 逐个商品执行展示去重规则 */
         for (String productId : productIds) {
             applyForProductId(productId, operator);
             processed++;
@@ -155,23 +278,50 @@ public class ProductDisplayRuleService {
         return processed;
     }
 
+    /**
+     * 判断当前时间是否在保护期内。
+     * <p>
+     * 保护期 = 首次展示时间 + 配置的保护月数。当 {@code firstDisplayedAt} 为 null 时，
+     * 认为不在保护期内（商品从未被展示过，不存在保护需求）。
+     * </p>
+     *
+     * @param firstDisplayedAt   商品首次展示时间（可为 null）
+     * @param monthsOfProtection 配置的保护月数（null 或 <=0 时使用默认值 {@value DEFAULT_PROTECTION_MONTHS}）
+     * @param now                当前时间
+     * @return 在保护期内返回 true，否则返回 false
+     */
     boolean isInProtectionPeriod(LocalDateTime firstDisplayedAt, Integer monthsOfProtection, LocalDateTime now) {
+        /* 首次展示时间为 null 时，不在保护期内 */
         if (firstDisplayedAt == null) {
             return false;
         }
+        /* 计算保护期结束时间：首次展示时间 + 保护月数 */
         int months = resolveProtectionMonths(monthsOfProtection);
         LocalDateTime protectionEnd = firstDisplayedAt.plusMonths(months);
+        /* 当前时间早于保护期结束时间，仍在保护期内 */
         return now.isBefore(protectionEnd);
     }
 
+    /**
+     * 解析商品的服务费率。
+     * <p>
+     * 优先使用 {@code adServiceRatio}（广告服务费率，字符串百分比格式，如 "5.5%"），
+     * 解析失败或为零时回退到 {@code activityAdCosRatio}（活动广告成本比例，Long 数值格式）。
+     * </p>
+     *
+     * @param snapshot 商品快照（可为 null）
+     * @return 服务费率（BigDecimal），null 快照时返回 {@link BigDecimal#ZERO}
+     */
     BigDecimal resolveServiceFeeRatio(ProductSnapshot snapshot) {
         if (snapshot == null) {
             return BigDecimal.ZERO;
         }
+        /* 优先解析广告服务费率字符串（支持百分比符号和中文全角百分号） */
         BigDecimal rate = parsePercentValue(snapshot.getAdServiceRatio());
         if (rate.compareTo(BigDecimal.ZERO) > 0) {
             return rate;
         }
+        /* 回退到活动广告成本比例数值 */
         return normalizeRatioNumber(snapshot.getActivityAdCosRatio());
     }
 
@@ -261,7 +411,7 @@ public class ProductDisplayRuleService {
                     DISPLAY_RULE_VERSION,
                     operator.operatorType(),
                     operator.operatorId(),
-                    Map.of("selectedReason", selectedReason));
+                    selectedReason == null ? Map.of() : Map.of("selectedReason", selectedReason));
         }
     }
 

@@ -18,6 +18,27 @@ import static com.colonel.saas.gateway.douyin.test.TestMockActivityProductSuppor
 import static com.colonel.saas.gateway.douyin.test.TestMockActivityProductSupport.productStatusText;
 import static com.colonel.saas.gateway.douyin.test.TestMockActivityProductSupport.resolveMockProductStatus;
 
+/**
+ * 测试环境抖店商品网关适配器。
+ * <p>
+ * 实现 {@link DouyinProductGateway} 接口，在 {@code douyin.test.enabled=true} 时替代真实的
+ * 抖店商品网关，为本地开发和 test 环境提供不依赖真实抖店开放平台的 Mock 商品数据。
+ * </p>
+ *
+ * <ul>
+ *   <li><b>活动商品查询（queryActivityProducts）</b>：根据 activityId 种子值确定性地生成 80 条 Mock 商品，支持状态过滤、关键词搜索、游标/分页翻页</li>
+ *   <li><b>商品 SKU 查询（queryProductSkus）</b>：根据 productId 生成 2 条固定的 Mock SKU（标准装、加量装），用于 SKU 映射验证</li>
+ * </ul>
+ *
+ * <p>架构角色：Gateway 测试适配器（Test Double），所属领域：商品域。
+ * 与真实网关的关系：实现同一 {@link DouyinProductGateway} 接口，通过 {@code douyin.test.enabled}
+ * 属性切换。Mock 数据的生成逻辑与 {@link TestDouyinActivityGateway} 共享
+ * {@link TestMockActivityProductSupport} 工具类，确保同一 activityId 在两个网关中产生的商品数据一致。</p>
+ *
+ * @see DouyinProductGateway
+ * @see TestMockActivityProductSupport
+ * @see TestDouyinActivityGateway
+ */
 @Component
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "true")
 public class TestDouyinProductGateway implements DouyinProductGateway {

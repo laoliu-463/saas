@@ -5,7 +5,7 @@ spring:
   application:
     name: colonel-saas
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:local-mock}
+    active: ${SPRING_PROFILES_ACTIVE:test}
   datasource:
     hikari:
       maximum-pool-size: ${DB_HIKARI_MAX_POOL_SIZE:20}
@@ -14,6 +14,14 @@ spring:
       validation-timeout: ${DB_HIKARI_VALIDATION_TIMEOUT_MS:5000}
       idle-timeout: ${DB_HIKARI_IDLE_TIMEOUT_MS:600000}
       max-lifetime: ${DB_HIKARI_MAX_LIFETIME_MS:1800000}
+  data:
+    redis:
+      lettuce:
+        pool:
+          max-active: ${REDIS_POOL_MAX_ACTIVE:16}
+          max-idle: ${REDIS_POOL_MAX_IDLE:8}
+          min-idle: ${REDIS_POOL_MIN_IDLE:2}
+          max-wait: ${REDIS_POOL_MAX_WAIT:2s}
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
@@ -61,7 +69,7 @@ server:
 
 security:
   jwt:
-    secret: ${JWT_SECRET:dev-secret-key-replace-in-production-with-random-64-char-string}
+    secret: ${JWT_SECRET:test-secret-key-replace-before-real-pre-runtime}
     expire-seconds: ${JWT_EXPIRE_SECONDS:7200}
 
 performance:
@@ -82,6 +90,16 @@ app:
     max-entries: ${APP_SHORT_TTL_CACHE_MAX_ENTRIES:1024}
   logistics:
     refresh-job-enabled: ${APP_LOGISTICS_REFRESH_JOB_ENABLED:false}
+  cors:
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
+  test:
+    enabled: ${APP_TEST_ENABLED:false}
+    seed-on-startup: ${APP_TEST_SEED_ON_STARTUP:false}
+    douyin: ${APP_TEST_DOUYIN_ENABLED:false}
+    promotion: ${APP_TEST_PROMOTION_ENABLED:false}
+    order: ${APP_TEST_ORDER_ENABLED:false}
+    talent: ${APP_TEST_TALENT_ENABLED:false}
+    logistics: ${APP_TEST_LOGISTICS_ENABLED:false}
 
 logistics:
   provider: ${LOGISTICS_PROVIDER:mock}
@@ -109,16 +127,6 @@ logistics:
     enabled: ${LOGISTICS_SYNC_ENABLED:false}
     cron: ${LOGISTICS_SYNC_CRON:0 */30 * * * ?}
     batch-size: ${LOGISTICS_SYNC_BATCH_SIZE:100}
-  cors:
-    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
-  test:
-    enabled: ${APP_TEST_ENABLED:false}
-    seed-on-startup: ${APP_TEST_SEED_ON_STARTUP:false}
-    douyin: ${APP_TEST_DOUYIN_ENABLED:false}
-    promotion: ${APP_TEST_PROMOTION_ENABLED:false}
-    order: ${APP_TEST_ORDER_ENABLED:false}
-    talent: ${APP_TEST_TALENT_ENABLED:false}
-    logistics: ${APP_TEST_LOGISTICS_ENABLED:false}
 
 exclusive:
   enabled: ${EXCLUSIVE_ENABLED:false}
@@ -134,7 +142,8 @@ douyin:
     read-timeout: ${DOUYIN_READ_TIMEOUT:5s}
   oauth:
     authorize-url: ${DOUYIN_OAUTH_AUTHORIZE_URL:https://op.jinritemai.com/oauth2/authorize}
-    redirect-uri: ${DOUYIN_OAUTH_REDIRECT_URI:http://localhost:8081/api/douyin/oauth/callback}
+    power-manage-url: ${DOUYIN_OAUTH_POWER_MANAGE_URL:https://buyin.jinritemai.com/dashboard/institution/power-manage}
+    redirect-uri: ${DOUYIN_OAUTH_REDIRECT_URI:https://localhost:8081/api/douyin/oauth/callback}
     frontend-success-url: ${DOUYIN_OAUTH_FRONTEND_SUCCESS_URL:http://localhost:3001/system/douyin?oauth=success}
     frontend-failure-url: ${DOUYIN_OAUTH_FRONTEND_FAILURE_URL:http://localhost:3001/system/douyin?oauth=failed}
     state-ttl-minutes: ${DOUYIN_OAUTH_STATE_TTL_MINUTES:10}
@@ -155,6 +164,9 @@ douyin:
 order:
   sync:
     enabled: ${ORDER_SYNC_ENABLED:true}
+    circuit-breaker:
+      failure-threshold: ${ORDER_SYNC_CIRCUIT_FAILURE_THRESHOLD:3}
+      open-duration: ${ORDER_SYNC_CIRCUIT_OPEN_DURATION:PT5M}
 
 talent:
   enrich:

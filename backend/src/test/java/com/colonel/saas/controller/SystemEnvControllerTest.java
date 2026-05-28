@@ -25,7 +25,7 @@ class SystemEnvControllerTest {
     @Test
     void env_prefersExplicitEnvLabelAndDatabaseNameProperty() {
         MockEnvironment environment = new MockEnvironment();
-        environment.setActiveProfiles("real-pre", "real");
+        environment.setActiveProfiles("real-pre");
         SystemEnvController controller = new SystemEnvController(
                 environment,
                 " real-pre ",
@@ -35,11 +35,19 @@ class SystemEnvControllerTest {
                 "jdbc:postgresql://localhost:5432/ignored"
         );
 
-        ApiResult<Map<String, Object>> result = controller.env();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/system/env");
+        request.setAttribute("roleCodes", List.of(RoleCodes.ADMIN));
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        ApiResult<Map<String, Object>> result;
+        try {
+            result = controller.env();
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
 
         assertThat(result.getCode()).isEqualTo(200);
         assertThat(result.getData())
-                .containsEntry("activeProfiles", List.of("real-pre", "real"))
+                .containsEntry("activeProfiles", List.of("real-pre"))
                 .containsEntry("environmentLabel", "REAL-PRE")
                 .containsEntry("appTestEnabled", true)
                 .containsEntry("douyinTestEnabled", false)
@@ -49,7 +57,7 @@ class SystemEnvControllerTest {
     @Test
     void env_fallsBackToDefaultProfilesAndJdbcUrlDatabaseName() {
         MockEnvironment environment = new MockEnvironment();
-        environment.setDefaultProfiles("local-mock");
+        environment.setDefaultProfiles("test");
         SystemEnvController controller = new SystemEnvController(
                 environment,
                 "",
@@ -62,8 +70,8 @@ class SystemEnvControllerTest {
         Map<String, Object> body = controller.env().getData();
 
         assertThat(body)
-                .containsEntry("activeProfiles", List.of("local-mock"))
-                .containsEntry("environmentLabel", "LOCAL-MOCK")
+                .containsEntry("activeProfiles", List.of("test"))
+                .containsEntry("environmentLabel", "TEST")
                 .containsEntry("douyinTestEnabled", true)
                 .containsEntry("database", "saas_test");
     }
@@ -92,12 +100,12 @@ class SystemEnvControllerTest {
     }
 
     @Test
-    void env_requiresAdminRoleWhenProdProfileIsActive() {
+    void env_requiresAdminRoleWhenProtectedProfileIsActive() {
         MockEnvironment environment = new MockEnvironment();
-        environment.setActiveProfiles("prod");
+        environment.setActiveProfiles("real-pre");
         SystemEnvController controller = new SystemEnvController(
                 environment,
-                "prod",
+                "real-pre",
                 false,
                 false,
                 "colonel_saas",
@@ -112,7 +120,7 @@ class SystemEnvControllerTest {
         request.setAttribute("roleCodes", List.of(RoleCodes.ADMIN));
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
         try {
-            assertThat(controller.env().getData()).containsEntry("environmentLabel", "PROD");
+            assertThat(controller.env().getData()).containsEntry("environmentLabel", "REAL-PRE");
         } finally {
             RequestContextHolder.resetRequestAttributes();
         }

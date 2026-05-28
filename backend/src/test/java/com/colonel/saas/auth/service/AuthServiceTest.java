@@ -334,9 +334,14 @@ class AuthServiceTest {
         user.setUsername("testuser");
         when(sysUserMapper.selectById(userId)).thenReturn(user);
         when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of());
+        when(jwtTokenProvider.getTokenHash("valid.refresh.token")).thenReturn("refreshHash");
+        when(redisTemplate.hasKey("auth:refresh:refreshHash")).thenReturn(false);
         when(jwtTokenProvider.generateAccessToken(eq(userId), any(), any(Integer.class), any(), any(), any(Boolean.class))).thenReturn("new.access.token");
+        when(jwtTokenProvider.generateRefreshToken(userId)).thenReturn("new.refresh.token");
         when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
         when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
+        when(jwtTokenProvider.getRemainingSeconds("valid.refresh.token")).thenReturn(604800L);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         RefreshRequest request = new RefreshRequest();
         request.setRefreshToken("valid.refresh.token");
@@ -344,9 +349,10 @@ class AuthServiceTest {
         RefreshResponse response = authService.refreshToken(request);
 
         assertThat(response.getAccessToken()).isEqualTo("new.access.token");
-        assertThat(response.getRefreshToken()).isEqualTo("valid.refresh.token");
+        assertThat(response.getRefreshToken()).isEqualTo("new.refresh.token");
         assertThat(response.getAccessTokenExpiresIn()).isEqualTo(3600L);
         assertThat(response.getRefreshExpiresIn()).isEqualTo(604800L);
+        verify(valueOperations).set("auth:refresh:refreshHash", "1", 604800L, TimeUnit.SECONDS);
     }
 
     @Test

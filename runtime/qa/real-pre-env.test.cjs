@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   DEFAULT_REAL_PRE_BACKEND_URL,
+  DEFAULT_REAL_PRE_DB_CONTAINER,
   DEFAULT_REAL_PRE_FRONTEND_URL,
   applyRealPreEnv,
   isRealPreRuntime,
@@ -18,6 +19,10 @@ test('resolveRealPreUrls defaults to the real-pre 3001/8081 pair', () => {
   assert.equal(urls.apiBaseUrl, `${DEFAULT_REAL_PRE_BACKEND_URL}/api`);
 });
 
+test('default database container matches the saas compose project', () => {
+  assert.equal(DEFAULT_REAL_PRE_DB_CONTAINER, 'saas-postgres-real-pre-1');
+});
+
 test('applyRealPreEnv preserves explicit overrides and marks the run as real-pre', () => {
   const env = {
     FRONTEND_URL: 'http://localhost:3101/',
@@ -31,12 +36,12 @@ test('applyRealPreEnv preserves explicit overrides and marks the run as real-pre
   assert.equal(env.E2E_BACKEND_URL, 'http://localhost:8181');
 });
 
-test('normalizeSystemEnv accepts REAL-PRE on real or real-pre profile only when test switches are off', () => {
+test('normalizeSystemEnv accepts REAL-PRE only on real-pre profile when test switches are off', () => {
   const realProfile = normalizeSystemEnv({
     code: 200,
     data: {
       environmentLabel: 'REAL-PRE',
-      activeProfiles: ['real'],
+      activeProfiles: ['real-pre'],
       appTestEnabled: false,
       douyinTestEnabled: false,
       database: 'saas_real_pre'

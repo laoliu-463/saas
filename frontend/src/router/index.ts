@@ -210,6 +210,7 @@ router.beforeEach((to, from) => {
   const requiredRoles = to.meta?.roles as string[] | undefined
   const decision = resolveGuardDecision({
     toPath: to.path,
+    toFullPath: to.fullPath,
     fromPath: from.path,
     isLoggedIn: authStore.isLoggedIn,
     roleCodes,

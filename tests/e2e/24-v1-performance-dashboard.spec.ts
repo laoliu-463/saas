@@ -32,6 +32,16 @@ import { request as playwrightRequest } from '@playwright/test';
 let adminToken: string;
 let channelLeaderToken: string;
 
+function unwrapMetricsPayload(data: unknown): Record<string, unknown> | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const record = data as Record<string, unknown>;
+  const settle = record.settle;
+  const estimate = record.estimate;
+  if (settle && typeof settle === 'object') return settle as Record<string, unknown>;
+  if (estimate && typeof estimate === 'object') return estimate as Record<string, unknown>;
+  return record;
+}
+
 test.beforeAll(async () => {
   [adminToken, channelLeaderToken] = await Promise.all([
     loginApi('admin'),
@@ -149,15 +159,8 @@ test.describe('B. 渠道组长视角数据范围', () => {
 test.describe('C. 业绩看板 API 层对账', () => {
   // ── C1. Dashboard metrics 结构完整性
   test('Dashboard metrics API 返回 4 个核心指标字段', async () => {
-    const body = (await apiGet('/api/dashboard/metrics', { token: adminToken })) as {
-      data?: {
-        todayOrderCount?: unknown;
-        todayGmv?: unknown;
-        serviceFee?: unknown;
-        grossProfit?: unknown;
-      };
-    };
-    const data = body?.data;
+    const body = (await apiGet('/api/dashboard/metrics', { token: adminToken })) as { data?: unknown };
+    const data = unwrapMetricsPayload(body?.data);
     expect(data).toBeDefined();
     // 核心字段存在（允许为 0，但不允许缺失）
     expect('todayOrderCount' in (data ?? {})).toBe(true);
@@ -185,7 +188,7 @@ test.describe('C. 业绩看板 API 层对账', () => {
 
   // ── C3. timeField=settleTime 切换
   test('Dashboard metrics 支持 timeField=settleTime', async () => {
-    const BACKEND = (process.env.E2E_BACKEND_URL || 'http://localhost:8080').replace(/\/$/, '');
+    const BACKEND = (process.env.E2E_BACKEND_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
     const ctx = await playwrightRequest.newContext({ baseURL: BACKEND });
     try {
       const res = await ctx.get('/api/dashboard/metrics', {
@@ -236,7 +239,7 @@ test.describe('C. 业绩看板 API 层对账', () => {
 
   // ── C7. 订单导出接口管理员可调（非 403）
   test('订单导出接口管理员角色不返回 403', async () => {
-    const BACKEND = (process.env.E2E_BACKEND_URL || 'http://localhost:8080').replace(/\/$/, '');
+    const BACKEND = (process.env.E2E_BACKEND_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
     const ctx = await playwrightRequest.newContext({ baseURL: BACKEND });
     try {
       const res = await ctx.get('/api/orders/exports', {
@@ -251,14 +254,13 @@ test.describe('C. 业绩看板 API 层对账', () => {
 
   // ── C8. 近 7 日趋势 API（trend7d 字段）
   test('Dashboard metrics 返回近 7 日趋势数组', async () => {
-    const body = (await apiGet('/api/dashboard/metrics', { token: adminToken })) as {
-      data?: { trend7d?: unknown[] };
-    };
+    const body = (await apiGet('/api/dashboard/metrics', { token: adminToken })) as { data?: unknown };
+    const data = unwrapMetricsPayload(body?.data);
     // trend7d 若存在应为数组
-    if (body?.data?.trend7d !== undefined) {
-      expect(Array.isArray(body.data.trend7d)).toBe(true);
+    if (data?.trend7d !== undefined) {
+      expect(Array.isArray(data.trend7d)).toBe(true);
     }
     // 没有 trend7d 也不是错误（字段可选），关键是 data 存在
-    expect(body?.data).toBeDefined();
+    expect(data).toBeDefined();
   });
 });

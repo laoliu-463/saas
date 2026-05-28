@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { storageStates } from './helpers/test-data';
-import { seedTestData } from './helpers/api-assertions';
+import { loginApi, seedTestData } from './helpers/api-assertions';
 import { testIds } from './helpers/selectors';
 
 /**
@@ -30,7 +30,7 @@ test.describe('商品域增强 - 快速寄样', () => {
     const card = page.getByTestId(testIds.productCard).first();
     await expect(card).toBeVisible({ timeout: 30_000 });
     await card.hover();
-    await page.getByTestId('product-quick-sample').click();
+    await card.getByTestId('product-quick-sample').click();
     await expect(page.getByTestId('quick-sample-modal')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('quick-sample-external-hint')).toBeVisible();
   });
@@ -40,7 +40,10 @@ test.describe('商品域增强 - 管理员展示规则', () => {
   test.use({ storageState: storageStates.admin });
 
   test('展示规则审计 API 可访问', async ({ request }) => {
-    const res = await request.get('/api/admin/products/display/audit-logs?page=1&size=5');
+    const token = await loginApi('admin');
+    const res = await request.get('/api/admin/products/display/audit-logs?page=1&size=5', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     expect(res.ok()).toBeTruthy();
   });
 });

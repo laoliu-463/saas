@@ -8,6 +8,13 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+\getenv admin_password ADMIN_PASSWORD
+\if :{?admin_password}
+\else
+\echo 'ADMIN_PASSWORD is required for seed users'
+\quit 3
+\endif
+
 -- =============================================
 -- 1. 用户与权限
 -- =============================================
@@ -885,9 +892,9 @@ VALUES
     ('33333333-3333-3333-3333-333333333333', NULL, 'OPS', '运营组', 'ops_group', 30, 1)
 ON CONFLICT (dept_code) DO NOTHING;
 
--- 种子数据：默认管理员（仅开发环境）
+-- 种子数据：默认管理员（密码通过 ADMIN_PASSWORD 环境变量注入）
 INSERT INTO sys_user (username, password, real_name, channel_code, status)
-VALUES ('admin', crypt('admin123', gen_salt('bf', 12)), '系统管理员', 'admin', 1)
+VALUES ('admin', crypt(:'admin_password', gen_salt('bf', 12)), '系统管理员', 'admin', 1)
 ON CONFLICT (username) DO NOTHING;
 
 INSERT INTO sys_user_role (user_id, role_id)
@@ -1104,11 +1111,11 @@ ON CONFLICT (role_code) DO NOTHING;
 
 INSERT INTO sys_user (username, password, real_name, channel_code, dept_id, status)
 VALUES
-    ('biz_leader',     crypt('admin123', gen_salt('bf', 12)), '招商组长测试', 'bizleader',     '11111111-1111-1111-1111-111111111111', 1),
-    ('biz_staff',      crypt('admin123', gen_salt('bf', 12)), '招商专员测试', 'bizstaff',      '11111111-1111-1111-1111-111111111111', 1),
-    ('channel_leader', crypt('admin123', gen_salt('bf', 12)), '渠道组长测试', 'channelleader', '22222222-2222-2222-2222-222222222222', 1),
-    ('channel_staff',  crypt('admin123', gen_salt('bf', 12)), '渠道专员测试', 'channelstaff',  '22222222-2222-2222-2222-222222222222', 1),
-    ('ops_staff',      crypt('admin123', gen_salt('bf', 12)), '运营测试',     'opsstaff',      '33333333-3333-3333-3333-333333333333', 1)
+    ('biz_leader',     crypt(:'admin_password', gen_salt('bf', 12)), '招商组长测试', 'bizleader',     '11111111-1111-1111-1111-111111111111', 1),
+    ('biz_staff',      crypt(:'admin_password', gen_salt('bf', 12)), '招商专员测试', 'bizstaff',      '11111111-1111-1111-1111-111111111111', 1),
+    ('channel_leader', crypt(:'admin_password', gen_salt('bf', 12)), '渠道组长测试', 'channelleader', '22222222-2222-2222-2222-222222222222', 1),
+    ('channel_staff',  crypt(:'admin_password', gen_salt('bf', 12)), '渠道专员测试', 'channelstaff',  '22222222-2222-2222-2222-222222222222', 1),
+    ('ops_staff',      crypt(:'admin_password', gen_salt('bf', 12)), '运营测试',     'opsstaff',      '33333333-3333-3333-3333-333333333333', 1)
 ON CONFLICT (username) DO NOTHING;
 
 UPDATE sys_user

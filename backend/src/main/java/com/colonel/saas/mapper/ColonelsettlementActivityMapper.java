@@ -9,13 +9,44 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 团长结算活动数据访问层
+ * <p>
+ * 对应数据库表：colonelsettlement_activity
+ * 所属业务领域：业绩域 - 结算活动管理
+ * 主要操作：结算活动的查询、插入、更新，支持种子数据写入和真实活动元数据同步
+ * </p>
+ *
+ * @see com.colonel.saas.entity.ColonelsettlementActivity
+ */
 @Mapper
 public interface ColonelsettlementActivityMapper {
 
+    /**
+     * 统计本地已有活动总数
+     *
+     * @return 本地活动记录总数
+     */
     long countLocalActivities();
 
+    /**
+     * 按状态和时间分页统计活动数量
+     *
+     * @param status 活动状态筛选条件，为 null 时不过滤
+     * @param now    当前时间，用于判断活动是否在有效期内
+     * @return 满足条件的活动总数
+     */
     long countPage(@Param("status") Integer status, @Param("now") LocalDateTime now);
 
+    /**
+     * 分页查询活动列表
+     *
+     * @param offset 分页偏移量
+     * @param limit  每页条数
+     * @param status 活动状态筛选条件，为 null 时不过滤
+     * @param now    当前时间，用于判断活动状态
+     * @return 活动列表
+     */
     List<ColonelsettlementActivity> selectPage(
             @Param("offset") long offset,
             @Param("limit") long limit,
@@ -23,6 +54,15 @@ public interface ColonelsettlementActivityMapper {
             @Param("now") LocalDateTime now
     );
 
+    /**
+     * 分页查询活动列表（用于导出功能）
+     *
+     * @param offset       分页偏移量
+     * @param limit        每页条数
+     * @param activityName 活动名称模糊搜索条件
+     * @param now          当前时间
+     * @return 活动列表
+     */
     List<ColonelsettlementActivity> selectExportPage(
             @Param("offset") long offset,
             @Param("limit") long limit,
@@ -30,6 +70,20 @@ public interface ColonelsettlementActivityMapper {
             @Param("now") LocalDateTime now
     );
 
+    /**
+     * 插入种子活动数据
+     * <p>
+     * 用于初始化或导入基础活动数据，不使用 UPSERT 策略
+     * </p>
+     *
+     * @param id           活动主键 UUID
+     * @param activityId   抖音活动 ID
+     * @param activityName 活动名称
+     * @param startTime    活动开始时间
+     * @param endTime      活动结束时间
+     * @param statusText   活动状态文本描述
+     * @param createTime   创建时间
+     */
     void insertSeedActivity(
             @Param("id") UUID id,
             @Param("activityId") String activityId,
@@ -40,6 +94,27 @@ public interface ColonelsettlementActivityMapper {
             @Param("createTime") LocalDateTime createTime
     );
 
+    /**
+     * 插入或更新真实活动元数据
+     * <p>
+     * 基于 activityId 做 UPSERT 操作，当活动已存在时更新所有元数据字段。
+     * 用于从抖音上游同步真实活动信息到本地。
+     * </p>
+     *
+     * @param id             活动主键 UUID
+     * @param activityId     抖音活动 ID（UPSERT 匹配键）
+     * @param activityName   活动名称
+     * @param shopId         商家店铺 ID
+     * @param shopName       商家店铺名称
+     * @param colonelBuyinId 团长百应 ID
+     * @param commissionRate 佣金费率
+     * @param serviceRate    服务费率
+     * @param startTime      活动开始时间
+     * @param endTime        活动结束时间
+     * @param statusText     活动状态文本描述
+     * @param lastSyncAt     最后同步时间
+     * @param extraData      扩展数据（JSON 格式）
+     */
     void upsertRealActivityMeta(
             @Param("id") UUID id,
             @Param("activityId") String activityId,
@@ -56,7 +131,19 @@ public interface ColonelsettlementActivityMapper {
             @Param("extraData") Map<String, Object> extraData
     );
 
+    /**
+     * 根据抖音活动 ID 查询活动详情
+     *
+     * @param activityId 抖音活动 ID
+     * @return 对应的活动记录，不存在时返回 null
+     */
     ColonelsettlementActivity selectByActivityId(@Param("activityId") String activityId);
 
+    /**
+     * 根据抖音活动 ID 查询扩展数据
+     *
+     * @param activityId 抖音活动 ID
+     * @return 扩展数据 Map，不存在时返回 null
+     */
     Map<String, Object> selectExtraDataByActivityId(@Param("activityId") String activityId);
 }

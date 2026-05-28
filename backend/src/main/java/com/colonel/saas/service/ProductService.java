@@ -69,11 +69,35 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+/**
+ * 商品核心业务服务（商品域）。
+ *
+ * <ul>
+ *   <li>商品快照同步：从抖音活动 API 拉取并落库商品快照，支持全量刷新和增量更新</li>
+ *   <li>精选库管理：商品入库、分类查询、条件筛选、状态标记（展示/隐藏/待审核）</li>
+ *   <li>推广链路：生成推广链接（含幂等保障）、构建推广素材包、关联订单汇总</li>
+ *   <li>审核流程：待审 -> 通过/驳回，支持分配审核人、记录审核决策、补充审核信息</li>
+ *   <li>达人跟品：创建跟品记录，跟踪达人履约进度</li>
+ *   <li>活动商品视图：构建活动商品列表视图，包含 SKU、佣金、服务费、标签等聚合信息</li>
+ *   <li>数据范围过滤：通过 {@link ProductOperationState} 与 {@link ProductBizStatusService} 实现业务状态驱动的查询</li>
+ * </ul>
+ *
+ * <p>架构角色：商品域聚合根服务，协调快照、运营状态、推广链接、订单、达人等多个子领域。
+ * 依赖 MyBatis-Plus 进行持久化，通过 {@link DouyinActivityGateway} 与抖店开放平台交互。</p>
+ *
+ * @see ProductBizStatusService 商品业务状态计算
+ * @see ProductDisplayRuleService 商品展示规则
+ * @see PickSourceMappingService 货源映射（pick_source）
+ * @see TalentFollowService 达人跟品服务
+ * @see PromotionLinkIdempotencyService 推广链接幂等
+ */
 @Slf4j
 @Service
 public class ProductService {
 
+    /** Jackson 全局序列化/反序列化器，用于审核补充信息等 JSON 字段处理 */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    /** 精选库批量查询每次拉取的上限条数 */
     private static final long SELECTED_LIBRARY_BATCH_SIZE = 200L;
     /** 抖店团长 buyin 通常为 17–20 位；捕获组上限 30 位，并在数字后截断避免粘连字段。 */
     private static final Pattern BUYIN_ID_PATTERN = Pattern.compile(
@@ -82,24 +106,43 @@ public class ProductService {
                     + "([0-9]{10,30})(?![0-9])",
             Pattern.CASE_INSENSITIVE);
 
+    /** 抖音推广网关，用于生成推广链接、查询推广数据 */
     private final DouyinPromotionGateway douyinPromotionGateway;
+    /** 抖音商品网关，用于查询商品详情、SKU 信息 */
     private final DouyinProductGateway douyinProductGateway;
+    /** 商品快照持久层，存储从抖音同步的商品基础数据 */
     private final ProductSnapshotMapper snapshotMapper;
+    /** 商品运营状态持久层，记录选库、展示、分配等运营状态 */
     private final ProductOperationStateMapper operationStateMapper;
+    /** 商品操作日志持久层，记录审核、分配、决策等操作审计 */
     private final ProductOperationLogMapper operationLogMapper;
+    /** 推广链接持久层，存储生成的推广链接及短链 */
     private final PromotionLinkMapper promotionLinkMapper;
+    /** 团长结算订单持久层，用于查询订单汇总和 GMV 数据 */
     private final ColonelsettlementOrderMapper orderMapper;
+    /** 商户持久层，用于查询商家名称等信息 */
     private final MerchantMapper merchantMapper;
+    /** 系统用户持久层，用于查询操作人姓名（分配人、审核人等） */
     private final SysUserMapper sysUserMapper;
+    /** 货源映射服务，管理 pick_source 与推广链接的映射关系 */
     private final PickSourceMappingService pickSourceMappingService;
+    /** 商品业务状态计算服务，根据多维度状态计算商品当前业务阶段 */
     private final ProductBizStatusService productBizStatusService;
+    /** 团长结算活动持久层，查询活动元数据（佣金、有效期等） */
     private final ColonelsettlementActivityMapper colonelActivityMapper;
+    /** 达人跟品服务，管理达人对商品的跟品记录 */
     private final TalentFollowService talentFollowService;
+    /** 抖音活动网关，查询活动详情、SKU 列表 */
     private final DouyinActivityGateway douyinActivityGateway;
+    /** 推广链接幂等服务，防止重复生成推广链接 */
     private final PromotionLinkIdempotencyService promotionLinkIdempotencyService;
+    /** 业务规则配置服务，查询推广加码等规则 */
     private final BusinessRuleConfigService businessRuleConfigService;
+    /** 商品展示规则服务，管理商品的展示/隐藏规则和置顶逻辑 */
     private final ProductDisplayRuleService productDisplayRuleService;
+    /** 团长合作伙伴同步服务，同步团长合作关系数据 */
     private final ColonelPartnerSyncService colonelPartnerSyncService;
+    /** 商品领域事件发布器，发布商品状态变更等事件 */
     private final ProductDomainEventPublisher productDomainEventPublisher;
 
     public ProductService(

@@ -55,6 +55,48 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
+/**
+ * 订单管理控制器。
+ * <p>
+ * 负责订单域的全部 HTTP 接口，包括订单同步、分页查询、统计汇总、筛选项候选值、
+ * 详情查询以及历史订单归因重算和业绩回填等运维操作。
+ * </p>
+ *
+ * <ul>
+ *   <li>订单同步：从抖店上游拉取并落库订单数据（仅管理员）</li>
+ *   <li>订单列表：按多维筛选条件分页查询订单归因结果</li>
+ *   <li>未归因订单：单独分页查询未归因订单，便于排查</li>
+ *   <li>订单详情：查询单个订单的归因、推广映射、达人与寄样关联信息</li>
+ *   <li>订单统计：按当前筛选条件统计总量、已归因、未归因与未归因原因分布</li>
+ *   <li>筛选选项：返回订单页所需的全部筛选候选值（状态、商品、渠道、团长、部门等）</li>
+ *   <li>归因重算：对已落库订单重新执行归因逻辑，用于补映射后的历史订单回放验证</li>
+ *   <li>业绩回填：批量写入缺失的 performance_records 业绩记录</li>
+ *   <li>提成计算：批量或单笔计算并持久化双轨提成到 performance_records</li>
+ * </ul>
+ *
+ * <h3>架构角色</h3>
+ * <p>本控制器属于订单域的入口层（API Gateway），通过构造器注入委托给多个领域服务完成业务逻辑，
+ * 自身仅负责参数解析、数据范围权限注入和缓存失效管理。</p>
+ *
+ * <h3>API 路径前缀</h3>
+ * <p>{@code /orders}</p>
+ *
+ * <h3>业务领域</h3>
+ * <p>订单域 —— 订单归因、订单查询、订单同步、提成计算、业绩回填</p>
+ *
+ * <h3>访问控制</h3>
+ * <p>类级别要求具备以下角色之一：BIZ_LEADER、BIZ_STAFF、CHANNEL_LEADER、CHANNEL_STAFF、ADMIN。
+ * 部分写操作接口额外限定为 ADMIN 角色。数据范围（self / group / all）通过请求属性注入，
+ * 在查询层自动拼接过滤条件。</p>
+ *
+ * @see com.colonel.saas.service.OrderSyncService 订单同步服务
+ * @see com.colonel.saas.service.OrderQueryService 订单查询服务
+ * @see com.colonel.saas.service.AttributionService 归因服务
+ * @see com.colonel.saas.service.CommissionService 提成计算服务
+ * @see com.colonel.saas.service.PerformanceBackfillService 业绩回填服务
+ * @see com.colonel.saas.service.OrderAttributionReplayService 归因重算服务
+ * @see com.colonel.saas.common.base.BaseController 基础控制器
+ */
 @Tag(name = "订单管理", description = "订单同步、列表、统计、筛选项与详情查询接口。")
 @Validated
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
@@ -62,19 +104,43 @@ import java.util.UUID;
 @RequestMapping("/orders")
 public class OrderController extends BaseController {
 
+    /** 筛选项缓存过期时间：60 秒 */
     private static final Duration FILTER_OPTIONS_CACHE_TTL = Duration.ofSeconds(60);
+
+    /** 筛选项缓存键前缀 */
     private static final String FILTER_OPTIONS_CACHE_PREFIX = "orders:filter-options:";
+
+    /** Dashboard 汇总缓存键前缀 */
     private static final String DASHBOARD_SUMMARY_CACHE_PREFIX = "dashboard:summary:";
+
+    /** Dashboard 指标缓存键前缀 */
     private static final String DASHBOARD_METRICS_CACHE_PREFIX = "dashboard:metrics:";
 
+    /** 订单同步服务：从抖店上游拉取订单数据并落库 */
     private final OrderSyncService orderSyncService;
+
+    /** 订单 MyBatis-Plus Mapper：直接数据库操作 */
     private final ColonelsettlementOrderMapper orderMapper;
+
+    /** 订单查询服务：封装订单详情等复合查询逻辑 */
     private final OrderQueryService orderQueryService;
+
+    /** 归因重算服务：对历史订单重新执行归因逻辑 */
     private final OrderAttributionReplayService orderAttributionReplayService;
+
+    /** 操作日志服务：记录管理员手动操作的审计日志 */
     private final OperationLogService operationLogService;
+
+    /** 短 TTL 缓存服务：用于筛选选项等高频读取场景的秒级缓存 */
     private final ShortTtlCacheService shortTtlCacheService;
+
+    /** 提成计算服务：批量/单笔计算并持久化双轨提成 */
     private final CommissionService commissionService;
+
+    /** 业绩回填服务：批量写入缺失的 performance_records */
     private final PerformanceBackfillService performanceBackfillService;
+
+    /** 部门 Mapper：用于加载部门下拉选项 */
     private final SysDeptMapper sysDeptMapper;
 
     public OrderController(
@@ -98,6 +164,24 @@ public class OrderController extends BaseController {
         this.sysDeptMapper = sysDeptMapper;
     }
 
+    /**
+     * 手动同步订单。
+     * <p>
+     * 按时间范围触发订单同步，用于补拉历史订单或联调真实网关回流数据。仅管理员可执行。
+     * </p>
+     *
+     * <ol>
+     *   <li>第一步：校验并补全请求参数，未传入时默认最近 30 天</li>
+     *   <li>第二步：将时间字符串解析为秒级时间戳</li>
+     *   <li>第三步：委托 {@link OrderSyncService#syncByTimeRange} 执行同步</li>
+     *   <li>第四步：记录操作审计日志</li>
+     *   <li>第五步：清除所有订单衍生缓存（筛选项、Dashboard 汇总与指标）</li>
+     * </ol>
+     *
+     * @param request 同步时间范围请求体，可选；为空时默认最近 30 天
+     * @param userId  当前登录用户 ID（由拦截器注入）
+     * @return 同步结果，包含 created/updated/attributed/unattributed/failed 计数
+     */
     @Operation(summary = "手动同步订单", description = "按时间范围触发订单同步，用于补拉订单或联调真实网关回流数据。")
     @RequireRoles({RoleCodes.ADMIN})
     @PostMapping("/sync")
@@ -132,6 +216,25 @@ public class OrderController extends BaseController {
         return ok(result);
     }
 
+    /**
+     * 重算历史订单归因。
+     * <p>
+     * 对已落库订单重新执行归因逻辑，用于补映射后的历史订单回放验证。默认只扫描未归因订单。
+     * 支持 dry-run 模式（仅预演不落库），仅管理员可执行。
+     * </p>
+     *
+     * <ol>
+     *   <li>第一步：补全请求参数，默认空请求对象</li>
+     *   <li>第二步：判断是否为 dry-run 模式</li>
+     *   <li>第三步：委托 {@link OrderAttributionReplayService#replay} 执行归因重算</li>
+     *   <li>第四步：记录操作审计日志（区分预览/实际执行）</li>
+     *   <li>第五步：非 dry-run 模式下清除订单衍生缓存</li>
+     * </ol>
+     *
+     * @param request 归因重算请求体，可选；支持指定 orderIds 或按未归因原因批量扫描
+     * @param userId  当前登录用户 ID（由拦截器注入）
+     * @return 重算结果，包含 scanned/attributed/unattributed/updated 计数
+     */
     @Operation(summary = "重算历史订单归因", description = "对已落库订单重新执行归因逻辑，用于补映射后的历史订单回放验证。默认只扫描未归因订单。")
     @RequireRoles({RoleCodes.ADMIN})
     @PostMapping("/replay-attribution")
@@ -172,6 +275,24 @@ public class OrderController extends BaseController {
         return ok(result);
     }
 
+    /**
+     * 回填历史业绩记录。
+     * <p>
+     * 按订单号或结算时间范围批量写入 performance_records，仅管理员可执行。
+     * 默认仅处理尚未生成业绩记录的订单（onlyMissing=true）。
+     * </p>
+     *
+     * <ol>
+     *   <li>第一步：补全请求参数，onlyMissing 默认为 true</li>
+     *   <li>第二步：委托 {@link PerformanceBackfillService#backfill} 执行回填</li>
+     *   <li>第三步：记录操作审计日志</li>
+     *   <li>第四步：清除所有订单衍生缓存</li>
+     * </ol>
+     *
+     * @param request 回填请求体，可选；支持指定 orderIds 或按结算时间范围扫描缺失记录
+     * @param userId  当前登录用户 ID（由拦截器注入）
+     * @return 回填结果，包含 scanned/upserted/failed/onlyMissing 信息
+     */
     @Operation(summary = "回填历史业绩记录", description = "按订单号或结算时间范围批量写入 performance_records，默认仅处理尚未生成业绩记录的订单。")
     @RequireRoles({RoleCodes.ADMIN})
     @PostMapping("/performance-backfill")
@@ -209,6 +330,23 @@ public class OrderController extends BaseController {
         return ok(result);
     }
 
+    /**
+     * 批量补全订单业绩（双轨提成计算）。
+     * <p>
+     * 按订单号批量计算并持久化双轨提成到 performance_records（Y-08）；
+     * 取消/失效订单自动标记为冲正。
+     * </p>
+     *
+     * <ol>
+     *   <li>第一步：从请求中提取并去重订单号列表，过滤空白值</li>
+     *   <li>第二步：订单号列表为空时直接返回空结果</li>
+     *   <li>第三步：从数据库查询未删除的订单记录</li>
+     *   <li>第四步：委托 {@link CommissionService#batchUpsertPerformanceRecords} 批量计算提成并持久化</li>
+     * </ol>
+     *
+     * @param request 批量提成请求体，包含待补全业绩的订单号列表
+     * @return 每个订单的提成计算结果列表
+     */
     @Operation(summary = "批量补全订单业绩", description = "按订单号批量计算并持久化双轨提成到 performance_records（Y-08）；取消/失效订单标记为冲正。")
     @PostMapping("/commission-batch")
     public ApiResult<List<CommissionService.OrderCommissionItem>> batchFillCommission(
@@ -225,6 +363,23 @@ public class OrderController extends BaseController {
         return ok(commissionService.batchUpsertPerformanceRecords(orders));
     }
 
+    /**
+     * 管理员单笔重算业绩。
+     * <p>
+     * 传入单个 orderId，重算并回写 performance_records（Y-09）。仅管理员可执行。
+     * 若订单不存在或 orderId 为空，返回冲正标记结果。
+     * </p>
+     *
+     * <ol>
+     *   <li>第一步：校验 orderId 是否非空，为空则返回冲正结果</li>
+     *   <li>第二步：按 orderId 查询单条未删除的订单记录</li>
+     *   <li>第三步：订单不存在时返回冲正标记结果</li>
+     *   <li>第四步：委托 {@link CommissionService#batchUpsertPerformanceRecords} 执行单笔提成计算</li>
+     * </ol>
+     *
+     * @param orderId 订单 ID（请求参数）
+     * @return 单笔订单的提成计算结果；订单不存在时返回冲正标记
+     */
     @Operation(summary = "管理员单笔重算业绩", description = "传入单个 orderId，重算并回写 performance_records（Y-09）。需 ADMIN 权限。")
     @PostMapping("/commission-recalculate")
     @RequireRoles({RoleCodes.ADMIN})
@@ -245,25 +400,62 @@ public class OrderController extends BaseController {
         return ok(results.isEmpty() ? CommissionService.OrderCommissionItem.reversed(orderId) : results.get(0));
     }
 
+    /**
+     * 获取订单列表（分页查询）。
+     * <p>
+     * 按多维筛选条件分页查询订单归因列表，用于订单主页面。
+     * 支持按订单 ID、归因状态、未归因原因、活动、商品、渠道/团长关键字、
+     * 订单状态、时间范围、诊断分类、部门等条件过滤。
+     * </p>
+     *
+     * <ol>
+     *   <li>第一步：构建分页参数和 LambdaQueryWrapper 查询条件</li>
+     *   <li>第二步：排除 extra_data 大字段，减少网络传输</li>
+     *   <li>第三步：根据用户数据范围（self/group/all）注入权限过滤条件</li>
+     *   <li>第四步：按 updateTime 和 createTime 降序排列</li>
+     *   <li>第五步：执行分页查询并规范化每行数据</li>
+     * </ol>
+     *
+     * @param page                 页码，从 1 开始，最大 1000
+     * @param size                 每页条数，最大 200
+     * @param orderId              订单 ID 精确过滤
+     * @param attributionStatus    归因状态过滤（ATTRIBUTED / UNATTRIBUTED / PARTIAL / FAILED）
+     * @param unattributedReason   未归因原因过滤
+     * @param activityId           活动 ID 过滤
+     * @param productId            商品 ID 过滤
+     * @param channelKeyword       渠道关键字（模糊匹配渠道名称或渠道 ID）
+     * @param colonelKeyword       团长关键字（模糊匹配团长名称或团长 ID）
+     * @param orderStatus          订单状态过滤
+     * @param startTime            开始时间，格式 yyyy-MM-dd HH:mm:ss
+     * @param endTime              结束时间，格式 yyyy-MM-dd HH:mm:ss
+     * @param timeField            时间字段（createTime 或 settleTime，默认 createTime）
+     * @param dashboardDiagnosis   Dashboard 诊断分类过滤
+     * @param recruiterDeptIds     招商部门 ID 列表（CSV 格式）
+     * @param channelDeptIds       渠道部门 ID 列表（CSV 格式）
+     * @param userId               当前登录用户 ID
+     * @param deptId               当前登录用户所属部门 ID
+     * @param dataScope            数据范围枚举（PERSONAL / DEPT / ALL）
+     * @return 订单分页结果，记录已排除 extra_data 字段
+     */
     @Operation(summary = "获取订单列表", description = "分页查询订单归因列表，用于订单主页面。")
     @GetMapping
     public ApiResult<IPage<ColonelsettlementOrder>> getOrders(
-            @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(defaultValue = "1") @Min(1) @Max(1000) long page,
-            @Parameter(description = "每页条数，最大 200。") @RequestParam(defaultValue = "20") @Min(1) @Max(200) long size,
-            @Parameter(description = "订单 ID。") @RequestParam(required = false) String orderId,
-            @Parameter(description = "归因状态，例如 ATTRIBUTED、UNATTRIBUTED。完整取值以代码常量为准。") @RequestParam(required = false) String attributionStatus,
-            @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(required = false) String unattributedReason,
-            @Parameter(description = "活动 ID。") @RequestParam(required = false) String activityId,
-            @Parameter(description = "商品 ID。") @RequestParam(required = false) String productId,
-            @Parameter(description = "渠道关键字，可匹配渠道名称或渠道 ID。") @RequestParam(required = false) String channelKeyword,
-            @Parameter(description = "团长关键字，可匹配团长名称或团长 ID。") @RequestParam(required = false) String colonelKeyword,
-            @Parameter(description = "订单状态。完整映射以代码标签函数为准。") @RequestParam(required = false) Integer orderStatus,
-            @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
-            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
-            @Parameter(description = "时间字段，支持 createTime 或 settleTime。默认 createTime。") @RequestParam(required = false) String timeField,
-            @Parameter(description = "Dashboard 诊断分类过滤。") @RequestParam(required = false) String dashboardDiagnosis,
-            @Parameter(description = "招商部门 ID 列表（dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(required = false) String recruiterDeptIds,
-            @Parameter(description = "渠道部门 ID 列表（channel_dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(required = false) String channelDeptIds,
+            @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(name = "page", defaultValue = "1") @Min(1) @Max(1000) long page,
+            @Parameter(description = "每页条数，最大 200。") @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(200) long size,
+            @Parameter(description = "订单 ID。") @RequestParam(name = "orderId", required = false) String orderId,
+            @Parameter(description = "归因状态，例如 ATTRIBUTED、UNATTRIBUTED。完整取值以代码常量为准。") @RequestParam(name = "attributionStatus", required = false) String attributionStatus,
+            @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(name = "unattributedReason", required = false) String unattributedReason,
+            @Parameter(description = "活动 ID。") @RequestParam(name = "activityId", required = false) String activityId,
+            @Parameter(description = "商品 ID。") @RequestParam(name = "productId", required = false) String productId,
+            @Parameter(description = "渠道关键字，可匹配渠道名称或渠道 ID。") @RequestParam(name = "channelKeyword", required = false) String channelKeyword,
+            @Parameter(description = "团长关键字，可匹配团长名称或团长 ID。") @RequestParam(name = "colonelKeyword", required = false) String colonelKeyword,
+            @Parameter(description = "订单状态。完整映射以代码标签函数为准。") @RequestParam(name = "orderStatus", required = false) Integer orderStatus,
+            @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "startTime", required = false) String startTime,
+            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "endTime", required = false) String endTime,
+            @Parameter(description = "时间字段，支持 createTime 或 settleTime。默认 createTime。") @RequestParam(name = "timeField", required = false) String timeField,
+            @Parameter(description = "Dashboard 诊断分类过滤。") @RequestParam(name = "dashboardDiagnosis", required = false) String dashboardDiagnosis,
+            @Parameter(description = "招商部门 ID 列表（dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(name = "recruiterDeptIds", required = false) String recruiterDeptIds,
+            @Parameter(description = "渠道部门 ID 列表（channel_dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(name = "channelDeptIds", required = false) String channelDeptIds,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
@@ -293,34 +485,84 @@ public class OrderController extends BaseController {
         return ok(result);
     }
 
+    /**
+     * 获取未归因订单（分页查询）。
+     * <p>
+     * 分页查询未归因订单列表，用于未归因排查。内部直接委托 {@link #getOrders}，
+     * 强制设置归因状态为 UNATTRIBUTED，其余筛选条件与订单列表保持一致。
+     * </p>
+     *
+     * <ol>
+     *   <li>第一步：将归因状态强制设为 {@code STATUS_UNATTRIBUTED}</li>
+     *   <li>第二步：委托 {@link #getOrders} 执行通用查询逻辑</li>
+     * </ol>
+     *
+     * @param page                 页码，从 1 开始，最大 1000
+     * @param size                 每页条数，最大 200
+     * @param orderId              订单 ID 精确过滤
+     * @param unattributedReason   未归因原因过滤
+     * @param activityId           活动 ID 过滤
+     * @param productId            商品 ID 过滤
+     * @param channelKeyword       渠道关键字
+     * @param colonelKeyword       团长关键字
+     * @param orderStatus          订单状态过滤
+     * @param startTime            开始时间
+     * @param endTime              结束时间
+     * @param timeField            时间字段
+     * @param dashboardDiagnosis   Dashboard 诊断分类过滤
+     * @param recruiterDeptIds     招商部门 ID 列表
+     * @param channelDeptIds       渠道部门 ID 列表
+     * @param userId               当前登录用户 ID
+     * @param deptId               当前登录用户所属部门 ID
+     * @param dataScope            数据范围枚举
+     * @return 未归因订单分页结果
+     */
     @Operation(summary = "获取未归因订单", description = "分页查询未归因订单列表，用于未归因排查。其余筛选条件与订单列表保持一致。")
     @GetMapping("/unattributed")
     public ApiResult<IPage<ColonelsettlementOrder>> getUnattributedOrders(
-            @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(defaultValue = "1") @Min(1) @Max(1000) long page,
-            @Parameter(description = "每页条数，最大 200。") @RequestParam(defaultValue = "20") @Min(1) @Max(200) long size,
-            @Parameter(description = "订单 ID。") @RequestParam(required = false) String orderId,
-            @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(required = false) String unattributedReason,
-            @Parameter(description = "活动 ID。") @RequestParam(required = false) String activityId,
-            @Parameter(description = "商品 ID。") @RequestParam(required = false) String productId,
-            @Parameter(description = "渠道关键字，可匹配渠道名称或渠道 ID。") @RequestParam(required = false) String channelKeyword,
-            @Parameter(description = "团长关键字，可匹配团长名称或团长 ID。") @RequestParam(required = false) String colonelKeyword,
-            @Parameter(description = "订单状态。完整映射以代码标签函数为准。") @RequestParam(required = false) Integer orderStatus,
-            @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
-            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
-            @Parameter(description = "时间字段，支持 createTime 或 settleTime。默认 createTime。") @RequestParam(required = false) String timeField,
-            @Parameter(description = "Dashboard 诊断分类过滤。") @RequestParam(required = false) String dashboardDiagnosis,
-            @Parameter(description = "招商部门 ID 列表（dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(required = false) String recruiterDeptIds,
-            @Parameter(description = "渠道部门 ID 列表（channel_dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(required = false) String channelDeptIds,
+            @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(name = "page", defaultValue = "1") @Min(1) @Max(1000) long page,
+            @Parameter(description = "每页条数，最大 200。") @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(200) long size,
+            @Parameter(description = "订单 ID。") @RequestParam(name = "orderId", required = false) String orderId,
+            @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(name = "unattributedReason", required = false) String unattributedReason,
+            @Parameter(description = "活动 ID。") @RequestParam(name = "activityId", required = false) String activityId,
+            @Parameter(description = "商品 ID。") @RequestParam(name = "productId", required = false) String productId,
+            @Parameter(description = "渠道关键字，可匹配渠道名称或渠道 ID。") @RequestParam(name = "channelKeyword", required = false) String channelKeyword,
+            @Parameter(description = "团长关键字，可匹配团长名称或团长 ID。") @RequestParam(name = "colonelKeyword", required = false) String colonelKeyword,
+            @Parameter(description = "订单状态。完整映射以代码标签函数为准。") @RequestParam(name = "orderStatus", required = false) Integer orderStatus,
+            @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "startTime", required = false) String startTime,
+            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "endTime", required = false) String endTime,
+            @Parameter(description = "时间字段，支持 createTime 或 settleTime。默认 createTime。") @RequestParam(name = "timeField", required = false) String timeField,
+            @Parameter(description = "Dashboard 诊断分类过滤。") @RequestParam(name = "dashboardDiagnosis", required = false) String dashboardDiagnosis,
+            @Parameter(description = "招商部门 ID 列表（dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(name = "recruiterDeptIds", required = false) String recruiterDeptIds,
+            @Parameter(description = "渠道部门 ID 列表（channel_dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(name = "channelDeptIds", required = false) String channelDeptIds,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
         return getOrders(page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, activityId, productId, channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField, dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope);
     }
 
+    /**
+     * 获取订单详情。
+     * <p>
+     * 查询单个订单的完整信息，返回订单基础信息、归因结果、推广映射、达人与寄样关联信息。
+     * 内部通过数据范围权限校验，确保当前用户有权访问该订单。
+     * </p>
+     *
+     * <ol>
+     *   <li>第一步：委托 {@link OrderQueryService#getOrderDetail} 查询订单详情</li>
+     *   <li>第二步：服务内部完成数据范围权限校验</li>
+     * </ol>
+     *
+     * @param orderId  订单 ID（路径变量）
+     * @param userId   当前登录用户 ID
+     * @param deptId   当前登录用户所属部门 ID
+     * @param dataScope 数据范围枚举
+     * @return 订单详情响应，包含归因结果、推广映射、达人与寄样关联等
+     */
     @Operation(summary = "获取订单详情", description = "查询单个订单详情，返回订单基础信息、归因结果、推广映射、达人与寄样关联信息。")
     @GetMapping("/{orderId}")
     public ApiResult<OrderDetailResponse> getOrderDetail(
-            @Parameter(description = "订单 ID。") @PathVariable String orderId,
+            @Parameter(description = "订单 ID。") @PathVariable("orderId") String orderId,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
@@ -330,20 +572,20 @@ public class OrderController extends BaseController {
     @Operation(summary = "获取订单统计", description = "按当前筛选条件统计订单总量、已归因数、未归因数与未归因原因分布。")
     @GetMapping("/stats")
     public ApiResult<OrderStats> getStats(
-            @Parameter(description = "订单 ID。") @RequestParam(required = false) String orderId,
-            @Parameter(description = "归因状态，例如 ATTRIBUTED、UNATTRIBUTED。完整取值以代码常量为准。") @RequestParam(required = false) String attributionStatus,
-            @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(required = false) String unattributedReason,
-            @Parameter(description = "活动 ID。") @RequestParam(required = false) String activityId,
-            @Parameter(description = "商品 ID。") @RequestParam(required = false) String productId,
-            @Parameter(description = "渠道关键字，可匹配渠道名称或渠道 ID。") @RequestParam(required = false) String channelKeyword,
-            @Parameter(description = "团长关键字，可匹配团长名称或团长 ID。") @RequestParam(required = false) String colonelKeyword,
-            @Parameter(description = "订单状态。完整映射以代码标签函数为准。") @RequestParam(required = false) Integer orderStatus,
-            @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
-            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
-            @Parameter(description = "时间字段，支持 createTime 或 settleTime。默认 createTime。") @RequestParam(required = false) String timeField,
-            @Parameter(description = "Dashboard 诊断分类过滤。") @RequestParam(required = false) String dashboardDiagnosis,
-            @Parameter(description = "招商部门 ID 列表（dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(required = false) String recruiterDeptIds,
-            @Parameter(description = "渠道部门 ID 列表（channel_dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(required = false) String channelDeptIds,
+            @Parameter(description = "订单 ID。") @RequestParam(name = "orderId", required = false) String orderId,
+            @Parameter(description = "归因状态，例如 ATTRIBUTED、UNATTRIBUTED。完整取值以代码常量为准。") @RequestParam(name = "attributionStatus", required = false) String attributionStatus,
+            @Parameter(description = "未归因原因。完整取值以代码常量为准。") @RequestParam(name = "unattributedReason", required = false) String unattributedReason,
+            @Parameter(description = "活动 ID。") @RequestParam(name = "activityId", required = false) String activityId,
+            @Parameter(description = "商品 ID。") @RequestParam(name = "productId", required = false) String productId,
+            @Parameter(description = "渠道关键字，可匹配渠道名称或渠道 ID。") @RequestParam(name = "channelKeyword", required = false) String channelKeyword,
+            @Parameter(description = "团长关键字，可匹配团长名称或团长 ID。") @RequestParam(name = "colonelKeyword", required = false) String colonelKeyword,
+            @Parameter(description = "订单状态。完整映射以代码标签函数为准。") @RequestParam(name = "orderStatus", required = false) Integer orderStatus,
+            @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "startTime", required = false) String startTime,
+            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "endTime", required = false) String endTime,
+            @Parameter(description = "时间字段，支持 createTime 或 settleTime。默认 createTime。") @RequestParam(name = "timeField", required = false) String timeField,
+            @Parameter(description = "Dashboard 诊断分类过滤。") @RequestParam(name = "dashboardDiagnosis", required = false) String dashboardDiagnosis,
+            @Parameter(description = "招商部门 ID 列表（dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(name = "recruiterDeptIds", required = false) String recruiterDeptIds,
+            @Parameter(description = "渠道部门 ID 列表（channel_dept_id IN ...），CSV 或重复同名参数；非法 UUID 将被忽略。") @RequestParam(name = "channelDeptIds", required = false) String channelDeptIds,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
@@ -440,7 +682,7 @@ public class OrderController extends BaseController {
     @Operation(summary = "获取订单筛选选项", description = "返回订单页所需的筛选项候选值，包括状态、未归因原因、商品、渠道与团长。")
     @GetMapping("/filter-options")
     public ApiResult<OrderFilterOptions> getFilterOptions(
-            @Parameter(description = "筛选项检索关键字。") @RequestParam(required = false) String keyword,
+            @Parameter(description = "筛选项检索关键字。") @RequestParam(name = "keyword", required = false) String keyword,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {

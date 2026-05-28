@@ -36,34 +36,97 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 商品快速寄样服务。
+ * <p>
+ * 允许渠道角色（渠道员工/渠道主管/管理员）对"展示中"的商品发起快速寄样申请。
+ * 核心流程：
+ * <ol>
+ *   <li>校验调用方角色权限（仅渠道角色和管理员可用）</li>
+ *   <li>校验商品处于展示状态</li>
+ *   <li>对每个达人分别执行：达人信息解析 → 私海认领校验 → 七日去重检查 → 资质评估</li>
+ *   <li>优先调用抖店外部寄样网关（{@link DouyinQuickSampleGateway}），成功则记录外部申请 ID</li>
+ *   <li>外部网关不可用时降级为系统内寄样（{@code LOCAL_FALLBACK}），创建本地寄样申请记录</li>
+ *   <li>写入状态日志并发布寄样创建领域事件</li>
+ * </ol>
+ * </p>
+ * <p>
+ * 去重规则：同一用户对同一达人同一商品，在配置的限制天数内（默认 7 天）不允许重复申请（已驳回的除外）。
+ * 管理员和渠道主管不受去重限制。
+ * </p>
+ *
+ * @see ProductService
+ * @see SampleEligibilityService
+ * @see DouyinQuickSampleGateway
+ * @see BusinessRuleConfigService
+ */
 @Slf4j
 @Service
 public class ProductQuickSampleService {
 
+    /** 申请来源：快速商品库入口 */
     public static final String APPLY_SOURCE_QUICK_PRODUCT_LIBRARY = "quick_product_library";
+    /** 申请来源：抖店外部快速寄样 */
     public static final String APPLY_SOURCE_DOUYIN_QUICK = "DOUYIN_QUICK_SAMPLE";
+    /** 申请来源：系统内本地降级 */
     public static final String APPLY_SOURCE_LOCAL_FALLBACK = "LOCAL_FALLBACK";
+    /** 降级类型标识：本地降级 */
     public static final String FALLBACK_TYPE_LOCAL = "LOCAL_FALLBACK";
+    /** 网关状态：当前 SDK 不支持 */
     public static final String GATEWAY_STATUS_UNSUPPORTED = "UNSUPPORTED_BY_SDK";
+    /** 降级提示消息 */
     public static final String FALLBACK_MESSAGE = "抖店外部寄样暂未接通，已创建系统内寄样申请";
+    /** 寄样申请状态：待审核 */
     private static final int SAMPLE_STATUS_PENDING_AUDIT = 1;
+    /** 寄样申请状态：已驳回（用于七日去重计算时排除已驳回记录） */
     private static final int SAMPLE_STATUS_REJECTED = 7;
+    /** 申请编号日期格式（yyyyMMdd） */
     private static final DateTimeFormatter REQUEST_NO_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
 
+    /** 商品服务，用于查询商品信息 */
     private final ProductService productService;
+    /** 商品快照 Mapper，用于获取商品快照详情 */
     private final ProductSnapshotMapper productSnapshotMapper;
+    /** 商品运营状态 Mapper，用于校验展示状态 */
     private final ProductOperationStateMapper productOperationStateMapper;
+    /** 寄样申请 Mapper，用于持久化寄样申请 */
     private final SampleRequestMapper sampleRequestMapper;
+    /** 达人 Mapper，用于查找或创建达人记录 */
     private final TalentMapper talentMapper;
+    /** 达人认领 Mapper，用于校验私海认领关系 */
     private final TalentClaimMapper talentClaimMapper;
+    /** 爬虫达人信息服务，用于解析达人外部 ID 对应的详细信息 */
     private final CrawlerTalentInfoService crawlerTalentInfoService;
+    /** 达人资质评估服务，用于判断达人是否满足寄样标准 */
     private final SampleEligibilityService sampleEligibilityService;
+    /** 业务规则配置服务，用于获取去重天数等动态配置 */
     private final BusinessRuleConfigService businessRuleConfigService;
+    /** 寄样状态日志服务，用于记录状态变更 */
     private final SampleStatusLogService sampleStatusLogService;
+    /** 抖店快速寄样网关，用于调用外部抖店寄样 API */
     private final DouyinQuickSampleGateway douyinQuickSampleGateway;
+    /** 寄样领域事件发布器，用于发布寄样创建事件 */
     private final SampleDomainEventPublisher sampleDomainEventPublisher;
+    /** 是否启用抖店外部快速寄样（通过配置注入） */
     private final boolean douyinQuickSampleEnabled;
 
+    /**
+     * 构造注入所有依赖。
+     *
+     * @param productService               商品服务
+     * @param productSnapshotMapper         商品快照 Mapper
+     * @param productOperationStateMapper   商品运营状态 Mapper
+     * @param sampleRequestMapper           寄样申请 Mapper
+     * @param talentMapper                  达人 Mapper
+     * @param talentClaimMapper             达人认领 Mapper
+     * @param crawlerTalentInfoService      爬虫达人信息服务
+     * @param sampleEligibilityService      达人资质评估服务
+     * @param businessRuleConfigService     业务规则配置服务
+     * @param sampleStatusLogService        寄样状态日志服务
+     * @param douyinQuickSampleGateway      抖店快速寄样网关
+     * @param sampleDomainEventPublisher    寄样领域事件发布器
+     * @param douyinQuickSampleEnabled      是否启用外部快速寄样
+     */
     public ProductQuickSampleService(
             ProductService productService,
             ProductSnapshotMapper productSnapshotMapper,
@@ -93,6 +156,27 @@ public class ProductQuickSampleService {
         this.douyinQuickSampleEnabled = douyinQuickSampleEnabled;
     }
 
+    /**
+     * 批量发起快速寄样申请。
+     * <p>
+     * 遍历请求中的达人列表，逐个创建寄样申请。每个达人独立处理：
+     * 单个达人失败不影响其他达人（catch 异常后记录失败，继续处理下一个）。
+     * 整体返回汇总结果（成功/失败数量 + 每个达人的明细）。
+     * </p>
+     * <p>
+     * 执行流程：角色权限校验 → 商品展示状态校验 → 遍历达人列表 → 逐个创建寄样申请。
+     * 整体在同一事务中执行，任一达人导致的非业务异常将导致全部回滚。
+     * </p>
+     *
+     * @param relationId 商品 relationId（Product 主键）
+     * @param request    寄样申请请求（含达人列表、收件信息、备注等）
+     * @param userId     操作用户 ID
+     * @param deptId     操作用户部门 ID
+     * @param roleCodes  操作用户角色集合（Collection 或逗号分隔字符串）
+     * @return 申请结果汇总（含每个达人的明细）
+     * @throws BusinessException 商品不存在或非展示状态时
+     * @throws ForbiddenException 非渠道角色时
+     */
     @Transactional(rollbackFor = Exception.class)
     public QuickSampleApplyResponse applyQuickSample(
             UUID relationId,
@@ -100,17 +184,22 @@ public class ProductQuickSampleService {
             UUID userId,
             UUID deptId,
             Object roleCodes) {
+        /* 第一步：校验调用方必须是渠道角色或管理员 */
         ensureChannelRole(roleCodes);
         Product product = productService.getById(relationId);
         if (product == null) {
             throw BusinessException.notFound("商品不存在");
         }
+        /* 第二步：校验商品处于展示中状态 */
         ensureDisplaying(product);
 
+        /* 寄样数量默认为 1 */
         int quantity = request.getQuantity() == null ? 1 : request.getQuantity();
+        /* 检查外部网关是否可用（配置开关 + SDK 是否支持） */
         boolean externalEnabled = douyinQuickSampleEnabled;
         boolean externalSupported = douyinQuickSampleGateway.isSupported();
         DouyinQuickSampleGateway.SupportStatus supportStatus = douyinQuickSampleGateway.supportStatus();
+        /* 构建响应对象，预设网关状态信息 */
         QuickSampleApplyResponse response = new QuickSampleApplyResponse();
         response.setExternalEnabled(externalEnabled);
         response.setExternalSupported(externalSupported);
@@ -143,6 +232,37 @@ public class ProductQuickSampleService {
         return response;
     }
 
+    /**
+     * 为单个达人创建寄样申请。
+     * <p>
+     * 核心流程：
+     * <ol>
+     *   <li>解析达人外部信息（{@link CrawlerTalentInfo}）</li>
+     *   <li>查找或创建系统内达人记录</li>
+     *   <li>校验达人是否在操作者私海中</li>
+     *   <li>七日去重检查</li>
+     *   <li>达人资质评估（不满足标准但有备注时仍可申请）</li>
+     *   <li>调用外部抖店网关（可选），成功则标记外部申请 ID</li>
+     *   <li>构建并持久化寄样申请记录</li>
+     *   <li>记录状态日志 + 发布领域事件</li>
+     * </ol>
+     * </p>
+     *
+     * @param product           商品实体
+     * @param request           寄样申请请求
+     * @param talentExternalId  达人外部 ID（抖音 UID）
+     * @param quantity          寄样数量
+     * @param userId            操作用户 ID
+     * @param deptId            操作用户部门 ID
+     * @param roleCodes         用户角色集合
+     * @param item              当前达人的结果项（通过引用填充）
+     * @param externalEnabled   外部网关配置开关
+     * @param externalSupported 外部网关 SDK 是否支持
+     * @return 新创建的寄样申请 ID
+     * @throws BusinessException 达人不存在、商品状态异常、资质不足且无备注时
+     * @throws ForbiddenException 达人不在私海中
+     * @throws ValidateException  达人 ID 为空或达人信息不完整
+     */
     private UUID createSingleSample(
             Product product,
             QuickSampleApplyRequest request,
@@ -154,22 +274,30 @@ public class ProductQuickSampleService {
             QuickSampleApplyResponse.QuickSampleApplyItemResult item,
             boolean externalEnabled,
             boolean externalSupported) {
+        /* 解析达人外部信息 */
         CrawlerTalentInfo talentInfo = resolveSampleTalentInfo(talentExternalId);
+        /* 查找已有达人记录，不存在则自动创建 */
         Talent talent = findOrCreateTalent(talentInfo);
+        /* 校验达人是否在当前用户私海中（管理员跳过） */
         ensureChannelTalentClaim(userId, talent.getId(), roleCodes);
+        /* 七日去重校验（管理员和主管跳过） */
         checkSevenDaysLimit(userId, talent.getId(), product.getId(), roleCodes);
+        /* 达人资质评估：不满足标准时必须填写备注说明原因 */
         SampleEligibilityService.EligibilityResult eligibility = sampleEligibilityService.evaluate(talent, talentInfo);
         if (!eligibility.eligible() && !StringUtils.hasText(request.getRemark())) {
             throw BusinessException.stateInvalid("达人未满足默认寄样标准，请填写备注说明申请原因");
         }
 
         ProductSnapshot snapshot = productSnapshotMapper.selectById(product.getId());
+        /* 再次校验商品展示状态（确保并发安全） */
         resolveDisplayingState(product);
+        /* 默认设置为降级模式，外部网关成功后覆盖 */
         item.setExternalApplied(false);
         item.setFallback(true);
         item.setGatewayStatus(GATEWAY_STATUS_UNSUPPORTED);
         item.setFallbackType(FALLBACK_TYPE_LOCAL);
         item.setExternalApplyId(null);
+        /* 尝试调用外部抖店网关 */
         DouyinQuickSampleGateway.QuickSampleApplyResult externalResult = null;
         if (externalEnabled && externalSupported) {
             externalResult = douyinQuickSampleGateway.apply(new DouyinQuickSampleGateway.QuickSampleApplyCommand(
@@ -185,6 +313,7 @@ public class ProductQuickSampleService {
                     trimToNull(request.getRecipientAddress()),
                     request.getRemark(),
                     userId == null ? null : userId.toString()));
+            /* 外部网关调用成功，更新结果项 */
             if (externalResult != null && externalResult.success()) {
                 item.setExternalApplied(true);
                 item.setExternalApplyId(externalResult.externalApplyId());
@@ -192,9 +321,11 @@ public class ProductQuickSampleService {
             }
         }
 
+        /* 构建寄样申请实体 */
         SampleRequest sample = new SampleRequest();
         sample.setId(UUID.randomUUID());
         sample.setRequestNo(generateRequestNo());
+        /* 达人信息快照（冗余存储，方便查询） */
         sample.setTalentId(talent.getId());
         sample.setTalentUid(talentInfo.getTalentId());
         sample.setTalentNickname(talentInfo.getNickname());
@@ -204,6 +335,7 @@ public class ProductQuickSampleService {
         sample.setProductId(product.getId());
         sample.setUserId(userId);
         sample.setDeptId(deptId);
+        /* 渠道归属人（寄样由发起人所在渠道负责） */
         sample.setChannelUserId(userId);
         sample.setChannelDeptId(deptId);
         sample.setExpectedSampleNum(quantity);
@@ -211,14 +343,17 @@ public class ProductQuickSampleService {
         sample.setRecipientName(trimToNull(request.getRecipientName()));
         sample.setRecipientPhone(trimToNull(request.getRecipientPhone()));
         sample.setRecipientAddress(trimToNull(request.getRecipientAddress()));
+        /* 初始状态为待审核 */
         sample.setStatus(SAMPLE_STATUS_PENDING_AUDIT);
         sample.setRemark(buildRemark(request));
+        /* 根据外部申请结果设置申请来源和外部信息 */
         if (item.isExternalApplied() && externalResult != null) {
             sample.setApplySource(APPLY_SOURCE_DOUYIN_QUICK);
             sample.setExternalApplyId(externalResult.externalApplyId());
             sample.setExternalStatus(externalResult.externalStatus());
             sample.setExternalRawPayload(externalResult.rawPayload());
         } else {
+            /* 外部网关不可用，降级为本地寄样 */
             sample.setApplySource(APPLY_SOURCE_LOCAL_FALLBACK);
             item.setFallback(true);
             item.setExternalApplied(false);
@@ -226,9 +361,12 @@ public class ProductQuickSampleService {
             item.setFallbackType(FALLBACK_TYPE_LOCAL);
             item.setMessage(FALLBACK_MESSAGE);
         }
+        /* 存储扩展数据（资质评估结果、网关状态等） */
         sample.setExtraData(buildExtraData(request, eligibility, item.isExternalApplied()));
         sampleRequestMapper.insert(sample);
+        /* 记录初始状态日志 */
         sampleStatusLogService.log(sample.getId(), null, sample.getStatus(), userId, "quick sample from product library");
+        /* 发布寄样创建领域事件（异步通知其他子系统） */
         sampleDomainEventPublisher.publishSampleCreated(
                 sample,
                 product.getName(),
@@ -238,11 +376,23 @@ public class ProductQuickSampleService {
         return sample.getId();
     }
 
+    /**
+     * 解析并校验商品的展示中状态。
+     * <p>
+     * 通过商品快照查找对应的运营状态，校验 displayStatus 为 DISPLAYING。
+     * 仅展示中的商品才允许发起快速寄样。
+     * </p>
+     *
+     * @param product 商品实体
+     * @return 展示中的运营状态
+     * @throws BusinessException 商品快照不存在或商品非展示状态时
+     */
     private ProductOperationState resolveDisplayingState(Product product) {
         ProductSnapshot snapshot = productSnapshotMapper.selectById(product.getId());
         if (snapshot == null) {
             throw BusinessException.stateInvalid("商品快照不存在");
         }
+        /* 通过 activityId + productId 查询运营状态 */
         ProductOperationState state = productOperationStateMapper.selectOne(new LambdaQueryWrapper<ProductOperationState>()
                 .eq(ProductOperationState::getActivityId, snapshot.getActivityId())
                 .eq(ProductOperationState::getProductId, snapshot.getProductId())
@@ -253,10 +403,22 @@ public class ProductQuickSampleService {
         return state;
     }
 
+    /**
+     * 前置校验：商品必须处于展示中状态。
+     *
+     * @param product 商品实体
+     * @throws BusinessException 非展示状态时
+     */
     private void ensureDisplaying(Product product) {
         resolveDisplayingState(product);
     }
 
+    /**
+     * 角色权限校验：仅渠道员工、渠道主管和管理员可使用快速寄样。
+     *
+     * @param roleCodes 用户角色集合
+     * @throws ForbiddenException 不满足角色要求时
+     */
     private void ensureChannelRole(Object roleCodes) {
         if (!hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
                 && !hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
@@ -264,22 +426,52 @@ public class ProductQuickSampleService {
         }
     }
 
+    /**
+     * 校验达人是否在当前用户的私海中。
+     * <p>
+     * 管理员跳过此校验。普通用户必须先认领达人后才能申请寄样。
+     * </p>
+     *
+     * @param userId    操作用户 ID
+     * @param talentId  系统内达人 ID
+     * @param roleCodes 用户角色集合
+     * @throws ForbiddenException 达人不在私海中
+     * @throws ValidateException  达人或用户信息不完整
+     */
     private void ensureChannelTalentClaim(UUID userId, UUID talentId, Object roleCodes) {
+        /* 管理员跳过私海校验 */
         if (hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
             return;
         }
         if (userId == null || talentId == null) {
             throw new ValidateException("达人信息不完整");
         }
+        /* 查询该达人是否在当前用户名下 */
         if (talentClaimMapper.findActiveByTalentAndUser(talentId, userId) == null) {
             throw new ForbiddenException("该达人未在你的私海中，请先认领后再申请寄样");
         }
     }
 
+    /**
+     * 七日去重校验：同一用户对同一达人同一商品不允许在限制天数内重复申请。
+     * <p>
+     * 管理员和渠道主管跳过此校验。
+     * 已驳回的寄样申请（status=REJECTED）不计入去重。
+     * 限制天数通过 {@link BusinessRuleConfigService#getSampleRestrictDays()} 动态配置。
+     * </p>
+     *
+     * @param userId    操作用户 ID
+     * @param talentId  达人 ID
+     * @param productId 商品 ID
+     * @param roleCodes 用户角色集合
+     * @throws BusinessException 在限制期内已存在相同申请时
+     */
     private void checkSevenDaysLimit(UUID userId, UUID talentId, UUID productId, Object roleCodes) {
+        /* 管理员和主管不受去重限制 */
         if (hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER)) {
             return;
         }
+        /* 去重功能可通过配置关闭 */
         if (!businessRuleConfigService.isSampleRestrictEnabled()) {
             return;
         }
@@ -289,13 +481,21 @@ public class ProductQuickSampleService {
                 .eq(SampleRequest::getChannelUserId, userId)
                 .eq(SampleRequest::getTalentId, talentId)
                 .eq(SampleRequest::getProductId, productId)
-                .ne(SampleRequest::getStatus, SAMPLE_STATUS_REJECTED)
+                .ne(SampleRequest::getStatus, SAMPLE_STATUS_REJECTED) /* 已驳回的不计入去重 */
                 .ge(SampleRequest::getCreateTime, since));
         if (count != null && count > 0) {
             throw BusinessException.duplicate("Duplicate sample request is blocked within " + restrictDays + " days");
         }
     }
 
+    /**
+     * 解析达人外部信息。
+     *
+     * @param talentId 达人外部 ID（抖音 UID）
+     * @return 达人爬虫信息
+     * @throws ValidateException talentId 为空时
+     * @throws BusinessException 达人不存在时
+     */
     private CrawlerTalentInfo resolveSampleTalentInfo(String talentId) {
         if (!StringUtils.hasText(talentId)) {
             throw new ValidateException("talentId 不能为空");
@@ -307,27 +507,52 @@ public class ProductQuickSampleService {
         return info;
     }
 
+    /**
+     * 查找或创建系统内达人记录。
+     * <p>
+     * 先按 douyinUid 查询已有达人，不存在则自动创建一条初始记录。
+     * 新创建的达人状态默认为 1（正常）。
+     * </p>
+     *
+     * @param talentInfo 达人爬虫信息
+     * @return 系统内达人实体（新建或已有）
+     */
     private Talent findOrCreateTalent(CrawlerTalentInfo talentInfo) {
+        /* 先尝试查找已有的达人记录 */
         Talent existing = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
                 .eq(Talent::getDouyinUid, talentInfo.getTalentId())
                 .last("LIMIT 1"));
         if (existing != null) {
             return existing;
         }
+        /* 不存在则创建新达人 */
         Talent talent = new Talent();
         talent.setId(UUID.randomUUID());
         talent.setDouyinUid(talentInfo.getTalentId());
         talent.setNickname(talentInfo.getNickname());
-        talent.setStatus(1);
+        talent.setStatus(1); /* 正常状态 */
         talentMapper.insert(talent);
         return talent;
     }
 
+    /**
+     * 构建寄样申请的扩展数据（JSON 存储）。
+     * <p>
+     * 包含：资质评估结果（是否通过 + 原因列表）、申请来源、规格信息、
+     * 是否外部申请、申请渠道、网关状态、降级类型。
+     * </p>
+     *
+     * @param request        寄样申请请求
+     * @param eligibility    资质评估结果
+     * @param externalApplied 是否通过外部网关申请成功
+     * @return 扩展数据 Map
+     */
     private Map<String, Object> buildExtraData(
             QuickSampleApplyRequest request,
             SampleEligibilityService.EligibilityResult eligibility,
             boolean externalApplied) {
         Map<String, Object> extra = new LinkedHashMap<>();
+        /* 资质评估结果 */
         Map<String, Object> eligibilityCheck = new LinkedHashMap<>();
         eligibilityCheck.put("passed", eligibility.eligible());
         eligibilityCheck.put("reasons", eligibility.reasons());
@@ -341,6 +566,15 @@ public class ProductQuickSampleService {
         return extra;
     }
 
+    /**
+     * 拼接待审核备注。
+     * <p>
+     * 由规格说明和用户备注拼接，以分号分隔。两者都为空时返回 null。
+     * </p>
+     *
+     * @param request 寄样申请请求
+     * @return 拼接后的备注；为空时返回 null
+     */
     private String buildRemark(QuickSampleApplyRequest request) {
         StringBuilder remark = new StringBuilder();
         if (StringUtils.hasText(request.getSpecification())) {
@@ -355,6 +589,15 @@ public class ProductQuickSampleService {
         return remark.isEmpty() ? null : remark.toString();
     }
 
+    /**
+     * 解析商品的招商负责人 ID。
+     * <p>
+     * 通过商品快照找到对应的运营状态，取其 assigneeId（分配人）。
+     * </p>
+     *
+     * @param product 商品实体
+     * @return 招商负责人 ID；快照或状态不存在时返回 null
+     */
     private UUID resolveRecruiterId(Product product) {
         ProductSnapshot snapshot = productSnapshotMapper.selectById(product.getId());
         if (snapshot == null) {
@@ -368,10 +611,24 @@ public class ProductQuickSampleService {
         return state == null ? null : state.getAssigneeId();
     }
 
+    /**
+     * 生成寄样申请编号。
+     * <p>
+     * 格式：QS + 日期(yyyyMMdd) + UUID 前 8 位（大写），如 QS20260527A1B2C3D4。
+     * </p>
+     *
+     * @return 唯一的申请编号
+     */
     private String generateRequestNo() {
         return "QS" + LocalDateTime.now().format(REQUEST_NO_DATE) + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
     }
 
+    /**
+     * 去除空白后返回；空白字符串返回 null。
+     *
+     * @param value 原始字符串
+     * @return trim 后的字符串；空白时返回 null
+     */
     private String trimToNull(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -379,18 +636,36 @@ public class ProductQuickSampleService {
         return value.trim();
     }
 
+    /**
+     * 判断用户是否拥有指定角色中的任意一个。
+     * <p>
+     * 支持两种 roleCodes 格式：
+     * <ul>
+     *   <li>Collection 类型：直接遍历匹配</li>
+     *   <li>字符串类型：按逗号分割后匹配（支持 "[ROLE_A, ROLE_B]" 格式）</li>
+     * </ul>
+     * 匹配时忽略大小写和首尾空白。
+     * </p>
+     *
+     * @param roleCodes      用户角色（Collection 或字符串）
+     * @param expectedRoles  需要匹配的期望角色列表
+     * @return true 表示拥有任意一个期望角色
+     */
     private boolean hasAnyRole(Object roleCodes, String... expectedRoles) {
         if (roleCodes == null || expectedRoles == null || expectedRoles.length == 0) {
             return false;
         }
+        /* 将期望角色转为小写 Set */
         java.util.Set<String> expected = java.util.Arrays.stream(expectedRoles)
                 .map(role -> role == null ? "" : role.trim().toLowerCase(Locale.ROOT))
                 .collect(java.util.stream.Collectors.toSet());
+        /* Collection 类型直接流式匹配 */
         if (roleCodes instanceof Collection<?> collection) {
             return collection.stream()
                     .map(item -> item == null ? "" : item.toString().trim().toLowerCase(Locale.ROOT))
                     .anyMatch(expected::contains);
         }
+        /* 字符串类型：去除方括号后按逗号分割匹配 */
         String raw = roleCodes.toString();
         if (!StringUtils.hasText(raw)) {
             return false;
@@ -403,6 +678,16 @@ public class ProductQuickSampleService {
         return false;
     }
 
+    /**
+     * 解析异常消息，返回用户友好的错误提示。
+     * <p>
+     * 优先使用业务异常（BusinessException/ForbiddenException/ValidateException）的消息，
+     * 兜底返回原始异常消息或默认 "申请失败"。
+     * </p>
+     *
+     * @param ex 异常对象
+     * @return 错误提示消息
+     */
     private String resolveErrorMessage(Exception ex) {
         if (ex instanceof BusinessException businessException) {
             return businessException.getMessage();

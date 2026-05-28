@@ -23,14 +23,33 @@ import java.util.stream.Collectors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 精选联盟商品转链映射管理服务。
+ * <p>
+ * 维护 {@link PickSourceMapping} 记录，支持两种来源类型：
+ * <ul>
+ *   <li>{@link #SOURCE_TYPE_PICK_SOURCE} — 标准精选联盟转链（pickSource 唯一标识）</li>
+ *   <li>{@link #SOURCE_TYPE_NATIVE} — 原生订单映射（以 colonelBuyinId + productId + activityId 为复合键）</li>
+ * </ul>
+ * 写入采用 upsert 策略：先按多级优先级查找已有记录，命中则更新；未命中则插入。
+ * 插入和更新阶段均处理 {@link DuplicateKeyException} 并发冲突，确保高并发场景下的数据一致性。
+ * </p>
+ */
 @Slf4j
 @Service
 public class PickSourceMappingService {
+    /** 短 ID 正则，匹配 8-10 位大写字母数字组合 */
     private static final Pattern SHORT_ID_PATTERN = Pattern.compile("([0-9A-Z]{8,10})");
+
+    /** 来源类型：精选联盟转链 */
     public static final String SOURCE_TYPE_PICK_SOURCE = "PICK_SOURCE";
+
+    /** 来源类型：原生订单（无 pickSource，以 colonelBuyinId 标识） */
     public static final String SOURCE_TYPE_NATIVE = "NATIVE";
 
     private final PickSourceMappingMapper pickSourceMappingMapper;
+
+    /** 映射记录有效期（月），通过 {@code pick.source.valid-months} 配置，默认 3 */
     private final int validMonths;
 
     public PickSourceMappingService(
@@ -40,6 +59,23 @@ public class PickSourceMappingService {
         this.validMonths = validMonths;
     }
 
+    /**
+     * 保存或更新转链映射（最简参数，scene 默认为 null）。
+     *
+     * @param userId          操作用户 ID
+     * @param channelUserName 渠道用户名称
+     * @param deptId          部门 ID
+     * @param talentId        达人 ID
+     * @param talentName      达人名称
+     * @param shortId         短 ID（8-10 位字母数字）
+     * @param uuidSeed        UUID 种子，用于生成确定性 UUID
+     * @param pickSource      精选联盟转链标识
+     * @param productId       商品 ID
+     * @param activityId      活动 ID
+     * @param sourceUrl       原始链接
+     * @param convertedUrl    转链后链接
+     * @param promotionLinkId 推广链接 ID（可为 null）
+     */
     @Transactional(rollbackFor = Exception.class)
     public void saveOrUpdate(
             UUID userId,
@@ -73,6 +109,11 @@ public class PickSourceMappingService {
         );
     }
 
+    /**
+     * 保存或更新转链映射（带场景参数，pickExtra 默认为 shortId）。
+     *
+     * @param scene 场景标识，如直播、短视频等（可为 null）
+     */
     @Transactional(rollbackFor = Exception.class)
     public void saveOrUpdate(
             UUID userId,
@@ -110,6 +151,11 @@ public class PickSourceMappingService {
         );
     }
 
+    /**
+     * 保存或更新转链映射（带 pickExtra，来源类型默认为 PICK_SOURCE）。
+     *
+     * @param pickExtra 附加的转链扩展信息（可为 null）
+     */
     @Transactional(rollbackFor = Exception.class)
     public void saveOrUpdate(
             UUID userId,
@@ -148,6 +194,13 @@ public class PickSourceMappingService {
         );
     }
 
+    /**
+     * 保存或更新转链映射（带 colonelBuyinId，自动推断来源类型）。
+     * <p>
+     * 当 colonelBuyinId 非空时来源类型为 NATIVE，否则为 PICK_SOURCE。
+     *
+     * @param colonelBuyinId 团长买入 ID（可为 null），存在时标识 NATIVE 来源类型
+     */
     @Transactional(rollbackFor = Exception.class)
     public void saveOrUpdate(
             UUID userId,
@@ -187,6 +240,20 @@ public class PickSourceMappingService {
         );
     }
 
+    /**
+     * 保存或更新转链映射（全参数版本，其他重载最终委托到此方法）。
+     * <p>
+     * 执行流程：
+     * <ol>
+     *   <li>解析来源类型（sourceType 优先，否则根据 colonelBuyinId 推断）</li>
+     *   <li>按多级优先级查找已有映射：promotionLinkId → NATIVE 复合键 → 通用复合键 → pickSource 唯一</li>
+     *   <li>未找到则插入新记录；插入遇到 {@link DuplicateKeyException} 时重试查找并降级为更新</li>
+     *   <li>找到已有记录则构建更新实体（NATIVE 身份保护逻辑见 {@link #shouldPreserveNativeIdentity}）</li>
+     *   <li>更新遇到 {@link DuplicateKeyException} 时尝试 NATIVE 冲突恢复（见 {@link #recoverNativeConflict}）</li>
+     * </ol>
+     *
+     * @param sourceType 来源类型，{@code null} 时根据 colonelBuyinId 自动推断
+     */
     @Transactional(rollbackFor = Exception.class)
     public void saveOrUpdate(
             UUID userId,
@@ -310,6 +377,19 @@ public class PickSourceMappingService {
         }
     }
 
+    /**
+     * 按多级优先级查找已有的转链映射记录。
+     * <p>
+     * 查找策略（命中即返回）：
+     * <ol>
+     *   <li>promotionLinkId 精确匹配（最高优先级）</li>
+     *   <li>NATIVE 来源：colonelBuyinId + productId + activityId + userId + sourceType=NATIVE 复合匹配</li>
+     *   <li>通用复合键：userId + pickSource + productId + activityId 匹配</li>
+     *   <li>仅 pickSource 匹配（仅当 productId 和 activityId 均为空时）</li>
+     * </ol>
+     *
+     * @return 找到的映射记录，未找到返回 {@code null}
+     */
     private PickSourceMapping findExistingMapping(
             UUID userId,
             String pickSource,
@@ -361,6 +441,17 @@ public class PickSourceMappingService {
         return null;
     }
 
+    /**
+     * 基于已有记录构建更新实体。
+     * <p>
+     * 当 {@link #shouldPreserveNativeIdentity} 判定需要保留 NATIVE 身份时，
+     * 短 ID、uuidSeed、userId、colonelBuyinId、productId、activityId、sourceType 等身份字段不会被覆盖，
+     * 仅更新渠道、达人、链接等附属信息和有效期。
+     *
+     * @param existing           已有的映射记录
+     * @param resolvedSourceType 已解析的来源类型
+     * @return 可直接用于 {@code updateById} 的更新实体
+     */
     private PickSourceMapping buildUpdateEntity(
             PickSourceMapping existing,
             UUID userId,
@@ -414,6 +505,11 @@ public class PickSourceMappingService {
         return update;
     }
 
+    /**
+     * 将已有记录和更新片段合并为完整实体，用于日志记录和 {@link #logNativeAmbiguousIfNeeded} 检查。
+     * <p>
+     * 更新字段非 null 时取更新值，否则保留已有记录的值。
+     */
     private PickSourceMapping materializeForLogging(PickSourceMapping existing, PickSourceMapping update) {
         PickSourceMapping materialized = new PickSourceMapping();
         materialized.setId(existing.getId());
@@ -441,6 +537,18 @@ public class PickSourceMappingService {
         return materialized;
     }
 
+    /**
+     * NATIVE 来源类型更新阶段的 {@link DuplicateKeyException} 恢复处理。
+     * <p>
+     * 当更新 NATIVE 映射触发唯一键冲突时，尝试按复合键（colonelBuyinId + productId + activityId）重新查找记录：
+     * <ul>
+     *   <li>若找到的记录属于当前 userId：正常更新</li>
+     *   <li>若找到的记录属于其他 userId（身份冲突）：仅续期，不覆盖身份字段，
+     *       并记录 {@code Native mapping identity conflict recovered} 警告日志</li>
+     * </ul>
+     *
+     * @return 恢复后的合并实体（用于日志），恢复失败返回 {@code null}（调用方应重新抛出原始异常）
+     */
     private PickSourceMapping recoverNativeConflict(
             DuplicateKeyException ex,
             UUID userId,
@@ -518,10 +626,14 @@ public class PickSourceMappingService {
         return materializeForLogging(nativeExisting, patch);
     }
 
+    /** 更新映射记录并要求至少一行受影响（乐观锁），否则抛出异常。 */
     private void persistPickSourceMapping(PickSourceMapping mapping) {
         OptimisticLockSupport.requireUpdated(pickSourceMappingMapper.updateById(mapping));
     }
 
+    /**
+     * 构建 NATIVE 身份冲突时的最小补丁：仅续期和重置状态，不覆盖身份字段。
+     */
     private PickSourceMapping buildNativeIdentityConflictPatch(PickSourceMapping existing) {
         PickSourceMapping patch = new PickSourceMapping();
         patch.setId(existing.getId());
@@ -530,6 +642,12 @@ public class PickSourceMappingService {
         return patch;
     }
 
+    /**
+     * 判断更新时是否应保留已有 NATIVE 映射的身份字段。
+     * <p>
+     * 当已有记录和新数据均为 NATIVE 来源、且 userId/colonelBuyinId/productId/activityId 完全一致时，
+     * 返回 {@code true}，阻止身份字段被覆盖（防止并发更新导致身份漂移）。
+     */
     private boolean shouldPreserveNativeIdentity(
             PickSourceMapping existing,
             UUID userId,
@@ -550,6 +668,9 @@ public class PickSourceMappingService {
                 && activityId.equals(existing.getActivityId());
     }
 
+    /**
+     * 解析来源类型：显式指定则大写标准化，否则根据 colonelBuyinId 是否存在推断。
+     */
     private String resolveSourceType(String sourceType, String colonelBuyinId) {
         if (StringUtils.hasText(sourceType)) {
             return sourceType.trim().toUpperCase();
@@ -557,6 +678,10 @@ public class PickSourceMappingService {
         return StringUtils.hasText(colonelBuyinId) ? SOURCE_TYPE_NATIVE : SOURCE_TYPE_PICK_SOURCE;
     }
 
+    /**
+     * 检查 NATIVE 映射是否存在歧义（同一 colonelBuyinId + productId + activityId 对应多个不同 userId）。
+     * 存在歧义时输出警告日志，便于运营排查数据归属问题。
+     */
     private void logNativeAmbiguousIfNeeded(PickSourceMapping mapping) {
         if (mapping == null
                 || !SOURCE_TYPE_NATIVE.equals(mapping.getSourceType())
@@ -588,6 +713,16 @@ public class PickSourceMappingService {
         }
     }
 
+    /**
+     * 从已归因订单出发，确保对应转链映射记录存在。
+     * <p>
+     * 仅处理归因状态为 {@code ATTRIBUTED} 且 userId 非空的订单。
+     * 根据订单是否携带 pickSource 分派到不同的映射创建逻辑：
+     * <ul>
+     *   <li>有 pickSource → {@link #ensurePickSourceMappingFromOrder}</li>
+     *   <li>无 pickSource 但有 colonelBuyinId + productId + activityId → {@link #ensureNativeMappingFromOrder}</li>
+     * </ul>
+     */
     @Transactional(rollbackFor = Exception.class)
     public void ensureFromOrder(ColonelsettlementOrder order) {
         if (order == null
@@ -607,6 +742,12 @@ public class PickSourceMappingService {
         }
     }
 
+    /**
+     * 从订单的 pickSource 创建映射记录（PICK_SOURCE 类型）。
+     * <p>
+     * 若 pickSource 或从中提取的 shortId 已存在对应映射则跳过；
+     * 插入遇到 {@link DuplicateKeyException} 时静默忽略（并发创建场景安全）。
+     */
     private void ensurePickSourceMappingFromOrder(ColonelsettlementOrder order) {
         PickSourceMapping existingByPickSource = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
                 .eq(PickSourceMapping::getPickSource, order.getPickSource())
@@ -645,6 +786,13 @@ public class PickSourceMappingService {
         }
     }
 
+    /**
+     * 从订单创建原生映射记录（NATIVE 类型，无 pickSource）。
+     * <p>
+     * 使用 colonelBuyinId + productId + activityId + userId 生成确定性 UUID 种子和短 ID，
+     * 合成 {@code colonel_native_{shortId}} 形式的 pickSource。
+     * 存在映射时跳过；插入遇到 {@link DuplicateKeyException} 时静默忽略。
+     */
     private void ensureNativeMappingFromOrder(ColonelsettlementOrder order) {
         String colonelBuyinId = String.valueOf(order.getColonelBuyinId());
         String productId = order.getProductId().trim();
@@ -696,6 +844,7 @@ public class PickSourceMappingService {
         }
     }
 
+    /** 标准化 pickExtra：非空时 trim，空则返回 null。 */
     private String resolvePickExtra(String pickExtra) {
         if (StringUtils.hasText(pickExtra)) {
             return pickExtra.trim();
@@ -703,6 +852,7 @@ public class PickSourceMappingService {
         return null;
     }
 
+    /** 标准化 colonelBuyinId：非空时 trim，空则返回 null。 */
     private String resolveColonelBuyinId(String colonelBuyinId) {
         if (StringUtils.hasText(colonelBuyinId)) {
             return colonelBuyinId.trim();
@@ -710,6 +860,7 @@ public class PickSourceMappingService {
         return null;
     }
 
+    /** 从订单的 extraData map 中提取 pick_extra 字段，不存在或空白时返回 null。 */
     private String resolveOrderPickExtra(ColonelsettlementOrder order) {
         if (order != null && order.getExtraData() != null) {
             Object pickExtra = order.getExtraData().get("pick_extra");
@@ -720,6 +871,12 @@ public class PickSourceMappingService {
         return null;
     }
 
+    /**
+     * 查询指定 colonelBuyinId 下所有有效映射关联的 productId 集合。
+     *
+     * @param colonelBuyinId 机构买手 ID，空白时返回空集合
+     * @return 关联的 productId 集合（去重、保序），无匹配时返回空集合
+     */
     public Set<String> listProductIdsByColonelBuyinId(String colonelBuyinId) {
         String resolved = resolveColonelBuyinId(colonelBuyinId);
         if (!StringUtils.hasText(resolved)) {
@@ -736,6 +893,15 @@ public class PickSourceMappingService {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
+    /**
+     * 从 pickSource 字符串中提取短 ID（8–10 位字母数字）。
+     * <p>
+     * 若整个 pickSource 本身即为 10 位以内的合法短 ID 则直接返回；
+     * 否则使用 {@link #SHORT_ID_PATTERN} 正则提取首个匹配子串。
+     *
+     * @param pickSource 原始 pickSource 值
+     * @return 提取到的短 ID（大写），无法提取时返回 null
+     */
     private String extractShortId(String pickSource) {
         if (!StringUtils.hasText(pickSource)) {
             return null;

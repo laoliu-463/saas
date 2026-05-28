@@ -1114,11 +1114,19 @@ class DataControllerTest {
 
     @Test
     void sensitiveDataEndpoints_shouldRequireAdminOrLeaderRoles() throws Exception {
-        Method exportOrders = DataController.class.getMethod(
+        Method exportOrders = DataController.class.getDeclaredMethod(
                 "exportOrders",
                 String.class,
                 String.class,
                 UUID.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
                 String.class,
                 LocalDate.class,
                 LocalDate.class,
@@ -1128,7 +1136,7 @@ class DataControllerTest {
                 DataScope.class,
                 jakarta.servlet.http.HttpServletResponse.class
         );
-        Method getExclusiveTalentStatus = DataController.class.getMethod(
+        Method getExclusiveTalentStatus = DataController.class.getDeclaredMethod(
                 "getExclusiveTalentStatus",
                 long.class,
                 long.class,
@@ -1139,7 +1147,7 @@ class DataControllerTest {
                 UUID.class,
                 DataScope.class
         );
-        Method getExclusiveMerchantStatus = DataController.class.getMethod(
+        Method getExclusiveMerchantStatus = DataController.class.getDeclaredMethod(
                 "getExclusiveMerchantStatus",
                 long.class,
                 long.class,
@@ -1150,7 +1158,7 @@ class DataControllerTest {
                 UUID.class,
                 DataScope.class
         );
-        Method exportActivities = DataController.class.getMethod(
+        Method exportActivities = DataController.class.getDeclaredMethod(
                 "exportActivities",
                 String.class,
                 UUID.class,

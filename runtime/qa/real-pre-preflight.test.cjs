@@ -27,7 +27,7 @@ test('runRealPrePreflight passes with real-pre env, token, schema, mapping, and 
         code: 200,
         data: {
           environmentLabel: 'REAL-PRE',
-          activeProfiles: ['real'],
+          activeProfiles: ['real-pre'],
           appTestEnabled: false,
           douyinTestEnabled: false,
           database: 'saas_real_pre'
@@ -78,7 +78,7 @@ test('runRealPrePreflight returns BLOCKED when refresh token is missing', async 
         code: 200,
         data: {
           environmentLabel: 'REAL-PRE',
-          activeProfiles: ['real'],
+          activeProfiles: ['real-pre'],
           appTestEnabled: false,
           douyinTestEnabled: false,
           database: 'saas_real_pre'
@@ -115,6 +115,10 @@ test('runRealPrePreflight returns BLOCKED when refresh token is missing', async 
   assert.equal(report.status, 'BLOCKED');
   assert.equal(report.canRunBusinessFlows, false);
   assert.equal(report.checks.find((check) => check.name === 'douyin token readiness').status, 'BLOCKED_AUTH');
+  assert.match(
+    report.checks.find((check) => check.name === 'douyin token readiness').error,
+    /hasAccessToken=true, hasRefreshToken=false, reauthorizeRequired=true/
+  );
 });
 
 function createFetchStub(routes) {

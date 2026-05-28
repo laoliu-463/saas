@@ -5,7 +5,7 @@ const DEFAULT_REAL_PRE_FRONTEND_URL = 'http://localhost:3001';
 const DEFAULT_REAL_PRE_BACKEND_URL = 'http://localhost:8081';
 const DEFAULT_REAL_PRE_API_BASE_URL = `${DEFAULT_REAL_PRE_BACKEND_URL}/api`;
 const DEFAULT_REAL_PRE_DB_NAME = 'saas_real_pre';
-const DEFAULT_REAL_PRE_DB_CONTAINER = 'saas-active-postgres-real-pre-1';
+const DEFAULT_REAL_PRE_DB_CONTAINER = 'saas-postgres-real-pre-1';
 const DEFAULT_REAL_PRE_DB_USER = 'saas';
 
 function stripTrailingSlash(value) {
@@ -91,7 +91,7 @@ function isRealPreRuntime(env) {
   const profiles = Array.isArray(env?.activeProfiles) ? env.activeProfiles : [];
   return (
     env?.environmentLabel === 'REAL-PRE' &&
-    (profiles.includes('real-pre') || profiles.includes('real')) &&
+    profiles.includes('real-pre') &&
     env?.appTestEnabled === false &&
     env?.douyinTestEnabled === false &&
     env?.database === DEFAULT_REAL_PRE_DB_NAME

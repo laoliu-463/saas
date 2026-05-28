@@ -4,6 +4,7 @@
     [string]$DbUser = "saas",
     [string]$DbPassword = "saas123",
     [string]$DbName = "colonel_saas_test",
+    [string]$AdminPassword = "test-admin123",
     [switch]$Recreate
 )
 
@@ -18,6 +19,7 @@ if (!(Test-Path $psql)) {
 }
 
 $env:PGPASSWORD = $DbPassword
+$env:ADMIN_PASSWORD = $AdminPassword
 
 if ($Recreate) {
     & $dropdb -h $DbHost -p $DbPort -U $DbUser --if-exists $DbName | Out-Null

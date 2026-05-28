@@ -8,7 +8,7 @@ const execFileAsync = promisify(execFile);
 
 const SCRIPT_NAME = 'dashboard-reconcile';
 const OUT_ROOT = path.join(__dirname, 'out');
-const API_BASE_URL = normalizeBaseUrl(process.env.API_BASE_URL || 'http://localhost:8080');
+const API_BASE_URL = normalizeBaseUrl(process.env.API_BASE_URL || 'http://127.0.0.1:8080');
 const REQUEST_TIMEOUT_MS = Number(process.env.QA_REQUEST_TIMEOUT_MS || 20000);
 const DB_CONTAINER = selectDbContainer();
 const DB_USER = process.env.DB_USER || 'saas';
@@ -44,8 +44,8 @@ function detectComposeServiceContainer(project, service) {
   }
 }
 
-function selectDbContainer(env = process.env, detectedContainer = detectComposeServiceContainer(env.QA_COMPOSE_PROJECT || 'saas-active', 'postgres')) {
-  return env.QA_DB_CONTAINER || detectedContainer || 'saas-active-postgres-1';
+function selectDbContainer(env = process.env, detectedContainer = detectComposeServiceContainer(env.QA_COMPOSE_PROJECT || 'saas-test', 'postgres')) {
+  return env.QA_DB_CONTAINER || detectedContainer || 'saas-test-postgres-1';
 }
 
 function ensureDir(dir) {
@@ -225,9 +225,9 @@ async function ensureTestEnvironment(ctx) {
   if (!envResult.ok) throw new Error(`/api/system/env failed with HTTP ${envResult.status}`);
   ctx.environment = normalizeEnv(envResult.body);
   if (!ctx.environment.isTest) throw new Error(`Refusing to run outside TEST/mock environment: ${JSON.stringify(ctx.environment)}`);
-  const health = await apiRequest('GET', '/actuator/health');
+  const health = await apiRequest('GET', '/system/health');
   ctx.health = health.body;
-  if (!health.ok || health.body?.status !== 'UP') throw new Error('/api/actuator/health is not UP');
+  if (!health.ok || health.body?.status !== 'UP') throw new Error('/api/system/health is not UP');
 }
 
 async function loginAdmin() {
@@ -248,10 +248,12 @@ async function seed(token) {
 async function fetchAllOrders(token) {
   const all = [];
   let page = 1;
-  const size = 500;
+  const size = 200;
   while (page <= 20) {
     const result = await apiRequest('GET', `/orders?page=${page}&size=${size}&timeField=createTime`, { token });
-    if (!result.ok) throw new Error(`/api/orders failed: HTTP ${result.status}`);
+    if (!result.ok || Number(result.body?.code) >= 400) {
+      throw new Error(`/api/orders failed: HTTP ${result.status}, code=${result.body?.code ?? '-'}`);
+    }
     const records = extractRecords(result.body);
     all.push(...records);
     const total = Number(unwrapApiBody(result.body)?.total || 0);
@@ -259,6 +261,13 @@ async function fetchAllOrders(token) {
     page += 1;
   }
   return all;
+}
+
+function selectMetricTrack(metrics, track) {
+  if (metrics && typeof metrics === 'object' && metrics[track] && typeof metrics[track] === 'object') {
+    return metrics[track];
+  }
+  return metrics || {};
 }
 
 function reasonCount(summary, reasons) {
@@ -292,7 +301,7 @@ async function runPsql(sql) {
 }
 
 async function collectDbAggregates() {
-  const allRows = await runPsql(`
+  const orderFactRows = await runPsql(`
     SELECT
       COUNT(*) AS order_count,
       COALESCE(SUM(order_amount), 0) AS gmv_cent,
@@ -304,43 +313,73 @@ async function collectDbAggregates() {
     FROM colonelsettlement_order
     WHERE deleted = 0;
   `);
-  const todayRows = await runPsql(`
+  const summaryRows = await runPsql(`
     SELECT
       COUNT(*) AS order_count,
-      COALESCE(SUM(order_amount), 0) AS gmv_cent,
-      COALESCE(SUM(settle_colonel_commission), 0) AS service_fee_cent
-    FROM colonelsettlement_order
-    WHERE deleted = 0
-      AND create_time >= CURRENT_DATE
-      AND create_time < CURRENT_DATE + INTERVAL '1 day';
+      COALESCE(SUM(pr.settle_amount), 0) AS gmv_cent,
+      COALESCE(SUM(pr.effective_service_fee), 0) AS service_fee_cent
+    FROM performance_records pr
+    JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
+    WHERE pr.is_valid = TRUE;
+  `);
+  const todayEstimateRows = await runPsql(`
+    SELECT
+      COUNT(*) AS order_count,
+      COALESCE(SUM(pr.pay_amount), 0) AS gmv_cent,
+      COALESCE(SUM(pr.estimate_service_fee), 0) AS service_fee_cent
+    FROM performance_records pr
+    JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
+    WHERE pr.is_valid = TRUE
+      AND co.create_time >= CURRENT_DATE
+      AND co.create_time < CURRENT_DATE + INTERVAL '1 day';
+  `);
+  const todaySettleRows = await runPsql(`
+    SELECT
+      COUNT(*) AS order_count,
+      COALESCE(SUM(pr.settle_amount), 0) AS gmv_cent,
+      COALESCE(SUM(pr.effective_service_fee), 0) AS service_fee_cent
+    FROM performance_records pr
+    JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
+    WHERE pr.is_valid = TRUE
+      AND co.settle_time IS NOT NULL
+      AND co.settle_time >= CURRENT_DATE
+      AND co.settle_time < CURRENT_DATE + INTERVAL '1 day';
   `);
   const bizRows = await runPsql(`
     SELECT
-      COALESCE(colonel_user_name, '(未归属)') AS name,
+      COALESCE(MAX(co.colonel_user_name), '(未归属)') AS name,
       COUNT(*) AS order_count,
-      COALESCE(SUM(order_amount), 0) AS gmv_cent,
-      COALESCE(SUM(settle_colonel_commission), 0) AS service_fee_cent
-    FROM colonelsettlement_order
-    WHERE deleted = 0 AND attribution_status = 'ATTRIBUTED' AND colonel_user_id IS NOT NULL
-    GROUP BY COALESCE(colonel_user_name, '(未归属)')
-    ORDER BY COUNT(*) DESC, COALESCE(SUM(order_amount), 0) DESC
+      COALESCE(SUM(pr.settle_amount), 0) AS gmv_cent,
+      COALESCE(SUM(pr.effective_service_fee), 0) AS service_fee_cent
+    FROM performance_records pr
+    JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
+    WHERE pr.is_valid = TRUE
+      AND co.attribution_status = 'ATTRIBUTED'
+      AND pr.final_recruiter_user_id IS NOT NULL
+    GROUP BY pr.final_recruiter_user_id
+    ORDER BY COUNT(*) DESC, COALESCE(SUM(pr.settle_amount), 0) DESC
     LIMIT 10;
   `);
   const channelRows = await runPsql(`
     SELECT
-      COALESCE(channel_user_name, '(未归属)') AS name,
+      COALESCE(MAX(co.channel_user_name), '(未归属)') AS name,
       COUNT(*) AS order_count,
-      COALESCE(SUM(order_amount), 0) AS gmv_cent,
-      COALESCE(SUM(settle_colonel_commission), 0) AS service_fee_cent
-    FROM colonelsettlement_order
-    WHERE deleted = 0 AND attribution_status = 'ATTRIBUTED' AND channel_user_id IS NOT NULL
-    GROUP BY COALESCE(channel_user_name, '(未归属)')
-    ORDER BY COUNT(*) DESC, COALESCE(SUM(order_amount), 0) DESC
+      COALESCE(SUM(pr.settle_amount), 0) AS gmv_cent,
+      COALESCE(SUM(pr.effective_service_fee), 0) AS service_fee_cent
+    FROM performance_records pr
+    JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
+    WHERE pr.is_valid = TRUE
+      AND co.attribution_status = 'ATTRIBUTED'
+      AND pr.final_channel_user_id IS NOT NULL
+    GROUP BY pr.final_channel_user_id
+    ORDER BY COUNT(*) DESC, COALESCE(SUM(pr.settle_amount), 0) DESC
     LIMIT 10;
   `);
   return {
-    all: allRows[0] || {},
-    today: todayRows[0] || {},
+    orderFacts: orderFactRows[0] || {},
+    summary: summaryRows[0] || {},
+    todayEstimate: todayEstimateRows[0] || {},
+    todaySettle: todaySettleRows[0] || {},
     byBiz: Object.fromEntries(bizRows.map((row) => [row.name, row])),
     byChannel: Object.fromEntries(channelRows.map((row) => [row.name, row]))
   };
@@ -460,30 +499,37 @@ async function main() {
     detailAggregate = aggregateOrders(orders);
     const db = await collectDbAggregates();
     dbAggregate = {
-      all: rowsToYuanAggregate(db.all),
-      today: rowsToYuanAggregate(db.today),
+      orderFacts: rowsToYuanAggregate(db.orderFacts),
+      summary: rowsToYuanAggregate(db.summary),
+      todayEstimate: rowsToYuanAggregate(db.todayEstimate),
+      todaySettle: rowsToYuanAggregate(db.todaySettle),
       byBiz: db.byBiz,
       byChannel: db.byChannel
     };
+    const estimateMetrics = selectMetricTrack(api.metrics, 'estimate');
+    const settleMetrics = selectMetricTrack(api.metrics, 'settle');
 
     metricResults = [
-      compareMetric('todayOrderCount', api.metrics.todayOrderCount, dbAggregate.today.orderCount),
-      compareMetric('todayGmv', api.metrics.todayGmv, dbAggregate.today.gmv, 0.01),
-      compareMetric('todayServiceFee', api.metrics.serviceFeeIncome, dbAggregate.today.serviceFee, 0.01),
-      compareMetric('summaryOrderCount', api.summary.orderCount, dbAggregate.all.orderCount),
-      compareMetric('summaryGmv', centToYuan(api.summary.orderAmount), dbAggregate.all.gmv, 0.01),
-      compareMetric('summaryServiceFee', centToYuan(api.summary.serviceFee), dbAggregate.all.serviceFee, 0.01),
-      compareMetric('attributed', api.summary.attributedOrderCount, dbAggregate.all.attributed),
-      compareMetric('unattributed', api.summary.unattributedOrderCount, dbAggregate.all.unattributed),
-      compareMetric('productUncovered', reasonCount(api.summary, ['PRODUCT_NOT_FOUND', 'UPSTREAM_PRODUCT_UNCOVERED', 'PRODUCT_UNCOVERED']), dbAggregate.all.productUncovered),
-      compareMetric('refundClosed', reasonCount(api.summary, 'REFUNDED_OR_CLOSED'), dbAggregate.all.refundClosed),
-      compareMetric('detailOrderCount', detailAggregate.orderCount, dbAggregate.all.orderCount),
-      compareMetric('detailGmv', detailAggregate.gmv, dbAggregate.all.gmv, 0.01),
-      compareMetric('detailServiceFee', detailAggregate.serviceFee, dbAggregate.all.serviceFee, 0.01),
-      compareMetric('detailAttributed', detailAggregate.attributed, dbAggregate.all.attributed),
-      compareMetric('detailUnattributed', detailAggregate.unattributed, dbAggregate.all.unattributed),
-      compareMetric('detailProductUncovered', detailAggregate.productUncovered, dbAggregate.all.productUncovered),
-      compareMetric('detailRefundClosed', detailAggregate.refundClosed, dbAggregate.all.refundClosed),
+      compareMetric('estimateTodayOrderCount', estimateMetrics.todayOrderCount, dbAggregate.todayEstimate.orderCount),
+      compareMetric('estimateTodayGmv', estimateMetrics.todayGmv, dbAggregate.todayEstimate.gmv, 0.01),
+      compareMetric('estimateTodayServiceFee', estimateMetrics.serviceFeeIncome, dbAggregate.todayEstimate.serviceFee, 0.01),
+      compareMetric('settleTodayOrderCount', settleMetrics.todayOrderCount, dbAggregate.todaySettle.orderCount),
+      compareMetric('settleTodayGmv', settleMetrics.todayGmv, dbAggregate.todaySettle.gmv, 0.01),
+      compareMetric('settleTodayServiceFee', settleMetrics.serviceFeeIncome, dbAggregate.todaySettle.serviceFee, 0.01),
+      compareMetric('summaryOrderCount', api.summary.orderCount, dbAggregate.summary.orderCount),
+      compareMetric('summaryGmv', centToYuan(api.summary.orderAmount), dbAggregate.summary.gmv, 0.01),
+      compareMetric('summaryServiceFee', centToYuan(api.summary.serviceFee), dbAggregate.summary.serviceFee, 0.01),
+      compareMetric('attributed', api.summary.attributedOrderCount, dbAggregate.orderFacts.attributed),
+      compareMetric('unattributed', api.summary.unattributedOrderCount, dbAggregate.orderFacts.unattributed),
+      compareMetric('productUncovered', reasonCount(api.summary, ['PRODUCT_NOT_FOUND', 'UPSTREAM_PRODUCT_UNCOVERED', 'PRODUCT_UNCOVERED']), dbAggregate.orderFacts.productUncovered),
+      compareMetric('refundClosed', reasonCount(api.summary, 'REFUNDED_OR_CLOSED'), dbAggregate.orderFacts.refundClosed),
+      compareMetric('detailOrderCount', detailAggregate.orderCount, dbAggregate.orderFacts.orderCount),
+      compareMetric('detailGmv', detailAggregate.gmv, dbAggregate.orderFacts.gmv, 0.01),
+      compareMetric('detailServiceFee', detailAggregate.serviceFee, dbAggregate.orderFacts.serviceFee, 0.01),
+      compareMetric('detailAttributed', detailAggregate.attributed, dbAggregate.orderFacts.attributed),
+      compareMetric('detailUnattributed', detailAggregate.unattributed, dbAggregate.orderFacts.unattributed),
+      compareMetric('detailProductUncovered', detailAggregate.productUncovered, dbAggregate.orderFacts.productUncovered),
+      compareMetric('detailRefundClosed', detailAggregate.refundClosed, dbAggregate.orderFacts.refundClosed),
       ...comparePerformance('biz', api.summary.colonelPerformance || [], dbAggregate.byBiz, 'colonelUserName'),
       ...comparePerformance('channel', api.summary.channelPerformance || [], dbAggregate.byChannel, 'channelUserName')
     ];
@@ -527,5 +573,6 @@ module.exports = {
   compareMetric,
   parsePsqlTsv,
   buildReconcileSummary,
+  selectMetricTrack,
   selectDbContainer
 };

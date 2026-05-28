@@ -11,9 +11,28 @@ import org.apache.ibatis.annotations.Select;
 
 import java.math.BigDecimal;
 
+/**
+ * 爬虫达人信息数据访问层
+ * <p>
+ * 对应数据库表：crawler_talent_info
+ * 所属业务领域：达人域 - 达人数据采集
+ * 主要操作：爬虫采集的达人信息的 UPSERT 和多条件搜索，支持关键词、地域、粉丝数、信用分筛选
+ * </p>
+ *
+ * @see com.colonel.saas.entity.CrawlerTalentInfo
+ */
 @Mapper
 public interface CrawlerTalentInfoMapper extends BaseMapper<CrawlerTalentInfo> {
 
+    /**
+     * 插入或更新爬虫达人信息（UPSERT）
+     * <p>
+     * 基于 talent_id 做冲突更新，当达人已存在时覆盖所有字段并刷新 updated_at。
+     * 使用 PostgreSQL 的 ON CONFLICT DO UPDATE 语法。
+     * </p>
+     *
+     * @param info 爬虫达人信息实体
+     */
     @Insert("""
         INSERT INTO crawler_talent_info
             (talent_id, nickname, avatar_url, fans_count, credit_score,
@@ -34,6 +53,25 @@ public interface CrawlerTalentInfoMapper extends BaseMapper<CrawlerTalentInfo> {
         """)
     void upsert(@Param("t") CrawlerTalentInfo info);
 
+    /**
+     * 多条件搜索达人信息（分页）
+     * <p>
+     * 支持以下可选筛选条件的动态组合：
+     * - keyword：按昵称或达人 ID 模糊搜索（ILIKE）
+     * - region：按地区精确匹配
+     * - minFans / maxFans：粉丝数范围筛选
+     * - minScore：最低信用分筛选
+     * 结果按粉丝数降序、更新时间降序排列。
+     * </p>
+     *
+     * @param page     分页参数
+     * @param keyword  搜索关键词（昵称或达人 ID），为 null 时不过滤
+     * @param region   地区筛选，为 null 时不过滤
+     * @param minFans  最小粉丝数，为 null 时不过滤
+     * @param maxFans  最大粉丝数，为 null 时不过滤
+     * @param minScore 最低信用分，为 null 时不过滤
+     * @return 分页结果，包含达人基本信息（不含内部 ID 和时间戳）
+     */
     @Select("""
         <script>
         SELECT talent_id, nickname, avatar_url, fans_count, credit_score, main_category, region

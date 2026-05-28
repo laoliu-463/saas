@@ -81,7 +81,7 @@ Codex 在本项目执行任务时默认按以下顺序进入：
 
 关键说明：
 - 当前 `mvn test` 全绿（以 `docs/04` 最近一次记录为准：`652 tests, 0 failures, 0 errors`；重大变更后请先本地跑 `mvn clean test` 再更新数字）
-- real-pre：`docker-compose.real-pre` 后端 **`real` profile**，典型 `.env.real-pre` 为 **`APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`**，可命中真实抖店上游；浏览器全路径回归 **45/45**（见 `docs/README.md`）。旧文档中「real-pre = local-mock + APP_TEST_ENABLED=true」为历史口径，以主干文档为准。
+- real-pre：当前唯一真实上游 / 生产形态环境，`docker-compose.real-pre` 后端使用 **`real-pre` profile**，典型 `.env.real-pre` 为 **`APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`**，可命中真实抖店上游；浏览器全路径回归 **45/45**（见 `docs/README.md`）。旧文档中把 real-pre 指向其他 profile 或 test/mock 开关的说法均为历史口径，以主干文档为准。
 - 根目录 Playwright：`README-e2e.md`，日常 `npm run e2e`；抖店联调专项 `npm run e2e:real-pre`（等价 `runtime/qa/real-pre-douyin-frontend-e2e.cjs` → `tests/e2e/08-real-pre-douyin-integration.spec.ts`）。
 - 第三方 SDK：主链路已具备大量 real-pre 取证；限流 / 429、部分权限包阻塞分支仍以清单跟踪（`docs/09`、`docs/04` 未完成项）。
 - 商品页已实现抖音 Token 缺失时降级本地商品库；Dashboard 已兼容后端实际 Summary 字段格式

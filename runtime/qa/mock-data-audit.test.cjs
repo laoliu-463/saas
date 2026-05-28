@@ -146,7 +146,7 @@ test('evaluateAll recognizes TEST mock hard-gap seed shapes from API-visible fie
       {
         id: 'dashboard',
         label: '数据平台',
-        requiredCases: ['cross_month_data', 'empty_date_range', 'filter_by_talent', 'filter_by_activity']
+        requiredCases: ['today_data', 'cross_month_data', 'empty_date_range', 'filter_by_talent', 'filter_by_activity']
       },
       {
         id: 'system',
@@ -246,6 +246,18 @@ test('evaluateAll recognizes TEST mock hard-gap seed shapes from API-visible fie
     dataOrders: [
       { id: 'data-order', talentId: 'talent-private-id', activityId: 'TEST_ACTIVITY_A' }
     ],
+    dashboardMetrics: {
+      settle: {
+        todayOrderCount: 1,
+        todayGmv: 259,
+        todayServiceFee: 12.5
+      },
+      estimate: {
+        todayOrderCount: 0,
+        todayGmv: 0,
+        todayServiceFee: 0
+      }
+    },
     emptyDateRangeOrders: [],
     filterOptions: {},
     users: [

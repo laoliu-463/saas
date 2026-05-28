@@ -57,8 +57,8 @@ _Avoid_: 个人收藏
 _Avoid_: local-mock, 真实联调环境
 
 **real-pre 环境**:
-用于真实 SDK 与真实上游联调的单活预备环境，不等同生产环境。
-_Avoid_: 生产环境, Mock 环境
+用于真实 SDK、真实上游联调和当前生产形态部署的单活环境。
+_Avoid_: 独立 prod 环境, Mock 环境
 
 **Gateway 契约**:
 Service 依赖的统一第三方接口抽象，切换 Test 与 Real 时只替换实现，不改 Controller、前端和主业务 Service。
@@ -83,6 +83,6 @@ _Avoid_: SDK 直连, 页面直连第三方
 ## Flagged ambiguities
 
 - “商品”曾同时指**活动商品**和**共享商品库商品** — resolved: 未入库叫**活动商品**，已入库叫**共享商品库商品**。
-- “Mock”曾同时指历史 `local-mock` 口径和当前默认测试基线 — resolved: 当前默认 Mock 基线叫 **test 环境**，`local-mock` 仅作历史资料和回滚参考。
-- “real”与“real-pre”容易混用 — resolved: 当前联调入口叫 **real-pre 环境**，它不是生产环境。
+- “Mock”曾同时指历史 `local-mock` 口径和当前默认测试基线 — resolved: 当前默认 Mock 基线叫 **test 环境**，`local-mock` 仅作历史资料，不作为运行入口。
+- “real”与“real-pre”容易混用 — resolved: 当前真实上游与生产形态入口统一叫 **real-pre 环境**，不再保留独立 `real` / `prod` profile。
 - “组长”可能同时指招商组长与渠道组长 — resolved: 讨论权限、分配或菜单时必须明确是 `biz_leader` 还是 `channel_leader`。

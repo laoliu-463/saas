@@ -47,6 +47,7 @@ import java.util.Locale;
 @Service
 public class DouyinTokenService {
 
+    private static final int TOKEN_EXPIRED_ERROR_CODE = 31008;
     private static final String TOKEN_KEY_PREFIX = "douyin:token:";
     private static final String REFRESH_KEY_PREFIX = "douyin:refresh:";
     private static final String LOCK_KEY_PREFIX = "douyin:token:lock:";
@@ -128,6 +129,9 @@ public class DouyinTokenService {
             throw e;
         } catch (DouyinApiException e) {
             log.error("Douyin token refresh failed, appId={}, code={}", finalAppId, e.getErrorCode());
+            if (e.getErrorCode() == TOKEN_EXPIRED_ERROR_CODE) {
+                markReauthorizeRequired(finalAppId, "code=" + e.getErrorCode() + ", msg=" + e.getErrorMsg());
+            }
             throw e;
         } catch (Exception e) {
             log.error("Douyin token refresh error, appId={}", finalAppId, e);

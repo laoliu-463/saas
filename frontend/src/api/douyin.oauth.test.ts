@@ -16,7 +16,8 @@ describe('douyin oauth api', () => {
       data: {
         authorizeUrl: 'https://op.jinritemai.com/oauth2/authorize?state=s1',
         state: 's1',
-        redirectUri: 'http://localhost:8081/api/douyin/oauth/callback'
+        redirectUri: 'http://localhost:8081/api/douyin/oauth/callback',
+        powerManageUrl: 'https://buyin.jinritemai.com/dashboard/institution/power-manage'
       }
     });
 
@@ -28,5 +29,6 @@ describe('douyin oauth api', () => {
     });
     expect(result.authorizeUrl).toContain('oauth2/authorize');
     expect(result.redirectUri).toBe('http://localhost:8081/api/douyin/oauth/callback');
+    expect(result.powerManageUrl).toBe('https://buyin.jinritemai.com/dashboard/institution/power-manage');
   });
 });

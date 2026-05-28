@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,53 +40,141 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 测试数据播种服务，负责在测试环境中准备完整的演示数据集。
+ * <p>
+ * 该服务仅在配置 {@code app.test.enabled=true} 时激活（{@link ConditionalOnProperty}），
+ * 实现 {@link ApplicationRunner} 接口，应用启动后自动执行数据初始化。
+ * </p>
+ * <p>
+ * 核心职责：
+ * <ul>
+ *   <li>确保测试所需数据库表结构和索引存在（{@link #ensureSchema}）</li>
+ *   <li>播种商品（Product）、达人（Talent）、寄样申请（SampleRequest）、
+ *       选品映射（PickSourceMapping）、订单（ColonelsettlementOrder）等全链路测试数据</li>
+ *   <li>支持重置全部测试数据（{@link #resetAll}）和动态生成各场景订单（{@code generate*Order}）</li>
+ *   <li>模拟寄样发货和签收流程（{@link #shipSample}、{@link #signSample}）</li>
+ * </ul>
+ * </p>
+ * <p>
+ * 覆盖的测试场景包括：正常归因出单、推广映射缺失、未带推广参数、多候选歧义映射、
+ * 历史不可回填、活动商品未覆盖、达人认领/过期释放、寄样全生命周期（待发货/运输中/待审核/已完成/已拒绝/已关闭）等。
+ * </p>
+ *
+ * @see com.colonel.saas.entity.Product 商品实体
+ * @see com.colonel.saas.entity.Talent 达人实体
+ * @see com.colonel.saas.entity.SampleRequest 寄样申请实体
+ * @see com.colonel.saas.entity.ColonelsettlementOrder 订单实体
+ * @see com.colonel.saas.service.AttributionService 归因服务
+ */
 @Service
+@Profile("test")
 @ConditionalOnProperty(prefix = "app.test", name = "enabled", havingValue = "true")
 public class TestDataService implements ApplicationRunner {
 
+    /** 渠道负责人用户名，用于测试数据中的渠道归属角色 */
     private static final String CHANNEL_USERNAME = "channel_leader";
+    /** 渠道员工用户名，用于测试数据中的渠道从属角色 */
     private static final String CHANNEL_STAFF_USERNAME = "channel_staff";
+    /** 商务负责人用户名，用于测试数据中的商务归属角色 */
     private static final String BIZ_USERNAME = "biz_leader";
+    /** 商务员工用户名 */
     private static final String BIZ_STAFF_USERNAME = "biz_staff";
+    /** 运营员工用户名 */
     private static final String OPS_USERNAME = "ops_staff";
+    /** 商务部门固定 UUID，用于测试数据中的部门归属 */
     private static final UUID BIZ_DEPT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    /** 渠道部门固定 UUID */
     private static final UUID CHANNEL_DEPT_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    /** 运营部门固定 UUID */
     private static final UUID OPS_DEPT_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
+    /** 测试活动 ID，所有测试数据共享的活动标识 */
     private static final String ACTIVITY_ID = "TEST_ACTIVITY_A";
+    /** 主演示商品 ID（已转链可出单） */
     private static final String PRODUCT_ID = "10901825";
+    /** 第二商品 ID（推广映射缺失场景） */
     private static final String SECOND_PRODUCT_ID = "10901826";
+    /** 第三商品 ID（未带推广参数场景） */
     private static final String THIRD_PRODUCT_ID = "10901827";
+    /** 第四商品 ID（审核通过待分配场景） */
     private static final String FOURTH_PRODUCT_ID = "10901828";
+    /** 主链路测试 pick_source 编码，对应主演示商品和达人 A/D 的映射 */
     private static final String MAPPING_PICK_SOURCE = "TESTPS01";
+    /** 主链路测试 pick_source 短 ID */
     private static final String MAPPING_SHORT_ID = "TESTPS01";
+    /** 达人 A 的抖音 UID（寄样待交作业场景） */
     private static final String TALENT_UID_A = "talent_test_a";
+    /** 达人 B 的抖音 UID（映射缺失订单场景） */
     private static final String TALENT_UID_B = "talent_test_b";
+    /** 达人 C 的抖音 UID（他人已认领场景） */
     private static final String TALENT_UID_C = "talent_test_c";
+    /** 达人 D 的抖音 UID（已有订单产出场景） */
     private static final String TALENT_UID_D = "talent_test_d";
+    /** 达人 E 的抖音 UID（保护期到期回公海场景） */
     private static final String TALENT_UID_E = "talent_test_e";
+    /** 达人 F 的抖音 UID（寄样已拒绝/待审核场景） */
     private static final String TALENT_UID_F = "talent_test_f";
+    /** 达人 G 的抖音 UID（寄样已关闭场景） */
     private static final String TALENT_UID_G = "talent_test_g";
+    /** 达人 D 专用 pick_source 编码，用于出单演示 */
     private static final String MAPPING_PICK_SOURCE_D = "TESTPS04";
+    /** 达人 D 专用 pick_source 短 ID */
     private static final String MAPPING_SHORT_ID_D = "TESTPS04";
+    /** 多候选歧义映射场景使用的原生百应 ID */
     private static final String AMBIGUOUS_NATIVE_BUYIN_ID = "900000000001";
+    /** 历史不可回填场景使用的原生百应 ID */
     private static final String HISTORY_UNSAFE_BUYIN_ID = "900000000002";
 
+    /** 商品 Mapper，用于插入/更新测试商品数据 */
     private final ProductMapper productMapper;
+    /** 商品快照 Mapper，用于维护商品历史快照记录 */
     private final ProductSnapshotMapper productSnapshotMapper;
+    /** 达人 Mapper，用于插入/更新测试达人数据 */
     private final TalentMapper talentMapper;
+    /** 寄样申请 Mapper，用于插入/更新寄样测试数据 */
     private final SampleRequestMapper sampleRequestMapper;
+    /** 推广映射 Mapper，用于管理 pick_source 与商品/达人的映射关系 */
     private final PickSourceMappingMapper pickSourceMappingMapper;
+    /** 团长结算订单 Mapper，用于插入/更新测试订单数据 */
     private final ColonelsettlementOrderMapper orderMapper;
+    /** 商品操作状态 Mapper，用于维护商品审核/上架等运营状态 */
     private final ProductOperationStateMapper productOperationStateMapper;
+    /** 推广映射服务，用于查找商品映射关系（归因链路核心依赖） */
     private final PickSourceMappingService pickSourceMappingService;
+    /** 订单同步服务，用于从外部抖音 API 拉取订单 */
     private final OrderSyncService orderSyncService;
+    /** 订单同步持久化服务，负责将同步结果写入数据库 */
     private final OrderSyncPersistenceService orderSyncPersistenceService;
+    /** 归因服务，负责订单与达人/商品的归属计算 */
     private final AttributionService attributionService;
+    /** 寄样状态日志服务，用于记录寄样生命周期变更日志 */
     private final SampleStatusLogService sampleStatusLogService;
+    /** 物流网关，用于查询和更新物流轨迹信息 */
     private final LogisticsGateway logisticsGateway;
+    /** Spring JdbcTemplate，用于执行原生 SQL（如 DDL 变更） */
     private final JdbcTemplate jdbcTemplate;
+    /** 是否在应用启动时自动播种测试数据，由配置 {@code app.test.seed-on-startup} 控制 */
     private final boolean seedOnStartup;
 
+    /**
+     * 构造函数，由 Spring 自动注入所有依赖。
+     *
+     * @param productMapper             商品 Mapper
+     * @param productSnapshotMapper     商品快照 Mapper
+     * @param talentMapper              达人 Mapper
+     * @param sampleRequestMapper       寄样申请 Mapper
+     * @param pickSourceMappingMapper   推广映射 Mapper
+     * @param orderMapper               团长结算订单 Mapper
+     * @param productOperationStateMapper 商品操作状态 Mapper
+     * @param pickSourceMappingService  推广映射服务
+     * @param orderSyncService          订单同步服务
+     * @param orderSyncPersistenceService 订单同步持久化服务
+     * @param attributionService        归因服务
+     * @param sampleStatusLogService    寄样状态日志服务
+     * @param logisticsGateway          物流网关
+     * @param jdbcTemplate              JdbcTemplate（原生 SQL 执行）
+     * @param seedOnStartup             是否在启动时自动播种，由 {@code app.test.seed-on-startup} 配置
+     */
     public TestDataService(
             ProductMapper productMapper,
             ProductSnapshotMapper productSnapshotMapper,
@@ -119,6 +208,17 @@ public class TestDataService implements ApplicationRunner {
         this.seedOnStartup = seedOnStartup;
     }
 
+    /**
+     * 应用启动时自动执行，实现 {@link ApplicationRunner} 接口。
+     * <p>
+     * 执行流程：
+     * 1. 确保数据库表结构和索引存在（{@link #ensureSchema}）
+     * 2. 确保演示用户的部门 ID 已正确分配
+     * 3. 若 {@link #seedOnStartup} 为 true，则自动播种全部测试数据
+     * </p>
+     *
+     * @param args 应用启动参数
+     */
     @Override
     public void run(ApplicationArguments args) {
         ensureSchema();
@@ -128,6 +228,14 @@ public class TestDataService implements ApplicationRunner {
         }
     }
 
+    /**
+     * 确保测试所需的数据库表结构和索引存在。
+     * <p>
+     * 通过原生 SQL 语句动态添加缺失的列（如 {@code product_operation_state.biz_status}、
+     * {@code product_operation_log.before_status} 等）和索引，避免测试环境因表结构不同步而失败。
+     * 所有 DDL 均使用 {@code IF NOT EXISTS} 保护，可安全重复执行。
+     * </p>
+     */
     private void ensureSchema() {
         jdbcTemplate.execute("""
                 DO $$ BEGIN
@@ -229,6 +337,24 @@ public class TestDataService implements ApplicationRunner {
         jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_douyin_webhook_event_type ON douyin_webhook_event(event_type)");
     }
 
+    /**
+     * 播种全部测试数据，覆盖商品、达人、推广映射、寄样、达人认领、订单等全链路场景。
+     * <p>
+     * 核心播种内容：
+     * <ul>
+     *   <li>4 个测试商品（已转链、映射缺失、未带推广参数、审核通过待分配）</li>
+     *   <li>7 个测试达人（各覆盖不同业务场景）</li>
+     *   <li>商品快照和运营状态</li>
+     *   <li>2 条推广映射（主链路 + 达人 D 专用）</li>
+     *   <li>7 个寄样申请（待交作业/待发货/运输中/待审核/已完成/已拒绝/已关闭）</li>
+     *   <li>达人认领记录（含已过期释放场景）</li>
+     *   <li>模拟订单（含已归因、商品未覆盖、退款关闭等场景）</li>
+     * </ul>
+     * </p>
+     *
+     * @param syncOrders 是否在播种完成后同步外部订单，true 时调用 {@link OrderSyncService#syncByTimeRange} 拉取近 2 小时订单
+     * @return 包含各测试数据标识的汇总 Map（products、talents、pickSource、sampleRequestNo 等）
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> seedAll(boolean syncOrders) {
         UUID channelUserId = requireUserId(CHANNEL_USERNAME);
@@ -253,7 +379,7 @@ public class TestDataService implements ApplicationRunner {
         Talent talentG = upsertTalent(TALENT_UID_G, "达人G-寄样已关闭", 133_000L, "河南郑州", "寄样关闭演示");
 
         upsertProductSnapshot(mainProduct, 1, "ON_SHELF", 32560L, "189", "https://test.local/product/" + mainProduct.getProductId());
-        upsertProductSnapshot(secondProduct, 0, "PENDING_AUDIT", 8420L, "64", "https://test.local/product/" + secondProduct.getProductId());
+        upsertProductSnapshot(secondProduct, 1, "PENDING_AUDIT", 8420L, "64", "https://test.local/product/" + secondProduct.getProductId());
         upsertProductSnapshot(thirdProduct, 2, "OFFLINE", 1280L, "12", "https://test.local/product/" + thirdProduct.getProductId());
         upsertProductSnapshot(approvedProduct, 1, "APPROVED", 9800L, "88", "https://test.local/product/" + approvedProduct.getProductId());
 
@@ -385,6 +511,15 @@ public class TestDataService implements ApplicationRunner {
         return result;
     }
 
+    /**
+     * 重置全部测试数据，删除所有测试相关的数据库记录。
+     * <p>
+     * 按依赖关系逆序清除以下表的数据：达人认领、寄样状态日志、寄样申请、订单、订单去重认领、
+     * 推广映射、推广链接、商品操作日志、商品操作状态、商品快照、达人、商品、爬虫达人信息。
+     * </p>
+     *
+     * @return 包含各维度清零计数的汇总 Map（products=0、talents=0、orders=0 等）
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> resetAll() {
         jdbcTemplate.update("DELETE FROM talent_claim");
@@ -411,11 +546,25 @@ public class TestDataService implements ApplicationRunner {
         return result;
     }
 
+    /**
+     * 同步测试订单，从外部抖音 API 拉取最近 2 小时内的订单数据。
+     *
+     * @return 同步结果，包含成功/失败数量等统计信息
+     */
     public OrderSyncService.SyncResult syncTestOrders() {
         long now = System.currentTimeMillis() / 1000;
         return orderSyncService.syncByTimeRange(now - 7200, now + 60);
     }
 
+    /**
+     * 生成一条可成功归因的测试订单。
+     * <p>
+     * 使用主演示商品（{@link #PRODUCT_ID}）和主推广映射（{@link #MAPPING_PICK_SOURCE}），
+     * 经过归因服务解析后持久化，并关联寄样申请 TEST-SAMPLE-001。
+     * </p>
+     *
+     * @return 包含订单状态和寄样关联信息的汇总 Map
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> generateAttributedOrder() {
         Product product = requireProduct(PRODUCT_ID);
@@ -440,6 +589,15 @@ public class TestDataService implements ApplicationRunner {
         return orderResult("attributed", order, inserted, sample);
     }
 
+    /**
+     * 生成一条未带推广参数的测试订单（归因失败场景）。
+     * <p>
+     * 使用第三商品（{@link #THIRD_PRODUCT_ID}），不设置 pick_source，
+     * 模拟订单缺少推广来源导致归因失败的排查场景。
+     * </p>
+     *
+     * @return 包含订单状态的汇总 Map，归因结果为失败
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> generateNoPickSourceOrder() {
         Product product = requireProduct(THIRD_PRODUCT_ID);
@@ -462,6 +620,15 @@ public class TestDataService implements ApplicationRunner {
         return orderResult("no-pick-source", order, inserted, null);
     }
 
+    /**
+     * 生成一条推广映射缺失的测试订单（归因失败场景）。
+     * <p>
+     * 使用第二商品（{@link #SECOND_PRODUCT_ID}），设置一个不存在的 pick_source，
+     * 模拟订单的推广来源在系统中找不到对应映射的排查场景。
+     * </p>
+     *
+     * @return 包含订单状态的汇总 Map，归因结果为映射缺失
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> generateMissingMappingOrder() {
         Product product = requireProduct(SECOND_PRODUCT_ID);
@@ -484,6 +651,15 @@ public class TestDataService implements ApplicationRunner {
         return orderResult("missing-mapping", order, inserted, null);
     }
 
+    /**
+     * 生成一条多候选歧义映射的测试订单（归因冲突场景）。
+     * <p>
+     * 为主演示商品创建两条相同 {@link #AMBIGUOUS_NATIVE_BUYIN_ID} 的原生映射，
+     * 分属渠道负责人和渠道员工，模拟同一订单存在多个归属候选的排查场景。
+     * </p>
+     *
+     * @return 包含订单状态、诊断标识（{@code AMBIGUOUS_MAPPING}）和候选归属用户的汇总 Map
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> generateAmbiguousMappingOrder() {
         Product product = requireProduct(PRODUCT_ID);
@@ -550,6 +726,15 @@ public class TestDataService implements ApplicationRunner {
         return result;
     }
 
+    /**
+     * 生成一条历史不可回填的测试订单（归因失败场景）。
+     * <p>
+     * 创建一条映射时间晚于订单创建时间的原生映射（{@link #HISTORY_UNSAFE_BUYIN_ID}），
+     * 模拟订单产生时映射尚不存在、导致归因结果为"历史不可回填"的排查场景。
+     * </p>
+     *
+     * @return 包含订单状态、诊断标识（{@code MECHANISM_HIT_HISTORY_UNSAFE}）和映射创建时间的汇总 Map
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> generateHistoryUnsafeOrder() {
         Product product = requireProduct(PRODUCT_ID);
@@ -604,6 +789,15 @@ public class TestDataService implements ApplicationRunner {
         return result;
     }
 
+    /**
+     * 生成一条活动商品未覆盖的测试订单（归因失败场景）。
+     * <p>
+     * 将订单的商品 ID 设置为一个不存在的活动商品 ID，模拟上游商品未在活动覆盖范围内
+     * 导致归因结果为"活动商品未覆盖"的排查场景。
+     * </p>
+     *
+     * @return 包含订单状态、诊断标识（{@code UPSTREAM_PRODUCT_UNCOVERED}）和未覆盖商品 ID 的汇总 Map
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> generateProductUncoveredOrder() {
         Product product = requireProduct(THIRD_PRODUCT_ID);
@@ -643,6 +837,16 @@ public class TestDataService implements ApplicationRunner {
         return result;
     }
 
+    /**
+     * 模拟寄样发货，将待发货状态的寄样申请推进到运输中状态。
+     * <p>
+     * 调用物流网关创建发货单，获取运单号，并更新寄样状态为 3（运输中），
+     * 同时记录物流来源为 MOCK，写入状态变更日志。
+     * </p>
+     *
+     * @param sampleRequestId 待发货的寄样申请 ID
+     * @return 包含寄样状态和运单号的汇总 Map
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> shipSample(UUID sampleRequestId) {
         SampleRequest sample = requireSample(sampleRequestId);
@@ -665,6 +869,16 @@ public class TestDataService implements ApplicationRunner {
         return sampleResult(sample, "shipping", shipment.trackingNo());
     }
 
+    /**
+     * 模拟寄样签收，将运输中的寄样申请推进到待交作业状态。
+     * <p>
+     * 查询物流轨迹确认已送达，然后将寄样状态从 3（运输中）经 4（已送达）推进到
+     * 5（待交作业/待审核），同时写入两条状态变更日志。
+     * </p>
+     *
+     * @param sampleRequestId 运输中的寄样申请 ID
+     * @return 包含寄样状态和运单号的汇总 Map
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> signSample(UUID sampleRequestId) {
         SampleRequest sample = requireSample(sampleRequestId);
@@ -680,6 +894,13 @@ public class TestDataService implements ApplicationRunner {
         return sampleResult(sample, logisticsStatus.status().toLowerCase(Locale.ROOT), logisticsStatus.trackingNo());
     }
 
+    /**
+     * 确保测试用的模拟审计活动记录存在。
+     * <p>
+     * 向 {@code colonel_activity} 表插入或更新测试活动数据，供商品审核和订单归因场景使用。
+     * 使用 {@code ON CONFLICT} 保证可安全重复执行。
+     * </p>
+     */
     private void ensureMockAuditActivities() {
         LocalDateTime now = LocalDateTime.now();
         jdbcTemplate.update("""
@@ -719,6 +940,13 @@ public class TestDataService implements ApplicationRunner {
         );
     }
 
+    /**
+     * 确保测试用的已停用审计样本用户存在。
+     * <p>
+     * 创建一个状态为停用（status=0）的演示用户 {@code disabled_audit_user}，
+     * 用于覆盖停用账号相关的审计场景。使用 {@code ON CONFLICT} 保证可安全重复执行。
+     * </p>
+     */
     private void ensureDisabledDemoUser() {
         String password = jdbcTemplate.query(
                 "SELECT password FROM sys_user WHERE username = ? AND deleted = 0 LIMIT 1",
@@ -761,6 +989,19 @@ public class TestDataService implements ApplicationRunner {
         );
     }
 
+    /**
+     * 插入或更新测试商品记录。
+     * <p>
+     * 若商品已存在（根据 {@code productId} 查找）则更新字段，否则创建新记录。
+     * </p>
+     *
+     * @param productId    商品 ID（抖店商品标识）
+     * @param name         商品名称
+     * @param price        商品价格（单位：分）
+     * @param status       商品状态（1=上架，0=下架）
+     * @param checkStatus  审核状态（1=待审核，2=已通过，3=已拒绝）
+     * @return 创建或更新后的商品实体
+     */
     private Product upsertProduct(String productId, String name, long price, int status, int checkStatus) {
         Product product = productMapper.selectOne(new LambdaQueryWrapper<Product>()
                 .eq(Product::getProductId, productId)
@@ -784,6 +1025,20 @@ public class TestDataService implements ApplicationRunner {
         return product;
     }
 
+    /**
+     * 插入或更新测试达人记录。
+     * <p>
+     * 若达人已存在（根据 {@code douyinUid} 查找）则更新字段，否则创建新记录。
+     * 根据粉丝数自动分配达人等级（>10 万=A 级，否则=B 级）。
+     * </p>
+     *
+     * @param douyinUid  达人抖音 UID
+     * @param nickname   达人昵称
+     * @param fans       粉丝数
+     * @param ipLocation IP 属地（如"四川成都"）
+     * @param sourceTag  数据来源标签，写入爬虫消息字段
+     * @return 创建或更新后的达人实体
+     */
     private Talent upsertTalent(String douyinUid, String nickname, long fans, String ipLocation, String sourceTag) {
         Talent talent = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
                 .eq(Talent::getDouyinUid, douyinUid)
@@ -816,6 +1071,20 @@ public class TestDataService implements ApplicationRunner {
         return talent;
     }
 
+    /**
+     * 插入或更新商品运营状态记录。
+     * <p>
+     * 使用 {@code ON CONFLICT} 保证按 (activity_id, product_id) 唯一键可安全重复执行。
+     * 若审核状态为已通过（auditStatus=2），自动设置入选状态和展示状态。
+     * </p>
+     *
+     * @param productId    商品 ID
+     * @param assigneeId   负责人用户 ID，null 表示未分配
+     * @param bizStatus    业务状态标识（如 ASSIGNED、PENDING_AUDIT、REJECTED）
+     * @param auditStatus  审核状态（1=待审核，2=已通过，3=已拒绝）
+     * @param auditRemark  审核备注
+     * @return 创建或更新后的商品运营状态实体
+     */
     private ProductOperationState upsertOperationState(
             String productId,
             UUID assigneeId,
@@ -866,6 +1135,21 @@ public class TestDataService implements ApplicationRunner {
         return productOperationStateMapper.selectById(id);
     }
 
+    /**
+     * 插入或更新商品快照记录。
+     * <p>
+     * 基于活动 ID 和商品 ID 生成确定性快照 ID，填充商品详情、价格、佣金比例等测试数据。
+     * 使用 {@link ProductSnapshotMapper#upsert} 保证可安全重复执行。
+     * </p>
+     *
+     * @param product    商品实体
+     * @param status     快照状态码
+     * @param statusText 快照状态文本（如 ON_SHELF、PENDING_AUDIT）
+     * @param sales      销量
+     * @param stock      库存数量（字符串）
+     * @param detailUrl  商品详情页链接
+     * @return 创建或更新后的商品快照实体
+     */
     private ProductSnapshot upsertProductSnapshot(
             Product product,
             int status,
@@ -909,6 +1193,19 @@ public class TestDataService implements ApplicationRunner {
         return snapshot;
     }
 
+    /**
+     * 插入或更新一条"待交作业"状态的寄样申请。
+     * <p>
+     * 固定使用申请编号 {@code TEST-SAMPLE-001}，代表达人已完成签收、等待提交作业的场景。
+     * </p>
+     *
+     * @param product       关联商品实体
+     * @param talent        关联达人实体
+     * @param userId        操作人用户 ID
+     * @param channelUserId 渠道负责人用户 ID
+     * @param channelDeptId 渠道部门 ID
+     * @return 创建或更新后的寄样申请实体
+     */
     private SampleRequest upsertPendingHomeworkSample(
             Product product,
             Talent talent,
@@ -1010,6 +1307,19 @@ public class TestDataService implements ApplicationRunner {
         return sample;
     }
 
+    /**
+     * 插入或更新一条"待发货"状态的寄样申请。
+     * <p>
+     * 固定使用申请编号 {@code TEST-SAMPLE-SHIP-001}，代表寄样申请已审核通过、等待发货的场景。
+     * </p>
+     *
+     * @param product       关联商品实体
+     * @param talent        关联达人实体
+     * @param userId        操作人用户 ID
+     * @param channelUserId 渠道负责人用户 ID
+     * @param channelDeptId 渠道部门 ID
+     * @return 创建或更新后的寄样申请实体
+     */
     private SampleRequest upsertPendingShipSample(
             Product product,
             Talent talent,
@@ -1095,6 +1405,19 @@ public class TestDataService implements ApplicationRunner {
         return sampleRequestMapper.selectById(sample.getId());
     }
 
+    /**
+     * 插入或更新一条"待审核"状态的寄样申请。
+     * <p>
+     * 固定使用申请编号 {@code TEST-SAMPLE-PENDING-REVIEW-001}，代表达人已提交作业、等待审核的场景。
+     * </p>
+     *
+     * @param product       关联商品实体
+     * @param talent        关联达人实体
+     * @param userId        操作人用户 ID
+     * @param channelUserId 渠道负责人用户 ID
+     * @param channelDeptId 渠道部门 ID
+     * @return 创建或更新后的寄样申请实体
+     */
     private SampleRequest upsertPendingReviewSample(
             Product product,
             Talent talent,
@@ -1177,6 +1500,19 @@ public class TestDataService implements ApplicationRunner {
         return sampleRequestMapper.selectById(sample.getId());
     }
 
+    /**
+     * 插入或更新一条"运输中"状态的寄样申请。
+     * <p>
+     * 固定使用申请编号 {@code TEST-SAMPLE-SHIPPING-001}，代表寄样已发货、正在运输途中的场景。
+     * </p>
+     *
+     * @param product       关联商品实体
+     * @param talent        关联达人实体
+     * @param userId        操作人用户 ID
+     * @param channelUserId 渠道负责人用户 ID
+     * @param channelDeptId 渠道部门 ID
+     * @return 创建或更新后的寄样申请实体
+     */
     private SampleRequest upsertShippingSample(
             Product product,
             Talent talent,
@@ -1271,6 +1607,20 @@ public class TestDataService implements ApplicationRunner {
         return sampleRequestMapper.selectById(sample.getId());
     }
 
+    /**
+     * 插入或更新一条"已完成"状态的寄样申请。
+     * <p>
+     * 固定使用申请编号 {@code TEST-SAMPLE-ORDER-001}，代表达人已完成作业并产出订单的场景。
+     * 状态码为 6（已完成），包含完整的发货/送达/完成时间线。
+     * </p>
+     *
+     * @param product       关联商品实体
+     * @param talent        关联达人实体
+     * @param userId        操作人用户 ID
+     * @param channelUserId 渠道负责人用户 ID
+     * @param channelDeptId 渠道部门 ID
+     * @return 创建或更新后的寄样申请实体
+     */
     private SampleRequest upsertFinishedSample(
             Product product,
             Talent talent,
@@ -1371,6 +1721,20 @@ public class TestDataService implements ApplicationRunner {
         return sampleRequestMapper.selectById(sample.getId());
     }
 
+    /**
+     * 插入或更新一条"已拒绝"状态的寄样申请。
+     * <p>
+     * 固定使用申请编号 {@code TEST-SAMPLE-REJECT-001}，代表寄样申请被招商拒绝的场景。
+     * 状态码为 7（已拒绝），包含拒绝理由。
+     * </p>
+     *
+     * @param product       关联商品实体
+     * @param talent        关联达人实体
+     * @param userId        操作人用户 ID
+     * @param channelUserId 渠道负责人用户 ID
+     * @param channelDeptId 渠道部门 ID
+     * @return 创建或更新后的寄样申请实体
+     */
     private SampleRequest upsertRejectedSample(
             Product product,
             Talent talent,
@@ -1459,6 +1823,20 @@ public class TestDataService implements ApplicationRunner {
         return sampleRequestMapper.selectById(sample.getId());
     }
 
+    /**
+     * 插入或更新一条"已关闭"状态的寄样申请。
+     * <p>
+     * 固定使用申请编号 {@code TEST-SAMPLE-CLOSED-001}，代表达人签收后 30 天未出单、系统自动关闭的场景。
+     * 状态码为 8（已关闭），包含关闭原因和完整的生命周期时间线。
+     * </p>
+     *
+     * @param product       关联商品实体
+     * @param talent        关联达人实体
+     * @param userId        操作人用户 ID
+     * @param channelUserId 渠道负责人用户 ID
+     * @param channelDeptId 渠道部门 ID
+     * @return 创建或更新后的寄样申请实体
+     */
     private SampleRequest upsertClosedSample(
             Product product,
             Talent talent,
@@ -1562,10 +1940,16 @@ public class TestDataService implements ApplicationRunner {
         return sampleRequestMapper.selectById(sample.getId());
     }
 
+    /**
+     * 清空所有达人认领记录，为重新播种做准备。
+     */
     private void resetTalentClaims() {
         jdbcTemplate.update("DELETE FROM talent_claim");
     }
 
+    /**
+     * 清空固定模拟订单的去重认领记录，为重新播种做准备。
+     */
     private void resetFixedMockOrderDedupClaims() {
         jdbcTemplate.update("""
                 DELETE FROM order_sync_dedup_claim
@@ -1577,10 +1961,29 @@ public class TestDataService implements ApplicationRunner {
                 """);
     }
 
+    /**
+     * 插入一条有效的达人认领记录（状态=1，保护期默认30天）。
+     *
+     * @param talentId   达人主键 ID
+     * @param talentUid  达人抖音 UID
+     * @param userId     认领人（操作用户）ID
+     * @param deptId     认领人所属部门 ID
+     * @param claimedAt  认领时间
+     */
     private void upsertTalentClaim(UUID talentId, String talentUid, UUID userId, UUID deptId, LocalDateTime claimedAt) {
         upsertTalentClaim(talentId, talentUid, userId, deptId, claimedAt, claimedAt.plusDays(30), 1);
     }
 
+    /**
+     * 插入一条已过期的达人认领记录（状态=2）。
+     *
+     * @param talentId   达人主键 ID
+     * @param talentUid  达人抖音 UID
+     * @param userId     认领人（操作用户）ID
+     * @param deptId     认领人所属部门 ID
+     * @param claimedAt  认领时间
+     * @param expiredAt  过期时间
+     */
     private void upsertExpiredTalentClaim(
             UUID talentId,
             String talentUid,
@@ -1591,6 +1994,18 @@ public class TestDataService implements ApplicationRunner {
         upsertTalentClaim(talentId, talentUid, userId, deptId, claimedAt, expiredAt, 2);
     }
 
+    /**
+     * 向 talent_claim 表插入一条认领记录的底层实现。
+     * 使用 JDBC 直接执行 INSERT，不做冲突处理（测试数据保证幂等清理后才调用）。
+     *
+     * @param talentId        达人主键 ID
+     * @param talentUid       达人抖音 UID
+     * @param userId          认领人（操作用户）ID
+     * @param deptId          认领人所属部门 ID
+     * @param claimedAt       认领时间
+     * @param protectedUntil  保护期截止时间
+     * @param status          认领状态：1=有效，2=已过期
+     */
     private void upsertTalentClaim(
             UUID talentId,
             String talentUid,
@@ -1620,6 +2035,17 @@ public class TestDataService implements ApplicationRunner {
         );
     }
 
+    /**
+     * 构建一条已归属测试订单并持久化。
+     * 流程：构建订单实体 -> 设置达人信息 -> 调用归属服务解析 -> 写入 extraData -> 持久化。
+     *
+     * @param orderId     抖音订单号
+     * @param product     商品实体
+     * @param talent      达人实体
+     * @param pickSource  精选联盟转链标识（pick_source）
+     * @param merchantId  商家 ID
+     * @param shopName    店铺名称
+     */
     private void seedAttributedOrder(
             String orderId,
             Product product,
@@ -1650,6 +2076,25 @@ public class TestDataService implements ApplicationRunner {
         orderSyncPersistenceService.persistOrder(order);
     }
 
+    /**
+     * 构建一条模拟审核场景的测试订单并持久化。
+     * 与 {@link #seedAttributedOrder} 不同，此方法不调用归属服务，
+     * 而是直接设置 attributionRemark 等字段，并通过原生 SQL 回写 create_time / settle_time。
+     *
+     * @param orderId             抖音订单号
+     * @param product             商品实体
+     * @param talent              达人实体
+     * @param merchantId          商家 ID
+     * @param shopName            店铺名称
+     * @param pickSource          精选联盟转链标识
+     * @param attributionRemark   归属备注（用于模拟各种归属失败场景）
+     * @param orderStatus         订单状态
+     * @param orderAmount         订单金额（分）
+     * @param serviceFee          服务费（分）
+     * @param createTime          订单创建时间（用于模拟历史订单）
+     * @param settleTime          结算时间
+     * @param mappingCreateTime   转链创建时间（映射到 extraData.mappingCreateTime）
+     */
     private void seedMockAuditOrder(
             String orderId,
             Product product,
@@ -1704,6 +2149,13 @@ public class TestDataService implements ApplicationRunner {
         );
     }
 
+    /**
+     * 根据用户名查询用户 ID，未找到时抛出异常。
+     *
+     * @param username 系统用户名
+     * @return 用户主键 ID
+     * @throws IllegalStateException 当用户名不存在时
+     */
     private UUID requireUserId(String username) {
         UUID userId = jdbcTemplate.query(
                 "SELECT id FROM sys_user WHERE username = ? AND deleted = 0 LIMIT 1",
@@ -1716,6 +2168,12 @@ public class TestDataService implements ApplicationRunner {
         return userId;
     }
 
+    /**
+     * 根据用户 ID 查询其所属部门 ID。
+     *
+     * @param userId 用户主键 ID
+     * @return 部门 ID，用户不存在或未分配部门时返回 null
+     */
     private UUID findDeptId(UUID userId) {
         return jdbcTemplate.query(
                 "SELECT dept_id FROM sys_user WHERE id = ? AND deleted = 0 LIMIT 1",
@@ -1730,6 +2188,10 @@ public class TestDataService implements ApplicationRunner {
         );
     }
 
+    /**
+     * 为所有演示用户补填部门 ID。
+     * 仅在用户 dept_id 为 null 时才更新，避免覆盖已有配置。
+     */
     private void ensureDemoUserDeptIds() {
         assignDeptIdIfMissing(BIZ_USERNAME, BIZ_DEPT_ID);
         assignDeptIdIfMissing(BIZ_STAFF_USERNAME, BIZ_DEPT_ID);
@@ -1738,6 +2200,12 @@ public class TestDataService implements ApplicationRunner {
         assignDeptIdIfMissing(OPS_USERNAME, OPS_DEPT_ID);
     }
 
+    /**
+     * 若用户尚未分配部门，则补填指定的部门 ID。
+     *
+     * @param username  系统用户名
+     * @param deptId    需要分配的部门 ID
+     */
     private void assignDeptIdIfMissing(String username, UUID deptId) {
         jdbcTemplate.update("""
                 UPDATE sys_user
@@ -1749,6 +2217,13 @@ public class TestDataService implements ApplicationRunner {
         );
     }
 
+    /**
+     * 根据商品 ID 查询商品实体，未找到时抛出异常。
+     *
+     * @param productId 商品 ID（抖音侧）
+     * @return 商品实体
+     * @throws IllegalStateException 当商品不存在时
+     */
     private Product requireProduct(String productId) {
         Product product = productMapper.selectOne(new LambdaQueryWrapper<Product>()
                 .eq(Product::getProductId, productId)
@@ -1759,6 +2234,13 @@ public class TestDataService implements ApplicationRunner {
         return product;
     }
 
+    /**
+     * 根据 pick_source 查询有效的转链映射记录，未找到时抛出异常。
+     *
+     * @param pickSource 精选联盟转链标识
+     * @return 转链映射实体
+     * @throws IllegalStateException 当映射记录不存在时
+     */
     private PickSourceMapping requireMapping(String pickSource) {
         PickSourceMapping mapping = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
                 .eq(PickSourceMapping::getPickSource, pickSource)
@@ -1770,6 +2252,13 @@ public class TestDataService implements ApplicationRunner {
         return mapping;
     }
 
+    /**
+     * 根据抖音 UID 查询达人实体，未找到时抛出异常。
+     *
+     * @param douyinUid 达人抖音 UID
+     * @return 达人实体
+     * @throws IllegalStateException 当达人不存在时
+     */
     private Talent requireTalentByUid(String douyinUid) {
         Talent talent = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
                 .eq(Talent::getDouyinUid, douyinUid)
@@ -1781,6 +2270,13 @@ public class TestDataService implements ApplicationRunner {
         return talent;
     }
 
+    /**
+     * 根据寄样申请 ID 查询寄样记录，未找到时抛出异常。
+     *
+     * @param sampleRequestId 寄样申请主键 ID
+     * @return 寄样申请实体
+     * @throws IllegalStateException 当寄样记录不存在时
+     */
     private SampleRequest requireSample(UUID sampleRequestId) {
         SampleRequest sample = sampleRequestMapper.selectById(sampleRequestId);
         if (sample == null) {
@@ -1789,18 +2285,47 @@ public class TestDataService implements ApplicationRunner {
         return sample;
     }
 
+    /**
+     * 根据寄样申请编号查询寄样记录。
+     *
+     * @param requestNo 寄样申请编号
+     * @return 寄样申请实体，不存在时返回 null
+     */
     private SampleRequest findSampleByRequestNo(String requestNo) {
         return sampleRequestMapper.selectOne(new LambdaQueryWrapper<SampleRequest>()
                 .eq(SampleRequest::getRequestNo, requestNo)
                 .last("limit 1"));
     }
 
+    /**
+     * 校验寄样申请当前状态是否与预期一致，不一致时抛出异常。
+     *
+     * @param sample         寄样申请实体
+     * @param expectedStatus 期望的状态值
+     * @throws IllegalStateException 当实际状态与期望状态不匹配时
+     */
     private void ensureSampleStatus(SampleRequest sample, int expectedStatus) {
         if (sample.getStatus() == null || sample.getStatus() != expectedStatus) {
             throw new IllegalStateException("sample request status mismatch, expected=" + expectedStatus + ", actual=" + sample.getStatus());
         }
     }
 
+    /**
+     * 构建一条测试用的订单实体（ColonelsettlementOrder）。
+     * 设置订单基础字段、金额字段，并填充 extraData 扩展数据。
+     *
+     * @param orderId      抖音订单号
+     * @param product      商品实体（用于获取商品 ID 等信息）
+     * @param productName  商品名称（可与 product.getName() 不同，用于特殊场景）
+     * @param orderAmount  订单金额（单位：分）
+     * @param serviceFee   服务费（单位：分）
+     * @param pickSource   精选联盟转链标识
+     * @param talentUid    达人抖音 UID
+     * @param activityId   团长活动 ID
+     * @param merchantId   商家 ID
+     * @param shopName     店铺名称
+     * @return 构建好的订单实体
+     */
     private ColonelsettlementOrder buildTestOrder(
             String orderId,
             Product product,
@@ -1850,6 +2375,14 @@ public class TestDataService implements ApplicationRunner {
         return order;
     }
 
+    /**
+     * 将归属服务的计算结果写入订单实体。
+     * 包括归属用户、部门、达人、活动、归属状态等字段，
+     * 并从 sys_user 补填渠道用户和团长用户的真实姓名。
+     *
+     * @param order       订单实体（将被就地修改）
+     * @param attribution 归属服务计算结果
+     */
     private void applyAttribution(ColonelsettlementOrder order, AttributionService.AttributionResult attribution) {
         order.setChannelUserId(attribution.channelUserId());
         order.setChannelDeptId(attribution.deptId());
@@ -1879,6 +2412,16 @@ public class TestDataService implements ApplicationRunner {
         }
     }
 
+    /**
+     * 构建订单种子结果的摘要 Map，用于日志输出或返回给调用方。
+     * 包含场景标识、是否插入、订单核心字段，以及可选的关联寄样信息。
+     *
+     * @param scene    场景标识（如 SYNC / ATTRIBUTED / NO_PICK_SOURCE 等）
+     * @param order    订单实体
+     * @param inserted 是否为新插入（true）或更新（false）
+     * @param sample   关联的寄样申请（可为 null）
+     * @return 包含订单关键字段的摘要 Map
+     */
     private Map<String, Object> orderResult(String scene, ColonelsettlementOrder order, boolean inserted, SampleRequest sample) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("scene", scene);
@@ -1898,6 +2441,15 @@ public class TestDataService implements ApplicationRunner {
         return result;
     }
 
+    /**
+     * 构建寄样操作结果的摘要 Map，用于日志输出或返回给调用方。
+     * 会重新查询最新寄样状态以反映操作后的实际状态。
+     *
+     * @param sample     寄样申请实体
+     * @param action     操作动作标识（如 ship / sign 等）
+     * @param trackingNo 快递单号（可为 null）
+     * @return 包含寄样关键字段的摘要 Map
+     */
     private Map<String, Object> sampleResult(SampleRequest sample, String action, String trackingNo) {
         SampleRequest latest = sampleRequestMapper.selectById(sample.getId());
         Map<String, Object> result = new LinkedHashMap<>();
@@ -1912,6 +2464,20 @@ public class TestDataService implements ApplicationRunner {
         return result;
     }
 
+    /**
+     * 插入或更新一条原生（非爬虫来源）的转链映射记录。
+     * 调用 pickSourceMappingService 完成核心写入后，再通过原生 SQL 回写 create_time / valid_from。
+     *
+     * @param userId         操作用户 ID
+     * @param deptId         部门 ID
+     * @param talentId       达人 ID
+     * @param talentName     达人昵称
+     * @param productId      商品 ID
+     * @param activityId     活动 ID
+     * @param colonelBuyinId 团长百应 ID
+     * @param pickSource     精选联盟转链标识
+     * @param createTime     创建时间（用于模拟历史数据）
+     */
     private void upsertNativeMapping(
             UUID userId,
             UUID deptId,
@@ -1963,6 +2529,15 @@ public class TestDataService implements ApplicationRunner {
         );
     }
 
+    /**
+     * 通过原生 SQL 更新订单的 create_time、settle_time 和 colonel_buyin_id。
+     * 用于在持久化后覆写时间字段，模拟历史订单场景。
+     *
+     * @param orderId        抖音订单号
+     * @param createTime     要设置的创建时间
+     * @param settleTime     要设置的结算时间
+     * @param colonelBuyinId 团长百应 ID
+     */
     private void updateOrderNativeColumns(String orderId, LocalDateTime createTime, LocalDateTime settleTime, String colonelBuyinId) {
         jdbcTemplate.update("""
                 UPDATE colonelsettlement_order
@@ -1979,6 +2554,14 @@ public class TestDataService implements ApplicationRunner {
         );
     }
 
+    /**
+     * 向寄样申请的 extraData 扩展数据中写入键值对（覆盖写）。
+     * 若 extraData 为空则自动创建。
+     *
+     * @param sample 寄样申请实体（将被就地修改）
+     * @param key    扩展数据键名
+     * @param value  扩展数据值
+     */
     private void putSampleExtraValue(SampleRequest sample, String key, Object value) {
         Map<String, Object> extra = sample.getExtraData() == null
                 ? new LinkedHashMap<>()
@@ -1987,6 +2570,14 @@ public class TestDataService implements ApplicationRunner {
         sample.setExtraData(extra);
     }
 
+    /**
+     * 向寄样申请的 extraData 扩展数据中写入键值对（仅在键不存在时写入）。
+     * 若 extraData 为空则自动创建。
+     *
+     * @param sample 寄样申请实体（将被就地修改）
+     * @param key    扩展数据键名
+     * @param value  扩展数据值
+     */
     private void putSampleExtraValueIfMissing(SampleRequest sample, String key, Object value) {
         Map<String, Object> extra = sample.getExtraData() == null
                 ? new LinkedHashMap<>()
@@ -1995,16 +2586,40 @@ public class TestDataService implements ApplicationRunner {
         sample.setExtraData(extra);
     }
 
+    /**
+     * 从商家 ID 字符串中提取纯数字部分并转换为 Long。
+     * 用于将 merchant_id 字符串转为 shop_id 数字字段。
+     *
+     * @param merchantId 商家 ID 字符串（可能包含非数字字符）
+     * @return 纯数字部分转换后的 Long 值，无数字时返回 0
+     */
     private Long parseShopId(String merchantId) {
         String digits = merchantId == null ? "" : merchantId.replaceAll("\\D", "");
         return digits.isEmpty() ? 0L : Long.parseLong(digits);
     }
 
+    /**
+     * 将分单位的金额格式化为元单位的文本（如 25900 -> "259.00"）。
+     *
+     * @param priceCent 金额（单位：分），可为 null
+     * @return 格式化后的元金额文本
+     */
     private String formatPriceText(Long priceCent) {
         long safePriceCent = priceCent == null ? 0L : priceCent;
         return String.format(Locale.ROOT, "%.2f", safePriceCent / 100.0);
     }
 
+    /**
+     * 向 crawler_talent_info 表插入或更新一条爬虫来源的达人信息。
+     * 使用 PostgreSQL 的 ON CONFLICT ... DO UPDATE 实现幂等写入。
+     *
+     * @param talentId  达人 ID
+     * @param nickname  达人昵称
+     * @param fans      粉丝数
+     * @param score     信用评分
+     * @param region    所在地区
+     * @param category  主营类目
+     */
     private void upsertCrawlerTalent(String talentId, String nickname, long fans, double score, String region, String category) {
         jdbcTemplate.update("""
                 INSERT INTO crawler_talent_info (

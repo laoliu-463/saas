@@ -14,11 +14,11 @@ class SwaggerConfigTest {
     private final SwaggerConfig config = new SwaggerConfig();
 
     @Test
-    void swaggerConfig_shouldNotLoadWhenProdProfileIsActive() {
+    void swaggerConfig_shouldLoadOnlyInTestProfile() {
         Profile profile = SwaggerConfig.class.getAnnotation(Profile.class);
 
         assertThat(profile).isNotNull();
-        assertThat(profile.value()).containsExactly("!prod");
+        assertThat(profile.value()).containsExactly("test");
     }
 
     @Test

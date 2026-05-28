@@ -23,8 +23,8 @@
 #   # 包含 real-pre
 #   .\scripts\run-all-tests.ps1 -IncludeRealPre
 #
-#   # 指定本地 test 后端地址（默认 http://localhost:8080）
-#   .\scripts\run-all-tests.ps1 -ApiBaseUrl http://localhost:8081
+#   # 指定本地 test 后端地址（默认 http://127.0.0.1:8080）
+#   .\scripts\run-all-tests.ps1 -ApiBaseUrl http://127.0.0.1:8081
 
 param(
     [string[]]$Only,          # 若指定，只跑对应层（如 'L0','L2'）
@@ -103,7 +103,7 @@ function Should-RunLayer { param([string]$Layer)
 
 function Get-ApiArg {
     if ($ApiBaseUrl) { return @("-ApiBaseUrl", $ApiBaseUrl) }
-    return @()
+    return @("-ApiBaseUrl", "http://127.0.0.1:8080")
 }
 
 # ─────────────────────────────────────────────────────────────────────

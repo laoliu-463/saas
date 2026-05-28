@@ -5,7 +5,7 @@ const SCRIPT_NAME = 'qa-mock-data-audit';
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const MATRIX_FILE = path.join(__dirname, 'mock-scenario-matrix.json');
 const OUT_ROOT = path.join(__dirname, 'out');
-const API_BASE_URL = normalizeBaseUrl(process.env.API_BASE_URL || 'http://localhost:8081');
+const API_BASE_URL = normalizeBaseUrl(process.env.API_BASE_URL || 'http://127.0.0.1:8080');
 const ADMIN_USER = process.env.ADMIN_USER || process.env.QA_ADMIN_USER || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || process.env.QA_ADMIN_PASSWORD || 'admin123';
 const REQUEST_TIMEOUT_MS = Number(process.env.QA_REQUEST_TIMEOUT_MS || 20000);
@@ -519,10 +519,10 @@ async function ensureTestEnvironment(ctx) {
     throw new Error(`Refusing to run outside TEST/mock environment: ${JSON.stringify(ctx.environment)}`);
   }
 
-  const health = await apiRequest(ctx, 'GET', '/actuator/health', { core: true, missingOk: false });
+  const health = await apiRequest(ctx, 'GET', '/system/health', { core: true, missingOk: false });
   ctx.health = health.body;
   if (!health.ok || health.body?.status !== 'UP') {
-    throw new Error(`/api/actuator/health is not UP: ${JSON.stringify(health.body)}`);
+    throw new Error(`/api/system/health is not UP: ${JSON.stringify(health.body)}`);
   }
 }
 
@@ -916,7 +916,8 @@ function uniqueBy(records, keys) {
 function auditDashboard(matrixGroup, data) {
   const counters = { requiredCases: makeCounter(matrixGroup.requiredCases) };
   const metricText = recordText(data.dashboardMetrics || {}) + ' ' + recordText(data.dashboardSummary || {});
-  if (hasPositiveMetric(data.dashboardMetrics, ['todayOrderCount', 'todayGmv', 'todayServiceFee']) || /今日/.test(metricText)) inc(counters.requiredCases, 'today_data');
+  const metricCandidates = dashboardMetricCandidates(data.dashboardMetrics);
+  if (metricCandidates.some((item) => hasPositiveMetric(item, ['todayOrderCount', 'todayGmv', 'todayServiceFee'])) || /今日/.test(metricText)) inc(counters.requiredCases, 'today_data');
   if (hasAnyText(data.dashboardMetrics, ['trend7d', '7 日', 'seven']) || data.orders.some((order) => withinDays(parseDate(getField(order, ['createTime', 'orderDate', 'payTime'])), 7))) inc(counters.requiredCases, 'seven_days_data');
   if (data.orders.some((order) => withinDays(parseDate(getField(order, ['createTime', 'orderDate', 'payTime'])), 30))) inc(counters.requiredCases, 'thirty_days_data');
   if (data.orders.some((order) => {
@@ -933,6 +934,11 @@ function auditDashboard(matrixGroup, data) {
   if (data.exportAllowedProbe?.ok) inc(counters.requiredCases, 'export_allowed_role');
   if (data.pageCoverage?.roles === true) inc(counters.requiredCases, 'export_forbidden_role');
   return counters;
+}
+
+function dashboardMetricCandidates(metrics) {
+  if (!metrics || typeof metrics !== 'object') return [];
+  return [metrics, metrics.settle, metrics.estimate].filter(Boolean);
 }
 
 function hasPositiveMetric(object, names) {

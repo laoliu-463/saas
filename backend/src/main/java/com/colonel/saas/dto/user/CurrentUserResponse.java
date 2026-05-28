@@ -6,6 +6,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 当前登录用户与权限包响应 DTO。
+ * <p>
+ * 返回当前登录用户的完整身份信息和权限数据，包括用户 ID、姓名、部门、数据范围、
+ * 角色列表、聚合权限包、账号状态以及是否需要强制修改密码等。
+ * 关联业务领域：用户域（User）。
+ * </p>
+ */
 @Schema(description = "当前登录用户与权限包")
 public record CurrentUserResponse(
         @Schema(description = "用户ID")

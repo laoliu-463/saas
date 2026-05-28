@@ -17,9 +17,9 @@ export const testIds = {
   productLibraryPage: 'product-library-page',
   productLibraryRefresh: 'product-library-refresh',
   productGrid: 'product-grid',
-  productCard: 'product-card',
+  productCard: 'product-selection-card',
   productDetailButton: 'product-detail-button',
-  productCopyLink: 'product-copy-link',
+  productCopyLink: 'product-copy-brief',
   // Activity list
   activityListPage: 'activity-list-page',
   activityViewProducts: 'activity-view-products',

@@ -5,16 +5,48 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 /**
- * Test Mock 活动商品生成口径：推广期相对当前日期，活动「推广中」时商品以联盟「推广中」为主。
+ * 测试环境 Mock 活动与商品的生成工具类。
+ * <p>
+ * 为 {@link TestDouyinActivityGateway} 和 {@link TestDouyinProductGateway} 提供统一的
+ * Mock 数据生成逻辑，确保测试环境中活动列表与商品列表在状态、时间、价格等维度上保持一致。
+ * </p>
+ *
+ * <ul>
+ *   <li><b>活动状态生成</b>：根据 activityId 的种子值（seed）循环分配 6 种抖店活动状态（未上线、报名未开始、报名中、推广未开始、推广中、报名结束）</li>
+ *   <li><b>商品状态生成</b>：根据活动状态和商品排名推导商品在联盟中的状态（待审核、推广中、申请未通过、合作已终止等）</li>
+ *   <li><b>时间口径</b>：活动与推广的起止日期基于当前日期相对计算，确保本地联调时数据始终处于合理的时间窗口内</li>
+ *   <li><b>工具方法</b>：提供价格格式化、游标解析、安全的 Long 转换等公共工具方法</li>
+ * </ul>
+ *
+ * <p>架构角色：包级私有工具类，仅在 {@code com.colonel.saas.gateway.douyin.test} 包内使用，
+ * 不对外暴露。所属领域：商品域 / 活动域（测试适配器层）。</p>
+ *
+ * @see TestDouyinActivityGateway
+ * @see TestDouyinProductGateway
  */
 final class TestMockActivityProductSupport {
 
+    /** 活动状态循环序列：未上线(1) -> 报名未开始(2) -> 报名中(3) -> 推广未开始(4) -> 推广中(5) -> 报名结束(7) */
     private static final int[] ACTIVITY_STATUS_CYCLE = {1, 2, 3, 4, 5, 7};
+
+    /** 日期格式化器，输出 ISO 本地日期格式（如 2026-05-27） */
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE;
 
+    /** 私有构造函数，防止实例化工具类 */
     private TestMockActivityProductSupport() {
     }
 
+    /**
+     * 根据活动种子值解析 Mock 活动状态。
+     * <p>处理流程：</p>
+     * <ol>
+     *   <li>如果 activitySeed 在 [100001, 100036] 范围内，按 (activitySeed - 100001) % 6 映射到状态循环数组</li>
+     *   <li>对于演示活动列表范围外的 activityId，默认返回状态 5（推广中），便于本地联调时商品库展示</li>
+     * </ol>
+     *
+     * @param activitySeed 活动 ID，作为确定性随机种子
+     * @return 活动状态码（1=未上线, 2=报名未开始, 3=报名中, 4=推广未开始, 5=推广中, 7=报名结束）
+     */
     static int resolveMockActivityStatus(long activitySeed) {
         if (activitySeed >= 100001L && activitySeed <= 100036L) {
             int index = (int) (activitySeed - 100001L);
@@ -24,10 +56,29 @@ final class TestMockActivityProductSupport {
         return 5;
     }
 
+    /**
+     * 判断给定活动是否处于「推广中」状态。
+     *
+     * @param activitySeed 活动 ID 种子值
+     * @return {@code true} 表示活动状态为推广中（5），{@code false} 表示其他状态
+     */
     static boolean isPromotingActivity(long activitySeed) {
         return resolveMockActivityStatus(activitySeed) == 5;
     }
 
+    /**
+     * 根据活动状态和商品排名解析 Mock 商品在联盟中的状态。
+     * <p>处理流程：</p>
+     * <ol>
+     *   <li>判断活动是否处于「推广中」状态</li>
+     *   <li>推广中的活动：商品以「推广中」为主（rank % 8 的 4/5/6/7 为推广中），少量分配待审核(0)、申请未通过(2)、合作已终止(3)、合作已到期(6)</li>
+     *   <li>非推广中的活动：商品状态分布更均匀，包含合作前取消(4) 状态</li>
+     * </ol>
+     *
+     * @param activitySeed 活动 ID 种子值
+     * @param rank         商品在列表中的排名（从 1 开始）
+     * @return 商品状态码（0=待审核, 1=推广中, 2=申请未通过, 3=合作已终止, 4=合作前取消, 6=合作已到期）
+     */
     static int resolveMockProductStatus(long activitySeed, int rank) {
         if (isPromotingActivity(activitySeed)) {
             return switch (Math.floorMod(rank, 8)) {
@@ -48,22 +99,48 @@ final class TestMockActivityProductSupport {
         };
     }
 
+    /**
+     * 获取 Mock 活动开始日期：当前日期前推 14 天。
+     *
+     * @return 格式化的日期字符串（如 "2026-05-13"）
+     */
     static String mockActivityStartDate() {
         return LocalDate.now().minusDays(14).format(DATE_FORMAT);
     }
 
+    /**
+     * 获取 Mock 活动结束日期：当前日期后推 45 天。
+     *
+     * @return 格式化的日期字符串（如 "2026-07-11"）
+     */
     static String mockActivityEndDate() {
         return LocalDate.now().plusDays(45).format(DATE_FORMAT);
     }
 
+    /**
+     * 获取 Mock 推广开始日期：当前日期前推 7 天。
+     *
+     * @return 格式化的日期字符串（如 "2026-05-20"）
+     */
     static String mockPromotionStartDate() {
         return LocalDate.now().minusDays(7).format(DATE_FORMAT);
     }
 
+    /**
+     * 获取 Mock 推广结束日期：当前日期后推 30 天。
+     *
+     * @return 格式化的日期字符串（如 "2026-06-26"）
+     */
     static String mockPromotionEndDate() {
         return LocalDate.now().plusDays(30).format(DATE_FORMAT);
     }
 
+    /**
+     * 将商品状态码转换为中文状态文本。
+     *
+     * @param status 商品状态码（0=待审核, 1=推广中, 2=申请未通过, 3=合作已终止, 4=合作前取消, 6=合作已到期）
+     * @return 对应的中文状态描述，未知状态返回 "未知状态"
+     */
     static String productStatusText(int status) {
         return switch (status) {
             case 0 -> "待审核";
@@ -76,6 +153,14 @@ final class TestMockActivityProductSupport {
         };
     }
 
+    /**
+     * 安全地将字符串转换为 long 值。
+     * <p>当输入为 null、空白字符串或解析失败时，返回默认值。</p>
+     *
+     * @param value        待转换的字符串
+     * @param defaultValue 转换失败时的默认值
+     * @return 解析后的 long 值，或默认值
+     */
     static long asLong(String value, long defaultValue) {
         if (value == null || value.isBlank()) {
             return defaultValue;
@@ -87,6 +172,13 @@ final class TestMockActivityProductSupport {
         }
     }
 
+    /**
+     * 解析游标字符串为非负整数索引。
+     * <p>当输入为 null、空白字符串或解析失败时，返回 0（即从头开始）。</p>
+     *
+     * @param cursor 游标字符串（通常由上次分页结果的 nextCursor 返回）
+     * @return 解析后的非负整数索引，解析失败返回 0
+     */
     static int parseCursor(String cursor) {
         if (cursor == null || cursor.isBlank()) {
             return 0;
@@ -98,6 +190,13 @@ final class TestMockActivityProductSupport {
         }
     }
 
+    /**
+     * 将分为单位的价格转换为元为单位的格式化字符串。
+     * <p>例如：9900 分 -> "99.00" 元</p>
+     *
+     * @param price 以分为单位的价格（long 类型）
+     * @return 格式化后的价格字符串，保留两位小数
+     */
     static String formatPriceText(long price) {
         return String.format(Locale.ROOT, "%.2f", price / 100.0);
     }

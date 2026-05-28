@@ -34,7 +34,11 @@ async function runRealPrePreflight(options = {}) {
   const timeoutMs = Number(options.timeoutMs || process.env.E2E_REAL_PRE_PREFLIGHT_TIMEOUT_MS || 90_000);
   const adminUsername = options.adminUsername || process.env.QA_ADMIN_USER || 'admin';
   const adminPassword = options.adminPassword || process.env.QA_ADMIN_PASSWORD || 'admin123';
-  const dbContainer = options.dbContainer || process.env.QA_POSTGRES_CONTAINER || process.env.E2E_DB_CONTAINER || DEFAULT_REAL_PRE_DB_CONTAINER;
+  const dbContainer = options.dbContainer ||
+    process.env.QA_POSTGRES_CONTAINER ||
+    process.env.E2E_DB_CONTAINER ||
+    detectRealPrePostgresContainer(spawnSyncImpl) ||
+    DEFAULT_REAL_PRE_DB_CONTAINER;
   const dbUser = options.dbUser || process.env.QA_DB_USER || process.env.E2E_DB_USER || DEFAULT_REAL_PRE_DB_USER;
   const dbName = options.dbName || process.env.QA_DB_NAME || process.env.E2E_DB_NAME || DEFAULT_REAL_PRE_DB_NAME;
 
@@ -45,11 +49,11 @@ async function runRealPrePreflight(options = {}) {
   const checks = [];
   checks.push(await runCheck('frontend real-pre 3001', 'FAIL', () => checkFrontend(urls.frontendUrl, fetchImpl, timeoutMs)));
   checks.push(await runCheck('backend health 8081', 'FAIL', () => checkBackendHealth(urls.backendUrl, fetchImpl, timeoutMs)));
-  checks.push(await runCheck('real-pre env guard', 'FAIL', () => checkRealPreEnv(urls.backendUrl, fetchImpl, timeoutMs)));
   const loginCheck = await runCheck('admin login', 'FAIL', () => login(urls.backendUrl, fetchImpl, adminUsername, adminPassword, timeoutMs));
   checks.push(loginCheck);
 
   const token = loginCheck.details?.token || '';
+  checks.push(await runCheck('real-pre env guard', 'FAIL', () => checkRealPreEnv(urls.backendUrl, fetchImpl, token, timeoutMs)));
   checks.push(await runCheck('douyin token readiness', 'BLOCKED_AUTH', () => checkDouyinToken(urls.backendUrl, fetchImpl, token, timeoutMs)));
   checks.push(await runCheck('database schema readiness', 'FAIL', () => checkDatabaseSchema(spawnSyncImpl, dbContainer, dbUser, dbName)));
   checks.push(await runCheck('reusable promotion mapping', 'PENDING_PICK_SOURCE', () => checkReusablePromotionMapping(spawnSyncImpl, dbContainer, dbUser, dbName)));
@@ -124,13 +128,31 @@ async function checkBackendHealth(backendUrl, fetchImpl, timeoutMs) {
   return { url: `${backendUrl}/api/system/health`, status: response.body.status };
 }
 
-async function checkRealPreEnv(backendUrl, fetchImpl, timeoutMs) {
-  const response = await requestJson(fetchImpl, `${backendUrl}/api/system/env`, { timeoutMs });
+async function checkRealPreEnv(backendUrl, fetchImpl, token, timeoutMs) {
+  if (!token) {
+    throw new Error('admin token is unavailable');
+  }
+  const response = await requestJson(fetchImpl, `${backendUrl}/api/system/env`, {
+    timeoutMs,
+    headers: { Authorization: `Bearer ${token}` }
+  });
   const env = normalizeSystemEnv(response.body);
   if (!response.ok || !isRealPreRuntime(env)) {
     throw new Error(`expected REAL-PRE + saas_real_pre + test switches off, got ${JSON.stringify(env)}`);
   }
   return env;
+}
+
+function detectRealPrePostgresContainer(spawnSyncImpl) {
+  const result = spawnSyncImpl('docker', ['ps', '--format', '{{.Names}}'], { encoding: 'utf8' });
+  if (result.error || result.status !== 0) {
+    return '';
+  }
+  const names = String(result.stdout || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return names.find((name) => /postgres-real-pre/.test(name)) || '';
 }
 
 async function login(backendUrl, fetchImpl, username, password, timeoutMs) {
@@ -161,7 +183,10 @@ async function checkDouyinToken(backendUrl, fetchImpl, token, timeoutMs) {
   const hasRefreshToken = data.hasRefreshToken === true;
   const reauthorizeRequired = data.reauthorizeRequired === true;
   if (!response.ok || !hasAccessToken || !hasRefreshToken || reauthorizeRequired) {
-    throw new Error('BLOCKED_AUTH: missing access_token/refresh_token or reauthorization required');
+    throw new Error(
+      `BLOCKED_AUTH: token status hasAccessToken=${hasAccessToken}, ` +
+      `hasRefreshToken=${hasRefreshToken}, reauthorizeRequired=${reauthorizeRequired}`
+    );
   }
   return {
     appId: data.appId,

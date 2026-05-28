@@ -18,15 +18,49 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * 仪表盘数据聚合服务。
+ *
+ * <p>职责：为前端仪表盘提供订单总览、渠道/招商员业绩排名、未归因原因分布、
+ * 诊断分类统计、活动-商品维度下钻等多维聚合查询能力。
+ *
+ * <p>数据源策略（双通道）：
+ * <ul>
+ *   <li>当 {@link PerformanceMetricsQueryService#hasPerformanceRecords()} 为 true 时，
+ *       优先从 performance_records 汇总表读取（更准确，含完整提成计算结果）</li>
+ *   <li>否则回退到 colonelsettlement_order 原始订单表做实时聚合</li>
+ * </ul>
+ *
+ * <p>诊断分类体系：针对未归因订单，通过 CASE 表达式 SQL 进行多维度诊断，
+ * 将未归因订单分为 5 大类：机制命中但历史不可回填、上游商品未覆盖、
+ * 无法自动归因、native key 不一致、ambiguous 多用户冲突。
+ *
+ * <p>数据范围过滤：支持 PERSONAL（个人）/ DEPT（部门）/ ALL（全局）三种数据范围，
+ * 通过 {@link DataScope} 枚举控制查询范围。
+ *
+ * <p>依赖服务/仓储：
+ * <ul>
+ *   <li>{@link ColonelsettlementOrderMapper} —— 订单数据访问（MyBatis-Plus）</li>
+ *   <li>{@link JdbcTemplate} —— 复杂诊断 SQL 和活动-商品下钻 SQL 执行</li>
+ *   <li>{@link PerformanceMetricsQueryService} —— 业绩汇总表数据源</li>
+ *   <li>{@link AttributionService} —— 归因状态常量</li>
+ * </ul>
+ */
 @Service
 public class DashboardService {
 
+    /** 诊断分类：机制命中但历史订单创建时间晚于映射时间，无法安全回填 */
     public static final String DIAGNOSIS_MECHANISM_HIT_HISTORY_UNSAFE = "MECHANISM_HIT_HISTORY_UNSAFE";
+    /** 诊断分类：上游活动商品列表未覆盖该订单商品 */
     public static final String DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED = "UPSTREAM_PRODUCT_UNCOVERED";
+    /** 诊断分类：无法通过任何规则自动归因 */
     public static final String DIAGNOSIS_CANNOT_AUTO_ATTRIBUTION = "CANNOT_AUTO_ATTRIBUTION";
+    /** 诊断分类：pick_source_mapping 中的 native key 与订单不一致 */
     public static final String DIAGNOSIS_NATIVE_KEY_MISMATCH = "NATIVE_KEY_MISMATCH";
+    /** 诊断分类：存在多用户冲突映射（ambiguous） */
     public static final String DIAGNOSIS_AMBIGUOUS_MAPPING = "AMBIGUOUS_MAPPING";
 
+    /** 允许的诊断筛选分类集合（用于接口参数校验） */
     private static final Set<String> ALLOWED_DIAGNOSIS_FILTER_CATEGORIES = Set.of(
             DIAGNOSIS_MECHANISM_HIT_HISTORY_UNSAFE,
             DIAGNOSIS_UPSTREAM_PRODUCT_UNCOVERED,
@@ -38,12 +72,23 @@ public class DashboardService {
             "MISSING_PRODUCT_ID"
     );
 
+    /** 活动-商品下钻默认每页条数 */
     private static final int DEFAULT_BREAKDOWN_LIMIT = 20;
 
+    /** 订单数据访问（MyBatis-Plus），用于简单聚合查询和范围/权限过滤 */
     private final ColonelsettlementOrderMapper orderMapper;
+    /** 原始 JDBC 模板，用于执行复杂诊断 SQL 和活动-商品下钻 SQL */
     private final JdbcTemplate jdbcTemplate;
+    /** 业绩指标查询服务，用于判断是否可用汇总表以及从汇总表读取聚合数据 */
     private final PerformanceMetricsQueryService performanceMetricsQueryService;
 
+    /**
+     * 构造函数，通过依赖注入初始化服务。
+     *
+     * @param orderMapper                结算订单 Mapper（MyBatis-Plus，简单聚合查询）
+     * @param jdbcTemplate               JDBC 模板（复杂诊断 SQL 和活动-商品下钻 SQL）
+     * @param performanceMetricsQueryService 业绩指标查询服务（判断汇总表可用性）
+     */
     public DashboardService(
             ColonelsettlementOrderMapper orderMapper,
             JdbcTemplate jdbcTemplate,
@@ -53,6 +98,29 @@ public class DashboardService {
         this.performanceMetricsQueryService = performanceMetricsQueryService;
     }
 
+    /**
+     * 获取仪表盘汇总数据。
+     *
+     * <p>聚合内容包括：
+     * <ol>
+     *   <li>订单总览：订单数、订单金额、服务费、已归因/未归因数量和归因率</li>
+     *   <li>渠道员 TOP10 业绩排名（按订单数降序）</li>
+     *   <li>招商员 TOP10 业绩排名（按订单数降序）</li>
+     *   <li>未归因订单的原因分布统计</li>
+     *   <li>未归因订单的诊断分类统计（5 大诊断类别）</li>
+     *   <li>活动-商品维度下钻列表（第一页，默认 20 条）</li>
+     * </ol>
+     *
+     * <p>数据源切换：若业绩汇总表已有数据（{@code hasPerformanceRecords=true}），
+     * 从汇总表读取业绩排名数据，否则从原始订单表实时聚合。
+     *
+     * @param startTime  结算开始时间（可选，null 表示不限制）
+     * @param endTime    结算结束时间（可选，null 表示不限制）
+     * @param userId     当前用户ID（PERSONAL 范围时使用）
+     * @param deptId     部门ID（DEPT 范围时使用）
+     * @param dataScope  数据范围过滤（PERSONAL / DEPT / ALL）
+     * @return 仪表盘汇总对象
+     */
     public Summary getSummary(LocalDateTime startTime, LocalDateTime endTime, UUID userId, UUID deptId, DataScope dataScope) {
         boolean usePerformanceRecords = performanceMetricsQueryService.hasPerformanceRecords();
         Map<String, Object> totalMap = Map.of();
@@ -168,6 +236,19 @@ public class DashboardService {
         return summary;
     }
 
+    /**
+     * 分页查询活动-商品维度下钻数据。
+     * 返回每个活动-商品组合的订单数、金额、未归因订单数、映射数、推广链接数等详情。
+     *
+     * @param startTime  结算开始时间（可选）
+     * @param endTime    结算结束时间（可选）
+     * @param userId     当前用户ID
+     * @param deptId     部门ID
+     * @param dataScope  数据范围过滤
+     * @param page       页码
+     * @param size       每页大小
+     * @return 分页的活动-商品下钻结果
+     */
     public ActivityProductPage getActivityProductBreakdown(
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -179,10 +260,28 @@ public class DashboardService {
         return loadActivityProductBreakdown(startTime, endTime, userId, deptId, dataScope, page, size);
     }
 
+    /**
+     * 获取仪表盘汇总数据（无筛选条件版本）。
+     * 使用全量数据、无时间范围和数据范围限制。
+     *
+     * @return 仪表盘汇总对象
+     */
     public Summary getSummary() {
         return getSummary(null, null, null, null, null);
     }
 
+    /**
+     * 加载诊断分类统计。
+     * 通过 CTE + CASE 表达式 SQL 对未归因订单进行多维度诊断分类，
+     * 统计每个诊断类别的订单数量，按数量降序排列。
+     *
+     * @param startTime  结算开始时间
+     * @param endTime    结算结束时间
+     * @param userId     当前用户ID
+     * @param deptId     部门ID
+     * @param dataScope  数据范围过滤
+     * @return 诊断分类统计列表（按数量降序）
+     */
     private List<DiagnosticItem> loadDiagnostics(
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -198,6 +297,21 @@ public class DashboardService {
                 .toList();
     }
 
+    /**
+     * 加载活动-商品维度下钻分页数据。
+     * 先统计活动-商品组合总数，再按分页参数查询具体数据。
+     * 每条记录包含订单数、订单金额、未归因订单数、映射数、推广链接数、
+     * 商品名称/封面、业务状态、负责人等详细信息。
+     *
+     * @param startTime  结算开始时间
+     * @param endTime    结算结束时间
+     * @param userId     当前用户ID
+     * @param deptId     部门ID
+     * @param dataScope  数据范围过滤
+     * @param page       页码
+     * @param size       每页大小
+     * @return 分页的活动-商品下钻结果
+     */
     private ActivityProductPage loadActivityProductBreakdown(
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -227,6 +341,18 @@ public class DashboardService {
         return new ActivityProductPage(total, safePage, safeSize, records);
     }
 
+    /**
+     * 构建带过滤条件的 SQL 上下文。
+     * 根据时间范围和数据范围生成 WHERE 子句及参数列表，供后续诊断 SQL 和下钻 SQL 复用。
+     * 基础条件为 {@code co.deleted = 0}，其余条件按需追加。
+     *
+     * @param startTime  结算开始时间（可选）
+     * @param endTime    结算结束时间（可选）
+     * @param userId     当前用户ID（PERSONAL 范围时使用）
+     * @param deptId     部门ID（DEPT 范围时使用）
+     * @param dataScope  数据范围过滤
+     * @return SQL 上下文，包含 WHERE 子句字符串和绑定参数列表
+     */
     private SqlContext buildFilteredOrdersContext(
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -265,6 +391,14 @@ public class DashboardService {
         return new SqlContext(String.join(" AND ", clauses), args);
     }
 
+    /**
+     * 构建诊断分类统计 SQL。
+     * 使用 CTE 结构：先过滤出未归因订单，再通过 CASE 表达式进行诊断分类，
+     * 最后按类别分组统计数量。仅返回 5 种主要诊断类别。
+     *
+     * @param whereClause WHERE 子句（由 buildFilteredOrdersContext 生成）
+     * @return 完整的诊断统计 SQL
+     */
     private String diagnosticSql(String whereClause) {
         return """
                 WITH filtered_orders AS (
@@ -300,6 +434,14 @@ public class DashboardService {
         );
     }
 
+    /**
+     * 标准化诊断分类名称。
+     * 将旧的诊断标签映射到新的标准分类常量，并校验是否在允许的分类集合中。
+     * 例如 "UNSAFE_BECAUSE_CREATED_AFTER_ORDER" 会被映射为 "MECHANISM_HIT_HISTORY_UNSAFE"。
+     *
+     * @param diagnosis 原始诊断分类名称
+     * @return 标准化后的分类名称；不在允许集合中或为空时返回 null
+     */
     public static String normalizeDiagnosisCategory(String diagnosis) {
         if (!StringUtils.hasText(diagnosis)) {
             return null;
@@ -312,6 +454,13 @@ public class DashboardService {
         return ALLOWED_DIAGNOSIS_FILTER_CATEGORIES.contains(normalized) ? normalized : null;
     }
 
+    /**
+     * 构建诊断分类 CASE 表达式 SQL（带列名前缀版本）。
+     * 自动为所有列名添加表别名前缀，用于 JOIN 场景下避免列名歧义。
+     *
+     * @param prefix 列名前缀（如 "fo."、"co." 等）
+     * @return 完整的 CASE 表达式 SQL 片段
+     */
     public static String diagnosisCategoryCaseSql(String prefix) {
         String safePrefix = prefix == null ? "" : prefix;
         return diagnosisCategoryCaseSql(
@@ -325,6 +474,31 @@ public class DashboardService {
         );
     }
 
+    /**
+     * 构建诊断分类 CASE 表达式 SQL（完整参数版本）。
+     *
+     * <p>诊断逻辑按优先级依次判定：
+     * <ol>
+     *   <li>已归因（ATTRIBUTED）-> 直接标记</li>
+     *   <li>归因备注为 COLONEL_MAPPING_AMBIGUOUS -> AMBIGUOUS_MAPPING</li>
+     *   <li>活动ID和二团长活动ID均为空 -> MISSING_ACTIVITY_ID</li>
+     *   <li>商品ID为空 -> MISSING_PRODUCT_ID</li>
+     *   <li>商品快照表和运营状态表均无记录 -> UPSTREAM_PRODUCT_UNCOVERED</li>
+     *   <li>活动-商品组合有多条映射 -> AMBIGUOUS_MAPPING</li>
+     *   <li>映射创建时间晚于订单时间 -> MECHANISM_HIT_HISTORY_UNSAFE</li>
+     *   <li>精确映射为 0 但有其他 buyin 的映射 -> NATIVE_KEY_MISMATCH</li>
+     *   <li>以上均不满足 -> CANNOT_AUTO_ATTRIBUTION</li>
+     * </ol>
+     *
+     * @param activity     活动ID列名
+     * @param secondActivity 二团长活动ID列名
+     * @param product      商品ID列名
+     * @param createTime   订单创建时间列名
+     * @param buyin        团长 buyin ID 列名
+     * @param attrStatus   归因状态列名
+     * @param attrRemark   归因备注列名
+     * @return 完整的 CASE 表达式 SQL 片段
+     */
     public static String diagnosisCategoryCaseSql(
             String activity,
             String secondActivity,
@@ -416,6 +590,13 @@ public class DashboardService {
         );
     }
 
+    /**
+     * 构建活动-商品组合总数统计 SQL。
+     * 过滤条件：未删除、活动ID和商品ID均非空。
+     *
+     * @param whereClause WHERE 子句
+     * @return 总数统计 SQL
+     */
     private String activityProductCountSql(String whereClause) {
         return """
                 SELECT COUNT(*) AS total_count
@@ -432,6 +613,15 @@ public class DashboardService {
                 """.formatted(whereClause);
     }
 
+    /**
+     * 构建活动-商品维度下钻分页 SQL。
+     * 关联 product_snapshot（商品名称/封面）、product_operation_state（业务状态/负责人）等表，
+     * 聚合订单数、金额、未归因订单数、映射数和推广链接数等指标。
+     * 按订单数降序、金额降序排列，支持分页。
+     *
+     * @param whereClause WHERE 子句
+     * @return 下钻分页 SQL（末尾含 LIMIT ? OFFSET ?）
+     */
     private String activityProductBreakdownSql(String whereClause) {
         return """
                 SELECT co.colonel_activity_id AS activity_id,
@@ -481,6 +671,13 @@ public class DashboardService {
                 """.formatted(whereClause);
     }
 
+    /**
+     * 将订单表聚合查询结果 Map 转换为 PerformanceItem。
+     * 用于回退模式（无业绩汇总表时）从订单表实时聚合的结果转换。
+     *
+     * @param map 查询结果行（key 为小写列名）
+     * @return 业绩排名项
+     */
     private PerformanceItem toPerformanceItem(Map<String, Object> map) {
         PerformanceItem item = new PerformanceItem();
         item.setChannelUserId(asString(map.get("channeluserid")));
@@ -493,6 +690,14 @@ public class DashboardService {
         return item;
     }
 
+    /**
+     * 将业绩汇总服务返回的排行榜列表转换为 PerformanceItem 列表。
+     * 根据 channel 参数决定映射渠道员或招商员字段。
+     *
+     * @param items    业绩排行榜项列表
+     * @param channel  true 为渠道员排行，false 为招商员排行
+     * @return 业绩排名项列表
+     */
     private List<PerformanceItem> toPerformanceItems(
             List<PerformanceMetricsQueryService.PerformanceLeaderboardItem> items,
             boolean channel) {
@@ -514,6 +719,13 @@ public class DashboardService {
                 .toList();
     }
 
+    /**
+     * 将未归因原因聚合查询结果 Map 转换为 ReasonCountItem。
+     * 同时生成对应的下钻查询对象，方便前端跳转到具体未归因订单列表。
+     *
+     * @param map 查询结果行
+     * @return 未归因原因统计项（含下钻查询）
+     */
     private ReasonCountItem toReasonCountItem(Map<String, Object> map) {
         ReasonCountItem item = new ReasonCountItem();
         item.setReason(asString(map.get("reason")));
@@ -522,6 +734,13 @@ public class DashboardService {
         return item;
     }
 
+    /**
+     * 将诊断分类统计查询结果 Map 转换为 DiagnosticItem。
+     * 通过 diagnosticLabel 方法将分类代码转换为中文标签。
+     *
+     * @param map 查询结果行
+     * @return 诊断分类统计项（含下钻查询和中文标签）
+     */
     private DiagnosticItem toDiagnosticItem(Map<String, Object> map) {
         DiagnosticItem item = new DiagnosticItem();
         item.setCategory(asString(readMapValue(map, "category")));
@@ -531,6 +750,14 @@ public class DashboardService {
         return item;
     }
 
+    /**
+     * 将活动-商品下钻查询结果 Map 转换为 ActivityProductItem。
+     * 映射字段包括：活动ID、商品ID、商品名称/封面、业务状态、负责人、
+     * 订单数、金额、未归因订单数、映射数、推广链接数，并生成下钻查询。
+     *
+     * @param map 查询结果行
+     * @return 活动-商品下钻项（含下钻查询）
+     */
     private ActivityProductItem toActivityProductItem(Map<String, Object> map) {
         ActivityProductItem item = new ActivityProductItem();
         item.setActivityId(asString(readMapValue(map, "activity_id")));
@@ -548,6 +775,13 @@ public class DashboardService {
         return item;
     }
 
+    /**
+     * 从诊断列表中查找指定分类的数量。
+     *
+     * @param diagnostics 诊断分类统计列表
+     * @param category    目标分类代码
+     * @return 匹配分类的数量；未找到时返回 0
+     */
     private long findDiagnosticCount(List<DiagnosticItem> diagnostics, String category) {
         return diagnostics.stream()
                 .filter(item -> category.equals(item.getCategory()))
@@ -556,6 +790,12 @@ public class DashboardService {
                 .orElse(0L);
     }
 
+    /**
+     * 将诊断分类代码转换为中文标签。
+     *
+     * @param category 诊断分类代码
+     * @return 中文标签；未知分类返回原始代码
+     */
     private String diagnosticLabel(String category) {
         return switch (category) {
             case DIAGNOSIS_MECHANISM_HIT_HISTORY_UNSAFE -> "机制命中但历史不可回填";
@@ -567,6 +807,13 @@ public class DashboardService {
         };
     }
 
+    /**
+     * 向查询条件中追加结算时间范围过滤。
+     *
+     * @param wrapper   MyBatis-Plus 查询条件构造器
+     * @param startTime 结算开始时间（可选）
+     * @param endTime   结算结束时间（可选）
+     */
     private void applyRange(QueryWrapper<ColonelsettlementOrder> wrapper, LocalDateTime startTime, LocalDateTime endTime) {
         if (wrapper == null) {
             return;
@@ -579,6 +826,15 @@ public class DashboardService {
         }
     }
 
+    /**
+     * 向查询条件中追加数据范围过滤。
+     * PERSONAL 按 user_id 过滤，DEPT 按 dept_id 过滤，ALL 不追加条件。
+     *
+     * @param wrapper    MyBatis-Plus 查询条件构造器
+     * @param userId     当前用户ID（PERSONAL 范围时使用）
+     * @param deptId     部门ID（DEPT 范围时使用）
+     * @param dataScope  数据范围枚举
+     */
     private void applyScope(QueryWrapper<ColonelsettlementOrder> wrapper, UUID userId, UUID deptId, DataScope dataScope) {
         if (wrapper == null || dataScope == null) {
             return;
@@ -587,11 +843,15 @@ public class DashboardService {
             case PERSONAL -> {
                 if (userId != null) {
                     wrapper.eq("user_id", userId);
+                } else {
+                    wrapper.apply("1 = 0");
                 }
             }
             case DEPT -> {
                 if (deptId != null) {
                     wrapper.eq("dept_id", deptId);
+                } else {
+                    wrapper.apply("1 = 0");
                 }
             }
             case ALL -> {
@@ -599,6 +859,14 @@ public class DashboardService {
         }
     }
 
+    /**
+     * 安全读取 Map 中的值（兼容大小写 key）。
+     * 先尝试精确匹配 key，未命中时尝试小写 key，兼容不同数据库驱动返回的列名大小写差异。
+     *
+     * @param map 数据行
+     * @param key 列名
+     * @return 对应值；map 或 key 为 null 时返回 null
+     */
     private Object readMapValue(Map<String, Object> map, String key) {
         if (map == null || key == null) {
             return null;
@@ -609,6 +877,13 @@ public class DashboardService {
         return map.get(key.toLowerCase());
     }
 
+    /**
+     * 安全地将 Object 转换为 long。
+     * 支持 Number 类型转换，null 或其他类型返回 0。
+     *
+     * @param val 待转换对象
+     * @return long 值；null 或非 Number 类型时返回 0
+     */
     private long asLong(Object val) {
         if (val == null) {
             return 0L;
@@ -619,78 +894,172 @@ public class DashboardService {
         return 0L;
     }
 
+    /**
+     * 安全地将 Object 转换为 String。
+     *
+     * @param val 待转换对象
+     * @return 字符串值；null 时返回 null
+     */
     private String asString(Object val) {
         return val == null ? null : String.valueOf(val);
     }
 
+    /**
+     * SQL 上下文，封装 WHERE 子句和绑定参数。
+     * 用于在构建过滤条件后复用于多种不同类型的查询（诊断 SQL、下钻 SQL 等）。
+     *
+     * @param whereClause WHERE 子句字符串（不含 WHERE 关键字）
+     * @param args        绑定参数列表（与 ? 占位符一一对应）
+     */
     private record SqlContext(String whereClause, List<Object> args) {
     }
 
+    /**
+     * 活动-商品下钻分页结果。
+     *
+     * @param total   活动-商品组合总数
+     * @param page    当前页码
+     * @param size    每页大小
+     * @param records 当前页数据列表
+     */
     public record ActivityProductPage(long total, long page, long size, List<ActivityProductItem> records) {
     }
 
+    /**
+     * 仪表盘汇总数据。
+     * 包含订单总览指标、业绩排名、未归因原因分布、诊断分类统计和活动-商品下钻列表。
+     */
     @Data
     public static class Summary {
+        /** 订单总数 */
         private Long orderCount;
+        /** 订单金额（单位：分） */
         private Long orderAmount;
+        /** 服务费/佣金（单位：分） */
         private Long serviceFee;
+        /** 已归因订单数 */
         private Long attributedOrderCount;
+        /** 未归因订单数 */
         private Long unattributedOrderCount;
+        /** 归因率（0.0 ~ 1.0） */
         private Double attributionRate;
+        /** 诊断分类：机制命中但历史订单创建时间晚于映射时间 */
         private Long unsafeBecauseCreatedAfterOrderCount;
+        /** 诊断分类：上游活动商品未覆盖 */
         private Long upstreamProductUncoveredCount;
+        /** 诊断分类：无法自动归因 */
         private Long cannotAutoAttributionCount;
+        /** 诊断分类：native key 不一致 */
         private Long nativeKeyMismatchCount;
+        /** 诊断分类：多用户冲突映射 */
         private Long ambiguousMappingCount;
+        /** 渠道员 TOP10 业绩排名 */
         private List<PerformanceItem> channelPerformance;
+        /** 招商员 TOP10 业绩排名 */
         private List<PerformanceItem> colonelPerformance;
+        /** 未归因订单原因分布 */
         private List<ReasonCountItem> unattributedReasons;
+        /** 未归因订单诊断分类统计 */
         private List<DiagnosticItem> diagnosticBreakdown;
+        /** 活动-商品维度下钻列表 */
         private List<ActivityProductItem> activityProductBreakdown;
     }
 
+    /**
+     * 业绩排名项。
+     * 用于渠道员和招商员的业绩排行展示，包含订单数、订单金额和服务费。
+     */
     @Data
     public static class PerformanceItem {
+        /** 渠道员用户 ID（渠道员排名时非空） */
         private String channelUserId;
+        /** 渠道员姓名 */
         private String channelUserName;
+        /** 招商员用户 ID（招商员排名时非空） */
         private String colonelUserId;
+        /** 招商员姓名 */
         private String colonelUserName;
+        /** 订单数 */
         private Long orderCount;
+        /** 订单金额（单位：分） */
         private Long orderAmount;
+        /** 服务费/佣金（单位：分） */
         private Long serviceFee;
     }
 
+    /**
+     * 未归因原因统计项。
+     * 包含归因失败原因、订单数量及对应的下钻查询（用于跳转到具体未归因订单列表）。
+     */
     @Data
     public static class ReasonCountItem {
+        /** 未归因原因标识 */
         private String reason;
+        /** 匹配该原因的订单数 */
         private Long count;
+        /** 下钻查询参数（用于跳转到具体未归因订单列表） */
         private DrillDownQuery drillDownQuery;
     }
 
+    /**
+     * 诊断分类统计项。
+     * 包含诊断分类代码、中文标签、订单数量及对应的下钻查询。
+     */
     @Data
     public static class DiagnosticItem {
+        /** 诊断分类代码（如 MECHANISM_HIT_HISTORY_UNSAFE） */
         private String category;
+        /** 诊断分类中文标签 */
         private String label;
+        /** 匹配该分类的订单数 */
         private Long count;
+        /** 下钻查询参数 */
         private DrillDownQuery drillDownQuery;
     }
 
+    /**
+     * 活动-商品维度下钻项。
+     * 包含商品基本信息（名称、封面、业务状态、负责人）、订单聚合指标（订单数、金额、
+     * 未归因数）、映射和推广链接数量，以及对应的下钻查询。
+     */
     @Data
     public static class ActivityProductItem {
+        /** 活动 ID */
         private String activityId;
+        /** 商品 ID */
         private String productId;
+        /** 商品名称 */
         private String productName;
+        /** 商品封面图 URL */
         private String productCover;
+        /** 商品业务状态（如"在售""已下架"） */
         private String bizStatus;
+        /** 负责人姓名 */
         private String assigneeName;
+        /** 订单数 */
         private Long orderCount;
+        /** 订单金额（单位：分） */
         private Long orderAmount;
+        /** 未归因订单数 */
         private Long unattributedOrderCount;
+        /** pick_source_mapping 映射记录数 */
         private Long mappingCount;
+        /** 推广链接数 */
         private Long promotionLinkCount;
+        /** 下钻查询参数 */
         private DrillDownQuery drillDownQuery;
     }
 
+    /**
+     * 下钻查询参数，封装从仪表盘跳转到订单列表时需要的筛选条件。
+     *
+     * @param activityId           活动ID筛选
+     * @param productId            商品ID筛选
+     * @param attributionStatus    归因状态筛选
+     * @param unattributedReason   未归因原因筛选
+     * @param dashboardDiagnosis   诊断分类筛选
+     * @param timeField            排序时间字段
+     */
     public record DrillDownQuery(
             String activityId,
             String productId,

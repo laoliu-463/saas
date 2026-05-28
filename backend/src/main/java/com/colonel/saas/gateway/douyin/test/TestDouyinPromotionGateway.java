@@ -8,6 +8,25 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 测试环境抖店推广转链网关适配器。
+ * <p>
+ * 实现 {@link DouyinPromotionGateway} 接口，在 {@code douyin.test.enabled=true} 时替代真实的
+ * 抖店推广转链网关，为本地开发和 test 环境提供不依赖真实抖店开放平台的 Mock 转链数据。
+ * </p>
+ *
+ * <ul>
+ *   <li><b>生成推广链接（generateLink）</b>：根据活动 ID、商品 ID 和随机 UUID 生成 Mock 的 pick_source、pick_extra、短链和推广链接</li>
+ *   <li><b>透传上游 POST 请求（rawUpstreamPost）</b>：将请求参数原样返回，用于调试和日志追踪</li>
+ * </ul>
+ *
+ * <p>架构角色：Gateway 测试适配器（Test Double），所属领域：商品域（转链）。
+ * 与真实网关的关系：实现同一 {@link DouyinPromotionGateway} 接口，通过 {@code douyin.test.enabled}
+ * 属性切换。Mock 转链结果中的 pick_source 使用 {@code MOCK + 哈希后缀} 格式，
+ * 便于在日志和数据库中快速区分 Mock 数据与真实数据。</p>
+ *
+ * @see DouyinPromotionGateway
+ */
 @Component
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "true")
 public class TestDouyinPromotionGateway implements DouyinPromotionGateway {

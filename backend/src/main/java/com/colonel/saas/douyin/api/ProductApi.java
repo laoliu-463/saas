@@ -10,9 +10,30 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 精选联盟商品管理 API 客户端。
+ * <p>
+ * 封装抖音精选联盟活动商品查询与 SKU 查询接口，
+ * 支持 contract（合同模式）与真实上游两种调用路径，
+ * 内置双佣金字段适配逻辑。
+ *
+ * <ul>
+ *   <li>活动列表查询 — 查询活动列表（供商品关联使用）</li>
+ *   <li>活动商品查询 — 按活动 ID 分页/游标查询商品列表</li>
+ *   <li>商品 SKU 查询 — 获取商品的 SKU 明细信息</li>
+ *   <li>双佣金适配 — 自动补充 cos_type、dual_commission_enabled 等字段</li>
+ * </ul>
+ *
+ * 所属业务领域：精选联盟 / 商品管理
+ *
+ * @see DouyinApiClient
+ * @see DouyinUpstreamModeSupport
+ * @see DouyinContractFixtureProvider
+ */
 @Service
 public class ProductApi {
 
+    /** 默认每页数量 */
     private static final int DEFAULT_COUNT = 20;
     private static final int MAX_COUNT = 20;
 
@@ -29,6 +50,20 @@ public class ProductApi {
         this.contractFixtureProvider = contractFixtureProvider;
     }
 
+    /**
+     * 按条件查询活动列表（供商品关联使用）。
+     * <p>
+     * 在 contract 模式下返回契约桩数据，否则调用真实上游 API。
+     *
+     * @param appId        应用 ID（可为空）
+     * @param status       活动状态筛选，可选值：0/1/2/3/4/5/7，默认 0
+     * @param searchType   搜索类型，可选值：0/1/2，默认 0
+     * @param sortType     排序类型，0-降序，1-升序，默认 1
+     * @param page         页码，从 1 开始
+     * @param pageSize     每页数量，范围 1~20，默认 20
+     * @param activityInfo 活动名称关键词
+     * @return 活动列表响应
+     */
     public Map<String, Object> listActivities(
             String appId,
             Integer status,
@@ -51,10 +86,26 @@ public class ProductApi {
         return douyinApiClient.post("alliance.instituteColonelActivityList", params);
     }
 
+    /**
+     * 按活动 ID 查询商品列表（默认参数）。
+     *
+     * @param appId      应用 ID
+     * @param activityId 活动 ID（数字字符串）
+     * @return 商品列表响应
+     */
     public Map<String, Object> listByActivity(String appId, String activityId) {
         return listProductsByActivity(appId, activityId, null, null);
     }
 
+    /**
+     * 按活动 ID 分页查询商品列表（简化参数）。
+     *
+     * @param appId      应用 ID
+     * @param activityId 活动 ID
+     * @param count      每页数量
+     * @param cursor     分页游标
+     * @return 商品列表响应（含双佣金字段适配）
+     */
     public Map<String, Object> listProductsByActivity(String appId, String activityId, Integer count, String cursor) {
         return listProductsByActivity(
                 appId,
@@ -72,6 +123,28 @@ public class ProductApi {
         );
     }
 
+    /**
+     * 按活动 ID 查询商品列表（完整参数）。
+     * <p>
+     * 支持分页模式（retrieve_mode=0）和游标模式（retrieve_mode=1）两种翻页方式。
+     * 在 contract 模式下返回契约桩数据，否则调用真实上游 API。
+     * 响应结果会经过双佣金字段适配处理。
+     *
+     * @param appId            应用 ID
+     * @param activityId       活动 ID
+     * @param searchType       搜索类型，可选值：0/1/2/4，默认 4
+     * @param sortType         排序类型，0-降序，1-升序，默认 1
+     * @param count            每页数量，上限 20
+     * @param cooperationInfo  合作信息关键词
+     * @param cooperationType  合作类型，可选值：0/1/2，默认 0
+     * @param productInfo      商品名称关键词
+     * @param status           商品状态筛选，可选值：0/1/2/3/4/6
+     * @param retrieveMode     翻页模式：0-分页，1-游标，默认 1
+     * @param cursor           游标值（retrieveMode=1 时使用）
+     * @param page             页码（retrieveMode=0 时使用）
+     * @return 商品列表响应（含双佣金字段适配）
+     * @throws BusinessException 当参数校验不通过时抛出
+     */
     public Map<String, Object> listProductsByActivity(
             String appId,
             String activityId,
@@ -161,6 +234,20 @@ public class ProductApi {
         }
     }
 
+    /**
+     * 适配商品列表响应中的双佣金字段。
+     * <p>
+     * 遍历响应中 data.data 列表的每个商品项，补充以下字段：
+     * <ul>
+     *   <li>cos_type — 数字类型标准化</li>
+     *   <li>dual_commission_enabled — cos_type==1 时为 true</li>
+     *   <li>ad_service_ratio — 广告服务费率</li>
+     *   <li>activity_ad_cos_ratio — 活动广告 COS 比率</li>
+     * </ul>
+     *
+     * @param response 原始 API 响应
+     * @return 适配后的响应
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> adaptDualCommissionFields(Map<String, Object> response) {
         if (response == null) {

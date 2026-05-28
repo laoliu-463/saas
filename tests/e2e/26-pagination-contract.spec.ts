@@ -41,14 +41,37 @@ async function assertDefaultPaginationRequest(
   expect(url.searchParams.get('size')).toBe('20');
 }
 
+async function assertSummaryRequestWithoutPagination(page: Page) {
+  let requestUrl = '';
+  await page.route('**/api/data/orders/summary**', async (route) => {
+    requestUrl = route.request().url();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 200,
+        msg: 'success',
+        data: {
+          total: {},
+          records: []
+        }
+      })
+    });
+  });
+
+  await gotoApp(page, '/data/orders');
+  await expect(page.getByTestId(testIds.dataOrdersTable)).toBeVisible({ timeout: 15_000 });
+
+  expect(requestUrl).toBeTruthy();
+  const url = new URL(requestUrl);
+  expect(url.searchParams.get('page')).toBeNull();
+  expect(url.searchParams.get('size')).toBeNull();
+  expect(url.searchParams.get('timeField')).toBeTruthy();
+}
+
 test.describe('front-end pagination contract', () => {
-  test('data order list requests the default 20 rows', async ({ page }) => {
-    await assertDefaultPaginationRequest(
-      page,
-      '/data/orders',
-      '**/api/data/orders**',
-      testIds.dataOrdersTable
-    );
+  test('data order summary requests summary records without pagination', async ({ page }) => {
+    await assertSummaryRequestWithoutPagination(page);
   });
 
   test('sample desk requests the default 20 rows', async ({ page }) => {

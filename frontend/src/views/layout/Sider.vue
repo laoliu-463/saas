@@ -1,5 +1,23 @@
+<!--
+  Sider - 左侧菜单栏组件
+
+  用途：应用左侧导航菜单，展示当前顶部菜单下的二级/三级子菜单。
+  支持折叠/展开状态，折叠后仅显示图标。
+
+  特性：
+    - 根据用户角色动态过滤可访问的菜单项
+    - 角色特定的菜单文案本地化（如渠道专员看到"我的业绩"而非"数据"）
+    - 达人模块根据角色权限过滤可见的视图类型
+    - 支持折叠/展开动画，折叠后宽度变为 64px
+
+  依赖的 store：
+    - appStore: 控制侧边栏折叠状态
+    - authStore: 获取当前用户角色信息
+-->
 <template>
+  <!-- 侧边栏容器，根据折叠状态切换 class -->
   <aside class="app-sider" :class="{ collapsed: appStore.collapsed }">
+    <!-- 工具栏区域：包含折叠/展开切换按钮 -->
     <div class="sider-toolbar">
       <button
         type="button"
@@ -17,7 +35,9 @@
       </button>
     </div>
 
+    <!-- 菜单内容区域 -->
     <div class="sider-menu">
+      <!-- Naive UI 菜单组件：有菜单项时渲染，无菜单项时显示空状态提示 -->
       <n-menu
         v-if="menuOptions.length"
         :key="activeTopKey || 'empty'"
@@ -32,6 +52,7 @@
         @update:value="handleLeftMenuClick"
         @update:expanded-keys="handleExpandedKeys"
       />
+      <!-- 菜单为空时的提示文案 -->
       <div v-else class="empty-tip">当前账号没有可见菜单</div>
     </div>
   </aside>
@@ -61,21 +82,32 @@ const router = useRouter()
 const route = useRoute()
 const ROLE = ROLE_CODES
 
+/* ---- 角色判断计算属性 ---- */
+/* 判断当前用户是否仅为渠道专员（非组长、非管理员） */
+
+
 const isChannelStaffOnly = computed(() => {
   const roles = authStore.roleCodes
   return roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.CHANNEL_LEADER) && !roles.includes(ROLE.ADMIN)
 })
 
+/* 判断当前用户是否仅为业务专员（非组长、非管理员） */
 const isBizStaffOnly = computed(() => {
   const roles = authStore.roleCodes
   return roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.BIZ_LEADER) && !roles.includes(ROLE.ADMIN)
 })
 
+/* 判断当前用户是否仅为运营专员（非管理员） */
 const isOpsStaffOnly = computed(() => {
   const roles = authStore.roleCodes
   return roles.includes(ROLE.OPS_STAFF) && !roles.includes(ROLE.ADMIN)
 })
 
+/**
+ * 创建 SVG 图标的渲染函数工厂
+ * 接受一个或多个 SVG path 的 d 属性，返回一个 Naive UI NIcon 组件的渲染函数
+ * 多个 path 时后续 path 以 0.74 透明度叠加
+ */
 const iconData = (paths: string | string[]) => () =>
   h(NIcon, null, {
     default: () =>
@@ -98,6 +130,7 @@ const iconData = (paths: string | string[]) => () =>
       )
   })
 
+/* 预定义的 SVG 图标集合：各业务模块对应的图标 */
 const icons = {
   chart: iconData(['M5 19V13.5', 'M12 19V5', 'M19 19V9', 'M4 19h16']),
   bag: iconData(['M6.5 9h11l1.1 11h-13L6.5 9z', 'M9 9V7a3 3 0 016 0v2', 'M10 13h4']),
@@ -109,6 +142,7 @@ const icons = {
   list: iconData(['M8 6h11M8 12h11M8 18h11', 'M4.5 6h.01M4.5 12h.01M4.5 18h.01'])
 }
 
+/* 菜单路由路径 -> 图标渲染函数的映射表 */
 const ICON_BY_KEY: Record<string, () => unknown> = {
   '/dashboard': icons.chart,
   '/orders': icons.truck,
@@ -134,6 +168,7 @@ const ICON_BY_KEY: Record<string, () => unknown> = {
   [TALENT_MENU_KEYS.blacklist]: icons.shield
 }
 
+/** 侧边菜单项的接口定义 */
 interface SidebarMenuOption {
   label: string
   key: string
@@ -141,21 +176,30 @@ interface SidebarMenuOption {
   children?: SidebarMenuOption[]
 }
 
+/** 根据当前用户角色构建可访问的菜单树 */
 const accessibleMenuTree = computed(() => buildAccessibleMenuTree(authStore.roleCodes))
 
+/** 当前激活的顶部菜单 key，用于确定左侧菜单的归属 */
 const activeTopKey = computed(() => resolveActiveTopKey(route.path))
 
+/** 当前激活的左侧菜单项 key，用于高亮当前页面对应的菜单 */
 const activeLeftKey = computed(() => {
   const view = typeof route.query.view === 'string' ? route.query.view : null
   return resolveActiveLeftKey(route.path, view)
 })
 
+/** 用户手动展开/折叠的菜单项 key 列表 */
 const manualExpandedKeys = ref<string[]>([])
 
+/** 切换顶部菜单时，重置手动展开状态，避免跨模块的展开记忆 */
 watch(activeTopKey, () => {
   manualExpandedKeys.value = []
 })
 
+/**
+ * 将菜单树节点转换为 Naive UI 菜单组件所需的格式
+ * 并根据当前用户角色进行文案本地化（如渠道专员看到"我的业绩"而非"数据"）
+ */
 function localizeLeftMenu(node: MenuTreeNode): SidebarMenuOption {
   let label = node.label
   if (isChannelStaffOnly.value) {
@@ -183,10 +227,15 @@ function localizeLeftMenu(node: MenuTreeNode): SidebarMenuOption {
   return option
 }
 
+/** 当前用户角色可访问的达人视图类型集合，用于过滤达人菜单子项 */
 const accessibleTalentViewValues = computed(() =>
   new Set<string>(getAccessibleTalentViewOptions(authStore.roleCodes, authStore.isAdmin).map((item) => item.value))
 )
 
+/**
+ * 最终渲染的左侧菜单项列表
+ * 流程：获取当前顶部菜单下的左侧菜单 -> 达人模块额外过滤不可见的视图 -> 文案本地化
+ */
 const menuOptions = computed(() => {
   const leftMenus = getLeftMenus(accessibleMenuTree.value, activeTopKey.value)
   if (activeTopKey.value === 'talent') {
@@ -202,6 +251,7 @@ const menuOptions = computed(() => {
   return leftMenus.map(localizeLeftMenu)
 })
 
+/** 菜单展开项集合：自动展开有子项的菜单 + 用户手动展开的菜单 */
 const expandedKeys = computed(() => {
   const expandable = menuOptions.value
     .filter((item) => item.children?.length)
@@ -209,10 +259,12 @@ const expandedKeys = computed(() => {
   return [...new Set([...expandable, ...manualExpandedKeys.value])]
 })
 
+/** 用户手动展开/折叠菜单时更新手动展开列表 */
 function handleExpandedKeys(keys: string[]) {
   manualExpandedKeys.value = keys
 }
 
+/** 左侧菜单项点击处理：达人视图使用 query 参数导航，其他使用标准路由导航 */
 function handleLeftMenuClick(key: string) {
   if (key.startsWith('/talent?view=')) {
     const view = key.replace('/talent?view=', '')

@@ -16,17 +16,48 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
+/**
+ * 提成规则管理服务。
+ *
+ * <p>职责：管理提成规则的 CRUD 操作，并提供基于维度优先级的提成比例解析能力。
+ *
+ * <p>维度类型（dimensionType）支持四级优先级，从高到低为：
+ * <ol>
+ *   <li>product（商品级）—— 最高优先级，精确到具体商品</li>
+ *   <li>activity（活动级）—— 次高优先级，精确到具体活动</li>
+ *   <li>user（用户级）—— 针对特定招商员/渠道</li>
+ *   <li>global（全局级）—— 默认兜底规则</li>
+ * </ol>
+ *
+ * <p>提成类型（commissionType）分为两类：
+ * <ul>
+ *   <li>recruiter —— 招商提成</li>
+ *   <li>channel —— 渠道提成</li>
+ * </ul>
+ *
+ * <p>依赖服务/仓储：
+ * <ul>
+ *   <li>{@link CommissionRuleMapper} —— 提成规则数据访问</li>
+ * </ul>
+ */
 @Service
 public class CommissionRuleService {
 
+    /** 维度类型：全局级 */
     public static final String DIMENSION_GLOBAL = "global";
+    /** 维度类型：活动级 */
     public static final String DIMENSION_ACTIVITY = "activity";
+    /** 维度类型：商品级 */
     public static final String DIMENSION_PRODUCT = "product";
+    /** 维度类型：用户级 */
     public static final String DIMENSION_USER = "user";
 
+    /** 提成类型：招商提成 */
     public static final String TYPE_RECRUITER = "recruiter";
+    /** 提成类型：渠道提成 */
     public static final String TYPE_CHANNEL = "channel";
 
+    /** 维度优先级链：product > activity > user > global，用于提成比例解析时的逐级回退 */
     private static final List<String> DIMENSION_PRIORITY = List.of(
             DIMENSION_PRODUCT,
             DIMENSION_ACTIVITY,
@@ -39,12 +70,29 @@ public class CommissionRuleService {
         this.commissionRuleMapper = commissionRuleMapper;
     }
 
+    /**
+     * 提成比例解析上下文。
+     * 携带当前订单的活动ID、商品ID、招商员用户ID，用于在优先级链中匹配最合适的提成规则。
+     *
+     * @param activityId      活动ID
+     * @param productId       商品ID
+     * @param recruiterUserId 招商员用户ID
+     */
     public record CommissionResolutionContext(
             String activityId,
             String productId,
             UUID recruiterUserId) {
     }
 
+    /**
+     * 分页查询提成规则列表。
+     *
+     * @param dimensionType 维度类型筛选（可选，null 表示不筛选）
+     * @param commissionType 提成类型筛选（可选，null 表示不筛选）
+     * @param page          页码
+     * @param size          每页大小
+     * @return 分页结果
+     */
     public IPage<CommissionRule> findPage(String dimensionType, String commissionType, int page, int size) {
         LambdaQueryWrapper<CommissionRule> wrapper = new LambdaQueryWrapper<CommissionRule>()
                 .eq(CommissionRule::getDeleted, 0)
@@ -59,6 +107,13 @@ public class CommissionRuleService {
         return commissionRuleMapper.selectPage(new Page<>(page, size), wrapper);
     }
 
+    /**
+     * 根据ID查询单条提成规则。
+     *
+     * @param id 规则ID
+     * @return 规则实体
+     * @throws BusinessException 规则不存在或已删除时抛出 NOT_FOUND 异常
+     */
     public CommissionRule getById(UUID id) {
         CommissionRule rule = commissionRuleMapper.selectById(id);
         if (rule == null || rule.getDeleted() != null && rule.getDeleted() != 0) {
@@ -67,6 +122,14 @@ public class CommissionRuleService {
         return rule;
     }
 
+    /**
+     * 创建新的提成规则。
+     * 自动设置 UUID、默认状态（启用）、创建/更新时间。
+     *
+     * @param rule 规则实体，维度类型、提成类型、比例等字段必填
+     * @return 创建后的规则实体（含生成的 ID）
+     * @throws BusinessException 参数校验失败时抛出异常
+     */
     @Transactional(rollbackFor = Exception.class)
     public CommissionRule create(CommissionRule rule) {
         validateRule(rule, true);
@@ -80,6 +143,15 @@ public class CommissionRuleService {
         return rule;
     }
 
+    /**
+     * 更新已有的提成规则。
+     * 仅更新允许修改的字段，保留原 ID 和创建时间。
+     *
+     * @param id    规则ID
+     * @param rule  新的规则数据
+     * @return 更新后的规则实体
+     * @throws BusinessException 规则不存在或参数校验失败时抛出异常
+     */
     @Transactional(rollbackFor = Exception.class)
     public CommissionRule update(UUID id, CommissionRule rule) {
         CommissionRule existing = getById(id);
@@ -96,6 +168,12 @@ public class CommissionRuleService {
         return existing;
     }
 
+    /**
+     * 逻辑删除提成规则（设置 deleted=1）。
+     *
+     * @param id 规则ID
+     * @throws BusinessException 规则不存在时抛出 NOT_FOUND 异常
+     */
     @Transactional(rollbackFor = Exception.class)
     public void delete(UUID id) {
         CommissionRule existing = getById(id);
@@ -104,6 +182,17 @@ public class CommissionRuleService {
         commissionRuleMapper.updateById(existing);
     }
 
+    /**
+     * 按优先级链解析提成比例。
+     *
+     * <p>解析策略：按 product > activity > user > global 的优先级依次查询生效中的提成规则，
+     * 一旦匹配到即返回对应比例，不再继续向下查找。若所有维度均未命中，返回 null。
+     *
+     * @param commissionType 提成类型（recruiter / channel）
+     * @param context        解析上下文，包含活动ID、商品ID、招商员ID
+     * @param at             生效时间点，用于过滤有效期范围；null 时使用当前时间
+     * @return 匹配到的提成比例（0~1），未匹配到时返回 null
+     */
     public BigDecimal resolveRatio(String commissionType, CommissionResolutionContext context, LocalDateTime at) {
         String normalizedType = normalizeCommissionType(commissionType);
         LocalDateTime effectiveAt = at == null ? LocalDateTime.now() : at;
@@ -120,6 +209,11 @@ public class CommissionRuleService {
         return null;
     }
 
+    /**
+     * 在指定维度和提成类型下，查找当前生效的提成比例。
+     * 查询条件包括：未删除、状态为启用、维度类型匹配、提成类型匹配、有效期覆盖指定时间点。
+     * 同一维度下取最新更新时间的规则。
+     */
     private BigDecimal findActiveRatio(
             String dimensionType,
             String dimensionId,
@@ -143,6 +237,10 @@ public class CommissionRuleService {
         return rule == null || rule.getRatio() == null ? null : rule.getRatio();
     }
 
+    /**
+     * 根据维度类型从解析上下文中提取对应的维度ID。
+     * activity -> activityId；product -> productId；user -> recruiterUserId.toString()；global -> null。
+     */
     private String resolveDimensionId(String dimensionType, CommissionResolutionContext context) {
         if (context == null) {
             return null;
@@ -156,6 +254,11 @@ public class CommissionRuleService {
         };
     }
 
+    /**
+     * 校验提成规则的合法性。
+     * 校验内容：规则非空、维度类型合法、提成类型合法、比例在 0~1 范围内、有效期逻辑正确。
+     * 创建模式下强制清空 ID（由系统生成）。
+     */
     private void validateRule(CommissionRule rule, boolean creating) {
         if (rule == null) {
             throw BusinessException.param("提成规则不能为空");

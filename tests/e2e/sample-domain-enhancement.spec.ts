@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 /**
  * 寄样域 V2.0 增强项 E2E（filter-options / 领域事件 / LOCAL_FALLBACK / 物流诊断）。
- * 默认 skip：需 local-mock 或 real-pre 后端与测试账号。
+ * 默认 skip：需 test 或 real-pre 后端与测试账号。
  */
 test.describe('Sample domain enhancement', () => {
   test.skip(true, 'Enable when backend + auth fixtures are available');

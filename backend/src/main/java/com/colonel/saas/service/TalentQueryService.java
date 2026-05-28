@@ -34,20 +34,63 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * 达人域 — 达人查询服务。
+ * <p>负责达人列表分页查询、详情展示和操作权限校验，是达人域面向上层的核心只读入口。</p>
+ *
+ * <ul>
+ *   <li>分页查询：基于数据库分页 + 内存多条件过滤的混合模式，支持认领状态、视图、分类、区间等筛选</li>
+ *   <li>详情组装：聚合达人基本信息、认领关系、寄样记录、订单汇总，按数据范围脱敏</li>
+ *   <li>权限校验：基于数据范围（ALL / DEPT / PERSONAL）和角色（ADMIN / CHANNEL_LEADER / CHANNEL_STAFF）控制访问</li>
+ *   <li>卡牌富化：为列表和详情中的达人卡牌填充认领归属、寄样数、订单数、区间标签等衍生字段</li>
+ * </ul>
+ *
+ * <p><b>业务域：</b>达人域（Talent）</p>
+ *
+ * <p><b>协作关系：</b></p>
+ * <ul>
+ *   <li>{@link TalentService} — 委托分页查询与单条查询</li>
+ *   <li>{@link TalentClaimMapper} — 读取认领记录</li>
+ *   <li>{@link SysUserMapper} — 批量查询认领人用户信息</li>
+ *   <li>{@link SampleRequestMapper} — 寄样请求数据访问</li>
+ *   <li>{@link org.springframework.jdbc.core.JdbcTemplate} — 原生 SQL 聚合寄样/订单统计</li>
+ * </ul>
+ *
+ * @see TalentService
+ * @see TalentClaimMapper
+ */
 @Service
 public class TalentQueryService {
 
+    /** 认领状态：生效中 */
     private static final int CLAIM_STATUS_ACTIVE = 1;
+    /** 认领状态：已过期 */
     private static final int CLAIM_STATUS_EXPIRED = 2;
+    /** 单次数据库分页最大拉取条数，防止内存溢出 */
     private static final int TALENT_QUERY_BATCH_SIZE = 200;
+    /** SQL IN 子句批次大小，避免超长参数列表 */
     private static final int SQL_IN_BATCH_SIZE = 200;
 
+    /** 达人核心服务，委托分页与单条查询 */
     private final TalentService talentService;
+    /** 达人认领 Mapper，查询认领归属关系 */
     private final TalentClaimMapper talentClaimMapper;
+    /** 系统用户 Mapper，批量查询认领人姓名 */
     private final SysUserMapper sysUserMapper;
+    /** 寄样请求 Mapper，提供寄样数据访问 */
     private final SampleRequestMapper sampleRequestMapper;
+    /** Spring JdbcTemplate，用于原生 SQL 聚合查询（寄样统计、订单统计） */
     private final JdbcTemplate jdbcTemplate;
 
+    /**
+     * 构造函数，通过依赖注入初始化所有服务和仓储。
+     *
+     * @param talentService        达人服务（基础 CRUD 和分页查询）
+     * @param talentClaimMapper    达人认领记录 Mapper
+     * @param sysUserMapper        系统用户 Mapper（解析认领人姓名）
+     * @param sampleRequestMapper  寄样请求 Mapper（统计寄样次数）
+     * @param jdbcTemplate         JDBC 模板（原生 SQL 聚合查询）
+     */
     public TalentQueryService(
             TalentService talentService,
             TalentClaimMapper talentClaimMapper,
@@ -61,7 +104,27 @@ public class TalentQueryService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /**
+     * 达人列表分页查询（数据库分页 + 内存多条件过滤）。
+     * <p>由于部分筛选条件（认领状态、视图类型、指标区间等）无法下推至 SQL，
+     * 采用「逐批拉取 + 内存过滤」的混合策略：每次从数据库拉取一批，富化后逐条匹配所有筛选条件，
+     * 直到收集够当前页的数据或遍历完所有批次。</p>
+     *
+     * <ol>
+     *   <li>计算请求分页参数，确定单批拉取大小和目标索引范围</li>
+     *   <li>循环从 {@link TalentService#page} 拉取数据库分页批次</li>
+     *   <li>对每批记录调用 {@link #enrichTalentCards} 填充认领归属、寄样数、订单统计等衍生字段</li>
+     *   <li>逐条执行 17 项内存过滤条件（池状态、归属人、视图、平台、认领状态、分类、等级、区域、
+     *       抖音号、昵称、6 个指标区间、联系状态）</li>
+     *   <li>仅将目标页索引范围内的记录加入结果集</li>
+     *   <li>组装分页结果返回</li>
+     * </ol>
+     *
+     * @param query 分页查询条件（包含分页参数、数据范围、多维筛选条件）
+     * @return 分页结果，records 为目标页记录，total 为过滤后总条数
+     */
     public IPage<Talent> page(TalentPageQuery query) {
+        // 第一步：计算分页参数
         long requestedPage = query == null ? 1L : Math.max(query.getPage(), 1L);
         long requestedSize = query == null ? 10L : Math.max(query.getSize(), 1L);
         long fetchSize = normalizeFetchSize(requestedSize);
@@ -74,6 +137,7 @@ public class TalentQueryService {
         long pages = 1L;
         DataScope baseScope = resolveBaseScope(query);
         String listKeyword = resolveListKeyword(query);
+        // 第二步：循环拉取数据库分页批次，富化后逐条过滤
         while (current <= pages) {
             IPage<Talent> batchPage = talentService.page(
                     current,
@@ -86,7 +150,9 @@ public class TalentQueryService {
                     query.getUserId(),
                     query.getDeptId());
             List<Talent> records = new ArrayList<>(batchPage.getRecords());
+            // 第三步：富化卡牌字段（认领归属、寄样数、订单数、区间标签）
             enrichTalentCards(records, query.getUserId());
+            // 第四步：逐条匹配全部筛选条件，不满足则跳过
             for (Talent talent : records) {
                 if (!matchesPoolStatus(talent, query.getPoolStatus())
                         || !matchesOwnerKeyword(talent, query.getOwnerKeyword())
@@ -107,6 +173,7 @@ public class TalentQueryService {
                         || !matchesContactStatus(talent, query.getContactStatus())) {
                     continue;
                 }
+                // 第五步：仅收集目标页范围内的记录
                 if (filteredTotal >= fromIndex && filteredTotal < toIndexExclusive) {
                     pageRecords.add(talent);
                 }
@@ -119,11 +186,18 @@ public class TalentQueryService {
             current++;
         }
 
+        // 第六步：组装分页结果
         Page<Talent> result = new Page<>(requestedPage, requestedSize, filteredTotal);
         result.setRecords(pageRecords);
         return result;
     }
 
+    /**
+     * 归一化单批拉取大小，限制在 {@link #TALENT_QUERY_BATCH_SIZE} 以内以控制内存消耗。
+     *
+     * @param requestedSize 请求的每页条数
+     * @return 归一化后的批次大小
+     */
     private long normalizeFetchSize(long requestedSize) {
         if (requestedSize <= 0) {
             return 10L;
@@ -131,26 +205,58 @@ public class TalentQueryService {
         return Math.min(requestedSize, TALENT_QUERY_BATCH_SIZE);
     }
 
+    /**
+     * 解析底层数据库查询的数据范围。
+     * <p>当视图为 TEAM_PUBLIC（团队公海）时强制使用 ALL 范围，确保公海池数据完整展示。</p>
+     *
+     * @param query 分页查询条件
+     * @return 数据范围枚举值
+     */
     private DataScope resolveBaseScope(TalentPageQuery query) {
         if (query == null) {
             return DataScope.ALL;
         }
+        // 注意：团队公海视图不按数据范围过滤，确保所有公海达人可见
         if ("TEAM_PUBLIC".equalsIgnoreCase(firstNonBlank(query.getView(), ""))) {
             return DataScope.ALL;
         }
         return query.getDataScope() != null ? query.getDataScope() : DataScope.ALL;
     }
 
+    /**
+     * 达人详情查询（含认领、寄样、订单聚合）。
+     *
+     * <ol>
+     *   <li>通过 {@link TalentService#getById} 获取达人基础信息</li>
+     *   <li>加载认领关系映射（{@link #loadClaimMaps}）</li>
+     *   <li>执行数据范围访问校验（{@link #assertCanAccess}），越权抛出 {@link ForbiddenException}</li>
+     *   <li>富化卡牌衍生字段（寄样数、订单统计、区间标签等）</li>
+     *   <li>根据数据范围判断是否脱敏敏感字段</li>
+     *   <li>组装达人基本信息、认领详情、最近寄样记录、最近订单记录返回</li>
+     * </ol>
+     *
+     * @param talentId      达人 ID
+     * @param currentUserId 当前操作用户 ID
+     * @param currentDeptId 当前操作用户所属部门 ID
+     * @param dataScope     数据范围（ALL / DEPT / PERSONAL）
+     * @return 达人详情响应，包含达人信息、认领信息、寄样列表、订单列表
+     * @throws ForbiddenException 无权查看该达人详情时抛出
+     */
     public TalentDetailResponse detail(UUID talentId, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
+        // 第一步：获取达人基础信息
         Talent talent = talentService.getById(talentId);
         UUID resolvedTalentId = talent == null ? null : talent.getId();
+        // 第二步：加载认领关系映射
         ClaimMaps claimMaps = resolvedTalentId == null
                 ? new ClaimMaps(Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), List.of())
                 : loadClaimMaps(Set.of(resolvedTalentId));
+        // 第三步：校验数据范围访问权限
         assertCanAccess(talent, currentUserId, currentDeptId, dataScope,
                 claimMaps.activeClaimsByTalent().getOrDefault(resolvedTalentId, List.of()));
+        // 第四步：富化卡牌衍生字段
         enrichTalentCards(List.of(talent), currentUserId, claimMaps);
 
+        // 第五步：根据数据范围判断是否脱敏，组装详情响应
         boolean redactSensitiveFields = shouldRedactSensitiveFields(dataScope);
         TalentDetailResponse response = new TalentDetailResponse();
         response.setTalent(toTalentInfo(talent, redactSensitiveFields));
@@ -159,19 +265,42 @@ public class TalentQueryService {
                 currentUserId,
                 redactSensitiveFields,
                 claimMaps.activeClaimsByTalent().getOrDefault(resolvedTalentId, List.of())));
+        // 第六步：加载最近寄样记录和订单记录
         response.setSamples(loadSamples(talent));
         response.setOrders(loadOrders(talent, redactSensitiveFields));
         return response;
     }
 
+    /**
+     * 校验当前用户是否有权操作指定达人。
+     * <p>权限判断优先级：ADMIN 直接放行 &gt; CHANNEL_LEADER 按部门归属放行 &gt; CHANNEL_STAFF 按个人归属放行。
+     * 任一层级匹配成功即放行，全部不匹配则抛出 {@link ForbiddenException}。</p>
+     *
+     * <ol>
+     *   <li>查询达人基础信息，达人不存在时直接放行（由下游业务层处理）</li>
+     *   <li>ADMIN 角色直接放行</li>
+     *   <li>CHANNEL_LEADER 角色：检查当前用户所在部门是否为该达人的认领部门</li>
+     *   <li>CHANNEL_STAFF 角色：检查当前用户是否为该达人的认领人</li>
+     *   <li>以上均不满足，抛出 ForbiddenException</li>
+     * </ol>
+     *
+     * @param talentId      达人 ID
+     * @param currentUserId 当前操作用户 ID
+     * @param currentDeptId 当前操作用户所属部门 ID
+     * @param roleCodes     当前用户的角色编码集合
+     * @throws ForbiddenException 无权操作该达人时抛出
+     */
     public void assertCanOperate(UUID talentId, UUID currentUserId, UUID currentDeptId, Collection<?> roleCodes) {
         Talent talent = talentService.getById(talentId);
         UUID resolvedTalentId = talent == null ? null : talent.getId();
+        // 注意：达人不存在时放行，由下游业务层处理不存在场景
         if (resolvedTalentId == null || hasRole(roleCodes, RoleCodes.ADMIN)) {
             return;
         }
+        // 查询该达人的所有生效认领记录
         List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(resolvedTalentId);
         List<TalentClaim> safeActiveClaims = activeClaims == null ? List.of() : activeClaims;
+        // 渠道主管：所属部门认领了该达人即有权操作
         if (hasRole(roleCodes, RoleCodes.CHANNEL_LEADER)) {
             boolean ownedByCurrentDept = currentDeptId != null && safeActiveClaims.stream()
                     .anyMatch(claim -> currentDeptId.equals(claim.getDeptId()));
@@ -179,6 +308,7 @@ public class TalentQueryService {
                 return;
             }
         }
+        // 渠道专员：个人认领了该达人即有权操作
         if (hasRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
             boolean ownedByCurrentUser = currentUserId != null && safeActiveClaims.stream()
                     .anyMatch(claim -> currentUserId.equals(claim.getUserId()));
@@ -189,6 +319,15 @@ public class TalentQueryService {
         throw new ForbiddenException("无权操作该达人");
     }
 
+    /**
+     * 达人详情访问权限校验（便捷重载，自动加载认领记录）。
+     *
+     * @param talent        达人实体
+     * @param currentUserId 当前操作用户 ID
+     * @param currentDeptId 当前操作用户所属部门 ID
+     * @param dataScope     数据范围
+     * @throws ForbiddenException 无权查看时抛出
+     */
     private void assertCanAccess(Talent talent, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
         List<TalentClaim> activeClaims = talent == null || talent.getId() == null
                 ? List.of()
@@ -196,16 +335,34 @@ public class TalentQueryService {
         assertCanAccess(talent, currentUserId, currentDeptId, dataScope, activeClaims);
     }
 
+    /**
+     * 达人详情访问权限校验（核心实现）。
+     * <p>根据数据范围判断当前用户是否有权查看该达人：</p>
+     * <ul>
+     *   <li>ALL — 所有人可看，直接放行</li>
+     *   <li>PERSONAL — 仅认领人本人可看</li>
+     *   <li>DEPT — 仅同部门认领人可看</li>
+     * </ul>
+     *
+     * @param talent        达人实体
+     * @param currentUserId 当前操作用户 ID
+     * @param currentDeptId 当前操作用户所属部门 ID
+     * @param dataScope     数据范围
+     * @param activeClaims  该达人的生效认领记录列表
+     * @throws ForbiddenException 无权查看时抛出
+     */
     private void assertCanAccess(
             Talent talent,
             UUID currentUserId,
             UUID currentDeptId,
             DataScope dataScope,
             List<TalentClaim> activeClaims) {
+        // 达人不存在或数据范围为 ALL 时直接放行
         if (talent == null || talent.getId() == null || dataScope == null || dataScope == DataScope.ALL) {
             return;
         }
         List<TalentClaim> safeActiveClaims = activeClaims == null ? List.of() : activeClaims;
+        // PERSONAL 范围：仅当前用户是认领人之一时放行
         if (dataScope == DataScope.PERSONAL) {
             boolean ownedByCurrentUser = currentUserId != null && safeActiveClaims.stream()
                     .anyMatch(claim -> currentUserId.equals(claim.getUserId()));
@@ -214,6 +371,7 @@ public class TalentQueryService {
             }
             return;
         }
+        // DEPT 范围：当前用户所在部门是认领部门之一时放行
         boolean ownedByCurrentDept = currentDeptId != null && safeActiveClaims.stream()
                 .anyMatch(claim -> currentDeptId.equals(claim.getDeptId()));
         if (!ownedByCurrentDept) {
@@ -221,6 +379,13 @@ public class TalentQueryService {
         }
     }
 
+    /**
+     * 判断角色集合中是否包含指定角色（忽略大小写）。
+     *
+     * @param roleCodes     用户角色编码集合
+     * @param expectedRole  待匹配的角色编码
+     * @return 包含则返回 true
+     */
     private boolean hasRole(Collection<?> roleCodes, String expectedRole) {
         if (roleCodes == null || roleCodes.isEmpty() || !StringUtils.hasText(expectedRole)) {
             return false;
@@ -232,15 +397,36 @@ public class TalentQueryService {
                 .anyMatch(normalizedExpected::equals);
     }
 
+    /**
+     * 达人卡牌富化（便捷重载，内部自行加载认领映射）。
+     *
+     * @param talents       达人列表
+     * @param currentUserId 当前操作用户 ID
+     */
     private void enrichTalentCards(List<Talent> talents, UUID currentUserId) {
         enrichTalentCards(talents, currentUserId, null);
     }
 
+    /**
+     * 达人卡牌富化（核心实现）。
+     * <p>批量加载认领关系、用户信息、寄样统计和订单汇总，然后逐条填充每个达人的衍生字段：</p>
+     * <ul>
+     *   <li>认领归属：池状态（PRIVATE/PUBLIC）、归属人、认领时间、保护期</li>
+     *   <li>业务统计：寄样数、订单数、服务费贡献、月销售额</li>
+     *   <li>指标区间标签：直播销售额、直播观看、直播 GPM、视频销售额、视频播放、视频 GPM</li>
+     *   <li>主营分类</li>
+     * </ul>
+     *
+     * @param talents             达人列表
+     * @param currentUserId       当前操作用户 ID
+     * @param preloadedClaimMaps  预加载的认领映射（为 null 时内部重新加载）
+     */
     private void enrichTalentCards(List<Talent> talents, UUID currentUserId, ClaimMaps preloadedClaimMaps) {
         if (talents == null || talents.isEmpty()) {
             return;
         }
 
+        // 第一步：批量加载关联数据
         Set<UUID> talentIds = talents.stream().map(Talent::getId).filter(Objects::nonNull).collect(Collectors.toSet());
         ClaimMaps claimMaps = preloadedClaimMaps == null ? loadClaimMaps(talentIds) : preloadedClaimMaps;
         Map<UUID, SysUser> ownerMap = loadOwnerMap(claimMaps.allClaims());
@@ -251,28 +437,34 @@ public class TalentQueryService {
                 talents.stream().map(Talent::getDouyinUid).filter(StringUtils::hasText).collect(Collectors.toSet())
         );
 
+        // 第二步：逐条填充衍生字段
         for (Talent talent : talents) {
             List<TalentClaim> activeClaims = claimMaps.activeClaimsByTalent().getOrDefault(talent.getId(), List.of());
+            // 判断当前用户是否认领了该达人
             TalentClaim currentClaim = activeClaims.stream()
                     .filter(claim -> currentUserId != null && currentUserId.equals(claim.getUserId()))
                     .findFirst()
                     .orElse(null);
             talent.setActiveClaimCount(activeClaims.size());
             if (currentClaim != null) {
+                // 当前用户已认领：标记为私有池
                 talent.setPoolStatus("PRIVATE");
                 talent.setOwnerId(currentClaim.getUserId());
                 talent.setClaimedAt(currentClaim.getClaimedAt());
                 talent.setProtectedUntil(currentClaim.getProtectedUntil());
                 talent.setOwnerName(buildClaimSummary(activeClaims, ownerMap, currentUserId));
             } else {
+                // 当前用户未认领：标记为公有池，展示公海认领提示
                 talent.setPoolStatus("PUBLIC");
                 talent.setOwnerId(null);
                 applyPublicClaimHint(talent, activeClaims, claimMaps.latestClaims().get(talent.getId()), ownerMap);
             }
 
+            // 填充寄样统计
             Long sampleCount = sampleCountMap.getOrDefault(talent.getId(), 0L);
             talent.setSampleCount(sampleCount);
 
+            // 填充订单统计与衍生指标区间标签
             OrderAggregate aggregate = orderAggregateMap.get(talent.getDouyinUid());
             long orderCount = aggregate == null ? 0L : aggregate.orderCount();
             long serviceFee = aggregate == null ? 0L : aggregate.serviceFee();
@@ -282,6 +474,7 @@ public class TalentQueryService {
             talent.setMonthlySales(monthlySales);
             talent.setNaturalOrderTalent(orderCount > 0);
             talent.setMainCategory(resolveMainCategory(talent.getCategories()));
+            // 计算 6 个指标区间标签
             talent.setLiveSalesBand(toSalesBand(monthlySales));
             talent.setLiveViewBand(toFansBand(talent.getFans()));
             talent.setLiveGpmBand(toGpmBand(monthlySales, talent.getFans()));
@@ -291,10 +484,23 @@ public class TalentQueryService {
         }
     }
 
+    /**
+     * 批量加载达人认领关系映射。
+     * <p>一次性查询指定达人集合的全部认领记录（按认领时间降序），并构建三类映射：</p>
+     * <ul>
+     *   <li>activeClaims — 每个达人的第一条生效认领（用于快速查询主归属人）</li>
+     *   <li>activeClaimsByTalent — 每个达人的所有生效认领列表（用于多人认领场景）</li>
+     *   <li>latestClaims — 每个达人的最新一条认领记录（含已过期，用于公海释放提示）</li>
+     * </ul>
+     *
+     * @param talentIds 达人 ID 集合
+     * @return 认领关系映射容器
+     */
     private ClaimMaps loadClaimMaps(Set<UUID> talentIds) {
         if (talentIds == null || talentIds.isEmpty()) {
             return new ClaimMaps(Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), List.of());
         }
+        // 查询所有未删除的认领记录，按认领时间降序排列
         List<TalentClaim> claims = talentClaimMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TalentClaim>()
                         .in(TalentClaim::getTalentId, talentIds)
@@ -308,7 +514,9 @@ public class TalentQueryService {
             if (claim.getTalentId() == null) {
                 continue;
             }
+            // 每个达人仅保留第一条（最新的）作为 latestClaim
             latestClaims.putIfAbsent(claim.getTalentId(), claim);
+            // 仅 status=ACTIVE 的认领记录归入生效映射
             if (claim.getStatus() != null && claim.getStatus() == CLAIM_STATUS_ACTIVE) {
                 activeClaimsByTalent.computeIfAbsent(claim.getTalentId(), key -> new ArrayList<>()).add(claim);
                 if (!activeClaims.containsKey(claim.getTalentId())) {
@@ -319,6 +527,12 @@ public class TalentQueryService {
         return new ClaimMaps(activeClaims, activeClaimsByTalent, latestClaims, claims);
     }
 
+    /**
+     * 批量加载认领人用户信息映射（userId → SysUser）。
+     *
+     * @param claims 认领记录列表
+     * @return 用户 ID 到用户实体的映射
+     */
     private Map<UUID, SysUser> loadOwnerMap(Collection<TalentClaim> claims) {
         if (claims == null || claims.isEmpty()) {
             return Collections.emptyMap();
@@ -335,11 +549,20 @@ public class TalentQueryService {
                 .collect(Collectors.toMap(SysUser::getId, Function.identity(), (a, b) -> a));
     }
 
+    /**
+     * 批量加载达人寄样统计（talentId → 寄样次数）。
+     * <p>通过原生 SQL 按 talent_id 分组统计 sample_request 表记录数，
+     * 采用分批 IN 查询避免超长参数列表。</p>
+     *
+     * @param talentIds 达人 ID 集合
+     * @return 达人 ID 到寄样次数的映射
+     */
     private Map<UUID, Long> loadSampleCounts(Set<UUID> talentIds) {
         if (talentIds == null || talentIds.isEmpty()) {
             return Collections.emptyMap();
         }
         Map<UUID, Long> result = new HashMap<>();
+        // 分批查询，避免 SQL IN 子句过长
         for (List<UUID> batch : partition(talentIds, SQL_IN_BATCH_SIZE)) {
             String placeholders = joinPlaceholders(batch.size());
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(
@@ -358,12 +581,23 @@ public class TalentQueryService {
         return result;
     }
 
+    /**
+     * 批量加载达人订单汇总（douyinUid → OrderAggregate）。
+     * <p>通过原生 SQL 从 colonelsettlement_order 表按达人维度聚合近 30 天的订单数、订单金额和服务费。
+     * 达人标识优先取 extra_data 中的 talent_uid / author_id，兜底取 talent_name。
+     * 采用分批 IN 查询避免超长参数列表。</p>
+     *
+     * @param douyinUids 达人抖音 UID 集合
+     * @return 抖音 UID 到订单聚合数据的映射
+     */
     private Map<String, OrderAggregate> loadOrderAggregates(Set<String> douyinUids) {
         if (douyinUids == null || douyinUids.isEmpty()) {
             return Collections.emptyMap();
         }
+        // 注意：仅统计近 30 天的订单数据
         LocalDateTime cutoff = LocalDateTime.now().minusDays(30);
         Map<String, OrderAggregate> result = new HashMap<>();
+        // 分批查询，避免 SQL IN 子句过长
         for (List<String> batch : partition(douyinUids, SQL_IN_BATCH_SIZE)) {
             String placeholders = joinPlaceholders(batch.size());
             List<Object> params = new ArrayList<>(batch.size() + 1);
@@ -396,6 +630,12 @@ public class TalentQueryService {
         return result;
     }
 
+    /**
+     * 生成指定数量的 SQL 参数占位符（"?, ?, ?"）。
+     *
+     * @param size 占位符数量，必须 &gt; 0
+     * @return 逗号分隔的占位符字符串
+     */
     private String joinPlaceholders(int size) {
         if (size <= 0) {
             throw new IllegalArgumentException("size must be positive");
@@ -403,6 +643,15 @@ public class TalentQueryService {
         return String.join(", ", Collections.nCopies(size, "?"));
     }
 
+    /**
+     * 将集合按指定批次大小分组，用于分批执行 SQL IN 查询。
+     *
+     * @param <T>       元素类型
+     * @param values    待分组的集合
+     * @param batchSize 每批最大条数
+     * @return 分组后的列表
+     */
+    @SuppressWarnings("unchecked")
     private <T> List<List<T>> partition(Collection<T> values, int batchSize) {
         if (values == null || values.isEmpty()) {
             return List.of();
@@ -415,6 +664,14 @@ public class TalentQueryService {
         return partitions;
     }
 
+    /**
+     * 将达人实体转换为详情响应中的达人信息 DTO。
+     * <p>当需要脱敏时（数据范围为 PERSONAL），隐藏 profileUrl 等敏感字段。</p>
+     *
+     * @param talent               达人实体（已富化）
+     * @param redactSensitiveFields 是否脱敏敏感字段
+     * @return 达人信息 DTO
+     */
     private TalentDetailResponse.TalentInfo toTalentInfo(Talent talent, boolean redactSensitiveFields) {
         TalentDetailResponse.TalentInfo info = new TalentDetailResponse.TalentInfo();
         info.setId(talent.getId() == null ? null : talent.getId().toString());
@@ -422,6 +679,7 @@ public class TalentQueryService {
         info.setDouyinUid(talent.getDouyinUid());
         info.setDouyinNo(talent.getDouyinNo());
         info.setUid(talent.getUid());
+        // 注意：脱敏时隐藏主页链接
         if (!redactSensitiveFields) {
             info.setProfileUrl(talent.getProfileUrl());
         }
@@ -454,6 +712,17 @@ public class TalentQueryService {
         return info;
     }
 
+    /**
+     * 将达人认领信息转换为详情响应中的认领信息 DTO。
+     * <p>包含池状态、归属人、认领时间、保护期、收货地址（优先当前用户的认领记录），
+     * 以及生效认领人列表（脱敏时隐藏）。</p>
+     *
+     * @param talent               达人实体（已富化）
+     * @param currentUserId        当前操作用户 ID
+     * @param redactSensitiveFields 是否脱敏敏感字段
+     * @param activeClaims         该达人的生效认领记录列表
+     * @return 认领信息 DTO
+     */
     private TalentDetailResponse.ClaimInfo toClaimInfo(
             Talent talent,
             UUID currentUserId,
@@ -466,20 +735,30 @@ public class TalentQueryService {
         info.setClaimedAt(talent.getClaimedAt());
         info.setProtectedUntil(talent.getProtectedUntil());
         info.setActiveClaimCount(talent.getActiveClaimCount());
+        // 优先取当前用户的认领记录作为收货地址来源
         TalentClaim claimAddress = resolveClaimAddress(activeClaims, currentUserId);
         if (claimAddress != null) {
             info.setRecipientName(claimAddress.getRecipientName());
             info.setRecipientPhone(claimAddress.getRecipientPhone());
             info.setRecipientAddress(claimAddress.getRecipientAddress());
         }
+        // 脱敏时隐藏生效认领人列表
         info.setActiveClaimOwners(redactSensitiveFields ? List.of() : loadActiveClaimOwners(talent.getId(), currentUserId));
         return info;
     }
 
+    /**
+     * 解析收货地址来源：优先匹配当前用户的认领记录，兜底取第一条。
+     *
+     * @param activeClaims  生效认领记录列表
+     * @param currentUserId 当前操作用户 ID
+     * @return 包含收货地址的认领记录，无记录时返回 null
+     */
     private TalentClaim resolveClaimAddress(List<TalentClaim> activeClaims, UUID currentUserId) {
         if (activeClaims == null || activeClaims.isEmpty()) {
             return null;
         }
+        // 优先匹配当前用户的认领记录
         if (currentUserId != null) {
             for (TalentClaim claim : activeClaims) {
                 if (currentUserId.equals(claim.getUserId())) {
@@ -487,9 +766,17 @@ public class TalentQueryService {
                 }
             }
         }
+        // 兜底取第一条
         return activeClaims.get(0);
     }
 
+    /**
+     * 加载达人最近 20 条寄样记录。
+     * <p>通过原生 SQL 关联 sample_request 和 product 表查询，按创建时间降序。</p>
+     *
+     * @param talent 达人实体
+     * @return 寄样记录列表
+     */
     private List<TalentDetailResponse.SampleItem> loadSamples(Talent talent) {
         if (talent == null || talent.getId() == null) {
             return List.of();
@@ -523,6 +810,15 @@ public class TalentQueryService {
         return items;
     }
 
+    /**
+     * 加载达人最近 20 条订单记录。
+     * <p>通过原生 SQL 从 colonelsettlement_order 查询，按创建时间降序。
+     * 脱敏时隐藏渠道人员姓名。</p>
+     *
+     * @param talent               达人实体
+     * @param redactSensitiveFields 是否脱敏敏感字段
+     * @return 订单记录列表
+     */
     private List<TalentDetailResponse.OrderItem> loadOrders(Talent talent, boolean redactSensitiveFields) {
         if (talent == null || !StringUtils.hasText(talent.getDouyinUid())) {
             return List.of();
@@ -548,6 +844,7 @@ public class TalentQueryService {
             item.setProductName(asText(row.get("product_name")));
             item.setOrderAmount(asLong(row.get("order_amount")));
             item.setServiceFee(asLong(row.get("settle_colonel_commission")));
+            // 注意：脱敏时隐藏渠道人员姓名
             if (!redactSensitiveFields) {
                 item.setChannelName(asText(row.get("channel_user_name")));
             }
@@ -557,19 +854,46 @@ public class TalentQueryService {
         return items;
     }
 
+    /**
+     * 判断是否需要脱敏敏感字段。当数据范围为 PERSONAL 时返回 true。
+     *
+     * @param dataScope 数据范围
+     * @return 需要脱敏返回 true
+     */
     private boolean shouldRedactSensitiveFields(DataScope dataScope) {
         return dataScope == DataScope.PERSONAL;
     }
 
+    /**
+     * 获取用户显示名称（优先真实姓名 → 用户名 → 用户 ID）。
+     *
+     * @param user 用户实体
+     * @return 显示名称
+     */
     private String displayName(SysUser user) {
         return firstNonBlank(user.getRealName(), user.getUsername(), user.getId() == null ? null : user.getId().toString());
     }
 
+    /**
+     * 为公海达人（当前用户未认领）填充认领提示信息。
+     * <p>展示逻辑分三种情况：</p>
+     * <ul>
+     *   <li>有其他人生效认领中 → 显示认领人摘要和最近保护期</li>
+     *   <li>有历史认领但已过期 → 显示「已过期释放 · 原归属 XXX」</li>
+     *   <li>从未被认领 → 全部置空</li>
+     * </ul>
+     *
+     * @param talent      达人实体（结果写入该对象）
+     * @param activeClaims 该达人的所有生效认领记录
+     * @param latestClaim  该达人的最新认领记录（含已过期）
+     * @param ownerMap     用户 ID 到用户实体的映射
+     */
     private void applyPublicClaimHint(Talent talent,
                                       List<TalentClaim> activeClaims,
                                       TalentClaim latestClaim,
                                       Map<UUID, SysUser> ownerMap) {
         if (activeClaims != null && !activeClaims.isEmpty()) {
+            // 有生效认领：展示认领人摘要，保护期取所有认领中的最晚值
             talent.setOwnerName(buildClaimSummary(activeClaims, ownerMap, null));
             TalentClaim latestActiveClaim = activeClaims.get(0);
             talent.setClaimedAt(latestActiveClaim.getClaimedAt());
@@ -581,11 +905,13 @@ public class TalentQueryService {
             return;
         }
         if (latestClaim == null) {
+            // 从未被认领：全部置空
             talent.setOwnerName(null);
             talent.setClaimedAt(null);
             talent.setProtectedUntil(null);
             return;
         }
+        // 有历史认领但已过期：展示过期释放提示
         talent.setClaimedAt(latestClaim.getClaimedAt());
         talent.setProtectedUntil(latestClaim.getProtectedUntil());
         if (latestClaim.getStatus() != null && latestClaim.getStatus() == CLAIM_STATUS_EXPIRED) {
@@ -597,10 +923,20 @@ public class TalentQueryService {
         talent.setOwnerName(null);
     }
 
+    /**
+     * 构建认领人摘要文本。
+     * <p>单人认领显示姓名，多人认领显示「XXX 等 N 人」，当前用户置顶展示。</p>
+     *
+     * @param claims        生效认领记录列表
+     * @param ownerMap      用户 ID 到用户实体的映射
+     * @param currentUserId 当前操作用户 ID（可为 null）
+     * @return 认领人摘要文本
+     */
     private String buildClaimSummary(List<TalentClaim> claims, Map<UUID, SysUser> ownerMap, UUID currentUserId) {
         if (claims == null || claims.isEmpty()) {
             return null;
         }
+        // 收集所有认领人的去重姓名
         List<String> names = claims.stream()
                 .map(TalentClaim::getUserId)
                 .filter(Objects::nonNull)
@@ -610,6 +946,7 @@ public class TalentQueryService {
                 .filter(StringUtils::hasText)
                 .distinct()
                 .toList();
+        // 优先取当前用户的姓名作为主展示名
         String primaryName = null;
         if (currentUserId != null) {
             primaryName = claims.stream()
@@ -634,6 +971,19 @@ public class TalentQueryService {
         return primaryName + " 等 " + names.size() + " 人";
     }
 
+    /**
+     * 加载达人详情页的生效认领人列表。
+     * <p>处理流程：</p>
+     * <ol>
+     *   <li>查询该达人所有生效的认领记录</li>
+     *   <li>批量加载认领人用户信息</li>
+     *   <li>映射为 {@link TalentDetailResponse.ClaimOwnerItem}，当前用户标注「（我）」</li>
+     * </ol>
+     *
+     * @param talentId      达人 ID
+     * @param currentUserId 当前操作用户 ID（可为 null）
+     * @return 生效认领人列表，无认领记录时返回空列表
+     */
     private List<TalentDetailResponse.ClaimOwnerItem> loadActiveClaimOwners(UUID talentId, UUID currentUserId) {
         if (talentId == null) {
             return List.of();
@@ -660,6 +1010,14 @@ public class TalentQueryService {
                 .toList();
     }
 
+    /**
+     * 判断达人是否匹配指定的池状态筛选条件。
+     * <p>未指定筛选条件时默认通过；达人未设置池状态时默认视为 PUBLIC。</p>
+     *
+     * @param talent     达人实体
+     * @param poolStatus 目标池状态（PUBLIC / PRIVATE），可为空
+     * @return 匹配返回 true
+     */
     private boolean matchesPoolStatus(Talent talent, String poolStatus) {
         if (!StringUtils.hasText(poolStatus)) {
             return true;
@@ -667,6 +1025,14 @@ public class TalentQueryService {
         return poolStatus.equalsIgnoreCase(firstNonBlank(talent.getPoolStatus(), "PUBLIC"));
     }
 
+    /**
+     * 判断达人归属人是否匹配关键词筛选。
+     * <p>仅对私有池达人（PRIVATE）进行归属人模糊匹配；公海达人直接跳过。</p>
+     *
+     * @param talent      达人实体
+     * @param ownerKeyword 归属人关键词
+     * @return 匹配返回 true
+     */
     private boolean matchesOwnerKeyword(Talent talent, String ownerKeyword) {
         if (!StringUtils.hasText(ownerKeyword)) {
             return true;
@@ -678,6 +1044,21 @@ public class TalentQueryService {
         return ownerName.toLowerCase(Locale.ROOT).contains(ownerKeyword.toLowerCase(Locale.ROOT));
     }
 
+    /**
+     * 判断达人是否匹配当前视图筛选条件。
+     * <p>视图类型决定不同的过滤逻辑：</p>
+     * <ul>
+     *   <li>TEAM_PUBLIC — 公海达人（非黑名单），个人数据范围时还需无生效认领</li>
+     *   <li>MY_TALENTS — 私有池且归属人为当前用户</li>
+     *   <li>TEAM_PRIVATE — 有生效认领且非黑名单</li>
+     *   <li>NATURAL_ORDERS — 自然出单达人</li>
+     *   <li>BLACKLIST — 黑名单达人</li>
+     * </ul>
+     *
+     * @param talent 达人实体
+     * @param query  分页查询条件
+     * @return 匹配返回 true
+     */
     private boolean matchesView(Talent talent, TalentPageQuery query) {
         String view = query.getView();
         if (!StringUtils.hasText(view)) {
@@ -699,10 +1080,24 @@ public class TalentQueryService {
         };
     }
 
+    /**
+     * 安全取 Number 值，null 时返回 0。
+     *
+     * @param value 数值对象，可为 null
+     * @return 非 null 时返回 longValue()，否则返回 0
+     */
     private long itemOrZero(Number value) {
         return value == null ? 0L : value.longValue();
     }
 
+    /**
+     * 判断达人是否匹配认领状态筛选。
+     * <p>CLAIMED 对应私有池（PRIVATE），UNCLAIMED 对应公海（PUBLIC）。</p>
+     *
+     * @param talent      达人实体
+     * @param claimStatus 认领状态（CLAIMED / UNCLAIMED），可为空
+     * @return 匹配返回 true
+     */
     private boolean matchesClaimStatus(Talent talent, String claimStatus) {
         if (!StringUtils.hasText(claimStatus)) {
             return true;
@@ -714,6 +1109,14 @@ public class TalentQueryService {
         };
     }
 
+    /**
+     * 判断达人是否匹配品类筛选。
+     * <p>优先从主品类匹配，兜底从完整品类列表中模糊匹配。</p>
+     *
+     * @param talent   达人实体
+     * @param category 目标品类关键词
+     * @return 匹配返回 true
+     */
     private boolean matchesCategory(Talent talent, String category) {
         if (!StringUtils.hasText(category)) {
             return true;
@@ -729,6 +1132,14 @@ public class TalentQueryService {
         return StringUtils.hasText(categories) && categories.contains(needle);
     }
 
+    /**
+     * 判断达人是否匹配等级筛选。
+     * <p>支持精确匹配和数字级别匹配（如 "S" 匹配 "S"，"5" 匹配 "Lv5"）。</p>
+     *
+     * @param talent 达人实体
+     * @param level  目标等级
+     * @return 匹配返回 true
+     */
     private boolean matchesLevel(Talent talent, String level) {
         if (!StringUtils.hasText(level)) {
             return true;
@@ -747,6 +1158,13 @@ public class TalentQueryService {
                 || expectedDigits.equalsIgnoreCase(actualDigits);
     }
 
+    /**
+     * 解析列表页的有效搜索关键词。
+     * <p>按优先级依次取 keyword → nickname → douyinNo，取第一个非空值。</p>
+     *
+     * @param query 分页查询条件
+     * @return 有效的搜索关键词，全部为空时返回 null
+     */
     private String resolveListKeyword(TalentPageQuery query) {
         if (query == null) {
             return null;
@@ -763,6 +1181,14 @@ public class TalentQueryService {
         return null;
     }
 
+    /**
+     * 判断达人是否匹配地域筛选。
+     * <p>通过达人 IP 归属地字段进行模糊匹配。</p>
+     *
+     * @param talent 达人实体
+     * @param region 目标地域关键词
+     * @return 匹配返回 true
+     */
     private boolean matchesRegion(Talent talent, String region) {
         if (!StringUtils.hasText(region)) {
             return true;
@@ -770,6 +1196,13 @@ public class TalentQueryService {
         return textOrEmpty(talent.getIpLocation()).contains(region.trim());
     }
 
+    /**
+     * 判断是否匹配平台筛选。
+     * <p>当前仅排除快手（kuaishou）平台，其他平台均通过。</p>
+     *
+     * @param platform 平台标识
+     * @return 非快手平台返回 true
+     */
     private boolean matchesPlatform(String platform) {
         if (!StringUtils.hasText(platform)) {
             return true;
@@ -777,6 +1210,14 @@ public class TalentQueryService {
         return !"kuaishou".equalsIgnoreCase(platform.trim());
     }
 
+    /**
+     * 判断达人是否匹配抖音号筛选。
+     * <p>从 douyinNo、douyinUid、uid 三个字段中模糊匹配。</p>
+     *
+     * @param talent  达人实体
+     * @param douyinNo 目标抖音号
+     * @return 匹配返回 true
+     */
     private boolean matchesDouyinNo(Talent talent, String douyinNo) {
         if (!StringUtils.hasText(douyinNo)) {
             return true;
@@ -785,6 +1226,13 @@ public class TalentQueryService {
         return textOrEmpty(talent.getDouyinNo(), talent.getDouyinUid(), talent.getUid()).contains(normalized);
     }
 
+    /**
+     * 判断达人是否匹配昵称筛选。
+     *
+     * @param talent   达人实体
+     * @param nickname 目标昵称关键词
+     * @return 匹配返回 true
+     */
     private boolean matchesNickname(Talent talent, String nickname) {
         if (!StringUtils.hasText(nickname)) {
             return true;
@@ -792,6 +1240,13 @@ public class TalentQueryService {
         return textOrEmpty(talent.getNickname()).contains(nickname.trim());
     }
 
+    /**
+     * 判断达人指标分段是否匹配目标分段。
+     *
+     * @param actual   达人实际分段（如 "1W~5W"）
+     * @param expected 目标分段筛选值
+     * @return 匹配返回 true
+     */
     private boolean matchesMetricBand(String actual, String expected) {
         if (!StringUtils.hasText(expected)) {
             return true;
@@ -799,6 +1254,14 @@ public class TalentQueryService {
         return expected.equals(actual);
     }
 
+    /**
+     * 判断达人是否匹配联系方式状态筛选。
+     * <p>HAS_CONTACT 要求有手机号或微信号，NO_CONTACT 要求均无。</p>
+     *
+     * @param talent        达人实体
+     * @param contactStatus 联系方式状态（HAS_CONTACT / NO_CONTACT），可为空
+     * @return 匹配返回 true
+     */
     private boolean matchesContactStatus(Talent talent, String contactStatus) {
         if (!StringUtils.hasText(contactStatus)) {
             return true;
@@ -812,6 +1275,13 @@ public class TalentQueryService {
         };
     }
 
+    /**
+     * 从品类字符串中解析主品类（第一个品类）。
+     * <p>支持 JSON 数组格式和逗号分隔格式，去除方括号和引号后取第一个非空项。</p>
+     *
+     * @param categories 品类原始字符串（如 "[\"美妆\",\"护肤\"]" 或 "美妆,护肤"）
+     * @return 主品类名称，无法解析时返回 null
+     */
     private String resolveMainCategory(String categories) {
         if (!StringUtils.hasText(categories)) {
             return null;
@@ -830,6 +1300,13 @@ public class TalentQueryService {
         return StringUtils.hasText(normalized) ? normalized.trim() : null;
     }
 
+    /**
+     * 将销售额（单位：分）转换为区间分段标签。
+     * <p>分段：1W以下、1W~2.5W、2.5W~5W、5W~7.5W、7.5W~10W、10W~25W、25W~50W、50W以上。</p>
+     *
+     * @param amount 销售额（分），null 或 ≤ 0 返回 null
+     * @return 区间分段标签
+     */
     private String toSalesBand(Long amount) {
         if (amount == null || amount <= 0) {
             return null;
@@ -845,6 +1322,13 @@ public class TalentQueryService {
         return "50W以上";
     }
 
+    /**
+     * 将粉丝数转换为区间分段标签。
+     * <p>分段：1W以下、1W~5W、5W~10W、10W~50W、50W~100W、100W以上。</p>
+     *
+     * @param fans 粉丝数，null 或 ≤ 0 返回 null
+     * @return 区间分段标签
+     */
     private String toFansBand(Long fans) {
         if (fans == null || fans <= 0) {
             return null;
@@ -857,6 +1341,15 @@ public class TalentQueryService {
         return "100W以上";
     }
 
+    /**
+     * 将场均播放量转换为区间分段标签。
+     * <p>计算公式：粉丝数 / 订单数，代表每次带货的平均覆盖粉丝量。
+     * 分段：5千以下、5千~1W、1W~5W、5W以上。</p>
+     *
+     * @param fans       粉丝数
+     * @param orderCount 订单数
+     * @return 区间分段标签，数据不足时返回 null
+     */
     private String toPlayBand(Long fans, long orderCount) {
         if (fans == null || fans <= 0 || orderCount <= 0) {
             return null;
@@ -868,6 +1361,14 @@ public class TalentQueryService {
         return "5W以上";
     }
 
+    /**
+     * 将 GPM（千次播放成交额）转换为区间分段标签。
+     * <p>计算公式：(销售额/100) * 1000 / 粉丝数。分段：50~100、100~500、500~1000、1000+。</p>
+     *
+     * @param amount 销售额（单位：分）
+     * @param fans   粉丝数
+     * @return 区间分段标签，数据不足时返回 null
+     */
     private String toGpmBand(Long amount, Long fans) {
         if (amount == null || amount <= 0 || fans == null || fans <= 0) {
             return null;
@@ -879,6 +1380,13 @@ public class TalentQueryService {
         return "1000+";
     }
 
+    /**
+     * 将寄样状态数字码转换为 API 枚举值。
+     * <p>映射关系：1→PENDING_AUDIT, 2→PENDING_SHIP, 3/4→SHIPPED, 5→PENDING_TASK, 6→FINISHED, 7→REJECTED, 8→CLOSED。</p>
+     *
+     * @param status 状态数字码
+     * @return API 枚举字符串，null 时返回 null
+     */
     private String sampleStatusApi(Integer status) {
         if (status == null) {
             return null;
@@ -895,6 +1403,12 @@ public class TalentQueryService {
         };
     }
 
+    /**
+     * 将寄样状态 API 枚举值转换为中文显示文本。
+     *
+     * @param status API 枚举字符串
+     * @return 中文显示文本，空值时返回 "-"
+     */
     private String sampleStatusText(String status) {
         if (!StringUtils.hasText(status)) {
             return "-";
@@ -911,6 +1425,12 @@ public class TalentQueryService {
         };
     }
 
+    /**
+     * 返回可变参数中第一个非空白字符串。
+     *
+     * @param values 候选字符串数组
+     * @return 第一个非空白值，全部为空白或参数为 null 时返回 null
+     */
     private String firstNonBlank(String... values) {
         if (values == null) {
             return null;
@@ -923,15 +1443,34 @@ public class TalentQueryService {
         return null;
     }
 
+    /**
+     * 返回第一个非空白字符串，无有效值时返回空字符串（永不返回 null）。
+     *
+     * @param values 候选字符串数组
+     * @return 非空白值或空字符串
+     */
     private String textOrEmpty(String... values) {
         String value = firstNonBlank(values);
         return value == null ? "" : value;
     }
 
+    /**
+     * 将原始对象安全转换为字符串，null 时返回 null。
+     *
+     * @param raw 原始对象（来自数据库 Map 查询结果）
+     * @return 字符串表示，null 时返回 null
+     */
     private String asText(Object raw) {
         return raw == null ? null : String.valueOf(raw);
     }
 
+    /**
+     * 将原始对象安全转换为 long 值，null 或解析失败时返回 0。
+     * <p>支持 Number 类型直接转换和字符串解析两种方式。</p>
+     *
+     * @param raw 原始对象
+     * @return long 值，转换失败返回 0
+     */
     private long asLong(Object raw) {
         if (raw == null) {
             return 0L;
@@ -946,6 +1485,12 @@ public class TalentQueryService {
         }
     }
 
+    /**
+     * 将原始对象安全转换为 Integer 值，null 或解析失败时返回 null。
+     *
+     * @param raw 原始对象
+     * @return Integer 值，转换失败返回 null
+     */
     private Integer asInteger(Object raw) {
         if (raw == null) {
             return null;
@@ -960,6 +1505,12 @@ public class TalentQueryService {
         }
     }
 
+    /**
+     * 将原始对象安全解析为 UUID，null 或解析失败时返回 null。
+     *
+     * @param raw 原始对象（支持 UUID 类型直接返回或字符串解析）
+     * @return UUID 对象，解析失败返回 null
+     */
     private UUID parseUuid(Object raw) {
         if (raw == null) {
             return null;
@@ -971,11 +1522,24 @@ public class TalentQueryService {
         }
     }
 
+    /**
+     * 将原始对象解析为 UUID 字符串表示，null 时返回 null。
+     *
+     * @param raw 原始对象
+     * @return UUID 字符串，解析失败返回 null
+     */
     private String uuidText(Object raw) {
         UUID uuid = parseUuid(raw);
         return uuid == null ? null : uuid.toString();
     }
 
+    /**
+     * 将原始对象安全转换为 LocalDateTime，null 时返回 null。
+     * <p>支持 LocalDateTime 和 JDBC Timestamp 两种类型。</p>
+     *
+     * @param raw 原始对象
+     * @return LocalDateTime，无法转换时返回 null
+     */
     private LocalDateTime toDateTime(Object raw) {
         if (raw == null) {
             return null;
@@ -989,9 +1553,26 @@ public class TalentQueryService {
         return null;
     }
 
+    /**
+     * 达人 30 天订单聚合数据。
+     * <p>由原生 SQL GROUP BY 查询生成，用于计算 GPM 等带货指标分段。</p>
+     *
+     * @param orderCount  订单数
+     * @param orderAmount 订单金额（单位：分）
+     * @param serviceFee  团长佣金（单位：分）
+     */
     private record OrderAggregate(long orderCount, long orderAmount, long serviceFee) {
     }
 
+    /**
+     * 达人认领关系数据集合。
+     * <p>一次加载完成所有认领关联查询，避免 N+1 问题。</p>
+     *
+     * @param activeClaims         用户 ID → 该用户的最新生效认领记录
+     * @param activeClaimsByTalent 达人 ID → 该达人的所有生效认领记录列表
+     * @param latestClaims         达人 ID → 该达人的最新认领记录（含已过期）
+     * @param allClaims            所有查询到的认领记录原始列表
+     */
     private record ClaimMaps(
             Map<UUID, TalentClaim> activeClaims,
             Map<UUID, List<TalentClaim>> activeClaimsByTalent,

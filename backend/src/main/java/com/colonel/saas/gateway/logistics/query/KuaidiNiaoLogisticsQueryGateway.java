@@ -12,20 +12,50 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 快递鸟查询适配器。未配置凭证时返回 NOT_CONFIGURED，禁止伪造成功。
+ * 快递鸟物流查询适配器。
+ * <p>
+ * 实现 {@link LogisticsQueryGateway} 接口，将快递鸟的 {@link LogisticsGateway} 结果
+ * 转换为统一的 {@link LogisticsQueryResult}。
+ * </p>
+ *
+ * <h3>安全策略</h3>
+ * <ul>
+ *   <li>未配置凭证（ebusinessId / apiKey）时，返回 NOT_CONFIGURED，禁止伪造成功</li>
+ *   <li>查询异常时返回 FAILED 状态，不向上层抛出异常</li>
+ * </ul>
+ *
+ * <h3>依赖关系</h3>
+ * <p>
+ * 委托 {@link LogisticsGateway}（即 {@link com.colonel.saas.gateway.logistics.kdniao.KdniaoLogisticsGateway}）
+ * 执行实际的 API 调用，自身只做结果映射和错误兜底。
+ * </p>
  */
 @Slf4j
 @Component
 public class KuaidiNiaoLogisticsQueryGateway implements LogisticsQueryGateway {
 
     private final LogisticsProperties properties;
+    /** 委托的真实快递鸟网关实现 */
     private final LogisticsGateway delegate;
 
+    /**
+     * 构造快递鸟查询适配器。
+     *
+     * @param properties 物流配置属性（包含快递鸟凭证 kdn.*）
+     * @param delegate   快递鸟真实网关实现（由 Spring 条件注入）
+     */
     public KuaidiNiaoLogisticsQueryGateway(LogisticsProperties properties, LogisticsGateway delegate) {
         this.properties = properties;
         this.delegate = delegate;
     }
 
+    /**
+     * 执行快递鸟物流轨迹查询。
+     * <p>
+     * 流程：凭证校验 -> 参数校验 -> 委托查询 -> 结果映射。
+     * 查询失败时返回包含错误信息的结果对象，不向上抛出异常。
+     * </p>
+     */
     @Override
     public LogisticsQueryResult query(String logisticsCompany, String trackingNo) {
         if (!isConfigured()) {
@@ -37,6 +67,7 @@ public class KuaidiNiaoLogisticsQueryGateway implements LogisticsQueryGateway {
         }
         String company = StringUtils.hasText(logisticsCompany) ? logisticsCompany.trim() : "AUTO";
         try {
+            // 委托快递鸟真实网关执行 API 调用
             LogisticsGateway.LogisticsTrackResult track = delegate.queryTrack(company, trackingNo.trim());
             return mapTrack(track, company, trackingNo.trim());
         } catch (Exception ex) {
@@ -46,6 +77,7 @@ public class KuaidiNiaoLogisticsQueryGateway implements LogisticsQueryGateway {
         }
     }
 
+    /** 凭证已配置则认为可用 */
     @Override
     public boolean isSupported() {
         return isConfigured();
@@ -56,6 +88,10 @@ public class KuaidiNiaoLogisticsQueryGateway implements LogisticsQueryGateway {
         return "KUAIDINIAO";
     }
 
+    /**
+     * 检查快递鸟凭证是否已配置。
+     * 需要 enabled=true 且 ebusinessId 和 apiKey 非空。
+     */
     private boolean isConfigured() {
         LogisticsProperties.Kdn kdn = properties.getKdn();
         return kdn.isEnabled()
@@ -63,6 +99,9 @@ public class KuaidiNiaoLogisticsQueryGateway implements LogisticsQueryGateway {
                 && StringUtils.hasText(kdn.getApiKey());
     }
 
+    /**
+     * 将快递鸟 {@link LogisticsGateway.LogisticsTrackResult} 映射为统一的 {@link LogisticsQueryResult}。
+     */
     private LogisticsQueryResult mapTrack(
             LogisticsGateway.LogisticsTrackResult track,
             String logisticsCompany,
@@ -101,6 +140,13 @@ public class KuaidiNiaoLogisticsQueryGateway implements LogisticsQueryGateway {
                 .build();
     }
 
+    /**
+     * 将快递鸟内部状态字符串映射为统一状态码。
+     * <p>
+     * 映射规则：SIGNED -> SIGNED, IN_TRANSIT/NO_TRACE -> IN_TRANSIT,
+     * DELIVERING -> DELIVERING, EXCEPTION/REJECTED -> REJECTED, FAILED -> FAILED。
+     * </p>
+     */
     private LogisticsStatusCode mapStatus(String internalStatus) {
         if (!StringUtils.hasText(internalStatus)) {
             return LogisticsStatusCode.UNKNOWN;

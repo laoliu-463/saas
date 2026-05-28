@@ -7,15 +7,48 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 
+/**
+ * 仪表盘业绩日报汇总服务。
+ *
+ * <p>职责：监听订单同步事件（{@link OrderSyncedEvent}），将有效订单的业绩指标
+ * 实时聚合到日报汇总表（dashboard_performance_daily），供仪表盘直接读取。
+ *
+ * <p>聚合策略：
+ * <ul>
+ *   <li>仅处理新增插入事件（{@code newlyInserted=true}）且订单状态计入业绩的事件</li>
+ *   <li>服务费净收益 = 服务费收入 - 技术服务费 - 达人佣金（下限为 0）</li>
+ *   <li>使用 PostgreSQL {@code ON CONFLICT ... DO UPDATE} 实现按日期幂等累加</li>
+ * </ul>
+ *
+ * <p>依赖服务/仓储：
+ * <ul>
+ *   <li>{@link JdbcTemplate} —— 原始 SQL 执行</li>
+ *   <li>{@link OrderCommissionPolicy} —— 订单状态判定（是否计入业绩）</li>
+ * </ul>
+ */
 @Service
 public class DashboardPerformanceSummaryService {
 
+    /** JDBC 模板，用于执行日报汇总的 UPSERT SQL */
     private final JdbcTemplate jdbcTemplate;
 
     public DashboardPerformanceSummaryService(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /**
+     * 处理订单同步事件，将业绩指标累加到日报汇总表。
+     *
+     * <p>执行逻辑：
+     * <ol>
+     *   <li>过滤：非新增插入或不计入业绩的订单状态，直接跳过</li>
+     *   <li>计算服务费净收益：服务费收入 - 技术服务费 - 达人佣金（取下限 0）</li>
+     *   <li>确定统计日期：取订单创建日期，无创建时间时使用当天</li>
+     *   <li>UPSERT 到 dashboard_performance_daily 表：已存在则累加，不存在则插入新行</li>
+     * </ol>
+     *
+     * @param event 订单同步事件
+     */
     @Transactional(rollbackFor = Exception.class)
     public void applyOrderSynced(OrderSyncedEvent event) {
         if (event == null

@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TestControllerSecurityTest {
 
     @Test
-    void optionsOnTestSeed_shouldNotReturn401_inLocalMock() throws Exception {
+    void optionsOnTestSeed_shouldNotReturn401_inTest() throws Exception {
         TestDataService testDataService = Mockito.mock(TestDataService.class);
         JwtTokenProvider jwtTokenProvider = Mockito.mock(JwtTokenProvider.class);
         AuthService authService = Mockito.mock(AuthService.class);
@@ -113,10 +113,10 @@ class TestControllerSecurityTest {
     }
 
     @Test
-    void testController_shouldNotLoadWhenDisabledOutsideLocalMockOrTest() {
+    void testController_shouldNotLoadWhenDisabledOutsideTest() {
         new ApplicationContextRunner()
                 .withPropertyValues(
-                        "spring.profiles.active=prod",
+                        "spring.profiles.active=real-pre",
                         "app.test.enabled=false"
                 )
                 .withUserConfiguration(TestController.class, TestSupportConfig.class)

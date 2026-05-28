@@ -7,6 +7,7 @@ const {
   compareMetric,
   parsePsqlTsv,
   buildReconcileSummary,
+  selectMetricTrack,
   selectDbContainer
 } = require('./dashboard-reconcile.cjs');
 
@@ -58,7 +59,19 @@ test('buildReconcileSummary fails when any metric mismatch remains', () => {
   assert.equal(summary.failedMetrics.length, 1);
 });
 
-test('selectDbContainer prefers explicit env, then compose-detected active postgres', () => {
+test('selectMetricTrack supports dual dashboard metric payloads and legacy flat payloads', () => {
+  const dual = {
+    estimate: { todayOrderCount: 5 },
+    settle: { todayOrderCount: 6 }
+  };
+  const flat = { todayOrderCount: 3 };
+
+  assert.equal(selectMetricTrack(dual, 'estimate').todayOrderCount, 5);
+  assert.equal(selectMetricTrack(dual, 'settle').todayOrderCount, 6);
+  assert.equal(selectMetricTrack(flat, 'estimate').todayOrderCount, 3);
+});
+
+test('selectDbContainer prefers explicit env, then compose-detected test postgres', () => {
   assert.equal(
     selectDbContainer({ QA_DB_CONTAINER: 'custom-postgres' }, 'saas-active-postgres-1'),
     'custom-postgres'
@@ -69,6 +82,6 @@ test('selectDbContainer prefers explicit env, then compose-detected active postg
   );
   assert.equal(
     selectDbContainer({}, ''),
-    'saas-active-postgres-1'
+    'saas-test-postgres-1'
   );
 });

@@ -18,7 +18,7 @@ test.describe('商品域完整链路', () => {
     const card = page.getByTestId(testIds.productCard).first();
     await expect(card).toBeVisible({ timeout: 30_000 });
     await card.hover();
-    await expect(page.getByTestId('product-quick-sample')).toBeVisible();
+    await expect(card.getByTestId('product-quick-sample')).toBeVisible();
   });
 
   test('快速寄样弹窗可打开', async ({ page }) => {
@@ -26,7 +26,7 @@ test.describe('商品域完整链路', () => {
     await expect(page.getByTestId(testIds.productGrid)).toBeVisible({ timeout: 30_000 });
     const card = page.getByTestId(testIds.productCard).first();
     await card.hover();
-    await page.getByTestId('product-quick-sample').click();
+    await card.getByTestId('product-quick-sample').click();
     await expect(page.getByTestId('quick-sample-modal')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('quick-sample-talents')).toBeVisible();
   });
@@ -38,6 +38,7 @@ test.describe('规则中心复制模板', () => {
   test('管理员可见复制讲解模板编辑器', async ({ page }) => {
     await page.goto('/system/rule-center');
     await expect(page.getByTestId('rule-center-page')).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('menuitem', { name: '推广规则' }).click();
     await expect(page.getByTestId('promotion-template-editor')).toBeVisible({ timeout: 15_000 });
   });
 });

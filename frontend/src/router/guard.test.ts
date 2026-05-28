@@ -8,19 +8,21 @@ describe('resolveGuardDecision', () => {
     expect(
       resolveGuardDecision({
         toPath: '/orders',
+        toFullPath: '/orders',
         fromPath: '/login',
         isLoggedIn: false,
         roleCodes: [],
         requiredRoles: [ROLE_CODES.ADMIN],
         resolveHomePath: () => '/dashboard'
       })
-    ).toEqual({ type: 'redirect', redirectTarget: '/login', reason: 'anonymous' })
+    ).toEqual({ type: 'redirect', redirectTarget: '/login?redirect=%2Forders', reason: 'anonymous' })
   })
 
   it('allows anonymous users to visit login', () => {
     expect(
       resolveGuardDecision({
         toPath: '/login',
+        toFullPath: '/login',
         fromPath: '/',
         isLoggedIn: false,
         roleCodes: [],
@@ -33,6 +35,7 @@ describe('resolveGuardDecision', () => {
     expect(
       resolveGuardDecision({
         toPath: '/login',
+        toFullPath: '/login',
         fromPath: '/orders',
         isLoggedIn: true,
         roleCodes: [ROLE_CODES.ADMIN],
@@ -45,6 +48,7 @@ describe('resolveGuardDecision', () => {
     expect(
       resolveGuardDecision({
         toPath: '/',
+        toFullPath: '/',
         fromPath: '/orders',
         isLoggedIn: true,
         roleCodes: [ROLE_CODES.ADMIN],
@@ -57,6 +61,7 @@ describe('resolveGuardDecision', () => {
     expect(
       resolveGuardDecision({
         toPath: '/orders',
+        toFullPath: '/orders',
         fromPath: '/',
         isLoggedIn: true,
         roleCodes: [],
@@ -69,6 +74,7 @@ describe('resolveGuardDecision', () => {
     expect(
       resolveGuardDecision({
         toPath: '/',
+        toFullPath: '/',
         fromPath: '/login',
         isLoggedIn: true,
         roleCodes: [ROLE_CODES.CHANNEL_STAFF],
@@ -81,6 +87,7 @@ describe('resolveGuardDecision', () => {
     expect(
       resolveGuardDecision({
         toPath: '/system/users',
+        toFullPath: '/system/users',
         fromPath: '/product',
         isLoggedIn: true,
         roleCodes: [ROLE_CODES.CHANNEL_STAFF],
@@ -94,6 +101,7 @@ describe('resolveGuardDecision', () => {
     expect(
       resolveGuardDecision({
         toPath: '/orders',
+        toFullPath: '/orders',
         fromPath: '/dashboard',
         isLoggedIn: true,
         roleCodes: [ROLE_CODES.ADMIN],
@@ -107,6 +115,7 @@ describe('resolveGuardDecision', () => {
     expect(
       resolveGuardDecision({
         toPath: '/',
+        toFullPath: '/',
         fromPath: '/orders',
         isLoggedIn: true,
         roleCodes: [ROLE_CODES.ADMIN],
@@ -119,6 +128,7 @@ describe('resolveGuardDecision', () => {
     expect(
       resolveGuardDecision({
         toPath: '/login',
+        toFullPath: '/login',
         fromPath: '/',
         isLoggedIn: true,
         roleCodes: [ROLE_CODES.ADMIN],
@@ -129,6 +139,7 @@ describe('resolveGuardDecision', () => {
     expect(
       resolveGuardDecision({
         toPath: '',
+        toFullPath: '',
         fromPath: '/',
         isLoggedIn: false,
         roleCodes: [],
@@ -139,12 +150,31 @@ describe('resolveGuardDecision', () => {
     expect(
       resolveGuardDecision({
         toPath: '/login',
+        toFullPath: '/login',
         fromPath: '/',
         isLoggedIn: true,
         roleCodes: [ROLE_CODES.ADMIN],
         resolveHomePath: () => '?tab=summary'
       })
     ).toEqual({ type: 'redirect', redirectTarget: '/', reason: 'logged-in-login' })
+  })
+
+  it('preserves protected oauth callback target when anonymous users must login first', () => {
+    expect(
+      resolveGuardDecision({
+        toPath: '/system/douyin',
+        toFullPath: '/system/douyin?oauth=success',
+        fromPath: '/',
+        isLoggedIn: false,
+        roleCodes: [],
+        requiredRoles: [ROLE_CODES.ADMIN],
+        resolveHomePath: () => '/dashboard'
+      })
+    ).toEqual({
+      type: 'redirect',
+      redirectTarget: '/login?redirect=%2Fsystem%2Fdouyin%3Foauth%3Dsuccess',
+      reason: 'anonymous'
+    })
   })
 })
 

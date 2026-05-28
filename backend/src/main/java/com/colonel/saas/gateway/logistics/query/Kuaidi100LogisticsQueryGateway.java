@@ -18,18 +18,62 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * 快递100查询适配器。未配置凭证时返回 NOT_CONFIGURED，禁止伪造成功。
+ * 快递100 V2 统一查询适配器。
+ *
+ * <p>功能描述：包装 {@link Kuaidi100LogisticsGateway}（V1 网关），
+ * 将其返回的 {@link LogisticsGateway.LogisticsTrackResult} 转换为
+ * 统一的 {@link LogisticsQueryResult}，并增加以下能力：</p>
+ *
+ * <ul>
+ *   <li>配置检查：未配置快递100凭证时返回 {@code NOT_CONFIGURED}，禁止伪造成功</li>
+ *   <li>参数校验：快递公司编码、物流单号非空校验，顺丰/中通手机号强制校验</li>
+ *   <li>频率节流：同一运单 30 分钟内禁止重复查询（快递100 API 限制）</li>
+ *   <li>状态映射：将 V1 内部状态（IN_TRANSIT / SIGNED / EXCEPTION 等）映射为 V2 统一状态码</li>
+ *   <li>轨迹转换：将 V1 {@link LogisticsGateway.LogisticsTraceNode} 转换为 V2 {@link LogisticsQueryResult.LogisticsTraceItem}</li>
+ * </ul>
+ *
+ * <p>在架构中的角色：寄样域 / 物流适配层 / V2 查询网关，实现 {@link LogisticsQueryGateway} 统一接口。
+ * 通过 {@link ObjectProvider} 延迟获取 {@link Kuaidi100LogisticsGateway}，
+ * 在快递100未启用时优雅降级。</p>
+ *
+ * @see LogisticsQueryGateway           V2 统一查询网关接口
+ * @see Kuaidi100LogisticsGateway       被包装的 V1 快递100网关
+ * @see LogisticsQueryResult            V2 统一查询结果
+ * @see LogisticsProperties.Kd100       快递100配置项
  */
 @Slf4j
 @Component
 public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
 
+    /**
+     * 同一运单最小查询间隔（30 分钟）。
+     * <p>快递100 API 要求同一运单号两次查询之间至少间隔 30 分钟，
+     * 否则会触发频率限制。此常量用于 {@link #throttleIfNeeded} 方法。</p>
+     */
     private static final Duration MIN_QUERY_INTERVAL = Duration.ofMinutes(30);
 
+    /** 物流配置属性（用于检查快递100是否已配置） */
     private final LogisticsProperties properties;
+
+    /**
+     * V1 快递100网关的延迟提供器。
+     * <p>使用 {@link ObjectProvider} 而非直接注入，以支持快递100未启用时的优雅降级。</p>
+     */
     private final ObjectProvider<Kuaidi100LogisticsGateway> delegateProvider;
+
+    /**
+     * 运单查询时间记录表。
+     * <p>Key 为 "公司编码::单号"（大写），Value 为上次查询时间。
+     * 用于实现同一运单 30 分钟内禁止重复查询的节流逻辑。</p>
+     */
     private final ConcurrentMap<String, LocalDateTime> lastQueryAtByWaybill = new ConcurrentHashMap<>();
 
+    /**
+     * 构造函数，通过 Spring 依赖注入获取所有必需组件。
+     *
+     * @param properties       物流配置属性（用于检查快递100是否已配置）
+     * @param delegateProvider V1 快递100网关的延迟提供器（快递100未启用时为 null）
+     */
     public Kuaidi100LogisticsQueryGateway(
             LogisticsProperties properties,
             ObjectProvider<Kuaidi100LogisticsGateway> delegateProvider) {
@@ -37,6 +81,13 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
         this.delegateProvider = delegateProvider;
     }
 
+    /**
+     * 查询物流轨迹（简单参数版，委托给命令对象版）。
+     *
+     * @param logisticsCompany 快递公司编码
+     * @param trackingNo       物流运单号
+     * @return 统一格式的物流查询结果
+     */
     @Override
     public LogisticsQueryResult query(String logisticsCompany, String trackingNo) {
         return query(LogisticsTrackCommand.builder()
@@ -45,6 +96,26 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
                 .build());
     }
 
+    /**
+     * 查询物流轨迹（核心方法，接受命令对象）。
+     * <p>
+     * 完整的查询流程如下：
+     * </p>
+     * <ol>
+     *   <li>第一步：检查快递100是否已配置（customer + key），未配置返回 NOT_CONFIGURED</li>
+     *   <li>第二步：校验物流单号非空</li>
+     *   <li>第三步：校验快递公司编码非空且不为 "AUTO"</li>
+     *   <li>第四步：校验手机号（顺丰/中通强制要求）</li>
+     *   <li>第五步：获取 V1 网关实例，不可用时返回 NOT_CONFIGURED</li>
+     *   <li>第六步：标准化命令参数（trim、默认值等）</li>
+     *   <li>第七步：频率节流检查（同一运单 30 分钟内禁止重复查询）</li>
+     *   <li>第八步：委托 V1 网关查询轨迹</li>
+     *   <li>第九步：调用 {@link #mapTrack} 将 V1 结果转换为 V2 统一格式</li>
+     * </ol>
+     *
+     * @param command 物流查询命令对象
+     * @return 统一格式的物流查询结果
+     */
     @Override
     public LogisticsQueryResult query(LogisticsTrackCommand command) {
         String logisticsCompany = command == null ? null : command.getCompanyCode();
@@ -83,16 +154,33 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
         }
     }
 
+    /**
+     * 判断当前网关是否可用。
+     * <p>需同时满足：快递100已配置（customer + key）且 V1 网关 Bean 可用。</p>
+     *
+     * @return true 表示可用，false 表示不可用
+     */
     @Override
     public boolean isSupported() {
         return isConfigured() && delegateProvider.getIfAvailable() != null;
     }
 
+    /**
+     * 返回物流服务商名称标识。
+     *
+     * @return 固定返回 "KUAIDI100"
+     */
     @Override
     public String providerName() {
         return "KUAIDI100";
     }
 
+    /**
+     * 检查快递100是否已配置必要凭证。
+     * <p>需同时满足：enabled=true 且 customer 和 key 均非空。</p>
+     *
+     * @return true 表示已配置，false 表示未配置
+     */
     private boolean isConfigured() {
         LogisticsProperties.Kd100 kd100 = properties.getKd100();
         return kd100.isEnabled()
@@ -100,6 +188,21 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
                 && StringUtils.hasText(kd100.getKey());
     }
 
+    /**
+     * 标准化物流查询命令参数。
+     * <p>对命令对象中的所有字段执行以下处理：</p>
+     * <ol>
+     *   <li>快递公司编码 {@code companyCode}：去除首尾空白</li>
+     *   <li>物流单号 {@code trackingNo}：去除首尾空白</li>
+     *   <li>手机号 {@code phone}：调用 {@link #trimToNull}，空白字符串转为 null</li>
+     *   <li>发件地 {@code from}：调用 {@link #trimToNull}，空白字符串转为 null</li>
+     *   <li>收件地 {@code to}：调用 {@link #trimToNull}，空白字符串转为 null</li>
+     *   <li>结果版本 {@code resultV2}：若有值则 trim，若为空则默认为 "4"（快递100 V2 格式）</li>
+     * </ol>
+     *
+     * @param command 原始物流查询命令对象（不可为 null）
+     * @return 标准化后的新命令对象（与输入对象独立，不修改原对象）
+     */
     private LogisticsTrackCommand normalizeCommand(LogisticsTrackCommand command) {
         return LogisticsTrackCommand.builder()
                 .companyCode(command.getCompanyCode().trim())
@@ -111,6 +214,20 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
                 .build();
     }
 
+    /**
+     * 频率节流检查：同一运单 30 分钟内禁止重复查询。
+     * <p>快递100 API 要求同一运单号两次查询之间至少间隔 {@value #MIN_QUERY_INTERVAL} 分钟，
+     * 否则会触发频率限制。此方法通过 {@link #lastQueryAtByWaybill} 记录上次查询时间：</p>
+     * <ol>
+     *   <li>第一步：构造缓存键，格式为 "公司编码::单号"（大写），确保同一运单唯一性</li>
+     *   <li>第二步：从 {@link #lastQueryAtByWaybill} 获取该运单上次查询时间</li>
+     *   <li>第三步：若上次查询时间存在且距当前时间不足 30 分钟，返回 {@code QUERY_THROTTLED} 错误结果</li>
+     *   <li>第四步：若未触发节流，记录当前时间为最新查询时间</li>
+     * </ol>
+     *
+     * @param command 已标准化的物流查询命令对象
+     * @return 若被节流返回 {@link LogisticsQueryResult}（错误），否则返回 {@code null} 表示可继续查询
+     */
     private LogisticsQueryResult throttleIfNeeded(LogisticsTrackCommand command) {
         String key = (command.getCompanyCode() + "::" + command.getTrackingNo()).toUpperCase();
         LocalDateTime now = LocalDateTime.now();
@@ -127,10 +244,29 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
         return null;
     }
 
+    /**
+     * 将字符串去除首尾空白，若结果为空白则返回 {@code null}。
+     * <p>用于 {@link #normalizeCommand} 方法中处理可选参数字段（手机号、发件地、收件地）。</p>
+     *
+     * @param value 原始字符串（可为 null）
+     * @return trim 后的字符串，若为 null 或纯空白则返回 {@code null}
+     */
     private String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * 判断指定快递公司是否强制要求提供手机号。
+     * <p>快递100 API 对以下快递公司强制要求收件人或寄件人手机号：</p>
+     * <ul>
+     *   <li>顺丰快递：编码 "SF" 或 "SHUNFENG"</li>
+     *   <li>中通快递：编码 "ZTO" 或 "ZHONGTONG"</li>
+     * </ul>
+     * <p>编码比较忽略大小写。若快递公司编码为空，返回 {@code false}。</p>
+     *
+     * @param companyCode 快递公司编码
+     * @return {@code true} 表示需要手机号，{@code false} 表示不需要
+     */
     private boolean requiresPhone(String companyCode) {
         if (!StringUtils.hasText(companyCode)) {
             return false;
@@ -142,6 +278,23 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
                 || "ZHONGTONG".equals(normalized);
     }
 
+    /**
+     * 将 V1 快递100网关返回的物流轨迹结果转换为 V2 统一查询结果。
+     * <p>转换流程：</p>
+     * <ol>
+     *   <li>第一步：判断 V1 结果是否为 null 或查询失败，若是则返回 {@code UPSTREAM_FAILED} 错误</li>
+     *   <li>第二步：调用 {@link #mapStatus} 将 V1 内部状态映射为 V2 {@link LogisticsStatusCode} 枚举</li>
+     *   <li>第三步：遍历 V1 轨迹节点列表 {@link LogisticsGateway.LogisticsTraceNode}，
+     *       逐条转换为 V2 {@link LogisticsQueryResult.LogisticsTraceItem}，
+     *       字段映射：acceptTime→traceTime, acceptStation→traceContent, remark→location</li>
+     *   <li>第四步：组装 V2 {@link LogisticsQueryResult}，包含供应商名、状态码、签收信息、轨迹列表、原始响应等</li>
+     * </ol>
+     *
+     * @param track            V1 快递100网关返回的物流轨迹结果（可能为 null）
+     * @param logisticsCompany 请求时的快递公司编码（V1 结果中可能为空，此时使用此值）
+     * @param trackingNo       请求时的物流运单号
+     * @return V2 统一格式的物流查询结果
+     */
     private LogisticsQueryResult mapTrack(
             LogisticsGateway.LogisticsTrackResult track,
             String logisticsCompany,
@@ -180,6 +333,22 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
                 .build();
     }
 
+    /**
+     * 将 V1 内部状态字符串映射为 V2 统一状态码枚举。
+     * <p>使用 Java switch 表达式（箭头语法）进行映射，映射规则如下：</p>
+     * <ul>
+     *   <li>"SIGNED" → {@link LogisticsStatusCode#SIGNED}（已签收）</li>
+     *   <li>"IN_TRANSIT" / "NO_TRACE" → {@link LogisticsStatusCode#IN_TRANSIT}（运输中 / 无轨迹）</li>
+     *   <li>"DELIVERING" → {@link LogisticsStatusCode#DELIVERING}（派件中）</li>
+     *   <li>"EXCEPTION" / "REJECTED" → {@link LogisticsStatusCode#REJECTED}（异常 / 拒收）</li>
+     *   <li>"FAILED" → {@link LogisticsStatusCode#FAILED}（失败）</li>
+     *   <li>"NOT_CONFIGURED" → {@link LogisticsStatusCode#NOT_CONFIGURED}（未配置）</li>
+     *   <li>其他（含 null / 空字符串） → {@link LogisticsStatusCode#UNKNOWN}（未知）</li>
+     * </ul>
+     *
+     * @param internalStatus V1 内部状态字符串（可为 null 或空）
+     * @return V2 统一状态码枚举值，未匹配时返回 {@link LogisticsStatusCode#UNKNOWN}
+     */
     private LogisticsStatusCode mapStatus(String internalStatus) {
         if (!StringUtils.hasText(internalStatus)) {
             return LogisticsStatusCode.UNKNOWN;

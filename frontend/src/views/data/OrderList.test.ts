@@ -1,3 +1,7 @@
+/**
+ * @file OrderList 订单汇总页面的单元测试
+ * @description 测试订单汇总页面的数据加载、筛选条件传递、导出功能及路由参数同步
+ */
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -5,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { exportOrders, getOrderSummary } from '../../api/data'
 import OrderList from './OrderList.vue'
 
+/** 模拟路由查询参数，用于测试路由驱动的筛选联动 */
 const routeMock = vi.hoisted(() => ({
   query: {
     productId: 'ROUTE-PRODUCT-1',
@@ -12,25 +17,30 @@ const routeMock = vi.hoisted(() => ({
   } as Record<string, string>
 }))
 
+/** 模拟 vue-router，返回预设的路由查询参数 */
 vi.mock('vue-router', () => ({
   useRoute: () => routeMock
 }))
 
+/** 模拟订单数据 API 接口 */
 vi.mock('../../api/data', () => ({
   exportOrders: vi.fn(),
   getOrderSummary: vi.fn()
 }))
 
+/** 模拟订单用户筛选选项加载函数（招商人/渠道） */
 vi.mock('../orders/order-user-filter-options', () => ({
   loadOrderRecruiterOptions: vi.fn().mockResolvedValue([]),
   loadOrderChannelOptions: vi.fn().mockResolvedValue([])
 }))
 
+/** 模拟请求错误通知工具 */
 vi.mock('../../utils/requestError', () => ({
   notifyApiFailure: vi.fn(),
   notifyClientPermission: vi.fn()
 }))
 
+/** 模拟 Naive UI 的 message API 实例，用于验证消息提示调用 */
 const messageApi = {
   success: vi.fn(),
   warning: vi.fn(),
@@ -38,6 +48,7 @@ const messageApi = {
   info: vi.fn()
 }
 
+/** 模拟 Naive UI 模块，保留原始导出但替换 useMessage 钩子 */
 vi.mock('naive-ui', async (importOriginal) => {
   const actual = await importOriginal<typeof import('naive-ui')>()
   return {
@@ -46,6 +57,10 @@ vi.mock('naive-ui', async (importOriginal) => {
   }
 })
 
+/**
+ * 模拟订单汇总 API 返回的数据结构
+ * 包含总览统计（total）和按日明细记录（records）
+ */
 const summaryPayload = {
   total: {
     talentPromoterCount: 290,
@@ -80,12 +95,18 @@ const summaryPayload = {
   ]
 }
 
+/**
+ * 生成通用输入控件桩组件
+ * @param tag - HTML 标签名
+ * @returns 支持 value 双向绑定和 click 事件的桩组件配置
+ */
 const stubControl = (tag: string) => ({
   props: ['value', 'checked'],
   emits: ['update:value', 'click'],
   template: `<${tag} @click="$emit('click', $event)"><slot />{{ value }}</${tag}>`
 })
 
+/** 全局 Naive UI 组件桩配置，用简化 HTML 模拟组件行为 */
 const globalStubs = {
   NButton: {
     emits: ['click'],
@@ -115,6 +136,11 @@ const globalStubs = {
   NText: { template: '<span><slot /></span>' }
 }
 
+/**
+ * 挂载 OrderList 组件的辅助函数
+ * 初始化 Pinia 状态管理、设置用户角色为 biz_leader、挂载组件并等待异步完成
+ * @returns 挂载后的 Vue 测试包装器
+ */
 const mountOrderList = async () => {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -137,7 +163,8 @@ const mountOrderList = async () => {
   return wrapper
 }
 
-describe('OrderList summary page', () => {
+describe('OrderList 订单汇总页面', () => {
+  /** 每个测试前重置所有模拟、清除 localStorage、恢复路由参数并设置 API 返回值 */
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -149,6 +176,7 @@ describe('OrderList summary page', () => {
     vi.mocked(exportOrders).mockResolvedValue(new Blob(['订单号\nORDER-1']) as any)
   })
 
+  /** 验证页面加载时使用路由参数作为筛选条件请求汇总数据，并正确渲染聚合统计值 */
   it('loads summary data with route filters and renders aggregate values', async () => {
     const wrapper = await mountOrderList()
 
@@ -165,6 +193,7 @@ describe('OrderList summary page', () => {
     expect(wrapper.text()).toContain('2026-05-25')
   })
 
+  /** 验证手动搜索时，所有支持的筛选字段（订单号/状态/达人/商家/活动/店铺/商品/招商人等）正确传递给汇总查询接口 */
   it('passes supported filter fields to summary query when searching', async () => {
     const wrapper = await mountOrderList()
     const vm = wrapper.vm as any
@@ -199,6 +228,7 @@ describe('OrderList summary page', () => {
     }))
   })
 
+  /** 验证导出功能使用与列表相同的筛选条件，并验证 biz_leader 角色具有导出权限 */
   it('exports with the same supported filters for leader roles', async () => {
     const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:orders')
     const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
@@ -223,6 +253,7 @@ describe('OrderList summary page', () => {
     revokeObjectURL.mockRestore()
   })
 
+  /** 验证路由参数变化时，被移除的商品和活动筛选条件会被正确清空，时间字段同步更新 */
   it('clears route-scoped product and activity filters when route query removes them', async () => {
     routeMock.query = {
       productId: 'ROUTE-PRODUCT-1',

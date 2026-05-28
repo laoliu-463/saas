@@ -20,40 +20,40 @@ class RuntimeExposurePolicyTest {
 
     @Test
     void shouldBypassAuthentication_shouldAllowLogoutInAllProfiles() {
-        MockEnvironment prod = new MockEnvironment();
-        prod.setActiveProfiles("prod");
-
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(prod, "/auth/logout")).isTrue();
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(prod, "/api/auth/logout")).isTrue();
-    }
-
-    @Test
-    void shouldBypassAuthentication_shouldKeepDocsAndSystemEnvPublicOutsideProdOnly() {
         MockEnvironment realPre = new MockEnvironment();
         realPre.setActiveProfiles("real-pre");
-        MockEnvironment prod = new MockEnvironment();
-        prod.setActiveProfiles("prod");
 
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/v3/api-docs")).isTrue();
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/swagger-ui/index.html")).isTrue();
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/system/env")).isTrue();
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/api/system/env")).isTrue();
-
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(prod, "/v3/api-docs")).isFalse();
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(prod, "/swagger-ui/index.html")).isFalse();
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(prod, "/system/env")).isFalse();
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(prod, "/api/system/env")).isFalse();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/auth/logout")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/api/auth/logout")).isTrue();
     }
 
     @Test
-    void shouldBypassAuthentication_shouldKeepHealthAndOAuthCallbackPublicInProd() {
-        MockEnvironment prod = new MockEnvironment();
-        prod.setActiveProfiles("prod");
+    void shouldBypassAuthentication_shouldProtectDocsAndSystemEnvInRealPreOnly() {
+        MockEnvironment test = new MockEnvironment();
+        test.setActiveProfiles("test");
+        MockEnvironment realPre = new MockEnvironment();
+        realPre.setActiveProfiles("real-pre");
 
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(prod, "/api/system/health")).isTrue();
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(prod, "/system/health")).isTrue();
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(prod, "/douyin/oauth/callback")).isTrue();
-        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(prod, "/api/douyin/oauth/callback")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(test, "/v3/api-docs")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(test, "/swagger-ui/index.html")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(test, "/system/env")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(test, "/api/system/env")).isTrue();
+
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/v3/api-docs")).isFalse();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/swagger-ui/index.html")).isFalse();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/system/env")).isFalse();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/api/system/env")).isFalse();
+    }
+
+    @Test
+    void shouldBypassAuthentication_shouldKeepHealthAndOAuthCallbackPublicInRealPre() {
+        MockEnvironment realPre = new MockEnvironment();
+        realPre.setActiveProfiles("real-pre");
+
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/api/system/health")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/system/health")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/douyin/oauth/callback")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/api/douyin/oauth/callback")).isTrue();
     }
 
     @Test

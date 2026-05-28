@@ -3,6 +3,7 @@ import path from 'node:path';
 export type AccountKey =
   | 'admin'
   | 'bizLeader'
+  | 'bizStaff'
   | 'channelLeader'
   | 'channelStaff'
   | 'ops';
@@ -23,6 +24,10 @@ const defaults: Record<AccountKey, AccountCredential> = {
     username: process.env.E2E_BIZ_LEADER_USERNAME || 'biz_leader',
     password: process.env.E2E_BIZ_LEADER_PASSWORD || 'admin123'
   },
+  bizStaff: {
+    username: process.env.E2E_BIZ_STAFF_USERNAME || 'biz_staff',
+    password: process.env.E2E_BIZ_STAFF_PASSWORD || 'admin123'
+  },
   channelLeader: {
     username: process.env.E2E_CHANNEL_LEADER_USERNAME || process.env.E2E_CHANNEL_USERNAME || 'channel_leader',
     password: process.env.E2E_CHANNEL_LEADER_PASSWORD || process.env.E2E_CHANNEL_PASSWORD || 'admin123'
@@ -42,6 +47,7 @@ export const accounts = defaults;
 export const storageStates: Record<AccountKey, string> = {
   admin: path.join(authDir, 'admin.json'),
   bizLeader: path.join(authDir, 'biz-leader.json'),
+  bizStaff: path.join(authDir, 'biz-staff.json'),
   channelLeader: path.join(authDir, 'channel-leader.json'),
   channelStaff: path.join(authDir, 'channel-staff.json'),
   ops: path.join(authDir, 'ops.json')

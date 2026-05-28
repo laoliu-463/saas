@@ -5,6 +5,7 @@ const {
   ROLE_BUSINESS_CASES,
   normalizeRoleAlias,
   evaluateOperation,
+  isIgnorableConsoleError,
   summarizeRoleResults
 } = require('./page-role-business-smoke.cjs');
 
@@ -48,6 +49,12 @@ test('evaluateOperation distinguishes allowed and forbidden expectations', () =>
   assert.equal(allowed.pass, true);
   assert.equal(forbidden.pass, true);
   assert.equal(failed.pass, false);
+});
+
+test('isIgnorableConsoleError filters local transient resource noise only', () => {
+  assert.equal(isIgnorableConsoleError('Failed to load resource: net::ERR_CONNECTION_CLOSED'), true);
+  assert.equal(isIgnorableConsoleError('ResizeObserver loop completed with undelivered notifications.'), true);
+  assert.equal(isIgnorableConsoleError('TypeError: Cannot read properties of undefined'), false);
 });
 
 test('summarizeRoleResults requires menu, allowed operation, and forbidden operation to pass per role', () => {

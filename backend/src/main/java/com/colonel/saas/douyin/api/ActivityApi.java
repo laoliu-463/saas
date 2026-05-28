@@ -12,9 +12,29 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 精选联盟活动管理 API 客户端。
+ * <p>
+ * 封装抖音精选联盟团长活动的查询、创建/更新和商品取消操作，
+ * 支持 contract（合同模式）与真实上游两种调用路径。
+ *
+ * <ul>
+ *   <li>活动列表查询 — 按状态、排序、分页条件列出团长活动</li>
+ *   <li>活动详情查询 — 根据活动 ID 获取详情</li>
+ *   <li>活动创建/更新 — 创建或更新团长活动（含参数校验）</li>
+ *   <li>活动商品取消 — 取消指定活动中的商品</li>
+ * </ul>
+ *
+ * 所属业务领域：精选联盟 / 活动管理
+ *
+ * @see DouyinApiClient
+ * @see DouyinUpstreamModeSupport
+ * @see DouyinContractFixtureProvider
+ */
 @Service
 public class ActivityApi {
 
+    /** 合法活动类型集合：1-公开活动，2-指定商家活动 */
     private static final Set<Integer> VALID_ACTIVITY_TYPES = Set.of(1, 2);
     private static final Set<Integer> VALID_MIN_PROMOTION_DAYS = Set.of(30, 90, 180, 360);
     private static final Set<Integer> VALID_COS_LIMIT_TYPES = Set.of(1, 2, 3);
@@ -34,10 +54,31 @@ public class ActivityApi {
         this.contractFixtureProvider = contractFixtureProvider;
     }
 
+    /**
+     * 查询默认分页的活动列表。
+     *
+     * @param appId 应用 ID（可为空，为空时使用全局默认 appId）
+     * @return 活动列表响应，包含 data 和 total 字段
+     */
     public Map<String, Object> list(String appId) {
         return listActivities(appId, 0, 0L, 1L, 1L, 20L, null);
     }
 
+    /**
+     * 按条件查询活动列表。
+     * <p>
+     * 在 contract 模式下返回契约桩数据，否则调用真实上游 API。
+     *
+     * @param appId        应用 ID（可为空）
+     * @param status       活动状态筛选，可选值：0/1/2/3/4/5/7，默认 0（全部）
+     * @param searchType   搜索类型，可选值：0/1/2，默认 0
+     * @param sortType     排序类型，0-降序，1-升序，默认 1
+     * @param page         页码，从 1 开始，默认 1
+     * @param pageSize     每页数量，范围 1~20，默认 20
+     * @param activityInfo 活动名称关键词（模糊搜索）
+     * @return 活动列表响应
+     * @throws BusinessException 当参数校验不通过时抛出
+     */
     public Map<String, Object> listActivities(
             String appId,
             Integer status,
@@ -60,6 +101,16 @@ public class ActivityApi {
         return douyinApiClient.post("alliance.instituteColonelActivityList", params);
     }
 
+    /**
+     * 查询活动详情。
+     * <p>
+     * 在 contract 模式下返回契约桩数据，否则调用真实上游 API。
+     *
+     * @param appId      应用 ID（可为空）
+     * @param activityId 活动 ID（数字字符串）
+     * @return 活动详情响应
+     * @throws BusinessException 当 activityId 为空或非数字时抛出
+     */
     public Map<String, Object> detail(String appId, String activityId) {
         if (upstreamModeSupport.isContract()) {
             return contractFixtureProvider.buildActivityDetailResponse(appId, activityId);
@@ -70,6 +121,23 @@ public class ActivityApi {
         return douyinApiClient.post("buyin.colonelActivityDetail", params);
     }
 
+    /**
+     * 创建或更新活动。
+     * <p>
+     * 执行完整的参数校验后调用上游 API 创建或更新团长活动。
+     *
+     * <ol>
+     *   <li>校验必填参数（名称、描述、时间、佣金率等）</li>
+     *   <li>校验活动类型合法性及关联条件</li>
+     *   <li>校验佣金率和服务费率上限</li>
+     *   <li>调用上游 API 执行创建或更新</li>
+     * </ol>
+     *
+     * @param command 活动创建/更新命令对象
+     * @return 上游 API 响应
+     * @throws BusinessException 当参数校验不通过时抛出
+     * @see ActivityCreateOrUpdateCommand
+     */
     public Map<String, Object> createOrUpdate(ActivityCreateOrUpdateCommand command) {
         validateCreateOrUpdate(command);
         Map<String, Object> params = new HashMap<>();
@@ -102,6 +170,13 @@ public class ActivityApi {
         return douyinApiClient.post("alliance.colonelActivityCreateOrUpdate", params);
     }
 
+    /**
+     * 取消活动中的商品。
+     *
+     * @param appId   应用 ID
+     * @param payload 请求体参数（包含要取消的商品信息）
+     * @return 上游 API 响应
+     */
     public Map<String, Object> cancelActivityProduct(String appId, Map<String, Object> payload) {
         Map<String, Object> params = new HashMap<>();
         putIfNotBlank(params, "appId", appId);
@@ -112,6 +187,15 @@ public class ActivityApi {
         return douyinApiClient.post("alliance.colonelActivityProductCancel", params);
     }
 
+    /**
+     * 校验活动创建/更新命令的参数合法性。
+     * <p>
+     * 校验规则包括：必填字段非空、活动类型合法、指定商家活动必须提供商家 ID、
+     * 佣金率和服务费率不超过上限。
+     *
+     * @param command 待校验的命令对象
+     * @throws BusinessException 当任一参数校验不通过时抛出
+     */
     private void validateCreateOrUpdate(ActivityCreateOrUpdateCommand command) {
         if (command == null) {
             throw BusinessException.param("createOrUpdate command cannot be null");
@@ -180,6 +264,14 @@ public class ActivityApi {
         }
     }
 
+    /**
+     * 解析佣金/服务费率字符串为 BigDecimal 并校验非负。
+     *
+     * @param rawRate   原始费率字符串
+     * @param fieldName 字段名称（用于错误提示）
+     * @return 解析后的 BigDecimal 值
+     * @throws BusinessException 当费率非数字或为负数时抛出
+     */
     private BigDecimal parseRate(String rawRate, String fieldName) {
         try {
             BigDecimal value = new BigDecimal(rawRate.trim());
@@ -261,6 +353,35 @@ public class ActivityApi {
         }
     }
 
+    /**
+     * 活动创建/更新命令参数对象。
+     *
+     * @param appId               应用 ID
+     * @param activityId          活动 ID（更新时必填）
+     * @param applicationLimited  是否限制申请（true 时需提供 isNewShop 和 shopType）
+     * @param isNewShop           是否仅限新店
+     * @param shopType            店铺类型
+     * @param activityName        活动名称（必填）
+     * @param activityDesc        活动描述（必填）
+     * @param applyStartTime      申请开始时间
+     * @param applyEndTime        申请结束时间
+     * @param commissionRate      佣金率（最高 50%）
+     * @param serviceRate         服务费率（最高 40%）
+     * @param wechatId            微信号
+     * @param phoneNum            联系电话
+     * @param estimatedSingleSale 预计单场销量
+     * @param activityType        活动类型：1-公开活动，2-指定商家活动
+     * @param specifiedShopIds    指定商家 ID 列表（activityType=2 时必填）
+     * @param online              是否上线
+     * @param categories          品类限制
+     * @param shopScore           店铺评分要求
+     * @param minPromotionDays    最低推广天数，可选值：30/90/180/360
+     * @param thresholdCrossBorder 跨境门槛
+     * @param minExclusionDuration 最低排他时长
+     * @param adCommissionRate    广告佣金率
+     * @param adServiceRate       广告服务费率
+     * @param cosLimitType        COS 限制类型，可选值：1/2/3
+     */
     public record ActivityCreateOrUpdateCommand(
             String appId,
             Long activityId,

@@ -1,7 +1,9 @@
 package com.colonel.saas.aspect;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.annotation.DataScope;
+import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -70,6 +72,13 @@ class DataScopeAspectTest {
         assertThat(sqlSegment).contains("dept_id");
         assertThat(sqlSegment).contains("MPGENVAL");
         verify(joinPoint, times(1)).proceed();
+    }
+
+    @Test
+    void orderPageMapperShouldNotUseDataScopeAspectBecauseControllerAppliesScope() throws Exception {
+        Method method = ColonelsettlementOrderMapper.class.getMethod("findPageWithScope", Page.class, QueryWrapper.class);
+
+        assertThat(method.getAnnotation(DataScope.class)).isNull();
     }
 
     private void bindRequest(UUID userId, com.colonel.saas.common.enums.DataScope scope) {

@@ -24,15 +24,39 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 操作日志服务。
+ * <p>
+ * 负责系统操作日志的记录、查询和清理。操作日志采用 PostgreSQL 原生分区表设计（按月分区），
+ * 写入时通过 {@link #ensureLogPartition(LocalDateTime)} 自动创建目标月份的分区表及索引，
+ * 清理时通过 {@link #cleanupOldPartitions(int)} 按分区粒度 DROP 旧表（而非逐行 DELETE）。
+ * </p>
+ * <p>
+ * 日志写入使用 {@link JdbcTemplate} 原生 SQL（绕过 MyBatis-Plus），以支持 jsonb 字段的
+ * CAST 转换和分区键感知。查询使用 MyBatis-Plus 的分页能力。
+ * </p>
+ * <p>
+ * 分区管理使用进程内 {@link ConcurrentHashMap} 做幂等保护，避免同一分区内并发 DDL。
+ * </p>
+ *
+ * @see OperationLog 操作日志实体
+ * @see com.colonel.saas.security.OperationLogInterceptor 操作日志 AOP 拦截器
+ */
 @Service
 public class OperationLogService {
 
+    /** 分区表名称日期格式（如 {@code op_log_2026_05}） */
     private static final DateTimeFormatter PARTITION_MONTH = DateTimeFormatter.ofPattern("yyyy_MM");
+    /** 已确保存在的分区名称集合（进程级幂等，避免重复 DDL） */
     private static final Set<String> ENSURED_PARTITIONS = ConcurrentHashMap.newKeySet();
 
+    /** 操作日志 Mapper（MyBatis-Plus，用于分页查询） */
     private final OperationLogMapper operationLogMapper;
+    /** 系统用户 Mapper（用于根据 userId 反查用户名） */
     private final SysUserMapper sysUserMapper;
+    /** JDBC 模板（用于原生 SQL 写入和分区 DDL） */
     private final JdbcTemplate jdbcTemplate;
+    /** JSON 序列化工具（用于将 Map/Object 字段序列化为 jsonb） */
     private final ObjectMapper objectMapper;
 
     public OperationLogService(
@@ -46,6 +70,20 @@ public class OperationLogService {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 记录一条操作日志。
+     * <p>
+     * 处理流程：
+     * <ol>
+     *   <li>校验日志对象非空，自动生成 UUID 主键和创建时间（若未设置）</li>
+     *   <li>调用 {@link #ensureLogPartition(LocalDateTime)} 确保目标月份分区表存在</li>
+     *   <li>通过 {@link JdbcTemplate} 原生 SQL 写入，使用 CAST 转换 jsonb 字段</li>
+     * </ol>
+     * </p>
+     *
+     * @param log 待记录的操作日志实体，包含请求/响应/操作者等完整上下文
+     * @see OperationLogInterceptor 由 AOP 拦截器在请求完成后自动调用
+     */
     @Transactional(rollbackFor = Exception.class)
     public void record(OperationLog log) {
         if (log == null) {
@@ -98,6 +136,23 @@ public class OperationLogService {
         );
     }
 
+    /**
+     * 记录一条系统操作日志（便捷方法）。
+     * <p>
+     * 由后台任务、定时作业或系统自动触发的场景调用。自动通过 {@link #resolveUsername(UUID)}
+     * 反查操作者用户名，其余字段由调用方显式传入。
+     * </p>
+     *
+     * @param operatorId   操作者用户 ID（可为 null，表示系统自动操作）
+     * @param module       操作模块标识（如 "ORDER"、"TALENT"、"SAMPLE"）
+     * @param action       操作动作（如 "SYNC"、"CREATE"、"UPDATE"）
+     * @param requestMethod HTTP 请求方法（如 "POST"、"PUT"），系统操作可传 null
+     * @param targetType   操作目标类型（如 "Order"、"Talent"）
+     * @param targetId     操作目标 ID
+     * @param targetName   操作目标名称（用于日志列表展示）
+     * @param content      操作描述内容
+     * @see #record(OperationLog) 底层写入方法
+     */
     @Transactional(rollbackFor = Exception.class)
     public void recordSystemAction(
             java.util.UUID operatorId,
@@ -121,6 +176,23 @@ public class OperationLogService {
         record(log);
     }
 
+    /**
+     * 分页查询操作日志。
+     * <p>
+     * 支持按模块、动作、用户名、请求方法组合过滤。默认查询最近 89 天的日志，
+     * 结果按创建时间倒序排列。
+     * </p>
+     *
+     * @param module        模糊匹配模块名（如 "ORDER"、"TALENT"），为 null 则不过滤
+     * @param action        模糊匹配动作名（如 "CREATE"、"SYNC"），为 null 则不过滤
+     * @param username      模糊匹配用户名，为 null 则不过滤
+     * @param requestMethod 精确匹配 HTTP 请求方法（如 "POST"、"PUT"），为 null 则不过滤
+     * @param startDate     查询起始日期（含），为 null 默认最近 89 天
+     * @param endDate       查询截止日期（不含次日），为 null 默认当前日期+1
+     * @param page          页码（从 1 开始）
+     * @param size          每页条数
+     * @return 分页结果，包含日志列表和总数
+     */
     public IPage<OperationLog> findPage(
             String module,
             String action,
@@ -153,6 +225,17 @@ public class OperationLogService {
         return operationLogMapper.selectPage(new Page<>(page, size), wrapper);
     }
 
+    /**
+     * 根据用户 ID 反查用户名。
+     * <p>
+     * 用于系统操作日志场景，当操作者 ID 已知但用户名未显式传入时，
+     * 通过 {@link SysUserMapper} 查询用户表获取用户名。
+     * 若用户不存在或 operatorId 为 null，则返回 null。
+     * </p>
+     *
+     * @param operatorId 操作者用户 ID，可为 null
+     * @return 用户名字符串，查无结果时返回 null
+     */
     private String resolveUsername(java.util.UUID operatorId) {
         if (operatorId == null) {
             return null;
@@ -161,6 +244,18 @@ public class OperationLogService {
         return user == null ? null : user.getUsername();
     }
 
+    /**
+     * 将对象序列化为 JSON 字符串。
+     * <p>
+     * 用于日志写入时将 requestParams、requestBody、responseBody 等字段
+     * 转换为 PostgreSQL jsonb 类型所需的 JSON 字符串格式。
+     * 若序列化失败，抛出 {@link IllegalStateException}。
+     * </p>
+     *
+     * @param value 待序列化的对象，可为 null
+     * @return JSON 字符串，若输入为 null 则返回 null
+     * @throws IllegalStateException 序列化失败时抛出
+     */
     private String toJson(Object value) {
         if (value == null) {
             return null;
@@ -172,6 +267,21 @@ public class OperationLogService {
         }
     }
 
+    /**
+     * 确保指定月份的操作日志分区表存在。
+     * <p>
+     * 处理流程：
+     * <ol>
+     *   <li>根据 createTime 计算目标月份的分区名称（如 {@code op_log_2026_05}）</li>
+     *   <li>通过 {@link #ENSURED_PARTITIONS} 进程级 Set 做幂等检查，避免重复 DDL</li>
+     *   <li>若分区不存在，通过 {@link JdbcTemplate} 执行 {@code CREATE TABLE IF NOT EXISTS} 创建分区</li>
+     *   <li>为分区表创建 create_time、user_id、module 三个索引</li>
+     *   <li>若 DDL 执行失败，从 ENSURED_PARTITIONS 中移除，允许后续重试</li>
+     * </ol>
+     * </p>
+     *
+     * @param createTime 日志的创建时间，用于确定目标月份；若为 null 则使用当前时间
+     */
     private void ensureLogPartition(LocalDateTime createTime) {
         LocalDateTime target = createTime == null ? LocalDateTime.now() : createTime;
         YearMonth month = YearMonth.from(target);
@@ -228,6 +338,15 @@ public class OperationLogService {
         return dropped;
     }
 
+    /**
+     * 查询 operation_log 主表的所有分区表名称。
+     * <p>
+     * 通过查询 PostgreSQL 系统目录 {@code pg_inherits}、{@code pg_class} 获取
+     * 继承自 operation_log 的所有子分区表名称，用于后续按月清理过期分区。
+     * </p>
+     *
+     * @return 分区表名称列表（如 ["op_log_2026_03", "op_log_2026_04"]），无分区时返回空列表
+     */
     private List<String> listOperationLogPartitions() {
         String sql = """
                 SELECT c.relname AS partition_name
@@ -246,6 +365,17 @@ public class OperationLogService {
         return result;
     }
 
+    /**
+     * 从分区表名称中解析出对应的年月信息。
+     * <p>
+     * 分区表命名格式为 {@code op_log_yyyy_MM}（如 {@code op_log_2026_05}），
+     * 本方法提取 {@code op_log_} 前缀后的日期部分并解析为 {@link YearMonth}。
+     * 若名称为空、不以 op_log_ 开头或日期格式不合法，返回 null。
+     * </p>
+     *
+     * @param partitionName 分区表名称（如 "op_log_2026_05"）
+     * @return 对应的 YearMonth，解析失败时返回 null
+     */
     private YearMonth parsePartitionMonth(String partitionName) {
         if (!StringUtils.hasText(partitionName)) {
             return null;

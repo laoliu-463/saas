@@ -7,8 +7,10 @@ services:
       POSTGRES_DB: colonel_saas_test
       POSTGRES_USER: saas
       POSTGRES_PASSWORD: ${DB_PASSWORD:-saas123}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
     volumes:
       - postgres_test_data:/var/lib/postgresql/data
+      - ./backend/src/main/resources/db/00-set-env.sh:/docker-entrypoint-initdb.d/00-set-env.sh
       - ./backend/src/main/resources/db/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./backend/src/main/resources/db/migrate-all.sql:/docker-entrypoint-initdb.d/02-migrate-all.sql
     ports:
@@ -22,12 +24,13 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD:-test-redis123}
     ports:
       - "6379:6379"
     volumes:
       - redis_test_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-test-redis123}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,7 +39,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile.test
     ports:
       - "8080:8080"
       - "5005:5005"
@@ -49,6 +52,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-saas123}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-test-redis123}
       JWT_SECRET: ${JWT_SECRET:-colonel-saas-jwt-secret-key-at-least-32-chars}
       DOUYIN_BASE_URL: ${DOUYIN_BASE_URL:-https://openapi-fxg.jinritemai.com}
       DOUYIN_APP_ID: ${DOUYIN_APP_ID:-}
@@ -91,7 +95,7 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile.test
     ports:
       - "3000:3000"
     environment:
@@ -101,7 +105,7 @@ services:
       # Windows 挂载卷下 300ms 轮询会让 Vite 几乎无 CPU 服务请求，首屏依赖加载可达数十秒
       CHOKIDAR_INTERVAL: "10000"
       VITE_CACHE_DIR: /opt/vite-cache
-      FRONTEND_SERVE_MODE: ${FRONTEND_SERVE_MODE:-dev}
+      FRONTEND_SERVE_MODE: ${FRONTEND_SERVE_MODE:-vite}
     volumes:
       - ./frontend:/app
       - frontend_test_node_modules:/app/node_modules

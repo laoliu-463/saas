@@ -550,6 +550,7 @@ class SysUserServiceTest {
         ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
         verify(sysUserMapper).updateById(captor.capture());
         assertThat(captor.getValue().getPassword()).isEqualTo("$2a$10$newencoded");
+        assertThat(captor.getValue().getForcePasswordChange()).isTrue();
     }
 
     @Test

@@ -21,6 +21,7 @@ export interface DouyinOAuthAuthorizeUrl {
   authorizeUrl: string;
   state: string;
   redirectUri: string;
+  powerManageUrl?: string;
 }
 
 export interface DouyinDebugResult<T = any> {

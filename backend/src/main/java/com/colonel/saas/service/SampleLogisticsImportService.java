@@ -36,21 +36,58 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * 寄样物流批量导入服务。
+ * <p>
+ * 负责解析用户上传的 Excel 物流文件，逐行校验并写入寄样申请的物流单号，
+ * 同时触发物流状态变更日志、领域事件发布及快递100自动订阅。
+ * </p>
+ *
+ * <ul>
+ *     <li>生成物流导入 Excel 模板（{@link #generateTemplate()}）</li>
+ *     <li>批量导入物流单号并逐行处理（{@link #importTrackingNumbers}）</li>
+ *     <li>解析 Excel 文件为结构化行数据（{@link #parseRows}）</li>
+ *     <li>基于角色的导入权限校验（仅运营/管理员可导入，仅管理员可覆盖）</li>
+ *     <li>单行物流信息写入、状态流转及事件发布（{@link #applyRow}）</li>
+ * </ul>
+ *
+ * <p><b>业务域：</b>寄样域 — 物流信息录入</p>
+ * <p><b>协作关系：</b></p>
+ * <ul>
+ *     <li>{@link SampleStatusLogService} — 记录寄样状态变更日志</li>
+ *     <li>{@link SampleDomainEventPublisher} — 发布寄样发货领域事件</li>
+ *     <li>{@link SampleLogisticsSubscriptionService} — 发货后自动订阅快递100物流追踪</li>
+ * </ul>
+ *
+ * @see SampleRequestMapper
+ * @see SampleStatusLogService
+ * @see SampleDomainEventPublisher
+ * @see SampleLogisticsSubscriptionService
+ */
 @Slf4j
 @Service
 public class SampleLogisticsImportService {
 
+    /** 最大文件大小：10MB */
     private static final long MAX_FILE_SIZE = 10L * 1024 * 1024;
+    /** 单次导入最大行数 */
     private static final int MAX_ROWS = 1000;
+    /** 寄样状态：待发货 */
     private static final int STATUS_PENDING_SHIP = 2;
+    /** 寄样状态：运输中 */
     private static final int STATUS_SHIPPING = 3;
 
+    /** 必须包含的表头关键词列表 */
     private static final List<String> REQUIRED_HEADERS = List.of(
             "申请编号", "sampleNo", "sampleRequestId");
 
+    /** 寄样申请数据访问 */
     private final SampleRequestMapper sampleRequestMapper;
+    /** 寄样状态变更日志服务 */
     private final SampleStatusLogService sampleStatusLogService;
+    /** 寄样领域事件发布器 */
     private final SampleDomainEventPublisher sampleDomainEventPublisher;
+    /** 物流订阅服务（快递100） */
     private final SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService;
 
     public SampleLogisticsImportService(
@@ -64,6 +101,15 @@ public class SampleLogisticsImportService {
         this.sampleLogisticsSubscriptionService = sampleLogisticsSubscriptionService;
     }
 
+    /**
+     * 生成物流导入 Excel 模板。
+     * <p>
+     * 模板包含表头行（申请编号、商品ID、达人账号、物流公司、物流单号、备注）和一行示例数据。
+     * </p>
+     *
+     * @return Excel 文件的字节数组
+     * @throws IOException 生成 Excel 过程中发生 I/O 异常
+     */
     public byte[] generateTemplate() throws IOException {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("物流导入");
@@ -81,6 +127,24 @@ public class SampleLogisticsImportService {
         }
     }
 
+    /**
+     * 批量导入物流单号。
+     * <p>处理流程：</p>
+     * <ol>
+     *     <li>校验导入权限（仅运营/管理员可导入，覆盖模式仅限管理员）</li>
+     *     <li>校验上传文件格式和大小</li>
+     *     <li>解析 Excel 为结构化行数据</li>
+     *     <li>逐行执行物流信息写入（{@link #applyRow}）</li>
+     *     <li>汇总并返回导入结果（成功/失败计数及逐行明细）</li>
+     * </ol>
+     *
+     * @param file           上传的 Excel 文件
+     * @param currentUserId  当前操作用户 ID
+     * @param roleCodes      当前用户的角色编码集合
+     * @param allowOverwrite 是否允许覆盖已有物流单号
+     * @return 导入结果，包含总数、成功数、失败数及逐行明细
+     * @throws BusinessException 参数校验失败时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public LogisticsImportResult importTrackingNumbers(
             MultipartFile file,
@@ -117,6 +181,20 @@ public class SampleLogisticsImportService {
                 .build();
     }
 
+    /**
+     * 解析 Excel 文件为物流导入行列表。
+     * <p>处理流程：</p>
+     * <ol>
+     *     <li>打开 Excel 工作簿并定位第一个工作表</li>
+     *     <li>读取表头行并构建列名到列索引的映射</li>
+     *     <li>校验必须存在的表头列（申请编号、物流公司、物流单号）</li>
+     *     <li>逐行读取数据并转换为 {@link LogisticsImportRow} 对象</li>
+     * </ol>
+     *
+     * @param file 上传的 Excel 文件
+     * @return 解析后的物流导入行列表
+     * @throws BusinessException 表头缺失或解析失败时抛出
+     */
     List<LogisticsImportRow> parseRows(MultipartFile file) {
         try (InputStream in = file.getInputStream(); Workbook workbook = WorkbookFactory.create(in)) {
             Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
@@ -162,6 +240,24 @@ public class SampleLogisticsImportService {
         }
     }
 
+    /**
+     * 处理单行物流导入数据。
+     * <p>处理流程：</p>
+     * <ol>
+     *     <li>校验行数据完整性（申请编号、物流单号、物流公司非空）</li>
+     *     <li>根据申请编号查找寄样申请（支持 requestNo 或 UUID）</li>
+     *     <li>校验操作权限及可选的商品ID/达人账号匹配</li>
+     *     <li>校验申请状态是否允许录入物流（待发货/运输中）</li>
+     *     <li>写入物流单号和物流公司，更新状态为运输中</li>
+     *     <li>记录状态变更日志，发布发货事件，订阅物流追踪</li>
+     * </ol>
+     *
+     * @param row            单行物流导入数据
+     * @param currentUserId  当前操作用户 ID
+     * @param roleCodes      当前用户角色编码
+     * @param allowOverwrite 是否允许覆盖已有物流单号
+     * @return 单行处理结果
+     */
     LogisticsImportResult.LogisticsImportItemResult applyRow(
             LogisticsImportRow row,
             UUID currentUserId,

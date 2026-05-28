@@ -12,30 +12,30 @@ import static org.mockito.Mockito.when;
 class TalentEnrichModeGuardTest {
 
     @Test
-    void validate_shouldRejectTestModeInProdProfile() {
+    void validate_shouldRejectTestModeInRealPreProfile() {
         Environment environment = mock(Environment.class);
-        when(environment.getActiveProfiles()).thenReturn(new String[]{"prod"});
+        when(environment.getActiveProfiles()).thenReturn(new String[]{"real-pre"});
         TalentEnrichModeGuard guard = new TalentEnrichModeGuard(environment);
         ReflectionTestUtils.setField(guard, "enrichMode", "test");
 
         assertThatThrownBy(guard::validate)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("prod profile");
+                .hasMessageContaining("real-pre profile");
     }
 
     @Test
-    void validate_shouldAllowRealModeInProdAndTestModeOutsideProd() {
-        Environment prodEnvironment = mock(Environment.class);
-        when(prodEnvironment.getActiveProfiles()).thenReturn(new String[]{"prod"});
-        TalentEnrichModeGuard prodGuard = new TalentEnrichModeGuard(prodEnvironment);
-        ReflectionTestUtils.setField(prodGuard, "enrichMode", "real");
+    void validate_shouldAllowRealModeInRealPreAndTestModeInTest() {
+        Environment realPreEnvironment = mock(Environment.class);
+        when(realPreEnvironment.getActiveProfiles()).thenReturn(new String[]{"real-pre"});
+        TalentEnrichModeGuard realPreGuard = new TalentEnrichModeGuard(realPreEnvironment);
+        ReflectionTestUtils.setField(realPreGuard, "enrichMode", "real");
 
         Environment testEnvironment = mock(Environment.class);
         when(testEnvironment.getActiveProfiles()).thenReturn(new String[]{"test"});
         TalentEnrichModeGuard testGuard = new TalentEnrichModeGuard(testEnvironment);
         ReflectionTestUtils.setField(testGuard, "enrichMode", "test");
 
-        assertThatCode(prodGuard::validate).doesNotThrowAnyException();
+        assertThatCode(realPreGuard::validate).doesNotThrowAnyException();
         assertThatCode(testGuard::validate).doesNotThrowAnyException();
     }
 }

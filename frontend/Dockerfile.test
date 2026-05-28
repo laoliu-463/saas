@@ -1,0 +1,23 @@
+# ============================================================
+# Test image: Vite server with mounted source for local feedback.
+# ============================================================
+FROM node:20-alpine
+
+WORKDIR /app
+
+RUN npm install -g pnpm
+
+COPY package.json pnpm-lock.yaml ./
+
+RUN pnpm install --frozen-lockfile \
+    && cp -a node_modules /opt/frontend-node_modules \
+    && sha256sum pnpm-lock.yaml | awk '{print $1}' > /opt/frontend-node_modules.lock.sha256
+
+COPY docker-entrypoint.test.sh /usr/local/bin/frontend-test-entrypoint
+RUN chmod +x /usr/local/bin/frontend-test-entrypoint
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["frontend-test-entrypoint"]

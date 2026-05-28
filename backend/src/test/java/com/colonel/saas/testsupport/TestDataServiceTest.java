@@ -23,6 +23,7 @@ import com.colonel.saas.service.SampleStatusLogService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -30,6 +31,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ResultSetExtractor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -127,7 +129,13 @@ class TestDataServiceTest {
                 );
         verify(productMapper, atLeast(4)).insert(any(Product.class));
         verify(talentMapper, atLeast(7)).insert(any(Talent.class));
-        verify(productSnapshotMapper, atLeast(4)).upsert(any(ProductSnapshot.class));
+        ArgumentCaptor<ProductSnapshot> snapshotCaptor = ArgumentCaptor.forClass(ProductSnapshot.class);
+        verify(productSnapshotMapper, atLeast(4)).upsert(snapshotCaptor.capture());
+        List<ProductSnapshot> snapshots = snapshotCaptor.getAllValues();
+        assertThat(snapshots)
+                .filteredOn(snapshot -> "10901826".equals(snapshot.getProductId()))
+                .singleElement()
+                .satisfies(snapshot -> assertThat(snapshot.getStatus()).isEqualTo(1));
         verify(productOperationStateMapper, atLeast(4)).selectById(any(UUID.class));
         verify(pickSourceMappingService, atLeast(2)).saveOrUpdate(
                 any(UUID.class),

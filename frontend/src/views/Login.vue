@@ -1,6 +1,21 @@
+<!--
+  Login - 登录页面组件
+
+  用途：用户登录入口，提供用户名/密码表单认证。
+  采用左右分栏布局：左侧品牌展示区（产品特色介绍），右侧登录表单区。
+
+  特性：
+    - Naive UI 表单验证（用户名和密码均必填）
+    - 登录成功后存储 Token 和用户信息到 authStore
+    - 支持 redirect 查询参数，登录后跳转到指定页面（经安全校验）
+    - 登录失败显示服务端返回的错误消息
+    - 响应式设计：窄屏时隐藏左侧品牌区
+
+  使用场景：未登录用户访问任意页面时的登录入口。
+-->
 <template>
   <div class="login-wrapper">
-    <!-- 左侧品牌展示区 -->
+    <!-- 左侧品牌展示区：产品 Logo、名称、功能卖点列表 -->
     <div class="login-brand">
       <div class="brand-content">
         <div class="brand-logo">
@@ -35,9 +50,10 @@
       </div>
     </div>
 
-    <!-- 右侧登录表单区 -->
+    <!-- 右侧登录表单区：登录卡片包含表头、登录表单和版本信息 -->
     <div class="login-form-area">
       <div class="login-card">
+        <!-- 登录卡片头部：欢迎文案 -->
         <div class="login-header">
           <h2>欢迎回来</h2>
           <p>请登录您的账号以继续</p>
@@ -100,26 +116,38 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useMessage, NIcon } from 'naive-ui'
 import { useAuthStore } from '../stores/auth'
 import { login as loginApi } from '../api/auth'
+import { resolveSafePostLoginRedirect } from '../router/redirect'
 
 const router = useRouter()
+const route = useRoute()
 const message = useMessage()
 const authStore = useAuthStore()
 
+/** 登录按钮的加载状态，防止重复提交 */
 const loading = ref(false)
+/** Naive UI 表单组件引用，用于手动触发表单验证 */
 const formRef = ref()
+/** 登录表单数据：用户名和密码 */
 const form = ref({ username: '', password: '' })
 
+/** 表单验证规则：用户名和密码均必填，失去焦点时触发验证 */
 const rules = {
   username: { required: true, message: '请输入用户名', trigger: 'blur' },
   password: { required: true, message: '请输入密码', trigger: 'blur' }
 }
 
+/**
+ * 处理登录提交
+ * 流程：表单验证 -> 调用登录 API -> 成功则存储 Token 并跳转，失败则显示错误消息
+ * 跳转目标：优先使用 redirect 查询参数（经安全校验），默认跳转到 /data 页面
+ */
 const handleLogin = () => {
   formRef.value?.validate(async (errors: any) => {
+    /** 表单验证失败时直接返回，不发起请求 */
     if (errors) return
     loading.value = true
     try {
@@ -128,15 +156,19 @@ const handleLogin = () => {
         password: form.value.password
       })
       if (res.code === 200 && res.data?.token) {
+        /** 登录成功且返回了 Token：存储到 authStore 并跳转 */
         authStore.login(res.data.token, res.data)
         message.success('登录成功')
-        router.push('/data')
+        router.push(resolveSafePostLoginRedirect(route.query.redirect, '/data'))
       } else if (res.code === 200 && !res.data?.token) {
+        /** 登录接口返回成功但未返回 Token，属于异常情况 */
         message.error('登录成功但未返回访问令牌，请联系管理员排查')
       } else {
+        /** 登录接口返回业务错误码 */
         message.error(res.msg || '登录失败')
       }
     } catch (error: any) {
+      /** 网络异常或 HTTP 错误 */
       message.error(error?.response?.data?.msg || error?.msg || '登录失败，请检查账号密码')
     } finally {
       loading.value = false

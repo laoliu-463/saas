@@ -5,6 +5,7 @@ $repoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
 $scriptName = "qa-env"
 $outDir = Join-Path $repoRoot "runtime\qa\out\$scriptName-$timestamp"
+$projectName = if ($env:SAAS_QA_COMPOSE_PROJECT) { $env:SAAS_QA_COMPOSE_PROJECT } else { "saas-test" }
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
 function Add-Check {
@@ -43,11 +44,12 @@ $reportLines.Add("# QA Environment Check")
 $reportLines.Add("")
 $reportLines.Add("- GeneratedAt: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
 $reportLines.Add("- OutputDir: runtime/qa/out/$scriptName-$timestamp")
+$reportLines.Add("- ComposeProject: $projectName")
 $reportLines.Add("")
 
 Push-Location $repoRoot
 try {
-    $containerJsonRows = docker ps --filter "label=com.docker.compose.project=saas-active" --format "{{json .}}" 2>$null
+    $containerJsonRows = docker ps --filter "label=com.docker.compose.project=$projectName" --format "{{json .}}" 2>$null
     if (-not $containerJsonRows) {
         $containerRows = @()
         $containerObjects = @()

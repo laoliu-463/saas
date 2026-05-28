@@ -1,10 +1,27 @@
+<!--
+  Data Dashboard — 数据看板页（真实归因双轨指标中心）
+  用途：展示双轨指标（创建时间轨 vs 结算时间轨）、4 项核心指标卡片、
+        近 7 日 ECharts 趋势图（柱状+折线）、业绩双轨汇总、收入分拆标签组。
+  双轨说明：
+    - 创建时间轨（createTime）：覆盖已同步订单，适合运营日报与 real-pre 回流复核。
+    - 结算时间轨（settleTime）：仅纳入已结算订单，适合收益复核。
+  角色适配：
+    - ADMIN / BIZ_LEADER / CHANNEL_LEADER：团队维度指标（今日订单数 / GMV / 毛利）
+    - BIZ_STAFF：个人维度"我的订单数 / 我的订单总额"
+    - CHANNEL_STAFF：个人维度"我的推广订单数 / 我的订单总额"
+  数据来源：
+    - getMetrics API → resolveDualTrackMetrics 解包双轨数据
+    - getPerformanceSummary API → 业绩域双轨汇总
+-->
 <template>
   <div class="dashboard app-page" data-testid="data-dashboard-page">
+    <!-- 页面标题栏：根据角色动态生成标题 + 双轨切换 + 查看明细入口 -->
     <PageHeader
       :title="pageTitle"
       :description="pageDesc"
     >
       <template #actions>
+        <!-- 双轨口径切换：createTime（创建时间） / settleTime（结算时间） -->
         <n-radio-group v-model:value="timeField" size="small" data-testid="dashboard-time-field">
           <n-radio-button value="createTime">按创建时间</n-radio-button>
           <n-radio-button value="settleTime">按结算时间</n-radio-button>
@@ -15,6 +32,7 @@
       </template>
     </PageHeader>
 
+    <!-- 双轨概览条：展示创建轨与结算轨各自的核心数据，点击切换当前激活轨道 -->
     <div
       v-if="initialized"
       class="dual-track-bar app-summary-bar"
@@ -22,6 +40,7 @@
       role="tablist"
       aria-label="订单时间双轨口径"
     >
+      <!-- 创建时间轨：覆盖已同步订单，适合运营日报 -->
       <button
         type="button"
         class="dual-track-item"
@@ -39,6 +58,7 @@
           <strong>¥{{ formatTrackGmv(dualTrackCreate) }}</strong>
         </span>
       </button>
+      <!-- 结算时间轨：仅纳入已结算订单，适合收益复核 -->
       <button
         type="button"
         class="dual-track-item"
@@ -56,11 +76,13 @@
           <strong>¥{{ formatTrackGmv(dualTrackSettle) }}</strong>
         </span>
       </button>
+      <!-- 双轨差额提示：当创建轨有单但结算轨无单时，提示订单尚未结算 -->
       <div v-if="dualTrackGapHint" class="dual-track-hint" data-testid="dashboard-dual-track-hint">
         {{ dualTrackGapHint }}
       </div>
     </div>
 
+    <!-- 骨架屏：首次加载中且未初始化时展示占位骨架 -->
     <div v-if="showSkeleton" class="loading-state" aria-live="polite">
       <div class="loading-copy">加载中...</div>
       <div class="metric-cards">
@@ -79,11 +101,13 @@
     <!-- 主指标卡片 -->
     <n-spin :show="delayedLoading && initialized">
       <template v-if="!showSkeleton">
+      <!-- 当前轨道标识条：显示当前选择的轨道名称及统计口径说明 -->
       <div class="metric-scope-banner" data-testid="dashboard-active-time-scope">
         <span class="metric-scope-badge">{{ activeTrackBadge }}</span>
         <span class="metric-scope-copy">{{ timeScopeDescription }}</span>
       </div>
 
+      <!-- 空数据提示：real-pre 环境无数据时引导用户完成抖店授权 -->
       <n-alert
         v-if="showEmptyDataHint"
         type="warning"
@@ -94,7 +118,9 @@
         {{ emptyDataHint }}
       </n-alert>
 
+      <!-- 核心指标卡片组：4 列网格，每张卡片含图标 + 数值 + 较昨日趋势，点击跳转订单明细 -->
       <div class="metric-cards" data-testid="dashboard-metric-cards">
+        <!-- 指标卡片 1：订单数（较昨日趋势为绿/红） -->
         <div
           class="metric-card app-metric-card clickable"
           data-testid="dashboard-metric-orders"
@@ -115,6 +141,7 @@
           </div>
         </div>
 
+        <!-- 指标卡片 2：GMV / 订单总额 -->
         <div
           class="metric-card app-metric-card clickable"
           data-testid="dashboard-metric-amount"
@@ -135,6 +162,7 @@
           </div>
         </div>
 
+        <!-- 指标卡片 3：服务费净收 -->
         <div
           class="metric-card app-metric-card clickable"
           data-testid="dashboard-metric-fee"
@@ -155,6 +183,7 @@
           </div>
         </div>
 
+        <!-- 指标卡片 4：毛利 / 招商提成（渠道员为渠道提成） -->
         <div
           class="metric-card app-metric-card clickable"
           data-testid="dashboard-metric-profit"
@@ -176,7 +205,7 @@
         </div>
       </div>
 
-      <!-- 近 7 日真实趋势 -->
+      <!-- 近 7 日真实趋势图：ECharts 柱状图（订单数）+ 折线图（GMV），含汇总数据卡片 -->
       <div v-if="trendPoints.length" class="trend-section app-section-panel" data-testid="dashboard-real-trend">
         <div class="trend-header">
           <h3 class="section-title">近 7 日真实趋势</h3>
@@ -198,7 +227,7 @@
         ></div>
       </div>
 
-      <!-- 业绩域双轨汇总（performance_records） -->
+      <!-- 业绩域双轨汇总：展示 performance_records 表的预估轨和结算轨订单数及毛利 -->
       <div v-if="performanceSummary" class="breakdown-section app-section-panel" data-testid="dashboard-performance-summary">
         <h3 class="section-title">业绩双轨汇总</h3>
         <div class="breakdown-tags">

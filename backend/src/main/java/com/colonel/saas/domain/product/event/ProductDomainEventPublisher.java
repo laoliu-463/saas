@@ -12,15 +12,44 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 商品域事件发布器，负责将商品域业务操作产生的领域事件写入 Outbox 表，
+ * 同时通过 Spring {@link ApplicationEventPublisher} 发布本地事件供同步监听器消费。
+ *
+ * <p>采用 <b>双通道发布</b> 策略：
+ * <ol>
+ *   <li>Outbox 表 —— 通过 {@link OutboxEventAppender#appendIfAbsent} 写入，
+ *       由后台调度器异步分发，保证最终一致性；</li>
+ *   <li>Spring 本地事件 —— 通过 {@code ApplicationEventPublisher.publishEvent} 发布，
+ *       供同进程内的监听器立即消费（如缓存刷新、审计日志等）。</li>
+ * </ol>
+ *
+ * <p>支持的商品域事件类型包括：商品上架、商品下架、负责人变更、活动同步完成、
+ * 合作方同步完成、活动延期、展示规则应用、强制展示变更。</p>
+ *
+ * <p>所有 {@code appendOutbox} 调用均使用 {@code eventKey} 做幂等去重，
+ * 防止同一业务操作重复写入 Outbox。</p>
+ */
 @Service
 public class ProductDomainEventPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(ProductDomainEventPublisher.class);
+
+    /** 事件协议版本号，用于消费端做版本兼容处理。 */
     private static final int EVENT_VERSION = 1;
 
+    /** Outbox 幂等写入器，负责事件去重和持久化。 */
     private final OutboxEventAppender outboxEventAppender;
+
+    /** Spring 本地事件发布器，用于同步通知同进程监听器。 */
     private final ApplicationEventPublisher applicationEventPublisher;
 
+    /**
+     * 构造函数，注入 Outbox 写入器和 Spring 事件发布器。
+     *
+     * @param outboxEventAppender      Outbox 幂等写入器
+     * @param applicationEventPublisher Spring 应用事件发布器
+     */
     public ProductDomainEventPublisher(
             OutboxEventAppender outboxEventAppender,
             ApplicationEventPublisher applicationEventPublisher) {
@@ -28,6 +57,18 @@ public class ProductDomainEventPublisher {
         this.applicationEventPublisher = applicationEventPublisher;
     }
 
+    /**
+     * 发布商品上架事件。
+     *
+     * <p>当商品加入商品库并参与展示竞争时触发。事件同时写入 Outbox 和 Spring 本地事件。</p>
+     *
+     * @param activityId         活动 ID
+     * @param productId          商品 ID（聚合根 ID）
+     * @param operationStateId   操作状态记录 ID（用于幂等去重）
+     * @param operatorId         操作人 ID
+     * @param displayRuleVersion 展示规则版本号
+     * @param displayReason      上架展示原因
+     */
     public void publishProductListed(
             String activityId,
             String productId,
@@ -47,6 +88,17 @@ public class ProductDomainEventPublisher {
                 operatorId);
     }
 
+    /**
+     * 发布商品下架（隐藏）事件。
+     *
+     * <p>当商品从商品库展示中移除时触发。可能原因包括：活动结束、规则淘汰、手动下架等。</p>
+     *
+     * @param activityId         活动 ID
+     * @param productId          商品 ID（聚合根 ID）
+     * @param operationStateId   操作状态记录 ID
+     * @param reason             下架原因
+     * @param displayRuleVersion 展示规则版本号
+     */
     public void publishProductHidden(
             String activityId,
             String productId,
@@ -65,6 +117,17 @@ public class ProductDomainEventPublisher {
                 null);
     }
 
+    /**
+     * 发布商品负责人变更事件。
+     *
+     * <p>当商品的运营负责人（assignee）发生变更时触发，如转派、重新分配等。</p>
+     *
+     * @param activityId    活动 ID
+     * @param productId     商品 ID（聚合根 ID）
+     * @param oldAssigneeId 原负责人 ID（可为 null，表示之前无负责人）
+     * @param newAssigneeId 新负责人 ID（可为 null，表示取消负责人）
+     * @param operatorId    操作人 ID
+     */
     public void publishProductOwnerChanged(
             String activityId,
             String productId,
@@ -86,6 +149,14 @@ public class ProductDomainEventPublisher {
                 operatorId);
     }
 
+    /**
+     * 发布活动同步完成事件（简化版本）。
+     *
+     * <p>适用于全量同步场景，仅记录同步的商品总数。默认同步类型为 FULL，状态为 SUCCESS。</p>
+     *
+     * @param activityId          活动 ID
+     * @param syncedProductCount  同步的商品数量
+     */
     public void publishActivitySyncCompleted(String activityId, int syncedProductCount) {
         publishActivitySyncCompleted(
                 activityId,
@@ -98,6 +169,21 @@ public class ProductDomainEventPublisher {
                 null);
     }
 
+    /**
+     * 发布活动同步完成事件（完整版本）。
+     *
+     * <p>当抖音活动商品数据同步完成时触发，包含同步类型、创建/更新/跳过计数和最终状态。
+     * 同时通过 Spring 本地事件通知同步监听器（如更新活动缓存）。</p>
+     *
+     * @param activityId    活动 ID
+     * @param activityName  活动名称（可为 null）
+     * @param syncType      同步类型（如 FULL / INCREMENTAL）
+     * @param createdCount  新创建的商品数量
+     * @param updatedCount  更新的商品数量
+     * @param skippedCount  跳过的商品数量
+     * @param syncStatus    同步状态（如 SUCCESS / PARTIAL / FAILED）
+     * @param operatorId    操作人 ID（可为 null，表示系统自动同步）
+     */
     public void publishActivitySyncCompleted(
             String activityId,
             String activityName,
@@ -140,6 +226,14 @@ public class ProductDomainEventPublisher {
                 operatorId);
     }
 
+    /**
+     * 发布合作方同步完成事件（简化版本，仅记录变更总数）。
+     *
+     * <p>适用于批量同步场景，聚合根 ID 固定为 {@code "ALL"}，
+     * eventKey 按日期去重，同一天多次同步仅保留最新一条。</p>
+     *
+     * @param upsertedCount 合作方新增/更新总数
+     */
     public void publishPartnerSyncCompleted(int upsertedCount) {
         Map<String, Object> payload = Map.of(
                 "upsertedCount", upsertedCount,
@@ -153,6 +247,20 @@ public class ProductDomainEventPublisher {
                 null);
     }
 
+    /**
+     * 发布合作方同步完成事件（完整版本，单个合作方粒度）。
+     *
+     * <p>当单个合作方数据同步完成时触发，同时通过 Spring 本地事件通知同步监听器。
+     * 记录合作方基本信息、来源、同步状态以及是否为新建或更新。</p>
+     *
+     * @param partnerId    合作方 ID
+     * @param partnerName  合作方名称
+     * @param partnerType  合作方类型（如达人、商家等）
+     * @param source       数据来源
+     * @param syncStatus   同步状态（如 SUCCESS / FAILED）
+     * @param created      是否为新建记录
+     * @param updated      是否为更新记录
+     */
     public void publishPartnerSyncCompleted(
             String partnerId,
             String partnerName,
@@ -192,6 +300,15 @@ public class ProductDomainEventPublisher {
                 null);
     }
 
+    /**
+     * 发布活动延期事件。
+     *
+     * <p>当活动结束时间被延长时触发，记录延期前后的结束时间。</p>
+     *
+     * @param activityId      活动 ID
+     * @param previousEndTime 延期前的结束时间（ISO-8601 字符串）
+     * @param newEndTime      延期后的结束时间（ISO-8601 字符串）
+     */
     public void publishActivityExtended(String activityId, String previousEndTime, String newEndTime) {
         Map<String, Object> payload = Map.of(
                 "activityId", activityId,
@@ -207,6 +324,20 @@ public class ProductDomainEventPublisher {
                 null);
     }
 
+    /**
+     * 发布展示规则应用事件。
+     *
+     * <p>当系统对某个商品应用展示规则（如排名算法决定谁展示、谁隐藏）时触发。
+     * 记录规则版本、操作类型和详细信息，用于展示决策的审计追踪。</p>
+     *
+     * @param productId     商品 ID（聚合根 ID）
+     * @param oldRelationId 原关联 ID（可为 null）
+     * @param newRelationId 新关联 ID
+     * @param ruleVersion   规则版本号
+     * @param operatorType  操作类型（如 SYSTEM、MANUAL）
+     * @param operatorId    操作人 ID（可为 null）
+     * @param detail        规则应用详情（键值对形式）
+     */
     public void publishDisplayRuleApplied(
             String productId,
             UUID oldRelationId,
@@ -233,6 +364,19 @@ public class ProductDomainEventPublisher {
                 operatorId);
     }
 
+    /**
+     * 发布强制展示变更事件。
+     *
+     * <p>当管理员手动设置或取消商品的强制展示状态时触发。
+     * 强制展示可以覆盖展示规则，确保特定商品始终展示或隐藏。</p>
+     *
+     * @param relationId    商品关联 ID
+     * @param productId     商品 ID（聚合根 ID）
+     * @param forceDisplay  是否强制展示（true = 强制展示，false = 取消强制展示）
+     * @param adminId       管理员 ID（可为 null）
+     * @param reason        变更原因
+     * @param until         强制展示截止时间（可为 null，表示永久）
+     */
     public void publishForceDisplayChanged(
             UUID relationId,
             String productId,
@@ -266,6 +410,14 @@ public class ProductDomainEventPublisher {
         }
     }
 
+    /**
+     * 构造商品事件的基础载荷（activityId、productId、relationId、occurredAt）。
+     *
+     * @param activityId       活动 ID
+     * @param productId        商品 ID
+     * @param operationStateId 操作状态记录 ID（映射为 relationId）
+     * @return 基础载荷 Map，调用方可继续追加额外字段
+     */
     private Map<String, Object> basePayload(String activityId, String productId, UUID operationStateId) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("activityId", activityId);
@@ -275,6 +427,11 @@ public class ProductDomainEventPublisher {
         return payload;
     }
 
+    /**
+     * 通过 Spring 事件发布器发布本地事件，失败仅记录警告日志不影响主流程。
+     *
+     * @param event 事件对象（如 {@link ActivitySyncCompletedEvent}）
+     */
     private void publishSpringEvent(Object event) {
         try {
             applicationEventPublisher.publishEvent(event);
@@ -283,6 +440,19 @@ public class ProductDomainEventPublisher {
         }
     }
 
+    /**
+     * 将事件写入 Outbox 表，失败仅记录警告日志不影响主流程。
+     *
+     * <p>使用 {@link OutboxEventAppender#appendIfAbsent} 做幂等去重，
+     * 相同 eventKey 的事件不会重复写入。</p>
+     *
+     * @param eventKey     事件幂等键（用于去重）
+     * @param eventType    事件类型标识
+     * @param aggregateType 聚合类型（如 PRODUCT、ACTIVITY、PARTNER）
+     * @param aggregateId  聚合根 ID
+     * @param payload      事件载荷（键值对，将序列化为 JSON 存储）
+     * @param operatorId   操作人 ID（可为 null）
+     */
     private void appendOutbox(
             String eventKey,
             String eventType,

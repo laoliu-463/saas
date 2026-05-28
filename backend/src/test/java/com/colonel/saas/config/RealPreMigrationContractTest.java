@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RealPreMigrationContractTest {
 
     private static final Path DB_DIR = Path.of("src/main/resources/db");
+    private static final Path REPO_ROOT = Path.of("..").normalize();
     private static final Path COMPOSE_FILE = Path.of("../docker-compose.real-pre.yml").normalize();
 
     @Test
@@ -64,6 +65,26 @@ class RealPreMigrationContractTest {
 
         assertThat(compose).contains("DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:-300}");
         assertThat(compose).contains("DOUYIN_TOKEN_REDIS_LOCK_MINUTES: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:-5}");
+    }
+
+    @Test
+    void environmentEntrypoints_shouldOnlyExposeTestAndRealPre() {
+        assertThat(REPO_ROOT.resolve("docker-compose.test.yml")).exists();
+        assertThat(REPO_ROOT.resolve("docker-compose.real-pre.yml")).exists();
+        assertThat(REPO_ROOT.resolve(".env.test.example")).exists();
+        assertThat(REPO_ROOT.resolve(".env.real-pre.example")).exists();
+        assertThat(Path.of("src/main/resources/application-test.yml")).exists();
+        assertThat(Path.of("src/main/resources/application-real-pre.yml")).exists();
+
+        assertThat(REPO_ROOT.resolve("docker-compose.prod.yml")).doesNotExist();
+        assertThat(REPO_ROOT.resolve("docker-compose.local-mock.yml.bak")).doesNotExist();
+        assertThat(REPO_ROOT.resolve(".env.prod.example")).doesNotExist();
+        assertThat(REPO_ROOT.resolve(".env.local-dev.example")).doesNotExist();
+        assertThat(REPO_ROOT.resolve(".env.e2e.example")).doesNotExist();
+        assertThat(Path.of("src/main/resources/application-prod.yml")).doesNotExist();
+        assertThat(Path.of("src/main/resources/application-real.yml")).doesNotExist();
+        assertThat(Path.of("src/main/resources/application-dev.yml")).doesNotExist();
+        assertThat(Path.of("src/main/resources/application-local-mock.yml")).doesNotExist();
     }
 
     @Test

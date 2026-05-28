@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -50,6 +51,24 @@ class ColonelPartnerSyncServiceTest {
 
         assertThat(upserted).isEqualTo(0);
         verify(productDomainEventPublisher).publishPartnerSyncCompleted(0);
+    }
+
+    @Test
+    void syncAll_shouldUseCurrentSchemaTimestampColumns() {
+        when(jdbcTemplate.queryForList(any(String.class))).thenReturn(List.of());
+
+        service.syncAll();
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate, times(3)).queryForList(sqlCaptor.capture());
+        assertThat(sqlCaptor.getAllValues())
+                .anySatisfy(sql -> assertThat(sql).contains("COALESCE(last_sync_at, update_time, create_time)"))
+                .anySatisfy(sql -> assertThat(sql).contains("COALESCE(update_time, create_time)"));
+        assertThat(sqlCaptor.getAllValues())
+                .allSatisfy(sql -> assertThat(sql)
+                        .doesNotContain("COALESCE(last_sync_at, updated_at, created_at)")
+                        .doesNotContain("COALESCE(updated_at, create_time)")
+                        .doesNotContain("COALESCE(updated_at, created_at)"));
     }
 
     @Test

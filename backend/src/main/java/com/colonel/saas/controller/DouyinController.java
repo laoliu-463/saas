@@ -46,6 +46,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * 抖音联调控制器.
+ *
+ * <p>抖音开放平台联调与调试专用控制器，提供活动管理、订单查询、Token 管理、
+ * 推广链接探针、Webhook 事件重放等 14 个端点，用于验证上游 SDK 链路可用性。</p>
+ *
+ * <p>API 路径前缀：{@code /douyin}</p>
+ *
+ * <p>访问权限：仅管理员。所有端点均标注 {@code @SecurityRequirement(name = "bearerAuth")}，
+ * 需通过 Bearer Token 认证后方可访问。</p>
+ *
+ * <p>本控制器为联调调试用途，端点返回结构包含上游原始响应，不适合直接用于生产前端。</p>
+ *
+ * @see DouyinActivityGateway
+ * @see DouyinProductGateway
+ * @see DouyinOrderGateway
+ * @see DouyinPromotionGateway
+ * @see DouyinTokenGateway
+ * @see DouyinTokenService
+ * @see DouyinWebhookEventService
+ */
 @Slf4j
 @Validated
 @RestController
@@ -55,14 +76,32 @@ import java.util.stream.Collectors;
 @SecurityRequirement(name = "bearerAuth")
 public class DouyinController extends BaseController {
 
+    /** 抖音活动网关，负责活动 CRUD 与商品取消操作 */
     private final DouyinActivityGateway douyinActivityGateway;
+    /** 抖音商品网关，负责活动商品查询与 SKU 查询 */
     private final DouyinProductGateway douyinProductGateway;
+    /** 抖音订单网关，负责结算订单查询 */
     private final DouyinOrderGateway douyinOrderGateway;
+    /** 抖音推广网关，负责推广链接转换与 RAW 探针 */
     private final DouyinPromotionGateway douyinPromotionGateway;
+    /** 抖音 Token 网关，负责机构信息查询与 Token 创建探针 */
     private final DouyinTokenGateway douyinTokenGateway;
+    /** 抖音 Token 服务，负责 Token 缓存管理、刷新与初始化 */
     private final DouyinTokenService douyinTokenService;
+    /** Webhook 事件服务，负责事件重放与补偿消费 */
     private final DouyinWebhookEventService douyinWebhookEventService;
 
+    /**
+     * 构造注入.
+     *
+     * @param douyinActivityGateway   抖音活动网关
+     * @param douyinProductGateway    抖音商品网关
+     * @param douyinOrderGateway      抖音订单网关
+     * @param douyinPromotionGateway  抖音推广网关
+     * @param douyinTokenGateway      抖音 Token 网关
+     * @param douyinTokenService      抖音 Token 服务
+     * @param douyinWebhookEventService Webhook 事件服务
+     */
     public DouyinController(
             DouyinActivityGateway douyinActivityGateway,
             DouyinProductGateway douyinProductGateway,
@@ -80,10 +119,19 @@ public class DouyinController extends BaseController {
         this.douyinWebhookEventService = douyinWebhookEventService;
     }
 
+    /**
+     * 重放未完成 Webhook 事件.
+     *
+     * <p>扫描 Webhook 收件箱中状态为 RECEIVED 或 FAILED 的事件，
+     * 重新投递到事件消费链路。用于本地消费补偿与 real-pre 环境排障。</p>
+     *
+     * @param limit 单次最大重放数量，默认 20，服务层上限 100
+     * @return 重放结果，包含 scanned / consumed / failed 计数
+     */
     @Operation(summary = "[联调] 重放未完成 Webhook 事件", description = "重放 Webhook 收件箱中 RECEIVED / FAILED 状态的事件，用于本地消费补偿与 real-pre 排障。")
     @PostMapping("/webhook-events/replay")
     public ApiResult<Map<String, Object>> replayWebhookEvents(
-            @Parameter(description = "单次最多重放数量，默认 20，服务层上限 100。") @RequestParam(defaultValue = "20") int limit) {
+            @Parameter(description = "单次最多重放数量，默认 20，服务层上限 100。") @RequestParam(name = "limit", defaultValue = "20") int limit) {
         DouyinWebhookEventService.ReplayResult result = douyinWebhookEventService.replayUnfinished(limit);
         Map<String, Object> data = new HashMap<>();
         data.put("scanned", result.scanned());
@@ -92,10 +140,19 @@ public class DouyinController extends BaseController {
         return ok(data);
     }
 
+    /**
+     * 联调探针：查询团长活动列表.
+     *
+     * <p>验证上游 {@code alliance.instituteColonelActivityList} 能力是否可用。
+     * 使用默认参数调用上游接口，返回原始响应结构，用于检查 SDK 链路连通性。</p>
+     *
+     * @param appId 抖音应用 appId（可选），不传则使用系统默认配置
+     * @return 联调探针结果，包含 upstream 原始响应或错误信息
+     */
     @Operation(summary = "[联调] 查询活动列表", description = "验证上游 alliance.instituteColonelActivityList 能力是否可用，检查当前 appId 下团长活动列表查询链路。")
     @GetMapping("/activities")
     public ApiResult<Map<String, Object>> huodongLiebiao(
-            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
         result.put("endpoint", "alliance.instituteColonelActivityList");
@@ -113,11 +170,21 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
+    /**
+     * 联调探针：查询活动详情.
+     *
+     * <p>验证上游 {@code buyin.colonelActivityDetail} 能力是否可用。
+     * 按活动 ID 查询指定活动的详细信息，返回原始响应结构。</p>
+     *
+     * @param appId      抖音应用 appId（可选）
+     * @param activityId 团长活动 ID
+     * @return 联调探针结果，包含活动详情原始响应或错误信息
+     */
     @Operation(summary = "[联调] 查询活动详情", description = "验证上游 buyin.colonelActivityDetail 能力是否可用，检查指定活动详情查询链路。")
     @GetMapping("/activities/{activityId}")
     public ApiResult<Map<String, Object>> huodongXiangqing(
-            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
-            @Parameter(description = "团长活动 ID。") @PathVariable String activityId) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId,
+            @Parameter(description = "团长活动 ID。") @PathVariable("activityId") String activityId) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
         result.put("endpoint", "buyin.colonelActivityDetail");
@@ -133,16 +200,32 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
+    /**
+     * 联调探针：查询活动商品活动列表.
+     *
+     * <p>验证上游 {@code alliance.instituteColonelActivityList} 活动商品查询链路。
+     * 支持按活动状态、搜索类型、排序类型等参数进行筛选。
+     * 该接口保留 pageSize 命名以对齐上游 SDK 参数。</p>
+     *
+     * @param appId        抖音应用 appId（可选）
+     * @param status       活动状态（可选）
+     * @param searchType   搜索类型（可选）
+     * @param sortType     排序类型（可选）
+     * @param page         页码（可选）
+     * @param pageSize     每页条数（可选）
+     * @param activityInfo 活动信息关键字（可选）
+     * @return 联调探针结果
+     */
     @Operation(summary = "[联调] 查询活动商品活动列表", description = "验证上游 alliance.instituteColonelActivityList 活动商品查询链路。该接口保留 pageSize 命名以对齐上游 SDK 参数。")
     @GetMapping("/activity-products")
     public ApiResult<Map<String, Object>> huodongShangpin(
-            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
-            @Parameter(description = "活动状态。待确认：取值含义请联系产品或上游 SDK 文档。") @RequestParam(required = false) Integer status,
-            @Parameter(description = "搜索类型。待确认：取值含义请联系产品或上游 SDK 文档。") @RequestParam(required = false) Long searchType,
-            @Parameter(description = "排序类型。待确认：取值含义请联系产品或上游 SDK 文档。") @RequestParam(required = false) Long sortType,
-            @Parameter(description = "页码，从 1 开始。") @RequestParam(required = false) Long page,
-            @Parameter(description = "每页条数。联调接口保留 pageSize 命名以对齐上游 SDK。") @RequestParam(required = false) Long pageSize,
-            @Parameter(description = "活动信息关键字，用于按活动名称或信息筛选。") @RequestParam(required = false) String activityInfo) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId,
+            @Parameter(description = "活动状态。待确认：取值含义请联系产品或上游 SDK 文档。") @RequestParam(name = "status", required = false) Integer status,
+            @Parameter(description = "搜索类型。待确认：取值含义请联系产品或上游 SDK 文档。") @RequestParam(name = "searchType", required = false) Long searchType,
+            @Parameter(description = "排序类型。待确认：取值含义请联系产品或上游 SDK 文档。") @RequestParam(name = "sortType", required = false) Long sortType,
+            @Parameter(description = "页码，从 1 开始。") @RequestParam(name = "page", required = false) Long page,
+            @Parameter(description = "每页条数。联调接口保留 pageSize 命名以对齐上游 SDK。") @RequestParam(name = "pageSize", required = false) Long pageSize,
+            @Parameter(description = "活动信息关键字，用于按活动名称或信息筛选。") @RequestParam(name = "activityInfo", required = false) String activityInfo) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
         result.put("endpoint", "alliance.instituteColonelActivityList");
@@ -160,13 +243,26 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
+    /**
+     * 联调探针：查询活动商品列表.
+     *
+     * <p>验证上游 {@code alliance.colonelActivityProduct} 按活动查询商品的能力。
+     * 使用游标分页模式拉取商品列表，主要用于联调上游返回结构，
+     * 不等同于本地商品主链路接口。</p>
+     *
+     * @param appId      抖音应用 appId（可选）
+     * @param activityId 团长活动 ID
+     * @param count      每次拉取商品数量（可选）
+     * @param cursor     游标，继续翻页时使用（可选）
+     * @return 联调探针结果，包含活动商品列表原始响应
+     */
     @Operation(summary = "[联调] 查询活动商品列表", description = "验证上游 alliance.colonelActivityProduct 按活动查询商品的能力。该接口主要用于联调上游返回结构，不等同于本地商品主链路接口。")
     @GetMapping("/activity-product-list")
     public ApiResult<Map<String, Object>> shangpinLiebiao(
-            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
-            @Parameter(description = "团长活动 ID。") @RequestParam String activityId,
-            @Parameter(description = "每次拉取商品数量。") @RequestParam(required = false) Integer count,
-            @Parameter(description = "游标，继续翻页时使用。") @RequestParam(required = false) String cursor) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId,
+            @Parameter(description = "团长活动 ID。") @RequestParam(name = "activityId") String activityId,
+            @Parameter(description = "每次拉取商品数量。") @RequestParam(name = "count", required = false) Integer count,
+            @Parameter(description = "游标，继续翻页时使用。") @RequestParam(name = "cursor", required = false) String cursor) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
         result.put("endpoint", "alliance.colonelActivityProduct");
@@ -198,16 +294,37 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
+    /**
+     * 联调探针：查询团长分次结算订单.
+     *
+     * <p>验证上游 {@code buyin.colonelMultiSettlementOrders} 团长分次结算订单查询能力。
+     * 支持按时间范围或订单号列表两种查询模式：
+     * <ul>
+     *   <li>传入 orderIds 时按订单号查询</li>
+     *   <li>否则按时间范围查询（startTime / endTime）</li>
+     * </ul>
+     * 旧 {@code buyin.instituteOrderColonel} 仅保留 RAW 探针对照。</p>
+     *
+     * @param appId          抖音应用 appId（可选）
+     * @param size           每次拉取条数，最大 100
+     * @param cursor         游标，继续翻页时使用
+     * @param timeType       时间类型，如 update
+     * @param startTime      开始时间，格式 yyyy-MM-dd HH:mm:ss（可选）
+     * @param endTime        结束时间，格式 yyyy-MM-dd HH:mm:ss（可选）
+     * @param orderIds       订单号列表，逗号分隔（可选，优先使用 camelCase 入参）
+     * @param orderIdsLegacy 订单号列表（snake_case 兼容参数）
+     * @return 联调探针结果，包含结算订单原始响应
+     */
     @Operation(summary = "[联调] 查询团长分次结算订单", description = "验证上游 buyin.colonelMultiSettlementOrders 团长分次结算订单查询能力。RealDouyinOrderGateway 的订单主同步时间范围查询已使用该接口；旧 buyin.instituteOrderColonel 仅保留 RAW 探针对照。")
     @GetMapping("/order-settlements")
     public ApiResult<Map<String, Object>> dingdanJiesuan(
-            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
-            @Parameter(description = "每次拉取条数，最大 100。") @RequestParam(required = false, defaultValue = "20") @Min(1) @Max(100) Integer size,
-            @Parameter(description = "游标，继续翻页时使用。") @RequestParam(required = false, defaultValue = "0") String cursor,
-            @Parameter(description = "时间类型，如 update。待确认：更多取值请参考上游 SDK 文档。") @RequestParam(required = false, defaultValue = "update") String timeType,
-            @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String startTime,
-            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(required = false) String endTime,
-            @Parameter(description = "订单号列表，逗号分隔，最多 100 个；与时间范围二选一，优先使用 camelCase 入参。") @RequestParam(required = false) String orderIds,
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId,
+            @Parameter(description = "每次拉取条数，最大 100。") @RequestParam(name = "size", required = false, defaultValue = "20") @Min(1) @Max(100) Integer size,
+            @Parameter(description = "游标，继续翻页时使用。") @RequestParam(name = "cursor", required = false, defaultValue = "0") String cursor,
+            @Parameter(description = "时间类型，如 update。待确认：更多取值请参考上游 SDK 文档。") @RequestParam(name = "timeType", required = false, defaultValue = "update") String timeType,
+            @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "startTime", required = false) String startTime,
+            @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "endTime", required = false) String endTime,
+            @Parameter(description = "订单号列表，逗号分隔，最多 100 个；与时间范围二选一，优先使用 camelCase 入参。") @RequestParam(name = "orderIds", required = false) String orderIds,
             @RequestParam(name = "order_ids", required = false) String orderIdsLegacy) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
@@ -407,7 +524,7 @@ public class DouyinController extends BaseController {
     @RequireRoles({RoleCodes.ADMIN})
     @PutMapping("/activities/{activityId}")
     public ApiResult<Map<String, Object>> gengxinHuodong(
-            @Parameter(description = "团长活动 ID。") @PathVariable Long activityId,
+            @Parameter(description = "团长活动 ID。") @PathVariable("activityId") Long activityId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "更新团长活动请求体。",
                     required = true,
@@ -421,7 +538,7 @@ public class DouyinController extends BaseController {
     @RequireRoles({RoleCodes.ADMIN})
     @GetMapping("/tokens")
     public ApiResult<DouyinTokenService.TokenStatus> tokenZhuangtai(
-            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId) {
         return ok(douyinTokenService.getTokenStatus(appId));
     }
 
@@ -429,7 +546,7 @@ public class DouyinController extends BaseController {
     @RequireRoles({RoleCodes.ADMIN})
     @PostMapping("/token-refreshes")
     public ApiResult<DouyinTokenService.TokenStatus> tokenShuaxin(
-            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId) {
         douyinTokenService.refreshToken(appId);
         return ok(douyinTokenService.getTokenStatus(appId));
     }
@@ -438,7 +555,7 @@ public class DouyinController extends BaseController {
     @RequireRoles({RoleCodes.ADMIN})
     @GetMapping("/institution-info")
     public ApiResult<Map<String, Object>> jigouShenfen(
-            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId) {
+            @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
         result.put("endpoint", "buyin.institutionInfo");

@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as dotenv from 'dotenv';
 
-dotenv.config({ path: '.env.e2e' });
+dotenv.config({ path: process.env.E2E_ENV_FILE || '.env.test' });
 const alwaysCaptureArtifacts =
   process.env.E2E_VISUAL_CAPTURE === 'true' ||
   process.env.E2E_REAL_PRE_JOURNEY_VISUAL === 'true';
@@ -29,7 +29,7 @@ export default defineConfig({
   ],
   outputDir: 'test-results/playwright',
   use: {
-    baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000',
+    baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:3000',
     headless: process.env.E2E_HEADLESS === 'true',
     launchOptions: {
       slowMo

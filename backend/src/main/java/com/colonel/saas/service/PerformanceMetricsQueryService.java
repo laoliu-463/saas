@@ -57,10 +57,10 @@ public class PerformanceMetricsQueryService {
     }
 
     public boolean hasPerformanceRecords() {
-        Long count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(1) FROM performance_records",
-                Long.class);
-        return count != null && count > 0;
+        Boolean exists = jdbcTemplate.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM performance_records LIMIT 1)",
+                Boolean.class);
+        return Boolean.TRUE.equals(exists);
     }
 
     public PerformanceAggregate aggregateRange(

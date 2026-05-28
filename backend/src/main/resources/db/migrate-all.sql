@@ -6,6 +6,13 @@
 -- ???????????? IF NOT EXISTS / IF NOT EXISTS
 -- =============================================
 
+\getenv admin_password ADMIN_PASSWORD
+\if :{?admin_password}
+\else
+\echo 'ADMIN_PASSWORD is required for password migration'
+\quit 3
+\endif
+
 
 -- ========== 以下为补充合并的增量脚本 DDL（原 migrate-all.sql 遗漏） ==========
 
@@ -1530,3 +1537,11 @@ CREATE TABLE IF NOT EXISTS order_sync_dedup_claim (
 
 CREATE INDEX IF NOT EXISTS idx_order_sync_dedup_claim_row_id
     ON order_sync_dedup_claim(order_row_id);
+
+-- ============================================================
+-- 管理员密码更新（通过 ADMIN_PASSWORD 环境变量注入）
+-- ============================================================
+UPDATE sys_user
+SET password = crypt(:'admin_password', gen_salt('bf', 12))
+WHERE username = 'admin'
+  AND password <> crypt(:'admin_password', password);

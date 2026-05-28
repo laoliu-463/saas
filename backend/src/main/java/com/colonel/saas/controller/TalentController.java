@@ -42,6 +42,28 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 达人 CRM 控制器，供渠道人员管理达人池、公海私海、认领释放与达人信息补全。
+ *
+ * <ul>
+ *   <li>分页查询达人列表，支持关键字、地区、粉丝量与池状态筛选</li>
+ *   <li>查询达人详情、关联信息与补全结果</li>
+ *   <li>新增、编辑和删除达人基础资料</li>
+ *   <li>管理达人标签和收货地址</li>
+ *   <li>批量导入达人，自动触发信息补全</li>
+ *   <li>公海认领和私海释放，含保护期与黑名单机制</li>
+ *   <li>管理员归属覆盖与黑名单管理</li>
+ *   <li>手动触发达人信息刷新与每周批量刷新</li>
+ *   <li>独家达人判断，辅助业务分配决策</li>
+ * </ul>
+ *
+ * <p>所属业务领域：用户域 / 达人 CRM
+ * <p>API 路径前缀：{@code /talents}
+ * <p>访问权限：渠道组长和渠道专员（{@link com.colonel.saas.constant.RoleCodes#CHANNEL_LEADER}、{@link com.colonel.saas.constant.RoleCodes#CHANNEL_STAFF}），部分接口覆盖为管理员或仅组长
+ *
+ * @see com.colonel.saas.service.TalentService
+ * @see com.colonel.saas.service.TalentQueryService
+ */
 @Validated
 @Tag(name = "达人CRM", description = "达人池、公海私海、认领释放与达人信息补全相关接口。")
 @RestController
@@ -49,10 +71,22 @@ import java.util.UUID;
 @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
 public class TalentController extends BaseController {
 
+    /** 达人服务，负责达人增删改查、标签管理、收货地址维护、认领释放与黑名单等操作 */
     private final TalentService talentService;
+
+    /** 达人查询服务，负责达人分页查询、详情查询和操作权限校验 */
     private final TalentQueryService talentQueryService;
+
+    /** 达人每周刷新定时任务，用于手动触发每周批量刷新 */
     private final TalentWeeklyRefreshJob talentWeeklyRefreshJob;
 
+    /**
+     * 构造注入达人服务、达人查询服务和每周刷新任务。
+     *
+     * @param talentService         达人服务实例
+     * @param talentQueryService    达人查询服务实例
+     * @param talentWeeklyRefreshJob 达人每周刷新定时任务实例
+     */
     public TalentController(
             TalentService talentService,
             TalentQueryService talentQueryService,
@@ -62,6 +96,24 @@ public class TalentController extends BaseController {
         this.talentWeeklyRefreshJob = talentWeeklyRefreshJob;
     }
 
+    /**
+     * 分页查询达人列表。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>注入当前用户的数据范围（userId、deptId、dataScope）到查询参数</li>
+     *   <li>按关键字、地区、粉丝量与池状态等条件执行分页查询</li>
+     *   <li>将查询结果转换为达人视图对象并返回</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code GET /talents}
+     *
+     * @param query      达人分页查询参数，包含关键字、地区、粉丝量和池状态等筛选条件
+     * @param userId     当前登录用户 ID（从 JWT 解析）
+     * @param deptId     当前用户所属部门 ID，可为空
+     * @param dataScope  数据范围（PERSONAL/DEPT/ALL），可为空
+     * @return 分页后的达人列表
+     */
     @Operation(summary = "达人分页列表", description = "按关键字、地区、粉丝量与池状态分页查询达人列表，用于达人 CRM 主页面。")
     @GetMapping
     public ApiResult<PageResult<TalentVO>> page(
@@ -69,29 +121,80 @@ public class TalentController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        // 第一步：注入当前用户数据范围到查询参数
         query.setUserId(userId);
         query.setDeptId(deptId);
         query.setDataScope(dataScope);
+        // 第二步：执行分页查询
         IPage<Talent> result = talentQueryService.page(query);
+        // 第三步：转换为视图对象并返回
         return okPage(result.convert(TalentVO::from));
     }
 
+    /**
+     * 查询达人详情。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>根据达人 ID 和数据范围校验操作权限</li>
+     *   <li>查询达人详情，包含关联信息与补全结果</li>
+     *   <li>返回达人详情响应对象</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code GET /talents/{id}}
+     *
+     * @param id         达人主键 ID，UUID 格式
+     * @param userId     当前登录用户 ID（从 JWT 解析）
+     * @param deptId     当前用户所属部门 ID，可为空
+     * @param dataScope  数据范围（PERSONAL/DEPT/ALL），可为空
+     * @return 达人详情，包含关联信息与补全结果
+     * @throws com.colonel.saas.common.exception.BusinessException 达人不存在或无权访问
+     */
     @Operation(summary = "达人详情", description = "查询单个达人的详情、关联信息与补全结果，用于达人侧边栏或详情弹窗。")
     @GetMapping("/{id}")
     public ApiResult<TalentDetailResponse> detail(
-            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID id,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
         return ok(talentQueryService.detail(id, userId, deptId, dataScope));
     }
 
+    /**
+     * 查询达人认领状态流转矩阵。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>构建默认的状态流转矩阵，包含公海、私海、多人认领、保护期和释放等状态</li>
+     *   <li>返回各状态的定义和状态间可执行的操作</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code GET /talents/status-transitions}
+     *
+     * @return 达人认领状态流转矩阵，供产品、前端和后端按同一口径验收
+     */
     @Operation(summary = "达人认领状态流转矩阵", description = "返回公海、私海、多人认领、保护期和释放相关状态表，供产品、前端和后端按同一口径验收。")
     @GetMapping("/status-transitions")
     public ApiResult<TalentStatusTransitionMatrix> statusTransitions() {
         return ok(TalentStatusTransitionMatrix.defaultMatrix());
     }
 
+    /**
+     * 新增达人。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>校验达人新增请求参数的合法性</li>
+     *   <li>将请求体转换为达人实体</li>
+     *   <li>创建达人记录并返回新增的达人视图对象</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code POST /talents}
+     *
+     * @param request 达人新增请求，包含达人昵称、抖音 UID 等基础资料
+     * @return 新增的达人视图对象
+     * @throws com.colonel.saas.common.exception.BusinessException 参数校验失败或达人已存在
+     */
     @Operation(summary = "新增达人", description = "手动新增达人基础资料，用于 CRM 人工补录。")
     @PostMapping
     public ApiResult<TalentVO> create(
@@ -104,10 +207,31 @@ public class TalentController extends BaseController {
         return ok(TalentVO.from(talentService.create(request.toTalent())));
     }
 
+    /**
+     * 编辑达人基础资料。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>校验当前用户对该达人的操作权限</li>
+     *   <li>校验达人更新请求参数的合法性</li>
+     *   <li>更新达人记录并返回更新后的达人视图对象</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code PUT /talents/{id}}
+     *
+     * @param id         达人主键 ID，UUID 格式
+     * @param request    达人更新请求，包含待更新的字段
+     * @param userId     当前登录用户 ID（从 JWT 解析）
+     * @param deptId     当前用户所属部门 ID，可为空
+     * @param dataScope  数据范围（PERSONAL/DEPT/ALL），可为空
+     * @param roleCodes  当前用户的角色代码列表，可为空
+     * @return 更新后的达人视图对象
+     * @throws com.colonel.saas.common.exception.BusinessException 达人不存在、无权操作或参数校验失败
+     */
     @Operation(summary = "编辑达人", description = "更新达人基础资料。")
     @PutMapping("/{id}")
     public ApiResult<TalentVO> update(
-            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID id,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "达人更新请求体。",
                     required = true,
@@ -118,50 +242,121 @@ public class TalentController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        // 第一步：校验操作权限
         talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        // 第二步：更新达人资料
         return ok(TalentVO.from(talentService.update(id, request.toUpdateTalent())));
     }
 
+    /**
+     * 更新达人标签。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>校验当前用户对该达人的操作权限</li>
+     *   <li>从请求体中提取标签列表（最多 3 个，后者覆盖同名）</li>
+     *   <li>更新达人标签并返回更新后的标签列表</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code PUT /talents/{id}/tags}
+     *
+     * @param id         达人主键 ID
+     * @param body       请求体，包含 tags 字段（标签列表）
+     * @param userId     当前登录用户 ID（从 JWT 解析）
+     * @param deptId     当前用户所属部门 ID，可为空
+     * @param dataScope  数据范围（PERSONAL/DEPT/ALL），可为空
+     * @param roleCodes  当前用户的角色代码列表，可为空
+     * @return 更新后的标签列表
+     * @throws com.colonel.saas.common.exception.BusinessException 达人不存在或无权操作
+     */
     @Operation(summary = "更新达人标签", description = "最多 3 个标签，后者覆盖同名。")
     @PutMapping("/{id}/tags")
     public ApiResult<List<String>> updateTags(
-            @Parameter(description = "达人主键 ID。") @PathVariable UUID id,
+            @Parameter(description = "达人主键 ID。") @PathVariable("id") UUID id,
             @RequestBody Map<String, List<String>> body,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        // 第一步：校验操作权限
         talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        // 第二步：提取标签列表并更新
         List<String> tags = body == null ? List.of() : body.get("tags");
         return ok(talentService.updateTags(id, tags, userId));
     }
 
+    /**
+     * 获取达人收货地址。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>校验当前用户对该达人的操作权限</li>
+     *   <li>查询达人收货地址信息</li>
+     *   <li>返回收货地址请求对象，供寄样域 get_talent_address 调用</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code GET /talents/{id}/shipping-address}
+     *
+     * @param id         达人主键 ID
+     * @param userId     当前登录用户 ID（从 JWT 解析）
+     * @param deptId     当前用户所属部门 ID，可为空
+     * @param dataScope  数据范围（PERSONAL/DEPT/ALL），可为空
+     * @param roleCodes  当前用户的角色代码列表，可为空
+     * @return 达人收货地址，包含收件人姓名、电话和地址
+     * @throws com.colonel.saas.common.exception.BusinessException 达人不存在或无权操作
+     */
     @Operation(summary = "获取达人收货地址", description = "供寄样域 get_talent_address 调用。")
     @GetMapping("/{id}/shipping-address")
     public ApiResult<ShippingAddressRequest> getShippingAddress(
-            @Parameter(description = "达人主键 ID。") @PathVariable UUID id,
+            @Parameter(description = "达人主键 ID。") @PathVariable("id") UUID id,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        // 第一步：校验操作权限
         talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        // 第二步：查询达人收货地址
         Talent talent = talentService.getShippingAddress(id, userId);
+        // 第三步：组装收货地址响应
         return ok(new ShippingAddressRequest(
                 talent.getShippingRecipientName(),
                 talent.getShippingRecipientPhone(),
                 talent.getShippingRecipientAddress()));
     }
 
+    /**
+     * 维护达人收货地址。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>校验当前用户对该达人的操作权限</li>
+     *   <li>提取收货地址信息（收件人姓名、电话、地址）</li>
+     *   <li>更新达人收货地址并返回更新后的达人视图对象</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code PUT /talents/{id}/shipping-address}
+     *
+     * @param id         达人主键 ID
+     * @param request    收货地址请求，包含收件人姓名、电话和地址
+     * @param userId     当前登录用户 ID（从 JWT 解析）
+     * @param deptId     当前用户所属部门 ID，可为空
+     * @param dataScope  数据范围（PERSONAL/DEPT/ALL），可为空
+     * @param roleCodes  当前用户的角色代码列表，可为空
+     * @return 更新后的达人视图对象
+     * @throws com.colonel.saas.common.exception.BusinessException 达人不存在或无权操作
+     */
     @Operation(summary = "维护达人收货地址", description = "认领人维护默认收货信息，供快速寄样带入。")
     @PutMapping("/{id}/shipping-address")
     public ApiResult<TalentVO> updateShippingAddress(
-            @Parameter(description = "达人主键 ID。") @PathVariable UUID id,
+            @Parameter(description = "达人主键 ID。") @PathVariable("id") UUID id,
             @RequestBody ShippingAddressRequest request,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        // 第一步：校验操作权限
         talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        // 第二步：更新收货地址
         return ok(TalentVO.from(talentService.updateShippingAddress(
                 id,
                 userId,
@@ -170,53 +365,154 @@ public class TalentController extends BaseController {
                 request == null ? null : request.recipientAddress())));
     }
 
+    /** 达人收货地址请求，包含收件人姓名、电话和详细地址 */
     public record ShippingAddressRequest(
             String recipientName,
             String recipientPhone,
             String recipientAddress) {
     }
 
+    /**
+     * 批量导入达人。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>从请求体中提取达人账号/链接列表</li>
+     *   <li>按账号批量导入达人并自动触发信息补全</li>
+     *   <li>返回批量导入结果，包含成功数和失败明细</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code POST /talents/batch-import}
+     * <p>访问权限：覆盖为渠道组长和管理员（{@link com.colonel.saas.constant.RoleCodes#CHANNEL_LEADER}、{@link com.colonel.saas.constant.RoleCodes#ADMIN}）
+     *
+     * @param request 批量导入请求，包含达人账号/链接列表
+     * @param userId  当前登录用户 ID（从 JWT 解析）
+     * @return 批量导入结果，包含成功数和失败明细
+     */
     @Operation(summary = "批量导入达人", description = "按达人账号/链接批量导入并自动补全（batch_import_talents）。")
     @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.ADMIN})
     @PostMapping("/batch-import")
     public ApiResult<TalentBatchImportResult> batchImport(
             @RequestBody TalentBatchImportRequest request,
             @RequestAttribute("userId") UUID userId) {
+        // 第一步：提取达人账号列表
         List<String> accounts = request == null ? List.of() : request.accounts();
+        // 第二步：执行批量导入
         return ok(talentService.batchImport(accounts, userId));
     }
 
+    /**
+     * 获取达人预设标签库。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>查询系统预设的标签列表</li>
+     *   <li>返回标签列表，供渠道从列表中选择（最多 3 个）</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code GET /talents/preset-tags}
+     *
+     * @return 预设标签列表
+     */
     @Operation(summary = "获取达人预设标签库", description = "V2 预设标签，供渠道从列表中选择（最多 3 个）。")
     @GetMapping("/preset-tags")
     public ApiResult<List<String>> presetTags() {
         return ok(talentService.listPresetTags());
     }
 
+    /**
+     * 删除达人。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>校验当前用户对该达人的操作权限</li>
+     *   <li>验证达人未处于关键业务链路中</li>
+     *   <li>删除达人记录</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code DELETE /talents/{id}}
+     *
+     * @param id         达人主键 ID，UUID 格式
+     * @param userId     当前登录用户 ID（从 JWT 解析）
+     * @param deptId     当前用户所属部门 ID，可为空
+     * @param dataScope  数据范围（PERSONAL/DEPT/ALL），可为空
+     * @param roleCodes  当前用户的角色代码列表，可为空
+     * @return 操作成功（无数据体）
+     * @throws com.colonel.saas.common.exception.BusinessException 达人不存在、无权操作或处于关键业务链路
+     */
     @Operation(summary = "删除达人", description = "删除达人资料。请确认该达人未处于关键业务链路中。")
     @DeleteMapping("/{id}")
     public ApiResult<Void> delete(
-            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID id,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        // 第一步：校验操作权限
         talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        // 第二步：删除达人
         talentService.delete(id);
         return ok();
     }
 
+    /**
+     * 查询公海达人列表。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>查询所有无有效认领记录或已被释放的达人</li>
+     *   <li>将结果转换为达人视图对象列表</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code GET /talents/pools/public}
+     *
+     * @return 可被认领的公海达人列表
+     */
     @Operation(summary = "公海达人列表", description = "查询当前可被认领的公海达人列表。")
     @GetMapping("/pools/public")
     public ApiResult<List<TalentVO>> publicPool() {
         return ok(talentService.getPublicPool().stream().map(TalentVO::from).toList());
     }
 
+    /**
+     * 查询私海达人列表。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>根据当前登录用户 ID 查询其已认领的达人</li>
+     *   <li>将结果转换为达人视图对象列表</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code GET /talents/pools/private}
+     *
+     * @param userId 当前登录用户 ID（从 JWT 解析）
+     * @return 当前用户已认领的私海达人列表
+     */
     @Operation(summary = "私海达人列表", description = "查询当前登录用户已认领的私海达人列表。")
     @GetMapping("/pools/private")
     public ApiResult<List<TalentVO>> privatePool(@RequestAttribute("userId") UUID userId) {
         return ok(talentService.getPrivatePool(userId).stream().map(TalentVO::from).toList());
     }
 
+    /**
+     * 认领达人。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>验证达人当前状态是否可认领</li>
+     *   <li>生成认领记录，将达人从公海转入当前负责人的私海</li>
+     *   <li>按配置的保护天数计算保护期截止时间</li>
+     *   <li>返回更新后的达人视图对象</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code POST /talents/{id}/claims}
+     *
+     * @param talentId 达人主键 ID，UUID 格式
+     * @param userId   当前登录用户 ID（从 JWT 解析）
+     * @param deptId   当前用户所属部门 ID，可为空
+     * @return 认领后的达人视图对象
+     * @throws com.colonel.saas.common.exception.BusinessException 达人不可认领或已在黑名单中
+     */
     @Operation(summary = "认领达人", description = "认领动作，生成认领记录并将达人从公海转入当前负责人的私海。")
     @PostMapping("/{id}/claims")
     public ApiResult<TalentVO> claim(
@@ -226,6 +522,26 @@ public class TalentController extends BaseController {
         return ok(TalentVO.from(talentService.claim(talentId, userId, deptId)));
     }
 
+    /**
+     * 释放达人。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>验证当前用户对该达人的认领记录是否存在</li>
+     *   <li>解除达人锁定状态，将认领记录标记为已释放</li>
+     *   <li>若仍有其他有效认领，达人归属快照切到剩余认领人</li>
+     *   <li>返回更新后的达人视图对象</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code POST /talents/{id}/release}
+     *
+     * @param talentId 达人主键 ID，UUID 格式
+     * @param userId   当前登录用户 ID（从 JWT 解析）
+     * @param deptId   当前用户所属部门 ID，可为空
+     * @param roleCodes 当前用户的角色代码列表，可为空
+     * @return 释放后的达人视图对象
+     * @throws com.colonel.saas.common.exception.BusinessException 达人未被认领或无权释放
+     */
     @Operation(summary = "释放达人", description = "释放动作，解除该达人的锁定状态并将其从当前负责人的私海释放回公共池。当前路径为动作语义，非资源集合。")
     @PostMapping("/{id}/release")
     public ApiResult<TalentVO> release(
@@ -315,7 +631,7 @@ public class TalentController extends BaseController {
     @Operation(summary = "独家达人判断", description = "判断指定达人是否满足独家条件，用于业务分配与跟进决策。")
     @GetMapping("/{id}/exclusive-status")
     public ApiResult<TalentService.ExclusiveCheckResult> exclusiveCheck(
-            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID id,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {

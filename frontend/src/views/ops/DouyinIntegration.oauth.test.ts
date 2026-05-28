@@ -82,15 +82,19 @@ describe('DouyinIntegration oauth entry', () => {
     vi.mocked(getDouyinAuthorizeUrl).mockResolvedValue({
       authorizeUrl: 'https://op.jinritemai.com/oauth2/authorize?state=s1',
       state: 's1',
-      redirectUri: 'http://localhost:8081/api/douyin/oauth/callback'
+      redirectUri: 'http://localhost:8081/api/douyin/oauth/callback',
+      powerManageUrl: 'https://buyin.jinritemai.com/dashboard/institution/power-manage'
     });
   });
 
   it('renders one-click douyin authorization entry and handles callback query', () => {
     expect(source).toContain('去抖店授权');
+    expect(source).toContain('官方授权管理');
     expect(source).toContain('@click="startDouyinOAuth"');
+    expect(source).toContain('@click="openDouyinPowerManage"');
     expect(source).toContain('getDouyinAuthorizeUrl');
     expect(source).toContain('window.location.href = result.authorizeUrl');
+    expect(source).toContain('result.powerManageUrl');
     expect(source).toContain("route.query.oauth");
     expect(source).toContain("oauthResult === 'success'");
   });
@@ -110,5 +114,22 @@ describe('DouyinIntegration oauth entry', () => {
 
     expect(getDouyinAuthorizeUrl).toHaveBeenCalledWith(undefined);
     expect(window.location.href).toBe('https://op.jinritemai.com/oauth2/authorize?state=s1');
+  });
+
+  it('opens official buyin power management page from token tools', async () => {
+    const wrapper = mount(DouyinIntegration, {
+      global: {
+        stubs: naiveStubs
+      }
+    });
+
+    const powerManageButton = wrapper.findAll('button').find((button) => button.text().includes('官方授权管理'));
+    expect(powerManageButton).toBeTruthy();
+
+    await powerManageButton!.trigger('click');
+    await Promise.resolve();
+
+    expect(getDouyinAuthorizeUrl).toHaveBeenCalledWith(undefined);
+    expect(window.location.href).toBe('https://buyin.jinritemai.com/dashboard/institution/power-manage');
   });
 });

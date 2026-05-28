@@ -9,7 +9,17 @@ import { request as playwrightRequest, type APIRequestContext } from '@playwrigh
 import { accounts, type AccountKey } from './test-data';
 
 const BACKEND = () =>
-  (process.env.E2E_BACKEND_URL || 'http://localhost:8080').replace(/\/$/, '');
+  (process.env.E2E_BACKEND_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
+
+function unwrapMetricsPayload(data: unknown): Record<string, unknown> | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const record = data as Record<string, unknown>;
+  const settle = record.settle;
+  const estimate = record.estimate;
+  if (settle && typeof settle === 'object') return settle as Record<string, unknown>;
+  if (estimate && typeof estimate === 'object') return estimate as Record<string, unknown>;
+  return record;
+}
 
 /** 通过用户名密码登录，返回 accessToken */
 export async function loginApi(role: AccountKey): Promise<string> {
@@ -144,7 +154,7 @@ export async function assertDashboardMetrics(token: string): Promise<void> {
   const body = (await apiGet('/api/dashboard/metrics', { token })) as {
     data?: unknown;
   };
-  if (!body?.data) {
+  if (!unwrapMetricsPayload(body?.data)) {
     throw new Error('Dashboard metrics 接口无 data，看板数据不可信');
   }
 }

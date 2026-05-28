@@ -20,13 +20,37 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 团长主数据管理控制器，供管理员和招商组长维护团长联系方式与触发主数据同步。
+ *
+ * <ul>
+ *   <li>更新指定团长的联系方式（手机号、微信号、联系人姓名）</li>
+ *   <li>手动触发团长主数据全量同步</li>
+ * </ul>
+ *
+ * <p>所属业务领域：用户域 / 团长主数据管理
+ * <p>API 路径前缀：{@code /api/admin/colonel-partners}
+ * <p>访问权限：管理员和招商组长（{@link com.colonel.saas.constant.RoleCodes#ADMIN}、{@link com.colonel.saas.constant.RoleCodes#BIZ_LEADER}）
+ *
+ * @see com.colonel.saas.service.ColonelPartnerAdminService
+ * @see com.colonel.saas.service.ColonelPartnerSyncService
+ */
 @RestController
 @RequestMapping("/api/admin/colonel-partners")
 public class AdminColonelPartnerController {
 
+    /** 团长主数据管理服务，负责团长联系方式更新等管理操作 */
     private final ColonelPartnerAdminService colonelPartnerAdminService;
+
+    /** 团长主数据同步服务，负责从外部数据源同步团长主数据 */
     private final ColonelPartnerSyncService colonelPartnerSyncService;
 
+    /**
+     * 构造注入团长主数据管理服务和同步服务。
+     *
+     * @param colonelPartnerAdminService 团长主数据管理服务实例
+     * @param colonelPartnerSyncService  团长主数据同步服务实例
+     */
     public AdminColonelPartnerController(
             ColonelPartnerAdminService colonelPartnerAdminService,
             ColonelPartnerSyncService colonelPartnerSyncService) {
@@ -34,6 +58,25 @@ public class AdminColonelPartnerController {
         this.colonelPartnerSyncService = colonelPartnerSyncService;
     }
 
+    /**
+     * 更新团长联系方式。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>根据 ID 查找目标团长主数据记录</li>
+     *   <li>校验联系方式请求参数的合法性</li>
+     *   <li>更新团长的手机号、微信号和联系人姓名</li>
+     *   <li>返回更新后的团长主数据对象</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code PUT /api/admin/colonel-partners/{id}/contact}
+     *
+     * @param id      团长主数据 ID
+     * @param request 联系方式更新请求，包含手机号、微信号和联系人姓名
+     * @param userId  当前操作人 ID（从 JWT 解析）
+     * @return 更新后的团长主数据对象
+     * @throws com.colonel.saas.common.exception.BusinessException 团长不存在或参数校验失败
+     */
     @Operation(summary = "更新团长联系方式")
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER})
     @PutMapping("/{id}/contact")
@@ -41,14 +84,31 @@ public class AdminColonelPartnerController {
             @PathVariable UUID id,
             @Valid @RequestBody ColonelPartnerContactUpdateRequest request,
             @RequestAttribute("userId") UUID userId) {
+        // 第一步：更新团长联系方式
         return ApiResult.ok(colonelPartnerAdminService.updateContactInfo(id, request, userId));
     }
 
+    /**
+     * 手动触发团长主数据全量同步。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>调用同步服务从外部数据源拉取最新团长主数据</li>
+     *   <li>执行全量 upsert 操作，更新本地团长记录</li>
+     *   <li>返回本次同步影响的记录数</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code POST /api/admin/colonel-partners/sync}
+     *
+     * @return 同步结果，包含 upserted（本次同步更新/插入的记录数）
+     */
     @Operation(summary = "手动触发团长主数据同步")
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER})
     @PostMapping("/sync")
     public ApiResult<Map<String, Object>> sync() {
+        // 第一步：执行全量同步
         int upserted = colonelPartnerSyncService.syncAll();
+        // 第二步：返回同步结果
         return ApiResult.ok(Map.of("upserted", upserted));
     }
 }

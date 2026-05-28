@@ -147,7 +147,7 @@ describe('router configuration', () => {
 })
 
 describe('router guards', () => {
-  it('redirects anonymous users to login and records beforeEach timing', () => {
+  it('redirects anonymous users to login with the original target and records beforeEach timing', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     authState.isLoggedIn = false
     authState.roleCodes = []
@@ -157,12 +157,26 @@ describe('router guards', () => {
       route('/login')
     )
 
-    expect(result).toBe('/login')
+    expect(result).toBe('/login?redirect=%2Forders')
     expect(authState.hydrateFromStorage).toHaveBeenCalledOnce()
     expect(timingCalls[0]).toMatchObject({
       scope: 'router',
       payload: { phase: 'beforeEach', from: '/login', to: '/orders' }
     })
+    warnSpy.mockRestore()
+  })
+
+  it('preserves douyin oauth callback query for anonymous users', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    authState.isLoggedIn = false
+    authState.roleCodes = []
+
+    const result = beforeEachHook?.(
+      route('/system/douyin', { roles: [ROLE_CODES.ADMIN] }, '/system/douyin?oauth=success'),
+      route('/login')
+    )
+
+    expect(result).toBe('/login?redirect=%2Fsystem%2Fdouyin%3Foauth%3Dsuccess')
     warnSpy.mockRestore()
   })
 

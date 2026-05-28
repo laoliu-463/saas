@@ -60,7 +60,7 @@ function Get-BackendHealthUrl {
     } else {
         "8080"
     }
-    return "http://localhost:$port/api/system/health"
+    return "http://127.0.0.1:$port/api/system/health"
 }
 
 function Get-FrontendBaseUrl {
@@ -73,7 +73,7 @@ function Get-FrontendBaseUrl {
     } else {
         "3000"
     }
-    return "http://localhost:$port"
+    return "http://127.0.0.1:$port"
 }
 
 function Wait-Until {
@@ -221,11 +221,15 @@ function Show-StartupDiagnostics {
     }
 
     Write-Host ""
-    Write-Host "=== saas-backend logs (tail 100) ===" -ForegroundColor Yellow
-    $backendExists = docker ps -a --filter "name=^/saas-backend$" --format "{{.Names}}"
-    if ($backendExists) {
-        docker logs saas-backend --tail 100 2>&1
+    Write-Host "=== backend logs (tail 100) ===" -ForegroundColor Yellow
+    $backendName = docker ps -a `
+        --filter "label=com.docker.compose.project=$ProjectName" `
+        --filter "label=com.docker.compose.service=backend" `
+        --format "{{.Names}}" |
+        Select-Object -First 1
+    if ($backendName) {
+        docker logs $backendName --tail 100 2>&1
     } else {
-        Write-Host "saas-backend container is not present."
+        Write-Host "backend container is not present for compose project '$ProjectName'."
     }
 }

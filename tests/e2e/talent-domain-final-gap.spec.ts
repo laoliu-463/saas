@@ -116,7 +116,7 @@ test.describe('达人域 V1.1 收尾', () => {
 
   test('批量导入展示部分失败明细', async ({ page }) => {
     await page.getByTestId('talent-batch-import').click()
-    await page.getByTestId('talent-batch-import-paste').fill('111\nbad')
+    await page.getByTestId('talent-batch-import-paste').locator('textarea').fill('111\nbad')
     await page.getByTestId('talent-batch-import-submit').click()
     await expect(page.getByTestId('talent-batch-import-result')).toContainText('失败 1')
     await expect(page.getByTestId('talent-batch-import-failures')).toBeVisible()

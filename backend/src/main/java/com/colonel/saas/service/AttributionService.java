@@ -19,21 +19,57 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
+/**
+ * 订单归属（Attribution）核心服务。
+ *
+ * <p>职责：根据订单中的 pick_source、colonel_order_info、exclusive 等信息，
+ * 解析订单应该归属到哪个渠道用户（channelUserId）和部门（deptId）。
+ *
+ * <p>归属优先级（从高到低）：
+ * <ol>
+ *   <li>独家商家归属 —— 若商家已被某用户独占，直接归属</li>
+ *   <li>独家达人归属 —— 若达人已被某用户独占，直接归属</li>
+ *   <li>原生团长映射 —— 通过 colonel_order_info / colonel_buyin_id 查找 pick_source_mapping</li>
+ *   <li>pick_source / pick_extra 映射 —— 通过转链映射查找</li>
+ * </ol>
+ *
+ * <p>依赖服务/仓储：
+ * <ul>
+ *   <li>{@link PickSourceMappingMapper} —— 转链映射数据访问</li>
+ *   <li>{@link ProductOperationStateMapper} —— 商品操作状态，用于查找活动负责人</li>
+ *   <li>{@link TalentMapper} / {@link TalentClaimMapper} —— 达人信息及认领冲突校验</li>
+ *   <li>{@link ExclusiveTalentService} —— 独家达人归属查询</li>
+ *   <li>{@link ExclusiveMerchantService} —— 独家商家归属查询</li>
+ * </ul>
+ */
 @Service
 public class AttributionService {
 
+    /** 归属状态：已归属 */
     public static final String STATUS_ATTRIBUTED = "ATTRIBUTED";
+    /** 归属状态：未归属 */
     public static final String STATUS_UNATTRIBUTED = "UNATTRIBUTED";
+    /** 归属原因：正常归属成功 */
     public static final String REASON_ATTRIBUTED = "ATTRIBUTED";
+    /** 归属原因：订单缺少 pick_source 和 pick_extra */
     public static final String REASON_NO_PICK_SOURCE = "NO_PICK_SOURCE";
+    /** 归属原因：通过 pick_source 未找到匹配映射 */
     public static final String REASON_MAPPING_NOT_FOUND = "MAPPING_NOT_FOUND";
+    /** 归属原因：通过团长 buyin_id 未找到匹配映射 */
     public static final String REASON_COLONEL_MAPPING_NOT_FOUND = "COLONEL_MAPPING_NOT_FOUND";
+    /** 归属原因：团长映射存在多条，归属结果不明确 */
     public static final String REASON_COLONEL_MAPPING_AMBIGUOUS = "COLONEL_MAPPING_AMBIGUOUS";
+    /** 归属原因：订单中商品ID不存在 */
     public static final String REASON_PRODUCT_NOT_FOUND = "PRODUCT_NOT_FOUND";
+    /** 归属原因：活动操作状态记录缺失 */
     public static final String REASON_ACTIVITY_NOT_FOUND = "ACTIVITY_NOT_FOUND";
+    /** 归属原因：映射记录存在但渠道用户ID为空 */
     public static final String REASON_CHANNEL_NOT_FOUND = "CHANNEL_NOT_FOUND";
+    /** 归属原因：同步过程失败 */
     public static final String REASON_SYNC_FAILED = "SYNC_FAILED";
+    /** 归属原因：通过原生团长订单信息（colonel_order_info）归属 */
     public static final String REASON_COLONEL_ORDER_INFO = "COLONEL_ORDER_INFO";
+    /** 归属原因：达人已被其他人认领，存在归属冲突 */
     public static final String REASON_TALENT_CLAIM_OWNER_CONFLICT = "TALENT_CLAIM_OWNER_CONFLICT";
 
     private final PickSourceMappingMapper pickSourceMappingMapper;
@@ -80,7 +116,18 @@ public class AttributionService {
         );
     }
 
+    /**
+     * 解析订单归属。
+     *
+     * <p>按优先级依次尝试：独家商家 -> 独家达人 -> 原生团长映射 -> pick_source/pick_extra 映射。
+     * 每一步匹配成功后还会检查达人认领冲突（talent claim guard）。
+     *
+     * @param order  订单实体，包含 productId、pickSource、shopId 等基础信息
+     * @param source 订单原始数据 Map，可能包含 colonel_order_info、pick_extra、talent_uid 等扩展字段
+     * @return 归属结果 {@link AttributionResult}，包含归属状态、渠道用户、部门、达人信息及追踪信息
+     */
     public AttributionResult resolveAttribution(ColonelsettlementOrder order, java.util.Map<String, Object> source) {
+        /* 从 source 和 order 中提取关键字段，按优先级取首个非空值 */
         String activityId = firstNonBlank(
                 asString(source.get("colonel_activity_id")),
                 asString(source.get("activity_id")),
@@ -89,9 +136,12 @@ public class AttributionService {
         String productId = order.getProductId();
         String pickSource = order.getPickSource();
         String pickExtra = asString(source.get("pick_extra"));
+        /* 从多个可能的字段中提取达人UID */
         String talentUid = talentUid(source);
+        /* 将达人UID解析为内部达人ID */
         UUID talentId = resolveTalentId(talentUid);
 
+        /* 边界条件：商品ID为空则无法归属 */
         if (!StringUtils.hasText(productId)) {
             return AttributionResult.unattributed(
                     talentId,
@@ -103,6 +153,7 @@ public class AttributionService {
             );
         }
 
+        /* 查询活动-商品操作状态，获取该商品在该活动下的负责人（assigneeId） */
         UUID colonelUserId = null;
         boolean activityStateMissing = false;
         if (StringUtils.hasText(activityId) && StringUtils.hasText(productId)) {
@@ -123,6 +174,7 @@ public class AttributionService {
                 order.getShopId() == null ? null : String.valueOf(order.getShopId())
         );
 
+        /* 第一优先级：独家商家归属 */
         ExclusiveOwner merchantExclusiveOwner = findExclusiveMerchantOwner(merchantId);
         if (merchantExclusiveOwner != null) {
             return AttributionResult.attributed(
@@ -138,6 +190,7 @@ public class AttributionService {
             );
         }
 
+        /* 第二优先级：独家达人归属 */
         ExclusiveOwner exclusiveOwner = findExclusiveTalentOwner(talentUid);
         if (exclusiveOwner != null) {
             return AttributionResult.attributed(
@@ -153,6 +206,7 @@ public class AttributionService {
             );
         }
 
+        /* 第三优先级：原生团长映射（通过 colonel_order_info 字段） */
         String colonelsBuyinId = firstNonBlank(
                 asString(source.get("colonel_buyin_id")),
                 asString(source.get("colonelBuyinId"))
@@ -204,6 +258,7 @@ public class AttributionService {
             );
         }
 
+        /* 第四优先级：pick_source / pick_extra 映射 */
         if (!StringUtils.hasText(pickSource) && !StringUtils.hasText(pickExtra)) {
             return AttributionResult.unattributed(
                     talentId,
@@ -249,6 +304,12 @@ public class AttributionService {
         );
     }
 
+    /**
+     * 查找独家商家的拥有者。
+     *
+     * @param merchantId 商家ID
+     * @return 独家归属信息（userId + deptId），若未启用独家或未找到则返回 null
+     */
     protected ExclusiveOwner findExclusiveMerchantOwner(String merchantId) {
         if (!exclusiveEnabled) {
             return null;
@@ -256,6 +317,12 @@ public class AttributionService {
         return exclusiveMerchantService.findActiveOwnerByMerchantId(merchantId);
     }
 
+    /**
+     * 查找独家达人的拥有者。
+     *
+     * @param talentUid 达人抖音UID
+     * @return 独家归属信息（userId + deptId），若未启用独家或未找到则返回 null
+     */
     protected ExclusiveOwner findExclusiveTalentOwner(String talentUid) {
         if (!exclusiveEnabled) {
             return null;
@@ -263,6 +330,21 @@ public class AttributionService {
         return exclusiveTalentService.findActiveOwnerByTalentUid(talentUid);
     }
 
+    /**
+     * 带达人认领冲突保护的归属结果构建。
+     * 若达人已被其他人认领（active claim），则返回未归属状态。
+     *
+     * @param channelUserId 渠道用户ID
+     * @param deptId        部门ID
+     * @param userId        归属用户ID
+     * @param talentId      达人内部ID
+     * @param talentUid     达人抖音UID
+     * @param activityId    活动ID
+     * @param colonelUserId 活动负责人ID
+     * @param remark        归属原因说明
+     * @param trace         原生映射追踪信息
+     * @return 归属结果，若存在认领冲突则为未归属
+     */
     private AttributionResult attributedWithClaimGuard(
             UUID channelUserId,
             UUID deptId,
@@ -296,6 +378,14 @@ public class AttributionService {
         );
     }
 
+    /**
+     * 检查达人是否存在认领冲突。
+     * 当达人有其他用户的活跃认领记录（active claim），且该用户与当前归属用户不同时，判定为冲突。
+     *
+     * @param talentId 达人内部ID
+     * @param userId   当前归属用户ID
+     * @return true 表示存在冲突，归属应被阻止
+     */
     private boolean hasTalentClaimOwnerConflict(UUID talentId, UUID userId) {
         if (talentId == null || userId == null) {
             return false;
@@ -311,6 +401,17 @@ public class AttributionService {
         return !activeClaimUserIds.isEmpty() && activeClaimUserIds.stream().noneMatch(userId::equals);
     }
 
+    /**
+     * 解析原生团长归属映射（支持双团映射）。
+     * 先尝试第一组团长信息；若失败再尝试第二组（second_colonel_*）。
+     *
+     * @param firstColonelsBuyinId  第一团长 buyin_id
+     * @param firstActivityId       第一活动ID
+     * @param secondColonelsBuyinId 第二团长 buyin_id
+     * @param secondActivityId      第二活动ID
+     * @param productId             商品ID
+     * @return 原生映射解析结果，包含映射记录、原因、活动ID和追踪信息
+     */
     protected NativeColonelMappingResolution resolveNativeColonelAttribution(
             String firstColonelsBuyinId,
             String firstActivityId,
@@ -344,6 +445,19 @@ public class AttributionService {
         return firstResolution;
     }
 
+    /**
+     * 解析单组团长订单映射。
+     * 查找策略（按顺序）：
+     * 1. 精确匹配：colonel_buyin_id + activity_id + product_id（source_type=NATIVE）
+     * 2. 活动商品匹配：activity_id + product_id（source_type=NATIVE），若 colonel_buyin_id 不一致则标记
+     * 3. 通用回退：仅 colonel_buyin_id（source_type=NATIVE），仅在 allowGenericFallback=true 时生效
+     *
+     * @param colonelsBuyinId      团长 buyin_id
+     * @param activityId           活动ID
+     * @param productId            商品ID
+     * @param allowGenericFallback 是否允许仅按 buyin_id 做通用回退查找
+     * @return 映射解析结果
+     */
     protected NativeColonelMappingResolution resolveNativeColonelOrderMapping(
             String colonelsBuyinId,
             String activityId,
@@ -441,6 +555,14 @@ public class AttributionService {
         );
     }
 
+    /**
+     * 通过 pick_source 或 pick_extra 查找转链映射。
+     * 先尝试精确匹配 pickSource，再尝试 pickExtra 完整值，最后尝试 pickExtra 截取后20位匹配 shortId。
+     *
+     * @param pickSource 转链标识
+     * @param pickExtra  转链附加信息
+     * @return 匹配的映射记录，未找到返回 null
+     */
     protected PickSourceMapping findPickSourceMapping(String pickSource, String pickExtra) {
         if (StringUtils.hasText(pickSource)) {
             PickSourceMapping byPickSource = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
@@ -507,9 +629,11 @@ public class AttributionService {
         return null;
     }
 
+    /** 独家归属拥有者信息 */
     public record ExclusiveOwner(UUID userId, UUID deptId) {
     }
 
+    /** 原生团长映射解析结果 */
     public record NativeColonelMappingResolution(
             PickSourceMapping mapping,
             String reason,
@@ -517,6 +641,7 @@ public class AttributionService {
             NativeMappingTrace trace) {
     }
 
+    /** 原生映射追踪信息，用于排查归属决策过程 */
     public record NativeMappingTrace(
             boolean nativeKeyMatched,
             boolean colonelBuyinIdMismatch,
@@ -532,6 +657,10 @@ public class AttributionService {
         }
     }
 
+    /**
+     * 归属结果记录。
+     * 包含归属状态（ATTRIBUTED / UNATTRIBUTED）、渠道用户信息、达人信息及归属原因。
+     */
     public record AttributionResult(
             UUID channelUserId,
             UUID deptId,

@@ -21,10 +21,13 @@ import java.util.List;
 import java.util.UUID;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -345,6 +348,35 @@ class ProductDisplayRuleServiceTest {
                 .get()
                 .extracting(ProductOperationState::getDisplayStatus)
                 .isEqualTo(ProductDisplayStatus.DISPLAYING.name());
+    }
+
+    @Test
+    void applyForProductId_shouldPublishEmptyDetailWhenNoDisplayCandidateWins() {
+        String productId = "9016";
+        ProductOperationState displaying = libraryState("91001", productId, 2000L, false, LocalDateTime.now().minusMonths(1));
+        displaying.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        displaying.setFirstDisplayedAt(LocalDateTime.now().minusMonths(1));
+
+        ProductSnapshot expiredSnap = snapshot("91001", productId, 2000L, 1);
+        expiredSnap.setPromotionEndTime(LocalDateTime.now().minusDays(1).toString());
+
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(displaying));
+        when(snapshotMapper.selectList(any())).thenReturn(List.of(expiredSnap));
+        when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
+
+        service.applyForProductId(productId);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> detailCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(productDomainEventPublisher).publishDisplayRuleApplied(
+                eq(productId),
+                eq(displaying.getId()),
+                isNull(),
+                eq(ProductDisplayRuleService.DISPLAY_RULE_VERSION),
+                any(),
+                isNull(),
+                detailCaptor.capture());
+        assertThat(detailCaptor.getValue()).isEmpty();
     }
 
     // --- Advantage comparator unit tests ---

@@ -19,9 +19,28 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 精选联盟订单结算 API 客户端。
+ * <p>
+ * 封装抖音精选联盟订单结算查询接口，支持滑动窗口查询和多订单批量查询，
+ * 支持 contract（合同模式）与真实上游两种调用路径。
+ *
+ * <ul>
+ *   <li>结算订单列表 — 按时间范围分页查询结算订单</li>
+ *   <li>滑动窗口查询 — 基于最近时间窗口快速拉取最新订单</li>
+ *   <li>多订单批量查询 — 支持按订单 ID 列表或时间范围批量查询结算订单</li>
+ * </ul>
+ *
+ * 所属业务领域：精选联盟 / 订单结算
+ *
+ * @see DouyinApiClient
+ * @see DouyinUpstreamModeSupport
+ * @see DouyinContractFixtureProvider
+ */
 @Service
 public class OrderApi {
 
+    /** 订单列表查询接口方法名 */
     private static final String ORDER_LIST_METHOD = "buyin.instituteOrderColonel";
     private static final String COLONEL_MULTI_SETTLEMENT_METHOD = "buyin.colonelMultiSettlementOrders";
     private static final int DEFAULT_COUNT = 100;
@@ -48,6 +67,17 @@ public class OrderApi {
         this.contractFixtureProvider = contractFixtureProvider;
     }
 
+    /**
+     * 按时间范围查询结算订单列表。
+     * <p>
+     * 在 contract 模式下返回契约桩数据，否则调用真实上游 API。
+     *
+     * @param startTime 开始时间（epoch 秒）
+     * @param endTime   结束时间（epoch 秒）
+     * @param count     每页数量，范围 1~100，默认 100
+     * @param cursor    分页游标（首次查询传 null 或 "0"）
+     * @return 订单列表响应，包含 order_list、has_more、next_cursor 字段
+     */
     public Map<String, Object> listSettlement(long startTime, long endTime, int count, String cursor) {
         if (upstreamModeSupport.isContract()) {
             return contractFixtureProvider.buildOrderSettlementResponse(null, count, cursor, "update", null, null, null);
@@ -60,12 +90,38 @@ public class OrderApi {
         return douyinApiClient.post(ORDER_LIST_METHOD, params);
     }
 
+    /**
+     * 基于滑动窗口查询最近结算订单。
+     * <p>
+     * 自动计算最近 {@value DEFAULT_WINDOW_SECONDS} 秒 + {@value DEFAULT_OVERLAP_SECONDS} 秒重叠的时间范围，
+     * 用于增量拉取最新订单。
+     *
+     * @param cursor 分页游标
+     * @param count  每页数量（可为空，默认 100）
+     * @return 订单列表响应
+     */
     public Map<String, Object> listSettlementWindow(String cursor, Integer count) {
         long endTime = System.currentTimeMillis() / 1000;
         long startTime = endTime - DEFAULT_WINDOW_SECONDS - DEFAULT_OVERLAP_SECONDS;
         return listSettlement(startTime, endTime, count == null ? DEFAULT_COUNT : count, cursor);
     }
 
+    /**
+     * 批量查询多订单结算详情。
+     * <p>
+     * 支持两种查询模式：按时间范围查询或按订单 ID 列表查询，两者至少提供其一。
+     * 在 contract 模式下返回契约桩数据，否则调用真实上游 API。
+     *
+     * @param appId     应用 ID（可为空）
+     * @param size      每页数量，范围 1~100，默认 50
+     * @param cursor    分页游标（数字字符串，默认 "0"）
+     * @param timeType  时间类型：settle-结算时间，update-更新时间，默认 update
+     * @param startTime 开始时间（格式：yyyy-MM-dd HH:mm:ss，可为空）
+     * @param endTime   结束时间（格式：yyyy-MM-dd HH:mm:ss，可为空）
+     * @param orderIds  订单 ID 列表（逗号分隔，最多 100 个）
+     * @return 多订单结算响应
+     * @throws IllegalArgumentException 当参数校验不通过时抛出
+     */
     public Map<String, Object> listColonelMultiSettlementOrders(
             String appId,
             Integer size,
@@ -189,6 +245,17 @@ public class OrderApi {
         }
     }
 
+    /**
+     * 校验多订单批量查询参数的合法性。
+     * <p>
+     * 校验规则：时间范围和订单 ID 至少提供一个；时间起止必须成对提供；
+     * 开始时间不得晚于结束时间；时间范围不超过 90 天。
+     *
+     * @param orderIds  逗号分隔的订单 ID 列表
+     * @param startTime 开始时间
+     * @param endTime   结束时间
+     * @throws IllegalArgumentException 当参数校验不通过时抛出
+     */
     private void validateMultiSettlementQuery(
             String orderIds,
             LocalDateTime startTime,

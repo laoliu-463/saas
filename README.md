@@ -68,18 +68,17 @@ real-pre 回归口径：
 - 后端：`http://localhost:8081/api`
 - 前端：`http://localhost:3001`
 - 适用于页面级 E2E 回归、权限验收、部署形态验证和 `/api/system/health` 健康检查；`/api/actuator/**` 需携带 JWT
-- 当前 `real-pre` 是独立端口/容器拓扑，使用 `SPRING_PROFILES_ACTIVE=real`、`APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`
-- `test` 是 Mock 联调和回归基线，旧 `local-mock` 口径保留为历史脚本、报告和回滚参考
+- 当前 `real-pre` 是独立端口/容器拓扑和当前生产形态入口，使用 `SPRING_PROFILES_ACTIVE=real-pre`、`APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`
+- `test` 是 Mock 联调和回归基线；旧 `local-mock` 入口已合并进 `test`，不再作为脚本或 Compose 入口保留
 
 当前基线：
 
 - `backend mvn test`：以 `docs/04-开发进度.md` 最近一次全量为准（2026-05-09：`652 tests, 0 failures, 0 errors`）
 - `frontend npm.cmd run build`：通过
 - real-pre 浏览器回归报告：`runtime/qa/out/e2e-20260503-1353/report.md`，2026-05-03 全路径回归 `45/45` 通过
-- local-mock 补充验收报告：`runtime/qa/out/local-mock-supplement-20260503-1430/report.md`，2026-05-03 交互级补充验收 `5/5` 通过
-- QA 脚本入口：`runtime/qa/full-browser-e2e.cjs`、`runtime/qa/local-mock-supplement.cjs`、`runtime/qa/data-gap4-visible.cjs`
+- test QA 脚本入口：`runtime/qa/full-browser-e2e.cjs`、`runtime/qa/data-gap4-visible.cjs`
 - 根目录 Playwright：`README-e2e.md`（`npm run e2e`、`npm run e2e:real-pre`）
-- QA 一键命令：`powershell -ExecutionPolicy Bypass -File .\scripts\run-real-pre-e2e.ps1`、`powershell -ExecutionPolicy Bypass -File .\scripts\run-local-mock-supplement.ps1`、`powershell -ExecutionPolicy Bypass -File .\scripts\run-data-gap4-visible.ps1`
+- QA 一键命令：`powershell -ExecutionPolicy Bypass -File .\scripts\run-real-pre-e2e.ps1`、`powershell -ExecutionPolicy Bypass -File .\scripts\run-data-gap4-visible.ps1`
 - QA 串行总入口：`powershell -ExecutionPolicy Bypass -File .\scripts\run-qa-all.ps1`
 - 拓扑检查命令：`powershell -ExecutionPolicy Bypass -File .\scripts\check-env-topology.ps1`
 
@@ -102,7 +101,7 @@ real-pre 回归口径：
 3. Use `docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml up -d --build backend-real-pre frontend-real-pre` for `real-pre` browser regression.
 4. Do not use `dev` as the default local walkthrough profile.
 5. Do not store real Douyin credentials in tracked files.
-6. Use `/api/test/**` only in `test` or `real-pre`.
+6. Use `/api/test/**` only in `test`; `real-pre` 不注册测试控制器。
 7. If `3001` is already occupied by a local Node/Vite process, stop it before starting `real-pre`.
 8. If `6379` is already occupied by a standalone local Redis, stop it unless you explicitly need it.
 

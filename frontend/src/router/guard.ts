@@ -1,4 +1,5 @@
 import { hasAccess } from '../constants/rbac'
+import { buildLoginRedirectTarget } from './redirect'
 
 export type GuardDecision =
   | { type: 'allow' }
@@ -9,6 +10,7 @@ export type GuardRedirectDecision = Exclude<GuardDecision, { type: 'allow' }>
 
 export interface GuardDecisionInput {
   toPath: string
+  toFullPath?: string
   fromPath: string
   isLoggedIn: boolean
   roleCodes: readonly string[]
@@ -20,7 +22,7 @@ export function resolveGuardDecision(input: GuardDecisionInput): GuardDecision {
   const roleCodes = [...input.roleCodes]
 
   if (input.toPath !== '/login' && !input.isLoggedIn) {
-    return buildRedirectDecision(input, '/login', 'anonymous')
+    return createRedirectDecision(input, buildLoginRedirectTarget(input.toFullPath || input.toPath), 'anonymous', true)
   }
 
   if (input.toPath === '/login') {
@@ -75,7 +77,16 @@ function buildHomeRedirectDecision(input: GuardDecisionInput, reason: string): G
 }
 
 function buildRedirectDecision(input: GuardDecisionInput, redirectTarget: string, reason: string): GuardDecision {
-  const target = normalizeRoutePath(redirectTarget || '/login')
+  return createRedirectDecision(input, redirectTarget, reason, false)
+}
+
+function createRedirectDecision(
+  input: GuardDecisionInput,
+  redirectTarget: string,
+  reason: string,
+  preserveTargetQuery: boolean
+): GuardDecision {
+  const target = preserveTargetQuery ? normalizeInternalRedirect(redirectTarget || '/login') : normalizeRoutePath(redirectTarget || '/login')
   if (target === normalizeRoutePath(input.toPath)) {
     return {
       type: 'abort',
@@ -88,6 +99,14 @@ function buildRedirectDecision(input: GuardDecisionInput, redirectTarget: string
     redirectTarget: target,
     reason
   }
+}
+
+function normalizeInternalRedirect(path: string): string {
+  const value = String(path || '/login').trim()
+  if (!value.startsWith('/') || value.startsWith('//')) {
+    return '/login'
+  }
+  return value
 }
 
 function normalizeRoutePath(path: string): string {

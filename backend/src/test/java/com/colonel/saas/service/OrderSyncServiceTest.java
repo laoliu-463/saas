@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -283,6 +284,24 @@ class OrderSyncServiceTest {
         assertThatThrownBy(() -> service.syncByTimeRange(100L, 200L))
                 .isInstanceOf(RedisConnectionFailureException.class);
         verify(douyinOrderGateway, never()).listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
+    }
+
+    @Test
+    void syncByTimeRange_shouldOpenCircuitAfterConsecutiveGatewayFailures() {
+        when(douyinOrderGateway.listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+                .thenThrow(new IllegalStateException("upstream timeout"));
+
+        for (int i = 0; i < 3; i++) {
+            assertThatThrownBy(() -> service.syncByTimeRange(100L, 200L))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("upstream timeout");
+        }
+
+        assertThatThrownBy(() -> service.syncByTimeRange(100L, 200L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Order sync upstream circuit is open");
+        verify(douyinOrderGateway, times(3))
+                .listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
     }
 
     private SysUser user(String name) {

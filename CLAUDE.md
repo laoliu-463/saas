@@ -16,7 +16,7 @@
 
 [V1 必做] 当前默认交付范围以 `docs/01-V1交付范围与边界.md` 为准，V1 优先于旧 V2.2 全量设想。
 
-[V1 必做] `test` 是 Mock 回归基线；`real-pre` 是真实抖店上游联调环境，不等同生产。
+[V1 必做] `test` 是 Mock 回归基线；`real-pre` 是当前唯一真实上游 / 生产形态环境。
 
 [V1 必做] real-pre 不允许用 mock 数据冒充真实闭环。缺 Token、缺授权、缺真实订单、缺 `pick_source` 样本时只能标记 `BLOCKED` 或 `PENDING`。
 
@@ -72,4 +72,3 @@
 [V1 必做] `cd backend && mvn test`：后端回归。
 
 [V1 必做] `cd frontend && npm run build`：前端构建。
-

@@ -17,15 +17,44 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 提成计算服务。
+ *
+ * <p>职责：基于订单数据计算双轨提成（招商提成 + 渠道提成），支持按活动维度分桶聚合计算，
+ * 并提供批量业绩补全和持久化能力。
+ *
+ * <p>计算公式（Y-03/Y-04 修正版）：
+ * <ul>
+ *   <li>提成基数（serviceFeeNet）= 服务费收入 - 技术服务费（不含达人佣金）</li>
+ *   <li>招商提成 = 提成基数 x 招商提成比例（按活动分桶计算后求和）</li>
+ *   <li>渠道提成 = 提成基数 x 渠道提成比例（按活动分桶计算后求和）</li>
+ *   <li>毛利 = 提成基数 - 招商提成 - 渠道提成</li>
+ * </ul>
+ *
+ * <p>提成比例解析优先级链：规则库（{@link CommissionRuleService}）-> 配置表活动级覆盖 -> 配置表全局默认。
+ *
+ * <p>依赖服务/仓储：
+ * <ul>
+ *   <li>{@link JdbcTemplate} —— 从 system_config 表读取提成比例配置</li>
+ *   <li>{@link CommissionRuleService} —— 提成规则优先级解析</li>
+ *   <li>{@link PerformanceCalculationService} —— 业绩记录写入</li>
+ *   <li>{@link OrderCommissionPolicy} —— 订单状态判定（是否计入提成）</li>
+ * </ul>
+ */
 @Service
 public class CommissionService {
 
     private static final Logger log = LoggerFactory.getLogger(CommissionService.class);
 
+    /** 默认提成比例（兜底值，15%） */
     private static final BigDecimal DEFAULT_RATIO = new BigDecimal("0.15");
+    /** 配置键：招商提成全局默认比例 */
     private static final String KEY_BIZ_RATIO = "commission.business_default_ratio";
+    /** 配置键：渠道提成全局默认比例 */
     private static final String KEY_CHANNEL_RATIO = "commission.channel_default_ratio";
+    /** 配置键前缀：活动级招商提成比例覆盖 */
     private static final String KEY_BIZ_ACTIVITY_RATIO_PREFIX = "commission.business_activity_ratio.";
+    /** 配置键前缀：活动级渠道提成比例覆盖 */
     private static final String KEY_CHANNEL_ACTIVITY_RATIO_PREFIX = "commission.channel_activity_ratio.";
 
     private final JdbcTemplate jdbcTemplate;
@@ -40,6 +69,13 @@ public class CommissionService {
         this.performanceCalculationService = performanceCalculationService;
     }
 
+    /**
+     * 计算订单列表的提成汇总。
+     * 先筛选有效订单，再按活动维度分桶，最后执行按活动分桶的提成计算。
+     *
+     * @param orders 订单列表
+     * @return 提成汇总结果
+     */
     public CommissionSummary calculate(List<ColonelsettlementOrder> orders) {
         return calculateByActivityBuckets(toActivityBuckets(filterCommissionEligible(orders)));
     }
@@ -100,6 +136,13 @@ public class CommissionService {
 
     /**
      * 单轨提成计算（业绩域双轨公式之一）。
+     * 直接接受金额参数进行计算，不从订单实体读取。
+     *
+     * @param serviceFeeIncome 服务费收入（分）
+     * @param techServiceFee   技术服务费（分）
+     * @param talentCommission 达人佣金（分）
+     * @param activityId       活动ID
+     * @return 提成计算结果
      */
     public CommissionSummary calculateTrack(
             long serviceFeeIncome,
@@ -128,6 +171,10 @@ public class CommissionService {
         return calculateByActivityBuckets(List.of(bucket), effectiveAt);
     }
 
+    /**
+     * 过滤出可计入提成的有效订单。
+     * 由 {@link OrderCommissionPolicy#countsTowardCommission} 判定订单状态是否有效。
+     */
     private List<ColonelsettlementOrder> filterCommissionEligible(List<ColonelsettlementOrder> orders) {
         if (orders == null || orders.isEmpty()) {
             return List.of();
@@ -137,6 +184,10 @@ public class CommissionService {
                 .toList();
     }
 
+    /**
+     * 将订单列表按活动ID+商品ID+招商员ID 聚合为活动提成桶。
+     * 同一桶内的金额进行累加，用于后续按活动维度计算提成比例。
+     */
     private List<ActivityCommissionBucket> toActivityBuckets(List<ColonelsettlementOrder> orders) {
         Map<String, ActivityCommissionBucket> grouped = new LinkedHashMap<>();
         if (orders == null || orders.isEmpty()) {
@@ -174,6 +225,21 @@ public class CommissionService {
         return calculateByActivityBuckets(buckets, null);
     }
 
+    /**
+     * 按活动维度分桶计算双轨提成。
+     *
+     * <p>计算流程：
+     * <ol>
+     *   <li>汇总所有桶的金额：服务费收入、技术服务费、达人佣金</li>
+     *   <li>计算提成基数 = 服务费收入 - 技术服务费（Y-03/Y-04 修正：不含达人佣金）</li>
+     *   <li>逐桶解析活动级提成比例（招商/渠道），计算各活动的提成金额</li>
+     *   <li>毛利 = 提成基数 - 招商提成 - 渠道提成</li>
+     * </ol>
+     *
+     * @param buckets     活动提成桶列表
+     * @param effectiveAt 生效时间（用于提成规则有效期过滤），null 时使用当前时间
+     * @return 提成计算汇总
+     */
     public CommissionSummary calculateByActivityBuckets(List<ActivityCommissionBucket> buckets, LocalDateTime effectiveAt) {
         long serviceFeeIncome = sumBuckets(buckets, ActivityCommissionBucket::serviceFeeIncome);
         long techServiceFee = sumBuckets(buckets, ActivityCommissionBucket::techServiceFee);

@@ -22,18 +22,53 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 物流网关健康检查与诊断服务。
+ * <p>
+ * 负责对物流查询网关（快递鸟、快递100、Mock）进行配置校验、连通性测试和状态跟踪，
+ * 为运维页面和管理后台提供物流通道的实时健康状态。
+ * </p>
+ *
+ * <ul>
+ *   <li>诊断当前活跃 provider 或指定 provider 的配置与健康状态</li>
+ *   <li>执行真实/沙箱物流查询测试并缓存最近测试结果</li>
+ *   <li>管理三种 provider 的启用状态、凭证完整性和沙箱模式</li>
+ *   <li>对运单号进行脱敏处理，防止日志泄露敏感信息</li>
+ * </ul>
+ *
+ * <p>所属领域：物流域</p>
+ *
+ * @see LogisticsProperties 物流配置属性
+ * @see LogisticsGatewayHealthStatus 物流网关健康状态枚举
+ * @see LogisticsQueryGateway 物流查询网关抽象接口
+ */
 @Slf4j
 @Service
 public class LogisticsGatewayHealthService {
 
+    /** 物流配置属性，包含各 provider 的启用状态、凭证和沙箱设置 */
     private final LogisticsProperties properties;
+    /** Mock 物流查询网关，用于测试环境 */
     private final MockLogisticsQueryGateway mockGateway;
+    /** 快递鸟物流查询网关 */
     private final KuaidiNiaoLogisticsQueryGateway kuaidiNiaoGateway;
+    /** 快递100物流查询网关 */
     private final Kuaidi100LogisticsQueryGateway kuaidi100Gateway;
+    /** 是否为测试环境标识，为 true 时禁止请求真实物流 API */
     private final boolean testEnabled;
 
+    /** 缓存各 provider 最近一次测试的健康状态，用于诊断报告中展示历史测试结果 */
     private final Map<String, LogisticsGatewayHealthStatus> lastTestStatus = new ConcurrentHashMap<>();
 
+    /**
+     * 构造函数，通过 Spring 依赖注入初始化所有物流网关实例。
+     *
+     * @param properties     物流配置属性
+     * @param mockGateway    Mock 物流查询网关
+     * @param kuaidiNiaoGateway 快递鸟物流查询网关
+     * @param kuaidi100Gateway  快递100物流查询网关
+     * @param testEnabled    是否为测试环境（从配置 app.test.enabled 读取）
+     */
     public LogisticsGatewayHealthService(
             LogisticsProperties properties,
             MockLogisticsQueryGateway mockGateway,
@@ -47,16 +82,58 @@ public class LogisticsGatewayHealthService {
         this.testEnabled = testEnabled;
     }
 
+    /**
+     * 诊断当前配置的物流 provider 的健康状态。
+     * <p>
+     * 处理流程：
+     * <ol>
+     *   <li>从配置中读取当前 provider 名称并标准化</li>
+     *   <li>构建该 provider 的配置状态</li>
+     *   <li>结合最近测试结果生成健康响应</li>
+     * </ol>
+     *
+     * @return 当前 provider 的健康诊断结果
+     */
     public LogisticsGatewayHealthResponse diagnoseCurrentProvider() {
         String provider = normalizeProvider(properties.getProvider());
         return buildHealthResponse(provider, resolveConfigured(provider));
     }
 
+    /**
+     * 诊断指定物流 provider 的健康状态。
+     * <p>
+     * 处理流程：
+     * <ol>
+     *   <li>标准化 provider 名称</li>
+     *   <li>构建该 provider 的配置状态</li>
+     *   <li>结合最近测试结果生成健康响应</li>
+     * </ol>
+     *
+     * @param providerName provider 名称（如 kuaidiniao、kuaidi100、mock）
+     * @return 指定 provider 的健康诊断结果
+     */
     public LogisticsGatewayHealthResponse diagnoseProvider(String providerName) {
         String provider = normalizeProvider(providerName);
         return buildHealthResponse(provider, resolveConfigured(provider));
     }
 
+    /**
+     * 执行物流网关的查询测试。
+     * <p>
+     * 处理流程：
+     * <ol>
+     *   <li>标准化 provider 名称并解析配置状态</li>
+     *   <li>若为 MOCK_ONLY，直接返回"未请求真实 API"</li>
+     *   <li>若为 NOT_CONFIGURED，返回凭证未配置的错误信息</li>
+     *   <li>若在测试环境（testEnabled=true），禁止请求真实 API</li>
+     *   <li>解析对应的网关实例，构建物流查询命令并调用</li>
+     *   <li>根据返回结果更新 lastTestStatus 缓存</li>
+     *   <li>返回测试结果（成功/失败、沙箱/真实、耗时等）</li>
+     * </ol>
+     *
+     * @param request 物流网关测试请求，包含 provider、物流公司编码、运单号等
+     * @return 测试结果，包含成功状态、provider、健康状态、消息和是否存储了原始响应
+     */
     public LogisticsGatewayTestResponse testQuery(LogisticsGatewayTestRequest request) {
         String provider = normalizeProvider(request.getProvider());
         ConfigState config = resolveConfigured(provider);

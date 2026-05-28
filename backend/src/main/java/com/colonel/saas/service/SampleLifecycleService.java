@@ -23,14 +23,24 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 
+/**
+ * 寄样生命周期服务：管理寄样单从待发货→待出单→已完成/已关闭的全流程状态流转。
+ * <p>
+ * 主要职责：订单驱动自动完成、超时自动关闭、乐观锁批量更新、状态变更日志记录。
+ */
 @Slf4j
 @Service
 public class SampleLifecycleService {
 
+    /** 批量 SQL 分片大小 */
     private static final int SQL_IN_BATCH_SIZE = 200;
+    /** 待发货 */
     private static final int STATUS_PENDING_SHIP = 2;
+    /** 待出单（待完成作业） */
     private static final int STATUS_PENDING_HOMEWORK = 5;
+    /** 已完成 */
     private static final int STATUS_COMPLETED = 6;
+    /** 已关闭 */
     private static final int STATUS_CLOSED = 8;
     private final JdbcTemplate jdbcTemplate;
     private final SampleRequestMapper sampleRequestMapper;
@@ -54,6 +64,15 @@ public class SampleLifecycleService {
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
     }
 
+    /**
+     * 订单同步后自动完成待出单寄样单。
+     * <p>
+     * 根据订单归属解析样本负责人，通过达人 UID + 商品 ID 匹配待出单寄样单，
+     * 仅取最早一条并将其标记为已完成；完成后发布 SampleCompleted 领域事件。
+     *
+     * @param order 已同步的结算订单
+     * @return 实际完成的寄样单数量（0 或 1）
+     */
     @Transactional(rollbackFor = Exception.class)
     public int completePendingHomeworkByOrder(ColonelsettlementOrder order) {
         if (order == null || !StringUtils.hasText(order.getProductId())) {
@@ -99,6 +118,12 @@ public class SampleLifecycleService {
         return completed;
     }
 
+    /**
+     * 自动关闭超过指定天数未出单的待出单寄样单。
+     *
+     * @param timeoutDays 超时天数阈值
+     * @return 实际关闭的寄样单数量
+     */
     @Transactional(rollbackFor = Exception.class)
     public int autoCloseTimeoutPendingHomework(int timeoutDays) {
         LocalDateTime deadline = LocalDateTime.now().minusDays(timeoutDays);
@@ -107,6 +132,12 @@ public class SampleLifecycleService {
         return closeSamples(requestIds, STATUS_PENDING_HOMEWORK, closeReason);
     }
 
+    /**
+     * 自动关闭超过指定天数未发货的待发货寄样单。
+     *
+     * @param timeoutDays 超时天数阈值
+     * @return 实际关闭的寄样单数量
+     */
     @Transactional(rollbackFor = Exception.class)
     public int autoCloseTimeoutPendingShip(int timeoutDays) {
         LocalDateTime deadline = LocalDateTime.now().minusDays(timeoutDays);
@@ -115,16 +146,26 @@ public class SampleLifecycleService {
         return closeSamples(requestIds, STATUS_PENDING_SHIP, closeReason);
     }
 
+    /** 使用业务规则配置的超时天数关闭待出单寄样单。 */
     @Transactional(rollbackFor = Exception.class)
     public int autoCloseTimeoutPendingHomework() {
         return autoCloseTimeoutPendingHomework(businessRuleConfigService.getSampleTimeoutHomeworkDays());
     }
 
+    /** 使用业务规则配置的超时天数关闭待发货寄样单。 */
     @Transactional(rollbackFor = Exception.class)
     public int autoCloseTimeoutPendingShip() {
         return autoCloseTimeoutPendingShip(businessRuleConfigService.getSampleTimeoutPendingShipDays());
     }
 
+    /**
+     * 将指定状态的寄样单批量关闭，关闭后发布 SampleClosed 领域事件。
+     *
+     * @param requestIds 待关闭的寄样单 ID 列表
+     * @param fromStatus 期望的当前状态
+     * @param closeReason 关闭原因
+     * @return 实际关闭数量
+     */
     private int closeSamples(List<UUID> requestIds, int fromStatus, String closeReason) {
         LocalDateTime now = LocalDateTime.now();
         int closed = transitionSamples(
@@ -150,6 +191,17 @@ public class SampleLifecycleService {
         return closed;
     }
 
+    /**
+     * 寄样单状态流转核心方法：加载、应用变更、批量持久化、写入状态日志。
+     *
+     * @param requestIds 目标寄样单 ID 列表
+     * @param expectedStatus 期望的当前状态（乐观锁前置过滤）
+     * @param mutator 对每个寄样单执行的状态变更操作
+     * @param logFromStatus 日志记录的起始状态
+     * @param logToStatus 日志记录的目标状态
+     * @param remark 操作备注
+     * @return 实际流转数量
+     */
     private int transitionSamples(
             List<UUID> requestIds,
             int expectedStatus,
@@ -171,6 +223,12 @@ public class SampleLifecycleService {
         return samples.size();
     }
 
+    /**
+     * 分片批量更新寄样单，使用乐观锁（version 字段）防止并发冲突。
+     * <p>
+     * JDBC batchUpdate 失败时回退到逐条 MyBatis Plus updateById，
+     * 任一记录乐观锁冲突则抛出 BusinessException。
+     */
     private void batchUpdateSamples(List<SampleRequest> samples) {
         if (samples == null || samples.isEmpty()) {
             return;
@@ -217,6 +275,7 @@ public class SampleLifecycleService {
         }
     }
 
+    /** 分片加载寄样单，仅返回状态匹配 expectedStatus 的记录。 */
     private List<SampleRequest> loadSamplesInStatus(List<UUID> requestIds, int expectedStatus) {
         if (requestIds == null || requestIds.isEmpty()) {
             return List.of();
@@ -232,6 +291,12 @@ public class SampleLifecycleService {
         return matched;
     }
 
+    /**
+     * 解析订单对应的寄样单负责人。
+     * <p>
+     * 优先使用达人认领记录（TalentClaim）匹配归属用户；
+     * 无匹配认领时回退到订单自带的 userId/channelUserId。
+     */
     private UUID resolveSampleOwnerForOrderCompletion(ColonelsettlementOrder order) {
         UUID attributedOwner = order.getUserId() != null ? order.getUserId() : order.getChannelUserId();
         if (attributedOwner == null) {
@@ -259,6 +324,7 @@ public class SampleLifecycleService {
                 .orElse(attributedOwner);
     }
 
+    /** 按负责人 + 达人 UID + 商品 ID 查询待出单寄样单，仅取最早一条。 */
     private List<UUID> findPendingHomeworkRequestIds(UUID channelUserId, String talentUid, String sourceProductId) {
         String sql = """
                 SELECT sr.id
@@ -279,6 +345,7 @@ public class SampleLifecycleService {
                 .toList();
     }
 
+    /** 查询待出单状态中超过 deadline 的寄样单 ID，按创建时间升序。 */
     private List<UUID> findTimeoutPendingHomeworkRequestIds(LocalDateTime deadline) {
         String sql = """
                 SELECT sr.id
@@ -294,6 +361,7 @@ public class SampleLifecycleService {
                 .toList();
     }
 
+    /** 查询待发货状态中超过 deadline 的寄样单 ID，按创建时间升序。 */
     private List<UUID> findTimeoutPendingShipRequestIds(LocalDateTime deadline) {
         String sql = """
                 SELECT sr.id
@@ -309,6 +377,7 @@ public class SampleLifecycleService {
                 .toList();
     }
 
+    /** 从订单的 extraData 中提取达人 UID，优先 talent_uid，回退 author_id。 */
     private String resolveTalentUid(ColonelsettlementOrder order) {
         Map<String, Object> extra = order.getExtraData();
         if (extra == null || extra.isEmpty()) {
@@ -321,10 +390,12 @@ public class SampleLifecycleService {
         return asText(extra.get("author_id"));
     }
 
+    /** null 安全的 toString 包装。 */
     private String asText(Object raw) {
         return raw == null ? null : String.valueOf(raw);
     }
 
+    /** 将字符串解析为 UUID，空白或解析失败返回 null。 */
     private UUID parseUuid(String raw) {
         if (!StringUtils.hasText(raw)) {
             return null;
@@ -336,6 +407,7 @@ public class SampleLifecycleService {
         }
     }
 
+    /** 将集合按指定大小分片，用于批量 SQL 操作。 */
     private <T> List<List<T>> partition(Collection<T> values, int batchSize) {
         if (values == null || values.isEmpty()) {
             return List.of();

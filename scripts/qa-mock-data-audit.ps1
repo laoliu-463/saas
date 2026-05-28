@@ -45,12 +45,12 @@ if (-not $ApiBaseUrl) {
     $ApiBaseUrl = $env:API_BASE_URL
 }
 if (-not $ApiBaseUrl) {
-    $ApiBaseUrl = "http://localhost:8081"
+    $ApiBaseUrl = "http://127.0.0.1:8080"
 }
 
 $backendPort = Read-EnvValue -Path $envFile -Name "BACKEND_HOST_PORT"
 if ($backendPort -and -not (Test-HttpReachable "$ApiBaseUrl/api/system/env")) {
-    $candidateApiBaseUrl = "http://localhost:$backendPort"
+    $candidateApiBaseUrl = "http://127.0.0.1:$backendPort"
     if (Test-HttpReachable "$candidateApiBaseUrl/api/system/env") {
         Write-Host "Default API_BASE_URL $ApiBaseUrl is not reachable; using TEST env API $candidateApiBaseUrl" -ForegroundColor Yellow
         $ApiBaseUrl = $candidateApiBaseUrl

@@ -9,6 +9,7 @@ import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.SysUser;
 import io.lettuce.core.RedisCommandExecutionException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -26,17 +27,33 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
+/**
+ * 订单同步服务：从抖音结算网关拉取最新订单并持久化。
+ * <p>
+ * 支持按时间窗口自动同步、手动触发、按订单号精确同步三种模式；
+ * 内置分布式锁（Redis）防并发，熔断器保护上游网关；同步过程中
+ * 通过 {@link AttributionService} 完成订单归属解析。
+ */
 @Slf4j
 @Service
 public class OrderSyncService {
 
+    /** Redis key 存储上次同步的截止时间（epoch seconds）。 */
     private static final String LAST_SYNC_TIME_KEY = "order:sync:last_time";
+    /** 分布式同步锁 TTL，防止同步任务长时间占用。 */
     private static final Duration SYNC_LOCK_TTL = Duration.ofMinutes(10);
+    /** 默认同步时间窗口长度（秒），约 10 分钟。 */
     private static final long WINDOW_SECONDS = 600L;
+    /** 时间窗口重叠（秒），用于补偿边界订单。 */
     private static final long OVERLAP_SECONDS = 60L;
+    /** 相对当前时间的滞后（秒），避免查询未稳定的上游数据。 */
     private static final long LAG_SECONDS = 60L;
+    /** 每页请求默认拉取数量。 */
     private static final int DEFAULT_COUNT = 100;
+    /** 最大翻页次数，超过后强制停止，防止无限循环。 */
     private static final int MAX_PAGES = 200;
 
     private final DouyinOrderGateway douyinOrderGateway;
@@ -46,6 +63,14 @@ public class OrderSyncService {
     private final DistributedJobLockService jobLockService;
     private final AppProperties appProperties;
     private volatile long localLastSyncTime;
+    private final AtomicInteger consecutiveGatewayFailures = new AtomicInteger();
+    private volatile Instant gatewayCircuitOpenedAt;
+
+    @Value("${order.sync.circuit-breaker.failure-threshold:3}")
+    private int gatewayFailureThreshold = 3;
+
+    @Value("${order.sync.circuit-breaker.open-duration:PT5M}")
+    private Duration gatewayCircuitOpenDuration = Duration.ofMinutes(5);
 
     public OrderSyncService(
             DouyinOrderGateway douyinOrderGateway,
@@ -62,10 +87,17 @@ public class OrderSyncService {
         this.appProperties = appProperties;
     }
 
+    /** 判断当前是否处于 test 模式（影响 Redis 不可用时的降级策略）。 */
     private boolean testEnabled() {
         return appProperties.getTest().isEnabled();
     }
 
+    /**
+     * 自动同步最近时间窗口的订单。
+     * <p>
+     * 基于 Redis 中记录的上次同步截止时间计算窗口起点，
+     * 首次运行时使用默认窗口大小；窗口向前扩展 OVERLAP_SECONDS 以补偿边界。
+     */
     public SyncResult syncLatestWindow() {
         long now = Instant.now().getEpochSecond();
         long endTime = now - LAG_SECONDS;
@@ -81,10 +113,21 @@ public class OrderSyncService {
         return syncByTimeRange(startTime, endTime);
     }
 
+    /** 手动触发同步（委托到 syncLatestWindow，语义入口）。 */
     public SyncResult triggerManualSync() {
         return syncLatestWindow();
     }
 
+    /**
+     * 按指定订单号列表精确同步。
+     * <p>
+     * 先去重并校验，获取分布式锁后调用网关精确查询接口；
+     * 锁冲突时抛出 CONFLICT 异常。
+     *
+     * @param orderIds 待同步的订单号列表（非空）
+     * @return 同步结果
+     * @throws BusinessException 参数为空时抛 PARAM，锁冲突时抛 CONFLICT
+     */
     public SyncResult syncByOrderIds(List<String> orderIds) {
         List<String> normalizedOrderIds = normalizeOrderIds(orderIds);
         if (normalizedOrderIds.isEmpty()) {
@@ -100,6 +143,7 @@ public class OrderSyncService {
         }
     }
 
+    /** 获取上次同步的截止时间，转为应用时区 LocalDateTime；未同步过时返回 null。 */
     public LocalDateTime getLastSyncTime() {
         long epochSecond = readLastSyncTime();
         if (epochSecond <= 0L) {
@@ -108,6 +152,17 @@ public class OrderSyncService {
         return AppZone.fromEpochSecond(epochSecond);
     }
 
+    /**
+     * 按指定时间范围同步订单。
+     * <p>
+     * 获取分布式锁后执行同步；锁冲突时返回 locked=true 的空结果。
+     * 成功后将 endTime 持久化为下次同步起点。
+     *
+     * @param startTime 开始时间（epoch seconds，非零）
+     * @param endTime   结束时间（epoch seconds，大于 startTime）
+     * @return 同步结果
+     * @throws BusinessException 参数非法时抛 PARAM
+     */
     public SyncResult syncByTimeRange(long startTime, long endTime) {
         if (startTime <= 0 || endTime <= 0 || startTime >= endTime) {
             throw BusinessException.param("Invalid sync time range");
@@ -124,6 +179,7 @@ public class OrderSyncService {
         }
     }
 
+    /** 从 Redis 读取上次同步时间戳，test 模式下 Redis 不可用时回退到本地内存值。 */
     private long readLastSyncTime() {
         try {
             Object raw = redisTemplate.opsForValue().get(LAST_SYNC_TIME_KEY);
@@ -137,10 +193,12 @@ public class OrderSyncService {
         }
     }
 
+    /** 获取订单同步分布式锁（严格模式）。 */
     private boolean acquireSyncLock() {
         return jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC, SYNC_LOCK_TTL);
     }
 
+    /** 将同步截止时间写入 Redis（同时更新本地缓存），test 模式下 Redis 不可用时仅保留本地值。 */
     private void persistLastSyncTime(long endTime) {
         localLastSyncTime = endTime;
         try {
@@ -154,13 +212,15 @@ public class OrderSyncService {
         }
     }
 
+    /** 释放订单同步分布式锁。 */
     private void releaseSyncLock() {
         jobLockService.release(JobLockKeys.ORDER_SYNC);
     }
 
+    /** 按时间窗口同步：构造首屏查询请求并委托到 syncItems 处理翻页。 */
     private SyncResult syncRange(long startTime, long endTime, int count) {
         return syncItems(
-                douyinOrderGateway.listSettlement(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, "0")),
+                fetchSettlement(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, "0")),
                 startTime,
                 endTime,
                 true,
@@ -168,10 +228,11 @@ public class OrderSyncService {
         );
     }
 
+    /** 按订单号精确同步：调用网关精确查询接口，不翻页。 */
     private SyncResult syncSpecificOrders(List<String> orderIds) {
         long now = Instant.now().getEpochSecond();
         return syncItems(
-                douyinOrderGateway.listSettlementByOrderIds(orderIds),
+                fetchSettlementByOrderIds(orderIds),
                 now,
                 now,
                 false,
@@ -179,6 +240,13 @@ public class OrderSyncService {
         );
     }
 
+    /**
+     * 核心同步循环：逐页拉取订单、归属解析、批量持久化。
+     * <p>
+     * 每页先 mapOrder 映射原始数据，再通过 AttributionService 解析归属，
+     * 随后批量加载用户名填充渠道/招募人名称，最后持久化（新建/更新）。
+     * continuePaging=true 时自动翻页直至无更多数据或达到 MAX_PAGES。
+     */
     private SyncResult syncItems(
             DouyinOrderGateway.OrderListResult firstPage,
             long startTime,
@@ -282,7 +350,7 @@ public class OrderSyncService {
             cursor = response.nextCursor();
             hasMore = continuePaging && response.hasMore() && pages < MAX_PAGES;
             if (hasMore) {
-                response = douyinOrderGateway.listSettlement(
+                response = fetchSettlement(
                         new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, cursor)
                 );
             }
@@ -294,6 +362,62 @@ public class OrderSyncService {
         return new SyncResult(startTime, endTime, pages, totalFetched, created, updated, attributedCount, unattributedCount, failedCount, false);
     }
 
+    /** 按时间范围调用抖音结算网关（受熔断器保护）。 */
+    private DouyinOrderGateway.OrderListResult fetchSettlement(DouyinOrderGateway.DouyinOrderQueryRequest request) {
+        return executeGatewayCall(() -> douyinOrderGateway.listSettlement(request));
+    }
+
+    /** 按订单号精确查询抖音结算数据（受熔断器保护）。 */
+    private DouyinOrderGateway.OrderListResult fetchSettlementByOrderIds(List<String> orderIds) {
+        return executeGatewayCall(() -> douyinOrderGateway.listSettlementByOrderIds(orderIds));
+    }
+
+    /** 执行网关调用，成功重置失败计数，失败累加并可能触发熔断。 */
+    private DouyinOrderGateway.OrderListResult executeGatewayCall(Supplier<DouyinOrderGateway.OrderListResult> call) {
+        assertGatewayCircuitClosed();
+        try {
+            DouyinOrderGateway.OrderListResult result = call.get();
+            consecutiveGatewayFailures.set(0);
+            gatewayCircuitOpenedAt = null;
+            return result;
+        } catch (RuntimeException ex) {
+            recordGatewayFailure(ex);
+            throw ex;
+        }
+    }
+
+    /** 检查熔断器状态：处于 OPEN 且冷却期未过则抛出外部异常，否则自动恢复。 */
+    private void assertGatewayCircuitClosed() {
+        Instant openedAt = gatewayCircuitOpenedAt;
+        if (openedAt == null) {
+            return;
+        }
+        Duration openDuration = gatewayCircuitOpenDuration == null ? Duration.ofMinutes(5) : gatewayCircuitOpenDuration;
+        Instant retryAfter = openedAt.plus(openDuration);
+        if (Instant.now().isBefore(retryAfter)) {
+            throw BusinessException.external("Order sync upstream circuit is open");
+        }
+        consecutiveGatewayFailures.set(0);
+        gatewayCircuitOpenedAt = null;
+    }
+
+    /** 记录网关调用失败，累计达到阈值时打开熔断器。 */
+    private void recordGatewayFailure(RuntimeException ex) {
+        int threshold = Math.max(1, gatewayFailureThreshold);
+        int failures = consecutiveGatewayFailures.incrementAndGet();
+        if (failures >= threshold) {
+            gatewayCircuitOpenedAt = Instant.now();
+            log.error("Order sync upstream circuit opened, consecutiveFailures={}, threshold={}, exception={}",
+                    failures, threshold, ex.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * 将抖音网关返回的原始订单项映射为本地 ColonelsettlementOrder 实体。
+     * <p>
+     * 从 rawPayload 中提取商品名、店铺、团长信息、金额（双轨）、
+     * 派单来源等字段；归属状态初始化为 UNATTRIBUTED。
+     */
     private ColonelsettlementOrder mapOrder(DouyinOrderGateway.DouyinOrderItem item) {
         Map<String, Object> rawPayload = item.rawPayload();
         ColonelsettlementOrder order = new ColonelsettlementOrder();
@@ -327,6 +451,7 @@ public class OrderSyncService {
         return order;
     }
 
+    /** 将商家 ID 字符串中的非数字字符去除后解析为 Long，无效时返回 null。 */
     private Long parseMerchantId(String merchantId) {
         if (merchantId == null) {
             return null;
@@ -338,6 +463,7 @@ public class OrderSyncService {
         return Long.parseLong(digits);
     }
 
+    /** 从 rawPayload 中读取 actual_amount，不存在时回退到 item.orderAmount()。 */
     private Long resolveActualAmount(DouyinOrderGateway.DouyinOrderItem item) {
         if (item.rawPayload() != null) {
             Object actual = item.rawPayload().get("actual_amount");
@@ -348,6 +474,7 @@ public class OrderSyncService {
         return item.orderAmount();
     }
 
+    /** 返回第一个非空白字符串，全部为空白时返回 null。 */
     private String firstNonBlank(String... values) {
         if (values == null) {
             return null;
@@ -360,10 +487,12 @@ public class OrderSyncService {
         return null;
     }
 
+    /** 将任意对象转为 String，null 安全。 */
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /** 在 rawPayload 中按 keys 顺序查找，返回第一个命中的值，均未命中返回 null。 */
     private Object rawValue(Map<String, Object> rawPayload, String... keys) {
         if (rawPayload == null || keys == null) {
             return null;
@@ -376,6 +505,7 @@ public class OrderSyncService {
         return null;
     }
 
+    /** 先在顶层 rawPayload 按 keys 查找，未命中时回退到嵌套的 colonel_order_info 子 Map 中查找。 */
     @SuppressWarnings("unchecked")
     private Object rawOrderInfoValue(Map<String, Object> rawPayload, String... keys) {
         Object value = rawValue(rawPayload, keys);
@@ -389,6 +519,7 @@ public class OrderSyncService {
         return null;
     }
 
+    /** 将 Number 或可解析的字符串转为 Long，null 或解析失败时返回 null。 */
     private Long asNullableLong(Object value) {
         if (value == null) {
             return null;
@@ -404,11 +535,13 @@ public class OrderSyncService {
         }
     }
 
+    /** 委托 asNullableLong 解析后窄化为 Integer，null 安全。 */
     private Integer asNullableInteger(Object value) {
         Long parsed = asNullableLong(value);
         return parsed == null ? null : parsed.intValue();
     }
 
+    /** 将订单 ID 列表去重、trim 并返回不可变副本，空列表返回 List.of()。 */
     private List<String> normalizeOrderIds(List<String> orderIds) {
         if (orderIds == null || orderIds.isEmpty()) {
             return List.of();
@@ -422,6 +555,7 @@ public class OrderSyncService {
         return List.copyOf(normalized);
     }
 
+    /** 将任意对象解析为 long，null 或解析失败时返回 defaultValue。 */
     private long asLong(Object value, long defaultValue) {
         if (value == null) {
             return defaultValue;
@@ -436,6 +570,7 @@ public class OrderSyncService {
         }
     }
 
+    /** 同步结果摘要：记录本次同步的时间窗口、分页数、新增/更新/归属统计，以及是否因分布式锁跳过。 */
     public record SyncResult(
             long startTime,
             long endTime,

@@ -28,7 +28,13 @@ server:
 knife4j:
   enable: false
 
+security:
+  jwt:
+    secret: ${JWT_SECRET}
+
 app:
+  cors:
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS}
   test:
     enabled: false
     seed-on-startup: false
@@ -42,13 +48,22 @@ talent:
   enrich:
     mode: ${TALENT_ENRICH_MODE:real}
   collect:
-    mode: ${TALENT_COLLECT_MODE:api_then_crawler}
+    mode: ${TALENT_COLLECT_MODE:api}
     api:
       enabled: ${TALENT_COLLECT_API_ENABLED:false}
   refresh:
     enabled: ${TALENT_REFRESH_ENABLED:false}
   data:
     public-page-crawl-enabled: ${TALENT_PUBLIC_PAGE_CRAWL_ENABLED:false}
+  profile:
+    public-web:
+      enabled: ${TALENT_PROFILE_PUBLIC_WEB_ENABLED:false}
+    http:
+      enabled: ${TALENT_PROFILE_HTTP_ENABLED:false}
+      endpoint: ${TALENT_PROFILE_HTTP_ENDPOINT:}
+      method: ${TALENT_PROFILE_HTTP_METHOD:GET}
+      token: ${TALENT_PROFILE_HTTP_TOKEN:}
+      header-authorization: ${TALENT_PROFILE_HTTP_AUTHORIZATION:}
 
 douyin:
   webhook:

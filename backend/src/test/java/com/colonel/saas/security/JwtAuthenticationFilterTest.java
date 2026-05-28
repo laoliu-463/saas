@@ -86,9 +86,9 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void systemEnvPath_shouldRequireAuthorizationWhenProdProfileActive() throws Exception {
+    void systemEnvPath_shouldRequireAuthorizationWhenProtectedProfileActive() throws Exception {
         MockEnvironment environment = new MockEnvironment();
-        environment.setActiveProfiles("prod");
+        environment.setActiveProfiles("real-pre");
         JwtAuthenticationFilter prodFilter =
                 new JwtAuthenticationFilter(jwtTokenProvider, authService, new ObjectMapper(), environment);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/system/env");

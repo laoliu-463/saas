@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { readFixture } from './helpers/fixtures';
 import { storageStates } from './helpers/test-data';
+import { testIds } from './helpers/selectors';
 
 test.use({ storageState: storageStates.channelLeader });
 
@@ -39,11 +40,11 @@ test('复制讲解会先转链并写入剪贴板', async ({ page }) => {
   });
 
   await page.goto('/product');
-  await expect(page.getByTestId('product-card').first()).toBeVisible({ timeout: 30_000 });
-  await page.getByTestId('product-card').first().hover();
-  await page.getByTestId('product-copy-link').click();
+  await expect(page.getByTestId(testIds.productCard).first()).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId(testIds.productCard).first().hover();
+  await page.getByTestId(testIds.productCopyLink).first().click();
 
-  await expect(page.locator('body')).toContainText('讲解 + 短链已复制');
+  await expect(page.locator('body')).toContainText('已复制简介');
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied).toContain('【商品】夏季爆款水杯（清风小店）');
   expect(copied).toContain('【卖点】大容量、防漏');
@@ -58,11 +59,11 @@ test('转链失败时仍复制不含短链的讲解', async ({ page }) => {
   });
 
   await page.goto('/product');
-  await expect(page.getByTestId('product-card').first()).toBeVisible({ timeout: 30_000 });
-  await page.getByTestId('product-card').first().hover();
-  await page.getByTestId('product-copy-link').click();
+  await expect(page.getByTestId(testIds.productCard).first()).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId(testIds.productCard).first().hover();
+  await page.getByTestId(testIds.productCopyLink).first().click();
 
-  await expect(page.locator('body')).toContainText('短链生成失败，已复制讲解（不含短链）');
+  await expect(page.locator('body')).toContainText('短链生成失败，已复制简介（不含短链）');
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied).toContain('【商品】夏季爆款水杯（清风小店）');
   expect(copied).not.toContain('【链接】');

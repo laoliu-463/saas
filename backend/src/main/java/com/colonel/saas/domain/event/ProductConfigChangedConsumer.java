@@ -7,9 +7,23 @@ import org.springframework.stereotype.Component;
 
 import java.util.Set;
 
+/**
+ * 商品域配置变更消费者，负责响应商品/推广相关配置的变更。
+ *
+ * <p>关注的配置项：
+ * <ul>
+ *   <li>{@code PROMOTION_COPY_BRIEF_TEMPLATE} — 推广文案摘要模板</li>
+ *   <li>{@code PROMOTION_PICK_EXTRA_RULE} — 推广选品附加规则</li>
+ *   <li>{@code SAMPLE_DEFAULT_STANDARD} — 寄样默认标准（商品域也关注此项）</li>
+ * </ul>
+ *
+ * <p>当上述任一配置变更时，调用 {@link BusinessRuleConfigService#invalidate}
+ * 失效对应的本地缓存。</p>
+ */
 @Component
 public class ProductConfigChangedConsumer implements ConfigChangedEventConsumer {
 
+    /** 本消费者关注的配置键集合。 */
     private static final Set<String> KEYS = Set.of(
             SystemConfigKeys.PROMOTION_COPY_BRIEF_TEMPLATE,
             SystemConfigKeys.PROMOTION_PICK_EXTRA_RULE,
@@ -17,20 +31,38 @@ public class ProductConfigChangedConsumer implements ConfigChangedEventConsumer 
 
     private final BusinessRuleConfigService businessRuleConfigService;
 
+    /**
+     * 构造函数，注入业务规则配置服务。
+     *
+     * @param businessRuleConfigService 业务规则配置缓存服务
+     */
     public ProductConfigChangedConsumer(BusinessRuleConfigService businessRuleConfigService) {
         this.businessRuleConfigService = businessRuleConfigService;
     }
 
+    /** {@inheritDoc} 消费者名称：{@code product-config-consumer}。 */
     @Override
     public String consumerName() {
         return "product-config-consumer";
     }
 
+    /**
+     * 判断事件中是否包含本域关心的配置项。
+     *
+     * @param payload 配置变更事件载荷
+     * @return true 表示事件中至少有一个配置项在本域关注列表中
+     */
     @Override
     public boolean supports(ConfigChangedEventPayload payload) {
         return payload.items().stream().anyMatch(item -> KEYS.contains(item.configKey()));
     }
 
+    /**
+     * 失效事件中涉及的本域配置缓存。
+     *
+     * @param payload      配置变更事件载荷
+     * @param objectMapper JSON 序列化器（本实现未使用）
+     */
     @Override
     public void consume(ConfigChangedEventPayload payload, ObjectMapper objectMapper) {
         payload.items().stream()

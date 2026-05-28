@@ -70,7 +70,7 @@ function buildPromotionBlockerMessage({ activityId, productId, userId }) {
 }
 
 function queryReusablePromotionMapping(options) {
-  const container = options.container || process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
+  const container = options.container || process.env.E2E_DB_CONTAINER || 'saas-postgres-real-pre-1';
   const user = options.dbUser || process.env.E2E_DB_USER || 'saas';
   const db = options.dbName || process.env.E2E_DB_NAME || 'saas_real_pre';
   const sql = buildReusablePromotionMappingQuery(options);

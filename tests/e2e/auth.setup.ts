@@ -4,8 +4,8 @@ import { test as setup, expect } from '@playwright/test';
 import { accounts, storageStates } from './helpers/test-data';
 
 const authDir = path.join(process.cwd(), 'tests', 'e2e', '.auth');
-const frontendOrigin = new URL(process.env.E2E_BASE_URL || 'http://localhost:3000').origin;
-const backendOrigin = (process.env.E2E_BACKEND_URL || 'http://localhost:8080').replace(/\/$/, '');
+const frontendOrigin = new URL(process.env.E2E_BASE_URL || 'http://127.0.0.1:3000').origin;
+const backendOrigin = (process.env.E2E_BACKEND_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
 
 setup.setTimeout(180_000);
 
@@ -64,6 +64,7 @@ async function loginAndSave(username: string, password: string, statePath: strin
 setup('prepare role storage states', async () => {
   await loginAndSave(accounts.admin.username, accounts.admin.password, storageStates.admin);
   await loginAndSave(accounts.bizLeader.username, accounts.bizLeader.password, storageStates.bizLeader);
+  await loginAndSave(accounts.bizStaff.username, accounts.bizStaff.password, storageStates.bizStaff);
   await loginAndSave(accounts.channelLeader.username, accounts.channelLeader.password, storageStates.channelLeader);
   await loginAndSave(accounts.channelStaff.username, accounts.channelStaff.password, storageStates.channelStaff);
   await loginAndSave(accounts.ops.username, accounts.ops.password, storageStates.ops);

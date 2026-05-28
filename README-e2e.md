@@ -4,7 +4,7 @@
 
 - 配置: `playwright.config.ts`
 - 用例: `tests/e2e`
-- 环境样例: `.env.e2e.example`
+- 环境样例: `.env.test.example`、`.env.real-pre.example`
 - 报告: `playwright-report`
 - 失败产物: `test-results/playwright`
 
@@ -17,7 +17,7 @@ npx playwright install
 
 ## 环境
 
-1. 复制 `.env.e2e.example` 为 `.env.e2e`
+1. 复制 `.env.test.example` 为 `.env.test`；真实上游 / 生产形态验证复制 `.env.real-pre.example` 为 `.env.real-pre`
 2. 按实际环境调整前端地址和账号
 
 默认口径:
@@ -42,6 +42,43 @@ npx playwright install
 > **日常 CI 推荐流程**：`npm run e2e:smoke` → 通过后 `npm run e2e:v1-p0`
 > **test/mock 基线上线前必跑**：`npm run e2e:v1-p0`（三链闭环 + RBAC + 看板对账）
 > **real-pre 联调上线前必跑**：`npm run e2e:real-pre:p0`（统一入口，串行 preflight + 31~36）
+
+### Jenkins real-pre 生产形态部署
+
+仓库根目录 `Jenkinsfile` 用于 real-pre 生产形态反复部署和验证，复用现有 `real-pre` 栈：
+
+- 前端：`http://127.0.0.1:3001`
+- 后端：`http://127.0.0.1:8081`
+- 后端健康检查：`http://127.0.0.1:8081/api/system/health`
+- Compose：`docker-compose.real-pre.yml`
+- Compose project：`saas`
+- 环境文件：`.env.real-pre`
+
+流水线顺序固定为：
+
+```text
+checkout
+→ mvn clean test
+→ pnpm install --frozen-lockfile && pnpm build
+→ mvn clean package -DskipTests
+→ docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml up -d postgres-real-pre redis-real-pre
+→ scripts/run-real-pre-db-migrations.sh
+→ docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml up -d backend-real-pre frontend-real-pre
+→ /api/system/health 与 /login 端口验活
+→ npm run e2e:real-pre:p0:preflight
+→ npm run e2e:real-pre:p0
+→ 归档日志和报告
+```
+
+Jenkins real-pre 与 test/mock 基线必须分开理解：
+
+- `docker-compose.test.yml` / `.env.test` 用于 mock/test 回归。
+- Jenkins real-pre 使用 `.env.real-pre`，必须满足 `APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`、`DB_NAME=saas_real_pre`。
+- Jenkins real-pre 使用 Compose project `saas`，与当前 real-pre 容器和数据卷一致，避免切到新 project 后创建空白数据卷。
+- 端口验活使用 `/api/system/health`；`/api/actuator/**` 需要 JWT，不作为 Jenkins 无鉴权探针。
+- 部署命令不带 `-v`，不清空 real-pre 数据卷。
+- preflight 或 P0 E2E 返回 `BLOCKED`、`PENDING`、`FAIL` 时 Jenkins 构建失败，不把证据不足当作通过。
+- Jenkins 会归档 `runtime/qa/out/**`、`playwright-report/**`、`test-results/playwright/**` 和后端测试报告。
 
 ### 入口边界（强制约束）
 
@@ -196,6 +233,8 @@ npm run e2e:real-pre:roles -- --headed --workers=1 --trace on --video on --scree
 - `e2e:real-pre:visual` 默认会开启 `headed`、`workers=1`、`trace/video/screenshot on`，并把证据写到 `runtime/qa/out/real-pre-visual-regression-时间戳/`
 - `e2e:real-pre:*` 入口默认会先执行 real-pre 预检：frontend `3001`、backend `8081`、`/api/system/env=REAL-PRE`、`APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`、数据库 `saas_real_pre`、Token 可用、关键迁移表/字段存在、可复用推广映射存在、清理计划为 PlanOnly。
 - real-pre 后台抖店授权入口位于 `/system/douyin` 的 Token 管理区；本地调试时抖店官方后台的 OAuth 授权回调地址填 `http://localhost:8081/api/douyin/oauth/callback`。若官方后台不接受 `localhost`，使用公网 HTTPS 测试域名并保持路径 `/api/douyin/oauth/callback`。
+- 巨量百应官方授权管理页为 `https://buyin.jinritemai.com/dashboard/institution/power-manage`；前端「官方授权管理」按钮用于人工进入该页检查或开通授权主体能力，它不替代 `/oauth2/authorize` 的 code 回调换 Token 链路。
+- OAuth 回调成功后默认进入 `/system/douyin?oauth=success`；如果当前浏览器没有 SaaS 登录态，前端路由守卫会跳到 `/login?redirect=...`，登录成功后自动回到抖店联调页并刷新 Token 状态。
 - Webhook 消息回调与 OAuth 授权回调不是同一个地址；Webhook 仍使用 `/api/douyin/webhooks/colonel-open-events`。
 - `e2e:real-pre:journey:visual` 还会检查六类账号登录与 `.env.real-pre` gitignore，再开启 `headed`、`workers=1`、`trace/video/screenshot on`，并把证据写到 `runtime/qa/out/real-pre-full-business-journey-时间戳/`
 - `e2e:real-pre:business` 会把业务闭环证据写到 `runtime/qa/out/real-pre-business-e2e-时间戳/`

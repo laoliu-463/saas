@@ -11,7 +11,7 @@ class StartupEnvironmentLoggerTest {
     @Test
     void run_logsResolvedEnvironmentWithoutThrowing() {
         MockEnvironment environment = new MockEnvironment();
-        environment.setActiveProfiles("real-pre", "real");
+        environment.setActiveProfiles("real-pre");
         StartupEnvironmentLogger logger = new StartupEnvironmentLogger(
                 environment,
                 false,
@@ -24,7 +24,7 @@ class StartupEnvironmentLoggerTest {
         logger.run(null);
 
         assertThat((String) ReflectionTestUtils.invokeMethod(logger, "activeProfileLabel"))
-                .isEqualTo("real-pre,real");
+                .isEqualTo("real-pre");
         assertThat((String) ReflectionTestUtils.invokeMethod(logger, "resolveDatabaseName"))
                 .isEqualTo("saas_real");
     }

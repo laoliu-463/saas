@@ -155,6 +155,22 @@ class DouyinTokenServiceTest {
 
         assertThatThrownBy(() -> tokenService.refreshToken("app123"))
                 .isInstanceOf(DouyinApiException.class);
+        verify(valueOperations, never()).set(eq("douyin:token:reauthorize_required:app123"), any(), any(Duration.class));
+    }
+
+    @Test
+    void refreshToken_shouldMarkReauthorizeWhenRefreshTokenExpired() {
+        when(valueOperations.setIfAbsent(eq("douyin:token:lock:app123"), eq("1"), any(Duration.class)))
+                .thenReturn(true);
+        when(valueOperations.get("douyin:refresh:app123")).thenReturn("refresh-token");
+        when(douyinTokenGateway.refreshToken("app123", "refresh-token"))
+                .thenThrow(new DouyinApiException(31008, "生成token失败, token已过期"));
+
+        assertThatThrownBy(() -> tokenService.refreshToken("app123"))
+                .isInstanceOf(DouyinApiException.class);
+        verify(valueOperations).set(eq("douyin:token:reauthorize_required:app123"),
+                org.mockito.ArgumentMatchers.contains("code=31008"),
+                eq(Duration.ofDays(1)));
     }
 
     @Test

@@ -1,5 +1,5 @@
 # ============================================================
-# Production image: multi-stage build
+# real-pre image: multi-stage build
 # Stage 1: Build static assets
 # Stage 2: Serve with nginx
 # ============================================================
@@ -11,13 +11,15 @@ WORKDIR /app
 RUN npm install -g pnpm
 
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 COPY . .
+ARG VITE_ENV_LABEL=REAL-PRE
+ENV VITE_ENV_LABEL=${VITE_ENV_LABEL}
 RUN pnpm build
 
 # Stage 2: Serve
-FROM nginx:alpine
+FROM nginx:1.27-alpine
 
 # Remove default nginx site
 RUN rm -rf /usr/share/nginx/html/*
@@ -25,21 +27,13 @@ RUN rm -rf /usr/share/nginx/html/*
 # Copy built assets
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Custom nginx config for Vue SPA (history router mode)
-RUN echo 'server { \
-    listen 80; \
-    server_name _; \
-    root /usr/share/nginx/html; \
-    index index.html; \
-    location / { \
-        try_files $uri $uri/ /index.html; \
-    } \
-    location /api/ { \
-        proxy_pass http://backend:8080/api/; \
-        proxy_set_header Host $host; \
-        proxy_set_header X-Real-IP $remote_addr; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
+# Nginx config template. envsubst runs automatically at startup via
+# nginx:alpine's /docker-entrypoint.sh for files in /etc/nginx/templates/.
+COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+
+# Defaults; override via docker-compose environment
+ENV DOMAIN=_
+ENV BACKEND_UPSTREAM=backend-real-pre:8080
 
 EXPOSE 80
 

@@ -27,6 +27,35 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 寄样物流状态同步服务。
+ * <p>
+ * 负责通过物流查询网关拉取最新物流轨迹，持久化轨迹记录，
+ * 并在物流签收时自动推进寄样申请状态至待作业。
+ * 支持单条同步、按物流单号同步、批量轮询同步三种模式。
+ * </p>
+ *
+ * <ul>
+ *     <li>单条寄样物流同步（{@link #syncOne}）</li>
+ *     <li>按物流单号查找并同步（{@link #syncByTrackingNo}）</li>
+ *     <li>批量轮询在途寄样并同步（{@link #syncPendingInTransit}）</li>
+ *     <li>物流签收后自动推进寄样状态至待作业（{@link #handleLogisticsResult}）</li>
+ *     <li>物流轨迹持久化与去重（基于 SHA-256 节点哈希）</li>
+ * </ul>
+ *
+ * <p><b>业务域：</b>寄样域 — 物流状态同步</p>
+ * <p><b>协作关系：</b></p>
+ * <ul>
+ *     <li>{@link LogisticsQueryGateway} — 物流查询网关（按供应商适配）</li>
+ *     <li>{@link SampleRequestMapper} — 寄样申请数据访问</li>
+ *     <li>{@link SampleLogisticsTraceMapper} — 物流轨迹数据访问</li>
+ *     <li>{@link SampleStatusLogService} — 寄样状态变更日志</li>
+ *     <li>{@link SampleDomainEventPublisher} — 寄样领域事件发布</li>
+ * </ul>
+ *
+ * @see LogisticsQueryGateway
+ * @see SampleLogisticsTraceMapper
+ */
 @Slf4j
 @Service
 public class SampleLogisticsSyncService {
@@ -35,11 +64,17 @@ public class SampleLogisticsSyncService {
     private static final int STATUS_SHIPPING = 3;
     private static final int STATUS_PENDING_HOMEWORK = 5;
 
+    /** 物流查询网关 */
     private final LogisticsQueryGateway logisticsQueryGateway;
+    /** 寄样申请数据访问 */
     private final SampleRequestMapper sampleRequestMapper;
+    /** 物流轨迹数据访问 */
     private final SampleLogisticsTraceMapper sampleLogisticsTraceMapper;
+    /** 寄样状态变更日志服务 */
     private final SampleStatusLogService sampleStatusLogService;
+    /** 寄样领域事件发布器 */
     private final SampleDomainEventPublisher sampleDomainEventPublisher;
+    /** 编程式事务操作 */
     private final TransactionOperations transactionOperations;
 
     public SampleLogisticsSyncService(
@@ -57,6 +92,13 @@ public class SampleLogisticsSyncService {
         this.transactionOperations = transactionOperations;
     }
 
+    /**
+     * 同步单条寄样申请的物流状态。
+     * <p>根据寄样申请 ID 查询物流轨迹并持久化更新。</p>
+     *
+     * @param sampleRequestId 寄样申请 ID
+     * @return 物流查询结果
+     */
     @Transactional(rollbackFor = Exception.class)
     public LogisticsQueryResult syncOne(UUID sampleRequestId) {
         SampleRequest sample = sampleRequestMapper.selectById(sampleRequestId);
@@ -67,6 +109,13 @@ public class SampleLogisticsSyncService {
         return syncAndPersist(sample);
     }
 
+    /**
+     * 按物流单号查找寄样申请并同步物流状态。
+     * <p>按更新时间倒序取最新匹配记录。</p>
+     *
+     * @param trackingNo 物流单号
+     * @return 物流查询结果
+     */
     @Transactional(rollbackFor = Exception.class)
     public LogisticsQueryResult syncByTrackingNo(String trackingNo) {
         if (!StringUtils.hasText(trackingNo)) {
@@ -84,6 +133,19 @@ public class SampleLogisticsSyncService {
         return syncAndPersist(sample);
     }
 
+    /**
+     * 批量轮询在途寄样并同步物流状态。
+     * <p>处理流程：</p>
+     * <ol>
+     *     <li>查询状态为待发货或运输中、且有物流单号的寄样申请</li>
+     *     <li>筛选最近30分钟未查询过或最近6小时未收到回调的记录</li>
+     *     <li>逐条调用物流查询网关并持久化更新</li>
+     *     <li>汇总成功、失败、跳过计数</li>
+     * </ol>
+     *
+     * @param batchSize 批次大小
+     * @return 批量同步汇总（总数、成功数、失败数、跳过数）
+     */
     public SyncBatchSummary syncPendingInTransit(int batchSize) {
         LocalDateTime now = LocalDateTime.now();
         QueryWrapper<SampleRequest> wrapper = new QueryWrapper<>();
@@ -121,6 +183,20 @@ public class SampleLogisticsSyncService {
         return new SyncBatchSummary(samples.size(), success, failed, skipped);
     }
 
+    /**
+     * 处理物流查询结果并持久化到寄样申请。
+     * <p>处理流程：</p>
+     * <ol>
+     *     <li>更新寄样申请的物流状态、状态名称、原始报文</li>
+     *     <li>查询失败时记录错误信息并返回</li>
+     *     <li>查询成功时替换轨迹记录</li>
+     *     <li>若物流已签收，自动推进寄样状态至待作业</li>
+     * </ol>
+     *
+     * @param sample 寄样申请实体
+     * @param result 物流查询结果
+     * @return 处理后的物流查询结果
+     */
     @Transactional(rollbackFor = Exception.class)
     public LogisticsQueryResult handleLogisticsResult(SampleRequest sample, LogisticsQueryResult result) {
         if (sample == null || result == null) {
@@ -148,12 +224,24 @@ public class SampleLogisticsSyncService {
         return result;
     }
 
+    /**
+     * 查询指定寄样申请的物流轨迹列表。
+     *
+     * @param sampleRequestId 寄样申请 ID
+     * @return 物流轨迹列表，按轨迹时间倒序排列
+     */
     public List<SampleLogisticsTrace> listTraces(UUID sampleRequestId) {
         return sampleLogisticsTraceMapper.selectList(new LambdaQueryWrapper<SampleLogisticsTrace>()
                 .eq(SampleLogisticsTrace::getSampleRequestId, sampleRequestId)
                 .orderByDesc(SampleLogisticsTrace::getTraceTime));
     }
 
+    /**
+     * 内部同步并持久化物流结果（事务内调用）。
+     *
+     * @param sample 寄样申请实体
+     * @return 物流查询结果
+     */
     private LogisticsQueryResult syncAndPersist(SampleRequest sample) {
         if (!StringUtils.hasText(sample.getTrackingNo())) {
             return LogisticsQueryResult.queryFailed(
@@ -167,6 +255,12 @@ public class SampleLogisticsSyncService {
         return handleLogisticsResult(sample, result);
     }
 
+    /**
+     * 批量同步单条记录（使用编程式事务包装）。
+     *
+     * @param sample 寄样申请实体
+     * @return 物流查询结果
+     */
     private LogisticsQueryResult syncAndPersistBatchItem(SampleRequest sample) {
         if (!StringUtils.hasText(sample.getTrackingNo())) {
             return LogisticsQueryResult.queryFailed(
@@ -181,6 +275,13 @@ public class SampleLogisticsSyncService {
         return persisted == null ? result : persisted;
     }
 
+    /**
+     * 调用物流查询网关查询物流轨迹。
+     * <p>快递公司编码为空时默认使用 AUTO。</p>
+     *
+     * @param sample 寄样申请实体
+     * @return 物流查询结果
+     */
     private LogisticsQueryResult queryLogistics(SampleRequest sample) {
         String company = StringUtils.hasText(sample.getShipperCode()) ? sample.getShipperCode() : "AUTO";
         return logisticsQueryGateway.query(LogisticsTrackCommand.builder()
@@ -191,6 +292,15 @@ public class SampleLogisticsSyncService {
                 .build());
     }
 
+    /**
+     * 物流签收后自动推进寄样状态。
+     * <p>仅当寄样申请处于待发货或运输中状态时生效：
+     * 记录签收时间，将状态推进至待作业（STATUS_PENDING_HOMEWORK），
+     * 记录状态变更日志并发布签收领域事件。</p>
+     *
+     * @param sample   寄样申请实体
+     * @param signedAt 签收时间
+     */
     private void applySigned(SampleRequest sample, LocalDateTime signedAt) {
         Integer status = sample.getStatus();
         if (status == null) {
@@ -210,6 +320,13 @@ public class SampleLogisticsSyncService {
         log.info("Sample {} auto progressed to PENDING_HOMEWORK after signed", sample.getRequestNo());
     }
 
+    /**
+     * 替换寄样申请的物流轨迹记录。
+     * <p>先删除旧轨迹，再逐条插入新轨迹节点，每条轨迹包含 SHA-256 节点哈希用于去重。</p>
+     *
+     * @param sample 寄样申请实体
+     * @param result 物流查询结果（包含轨迹列表）
+     */
     private void replaceTraces(SampleRequest sample, LogisticsQueryResult result) {
         sampleLogisticsTraceMapper.delete(new LambdaQueryWrapper<SampleLogisticsTrace>()
                 .eq(SampleLogisticsTrace::getSampleRequestId, sample.getId()));
@@ -235,6 +352,15 @@ public class SampleLogisticsSyncService {
         }
     }
 
+    /**
+     * 生成物流轨迹节点的 SHA-256 哈希值。
+     * <p>由快递公司编码、物流单号、轨迹时间、轨迹内容、位置、状态码拼接后计算哈希，用于去重。</p>
+     *
+     * @param sample 寄样申请实体
+     * @param result 物流查询结果
+     * @param item   单条轨迹节点
+     * @return SHA-256 十六进制哈希字符串
+     */
     private String nodeHash(
             SampleRequest sample,
             LogisticsQueryResult result,
@@ -266,10 +392,23 @@ public class SampleLogisticsSyncService {
         sample.setExtraData(extra);
     }
 
+    /**
+     * 持久化寄样申请，使用乐观锁校验更新行数。
+     *
+     * @param sample 寄样申请实体
+     */
     private void persistSample(SampleRequest sample) {
         OptimisticLockSupport.requireUpdated(sampleRequestMapper.updateById(sample));
     }
 
+    /**
+     * 批量物流同步汇总结果。
+     *
+     * @param total   处理总数
+     * @param success 成功数
+     * @param failed  失败数
+     * @param skipped 跳过数（未配置物流网关）
+     */
     public record SyncBatchSummary(int total, int success, int failed, int skipped) {
     }
 }

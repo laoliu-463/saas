@@ -4,7 +4,7 @@ const path = require('node:path');
 const SCRIPT_NAME = 'business-state-flow-regression';
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const OUT_ROOT = path.join(__dirname, 'out');
-const API_BASE_URL = normalizeBaseUrl(process.env.API_BASE_URL || 'http://localhost:8080');
+const API_BASE_URL = normalizeBaseUrl(process.env.API_BASE_URL || 'http://127.0.0.1:8080');
 const REQUEST_TIMEOUT_MS = Number(process.env.QA_REQUEST_TIMEOUT_MS || 20000);
 const ACTIVITY_ID = process.env.QA_TEST_ACTIVITY_ID || 'TEST_ACTIVITY_A';
 const PRODUCTS = {
@@ -322,10 +322,10 @@ async function ensureTestEnvironment(ctx) {
   if (!ctx.environment.isTest) {
     throw new Error(`Refusing to run outside TEST/mock environment: ${JSON.stringify(ctx.environment)}`);
   }
-  const health = await apiRequest('GET', '/actuator/health');
+  const health = await apiRequest('GET', '/system/health');
   ctx.health = health.body;
   if (!health.ok || health.body?.status !== 'UP') {
-    throw new Error(`/api/actuator/health is not UP: ${JSON.stringify(health.body || health.error)}`);
+    throw new Error(`/api/system/health is not UP: ${JSON.stringify(health.body || health.error)}`);
   }
 }
 

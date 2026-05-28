@@ -43,14 +43,16 @@ class DouyinOAuthControllerTest {
                 .thenReturn(new DouyinOAuthService.AuthorizeUrlResult(
                         "https://op.jinritemai.com/oauth2/authorize?state=s1",
                         "s1",
-                        "http://localhost:8081/api/douyin/oauth/callback"
+                        "http://localhost:8081/api/douyin/oauth/callback",
+                        "https://buyin.jinritemai.com/dashboard/institution/power-manage"
                 ));
 
         mockMvc.perform(get("/douyin/oauth/authorize-url").param("appId", "app-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.authorizeUrl").value("https://op.jinritemai.com/oauth2/authorize?state=s1"))
-                .andExpect(jsonPath("$.data.state").value("s1"));
+                .andExpect(jsonPath("$.data.state").value("s1"))
+                .andExpect(jsonPath("$.data.powerManageUrl").value("https://buyin.jinritemai.com/dashboard/institution/power-manage"));
     }
 
     @Test

@@ -6,6 +6,11 @@ import com.colonel.saas.dto.SampleApplyRequest;
 import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
 import com.colonel.saas.dto.sample.SampleFilterOptionItem;
 import com.colonel.saas.dto.sample.LogisticsImportResult;
+import com.colonel.saas.common.enums.SampleStatus;
+import com.colonel.saas.dto.sample.SampleActionRequest;
+import com.colonel.saas.dto.sample.SampleBatchActionRequest;
+import com.colonel.saas.dto.sample.SampleBatchShipItem;
+import com.colonel.saas.dto.sample.SampleBatchShipRequest;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
@@ -42,7 +47,13 @@ import com.colonel.saas.service.SampleLogisticsSyncService;
 import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.SampleEligibilityService;
 import com.colonel.saas.service.SampleStatusLogService;
+import com.colonel.saas.service.SampleWriteTransactionService;
+import com.colonel.saas.service.sample.SampleApplicationService;
 import com.colonel.saas.vo.SampleTalentVO;
+import com.colonel.saas.vo.sample.SampleBoardCard;
+import com.colonel.saas.vo.sample.SampleEligibilityCheckVO;
+import com.colonel.saas.vo.sample.SampleProductVO;
+import com.colonel.saas.vo.sample.SampleStatusTransitionVO;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -135,7 +146,8 @@ class SampleControllerTest {
                 sampleLogisticsSyncService,
                 sampleLogisticsImportService,
                 sampleLogisticsSubscriptionService,
-                sampleDomainEventPublisher
+                sampleDomainEventPublisher,
+                new SampleWriteTransactionService()
         );
         lenient().when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(true);
         lenient().when(businessRuleConfigService.getSampleRestrictDays()).thenReturn(7);
@@ -744,7 +756,7 @@ class SampleControllerTest {
         sample.setChannelUserId(userId);
         sample.setStatus(1);
 
-        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        SampleActionRequest request = new SampleActionRequest();
         request.setAction("PENDING_SHIP");
 
         assertThatThrownBy(() -> sampleController.actionSample(
@@ -768,7 +780,7 @@ class SampleControllerTest {
         sample.setChannelUserId(userId);
         sample.setStatus(1);
 
-        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        SampleActionRequest request = new SampleActionRequest();
         request.setAction("PENDING_SHIP");
 
         assertThatThrownBy(() -> sampleController.actionSample(
@@ -854,34 +866,34 @@ class SampleControllerTest {
     @Test
     void sensitiveSampleBatchAndExportEndpoints_shouldDeclareNarrowMethodRoles() throws Exception {
         RequireRoles batchApprove = SampleController.class
-                .getMethod(
+                .getDeclaredMethod(
                         "batchApprove",
-                        SampleController.SampleBatchActionRequest.class,
+                        SampleBatchActionRequest.class,
                         UUID.class,
                         UUID.class,
                         DataScope.class,
                         Object.class)
                 .getAnnotation(RequireRoles.class);
         RequireRoles batchReject = SampleController.class
-                .getMethod(
+                .getDeclaredMethod(
                         "batchReject",
-                        SampleController.SampleBatchActionRequest.class,
+                        SampleBatchActionRequest.class,
                         UUID.class,
                         UUID.class,
                         DataScope.class,
                         Object.class)
                 .getAnnotation(RequireRoles.class);
         RequireRoles batchShip = SampleController.class
-                .getMethod(
+                .getDeclaredMethod(
                         "batchShip",
-                        SampleController.SampleBatchShipRequest.class,
+                        SampleBatchShipRequest.class,
                         UUID.class,
                         UUID.class,
                         DataScope.class,
                         Object.class)
                 .getAnnotation(RequireRoles.class);
         RequireRoles refreshLogistics = SampleController.class
-                .getMethod(
+                .getDeclaredMethod(
                         "refreshLogistics",
                         UUID.class,
                         UUID.class,
@@ -890,12 +902,27 @@ class SampleControllerTest {
                         Object.class)
                 .getAnnotation(RequireRoles.class);
         RequireRoles exportSamples = SampleController.class
-                .getMethod(
+                .getDeclaredMethod(
                         "exportSamples",
                         String.class,
                         String.class,
                         UUID.class,
                         UUID.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        String.class,
+                        java.time.LocalDateTime.class,
+                        java.time.LocalDateTime.class,
+                        java.time.LocalDateTime.class,
+                        java.time.LocalDateTime.class,
+                        String.class,
                         UUID.class,
                         UUID.class,
                         DataScope.class,
@@ -918,20 +945,20 @@ class SampleControllerTest {
     @Test
     void getStatusTransitions_shouldExposeRoleStateAndErrorMatrix() throws Exception {
         GetMapping mapping = SampleController.class
-                .getMethod("getStatusTransitions")
+                .getDeclaredMethod("getStatusTransitions")
                 .getAnnotation(GetMapping.class);
 
         var response = sampleController.getStatusTransitions();
-        Map<String, SampleController.SampleStatusTransitionVO> transitions = response.getData().stream()
+        Map<String, SampleStatusTransitionVO> transitions = response.getData().stream()
                 .collect(java.util.stream.Collectors.toMap(
-                        SampleController.SampleStatusTransitionVO::getAction,
+                        SampleStatusTransitionVO::getAction,
                         transition -> transition));
 
         assertThat(mapping).isNotNull();
         assertThat(mapping.value()).containsExactly("/status-transitions");
         assertThat(response.getData()).hasSize(7);
 
-        SampleController.SampleStatusTransitionVO approve = transitions.get("PENDING_SHIP");
+        SampleStatusTransitionVO approve = transitions.get("PENDING_SHIP");
         assertThat(approve.getAliases()).contains("APPROVED");
         assertThat(approve.getFromStatuses()).containsExactly("PENDING_AUDIT");
         assertThat(approve.getToStatus()).isEqualTo("PENDING_SHIP");
@@ -940,14 +967,14 @@ class SampleControllerTest {
         assertThat(approve.getBatchEndpoint()).isEqualTo("POST /samples/batch-approve");
         assertThat(approve.getInvalidStateMessage()).contains("expected PENDING_AUDIT");
 
-        SampleController.SampleStatusTransitionVO reject = transitions.get("REJECTED");
+        SampleStatusTransitionVO reject = transitions.get("REJECTED");
         assertThat(reject.getFromStatuses()).containsExactly("PENDING_AUDIT");
         assertThat(reject.getToStatus()).isEqualTo("REJECTED");
         assertThat(reject.getRequiredFields()).containsExactly("reason");
         assertThat(reject.getMissingFieldMessage()).isEqualTo("reason is required when reject sample request");
         assertThat(reject.getRoleCodes()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
 
-        SampleController.SampleStatusTransitionVO shipping = transitions.get("SHIPPING");
+        SampleStatusTransitionVO shipping = transitions.get("SHIPPING");
         assertThat(shipping.getAliases()).contains("SHIPPED");
         assertThat(shipping.getFromStatuses()).containsExactly("PENDING_SHIP");
         assertThat(shipping.getToStatus()).isEqualTo("SHIPPED");
@@ -956,14 +983,14 @@ class SampleControllerTest {
         assertThat(shipping.getRoleCodes()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
         assertThat(shipping.getBatchEndpoint()).isEqualTo("POST /samples/batch-ship");
 
-        SampleController.SampleStatusTransitionVO pendingHomework = transitions.get("PENDING_HOMEWORK");
+        SampleStatusTransitionVO pendingHomework = transitions.get("PENDING_HOMEWORK");
         assertThat(pendingHomework.getAliases()).containsExactly("SIGNED", "PENDING_TASK");
         assertThat(pendingHomework.getFromStatuses()).containsExactly("SHIPPED", "DELIVERED");
         assertThat(pendingHomework.getToStatus()).isEqualTo("PENDING_TASK");
         assertThat(pendingHomework.getInternalToStatus()).isEqualTo("PENDING_HOMEWORK");
         assertThat(pendingHomework.getRoleCodes()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
 
-        SampleController.SampleStatusTransitionVO completed = transitions.get("COMPLETED");
+        SampleStatusTransitionVO completed = transitions.get("COMPLETED");
         assertThat(completed.isUserCallable()).isFalse();
         assertThat(completed.getActorType()).isEqualTo("SYSTEM");
         assertThat(completed.getFromStatuses()).containsExactly("PENDING_TASK");
@@ -971,7 +998,7 @@ class SampleControllerTest {
         assertThat(completed.getTrigger()).contains("订单同步");
         assertThat(completed.getForbiddenMessage()).contains("仅允许系统自动推进");
 
-        SampleController.SampleStatusTransitionVO closed = transitions.get("CLOSED");
+        SampleStatusTransitionVO closed = transitions.get("CLOSED");
         assertThat(closed.isUserCallable()).isFalse();
         assertThat(closed.getActorType()).isEqualTo("SYSTEM");
         assertThat(closed.getFromStatuses()).containsExactly("PENDING_TASK");
@@ -1548,7 +1575,7 @@ class SampleControllerTest {
         product.setId(productId);
         product.setName("test product");
 
-        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        SampleActionRequest request = new SampleActionRequest();
         request.setAction("APPROVED");
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
@@ -1587,7 +1614,7 @@ class SampleControllerTest {
         product.setId(productId);
         product.setName("test product");
 
-        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        SampleActionRequest request = new SampleActionRequest();
         request.setAction("SHIPPED");
         request.setTrackingNo("YT123456");
 
@@ -1627,7 +1654,7 @@ class SampleControllerTest {
         product.setId(productId);
         product.setName("test product");
 
-        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        SampleActionRequest request = new SampleActionRequest();
         request.setAction("SIGNED");
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
@@ -1657,7 +1684,7 @@ class SampleControllerTest {
         sample.setRequestNo("SR-DELIVERED");
         sample.setExtraData(Map.of("logisticsSource", "CALLBACK"));
 
-        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        SampleActionRequest request = new SampleActionRequest();
         request.setAction("PENDING_HOMEWORK");
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
@@ -1723,7 +1750,7 @@ class SampleControllerTest {
         sample.setId(sampleId);
         sample.setStatus(5);
 
-        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        SampleActionRequest request = new SampleActionRequest();
         request.setAction("COMPLETED");
 
         assertThatThrownBy(() -> sampleController.actionSample(
@@ -1744,7 +1771,7 @@ class SampleControllerTest {
         sample.setId(sampleId);
         sample.setStatus(2);
 
-        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        SampleActionRequest request = new SampleActionRequest();
         request.setAction("REJECTED");
         request.setReason("not matched");
 
@@ -1776,7 +1803,7 @@ class SampleControllerTest {
         product.setId(productId);
         product.setName("test product");
 
-        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        SampleActionRequest request = new SampleActionRequest();
         request.setAction("REJECTED");
         request.setReason("not matched");
 
@@ -1803,7 +1830,7 @@ class SampleControllerTest {
         sample.setId(sampleId);
         sample.setStatus(8);
 
-        SampleController.SampleActionRequest request = new SampleController.SampleActionRequest();
+        SampleActionRequest request = new SampleActionRequest();
         request.setAction("COMPLETED");
 
         assertThatThrownBy(() -> sampleController.actionSample(
@@ -1828,7 +1855,7 @@ class SampleControllerTest {
         sample.setStatus(1);
         sample.setRequestNo("SR-APPROVE-1");
 
-        SampleController.SampleBatchActionRequest request = new SampleController.SampleBatchActionRequest();
+        SampleBatchActionRequest request = new SampleBatchActionRequest();
         request.setRequestNos(List.of("SR-APPROVE-1", "SR-MISSING"));
         request.setRemark("批量通过");
 
@@ -1850,7 +1877,7 @@ class SampleControllerTest {
 
     @Test
     void batchReject_shouldRequireRemark() {
-        SampleController.SampleBatchActionRequest request = new SampleController.SampleBatchActionRequest();
+        SampleBatchActionRequest request = new SampleBatchActionRequest();
         request.setRequestNos(List.of("SR-REJECT-1"));
         request.setRemark(" ");
 
@@ -1874,7 +1901,7 @@ class SampleControllerTest {
         sample.setStatus(1);
         sample.setRequestNo("SR-REJECT-1");
 
-        SampleController.SampleBatchActionRequest request = new SampleController.SampleBatchActionRequest();
+        SampleBatchActionRequest request = new SampleBatchActionRequest();
         request.setRequestNos(List.of("SR-REJECT-1", "SR-MISSING"));
         request.setRemark("达人资质不符");
 
@@ -1904,15 +1931,15 @@ class SampleControllerTest {
         sample.setStatus(2);
         sample.setRequestNo("SR-SHIP-1");
 
-        SampleController.SampleBatchShipItem item = new SampleController.SampleBatchShipItem();
+        SampleBatchShipItem item = new SampleBatchShipItem();
         item.setRequestNo("SR-SHIP-1");
         item.setTrackingNo("SF123456");
         item.setShipperCode("SF");
-        SampleController.SampleBatchShipItem missingItem = new SampleController.SampleBatchShipItem();
+        SampleBatchShipItem missingItem = new SampleBatchShipItem();
         missingItem.setRequestNo("SR-MISSING");
         missingItem.setTrackingNo("YT999");
         missingItem.setShipperCode("YT");
-        SampleController.SampleBatchShipRequest request = new SampleController.SampleBatchShipRequest();
+        SampleBatchShipRequest request = new SampleBatchShipRequest();
         request.setItems(List.of(item, missingItem));
 
         when(sampleRequestMapper.selectOne(any())).thenReturn(sample).thenReturn(null);
@@ -2234,15 +2261,15 @@ class SampleControllerTest {
 
     @Test
     void batchRequestTypes_shouldExposeAssignedValues() {
-        SampleController.SampleBatchActionRequest rejectRequest = new SampleController.SampleBatchActionRequest();
+        SampleBatchActionRequest rejectRequest = new SampleBatchActionRequest();
         rejectRequest.setRequestNos(List.of("SR-1", "SR-2"));
         rejectRequest.setRemark("缺货");
 
-        SampleController.SampleBatchShipItem shipItem = new SampleController.SampleBatchShipItem();
+        SampleBatchShipItem shipItem = new SampleBatchShipItem();
         shipItem.setRequestNo("SR-1");
         shipItem.setTrackingNo("SF123");
         shipItem.setShipperCode("SF");
-        SampleController.SampleBatchShipRequest shipRequest = new SampleController.SampleBatchShipRequest();
+        SampleBatchShipRequest shipRequest = new SampleBatchShipRequest();
         shipRequest.setItems(List.of(shipItem));
 
         assertThat(rejectRequest.getRequestNos()).containsExactly("SR-1", "SR-2");
@@ -2256,11 +2283,11 @@ class SampleControllerTest {
     @Test
     void sampleProductAndEligibilityVos_shouldExposeAssignedValues() {
         UUID productPk = UUID.randomUUID();
-        SampleController.SampleProductVO product = new SampleController.SampleProductVO(productPk, "P-1", "样品");
+        SampleProductVO product = new SampleProductVO(productPk, "P-1", "样品");
         product.setProductId("P-2");
         product.setProductName("更新样品");
 
-        SampleController.SampleEligibilityCheckVO eligibility = new SampleController.SampleEligibilityCheckVO();
+        SampleEligibilityCheckVO eligibility = new SampleEligibilityCheckVO();
         eligibility.setEligible(false);
         eligibility.setNeedReason(true);
         eligibility.setReasons(List.of("近30天销售额不足"));
@@ -2287,7 +2314,7 @@ class SampleControllerTest {
         UUID productId = UUID.randomUUID();
         java.time.LocalDateTime createdAt = java.time.LocalDateTime.of(2026, 5, 22, 10, 0);
         java.time.LocalDateTime stateAt = java.time.LocalDateTime.of(2026, 5, 22, 11, 0);
-        SampleController.SampleBoardCard card = new SampleController.SampleBoardCard();
+        SampleBoardCard card = new SampleBoardCard();
         card.setId(id);
         card.setRequestNo("SR-BOARD");
         card.setTalentName("达人");
@@ -2355,8 +2382,8 @@ class SampleControllerTest {
     }
 
     @Test
-    void privateSampleStatusEnum_shouldMapCodesAliasesAndUnknownValues() throws Exception {
-        Class<?> statusClass = Class.forName("com.colonel.saas.controller.SampleController$SampleStatus");
+    void sampleStatusEnum_shouldMapCodesAliasesAndUnknownValues() throws Exception {
+        Class<?> statusClass = SampleStatus.class;
         Method fromCode = statusClass.getDeclaredMethod("fromCode", Integer.class);
         Method fromApiStatus = statusClass.getDeclaredMethod("fromApiStatus", String.class);
         fromCode.setAccessible(true);
@@ -2408,7 +2435,7 @@ class SampleControllerTest {
                 .asList()
                 .containsExactly("min30DaySales", "minLevel", "custom");
 
-        SampleController.SampleEligibilityCheckVO vo = ReflectionTestUtils.invokeMethod(sampleController, "toEligibilityVO", ineligible);
+        SampleEligibilityCheckVO vo = ReflectionTestUtils.invokeMethod(sampleController, "toEligibilityVO", ineligible);
         assertThat(vo.isEligible()).isFalse();
         assertThat(vo.isNeedReason()).isTrue();
         assertThat(vo.getReasons()).hasSize(3);
@@ -2544,7 +2571,7 @@ class SampleControllerTest {
         sample.setCompleteTime(LocalDateTime.of(2026, 5, 1, 14, 0));
         sample.setCloseTime(LocalDateTime.of(2026, 5, 1, 15, 0));
         Object pendingShip = ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "PENDING_SHIP");
-        SampleController.SampleBoardCard card = ReflectionTestUtils.invokeMethod(sampleController, "toBoardCard", sample, product, pendingShip);
+        SampleBoardCard card = ReflectionTestUtils.invokeMethod(sampleController, "toBoardCard", sample, product, pendingShip);
         assertThat(card.getProductName()).isEqualTo("商品");
         assertThat(card.getQuantity()).isEqualTo(1);
         assertThat(card.getStatus()).isEqualTo("PENDING_SHIP");
@@ -2554,12 +2581,12 @@ class SampleControllerTest {
         Object completed = ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "COMPLETED");
         Object closed = ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "CLOSED");
         try {
-            java.lang.reflect.Method toLegacyStatus = SampleController.class.getDeclaredMethod("toLegacyStatus", pendingHomework.getClass());
+        java.lang.reflect.Method toLegacyStatus = SampleApplicationService.class.getDeclaredMethod("toLegacyStatus", pendingHomework.getClass());
             toLegacyStatus.setAccessible(true);
             assertThat((String) toLegacyStatus.invoke(sampleController, pendingHomework)).isEqualTo("PENDING_TASK");
             assertThat((String) toLegacyStatus.invoke(sampleController, completed)).isEqualTo("FINISHED");
             java.lang.reflect.Method resolveStateEnterTime =
-                    SampleController.class.getDeclaredMethod("resolveStateEnterTime", SampleRequest.class, closed.getClass());
+        SampleApplicationService.class.getDeclaredMethod("resolveStateEnterTime", SampleRequest.class, closed.getClass());
             resolveStateEnterTime.setAccessible(true);
             assertThat((LocalDateTime) resolveStateEnterTime.invoke(sampleController, sample, closed)).isEqualTo(sample.getCloseTime());
         } catch (ReflectiveOperationException e) {

@@ -32,6 +32,20 @@ try {
     docker compose --env-file $envFile --project-name $projectName -f $composeFile up -d --build
     Assert-LastExitCode -CommandName "docker compose up -d --build"
 
+    $redisPassword = if ($envMap.ContainsKey("REDIS_PASSWORD") -and $envMap["REDIS_PASSWORD"]) {
+        $envMap["REDIS_PASSWORD"]
+    } else {
+        "test-redis123"
+    }
+    $testLoginKeys = @("admin", "biz_leader", "channel_leader", "channel_staff", "ops_staff")
+    $authRedisKeys = @()
+    foreach ($loginKey in $testLoginKeys) {
+        $authRedisKeys += "auth:login:fail:$loginKey"
+        $authRedisKeys += "auth:login:lock:$loginKey"
+    }
+    & docker exec "$projectName-redis-1" redis-cli -a $redisPassword -n 1 DEL $authRedisKeys | Out-Null
+    Assert-LastExitCode -CommandName "redis auth lock reset"
+
     & (Join-Path $scriptDir "apply-test-db-patches.ps1") -ContainerName "$projectName-postgres-1"
 
     $health = Wait-HttpHealth -Url $healthUrl -TimeoutSeconds $timeoutSeconds -PollIntervalMilliseconds 2000

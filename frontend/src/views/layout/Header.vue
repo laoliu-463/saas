@@ -1,5 +1,21 @@
+<!--
+  Header - 顶部导航栏组件
+
+  用途：应用顶部的全局导航栏，包含品牌 Logo、一级导航菜单、环境标签和用户信息。
+
+  特性：
+    - 根据用户角色动态显示不同的一级菜单（如渠道专员看到"我的业绩"而非"数据"）
+    - 环境标签优先读取服务端返回值，回退到 Vite 环境变量
+    - 用户下拉菜单支持"个人中心"和"退出登录"
+    - 退出登录时调用后端注销接口，失败时仍清除本地登录态
+
+  依赖的 store：
+    - authStore: 用户信息、角色、Token 管理
+-->
 <template>
+  <!-- 顶部导航栏容器：品牌色渐变背景，高度由 CSS 变量控制 -->
   <div class="top-header" :style="{ height: 'var(--header-height)' }">
+    <!-- 左侧区域：Logo 和品牌名称 -->
     <div class="header-left">
       <div class="header-logo">
         <span class="logo-icon">
@@ -15,6 +31,7 @@
       </div>
     </div>
 
+    <!-- 中间区域：一级导航菜单 Tab 列表 -->
     <div class="header-nav">
       <div
         v-for="tab in visibleTabs"
@@ -28,8 +45,11 @@
       </div>
     </div>
 
+    <!-- 右侧区域：环境标签和用户信息下拉菜单 -->
     <div class="header-right">
+      <!-- 环境标签：显示当前部署环境（如 DEV / TEST / PRE） -->
       <span v-if="envLabel" class="env-badge" data-testid="current-env-badge">环境：{{ envLabel }}</span>
+      <!-- 用户下拉菜单：包含"个人中心"和"退出登录" -->
       <n-dropdown :options="userMenuOptions" @select="handleUserMenu">
         <div class="user-info">
           <n-avatar round size="small" :style="{ backgroundColor: 'rgba(255,255,255,0.2)' }">
@@ -61,6 +81,9 @@ const route = useRoute()
 const message = useMessage()
 const ROLE = ROLE_CODES
 
+/* ---- 角色判断计算属性 ---- */
+/* 判断当前用户是否仅为渠道专员（非组长、非管理员），用于菜单文案本地化 */
+
 const isChannelStaffOnly = computed(() => {
   const roles = authStore.roleCodes
   return roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.CHANNEL_LEADER) && !roles.includes(ROLE.ADMIN)
@@ -76,8 +99,14 @@ const isOpsStaffOnly = computed(() => {
   return roles.includes(ROLE.OPS_STAFF) && !roles.includes(ROLE.ADMIN)
 })
 
+/** Vite 构建时注入的环境标签（兜底） */
 const rawEnvLabel = import.meta.env.VITE_ENV_LABEL as string | undefined
+/** 从服务端接口获取的环境标签（优先级更高） */
 const serverEnvLabel = ref('')
+/**
+ * 组件挂载后从后端 /api/system/env 接口读取环境标签
+ * 失败时静默忽略，后续回退到 Vite 环境变量
+ */
 onMounted(async () => {
   try {
     const res = await fetch('/api/system/env')
@@ -90,12 +119,23 @@ onMounted(async () => {
     // ignore: banner falls back to Vite label
   }
 })
+/**
+ * 最终的环境标签：优先使用服务端返回值，为空时回退到 Vite 环境变量
+ * 统一转为大写展示
+ */
 const envLabel = computed(() => {
   const fromServer = String(serverEnvLabel.value || '').trim().toUpperCase()
   if (fromServer) return fromServer
   return String(rawEnvLabel || '').trim().toUpperCase()
 })
 
+/**
+ * 可见的一级导航菜单 Tab 列表
+ * 根据基础菜单列表，对特定角色进行文案本地化：
+ * - 渠道专员：数据 -> "我的业绩"，达人 -> "我的达人"，寄样 -> "合作管理"
+ * - 业务专员：数据 -> "我的业绩"，寄样 -> "合作管理"
+ * - 运营专员：寄样 -> "合作管理"
+ */
 const visibleTabs = computed(() =>
   getTopMenus(authStore.roleCodes).map((tab) => {
     if (isChannelStaffOnly.value) {
@@ -114,12 +154,14 @@ const visibleTabs = computed(() =>
   })
 )
 
+/** 顶部菜单 Tab 点击处理：解析该菜单下的默认路由并跳转 */
 const handleTopMenuClick = (topKey: string) => {
   const target = resolveTopMenuDefaultPath(topKey, authStore.roleCodes)
   if (!target) return
   router.push(target)
 }
 
+/** 用户头像显示的首字母：取姓名或用户名的第一个字符，大写 */
 const userInitial = computed(() => {
   const name = authStore.userInfo?.realName || authStore.userInfo?.username || 'U'
   return name.charAt(0).toUpperCase()
@@ -130,6 +172,10 @@ const userMenuOptions = [
   { label: '退出登录', key: 'logout' }
 ]
 
+/**
+ * 调用后端注销接口，撤销服务端的 Token 会话
+ * 即使注销失败也仅给出警告，不影响后续清除本地登录态
+ */
 const revokeServerSession = async (accessToken: string, refreshToken: string) => {
   if (!refreshToken) {
     return
@@ -157,6 +203,7 @@ const revokeServerSession = async (accessToken: string, refreshToken: string) =>
   }
 }
 
+/** 用户下拉菜单选择处理：跳转个人中心或执行退出登录流程 */
 const handleUserMenu = async (key: string) => {
   if (key === 'profile') {
     router.push('/profile')

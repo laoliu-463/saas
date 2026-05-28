@@ -127,11 +127,12 @@
 
       <n-data-table
         remote
-        data-testid="sample-table"
+        :data-testid="shippingOnly ? 'ops-shipping-table' : 'sample-table'"
         :columns="columns"
         :data="data"
         :loading="tableLoading"
         :pagination="pagination"
+        :row-props="rowProps"
         :row-key="rowKey"
         :checked-row-keys="checkedRowKeys"
         :scroll-x="1680"
@@ -388,6 +389,7 @@ const setActiveTab = (status: string) => {
 }
 
 const rowKey = (row: SampleItem) => row.requestNo || row.id
+const rowProps = () => ({ 'data-testid': 'sample-row' })
 const handleCheckedRowKeys = (keys: Array<string | number>) => {
   checkedRowKeys.value = keys
 }

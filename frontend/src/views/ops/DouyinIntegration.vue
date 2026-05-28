@@ -63,6 +63,7 @@
         <div class="tool-panel">
           <div class="tool-actions">
             <n-button type="success" :loading="loading.oauth" @click="startDouyinOAuth">去抖店授权</n-button>
+            <n-button secondary :loading="loading.powerManage" @click="openDouyinPowerManage">官方授权管理</n-button>
             <n-button type="primary" :loading="loading.status" @click="checkTokenStatus">查询状态</n-button>
             <n-button type="warning" :loading="loading.refresh" @click="refreshToken">刷新 Token</n-button>
           </div>
@@ -245,6 +246,7 @@ const loading = reactive({
   refresh: false,
   create: false,
   oauth: false,
+  powerManage: false,
   activity: false,
   productActivities: false,
   activityProductList: false,
@@ -562,6 +564,20 @@ const startDouyinOAuth = async () => {
     notifyApiFailure(error, message, { fallbackMessage: '抖店授权地址生成失败' });
   } finally {
     loading.oauth = false;
+  }
+};
+
+const openDouyinPowerManage = async () => {
+  loading.powerManage = true;
+  try {
+    const result = await getDouyinAuthorizeUrl(appId.value || undefined);
+    const targetUrl = result.powerManageUrl || 'https://buyin.jinritemai.com/dashboard/institution/power-manage';
+    window.location.href = targetUrl;
+  } catch (error: any) {
+    setCheck('token', 'error', '授权管理页打开失败', extractErrorMessage(error, '授权管理页打开失败'));
+    notifyApiFailure(error, message, { fallbackMessage: '授权管理页打开失败' });
+  } finally {
+    loading.powerManage = false;
   }
 };
 

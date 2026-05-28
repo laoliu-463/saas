@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { readFixture } from './helpers/fixtures';
 import { storageStates } from './helpers/test-data';
+import { testIds } from './helpers/selectors';
 
 test.use({ storageState: storageStates.channelLeader });
 
@@ -60,19 +61,19 @@ async function mockTalentApis(page: Page) {
   });
 }
 
-test('从商品卡快速寄样会锁定商品上下文', async ({ page }) => {
+test('从商品卡快速寄样会打开商品上下文弹窗', async ({ page }) => {
   await mockProductLibrary(page);
   await mockSampleApplyLookups(page);
   await mockTalentApis(page);
 
   await page.goto('/product');
-  await expect(page.getByTestId('product-card').first()).toBeVisible({ timeout: 30_000 });
-  await page.getByTestId('product-card').first().hover();
-  await page.getByTestId('product-quick-sample').click();
+  const card = page.getByTestId(testIds.productCard).first();
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await card.hover();
+  await card.getByTestId('product-quick-sample').click();
 
-  await expect(page).toHaveURL(/\/sample\/apply/);
-  await expect(page).toHaveURL(/productId=product-record-001/);
-  await expect(page.locator('body')).toContainText('夏季爆款水杯');
+  await expect(page.getByTestId('quick-sample-modal')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('quick-sample-external-hint')).toBeVisible();
 });
 
 test('从达人详情快速寄样会带入达人和收货地址', async ({ page }) => {
