@@ -1,6 +1,7 @@
 package com.colonel.saas.douyin;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.gateway.douyin.DouyinTokenGateway;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -398,7 +399,7 @@ public class DouyinTokenService {
 
     private static class TokenRefreshInProgressException extends BusinessException {
         TokenRefreshInProgressException() {
-            super("token refresh task is already running");
+            super(ResultCode.IDEMPOTENCY_IN_PROGRESS, "token refresh task is already running");
         }
     }
 

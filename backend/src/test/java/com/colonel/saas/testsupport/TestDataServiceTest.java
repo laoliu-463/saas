@@ -38,6 +38,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -229,13 +230,18 @@ class TestDataServiceTest {
                 .containsEntry("logisticsSource", "MOCK");
         verify(sampleStatusLogService).log(SAMPLE_ID, 2, 3, USER_ID, "test logistics ship");
 
-        when(logisticsGateway.queryStatus("TRACK-1"))
-                .thenReturn(new LogisticsGateway.LogisticsStatusResult(
-                        "TRACK-1",
+        when(logisticsGateway.queryTrack(any(), eq("TRACK-1")))
+                .thenReturn(new LogisticsGateway.LogisticsTrackResult(
                         "MOCK",
+                        "TRACK-1",
+                        true,
+                        null,
+                        "3",
                         "SIGNED",
-                        "ok",
-                        LocalDateTime.of(2026, 5, 2, 10, 0)
+                        true,
+                        LocalDateTime.of(2026, 5, 2, 10, 0),
+                        List.of(),
+                        Map.of()
                 ));
 
         Map<String, Object> signed = service.signSample(SAMPLE_ID);
@@ -366,6 +372,7 @@ class TestDataServiceTest {
         sample.setUserId(USER_ID);
         sample.setStatus(status);
         sample.setTrackingNo("TRACK-1");
+        sample.setShipperCode("MOCK");
         sample.setExtraData(Map.of("logisticsSource", "MOCK"));
         return sample;
     }
