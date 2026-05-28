@@ -124,7 +124,7 @@ import {
   productDomainCategoryOptions,
   type ProductFilterState
 } from './product-filters'
-import { copyProductBriefWithLink } from './product-copy'
+import { copyProductBriefWithLink, resolveProductBriefCopyMessage } from './product-copy'
 import { mergeLibraryDisplayFields, normalizeProductCard } from './product-library-display'
 
 const PAGE_SIZE = 12
@@ -390,13 +390,12 @@ const copyPromotionLink = async (item: any) => {
       replaceProductRow(productId, normalizeItem(merged))
     }
 
-    if (clipboardWriteFailed) {
-      message.warning('简介已生成，但浏览器未允许写入剪贴板，请手动复制')
-    } else if (result.linkGenerationFailed) {
-      message.warning('短链生成失败，已复制简介（不含短链）')
-    } else {
-      message.success('已复制简介')
-    }
+    const notice = resolveProductBriefCopyMessage({
+      clipboardWriteFailed,
+      linkGenerationFailed: result.linkGenerationFailed,
+      promotionLinkGenerated: result.promotionLinkGenerated
+    })
+    message[notice.type](notice.content)
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '讲解复制失败，请稍后重试' })
   } finally {

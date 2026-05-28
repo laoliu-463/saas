@@ -39,29 +39,6 @@ public class QuickSampleApplyResponse {
     private List<QuickSampleApplyItemResult> items = new ArrayList<>();
 
     /**
-     * 获取申请结果列表（已废弃，请使用 {@link #getItems()}）。
-     *
-     * @return 申请结果列表
-     * @deprecated 请使用 {@code getItems()} 方法替代
-     */
-    /** @deprecated use items */
-    @Deprecated
-    public List<QuickSampleApplyItemResult> getResults() {
-        return items;
-    }
-
-    /**
-     * 设置申请结果列表（已废弃，请使用 {@link #setItems(List)}）。
-     *
-     * @param results 申请结果列表
-     * @deprecated 请使用 {@code setItems()} 方法替代
-     */
-    @Deprecated
-    public void setResults(List<QuickSampleApplyItemResult> results) {
-        this.items = results;
-    }
-
-    /**
      * 快速寄样申请单项结果。
      */
     @Data

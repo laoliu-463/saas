@@ -83,8 +83,9 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DATABASE: ${REDIS_DATABASE:-0}
-      JWT_SECRET: ${JWT_SECRET}
-      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS}
+      # JWT_SECRET and CORS_ALLOWED_ORIGIN_PATTERNS are loaded from env_file (real-pre env).
+      # Do NOT add them to the `environment` block — host-side ${} resolution with a
+      # missing/empty default .env silently overrides the env_file value.
       DOUYIN_BASE_URL: ${DOUYIN_BASE_URL:-https://openapi-fxg.jinritemai.com}
       DOUYIN_APP_ID: ${DOUYIN_APP_ID:-}
       DOUYIN_CLIENT_KEY: ${DOUYIN_CLIENT_KEY:-}

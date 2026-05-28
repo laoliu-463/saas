@@ -883,7 +883,7 @@ public class TestDataService implements ApplicationRunner {
     public Map<String, Object> signSample(UUID sampleRequestId) {
         SampleRequest sample = requireSample(sampleRequestId);
         ensureSampleStatus(sample, 3);
-        LogisticsGateway.LogisticsStatusResult logisticsStatus = logisticsGateway.queryStatus(sample.getTrackingNo());
+        LogisticsGateway.LogisticsTrackResult logisticsResult = logisticsGateway.queryTrack(sample.getShipperCode(), sample.getTrackingNo());
         int fromStatus = sample.getStatus();
         sample.setStatus(5);
         sample.setDeliverTime(LocalDateTime.now());
@@ -891,7 +891,7 @@ public class TestDataService implements ApplicationRunner {
         sampleRequestMapper.updateById(sample);
         sampleStatusLogService.log(sample.getId(), fromStatus, 4, sample.getUserId(), "test logistics delivered");
         sampleStatusLogService.log(sample.getId(), 4, sample.getStatus(), sample.getUserId(), "test logistics sign -> pending homework");
-        return sampleResult(sample, logisticsStatus.status().toLowerCase(Locale.ROOT), logisticsStatus.trackingNo());
+        return sampleResult(sample, logisticsResult.internalStatus().toLowerCase(Locale.ROOT), logisticsResult.trackingNo());
     }
 
     /**

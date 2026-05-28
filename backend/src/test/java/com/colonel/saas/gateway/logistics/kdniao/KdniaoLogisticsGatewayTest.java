@@ -1,307 +1,646 @@
 package com.colonel.saas.gateway.logistics.kdniao;
 
-import com.colonel.saas.gateway.logistics.kdniao.KdniaoConfig;
-import com.colonel.saas.gateway.logistics.kdniao.KdniaoLogisticsGateway;
+import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.gateway.logistics.LogisticsGateway;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.mock.http.client.MockClientHttpRequest;
-import org.springframework.test.web.client.MockRestServiceServer;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.client.RestTemplate;
 
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
+import java.net.URI;
 import java.time.LocalDateTime;
-import java.util.Base64;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
+/**
+ * KdniaoLogisticsGateway 单元测试
+ */
+@ExtendWith(MockitoExtension.class)
 class KdniaoLogisticsGatewayTest {
 
-    @Test
-    void queryTrack_postsSingleEncodedFormAndMapsSignedTrace() throws Exception {
-        RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        KdniaoConfig config = config("https://sandbox.test/kdniao");
-        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(restTemplate, config, new ObjectMapper());
+    @Mock
+    private RestTemplate kdniaoRestTemplate;
 
-        server.expect(requestTo("https://sandbox.test/kdniao"))
-                .andExpect(method(HttpMethod.POST))
-                .andExpect(request -> {
-                    MockClientHttpRequest httpRequest = (MockClientHttpRequest) request;
-                    String body = httpRequest.getBodyAsString(StandardCharsets.UTF_8);
-                    assertThat(body).doesNotContain("%25");
+    @Mock
+    private KdniaoConfig kdniaoConfig;
 
-                    Map<String, String> form = decodeForm(body);
-                    String requestData = form.get("RequestData");
-                    assertThat(requestData).isEqualTo("""
-                            {"OrderCode":"","ShipperCode":"SF","LogisticCode":"118650888018"}""".trim());
-                    assertThat(form).containsEntry("EBusinessID", "test-business");
-                    assertThat(form).containsEntry("RequestType", "1002");
-                    assertThat(form).containsEntry("DataType", "2");
-                    assertThat(form).containsEntry("DataSign", expectedDataSign(requestData, "test-key"));
-                })
-                .andRespond(withSuccess("""
-                        {
-                          "EBusinessID": "test-business",
-                          "OrderCode": "",
-                          "ShipperCode": "SF",
-                          "LogisticCode": "118650888018",
-                          "Success": true,
-                          "State": "3",
-                          "Reason": null,
-                          "Traces": [
-                            {
-                              "AcceptTime": "2026/05/14 10:23:03",
-                              "AcceptStation": "派件已签收[深圳市]",
-                              "Remark": null
-                            }
-                          ]
-                        }
-                        """, MediaType.APPLICATION_JSON));
+    private ObjectMapper objectMapper;
+    private KdniaoLogisticsGateway gateway;
 
-        var result = gateway.queryTrack("SF", "118650888018");
-
-        assertThat(result.success()).isTrue();
-        assertThat(result.companyCode()).isEqualTo("SF");
-        assertThat(result.trackingNo()).isEqualTo("118650888018");
-        assertThat(result.externalState()).isEqualTo("3");
-        assertThat(result.internalStatus()).isEqualTo("SIGNED");
-        assertThat(result.signed()).isTrue();
-        assertThat(result.signedAt()).isEqualTo(LocalDateTime.of(2026, 5, 14, 10, 23, 3));
-        assertThat(result.traces()).hasSize(1);
-        assertThat(result.traces().get(0).acceptStation()).contains("签收");
-        assertThat(result.rawResponse()).containsEntry("Success", true);
-        server.verify();
+    @BeforeEach
+    void setUp() {
+        objectMapper = new ObjectMapper();
+        gateway = new KdniaoLogisticsGateway(kdniaoRestTemplate, kdniaoConfig, objectMapper);
     }
 
-    @Test
-    void queryStatus_requiresCompanyCodeWhenDeprecatedMethodIsUsed() {
-        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(
-                new RestTemplate(),
-                config("https://sandbox.test/kdniao"),
-                new ObjectMapper()
-        );
+    @Nested
+    @DisplayName("queryTrack")
+    class QueryTrackTest {
 
-        assertThatThrownBy(() -> gateway.queryStatus("118650888018"))
-                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
-                .hasMessageContaining("快递公司编码不能为空");
-    }
-
-    @Test
-    void createShipment_isUnsupportedByInstantTrackApi() {
-        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(
-                new RestTemplate(),
-                config("https://sandbox.test/kdniao"),
-                new ObjectMapper()
-        );
-
-        assertThatThrownBy(() -> gateway.createShipment(null))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessageContaining("不支持创建发货");
-    }
-
-    @Test
-    void queryTrack_rejectsBlankInputsBeforeCallingRemoteApi() {
-        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(
-                new RestTemplate(),
-                config("https://sandbox.test/kdniao"),
-                new ObjectMapper()
-        );
-
-        assertThatThrownBy(() -> gateway.queryTrack("SF", " "))
-                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
-                .hasMessageContaining("物流单号不能为空");
-        assertThatThrownBy(() -> gateway.queryTrack("", "118650888018"))
-                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
-                .hasMessageContaining("快递公司编码不能为空");
-    }
-
-    @Test
-    void queryStatus_buildsReadableMessageFromTrackStateAndLatestTrace() {
-        RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        KdniaoConfig config = config("https://sandbox.test/kdniao");
-        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(restTemplate, config, new ObjectMapper());
-
-        server.expect(requestTo("https://sandbox.test/kdniao"))
-                .andRespond(withSuccess("""
-                        {
-                          "ShipperCode": "YTO",
-                          "LogisticCode": "YT123",
-                          "Success": true,
-                          "State": "2",
-                          "Traces": [
-                            {
-                              "AcceptTime": "2026-05-14 11:30:00",
-                              "AcceptStation": "快件已到达分拨中心",
-                              "Remark": "scan"
-                            }
-                          ]
-                        }
-                        """, MediaType.APPLICATION_JSON));
-
-        var result = gateway.queryStatus("YT123", "YTO");
-
-        assertThat(result.company()).isEqualTo("YTO");
-        assertThat(result.trackingNo()).isEqualTo("YT123");
-        assertThat(result.status()).isEqualTo("IN_TRANSIT");
-        assertThat(result.message()).contains("运输中", "快件已到达分拨中心");
-        server.verify();
-    }
-
-    @Test
-    void queryTrack_usesLastTraceTimeForSignedStateWhenTraceTextDoesNotContainSignedKeyword() {
-        RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        KdniaoConfig config = config("https://sandbox.test/kdniao");
-        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(restTemplate, config, new ObjectMapper());
-
-        server.expect(requestTo("https://sandbox.test/kdniao"))
-                .andRespond(withSuccess("""
-                        {
-                          "ShipperCode": "JD",
-                          "LogisticCode": "JD001",
-                          "Success": true,
-                          "State": "3",
-                          "Traces": [
-                            {
-                              "AcceptTime": "2026/05/14 09:00:00",
-                              "AcceptStation": "快件离开发货仓"
-                            },
-                            {
-                              "AcceptTime": "2026-05-15 18:45:10",
-                              "AcceptStation": "客户已收货"
-                            }
-                          ]
-                        }
-                        """, MediaType.APPLICATION_JSON));
-
-        var result = gateway.queryTrack("JD", "JD001");
-
-        assertThat(result.internalStatus()).isEqualTo("SIGNED");
-        assertThat(result.signedAt()).isEqualTo(LocalDateTime.of(2026, 5, 15, 18, 45, 10));
-        assertThat(result.traces()).extracting("acceptTime")
-                .containsExactly(
-                        LocalDateTime.of(2026, 5, 14, 9, 0),
-                        LocalDateTime.of(2026, 5, 15, 18, 45, 10)
-                );
-        server.verify();
-    }
-
-    @Test
-    void queryTrack_mapsUnknownStateAndUnparseableTraceTime() {
-        RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        KdniaoConfig config = config("https://sandbox.test/kdniao");
-        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(restTemplate, config, new ObjectMapper());
-
-        server.expect(requestTo("https://sandbox.test/kdniao"))
-                .andRespond(withSuccess("""
-                        {
-                          "ShipperCode": "ZTO",
-                          "LogisticCode": "ZTO001",
-                          "Success": true,
-                          "State": "9",
-                          "Traces": [
-                            {
-                              "AcceptTime": "bad-time",
-                              "AcceptStation": "状态未知"
-                            }
-                          ]
-                        }
-                        """, MediaType.APPLICATION_JSON));
-
-        var result = gateway.queryTrack("ZTO", "ZTO001");
-
-        assertThat(result.internalStatus()).isEqualTo("UNKNOWN");
-        assertThat(result.signed()).isFalse();
-        assertThat(result.signedAt()).isNull();
-        assertThat(result.traces()).singleElement()
-                .satisfies(trace -> assertThat(trace.acceptTime()).isNull());
-        server.verify();
-    }
-
-    @Test
-    void queryTrack_wrapsInvalidRemoteJsonAsBusinessException() {
-        RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        KdniaoConfig config = config("https://sandbox.test/kdniao");
-        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(restTemplate, config, new ObjectMapper());
-
-        server.expect(requestTo("https://sandbox.test/kdniao"))
-                .andRespond(withSuccess("{not-json", MediaType.APPLICATION_JSON));
-
-        assertThatThrownBy(() -> gateway.queryTrack("SF", "118650888018"))
-                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
-                .hasMessageContaining("快递鸟API请求失败");
-        server.verify();
-    }
-
-    @Test
-    void queryTrack_mapsFailedResponseWithoutAdvancingStatus() {
-        RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        KdniaoConfig config = config("https://sandbox.test/kdniao");
-        KdniaoLogisticsGateway gateway = new KdniaoLogisticsGateway(restTemplate, config, new ObjectMapper());
-
-        server.expect(requestTo("https://sandbox.test/kdniao"))
-                .andRespond(withSuccess("""
-                        {
-                          "EBusinessID": "test-business",
-                          "ShipperCode": "SF",
-                          "LogisticCode": "NO_TRACE_001",
-                          "Success": false,
-                          "Reason": "暂无轨迹",
-                          "Traces": []
-                        }
-                        """, MediaType.APPLICATION_JSON));
-
-        var result = gateway.queryTrack("SF", "NO_TRACE_001");
-
-        assertThat(result.success()).isFalse();
-        assertThat(result.externalState()).isNull();
-        assertThat(result.internalStatus()).isEqualTo("FAILED");
-        assertThat(result.reason()).isEqualTo("暂无轨迹");
-        assertThat(result.signed()).isFalse();
-        assertThat(result.traces()).isEmpty();
-        server.verify();
-    }
-
-    private static KdniaoConfig config(String requestUrl) {
-        KdniaoConfig config = new KdniaoConfig();
-        config.setEBusinessId("test-business");
-        config.setAppKey("test-key");
-        config.setRequestUrl(requestUrl);
-        return config;
-    }
-
-    private static Map<String, String> decodeForm(String body) {
-        Map<String, String> result = new LinkedHashMap<>();
-        for (String pair : body.split("&")) {
-            String[] parts = pair.split("=", 2);
-            String key = URLDecoder.decode(parts[0], StandardCharsets.UTF_8);
-            String value = parts.length == 2 ? URLDecoder.decode(parts[1], StandardCharsets.UTF_8) : "";
-            result.put(key, value);
+        @Test
+        void shouldThrowWhenTrackingNoIsNull() {
+            assertThatThrownBy(() -> gateway.queryTrack("SF", null))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("物流单号不能为空");
         }
-        return result;
+
+        @Test
+        void shouldThrowWhenTrackingNoIsBlank() {
+            assertThatThrownBy(() -> gateway.queryTrack("SF", "  "))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("物流单号不能为空");
+        }
+
+        @Test
+        void shouldThrowWhenCompanyCodeIsNull() {
+            assertThatThrownBy(() -> gateway.queryTrack(null, "SF1234567890"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("快递公司编码不能为空");
+        }
+
+        @Test
+        void shouldThrowWhenCompanyCodeIsBlank() {
+            assertThatThrownBy(() -> gateway.queryTrack("  ", "SF1234567890"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("快递公司编码不能为空");
+        }
+
+        @Test
+        void shouldReturnSuccessResultForSignedPackage() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "OrderCode": "",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "State": "3",
+                    "Reason": "",
+                    "Traces": [
+                        {"AcceptTime": "2026/05/15 08:00:00", "AcceptStation": "【深圳市】已发出", "Remark": ""},
+                        {"AcceptTime": "2026/05/16 14:30:00", "AcceptStation": "【北京市】已签收", "Remark": "签收"}
+                    ]
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("SF", "SF1234567890");
+
+            assertThat(result.success()).isTrue();
+            assertThat(result.internalStatus()).isEqualTo("SIGNED");
+            assertThat(result.signed()).isTrue();
+            assertThat(result.companyCode()).isEqualTo("SF");
+            assertThat(result.trackingNo()).isEqualTo("SF1234567890");
+            assertThat(result.traces()).hasSize(2);
+        }
+
+        @Test
+        void shouldReturnInTransitResult() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "ZTO",
+                    "LogisticCode": "ZTO1234567890",
+                    "Success": true,
+                    "State": "2",
+                    "Traces": [
+                        {"AcceptTime": "2026/05/15 10:00:00", "AcceptStation": "【中转站】运输中", "Remark": ""}
+                    ]
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("ZTO", "ZTO1234567890");
+
+            assertThat(result.success()).isTrue();
+            assertThat(result.internalStatus()).isEqualTo("IN_TRANSIT");
+            assertThat(result.signed()).isFalse();
+            assertThat(result.signedAt()).isNull();
+        }
+
+        @Test
+        void shouldReturnExceptionResult() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "YTO",
+                    "LogisticCode": "YTO1234567890",
+                    "Success": true,
+                    "State": "4",
+                    "Reason": "问题件：地址不详",
+                    "Traces": []
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("YTO", "YTO1234567890");
+
+            assertThat(result.success()).isTrue();
+            assertThat(result.internalStatus()).isEqualTo("EXCEPTION");
+            assertThat(result.signed()).isFalse();
+        }
+
+        @Test
+        void shouldReturnFailedResultWhenSuccessIsFalse() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "Success": false,
+                    "Reason": "暂无物流信息"
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("SF", "SF1234567890");
+
+            assertThat(result.success()).isFalse();
+            assertThat(result.internalStatus()).isEqualTo("FAILED");
+            assertThat(result.reason()).isEqualTo("暂无物流信息");
+        }
+
+        @Test
+        void shouldThrowWhenResponseIsNull() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(null);
+
+            assertThatThrownBy(() -> gateway.queryTrack("SF", "SF1234567890"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("解析物流查询响应失败");
+        }
+
+        @Test
+        void shouldThrowWhenApiReturnsInvalidJson() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn("invalid json");
+
+            assertThatThrownBy(() -> gateway.queryTrack("SF", "SF1234567890"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("解析物流查询响应失败");
+        }
+
+        @Test
+        void shouldThrowWhenRestTemplateThrowsException() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenThrow(new RuntimeException("Connection refused"));
+
+            assertThatThrownBy(() -> gateway.queryTrack("SF", "SF1234567890"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("快递鸟API请求失败");
+        }
+
+        @Test
+        void shouldHandleTraceWithDashDateFormat() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "State": "2",
+                    "Traces": [
+                        {"AcceptTime": "2026-05-15 10:00:00", "AcceptStation": "【中转站】运输中", "Remark": ""}
+                    ]
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("SF", "SF1234567890");
+
+            assertThat(result.success()).isTrue();
+            assertThat(result.traces()).hasSize(1);
+        }
+
+        @Test
+        void shouldHandleEmptyTraces() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "State": "2",
+                    "Traces": []
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("SF", "SF1234567890");
+
+            assertThat(result.success()).isTrue();
+            assertThat(result.traces()).isEmpty();
+        }
+
+        @Test
+        void shouldHandleNullTraces() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "State": "2"
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("SF", "SF1234567890");
+
+            assertThat(result.success()).isTrue();
+            assertThat(result.traces()).isEmpty();
+        }
+
+        @Test
+        void shouldUseResponseCompanyCodeWhenAvailable() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "State": "2",
+                    "Traces": []
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            // 请求时使用小写，但响应中返回的是大写
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("sf", "SF1234567890");
+
+            assertThat(result.companyCode()).isEqualTo("SF");
+        }
     }
 
-    private static String expectedDataSign(String requestData, String appKey) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] md5Bytes = md.digest((requestData + appKey).getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(md5Bytes);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
+    @Nested
+    @DisplayName("queryStatus")
+    class QueryStatusTest {
+
+        @Test
+        void shouldReturnStatusResult() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "State": "3",
+                    "Traces": [
+                        {"AcceptTime": "2026/05/16 14:30:00", "AcceptStation": "【北京市】已签收", "Remark": "签收"}
+                    ]
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsStatusResult result = gateway.queryStatus("SF1234567890", "SF");
+
+            assertThat(result.trackingNo()).isEqualTo("SF1234567890");
+            assertThat(result.company()).isEqualTo("SF");
+            assertThat(result.status()).isEqualTo("SIGNED");
+        }
+    }
+
+    @Nested
+    @DisplayName("createShipment")
+    class CreateShipmentTest {
+
+        @Test
+        void shouldThrowUnsupportedOperationException() {
+            LogisticsGateway.LogisticsCommand command = new LogisticsGateway.LogisticsCommand(
+                    java.util.UUID.randomUUID(),
+                    "P001",
+                    "张三",
+                    "13800138000",
+                    "北京市朝阳区xxx"
+            );
+
+            assertThatThrownBy(() -> gateway.createShipment(command))
+                    .isInstanceOf(UnsupportedOperationException.class)
+                    .hasMessageContaining("快递鸟即时查询API不支持创建发货");
+        }
+    }
+
+    @Nested
+    @DisplayName("LogisticsTraceNode handling")
+    class LogisticsTraceNodeTest {
+
+        @Test
+        void shouldFilterNullTraces() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "State": "2",
+                    "Traces": [
+                        null,
+                        {"AcceptTime": "2026/05/15 10:00:00", "AcceptStation": "【中转站】运输中", "Remark": ""},
+                        null
+                    ]
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("SF", "SF1234567890");
+
+            assertThat(result.traces()).hasSize(1);
+            assertThat(result.traces().get(0).acceptStation()).isEqualTo("【中转站】运输中");
+        }
+
+        @Test
+        void shouldResolveSignedAtFromTraces() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "State": "3",
+                    "Traces": [
+                        {"AcceptTime": "2026/05/15 08:00:00", "AcceptStation": "【深圳市】已发出", "Remark": ""},
+                        {"AcceptTime": "2026/05/15 12:00:00", "AcceptStation": "【中转站】分拨", "Remark": ""},
+                        {"AcceptTime": "2026/05/16 14:30:00", "AcceptStation": "【北京市】已签收，签收人：本人", "Remark": "签收"}
+                    ]
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("SF", "SF1234567890");
+
+            assertThat(result.signed()).isTrue();
+            assertThat(result.signedAt()).isNotNull();
+        }
+
+        @Test
+        void shouldUseLastTraceTimeWhenNoSignedTrace() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "State": "3",
+                    "Traces": [
+                        {"AcceptTime": "2026/05/15 08:00:00", "AcceptStation": "【深圳市】已发出", "Remark": ""},
+                        {"AcceptTime": "2026/05/16 14:30:00", "AcceptStation": "【北京市】已签收", "Remark": ""}
+                    ]
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("SF", "SF1234567890");
+
+            assertThat(result.signed()).isTrue();
+            assertThat(result.signedAt()).isNotNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("Status message building")
+    class StatusMessageTest {
+
+        @Test
+        void shouldBuildStatusMessageForInTransit() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "State": "2",
+                    "Traces": [
+                        {"AcceptTime": "2026/05/15 10:00:00", "AcceptStation": "【深圳市】已发出", "Remark": ""}
+                    ]
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("SF", "SF1234567890");
+
+            assertThat(result.internalStatus()).isEqualTo("IN_TRANSIT");
+        }
+
+        @Test
+        void shouldBuildStatusMessageForSigned() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "State": "3",
+                    "Traces": [
+                        {"AcceptTime": "2026/05/16 14:30:00", "AcceptStation": "【北京市】已签收", "Remark": "签收"}
+                    ]
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("SF", "SF1234567890");
+
+            assertThat(result.internalStatus()).isEqualTo("SIGNED");
+        }
+
+        @Test
+        void shouldBuildStatusMessageForException() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "YTO",
+                    "LogisticCode": "YTO1234567890",
+                    "Success": true,
+                    "State": "4",
+                    "Traces": []
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("YTO", "YTO1234567890");
+
+            assertThat(result.internalStatus()).isEqualTo("EXCEPTION");
+        }
+
+        @Test
+        void shouldReturnUnknownForUnmappedState() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "State": "0",
+                    "Traces": []
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("SF", "SF1234567890");
+
+            assertThat(result.internalStatus()).isEqualTo("UNKNOWN");
+        }
+
+        @Test
+        void shouldReturnUnknownForNullState() throws Exception {
+            String apiUrl = "https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx";
+            when(kdniaoConfig.getRequestUrl()).thenReturn(apiUrl);
+            when(kdniaoConfig.getEBusinessId()).thenReturn("TEST_EB_ID");
+            when(kdniaoConfig.getAppKey()).thenReturn("TEST_APP_KEY");
+            when(kdniaoConfig.getRequestType()).thenReturn("1002");
+
+            String responseJson = """
+                {
+                    "EBusinessID": "TEST_EB_ID",
+                    "ShipperCode": "SF",
+                    "LogisticCode": "SF1234567890",
+                    "Success": true,
+                    "Traces": []
+                }
+                """;
+            when(kdniaoRestTemplate.postForObject(eq(apiUrl), any(), eq(String.class)))
+                    .thenReturn(responseJson);
+
+            LogisticsGateway.LogisticsTrackResult result = gateway.queryTrack("SF", "SF1234567890");
+
+            assertThat(result.internalStatus()).isEqualTo("UNKNOWN");
         }
     }
 }

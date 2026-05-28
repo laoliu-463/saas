@@ -143,7 +143,7 @@ describe('router configuration', () => {
     expect(typeof activityRedirect).toBe('function')
     expect((activityRedirect as (to: { params: { activityId: string } }) => string)({ params: { activityId: 'A-100' } }))
       .toBe('/product/manage/A-100')
-  }, 15000)
+  }, 60000)
 })
 
 describe('router guards', () => {

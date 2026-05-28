@@ -114,22 +114,6 @@ public class JwtTokenProvider {
     }
 
     /**
-     * 生成 Access Token（已废弃，委托给 {@link #generateAccessToken}）。
-     *
-     * @deprecated 请使用 {@link #generateAccessToken(UUID, UUID, int, List, String)} 代替。
-     *             此方法仅为向后兼容保留，将在后续版本移除。
-     */
-    @Deprecated
-    public String generateToken(
-            UUID userId,
-            UUID deptId,
-            int dataScope,
-            List<String> roleCodes,
-            String username) {
-        return generateAccessToken(userId, deptId, dataScope, roleCodes, username);
-    }
-
-    /**
      * 生成标准 Access Token（不含待激活标记，默认 pendingActivation = false）。
      *
      * @param userId    用户唯一标识

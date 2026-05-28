@@ -4,7 +4,6 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.gateway.logistics.LogisticsGateway;
 import org.springframework.util.StringUtils;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -51,24 +50,6 @@ public class ManualFallbackLogisticsGateway implements LogisticsGateway {
     @Override
     public LogisticsResult createShipment(LogisticsCommand command) {
         throw BusinessException.stateInvalid("物流网关未配置，请手动录入物流信息");
-    }
-
-    /**
-     * 查询物流状态（已废弃，返回未配置占位结果）。
-     *
-     * @param trackingNo 快递单号
-     * @return 包含 NOT_CONFIGURED 状态的占位结果
-     * @deprecated 快递鸟等物流服务商需要快递公司编码，请使用 {@link #queryTrack(String, String)}
-     */
-    @Override
-    public LogisticsStatusResult queryStatus(String trackingNo) {
-        return new LogisticsStatusResult(
-                trackingNo,
-                COMPANY_MANUAL,
-                STATUS_NOT_CONFIGURED,
-                REASON_NOT_CONFIGURED,
-                LocalDateTime.now()
-        );
     }
 
     /**

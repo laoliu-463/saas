@@ -237,6 +237,9 @@
                 <version>3.1.2</version>
                 <configuration>
                     <argLine>@{argLine} -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+                    <excludes>
+                        <exclude>**/mapper/*MapperTest.java</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
             <plugin>
@@ -289,7 +292,7 @@
                                         <exclude>com.colonel.saas.controller.TalentController</exclude>
                                         <exclude>com.colonel.saas.crawler.CrawlerBase</exclude>
                                         <exclude>com.colonel.saas.crawler.DouyinTalentCrawler</exclude>
-                                        <exclude>com.colonel.saas.security.JwtAuthInterceptor</exclude>
+
                                         <exclude>com.colonel.saas.config.CustomMetaObjectHandler</exclude>
                                         <exclude>com.colonel.saas.aspect.DataScopeAspect</exclude>
                                         <exclude>com.colonel.saas.job.SampleLifecycleJob</exclude>

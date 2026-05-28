@@ -50,7 +50,7 @@ import java.util.UUID;
 @Tag(name = "系统用户", description = "系统后台用户管理接口，包括分页、详情、新增、编辑、删除、重置密码与分配角色。")
 @RestController
 @RequestMapping("/users")
-@RequireRoles({RoleCodes.ADMIN})
+@RequireRoles({RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER})
 public class SysUserController extends BaseController {
 
     /** 系统用户服务，负责用户的增删改查和角色分配 */

@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { buildProductBriefCopy, copyProductBriefWithLink, extractPromotionLink } from './product-copy'
+import {
+  buildProductBriefCopy,
+  copyProductBriefWithLink,
+  extractPromotionLink,
+  resolveProductBriefCopyMessage
+} from './product-copy'
 
 describe('product copy helpers', () => {
   it('builds a product brief with audit supplement, material pack and short link', () => {
@@ -77,6 +82,39 @@ describe('product copy helpers', () => {
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('【链接】https://v.douyin.com/generated/'))
     expect(result.link).toBe('https://v.douyin.com/generated/')
     expect(result.linkGenerationFailed).toBe(false)
+    expect(result.promotionLinkGenerated).toBe(true)
+  })
+
+  it('uses backend fallback copy text when promotion write is disabled', async () => {
+    const backendCopyText = '【商品】降级复制商品（测试店铺）\n【推广链接】未生成'
+    const convertLink = vi.fn().mockResolvedValue({
+      data: {
+        copyText: backendCopyText,
+        promotionLinkGenerated: false,
+        promotionLink: null,
+        pickSource: null,
+        fallbackReason: 'REAL_PROMOTION_WRITE_DISABLED',
+        realPromotionWriteEnabled: false,
+        allowRealPromotionWrite: false
+      }
+    })
+    const writeText = vi.fn().mockResolvedValue(undefined)
+
+    const result = await copyProductBriefWithLink({
+      item: { title: '降级复制商品', shopName: '测试店铺', auditSupplement: {} },
+      activityId: 'A1',
+      productId: 'P1',
+      scene: 'PRODUCT_LIBRARY',
+      convertLink,
+      writeText
+    })
+
+    expect(writeText).toHaveBeenCalledWith(backendCopyText)
+    expect(result.link).toBeNull()
+    expect(result.linkGenerationFailed).toBe(true)
+    expect(result.promotionLinkGenerated).toBe(false)
+    expect(result.fallbackReason).toBe('REAL_PROMOTION_WRITE_DISABLED')
+    expect(result.error).toBeNull()
   })
 
   it('copies the brief without link when conversion fails', async () => {
@@ -97,5 +135,22 @@ describe('product copy helpers', () => {
     expect(writeText.mock.calls[0][0]).not.toContain('【链接】')
     expect(result.link).toBeNull()
     expect(result.linkGenerationFailed).toBe(true)
+  })
+
+  it('resolves copy messages from backend promotion generation state', () => {
+    expect(resolveProductBriefCopyMessage({
+      clipboardWriteFailed: false,
+      linkGenerationFailed: false,
+      promotionLinkGenerated: true
+    })).toEqual({ type: 'success', content: '复制成功，已生成推广链接' })
+
+    expect(resolveProductBriefCopyMessage({
+      clipboardWriteFailed: false,
+      linkGenerationFailed: true,
+      promotionLinkGenerated: false
+    })).toEqual({
+      type: 'warning',
+      content: '已复制基础简介；真实推广链接未生成，因为真实转链开关未开启。'
+    })
   })
 })

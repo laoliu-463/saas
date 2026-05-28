@@ -130,6 +130,19 @@
         <n-form-item label="上级部门" path="parentId">
           <n-tree-select v-model:value="deptForm.parentId" :options="departmentTreeOptions" clearable placeholder="无上级则留空" />
         </n-form-item>
+        <n-form-item label="负责人" path="leaderUserId">
+          <n-select
+            v-model:value="deptForm.leaderUserId"
+            data-testid="dept-leader-select"
+            filterable
+            clearable
+            placeholder="选择组长用户"
+            :options="leaderUserOptions"
+            :loading="leaderSearchLoading"
+            remote
+            @search="searchLeaderUsers"
+          />
+        </n-form-item>
         <n-form-item label="排序" path="sortOrder">
           <n-input-number v-model:value="deptForm.sortOrder" data-testid="dept-sort-input" :min="0" style="width: 100%" />
         </n-form-item>
@@ -160,9 +173,10 @@
         <n-form-item label="组长" path="leaderUserId">
           <n-select
             v-model:value="groupForm.leaderUserId"
+            data-testid="group-leader-select"
             filterable
             clearable
-            placeholder="选择系统用户"
+            placeholder="选择组长用户"
             :options="leaderUserOptions"
             :loading="leaderSearchLoading"
             remote
@@ -219,6 +233,7 @@ import {
   addDeptGroupMembers,
   createDept,
   deleteDept,
+  getAssignableUserOptions,
   getDeptGroups,
   getDeptMembers,
   getDeptStats,
@@ -263,6 +278,7 @@ const deptForm = reactive({
   deptCode: '',
   deptName: '',
   parentId: null as string | null,
+  leaderUserId: null as string | null,
   sortOrder: 0,
   status: 1,
   remark: ''
@@ -271,6 +287,7 @@ const deptForm = reactive({
 const showGroupModal = ref(false)
 const groupModalType = ref<'add' | 'edit'>('add')
 const editingGroupId = ref<string | null>(null)
+const editingGroupParentId = ref<string | null>(null)
 const groupFormRef = ref<FormInst | null>(null)
 const groupForm = reactive({
   deptType: 'recruiter_group',
@@ -533,9 +550,11 @@ const resetDeptForm = () => {
   deptForm.deptCode = ''
   deptForm.deptName = ''
   deptForm.parentId = null
+  deptForm.leaderUserId = null
   deptForm.sortOrder = 0
   deptForm.status = 1
   deptForm.remark = ''
+  leaderUserOptions.value = []
 }
 
 const openDeptModal = (type: 'add' | 'edit', row?: any) => {
@@ -546,13 +565,18 @@ const openDeptModal = (type: 'add' | 'edit', row?: any) => {
     deptForm.deptCode = row.deptCode || ''
     deptForm.deptName = row.deptName || ''
     deptForm.parentId = row.parentId ? String(row.parentId) : null
+    deptForm.leaderUserId = row.leaderUserId ? String(row.leaderUserId) : null
     deptForm.sortOrder = Number(row.sortOrder ?? 0)
     deptForm.status = Number(row.status ?? 1)
     deptForm.remark = row.remark || ''
+    if (deptForm.leaderUserId) {
+      leaderUserOptions.value = [{ label: row.leader || deptForm.leaderUserId, value: deptForm.leaderUserId }]
+    }
   } else if (isDepartmentSelected.value && selectedNode.value) {
     deptForm.parentId = String(selectedNode.value.id)
   }
   showDeptModal.value = true
+  searchLeaderUsers('')
 }
 
 const submitDeptForm = async () => {
@@ -563,6 +587,8 @@ const submitDeptForm = async () => {
     deptName: deptForm.deptName.trim(),
     parentId: deptForm.parentId || null,
     deptType: DEPT_TYPE_DEPARTMENT,
+    leaderUserId: deptForm.leaderUserId || null,
+    leader: resolveSelectedLeaderName(deptForm.leaderUserId),
     sortOrder: deptForm.sortOrder,
     status: deptForm.status,
     remark: deptForm.remark || null
@@ -591,6 +617,7 @@ const resetGroupForm = () => {
   groupForm.leaderUserId = null
   groupForm.sortOrder = 0
   groupForm.status = 1
+  editingGroupParentId.value = null
   leaderUserOptions.value = []
 }
 
@@ -599,6 +626,7 @@ const openGroupModal = (type: 'add' | 'edit', row?: any) => {
   editingGroupId.value = type === 'edit' ? String(row?.id || '') : null
   resetGroupForm()
   if (type === 'edit' && row) {
+    editingGroupParentId.value = row.parentId ? String(row.parentId) : null
     groupForm.deptType = row.deptType || 'recruiter_group'
     groupForm.deptCode = row.deptCode || ''
     groupForm.deptName = row.deptName || ''
@@ -610,21 +638,27 @@ const openGroupModal = (type: 'add' | 'edit', row?: any) => {
     }
   }
   showGroupModal.value = true
+  searchLeaderUsers('')
 }
 
 const searchLeaderUsers = async (keyword: string) => {
   leaderSearchLoading.value = true
   try {
-    const res: any = await getUserPage({ page: 1, size: 30, keyword: keyword || undefined, status: 1 })
-    const data = res?.data || res
-    const records = Array.isArray(data?.records) ? data.records : []
-    leaderUserOptions.value = records.map((user: any) => ({
+    const res: any = await getAssignableUserOptions({ keyword: keyword || undefined })
+    const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
+    leaderUserOptions.value = list.map((user: any) => ({
       label: `${user.realName || user.username} (${user.username})`,
       value: String(user.id)
     }))
   } finally {
     leaderSearchLoading.value = false
   }
+}
+
+const resolveSelectedLeaderName = (userId: string | null) => {
+  if (!userId) return null
+  const option = leaderUserOptions.value.find((item) => item.value === userId)
+  return option?.label.replace(/\s*\([^)]*\)\s*$/, '') || null
 }
 
 const submitGroupForm = async () => {
@@ -634,13 +668,17 @@ const submitGroupForm = async () => {
     return
   }
   submitting.value = true
-  const parentId = groupModalType.value === 'add' ? String(selectedNode.value.id) : selectedNode.value.parentId
+  const parentId =
+    groupModalType.value === 'add'
+      ? String(selectedNode.value.id)
+      : editingGroupParentId.value || (selectedNode.value?.parentId ? String(selectedNode.value.parentId) : null)
   const payload = {
     parentId,
     deptCode: groupForm.deptCode.trim(),
     deptName: groupForm.deptName.trim(),
     deptType: groupForm.deptType,
     leaderUserId: groupForm.leaderUserId || null,
+    leader: resolveSelectedLeaderName(groupForm.leaderUserId),
     sortOrder: groupForm.sortOrder,
     status: groupForm.status
   }
@@ -674,10 +712,9 @@ const openAddMembersModal = () => {
 const searchAddMemberUsers = async (keyword: string) => {
   addMemberSearchLoading.value = true
   try {
-    const res: any = await getUserPage({ page: 1, size: 50, keyword: keyword || undefined, status: 1 })
-    const data = res?.data || res
-    const records = Array.isArray(data?.records) ? data.records : []
-    addMemberOptions.value = records.map((user: any) => ({
+    const res: any = await getAssignableUserOptions({ keyword: keyword || undefined })
+    const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
+    addMemberOptions.value = list.map((user: any) => ({
       label: `${user.realName || user.username} (${user.username})`,
       value: String(user.id)
     }))

@@ -68,7 +68,7 @@ import java.util.UUID;
 @Tag(name = "达人CRM", description = "达人池、公海私海、认领释放与达人信息补全相关接口。")
 @RestController
 @RequestMapping("/talents")
-@RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+@RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
 public class TalentController extends BaseController {
 
     /** 达人服务，负责达人增删改查、标签管理、收货地址维护、认领释放与黑名单等操作 */

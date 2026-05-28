@@ -133,7 +133,7 @@ export const MENU_TREE: MenuTreeNode[] = [
     topKey: 'talent',
     testId: 'nav-talent',
     showInTop: true,
-    roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
+    roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.ADMIN],
     children: [
       { label: '团队公海', key: TALENT_MENU_KEYS.teamPublic, topKey: 'talent', path: TALENT_MENU_KEYS.teamPublic },
       { label: '我的达人', key: TALENT_MENU_KEYS.myTalents, topKey: 'talent', path: TALENT_MENU_KEYS.myTalents },
@@ -183,7 +183,7 @@ export const MENU_TREE: MenuTreeNode[] = [
     children: [
       { label: '用户管理', key: '/system/users', topKey: 'system', path: '/system/users' },
       { label: '角色管理', key: '/system/roles', topKey: 'system', path: '/system/roles' },
-      { label: '部门管理', key: '/system/depts', topKey: 'system', path: '/system/depts' },
+      { label: '部门管理', key: '/system/depts', topKey: 'system', path: '/system/depts', roles: [ROLE.ADMIN, ROLE.CHANNEL_LEADER] },
       { label: '规则中心', key: '/system/rule-center', topKey: 'system', path: '/system/rule-center' },
       { label: '高级配置', key: '/system/config', topKey: 'system', path: '/system/config' },
       { label: '提成规则', key: '/system/commission-rules', topKey: 'system', path: '/system/commission-rules' },

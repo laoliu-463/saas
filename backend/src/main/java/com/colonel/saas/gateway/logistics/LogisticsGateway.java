@@ -46,16 +46,6 @@ public interface LogisticsGateway {
     }
 
     /**
-     * 查询物流状态（仅需单号，不区分快递公司）。
-     *
-     * @param trackingNo 快递单号
-     * @return 物流状态结果
-     * @deprecated 快递鸟等物流服务商需要快递公司编码，请使用 {@link #queryTrack(String, String)}。
-     */
-    @Deprecated
-    LogisticsStatusResult queryStatus(String trackingNo);
-
-    /**
      * 查询物流轨迹（需指定快递公司编码）。
      *
      * @param companyCode 快递公司编码（如 SF、ZTO、YD 等）
@@ -110,11 +100,6 @@ public interface LogisticsGateway {
             LocalDateTime shipTime) {
     }
 
-    /**
-     * 物流状态查询结果（已废弃，推荐使用 {@link LogisticsTrackResult}）。
-     *
-     * @deprecated 使用 queryTrack 替代
-     */
     record LogisticsStatusResult(
             /** 快递单号 */
             String trackingNo,

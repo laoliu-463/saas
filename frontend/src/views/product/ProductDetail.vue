@@ -864,8 +864,13 @@ const copyPromotionLink = async () => {
   try {
     const res: any = await convertActivityProductLink(props.activityId, props.productId, { scene: 'PRODUCT_DETAIL' });
     const data = res?.data || {};
-    const link = data.promoteLink || data.promotionUrl || data.shortLink;
+    const link = data.promotionLink || data.promoteLink || data.promotionUrl || data.shortLink;
     if (!link) {
+      if (data.promotionLinkGenerated === false) {
+        message.warning('真实推广链接未生成，因为真实转链开关未开启。');
+        await fetchData();
+        return;
+      }
       message.warning('推广链接生成成功，但未返回可复制链接');
       await fetchData();
       return;

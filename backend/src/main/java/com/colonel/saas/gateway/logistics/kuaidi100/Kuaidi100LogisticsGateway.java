@@ -180,23 +180,6 @@ public class Kuaidi100LogisticsGateway implements LogisticsGateway {
     }
 
     /**
-     * 仅通过单号查询物流状态（已废弃，不推荐）。
-     * <p>
-     * 快递100 API 要求同时传入快递公司编码和物流单号，
-     * 仅凭单号无法查询。此方法始终抛出异常，引导调用方使用带公司编码的方法。
-     * </p>
-     *
-     * @param trackingNo 物流单号（此参数不使用）
-     * @return 不会返回，直接抛出异常
-     * @throws BusinessException 参数错误，提示需要快递公司编码
-     * @deprecated 请使用 {@link #queryTrack(String, String)}
-     */
-    @Override
-    public LogisticsStatusResult queryStatus(String trackingNo) {
-        throw BusinessException.param("请调用 queryTrack(companyCode, trackingNo)");
-    }
-
-    /**
      * 查询物流轨迹（简单参数版，委托给命令对象版）。
      *
      * @param companyCode 快递公司编码（如 SF、ZTO、YD 等）

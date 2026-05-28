@@ -11,7 +11,7 @@ import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ProductPinService;
 import com.colonel.saas.service.ProductService;
-import com.colonel.saas.service.PromotionCopyBriefService;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -71,7 +71,7 @@ import java.util.UUID;
  *
  * @see ProductService
  * @see ProductPinService
- * @see PromotionCopyBriefService
+
  * @see SysUserService
  */
 @Validated
@@ -85,8 +85,7 @@ public class ColonelActivityProductController extends BaseController {
     private final ProductService productService;
     /** 商品置顶服务，负责商品置顶/取消置顶操作 */
     private final ProductPinService productPinService;
-    /** 推广文案渲染服务，负责生成复制讲解文案（已废弃，保留兼容） */
-    private final PromotionCopyBriefService promotionCopyBriefService;
+
     /** 用户服务，负责校验分配目标用户的合法性 */
     private final SysUserService sysUserService;
 
@@ -95,17 +94,15 @@ public class ColonelActivityProductController extends BaseController {
      *
      * @param productService             商品服务
      * @param productPinService          商品置顶服务
-     * @param promotionCopyBriefService  推广文案渲染服务
+
      * @param sysUserService             用户服务
      */
     public ColonelActivityProductController(
             ProductService productService,
             ProductPinService productPinService,
-            PromotionCopyBriefService promotionCopyBriefService,
             SysUserService sysUserService) {
         this.productService = productService;
         this.productPinService = productPinService;
-        this.promotionCopyBriefService = promotionCopyBriefService;
         this.sysUserService = sysUserService;
     }
 
@@ -367,7 +364,7 @@ public class ColonelActivityProductController extends BaseController {
     @Operation(summary = "活动商品转链", description = "为活动商品生成推广链接。")
     @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @PostMapping("/{productId}/promotion-links")
-    public ApiResult<DouyinPromotionGateway.PromotionLinkResult> generatePromotionLink(
+    public ApiResult<ProductService.PromotionLinkCopyResult> generatePromotionLink(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
             @Parameter(description = "商品 ID。") @PathVariable String productId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -382,7 +379,7 @@ public class ColonelActivityProductController extends BaseController {
         // Step 1: 处理空请求体，使用默认场景参数
         PromotionLinkRequest safeRequest = request == null ? new PromotionLinkRequest() : request;
         // Step 2: 委托 ProductService 调用抖店转链 API 生成推广链接
-        DouyinPromotionGateway.PromotionLinkResult result = productService.generatePromotionLink(
+        ProductService.PromotionLinkCopyResult result = productService.generatePromotionLinkCopy(
                 activityId,
                 productId,
                 userId,
@@ -462,39 +459,6 @@ public class ColonelActivityProductController extends BaseController {
         return okPage(result);
     }
 
-    /**
-     * 渲染复制讲解文案（已废弃）。
-     * <p>
-     * 请改用 {@code POST .../promotion-links} 结合前端模板渲染。
-     * 本接口保留仅为兼容旧调用，后续版本将移除。
-     * </p>
-     *
-     * @param activityId     团长活动 ID
-     * @param productId      商品 ID
-     * @param productName    商品名称（可选）
-     * @param commissionRate 佣金比例（可选）
-     * @param shortLink      短链（可选）
-     * @param pickSource     精选联盟来源标识（可选）
-     * @return 包含渲染后文案文本的 Map
-     * @deprecated 请改用 POST /{productId}/promotion-links 结合前端模板渲染
-     */
-    @Deprecated(since = "2026-05-24", forRemoval = true)
-    @Operation(summary = "[已废弃] 渲染复制讲解文案", description = "请改用 POST .../promotion-links + 前端模板渲染。保留仅为兼容旧调用。")
-    @GetMapping("/{productId}/copy-brief")
-    public ApiResult<Map<String, String>> renderCopyBrief(
-            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
-            @Parameter(description = "商品 ID。") @PathVariable String productId,
-            @RequestParam(required = false) String productName,
-            @RequestParam(required = false) String commissionRate,
-            @RequestParam(required = false) String shortLink,
-            @RequestParam(required = false) String pickSource) {
-        // 委托 PromotionCopyBriefService 渲染讲解文案文本
-        String text = promotionCopyBriefService.render(productName, commissionRate, shortLink, pickSource);
-        return ok(Map.of(
-                "activityId", activityId,
-                "productId", productId,
-                "text", text));
-    }
 
     /**
      * 招商置顶商品。

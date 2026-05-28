@@ -98,23 +98,6 @@ public class KdniaoLogisticsGateway implements LogisticsGateway {
     }
 
     /**
-     * 仅通过单号查询物流状态（已废弃，不推荐）。
-     * <p>
-     * 快递鸟 API 要求同时传入快递公司编码（ShipperCode）和物流单号（LogisticCode），
-     * 仅凭单号无法查询。此方法始终抛出异常，引导调用方使用带公司编码的重载方法。
-     * </p>
-     *
-     * @param trackingNo 物流单号（此参数不使用）
-     * @return 不会返回，直接抛出异常
-     * @throws BusinessException 参数错误，提示需要快递公司编码
-     * @deprecated 请使用 {@link #queryTrack(String, String)} 或 {@link #queryStatus(String, String)}
-     */
-    @Override
-    public LogisticsStatusResult queryStatus(String trackingNo) {
-        throw BusinessException.param("快递公司编码不能为空，请调用 queryTrack(companyCode, trackingNo)");
-    }
-
-    /**
      * 查询物流状态（带快递公司编码）。
      * <p>
      * 内部委托 {@link #queryTrack(String, String)} 获取完整轨迹，再转换为状态结果。

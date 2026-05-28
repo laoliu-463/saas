@@ -19,8 +19,24 @@ type CopyProductBriefResult = {
   link: string | null
   converted: boolean
   linkGenerationFailed: boolean
+  promotionLinkGenerated: boolean
+  fallbackReason: string | null
+  pickSource: string | null
+  realPromotionWriteEnabled: boolean | null
+  allowRealPromotionWrite: boolean | null
   responseData: ProductCopySource | null
   error: unknown
+}
+
+type ProductBriefCopyMessageInput = {
+  clipboardWriteFailed: boolean
+  linkGenerationFailed: boolean
+  promotionLinkGenerated?: boolean
+}
+
+type ProductBriefCopyMessage = {
+  type: 'success' | 'warning'
+  content: string
 }
 
 const EMPTY_TEXT = '-'
@@ -69,6 +85,11 @@ export const extractPromotionLink = (source: ProductCopySource | null | undefine
   return candidates.map((value) => normalizeText(value)).find(Boolean) || null
 }
 
+const readBoolean = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') return value
+  return null
+}
+
 export const buildProductBriefCopy = (item: ProductCopySource, promotionLink?: string | null): string => {
   const supplement = getAuditSupplement(item)
   const sellingPoints = resolveSellingPoints(item)
@@ -102,6 +123,12 @@ export const copyProductBriefWithLink = async ({
   let linkGenerationFailed = false
   let responseData: ProductCopySource | null = null
   let error: unknown = null
+  let promotionLinkGenerated = Boolean(link)
+  let fallbackReason: string | null = null
+  let pickSource: string | null = null
+  let realPromotionWriteEnabled: boolean | null = null
+  let allowRealPromotionWrite: boolean | null = null
+  let backendCopyText = ''
 
   if (!link) {
     try {
@@ -109,14 +136,22 @@ export const copyProductBriefWithLink = async ({
       const response = await convertLink(activityId, productId, { scene })
       responseData = ((response as { data?: ProductCopySource })?.data || response || null) as ProductCopySource | null
       link = extractPromotionLink(responseData)
-      linkGenerationFailed = !link
+      backendCopyText = normalizeText(responseData?.copyText)
+      const backendGenerated = readBoolean(responseData?.promotionLinkGenerated)
+      promotionLinkGenerated = backendGenerated ?? Boolean(link)
+      fallbackReason = normalizeText(responseData?.fallbackReason) || null
+      pickSource = normalizeText(responseData?.pickSource) || null
+      realPromotionWriteEnabled = readBoolean(responseData?.realPromotionWriteEnabled)
+      allowRealPromotionWrite = readBoolean(responseData?.allowRealPromotionWrite)
+      linkGenerationFailed = !promotionLinkGenerated
     } catch (caughtError) {
       linkGenerationFailed = true
+      promotionLinkGenerated = false
       error = caughtError
     }
   }
 
-  const text = buildProductBriefCopy(item, link)
+  const text = backendCopyText || buildProductBriefCopy(item, link)
   await writeText(text)
 
   return {
@@ -124,7 +159,32 @@ export const copyProductBriefWithLink = async ({
     link,
     converted,
     linkGenerationFailed,
+    promotionLinkGenerated,
+    fallbackReason,
+    pickSource,
+    realPromotionWriteEnabled,
+    allowRealPromotionWrite,
     responseData,
     error
   }
+}
+
+export const resolveProductBriefCopyMessage = ({
+  clipboardWriteFailed,
+  linkGenerationFailed,
+  promotionLinkGenerated
+}: ProductBriefCopyMessageInput): ProductBriefCopyMessage => {
+  if (clipboardWriteFailed) {
+    return { type: 'warning', content: '简介已生成，但浏览器未允许写入剪贴板，请手动复制' }
+  }
+  if (promotionLinkGenerated === true) {
+    return { type: 'success', content: '复制成功，已生成推广链接' }
+  }
+  if (promotionLinkGenerated === false || linkGenerationFailed) {
+    return {
+      type: 'warning',
+      content: '已复制基础简介；真实推广链接未生成，因为真实转链开关未开启。'
+    }
+  }
+  return { type: 'success', content: '已复制简介' }
 }

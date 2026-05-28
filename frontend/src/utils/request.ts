@@ -48,23 +48,23 @@ const logRequestTiming = (config: any, status: number | string, failed = false) 
   recordFrontendTiming('api', payload, { failed });
 };
 
-const isAuthLoginRequest = (configOrError: any): boolean => {
+export const isAuthLoginRequest = (configOrError: any): boolean => {
   const url = String(configOrError?.url || configOrError?.config?.url || '');
   return url.includes('/auth/login');
 };
 
-const isAuthRefreshRequest = (configOrError: any): boolean => {
+export const isAuthRefreshRequest = (configOrError: any): boolean => {
   const url = String(configOrError?.url || configOrError?.config?.url || '');
   return url.includes('/auth/refresh');
 };
 
-const isValidToken = (token: unknown): token is string => {
+export const isValidToken = (token: unknown): token is string => {
   if (typeof token !== 'string') return false;
   const normalized = token.trim();
   return Boolean(normalized) && normalized !== 'undefined' && normalized !== 'null';
 };
 
-const normalizeServerMessage = (message: string): string => {
+export const normalizeServerMessage = (message: string): string => {
   const raw = String(message || '').trim();
   const lower = raw.toLowerCase();
 
@@ -91,9 +91,9 @@ const normalizeServerMessage = (message: string): string => {
   return raw;
 };
 
-const shouldSuppressErrorNotice = (config: any): boolean => Boolean(config?.suppressErrorNotice);
+export const shouldSuppressErrorNotice = (config: any): boolean => Boolean(config?.suppressErrorNotice);
 
-const buildFriendlyErrorMessage = (error: any): string => {
+export const buildFriendlyErrorMessage = (error: any): string => {
   const serverMsg = error?.response?.data?.msg;
   if (serverMsg && String(serverMsg).trim()) {
     return normalizeServerMessage(String(serverMsg));
@@ -224,7 +224,7 @@ const performTokenRefresh = async (): Promise<string | null> => {
   return refreshPromise;
 };
 
-const shouldTryRefresh = (configOrError: any): boolean => {
+export const shouldTryRefresh = (configOrError: any): boolean => {
   if (isAuthLoginRequest(configOrError) || isAuthRefreshRequest(configOrError)) {
     return false;
   }

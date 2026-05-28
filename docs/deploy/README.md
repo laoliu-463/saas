@@ -13,6 +13,7 @@
 - `scripts/deploy-real-pre.sh`
 - `scripts/backup-db.sh`
 - `scripts/health-check.sh`
+- `scripts/real-pre-startup-check.sh`
 - `scripts/rollback-real-pre.sh`
 - `package.json`
 - `backend/pom.xml`
@@ -40,6 +41,7 @@ Compose project: saas-active
 7. [06-回滚与故障排查.md](06-回滚与故障排查.md)
 8. [07-Jenkins自动化部署规划.md](07-Jenkins自动化部署规划.md)
 9. [08-real-pre全过程命令清单.md](08-real-pre全过程命令清单.md)
+10. [08-real-pre参数开关契约.md](08-real-pre参数开关契约.md)
 
 旧文档仍保留：
 
@@ -73,6 +75,9 @@ git pull --ff-only
 cp .env.real-pre.example /opt/saas/env/.env.real-pre
 chmod 600 /opt/saas/env/.env.real-pre
 vi /opt/saas/env/.env.real-pre
+
+# 部署前自检：验证 .env.real-pre 开关基线（参考 docs/deploy/08-real-pre参数开关契约.md）
+ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
 
 ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
 ```

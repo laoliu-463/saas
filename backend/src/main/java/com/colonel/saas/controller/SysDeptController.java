@@ -46,7 +46,8 @@ import java.util.UUID;
  *
  * <p>所属业务领域：用户域 / 组织架构管理
  * <p>API 路径前缀：{@code /depts} 或 {@code /departments}
- * <p>访问权限：仅限管理员（{@link com.colonel.saas.constant.RoleCodes#ADMIN}）
+ * <p>访问权限：管理员（{@link com.colonel.saas.constant.RoleCodes#ADMIN}）和组长（{@link com.colonel.saas.constant.RoleCodes#CHANNEL_LEADER}）；
+ *     组长仅可查看和编辑自己负责的部门，写操作由 {@link SysDeptService} 做 leader 归属校验。
  *
  * @see com.colonel.saas.auth.service.SysDeptService
  * @see com.colonel.saas.auth.service.SysUserService
@@ -55,7 +56,7 @@ import java.util.UUID;
 @Tag(name = "系统部门", description = "组织/业务组（sys_dept）管理。")
 @RestController
 @RequestMapping({"/depts", "/departments"})
-@RequireRoles({RoleCodes.ADMIN})
+@RequireRoles({RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER})
 public class SysDeptController extends BaseController {
 
     /** 系统部门服务，负责部门的增删改查、树形结构和统计查询 */
@@ -187,8 +188,9 @@ public class SysDeptController extends BaseController {
     public ApiResult<SysDeptVO> update(
             @PathVariable("id") UUID id,
             @Valid @RequestBody SysDeptUpdateRequest request,
-            @RequestAttribute(value = "userId", required = false) UUID userId) {
-        return ok(sysDeptService.update(id, request, userId));
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        return ok(sysDeptService.update(id, request, userId, roleCodes));
     }
 
     /**
@@ -212,8 +214,9 @@ public class SysDeptController extends BaseController {
     @DeleteMapping("/{id}")
     public ApiResult<Void> delete(
             @PathVariable("id") UUID id,
-            @RequestAttribute(value = "userId", required = false) UUID userId) {
-        sysDeptService.delete(id, userId);
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        sysDeptService.delete(id, userId, roleCodes);
         return ok();
     }
 

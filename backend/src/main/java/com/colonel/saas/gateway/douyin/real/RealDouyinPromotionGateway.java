@@ -115,8 +115,11 @@ public class RealDouyinPromotionGateway implements DouyinPromotionGateway {
         if (upstreamModeSupport.isContract()) {
             return contractFixtureProvider.buildPromotionLinkResult(command);
         }
-        // 第三步：安全门检查——推广写操作需显式启用
-        ensurePromotionWriteAllowed(INST_PICK_SOURCE_CONVERT_METHOD);
+        // 第三步：安全门检查——推广写操作需显式启用；未启用时返回降级结果（不含链接），使复制简介仍可用
+        if (!ensurePromotionWriteAllowed(INST_PICK_SOURCE_CONVERT_METHOD)) {
+            log.warn("推广写操作未开启，返回降级结果（不含短链）：command={}", command.externalUniqueId());
+            return new PromotionLinkResult(null, null, null, null, null, null);
+        }
         // 第四步：构建上游 API 所需的 PromotionContext 上下文对象
         PromotionApi.PromotionContext context = command.context() == null ? null : new PromotionApi.PromotionContext(
                 command.context().userId(),
@@ -174,8 +177,12 @@ public class RealDouyinPromotionGateway implements DouyinPromotionGateway {
                     "msg", "success",
                     "data", Map.of("contract", true, "method", method == null ? "" : method));
         }
-        // 第三步：安全门检查
-        ensurePromotionWriteAllowed(method);
+        // 第三步：安全门检查——原始 API 透传属于写操作，未开启时直接拒绝
+        if (!ensurePromotionWriteAllowed(method)) {
+            throw BusinessException.stateInvalid(
+                    "真实抖店推广写操作未开启，请同时配置 douyin.real.promotion-write-enabled=true "
+                    + "与 douyin.real.allow-promotion-write=true 后再执行转链");
+        }
         // 第四步：构建请求 body
         Map<String, Object> body = new LinkedHashMap<>();
         if (payload != null) {
@@ -189,19 +196,19 @@ public class RealDouyinPromotionGateway implements DouyinPromotionGateway {
     }
 
     /**
-     * 安全门检查：确保推广写操作已被显式启用。
+     * 安全门检查：判断推广写操作是否已被显式启用。
      *
-     * <p>仅当目标方法属于推广写操作，且主开关与二次确认开关均为 true 时放行。
-     * 非写操作方法直接放行。</p>
+     * <p>仅当目标方法属于推广写操作，且主开关与二次确认开关均为 true 时返回 true。
+     * 非写操作方法直接返回 true。</p>
      *
      * @param method 抖音 API 方法标识
-     * @throws BusinessException 当写操作未启用且目标方法为推广写操作时
+     * @return 允许执行写操作返回 true；不允许返回 false
      */
-    private void ensurePromotionWriteAllowed(String method) {
+    private boolean ensurePromotionWriteAllowed(String method) {
         if (!isPromotionWriteMethod(method) || (promotionWriteEnabled && allowPromotionWrite)) {
-            return;
+            return true;
         }
-        throw BusinessException.stateInvalid("真实抖店推广写操作未开启，请同时配置 DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true 与 ALLOW_REAL_PROMOTION_WRITE=true 后再执行转链");
+        return false;
     }
 
     /**

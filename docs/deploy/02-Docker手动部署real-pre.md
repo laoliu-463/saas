@@ -76,11 +76,12 @@ vi /opt/saas/env/.env.real-pre
 | `DOUYIN_OAUTH_REDIRECT_URI` | IP 模式填 `http://服务器IP:8081/api/douyin/oauth/callback`；域名模式填 HTTPS |
 | `DOUYIN_OAUTH_FRONTEND_SUCCESS_URL` | IP 或 HTTPS 前端 success 地址 |
 | `DOUYIN_OAUTH_FRONTEND_FAILURE_URL` | IP 或 HTTPS 前端 failed 地址 |
-| `APP_TEST_ENABLED` | 必须 `false` |
-| `DOUYIN_TEST_ENABLED` | 必须 `false` |
-| `DOUYIN_REAL_UPSTREAM_MODE` | 必须 `live` |
-| `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` | real-pre 受控部署默认 `false`；当验收包含商品库复制简介携带推广链接、真实转链或 `pick_source` 归因时，单独人工批准写窗口才可改为 `true` |
-| `ALLOW_REAL_PROMOTION_WRITE` | real-pre 受控部署默认 `false`；若开启必须与 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` 同时为 `true` |
+| `APP_TEST_ENABLED` | 必须 `false`，表示关闭应用侧 mock/test 模式 |
+| `DOUYIN_TEST_ENABLED` | 必须 `false`，表示关闭抖音 / 抖店 mock gateway |
+| `DOUYIN_REAL_UPSTREAM_MODE` | 必须 `live`，real-pre 真实联调不可使用 contract/mock upstream |
+| `ORDER_SYNC_ENABLED` | 必须 `true`，否则真实订单回流与后续归因无输入 |
+| `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` | 真实转链写操作主开关，受控部署默认 `false` |
+| `ALLOW_REAL_PROMOTION_WRITE` | 真实转链写操作二次确认开关，必须与 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` 同时为 `true` 才允许真实 `instPickSourceConvert` |
 | `TALENT_COLLECT_MODE` | real-pre 守卫要求 `api`，不能用 `crawler` 或 `api_then_crawler` |
 | `TALENT_COLLECT_API_ENABLED` | 上线部署为 `true` |
 | `TALENT_PUBLIC_PAGE_CRAWL_ENABLED` | 必须 `false`，real-pre 守卫禁止公开页爬虫 |
@@ -106,7 +107,13 @@ EXCLUSIVE_ENABLED=false
 
 这些不是“功能没上线”，而是避免 real-pre 切回测试 / Mock、公开爬虫或未决归因规则。当前代码的 `RealProdEnvironmentGuard` 会阻断其中部分危险组合。
 
-真实推广写窗口开启后，`docker-compose.real-pre.yml` 会将 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` 与 `ALLOW_REAL_PROMOTION_WRITE` 显式传入 backend；后端 `douyin.real.promotion-write-enabled` 与 `douyin.real.allow-promotion-write` 必须同时为 `true`，否则 `buyin.instPickSourceConvert` 仍会被安全门拒绝。
+真实推广写窗口开启后，`docker-compose.real-pre.yml` 会将 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` 与 `ALLOW_REAL_PROMOTION_WRITE` 显式传入 backend；后端 `douyin.real.promotion-write-enabled` 与 `douyin.real.allow-promotion-write` 必须同时为 `true`，否则不会调用真实 `buyin.instPickSourceConvert`，也不会写入 `pick_source_mapping`。
+
+商品库“复制简介”与真实转链写操作已解耦：
+
+- 双开关关闭时，“复制基础简介”应返回 PASS，接口返回 `promotionLinkGenerated=false`、`fallbackReason=REAL_PROMOTION_WRITE_DISABLED`，复制文案不包含真实推广链接。
+- 双开关关闭时，真实推广链接、`pick_source` 归因和真实成交回流应标记为 `BLOCKED_BY_PROMOTION_WRITE_DISABLED`，不得记为代码失败。
+- 当验收目标包含真实推广链接、`pick_source` 归因或真实成交回流时，必须进入人工批准写窗口，并同时设置 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true` 与 `ALLOW_REAL_PROMOTION_WRITE=true`。
 
 IP 端口测试示例：
 
@@ -155,7 +162,12 @@ docker compose \
 
 ```bash
 cd /opt/saas/app
-chmod +x scripts/deploy-real-pre.sh scripts/backup-db.sh scripts/health-check.sh scripts/run-real-pre-db-migrations.sh
+chmod +x scripts/deploy-real-pre.sh scripts/backup-db.sh scripts/health-check.sh scripts/run-real-pre-db-migrations.sh scripts/real-pre-startup-check.sh
+
+# 部署前自检：验证 .env.real-pre 开关基线
+ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
+
+# 基线通过后执行部署
 ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
 ```
 

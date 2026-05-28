@@ -66,6 +66,14 @@ public class OrgStructureService {
             RoleCodes.OPS_STAFF,
             RoleCodes.ADMIN);
 
+    /** 部门负责人允许使用各业务线组长角色 */
+    private static final Set<String> DEPARTMENT_LEADER_ROLES = Set.of(
+            RoleCodes.BIZ_LEADER,
+            RoleCodes.COLONEL_LEADER,
+            RoleCodes.CHANNEL_LEADER,
+            RoleCodes.OPS_STAFF,
+            RoleCodes.ADMIN);
+
     /** 部门/组别数据访问 */
     private final SysDeptMapper sysDeptMapper;
 
@@ -243,15 +251,17 @@ public class OrgStructureService {
      *   <li>查询用户的所有角色编码</li>
      *   <li>根据组别类型确定允许的角色集合（招商组/渠道组/运营组各有不同）</li>
      *   <li>若用户角色不在允许集合中，抛出参数异常</li>
+     *   <li>校验通过后返回负责人展示名，优先使用真实姓名，其次用户名</li>
      * </ol>
      *
      * @param leaderUserId 组长用户 ID，可为 null 表示不设组长
      * @param groupType    组别类型编码
+     * @return 组长展示名；未设置组长时返回 null
      * @throws BusinessException 用户不存在或角色不匹配时抛出
      */
-    public void validateGroupLeader(UUID leaderUserId, String groupType) {
+    public String validateGroupLeader(UUID leaderUserId, String groupType) {
         if (leaderUserId == null) {
-            return;
+            return null;
         }
         SysUser leader = sysUserMapper.selectById(leaderUserId);
         if (leader == null || Objects.equals(leader.getDeleted(), 1)) {
@@ -269,11 +279,19 @@ public class OrgStructureService {
             case DeptType.RECRUITER_GROUP -> RECRUITER_LEADER_ROLES;
             case DeptType.CHANNEL_GROUP -> CHANNEL_LEADER_ROLES;
             case DeptType.OPS_GROUP -> OPS_LEADER_ROLES;
+            case DeptType.DEPARTMENT -> DEPARTMENT_LEADER_ROLES;
             default -> Set.of(RoleCodes.ADMIN);
         };
         if (roleCodes.stream().noneMatch(allowed::contains)) {
             throw BusinessException.param("组长角色与组别类型不匹配");
         }
+        if (StringUtils.hasText(leader.getRealName())) {
+            return leader.getRealName();
+        }
+        if (StringUtils.hasText(leader.getUsername())) {
+            return leader.getUsername();
+        }
+        return leaderUserId.toString();
     }
 
     /**

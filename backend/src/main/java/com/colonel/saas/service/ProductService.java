@@ -38,6 +38,7 @@ import com.colonel.saas.mapper.SysUserMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -105,6 +106,7 @@ public class ProductService {
                     + "|[?&](?:origin_colonel_buyin_id|originColonelBuyinId|colonel_buyin_id|colonelBuyinId)=)"
                     + "([0-9]{10,30})(?![0-9])",
             Pattern.CASE_INSENSITIVE);
+    public static final String FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED = "REAL_PROMOTION_WRITE_DISABLED";
 
     /** 抖音推广网关，用于生成推广链接、查询推广数据 */
     private final DouyinPromotionGateway douyinPromotionGateway;
@@ -144,6 +146,10 @@ public class ProductService {
     private final ColonelPartnerSyncService colonelPartnerSyncService;
     /** 商品领域事件发布器，发布商品状态变更等事件 */
     private final ProductDomainEventPublisher productDomainEventPublisher;
+    @Value("${douyin.real.promotion-write-enabled:false}")
+    private boolean realPromotionWriteEnabled;
+    @Value("${douyin.real.allow-promotion-write:false}")
+    private boolean allowRealPromotionWrite;
 
     public ProductService(
             DouyinPromotionGateway douyinPromotionGateway,
@@ -2150,6 +2156,77 @@ public class ProductService {
         }
     }
 
+    public record PromotionLinkCopyResult(
+            String copyText,
+            boolean promotionLinkGenerated,
+            String promotionLink,
+            String pickSource,
+            String fallbackReason,
+            boolean realPromotionWriteEnabled,
+            boolean allowRealPromotionWrite) {
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public PromotionLinkCopyResult generatePromotionLinkCopy(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey) {
+        ProductSnapshot snapshot = ensureSnapshotExists(activityId, productId);
+        ProductOperationState state = getOrInitOperationState(activityId, productId);
+        requireSelectedToLibrary(state, "复制推广简介");
+        ProductBizStatus beforeStatus = productBizStatusService.readBizStatus(state);
+        if (beforeStatus == null) {
+            beforeStatus = ProductBizStatus.fromCode(state.getBizStatus());
+        }
+        boolean relinkExistingProduct = beforeStatus == ProductBizStatus.LINKED;
+        if (beforeStatus != ProductBizStatus.APPROVED
+                && beforeStatus != ProductBizStatus.ASSIGNED
+                && !relinkExistingProduct) {
+            throw BusinessException.stateInvalid("当前状态不允许执行PROMOTION_LINK，当前状态：" + beforeStatus.name());
+        }
+
+        if (!isRealPromotionWriteAllowed()) {
+            return new PromotionLinkCopyResult(
+                    buildProductBriefCopyText(snapshot, state, null),
+                    false,
+                    null,
+                    null,
+                    FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED,
+                    realPromotionWriteEnabled,
+                    allowRealPromotionWrite
+            );
+        }
+
+        DouyinPromotionGateway.PromotionLinkResult result = generatePromotionLink(
+                activityId,
+                productId,
+                userId,
+                deptId,
+                externalUniqueId,
+                promotionScene,
+                needShortLink,
+                scene,
+                talentId,
+                idempotencyKey);
+        String promotionLink = firstText(result.shortLink(), result.promoteLink());
+        return new PromotionLinkCopyResult(
+                buildProductBriefCopyText(snapshot, state, promotionLink),
+                true,
+                promotionLink,
+                result.pickSource(),
+                null,
+                realPromotionWriteEnabled,
+                allowRealPromotionWrite
+        );
+    }
+
     private DouyinPromotionGateway.PromotionLinkResult generatePromotionLinkInternal(
             String activityId,
             String productId,
@@ -3760,6 +3837,59 @@ public class ProductService {
         }
         pack.put("materialFiles", readStringList(auditSupplement, "materialFiles"));
         return pack;
+    }
+
+    private boolean isRealPromotionWriteAllowed() {
+        return realPromotionWriteEnabled && allowRealPromotionWrite;
+    }
+
+    private String buildProductBriefCopyText(ProductSnapshot snapshot, ProductOperationState state, String promotionLink) {
+        Map<String, Object> auditSupplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
+        List<String> sellingPoints = readStringList(auditSupplement, "sellingPoints");
+        String sellingPointText = sellingPoints.isEmpty() ? "-" : String.join("、", sellingPoints);
+        String promotionScript = readString(auditSupplement, "promotionScript");
+        String copyPromotionLink = firstText(promotionLink);
+        List<String> lines = new ArrayList<>();
+        lines.add("【商品】" + copyDisplayText(snapshot.getTitle()) + "（" + copyDisplayText(snapshot.getShopName()) + "）");
+        lines.add("【售价】" + copyDisplayText(snapshot.getPriceText())
+                + "  【佣金率】" + copyDisplayText(snapshot.getActivityCosRatioText())
+                + "  【近30天】" + copyDisplayText(snapshot.getSales()));
+        lines.add("【卖点】" + sellingPointText);
+        lines.add("【话术】" + copyDisplayText(promotionScript));
+        lines.add("【寄样门槛】销售额≥" + copyDisplayText(readString(auditSupplement, "sampleThresholdSales"))
+                + " / 等级≥LV" + copyDisplayText(readString(auditSupplement, "sampleThresholdLevel")));
+        lines.add("【专属价说明】" + copyDisplayText(readString(auditSupplement, "exclusivePriceRemark")));
+        if (StringUtils.hasText(copyPromotionLink)) {
+            lines.add("【链接】" + copyPromotionLink);
+        } else {
+            lines.add("【推广链接】未生成");
+        }
+        return String.join("\n", lines);
+    }
+
+    private String copyDisplayText(Object value) {
+        if (value == null) {
+            return "-";
+        }
+        String text = String.valueOf(value).trim();
+        if (!StringUtils.hasText(text)
+                || "null".equalsIgnoreCase(text)
+                || "undefined".equalsIgnoreCase(text)) {
+            return "-";
+        }
+        return text;
+    }
+
+    private String firstText(String... candidates) {
+        if (candidates == null) {
+            return null;
+        }
+        for (String candidate : candidates) {
+            if (StringUtils.hasText(candidate)) {
+                return candidate.trim();
+            }
+        }
+        return null;
     }
 
     private void requireApprovedAuditForLibraryEntry(ProductOperationState state) {

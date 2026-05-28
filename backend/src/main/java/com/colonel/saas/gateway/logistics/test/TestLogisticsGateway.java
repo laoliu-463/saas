@@ -61,33 +61,6 @@ public class TestLogisticsGateway implements LogisticsGateway {
     }
 
     /**
-     * 查询模拟物流状态。
-     * <p>
-     * 处理流程：
-     * <ol>
-     *   <li>委托 {@link #queryTrack} 方法查询详细轨迹</li>
-     *   <li>将轨迹结果转换为简化的状态结果</li>
-     *   <li>缺失原因时使用默认提示"演示物流状态已更新"</li>
-     *   <li>缺失签收时间时使用当前时间</li>
-     * </ol>
-     *
-     * @param trackingNo 运单号，其中的关键字决定模拟的物流状态
-     * @return 物流状态查询结果，包含运单号、物流公司、内部状态、原因和签收时间
-     */
-    @Override
-    public LogisticsStatusResult queryStatus(String trackingNo) {
-        // 委托 queryTrack 获取详细轨迹，再转换为状态结果
-        LogisticsTrackResult track = queryTrack("SF", trackingNo);
-        return new LogisticsStatusResult(
-                trackingNo,
-                "演示物流-顺丰模拟",
-                track.internalStatus(),
-                track.reason() == null ? "演示物流状态已更新" : track.reason(),
-                track.signedAt() == null ? LocalDateTime.now() : track.signedAt()
-        );
-    }
-
-    /**
      * 查询模拟物流轨迹详情。
      * <p>
      * 处理流程：

@@ -47,15 +47,6 @@ public class BusinessException extends RuntimeException {
     private final int code;
 
     /**
-     * @deprecated 请使用 {@link #param(String)}、{@link #duplicate(String)} 等语义工厂；
-     *             未分类消息请用 {@link #business(String)} 显式返回 460。
-     */
-    @Deprecated
-    public BusinessException(String message) {
-        this(ResultCode.PARAM_ERROR, message);
-    }
-
-    /**
      * 根据业务状态码构造异常。
      *
      * @param resultCode 业务状态码枚举，决定 HTTP 响应中的 code 值
@@ -74,14 +65,6 @@ public class BusinessException extends RuntimeException {
     public BusinessException(int code, String message) {
         super(message);
         this.code = code;
-    }
-
-    /**
-     * @deprecated 请使用带 {@link ResultCode} 的构造器或静态工厂。
-     */
-    @Deprecated
-    public BusinessException(String message, Throwable cause) {
-        this(ResultCode.PARAM_ERROR.getCode(), message, cause);
     }
 
     /**

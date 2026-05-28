@@ -478,4 +478,207 @@ class EntityTest {
             assertThat(snap.getPrice()).isEqualTo(9900L);
         }
     }
+
+    @Nested
+    @DisplayName("PickSourceMapping 实体")
+    class PickSourceMappingTest {
+
+        @Test
+        void getterSetter() {
+            PickSourceMapping mapping = new PickSourceMapping();
+            UUID id = UUID.randomUUID();
+            UUID userId = UUID.randomUUID();
+            UUID deptId = UUID.randomUUID();
+            UUID uuidSeed = UUID.randomUUID();
+            UUID promotionLinkId = UUID.randomUUID();
+
+            mapping.setId(id);
+            mapping.setUserId(userId);
+            mapping.setShortId("SHORT01");
+            mapping.setUuidSeed(uuidSeed);
+            mapping.setDeptId(deptId);
+            mapping.setPickSource("PS_abc123");
+            mapping.setColonelBuyinId("COL001");
+            mapping.setProductId("P001");
+            mapping.setActivityId("ACT001");
+            mapping.setSourceUrl("https://original.url");
+            mapping.setConvertedUrl("https://converted.url");
+            mapping.setPickExtra("extra_data");
+            mapping.setPromotionLinkId(promotionLinkId);
+            mapping.setChannelUserName("渠道用户");
+            mapping.setTalentId("T001");
+            mapping.setTalentName("达人名称");
+            mapping.setScene("PRODUCT_PROMOTE");
+            mapping.setSourceType("MANUAL");
+            mapping.setValidFrom(LocalDateTime.now());
+            mapping.setValidUntil(LocalDateTime.now().plusDays(30));
+            mapping.setStatus(1);
+
+            assertThat(mapping.getId()).isEqualTo(id);
+            assertThat(mapping.getUserId()).isEqualTo(userId);
+            assertThat(mapping.getShortId()).isEqualTo("SHORT01");
+            assertThat(mapping.getUuidSeed()).isEqualTo(uuidSeed);
+            assertThat(mapping.getDeptId()).isEqualTo(deptId);
+            assertThat(mapping.getPickSource()).isEqualTo("PS_abc123");
+            assertThat(mapping.getColonelBuyinId()).isEqualTo("COL001");
+            assertThat(mapping.getProductId()).isEqualTo("P001");
+            assertThat(mapping.getActivityId()).isEqualTo("ACT001");
+            assertThat(mapping.getSourceUrl()).isEqualTo("https://original.url");
+            assertThat(mapping.getConvertedUrl()).isEqualTo("https://converted.url");
+            assertThat(mapping.getPickExtra()).isEqualTo("extra_data");
+            assertThat(mapping.getPromotionLinkId()).isEqualTo(promotionLinkId);
+            assertThat(mapping.getChannelUserName()).isEqualTo("渠道用户");
+            assertThat(mapping.getTalentId()).isEqualTo("T001");
+            assertThat(mapping.getTalentName()).isEqualTo("达人名称");
+            assertThat(mapping.getScene()).isEqualTo("PRODUCT_PROMOTE");
+            assertThat(mapping.getSourceType()).isEqualTo("MANUAL");
+            assertThat(mapping.getValidFrom()).isNotNull();
+            assertThat(mapping.getValidUntil()).isNotNull();
+            assertThat(mapping.getStatus()).isEqualTo(1);
+        }
+
+        @Test
+        void defaultStatus_isNull() {
+            PickSourceMapping mapping = new PickSourceMapping();
+            assertThat(mapping.getStatus()).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("PerformanceRecord 实体")
+    class PerformanceRecordTest {
+
+        @Test
+        void getterSetter() {
+            PerformanceRecord record = new PerformanceRecord();
+            UUID id = UUID.randomUUID();
+            UUID orderRowId = UUID.randomUUID();
+            UUID defaultChannelUserId = UUID.randomUUID();
+            UUID defaultRecruiterUserId = UUID.randomUUID();
+            UUID finalChannelUserId = UUID.randomUUID();
+            UUID finalRecruiterUserId = UUID.randomUUID();
+            UUID talentId = UUID.randomUUID();
+
+            record.setId(id);
+            record.setOrderId("ORD123456");
+            record.setOrderRowId(orderRowId);
+            record.setDefaultChannelUserId(defaultChannelUserId);
+            record.setDefaultRecruiterUserId(defaultRecruiterUserId);
+            record.setFinalChannelUserId(finalChannelUserId);
+            record.setFinalRecruiterUserId(finalRecruiterUserId);
+            record.setChannelAttribution("PICK_SOURCE");
+            record.setRecruiterAttribution("CLAIM");
+            record.setTalentId(talentId);
+            record.setPartnerId(90001L);
+            record.setProductId("P001");
+            record.setActivityId("ACT001");
+            record.setPayAmount(19900L);
+            record.setSettleAmount(18900L);
+            record.setEstimateServiceFee(1000L);
+            record.setEffectiveServiceFee(950L);
+            record.setEstimateTechServiceFee(500L);
+            record.setEffectiveTechServiceFee(480L);
+            record.setEstimateServiceProfit(800L);
+            record.setEffectiveServiceProfit(760L);
+            record.setEstimateRecruiterCommission(400L);
+            record.setEffectiveRecruiterCommission(380L);
+            record.setEstimateChannelCommission(300L);
+            record.setEffectiveChannelCommission(285L);
+            record.setEstimateGrossProfit(1500L);
+            record.setEffectiveGrossProfit(1425L);
+            record.setRecruiterCommissionRate(new BigDecimal("0.20"));
+            record.setChannelCommissionRate(new BigDecimal("0.15"));
+            record.setOrderStatus(3);
+            record.setSettleTime(LocalDateTime.now());
+            record.setOrderCreateTime(LocalDateTime.now().minusDays(7));
+            record.setValid(true);
+            record.setReversed(false);
+            record.setCalculationVersion(1);
+            record.setCalculatedAt(LocalDateTime.now());
+            record.setCreatedAt(LocalDateTime.now());
+            record.setUpdatedAt(LocalDateTime.now());
+
+            assertThat(record.getId()).isEqualTo(id);
+            assertThat(record.getOrderId()).isEqualTo("ORD123456");
+            assertThat(record.getOrderRowId()).isEqualTo(orderRowId);
+            assertThat(record.getDefaultChannelUserId()).isEqualTo(defaultChannelUserId);
+            assertThat(record.getDefaultRecruiterUserId()).isEqualTo(defaultRecruiterUserId);
+            assertThat(record.getFinalChannelUserId()).isEqualTo(finalChannelUserId);
+            assertThat(record.getFinalRecruiterUserId()).isEqualTo(finalRecruiterUserId);
+            assertThat(record.getChannelAttribution()).isEqualTo("PICK_SOURCE");
+            assertThat(record.getRecruiterAttribution()).isEqualTo("CLAIM");
+            assertThat(record.getTalentId()).isEqualTo(talentId);
+            assertThat(record.getPartnerId()).isEqualTo(90001L);
+            assertThat(record.getProductId()).isEqualTo("P001");
+            assertThat(record.getActivityId()).isEqualTo("ACT001");
+            assertThat(record.getPayAmount()).isEqualTo(19900L);
+            assertThat(record.getSettleAmount()).isEqualTo(18900L);
+            assertThat(record.getEstimateServiceFee()).isEqualTo(1000L);
+            assertThat(record.getEffectiveServiceFee()).isEqualTo(950L);
+            assertThat(record.getEstimateTechServiceFee()).isEqualTo(500L);
+            assertThat(record.getEffectiveTechServiceFee()).isEqualTo(480L);
+            assertThat(record.getEstimateServiceProfit()).isEqualTo(800L);
+            assertThat(record.getEffectiveServiceProfit()).isEqualTo(760L);
+            assertThat(record.getEstimateRecruiterCommission()).isEqualTo(400L);
+            assertThat(record.getEffectiveRecruiterCommission()).isEqualTo(380L);
+            assertThat(record.getEstimateChannelCommission()).isEqualTo(300L);
+            assertThat(record.getEffectiveChannelCommission()).isEqualTo(285L);
+            assertThat(record.getEstimateGrossProfit()).isEqualTo(1500L);
+            assertThat(record.getEffectiveGrossProfit()).isEqualTo(1425L);
+            assertThat(record.getRecruiterCommissionRate()).isEqualByComparingTo("0.20");
+            assertThat(record.getChannelCommissionRate()).isEqualByComparingTo("0.15");
+            assertThat(record.getOrderStatus()).isEqualTo(3);
+            assertThat(record.getSettleTime()).isNotNull();
+            assertThat(record.getOrderCreateTime()).isNotNull();
+            assertThat(record.getValid()).isTrue();
+            assertThat(record.getReversed()).isFalse();
+            assertThat(record.getCalculationVersion()).isEqualTo(1);
+            assertThat(record.getCalculatedAt()).isNotNull();
+            assertThat(record.getCreatedAt()).isNotNull();
+            assertThat(record.getUpdatedAt()).isNotNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("ColonelPartner 实体")
+    class ColonelPartnerTest {
+
+        @Test
+        void getterSetter() {
+            ColonelPartner partner = new ColonelPartner();
+            UUID id = UUID.randomUUID();
+
+            partner.setId(id);
+            partner.setColonelBuyinId("COL001");
+            partner.setColonelName("测试团长");
+            partner.setContactName("联系人");
+            partner.setContactPhone("13800138000");
+            partner.setAvatarUrl("https://avatar.url");
+            partner.setContactWechat("wechat_id");
+            partner.setContactRemark("备注信息");
+            partner.setSource("BUYIN");
+            partner.setFirstSeenAt(LocalDateTime.now());
+            partner.setLastSyncAt(LocalDateTime.now());
+            partner.setManualContactUpdatedAt(LocalDateTime.now());
+            partner.setManualContactUpdatedBy("admin");
+            partner.setRawPayload(Map.of("key", "value"));
+            partner.setSourceUpdatedAt(LocalDateTime.now());
+
+            assertThat(partner.getId()).isEqualTo(id);
+            assertThat(partner.getColonelBuyinId()).isEqualTo("COL001");
+            assertThat(partner.getColonelName()).isEqualTo("测试团长");
+            assertThat(partner.getContactName()).isEqualTo("联系人");
+            assertThat(partner.getContactPhone()).isEqualTo("13800138000");
+            assertThat(partner.getAvatarUrl()).isEqualTo("https://avatar.url");
+            assertThat(partner.getContactWechat()).isEqualTo("wechat_id");
+            assertThat(partner.getContactRemark()).isEqualTo("备注信息");
+            assertThat(partner.getSource()).isEqualTo("BUYIN");
+            assertThat(partner.getFirstSeenAt()).isNotNull();
+            assertThat(partner.getLastSyncAt()).isNotNull();
+            assertThat(partner.getManualContactUpdatedAt()).isNotNull();
+            assertThat(partner.getManualContactUpdatedBy()).isEqualTo("admin");
+            assertThat(partner.getRawPayload()).containsEntry("key", "value");
+            assertThat(partner.getSourceUpdatedAt()).isNotNull();
+        }
+    }
 }

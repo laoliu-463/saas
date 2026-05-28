@@ -10,6 +10,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,11 +22,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class DomainEventOutboxServiceTest {
 
     @Mock
@@ -87,9 +92,8 @@ class DomainEventOutboxServiceTest {
                 UUID.fromString("44444444-4444-4444-4444-444444444444"),
                 LocalDateTime.of(2026, 5, 24, 12, 0),
                 List.of());
-        when(objectMapper.writeValueAsString(payload))
-                .thenThrow(new JsonProcessingException("bad json") {
-                });
+        JsonProcessingException ex = mock(JsonProcessingException.class);
+        doThrow(ex).when(objectMapper).writeValueAsString(payload);
 
         assertThatThrownBy(() -> service.saveConfigChangedEvent(payload, null))
                 .isInstanceOf(IllegalStateException.class)

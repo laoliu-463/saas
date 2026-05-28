@@ -5,7 +5,9 @@ import com.colonel.saas.auth.dto.SysDeptCreateRequest;
 import com.colonel.saas.auth.dto.SysDeptUpdateRequest;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.colonel.saas.constant.DeptType;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.entity.SysDept;
 import com.colonel.saas.mapper.SysDeptMapper;
 import com.colonel.saas.service.OperationLogService;
@@ -16,8 +18,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -201,10 +205,7 @@ public class SysDeptService {
         dept.setDeptName(request.deptName().trim());
         dept.setDeptType(resolveDeptType(request.deptType()));
         dept.setLeaderUserId(request.leaderUserId());
-        if (request.leaderUserId() != null) {
-            orgStructureService.validateGroupLeader(request.leaderUserId(), dept.getDeptType());
-        }
-        dept.setLeader(request.leader());
+        dept.setLeader(resolveLeaderName(request.leaderUserId(), dept.getDeptType(), request.leader()));
         dept.setPhone(request.phone());
         dept.setEmail(request.email());
         dept.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
@@ -235,8 +236,9 @@ public class SysDeptService {
      * @return 更新后的部门/组别 VO
      * @throws BusinessException 记录不存在、编码重复或校验失败时抛出
      */
-    public SysDeptVO update(UUID id, SysDeptUpdateRequest request, UUID currentUserId) {
+    public SysDeptVO update(UUID id, SysDeptUpdateRequest request, UUID currentUserId, Collection<?> roleCodes) {
         SysDept dept = requireDept(id);
+        assertCanModify(dept, currentUserId, roleCodes);
         ensureDeptCodeUnique(request.deptCode(), id);
         validateParent(request.parentId(), id);
         dept.setParentId(request.parentId());
@@ -244,10 +246,7 @@ public class SysDeptService {
         dept.setDeptName(request.deptName().trim());
         dept.setDeptType(resolveDeptType(request.deptType()));
         dept.setLeaderUserId(request.leaderUserId());
-        if (request.leaderUserId() != null) {
-            orgStructureService.validateGroupLeader(request.leaderUserId(), dept.getDeptType());
-        }
-        dept.setLeader(request.leader());
+        dept.setLeader(resolveLeaderName(request.leaderUserId(), dept.getDeptType(), request.leader()));
         dept.setPhone(request.phone());
         dept.setEmail(request.email());
         dept.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
@@ -282,8 +281,9 @@ public class SysDeptService {
      * @param currentUserId 当前操作用户 ID（用于审计日志）
      * @throws BusinessException 记录不存在、下有员工或子组别时抛出
      */
-    public void delete(UUID id, UUID currentUserId) {
+    public void delete(UUID id, UUID currentUserId, Collection<?> roleCodes) {
         SysDept dept = requireDept(id);
+        assertCanModify(dept, currentUserId, roleCodes);
         orgStructureService.assertCanDeleteDept(id);
         if (sysDeptMapper.softDeleteById(id) <= 0) {
             throw BusinessException.notFound("部门不存在或已删除");
@@ -348,6 +348,55 @@ public class SysDeptService {
             throw BusinessException.notFound("部门不存在");
         }
         return dept;
+    }
+
+    /**
+     * 校验当前用户是否有权修改指定部门。
+     *
+     * <p>权限判断：ADMIN 直接放行；CHANNEL_LEADER 仅当其为该部门的 leaderUserId 时放行；
+     * 其他角色或负责人不匹配时抛出 {@link ForbiddenException}。</p>
+     *
+     * @param dept           目标部门实体
+     * @param currentUserId  当前操作用户 ID
+     * @param roleCodes      当前用户的角色编码集合
+     * @throws ForbiddenException 无权修改时抛出
+     */
+    private void assertCanModify(SysDept dept, UUID currentUserId, Collection<?> roleCodes) {
+        if (hasAdminRole(roleCodes)) {
+            return;
+        }
+        if (hasChannelLeaderRole(roleCodes) && Objects.equals(dept.getLeaderUserId(), currentUserId)) {
+            return;
+        }
+        throw new ForbiddenException("无权修改该部门");
+    }
+
+    private boolean hasAdminRole(Collection<?> roleCodes) {
+        return containsNormalized(roleCodes, RoleCodes.ADMIN);
+    }
+
+    private boolean hasChannelLeaderRole(Collection<?> roleCodes) {
+        return containsNormalized(roleCodes, RoleCodes.CHANNEL_LEADER);
+    }
+
+    private boolean containsNormalized(Collection<?> roleCodes, String target) {
+        if (roleCodes == null) {
+            return false;
+        }
+        String normalized = target.trim().toLowerCase(Locale.ROOT);
+        for (Object rc : roleCodes) {
+            if (normalized.equals(rc.toString().trim().toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String resolveLeaderName(UUID leaderUserId, String deptType, String fallbackLeader) {
+        if (leaderUserId == null) {
+            return fallbackLeader;
+        }
+        return orgStructureService.validateGroupLeader(leaderUserId, deptType);
     }
 
     /**
