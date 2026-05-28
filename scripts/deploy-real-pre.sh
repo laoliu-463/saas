@@ -53,8 +53,11 @@ require_env() {
   local key="$1"
   local value
   value="$(get_env "${key}")"
-  if [ -z "${value}" ] || [ "${value#MUST_CHANGE}" != "${value}" ]; then
-    echo "ERROR: ${key} is empty or still uses MUST_CHANGE in ${ENV_FILE}." >&2
+  if [ -z "${value}" ] \
+    || [ "${value#MUST_CHANGE}" != "${value}" ] \
+    || [ "${value#*YOUR_}" != "${value}" ] \
+    || [ "${value#*PLACEHOLDER}" != "${value}" ]; then
+    echo "ERROR: ${key} is empty or still uses a placeholder in ${ENV_FILE}." >&2
     exit 1
   fi
 }
@@ -70,7 +73,8 @@ expect_env() {
   fi
 }
 
-PROJECT_NAME="${PROJECT_NAME:-$(get_env COMPOSE_PROJECT_NAME saas-active)}"
+expect_env COMPOSE_PROJECT_NAME saas-active
+PROJECT_NAME="${PROJECT_NAME:-$(get_env COMPOSE_PROJECT_NAME)}"
 if [ "${PROJECT_NAME}" != "saas-active" ]; then
   echo "ERROR: COMPOSE_PROJECT_NAME must be saas-active for controlled real-pre deployment, got ${PROJECT_NAME}." >&2
   exit 1
@@ -80,15 +84,36 @@ expect_env SPRING_PROFILES_ACTIVE real-pre
 expect_env APP_TEST_ENABLED false
 expect_env DOUYIN_TEST_ENABLED false
 expect_env DOUYIN_REAL_UPSTREAM_MODE live
+expect_env DOUYIN_REAL_PROMOTION_WRITE_ENABLED false
+expect_env ORDER_SYNC_ENABLED true
 expect_env DB_NAME saas_real_pre
-if [ "$(get_env DOUYIN_REAL_PROMOTION_WRITE_ENABLED false)" = "true" ]; then
-  echo "ERROR: DOUYIN_REAL_PROMOTION_WRITE_ENABLED must stay false for controlled real-pre deployment." >&2
-  exit 1
-fi
 
-for key in DB_PASSWORD ADMIN_PASSWORD REDIS_PASSWORD JWT_SECRET DOUYIN_APP_ID DOUYIN_CLIENT_KEY DOUYIN_CLIENT_SECRET DOUYIN_OAUTH_REDIRECT_URI; do
+for key in \
+  DB_PASSWORD \
+  ADMIN_PASSWORD \
+  REDIS_PASSWORD \
+  JWT_SECRET \
+  CORS_ALLOWED_ORIGIN_PATTERNS \
+  DOUYIN_APP_ID \
+  DOUYIN_CLIENT_KEY \
+  DOUYIN_CLIENT_SECRET \
+  DOUYIN_OAUTH_REDIRECT_URI \
+  DOUYIN_OAUTH_FRONTEND_SUCCESS_URL \
+  DOUYIN_OAUTH_FRONTEND_FAILURE_URL; do
   require_env "${key}"
 done
+
+if [ "$(get_env LOGISTICS_KD100_ENABLED false)" = "true" ]; then
+  require_env LOGISTICS_KD100_CUSTOMER
+  require_env LOGISTICS_KD100_KEY
+fi
+
+if [ "$(get_env LOGISTICS_KD100_SUBSCRIBE_ENABLED false)" = "true" ]; then
+  require_env LOGISTICS_KD100_CUSTOMER
+  require_env LOGISTICS_KD100_KEY
+  require_env LOGISTICS_KD100_CALLBACK_URL
+  require_env LOGISTICS_KD100_CALLBACK_SALT
+fi
 
 export ENV_FILE COMPOSE_FILE
 export COMPOSE_PROJECT_NAME="${PROJECT_NAME}"

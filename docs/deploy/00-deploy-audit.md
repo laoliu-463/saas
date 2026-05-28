@@ -55,7 +55,9 @@ checkout
 
 - real-pre 服务器手动受控部署执行记录
 - real-pre `schema_migration_log` 落库记录
-- 真实证书挂载、HTTPS 跳转和公网域名 CORS 值
+- 宝塔 / Nginx 真实证书挂载、HTTP 到 HTTPS 跳转、公网域名 CORS 值
+- 百应后台 OAuth 回调地址与 real-pre HTTPS 域名一致的截图或后台配置记录
+- 快递100订阅启用时的 HTTPS callback 配置与回调验签日志
 
 ## 六、阶段性结论
 

@@ -86,12 +86,12 @@ sudo usermod -aG docker "$USER"
 cd /opt/saas
 git clone https://github.com/laoliu-463/saas.git app
 cd /opt/saas/app
-git checkout main
+git checkout feature/auth-system
 git pull --ff-only
 git rev-parse --short HEAD
 ```
 
-如果服务器不能连 GitHub，可以本地打包上传后解压到 `/opt/saas/app`。
+当前受控部署分支为 `feature/auth-system`；合并主干后再按实际发布分支替换。若服务器不能连 GitHub，可以本地打包上传后解压到 `/opt/saas/app`。
 
 ## 六、配置 real-pre 环境变量
 
@@ -128,6 +128,26 @@ FRONTEND_HOST_PORT=3001
 - `DOUYIN_OAUTH_FRONTEND_SUCCESS_URL`
 - `DOUYIN_OAUTH_FRONTEND_FAILURE_URL`
 - `CORS_ALLOWED_ORIGIN_PATTERNS`
+
+如果已经走宝塔 / Nginx / SSL 的完整域名部署，OAuth 和 CORS 必须统一写 HTTPS 域名：
+
+```dotenv
+CORS_ALLOWED_ORIGIN_PATTERNS=https://real-pre.xxx.com
+DOUYIN_OAUTH_REDIRECT_URI=https://real-pre.xxx.com/api/douyin/oauth/callback
+DOUYIN_OAUTH_FRONTEND_SUCCESS_URL=https://real-pre.xxx.com/system/douyin?oauth=success
+DOUYIN_OAUTH_FRONTEND_FAILURE_URL=https://real-pre.xxx.com/system/douyin?oauth=failed
+```
+
+如果启用快递100订阅推送，还必须填：
+
+```dotenv
+LOGISTICS_KD100_ENABLED=true
+LOGISTICS_KD100_SUBSCRIBE_ENABLED=true
+LOGISTICS_KD100_CUSTOMER=真实值
+LOGISTICS_KD100_KEY=真实值
+LOGISTICS_KD100_CALLBACK_URL=https://real-pre.xxx.com/api/public/logistics/kuaidi100/callback
+LOGISTICS_KD100_CALLBACK_SALT=真实值
+```
 
 说明：`ADMIN_PASSWORD` 只在 PostgreSQL volume 首次初始化时参与默认管理员初始化；已有 volume 不会因为改 env 自动重跑初始化 SQL。
 
@@ -339,21 +359,63 @@ limit 20;
 
 如果列名与服务器实际 schema 不一致，先执行 `\d 表名`，以实体类和迁移结果为准。
 
-## 十一、Nginx 暴露
+## 十一、宝塔 / Nginx / SSL 暴露
 
-初期只暴露 real-pre 域名，不暴露 PostgreSQL / Redis。
+完整配置推荐顺序：
+
+```text
+域名 A 记录解析到服务器
+-> 宝塔添加 real-pre 站点
+-> 申请 Let's Encrypt SSL
+-> Docker 启动项目
+-> 宝塔 Nginx 反向代理 /api/ 和 /
+-> 修改 real-pre OAuth 与物流 callback 为 HTTPS 域名
+-> 百应后台配置授权地址
+-> 验证授权跳转和 token 转换
+```
+
+宝塔只负责站点、域名、SSL、Nginx 反代、防火墙和监控；Docker 仍负责 PostgreSQL、Redis、后端和前端容器。不要用宝塔 Node 项目管理器替代当前 Compose 前端容器。
+
+域名结构：
+
+```text
+https://real-pre.xxx.com
+  /api/ -> http://127.0.0.1:8081/api/
+  /     -> http://127.0.0.1:3001/
+```
+
+宝塔站点建议：
+
+| 配置 | 值 |
+| --- | --- |
+| 域名 | `real-pre.xxx.com` |
+| 根目录 | `/www/wwwroot/real-pre` |
+| PHP | 纯静态 / 不选 PHP |
+| 数据库 | 不创建 |
+| FTP | 不创建 |
+
+SSL 申请前必须确认域名已解析到服务器，云安全组和宝塔防火墙开放 `80/443`。证书申请通过后，公网只保留 `80/443/22/宝塔面板受限端口`；`8081/3001/5432/6379` 不对公网开放。
 
 ```nginx
 server {
     listen 80;
     server_name real-pre.xxx.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name real-pre.xxx.com;
+
+    ssl_certificate     /www/server/panel/vhost/cert/real-pre.xxx.com/fullchain.pem;
+    ssl_certificate_key /www/server/panel/vhost/cert/real-pre.xxx.com/privkey.pem;
 
     location /api/ {
         proxy_pass http://127.0.0.1:8081/api/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto https;
     }
 
     location / {
@@ -361,12 +423,33 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto https;
     }
 }
 ```
 
-HTTPS 证书可在第一轮 HTTP 受控验证通过后再接入。
+反代完成后验收：
+
+```bash
+curl -I http://real-pre.xxx.com
+curl -I https://real-pre.xxx.com
+curl -fsS https://real-pre.xxx.com/api/system/health
+```
+
+百应 / 抖店后台统一配置 HTTPS：
+
+```text
+去使用地址：https://real-pre.xxx.com/system/douyin
+OAuth 回调：https://real-pre.xxx.com/api/douyin/oauth/callback
+成功页：https://real-pre.xxx.com/system/douyin?oauth=success
+失败页：https://real-pre.xxx.com/system/douyin?oauth=failed
+```
+
+快递100订阅回调如启用，填：
+
+```text
+https://real-pre.xxx.com/api/public/logistics/kuaidi100/callback
+```
 
 ## 十二、回滚
 
