@@ -1,6 +1,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const {
+  DEFAULT_REAL_PRE_DB_CONTAINER,
+  DEFAULT_REAL_PRE_DB_NAME,
+  DEFAULT_REAL_PRE_DB_USER
+} = require('./real-pre-env.cjs');
 
 const SCRIPT_NAME = 'real-pre-exception-audit';
 const ROOT = path.join(__dirname, '..', '..');
@@ -9,9 +14,9 @@ const API_BASE_URL = normalizeBaseUrl(process.env.API_BASE_URL || 'http://localh
 const REQUEST_TIMEOUT_MS = Number(process.env.QA_REQUEST_TIMEOUT_MS || 20000);
 const ADMIN_USERNAME = process.env.QA_ADMIN_USER || 'admin';
 const ADMIN_PASSWORD = process.env.QA_ADMIN_PASSWORD || 'admin123';
-const POSTGRES_CONTAINER = process.env.QA_POSTGRES_CONTAINER || 'saas-postgres-real-pre-1';
-const DB_USER = process.env.QA_DB_USER || 'saas';
-const DB_NAME = process.env.QA_DB_NAME || 'saas_real_pre';
+const POSTGRES_CONTAINER = process.env.QA_POSTGRES_CONTAINER || process.env.E2E_DB_CONTAINER || DEFAULT_REAL_PRE_DB_CONTAINER;
+const DB_USER = process.env.QA_DB_USER || process.env.E2E_DB_USER || DEFAULT_REAL_PRE_DB_USER;
+const DB_NAME = process.env.QA_DB_NAME || process.env.E2E_DB_NAME || DEFAULT_REAL_PRE_DB_NAME;
 
 function timestamp(date = new Date()) {
   const pad = (n, len = 2) => String(n).padStart(len, '0');

@@ -2,8 +2,14 @@
 set -eu
 
 REAL_PRE_COMPOSE_FILE="${REAL_PRE_COMPOSE_FILE:-${COMPOSE_FILE:-docker-compose.real-pre.yml}}"
-REAL_PRE_COMPOSE_ENV="${REAL_PRE_COMPOSE_ENV:-${COMPOSE_ENV:-.env.real-pre}}"
-REAL_PRE_COMPOSE_PROJECT="${REAL_PRE_COMPOSE_PROJECT:-${COMPOSE_PROJECT_NAME:-saas}}"
+if [ -n "${REAL_PRE_COMPOSE_ENV:-${COMPOSE_ENV:-}}" ]; then
+  REAL_PRE_COMPOSE_ENV="${REAL_PRE_COMPOSE_ENV:-${COMPOSE_ENV}}"
+elif [ -f "/opt/saas/env/.env.real-pre" ]; then
+  REAL_PRE_COMPOSE_ENV="/opt/saas/env/.env.real-pre"
+else
+  REAL_PRE_COMPOSE_ENV=".env.real-pre"
+fi
+REAL_PRE_COMPOSE_PROJECT="${REAL_PRE_COMPOSE_PROJECT:-${COMPOSE_PROJECT_NAME:-saas-active}}"
 DB_MIGRATION_FILE="${DB_MIGRATION_FILE:-/docker-entrypoint-initdb.d/99-migrate-all.sql}"
 POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres-real-pre}"
 

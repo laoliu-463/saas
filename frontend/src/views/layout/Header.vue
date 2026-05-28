@@ -109,7 +109,12 @@ const serverEnvLabel = ref('')
  */
 onMounted(async () => {
   try {
-    const res = await fetch('/api/system/env')
+    const headers: Record<string, string> = {}
+    const accessToken = authStore.token || localStorage.getItem('token') || ''
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`
+    }
+    const res = await fetch('/api/system/env', { headers })
     const body = await res.json()
     const label = body?.data?.environmentLabel
     if (label != null && String(label).trim() !== '') {

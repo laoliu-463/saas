@@ -1,4 +1,4 @@
-name: ${COMPOSE_PROJECT_NAME:-saas}
+name: ${COMPOSE_PROJECT_NAME:-saas-active}
 
 x-real-pre-env-file: &real_pre_env_file
   - ${REAL_PRE_ENV_FILE:-.env.real-pre}
@@ -99,6 +99,7 @@ services:
       DOUYIN_READ_TIMEOUT: ${DOUYIN_READ_TIMEOUT:-5s}
       DOUYIN_TEST_ENABLED: ${DOUYIN_TEST_ENABLED:-false}
       DOUYIN_REAL_UPSTREAM_MODE: ${DOUYIN_REAL_UPSTREAM_MODE:-live}
+      DOUYIN_REAL_PROMOTION_WRITE_ENABLED: ${DOUYIN_REAL_PROMOTION_WRITE_ENABLED:-false}
       DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS: ${DOUYIN_TOKEN_REFRESH_THRESHOLD_SECONDS:-300}
       DOUYIN_TOKEN_REDIS_LOCK_MINUTES: ${DOUYIN_TOKEN_REDIS_LOCK_MINUTES:-5}
       DOUYIN_TOKEN_AUTO_REFRESH_ENABLED: ${DOUYIN_TOKEN_AUTO_REFRESH_ENABLED:-true}
@@ -198,5 +199,5 @@ volumes:
 
 networks:
   real-pre-net:
-    name: ${COMPOSE_PROJECT_NAME:-saas}_real_pre_net
+    name: ${COMPOSE_PROJECT_NAME:-saas-active}_real_pre_net
     driver: bridge

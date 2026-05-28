@@ -42,7 +42,7 @@ pipeline {
 
   environment {
     COMPOSE_FILE = 'docker-compose.real-pre.yml'
-    COMPOSE_PROJECT_NAME = 'saas'
+    COMPOSE_PROJECT_NAME = 'saas-active'
     REAL_PRE_FRONTEND = 'http://127.0.0.1:3001'
     REAL_PRE_BACKEND = 'http://127.0.0.1:8081'
   }
@@ -206,7 +206,7 @@ pipeline {
 后续如果建立镜像仓库和版本化 tag，可改为：
 
 ```bash
-IMAGE_TAG=<previous-tag> docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml up -d
+IMAGE_TAG=<previous-tag> docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml up -d
 ```
 
 无论哪种方式，回滚前都必须先备份数据库，且不得删除 volume。

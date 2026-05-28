@@ -17,13 +17,13 @@
 
 - 后端默认 profile 已改为 `test`，真实上游 / 生产形态只允许 `real-pre`。
 - real-pre 不允许与 test 混用，且必须关闭 `APP_TEST_ENABLED` 与 `DOUYIN_TEST_ENABLED`。
-- real-pre CORS、JWT、DB、Redis、抖音凭据和关键业务开关均由环境变量注入并由 Guard/Jenkins 校验。
+- real-pre CORS、JWT、DB、Redis、抖音凭据和关键业务开关均由环境变量注入并由部署脚本 / preflight 校验。
 - test 使用 `Dockerfile.test`；real-pre 使用生产 Dockerfile / 版本化镜像口径。
 - real-pre 迁移入口统一为 `scripts/run-real-pre-db-migrations.sh`，迁移后写入 `schema_migration_log(version, checksum, applied_at)`。
 
 ## 三、部署流程
 
-real-pre Jenkins / 手工部署顺序：
+real-pre 手工受控部署顺序：
 
 ```text
 checkout
@@ -53,10 +53,10 @@ checkout
 
 ## 五、待补外部证据
 
-- real-pre Jenkins 实际执行记录
+- real-pre 服务器手动受控部署执行记录
 - real-pre `schema_migration_log` 落库记录
 - 真实证书挂载、HTTPS 跳转和公网域名 CORS 值
 
 ## 六、阶段性结论
 
-代码和配置层面的环境入口已统一，本地配置、构建和定向回归通过。当前不能声明 real-pre 生产部署已经完成，因为还缺真实 Jenkins/服务器执行证据、迁移日志落库证据和真实域名/证书验证记录。
+代码和配置层面的环境入口已统一，本地配置、构建和定向回归通过。当前不能声明 real-pre 生产部署已经完成，因为还缺真实服务器手动受控部署执行证据、迁移日志落库证据和真实域名/证书验证记录。

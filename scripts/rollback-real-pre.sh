@@ -4,7 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-ENV_FILE="${ENV_FILE:-.env.real-pre}"
+if [ -n "${ENV_FILE:-}" ]; then
+  ENV_FILE="${ENV_FILE}"
+elif [ -f "/opt/saas/env/.env.real-pre" ]; then
+  ENV_FILE="/opt/saas/env/.env.real-pre"
+else
+  ENV_FILE=".env.real-pre"
+fi
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.real-pre.yml}"
 TARGET_REF="${1:-${ROLLBACK_REF:-HEAD~1}}"
 
@@ -47,7 +53,7 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   exit 1
 fi
 
-PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(get_env COMPOSE_PROJECT_NAME saas)}"
+PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(get_env COMPOSE_PROJECT_NAME saas-active)}"
 export ENV_FILE COMPOSE_FILE
 export COMPOSE_PROJECT_NAME="${PROJECT_NAME}"
 export REAL_PRE_ENV_FILE="${ENV_FILE}"

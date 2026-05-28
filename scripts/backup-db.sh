@@ -4,9 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-ENV_FILE="${ENV_FILE:-.env.real-pre}"
+if [ -n "${ENV_FILE:-}" ]; then
+  ENV_FILE="${ENV_FILE}"
+elif [ -f "/opt/saas/env/.env.real-pre" ]; then
+  ENV_FILE="/opt/saas/env/.env.real-pre"
+else
+  ENV_FILE=".env.real-pre"
+fi
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.real-pre.yml}"
-BACKUP_DIR="${BACKUP_DIR:-/opt/saas/backup}"
+BACKUP_DIR="${BACKUP_DIR:-/opt/saas/backups}"
 POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres-real-pre}"
 
 get_env() {
@@ -43,7 +49,7 @@ if [ ! -f "${ENV_FILE}" ]; then
   exit 1
 fi
 
-PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(get_env COMPOSE_PROJECT_NAME saas)}"
+PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(get_env COMPOSE_PROJECT_NAME saas-active)}"
 DB_NAME="$(get_env DB_NAME saas_real_pre)"
 DB_USER="$(get_env DB_USER saas)"
 DB_PASSWORD="$(get_env DB_PASSWORD)"
@@ -57,6 +63,22 @@ export REAL_PRE_ENV_FILE="${ENV_FILE}"
 
 umask 077
 mkdir -p "${BACKUP_DIR}"
+
+echo "Waiting for ${POSTGRES_SERVICE} readiness before backup ..."
+ready=false
+for _ in $(seq 1 60); do
+  if docker compose --env-file "${ENV_FILE}" --project-name "${PROJECT_NAME}" -f "${COMPOSE_FILE}" \
+    exec -T "${POSTGRES_SERVICE}" sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1; then
+    ready=true
+    break
+  fi
+  sleep 2
+done
+
+if [ "${ready}" != "true" ]; then
+  echo "ERROR: ${POSTGRES_SERVICE} did not become ready before backup." >&2
+  exit 1
+fi
 
 timestamp="$(date +%Y%m%d-%H%M%S)"
 backup_file="${BACKUP_DIR}/${DB_NAME}-${timestamp}.dump"

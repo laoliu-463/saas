@@ -9,6 +9,7 @@ const {
   isRealPreRuntime,
   normalizeSystemEnv,
   redactSecretLikeKeys,
+  resolveRealPreDbContainer,
   resolveRealPreUrls
 } = require('./real-pre-env.cjs');
 
@@ -19,14 +20,16 @@ test('resolveRealPreUrls defaults to the real-pre 3001/8081 pair', () => {
   assert.equal(urls.apiBaseUrl, `${DEFAULT_REAL_PRE_BACKEND_URL}/api`);
 });
 
-test('default database container matches the saas compose project', () => {
-  assert.equal(DEFAULT_REAL_PRE_DB_CONTAINER, 'saas-postgres-real-pre-1');
+test('default database container matches the active real-pre compose project', () => {
+  assert.equal(DEFAULT_REAL_PRE_DB_CONTAINER, 'saas-active-postgres-real-pre-1');
+  assert.equal(resolveRealPreDbContainer({}), 'saas-active-postgres-real-pre-1');
 });
 
 test('applyRealPreEnv preserves explicit overrides and marks the run as real-pre', () => {
   const env = {
     FRONTEND_URL: 'http://localhost:3101/',
-    BACKEND_URL: 'http://localhost:8181/'
+    BACKEND_URL: 'http://localhost:8181/',
+    E2E_DB_CONTAINER: 'custom-postgres-real-pre-1'
   };
   const urls = applyRealPreEnv(env);
   assert.equal(urls.frontendUrl, 'http://localhost:3101');
@@ -34,6 +37,17 @@ test('applyRealPreEnv preserves explicit overrides and marks the run as real-pre
   assert.equal(env.E2E_REAL_PRE, 'true');
   assert.equal(env.E2E_BASE_URL, 'http://localhost:3101');
   assert.equal(env.E2E_BACKEND_URL, 'http://localhost:8181');
+  assert.equal(env.E2E_DB_CONTAINER, 'custom-postgres-real-pre-1');
+});
+
+test('applyRealPreEnv replaces the retired real-pre database container default', () => {
+  const env = {
+    E2E_DB_CONTAINER: 'saas-postgres-real-pre-1',
+    QA_POSTGRES_CONTAINER: 'saas-postgres-real-pre-1'
+  };
+  applyRealPreEnv(env);
+  assert.equal(env.E2E_DB_CONTAINER, 'saas-active-postgres-real-pre-1');
+  assert.equal(env.QA_POSTGRES_CONTAINER, 'saas-active-postgres-real-pre-1');
 });
 
 test('normalizeSystemEnv accepts REAL-PRE only on real-pre profile when test switches are off', () => {

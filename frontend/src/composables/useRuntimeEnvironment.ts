@@ -16,7 +16,7 @@ export function useRuntimeEnvironment() {
 
   onMounted(async () => {
     try {
-      const res = await fetch('/api/system/env')
+      const res = await fetch('/api/system/env', { headers: buildAuthHeaders() })
       const body = (await res.json()) as SystemEnvResponse
       const label = body?.data?.environmentLabel
       if (label != null && String(label).trim() !== '') {
@@ -60,4 +60,9 @@ export function useRuntimeEnvironment() {
     activityDataSourceHint,
     activityAlertType
   }
+}
+
+function buildAuthHeaders(): HeadersInit | undefined {
+  const token = localStorage.getItem('token')
+  return token ? { Authorization: `Bearer ${token}` } : undefined
 }

@@ -43,42 +43,49 @@ npx playwright install
 > **test/mock 基线上线前必跑**：`npm run e2e:v1-p0`（三链闭环 + RBAC + 看板对账）
 > **real-pre 联调上线前必跑**：`npm run e2e:real-pre:p0`（统一入口，串行 preflight + 31~36）
 
-### Jenkins real-pre 生产形态部署
+### 手动 real-pre 单机受控部署
 
-仓库根目录 `Jenkinsfile` 用于 real-pre 生产形态反复部署和验证，复用现有 `real-pre` 栈：
+当前先按手动单机受控部署推进，Jenkins 只作为后续自动化接入项。服务器标准目录为 `/opt/saas/app`（代码）、`/opt/saas/env`（环境变量）、`/opt/saas/logs`（日志）、`/opt/saas/backups`（备份）和 `/opt/saas/runtime/qa/out`（证据）。详细步骤见 [docs/deploy/01-xshell-manual-deploy.md](docs/deploy/01-xshell-manual-deploy.md)。
 
 - 前端：`http://127.0.0.1:3001`
 - 后端：`http://127.0.0.1:8081`
 - 后端健康检查：`http://127.0.0.1:8081/api/system/health`
 - Compose：`docker-compose.real-pre.yml`
-- Compose project：`saas`
-- 环境文件：`.env.real-pre`
+- Compose project：`saas-active`
+- 环境文件：`/opt/saas/env/.env.real-pre`
 
-流水线顺序固定为：
+手动受控部署顺序固定为：
 
 ```text
-checkout
+本地最终打包
+→ 服务器初始化
+→ 上传/拉取代码
+→ 配置 real-pre 环境变量
 → mvn clean test
 → pnpm install --frozen-lockfile && pnpm build
 → mvn clean package -DskipTests
-→ docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml up -d postgres-real-pre redis-real-pre
+→ export REAL_PRE_ENV_FILE=/opt/saas/env/.env.real-pre
+→ docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml config
+→ docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml up -d postgres-real-pre redis-real-pre
+→ scripts/backup-db.sh
 → scripts/run-real-pre-db-migrations.sh
-→ docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml up -d backend-real-pre frontend-real-pre
+→ docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml up -d backend-real-pre frontend-real-pre
 → /api/system/health 与 /login 端口验活
 → npm run e2e:real-pre:p0:preflight
 → npm run e2e:real-pre:p0
+→ npm run e2e:real-pre:roles
 → 归档日志和报告
 ```
 
-Jenkins real-pre 与 test/mock 基线必须分开理解：
+real-pre 与 test/mock 基线必须分开理解：
 
 - `docker-compose.test.yml` / `.env.test` 用于 mock/test 回归。
-- Jenkins real-pre 使用 `.env.real-pre`，必须满足 `APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`、`DB_NAME=saas_real_pre`。
-- Jenkins real-pre 使用 Compose project `saas`，与当前 real-pre 容器和数据卷一致，避免切到新 project 后创建空白数据卷。
-- 端口验活使用 `/api/system/health`；`/api/actuator/**` 需要 JWT，不作为 Jenkins 无鉴权探针。
+- 服务器 real-pre 使用 `/opt/saas/env/.env.real-pre`，必须满足 `APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`、`DOUYIN_REAL_UPSTREAM_MODE=live`、`DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false`、`DB_NAME=saas_real_pre`。
+- 服务器 real-pre 使用 Compose project `saas-active`，与当前 real-pre 启动脚本、容器名和 QA 默认 DB 容器一致，避免切到旧 project 后创建第二套数据卷。
+- 端口验活使用 `/api/system/health`；`/api/actuator/**` 需要 JWT，不作为无鉴权探针。
 - 部署命令不带 `-v`，不清空 real-pre 数据卷。
-- preflight 或 P0 E2E 返回 `BLOCKED`、`PENDING`、`FAIL` 时 Jenkins 构建失败，不把证据不足当作通过。
-- Jenkins 会归档 `runtime/qa/out/**`、`playwright-report/**`、`test-results/playwright/**` 和后端测试报告。
+- preflight 或 P0 E2E 返回 `BLOCKED`、`PENDING`、`FAIL` 时不得宣称 P0 通过，不把证据不足当作通过。
+- 部署报告必须归档 `/opt/saas/logs/**`、`runtime/qa/out/**`、`playwright-report/**`、`test-results/playwright/**` 和后端测试报告。
 
 ### 入口边界（强制约束）
 
@@ -173,11 +180,20 @@ runtime/qa/out/real-pre-p0-YYYYMMDD-HHmmss/
 
 real-pre P0 结论按以下规则归类，与 V1-P0 的 test/mock 验收口径完全分离：
 
+- **服务器 real-pre 受控部署验证**：当前状态可用于真实业务样本验证，但不等于 real-pre P0 全量通过，也不等于正式生产放量。
 - **PASS**：所有步骤通过，且 cleanup 计划已经过人工审核并执行且残留为 0。
 - **PASS_NEEDS_CLEANUP**：业务步骤通过，但 cleanup-plan 仅生成、未执行；需要人工审核 `cleanup-plan.json/sql`。
 - **BLOCKED**：缺真实 Token / 缺授权 / 活动权限受限 / 无可复用 `pick_source_mapping` / 关键角色无法登录等外部前置条件缺失。
 - **PENDING**：环境与代码链路正常，但当前窗口缺真实订单 / 缺 `pick_source` 样本 / 缺成交触发寄样自动完成。
 - **FAIL**：连接了非 real-pre 环境、`APP_TEST_ENABLED`/`DOUYIN_TEST_ENABLED` 不是 false、`/api/system/env` 不是 `REAL-PRE`、健康检查失败、页面运行时错误、权限越权、订单同步 failed > 0 无法解释、业绩公式错误、cleanup-plan 命中危险语句。
+
+部署后报告只允许按以下结论归档：
+
+| 结果 | 结论 |
+| --- | --- |
+| 无失败 + 无真实订单 | real-pre 环境部署成功，P0 仍因真实样本不足保持 PENDING |
+| 无失败 + 有真实订单 + 归因 / 寄样 / 业绩通过 | real-pre P0 可升级为通过 |
+| 出现失败 | 按失败项定级回滚或修复，不得放量 |
 
 退出码：PASS / PASS_NEEDS_CLEANUP → `0`；BLOCKED / PENDING → `2`；FAIL → `1`。
 

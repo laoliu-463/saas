@@ -1,4 +1,9 @@
 const { execFileSync } = require('node:child_process');
+const {
+  DEFAULT_REAL_PRE_DB_CONTAINER,
+  DEFAULT_REAL_PRE_DB_NAME,
+  DEFAULT_REAL_PRE_DB_USER
+} = require('./real-pre-env.cjs');
 
 function buildReusablePromotionMappingQuery({ activityId, productId, userId, limit = 5 }) {
   if (!activityId || !productId || !userId) {
@@ -26,6 +31,32 @@ function buildReusablePromotionMappingQuery({ activityId, productId, userId, lim
     `  and psm.activity_id = ${sqlLiteral(activityId)}`,
     `  and psm.product_id = ${sqlLiteral(productId)}`,
     `  and psm.user_id = ${sqlLiteral(userId)}::uuid`,
+    'order by psm.update_time desc nulls last, psm.create_time desc',
+    `limit ${safeLimit};`
+  ].join('\n');
+}
+
+function buildAnyReusablePromotionMappingQuery({ limit = 5 } = {}) {
+  const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(20, Number(limit))) : 5;
+  return [
+    'select',
+    '  psm.id::text as mapping_id,',
+    '  psm.pick_source,',
+    '  psm.product_id,',
+    '  psm.activity_id,',
+    '  psm.user_id::text as user_id,',
+    "  coalesce(psm.promotion_link_id::text, '') as promotion_link_id,",
+    "  coalesce(pl.promotion_url, psm.converted_url, '') as promotion_url,",
+    "  coalesce(pl.short_url, '') as short_url,",
+    '  psm.create_time::text as create_time',
+    'from pick_source_mapping psm',
+    'left join promotion_link pl',
+    '  on pl.id = psm.promotion_link_id',
+    ' and pl.deleted = 0',
+    'where psm.deleted = 0',
+    '  and psm.status = 1',
+    "  and coalesce(psm.pick_source, '') <> ''",
+    "  and coalesce(pl.promotion_url, psm.converted_url, '') <> ''",
     'order by psm.update_time desc nulls last, psm.create_time desc',
     `limit ${safeLimit};`
   ].join('\n');
@@ -70,10 +101,23 @@ function buildPromotionBlockerMessage({ activityId, productId, userId }) {
 }
 
 function queryReusablePromotionMapping(options) {
-  const container = options.container || process.env.E2E_DB_CONTAINER || 'saas-postgres-real-pre-1';
-  const user = options.dbUser || process.env.E2E_DB_USER || 'saas';
-  const db = options.dbName || process.env.E2E_DB_NAME || 'saas_real_pre';
+  const container = options.container || process.env.E2E_DB_CONTAINER || DEFAULT_REAL_PRE_DB_CONTAINER;
+  const user = options.dbUser || process.env.E2E_DB_USER || DEFAULT_REAL_PRE_DB_USER;
+  const db = options.dbName || process.env.E2E_DB_NAME || DEFAULT_REAL_PRE_DB_NAME;
   const sql = buildReusablePromotionMappingQuery(options);
+  const output = execFileSync(
+    'docker',
+    ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-F', '|', '-c', sql],
+    { encoding: 'utf8' }
+  );
+  return parsePipeRows(output);
+}
+
+function queryAnyReusablePromotionMapping(options = {}) {
+  const container = options.container || process.env.E2E_DB_CONTAINER || DEFAULT_REAL_PRE_DB_CONTAINER;
+  const user = options.dbUser || process.env.E2E_DB_USER || DEFAULT_REAL_PRE_DB_USER;
+  const db = options.dbName || process.env.E2E_DB_NAME || DEFAULT_REAL_PRE_DB_NAME;
+  const sql = buildAnyReusablePromotionMappingQuery(options);
   const output = execFileSync(
     'docker',
     ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-F', '|', '-c', sql],
@@ -88,9 +132,11 @@ function sqlLiteral(value) {
 
 module.exports = {
   buildReusablePromotionMappingQuery,
+  buildAnyReusablePromotionMappingQuery,
   parsePipeRows,
   selectReusablePromotionMapping,
   buildPromotionBlockerMessage,
   queryReusablePromotionMapping,
+  queryAnyReusablePromotionMapping,
   sqlLiteral
 };

@@ -5,7 +5,9 @@ const DEFAULT_REAL_PRE_FRONTEND_URL = 'http://localhost:3001';
 const DEFAULT_REAL_PRE_BACKEND_URL = 'http://localhost:8081';
 const DEFAULT_REAL_PRE_API_BASE_URL = `${DEFAULT_REAL_PRE_BACKEND_URL}/api`;
 const DEFAULT_REAL_PRE_DB_NAME = 'saas_real_pre';
-const DEFAULT_REAL_PRE_DB_CONTAINER = 'saas-postgres-real-pre-1';
+const DEFAULT_REAL_PRE_COMPOSE_PROJECT = 'saas-active';
+const LEGACY_REAL_PRE_DB_CONTAINER = 'saas-postgres-real-pre-1';
+const DEFAULT_REAL_PRE_DB_CONTAINER = `${DEFAULT_REAL_PRE_COMPOSE_PROJECT}-postgres-real-pre-1`;
 const DEFAULT_REAL_PRE_DB_USER = 'saas';
 
 function stripTrailingSlash(value) {
@@ -22,12 +24,30 @@ function resolveRealPreUrls(env = process.env) {
   };
 }
 
+function resolveRealPreDbContainer(env = process.env) {
+  const explicit = String(env.E2E_DB_CONTAINER || env.QA_POSTGRES_CONTAINER || '').trim();
+  if (explicit && explicit !== LEGACY_REAL_PRE_DB_CONTAINER) {
+    return explicit;
+  }
+  const project = String(env.REAL_PRE_COMPOSE_PROJECT || env.COMPOSE_PROJECT_NAME || DEFAULT_REAL_PRE_COMPOSE_PROJECT).trim() || DEFAULT_REAL_PRE_COMPOSE_PROJECT;
+  return `${project}-postgres-real-pre-1`;
+}
+
 function applyRealPreEnv(env = process.env) {
   const urls = resolveRealPreUrls(env);
+  const dbContainer = resolveRealPreDbContainer(env);
   env.E2E_REAL_PRE = 'true';
   env.E2E_BASE_URL = urls.frontendUrl;
   env.E2E_BACKEND_URL = urls.backendUrl;
   env.API_BASE_URL = env.API_BASE_URL || urls.backendUrl;
+  if (!env.E2E_DB_CONTAINER || env.E2E_DB_CONTAINER === LEGACY_REAL_PRE_DB_CONTAINER) {
+    env.E2E_DB_CONTAINER = dbContainer;
+  }
+  if (env.QA_POSTGRES_CONTAINER === LEGACY_REAL_PRE_DB_CONTAINER) {
+    env.QA_POSTGRES_CONTAINER = dbContainer;
+  }
+  env.E2E_DB_NAME = env.E2E_DB_NAME || DEFAULT_REAL_PRE_DB_NAME;
+  env.E2E_DB_USER = env.E2E_DB_USER || DEFAULT_REAL_PRE_DB_USER;
   return urls;
 }
 
@@ -117,10 +137,13 @@ module.exports = {
   DEFAULT_REAL_PRE_BACKEND_URL,
   DEFAULT_REAL_PRE_API_BASE_URL,
   DEFAULT_REAL_PRE_DB_NAME,
+  DEFAULT_REAL_PRE_COMPOSE_PROJECT,
   DEFAULT_REAL_PRE_DB_CONTAINER,
   DEFAULT_REAL_PRE_DB_USER,
+  LEGACY_REAL_PRE_DB_CONTAINER,
   stripTrailingSlash,
   resolveRealPreUrls,
+  resolveRealPreDbContainer,
   applyRealPreEnv,
   formatLocalTimestamp,
   ensureDir,

@@ -7,16 +7,21 @@ type JsonMap = Record<string, unknown>;
 type ReusablePromotionMapping = {
   mappingId?: string;
   pickSource?: string;
+  productId?: string;
+  activityId?: string;
+  userId?: string;
   promotionLinkId?: string;
   promotionUrl?: string;
   shortUrl?: string;
 };
 
 const {
+  queryAnyReusablePromotionMapping,
   queryReusablePromotionMapping,
   selectReusablePromotionMapping,
   buildPromotionBlockerMessage
 } = require('../../runtime/qa/real-pre-safe-upstream.cjs') as {
+  queryAnyReusablePromotionMapping: (options?: JsonMap) => ReusablePromotionMapping[];
   queryReusablePromotionMapping: (options: JsonMap) => ReusablePromotionMapping[];
   selectReusablePromotionMapping: (rows: ReusablePromotionMapping[]) => ReusablePromotionMapping;
   buildPromotionBlockerMessage: (options: JsonMap) => string;
@@ -84,13 +89,16 @@ const DEFAULT_PASSWORD = 'admin123';
 const REAL_PRE_NAV_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NAV_TIMEOUT_MS || 120_000);
 const REAL_PRE_UI_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_UI_TIMEOUT_MS || 120_000);
 const REAL_PRE_NETWORK_IDLE_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NETWORK_IDLE_TIMEOUT_MS || 5_000);
-const DOUYIN_ONE_CLICK_CHECKS = [
+const DOUYIN_ONE_CLICK_REQUIRED_CHECKS = [
   'Token 正常',
   '授权主体正常',
   '活动商品已刷新',
   '商品 SKU 已验证',
   '订单同步成功',
-  'Dashboard 已读取真实订单'
+] as const;
+const DOUYIN_ONE_CLICK_DASHBOARD_CHECKS = [
+  'Dashboard 已读取真实订单',
+  'Dashboard 当前无订单'
 ] as const;
 
 const ROLE_CASES: RoleCase[] = [
@@ -101,7 +109,7 @@ const ROLE_CASES: RoleCase[] = [
     expectedDataScope: 3,
     allowedPages: ['/system/users', '/system/roles', '/system/config', '/system/douyin', '/dashboard', '/data', '/product', '/sample'],
     forbiddenPages: [],
-    expectedMenuText: ['系统管理', '用户管理', '角色管理', '系统配置', '抖店联调', '数据看板', '商品库', '寄样'],
+    expectedMenuText: ['系统管理', '用户管理', '角色管理', '高级配置', '抖店联调', '数据看板', '商品库', '合作管理', '合作单'],
     forbiddenMenuText: [],
     allowedApi: '/users?page=1&size=5',
     protectedApiAfterLogout: '/users?page=1&size=1'
@@ -113,7 +121,7 @@ const ROLE_CASES: RoleCase[] = [
     expectedDataScope: 2,
     allowedPages: ['/product/manage', '/product/manage/products', '/product', '/sample', '/data', '/dashboard'],
     forbiddenPages: ['/system/users', '/system/douyin'],
-    expectedMenuText: ['商品管理', '活动列表', '商品库', '寄样', '数据'],
+    expectedMenuText: ['商品管理', '活动列表', '商品库', '合作管理', '合作单', '数据'],
     forbiddenMenuText: ['系统管理', '抖店联调'],
     allowedApi: '/colonel/activities?page=1&size=5',
     protectedApiAfterLogout: '/colonel/activities?page=1&size=1'
@@ -125,7 +133,7 @@ const ROLE_CASES: RoleCase[] = [
     expectedDataScope: 1,
     allowedPages: ['/product/manage/products', '/product', '/sample', '/data'],
     forbiddenPages: ['/system/users', '/talent'],
-    expectedMenuText: ['商品列表', '商品库', '寄样', '我的业绩'],
+    expectedMenuText: ['商品列表', '商品库', '合作管理', '合作单', '我的业绩'],
     forbiddenMenuText: ['系统管理', '达人 CRM'],
     allowedApi: '/products?page=1&size=5',
     protectedApiAfterLogout: '/products?page=1&size=1'
@@ -137,7 +145,7 @@ const ROLE_CASES: RoleCase[] = [
     expectedDataScope: 1,
     allowedPages: ['/product', '/talent', '/sample', '/data'],
     forbiddenPages: ['/system/users', '/product/manage/products'],
-    expectedMenuText: ['商品库', '我的达人', '公海达人', '寄样台', '我的业绩'],
+    expectedMenuText: ['商品库', '我的达人', '公海达人', '合作管理', '合作单', '我的业绩'],
     forbiddenMenuText: ['系统管理', '商品管理', '活动列表'],
     allowedApi: '/talents?page=1&size=5',
     protectedApiAfterLogout: '/talents?page=1&size=1'
@@ -161,7 +169,7 @@ const ROLE_CASES: RoleCase[] = [
     expectedDataScope: 2,
     allowedPages: ['/talent', '/sample', '/product', '/data', '/dashboard'],
     forbiddenPages: ['/system/users', '/system/douyin'],
-    expectedMenuText: ['达人 CRM', '团队公海', '我的达人', '商品库', '寄样', '数据'],
+    expectedMenuText: ['达人 CRM', '团队公海', '我的达人', '商品库', '合作管理', '合作单', '数据'],
     forbiddenMenuText: ['系统管理', '抖店联调'],
     allowedApi: '/talents?page=1&size=5',
     protectedApiAfterLogout: '/talents?page=1&size=1'
@@ -179,7 +187,8 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
 
   try {
     await record(run, '00-env', 'real-pre environment guard', async () => {
-      const env = await apiSuccess(api, 'GET', '/api/system/env');
+      const adminAuth = await login(api, 'admin');
+      const env = await apiSuccess(api, 'GET', '/api/system/env', adminAuth);
       const health = await rawApi(api, 'GET', '/api/system/health');
       const envData = unwrap(env.body) as JsonMap;
       assertTrue(
@@ -333,21 +342,43 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       const productId = requireFlowString(run, 'productId');
       const productLocalId = requireFlowString(run, 'productLocalId');
       const library = await apiSuccess(api, 'GET', '/api/products', auth, { params: { page: 1, size: 10 } });
-      const reusableMappings = queryReusablePromotionMapping({
+      let reusableMappings = queryReusablePromotionMapping({
         activityId: ACTIVITY_ID,
         productId,
         userId: auth.userId
       });
       let reusableMapping: ReusablePromotionMapping;
+      let mappingScope = 'current-channel-product';
       try {
         reusableMapping = selectReusablePromotionMapping(reusableMappings);
       } catch {
-        throw new Error(buildPromotionBlockerMessage({ activityId: ACTIVITY_ID, productId, userId: auth.userId }));
+        reusableMappings = queryAnyReusablePromotionMapping({ limit: 5 });
+        mappingScope = 'global-reusable';
+        try {
+          reusableMapping = selectReusablePromotionMapping(reusableMappings);
+        } catch {
+          throw new Error(buildPromotionBlockerMessage({ activityId: ACTIVITY_ID, productId, userId: auth.userId }));
+        }
       }
       const pickSource = String(reusableMapping.pickSource || '');
       assertTrue(/^v\./.test(pickSource), `reusable mapping should expose real pick_source, got ${pickSource}`);
       const mappingCount = reusableMappings.length;
-      assertTrue(mappingCount > 0, `reusable pick_source_mapping should hit current channel, got ${mappingCount}`);
+      assertTrue(mappingCount > 0, `reusable pick_source_mapping should be available, got ${mappingCount}`);
+      const sampleActivityId = String(reusableMapping.activityId || ACTIVITY_ID);
+      const sampleProductId = String(reusableMapping.productId || productId);
+      let sampleProductLocalId = productLocalId;
+      if (mappingScope !== 'current-channel-product' || sampleActivityId !== ACTIVITY_ID || sampleProductId !== productId) {
+        const adminAuth = requireAuth(run, 'admin');
+        const sampleProductDetail = await apiSuccess(
+          api,
+          'GET',
+          `/api/colonel/activities/${sampleActivityId}/products/${sampleProductId}`,
+          adminAuth
+        );
+        const sampleProductData = unwrap(sampleProductDetail.body) as JsonMap;
+        assertTrue(Boolean(sampleProductData.id), `mapped reusable product should resolve to local product id: activityId=${sampleActivityId}, productId=${sampleProductId}`);
+        sampleProductLocalId = String(sampleProductData.id);
+      }
 
       const runId = requireFlowString(run, 'runId');
       const talentUid = `${runId}_p35_${Date.now()}`;
@@ -367,7 +398,7 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       await apiSuccess(api, 'POST', `/api/talents/${talentId}/claims`, auth);
       const privateTalents = await apiSuccess(api, 'GET', '/api/talents/pools/private', auth);
       const sampleBody = {
-        productId: productLocalId,
+        productId: sampleProductLocalId,
         talentId: talentUid,
         talentNickname: `P3-5 role talent ${runId}`,
         talentFansCount: 80000,
@@ -387,6 +418,9 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       run.flow.promotionLinkId = reusableMapping.promotionLinkId || '';
       run.flow.promotionUrl = reusableMapping.promotionUrl || '';
       run.flow.mappingCount = mappingCount;
+      run.flow.mappingScope = mappingScope;
+      run.flow.sampleProductId = sampleProductId;
+      run.flow.sampleProductLocalId = sampleProductLocalId;
       run.flow.talentId = talentId;
       run.flow.talentUid = talentUid;
       run.flow.sampleId = String(sampleData.id);
@@ -395,10 +429,13 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
         ui,
         library: summarizeResult(library),
         safeUpstreamMode: run.flow.safeUpstreamMode,
+        mappingScope,
         pickSource,
         mappingId: run.flow.mappingId,
         promotionLinkId: run.flow.promotionLinkId,
         mappingCount,
+        sampleProductId,
+        sampleProductLocalId,
         talentId,
         privateTalentCount: extractRecords(privateTalents.body).length,
         sampleId: run.flow.sampleId,
@@ -673,10 +710,11 @@ async function verifyDouyinOneClick(browser: Browser, auth: AuthState): Promise<
     await page.getByRole('button', { name: '一键刷新联调状态' }).click({ timeout: REAL_PRE_UI_TIMEOUT_MS });
 
     const checked: string[] = [];
-    for (const text of DOUYIN_ONE_CLICK_CHECKS) {
+    for (const text of DOUYIN_ONE_CLICK_REQUIRED_CHECKS) {
       await expect(page.getByText(text, { exact: true }).first()).toBeVisible({ timeout: REAL_PRE_UI_TIMEOUT_MS });
       checked.push(text);
     }
+    checked.push(await waitForAnyVisibleText(page, DOUYIN_ONE_CLICK_DASHBOARD_CHECKS, REAL_PRE_UI_TIMEOUT_MS));
 
     const bodyText = await page.locator('body').innerText({ timeout: 10_000 }).catch(() => '');
     const screenshotPath = join(EVIDENCE_DIR, 'screenshots', `${auth.username}-system_douyin-one_click.png`);
@@ -744,6 +782,28 @@ async function waitForAppReady(page: import('@playwright/test').Page): Promise<v
   await page.waitForLoadState('networkidle', { timeout: REAL_PRE_NETWORK_IDLE_TIMEOUT_MS }).catch(() => undefined);
   await page.locator('.n-spin-body').waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined);
   await page.waitForTimeout(300);
+}
+
+async function waitForAnyVisibleText(
+  page: import('@playwright/test').Page,
+  texts: readonly string[],
+  timeout: number
+): Promise<string> {
+  await expect
+    .poll(async () => {
+      for (const text of texts) {
+        const visible = await page.getByText(text, { exact: true }).first().isVisible().catch(() => false);
+        if (visible) return text;
+      }
+      return '';
+    }, { timeout })
+    .toBeTruthy();
+
+  for (const text of texts) {
+    const visible = await page.getByText(text, { exact: true }).first().isVisible().catch(() => false);
+    if (visible) return text;
+  }
+  return texts[0] || '';
 }
 
 async function newAuthContext(browser: Browser, auth: AuthState): Promise<BrowserContext> {

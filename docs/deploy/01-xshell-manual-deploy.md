@@ -1,121 +1,125 @@
-# Xshell 手工部署 real-pre
+# real-pre 单机受控部署手册
 
-本文面向第一次在服务器部署本项目的人。目标是先把 real-pre 环境稳定跑起来，后续再接 Jenkins。
+本文面向服务器第一轮 real-pre 部署。当前目标是“手动受控部署 -> 跑门禁 -> 观察真实订单 -> 再决定是否放量”，不是高可用、Jenkins、蓝绿发布。
 
-## 一、前置约束
+## 一、部署结论口径
 
-- 不执行 `docker compose down -v`。
-- 不删除 Docker volume。
-- 不把 `.env.real-pre` 提交到仓库。
-- 不把 PostgreSQL `5432` 或 Redis `6379` 暴露到公网。
-- real-pre 必须保持 `APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`。
-- 健康检查使用公开探针：`/api/system/health`。
+- 允许：服务器 real-pre 受控部署。
+- 不允许：宣称 real-pre P0 完全通过 / 可正式生产全量上线。
+- 当前部署目标：让真实订单进入系统后验证订单同步、`pick_source` 归因、寄样自动完成、业绩双轨金额。
 
-## 二、步骤 1：登录服务器
+部署成功后报告只能按以下三类归档：
 
-在 Xshell 中新建会话，填写服务器 IP、端口、用户名，登录后确认当前用户：
+| 结果 | 结论 |
+| --- | --- |
+| 无失败 + 无真实订单 | real-pre 环境部署成功，P0 仍因真实样本不足保持 PENDING |
+| 无失败 + 有真实订单 + 归因 / 寄样 / 业绩通过 | real-pre P0 可升级为通过 |
+| 出现失败 | 按失败项定级回滚或修复，不得放量 |
 
-```bash
-whoami
-pwd
+## 二、推进顺序
+
+```text
+本地最终打包
+-> 服务器初始化
+-> 上传/拉取代码
+-> 配置 real-pre 环境变量
+-> 启动 PostgreSQL / Redis / 后端 / 前端 / Nginx
+-> 跑健康检查
+-> 跑 real-pre 三组 E2E 门禁
+-> 观察真实订单回流
+-> 出部署验收报告
 ```
 
-建议项目部署目录：
+## 三、服务器目录
 
 ```bash
-sudo mkdir -p /opt/saas
+sudo mkdir -p /opt/saas/app
+sudo mkdir -p /opt/saas/env
+sudo mkdir -p /opt/saas/logs
+sudo mkdir -p /opt/saas/backups
+sudo mkdir -p /opt/saas/runtime/qa/out
 sudo chown -R "$USER":"$USER" /opt/saas
 ```
 
-## 三、步骤 2：安装基础工具
+目录用途：
 
-Ubuntu / Debian：
+| 目录 | 用途 |
+| --- | --- |
+| `/opt/saas/app` | 项目代码 |
+| `/opt/saas/env` | 环境变量文件，禁止提交 Git |
+| `/opt/saas/logs` | 部署和容器日志快照 |
+| `/opt/saas/backups` | PostgreSQL 备份 |
+| `/opt/saas/runtime/qa/out` | QA 证据目录 |
 
-```bash
-sudo apt-get update
-sudo apt-get install -y git curl ca-certificates gnupg lsb-release
-```
+## 四、基础组件
 
-CentOS / Rocky Linux：
-
-```bash
-sudo yum install -y git curl ca-certificates yum-utils
-```
-
-## 四、步骤 3：安装 Docker
-
-Ubuntu / Debian：
-
-```bash
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo systemctl enable --now docker
-```
-
-CentOS / Rocky Linux：
-
-```bash
-sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo systemctl enable --now docker
-```
-
-把当前用户加入 docker 组，然后重新登录 Xshell：
-
-```bash
-sudo usermod -aG docker "$USER"
-exit
-```
-
-重新登录后验证：
+服务器至少具备：
 
 ```bash
 docker --version
 docker compose version
+git --version
 ```
 
-## 五、步骤 4：拉取代码
+Ubuntu / Debian 安装示例：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl ca-certificates gnupg lsb-release
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
+```
+
+执行 `usermod` 后需要重新登录服务器。
+
+## 五、拉取代码
+
+推荐服务器直接拉仓库：
 
 ```bash
 cd /opt/saas
-git clone https://github.com/laoliu-463/saas.git .
-git status
-```
-
-如果目录已存在：
-
-```bash
-cd /opt/saas
-git fetch origin
-git status
-```
-
-只有确认没有未提交的本地代码改动后，才执行：
-
-```bash
+git clone https://github.com/laoliu-463/saas.git app
+cd /opt/saas/app
+git checkout main
 git pull --ff-only
+git rev-parse --short HEAD
 ```
 
-## 六、步骤 5：创建 .env.real-pre
+如果服务器不能连 GitHub，可以本地打包上传后解压到 `/opt/saas/app`。
+
+## 六、配置 real-pre 环境变量
 
 ```bash
-cd /opt/saas
-cp .env.real-pre.example .env.real-pre
-chmod 600 .env.real-pre
-vi .env.real-pre
+cp /opt/saas/app/.env.real-pre.example /opt/saas/env/.env.real-pre
+chmod 600 /opt/saas/env/.env.real-pre
+vi /opt/saas/env/.env.real-pre
 ```
 
-至少必须手动修改：
+必须保持：
+
+```dotenv
+COMPOSE_PROJECT_NAME=saas-active
+SPRING_PROFILES_ACTIVE=real-pre
+APP_TEST_ENABLED=false
+DOUYIN_TEST_ENABLED=false
+DOUYIN_REAL_UPSTREAM_MODE=live
+DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false
+DB_NAME=saas_real_pre
+BACKEND_HOST_PORT=8081
+FRONTEND_HOST_PORT=3001
+```
+
+必须填真实值或强密码：
 
 - `DB_PASSWORD`
 - `ADMIN_PASSWORD`
+- `REDIS_PASSWORD`
 - `JWT_SECRET`
 - `DOUYIN_APP_ID`
 - `DOUYIN_CLIENT_KEY`
@@ -123,163 +127,278 @@ vi .env.real-pre
 - `DOUYIN_OAUTH_REDIRECT_URI`
 - `DOUYIN_OAUTH_FRONTEND_SUCCESS_URL`
 - `DOUYIN_OAUTH_FRONTEND_FAILURE_URL`
+- `CORS_ALLOWED_ORIGIN_PATTERNS`
 
-必须保持：
+说明：`ADMIN_PASSWORD` 只在 PostgreSQL volume 首次初始化时参与默认管理员初始化；已有 volume 不会因为改 env 自动重跑初始化 SQL。
 
-```dotenv
-SPRING_PROFILES_ACTIVE=real-pre
-APP_TEST_ENABLED=false
-DOUYIN_TEST_ENABLED=false
-BACKEND_HOST_PORT=8081
-FRONTEND_HOST_PORT=3001
-```
-
-说明：`ADMIN_PASSWORD` 只在 PostgreSQL volume 首次初始化时用于创建/更新默认管理员。已有 volume 不会因为改 `.env.real-pre` 自动重跑初始化 SQL。
-
-## 七、步骤 6：启动服务
-
-先给脚本执行权限：
+## 七、启动 real-pre
 
 ```bash
-cd /opt/saas
-chmod +x scripts/deploy-real-pre.sh scripts/health-check.sh scripts/backup-db.sh scripts/rollback-real-pre.sh
+cd /opt/saas/app
+chmod +x scripts/deploy-real-pre.sh scripts/health-check.sh scripts/backup-db.sh scripts/run-real-pre-db-migrations.sh scripts/rollback-real-pre.sh
 ```
 
-静态校验 Compose：
+先静态渲染 compose：
 
 ```bash
-docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml config >/tmp/saas-real-pre-compose.yml
+export REAL_PRE_ENV_FILE=/opt/saas/env/.env.real-pre
+docker compose \
+  --env-file /opt/saas/env/.env.real-pre \
+  --project-name saas-active \
+  -f docker-compose.real-pre.yml \
+  config >/tmp/saas-real-pre-compose.yml
 ```
 
-启动：
+执行受控部署：
 
 ```bash
-./scripts/deploy-real-pre.sh
+ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
 ```
 
-如果需要部署前拉最新代码：
+如需部署前拉最新代码：
 
 ```bash
-./scripts/deploy-real-pre.sh --pull
+ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh --pull
 ```
 
-`--pull` 使用 `git pull --ff-only`。如果拉取失败，脚本会停止，不会删除 volume。
+脚本会执行：
 
-## 八、步骤 7：查看容器
+```text
+环境变量守卫
+-> docker compose config
+-> 启动 PostgreSQL / Redis
+-> 备份 PostgreSQL 到 /opt/saas/backups
+-> 执行 scripts/run-real-pre-db-migrations.sh
+-> 构建并启动 backend / frontend
+-> /api/system/health 与前端端口验活
+-> 写入 /opt/saas/logs/deploy-real-pre-*.log
+```
+
+## 八、健康检查
 
 ```bash
 docker ps
-docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml ps
-```
-
-期望服务：
-
-- `postgres-real-pre`
-- `redis-real-pre`
-- `backend-real-pre`
-- `frontend-real-pre`
-
-## 九、步骤 8：健康检查
-
-```bash
-./scripts/health-check.sh
-```
-
-手工检查后端：
-
-```bash
+ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/health-check.sh
 curl -fsS http://127.0.0.1:8081/api/system/health
+curl -I http://127.0.0.1:3001
 ```
 
-期望返回包含：
+期望后端返回：
 
 ```json
 {"status":"UP"}
 ```
 
-手工检查前端：
+查看日志：
 
 ```bash
-curl -I http://127.0.0.1:3001
+docker compose \
+  --env-file /opt/saas/env/.env.real-pre \
+  --project-name saas-active \
+  -f docker-compose.real-pre.yml \
+  logs --tail=300 backend-real-pre
 ```
 
-## 十、步骤 9：浏览器访问
-
-如果服务器安全组和防火墙已放行端口：
+重点确认：
 
 ```text
-http://服务器IP:3001
+activeProfiles=real-pre
+APP_TEST_ENABLED=false
+DOUYIN_TEST_ENABLED=false
+DOUYIN_REAL_UPSTREAM_MODE=live
+DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false 或未开启
+订单同步任务已启动
+抖音 API 请求无系统性 401/403/5xx
 ```
 
-后端健康地址：
+## 九、本地三组 E2E 门禁
+
+在本地项目根目录执行，目标地址改成服务器 real-pre 地址。
+
+PowerShell 示例：
+
+```powershell
+$env:E2E_BASE_URL="http://服务器IP:3001"
+$env:E2E_BACKEND_URL="http://服务器IP:8081"
+npm run e2e:real-pre:p0:preflight
+npm run e2e:real-pre:p0
+npm run e2e:real-pre:roles
+```
+
+如果通过 Nginx 域名统一反代 `/api`，可把两个变量都指向同一个域名：
+
+```powershell
+$env:E2E_BASE_URL="https://real-pre.xxx.com"
+$env:E2E_BACKEND_URL="https://real-pre.xxx.com"
+```
+
+判断规则：
+
+| 结果 | 处理 |
+| --- | --- |
+| preflight 失败 | 环境变量、连通性、真实开关、数据库或接口配置有问题，不能继续 |
+| roles 失败 | 权限域不能过，不能给业务使用 |
+| p0 FAIL | 核心链路有硬失败，需要修复 |
+| p0 PENDING | 没有真实订单 / 成交 / 业绩样本，不等于代码失败 |
+
+## 十、真实订单观察
+
+进入 PostgreSQL：
+
+```bash
+docker exec -it saas-active-postgres-real-pre-1 psql -U saas -d saas_real_pre
+```
+
+订单同步：
+
+```sql
+select count(*) from colonelsettlement_order;
+
+select
+  order_id,
+  product_id,
+  colonel_activity_id,
+  pick_source,
+  channel_user_id,
+  talent_id,
+  order_amount,
+  settle_amount,
+  estimate_service_fee,
+  effective_service_fee,
+  create_time,
+  settle_time,
+  attribution_status
+from colonelsettlement_order
+where deleted = 0
+order by create_time desc
+limit 20;
+```
+
+归因映射：
+
+```sql
+select
+  id,
+  pick_source,
+  product_id,
+  activity_id,
+  user_id,
+  promotion_link_id,
+  colonel_buyin_id,
+  source_type,
+  create_time,
+  update_time
+from pick_source_mapping
+where deleted = 0
+order by update_time desc nulls last, create_time desc
+limit 20;
+```
+
+寄样自动完成：
+
+```sql
+select
+  id,
+  request_no,
+  status,
+  channel_user_id,
+  talent_uid,
+  product_id,
+  ship_time,
+  deliver_time,
+  complete_time,
+  update_time
+from sample_request
+where deleted = 0
+order by create_time desc
+limit 20;
+```
+
+业绩双轨金额：
+
+```sql
+select
+  order_id,
+  product_id,
+  activity_id,
+  talent_id,
+  final_channel_user_id,
+  estimate_channel_commission,
+  effective_channel_commission,
+  estimate_recruiter_commission,
+  effective_recruiter_commission,
+  estimate_gross_profit,
+  effective_gross_profit,
+  order_create_time,
+  settle_time,
+  calculated_at
+from performance_records
+order by calculated_at desc nulls last, created_at desc
+limit 20;
+```
+
+如果列名与服务器实际 schema 不一致，先执行 `\d 表名`，以实体类和迁移结果为准。
+
+## 十一、Nginx 暴露
+
+初期只暴露 real-pre 域名，不暴露 PostgreSQL / Redis。
+
+```nginx
+server {
+    listen 80;
+    server_name real-pre.xxx.com;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8081/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3001/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+HTTPS 证书可在第一轮 HTTP 受控验证通过后再接入。
+
+## 十二、回滚
+
+部署前记录 commit：
+
+```bash
+cd /opt/saas/app
+git rev-parse --short HEAD
+```
+
+应用回滚：
+
+```bash
+cd /opt/saas/app
+ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/rollback-real-pre.sh 上一个稳定commit
+```
+
+默认策略：先回滚应用，不随意回滚数据库。只有迁移破坏表结构且有明确证据时，才评估数据库恢复。
+
+## 十三、部署验收报告模板
 
 ```text
-http://服务器IP:8081/api/system/health
+服务器 real-pre 受控部署完成。
+commit:
+环境健康检查:
+real-pre 测试开关:
+真实 upstream 模式:
+真实推广写开关:
+E2E preflight:
+E2E p0:
+E2E roles:
+真实订单回流:
+PENDING / FAIL 明细:
+结论:
 ```
-
-不要对公网开放：
-
-- PostgreSQL `5432`
-- Redis `6379`
-
-## 十一、步骤 10：失败排查
-
-查看服务状态：
-
-```bash
-docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml ps
-```
-
-查看后端日志：
-
-```bash
-docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml logs --tail=300 backend-real-pre
-```
-
-查看前端日志：
-
-```bash
-docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml logs --tail=300 frontend-real-pre
-```
-
-查看数据库日志：
-
-```bash
-docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml logs --tail=300 postgres-real-pre
-```
-
-查看 Redis 日志：
-
-```bash
-docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml logs --tail=300 redis-real-pre
-```
-
-常见问题：
-
-- 后端起不来：先看 `backend-real-pre` 日志，重点检查 `SPRING_PROFILES_ACTIVE`、数据库连接、Redis 连接、`JWT_SECRET`、抖音必填项。
-- 前端能打开但接口失败：检查 `frontend/nginx/default.conf.template` 渲染后的 upstream 是否指向 `backend-real-pre:8080`，再看后端健康检查。
-- 数据库初始化后管理员密码不变：已有 PostgreSQL volume 不会重新执行初始化 SQL。需要单独设计密码重置方案，不能删除 volume。
-- 端口访问失败：检查云厂商安全组、服务器防火墙、`docker ps` 端口映射。
-- Compose 校验失败：先运行 `docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml config` 看具体缺失变量。
-
-## 十二、备份与回滚
-
-手工备份数据库：
-
-```bash
-./scripts/backup-db.sh
-```
-
-备份目录：
-
-```text
-/opt/saas/backup
-```
-
-回滚到上一个 Git commit：
-
-```bash
-./scripts/rollback-real-pre.sh HEAD~1
-```
-
-回滚脚本会先执行数据库备份，再切换代码，再重新 `docker compose up -d --build`，最后执行健康检查。它不会删除 volume。

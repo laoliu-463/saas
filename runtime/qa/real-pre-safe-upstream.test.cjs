@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  buildAnyReusablePromotionMappingQuery,
   buildReusablePromotionMappingQuery,
   parsePipeRows,
   selectReusablePromotionMapping,
@@ -22,6 +23,18 @@ test('buildReusablePromotionMappingQuery only reads active local mapping and pro
   assert.match(sql, /psm\.activity_id = '3916506'/i);
   assert.match(sql, /psm\.product_id = '3810562766247428542'/i);
   assert.match(sql, /psm\.user_id = '11111111-1111-1111-1111-111111111111'/i);
+  assert.doesNotMatch(sql, /\b(insert|update|delete)\b|instPickSourceConvert|promotion-links/i);
+});
+
+test('buildAnyReusablePromotionMappingQuery reads only reusable local mappings', () => {
+  const sql = buildAnyReusablePromotionMappingQuery({ limit: 30 });
+
+  assert.match(sql, /from pick_source_mapping psm/i);
+  assert.match(sql, /left join promotion_link pl/i);
+  assert.match(sql, /psm\.deleted = 0/i);
+  assert.match(sql, /psm\.status = 1/i);
+  assert.match(sql, /coalesce\(pl\.promotion_url, psm\.converted_url, ''\) <> ''/i);
+  assert.match(sql, /limit 20/i);
   assert.doesNotMatch(sql, /\b(insert|update|delete)\b|instPickSourceConvert|promotion-links/i);
 });
 

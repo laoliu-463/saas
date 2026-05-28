@@ -23,6 +23,12 @@ import {
 } from './helpers/real-pre-p0-step';
 
 type JsonMap = Record<string, unknown>;
+type ReusablePromotionMapping = {
+  mappingId?: string;
+  productId?: string;
+  activityId?: string;
+  userId?: string;
+};
 
 // biz_staff 不在 test-data.ts 的 accounts 表里（accounts 只列了 5 个角色），
 // 不能借 accounts.bizLeader.password —— 一旦真实环境给 bizLeader 单独覆盖
@@ -70,10 +76,16 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
       params: { page: 1, size: 20 }
     });
     const libraryRecords = extractRecords(safeUnwrap<JsonMap>(libraryResult.body));
-    setDetail(ctx, 'productLibrary', { total: libraryRecords.length, status: libraryResult.status });
-    const productCandidate = libraryRecords.find((row) => row.id);
+    const productLookup = await resolveProductCandidate(api, String(admin.token || ''), libraryRecords);
+    setDetail(ctx, 'productLibrary', {
+      total: libraryRecords.length,
+      status: libraryResult.status,
+      candidateSource: productLookup.source,
+      fallbackMapping: productLookup.mapping
+    });
+    const productCandidate = productLookup.product;
     if (!productCandidate) {
-      markPending(ctx, 'PENDING_NO_ACTIVITY_PRODUCTS: 渠道账号商品库为空，无法发起真实寄样');
+      markPending(ctx, 'PENDING_NO_ACTIVITY_PRODUCTS: 渠道账号商品库为空，且无可复用转链商品详情，无法发起真实寄样');
       persistStepSummary(ctx);
       await testInfo.attach('step-summary.json', { body: JSON.stringify(ctx.summary, null, 2), contentType: 'application/json' });
       await api.dispose();
@@ -104,6 +116,16 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
     const talent = safeUnwrap<JsonMap>(talentCreate.body) || {};
     const talentLocalId = String(talent.id || '');
     setDetail(ctx, 'talent', { talentLocalId, talentUid });
+    if (talentLocalId) {
+      const claim = await rawApi(api, 'POST', `/api/talents/${talentLocalId}/claims`, String(channelStaff.token || ''));
+      setDetail(ctx, 'talentClaim', {
+        status: claim.status,
+        code: (claim.body as JsonMap | undefined)?.code
+      });
+      if (!claim.ok || (claim.body as JsonMap | undefined)?.code !== 200) {
+        markFail(ctx, `达人认领失败：HTTP ${claim.status} code=${(claim.body as JsonMap | undefined)?.code}`);
+      }
+    }
 
     // 3) 渠道发起寄样申请。
     const samplePayload = {
@@ -233,6 +255,65 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
     `real-pre 33 寄样链 conclusion=${ctx.summary.conclusion}`
   ).toBe('OK');
 });
+
+async function resolveProductCandidate(
+  api: APIRequestContext,
+  adminToken: string,
+  libraryRecords: JsonMap[]
+): Promise<{ product: JsonMap | null; source: string; mapping: JsonMap | null }> {
+  const fromLibrary = libraryRecords.find((row) => row.id);
+  if (fromLibrary) {
+    return { product: fromLibrary, source: 'product-library', mapping: null };
+  }
+  const mapping = scanAnyReusableMapping()[0];
+  if (!mapping?.activityId || !mapping?.productId) {
+    return { product: null, source: 'none', mapping: mapping || null };
+  }
+  const detail = await rawApi(
+    api,
+    'GET',
+    `/api/colonel/activities/${mapping.activityId}/products/${mapping.productId}`,
+    adminToken
+  );
+  const product = safeUnwrap<JsonMap>(detail.body) || null;
+  return {
+    product: product && product.id ? product : null,
+    source: product && product.id ? 'reusable-promotion-mapping' : 'none',
+    mapping
+  };
+}
+
+function scanAnyReusableMapping(): ReusablePromotionMapping[] {
+  const { execFileSync } = require('node:child_process');
+  const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
+  const user = process.env.E2E_DB_USER || 'saas';
+  const db = process.env.E2E_DB_NAME || 'saas_real_pre';
+  const sql = [
+    "select psm.id::text, psm.product_id, psm.activity_id, psm.user_id::text",
+    'from pick_source_mapping psm',
+    'left join promotion_link pl on pl.id = psm.promotion_link_id and pl.deleted = 0',
+    'where psm.deleted = 0',
+    '  and psm.status = 1',
+    "  and coalesce(psm.pick_source, '') <> ''",
+    "  and coalesce(pl.promotion_url, psm.converted_url, '') <> ''",
+    'order by psm.update_time desc nulls last, psm.create_time desc',
+    'limit 5;'
+  ].join('\n');
+  const out = execFileSync(
+    'docker',
+    ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-F', '|', '-c', sql],
+    { encoding: 'utf8' }
+  );
+  return String(out || '').split(/\r?\n/).filter(Boolean).map((line) => {
+    const parts = line.split('|');
+    return {
+      mappingId: parts[0] || '',
+      productId: parts[1] || '',
+      activityId: parts[2] || '',
+      userId: parts[3] || ''
+    };
+  });
+}
 
 async function rawApi(
   api: APIRequestContext,
