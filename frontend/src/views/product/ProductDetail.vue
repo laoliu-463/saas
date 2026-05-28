@@ -916,12 +916,17 @@ const copyProductBrief = async () => {
   briefCopying.value = true;
   let clipboardWriteFailed = false;
   try {
+    const convertLinkForBriefCopy = (
+      activityId: string | number,
+      productId: string | number,
+      data: { scene: 'PRODUCT_LIBRARY' | 'PRODUCT_DETAIL' | 'TALENT_SHARE' | 'SAMPLE_DESK' }
+    ) => convertActivityProductLink(activityId, productId, data, { suppressErrorNotice: true });
     const result = await copyProductBriefWithLink({
       item: detail.value,
       activityId: props.activityId,
       productId: props.productId,
       scene: 'PRODUCT_DETAIL',
-      convertLink: convertActivityProductLink,
+      convertLink: convertLinkForBriefCopy,
       writeText: async (text: string) => {
         try {
           await navigator.clipboard.writeText(text);

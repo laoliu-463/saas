@@ -476,6 +476,12 @@ const getAuditSupplement = (item: any) => item?.auditSupplement || {}
 
 const getPromotionMaterialPack = (item: any) => item?.promotionMaterialPack || {}
 
+const convertLinkForBriefCopy = (
+  activityId: string | number,
+  productId: string | number,
+  data: { scene: 'PRODUCT_LIBRARY' | 'PRODUCT_DETAIL' | 'TALENT_SHARE' | 'SAMPLE_DESK' }
+) => convertActivityProductLink(activityId, productId, data, { suppressErrorNotice: true })
+
 const getSampleThresholdText = (item: any) => {
   const supplement = getAuditSupplement(item)
   const parts = []
@@ -1048,7 +1054,7 @@ const copyPromotionLink = async (item: any) => {
       activityId,
       productId,
       scene: 'PRODUCT_LIBRARY',
-      convertLink: convertActivityProductLink,
+      convertLink: convertLinkForBriefCopy,
       writeText: async (text: string) => {
         try {
           await navigator.clipboard.writeText(text)

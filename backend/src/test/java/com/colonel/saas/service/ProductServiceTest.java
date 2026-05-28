@@ -25,6 +25,8 @@ import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.PromotionLinkMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -53,6 +55,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ProductServiceTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Mock
     private DouyinPromotionGateway douyinPromotionGateway;
@@ -1283,6 +1287,9 @@ class ProductServiceTest {
         selected.setTitle("已入库商品");
         selected.setShopId(3001L);
         selected.setShopName("测试店铺");
+        selected.setDetailUrl("https://example.com/products/9001");
+        selected.setPromotionStartTime("2026-05-01 00:00:00");
+        selected.setPromotionEndTime("2026-06-01 23:59:59");
 
         ProductOperationState selectedState = buildState("APPROVED");
         selectedState.setActivityId("10001");
@@ -1308,6 +1315,16 @@ class ProductServiceTest {
         assertThat(result.getRecords()).hasSize(1);
         assertThat(result.getRecords().get(0).getName()).isEqualTo("已入库商品");
         assertThat(result.getRecords().get(0).getAssigneeName()).isEqualTo("招商王五 (wangwu)");
+        Map<String, Object> serializedRecord = OBJECT_MAPPER.convertValue(
+                result.getRecords().get(0),
+                new TypeReference<>() {
+                }
+        );
+        assertThat(serializedRecord)
+                .containsEntry("shopName", "测试店铺")
+                .containsEntry("detailUrl", "https://example.com/products/9001")
+                .containsEntry("promotionStartTime", "2026-05-01 00:00:00")
+                .containsEntry("promotionEndTime", "2026-06-01 23:59:59");
         verify(operationStateMapper, never()).selectOne(any());
         verify(sysUserMapper, never()).selectById(any());
     }

@@ -13,7 +13,7 @@
  * 不会真实创建上游转链，不会修改真实业务数据。
  * 结论 PASS / BLOCKED / PENDING / FAIL 通过 step-summary.json 输出。
  */
-import { test, expect, request as playwrightRequest, type APIRequestContext, type Page } from '@playwright/test';
+import { test, expect, request as playwrightRequest, type APIRequestContext, type Page, type Request } from '@playwright/test';
 import { accounts } from './helpers/test-data';
 import { apiLogin } from './helpers/real-pre-api';
 import {
@@ -31,6 +31,30 @@ import {
 } from './helpers/real-pre-p0-step';
 
 type JsonMap = Record<string, unknown>;
+type ProductImageSnapshot = {
+  src: string;
+  alt: string;
+  complete: boolean;
+  naturalWidth: number;
+  naturalHeight: number;
+  display: string;
+  visibility: string;
+};
+type ProductImageRequestFailure = {
+  url: string;
+  errorText: string;
+};
+type ProductImageCheck = {
+  route: string;
+  finalPath: string;
+  imageCount: number;
+  loadedCount: number;
+  failedCount: number;
+  requestFailureCount: number;
+  cspFailureCount: number;
+  failedImages: ProductImageSnapshot[];
+  requestFailures: ProductImageRequestFailure[];
+};
 
 const BUSINESS_READY = new Set(['PENDING_AUDIT', 'APPROVED', 'BOUND', 'ASSIGNED', 'LINKED', 'FOLLOWING']);
 const FATAL_TEXT = /Unexpected Application Error|Application Error|Bad Gateway|Internal Server Error/i;
@@ -172,9 +196,19 @@ test('real-pre P0 / 31 / 商品链', async ({ page }, testInfo) => {
     await installAuth(page, admin);
     const productPage = await openAndAssertNoFatal(page, '/product');
     const douyinPage = await openAndAssertNoFatal(page, '/system/douyin');
-    setDetail(ctx, 'pageCheck', { productPage, douyinPage });
+    const productImageCheck = await openProductManageAndAssertImages(page);
+    setDetail(ctx, 'pageCheck', { productPage, douyinPage, productImageCheck });
     if (productPage.runtimeError) markFail(ctx, '/product 出现运行时错误');
     if (douyinPage.runtimeError) markFail(ctx, '/system/douyin 出现运行时错误');
+    if (businessProductCount > 0 && productImageCheck.imageCount === 0) {
+      markFail(ctx, '商品列表有业务商品，但 /product/manage/products 未渲染任何外链商品图片');
+    }
+    if (productImageCheck.failedCount > 0 || productImageCheck.requestFailureCount > 0) {
+      markFail(
+        ctx,
+        `商品图片加载失败: failedImages=${productImageCheck.failedCount}, requestFailures=${productImageCheck.requestFailureCount}, cspFailures=${productImageCheck.cspFailureCount}`
+      );
+    }
 
     setDetail(ctx, 'activityId', activityId);
     setDetail(ctx, 'rawProductCount', rawProductCount);
@@ -297,4 +331,87 @@ async function openAndAssertNoFatal(page: Page, route: string): Promise<{ route:
     finalPath,
     runtimeError: FATAL_TEXT.test(bodyText)
   };
+}
+
+async function openProductManageAndAssertImages(page: Page): Promise<ProductImageCheck> {
+  const route = '/product/manage/products';
+  const requestFailures: ProductImageRequestFailure[] = [];
+  const onRequestFailed = (request: Request): void => {
+    if (request.resourceType() !== 'image') return;
+    const url = request.url();
+    if (!isExternalHttpUrl(url, currentPageOrigin(page))) return;
+    requestFailures.push({
+      url,
+      errorText: request.failure()?.errorText || 'unknown'
+    });
+  };
+
+  page.on('requestfailed', onRequestFailed);
+  try {
+    await page.goto(route, { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
+    await page.waitForLoadState('networkidle', { timeout: REAL_PRE_NETWORK_IDLE_TIMEOUT_MS }).catch(() => undefined);
+    await page.waitForTimeout(2_000);
+    const finalPath = new URL(page.url()).pathname;
+    const images = await page.locator('img').evaluateAll((nodes) => {
+      return nodes
+        .map((node) => {
+          const img = node as HTMLImageElement;
+          const style = window.getComputedStyle(img);
+          return {
+            src: img.currentSrc || img.getAttribute('src') || '',
+            alt: img.getAttribute('alt') || '',
+            complete: img.complete,
+            naturalWidth: img.naturalWidth,
+            naturalHeight: img.naturalHeight,
+            display: style.display,
+            visibility: style.visibility
+          };
+        })
+        .filter((img) => {
+          if (!img.src || img.src.startsWith('data:') || img.src.startsWith('blob:')) return false;
+          try {
+            const url = new URL(img.src, window.location.href);
+            return (url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== window.location.origin;
+          } catch {
+            return false;
+          }
+        });
+    });
+    const failedImages = images
+      .filter((img) => !img.complete || img.naturalWidth <= 0 || img.naturalHeight <= 0)
+      .slice(0, 10);
+    const cspFailures = requestFailures.filter((failure) => /csp/i.test(failure.errorText));
+    return {
+      route,
+      finalPath,
+      imageCount: images.length,
+      loadedCount: images.length - failedImages.length,
+      failedCount: failedImages.length,
+      requestFailureCount: requestFailures.length,
+      cspFailureCount: cspFailures.length,
+      failedImages,
+      requestFailures: requestFailures.slice(0, 10)
+    };
+  } finally {
+    page.off('requestfailed', onRequestFailed);
+  }
+}
+
+function currentPageOrigin(page: Page): string | null {
+  try {
+    const url = page.url();
+    return url && url !== 'about:blank' ? new URL(url).origin : null;
+  } catch {
+    return null;
+  }
+}
+
+function isExternalHttpUrl(url: string, pageOrigin: string | null): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    return pageOrigin ? parsed.origin !== pageOrigin : true;
+  } catch {
+    return false;
+  }
 }

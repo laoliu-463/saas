@@ -91,6 +91,8 @@ const normalizeServerMessage = (message: string): string => {
   return raw;
 };
 
+const shouldSuppressErrorNotice = (config: any): boolean => Boolean(config?.suppressErrorNotice);
+
 const buildFriendlyErrorMessage = (error: any): string => {
   const serverMsg = error?.response?.data?.msg;
   if (serverMsg && String(serverMsg).trim()) {
@@ -308,7 +310,9 @@ request.interceptors.response.use(
       if (businessCode === FORBIDDEN_BUSINESS_CODE) {
         return Promise.reject({ ...payload, __permissionDenied: true });
       }
-      showErrorNotice(msg, traceId);
+      if (!shouldSuppressErrorNotice(response.config)) {
+        showErrorNotice(msg, traceId);
+      }
       return Promise.reject(payload);
     }
     loadingBar.finish();
@@ -356,7 +360,9 @@ request.interceptors.response.use(
         response: error.response
       });
     } else {
-      showErrorNotice(msg, extractTraceId(error));
+      if (!shouldSuppressErrorNotice(error?.config)) {
+        showErrorNotice(msg, extractTraceId(error));
+      }
     }
     return Promise.reject(error);
   }

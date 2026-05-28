@@ -148,9 +148,13 @@ describe('product-library-display', () => {
     expect(card.supportInvestment).toBe(true)
     expect(card.totalSalesText).toBe('2.5W')
     expect(card.recruiterName).toBe('张三')
+    expect(card.shopName).toBe('旗舰店')
     expect(card.livePrice).toBe('¥99')
     expect(card.commissionRate).toBe('20%')
+    expect(card.productUrl).toBe('https://buyin.example/p')
     expect(card.baiyingUrl).toContain('buyin.example')
+    expect(card.activityStartTime).toBe('2026-01-01')
+    expect(card.activityEndTime).toBe('2026-12-31')
     expect(card.sampleRequirement).toContain('1000')
   })
 

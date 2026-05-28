@@ -80,7 +80,7 @@ npx playwright install
 real-pre 与 test/mock 基线必须分开理解：
 
 - `docker-compose.test.yml` / `.env.test` 用于 mock/test 回归。
-- 服务器 real-pre 使用 `/opt/saas/env/.env.real-pre`，必须满足 `APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`、`DOUYIN_REAL_UPSTREAM_MODE=live`、`DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false`、`DB_NAME=saas_real_pre`。
+- 服务器 real-pre 使用 `/opt/saas/env/.env.real-pre`，必须满足 `APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`、`DOUYIN_REAL_UPSTREAM_MODE=live`、`DB_NAME=saas_real_pre`；受控部署默认保持 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false` 与 `ALLOW_REAL_PROMOTION_WRITE=false`，真实推广写操作只能在单独人工批准窗口同时开启。
 - 服务器 real-pre 使用 Compose project `saas-active`，与当前 real-pre 启动脚本、容器名和 QA 默认 DB 容器一致，避免切到旧 project 后创建第二套数据卷。
 - 端口验活使用 `/api/system/health`；`/api/actuator/**` 需要 JWT，不作为无鉴权探针。
 - 部署命令不带 `-v`，不清空 real-pre 数据卷。

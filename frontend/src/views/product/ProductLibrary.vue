@@ -158,6 +158,12 @@ const canCopyPromotionLink = computed(() =>
   hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
 )
 
+const convertLinkForBriefCopy = (
+  activityId: string | number,
+  productId: string | number,
+  data: { scene: 'PRODUCT_LIBRARY' | 'PRODUCT_DETAIL' | 'TALENT_SHARE' | 'SAMPLE_DESK' }
+) => convertActivityProductLink(activityId, productId, data, { suppressErrorNotice: true })
+
 /** 与旧版 ProductCard「快速寄样」一致：仅渠道角色可发起（后端 quick-sample 接口同限） */
 const canQuickSample = canCopyPromotionLink
 
@@ -352,7 +358,7 @@ const copyPromotionLink = async (item: any) => {
       activityId,
       productId,
       scene: 'PRODUCT_LIBRARY',
-      convertLink: convertActivityProductLink,
+      convertLink: convertLinkForBriefCopy,
       writeText: async (text: string) => {
         try {
           await navigator.clipboard.writeText(text)

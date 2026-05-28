@@ -26,7 +26,8 @@ import java.util.Map;
  * <ul>
  *   <li>推广转链生成（{@link #generateLink}）：将商品链接转换为带归因参数的推广链接</li>
  *   <li>原始上游透传（{@link #rawUpstreamPost}）：直接向抖音 API 发送自定义方法请求</li>
- *   <li>写操作安全门（{@link #ensurePromotionWriteAllowed}）：受 {@code douyin.real.promotion-write-enabled} 配置控制</li>
+ *   <li>写操作安全门（{@link #ensurePromotionWriteAllowed}）：受 {@code douyin.real.promotion-write-enabled}
+ *   与 {@code douyin.real.allow-promotion-write} 双开关控制</li>
  *   <li>契约模式支持：contract 模式下返回预置夹具数据，不发起真实 HTTP 请求</li>
  * </ul>
  *
@@ -62,6 +63,9 @@ public class RealDouyinPromotionGateway implements DouyinPromotionGateway {
     /** 推广写操作开关，由配置项 {@code douyin.real.promotion-write-enabled} 控制，默认关闭 */
     private final boolean promotionWriteEnabled;
 
+    /** 真实推广写操作二次确认开关，由 {@code douyin.real.allow-promotion-write} 控制，默认关闭 */
+    private final boolean allowPromotionWrite;
+
     /**
      * 构造函数（Spring 自动注入）。
      *
@@ -69,19 +73,22 @@ public class RealDouyinPromotionGateway implements DouyinPromotionGateway {
      * @param douyinApiClient         抖音通用 API 客户端
      * @param upstreamModeSupport     上游模式判断器
      * @param contractFixtureProvider 契约夹具数据提供者
-     * @param promotionWriteEnabled   推广写操作开关（由配置注入）
+     * @param promotionWriteEnabled   推广写操作主开关（由配置注入）
+     * @param allowPromotionWrite     真实推广写操作二次确认开关（由配置注入）
      */
     public RealDouyinPromotionGateway(
             PromotionApi promotionApi,
             DouyinApiClient douyinApiClient,
             DouyinUpstreamModeSupport upstreamModeSupport,
             DouyinContractFixtureProvider contractFixtureProvider,
-            @Value("${douyin.real.promotion-write-enabled:false}") boolean promotionWriteEnabled) {
+            @Value("${douyin.real.promotion-write-enabled:false}") boolean promotionWriteEnabled,
+            @Value("${douyin.real.allow-promotion-write:false}") boolean allowPromotionWrite) {
         this.promotionApi = promotionApi;
         this.douyinApiClient = douyinApiClient;
         this.upstreamModeSupport = upstreamModeSupport;
         this.contractFixtureProvider = contractFixtureProvider;
         this.promotionWriteEnabled = promotionWriteEnabled;
+        this.allowPromotionWrite = allowPromotionWrite;
     }
 
     /**
@@ -184,17 +191,17 @@ public class RealDouyinPromotionGateway implements DouyinPromotionGateway {
     /**
      * 安全门检查：确保推广写操作已被显式启用。
      *
-     * <p>仅当目标方法属于推广写操作且 {@code promotionWriteEnabled} 为 false 时抛出异常。
+     * <p>仅当目标方法属于推广写操作，且主开关与二次确认开关均为 true 时放行。
      * 非写操作方法直接放行。</p>
      *
      * @param method 抖音 API 方法标识
      * @throws BusinessException 当写操作未启用且目标方法为推广写操作时
      */
     private void ensurePromotionWriteAllowed(String method) {
-        if (!isPromotionWriteMethod(method) || promotionWriteEnabled) {
+        if (!isPromotionWriteMethod(method) || (promotionWriteEnabled && allowPromotionWrite)) {
             return;
         }
-        throw BusinessException.stateInvalid("真实抖店推广写操作未开启，请配置 DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true 后再执行转链");
+        throw BusinessException.stateInvalid("真实抖店推广写操作未开启，请同时配置 DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true 与 ALLOW_REAL_PROMOTION_WRITE=true 后再执行转链");
     }
 
     /**

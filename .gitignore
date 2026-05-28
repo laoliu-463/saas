@@ -1,5 +1,6 @@
 .env
 .env.*
+!.env.example
 !.env.test.example
 !.env.real-pre.example
 

@@ -12,6 +12,7 @@
 - [V1 必做] 转链能力属于商品域。
 - [V1 必做] 订单域消费 `pick_source` 等输入，但不做最终提成。
 - [V1 必做] 业绩域根据映射、订单事实和配置计算最终归属。
+- [V1 必做] real-pre 真实转链写操作受双开关控制：`DOUYIN_REAL_PROMOTION_WRITE_ENABLED` 对应后端 `douyin.real.promotion-write-enabled`，`ALLOW_REAL_PROMOTION_WRITE` 对应后端 `douyin.real.allow-promotion-write`，默认均为 `false`。商品库复制简介若需要携带推广链接，必须在人工批准窗口同时设置为 `true`。
 - [V1 简化] V1 优先保证转链、映射落库、订单可追溯。
 
 ## 数据流
@@ -27,6 +28,7 @@
 - [V1 必做] 转链接口请求 / 响应摘要。
 - [V1 必做] `pick_source_mapping` SQL/API 记录。
 - [V1 必做] 至少一笔订单能从 `pick_source` 追溯到映射和业绩明细。
+- [V1 必做] 后端日志需留存 `promotion_convert_result=success|failed`，包含 `product_id`、`channel_id`、`pick_source` 和调用结果。
 - [V1 必做] 证据路径写入 [../验收/验收证据索引.md](../验收/验收证据索引.md)。
 
 ## 不做
@@ -39,4 +41,3 @@
 
 - [历史归档] `docs/归档/旧版领域文档/02-商品域.md`
 - [历史归档] `docs/archive/runbooks/20-real-pre商品订单归因逻辑排查.md`
-

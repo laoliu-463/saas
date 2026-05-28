@@ -28,6 +28,10 @@
 | 抖音物流 | `/api/douyin/logistics/**` | 物流接口适配 | real-pre 响应或阻塞证据 | V1 简化 |
 | 主数据 | `/api/master-data/**`、`/api/current-user/**` | 前端下拉、当前用户上下文 | Network 响应 | V1 必做 |
 
+## 商品 API 补充事实
+
+- [V1 必做] `GET /api/products` 商品库分页返回的 `records[]` 需带出商品卡片展示输入：`shopName`、`detailUrl`、`promotionStartTime`、`promotionEndTime`。这些字段来源于 `product_snapshot`，用于前端商品库卡片展示店铺、商品链接和推广时间范围。
+
 ## 第三方 API 入口
 
 | 对接项 | 内部文档 | 关键接口事实 | 范围 |
@@ -44,4 +48,3 @@
 - [V1 不做] 不让前端直接调用第三方开放接口。
 - [V1 不做] 不把旧 OpenAPI 缓存当作 2026-05-22 之后所有接口的最终事实。
 - [V1 不做] 不在 API 总表中虚构字段级契约；字段级契约需由代码、OpenAPI 或真实响应证明。
-

@@ -17,6 +17,7 @@
  * 所有接口路径均以 `/colonel/activities/{activityId}/products` 为前缀，
  * 表示在特定活动上下文下的商品操作。
  */
+import type { AxiosRequestConfig } from 'axios';
 import request from '../utils/request';
 
 /**
@@ -183,8 +184,9 @@ export const updateActivityProductDecision = (
 export const convertActivityProductLink = (
   activityId: string | number,
   productId: string | number,
-  data?: { scene?: 'PRODUCT_LIBRARY' | 'PRODUCT_DETAIL' | 'TALENT_SHARE' | 'SAMPLE_DESK'; talentId?: string }
-) => request.post(`/colonel/activities/${activityId}/products/${productId}/promotion-links`, data || { scene: 'PRODUCT_LIBRARY' });
+  data?: { scene?: 'PRODUCT_LIBRARY' | 'PRODUCT_DETAIL' | 'TALENT_SHARE' | 'SAMPLE_DESK'; talentId?: string },
+  config?: AxiosRequestConfig & { suppressErrorNotice?: boolean }
+) => request.post(`/colonel/activities/${activityId}/products/${productId}/promotion-links`, data || { scene: 'PRODUCT_LIBRARY' }, config);
 
 /**
  * 将单个活动商品加入共享商品库

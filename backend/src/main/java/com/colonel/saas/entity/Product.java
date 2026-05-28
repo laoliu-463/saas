@@ -153,6 +153,14 @@ public class Product extends BaseEntity {
     @TableField(exist = false)
     private String shopName;
 
+    /** 虚拟字段：活动推广开始时间，来源于商品快照 */
+    @TableField(exist = false)
+    private String promotionStartTime;
+
+    /** 虚拟字段：活动推广结束时间，来源于商品快照 */
+    @TableField(exist = false)
+    private String promotionEndTime;
+
     /** 虚拟字段：价格格式化后的展示文案（如"¥99.00"） */
     @TableField(exist = false)
     private String priceText;

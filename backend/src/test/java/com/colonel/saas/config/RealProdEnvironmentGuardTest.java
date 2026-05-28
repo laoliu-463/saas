@@ -129,6 +129,32 @@ class RealProdEnvironmentGuardTest {
     }
 
     @Test
+    void validate_shouldRejectProtectedProfileWhenDouyinUpstreamModeIsNotLive() {
+        MockEnvironment environment = realPreEnvironment();
+        RealProdEnvironmentGuard guard = guard(
+                environment,
+                false,
+                false,
+                true,
+                "super-long-real-secret",
+                "appid",
+                "client-key",
+                "client-secret",
+                "https://saas.example.com",
+                true,
+                "kuaidi100",
+                false,
+                "api",
+                false,
+                "contract"
+        );
+
+        assertThatThrownBy(guard::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("douyin.real.upstream-mode=live");
+    }
+
+    @Test
     void validate_shouldRejectProtectedProfileWhenDouyinSecretsMissing() {
         MockEnvironment environment = realPreEnvironment();
         RealProdEnvironmentGuard guard = guard(
@@ -385,6 +411,41 @@ class RealProdEnvironmentGuardTest {
             boolean exclusiveEnabled,
             String talentCollectMode,
             boolean talentPublicPageCrawlEnabled) {
+        return guard(
+                environment,
+                appTestEnabled,
+                douyinTestEnabled,
+                verifyWebhookSign,
+                jwtSecret,
+                douyinAppId,
+                douyinClientKey,
+                douyinClientSecret,
+                corsAllowedOriginPatterns,
+                orderSyncEnabled,
+                logisticsProvider,
+                exclusiveEnabled,
+                talentCollectMode,
+                talentPublicPageCrawlEnabled,
+                "live"
+        );
+    }
+
+    private static RealProdEnvironmentGuard guard(
+            MockEnvironment environment,
+            boolean appTestEnabled,
+            boolean douyinTestEnabled,
+            boolean verifyWebhookSign,
+            String jwtSecret,
+            String douyinAppId,
+            String douyinClientKey,
+            String douyinClientSecret,
+            String corsAllowedOriginPatterns,
+            boolean orderSyncEnabled,
+            String logisticsProvider,
+            boolean exclusiveEnabled,
+            String talentCollectMode,
+            boolean talentPublicPageCrawlEnabled,
+            String douyinUpstreamMode) {
         return new RealProdEnvironmentGuard(
                 environment,
                 appTestEnabled,
@@ -395,6 +456,7 @@ class RealProdEnvironmentGuardTest {
                 douyinClientKey,
                 douyinClientSecret,
                 corsAllowedOriginPatterns,
+                douyinUpstreamMode,
                 "redis-secret",
                 "db-secret",
                 orderSyncEnabled,

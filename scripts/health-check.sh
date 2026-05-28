@@ -46,7 +46,7 @@ PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(get_env COMPOSE_PROJECT_NAME saas-active
 BACKEND_PORT="$(get_env BACKEND_HOST_PORT 8081)"
 FRONTEND_PORT="$(get_env FRONTEND_HOST_PORT 3001)"
 BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}/api/system/health"
-FRONTEND_URL="http://127.0.0.1:${FRONTEND_PORT}"
+FRONTEND_URL="http://127.0.0.1:${FRONTEND_PORT}/healthz"
 
 echo "Waiting for backend: ${BACKEND_URL}"
 backend_ok=false
@@ -67,7 +67,7 @@ fi
 echo "Waiting for frontend: ${FRONTEND_URL}"
 frontend_ok=false
 for _ in $(seq 1 60); do
-  if curl -fsS "${FRONTEND_URL}" >/dev/null; then
+  if curl -fsS "${FRONTEND_URL}" | grep -q 'ok'; then
     frontend_ok=true
     break
   fi

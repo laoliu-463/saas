@@ -2179,6 +2179,7 @@ public class ProductService {
         }
         SysUser user = sysUserMapper.selectById(userId);
         String desiredPickExtra = buildPickExtra(userId, user, snapshot.getProductId(), snapshot.getActivityId());
+        String attemptedPickSource = null;
 
         try {
             DouyinPromotionGateway.PromotionLinkResult result = douyinPromotionGateway.generateLink(
@@ -2199,6 +2200,7 @@ public class ProductService {
                             )
                     )
             );
+            attemptedPickSource = result.pickSource();
 
             // 1. 保存 PromotionLink
             PromotionLink link = new PromotionLink();
@@ -2269,6 +2271,12 @@ public class ProductService {
                         result.pickExtra()
                 );
             }
+            log.info("promotion_convert_result=success product_id={} channel_id={} activity_id={} pick_source={} scene={} result=success",
+                    snapshot.getProductId(),
+                    userId,
+                    snapshot.getActivityId(),
+                    result.pickSource(),
+                    finalScene);
 
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("promotionScene", finalPromotionScene);
@@ -2334,6 +2342,13 @@ public class ProductService {
                     "转链失败",
                     ex.getMessage()
             );
+            log.warn("promotion_convert_result=failed product_id={} channel_id={} activity_id={} pick_source={} scene={} result=failed error={}",
+                    productId,
+                    userId,
+                    activityId,
+                    attemptedPickSource,
+                    finalScene,
+                    ex.getMessage());
             throw ex;
         }
     }
@@ -2964,7 +2979,10 @@ public class ProductService {
         product.setActivityId(toUuid(snapshot.getActivityId()));
         product.setSourceActivityId(snapshot.getActivityId());
         product.setCover(snapshot.getCover());
+        product.setDetailUrl(snapshot.getDetailUrl());
         product.setShopName(snapshot.getShopName());
+        product.setPromotionStartTime(snapshot.getPromotionStartTime());
+        product.setPromotionEndTime(snapshot.getPromotionEndTime());
         product.setPriceText(snapshot.getPriceText());
         product.setActivityCosRatioText(snapshot.getActivityCosRatioText());
         product.setEstimatedServiceFee(estimateFee(snapshot.getPrice(), resolveServiceFeeRate(snapshot)).toPlainString());

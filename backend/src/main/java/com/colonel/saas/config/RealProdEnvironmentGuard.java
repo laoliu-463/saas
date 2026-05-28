@@ -25,6 +25,7 @@ import java.util.Set;
  *   <li><strong>Webhook 签名验证</strong> —— douyin.webhook.verify-sign 必须为 true</li>
  *   <li><strong>JWT 密钥</strong> —— 不能为空，不能是默认占位符</li>
  *   <li><strong>抖音凭据</strong> —— app-id、client-key、client-secret 不能为空</li>
+ *   <li><strong>抖音上游模式</strong> —— real-pre 必须为 live，不能使用 contract 夹具</li>
  *   <li><strong>CORS 配置</strong> —— 不能使用通配符 * 或 scheme://* 等不安全模式</li>
  * </ul>
  *
@@ -62,6 +63,8 @@ public class RealProdEnvironmentGuard {
     private final String douyinClientSecret;
     /** CORS 允许的源模式 */
     private final String corsAllowedOriginPatterns;
+    /** 抖音真实上游模式 */
+    private final String douyinUpstreamMode;
     /** Redis 密码 */
     private final String redisPassword;
     /** 数据库密码 */
@@ -93,6 +96,7 @@ public class RealProdEnvironmentGuard {
      * @param douyinClientKey           抖音客户端 Key（默认空）
      * @param douyinClientSecret        抖音客户端密钥（默认空）
      * @param corsAllowedOriginPatterns CORS 允许的源模式（默认仅允许 localhost）
+     * @param douyinUpstreamMode        抖音真实上游模式（受保护环境必须为 live）
      * @param redisPassword             Redis 密码（默认空）
      * @param dbPassword                数据库密码（默认空）
      * @param orderSyncEnabled          订单同步开关（受保护环境必须开启）
@@ -111,6 +115,7 @@ public class RealProdEnvironmentGuard {
             @Value("${douyin.app.client-key:}") String douyinClientKey,
             @Value("${douyin.app.client-secret:}") String douyinClientSecret,
             @Value("${app.cors.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*}") String corsAllowedOriginPatterns,
+            @Value("${douyin.real.upstream-mode:live}") String douyinUpstreamMode,
             @Value("${REDIS_PASSWORD:}") String redisPassword,
             @Value("${DB_PASSWORD:}") String dbPassword,
             @Value("${order.sync.enabled:true}") boolean orderSyncEnabled,
@@ -127,6 +132,7 @@ public class RealProdEnvironmentGuard {
         this.douyinClientKey = douyinClientKey;
         this.douyinClientSecret = douyinClientSecret;
         this.corsAllowedOriginPatterns = corsAllowedOriginPatterns;
+        this.douyinUpstreamMode = douyinUpstreamMode;
         this.redisPassword = redisPassword;
         this.dbPassword = dbPassword;
         this.orderSyncEnabled = orderSyncEnabled;
@@ -162,6 +168,7 @@ public class RealProdEnvironmentGuard {
         requireSecret("douyin.app.app-id", douyinAppId, null);
         requireSecret("douyin.app.client-key", douyinClientKey, null);
         requireSecret("douyin.app.client-secret", douyinClientSecret, null);
+        requireLiveDouyinUpstreamMode();
         requireSecret("REDIS_PASSWORD", redisPassword, null);
         requireSecret("DB_PASSWORD", dbPassword, null);
         requireTrue("order.sync.enabled", orderSyncEnabled);
@@ -190,6 +197,20 @@ public class RealProdEnvironmentGuard {
         if ("crawler".equals(normalized) || "api_then_crawler".equals(normalized)) {
             throw new IllegalStateException(activeProfileLabel(normalizedActiveProfiles())
                     + " profile does not allow non-public talent crawler mode: " + normalized);
+        }
+    }
+
+    /**
+     * 校验抖音上游模式是否为真实 live 模式。
+     * <p>受保护环境不能使用 contract 夹具，否则会把模拟数据误写成真实联调证据。</p>
+     *
+     * @throws IllegalStateException douyin.real.upstream-mode 非 live 时抛出
+     */
+    private void requireLiveDouyinUpstreamMode() {
+        String normalized = douyinUpstreamMode == null ? "" : douyinUpstreamMode.trim().toLowerCase(Locale.ROOT);
+        if (!"live".equals(normalized)) {
+            throw new IllegalStateException(activeProfileLabel(normalizedActiveProfiles())
+                    + " profile requires douyin.real.upstream-mode=live");
         }
     }
 

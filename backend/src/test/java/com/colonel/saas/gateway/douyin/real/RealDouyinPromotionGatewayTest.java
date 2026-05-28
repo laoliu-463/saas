@@ -33,6 +33,7 @@ class RealDouyinPromotionGatewayTest {
                 douyinApiClient,
                 upstreamModeSupport,
                 contractFixtureProvider,
+                false,
                 false
         );
         when(upstreamModeSupport.isContract()).thenReturn(false);
@@ -40,6 +41,29 @@ class RealDouyinPromotionGatewayTest {
         assertThatThrownBy(() -> gateway.generateLink(command()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("真实抖店推广写操作未开启");
+
+        verifyNoInteractions(promotionApi);
+    }
+
+    @Test
+    void generateLink_shouldRejectWhenOnlyPromotionWriteSwitchEnabled() {
+        PromotionApi promotionApi = mock(PromotionApi.class);
+        DouyinApiClient douyinApiClient = mock(DouyinApiClient.class);
+        DouyinUpstreamModeSupport upstreamModeSupport = mock(DouyinUpstreamModeSupport.class);
+        DouyinContractFixtureProvider contractFixtureProvider = mock(DouyinContractFixtureProvider.class);
+        RealDouyinPromotionGateway gateway = new RealDouyinPromotionGateway(
+                promotionApi,
+                douyinApiClient,
+                upstreamModeSupport,
+                contractFixtureProvider,
+                true,
+                false
+        );
+        when(upstreamModeSupport.isContract()).thenReturn(false);
+
+        assertThatThrownBy(() -> gateway.generateLink(command()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("ALLOW_REAL_PROMOTION_WRITE=true");
 
         verifyNoInteractions(promotionApi);
     }
@@ -55,6 +79,7 @@ class RealDouyinPromotionGatewayTest {
                 douyinApiClient,
                 upstreamModeSupport,
                 contractFixtureProvider,
+                true,
                 true
         );
         when(upstreamModeSupport.isContract()).thenReturn(false);
@@ -86,6 +111,7 @@ class RealDouyinPromotionGatewayTest {
                 douyinApiClient,
                 upstreamModeSupport,
                 contractFixtureProvider,
+                false,
                 false
         );
         when(upstreamModeSupport.isContract()).thenReturn(false);
