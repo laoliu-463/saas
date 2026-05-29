@@ -18,7 +18,7 @@ export interface ProductFilterState {
   categories: string[]
   /** 来源活动 ID */
   activityId: string | null
-  /** 招商负责人用户 ID */
+  /** 招商组长用户 ID */
   assigneeId: string | null
   /** 服务费率区间 */
   serviceFee: string | null
@@ -131,8 +131,8 @@ export const yesNoOptions = [
 ]
 
 export const assigneeOptions = [
-  { label: '已分配负责人', value: 'assigned' },
-  { label: '未分配负责人', value: 'unassigned' }
+  { label: '已分配招商组长', value: 'assigned' },
+  { label: '未分配招商组长', value: 'unassigned' }
 ]
 
 export const decisionOptions = [

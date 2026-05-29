@@ -69,7 +69,7 @@
       <n-data-table
         remote
         data-testid="activity-table"
-        :columns="columns"
+        :columns="columns as any"
         :data="data"
         :loading="loading"
         :pagination="pagination"
@@ -83,19 +83,58 @@
         @update:page-size="handlePageSizeChange"
       />
     </section>
+
+    <n-modal
+      v-model:show="assignModalVisible"
+      preset="card"
+      title="分配招商组长"
+      :style="{ width: '480px' }"
+      data-testid="activity-assign-modal"
+    >
+      <n-form label-placement="left" label-width="96">
+        <n-form-item label="招商组长" required>
+          <n-select
+            v-model:value="assignForm.assigneeId"
+            filterable
+            remote
+            clearable
+            placeholder="搜索并选择招商组长"
+            :options="assigneeOptions"
+            :loading="assigneeLoading"
+            data-testid="activity-assign-select"
+            @search="loadAssigneeOptions"
+          />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="assignModalVisible = false">取消</n-button>
+          <n-button
+            type="primary"
+            :loading="assignSubmitting"
+            data-testid="activity-assign-submit"
+            @click="submitAssignActivity"
+          >
+            确认分配
+          </n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue'
-import { NButton, useMessage } from 'naive-ui'
+import { NButton, NModal, NForm, NFormItem, NSelect, NSpace, useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
-import { getColonelActivityPage } from '../../api/activity'
+import { assignColonelActivity, getColonelActivityPage } from '../../api/activity'
 import { getActivityProducts } from '../../api/activityProduct'
 import { getDouyinInstitutionInfo } from '../../api/douyin'
 import { exportActivities } from '../../api/data'
 import { useRuntimeEnvironment } from '../../composables/useRuntimeEnvironment'
+import { useAuthStore } from '../../stores/auth'
+import { loadProductAssigneeOptions } from './product-assignee-options'
 import { DEFAULT_PAGE, normalizePageSize } from '../../utils/pagination'
 import { notifyApiFailure } from '../../utils/requestError'
 import {
@@ -108,6 +147,7 @@ import {
   formatActivityCategories,
   formatDateRange,
   formatMechanismSummary,
+  resolveActivityAssigneeName,
   resolveActivityRequirement,
   resolveActivityStatusLabel,
   resolveColonelName
@@ -118,7 +158,9 @@ const ACTIVITY_PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 
 const message = useMessage()
 const router = useRouter()
+const authStore = useAuthStore()
 const { activityDataSourceHint, activityAlertType } = useRuntimeEnvironment()
+const canAssignActivity = computed(() => authStore.isAdmin || authStore.roleCodes.includes('admin'))
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -127,6 +169,14 @@ const checkedRowKeys = ref<Array<string | number>>([])
 const activeStatus = ref(0)
 const institutionName = ref('')
 const productStatsMap = ref<Record<string, ActivityProductStats>>({})
+const assignModalVisible = ref(false)
+const assignSubmitting = ref(false)
+const assigneeLoading = ref(false)
+const assigneeOptions = ref<Array<{ label: string; value: string }>>([])
+const assignTargetActivityId = ref('')
+const assignForm = reactive({
+  assigneeId: null as string | null
+})
 
 const filters = reactive({
   activityId: '',
@@ -203,7 +253,7 @@ const openBuyinActivity = (row: ActivityRow) => {
 const getProductStats = (activityId: string | number | undefined) =>
   productStatsMap.value[String(activityId ?? '')] || { promoting: null, pending: null }
 
-const columns = [
+const columns = computed(() => [
   { type: 'selection' as const, fixed: 'left' as const, width: 48 },
   {
     title: '活动名称',
@@ -233,11 +283,10 @@ const columns = [
     }
   },
   {
-    title: '招商经理',
+    title: '招商组长',
     key: 'recruiterName',
-    width: 100,
-    render: (row: ActivityRow) =>
-      String(row.recruiterName ?? row.assigneeName ?? row.managerName ?? '—')
+    width: 120,
+    render: (row: ActivityRow) => resolveActivityAssigneeName(row)
   },
   {
     title: '活动状态',
@@ -287,10 +336,10 @@ const columns = [
   {
     title: '操作',
     key: 'actions',
-    width: 110,
+    width: 170,
     fixed: 'right' as const,
-    render: (row: ActivityRow) =>
-      h('div', { class: 'activity-action-links' }, [
+    render: (row: ActivityRow) => {
+      const actions = [
         h(
           NButton,
           {
@@ -313,9 +362,26 @@ const columns = [
           },
           { default: () => '商品信息' }
         )
-      ])
+      ]
+      if (canAssignActivity.value) {
+        actions.unshift(
+          h(
+            NButton,
+            {
+              text: true,
+              type: 'primary',
+              size: 'small',
+              'data-testid': 'activity-assign-recruiter',
+              onClick: () => openAssignModal(row)
+            },
+            { default: () => '分配招商组长' }
+          )
+        )
+      }
+      return h('div', { class: 'activity-action-links' }, actions)
+    }
   }
-]
+])
 
 const hydrateProductStats = async (rows: ActivityRow[]) => {
   if (!rows.length) return
@@ -348,6 +414,50 @@ const buildActivityInfoKeyword = () => {
   const activityId = String(filters.activityId || '').trim()
   const activityName = String(filters.activityName || '').trim()
   return activityId || activityName || undefined
+}
+
+const loadAssigneeOptions = async (keyword = '') => {
+  assigneeLoading.value = true
+  try {
+    assigneeOptions.value = await loadProductAssigneeOptions(keyword)
+  } catch (err: any) {
+    notifyApiFailure(err, message, { fallbackMessage: '加载招商组长候选失败' })
+  } finally {
+    assigneeLoading.value = false
+  }
+}
+
+const openAssignModal = async (row: ActivityRow) => {
+  assignTargetActivityId.value = String(row.activityId ?? '').trim()
+  assignForm.assigneeId = String(
+    row.activityAssigneeId ?? row.assigneeId ?? ''
+  ).trim() || null
+  assignModalVisible.value = true
+  await loadAssigneeOptions('')
+}
+
+const submitAssignActivity = async () => {
+  if (!assignTargetActivityId.value) {
+    message.warning('活动 ID 无效')
+    return
+  }
+  if (assignForm.assigneeId === '') {
+    message.warning('请选择招商组长')
+    return
+  }
+  assignSubmitting.value = true
+  try {
+    await assignColonelActivity(assignTargetActivityId.value, {
+      assigneeId: assignForm.assigneeId
+    })
+    message.success('活动已分配招商组长')
+    assignModalVisible.value = false
+    await fetchData()
+  } catch (err: any) {
+    notifyApiFailure(err, message, { fallbackMessage: '分配失败' })
+  } finally {
+    assignSubmitting.value = false
+  }
 }
 
 const fetchData = async () => {

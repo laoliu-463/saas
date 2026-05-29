@@ -11,6 +11,7 @@ import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
+import com.colonel.saas.service.activity.ActivityPromotionSupport;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -103,6 +104,8 @@ public class ProductDisplayRuleService {
 
     /** 商品推广中状态码（snapshot.status == 1 表示商品正在推广） */
     private static final int PROMOTING_STATUS = 1;
+
+    private final Map<String, Boolean> promotingActivityCache = new java.util.concurrent.ConcurrentHashMap<>();
     /** JSON 序列化/反序列化工具，用于解析审核附加数据 payload */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     /** 多格式时间解析器列表，按优先级尝试解析各种日期时间格式 */
@@ -216,10 +219,11 @@ public class ProductDisplayRuleService {
         if (!StringUtils.hasText(activityId)) {
             return;
         }
+        String normalizedActivityId = activityId.trim();
         /* 查询该活动下已入商品库的运营状态（仅选取 productId 字段以减少 IO） */
         List<ProductOperationState> states = operationStateMapper.selectList(
                 new LambdaQueryWrapper<ProductOperationState>()
-                        .eq(ProductOperationState::getActivityId, activityId.trim())
+                        .eq(ProductOperationState::getActivityId, normalizedActivityId)
                         .eq(ProductOperationState::getSelectedToLibrary, true)
                         .select(ProductOperationState::getProductId));
         /* 提取去重后的商品 ID 集合（LinkedHashSet 保持插入顺序） */
@@ -230,6 +234,62 @@ public class ProductDisplayRuleService {
         /* 逐个商品执行展示去重规则 */
         for (String productId : productIds) {
             applyForProductId(productId, operator);
+        }
+        /* 推广中活动商品保护：确保入库商品强制展示 */
+        applyPromotionActivityDisplayProtection(normalizedActivityId);
+    }
+
+    /**
+     * 推广中活动商品展示保护。
+     * <p>
+     * 如果活动已推广中（colonel_activity.status 包含"推广中"），
+     * 且商品已入库（selectedToLibrary=true），
+     * 则强制保证 displayStatus = DISPLAYING，
+     * 即使被去重规则选为 HIDDEN 也要覆盖为 DISPLAYING。
+     * </p>
+     *
+     * @param activityId 活动 ID
+     */
+    private void applyPromotionActivityDisplayProtection(String activityId) {
+        if (!StringUtils.hasText(activityId)) {
+            return;
+        }
+        // 查询活动状态，判断是否推广中
+        ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(activityId);
+        if (!ActivityPromotionSupport.isPromoting(activity)) {
+            return;
+        }
+        // 查询该活动下已入库的所有状态
+        List<ProductOperationState> libraryStates = operationStateMapper.selectList(
+                new LambdaQueryWrapper<ProductOperationState>()
+                        .eq(ProductOperationState::getActivityId, activityId)
+                        .eq(ProductOperationState::getSelectedToLibrary, true));
+        if (libraryStates == null || libraryStates.isEmpty()) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        int protectedCount = 0;
+        for (ProductOperationState state : libraryStates) {
+            // 已被强制展示或待审核的不需要处理
+            if (!ProductDisplayStatus.HIDDEN.name().equals(state.getDisplayStatus())) {
+                continue;
+            }
+            // 强制覆盖为 DISPLAYING
+            state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+            state.setDisplayReason(DISPLAY_REASON_RULE);
+            state.setHiddenReason(null);
+            state.setDisplayRuleVersion(DISPLAY_RULE_VERSION);
+            if (state.getFirstDisplayedAt() == null) {
+                state.setFirstDisplayedAt(now);
+            }
+            state.setLastDisplayedAt(now);
+            OptimisticLockSupport.requireUpdated(operationStateMapper.updateById(state));
+            protectedCount++;
+            log.info("[推广中展示保护] activityId={}, productId={} 强制展示",
+                    activityId, state.getProductId());
+        }
+        if (protectedCount > 0) {
+            log.info("[推广中展示保护] activityId={} 保护了 {} 个商品", activityId, protectedCount);
         }
     }
 
@@ -341,7 +401,6 @@ public class ProductDisplayRuleService {
     private void applyForStates(String productId, List<ProductOperationState> states, DisplayRuleOperatorContext operator) {
         Map<String, ProductSnapshot> snapshotMap = loadSnapshots(states);
         hydrateProtectionMonths(snapshotMap);
-        List<DisplayCandidate> eligible = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
         UUID oldDisplayRelationId = states.stream()
                 .filter(state -> ProductDisplayStatus.DISPLAYING.name().equals(state.getDisplayStatus()))
@@ -349,6 +408,46 @@ public class ProductDisplayRuleService {
                 .findFirst()
                 .orElse(null);
 
+        List<ProductOperationState> promotingStates = new ArrayList<>();
+        List<ProductOperationState> normalStates = new ArrayList<>();
+        for (ProductOperationState state : states) {
+            if (isPromotingActivity(state.getActivityId())) {
+                promotingStates.add(state);
+            } else {
+                normalStates.add(state);
+            }
+        }
+
+        for (ProductOperationState state : promotingStates) {
+            ProductSnapshot snapshot = snapshotMap.get(snapshotKey(state.getActivityId(), state.getProductId()));
+            ProductDisplayStatus nextStatus;
+            String hiddenReason = null;
+            String displayReason = null;
+            if (isPromotingEligibleForDisplay(state, snapshot)) {
+                nextStatus = ProductDisplayStatus.DISPLAYING;
+                displayReason = DISPLAY_REASON_RULE;
+            } else if (Boolean.TRUE.equals(state.getSelectedToLibrary())) {
+                nextStatus = ProductDisplayStatus.HIDDEN;
+                hiddenReason = snapshot == null ? HIDDEN_REASON_NOT_ELIGIBLE : HIDDEN_REASON_NOT_ELIGIBLE;
+            } else {
+                nextStatus = ProductDisplayStatus.PENDING;
+            }
+            persistDisplayDecision(state, nextStatus, hiddenReason, displayReason, null, now);
+        }
+
+        if (!normalStates.isEmpty()) {
+            applyNormalDisplayDedup(productId, normalStates, snapshotMap, operator, now, oldDisplayRelationId);
+        }
+    }
+
+    private void applyNormalDisplayDedup(
+            String productId,
+            List<ProductOperationState> states,
+            Map<String, ProductSnapshot> snapshotMap,
+            DisplayRuleOperatorContext operator,
+            LocalDateTime now,
+            UUID oldDisplayRelationId) {
+        List<DisplayCandidate> eligible = new ArrayList<>();
         for (ProductOperationState state : states) {
             ProductSnapshot snapshot = snapshotMap.get(snapshotKey(state.getActivityId(), state.getProductId()));
             if (isEligibleForDisplay(state, snapshot, now)) {
@@ -413,6 +512,33 @@ public class ProductDisplayRuleService {
                     operator.operatorId(),
                     selectedReason == null ? Map.of() : Map.of("selectedReason", selectedReason));
         }
+    }
+
+    void clearPromotingActivityCache(String activityId) {
+        if (StringUtils.hasText(activityId)) {
+            promotingActivityCache.remove(activityId.trim());
+        }
+    }
+
+    boolean isPromotingActivity(String activityId) {
+        if (!StringUtils.hasText(activityId)) {
+            return false;
+        }
+        String key = activityId.trim();
+        return promotingActivityCache.computeIfAbsent(key, id -> {
+            ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(id);
+            return ActivityPromotionSupport.isPromoting(activity);
+        });
+    }
+
+    boolean isPromotingEligibleForDisplay(ProductOperationState state, ProductSnapshot snapshot) {
+        if (state == null || snapshot == null) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(state.getManualDisabled())) {
+            return false;
+        }
+        return Boolean.TRUE.equals(state.getSelectedToLibrary());
     }
 
     private String resolveSelectedReason(DisplayCandidate winner, DisplayCandidate currentDisplaying, LocalDateTime now) {

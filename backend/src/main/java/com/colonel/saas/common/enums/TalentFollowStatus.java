@@ -3,7 +3,7 @@ package com.colonel.saas.common.enums;
 import java.util.Arrays;
 
 /**
- * 达人跟进状态枚举，描述招商经理与达人之间的合作推进阶段。
+ * 达人跟进状态枚举，描述招商组长与达人之间的合作推进阶段。
  *
  * <p>状态流转模型（有向图）：</p>
  * <pre>

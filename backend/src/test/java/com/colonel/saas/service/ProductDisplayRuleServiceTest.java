@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.constant.ProductDisplayStatus;
+import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
@@ -65,6 +66,33 @@ class ProductDisplayRuleServiceTest {
                 productDomainEventPublisher,
                 productDisplayAuditService);
         when(operationStateMapper.updateById(any(ProductOperationState.class))).thenReturn(1);
+    }
+
+    @Test
+    void applyForProductId_promotingActivityShouldKeepAllRelationsDisplaying() {
+        String productId = "9012";
+        ProductOperationState promotingA = libraryState("60001", productId, 1000L, false, LocalDateTime.now());
+        ProductOperationState promotingB = libraryState("60002", productId, 3000L, false, LocalDateTime.now().minusDays(1));
+
+        ColonelsettlementActivity promotingActivity = new ColonelsettlementActivity();
+        promotingActivity.setActivityStatusCode(5);
+        when(colonelActivityMapper.selectByActivityId("60001")).thenReturn(promotingActivity);
+        when(colonelActivityMapper.selectByActivityId("60002")).thenReturn(promotingActivity);
+
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(promotingA, promotingB));
+        when(snapshotMapper.selectList(any())).thenReturn(List.of(
+                snapshot("60001", productId, 1000L, 0),
+                snapshot("60002", productId, 3000L, 0)
+        ));
+
+        service.applyForProductId(productId);
+
+        ArgumentCaptor<ProductOperationState> captor = ArgumentCaptor.forClass(ProductOperationState.class);
+        verify(operationStateMapper, atLeastOnce()).updateById(captor.capture());
+        long displayingCount = captor.getAllValues().stream()
+                .filter(state -> ProductDisplayStatus.DISPLAYING.name().equals(state.getDisplayStatus()))
+                .count();
+        assertThat(displayingCount).isEqualTo(2);
     }
 
     @Test

@@ -42,6 +42,13 @@ export function formatDateRange(start: unknown, end: unknown): { start: string; 
   }
 }
 
+export function resolveActivityAssigneeName(row: ActivityRow): string {
+  const activityName = String(row.activityAssigneeName ?? '').trim()
+  if (activityName) return activityName
+  const legacy = String(row.assigneeName ?? row.recruiterName ?? row.managerName ?? '').trim()
+  return legacy || '—'
+}
+
 export function resolveActivityStatusLabel(row: ActivityRow): string {
   const text = String(row.statusText ?? '').trim()
   if (text) return text

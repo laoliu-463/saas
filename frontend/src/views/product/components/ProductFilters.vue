@@ -175,7 +175,7 @@
           <n-select
             :value="filters.assigneeId"
             :options="recruiterOptions"
-            placeholder="招商负责人"
+            placeholder="招商组长"
             clearable
             filterable
             style="width: 180px"

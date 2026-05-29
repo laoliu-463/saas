@@ -106,7 +106,7 @@ export const auditActivityProduct = (
 ) => request.put(`/colonel/activities/${activityId}/products/${productId}/audit-result`, data);
 
 /**
- * 分配活动商品负责人
+ * 分配活动商品招商组长
  *
  * @param activityId - 活动 ID
  * @param productId - 商品 ID
@@ -120,7 +120,7 @@ export const assignActivityProduct = (
 ) => request.put(`/colonel/activities/${activityId}/products/${productId}/assignee`, data);
 
 /**
- * 批量分配活动商品负责人
+ * 批量分配活动商品招商组长
  *
  * @param activityId - 活动 ID
  * @param data.productIds - 商品 ID 列表

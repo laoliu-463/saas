@@ -51,3 +51,11 @@ export const getActivityDouyinDetail = (activityId: number) => request.get(`/act
  * @returns AxiosPromise
  */
 export const syncColonelActivity = (activityId: string | number) => request.post(`/colonel/activities/${activityId}/sync`);
+
+/**
+ * 管理员为活动分配招商组长。
+ */
+export const assignColonelActivity = (
+  activityId: string | number,
+  payload: { assigneeId: string | null }
+) => request.put(`/colonel/activities/${activityId}/assignee`, payload);

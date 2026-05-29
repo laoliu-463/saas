@@ -1,5 +1,5 @@
 /**
- * 商品负责人选项加载 - 单元测试
+ * 商品招商组长选项加载 - 单元测试
  *
  * 测试场景：
  * 1. 从用户主数据加载招商候选人，验证关键字规范化和 label 格式
@@ -15,7 +15,7 @@ vi.mock('../../api/sys', () => ({
   getUserMasterRecruiters: vi.fn()
 }))
 
-describe('商品负责人选项加载（product assignee options）', () => {
+describe('商品招商组长选项加载（product assignee options）', () => {
   it('从用户主数据加载招商候选人，关键字应被 trim，label 格式为"姓名 (用户名)"', async () => {
     vi.mocked(getUserMasterRecruiters).mockResolvedValueOnce({
       data: [

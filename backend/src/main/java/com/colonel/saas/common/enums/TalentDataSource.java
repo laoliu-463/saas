@@ -12,7 +12,7 @@ package com.colonel.saas.common.enums;
  *   <li>{@link #TEST} — 测试专用来源，仅用于单元测试和联调环境，不进入生产数据</li>
  *   <li>{@link #OFFICIAL_API} — 通过抖音开放平台官方 API 获取，可信度最高</li>
  *   <li>{@link #MANUAL} — 由运营人员手动录入，可信度次之</li>
- *   <li>{@link #INTERNAL_BUSINESS} — 内部业务渠道获取（如招商经理线下对接）</li>
+ *   <li>{@link #INTERNAL_BUSINESS} — 内部业务渠道获取（如招商组长线下对接）</li>
  *   <li>{@link #THIRD_PARTY} — 第三方数据服务商提供的达人信息</li>
  *   <li>{@link #PUBLIC_PAGE} — 从抖音公开页面抓取，可信度最低，可能存在延迟或不准确</li>
  * </ul>
@@ -28,11 +28,10 @@ public enum TalentDataSource {
     OFFICIAL_API,
     /** 运营人员手动录入 */
     MANUAL,
-    /** 内部业务渠道获取（如招商经理线下对接） */
+    /** 内部业务渠道获取（如招商组长线下对接） */
     INTERNAL_BUSINESS,
     /** 第三方数据服务商提供 */
     THIRD_PARTY,
     /** 抖音公开页面抓取，可信度最低 */
     PUBLIC_PAGE
 }
-

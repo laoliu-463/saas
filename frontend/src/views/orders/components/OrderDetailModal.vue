@@ -99,7 +99,7 @@
             <n-descriptions-item label="商品名称">{{ detail.product?.productName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="活动 ID">{{ detail.product?.activityId || '-' }}</n-descriptions-item>
             <n-descriptions-item label="活动名称">{{ detail.product?.activityName || '-' }}</n-descriptions-item>
-            <n-descriptions-item label="招商负责人">{{ detail.product?.colonelName || '-' }}</n-descriptions-item>
+            <n-descriptions-item label="招商组长">{{ detail.product?.colonelName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="招商 ID">{{ detail.product?.colonelUserId || '-' }}</n-descriptions-item>
           </n-descriptions>
         </section>
@@ -215,7 +215,7 @@ const caseSummary = computed(() => {
       description: `系统已把这笔订单归到 ${detail.value.channel?.channelName || '对应渠道'}，可继续结合商品、达人和寄样信息做结果复盘。`,
       actions: [
         '先确认 pick_source、推广链接和渠道负责人是否与预期一致',
-        '再核对商品负责人、达人信息和寄样记录，判断本次成交是自然转化还是有明确前置动作支撑'
+        '再核对商品招商组长、达人信息和寄样记录，判断本次成交是自然转化还是有明确前置动作支撑'
       ]
     }
   }
@@ -227,7 +227,7 @@ const caseSummary = computed(() => {
     actions: [
       resolveReasonSuggestion(detail.value),
       '优先核对订单是否携带 pick_source，再确认系统内是否存在对应推广映射',
-      '如果链路字段都正常，再回看商品活动绑定、招商负责人和达人使用链路是否一致'
+      '如果链路字段都正常，再回看商品活动绑定、招商组长和达人使用链路是否一致'
     ]
   }
 })

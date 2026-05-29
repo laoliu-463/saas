@@ -8,8 +8,8 @@
     @positive-click="handleSubmit"
     @update:show="updateShow"
   >
-    <div class="batch-summary">已选择 {{ productIds.length }} 个商品，将统一指定招商负责人。</div>
-    <n-form-item label="招商负责人" required>
+    <div class="batch-summary">已选择 {{ productIds.length }} 个商品，将统一指定招商组长。</div>
+    <n-form-item label="招商组长" required>
       <n-select
         v-model:value="assigneeId"
         :options="userOptions"
@@ -17,7 +17,7 @@
         filterable
         clearable
         remote
-        placeholder="请选择招商负责人"
+        placeholder="请选择招商组长"
         @search="handleSearch"
       />
     </n-form-item>
@@ -94,7 +94,7 @@ const handleSubmit = async () => {
     return false
   }
   if (!assigneeId.value) {
-    message.warning('请选择招商负责人')
+    message.warning('请选择招商组长')
     return false
   }
   try {

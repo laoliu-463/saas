@@ -62,9 +62,9 @@ const modeConfig = computed(() => {
   }
   return {
     title: '分配招商',
-    label: '招商负责人',
-    placeholder: '请选择招商负责人',
-    tip: '从本组招商专员中选择负责人，审核通过入库后可再次调整归属。',
+    label: '招商组长',
+    placeholder: '请选择招商组长',
+    tip: '从本组招商用户中选择招商组长，审核通过入库后可再次调整归属。',
     success: '分配招商成功',
     error: '分配招商失败'
   };
@@ -86,7 +86,7 @@ const fetchUsers = async (keyword: string) => {
   try {
     userOptions.value = await loadProductAssigneeOptions(keyword);
   } catch (error: any) {
-    notifyApiFailure(error, message, { fallbackMessage: '加载负责人列表失败' });
+    notifyApiFailure(error, message, { fallbackMessage: `加载${modeConfig.value.label}列表失败` });
   } finally {
     loadingUsers.value = false;
   }
@@ -106,7 +106,7 @@ const handleSubmit = async () => {
     return false;
   }
   if (!assigneeId.value) {
-    message.warning('请选择负责人');
+    message.warning(`请选择${modeConfig.value.label}`);
     return false;
   }
   try {

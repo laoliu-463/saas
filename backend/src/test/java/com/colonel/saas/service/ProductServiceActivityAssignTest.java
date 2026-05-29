@@ -1,0 +1,103 @@
+package com.colonel.saas.service;
+
+import com.colonel.saas.entity.ColonelsettlementActivity;
+import com.colonel.saas.entity.SysUser;
+import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
+import com.colonel.saas.mapper.ProductOperationStateMapper;
+import com.colonel.saas.mapper.SysUserMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Map;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class ProductServiceActivityAssignTest {
+
+    @Mock private com.colonel.saas.gateway.douyin.DouyinPromotionGateway douyinPromotionGateway;
+    @Mock private com.colonel.saas.gateway.douyin.DouyinProductGateway douyinProductGateway;
+    @Mock private com.colonel.saas.mapper.ProductSnapshotMapper snapshotMapper;
+    @Mock private ProductOperationStateMapper operationStateMapper;
+    @Mock private com.colonel.saas.mapper.ProductOperationLogMapper operationLogMapper;
+    @Mock private com.colonel.saas.mapper.PromotionLinkMapper promotionLinkMapper;
+    @Mock private com.colonel.saas.mapper.ColonelsettlementOrderMapper orderMapper;
+    @Mock private com.colonel.saas.mapper.MerchantMapper merchantMapper;
+    @Mock private SysUserMapper sysUserMapper;
+    @Mock private PickSourceMappingService pickSourceMappingService;
+    @Mock private ProductBizStatusService productBizStatusService;
+    @Mock private ColonelsettlementActivityMapper colonelActivityMapper;
+    @Mock private TalentFollowService talentFollowService;
+    @Mock private com.colonel.saas.gateway.douyin.DouyinActivityGateway douyinActivityGateway;
+    @Mock private PromotionLinkIdempotencyService promotionLinkIdempotencyService;
+    @Mock private BusinessRuleConfigService businessRuleConfigService;
+    @Mock private ProductDisplayRuleService productDisplayRuleService;
+    @Mock private ColonelPartnerSyncService colonelPartnerSyncService;
+    @Mock private com.colonel.saas.domain.product.event.ProductDomainEventPublisher productDomainEventPublisher;
+
+    private ProductService productService;
+
+    @BeforeEach
+    void setUp() {
+        productService = new ProductService(
+                douyinPromotionGateway,
+                douyinProductGateway,
+                snapshotMapper,
+                operationStateMapper,
+                operationLogMapper,
+                promotionLinkMapper,
+                orderMapper,
+                merchantMapper,
+                sysUserMapper,
+                pickSourceMappingService,
+                productBizStatusService,
+                colonelActivityMapper,
+                talentFollowService,
+                douyinActivityGateway,
+                promotionLinkIdempotencyService,
+                businessRuleConfigService,
+                productDisplayRuleService,
+                colonelPartnerSyncService,
+                productDomainEventPublisher);
+    }
+
+    @Test
+    void assignActivity_shouldPersistActivityAndCascadeAssignee() {
+        String activityId = "100018";
+        UUID assigneeId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        UUID operatorId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+
+        UUID deptId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        SysUser assignee = new SysUser();
+        assignee.setId(assigneeId);
+        assignee.setRealName("招商组长甲");
+        assignee.setDeptId(deptId);
+
+        ColonelsettlementActivity existing = new ColonelsettlementActivity();
+        existing.setActivityId(activityId);
+        when(colonelActivityMapper.selectByActivityId(activityId)).thenReturn(existing);
+        when(sysUserMapper.selectById(assigneeId)).thenReturn(assignee);
+        when(colonelActivityMapper.updateRecruiterAssignment(
+                eq(activityId), eq(assigneeId), eq(deptId), any(), eq(operatorId)))
+                .thenReturn(1);
+        when(operationStateMapper.update(any(), any())).thenReturn(1);
+
+        Map<String, Object> payload = productService.assignActivity(activityId, assigneeId, operatorId);
+
+        assertThat(payload.get("activityId")).isEqualTo(activityId);
+        assertThat(payload.get("assigneeId")).isEqualTo(assigneeId);
+        assertThat(payload.get("activityAssigneeName")).isEqualTo("招商组长甲");
+
+        verify(operationStateMapper).update(eq(null), any());
+        verify(colonelActivityMapper).updateRecruiterAssignment(
+                eq(activityId), eq(assigneeId), eq(deptId), any(), eq(operatorId));
+    }
+}

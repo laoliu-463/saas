@@ -191,7 +191,7 @@
             </div>
             <div class="qv-summary">
               <div class="qv-summary-row">
-                <span class="qv-summary-label">当前负责人</span>
+                <span class="qv-summary-label">招商组长</span>
                 <span class="qv-summary-value">{{ product.assigneeName || '未分配' }}</span>
               </div>
               <div class="qv-summary-row">
@@ -377,7 +377,7 @@ const getRecentActionLabel = (item: any) => {
 }
 
 const buildCardProgressSummary = (item: any) => {
-  const assignee = item?.assigneeName || '未分配负责人'
+  const assignee = item?.assigneeName || '未分配招商组长'
   return `${assignee} · ${getRecentActionLabel(item)}`
 }
 
@@ -437,7 +437,7 @@ const cardTags = (item: any) => {
   }
   if (!item.hasMaterial) tags.push({ text: '缺少话术素材', type: 'warning' })
   if (!hasSampleThreshold(item) && !item.hasSampleRule) tags.push({ text: '暂无寄样要求', type: 'warning' })
-  if (!item.assigneeName) tags.push({ text: '待分配负责人', type: 'error' })
+  if (!item.assigneeName) tags.push({ text: '待分配招商组长', type: 'error' })
   tags.push(...getLibraryDisplayTags(item, { manageMode: !props.libraryMode }))
   return tags
 }

@@ -37,7 +37,7 @@
           remote
           :options="recruiterOptions"
           :loading="recruiterOptionsLoading"
-          placeholder="招商负责人"
+          placeholder="招商组长"
           data-testid="sample-recruiter-filter"
           @search="handleRecruiterSearch"
         />
@@ -348,7 +348,7 @@ const fetchRecruiterOptions = async (keyword = '') => {
   try {
     recruiterOptions.value = await loadSampleRecruiterOptions(keyword)
   } catch (error: any) {
-    notifyApiFailure(error, message, { fallbackMessage: '加载招商负责人失败' })
+    notifyApiFailure(error, message, { fallbackMessage: '加载招商组长失败' })
   } finally {
     recruiterOptionsLoading.value = false
   }

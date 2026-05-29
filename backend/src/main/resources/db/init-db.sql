@@ -147,6 +147,12 @@ CREATE TABLE IF NOT EXISTS colonel_activity (
     start_time         TIMESTAMP,
     end_time           TIMESTAMP,
     status             VARCHAR(20),
+    activity_status_code INTEGER,
+    activity_status_text VARCHAR(64),
+    recruiter_user_id  UUID,
+    recruiter_dept_id  UUID,
+    assigned_at        TIMESTAMP,
+    assigned_by        UUID,
     months_of_protection INT,
     last_sync_at       TIMESTAMP,                       -- [V1.2] 最近同步时间
     deleted            SMALLINT    NOT NULL DEFAULT 0,
@@ -159,6 +165,8 @@ CREATE TABLE IF NOT EXISTS colonel_activity (
 CREATE INDEX IF NOT EXISTS idx_activity_shop_id       ON colonel_activity(shop_id);
 CREATE INDEX IF NOT EXISTS idx_activity_colonel_id    ON colonel_activity(colonel_buyin_id);
 CREATE INDEX IF NOT EXISTS idx_activity_status        ON colonel_activity(status);
+CREATE INDEX IF NOT EXISTS idx_activity_status_code   ON colonel_activity(activity_status_code);
+CREATE INDEX IF NOT EXISTS idx_activity_recruiter_user ON colonel_activity(recruiter_user_id);
 CREATE INDEX IF NOT EXISTS idx_activity_end_time      ON colonel_activity(end_time);
 CREATE INDEX IF NOT EXISTS idx_activity_deleted       ON colonel_activity(deleted);
 

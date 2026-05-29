@@ -186,8 +186,11 @@ function buildDetailLines(row: ProductOperationLogRow, payload: Record<string, s
   const type = normalizeLogText(row.operationType)
   const assigneeName = payload.assigneeName || context?.assigneeName || ''
 
-  if (type === 'ASSIGN' || type === 'ASSIGN_AUDIT') {
-    if (assigneeName) lines.push(`负责人：${assigneeName}`)
+  if (type === 'ASSIGN_AUDIT') {
+    if (assigneeName) lines.push(`审核负责人：${assigneeName}`)
+  }
+  if (type === 'ASSIGN') {
+    if (assigneeName) lines.push(`招商组长：${assigneeName}`)
   }
   if (type === 'DECISION' && payload.decisionLevel) {
     lines.push(`判断结果：${payload.decisionLabel || getDecisionLevelLabel(payload.decisionLevel)}`)
@@ -211,7 +214,7 @@ export function buildOperationSummary(
   const payload = parseOperationPayload(row.operationPayload)
   const type = normalizeLogText(row.operationType)
   const remark = normalizeLogText(row.operationRemark)
-  const assigneeName = payload.assigneeName || context?.assigneeName || '负责人'
+  const assigneeName = payload.assigneeName || context?.assigneeName || '招商组长'
 
   if (remark) {
     if (type === 'DECISION') {
@@ -231,7 +234,7 @@ export function buildOperationSummary(
     case 'ASSIGN_AUDIT':
       return `已指定审核负责人：${assigneeName}`
     case 'ASSIGN':
-      return `已分配给招商负责人：${assigneeName}`
+      return `已分配给招商组长：${assigneeName}`
     case 'AUDIT':
       return row.afterStatus === 'REJECTED' ? '审核未通过，商品未进入后续流程' : '审核通过，可继续分配与转链'
     case 'DECISION':

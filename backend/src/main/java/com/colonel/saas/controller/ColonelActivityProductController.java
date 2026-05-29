@@ -53,7 +53,7 @@ import java.util.UUID;
  * <ul>
  *   <li>商品详情与 SKU 查询</li>
  *   <li>商品绑定/解绑活动</li>
- *   <li>分配招商负责人及审核人</li>
+ *   <li>分配招商组长及审核人</li>
  *   <li>商品审核（通过/驳回）与推进判断（主推/次推/暂缓/放弃）</li>
  *   <li>生成推广链接（转链）</li>
  *   <li>达人跟进记录</li>
@@ -178,7 +178,7 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     /**
-     * 为活动商品分配招商负责人。
+     * 为活动商品分配招商组长。
      * <p>
      * 将商品的招商跟进权分配给指定用户。分配前会校验目标用户是否属于当前用户的
      * 可分配范围（基于部门和角色限制）。
@@ -196,14 +196,14 @@ public class ColonelActivityProductController extends BaseController {
      * @param roleCodes  当前用户的角色编码列表
      * @return 操作结果 Map，包含更新后的商品分配信息
      */
-    @Operation(summary = "活动商品分配招商", description = "为活动商品指定招商负责人。")
+    @Operation(summary = "活动商品分配招商", description = "为活动商品指定招商组长。")
     @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER})
     @PutMapping("/{productId}/assignee")
     public ApiResult<Map<String, Object>> assign(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
             @Parameter(description = "商品 ID。") @PathVariable String productId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "招商负责人分配请求体。",
+                    description = "招商组长分配请求体。",
                     required = true,
                     content = @Content(examples = @ExampleObject(value = "{\"assigneeId\":\"22222222-2222-2222-2222-222222222222\"}"))
             )
@@ -536,9 +536,9 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     /**
-     * 批量分配招商负责人。
+     * 批量分配招商组长。
      * <p>
-     * 批量为多个活动商品指定同一个招商负责人。采用部分失败容错机制：
+     * 批量为多个活动商品指定同一个招商组长。采用部分失败容错机制：
      * 单个商品分配失败不影响其他商品的分配操作。
      * </p>
      * <ol>
@@ -554,7 +554,7 @@ public class ColonelActivityProductController extends BaseController {
      * @param roleCodes  当前用户的角色编码列表
      * @return 批量操作结果，包含 total/succeeded/failed 计数及每个商品的执行详情
      */
-    @Operation(summary = "批量分配招商", description = "批量为活动商品指定招商负责人；单个商品失败不影响其他商品。")
+    @Operation(summary = "批量分配招商", description = "批量为活动商品指定招商组长；单个商品失败不影响其他商品。")
     @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER})
     @PostMapping("/batch-assign")
     public ApiResult<Map<String, Object>> batchAssign(
@@ -766,14 +766,14 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     /**
-     * 分配招商负责人请求体。
+     * 分配招商组长请求体。
      * <p>
-     * 用于单个商品分配招商负责人的场景，指定目标用户 ID。
+     * 用于单个商品分配招商组长的场景，指定目标用户 ID。
      * </p>
      */
     public static class AssignRequest {
-        /** 招商负责人用户 ID（UUID 格式），必须是当前用户可分配范围内的有效用户 */
-        @Schema(description = "招商负责人用户 ID，使用 UUID 格式。", example = "22222222-2222-2222-2222-222222222222")
+        /** 招商组长用户 ID（UUID 格式），必须是当前用户可分配范围内的有效用户 */
+        @Schema(description = "招商组长用户 ID，使用 UUID 格式。", example = "22222222-2222-2222-2222-222222222222")
         @NotNull(message = "assigneeId 不能为空")
         private UUID assigneeId;
 
@@ -808,15 +808,15 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     /**
-     * 批量分配招商负责人请求体。
+     * 批量分配招商组长请求体。
      * <p>
-     * 继承 {@link BatchProductIdsRequest} 的商品 ID 列表，并额外指定目标招商负责人。
+     * 继承 {@link BatchProductIdsRequest} 的商品 ID 列表，并额外指定目标招商组长。
      * 用于将多个商品批量分配给同一招商人员。
      * </p>
      */
     public static class BatchAssignRequest extends BatchProductIdsRequest {
-        /** 招商负责人用户 ID（UUID 格式），必须是当前用户可分配范围内的有效用户 */
-        @Schema(description = "招商负责人用户 ID，使用 UUID 格式。", example = "22222222-2222-2222-2222-222222222222")
+        /** 招商组长用户 ID（UUID 格式），必须是当前用户可分配范围内的有效用户 */
+        @Schema(description = "招商组长用户 ID，使用 UUID 格式。", example = "22222222-2222-2222-2222-222222222222")
         @NotNull(message = "assigneeId 不能为空")
         private UUID assigneeId;
 

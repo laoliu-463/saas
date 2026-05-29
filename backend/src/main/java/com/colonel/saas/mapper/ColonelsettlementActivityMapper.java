@@ -146,4 +146,33 @@ public interface ColonelsettlementActivityMapper {
      * @return 扩展数据 Map，不存在时返回 null
      */
     Map<String, Object> selectExtraDataByActivityId(@Param("activityId") String activityId);
+
+    /**
+     * 活动列表同步时写入活动摘要（状态码/文案、时间窗口等）。
+     */
+    void upsertListActivitySummary(
+            @Param("id") UUID id,
+            @Param("activityId") String activityId,
+            @Param("activityName") String activityName,
+            @Param("colonelBuyinId") Long colonelBuyinId,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime,
+            @Param("activityStatusCode") Integer activityStatusCode,
+            @Param("activityStatusText") String activityStatusText,
+            @Param("lastSyncAt") LocalDateTime lastSyncAt);
+
+    /**
+     * 更新活动级招商组长分配。
+     */
+    int updateRecruiterAssignment(
+            @Param("activityId") String activityId,
+            @Param("recruiterUserId") UUID recruiterUserId,
+            @Param("recruiterDeptId") UUID recruiterDeptId,
+            @Param("assignedAt") LocalDateTime assignedAt,
+            @Param("assignedBy") UUID assignedBy);
+
+    /**
+     * 批量读取活动分配摘要（用于列表回填）。
+     */
+    List<ColonelsettlementActivity> selectAssignmentByActivityIds(@Param("activityIds") List<String> activityIds);
 }

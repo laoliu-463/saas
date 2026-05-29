@@ -10,6 +10,7 @@ import lombok.EqualsAndHashCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 团长活动实体。
@@ -127,11 +128,38 @@ public class ColonelsettlementActivity extends BaseEntity {
     private Map<String, Object> extraData;
 
     /**
-     * 活动状态
-     * <p>非数据库持久化字段，用于业务逻辑判断。
-     * 1=进行中, 0=已结束</p>
+     * 活动状态码（来自抖店平台）。
+     * <p>1=未上线, 2=报名未开始, 3=报名中, 4=推广未开始, 5=推广中, 7=已结束</p>
      */
-    @TableField(exist = false)
+    @TableField("status")
     private Integer status;
+
+    /**
+     * 抖店活动状态码（列表/详情同步落库，用于推广中判定）。
+     */
+    @TableField("activity_status_code")
+    private Integer activityStatusCode;
+
+    /**
+     * 抖店活动状态文案（如「推广中」）。
+     */
+    @TableField("activity_status_text")
+    private String activityStatusText;
+
+    /** 活动级招商组长用户 ID */
+    @TableField("recruiter_user_id")
+    private UUID recruiterUserId;
+
+    /** 活动级招商组长部门 ID */
+    @TableField("recruiter_dept_id")
+    private UUID recruiterDeptId;
+
+    /** 活动分配给招商组长的时间 */
+    @TableField("assigned_at")
+    private LocalDateTime assignedAt;
+
+    /** 执行活动分配的管理员用户 ID */
+    @TableField("assigned_by")
+    private UUID assignedBy;
 }
 

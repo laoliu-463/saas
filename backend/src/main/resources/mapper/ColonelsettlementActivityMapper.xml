@@ -153,6 +153,12 @@
             activity_name AS name,
             start_time AS startTime,
             end_time AS endTime,
+            activity_status_code AS activityStatusCode,
+            activity_status_text AS activityStatusText,
+            recruiter_user_id AS recruiterUserId,
+            recruiter_dept_id AS recruiterDeptId,
+            assigned_at AS assignedAt,
+            assigned_by AS assignedBy,
             CASE
                 WHEN end_time IS NOT NULL AND end_time &lt; CURRENT_TIMESTAMP THEN 0
                 WHEN status IN ('已结束', '结束', 'CLOSED', 'ENDED', 'FINISHED', '0') THEN 0
@@ -163,6 +169,8 @@
             colonel_buyin_id AS colonelBuyinId,
             commission_rate AS commissionRate,
             service_rate AS serviceRate,
+            months_of_protection AS monthsOfProtection,
+            last_sync_at AS lastSyncAt,
             create_time AS createTime,
             update_time AS updateTime,
             create_by AS createBy,
@@ -172,6 +180,77 @@
         WHERE deleted = 0
           AND activity_id = #{activityId}
         LIMIT 1
+    </select>
+
+    <insert id="upsertListActivitySummary">
+        INSERT INTO colonel_activity (
+            id,
+            activity_id,
+            activity_name,
+            colonel_buyin_id,
+            start_time,
+            end_time,
+            activity_status_code,
+            activity_status_text,
+            status,
+            last_sync_at,
+            deleted,
+            create_time,
+            update_time
+        ) VALUES (
+            #{id},
+            #{activityId},
+            #{activityName},
+            #{colonelBuyinId},
+            #{startTime},
+            #{endTime},
+            #{activityStatusCode},
+            #{activityStatusText},
+            #{activityStatusText},
+            #{lastSyncAt},
+            0,
+            #{lastSyncAt},
+            #{lastSyncAt}
+        )
+        ON CONFLICT (activity_id) DO UPDATE SET
+            activity_name = COALESCE(EXCLUDED.activity_name, colonel_activity.activity_name),
+            colonel_buyin_id = COALESCE(EXCLUDED.colonel_buyin_id, colonel_activity.colonel_buyin_id),
+            start_time = COALESCE(EXCLUDED.start_time, colonel_activity.start_time),
+            end_time = COALESCE(EXCLUDED.end_time, colonel_activity.end_time),
+            activity_status_code = COALESCE(EXCLUDED.activity_status_code, colonel_activity.activity_status_code),
+            activity_status_text = COALESCE(EXCLUDED.activity_status_text, colonel_activity.activity_status_text),
+            status = COALESCE(EXCLUDED.activity_status_text, colonel_activity.status),
+            last_sync_at = EXCLUDED.last_sync_at,
+            deleted = 0,
+            update_time = EXCLUDED.update_time
+    </insert>
+
+    <update id="updateRecruiterAssignment">
+        UPDATE colonel_activity
+        SET recruiter_user_id = #{recruiterUserId},
+            recruiter_dept_id = #{recruiterDeptId},
+            assigned_at = #{assignedAt},
+            assigned_by = #{assignedBy},
+            update_time = #{assignedAt}
+        WHERE deleted = 0
+          AND activity_id = #{activityId}
+    </update>
+
+    <select id="selectAssignmentByActivityIds" resultType="com.colonel.saas.entity.ColonelsettlementActivity">
+        SELECT
+            activity_id AS activityId,
+            recruiter_user_id AS recruiterUserId,
+            recruiter_dept_id AS recruiterDeptId,
+            assigned_at AS assignedAt,
+            assigned_by AS assignedBy,
+            activity_status_code AS activityStatusCode,
+            activity_status_text AS activityStatusText
+        FROM colonel_activity
+        WHERE deleted = 0
+          AND activity_id IN
+        <foreach collection="activityIds" item="activityId" open="(" separator="," close=")">
+            #{activityId}
+        </foreach>
     </select>
 
     <!-- 仅取 extra_data 字段，用于 colonel_buyin_id 回源查询 -->

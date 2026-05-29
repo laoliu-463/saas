@@ -108,7 +108,7 @@
                       </n-tag>
                     </n-descriptions-item>
                     <n-descriptions-item label="最后操作时间">{{ detail.lastOperationAt || '-' }}</n-descriptions-item>
-                    <n-descriptions-item :label="detail.bizStatus === 'PENDING_AUDIT' ? '审核负责人' : '招商负责人'">
+                    <n-descriptions-item :label="detail.bizStatus === 'PENDING_AUDIT' ? '审核负责人' : '招商组长'">
                       {{ detail.assigneeName || (detail.bizStatus === 'PENDING_AUDIT' ? '未分配审核人' : '未分配') }}
                     </n-descriptions-item>
                     <n-descriptions-item label="来源活动">{{ detail.activityId || '-' }}</n-descriptions-item>
@@ -608,7 +608,7 @@ const buildTimelineMeta = (type: string, operatorName: string, assigneeName: str
     return `${operatorName} 指定审核负责人：${assigneeName}`;
   }
   if (type === 'ASSIGN') {
-    return `${operatorName} 完成分配，当前负责人：${assigneeName}`;
+    return `${operatorName} 完成分配，当前招商组长：${assigneeName}`;
   }
   if (type === 'AUDIT') {
     return `${operatorName} 完成审核判断`;
@@ -670,12 +670,12 @@ const timelineEvents = computed(() => {
   return operationLogs.value.slice(0, 5).map((log: any, index: number) => {
     const payload = parseOperationPayload(log?.operationPayload);
     const type = String(log?.operationType || '');
-    const assigneeName = payload.assigneeName || detail.value?.assigneeName || '未识别负责人';
+    const assigneeName = payload.assigneeName || detail.value?.assigneeName || '未识别招商组长';
     const operatorName = formatOperatorDisplay(log);
     const titles: Record<string, string> = {
       LIBRARY_ENTRY: '商品已加入商品库',
       ASSIGN_AUDIT: `商品已分配给审核人 ${assigneeName}`,
-      ASSIGN: `商品已分配给 ${assigneeName}`,
+      ASSIGN: `商品已分配给招商组长 ${assigneeName}`,
       AUDIT: log?.afterStatus === 'REJECTED' ? '商品审核被拒绝' : '商品审核通过',
       DECISION: payload.eventLabel || '商品推进判断已更新',
       BIND_ACTIVITY: '商品活动绑定已更新',

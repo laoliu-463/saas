@@ -5,6 +5,7 @@ import {
   countActivityProductStats,
   formatActivityCategories,
   formatMechanismSummary,
+  resolveActivityAssigneeName,
   resolveActivityStatusLabel
 } from './activity-list-display'
 
@@ -16,6 +17,15 @@ describe('activity-list-display', () => {
   it('formats categories from map and array', () => {
     expect(formatActivityCategories({ 一级类目: '美妆个护' })).toBe('美妆个护')
     expect(formatActivityCategories(['玩具乐器', '服饰内衣'])).toBe('玩具乐器、服饰内衣')
+  })
+
+  it('resolveActivityAssigneeName prefers activity-level assignee', () => {
+    expect(
+      resolveActivityAssigneeName({
+        activityAssigneeName: '活动组长',
+        assigneeName: '商品招商组长'
+      })
+    ).toBe('活动组长')
   })
 
   it('resolves status label from row', () => {

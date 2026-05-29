@@ -1,8 +1,8 @@
 /**
- * 商品负责人选择器选项加载模块
+ * 商品招商组长选择器选项加载模块
  *
- * 功能：从用户主数据接口加载招商负责人列表，构建为 NSelect 选项格式。
- * 使用场景：商品分配负责人、商品批量指派等下拉选择场景。
+ * 功能：从用户主数据接口加载招商组长列表，构建为 NSelect 选项格式。
+ * 使用场景：商品分配招商组长、商品批量指派等下拉选择场景。
  */
 import { getUserMasterRecruiters } from '../../api/sys';
 
@@ -25,13 +25,13 @@ const buildUserOption = (user: any) => {
 };
 
 /**
- * 加载商品负责人选项列表
+ * 加载商品招商组长选项列表
  *
- * 调用用户主数据接口获取招商负责人，支持关键字搜索。
+ * 调用用户主数据接口获取招商组长，支持关键字搜索。
  * 返回值去除了 value 为空的无效选项。
  *
  * @param keyword 搜索关键字（会被自动 trim，空值则不传 keyword 参数）
- * @returns 负责人选项数组，每项包含 label 和 value
+ * @returns 招商组长选项数组，每项包含 label 和 value
  */
 export const loadProductAssigneeOptions = async (keyword: string) => {
   const normalizedKeyword = String(keyword || '').trim();

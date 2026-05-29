@@ -115,7 +115,7 @@ public class ProductController extends BaseController {
      * @param categoryName      抖音同步类目关键字，单选兼容（可选）
      * @param categories        商品类目多选，英文逗号分隔（可选）
      * @param activityId        来源活动 ID（可选）
-     * @param assigneeId        招商负责人用户 ID（可选）
+     * @param assigneeId        招商组长用户 ID（可选）
      * @param serviceFee        服务费率区间：gt20/10_20/lt10（可选）
      * @param supportsAds       是否支持投流：1/0（可选）
      * @param salesRange        近 30 天销量区间：lt100/100_999/1k_29k/gte30000（可选）
@@ -165,7 +165,7 @@ public class ProductController extends BaseController {
             @Parameter(description = "抖音同步类目关键字（单选兼容）。") @RequestParam(required = false) String categoryName,
             @Parameter(description = "商品类目多选，英文逗号分隔。") @RequestParam(required = false) String categories,
             @Parameter(description = "来源活动 ID。") @RequestParam(required = false) String activityId,
-            @Parameter(description = "招商负责人用户 ID。") @RequestParam(required = false) String assigneeId,
+            @Parameter(description = "招商组长用户 ID。") @RequestParam(required = false) String assigneeId,
             @Parameter(description = "服务费率区间：gt20/10_20/lt10。") @RequestParam(required = false) String serviceFee,
             @Parameter(description = "是否支持投流：1/0。") @RequestParam(required = false) String supportsAds,
             @Parameter(description = "近 30 天销量区间：lt100/100_999/1k_29k/gte30000。") @RequestParam(required = false) String salesRange,
@@ -411,13 +411,13 @@ public class ProductController extends BaseController {
     }
 
     /**
-     * 商品分配招商负责人（已废弃）。
+     * 商品分配招商组长（已废弃）。
      *
-     * <p>将商品分配给指定招商负责人。仅 BIZ_LEADER 角色可操作。
+     * <p>将商品分配给指定招商组长。仅 BIZ_LEADER 角色可操作。
      * 分配后该招商人员即可在私海中看到并管理该商品。
      *
      * @param id        商品主键 ID（UUID 格式）
-     * @param request   分配请求体，包含招商负责人用户 ID
+     * @param request   分配请求体，包含招商组长用户 ID
      * @return 分配后的商品详情
      * @deprecated 请迁移到 {@code /colonel/activities/{activityId}/products/{productId}/assignee}
      */
@@ -427,7 +427,7 @@ public class ProductController extends BaseController {
     public ApiResult<Product> assign(
             @Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "指定招商负责人。",
+                    description = "指定招商组长。",
                     required = true,
                     content = @Content(examples = @ExampleObject(value = "{\"assigneeId\":\"22222222-2222-2222-2222-222222222222\"}"))
             )
@@ -591,10 +591,10 @@ public class ProductController extends BaseController {
     /**
      * 商品分配招商请求体。
      *
-     * <p>用于旧版 {@code PUT /{id}/assignee} 接口，指定商品的招商负责人。
+     * <p>用于旧版 {@code PUT /{id}/assignee} 接口，指定商品的招商组长。
      */
     public static class AssignProductRequest {
-        @Schema(description = "招商负责人用户 ID，使用 UUID 格式。", example = "22222222-2222-2222-2222-222222222222")
+        @Schema(description = "招商组长用户 ID，使用 UUID 格式。", example = "22222222-2222-2222-2222-222222222222")
         @NotNull(message = "assigneeId 不能为空")
         private UUID assigneeId;
 

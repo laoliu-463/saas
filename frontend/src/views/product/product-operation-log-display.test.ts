@@ -159,7 +159,7 @@ describe('product-operation-log-display', () => {
       operationType: 'ASSIGN',
       operationPayload: '{assigneeName=王五}'
     })
-    expect(view.detailLines).toContain('负责人：王五')
+    expect(view.detailLines).toContain('招商组长：王五')
   })
 
   it('mapProductOperationLogView includes detailLines for BIND_ACTIVITY operation', () => {

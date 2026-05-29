@@ -36,7 +36,7 @@
               <StatusTag scene="sample" :status="detail.status" />
             </n-descriptions-item>
             <n-descriptions-item v-if="!isChannelStaffOnly" label="渠道名称">{{ detail.channelUserName || '-' }}</n-descriptions-item>
-            <n-descriptions-item :label="isChannelStaffOnly ? '审核负责人' : '招商负责人'">{{ detail.colonelUserName || '-' }}</n-descriptions-item>
+            <n-descriptions-item :label="isChannelStaffOnly ? '审核负责人' : '招商组长'">{{ detail.colonelUserName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="商品名称">{{ detail.productName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="达人昵称">{{ detail.talentName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="物流单号">{{ detail.trackingNo || '-' }}</n-descriptions-item>

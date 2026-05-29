@@ -100,6 +100,13 @@ public class SysUserService {
             RoleCodes.CHANNEL_STAFF
     );
 
+    /** 活动级分配可选的招商相关角色（与 /users/master-data/recruiters 一致） */
+    private static final Set<String> RECRUITER_ROLE_CODES = Set.of(
+            RoleCodes.BIZ_LEADER,
+            RoleCodes.BIZ_STAFF,
+            RoleCodes.COLONEL_LEADER
+    );
+
     /** 用户数据访问层 */
     private final SysUserMapper sysUserMapper;
 
@@ -335,6 +342,34 @@ public class SysUserService {
                 .collect(Collectors.toMap(SysRole::getId, role -> role));
         if (!matchesAssignableRole(targetUserId, Map.of(targetUserId, relations), roleMap, scope.allowedRoleCodes())) {
             throw BusinessException.forbidden("只能分配给符合规则的招商下属");
+        }
+    }
+
+    /**
+     * 校验目标用户可作为活动级招商组长（管理员分配活动专用）。
+     */
+    public void assertRecruiterUser(UUID targetUserId) {
+        if (targetUserId == null) {
+            throw BusinessException.param("assigneeId 不能为空");
+        }
+        SysUser targetUser = requireUser(targetUserId);
+        if (targetUser.getStatus() == null || targetUser.getStatus() != SysUserStatus.ACTIVE) {
+            throw BusinessException.stateInvalid("目标用户未启用");
+        }
+        List<SysUserRole> relations = sysUserRoleMapper.findByUserId(targetUserId);
+        if (relations == null || relations.isEmpty()) {
+            throw BusinessException.stateInvalid("目标用户未配置招商角色");
+        }
+        Set<UUID> roleIds = relations.stream()
+                .map(SysUserRole::getRoleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, SysRole> roleMap = roleIds.isEmpty()
+                ? Collections.emptyMap()
+                : sysRoleMapper.selectBatchIds(roleIds).stream()
+                .collect(Collectors.toMap(SysRole::getId, role -> role));
+        if (!matchesAssignableRole(targetUserId, Map.of(targetUserId, relations), roleMap, RECRUITER_ROLE_CODES)) {
+            throw BusinessException.forbidden("只能分配给招商组长、招商专员或招商组长兼容角色");
         }
     }
 

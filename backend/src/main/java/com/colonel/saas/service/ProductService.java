@@ -1330,6 +1330,9 @@ public class ProductService {
         if (!StringUtils.hasText(activityId) || items == null || items.isEmpty()) {
             return new ActivitySnapshotUpsertStats(0, 0, items == null ? 0 : items.size());
         }
+        ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(activityId);
+        boolean promoting = com.colonel.saas.service.activity.ActivityPromotionSupport.isPromoting(activity);
+        UUID activityRecruiterId = activity == null ? null : activity.getRecruiterUserId();
         int created = 0;
         int updated = 0;
         int skipped = 0;
@@ -1353,9 +1356,145 @@ public class ProductService {
             fillSnapshot(snapshot, item);
             snapshotMapper.upsert(snapshot);
             ProductOperationState existingState = getOperationState(activityId, productId);
-            productBizStatusService.initStateIfAbsent(existingState, activityId, productId, null, null, "活动商品同步");
+            ProductOperationState state = productBizStatusService.initStateIfAbsent(existingState, activityId, productId, null, null, "活动商品同步");
+            if (activityRecruiterId != null && state.getAssigneeId() == null) {
+                state.setAssigneeId(activityRecruiterId);
+                operationStateMapper.updateById(state);
+            }
+            if (promoting) {
+                autoAddToLibraryIfPromoting(state, activityId);
+            }
+        }
+        if (promoting) {
+            productDisplayRuleService.applyForActivityId(activityId);
         }
         return new ActivitySnapshotUpsertStats(created, updated, skipped);
+    }
+
+    /**
+     * 如果活动已推广中且商品尚未入库，则自动加入商品库。
+     * <p>
+     * 触发时机：商品快照同步时（每次同步都会检查）。
+     * 已入库的商品不会重复处理，只对未入库的商品设置 selectedToLibrary=true。
+     * </p>
+     *
+     * @param state      商品运营状态（已存在或刚初始化，非 null）
+     * @param activityId 活动 ID
+     */
+    private void autoAddToLibraryIfPromoting(ProductOperationState state, String activityId) {
+        if (state == null) {
+            return;
+        }
+        boolean changed = false;
+        if (!Boolean.TRUE.equals(state.getSelectedToLibrary())) {
+            state.setSelectedToLibrary(true);
+            state.setSelectedAt(LocalDateTime.now());
+            changed = true;
+        }
+        if (productBizStatusService.readBizStatus(state) == ProductBizStatus.PENDING_AUDIT) {
+            state.setBizStatus(ProductBizStatus.APPROVED.name());
+            state.setAuditStatus(2);
+            changed = true;
+        }
+        if (!ProductDisplayStatus.DISPLAYING.name().equals(state.getDisplayStatus())) {
+            state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+            state.setDisplayReason(ProductDisplayRuleService.DISPLAY_REASON_RULE);
+            state.setHiddenReason(null);
+            state.setDisplayRuleVersion(ProductDisplayRuleService.DISPLAY_RULE_VERSION);
+            changed = true;
+        }
+        if (changed) {
+            operationStateMapper.updateById(state);
+            log.info("[推广中自动入库] activityId={}, productId={} 已入库并强制展示",
+                    activityId, state.getProductId());
+        }
+    }
+
+    /**
+     * 管理员为活动分配或清除招商组长，并级联更新该活动下已有商品的负责人。
+     *
+     * @param activityId  活动 ID
+     * @param assigneeId  招商组长用户 ID，null 表示清除分配
+     * @param operatorId 操作人用户 ID
+     * @return 分配结果信息
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> assignActivity(String activityId, UUID assigneeId, UUID operatorId) {
+        if (!StringUtils.hasText(activityId)) {
+            throw BusinessException.param("activityId 不能为空");
+        }
+        String normalizedActivityId = activityId.trim();
+        UUID recruiterUserId = null;
+        UUID recruiterDeptId = null;
+        String recruiterUserName = null;
+        String recruiterDeptName = null;
+
+        // 非清除分配时，校验目标用户
+        if (assigneeId != null) {
+            SysUser assignee = sysUserMapper.selectById(assigneeId);
+            if (assignee == null) {
+                throw BusinessException.notFound("目标用户不存在");
+            }
+            recruiterUserId = assigneeId;
+            recruiterDeptId = assignee.getDeptId();
+            recruiterUserName = resolveUserDisplayName(assigneeId);
+            recruiterDeptName = resolveDeptName(assignee.getDeptId());
+        }
+
+        ColonelsettlementActivity existing = colonelActivityMapper.selectByActivityId(normalizedActivityId);
+        if (existing == null) {
+            colonelActivityMapper.upsertListActivitySummary(
+                    UUID.nameUUIDFromBytes(("assign-activity-" + normalizedActivityId).getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                    normalizedActivityId,
+                    normalizedActivityId,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    LocalDateTime.now());
+        }
+
+        LocalDateTime assignedAt = LocalDateTime.now();
+        int updated = colonelActivityMapper.updateRecruiterAssignment(
+                normalizedActivityId,
+                recruiterUserId,
+                recruiterDeptId,
+                assignedAt,
+                operatorId);
+        if (updated == 0) {
+            throw BusinessException.notFound("活动不存在或已删除");
+        }
+
+        // 级联更新该活动下商品的负责人
+        operationStateMapper.update(
+                null,
+                new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<ProductOperationState>()
+                        .eq("activity_id", normalizedActivityId)
+                        .eq("deleted", 0)
+                        .set("assignee_id", recruiterUserId));
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("activityId", normalizedActivityId);
+        payload.put("recruiterUserId", recruiterUserId);
+        payload.put("recruiterUserName", recruiterUserName);
+        payload.put("recruiterDeptId", recruiterDeptId);
+        payload.put("recruiterDeptName", recruiterDeptName);
+        payload.put("assignedAt", assignedAt);
+        payload.put("assignedBy", operatorId);
+        // 兼容旧字段
+        payload.put("assigneeId", recruiterUserId);
+        payload.put("activityAssigneeId", recruiterUserId);
+        payload.put("assigneeName", recruiterUserName);
+        payload.put("activityAssigneeName", recruiterUserName);
+        return payload;
+    }
+
+    private String resolveDeptName(UUID deptId) {
+        if (deptId == null) {
+            return null;
+        }
+        return null; // 简化实现，如有需要可注入 SysDeptMapper 查询部门名称
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -1854,7 +1993,7 @@ public class ProductService {
         payload.put("assigneeName", resolveUserDisplayName(assigneeId));
         payload.put("operatorId", operatorId);
         payload.put("operatorName", resolveUserDisplayName(operatorId));
-        payload.put("eventLabel", "商品已分配给招商负责人");
+        payload.put("eventLabel", "商品已分配给招商组长");
         productBizStatusService.changeStatus(
                 state,
                 ProductBizStatus.ASSIGNED,

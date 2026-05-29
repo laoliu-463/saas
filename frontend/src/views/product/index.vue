@@ -344,7 +344,7 @@ const pageDescription = computed(() => {
   if (route.path === '/product/manage/products') {
     return isBizStaffOnly.value
       ? '管理我负责的商品，补全推广资料并完成审核。'
-      : '统一查看活动商品，给待审核商品分配审核人，并在入库后分配招商负责人。'
+      : '统一查看活动商品，给待审核商品分配审核人，并在入库后分配招商组长。'
   }
   if (isSharedLibraryMode.value) return '沉淀完成的共享商品库，对全员可见，可直接复用历史商品结果。'
   return '支持候选商品浏览、审核、转链和入库沉淀，作为商品协同的统一工作台。'
@@ -1254,7 +1254,7 @@ const renderProgress = (row: any) =>
       { class: 'table-stack-line strong' },
       row.bizStatus === 'PENDING_AUDIT'
         ? (row.assigneeName ? `审核人：${row.assigneeName}` : '待分配审核人')
-        : (row.assigneeName ? `负责人：${row.assigneeName}` : '未分配负责人')
+        : (row.assigneeName ? `招商组长：${row.assigneeName}` : '未分配招商组长')
     ),
     h('div', { class: 'table-stack-line muted' }, row.bizStatusLabel || getStatusLabel(row.bizStatus)),
     row.selectedToLibrary && ['APPROVED', 'BOUND'].includes(String(row.bizStatus || '')) && !row.assigneeName
@@ -1337,7 +1337,7 @@ const columns = computed(() => [
     render: (row: any) => renderMetrics(row)
   },
   {
-    title: '负责人',
+    title: '招商组长/审核人',
     key: 'progress',
     width: 160,
     render: (row: any) => renderProgress(row)

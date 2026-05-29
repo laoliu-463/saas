@@ -1545,3 +1545,6 @@ UPDATE sys_user
 SET password = crypt(:'admin_password', gen_salt('bf', 12))
 WHERE username = 'admin'
   AND password <> crypt(:'admin_password', password);
+ 
+\\i alter-colonel-activity-recruiter-assignment.sql
+

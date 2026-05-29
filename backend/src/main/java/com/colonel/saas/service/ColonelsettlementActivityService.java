@@ -3,14 +3,23 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.ColonelsettlementActivity;
+import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
+import com.colonel.saas.service.activity.ActivityPromotionSupport;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 活动列表服务。
@@ -28,13 +37,17 @@ public class ColonelsettlementActivityService {
 
     /** 活动数据访问 */
     private final ColonelsettlementActivityMapper activityMapper;
+    /** 商品展示规则（活动状态变更后清理推广中缓存） */
+    private final ProductDisplayRuleService productDisplayRuleService;
     /** 是否启用演示数据播种（由配置项 app.activities.seed-demo-on-empty 控制） */
     private final boolean seedDemoActivities;
 
     public ColonelsettlementActivityService(
             ColonelsettlementActivityMapper activityMapper,
+            ProductDisplayRuleService productDisplayRuleService,
             @Value("${app.activities.seed-demo-on-empty:false}") boolean seedDemoActivities) {
         this.activityMapper = activityMapper;
+        this.productDisplayRuleService = productDisplayRuleService;
         this.seedDemoActivities = seedDemoActivities;
     }
 
@@ -74,6 +87,91 @@ public class ColonelsettlementActivityService {
      * 仅当 {@code seedDemoActivities} 为 true 且本地活动数量为 0 时，插入 5 条演示活动数据。
      * 每条活动的时间范围和状态各不相同，用于开发和演示环境的快速初始化。
      */
+    /**
+     * 将抖店活动列表条目落库（状态码/文案、时间窗口），供分配与推广中规则读取。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void syncFromGatewayItem(DouyinActivityGateway.ActivityItem item) {
+        if (item == null || item.activityId() <= 0L) {
+            return;
+        }
+        String activityId = String.valueOf(item.activityId());
+        LocalDateTime now = LocalDateTime.now();
+        activityMapper.upsertListActivitySummary(
+                UUID.nameUUIDFromBytes(("list-activity-" + activityId).getBytes(StandardCharsets.UTF_8)),
+                activityId,
+                item.activityName(),
+                item.colonelBuyinId() > 0L ? item.colonelBuyinId() : null,
+                parseDateTime(item.activityStartTime()),
+                parseDateTime(item.activityEndTime()),
+                item.status(),
+                item.statusText(),
+                now
+        );
+        productDisplayRuleService.clearPromotingActivityCache(activityId);
+    }
+
+    /**
+     * 批量读取活动级招商组长分配摘要。
+     */
+    public Map<String, ColonelsettlementActivity> findAssignmentsByActivityIds(List<String> activityIds) {
+        if (activityIds == null || activityIds.isEmpty()) {
+            return Map.of();
+        }
+        List<String> normalized = activityIds.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (normalized.isEmpty()) {
+            return Map.of();
+        }
+        return activityMapper.selectAssignmentByActivityIds(normalized).stream()
+                .filter(row -> StringUtils.hasText(row.getActivityId()))
+                .collect(Collectors.toMap(
+                        ColonelsettlementActivity::getActivityId,
+                        row -> row,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+    }
+
+    public boolean isPromotingActivity(String activityId) {
+        if (!StringUtils.hasText(activityId)) {
+            return false;
+        }
+        ColonelsettlementActivity activity = activityMapper.selectByActivityId(activityId.trim());
+        return ActivityPromotionSupport.isPromoting(activity);
+    }
+
+    private LocalDateTime parseDateTime(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String text = raw.trim();
+        List<DateTimeFormatter> formatters = List.of(
+                DateTimeFormatter.ISO_LOCAL_DATE_TIME,
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+                DateTimeFormatter.ISO_LOCAL_DATE);
+        for (DateTimeFormatter formatter : formatters) {
+            try {
+                if (formatter == DateTimeFormatter.ISO_LOCAL_DATE) {
+                    return java.time.LocalDate.parse(text, formatter).atStartOfDay();
+                }
+                return LocalDateTime.parse(text, formatter);
+            } catch (DateTimeParseException ignored) {
+                // try next pattern
+            }
+        }
+        if (text.length() >= 10) {
+            try {
+                return java.time.LocalDate.parse(text.substring(0, 10)).atStartOfDay();
+            } catch (DateTimeParseException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     private void ensureSeedData() {
         if (!seedDemoActivities) {
             return;

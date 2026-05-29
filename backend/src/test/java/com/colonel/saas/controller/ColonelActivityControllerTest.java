@@ -7,19 +7,26 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.auth.service.SysUserService;
+import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.service.ColonelsettlementActivityService;
 import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.ShortTtlCacheService;
+import org.springframework.http.MediaType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -29,11 +36,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class ColonelActivityControllerTest {
 
     @Mock
@@ -42,6 +51,12 @@ class ColonelActivityControllerTest {
     private DouyinProductGateway douyinProductGateway;
     @Mock
     private ProductService productService;
+    @Mock
+    private SysUserService sysUserService;
+    @Mock
+    private ColonelsettlementActivityService colonelActivityService;
+    @Mock
+    private SysUserMapper sysUserMapper;
 
     private ColonelActivityController controller;
     private MockMvc mockMvc;
@@ -52,11 +67,69 @@ class ColonelActivityControllerTest {
                 douyinActivityGateway,
                 douyinProductGateway,
                 productService,
-                new ShortTtlCacheService()
+                new ShortTtlCacheService(),
+                sysUserService,
+                colonelActivityService,
+                sysUserMapper
         );
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    @Test
+    void assignActivity_shouldValidateRecruiterAndReturnAssignmentPayload() throws Exception {
+        UUID assigneeId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        UUID operatorId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("activityId", "100018");
+        payload.put("assigneeId", assigneeId);
+        payload.put("assigneeName", "招商组长测试");
+        payload.put("assignedBy", operatorId);
+
+        when(productService.assignActivity("100018", assigneeId, operatorId)).thenReturn(payload);
+
+        mockMvc.perform(put("/colonel/activities/{activityId}/assignee", "100018")
+                        .requestAttr("userId", operatorId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"assigneeId\":\"22222222-2222-2222-2222-222222222222\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.activityId").value("100018"))
+                .andExpect(jsonPath("$.data.assigneeName").value("招商组长测试"));
+
+        verify(sysUserService).assertRecruiterUser(assigneeId);
+        verify(productService).assignActivity("100018", assigneeId, operatorId);
+    }
+
+    @Test
+    void assignActivity_shouldEvictCachedActivityListAfterAssignment() throws Exception {
+        UUID assigneeId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        UUID operatorId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        ShortTtlCacheService cacheService = mock(ShortTtlCacheService.class);
+        ColonelActivityController localController = new ColonelActivityController(
+                douyinActivityGateway,
+                douyinProductGateway,
+                productService,
+                cacheService,
+                sysUserService,
+                colonelActivityService,
+                sysUserMapper);
+        MockMvc localMvc = MockMvcBuilders.standaloneSetup(localController)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+        when(productService.assignActivity("100018", assigneeId, operatorId)).thenReturn(Map.of(
+                "activityId", "100018",
+                "assigneeId", assigneeId
+        ));
+
+        localMvc.perform(put("/colonel/activities/{activityId}/assignee", "100018")
+                        .requestAttr("userId", operatorId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"assigneeId\":\"22222222-2222-2222-2222-222222222222\"}"))
+                .andExpect(status().isOk());
+
+        verify(cacheService).evictByPrefix("activities:list:");
     }
 
     @Test
@@ -77,6 +150,7 @@ class ColonelActivityControllerTest {
                 new DouyinActivityGateway.ActivityListResult(false, 7351155267604201765L, 21L, List.of(item));
 
         when(douyinActivityGateway.listActivities(any())).thenReturn(result);
+        when(colonelActivityService.findAssignmentsByActivityIds(any())).thenReturn(Map.of());
 
         mockMvc.perform(get("/colonel/activities")
                         .param("page", "1")
@@ -286,7 +360,10 @@ class ColonelActivityControllerTest {
                     activityGateway,
                     douyinProductGateway,
                     productService,
-                    new ShortTtlCacheService());
+                    new ShortTtlCacheService(),
+                    sysUserService,
+                    colonelActivityService,
+                    sysUserMapper);
 
             assertThatThrownBy(() -> errorController.list(0, 0L, 1L, 1L, 20L, null, null))
                     .isInstanceOf(BusinessException.class)
@@ -317,7 +394,10 @@ class ColonelActivityControllerTest {
                     douyinActivityGateway,
                     productGateway,
                     localProductService,
-                    new ShortTtlCacheService());
+                    new ShortTtlCacheService(),
+                    sysUserService,
+                    colonelActivityService,
+                    sysUserMapper);
 
             assertThatThrownBy(() -> errorController.listProducts(
                     "100018",

@@ -590,13 +590,13 @@ public class ProductQuickSampleService {
     }
 
     /**
-     * 解析商品的招商负责人 ID。
+     * 解析商品的招商组长 ID。
      * <p>
      * 通过商品快照找到对应的运营状态，取其 assigneeId（分配人）。
      * </p>
      *
      * @param product 商品实体
-     * @return 招商负责人 ID；快照或状态不存在时返回 null
+     * @return 招商组长 ID；快照或状态不存在时返回 null
      */
     private UUID resolveRecruiterId(Product product) {
         ProductSnapshot snapshot = productSnapshotMapper.selectById(product.getId());

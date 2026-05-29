@@ -41,7 +41,7 @@
           filterable
           remote
           clearable
-          placeholder="招商负责人"
+          placeholder="招商组长"
           style="width: 180px"
           @search="handleRecruiterSearch"
         />
@@ -191,7 +191,7 @@ const fetchRecruiterOptions = async (keyword: string) => {
   try {
     recruiterOptions.value = await loadOrderRecruiterOptions(keyword)
   } catch (error) {
-    notifyApiFailure(error, message, { fallbackMessage: '加载招商负责人失败' })
+    notifyApiFailure(error, message, { fallbackMessage: '加载招商组长失败' })
   } finally {
     recruiterOptionsLoading.value = false
   }

@@ -17,7 +17,7 @@ import java.util.Arrays;
  *   <li>{@link #APPROVED} — 审核通过，商品可进入后续分配和推广流程</li>
  *   <li>{@link #REJECTED} — 审核拒绝，商品不满足准入条件</li>
  *   <li>{@link #BOUND} — 商品已绑定到具体推广活动</li>
- *   <li>{@link #ASSIGNED} — 商品已分配给招商经理跟进</li>
+ *   <li>{@link #ASSIGNED} — 商品已分配给招商组长跟进</li>
  *   <li>{@link #LINKED} — 已完成转链操作（生成推广链接），可分享给达人</li>
  *   <li>{@link #FOLLOWING} — 达人正在跟进推广中，等待出单</li>
  * </ul>
@@ -44,7 +44,7 @@ public enum ProductBizStatus {
     REJECTED("审核拒绝"),
     /** 已绑定到具体推广活动 */
     BOUND("已绑定活动"),
-    /** 已分配给招商经理跟进 */
+    /** 已分配给招商组长跟进 */
     ASSIGNED("已分配招商"),
     /** 已完成转链操作，生成推广链接 */
     LINKED("已转链"),
