@@ -63,7 +63,7 @@ const ROLE = ROLE_CODES
  * 统一菜单数据源
  *
  * 结构说明：
- * - 一级节点：顶部业务域（归因工作台、数据看板、商品库、商品管理、达人CRM、合作管理、系统管理）
+ * - 一级节点：顶部业务域（归因工作台、商品库、商品管理、达人CRM、合作管理、数据看板、系统管理）
  * - 二级节点：左侧边栏子功能菜单
  * - roles 字段控制可见性，未设置则不限制
  */
@@ -77,26 +77,6 @@ export const MENU_TREE: MenuTreeNode[] = [
     children: [
       { label: '归因概览', key: '/dashboard', topKey: 'attribution', path: '/dashboard' },
       { label: '订单工作台', key: '/orders', topKey: 'attribution', path: '/orders' }
-    ]
-  },
-  {
-    label: '数据看板',
-    key: 'data',
-    topKey: 'data',
-    testId: 'nav-dashboard',
-    showInTop: true,
-    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
-    children: [
-      { label: '核心看板', key: '/data', topKey: 'data', path: '/data' },
-      { label: '订单明细', key: '/data/orders', topKey: 'data', path: '/data/orders' },
-      {
-        label: '独家状态',
-        key: '/ops/exclusive',
-        topKey: 'data',
-        path: '/ops/exclusive',
-        // 独家状态仅业务主管、渠道主管和管理员可见
-        roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN]
-      }
     ]
   },
   {
@@ -170,6 +150,26 @@ export const MENU_TREE: MenuTreeNode[] = [
         // 发货台仅运维人员可见
         roles: [ROLE.OPS_STAFF],
         testId: 'nav-shipping'
+      }
+    ]
+  },
+  {
+    label: '数据看板',
+    key: 'data',
+    topKey: 'data',
+    testId: 'nav-dashboard',
+    showInTop: true,
+    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
+    children: [
+      { label: '核心看板', key: '/data', topKey: 'data', path: '/data' },
+      { label: '订单明细', key: '/data/orders', topKey: 'data', path: '/data/orders' },
+      {
+        label: '独家状态',
+        key: '/ops/exclusive',
+        topKey: 'data',
+        path: '/ops/exclusive',
+        // 独家状态仅业务主管、渠道主管和管理员可见
+        roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN]
       }
     ]
   },
