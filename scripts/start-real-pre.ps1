@@ -35,12 +35,12 @@ function Get-DotEnvValue {
 
 Push-Location $repoRoot
 try {
-    docker compose --env-file $envFile --project-name saas-active -f $composeFile up -d --build
+    docker compose --env-file $envFile -f $composeFile up -d --build
     & (Join-Path $scriptDir "apply-test-db-patches.ps1") `
         -ContainerName "saas-active-postgres-real-pre-1" `
         -Database (Get-DotEnvValue -Path $envFile -Name "DB_NAME" -Default "saas_real_pre") `
         -User (Get-DotEnvValue -Path $envFile -Name "DB_USER" -Default "saas")
-    docker compose --env-file $envFile --project-name saas-active -f $composeFile ps
+    docker compose --env-file $envFile -f $composeFile ps
 }
 finally {
     Pop-Location
