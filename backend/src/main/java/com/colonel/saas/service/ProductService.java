@@ -26,6 +26,7 @@ import com.colonel.saas.entity.PromotionLink;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.service.activity.ActivityPromotionSupport;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -100,6 +101,8 @@ public class ProductService {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     /** 精选库批量查询每次拉取的上限条数 */
     private static final long SELECTED_LIBRARY_BATCH_SIZE = 200L;
+    /** 按活动批量处理商品快照/运营状态时的分页大小 */
+    private static final long ACTIVITY_PRODUCT_BATCH_SIZE = 200L;
     /** 抖店团长 buyin 通常为 17–20 位；捕获组上限 30 位，并在数字后截断避免粘连字段。 */
     private static final Pattern BUYIN_ID_PATTERN = Pattern.compile(
             "(?:(?:origin_colonel_buyin_id|originColonelBuyinId|colonel_buyin_id|colonelBuyinId)\\s*[=:]\\s*['\\\"]?"
@@ -1331,7 +1334,7 @@ public class ProductService {
             return new ActivitySnapshotUpsertStats(0, 0, items == null ? 0 : items.size());
         }
         ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(activityId);
-        boolean promoting = com.colonel.saas.service.activity.ActivityPromotionSupport.isPromoting(activity);
+        boolean forceLibrary = ActivityPromotionSupport.shouldForceLibraryDisplay(activity);
         UUID activityRecruiterId = activity == null ? null : activity.getRecruiterUserId();
         int created = 0;
         int updated = 0;
@@ -1361,29 +1364,82 @@ public class ProductService {
                 state.setAssigneeId(activityRecruiterId);
                 operationStateMapper.updateById(state);
             }
-            if (promoting) {
-                autoAddToLibraryIfPromoting(state, activityId);
+            if (forceLibrary) {
+                applyAssignedPromotingLibraryState(state, activityId);
             }
         }
-        if (promoting) {
+        if (forceLibrary) {
             productDisplayRuleService.applyForActivityId(activityId);
         }
         return new ActivitySnapshotUpsertStats(created, updated, skipped);
     }
 
     /**
-     * 如果活动已推广中且商品尚未入库，则自动加入商品库。
-     * <p>
-     * 触发时机：商品快照同步时（每次同步都会检查）。
-     * 已入库的商品不会重复处理，只对未入库的商品设置 selectedToLibrary=true。
-     * </p>
-     *
-     * @param state      商品运营状态（已存在或刚初始化，非 null）
-     * @param activityId 活动 ID
+     * 将「已分配招商且推广中」活动下全部已同步商品写入商品库并强制展示。
+     * <p>用于活动分配、活动状态落库、商品同步后的批量补齐。</p>
      */
-    private void autoAddToLibraryIfPromoting(ProductOperationState state, String activityId) {
+    @Transactional(rollbackFor = Exception.class)
+    public int ensureAssignedPromotingActivityProductsInLibrary(String activityId) {
+        if (!StringUtils.hasText(activityId)) {
+            return 0;
+        }
+        String normalizedActivityId = activityId.trim();
+        ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(normalizedActivityId);
+        if (!ActivityPromotionSupport.shouldForceLibraryDisplay(activity)) {
+            return 0;
+        }
+        int touched = 0;
+        long pageNo = 1L;
+        while (true) {
+            Page<ProductSnapshot> page = snapshotMapper.selectPage(
+                    new Page<>(pageNo, ACTIVITY_PRODUCT_BATCH_SIZE),
+                    new LambdaQueryWrapper<ProductSnapshot>()
+                            .eq(ProductSnapshot::getActivityId, normalizedActivityId)
+                            .orderByAsc(ProductSnapshot::getProductId));
+            List<ProductSnapshot> snapshots = page.getRecords();
+            if (snapshots == null || snapshots.isEmpty()) {
+                break;
+            }
+            for (ProductSnapshot snapshot : snapshots) {
+                if (snapshot == null || !StringUtils.hasText(snapshot.getProductId())) {
+                    continue;
+                }
+                ProductOperationState existingState = getOperationState(normalizedActivityId, snapshot.getProductId());
+                ProductOperationState state = productBizStatusService.initStateIfAbsent(
+                        existingState,
+                        normalizedActivityId,
+                        snapshot.getProductId(),
+                        null,
+                        null,
+                        "推广中已分配活动商品库补齐");
+                if (activity.getRecruiterUserId() != null && state.getAssigneeId() == null) {
+                    state.setAssigneeId(activity.getRecruiterUserId());
+                }
+                if (applyAssignedPromotingLibraryState(state, normalizedActivityId)) {
+                    touched++;
+                }
+            }
+            if (!page.hasNext()) {
+                break;
+            }
+            pageNo++;
+        }
+        productDisplayRuleService.clearPromotingActivityCache(normalizedActivityId);
+        productDisplayRuleService.applyForActivityId(normalizedActivityId);
+        if (touched > 0) {
+            log.info("[已分配推广中活动入库] activityId={} 补齐 {} 个商品", normalizedActivityId, touched);
+        }
+        return touched;
+    }
+
+    /**
+     * 已分配招商且推广中的活动：单条商品写入商品库并强制展示。
+     *
+     * @return 是否发生持久化变更
+     */
+    private boolean applyAssignedPromotingLibraryState(ProductOperationState state, String activityId) {
         if (state == null) {
-            return;
+            return false;
         }
         boolean changed = false;
         if (!Boolean.TRUE.equals(state.getSelectedToLibrary())) {
@@ -1405,9 +1461,10 @@ public class ProductService {
         }
         if (changed) {
             operationStateMapper.updateById(state);
-            log.info("[推广中自动入库] activityId={}, productId={} 已入库并强制展示",
+            log.info("[已分配推广中自动入库] activityId={}, productId={} 已入库并强制展示",
                     activityId, state.getProductId());
         }
+        return changed;
     }
 
     /**
@@ -1487,6 +1544,9 @@ public class ProductService {
         payload.put("activityAssigneeId", recruiterUserId);
         payload.put("assigneeName", recruiterUserName);
         payload.put("activityAssigneeName", recruiterUserName);
+        if (assigneeId != null) {
+            ensureAssignedPromotingActivityProductsInLibrary(normalizedActivityId);
+        }
         return payload;
     }
 
@@ -1497,10 +1557,21 @@ public class ProductService {
         return null; // 简化实现，如有需要可注入 SysDeptMapper 查询部门名称
     }
 
+    /**
+     * 活动商品全量刷新结果（供活动列表「获取同步商品」展示同步/入库数量）。
+     */
+    public record ActivityProductRefreshResult(
+            int syncedProductCount,
+            int libraryEntryCount,
+            int createdCount,
+            int updatedCount,
+            int skippedCount) {
+    }
+
     @Transactional(rollbackFor = Exception.class)
-    public int refreshActivitySnapshots(DouyinProductGateway.ActivityProductQueryRequest request) {
+    public ActivityProductRefreshResult refreshActivitySnapshots(DouyinProductGateway.ActivityProductQueryRequest request) {
         if (request == null || !StringUtils.hasText(request.activityId())) {
-            return 0;
+            return new ActivityProductRefreshResult(0, 0, 0, 0, 0);
         }
         int pageSize = Math.min(Math.max(request.count() == null ? 20 : request.count(), 1), 20);
         String cursor = request.cursor();
@@ -1536,23 +1607,21 @@ public class ProductService {
             updatedCount += stats.updatedCount();
             skippedCount += stats.skippedCount();
 
-            int newItems = 0;
             for (DouyinProductGateway.ActivityProductItem item : items) {
                 String productId = String.valueOf(item.productId());
-                if (StringUtils.hasText(productId) && seenProductKeys.add(request.activityId() + "::" + productId)) {
-                    newItems++;
+                if (StringUtils.hasText(productId)) {
+                    seenProductKeys.add(request.activityId() + "::" + productId);
                 }
             }
 
             String nextCursor = StringUtils.hasText(result.nextCursor()) ? result.nextCursor().trim() : "";
-            if (!StringUtils.hasText(nextCursor)
-                    || nextCursor.equals(cursor)
-                    || newItems == 0
-                    || items.size() < pageSize) {
+            boolean hasMoreCursor = StringUtils.hasText(nextCursor) && !nextCursor.equals(cursor);
+            if (!hasMoreCursor || items.size() < pageSize) {
                 break;
             }
             cursor = nextCursor;
         }
+        int libraryEntryCount = ensureAssignedPromotingActivityProductsInLibrary(request.activityId());
         productDisplayRuleService.applyForActivityId(request.activityId());
         ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(request.activityId());
         productDomainEventPublisher.publishActivitySyncCompleted(
@@ -1564,7 +1633,12 @@ public class ProductService {
                 skippedCount,
                 "SUCCESS",
                 null);
-        return seenProductKeys.size();
+        return new ActivityProductRefreshResult(
+                seenProductKeys.size(),
+                libraryEntryCount,
+                createdCount,
+                updatedCount,
+                skippedCount);
     }
 
     record ActivitySnapshotUpsertStats(int createdCount, int updatedCount, int skippedCount) {
@@ -1713,19 +1787,34 @@ public class ProductService {
             nextOffset = offset + snapshots.size();
             hasMore = total != null && nextOffset < total;
         } else {
-            List<ProductSnapshot> allSnapshots = loadAllActivitySnapshots(queryWrapper);
-            if (allSnapshots.isEmpty()) {
+            // Use SQL-level sort + pagination instead of loading all records into memory.
+            // This avoids O(n) memory + sort for large activity product lists (e.g. 700+ snapshots).
+            List<String> includeIds = bizStatusFilter.includeProductIds().isEmpty()
+                    ? null : new ArrayList<>(bizStatusFilter.includeProductIds());
+            List<String> excludeIds = bizStatusFilter.excludeProductIds().isEmpty()
+                    ? null : new ArrayList<>(bizStatusFilter.excludeProductIds());
+            List<String> productIdScope = (auditTagProductScope == null || auditTagProductScope.isEmpty())
+                    ? null : new ArrayList<>(auditTagProductScope);
+            snapshots = snapshotMapper.selectPageSorted(
+                    activityId,
+                    promotionStatus,
+                    StringUtils.hasText(productInfo) ? productInfo.trim() : null,
+                    bizStatusFilter.mode().name(),
+                    includeIds,
+                    excludeIds,
+                    productIdScope,
+                    pageSize,
+                    offset,
+                    java.time.LocalDateTime.now());
+            if (snapshots.isEmpty()) {
                 return emptyActivityProductListView(activityId, total == null ? 0 : total);
             }
-            List<Map<String, Object>> sortedItems = buildActivityProductItems(activityId, allSnapshots);
-            sortActivityProductItems(sortedItems, normalizedSortBy);
-            int totalItems = sortedItems.size();
-            int safeOffset = Math.max(offset, 0);
-            int fromIndex = Math.min(safeOffset, totalItems);
-            int toIndex = Math.min(fromIndex + pageSize, totalItems);
-            items = fromIndex < toIndex ? new ArrayList<>(sortedItems.subList(fromIndex, toIndex)) : List.of();
-            nextOffset = fromIndex + items.size();
-            hasMore = nextOffset < totalItems;
+            items = buildActivityProductItems(activityId, snapshots);
+            // SQL already sorted; only in-memory pinned re-sort needed (rare, lightweight).
+            sortActivityProductItems(items, normalizedSortBy);
+            nextOffset = offset + snapshots.size();
+            // If we got a full page, there are more results.
+            hasMore = snapshots.size() == pageSize;
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -1761,6 +1850,8 @@ public class ProductService {
         Map<Long, Merchant> merchantMap = buildMerchantMap(snapshots.stream()
                 .map(ProductSnapshot::getShopId)
                 .collect(Collectors.toCollection(HashSet::new)));
+        String activityName = colonelActivityMapper.selectByActivityId(activityId) == null
+                ? null : colonelActivityMapper.selectByActivityId(activityId).getName();
         return snapshots.stream()
                 .map(snapshot -> toActivityProductView(
                         snapshot,
@@ -1769,7 +1860,8 @@ public class ProductService {
                         orderSummaryMap.get(snapshot.getProductId()),
                         promotionSummaryMap.get(snapshot.getProductId()),
                         lookupMerchant(merchantMap, snapshot.getShopId()),
-                        assigneeNameMap))
+                        assigneeNameMap,
+                        activityName))
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
@@ -1849,8 +1941,10 @@ public class ProductService {
         OrderSummary orderSummary = findOrderSummary(activityId, productId);
         PromotionSummary promotionSummary = findPromotionSummary(activityId, productId);
         Merchant merchant = findMerchant(snapshot.getShopId());
+        String activityName = colonelActivityMapper.selectByActivityId(activityId) == null
+                ? null : colonelActivityMapper.selectByActivityId(activityId).getName();
 
-        Map<String, Object> detail = toActivityProductView(snapshot, state, decisionSummary, orderSummary, promotionSummary, merchant);
+        Map<String, Object> detail = toActivityProductView(snapshot, state, decisionSummary, orderSummary, promotionSummary, merchant, null, activityName);
         Map<String, Object> auditSupplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
         if (state != null) {
             detail.put("promotionScene", state.getPromotionScene());
@@ -3205,6 +3299,7 @@ public class ProductService {
         product.setSales30d(snapshot.getSales() == null ? 0L : snapshot.getSales());
         product.setHasSampleRule(isSampleRuleAvailable(snapshot));
         product.setSystemTags(buildLibrarySystemTags(snapshot));
+        product.setSyncTime(snapshot.getSyncTime());
         product.setCreateTime(snapshot.getCreateTime());
         product.setUpdateTime(snapshot.getUpdateTime());
 
@@ -3269,7 +3364,7 @@ public class ProductService {
             OrderSummary orderSummary,
             PromotionSummary promotionSummary,
             Merchant merchant) {
-        return toActivityProductView(snapshot, state, decisionSummary, orderSummary, promotionSummary, merchant, null);
+        return toActivityProductView(snapshot, state, decisionSummary, orderSummary, promotionSummary, merchant, null, null);
     }
 
     private Map<String, Object> toActivityProductView(
@@ -3279,10 +3374,12 @@ public class ProductService {
             OrderSummary orderSummary,
             PromotionSummary promotionSummary,
             Merchant merchant,
-            Map<UUID, String> assigneeNameMap) {
+            Map<UUID, String> assigneeNameMap,
+            String activityName) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", snapshot.getId());
         view.put("activityId", snapshot.getActivityId());
+        view.put("activityName", activityName);
         view.put("productId", snapshot.getProductId());
         view.put("title", snapshot.getTitle());
         view.put("cover", snapshot.getCover());

@@ -3,6 +3,7 @@ package com.colonel.saas.controller;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.common.base.BaseController;
+import lombok.extern.slf4j.Slf4j;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
@@ -12,6 +13,8 @@ import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.service.activity.ActivityAccessService;
+import com.colonel.saas.service.activity.ActivityPromotionSupport;
 import com.colonel.saas.service.ColonelsettlementActivityService;
 import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -33,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,11 +45,12 @@ import java.util.UUID;
 /**
  * 团长活动管理控制器。
  */
+@Slf4j
 @Validated
 @RestController
 @Tag(name = "团长活动管理", description = "团长活动列表及活动下商品查询接口。")
 @RequestMapping("/colonel/activities")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.ADMIN, RoleCodes.COLONEL_LEADER})
+@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.ADMIN, RoleCodes.COLONEL_LEADER, RoleCodes.BIZ_STAFF})
 public class ColonelActivityController extends BaseController {
 
     private static final Duration ACTIVITY_LIST_CACHE_TTL = Duration.ofSeconds(60);
@@ -58,6 +63,7 @@ public class ColonelActivityController extends BaseController {
     private final SysUserService sysUserService;
     private final ColonelsettlementActivityService colonelActivityService;
     private final SysUserMapper sysUserMapper;
+    private final ActivityAccessService activityAccessService;
 
     public ColonelActivityController(
             DouyinActivityGateway douyinActivityGateway,
@@ -66,7 +72,8 @@ public class ColonelActivityController extends BaseController {
             ShortTtlCacheService shortTtlCacheService,
             SysUserService sysUserService,
             ColonelsettlementActivityService colonelActivityService,
-            SysUserMapper sysUserMapper) {
+            SysUserMapper sysUserMapper,
+            ActivityAccessService activityAccessService) {
         this.douyinActivityGateway = douyinActivityGateway;
         this.douyinProductGateway = douyinProductGateway;
         this.productService = productService;
@@ -74,6 +81,7 @@ public class ColonelActivityController extends BaseController {
         this.sysUserService = sysUserService;
         this.colonelActivityService = colonelActivityService;
         this.sysUserMapper = sysUserMapper;
+        this.activityAccessService = activityAccessService;
     }
 
     @Operation(summary = "团长活动列表", description = "查询机构创建的团长活动列表，并回填本地分配信息。")
@@ -85,8 +93,25 @@ public class ColonelActivityController extends BaseController {
             @Parameter(description = "页码，从 1 开始。") @RequestParam(name = "page", defaultValue = "1") @Min(1) Long page,
             @Parameter(description = "每页条数，最大 20。") @RequestParam(name = "pageSize", defaultValue = "20") @Min(1) @Max(20) Long pageSize,
             @Parameter(description = "活动信息关键字。") @RequestParam(name = "activityInfo", required = false) String activityInfo,
-            @Parameter(description = "抖音应用 appId。") @RequestParam(name = "appId", required = false) String appId) {
+            @Parameter(description = "抖音应用 appId。") @RequestParam(name = "appId", required = false) String appId,
+            @Parameter(description = "分配筛选：all=全部（默认）、assigned=已分配、unassigned=未分配、mine=分配给我。")
+            @RequestParam(name = "assignmentFilter", defaultValue = "all") String assignmentFilter,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        Collection<String> normalizedRoles = ActivityAccessService.normalizeRoleCodes(roleCodes);
+        String effectiveFilter = activityAccessService.resolveEffectiveAssignmentFilter(assignmentFilter, normalizedRoles);
         try {
+            if (activityAccessService.shouldUseLocalAssignmentList(effectiveFilter, normalizedRoles)) {
+                Map<String, Object> payload = colonelActivityService.buildAssignmentListPage(
+                        page,
+                        pageSize,
+                        status,
+                        effectiveFilter,
+                        userId,
+                        activityInfo,
+                        this::resolveUserName);
+                return ok(payload);
+            }
             String cacheKey = ACTIVITY_LIST_CACHE_PREFIX + cacheKey(status, searchType, sortType, page, pageSize, activityInfo, appId);
             Map<String, Object> payload = shortTtlCacheService.get(cacheKey, ACTIVITY_LIST_CACHE_TTL, () -> {
                 DouyinActivityGateway.ActivityListResult result = douyinActivityGateway.listActivities(
@@ -98,6 +123,13 @@ public class ColonelActivityController extends BaseController {
                         colonelActivityService.syncFromGatewayItem(item);
                     }
                 }
+                log.info("[活动列表] status={}, upstreamTotal={}, returned={}, items={}",
+                        status, result.total(),
+                        result.activityList() == null ? 0 : result.activityList().size(),
+                        result.activityList() == null ? "[]" :
+                                result.activityList().stream()
+                                        .map(i -> String.format("{id=%d,status=%d,text=%s}", i.activityId(), i.status(), i.statusText()))
+                                        .toList());
                 return enrichActivityList(result.toMap());
             });
             return ok(payload);
@@ -140,7 +172,13 @@ public class ColonelActivityController extends BaseController {
             @Parameter(description = "是否强制刷新上游。") @RequestParam(name = "refresh", defaultValue = "false") Boolean refresh,
             @Parameter(description = "本地视图排序。") @RequestParam(name = "sortBy", required = false) String sortBy,
             @Parameter(description = "货品标签。") @RequestParam(name = "goodsTags", required = false) String goodsTags,
-            @Parameter(description = "商品标签。") @RequestParam(name = "productTags", required = false) String productTags) {
+            @Parameter(description = "商品标签。") @RequestParam(name = "productTags", required = false) String productTags,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        activityAccessService.assertActivityReadable(
+                activityId,
+                userId,
+                ActivityAccessService.normalizeRoleCodes(roleCodes));
         try {
             if (!Boolean.TRUE.equals(refresh) && productService.hasActivitySnapshots(activityId)) {
                 return ok(productService.buildActivityProductListViewFromDb(
@@ -150,14 +188,27 @@ public class ColonelActivityController extends BaseController {
                     new DouyinProductGateway.ActivityProductQueryRequest(
                             appId, activityId, searchType, sortType, count, cooperationInfo, cooperationType,
                             productInfo, status, retrieveMode, cursor, page);
+            Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
+                    activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags);
             if (Boolean.TRUE.equals(refresh)) {
-                productService.refreshActivitySnapshots(queryRequest);
+                colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
+                ProductService.ActivityProductRefreshResult refreshResult =
+                        productService.refreshActivitySnapshots(queryRequest);
+                Map<String, Object> syncStats = new LinkedHashMap<>();
+                syncStats.put("syncedProductCount", refreshResult.syncedProductCount());
+                syncStats.put("libraryEntryCount", refreshResult.libraryEntryCount());
+                syncStats.put("createdCount", refreshResult.createdCount());
+                syncStats.put("updatedCount", refreshResult.updatedCount());
+                syncStats.put("skippedCount", refreshResult.skippedCount());
+                ColonelsettlementActivity activity = colonelActivityService.findByActivityId(activityId);
+                syncStats.put("autoLibraryEligible", activity != null
+                        && ActivityPromotionSupport.shouldForceLibraryDisplay(activity));
+                payload.put("syncStats", syncStats);
             } else {
                 DouyinProductGateway.ActivityProductListResult result = douyinProductGateway.queryActivityProducts(queryRequest);
                 productService.upsertSnapshots(activityId, result.items());
             }
-            return ok(productService.buildActivityProductListViewFromDb(
-                    activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags));
+            return ok(payload);
         } catch (DouyinApiException e) {
             throw mapProductError(e);
         }
@@ -196,12 +247,17 @@ public class ColonelActivityController extends BaseController {
                     item.put("assigneeId", assignment.getRecruiterUserId());
                     item.put("assigneeName", assigneeName);
                     item.put("recruiterName", assigneeName);
+                    item.put("recruiterUserId", assignment.getRecruiterUserId());
+                    item.put("recruiterUserName", assigneeName);
                 }
                 if (assignment.getAssignedAt() != null) {
                     item.put("assignedAt", assignment.getAssignedAt());
                 }
                 if (assignment.getAssignedBy() != null) {
                     item.put("assignedBy", assignment.getAssignedBy());
+                }
+                if (assignment.getLastSyncAt() != null) {
+                    item.put("lastSyncAt", assignment.getLastSyncAt());
                 }
             }
             enriched.add(item);

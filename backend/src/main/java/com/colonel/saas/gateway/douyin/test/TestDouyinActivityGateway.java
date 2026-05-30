@@ -1,5 +1,6 @@
 package com.colonel.saas.gateway.douyin.test;
 
+import com.colonel.saas.domain.ActivityStatusResolver;
 import com.colonel.saas.douyin.api.ActivityApi;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -284,7 +285,7 @@ public class TestDouyinActivityGateway implements DouyinActivityGateway {
                     String.format("2026-%02d-%02d 00:00:00", month, day),
                     String.format("2026-%02d-%02d 23:59:59", month, Math.min(day + 10, 28)),
                     status,
-                    activityStatusText(status),
+                    ActivityStatusResolver.toText(status),
                     String.format("2026-%02d-%02d 00:00:00", Math.max(month - 1, 1), Math.max(day - 5, 1)),
                     String.format("2026-%02d-%02d 23:59:59", month, Math.max(day - 1, 1)),
                     Map.of("一级类目", categoryCycle[(i - 1) % categoryCycle.length]),
@@ -371,15 +372,4 @@ public class TestDouyinActivityGateway implements DouyinActivityGateway {
      * @param status 活动状态码
      * @return 中文状态描述，未知状态返回 "任意状态"
      */
-    private String activityStatusText(int status) {
-        return switch (status) {
-            case 1 -> "未上线";
-            case 2 -> "报名未开始";
-            case 3 -> "报名中";
-            case 4 -> "推广未开始";
-            case 5 -> "推广中";
-            case 7 -> "报名结束";
-            default -> "任意状态";
-        };
-    }
 }

@@ -49,4 +49,86 @@
             update_by = EXCLUDED.update_by,
             deleted = EXCLUDED.deleted
     </insert>
+
+    <!--
+        SQL 级别排序 + 分页查询活动商品快照。
+        用于解决非 latest 排序时全量加载再内存排序的性能问题。
+        接收全部过滤参数，避免在 XML 中重复 applyBizStatusFilter 逻辑。
+        ORDER BY：置顶 > 已推广 > 佣金比例 DESC > 同步时间 DESC
+    -->
+    <select id="selectPageSorted" resultType="com.colonel.saas.entity.ProductSnapshot">
+        SELECT ps.*
+          FROM product_snapshot ps
+     LEFT JOIN product_operation_state pos
+            ON ps.activity_id = pos.activity_id
+           AND ps.product_id = pos.product_id
+           AND pos.deleted = 0
+         WHERE ps.activity_id = #{activityId}
+           AND ps.deleted = 0
+           <if test="promotionStatus != null">
+           AND ps.status = #{promotionStatus}
+           </if>
+           <if test="productInfo != null and productInfo != ''">
+           AND (
+               ps.title LIKE CONCAT('%', #{productInfo}, '%')
+               OR ps.product_id LIKE CONCAT('%', #{productInfo}, '%')
+               OR ps.shop_name LIKE CONCAT('%', #{productInfo}, '%')
+           )
+           </if>
+           <!-- BizStatusFilter: NONE / EMPTY / INCLUDE_ONLY / PENDING_AUDIT -->
+           <if test="bizStatusFilterMode == 'INCLUDE_ONLY' and includeProductIds != null">
+           AND ps.product_id IN
+               <foreach collection="includeProductIds" item="id" open="(" separator="," close=")">
+                   #{id}
+               </foreach>
+           </if>
+           <if test="bizStatusFilterMode == 'PENDING_AUDIT'">
+               <if test="includeProductIds != null and excludeProductIds != null and includeProductIds.size() > 0 and excludeProductIds.size() > 0">
+               AND (
+                   ps.product_id IN
+                       <foreach collection="includeProductIds" item="id" open="(" separator="," close=")">
+                           #{id}
+                       </foreach>
+                   OR ps.product_id NOT IN
+                       <foreach collection="excludeProductIds" item="id" open="(" separator="," close=")">
+                           #{id}
+                       </foreach>
+               )
+               </if>
+               <if test="includeProductIds != null and (excludeProductIds == null or excludeProductIds.size() == 0) and includeProductIds.size() > 0">
+               AND ps.product_id IN
+                   <foreach collection="includeProductIds" item="id" open="(" separator="," close=")">
+                       #{id}
+                   </foreach>
+               </if>
+               <if test="excludeProductIds != null and (includeProductIds == null or includeProductIds.size() == 0) and excludeProductIds.size() > 0">
+               AND ps.product_id NOT IN
+                   <foreach collection="excludeProductIds" item="id" open="(" separator="," close=")">
+                       #{id}
+                   </foreach>
+               </if>
+           </if>
+           <!-- productIdScope (audit tag filter) -->
+           <if test="productIdScope != null and productIdScope.size() > 0">
+           AND ps.product_id IN
+               <foreach collection="productIdScope" item="id" open="(" separator="," close=")">
+                   #{id}
+               </foreach>
+           </if>
+         ORDER BY
+                CASE
+                  WHEN pos.pinned_until IS NOT NULL
+                       AND pos.pinned_until > #{now}
+                       AND pos.deleted = 0
+                  THEN 0 ELSE 1
+                END ASC,
+                CASE
+                  WHEN (pos.promote_link IS NOT NULL AND TRIM(pos.promote_link) &lt;&gt; '')
+                       OR (pos.short_link IS NOT NULL AND TRIM(pos.short_link) &lt;&gt; '')
+                  THEN 0 ELSE 1
+                END ASC,
+                ps.activity_cos_ratio DESC NULLS LAST,
+                ps.sync_time DESC NULLS LAST
+            LIMIT #{limit} OFFSET #{offset}
+    </select>
 </mapper>

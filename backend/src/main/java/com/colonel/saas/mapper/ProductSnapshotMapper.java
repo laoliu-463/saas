@@ -86,4 +86,48 @@ public interface ProductSnapshotMapper extends BaseMapper<ProductSnapshot> {
             ORDER BY category_name
             """)
     List<Map<String, Object>> listDisplayingLibraryCategoryOptions();
+
+    /**
+     * SQL 级别排序 + 分页查询活动商品快照。
+     * <p>
+     * 用于解决非 latest 排序时全量加载再内存排序的性能问题。
+     * LEFT JOIN product_operation_state 以便按推广链接和置顶状态排序；
+     * WHERE 条件由外层 LambdaQueryWrapper 构造。
+     * </p>
+     *
+     * @param activityId  活动 ID（固定条件，写入 SQL）
+     * @param limit       本次查询上限（MySQL LIMIT）
+     * @param offset      偏移量（MySQL OFFSET）
+     * @return 按 (置顶 DESC, 已推广 DESC, 佣金 DESC, 同步时间 DESC) 排序的商品快照
+     */
+    /**
+     * SQL 级别排序 + 分页查询活动商品快照。
+     * <p>
+     * 用于解决非 latest 排序时全量加载再内存排序的性能问题。
+     * 具体 SQL 实现见 {@code ProductSnapshotMapper.xml}。
+     * </p>
+     *
+     * @param activityId        活动 ID
+     * @param promotionStatus   推广状态过滤（可 null）
+     * @param productInfo       商品信息模糊搜索（可 null/空）
+     * @param bizStatusFilterMode BizStatusFilter 模式：NONE / EMPTY / INCLUDE_ONLY / PENDING_AUDIT
+     * @param includeProductIds IN 过滤的商品 ID 列表（PENDING_AUDIT / INCLUDE_ONLY 模式使用）
+     * @param excludeProductIds NOT IN 过滤的商品 ID 列表（PENDING_AUDIT 模式使用）
+     * @param productIdScope    audit-tag 过滤的商品 ID 范围（可 null/空）
+     * @param limit             本次查询上限
+     * @param offset            偏移量
+     * @param now               当前时间（用于 pinned_until 比较）
+     * @return 按 (置顶 DESC, 已推广 DESC, 佣金 DESC, 同步时间 DESC) 排序的商品快照
+     */
+    List<ProductSnapshot> selectPageSorted(
+            @Param("activityId")            String          activityId,
+            @Param("promotionStatus")      Integer         promotionStatus,
+            @Param("productInfo")           String          productInfo,
+            @Param("bizStatusFilterMode")   String          bizStatusFilterMode,
+            @Param("includeProductIds")     java.util.List<String> includeProductIds,
+            @Param("excludeProductIds")     java.util.List<String> excludeProductIds,
+            @Param("productIdScope")        java.util.List<String> productIdScope,
+            @Param("limit")                 long            limit,
+            @Param("offset")                long            offset,
+            @Param("now")                  java.time.LocalDateTime now);
 }

@@ -1,5 +1,6 @@
 package com.colonel.saas.gateway.douyin.real;
 
+import com.colonel.saas.domain.ActivityStatusResolver;
 import com.colonel.saas.douyin.api.ActivityApi;
 import com.colonel.saas.douyin.api.ProductApi;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
@@ -259,7 +260,7 @@ public class RealDouyinActivityGateway implements DouyinActivityGateway {
                 asString(pick(raw, "activity_start_time", "activityStartTime")),
                 asString(pick(raw, "activity_end_time", "activityEndTime")),
                 status,
-                activityStatusText(status),
+                ActivityStatusResolver.toText(status),
                 asString(pick(raw, "application_start_time", "applicationStartTime")),
                 asString(pick(raw, "application_end_time", "applicationEndTime")),
                 pick(raw, "categories_limit", "categoriesLimit"),
@@ -320,24 +321,6 @@ public class RealDouyinActivityGateway implements DouyinActivityGateway {
                 originColonelBuyinId,
                 new LinkedHashMap<>(raw)
         );
-    }
-
-    /**
-     * 将活动状态码转为中文描述。
-     *
-     * @param status 活动状态码（1=未上线, 2=报名未开始, 3=报名中, 4=推广未开始, 5=推广中, 7=报名结束）
-     * @return 状态中文描述，未知状态返回 "任意状态"
-     */
-    private String activityStatusText(int status) {
-        return switch (status) {
-            case 1 -> "未上线";
-            case 2 -> "报名未开始";
-            case 3 -> "报名中";
-            case 4 -> "推广未开始";
-            case 5 -> "推广中";
-            case 7 -> "报名结束";
-            default -> "任意状态";
-        };
     }
 
     /**
