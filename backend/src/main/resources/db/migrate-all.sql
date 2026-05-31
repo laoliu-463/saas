@@ -1537,13 +1537,12 @@ CREATE INDEX IF NOT EXISTS idx_order_sync_dedup_claim_row_id
     ON order_sync_dedup_claim(order_row_id);
 
 -- ============================================================
--- 管理员密码更新（通过 ADMIN_PASSWORD 环境变量注入）
 -- ============================================================
-UPDATE sys_user
-SET password = crypt(:'admin_password', gen_salt('bf', 12))
-WHERE username = 'admin'
-  AND password <> crypt(:'admin_password', password);
- 
+-- 管理员密码不应由 migrate-all.sql 重置。
+-- ADMIN_PASSWORD 仅用于 PostgreSQL volume 首次初始化时的 init-db.sql，
+-- 后续迁移不得覆盖已有用户的密码，否则会导致已修改的密码在迁移后被意外重置。
+-- 如需强制重置管理员密码，应通过后台管理界面或专门的 SQL 脚本操作。
+-- ============================================================
 \\i alter-colonel-activity-recruiter-assignment.sql
 \\i alter-role-code-merge-colonel-leader.sql
 \\i alter-colonel-activity-product-state-split.sql

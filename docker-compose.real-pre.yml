@@ -1,7 +1,9 @@
-name: ${COMPOSE_PROJECT_NAME:-saas-active}
+# 固定项目名称为 saas-active，禁止通过 -p 参数覆盖。
+# 所有 volume 和 network 名称以此为前缀，保证凭证与初始化状态一致。
+name: saas-active
 
 x-real-pre-env-file: &real_pre_env_file
-  - ${REAL_PRE_ENV_FILE:-.env.real-pre}
+  - .env.real-pre
 
 services:
   postgres-real-pre:
@@ -197,9 +199,11 @@ services:
 
 volumes:
   postgres_real_pre_data:
+    name: saas-active_postgres_real_pre_data
   redis_real_pre_data:
+    name: saas-active_redis_real_pre_data
 
 networks:
   real-pre-net:
-    name: ${COMPOSE_PROJECT_NAME:-saas-active}_real_pre_net
+    name: saas-active_real_pre_net
     driver: bridge
