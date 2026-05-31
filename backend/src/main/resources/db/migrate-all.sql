@@ -1544,6 +1544,14 @@ SET password = crypt(:'admin_password', gen_salt('bf', 12))
 WHERE username = 'admin'
   AND password <> crypt(:'admin_password', password);
  
-\\i alter-colonel-activity-recruiter-assignment.sql
-\\i alter-role-code-merge-colonel-leader.sql
+\i alter-colonel-activity-recruiter-assignment.sql
+\i alter-role-code-merge-colonel-leader.sql
+\i alter-colonel-activity-product-state-split.sql
+\i alter-colonelsettlement-order-dual-track.sql
+\i alter-ops-staff-data-scope-20260520.sql
+\i alter-order-pay-time.sql
+\i alter-sys-dept-uuid-canonical-20260530.sql
+\i alter-talent-claim-shipping-address.sql
+\i create-colonel-order-settlement.sql
+\i migrate-sys-dept-dept-type.sql
 
