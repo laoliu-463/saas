@@ -362,76 +362,22 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       try {
         reusableMapping = selectReusablePromotionMapping(reusableMappings);
       } catch {
-        // Fallback: only consider products assigned to biz_staff so that merchant can audit the sample.
-        reusableMappings = queryAnyReusablePromotionMapping({ limit: 5, assigneeId: requireFlowString(run, 'bizStaffUserId') });
+        reusableMappings = queryAnyReusablePromotionMapping({ limit: 5 });
         mappingScope = 'global-reusable';
         try {
           reusableMapping = selectReusablePromotionMapping(reusableMappings);
         } catch {
-          // No mapping found for biz_staff's products — skip sample audit step.
-          run.flow.sampleProductId = '';
-          run.flow.sampleProductLocalId = '';
-          run.flow.sampleId = '';
-          run.flow.sampleRequestNo = '';
-          run.flow.talentId = '';
-          run.flow.talentUid = '';
-          run.flow.pickSource = '';
-          run.flow.mappingId = '';
-          run.flow.promotionLinkId = '';
-          run.flow.promotionUrl = '';
-          run.flow.mappingCount = 0;
-          run.flow.mappingScope = 'none';
-          return {
-            ui,
-            library: summarizeResult(library),
-            safeUpstreamMode: run.flow.safeUpstreamMode,
-            mappingScope: 'none',
-            pickSource: '',
-            mappingId: '',
-            promotionLinkId: '',
-            mappingCount: 0,
-            sampleProductId: '',
-            sampleProductLocalId: '',
-            talentId: '',
-            privateTalentCount: extractRecords(privateTalents.body).length,
-            sampleId: '',
-            sampleRequestNo: '',
-            duplicateStatus: 0,
-            duplicateCode: undefined,
-            skippedReason: 'no reusable mapping found for biz_staff products — sample audit step will be skipped'
-          };
+          throw new Error(buildPromotionBlockerMessage({ activityId: ACTIVITY_ID, productId, userId: auth.userId }));
         }
       }
       const pickSource = String(reusableMapping.pickSource || '');
       assertTrue(/^v\./.test(pickSource), `reusable mapping should expose real pick_source, got ${pickSource}`);
       const mappingCount = reusableMappings.length;
       assertTrue(mappingCount > 0, `reusable pick_source_mapping should be available, got ${mappingCount}`);
-      const sampleActivityId = String(reusableMapping.activityId || ACTIVITY_ID);
-      const sampleProductId = String(reusableMapping.productId || productId);
+      const mappingActivityId = String(reusableMapping.activityId || ACTIVITY_ID);
+      const mappingProductId = String(reusableMapping.productId || productId);
+      const sampleProductId = productId;
       let sampleProductLocalId = productLocalId;
-      if (mappingScope !== 'current-channel-product' || sampleActivityId !== ACTIVITY_ID || sampleProductId !== productId) {
-        const adminAuth = requireAuth(run, 'admin');
-        const sampleProductDetail = await apiSuccess(
-          api,
-          'GET',
-          `/api/colonel/activities/${sampleActivityId}/products/${sampleProductId}`,
-          adminAuth
-        );
-        const sampleProductData = unwrap(sampleProductDetail.body) as JsonMap;
-        assertTrue(Boolean(sampleProductData.id), `mapped reusable product should resolve to local product id: activityId=${sampleActivityId}, productId=${sampleProductId}`);
-        sampleProductLocalId = String(sampleProductData.id);
-
-        const bizLeaderAuth = requireAuth(run, 'biz_leader');
-        const bizStaffUserId = requireFlowString(run, 'bizStaffUserId');
-        run.flow.productOperationStateSnapshots = [
-          ...((run.flow.productOperationStateSnapshots as JsonMap[] | undefined) || []),
-          readProductOperationStateSnapshot(sampleActivityId, sampleProductId)
-        ];
-        await apiSuccess(api, 'PUT', `/api/colonel/activities/${sampleActivityId}/products/${sampleProductId}/assignee`, bizLeaderAuth, {
-          data: { assigneeId: bizStaffUserId }
-        });
-        run.flow.sampleProductAssignedTo = bizStaffUserId;
-      }
 
       const runId = requireFlowString(run, 'runId');
       const talentUid = `${runId}_p35_${Date.now()}`;
@@ -472,6 +418,8 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       run.flow.promotionUrl = reusableMapping.promotionUrl || '';
       run.flow.mappingCount = mappingCount;
       run.flow.mappingScope = mappingScope;
+      run.flow.mappingActivityId = mappingActivityId;
+      run.flow.mappingProductId = mappingProductId;
       run.flow.sampleProductId = sampleProductId;
       run.flow.sampleProductLocalId = sampleProductLocalId;
       run.flow.talentId = talentId;
@@ -487,6 +435,8 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
         mappingId: run.flow.mappingId,
         promotionLinkId: run.flow.promotionLinkId,
         mappingCount,
+        mappingActivityId,
+        mappingProductId,
         sampleProductId,
         sampleProductLocalId,
         talentId,
@@ -501,10 +451,6 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
     await record(run, '06-merchant-sample-audit', 'merchant audits the channel sample request into pending shipment', async () => {
       const auth = requireAuth(run, 'merchant');
       const sampleId = requireFlowString(run, 'sampleId');
-      if (!sampleId) {
-        // No sample was created because no reusable mapping was found for biz_staff's products.
-        return { skipped: true, reason: 'no sample to audit — reusable mapping skipped in step 05' };
-      }
       const runId = requireFlowString(run, 'runId');
       const sample = await apiSuccess(api, 'PUT', `/api/samples/${sampleId}/status`, auth, {
         data: { action: 'PENDING_SHIP', reason: `P3-5 merchant sample approval ${runId}` }
@@ -520,40 +466,11 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       const auth = requireAuth(run, 'operator');
       const ui = await verifyRoleUi(browser, auth, ROLE_CASES[4]);
       const sampleId = requireFlowString(run, 'sampleId');
-      if (!sampleId) {
-        // No sample was created — step 05 skipped due to no reusable mapping for biz_staff.
-        await expectForbidden(api, auth, 'GET', '/api/products?page=1&size=5');
-        await expectForbidden(api, auth, 'PUT', `/api/colonel/activities/${ACTIVITY_ID}/products/${requireFlowString(run, 'productId')}/audit-result`, {
-          data: buildAuditPayload('operator-forbidden')
-        });
-        return { skipped: true, reason: 'no sample to ship — step 05 was skipped' };
-      }
       const requestNo = requireFlowString(run, 'sampleRequestNo');
       const runId = requireFlowString(run, 'runId');
       const pending = await apiSuccess(api, 'GET', '/api/samples', auth, {
         params: { page: 1, size: 10, status: 'PENDING_SHIP', keyword: requestNo }
       });
-      assertTrue(extractRecords(pending.body).some((item) => String(item.id) === sampleId), 'operator should see pending shipment sample');
-      const trackingNo = `SF${runId}_${Date.now()}`;
-      const shipped = await apiSuccess(api, 'PUT', `/api/samples/${sampleId}/status`, auth, {
-        data: { action: 'SHIPPING', trackingNo, shipperCode: 'SF', reason: `P3-5 operator shipment ${runId}` }
-      });
-      const shippedData = unwrap(shipped.body) as JsonMap;
-      assertEqual(String(shippedData.status), 'SHIPPED', 'sample status after operator shipment');
-      assertEqual(String(shippedData.trackingNo), trackingNo, 'tracking number should persist');
-      const pendingHomework = await apiSuccess(api, 'PUT', `/api/samples/${sampleId}/status`, auth, {
-        data: { action: 'PENDING_HOMEWORK', reason: `P3-5 operator manual delivery handoff ${runId}` }
-      });
-      const pendingHomeworkData = unwrap(pendingHomework.body) as JsonMap;
-      assertEqual(String(pendingHomeworkData.status), 'PENDING_TASK', 'sample status after operator handoff');
-      await expectForbidden(api, auth, 'GET', '/api/products?page=1&size=5');
-      await expectForbidden(api, auth, 'PUT', `/api/colonel/activities/${ACTIVITY_ID}/products/${requireFlowString(run, 'productId')}/audit-result`, {
-        data: buildAuditPayload('operator-forbidden')
-      });
-      run.flow.trackingNo = trackingNo;
-      run.flow.sampleFinalStatus = pendingHomeworkData.status;
-      return { ui, pending: summarizeResult(pending), trackingNo, finalStatus: pendingHomeworkData.status };
-    });
       assertTrue(extractRecords(pending.body).some((item) => String(item.id) === sampleId), 'operator should see pending shipment sample');
       const trackingNo = `SF${runId}_${Date.now()}`;
       const shipped = await apiSuccess(api, 'PUT', `/api/samples/${sampleId}/status`, auth, {
