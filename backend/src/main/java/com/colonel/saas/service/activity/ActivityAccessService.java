@@ -31,8 +31,15 @@ public class ActivityAccessService {
 
     /**
      * 校验当前用户是否有权读取指定活动（列表详情、活动商品等）。
+     * <p>
+     * 权限规则：
+     * <ul>
+     *   <li>ADMIN：直接放行</li>
+     *   <li>BIZ_LEADER：活动分配给自己（recruiter_user_id）或分配给同部门（recruiter_dept_id = 用户主部门）</li>
+     *   <li>BIZ_STAFF：仅活动分配给自己（recruiter_user_id）</li>
+     * </ul>
      */
-    public void assertActivityReadable(String activityId, UUID userId, Collection<String> roleCodes) {
+    public void assertActivityReadable(String activityId, UUID userId, UUID deptId, Collection<String> roleCodes) {
         if (isAdmin(roleCodes)) {
             return;
         }
@@ -46,9 +53,18 @@ public class ActivityAccessService {
             throw BusinessException.param("activityId 不能为空");
         }
         ColonelsettlementActivity activity = activityMapper.selectByActivityId(activityId.trim());
-        if (activity == null || activity.getRecruiterUserId() == null || !userId.equals(activity.getRecruiterUserId())) {
+        if (activity == null) {
             throw BusinessException.forbidden("无权访问该活动");
         }
+        // 个人分配优先
+        if (userId.equals(activity.getRecruiterUserId())) {
+            return;
+        }
+        // BIZ_LEADER + dataScope=2：dept-level 访问
+        if (isBizLeader(roleCodes) && deptId != null && deptId.equals(activity.getRecruiterDeptId())) {
+            return;
+        }
+        throw BusinessException.forbidden("无权访问该活动");
     }
 
     public boolean isAdmin(Collection<String> roleCodes) {
@@ -60,6 +76,10 @@ public class ActivityAccessService {
             return false;
         }
         return roleCodes.stream().anyMatch(RECRUITER_ROLES::contains);
+    }
+
+    public boolean isBizLeader(Collection<String> roleCodes) {
+        return roleCodes != null && roleCodes.contains(RoleCodes.BIZ_LEADER);
     }
 
     /**

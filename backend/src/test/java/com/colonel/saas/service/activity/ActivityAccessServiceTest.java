@@ -47,6 +47,7 @@ class ActivityAccessServiceTest {
         activityAccessService.assertActivityReadable(
                 "100018",
                 UUID.randomUUID(),
+                null,
                 List.of(RoleCodes.ADMIN));
     }
 
@@ -58,6 +59,7 @@ class ActivityAccessServiceTest {
         assertThatThrownBy(() -> activityAccessService.assertActivityReadable(
                 "100018",
                 userId,
+                null,
                 List.of(RoleCodes.BIZ_STAFF)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("无权访问该活动");
@@ -71,6 +73,42 @@ class ActivityAccessServiceTest {
         activity.setRecruiterUserId(userId);
         when(activityMapper.selectByActivityId("100018")).thenReturn(activity);
 
-        activityAccessService.assertActivityReadable("100018", userId, List.of(RoleCodes.BIZ_LEADER));
+        activityAccessService.assertActivityReadable("100018", userId, null, List.of(RoleCodes.BIZ_LEADER));
+    }
+
+    @Test
+    void assertActivityReadable_shouldAllowBizLeaderWithMatchingDept() {
+        UUID userId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        UUID deptId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        UUID otherUserId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+        ColonelsettlementActivity activity = new ColonelsettlementActivity();
+        activity.setActivityId("100018");
+        activity.setRecruiterUserId(otherUserId); // not assigned to this user
+        activity.setRecruiterDeptId(deptId);
+        when(activityMapper.selectByActivityId("100018")).thenReturn(activity);
+
+        // biz_leader with matching dept should be allowed
+        activityAccessService.assertActivityReadable("100018", userId, deptId, List.of(RoleCodes.BIZ_LEADER));
+    }
+
+    @Test
+    void assertActivityReadable_shouldRejectBizLeaderWithMismatchedDept() {
+        UUID userId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        UUID deptId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        UUID otherDeptId = UUID.fromString("55555555-5555-5555-5555-555555555555");
+        ColonelsettlementActivity activity = new ColonelsettlementActivity();
+        activity.setActivityId("100018");
+        activity.setRecruiterUserId(null);
+        activity.setRecruiterDeptId(otherDeptId);
+        when(activityMapper.selectByActivityId("100018")).thenReturn(activity);
+
+        // biz_leader with mismatched dept should be denied
+        assertThatThrownBy(() -> activityAccessService.assertActivityReadable(
+                "100018",
+                userId,
+                deptId,
+                List.of(RoleCodes.BIZ_LEADER)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("无权访问该活动");
     }
 }

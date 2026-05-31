@@ -225,6 +225,16 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       return assertDouyinTokenReady(api, requireAuth(run, 'admin'));
     }, undefined, true);
 
+    await record(run, '02b-setup-activity', 'admin assigns activity 3916506 to biz_leader so biz_leader can access it', async () => {
+      const adminAuth = requireAuth(run, 'admin');
+      const bizLeaderAuth = requireAuth(run, 'biz_leader');
+      // Assign activity to biz_leader via admin so biz_leader can access it
+      await apiSuccess(api, 'PUT', `/api/colonel/activities/${ACTIVITY_ID}/assignee`, adminAuth, {
+        data: { assigneeId: bizLeaderAuth.userId }
+      });
+      return { activityId: ACTIVITY_ID, assignedTo: bizLeaderAuth.userId };
+    });
+
     await record(run, '03-admin', 'admin validates system, global APIs, and admin-only surfaces', async () => {
       const auth = requireAuth(run, 'admin');
       const ui = await verifyRoleUi(browser, auth, ROLE_CASES[0]);

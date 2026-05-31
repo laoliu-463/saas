@@ -533,6 +533,7 @@ class ColonelActivityControllerTest {
                     null,
                     null,
                     null,
+                    null,
                     List.of(RoleCodes.ADMIN)))
                     .isInstanceOf(BusinessException.class)
                     .hasMessageContaining(item.message());
@@ -563,6 +564,7 @@ class ColonelActivityControllerTest {
                 null,
                 null,
                 recruiterId,
+                null,
                 List.of(RoleCodes.BIZ_STAFF)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("无权访问该活动");

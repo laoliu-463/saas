@@ -174,10 +174,12 @@ public class ColonelActivityController extends BaseController {
             @Parameter(description = "货品标签。") @RequestParam(name = "goodsTags", required = false) String goodsTags,
             @Parameter(description = "商品标签。") @RequestParam(name = "productTags", required = false) String productTags,
             @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         activityAccessService.assertActivityReadable(
                 activityId,
                 userId,
+                deptId,
                 ActivityAccessService.normalizeRoleCodes(roleCodes));
         try {
             if (!Boolean.TRUE.equals(refresh) && productService.hasActivitySnapshots(activityId)) {
