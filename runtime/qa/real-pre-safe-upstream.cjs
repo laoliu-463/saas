@@ -36,9 +36,9 @@ function buildReusablePromotionMappingQuery({ activityId, productId, userId, lim
   ].join('\n');
 }
 
-function buildAnyReusablePromotionMappingQuery({ limit = 5 } = {}) {
+function buildAnyReusablePromotionMappingQuery({ limit = 5, assigneeId = null } = {}) {
   const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(20, Number(limit))) : 5;
-  return [
+  const lines = [
     'select',
     '  psm.id::text as mapping_id,',
     '  psm.pick_source,',
@@ -52,14 +52,35 @@ function buildAnyReusablePromotionMappingQuery({ limit = 5 } = {}) {
     'from pick_source_mapping psm',
     'left join promotion_link pl',
     '  on pl.id = psm.promotion_link_id',
-    ' and pl.deleted = 0',
+    ' and pl.deleted = 0'
+  ];
+
+  if (assigneeId) {
+    lines.push(
+      'left join product_operation_state pos',
+      '  on pos.product_id = psm.product_id',
+      ' and pos.activity_id = psm.activity_id',
+      ' and pos.deleted = 0'
+    );
+  }
+
+  lines.push(
     'where psm.deleted = 0',
     '  and psm.status = 1',
     "  and coalesce(psm.pick_source, '') <> ''",
-    "  and coalesce(pl.promotion_url, psm.converted_url, '') <> ''",
+    "  and coalesce(pl.promotion_url, psm.converted_url, '') <> ''"
+  );
+
+  if (assigneeId) {
+    lines.push(`  and pos.assignee_id = ${sqlLiteral(String(assigneeId))}::uuid`);
+  }
+
+  lines.push(
     'order by psm.update_time desc nulls last, psm.create_time desc',
     `limit ${safeLimit};`
-  ].join('\n');
+  );
+
+  return lines.join('\n');
 }
 
 function parsePipeRows(rows) {
