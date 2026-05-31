@@ -1,0 +1,15 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+experimental_use_rmcp_client = true
+
+[mcp_servers."SAAS-business-offline"]
+command = "cmd"
+args = ["/c", "npx", "-y", "apifox-mcp-server@latest", "--oas=D:\\Projects\\SAAS\\out\\openapi-business.json"]
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+
+[mcp_servers."SAAS-sdk-debug-offline"]
+command = "cmd"
+args = ["/c", "npx", "-y", "apifox-mcp-server@latest", "--oas=D:\\Projects\\SAAS\\out\\openapi-sdk-debug.json"]
+startup_timeout_sec = 30
+tool_timeout_sec = 120

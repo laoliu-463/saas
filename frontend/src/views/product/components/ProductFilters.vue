@@ -22,6 +22,17 @@
           @update:value="updateFilter('shopKeyword', $event)"
         />
         <n-select
+          :value="filters.recruitActivityId"
+          :options="assignedActivityOptions"
+          :loading="assignedActivityOptionsLoading"
+          filterable
+          clearable
+          placeholder="招商活动"
+          style="width: 220px"
+          data-testid="filter-assigned-activity"
+          @update:value="updateAssignedActivity"
+        />
+        <n-select
           v-if="mode === 'manage'"
           :value="filters.categoryName"
           :options="categoryNameOptions"
@@ -165,13 +176,6 @@
           />
         </template>
         <template v-else-if="mode === 'library'">
-          <n-input
-            :value="filters.activityId"
-            clearable
-            placeholder="活动 ID"
-            style="width: 160px"
-            @update:value="updateFilter('activityId', $event)"
-          />
           <n-select
             :value="filters.assigneeId"
             :options="recruiterOptions"
@@ -241,22 +245,6 @@
             @update:value="updateFilter('commissionMax', $event)"
           />
           <n-input
-            :value="filters.recruitActivityId"
-            clearable
-            placeholder="招商活动ID"
-            style="width: 150px"
-            data-testid="filter-recruit-activity-id"
-            @update:value="updateFilter('recruitActivityId', $event)"
-          />
-          <n-input
-            :value="filters.recruitActivityName"
-            clearable
-            placeholder="招商活动名称"
-            style="width: 150px"
-            data-testid="filter-recruit-activity-name"
-            @update:value="updateFilter('recruitActivityName', $event)"
-          />
-          <n-input
             :value="filters.livePriceMin"
             clearable
             placeholder="直播价下限"
@@ -318,12 +306,16 @@ const props = withDefaults(defineProps<{
   mode?: 'manage' | 'library'
   libraryCategoryOptions?: { label: string; value: string }[]
   recruiterOptions?: { label: string; value: string }[]
+  assignedActivityOptions?: { label: string; value: string }[]
+  assignedActivityOptionsLoading?: boolean
 }>(), {
   showAssigneeFilter: true,
   mode: 'manage',
   libraryStatus: null,
   libraryCategoryOptions: () => [],
-  recruiterOptions: () => []
+  recruiterOptions: () => [],
+  assignedActivityOptions: () => [],
+  assignedActivityOptionsLoading: false
 })
 
 const emit = defineEmits<{
@@ -338,6 +330,15 @@ const emit = defineEmits<{
 
 function updateFilter<K extends keyof ProductFilterState>(key: K, value: ProductFilterState[K]) {
   emit('update:filters', { ...props.filters, [key]: value })
+}
+
+function updateAssignedActivity(value: string | null) {
+  emit('update:filters', {
+    ...props.filters,
+    recruitActivityId: value,
+    activityId: null,
+    recruitActivityName: null
+  })
 }
 
 const libraryShelfOptions = [

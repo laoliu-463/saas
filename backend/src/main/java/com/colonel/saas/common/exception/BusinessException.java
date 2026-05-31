@@ -47,6 +47,15 @@ public class BusinessException extends RuntimeException {
     private final int code;
 
     /**
+     * 兼容旧调用方式的通用业务异常构造器。
+     *
+     * @param message 异常描述信息
+     */
+    public BusinessException(String message) {
+        this(ResultCode.BUSINESS_ERROR, message);
+    }
+
+    /**
      * 根据业务状态码构造异常。
      *
      * @param resultCode 业务状态码枚举，决定 HTTP 响应中的 code 值

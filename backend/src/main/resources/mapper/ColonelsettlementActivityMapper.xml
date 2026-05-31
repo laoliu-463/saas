@@ -253,6 +253,76 @@
         </foreach>
     </select>
 
+    <sql id="AssignmentFilterExpr">
+        <choose>
+            <when test="assignmentFilter == 'mine'">
+                AND recruiter_user_id = #{recruiterUserId}
+            </when>
+            <when test="assignmentFilter == 'assigned'">
+                AND recruiter_user_id IS NOT NULL
+            </when>
+            <when test="assignmentFilter == 'unassigned'">
+                AND recruiter_user_id IS NULL
+            </when>
+        </choose>
+    </sql>
+
+    <sql id="ActivityKeywordExpr">
+        <if test="activityKeyword != null and activityKeyword != ''">
+            AND (
+                activity_id ILIKE CONCAT('%', #{activityKeyword}, '%')
+                OR activity_name ILIKE CONCAT('%', #{activityKeyword}, '%')
+            )
+        </if>
+    </sql>
+
+    <sql id="ActivityStatusCodeExpr">
+        <if test="activityStatusCode != null and activityStatusCode &gt; 0">
+            AND activity_status_code = #{activityStatusCode}
+        </if>
+    </sql>
+
+    <sql id="AssignmentListColumns">
+        id,
+        activity_id AS activityId,
+        activity_name AS name,
+        start_time AS startTime,
+        end_time AS endTime,
+        activity_status_code AS activityStatusCode,
+        activity_status_text AS activityStatusText,
+        recruiter_user_id AS recruiterUserId,
+        recruiter_dept_id AS recruiterDeptId,
+        assigned_at AS assignedAt,
+        assigned_by AS assignedBy,
+        colonel_buyin_id AS colonelBuyinId,
+        commission_rate AS commissionRate,
+        service_rate AS serviceRate,
+        last_sync_at AS lastSyncAt,
+        create_time AS createTime,
+        update_time AS updateTime
+    </sql>
+
+    <select id="countPageByAssignment" resultType="long">
+        SELECT COUNT(1)
+        FROM colonel_activity
+        WHERE deleted = 0
+        <include refid="AssignmentFilterExpr"/>
+        <include refid="ActivityStatusCodeExpr"/>
+        <include refid="ActivityKeywordExpr"/>
+    </select>
+
+    <select id="selectPageByAssignment" resultType="com.colonel.saas.entity.ColonelsettlementActivity">
+        SELECT
+        <include refid="AssignmentListColumns"/>
+        FROM colonel_activity
+        WHERE deleted = 0
+        <include refid="AssignmentFilterExpr"/>
+        <include refid="ActivityStatusCodeExpr"/>
+        <include refid="ActivityKeywordExpr"/>
+        ORDER BY assigned_at DESC NULLS LAST, last_sync_at DESC NULLS LAST, create_time DESC NULLS LAST
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
     <!-- 仅取 extra_data 字段，用于 colonel_buyin_id 回源查询 -->
     <select id="selectExtraDataByActivityId" resultType="map">
         SELECT extra_data

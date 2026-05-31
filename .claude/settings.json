@@ -23,6 +23,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"D:/Projects/SAAS/.claude/everos/hook_session_end.py\" \"SAAS session on feature/auth-system at $(date +%Y-%m-%d_%H:%M)\"",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }

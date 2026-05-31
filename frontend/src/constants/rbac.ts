@@ -30,6 +30,20 @@ export const ROLE_CODES = {
 } as const;
 
 /**
+ * 角色代码 → 中文标签映射（供 UI 展示用）。
+ * 自定义角色不在此映射中时，sanitizeRoleName 会 fallback 到 "自定义角色"，
+ * 永远不展示原始 roleCode。
+ */
+export const ROLE_NAME_MAP: Record<string, string> = {
+  admin: '系统管理员',
+  biz_leader: '业务主管',
+  biz_staff: '业务专员',
+  channel_leader: '渠道主管',
+  channel_staff: '渠道专员',
+  ops_staff: '运维专员'
+};
+
+/**
  * 判断角色列表中是否包含管理员角色
  *
  * @param roles - 当前用户的角色代码列表

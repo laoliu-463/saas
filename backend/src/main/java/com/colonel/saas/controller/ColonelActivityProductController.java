@@ -67,7 +67,7 @@ import java.util.UUID;
  * <p><strong>架构角色：</strong>表现层（Controller），负责活动商品主链路的 HTTP 入口处理，
  * 委托 {@link ProductService}、{@link ProductPinService} 等完成业务逻辑。</p>
  * <p><strong>访问控制：</strong>类级别允许 {@code BIZ_LEADER}、{@code BIZ_STAFF}、{@code CHANNEL_LEADER}、
- * {@code CHANNEL_STAFF}、{@code ADMIN}、{@code COLONEL_LEADER}；各方法进一步限制角色。</p>
+ * {@code CHANNEL_STAFF}、{@code ADMIN}；各方法进一步限制角色。</p>
  *
  * @see ProductService
  * @see ProductPinService
@@ -78,7 +78,7 @@ import java.util.UUID;
 @RestController
 @Tag(name = "活动商品主链路", description = "团长活动下商品的详情、绑定、分配、审核、转链、达人跟进与操作日志接口。")
 @RequestMapping("/colonel/activities/{activityId}/products")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN, RoleCodes.COLONEL_LEADER})
+@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
 public class ColonelActivityProductController extends BaseController {
 
     /** 商品服务，负责活动商品的详情、绑定、分配、审核、转链等核心业务逻辑 */
@@ -160,7 +160,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 操作结果 Map
      */
     @Operation(summary = "活动商品绑定活动", description = "为活动商品补绑或修正关联活动。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER})
+    @RequireRoles({RoleCodes.BIZ_LEADER})
     @PutMapping("/{productId}/bind-activity")
     public ApiResult<Map<String, Object>> bindActivity(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -197,7 +197,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 操作结果 Map，包含更新后的商品分配信息
      */
     @Operation(summary = "活动商品分配招商", description = "为活动商品指定招商组长。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER})
+    @RequireRoles({RoleCodes.BIZ_LEADER})
     @PutMapping("/{productId}/assignee")
     public ApiResult<Map<String, Object>> assign(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -237,7 +237,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 操作结果 Map
      */
     @Operation(summary = "活动商品分配审核人", description = "为待审核活动商品指定招商专员审核负责人，不改变商品主状态。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER})
+    @RequireRoles({RoleCodes.BIZ_LEADER})
     @PutMapping("/{productId}/audit-assignee")
     public ApiResult<Map<String, Object>> assignAuditOwner(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -555,7 +555,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 批量操作结果，包含 total/succeeded/failed 计数及每个商品的执行详情
      */
     @Operation(summary = "批量分配招商", description = "批量为活动商品指定招商组长；单个商品失败不影响其他商品。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER})
+    @RequireRoles({RoleCodes.BIZ_LEADER})
     @PostMapping("/batch-assign")
     public ApiResult<Map<String, Object>> batchAssign(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,

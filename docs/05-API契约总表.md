@@ -30,10 +30,12 @@
 
 ## 活动 API 补充事实（2026-05-29）
 
-- [V1 必做] `PUT /api/colonel/activities/{activityId}/assignee`：仅 `admin` 可将活动分配给招商用户（`biz_leader` / `biz_staff` / `colonel_leader`），持久化 `colonel_activity.recruiter_*` 并级联 `product_operation_state.assignee_id`。
+- [V1 必做] `PUT /api/colonel/activities/{activityId}/assignee`：仅 `admin` 可将活动分配给招商用户（`biz_leader` / `biz_staff`），持久化 `colonel_activity.recruiter_*` 并级联 `product_operation_state.assignee_id`。
 - [V1 必做] `GET /api/colonel/activities` 列表行兼容输出 `activityAssigneeId`、`activityAssigneeName`（及 `assigneeId`、`assigneeName`）。
+- [V1 必做] `GET /api/colonel/activities`：`assignmentFilter` 为 `assigned/unassigned/mine` 时走本地 `colonel_activity` 分页；非 admin 招商角色强制 `mine`（`self` 数据范围）。
+- [V1 必做] `GET /api/colonel/activities/{activityId}/products`：非 admin 仅可访问 `recruiter_user_id = 当前用户` 的活动。
 - [V1 必做] 活动分配成功后驱逐 `activities:list:` 短缓存，避免前端刷新活动行时读取旧分配人。
-- [V1 必做] 活动状态为抖店「推广中」（`activityStatus/status == 5` 或状态文案含「推广中」）时，活动下已同步商品自动入库并 `DISPLAYING`，且不参与同 `product_id` 去重隐藏；非推广中活动沿用原展示规则。
+- [V1 必做] 活动**已分配招商**且为抖店「推广中」（`activityStatus/status == 5` 或状态文案含「推广中」）时，活动下**已同步**商品自动全部入库并 `DISPLAYING`，且不参与同 `product_id` 去重隐藏；分配、活动落库、商品同步均会触发批量补齐。
 - 字段级契约见 [接口/活动分配与推广入库API契约.md](接口/活动分配与推广入库API契约.md)。
 
 ## 商品 API 补充事实

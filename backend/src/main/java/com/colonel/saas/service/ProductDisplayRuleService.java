@@ -256,7 +256,7 @@ public class ProductDisplayRuleService {
         }
         // 查询活动状态，判断是否推广中
         ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(activityId);
-        if (!ActivityPromotionSupport.isPromoting(activity)) {
+        if (!ActivityPromotionSupport.shouldForceLibraryDisplay(activity)) {
             return;
         }
         // 查询该活动下已入库的所有状态
@@ -527,7 +527,7 @@ public class ProductDisplayRuleService {
         String key = activityId.trim();
         return promotingActivityCache.computeIfAbsent(key, id -> {
             ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(id);
-            return ActivityPromotionSupport.isPromoting(activity);
+            return ActivityPromotionSupport.shouldForceLibraryDisplay(activity);
         });
     }
 

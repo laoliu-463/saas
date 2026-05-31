@@ -13,9 +13,11 @@ import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.vo.SysRoleVO;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
 import java.util.Set;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * 系统角色管理服务。
@@ -62,8 +64,7 @@ public class SysRoleService {
             RoleCodes.BIZ_STAFF,
             RoleCodes.CHANNEL_LEADER,
             RoleCodes.CHANNEL_STAFF,
-            RoleCodes.OPS_STAFF,
-            RoleCodes.COLONEL_LEADER
+            RoleCodes.OPS_STAFF
     );
 
     /** 角色数据访问层 */
@@ -148,11 +149,16 @@ public class SysRoleService {
      * @throws BusinessException 角色编码重复时抛出
      */
     public SysRoleVO create(SysRoleCreateRequest request, UUID currentUserId) {
-        // 第一步：校验角色编码唯一性
-        ensureRoleCodeUnique(request.roleCode(), null);
+        String roleCode = resolveRoleCodeForCreate(request.roleCode(), request.roleName());
+        ensureReservedRoleCodeNotUsedForCreate(roleCode);
+        // 第一步：校验角色编码唯一性（resolveRoleCodeForCreate 已保证非空，这里做兜底）
+        if (roleCode == null || roleCode.isBlank()) {
+            roleCode = "custom_auto_" + System.currentTimeMillis();
+        }
+        ensureRoleCodeUnique(roleCode, null);
         // 第二步：构建角色实体并填充默认值
         SysRole role = new SysRole();
-        role.setRoleCode(request.roleCode());
+        role.setRoleCode(roleCode);
         role.setRoleName(request.roleName());
         // 未指定数据范围时默认为 1（仅本人数据）
         role.setDataScope(request.dataScope() == null ? 1 : request.dataScope());
@@ -198,10 +204,12 @@ public class SysRoleService {
     public SysRoleVO update(UUID id, SysRoleUpdateRequest request, UUID currentUserId) {
         // 第一步：查询原角色（不存在则抛出异常）
         SysRole role = requireRole(id);
+        String roleCode = resolveRoleCodeForUpdate(role, request.roleCode());
+        ensureSystemRoleCodeImmutable(role.getRoleCode(), roleCode);
         // 第二步：校验角色编码唯一性（排除自身）
-        ensureRoleCodeUnique(request.roleCode(), id);
+        ensureRoleCodeUnique(roleCode, id);
         // 第三步：用请求参数覆盖各字段
-        role.setRoleCode(request.roleCode());
+        role.setRoleCode(roleCode);
         role.setRoleName(request.roleName());
         role.setDataScope(request.dataScope());
         role.setStatus(request.status());
@@ -283,19 +291,83 @@ public class SysRoleService {
     /**
      * 校验角色编码唯一性。
      *
-     * @param roleCode   角色编码
+     * @param roleCode   角色编码（调用方应已保证非空，兜底处理空值场景）
      * @param currentId  排除的记录 ID（更新时排除自身），创建时为 null
-     * @throws BusinessException 编码为空或已存在时抛出
+     * @throws BusinessException 编码已存在时抛出
      */
     private void ensureRoleCodeUnique(String roleCode, UUID currentId) {
         if (roleCode == null || roleCode.isBlank()) {
-            throw BusinessException.param("角色编码不能为空");
+            return; // create 场景已在调用前兜底，update 场景不会传入空值
         }
         sysRoleMapper.findByRoleCode(roleCode).ifPresent(exists -> {
             if (currentId == null || !exists.getId().equals(currentId)) {
                 throw BusinessException.duplicate("角色编码已存在");
             }
         });
+    }
+
+    private static final Pattern ROLE_CODE_ASCII_SLUG = Pattern.compile("^[a-z][a-z0-9_]*$");
+
+    private static String normalizeRoleCode(String roleCode) {
+        return roleCode == null ? "" : roleCode.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String resolveRoleCodeForCreate(String requestedCode, String roleName) {
+        String normalized = normalizeRoleCode(requestedCode);
+        if (!normalized.isBlank()) {
+            return normalized;
+        }
+        return generateRoleCode(roleName);
+    }
+
+    private String resolveRoleCodeForUpdate(SysRole existing, String requestedCode) {
+        String normalized = normalizeRoleCode(requestedCode);
+        if (normalized.isBlank()) {
+            return normalizeRoleCode(existing.getRoleCode());
+        }
+        return normalized;
+    }
+
+    private String generateRoleCode(String roleName) {
+        String base = slugifyRoleName(roleName);
+        if (base == null) {
+            base = "custom";
+        }
+        String candidate = base;
+        int suffix = 1;
+        while (sysRoleMapper.findByRoleCode(candidate).isPresent()) {
+            String suffixToken = "_" + suffix;
+            int maxBaseLen = Math.max(1, 50 - suffixToken.length());
+            candidate = base.substring(0, Math.min(base.length(), maxBaseLen)) + suffixToken;
+            suffix++;
+        }
+        return candidate;
+    }
+
+    private String slugifyRoleName(String roleName) {
+        if (roleName == null || roleName.isBlank()) {
+            return null;
+        }
+        String slug = roleName.trim().toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "_")
+                .replaceAll("^_+|_+$", "");
+        if (slug.isBlank() || !ROLE_CODE_ASCII_SLUG.matcher(slug).matches()) {
+            return null;
+        }
+        return slug.length() > 50 ? slug.substring(0, 50) : slug;
+    }
+
+    private void ensureReservedRoleCodeNotUsedForCreate(String roleCode) {
+        if (SYSTEM_ROLE_CODES.contains(roleCode)) {
+            throw BusinessException.stateInvalid("不能使用系统预置角色编码，请使用其他编码");
+        }
+    }
+
+    private void ensureSystemRoleCodeImmutable(String existingRoleCode, String requestedRoleCode) {
+        String existing = normalizeRoleCode(existingRoleCode);
+        if (SYSTEM_ROLE_CODES.contains(existing) && !existing.equals(requestedRoleCode)) {
+            throw BusinessException.stateInvalid("系统内置角色编码不允许修改");
+        }
     }
 
     /**

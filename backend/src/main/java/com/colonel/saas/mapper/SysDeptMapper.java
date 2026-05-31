@@ -33,6 +33,27 @@ public interface SysDeptMapper extends BaseMapper<SysDept> {
     List<SysDept> findAllActive();
 
     /**
+     * 查询所有未删除的部门列表。
+     *
+     * @return 部门列表，按排序号和名称升序排列
+     */
+    @Select("SELECT * FROM sys_dept WHERE deleted = 0 ORDER BY sort_order ASC, dept_name ASC")
+    List<SysDept> findAllNonDeleted();
+
+    /**
+     * 按部门类型查询未删除的部门列表。
+     *
+     * @param deptType 部门类型
+     * @return 部门列表，按排序号和名称升序排列
+     */
+    @Select("""
+            SELECT * FROM sys_dept
+            WHERE deleted = 0 AND dept_type = #{deptType}
+            ORDER BY sort_order ASC, dept_name ASC
+            """)
+    List<SysDept> findByDeptType(@Param("deptType") String deptType);
+
+    /**
      * 根据部门编码查询部门
      *
      * @param deptCode 部门编码
@@ -70,6 +91,18 @@ public interface SysDeptMapper extends BaseMapper<SysDept> {
             WHERE deleted = 0 AND parent_id = #{parentId}
             """)
     long countChildGroups(@Param("parentId") UUID parentId);
+
+    /**
+     * 统计指定父部门下的子部门数量。
+     *
+     * @param parentId 父部门主键 UUID
+     * @return 子部门数量
+     */
+    @Select("""
+            SELECT COUNT(1) FROM sys_dept
+            WHERE deleted = 0 AND parent_id = #{parentId}
+            """)
+    long countChildrenByParentId(@Param("parentId") UUID parentId);
 
     /**
      * 按类型统计指定父部门下的子部门数量

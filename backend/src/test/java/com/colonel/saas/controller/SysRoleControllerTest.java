@@ -112,10 +112,10 @@ class SysRoleControllerTest {
     @Test
     void create_returnsCreatedRole() throws Exception {
         SysRoleCreateRequest request = new SysRoleCreateRequest(
-                "NEW_ROLE", "新角色", 1, 1, "备注");
+                null, "新角色", 1, 1, "备注");
         SysRoleVO vo = new SysRoleVO();
         vo.setId(UUID.randomUUID());
-        vo.setRoleCode("NEW_ROLE");
+        vo.setRoleCode("custom_role");
 
         when(sysRoleService.create(any(), any())).thenReturn(vo);
 
@@ -125,13 +125,13 @@ class SysRoleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.roleCode").value("NEW_ROLE"));
+                .andExpect(jsonPath("$.data.roleCode").value("custom_role"));
     }
 
     @Test
     void update_returnsUpdatedRole() throws Exception {
         SysRoleUpdateRequest request = new SysRoleUpdateRequest(
-                "UPDATED_ROLE", "更新角色", 2, 1, "更新备注");
+                "updated_role", "更新角色", 2, 1, "更新备注");
         SysRoleVO vo = new SysRoleVO();
         vo.setId(roleId);
         vo.setRoleName("更新角色");

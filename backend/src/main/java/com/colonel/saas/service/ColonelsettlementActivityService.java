@@ -6,6 +6,8 @@ import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.service.activity.ActivityPromotionSupport;
+import com.colonel.saas.service.activity.ActivityAssignmentListSupport;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -32,22 +35,31 @@ import java.util.stream.Collectors;
  *   <li>{@link ColonelsettlementActivityMapper} —— 活动数据访问</li>
  * </ul>
  */
+@Slf4j
 @Service
 public class ColonelsettlementActivityService {
 
     /** 活动数据访问 */
     private final ColonelsettlementActivityMapper activityMapper;
+    /** 抖店活动网关（商品同步前刷新活动状态码） */
+    private final DouyinActivityGateway douyinActivityGateway;
     /** 商品展示规则（活动状态变更后清理推广中缓存） */
     private final ProductDisplayRuleService productDisplayRuleService;
+    /** 商品服务（推广中且已分配招商时批量补齐商品库） */
+    private final ProductService productService;
     /** 是否启用演示数据播种（由配置项 app.activities.seed-demo-on-empty 控制） */
     private final boolean seedDemoActivities;
 
     public ColonelsettlementActivityService(
             ColonelsettlementActivityMapper activityMapper,
+            DouyinActivityGateway douyinActivityGateway,
             ProductDisplayRuleService productDisplayRuleService,
+            ProductService productService,
             @Value("${app.activities.seed-demo-on-empty:false}") boolean seedDemoActivities) {
         this.activityMapper = activityMapper;
+        this.douyinActivityGateway = douyinActivityGateway;
         this.productDisplayRuleService = productDisplayRuleService;
+        this.productService = productService;
         this.seedDemoActivities = seedDemoActivities;
     }
 
@@ -90,6 +102,38 @@ public class ColonelsettlementActivityService {
     /**
      * 将抖店活动列表条目落库（状态码/文案、时间窗口），供分配与推广中规则读取。
      */
+    /**
+     * 商品全量同步前，从抖店活动列表回写活动状态码/文案到本地库。
+     * <p>避免列表展示为「推广中」但 {@code colonel_activity.activity_status_code} 未更新导致无法自动入商品库。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public boolean syncActivitySummaryFromUpstream(String activityId, String appId) {
+        if (!StringUtils.hasText(activityId)) {
+            return false;
+        }
+        String normalizedId = activityId.trim();
+        try {
+            DouyinActivityGateway.ActivityListResult result = douyinActivityGateway.listActivities(
+                    new DouyinActivityGateway.ActivityListQuery(appId, 0, 0L, 1L, 1L, 20L, normalizedId));
+            if (result.activityList() == null || result.activityList().isEmpty()) {
+                return false;
+            }
+            for (DouyinActivityGateway.ActivityItem item : result.activityList()) {
+                if (item == null || item.activityId() <= 0L) {
+                    continue;
+                }
+                if (!normalizedId.equals(String.valueOf(item.activityId()))) {
+                    continue;
+                }
+                syncFromGatewayItem(item);
+                return true;
+            }
+        } catch (Exception ex) {
+            log.warn("Sync activity summary before product refresh failed, activityId={}", normalizedId, ex);
+        }
+        return false;
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public void syncFromGatewayItem(DouyinActivityGateway.ActivityItem item) {
         if (item == null || item.activityId() <= 0L) {
@@ -109,6 +153,17 @@ public class ColonelsettlementActivityService {
                 now
         );
         productDisplayRuleService.clearPromotingActivityCache(activityId);
+        ColonelsettlementActivity synced = activityMapper.selectByActivityId(activityId);
+        if (ActivityPromotionSupport.shouldForceLibraryDisplay(synced)) {
+            productService.ensureAssignedPromotingActivityProductsInLibrary(activityId);
+        }
+    }
+
+    public ColonelsettlementActivity findByActivityId(String activityId) {
+        if (!StringUtils.hasText(activityId)) {
+            return null;
+        }
+        return activityMapper.selectByActivityId(activityId.trim());
     }
 
     /**
@@ -141,6 +196,38 @@ public class ColonelsettlementActivityService {
         }
         ColonelsettlementActivity activity = activityMapper.selectByActivityId(activityId.trim());
         return ActivityPromotionSupport.isPromoting(activity);
+    }
+
+    /**
+     * 按分配筛选从本地库分页查询活动列表，供 assignmentFilter 与招商 self 范围使用。
+     *
+     * @param page               页码（从 1 开始）
+     * @param pageSize           每页条数
+     * @param activityStatusCode 抖店活动状态码，0 或 null 表示全部
+     * @param assignmentFilter   assigned / unassigned / mine
+     * @param recruiterUserId    mine 筛选时的当前用户 ID
+     * @param activityKeyword    活动 ID 或名称关键字
+     * @param userNameResolver   解析招商用户显示名
+     * @return 与上游活动列表兼容的 Map 结构
+     */
+    public Map<String, Object> buildAssignmentListPage(
+            long page,
+            long pageSize,
+            Integer activityStatusCode,
+            String assignmentFilter,
+            UUID recruiterUserId,
+            String activityKeyword,
+            Function<UUID, String> userNameResolver) {
+        long current = Math.max(page, 1);
+        long size = Math.max(pageSize, 1);
+        Integer statusFilter = activityStatusCode != null && activityStatusCode > 0 ? activityStatusCode : null;
+        String keyword = StringUtils.hasText(activityKeyword) ? activityKeyword.trim() : null;
+        String filter = StringUtils.hasText(assignmentFilter) ? assignmentFilter.trim().toLowerCase() : "mine";
+        long offset = (current - 1) * size;
+        long total = activityMapper.countPageByAssignment(statusFilter, filter, recruiterUserId, keyword);
+        List<ColonelsettlementActivity> records = activityMapper.selectPageByAssignment(
+                offset, size, statusFilter, filter, recruiterUserId, keyword);
+        return ActivityAssignmentListSupport.buildListPayload(records, total, userNameResolver);
     }
 
     private LocalDateTime parseDateTime(String raw) {

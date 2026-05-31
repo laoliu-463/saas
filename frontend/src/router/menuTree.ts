@@ -94,10 +94,9 @@ export const MENU_TREE: MenuTreeNode[] = [
     topKey: 'product-manage',
     testId: 'nav-activity-product',
     showInTop: true,
-    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF],
+    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.ADMIN],
     children: [
-      // 活动列表仅业务主管可见
-      { label: '活动列表', key: '/product/manage', topKey: 'product-manage', path: '/product/manage', roles: [ROLE.BIZ_LEADER] },
+      { label: '活动列表', key: '/product/manage', topKey: 'product-manage', path: '/product/manage', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] },
       {
         label: '商品列表',
         key: '/product/manage/products',

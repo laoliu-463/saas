@@ -31,7 +31,7 @@ import java.util.UUID;
 @RestController
 @Tag(name = "商品置顶", description = "商品域 get_pinned_products。")
 @RequestMapping("/colonel/pinned-products")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN, RoleCodes.COLONEL_LEADER})
+@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
 public class ColonelPinnedProductController extends BaseController {
 
     /** 商品置顶服务 */

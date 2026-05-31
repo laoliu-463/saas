@@ -228,6 +228,7 @@ const timeLine = computed(() => {
  */
 const infoFields = computed(() => [
   { key: 'recruiter', label: '招商', value: props.card.recruiterName || '-', copyText: props.card.recruiterName },
+  { key: 'sync', label: '同步', value: props.card.syncTimeText || '-', copyText: props.card.syncTimeText },
   { key: 'sample', label: '寄样', value: props.card.sampleRequirement || '-', copyText: props.card.sampleRequirement },
   { key: 'time', label: '时间', value: timeLine.value, copyText: timeLine.value !== '-' ? timeLine.value : '' },
   { key: 'colonel', label: '团长', value: props.card.colonelName || '-', copyText: props.card.colonelName },

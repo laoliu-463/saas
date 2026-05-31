@@ -9,13 +9,13 @@
               <n-input v-model:value="talentQuery.region" placeholder="地域" clearable style="width: 140px" />
               <n-input-number v-model:value="talentQuery.minFans" :min="0" placeholder="最低粉丝" style="width: 140px" />
               <n-input-number v-model:value="talentQuery.maxFans" :min="0" placeholder="最高粉丝" style="width: 140px" />
-              <n-button type="primary" :loading="loadingTalents" @click="fetchTalents(1)">搜索我的达人</n-button>
+              <n-button type="primary" :loading="loadingTalents" @click="fetchTalents(1)">{{ talentSearchButtonText }}</n-button>
             </n-space>
           </n-form-item-gi>
 
           <n-form-item-gi :span="24" path="talentId" label="选择达人">
             <div style="width: 100%; margin-bottom: 8px; color: var(--text-secondary); font-size: var(--text-xs);">
-              仅支持为我已认领的达人申请寄样。
+              {{ talentScopeHint }}
             </div>
             <n-data-table
               :columns="talentColumns"
@@ -209,6 +209,15 @@ const applyCardTitle = computed(() =>
   applySource.value === INTERNAL_QUICK_SAMPLE_SOURCE ? '内部寄样申请' : '申请寄样'
 );
 
+/** 管理员与 CRM 列表一致，不按「我的私海」过滤 */
+const talentListView = computed(() => (authStore.isAdmin ? undefined : 'MY_TALENTS'));
+const talentScopeHint = computed(() =>
+  authStore.isAdmin
+    ? '管理员可检索全部达人申请寄样。'
+    : '仅支持为我已认领的达人申请寄样。'
+);
+const talentSearchButtonText = computed(() => (authStore.isAdmin ? '搜索达人' : '搜索我的达人'));
+
 const getRouteString = (key: string) => {
   const value = route.query[key]
   if (Array.isArray(value)) return String(value[0] || '')
@@ -310,7 +319,7 @@ const fetchTalents = async (page = 1) => {
   try {
     talentQuery.page = page;
     const res = await getTalentPage({
-      view: 'MY_TALENTS',
+      ...(talentListView.value ? { view: talentListView.value } : {}),
       keyword: talentQuery.keyword || undefined,
       region: talentQuery.region || undefined,
       minFans: talentQuery.minFans ?? undefined,

@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -27,6 +28,7 @@ public record SysRoleUpdateRequest(
         @Schema(description = "角色编码", example = "biz_staff")
         @NotBlank(message = "角色编码不能为空")
         @Size(max = 50, message = "角色编码长度不能超过50字符")
+        @Pattern(regexp = "^[a-z][a-z0-9_]{0,49}$", message = "角色编码须为小写字母开头，仅可含 a-z、0-9、下划线")
         String roleCode,
 
         /** 角色名称，用于前端展示。校验：@NotBlank，最长 100 字符 */

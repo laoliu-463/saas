@@ -135,9 +135,34 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("登录成功 - 支持真实姓名")
+    void login_success_withRealName() {
+        SysUser user = createActiveUser("biz_staff");
+        user.setRealName("招商专员测试");
+
+        SysRole role = new SysRole();
+        role.setRoleCode("biz_staff");
+        role.setDataScope(1);
+
+        when(sysUserMapper.findByUsername("招商专员测试")).thenReturn(Optional.empty());
+        when(sysUserMapper.findByRealName("招商专员测试")).thenReturn(List.of(user));
+        when(sysRoleMapper.findByUserId(user.getId())).thenReturn(List.of(role));
+        stubJwtTokenGeneration();
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername("招商专员测试");
+        request.setPassword("password");
+        LoginResponse response = authService.login(request);
+
+        assertThat(response.getUsername()).isEqualTo("biz_staff");
+        assertThat(response.getRealName()).isEqualTo("招商专员测试");
+    }
+
+    @Test
     @DisplayName("登录失败 - 用户不存在")
     void login_userNotFound_shouldThrow() {
         when(sysUserMapper.findByUsername("nobody")).thenReturn(Optional.empty());
+        when(sysUserMapper.findByRealName("nobody")).thenReturn(List.of());
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.increment("auth:login:fail:nobody")).thenReturn(1L);
 

@@ -45,7 +45,7 @@ import java.util.Map;
 @Tag(name = "活动管理", description = "本地活动分页与抖音真实活动详情补充接口。")
 @RestController
 @RequestMapping("/activities")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.COLONEL_LEADER})
+@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
 public class ColonelsettlementActivityController extends BaseController {
 
     /** 活动服务，负责本地活动数据的查询与管理 */

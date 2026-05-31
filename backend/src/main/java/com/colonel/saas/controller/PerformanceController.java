@@ -71,8 +71,8 @@ import java.util.UUID;
  *
  * <p><b>访问控制：</b>
  * <ul>
- *   <li>类级别 {@code @RequireRoles} 限制为 7 种角色可访问；</li>
- *   <li>导出接口额外限制为 Leader 角色（ADMIN / BIZ_LEADER / CHANNEL_LEADER / COLONEL_LEADER）；</li>
+ *   <li>类级别 {@code @RequireRoles} 限制为 6 种预置角色可访问；</li>
+ *   <li>导出接口额外限制为 Leader 角色（ADMIN / BIZ_LEADER / CHANNEL_LEADER）；</li>
  *   <li>重算接口仅限 ADMIN 角色。</li>
  * </ul>
  *
@@ -93,8 +93,7 @@ import java.util.UUID;
         RoleCodes.BIZ_LEADER,
         RoleCodes.BIZ_STAFF,
         RoleCodes.CHANNEL_LEADER,
-        RoleCodes.CHANNEL_STAFF,
-        RoleCodes.COLONEL_LEADER
+        RoleCodes.CHANNEL_STAFF
 })
 public class PerformanceController extends BaseController {
 
@@ -330,7 +329,7 @@ public class PerformanceController extends BaseController {
      * 业绩明细导出。
      *
      * <p>将筛选条件命中的业绩明细导出为 Excel（.xlsx）文件，
-     * 仅 Leader 角色（ADMIN / BIZ_LEADER / CHANNEL_LEADER / COLONEL_LEADER）可触发。
+     * 仅 Leader 角色（ADMIN / BIZ_LEADER / CHANNEL_LEADER）可触发。
      *
      * <p>处理流程：
      * <ol>
@@ -369,7 +368,7 @@ public class PerformanceController extends BaseController {
      */
     @Operation(summary = "业绩明细导出")
     @GetMapping("/export")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.COLONEL_LEADER})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public void export(
             @RequestParam(required = false) String orderId,
             @RequestParam(required = false) String productId,

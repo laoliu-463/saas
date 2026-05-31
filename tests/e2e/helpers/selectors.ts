@@ -23,6 +23,7 @@ export const testIds = {
   // Activity list
   activityListPage: 'activity-list-page',
   activityViewProducts: 'activity-view-products',
+  activitySyncProducts: 'activity-sync-products',
   // Data dashboard (core dashboard in /data)
   dashboardPage: 'data-dashboard-page',
   dashboardTimeField: 'dashboard-time-field',

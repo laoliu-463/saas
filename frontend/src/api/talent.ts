@@ -282,6 +282,17 @@ export const getTalentPublic = (params: any) => request.get('/talents/pools/publ
 export const getTalentPrivate = (params?: Record<string, unknown>) =>
   request.get('/talents/pools/private', { params });
 
+/**
+ * 按渠道人员查询私海达人池（管理员专用）
+ *
+ * 管理员在快速寄样时选择指定渠道后，查询该渠道人员认领的达人列表。
+ *
+ * @param channelUserId - 渠道人员用户 ID
+ * @returns 指定渠道人员已认领的私海达人列表
+ */
+export const getTalentByChannel = (channelUserId: string) =>
+  request.get(`/talents/pools/by-channel/${channelUserId}`).then((res: any) => res.data);
+
 /** 私海接口返回 data 为数组（非分页 records），统一解析为列表 */
 export function parsePrivateTalentPoolResponse(res: { data?: unknown } | null | undefined) {
   const data = res?.data

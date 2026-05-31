@@ -4,6 +4,7 @@ import { ROLE_CODES } from '../constants/rbac';
 const LEGACY_ROLE_MAP: Record<string, string> = {
     zs_leader: ROLE_CODES.BIZ_LEADER,
     zs_staff: ROLE_CODES.BIZ_STAFF,
+    // 仅兼容未刷新 JWT；colonel_leader 已合并至 biz_leader（2026-05-30）
     colonel_leader: ROLE_CODES.BIZ_LEADER,
     qd_leader: ROLE_CODES.CHANNEL_LEADER,
     qd_staff: ROLE_CODES.CHANNEL_STAFF

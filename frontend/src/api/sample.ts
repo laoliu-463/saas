@@ -94,6 +94,9 @@ export const exportSamples = (params: any) => request.get('/samples/exports', { 
  */
 export const searchSampleProducts = (params: any) => request.get('/samples/product-candidates', { params });
 
+/** @deprecated 使用 {@link searchSampleProducts}；保留别名供寄样创建弹窗兼容 */
+export const getSampleProductCandidates = searchSampleProducts;
+
 /**
  * 搜索可寄样达人候选列表
  *

@@ -8,7 +8,9 @@ import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.auth.service.SysUserService;
+import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.service.activity.ActivityAccessService;
 import com.colonel.saas.service.ColonelsettlementActivityService;
 import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -23,6 +25,9 @@ import org.mockito.quality.Strictness;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.colonel.saas.entity.ColonelsettlementActivity;
+
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,12 +62,16 @@ class ColonelActivityControllerTest {
     private ColonelsettlementActivityService colonelActivityService;
     @Mock
     private SysUserMapper sysUserMapper;
+    @Mock
+    private ColonelsettlementActivityMapper colonelActivityMapper;
 
+    private ActivityAccessService activityAccessService;
     private ColonelActivityController controller;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
+        activityAccessService = new ActivityAccessService(colonelActivityMapper);
         controller = new ColonelActivityController(
                 douyinActivityGateway,
                 douyinProductGateway,
@@ -70,7 +79,8 @@ class ColonelActivityControllerTest {
                 new ShortTtlCacheService(),
                 sysUserService,
                 colonelActivityService,
-                sysUserMapper
+                sysUserMapper,
+                activityAccessService
         );
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -114,7 +124,8 @@ class ColonelActivityControllerTest {
                 cacheService,
                 sysUserService,
                 colonelActivityService,
-                sysUserMapper);
+                sysUserMapper,
+                activityAccessService);
         MockMvc localMvc = MockMvcBuilders.standaloneSetup(localController)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -154,7 +165,8 @@ class ColonelActivityControllerTest {
 
         mockMvc.perform(get("/colonel/activities")
                         .param("page", "1")
-                        .param("pageSize", "20"))
+                        .param("pageSize", "20")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.total").value(21))
@@ -166,6 +178,99 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.activityList[0].activityEndTime").value("2026-08-03"))
                 .andExpect(jsonPath("$.data.activityList[0].endTime").value("2026-08-03"))
                 .andExpect(jsonPath("$.data.activityList[0].statusText").value("报名中"));
+    }
+
+    @Test
+    void list_shouldFilterAssignedActivitiesWhenRequested() throws Exception {
+        UUID recruiterId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("total", 1L);
+        payload.put("activityList", List.of(Map.of(
+                "activityId", 3916506L,
+                "activityName", "已分配活动",
+                "recruiterUserId", recruiterId
+        )));
+
+        when(colonelActivityService.buildAssignmentListPage(
+                eq(1L),
+                eq(20L),
+                eq(0),
+                eq("assigned"),
+                eq(null),
+                eq(null),
+                any()))
+                .thenReturn(payload);
+
+        mockMvc.perform(get("/colonel/activities")
+                        .param("page", "1")
+                        .param("pageSize", "20")
+                        .param("assignmentFilter", "assigned")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.activityList[0].activityId").value(3916506));
+
+        verify(douyinActivityGateway, never()).listActivities(any());
+    }
+
+    @Test
+    void list_shouldFilterMineActivitiesForCurrentUser() throws Exception {
+        UUID recruiterId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("total", 1L);
+        payload.put("activityList", List.of(Map.of(
+                "activityId", 3916506L,
+                "activityName", "我的活动"
+        )));
+
+        when(colonelActivityService.buildAssignmentListPage(
+                eq(1L),
+                eq(20L),
+                eq(0),
+                eq("mine"),
+                eq(recruiterId),
+                eq(null),
+                any()))
+                .thenReturn(payload);
+
+        mockMvc.perform(get("/colonel/activities")
+                        .param("page", "1")
+                        .param("pageSize", "20")
+                        .param("assignmentFilter", "mine")
+                        .requestAttr("userId", recruiterId)
+                        .requestAttr("roleCodes", List.of(RoleCodes.BIZ_LEADER)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.activityList[0].activityName").value("我的活动"));
+    }
+
+    @Test
+    void list_shouldForceMineForRecruiterEvenWhenAllRequested() throws Exception {
+        UUID recruiterId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("total", 0L);
+        payload.put("activityList", List.of());
+
+        when(colonelActivityService.buildAssignmentListPage(
+                eq(1L),
+                eq(20L),
+                eq(0),
+                eq("mine"),
+                eq(recruiterId),
+                eq(null),
+                any()))
+                .thenReturn(payload);
+
+        mockMvc.perform(get("/colonel/activities")
+                        .param("page", "1")
+                        .param("pageSize", "20")
+                        .param("assignmentFilter", "all")
+                        .requestAttr("userId", recruiterId)
+                        .requestAttr("roleCodes", List.of(RoleCodes.BIZ_STAFF)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(0));
+
+        verify(douyinActivityGateway, never()).listActivities(any());
     }
 
     @Test
@@ -235,7 +340,8 @@ class ColonelActivityControllerTest {
                         .param("searchType", "4")
                         .param("sortType", "1")
                         .param("count", "20")
-                        .param("retrieveMode", "1"))
+                        .param("retrieveMode", "1")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.activityId").value(100018))
@@ -268,7 +374,8 @@ class ColonelActivityControllerTest {
                         .param("cursor", "cursor-1")
                         .param("productInfo", "本地")
                         .param("bizStatus", "PENDING_AUDIT")
-                        .param("status", "1"))
+                        .param("status", "1")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].title").value("本地快照商品"));
 
@@ -324,10 +431,14 @@ class ColonelActivityControllerTest {
         listView.put("items", List.of(itemView));
 
         when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null)).thenReturn(listView);
+        when(productService.refreshActivitySnapshots(any())).thenReturn(
+                new ProductService.ActivityProductRefreshResult(1, 1, 1, 0, 0));
+        when(colonelActivityService.findByActivityId("100018")).thenReturn(null);
 
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
                         .param("count", "20")
-                        .param("refresh", "true"))
+                        .param("refresh", "true")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.activityId").value(100018))
@@ -335,6 +446,7 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.nextCursor").value("fresh-cursor"));
 
         verify(productService, never()).hasActivitySnapshots("100018");
+        verify(colonelActivityService).syncActivitySummaryFromUpstream(eq("100018"), eq(null));
         verify(productService).refreshActivitySnapshots(any());
         verify(douyinProductGateway, never()).queryActivityProducts(any());
         verify(productService, never()).upsertSnapshots(eq("100018"), any());
@@ -363,9 +475,11 @@ class ColonelActivityControllerTest {
                     new ShortTtlCacheService(),
                     sysUserService,
                     colonelActivityService,
-                    sysUserMapper);
+                    sysUserMapper,
+                    activityAccessService);
 
-            assertThatThrownBy(() -> errorController.list(0, 0L, 1L, 1L, 20L, null, null))
+            assertThatThrownBy(() -> errorController.list(
+                    0, 0L, 1L, 1L, 20L, null, null, "all", null, List.of(RoleCodes.ADMIN)))
                     .isInstanceOf(BusinessException.class)
                     .hasMessageContaining(item.message());
         }
@@ -397,7 +511,8 @@ class ColonelActivityControllerTest {
                     new ShortTtlCacheService(),
                     sysUserService,
                     colonelActivityService,
-                    sysUserMapper);
+                    sysUserMapper,
+                    activityAccessService);
 
             assertThatThrownBy(() -> errorController.listProducts(
                     "100018",
@@ -416,16 +531,48 @@ class ColonelActivityControllerTest {
                     false,
                     null,
                     null,
-                    null))
+                    null,
+                    null,
+                    List.of(RoleCodes.ADMIN)))
                     .isInstanceOf(BusinessException.class)
                     .hasMessageContaining(item.message());
         }
     }
 
     @Test
-    void controller_shouldNotAllowBizStaffAtClassLevel() {
+    void listProducts_shouldRejectUnassignedActivityForRecruiter() {
+        UUID recruiterId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        when(colonelActivityMapper.selectByActivityId("100018")).thenReturn(null);
+
+        assertThatThrownBy(() -> controller.listProducts(
+                "100018",
+                4L,
+                1L,
+                20,
+                null,
+                0,
+                null,
+                null,
+                null,
+                1L,
+                null,
+                null,
+                null,
+                false,
+                null,
+                null,
+                null,
+                recruiterId,
+                List.of(RoleCodes.BIZ_STAFF)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("无权访问该活动");
+    }
+
+    @Test
+    void controller_shouldAllowBizStaffAtClassLevel() {
         RequireRoles requireRoles = ColonelActivityController.class.getAnnotation(RequireRoles.class);
         assertThat(requireRoles).isNotNull();
-        assertThat(requireRoles.value()).containsExactly(RoleCodes.BIZ_LEADER, RoleCodes.ADMIN, RoleCodes.COLONEL_LEADER);
+        assertThat(requireRoles.value()).contains(RoleCodes.BIZ_STAFF);
+        assertThat(requireRoles.value()).contains(RoleCodes.BIZ_LEADER, RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
     }
 }

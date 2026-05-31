@@ -198,7 +198,6 @@ const roleNameMap = computed<Record<string, string>>(() => {
 const roleDescriptionMap: Record<string, string> = {
   admin: '可访问全部菜单与系统管理能力',
   biz_leader: '落地首页 /data，可看数据看板、归因与订单工作台',
-  colonel_leader: '兼容旧招商组长角色，前台按 biz_leader 口径展示与落地',
   biz_staff: '落地首页 /data，可看数据平台与商品寄样',
   channel_leader: '落地首页 /data，可看数据看板、归因、达人与寄样',
   channel_staff: '落地首页 /product，可做选品、达人跟进、寄样申请与个人业绩查看',

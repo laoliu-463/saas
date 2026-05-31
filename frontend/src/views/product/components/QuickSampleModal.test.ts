@@ -18,8 +18,25 @@ vi.mock('../../../api/activityProduct', () => ({
 
 vi.mock('../../../api/talent', () => ({
   getTalentPrivate: vi.fn().mockResolvedValue({ data: [] }),
-  parsePrivateTalentPoolResponse: vi.fn(() => [{ id: 'TALENT-1', nickname: '达人一' }]),
-  toPrivateTalentSelectOption: vi.fn((item: any) => ({ label: item.nickname, value: item.id }))
+  getTalentByChannel: vi.fn().mockResolvedValue([]),
+  parsePrivateTalentPoolResponse: vi.fn(() => [{ id: 'TALENT-1', nickname: '达人一', douyinUid: 'TALENT-1' }]),
+  toPrivateTalentSelectOption: vi.fn((item: any) => ({
+    label: item.nickname,
+    value: item.douyinUid || item.id
+  }))
+}))
+
+vi.mock('../../sample/sample-user-filter-options', () => ({
+  loadSampleChannelOptions: vi.fn().mockResolvedValue([
+    {
+      label: '渠道甲 (channel_a)',
+      value: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+    }
+  ])
+}))
+
+vi.mock('../../../stores/auth', () => ({
+  useAuthStore: () => ({ isAdmin: false, roleCodes: ['channel_staff'] })
 }))
 
 vi.mock('naive-ui', async (importOriginal) => {

@@ -46,6 +46,4 @@ VALUES (
 )
 ON CONFLICT (config_key) DO NOTHING;
 
-INSERT INTO sys_role (role_code, role_name, data_scope, status)
-VALUES ('colonel_leader', '招商组长', 2, 1)
-ON CONFLICT (role_code) DO NOTHING;
+-- colonel_leader merged into biz_leader — see alter-role-code-merge-colonel-leader.sql

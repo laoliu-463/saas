@@ -120,6 +120,27 @@ export function resolveLibraryEntryBlockReason(item: any, now = new Date()) {
   return null
 }
 
+/** 待审核 / 未入库场景下，说明审核通过后能否进入共享商品库列表 */
+function resolvePreEntryLibraryReadiness(item: any, now: Date): ProductLibraryReadinessView {
+  const blockReason = resolveLibraryEntryBlockReason(item, now)
+  if (!blockReason) {
+    return {
+      code: 'READY_AFTER_ENTRY',
+      label: '审核入库后可展示',
+      tagType: 'success',
+      hint: '审核通过后将自动入库；当前联盟为推广中且推广期有效，入库后会出现在共享商品库列表。',
+      canDisplayAfterEntry: true
+    }
+  }
+  return {
+    code: 'PENDING_AUDIT',
+    label: '审核后不可展示',
+    tagType: 'warning',
+    hint: `审核通过后将自动入库，但不会在共享商品库列表展示：${blockReason}。请待联盟商品变为「推广中」后重新同步活动商品。`,
+    canDisplayAfterEntry: false
+  }
+}
+
 export function resolveProductLibraryReadiness(item: any, now = new Date()): ProductLibraryReadinessView {
   const display = resolveProductLibraryDisplay(item)
   const bizStatus = normalizeText(item?.bizStatus)
@@ -129,7 +150,7 @@ export function resolveProductLibraryReadiness(item: any, now = new Date()): Pro
       code: 'REJECTED',
       label: '审核拒绝',
       tagType: 'default',
-      hint: '审核拒绝的商品无法入库展示',
+      hint: '审核拒绝的商品无法入库，也不会出现在共享商品库列表。',
       canDisplayAfterEntry: false
     }
   }
@@ -139,19 +160,28 @@ export function resolveProductLibraryReadiness(item: any, now = new Date()): Pro
       code: 'LIST_VISIBLE',
       label: '商品库列表可见',
       tagType: 'success',
-      hint: null,
+      hint: '已在共享商品库列表展示，渠道可直接选品。',
       canDisplayAfterEntry: true
     }
   }
 
   if (display.hiddenFromList) {
+    const blockReason = resolveLibraryEntryBlockReason(item, now)
+    const hint = display.visibilityHint
+      || (blockReason
+        ? `已自动入库，但${blockReason}。`
+        : '已自动入库，但当前不满足商品库展示规则。')
     return {
       code: 'STORED_HIDDEN',
       label: '已入库·列表不可见',
       tagType: 'warning',
-      hint: display.visibilityHint,
+      hint,
       canDisplayAfterEntry: false
     }
+  }
+
+  if (bizStatus === 'PENDING_AUDIT' && !display.selectedToLibrary) {
+    return resolvePreEntryLibraryReadiness(item, now)
   }
 
   const canDisplayAfterEntry = canDisplayInLibraryAfterEntry(item, now)
@@ -165,11 +195,14 @@ export function resolveProductLibraryReadiness(item: any, now = new Date()): Pro
     }
   }
 
+  const blockReason = resolveLibraryEntryBlockReason(item, now)
   return {
     code: 'BLOCKED_AFTER_ENTRY',
-    label: '入库后不可展示',
+    label: '审核入库后不可展示',
     tagType: 'warning',
-    hint: resolveLibraryEntryBlockReason(item, now),
+    hint: blockReason
+      ? `审核通过并入库后仍不会在共享商品库列表展示：${blockReason}`
+      : '审核通过并入库后，当前仍不满足商品库展示规则。',
     canDisplayAfterEntry: false
   }
 }
@@ -243,7 +276,10 @@ export function mergeLibraryDisplayFields(item: any) {
     libraryReadinessCode: readiness.code,
     libraryReadinessLabel: readiness.label,
     libraryReadinessHint: readiness.hint,
-    libraryCanDisplayAfterEntry: readiness.canDisplayAfterEntry
+    libraryCanDisplayAfterEntry: readiness.canDisplayAfterEntry,
+    libraryStatusTagLabel: readiness.label,
+    libraryStatusTagType: readiness.tagType,
+    libraryStatusHint: readiness.hint
   }
 }
 
@@ -253,12 +289,8 @@ export function getLibraryDisplayTags(item: any, options: { manageMode?: boolean
   const tags: Array<{ text: string; type: 'success' | 'warning' | 'info' | 'default' }> = []
 
   if (options.manageMode !== false && !display.selectedToLibrary) {
-    if (readiness.code === 'READY_AFTER_ENTRY') {
-      tags.push({ text: readiness.label, type: 'success' })
-    } else if (readiness.code === 'BLOCKED_AFTER_ENTRY') {
-      tags.push({ text: readiness.label, type: 'warning' })
-    } else if (readiness.code === 'REJECTED') {
-      tags.push({ text: readiness.label, type: 'default' })
+    if (['READY_AFTER_ENTRY', 'BLOCKED_AFTER_ENTRY', 'PENDING_AUDIT', 'REJECTED'].includes(readiness.code)) {
+      tags.push({ text: readiness.label, type: readiness.tagType })
     }
     return tags
   }
@@ -266,7 +298,9 @@ export function getLibraryDisplayTags(item: any, options: { manageMode?: boolean
   if (display.selectedToLibrary && display.libraryVisible) {
     tags.push({ text: '商品库可见', type: 'success' })
   } else if (display.hiddenFromList) {
-    tags.push({ text: '已入库·列表不可见', type: 'warning' })
+    tags.push({ text: readiness.label, type: 'warning' })
+  } else if (readiness.code === 'BLOCKED_AFTER_ENTRY' || readiness.code === 'PENDING_AUDIT') {
+    tags.push({ text: readiness.label, type: readiness.tagType })
   }
   return tags
 }
@@ -275,15 +309,22 @@ export function formatLibraryEntrySuccessMessage(item: any) {
   const readiness = resolveProductLibraryReadiness(item)
   const display = resolveProductLibraryDisplay(item)
   if (display.libraryVisible) {
-    return '已加入商品库，当前商品在共享商品库列表可见'
+    return '审核通过并已入库，当前商品在共享商品库列表可见'
   }
   if (display.hiddenFromList || !readiness.canDisplayAfterEntry) {
-    const hint = display.visibilityHint || readiness.hint
+    const hint = readiness.hint || display.visibilityHint
     return hint
-      ? `已加入商品库，但暂不在共享商品库列表展示：${hint}`
-      : '已加入商品库，但当前不满足商品库展示条件，暂不在共享商品库列表展示'
+      ? `审核通过并已自动入库，但暂不在共享商品库列表展示：${hint}`
+      : '审核通过并已自动入库，但当前不满足商品库展示条件，暂不在共享商品库列表展示'
   }
-  return '已加入商品库'
+  return '审核通过，已加入商品库'
+}
+
+export function formatProductSyncTime(value: unknown): string {
+  const text = String(value ?? '').trim()
+  if (!text) return '—'
+  const normalized = text.replace('T', ' ').replace(/\.\d+Z?$/, '')
+  return normalized.length >= 16 ? normalized.slice(0, 16) : normalized
 }
 
 export interface ProductCardView {
@@ -297,6 +338,7 @@ export interface ProductCardView {
   activityId: string
   activityName: string
   recruiterName: string
+  syncTimeText: string
   colonelName: string
   livePrice: string
   commissionRate: string
@@ -401,6 +443,7 @@ export function normalizeProductCard(raw: any): ProductCardView {
     activityId,
     activityName: normalizeText(raw?.activityName || raw?.boundActivityName),
     recruiterName: normalizeText(raw?.recruiterName || raw?.assigneeName),
+    syncTimeText: formatProductSyncTime(raw?.syncTime ?? raw?.sync_time),
     colonelName: normalizeText(raw?.colonelName || raw?.partnerName),
     livePrice: formatMoneyText(raw?.livePriceText || raw?.priceText || raw?.price),
     commissionRate: formatRateText(raw?.commissionRateText || raw?.activityCosRatioText || raw?.commissionRate),

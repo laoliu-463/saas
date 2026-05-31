@@ -33,8 +33,8 @@ describe('user list organization option helpers', () => {
     expect(toTreeSelectOptions(tree, isDepartmentNode)).toEqual([]);
   });
 
-  it('falls back from corrupted role names to readable labels', () => {
-    expect(sanitizeRoleName({ roleCode: 'colonel_leader', roleName: '????' })).toBe('招商组长（兼容）');
+  it('falls back from corrupted role names to role code', () => {
+    expect(sanitizeRoleName({ roleCode: 'biz_leader', roleName: '????' })).toBe('biz_leader');
     expect(sanitizeRoleName({ roleCode: 'channel_staff', roleName: '渠道专员' })).toBe('渠道专员');
   });
 });

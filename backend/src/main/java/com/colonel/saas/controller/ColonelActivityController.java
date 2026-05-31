@@ -50,7 +50,7 @@ import java.util.UUID;
 @RestController
 @Tag(name = "团长活动管理", description = "团长活动列表及活动下商品查询接口。")
 @RequestMapping("/colonel/activities")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.ADMIN, RoleCodes.COLONEL_LEADER, RoleCodes.BIZ_STAFF})
+@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.ADMIN, RoleCodes.BIZ_STAFF})
 public class ColonelActivityController extends BaseController {
 
     private static final Duration ACTIVITY_LIST_CACHE_TTL = Duration.ofSeconds(60);

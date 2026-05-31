@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -21,12 +22,12 @@ import jakarta.validation.constraints.Size;
 public record SysRoleCreateRequest(
         /**
          * 角色编码，系统内唯一标识，用于接口鉴权判断。
-         * <p>格式建议：小写下划线，如 biz_staff、channel_leader。
-         * <p>校验：@NotBlank，最长 50 字符，不可与已有编码重复。
+         * <p>管理端可不传：服务端按角色名称自动生成（前端不展示该字段）。
+         * <p>格式：小写下划线；不可使用预置 6 码。
          */
-        @Schema(description = "角色编码", example = "biz_staff")
-        @NotBlank(message = "角色编码不能为空")
+        @Schema(description = "角色编码（可选，不传则自动生成）", example = "custom_auditor")
         @Size(max = 50, message = "角色编码长度不能超过50字符")
+        @Pattern(regexp = "^[a-z][a-z0-9_]{0,49}$", message = "角色编码须为小写字母开头，仅可含 a-z、0-9、下划线")
         String roleCode,
 
         /**

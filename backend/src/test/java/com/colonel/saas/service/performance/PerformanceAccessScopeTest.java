@@ -24,7 +24,7 @@ class PerformanceAccessScopeTest {
         assertThat(PerformanceAccessScope.canExport(null)).isFalse();
         assertThat(PerformanceAccessScope.canExport(context(List.of(" ADMIN "), DataScope.PERSONAL))).isTrue();
         assertThat(PerformanceAccessScope.canExport(context(List.of(RoleCodes.BIZ_LEADER), DataScope.DEPT))).isTrue();
-        assertThat(PerformanceAccessScope.canExport(context(List.of(RoleCodes.COLONEL_LEADER), DataScope.DEPT))).isTrue();
+        assertThat(PerformanceAccessScope.canExport(context(List.of(RoleCodes.BIZ_LEADER), DataScope.DEPT))).isTrue();
         assertThat(PerformanceAccessScope.canExport(context(List.of(RoleCodes.CHANNEL_LEADER), DataScope.DEPT))).isTrue();
         assertThat(PerformanceAccessScope.canExport(context(List.of(RoleCodes.CHANNEL_STAFF), DataScope.PERSONAL))).isFalse();
     }
@@ -106,7 +106,7 @@ class PerformanceAccessScopeTest {
         assertThat(PerformanceAccessScope.canAccessRecord(record(OTHER, USER),
                 context(List.of(RoleCodes.BIZ_LEADER), DataScope.DEPT))).isTrue();
         assertThat(PerformanceAccessScope.canAccessRecord(record(USER, OTHER),
-                context(List.of(RoleCodes.COLONEL_LEADER), DataScope.DEPT))).isFalse();
+                context(List.of(RoleCodes.BIZ_LEADER), DataScope.DEPT))).isFalse();
     }
 
     @Test
@@ -150,7 +150,7 @@ class PerformanceAccessScopeTest {
     @Test
     void appendScopeCondition_shouldAddLeaderDeptSubquery() {
         ScopeResult channel = append(context(List.of(RoleCodes.CHANNEL_LEADER), DataScope.DEPT), " pr ");
-        ScopeResult recruiter = append(context(List.of(RoleCodes.COLONEL_LEADER), DataScope.DEPT), "pr");
+        ScopeResult recruiter = append(context(List.of(RoleCodes.BIZ_LEADER), DataScope.DEPT), "pr");
 
         assertThat(channel.where()).contains("pr.final_channel_user_id IN (SELECT id FROM sys_user WHERE dept_id = ? AND deleted = 0)");
         assertThat(channel.args()).containsExactly(DEPT);

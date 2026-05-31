@@ -1084,9 +1084,7 @@ VALUES (
 )
 ON CONFLICT (config_key) DO NOTHING;
 
-INSERT INTO sys_role (role_code, role_name, data_scope, status)
-VALUES ('colonel_leader', '????', 2, 1)
-ON CONFLICT (role_code) DO NOTHING;
+-- colonel_leader merged into biz_leader — see alter-role-code-merge-colonel-leader.sql
 
 -- ==== alter-dual-track-performance-20260522.sql ====
 ALTER TABLE colonelsettlement_order
@@ -1547,4 +1545,5 @@ WHERE username = 'admin'
   AND password <> crypt(:'admin_password', password);
  
 \\i alter-colonel-activity-recruiter-assignment.sql
+\\i alter-role-code-merge-colonel-leader.sql
 

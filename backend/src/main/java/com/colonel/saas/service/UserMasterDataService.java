@@ -56,7 +56,7 @@ public class UserMasterDataService {
     /** 渠道相关角色编码列表 */
     private static final List<String> CHANNEL_ROLE_CODES = List.of(RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF);
     /** 招募相关角色编码列表 */
-    private static final List<String> RECRUITER_ROLE_CODES = List.of(RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.COLONEL_LEADER);
+    private static final List<String> RECRUITER_ROLE_CODES = List.of(RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
 
     /** 用户数据访问 Mapper */
     private final SysUserMapper sysUserMapper;
@@ -88,7 +88,7 @@ public class UserMasterDataService {
 
     /**
      * 查询招募人员选项列表。
-     * <p>根据招募相关角色编码（BIZ_LEADER、BIZ_STAFF、COLONEL_LEADER）查询用户列表。</p>
+     * <p>根据招募相关角色编码（BIZ_LEADER、BIZ_STAFF）查询用户列表。</p>
      *
      * @param keyword 搜索关键词（模糊匹配用户名/姓名，可为 null）
      * @param limit   最大返回条数（可为 null，使用默认值）

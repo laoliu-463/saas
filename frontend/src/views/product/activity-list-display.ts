@@ -5,6 +5,7 @@ export type ActivityStatusTab = {
   label: string
 }
 
+/** 列表筛选 Tab（status=0 仅表示「不按状态过滤」，不是活动真实状态） */
 export const ACTIVITY_STATUS_TABS: ActivityStatusTab[] = [
   { status: 0, label: '全部' },
   { status: 1, label: '未上线' },
@@ -12,8 +13,53 @@ export const ACTIVITY_STATUS_TABS: ActivityStatusTab[] = [
   { status: 3, label: '报名中' },
   { status: 4, label: '推广未开始' },
   { status: 5, label: '推广中' },
-  { status: 7, label: '已结束' }
+  { status: 7, label: '报名结束' }
 ]
+
+/** 抖店活动状态码 → 展示文案（不含 0，与 ActivityStatusResolver 一致） */
+export const ACTIVITY_STATUS_LABEL_BY_CODE: Record<number, string> = {
+  1: '未上线',
+  2: '报名未开始',
+  3: '报名中',
+  4: '推广未开始',
+  5: '推广中',
+  7: '报名结束'
+}
+
+/** 抖店活动「推广中」状态码，与后端 ActivityPromotionSupport 一致 */
+export const PROMOTING_ACTIVITY_STATUS_CODE = 5
+
+function readActivityStatusCode(row: ActivityRow): number | null {
+  const raw = row.activityStatus ?? row.status
+  if (raw === undefined || raw === null || String(raw).trim() === '') {
+    return null
+  }
+  const code = Number(raw)
+  return Number.isFinite(code) && code > 0 ? code : null
+}
+
+/** 活动维度是否处于推广中：有状态码时只认码 5，避免与 statusText 重叠判定 */
+export function isActivityPromoting(row: ActivityRow): boolean {
+  const statusCode = readActivityStatusCode(row)
+  if (statusCode != null) {
+    return statusCode === PROMOTING_ACTIVITY_STATUS_CODE
+  }
+  const statusText = String(row.statusText ?? row.activity_status_text ?? '').trim()
+  return statusText.includes('推广中')
+}
+
+/** 活动是否已分配招商组长 */
+export function isActivityAssigned(row: ActivityRow): boolean {
+  const assigneeId = String(
+    row.recruiterUserId ?? row.activityAssigneeId ?? row.assigneeId ?? ''
+  ).trim()
+  return Boolean(assigneeId)
+}
+
+/** 是否满足「推广中且已分配招商」自动入商品库条件 */
+export function shouldForceLibraryDisplayFromRow(row: ActivityRow): boolean {
+  return isActivityPromoting(row) && isActivityAssigned(row)
+}
 
 export type ActivityProductStats = {
   promoting: number | null
@@ -49,12 +95,55 @@ export function resolveActivityAssigneeName(row: ActivityRow): string {
   return legacy || '—'
 }
 
+export type ActivityAssignmentFilter = 'all' | 'assigned' | 'unassigned' | 'mine'
+
+export const ACTIVITY_ASSIGNMENT_FILTER_OPTIONS: Array<{ label: string; value: ActivityAssignmentFilter }> = [
+  { label: '全部活动', value: 'all' },
+  { label: '已分配', value: 'assigned' },
+  { label: '未分配', value: 'unassigned' },
+  { label: '分配给我', value: 'mine' }
+]
+
+export const RECRUITER_MINE_ASSIGNMENT_FILTER_OPTIONS: Array<{ label: string; value: ActivityAssignmentFilter }> = [
+  { label: '分配给我', value: 'mine' }
+]
+
+/** 按角色解析活动列表默认分配筛选 */
+export function resolveDefaultAssignmentFilter(isAdmin: boolean): ActivityAssignmentFilter {
+  return isAdmin ? 'all' : 'mine'
+}
+
+/** 按角色返回可见的分配筛选项 */
+export function resolveAssignmentFilterOptions(isAdmin: boolean) {
+  return isAdmin ? ACTIVITY_ASSIGNMENT_FILTER_OPTIONS : RECRUITER_MINE_ASSIGNMENT_FILTER_OPTIONS
+}
+
+/** 非 admin 固定 mine，admin 使用当前筛选值 */
+export function resolveEffectiveAssignmentFilter(
+  isAdmin: boolean,
+  filter: ActivityAssignmentFilter
+): ActivityAssignmentFilter {
+  return isAdmin ? filter || 'all' : 'mine'
+}
+
+export function formatActivitySyncTime(value: unknown): string {
+  const text = String(value ?? '').trim()
+  if (!text) return '—'
+  const normalized = text.replace('T', ' ').replace(/\.\d+Z?$/, '')
+  return normalized.length >= 16 ? normalized.slice(0, 16) : normalized
+}
+
+export function resolveActivitySyncTime(row: ActivityRow): string {
+  return formatActivitySyncTime(row.lastSyncAt ?? row.last_sync_at)
+}
+
+/**
+ * 根据状态码解析活动状态标签（仅展示用，不把筛选 Tab「全部」当作活动状态）。
+ */
 export function resolveActivityStatusLabel(row: ActivityRow): string {
-  const text = String(row.statusText ?? '').trim()
-  if (text) return text
-  const status = Number(row.status ?? row.activityStatus ?? 0)
-  const tab = ACTIVITY_STATUS_TABS.find((item) => item.status === status)
-  return tab?.label || '未知'
+  const statusCode = readActivityStatusCode(row)
+  if (statusCode == null) return '未知'
+  return ACTIVITY_STATUS_LABEL_BY_CODE[statusCode] ?? '未知'
 }
 
 export function formatActivityCategories(categoriesLimit: unknown): string {

@@ -495,6 +495,29 @@ public class TalentController extends BaseController {
     }
 
     /**
+     * 按渠道人员查询私海达人列表（管理员专用）。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>校验当前用户为管理员角色</li>
+     *   <li>根据指定的渠道人员用户 ID 查询其已认领的达人</li>
+     *   <li>将结果转换为达人视图对象列表</li>
+     * </ol>
+     *
+     * <p>HTTP 方法与路径：{@code GET /talents/pools/by-channel/{channelUserId}}
+     *
+     * @param channelUserId 渠道人员用户 ID
+     * @return 指定渠道人员已认领的私海达人列表
+     */
+    @Operation(summary = "按渠道查询私海达人", description = "管理员专用：按指定渠道人员 ID 查询其私海达人列表，用于快速寄样时管理员选择渠道达人的场景。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @GetMapping("/pools/by-channel/{channelUserId}")
+    public ApiResult<List<TalentVO>> talentsByChannel(
+            @Parameter(description = "渠道人员用户 ID。") @PathVariable("channelUserId") UUID channelUserId) {
+        return ok(talentService.getPrivatePool(channelUserId).stream().map(TalentVO::from).toList());
+    }
+
+    /**
      * 认领达人。
      *
      * <p>处理流程：

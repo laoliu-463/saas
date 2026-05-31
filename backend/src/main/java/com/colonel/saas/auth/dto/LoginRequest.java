@@ -21,12 +21,12 @@ import lombok.Data;
 public class LoginRequest {
 
     /**
-     * 登录用户名，对应 sys_user 表的 username 字段。
-     * <p>校验规则：不能为空，最大长度 50 字符。
+     * 登录账号：优先按 {@code sys_user.username} 精确匹配；未命中时再按 {@code real_name} 精确匹配。
+     * <p>校验规则：不能为空，最大长度 100 字符（与姓名列一致）。
      */
-    @Schema(description = "登录用户名", example = "admin")
-    @NotBlank(message = "用户名不能为空")
-    @Size(max = 50, message = "用户名长度不能超过50字符")
+    @Schema(description = "登录账号（用户名或真实姓名）", example = "admin")
+    @NotBlank(message = "账号不能为空")
+    @Size(max = 100, message = "账号长度不能超过100字符")
     private String username;
 
     /**

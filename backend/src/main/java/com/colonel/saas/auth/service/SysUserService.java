@@ -103,8 +103,7 @@ public class SysUserService {
     /** 活动级分配可选的招商相关角色（与 /users/master-data/recruiters 一致） */
     private static final Set<String> RECRUITER_ROLE_CODES = Set.of(
             RoleCodes.BIZ_LEADER,
-            RoleCodes.BIZ_STAFF,
-            RoleCodes.COLONEL_LEADER
+            RoleCodes.BIZ_STAFF
     );
 
     /** 用户数据访问层 */
@@ -974,7 +973,6 @@ public class SysUserService {
      *   <li>ADMIN：可分配所有业务角色，不限部门，允许跨部门</li>
      *   <li>BIZ_LEADER：只能分配 BIZ_STAFF，限同部门</li>
      *   <li>CHANNEL_LEADER：只能分配 CHANNEL_STAFF，限同部门</li>
-     *   <li>COLONEL_LEADER：可分配 BIZ_STAFF（招商专员），限同部门</li>
      *   <li>其他角色：返回空范围（不允许分配负责人）</li>
      * </ul>
      * </p>
@@ -1001,10 +999,6 @@ public class SysUserService {
         // 渠道组长：只能分配渠道专员，限同部门
         if (normalized.contains(RoleCodes.CHANNEL_LEADER)) {
             return new AssignableScope(Set.of(RoleCodes.CHANNEL_STAFF), currentDeptId, false);
-        }
-        // 招商组长：可分配招商专员（BIZ_STAFF），限同部门
-        if (normalized.contains(RoleCodes.COLONEL_LEADER)) {
-            return new AssignableScope(Set.of(RoleCodes.BIZ_STAFF), currentDeptId, false);
         }
         return AssignableScope.empty();
     }

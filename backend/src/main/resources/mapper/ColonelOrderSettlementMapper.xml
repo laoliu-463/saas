@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.colonel.saas.mapper.ColonelOrderSettlementMapper">
+
+    <resultMap id="ColonelOrderSettlementMap" type="com.colonel.saas.entity.ColonelOrderSettlement">
+        <id property="id" column="id"/>
+        <result property="upstreamKey" column="upstream_key"/>
+        <result property="orderId" column="order_id"/>
+        <result property="productId" column="product_id"/>
+        <result property="productName" column="product_name"/>
+        <result property="shopId" column="shop_id"/>
+        <result property="shopName" column="shop_name"/>
+        <result property="payAmount" column="pay_amount"/>
+        <result property="settleAmount" column="settle_amount"/>
+        <result property="estimateServiceFee" column="estimate_service_fee"/>
+        <result property="effectiveServiceFee" column="effective_service_fee"/>
+        <result property="estimateTechServiceFee" column="estimate_tech_service_fee"/>
+        <result property="effectiveTechServiceFee" column="effective_tech_service_fee"/>
+        <result property="settleSecondColonelCommission" column="settle_second_colonel_commission"/>
+        <result property="sourceAmountUnit" column="source_amount_unit"/>
+        <result property="colonelBuyinId" column="colonel_buyin_id"/>
+        <result property="colonelName" column="colonel_name"/>
+        <result property="serviceFeeRate" column="service_fee_rate"/>
+        <result property="commissionRate" column="commission_rate"/>
+        <result property="colonelActivityId" column="colonel_activity_id"/>
+        <result property="secondColonelBuyinId" column="second_colonel_buyin_id"/>
+        <result property="secondColonelActivityId" column="second_colonel_activity_id"/>
+        <result property="phaseId" column="phase_id"/>
+        <result property="pickSource" column="pick_source"/>
+        <result property="talentExternalId" column="talent_external_id"/>
+        <result property="talentName" column="talent_name"/>
+        <result property="flowPoint" column="flow_point"/>
+        <result property="orderStatus" column="order_status"/>
+        <result property="orderCreateTime" column="order_create_time"/>
+        <result property="payTime" column="pay_time"/>
+        <result property="settleTime" column="settle_time"/>
+        <result property="deliveryTime" column="delivery_time"/>
+        <result property="expireTime" column="expire_time"/>
+        <result property="cursor" column="cursor"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="deleted" column="deleted"/>
+        <result property="rawPayload" column="raw_payload" typeHandler="com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler"/>
+    </resultMap>
+
+    <select id="findByUpstreamKey" resultMap="ColonelOrderSettlementMap">
+        SELECT *
+        FROM colonel_order_settlement
+        WHERE upstream_key = #{upstreamKey}
+        LIMIT 1
+    </select>
+
+    <insert id="insertIgnoreByUpstreamKey" parameterType="com.colonel.saas.entity.ColonelOrderSettlement">
+        INSERT INTO colonel_order_settlement (
+            id, upstream_key, order_id, product_id, product_name,
+            shop_id, shop_name, pay_amount, settle_amount,
+            estimate_service_fee, effective_service_fee,
+            estimate_tech_service_fee, effective_tech_service_fee,
+            settle_second_colonel_commission, source_amount_unit,
+            colonel_buyin_id, colonel_name, service_fee_rate, commission_rate,
+            colonel_activity_id,
+            second_colonel_buyin_id, second_colonel_activity_id,
+            phase_id, pick_source, talent_external_id, talent_name,
+            flow_point, order_status,
+            order_create_time, pay_time, settle_time, delivery_time, expire_time,
+            cursor, create_time, update_time, deleted, raw_payload
+        )
+        SELECT
+            #{id}, #{upstreamKey}, #{orderId}, #{productId}, #{productName},
+            #{shopId}, #{shopName}, #{payAmount}, #{settleAmount},
+            #{estimateServiceFee}, #{effectiveServiceFee},
+            #{estimateTechServiceFee}, #{effectiveTechServiceFee},
+            #{settleSecondColonelCommission}, #{sourceAmountUnit},
+            #{colonelBuyinId}, #{colonelName}, #{serviceFeeRate}, #{commissionRate},
+            #{colonelActivityId},
+            #{secondColonelBuyinId}, #{secondColonelActivityId},
+            #{phaseId}, #{pickSource}, #{talentExternalId}, #{talentName},
+            #{flowPoint}, #{orderStatus},
+            #{orderCreateTime}, #{payTime}, #{settleTime}, #{deliveryTime}, #{expireTime},
+            #{cursor}, #{createTime}, #{updateTime}, #{deleted},
+            CAST(#{rawPayload, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB)
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM colonel_order_settlement
+            WHERE upstream_key = #{upstreamKey}
+        )
+    </insert>
+</mapper>

@@ -1,6 +1,7 @@
 package com.colonel.saas;
 
 import com.colonel.saas.service.DouyinWebhookSchemaBootstrap;
+import com.colonel.saas.service.OrderPaymentSchemaBootstrap;
 import com.colonel.saas.service.OrderSyncDedupSchemaBootstrap;
 import com.colonel.saas.service.TalentPresetTagsBootstrap;
 import com.colonel.saas.testsupport.TestDataService;
@@ -27,6 +28,9 @@ class ColonelSaasApplicationTests {
 
     @MockBean
     private OrderSyncDedupSchemaBootstrap orderSyncDedupSchemaBootstrap;
+
+    @MockBean
+    private OrderPaymentSchemaBootstrap orderPaymentSchemaBootstrap;
 
     @MockBean
     private TalentPresetTagsBootstrap talentPresetTagsBootstrap;

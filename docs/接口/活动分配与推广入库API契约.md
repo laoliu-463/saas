@@ -42,7 +42,7 @@ PUT /colonel/activities/{activityId}/assignee
 - `assigneeId` 为 `null` 时表示清除分配
 
 **业务规则**：
-1. 校验目标用户存在、启用、且拥有 `biz_leader`、`biz_staff`、`colonel_leader` 角色之一
+1. 校验目标用户存在、启用、且拥有 `biz_leader`、`biz_staff` 角色之一
 2. 更新 `colonel_activity.recruiter_user_id`、`recruiter_dept_id`、`assigned_at`、`assigned_by`
 3. 级联更新该活动下已有 `product_operation_state` 的 `assignee_id`
 
@@ -76,7 +76,7 @@ PUT /colonel/activities/{activityId}/assignee
 GET /users/master-data/recruiters
 ```
 
-**复用现有接口**，返回拥有招商角色（`biz_leader`、`biz_staff`、`colonel_leader`）的用户列表，供前端填充分配弹窗下拉框。
+**复用现有接口**，返回拥有招商角色（`biz_leader`、`biz_staff`）的用户列表，供前端填充分配弹窗下拉框。
 
 **响应字段约定**（部分字段）：
 ```json
@@ -97,6 +97,23 @@ GET /users/master-data/recruiters
 
 ### 2.3 活动列表 GET /colonel/activities（兼容扩展）
 
+**新增查询参数**（V1 必做）：
+
+| 参数 | 取值 | 说明 |
+|------|------|------|
+| `assignmentFilter` | `all`（默认）/ `assigned` / `unassigned` / `mine` | 按活动级招商组长分配筛选；`mine` 依赖当前登录用户 |
+
+**数据范围与分页规则**（V1 必做，2026-05-30）：
+
+| 角色 | 有效 filter | 数据源 |
+|------|-------------|--------|
+| `admin` + `all` | `all` | 上游 Gateway 分页 + 本地 enrich |
+| `admin` + `assigned/unassigned/mine` | 请求值 | 本地 `colonel_activity` 分页 |
+| `biz_leader` / `biz_staff`（非 admin） | **强制 `mine`** | 本地 `colonel_activity` 按 `recruiter_user_id = 当前用户` 分页 |
+
+- 非 admin 传 `assignmentFilter=all` 仍按 `mine` 处理，禁止越权查看他人或未分配活动。
+- `GET /api/colonel/activities/{activityId}/products` 对非 admin 招商角色校验活动 `recruiter_user_id`，未分配给自己返回 403。
+
 **新增返回字段**（V1 必做）：
 ```json
 {
@@ -110,6 +127,7 @@ GET /users/master-data/recruiters
   "recruiterDeptName": "招商部",
   "assignedAt": "2026-05-29T16:52:00",
   "assignedBy": "770e8400-...",
+  "lastSyncAt": "2026-05-29T16:52:00",
   // 兼容旧字段
   "assigneeId": "550e8400-...",
   "assigneeName": "张三"
@@ -129,15 +147,23 @@ GET /users/master-data/recruiters
 
 ---
 
-### 2.5 推广中活动自动入库（内部）
+### 2.5 已分配招商且推广中活动自动入库（内部）
 
-**触发函数**：`ProductService.autoAddToLibraryIfPromoting`
+**触发函数**：
+- `ProductService.applyAssignedPromotingLibraryState`（单条，商品同步时）
+- `ProductService.ensureAssignedPromotingActivityProductsInLibrary`（活动下全部已同步快照批量补齐）
+
+**触发时机**：
+1. 活动商品同步 `upsertSnapshotsWithStats`
+2. 活动商品全量刷新 `refreshActivitySnapshots`（refresh 完成后批量补齐）
+3. 管理员分配招商 `assignActivity`（分配后若活动已推广中）
+4. 活动列表落库 `ColonelsettlementActivityService.syncFromGatewayItem`（落库后若已分配且推广中）
 
 **规则**：
-1. 判断条件：`colonel_activity.status == 5` 或 `statusText` 包含"推广中"
-2. 操作：设置 `product_operation_state.selected_to_library = true`、`selected_at = NOW()`
-3. 设置 `display_status = DISPLAYING` 作为推广中活动的持久可见事实
-4. 触发：`ProductDisplayRuleService.applyForActivityId(activityId)` 重算展示规则，推广中活动记录不参与同 `product_id` 去重隐藏
+1. 判断条件：`colonel_activity` **推广中**（`status == 5` 或文案含「推广中」）且 **`recruiter_user_id` 非空**
+2. 操作：对该活动下全部 `product_snapshot` 对应运营状态设置 `selected_to_library = true`、`display_status = DISPLAYING`（必要时自动 `APPROVED`）
+3. 触发：`ProductDisplayRuleService.applyForActivityId(activityId)`；推广中且已分配活动不参与同 `product_id` 去重隐藏
+4. 未同步到本地的上游商品不在范围；需先完成活动商品同步
 
 ---
 
@@ -165,6 +191,7 @@ GET /users/master-data/recruiters
 |------|------|------|
 | `recruiterUserId` / `recruiterUserName` | API 返回 | 活动级招商组长，优先展示 |
 | 分配操作 | `PUT /colonel/activities/{id}/assignee` | 弹窗候选人来自 `GET /users/master-data/recruiters` |
+| 获取同步商品 | `GET /colonel/activities/{id}/products?refresh=true` | 勾选活动后批量触发上游商品同步；推广中且已分配招商时后端自动入商品库 |
 
 ### 3.2 商品管理 / 商品库页面
 

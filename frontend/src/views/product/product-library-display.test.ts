@@ -73,9 +73,11 @@ describe('product-library-display', () => {
       statusText: '申请未通过',
       promotionEndTime: '2026-12-31'
     })
-    expect(readiness.code).toBe('BLOCKED_AFTER_ENTRY')
+    expect(readiness.code).toBe('PENDING_AUDIT')
+    expect(readiness.label).toBe('审核后不可展示')
     expect(readiness.canDisplayAfterEntry).toBe(false)
     expect(readiness.hint).toContain('申请未通过')
+    expect(readiness.hint).toContain('自动入库')
   })
 
   it('blocks expired promotion products before entry', () => {
@@ -148,6 +150,7 @@ describe('product-library-display', () => {
       detailUrl: 'https://buyin.example/p',
       promotionStartTime: '2026-01-01',
       promotionEndTime: '2026-12-31',
+      syncTime: '2026-05-29T16:52:00',
       auditSupplement: { sampleThresholdSales: 1000, supportsAds: true }
     })
     expect(card.productName).toBe('测试商品')
@@ -156,6 +159,7 @@ describe('product-library-display', () => {
     expect(card.supportInvestment).toBe(true)
     expect(card.totalSalesText).toBe('2.5W')
     expect(card.recruiterName).toBe('张三')
+    expect(card.syncTimeText).toBe('2026-05-29 16:52')
     expect(card.shopName).toBe('旗舰店')
     expect(card.livePrice).toBe('¥99')
     expect(card.commissionRate).toBe('20%')
@@ -271,7 +275,7 @@ describe('product-library-display', () => {
       selectedToLibrary: true,
       libraryVisible: true
     })
-    expect(message).toBe('已加入商品库，当前商品在共享商品库列表可见')
+    expect(message).toBe('审核通过并已入库，当前商品在共享商品库列表可见')
   })
 
   it('formatLibraryEntrySuccessMessage returns partial message for hidden products', () => {
@@ -290,7 +294,7 @@ describe('product-library-display', () => {
       statusText: '推广中',
       promotionEndTime: '2026-12-31'
     })
-    expect(message).toBe('已加入商品库')
+    expect(message).toBe('审核通过，已加入商品库')
   })
 
   it('resolveSupportInvestment checks various source fields', () => {
@@ -345,5 +349,26 @@ describe('product-library-display', () => {
       bizStatus: 'REJECTED'
     })
     expect(tags).toEqual([{ text: '审核拒绝', type: 'default' }])
+  })
+
+  it('getLibraryDisplayTags returns audit-blocked tag before entry', () => {
+    const tags = getLibraryDisplayTags({
+      bizStatus: 'PENDING_AUDIT',
+      status: 0,
+      statusText: '待审核',
+      promotionEndTime: '2027-05-31'
+    }, { manageMode: true })
+    expect(tags).toEqual([{ text: '审核后不可展示', type: 'warning' }])
+  })
+
+  it('mergeLibraryDisplayFields exposes libraryStatusHint for list rendering', () => {
+    const merged = mergeLibraryDisplayFields({
+      bizStatus: 'PENDING_AUDIT',
+      status: 0,
+      statusText: '待审核',
+      promotionEndTime: '2027-05-31'
+    })
+    expect(merged.libraryStatusHint).toContain('自动入库')
+    expect(merged.libraryStatusTagLabel).toBe('审核后不可展示')
   })
 })

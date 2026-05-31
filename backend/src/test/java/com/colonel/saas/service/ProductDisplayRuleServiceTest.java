@@ -76,6 +76,7 @@ class ProductDisplayRuleServiceTest {
 
         ColonelsettlementActivity promotingActivity = new ColonelsettlementActivity();
         promotingActivity.setActivityStatusCode(5);
+        promotingActivity.setRecruiterUserId(UUID.fromString("11111111-1111-1111-1111-111111111111"));
         when(colonelActivityMapper.selectByActivityId("60001")).thenReturn(promotingActivity);
         when(colonelActivityMapper.selectByActivityId("60002")).thenReturn(promotingActivity);
 

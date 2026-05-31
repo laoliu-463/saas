@@ -27,7 +27,7 @@ import java.util.UUID;
  *
  * <p>所属业务领域：业绩域 / 独家商家
  * <p>API 路径前缀：{@code /exclusive-merchants}
- * <p>访问权限：管理员、招商组长、招商专员和团长组长（{@link com.colonel.saas.constant.RoleCodes#ADMIN}、{@link com.colonel.saas.constant.RoleCodes#BIZ_LEADER}、{@link com.colonel.saas.constant.RoleCodes#BIZ_STAFF}、{@link com.colonel.saas.constant.RoleCodes#COLONEL_LEADER}）
+ * <p>访问权限：管理员、招商组长、招商专员（{@link com.colonel.saas.constant.RoleCodes#ADMIN}、{@link com.colonel.saas.constant.RoleCodes#BIZ_LEADER}、{@link com.colonel.saas.constant.RoleCodes#BIZ_STAFF}）
  * <p>注意：V1 保留接口，是否启用由配置控制。
  *
  * @see com.colonel.saas.service.ExclusiveMerchantQueryService
@@ -35,7 +35,7 @@ import java.util.UUID;
 @Tag(name = "独家商家", description = "独家商家查询（V1 保留接口，是否启用由配置控制）。")
 @RestController
 @RequestMapping("/exclusive-merchants")
-@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.COLONEL_LEADER})
+@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
 public class ExclusiveMerchantController extends BaseController {
 
     /** 独家商家查询服务，负责按用户或合作方维度查询独家商家信息 */

@@ -18,6 +18,7 @@ test('活动列表和活动商品页可展示', async ({ page }, testInfo) => {
   await expect(page.getByTestId(testIds.activityListPage)).toBeVisible();
   await expect(page.getByRole('heading', { name: '活动列表' })).toBeVisible();
   await expect(page.getByTestId(testIds.activityViewProducts).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId(testIds.activitySyncProducts)).toBeVisible();
   await capturePage(page, testInfo, '04-activity-list');
 
   await Promise.all([

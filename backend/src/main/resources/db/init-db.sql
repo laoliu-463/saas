@@ -895,9 +895,9 @@ ON CONFLICT (role_code) DO NOTHING;
 -- 种子数据：默认业务组（技术上复用 sys_dept 承载“本组”概念）
 INSERT INTO sys_dept (id, parent_id, dept_code, dept_name, dept_type, sort_order, status)
 VALUES
-    ('11111111-1111-1111-1111-111111111111', NULL, 'BIZ', '招商组', 'recruiter_group', 10, 1),
-    ('22222222-2222-2222-2222-222222222222', NULL, 'CHANNEL', '渠道组', 'channel_group', 20, 1),
-    ('33333333-3333-3333-3333-333333333333', NULL, 'OPS', '运营组', 'ops_group', 30, 1)
+    ('a2b3c4d5-e6f7-4890-abcd-ef0123456789', NULL, 'BIZ', '招商部', 'department', 10, 1),
+    ('b3c4d5e6-f7a8-4901-bcde-f01234567890', NULL, 'CHANNEL', '渠道部', 'department', 20, 1),
+    ('c4d5e6f7-a8b9-4012-cdef-012345678901', NULL, 'OPS', '运营部', 'department', 30, 1)
 ON CONFLICT (dept_code) DO NOTHING;
 
 -- 种子数据：默认管理员（密码通过 ADMIN_PASSWORD 环境变量注入）
@@ -1119,23 +1119,23 @@ ON CONFLICT (role_code) DO NOTHING;
 
 INSERT INTO sys_user (username, password, real_name, channel_code, dept_id, status)
 VALUES
-    ('biz_leader',     crypt(:'admin_password', gen_salt('bf', 12)), '招商组长测试', 'bizleader',     '11111111-1111-1111-1111-111111111111', 1),
-    ('biz_staff',      crypt(:'admin_password', gen_salt('bf', 12)), '招商专员测试', 'bizstaff',      '11111111-1111-1111-1111-111111111111', 1),
-    ('channel_leader', crypt(:'admin_password', gen_salt('bf', 12)), '渠道组长测试', 'channelleader', '22222222-2222-2222-2222-222222222222', 1),
-    ('channel_staff',  crypt(:'admin_password', gen_salt('bf', 12)), '渠道专员测试', 'channelstaff',  '22222222-2222-2222-2222-222222222222', 1),
-    ('ops_staff',      crypt(:'admin_password', gen_salt('bf', 12)), '运营测试',     'opsstaff',      '33333333-3333-3333-3333-333333333333', 1)
+    ('biz_leader',     crypt(:'admin_password', gen_salt('bf', 12)), '招商组长测试', 'bizleader',     'a2b3c4d5-e6f7-4890-abcd-ef0123456789', 1),
+    ('biz_staff',      crypt(:'admin_password', gen_salt('bf', 12)), '招商专员测试', 'bizstaff',      'a2b3c4d5-e6f7-4890-abcd-ef0123456789', 1),
+    ('channel_leader', crypt(:'admin_password', gen_salt('bf', 12)), '渠道组长测试', 'channelleader', 'b3c4d5e6-f7a8-4901-bcde-f01234567890', 1),
+    ('channel_staff',  crypt(:'admin_password', gen_salt('bf', 12)), '渠道专员测试', 'channelstaff',  'b3c4d5e6-f7a8-4901-bcde-f01234567890', 1),
+    ('ops_staff',      crypt(:'admin_password', gen_salt('bf', 12)), '运营测试',     'opsstaff',      'c4d5e6f7-a8b9-4012-cdef-012345678901', 1)
 ON CONFLICT (username) DO NOTHING;
 
 UPDATE sys_user
-SET dept_id = '11111111-1111-1111-1111-111111111111'
+SET dept_id = 'a2b3c4d5-e6f7-4890-abcd-ef0123456789'
 WHERE username IN ('biz_leader', 'biz_staff') AND deleted = 0 AND dept_id IS NULL;
 
 UPDATE sys_user
-SET dept_id = '22222222-2222-2222-2222-222222222222'
+SET dept_id = 'b3c4d5e6-f7a8-4901-bcde-f01234567890'
 WHERE username IN ('channel_leader', 'channel_staff') AND deleted = 0 AND dept_id IS NULL;
 
 UPDATE sys_user
-SET dept_id = '33333333-3333-3333-3333-333333333333'
+SET dept_id = 'c4d5e6f7-a8b9-4012-cdef-012345678901'
 WHERE username = 'ops_staff' AND deleted = 0 AND dept_id IS NULL;
 
 INSERT INTO sys_user_role (user_id, role_id)

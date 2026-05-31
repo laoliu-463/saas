@@ -256,4 +256,8 @@ public class Product extends BaseEntity {
     /** 虚拟字段：广告投放规则配置 */
     @TableField(exist = false)
     private String adsRule;
+
+    /** 虚拟字段：商品快照最近同步时间 */
+    @TableField(exist = false)
+    private LocalDateTime syncTime;
 }

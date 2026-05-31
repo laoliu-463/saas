@@ -71,10 +71,10 @@
 
           <div v-if="libraryDisplay.hiddenFromList" class="library-visibility-alert">
             <n-alert type="warning" title="已入库，但共享商品库列表不可见" bordered>
-              {{ libraryDisplay.visibilityHint }}
+              {{ libraryReadiness.hint || libraryDisplay.visibilityHint }}
             </n-alert>
           </div>
-          <div v-else-if="!libraryDisplay.selectedToLibrary && libraryReadiness.code !== 'REJECTED'" class="library-visibility-alert">
+          <div v-else-if="libraryReadiness.hint && libraryReadiness.code !== 'REJECTED' && libraryReadiness.code !== 'LIST_VISIBLE'" class="library-visibility-alert">
             <n-alert
               :type="libraryReadiness.canDisplayAfterEntry ? 'success' : 'warning'"
               :title="libraryReadiness.label"
@@ -217,7 +217,7 @@
                           （{{ libraryDisplay.displayStatusLabel }}）
                         </template>
                       </n-descriptions-item>
-                      <n-descriptions-item v-if="libraryReadiness.hint && !libraryDisplay.selectedToLibrary" label="展示说明" :span="2">
+                      <n-descriptions-item v-if="libraryReadiness.hint" label="商品库说明" :span="2">
                         {{ libraryReadiness.hint }}
                       </n-descriptions-item>
                       <n-descriptions-item label="店铺名称">{{ detail.shopName || '-' }}</n-descriptions-item>

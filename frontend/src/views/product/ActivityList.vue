@@ -23,6 +23,13 @@
           placeholder="活动名称"
           data-testid="activity-name-filter"
         />
+        <n-select
+          v-model:value="filters.assignmentFilter"
+          :options="assignmentFilterOptions"
+          placeholder="分配筛选"
+          style="width: 160px"
+          data-testid="activity-assignment-filter"
+        />
       </div>
       <div class="filter-actions">
         <n-button secondary data-testid="activity-filter-reset" @click="resetFilters">重置</n-button>
@@ -57,6 +64,16 @@
           </n-dropdown>
           <n-button
             type="primary"
+            secondary
+            :loading="syncingProducts"
+            :disabled="loading"
+            data-testid="activity-sync-products"
+            @click="syncSelectedActivityProducts"
+          >
+            获取同步商品
+          </n-button>
+          <n-button
+            type="primary"
             :loading="loading"
             data-testid="activity-sync-latest"
             @click="syncLatestActivities"
@@ -67,6 +84,7 @@
       </div>
 
       <n-data-table
+        v-if="data.length || loading"
         remote
         data-testid="activity-table"
         :columns="columns as any"
@@ -82,6 +100,13 @@
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       />
+      <PageEmpty
+        v-else-if="showRecruiterEmptyHint"
+        title="暂无分配给您的活动"
+        description="请联系管理员在活动列表中为您分配活动后再进入工作台。"
+        data-testid="activity-list-empty-assigned"
+      />
+      <PageEmpty v-else title="暂无活动数据" description="请尝试调整筛选条件或同步最新活动列表。" />
     </section>
 
     <n-modal
@@ -128,6 +153,7 @@ import { computed, h, onMounted, reactive, ref } from 'vue'
 import { NButton, NModal, NForm, NFormItem, NSelect, NSpace, useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
+import PageEmpty from '../../components/PageEmpty.vue'
 import { assignColonelActivity, getColonelActivityPage } from '../../api/activity'
 import { getActivityProducts } from '../../api/activityProduct'
 import { getDouyinInstitutionInfo } from '../../api/douyin'
@@ -150,10 +176,19 @@ import {
   resolveActivityAssigneeName,
   resolveActivityRequirement,
   resolveActivityStatusLabel,
-  resolveColonelName
+  resolveActivitySyncTime,
+  resolveColonelName,
+  resolveAssignmentFilterOptions,
+  resolveDefaultAssignmentFilter,
+  resolveEffectiveAssignmentFilter,
+  type ActivityAssignmentFilter
 } from './activity-list-display'
+import {
+  batchSyncActivityProducts,
+  formatActivityProductSyncMessage
+} from './activity-sync'
 
-const ACTIVITY_TABLE_SCROLL_X = 1880
+const ACTIVITY_TABLE_SCROLL_X = 2030
 const ACTIVITY_PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 
 const message = useMessage()
@@ -161,8 +196,11 @@ const router = useRouter()
 const authStore = useAuthStore()
 const { activityDataSourceHint, activityAlertType } = useRuntimeEnvironment()
 const canAssignActivity = computed(() => authStore.isAdmin || authStore.roleCodes.includes('admin'))
+const isAdminUser = computed(() => canAssignActivity.value)
+const showRecruiterEmptyHint = computed(() => !isAdminUser.value && !loading.value && data.value.length === 0)
 
 const loading = ref(false)
+const syncingProducts = ref(false)
 const exporting = ref(false)
 const data = ref<ActivityRow[]>([])
 const checkedRowKeys = ref<Array<string | number>>([])
@@ -178,9 +216,12 @@ const assignForm = reactive({
   assigneeId: null as string | null
 })
 
+const assignmentFilterOptions = computed(() => resolveAssignmentFilterOptions(isAdminUser.value))
+
 const filters = reactive({
   activityId: '',
-  activityName: ''
+  activityName: '',
+  assignmentFilter: resolveDefaultAssignmentFilter(authStore.isAdmin || authStore.roleCodes.includes('admin')) as ActivityAssignmentFilter
 })
 
 const pagination = reactive({
@@ -287,6 +328,12 @@ const columns = computed(() => [
     key: 'recruiterName',
     width: 120,
     render: (row: ActivityRow) => resolveActivityAssigneeName(row)
+  },
+  {
+    title: '同步时间',
+    key: 'lastSyncAt',
+    width: 150,
+    render: (row: ActivityRow) => resolveActivitySyncTime(row)
   },
   {
     title: '活动状态',
@@ -469,7 +516,8 @@ const fetchData = async () => {
       status: activeStatus.value,
       searchType: 0,
       sortType: 1,
-      activityInfo: buildActivityInfoKeyword()
+      activityInfo: buildActivityInfoKeyword(),
+      assignmentFilter: resolveEffectiveAssignmentFilter(isAdminUser.value, filters.assignmentFilter)
     })
     const result = res.data || {}
     const rows = (result.activityList || []) as ActivityRow[]
@@ -501,6 +549,8 @@ const handleFilterSearch = () => {
 const resetFilters = () => {
   filters.activityId = ''
   filters.activityName = ''
+  // 非 admin 角色重置时默认「分配给我」，admin 重置为全部
+  filters.assignmentFilter = resolveDefaultAssignmentFilter(isAdminUser.value)
   pagination.page = 1
   fetchData()
 }
@@ -508,6 +558,35 @@ const resetFilters = () => {
 const syncLatestActivities = () => {
   pagination.page = 1
   fetchData()
+}
+
+const syncSelectedActivityProducts = async () => {
+  if (!checkedRowKeys.value.length) {
+    message.warning('请先选择活动')
+    return
+  }
+  const rowByActivityId = new Map(
+    data.value.map((row) => [String(row.activityId ?? ''), row])
+  )
+  syncingProducts.value = true
+  try {
+    const summary = await batchSyncActivityProducts(checkedRowKeys.value, rowByActivityId)
+    const text = formatActivityProductSyncMessage(summary)
+    if (summary.succeeded > 0) {
+      if (summary.failed > 0 || summary.promotingWithoutAssigneeCount > 0) {
+        message.warning(text)
+      } else {
+        message.success(text)
+      }
+      await fetchData()
+    } else {
+      message.error(text)
+    }
+  } catch (err: unknown) {
+    notifyApiFailure(err, message, { fallbackMessage: '同步活动商品失败' })
+  } finally {
+    syncingProducts.value = false
+  }
 }
 
 const handlePageChange = (page: number) => {

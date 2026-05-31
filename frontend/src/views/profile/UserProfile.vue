@@ -19,11 +19,11 @@
           <n-descriptions-item label="用户名">{{ currentUser?.username || '-' }}</n-descriptions-item>
           <n-descriptions-item label="真实姓名">{{ currentUser?.realName || '-' }}</n-descriptions-item>
           <n-descriptions-item label="用户 ID">{{ currentUser?.userId || currentUser?.id || '-' }}</n-descriptions-item>
-          <n-descriptions-item label="部门 ID">{{ currentUser?.deptId || '-' }}</n-descriptions-item>
+          <n-descriptions-item label="所属部门">{{ deptName || currentUser?.deptId || '-' }}</n-descriptions-item>
           <n-descriptions-item label="数据范围">{{ dataScopeLabel }}</n-descriptions-item>
           <n-descriptions-item label="角色">
             <n-space size="small">
-              <n-tag v-for="role in roleCodes" :key="role" size="small" bordered>{{ role }}</n-tag>
+              <n-tag v-for="role in roleCodes" :key="role" size="small" bordered>{{ ROLE_NAME_MAP[role] ?? role }}</n-tag>
               <span v-if="!roleCodes.length">-</span>
             </n-space>
           </n-descriptions-item>
@@ -120,9 +120,11 @@ import {
   changeCurrentUserPassword,
   checkCurrentUserPermission,
   getCurrentUser,
-  getCurrentUserDataScope
+  getCurrentUserDataScope,
+  getDeptById
 } from '../../api/sys'
 import { useAuthStore } from '../../stores/auth'
+import { ROLE_NAME_MAP } from '../../constants/rbac'
 
 const message = useMessage()
 const authStore = useAuthStore()
@@ -130,6 +132,7 @@ const loading = ref(false)
 const checkingPermission = ref(false)
 const changingPassword = ref(false)
 const currentUser = ref<any>(null)
+const deptName = ref<string | null>(null)
 const scopeResponse = ref<any>(null)
 const permissionResult = ref<any>(null)
 const passwordFormRef = ref()
@@ -209,6 +212,19 @@ const loadProfile = async () => {
     currentUser.value = unwrapData(userRes)
     scopeResponse.value = unwrapData(scopeRes)
     syncCurrentUserToAuthStore(currentUser.value)
+
+    // 补充部门名称
+    const uid = currentUser.value?.deptId
+    if (uid) {
+      try {
+        const deptRes = await getDeptById(String(uid))
+        deptName.value = unwrapData(deptRes)?.deptName ?? null
+      } catch {
+        deptName.value = null
+      }
+    } else {
+      deptName.value = null
+    }
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '加载个人资料失败' })
   } finally {

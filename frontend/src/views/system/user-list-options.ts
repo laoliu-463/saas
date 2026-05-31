@@ -71,9 +71,7 @@ export function toGroupSelectOptions(nodes: DeptNode[] = []): SelectOption[] {
     }));
 }
 
-const ROLE_FALLBACK_LABELS: Record<string, string> = {
-  colonel_leader: '招商组长（兼容）'
-};
+import { ROLE_NAME_MAP } from '../../constants/rbac';
 
 export function sanitizeRoleName(role: { roleCode?: unknown; roleName?: unknown }) {
   const roleCode = String(role?.roleCode || '');
@@ -81,5 +79,6 @@ export function sanitizeRoleName(role: { roleCode?: unknown; roleName?: unknown 
   if (rawName && !/^\?+$/.test(rawName)) {
     return rawName;
   }
-  return ROLE_FALLBACK_LABELS[roleCode] || roleCode;
+  // 自定义角色走中文映射表兜底，永远不展示原始 code
+  return ROLE_NAME_MAP[roleCode] ?? '自定义角色';
 }

@@ -136,7 +136,7 @@ public class UserMasterDataController extends BaseController {
      */
     @Operation(summary = "本组成员下拉", description = "组长默认查看本组成员；管理员可传 deptId 查看指定部门成员。")
     @GetMapping("/group-members")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.COLONEL_LEADER})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public ApiResult<List<UserOptionResponse>> groupMembers(
             @Parameter(description = "管理员可指定部门ID。") @RequestParam(name = "deptId", required = false) UUID deptId,
             @Parameter(description = "关键字，匹配用户名或姓名。") @RequestParam(name = "keyword", required = false) String keyword,

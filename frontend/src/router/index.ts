@@ -7,7 +7,7 @@ import { createGuardWarningDeduper, resolveGuardDecision, type GuardRedirectDeci
 const ROLE = ROLE_CODES
 const HOME_CANDIDATES = ['/data', '/orders', '/product', '/product/manage', '/product/manage/products', '/talent', '/ops/shipping', '/sample', '/system/users']
 const CHANNEL_STAFF_HOME_CANDIDATES = ['/product', '/talent', '/sample', '/data']
-const BIZ_STAFF_HOME_CANDIDATES = ['/product/manage/products', '/sample', '/data']
+const BIZ_STAFF_HOME_CANDIDATES = ['/product/manage', '/product/manage/products', '/sample', '/data']
 const OPS_STAFF_HOME_CANDIDATES = ['/ops/shipping']
 
 const router = createRouter({
@@ -31,7 +31,7 @@ const router = createRouter({
         {
           path: 'product/manage',
           component: () => import('../views/product/ActivityList.vue'),
-          meta: { title: '活动列表', roles: [ROLE.BIZ_LEADER] }
+          meta: { title: '活动列表', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
         },
         {
           path: 'product/manage/products',
@@ -45,17 +45,17 @@ const router = createRouter({
         {
           path: 'product/manage/:activityId',
           component: () => import('../views/product/index.vue'),
-          meta: { title: '商品列表', roles: [ROLE.BIZ_LEADER] }
+          meta: { title: '商品列表', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
         },
         {
           path: 'product/activity',
           redirect: '/product/manage',
-          meta: { title: '商品管理', roles: [ROLE.BIZ_LEADER] }
+          meta: { title: '商品管理', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
         },
         {
           path: 'product/activity/:activityId',
           redirect: (to) => `/product/manage/${to.params.activityId}`,
-          meta: { title: '商品列表', roles: [ROLE.BIZ_LEADER] }
+          meta: { title: '商品列表', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
         },
         {
           path: 'product/:id',

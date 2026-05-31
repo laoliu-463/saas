@@ -3,6 +3,8 @@ package com.colonel.saas.service.activity;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import org.junit.jupiter.api.Test;
 
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ActivityPromotionSupportTest {
@@ -23,5 +25,29 @@ class ActivityPromotionSupportTest {
         activity.setActivityStatusCode(3);
         activity.setActivityStatusText("报名中");
         assertThat(ActivityPromotionSupport.isPromoting(activity)).isFalse();
+    }
+
+    @Test
+    void isPromoting_shouldPreferStatusCodeWhenPresent() {
+        assertThat(ActivityPromotionSupport.isPromoting(3, "推广中")).isFalse();
+        assertThat(ActivityPromotionSupport.isPromoting(4, "推广中")).isFalse();
+    }
+
+    @Test
+    void shouldForceLibraryDisplay_requiresPromotingAndRecruiterAssigned() {
+        UUID recruiterId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        ColonelsettlementActivity assignedPromoting = new ColonelsettlementActivity();
+        assignedPromoting.setActivityStatusCode(5);
+        assignedPromoting.setRecruiterUserId(recruiterId);
+        assertThat(ActivityPromotionSupport.shouldForceLibraryDisplay(assignedPromoting)).isTrue();
+
+        ColonelsettlementActivity promotingOnly = new ColonelsettlementActivity();
+        promotingOnly.setActivityStatusCode(5);
+        assertThat(ActivityPromotionSupport.shouldForceLibraryDisplay(promotingOnly)).isFalse();
+
+        ColonelsettlementActivity assignedNotPromoting = new ColonelsettlementActivity();
+        assignedNotPromoting.setActivityStatusCode(3);
+        assignedNotPromoting.setRecruiterUserId(recruiterId);
+        assertThat(ActivityPromotionSupport.shouldForceLibraryDisplay(assignedNotPromoting)).isFalse();
     }
 }

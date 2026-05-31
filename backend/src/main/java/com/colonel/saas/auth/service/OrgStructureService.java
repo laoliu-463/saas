@@ -53,7 +53,6 @@ public class OrgStructureService {
     /** 招商组允许的组长角色集合 */
     private static final Set<String> RECRUITER_LEADER_ROLES = Set.of(
             RoleCodes.BIZ_LEADER,
-            RoleCodes.COLONEL_LEADER,
             RoleCodes.ADMIN);
 
     /** 渠道组允许的组长角色集合 */
@@ -69,7 +68,6 @@ public class OrgStructureService {
     /** 部门负责人允许使用各业务线组长角色 */
     private static final Set<String> DEPARTMENT_LEADER_ROLES = Set.of(
             RoleCodes.BIZ_LEADER,
-            RoleCodes.COLONEL_LEADER,
             RoleCodes.CHANNEL_LEADER,
             RoleCodes.OPS_STAFF,
             RoleCodes.ADMIN);

@@ -11,14 +11,26 @@
       抖店外部寄样暂未接通，已为你创建系统内寄样申请（LOCAL_FALLBACK）。
     </n-alert>
     <n-form label-placement="left" label-width="96">
-      <n-form-item label="私海达人" required>
+      <n-form-item v-if="isAdmin" label="渠道" required>
+        <n-select
+          v-model:value="form.channelUserId"
+          :options="channelOptions"
+          :loading="channelLoading"
+          filterable
+          clearable
+          placeholder="选择渠道"
+          data-testid="quick-sample-channel"
+          @update:value="handleChannelChange"
+        />
+      </n-form-item>
+      <n-form-item :label="talentFieldLabel" required>
         <n-select
           v-model:value="form.talentIds"
           :options="talentOptions"
           :loading="talentLoading"
           multiple
-          filterable
-          placeholder="选择当前渠道已认领达人"
+          :placeholder="talentPlaceholder"
+          :disabled="isAdmin && !form.channelUserId"
           data-testid="quick-sample-talents"
         >
           <template #empty>
@@ -70,21 +82,41 @@ import { computed, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { applyQuickSample } from '../../../api/product'
 import { getActivityProductSkus } from '../../../api/activityProduct'
-import { getTalentPrivate, parsePrivateTalentPoolResponse, toPrivateTalentSelectOption } from '../../../api/talent'
+import {
+  getTalentPrivate,
+  getTalentByChannel,
+  parsePrivateTalentPoolResponse,
+  toPrivateTalentSelectOption
+} from '../../../api/talent'
+import { useAuthStore } from '../../../stores/auth'
+import { loadSampleChannelOptions } from '../../sample/sample-user-filter-options'
 import ProductSpecSelector from './ProductSpecSelector.vue'
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 const props = defineProps<{ product: any | null }>()
 const emit = defineEmits<{ success: [] }>()
 
 const visible = defineModel<boolean>('show', { default: false })
 const message = useMessage()
+const authStore = useAuthStore()
 const submitting = ref(false)
+const channelLoading = ref(false)
+const channelOptions = ref<Array<{ label: string; value: string }>>([])
 const talentLoading = ref(false)
 const talentLoadFailed = ref(false)
 const talentOptions = ref<Array<{ label: string; value: string }>>([])
+/** 管理员可以选渠道并查询该渠道的达人，非管理员只能选自己的私海 */
+const isAdmin = computed(() => authStore.isAdmin)
+const talentFieldLabel = computed(() => (isAdmin.value ? '选择达人' : '私海达人'))
+const talentPlaceholder = computed(() =>
+  isAdmin.value ? '请先选择渠道，再选择达人' : '选择当前渠道已认领达人'
+)
 const talentEmptyHint = computed(() => {
   if (talentLoading.value) return '加载中…'
   if (talentLoadFailed.value) return '加载失败，请关闭弹窗后重试'
+  if (isAdmin.value && !form.value.channelUserId) return '请先选择渠道'
+  if (isAdmin.value) return '该渠道暂无认领达人'
   return '暂无私海达人，请先在「达人」页认领后再选'
 })
 const skuOptions = ref<any[]>([])
@@ -115,6 +147,7 @@ const loadSkus = async () => {
 }
 
 const form = ref({
+  channelUserId: '' as string,
   talentIds: [] as string[],
   skuId: '',
   specification: '',
@@ -129,35 +162,81 @@ const handleSkuSelect = (sku: any | null) => {
   form.value.specification = String(sku?.skuName || '').trim()
 }
 
+const mapTalentSelectOptions = (records: any[]) =>
+  records
+    .map((item: any) => toPrivateTalentSelectOption(item))
+    .filter((item: { label: string; value: string }) => item.label && item.value)
+
+const loadChannels = async () => {
+  channelLoading.value = true
+  try {
+    channelOptions.value = await loadSampleChannelOptions('')
+  } catch {
+    channelOptions.value = []
+  } finally {
+    channelLoading.value = false
+  }
+}
+
 const loadTalents = async () => {
   talentLoading.value = true
   talentLoadFailed.value = false
   try {
-    const res: any = await getTalentPrivate()
-    talentOptions.value = parsePrivateTalentPoolResponse(res)
-      .map((item: any) => toPrivateTalentSelectOption(item))
-      .filter((item: { label: string; value: string }) => item.label && item.value)
-    if (!talentOptions.value.length) {
-      message.info('当前账号私海暂无达人，请先在达人页认领')
+    if (isAdmin.value) {
+      // 管理员：必须先选渠道才能选达人
+      const channelUserId = String(form.value.channelUserId || '').trim()
+      if (!channelUserId) {
+        talentOptions.value = []
+        return
+      }
+      if (!UUID_PATTERN.test(channelUserId)) {
+        talentOptions.value = []
+        talentLoadFailed.value = true
+        message.warning('渠道选项无效，请重新选择')
+        return
+      }
+      // 按渠道查达人（path 参数须为 UUID）
+      const res: any = await getTalentByChannel(channelUserId)
+      talentOptions.value = mapTalentSelectOptions(parsePrivateTalentPoolResponse({ data: res }))
+    } else {
+      // 非管理员：查自己的私海
+      const res: any = await getTalentPrivate()
+      talentOptions.value = mapTalentSelectOptions(parsePrivateTalentPoolResponse(res))
+      if (!talentOptions.value.length) {
+        message.info('当前账号私海暂无达人，请先在达人页认领')
+      }
     }
   } catch (error: any) {
     talentOptions.value = []
     talentLoadFailed.value = true
-    notifyApiFailure(error, message, { fallbackMessage: '加载私海达人失败' })
+    notifyApiFailure(error, message, {
+      fallbackMessage: isAdmin.value ? '加载达人失败' : '加载私海达人失败'
+    })
   } finally {
     talentLoading.value = false
   }
 }
 
+const handleChannelChange = () => {
+  // 切换渠道时清空已选达人，重新加载该渠道的达人
+  form.value.talentIds = []
+  if (form.value.channelUserId) {
+    loadTalents()
+  }
+}
+
 watch(visible, (show) => {
   if (show) {
+    if (isAdmin.value) {
+      loadChannels()
+    }
     loadTalents()
     loadSkus()
   }
 })
 
 const resetForm = () => {
-  form.value = { talentIds: [], skuId: '', specification: '', quantity: 1, recipientName: '', recipientPhone: '', recipientAddress: '', remark: '' }
+  form.value = { channelUserId: '', talentIds: [], skuId: '', specification: '', quantity: 1, recipientName: '', recipientPhone: '', recipientAddress: '', remark: '' }
   skuOptions.value = []
 }
 
@@ -166,8 +245,12 @@ const submit = async () => {
     message.warning('商品信息不完整')
     return
   }
+  if (isAdmin.value && !form.value.channelUserId) {
+    message.warning('请先选择渠道')
+    return
+  }
   if (!form.value.talentIds.length) {
-    message.warning('请至少选择一位私海达人')
+    message.warning(isAdmin.value ? '请至少选择一位达人' : '请至少选择一位私海达人')
     return
   }
   submitting.value = true
@@ -180,7 +263,11 @@ const submit = async () => {
       recipientName: form.value.recipientName || undefined,
       recipientPhone: form.value.recipientPhone || undefined,
       recipientAddress: form.value.recipientAddress || undefined,
-      remark: form.value.remark || undefined
+      remark: form.value.remark || undefined,
+      // 管理员代选渠道时传递 channelUserId
+      channelUserId: isAdmin.value && UUID_PATTERN.test(String(form.value.channelUserId || '').trim())
+        ? String(form.value.channelUserId).trim()
+        : undefined
     })
     const data = res?.data || {}
     const fallbackUsed = data.items?.some((item: any) => item.fallback || item.fallbackType === 'LOCAL_FALLBACK')

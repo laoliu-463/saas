@@ -1,0 +1,210 @@
+version: 1
+plan:
+  name: '活动分配与推广入库后端+前端并行实现'
+  max_concurrency: 3
+  max_consecutive_failures: 2
+  max_cycles: 5
+  message_to_user: '后端和前端并行实现中，完成后会汇报进度。'
+
+tasks:
+  - id: backend-recommender-fields
+    title: '后端：colonel_activity 增加 recruiter 字段 + 分配 API + cascade'
+    prompt: |
+      实现活动分配招商负责人的后端逻辑。
+
+      【契约文档】必须严格参考：D:/Projects/SAAS/docs/接口/活动分配与推广入库API契约.md
+
+      【已有代码背景】
+      - colonelsettlementActivityMapper.selectByActivityId() 已存在
+      - colonel_activity 表已有 status 字段（varchar，存状态文本如"推广中"）
+      - ProductOperationState.assigneeId 字段已存在
+      - ProductBizStatusService.initStateIfAbsent() 已存在
+      - admin 用户角色代码: ROLE.ADMIN
+      - 招商用户角色: ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.COLONEL_LEADER
+      - SysUserMapper、SysUserService 存在
+
+      【必须实现的文件清单】
+
+      1. 新建 Flyway migration 文件：
+         D:/Projects/SAAS/backend/src/main/resources/db/migrate/V*__alter-colonel-activity-add-recruiter-fields.sql
+         添加字段: recruiter_user_id (UUID, NULL), recruiter_dept_id (UUID, NULL), assigned_at (TIMESTAMP, NULL), assigned_by (UUID, NULL)
+         使用 ADD COLUMN IF NOT EXISTS
+
+      2. 修改 ColonelsettlementActivity.java：
+         新增 4 个字段：recruiterUserId (UUID), recruiterDeptId (UUID), assignedAt (LocalDateTime), assignedBy (UUID)
+         加上 @TableField 注解
+
+      3. 修改 ColonelsettlementActivityMapper.java：
+         新增方法: updateAssignee(String activityId, UUID recruiterUserId, UUID recruiterDeptId, UUID assignedBy)
+         方法: selectByActivityId (已存在)
+
+      4. 修改 ColonelsettlementActivityMapper.xml：
+         新增 <update id="updateAssignee"> SQL
+         修改 selectByActivityId 结果映射，增加 recruiterUserId, recruiterDeptId, assignedAt, assignedBy 字段映射
+
+      5. 修改 ColonelActivityController.java：
+         新增接口: PUT /colonel/activities/{activityId}/assignee
+         请求体: { "assigneeId": "UUID" } (assigneeId 为 null 时清除分配)
+         权限: 仅 admin
+         校验: 目标用户存在、启用、拥有 biz_leader/biz_staff/colonel_leader 角色之一
+         业务: 更新 colonel_activity 的 4 个字段 + 级联更新 product_operation_state 的 assignee_id
+         复用 SysUserService 查询用户信息
+
+      6. 修改 ProductService.java：
+         在 upsertSnapshotsWithStats() 中：
+         - 已实现: 查询 colonel_activity.status，"推广中" 则 autoAddToLibraryIfPromoting
+         - 补充: 同时查询 colonel_activity.recruiterUserId，
+           对新同步商品（state 不存在或 assignee_id 为 null）设置 state.assigneeId = recruiterUserId
+           已有 assignee_id 的商品不要覆盖
+
+      【约束】
+      - 不改现有其他接口的返回结构，只在 colonel_activity 相关查询上追加字段
+      - 不引入新的 role 校验方式，复用 SysUserService.findById 或类似方法
+      - 级联更新 product_operation_state.assignee_id 使用 batch update 或单条 update，不做全表扫描
+      - 所有 Java 代码编译通过
+
+      【交付】
+      - 完成上述所有文件修改
+      - 编译确认: mvn compile -q (在 D:/Projects/SAAS/backend 目录)
+      - 交付清单写入 D:/Projects/SAAS/.mavis/plans/backend-recommender-fields-deliverable.md
+    assigned_to: developer
+    verified_by: verifier
+    verify_prompt: |
+      验证后端 recruiter 字段实现是否完整：
+
+      1. 检查 Flyway migration 文件是否存在且包含正确的 ADD COLUMN 语句
+      2. 检查 ColonelsettlementActivity.java 是否包含 4 个新字段（带 @TableField）
+      3. 检查 ColonelActivityController 是否有 PUT /colonel/activities/{activityId}/assignee 接口
+      4. 检查接口是否有 admin 权限校验
+      5. 检查是否有级联更新 product_operation_state.assignee_id 的逻辑
+      6. 检查 upsertSnapshotsWithStats 是否在同步时继承 recruiterUserId
+      7. 编译确认: 在 D:/Projects/SAAS/backend 执行 mvn compile -q 确认无编译错误
+
+      每个检查项独立验证，不只看文件存在。
+    timeout_ms: 2400000
+
+  - id: backend-display-rules
+    title: '后端：推广中展示规则 + autoAddToLibraryIfPromoting 完善'
+    prompt: |
+      实现推广中活动的商品库强制展示规则。
+
+      【契约文档】必须严格参考：D:/Projects/SAAS/docs/接口/活动分配与推广入库API契约.md
+
+      【已有代码背景】
+      - ProductService.upsertSnapshotsWithStats() 已新增:
+        - 查询 colonel_activity.status 判断是否"推广中"
+        - 调用 autoAddToLibraryIfPromoting(state, activityId)
+      - autoAddToLibraryIfPromoting() 已实现：设置 selectedToLibrary=true, selectedAt=NOW(), 调用 operationStateMapper.updateById(state)
+      - ProductDisplayRuleService.applyForActivityId(String activityId) 存在
+      - autoAddToLibraryIfPromoting 尚未调用 productDisplayRuleService.applyForActivityId
+
+      【必须修改的内容】
+
+      1. ProductService.java:
+         在 autoAddToLibraryIfPromoting() 方法末尾，
+         添加: productDisplayRuleService.applyForActivityId(activityId)
+         注意：方法签名需要注入 ProductDisplayRuleService
+
+      2. ProductDisplayRuleService.java:
+         找到 applyForActivityId(String activityId, DisplayRuleOperatorContext operator) 方法
+         在处理展示规则时，增加以下逻辑（不能破坏现有逻辑）：
+         - 先执行现有的去重和优先级选择逻辑
+         - 然后对"推广中"活动的商品做保护：
+           如果某 product_operation_state 对应的 colonel_activity.status 包含"推广中"，
+           且 selectedToLibrary == true，
+           则强制保证该记录的 displayStatus = DISPLAYING，
+           即使被现有去重规则选为"HIDDEN"也要覆盖为"DISPLAYING"
+         - 查询 colonel_activity 的 status 字段判断是否推广中（通过 activityId 查 mapper）
+         - 使用 ColonelsettlementActivityMapper.selectByActivityId()
+
+      【约束】
+      - displayStatus 只在推广中活动的商品上做保护，不要影响其他商品的去重逻辑
+      - 保护的是"入库+推广中"的商品，不是所有入库商品
+      - 编译通过
+
+      【交付】
+      - 完成上述所有文件修改
+      - 编译确认: mvn compile -q (在 D:/Projects/SAAS/backend 目录)
+      - 交付清单写入 D:/Projects/SAAS/.mavis/plans/backend-display-rules-deliverable.md
+    assigned_to: developer
+    depends_on: []
+    verified_by: verifier
+    verify_prompt: |
+      验证推广中展示规则实现：
+
+      1. 检查 autoAddToLibraryIfPromoting 是否调用了 productDisplayRuleService.applyForActivityId
+      2. 检查 ProductDisplayRuleService.applyForActivityId 中是否有推广中活动商品强制展示的逻辑
+      3. 确认强制展示的条件是：colonel_activity.status 包含"推广中" 且 selectedToLibrary=true
+      4. 确认不会对非推广中活动的商品做强制展示
+      5. 编译确认: mvn compile -q 在 D:/Projects/SAAS/backend
+    timeout_ms: 1800000
+
+  - id: frontend-activity-assign
+    title: '前端：活动列表分配入口 + 商品库推广中展示'
+    prompt: |
+      实现活动分配招商负责人和商品库推广中展示的前端逻辑。
+
+      【契约文档】必须严格参考：D:/Projects/SAAS/docs/接口/活动分配与推广入库API契约.md
+
+      【已有代码背景】
+      - 前端已有活动列表页面（可能在 views/ 下）
+      - 前端已有商品库页面 (ProductLibrary.vue)
+      - 前端 API 客户端在 api/ 目录下
+      - 路由定义在 src/router/
+      - 前端使用 Vue 3 + TypeScript + Naive UI
+      - 已有 GET /users/master-data/recruiters 接口
+      - 已有 PUT colonelActivities.assignee 的后端 API（本次一并实现）
+
+      【必须实现的文件清单】
+
+      1. 新增 API 客户端方法:
+         在 D:/Projects/SAAS/frontend/src/api/ 下找到 colonel 或 activity 相关 API 文件
+         新增方法: assignColonelActivity(activityId: string, assigneeId: string | null)
+         调用: PUT /colonel/activities/{activityId}/assignee
+
+      2. 活动列表页面改造（找到对应的 .vue 或 .tsx 文件）：
+         - 找到活动列表的操作列（如果有的话）
+         - 新增"分配招商组长"按钮
+         - 点击按钮弹出 N-Drawer 或 N-Modal 弹窗
+         - 弹窗内下拉框选项来自 GET /users/master-data/recruiters
+         - 提交时调用 assignColonelActivity
+         - 成功后刷新列表（重新请求 GET /colonel/activities）
+         - 列展示 recruiterUserName（如果后端已返回该字段）
+
+      3. 文案统一（V1 必做）：
+         搜索所有包含"招商经理"、"招商负责人"、"招商人员"的文本，
+         统一替换为"招商组长"
+         重点文件: views/product/、views/sample/、商品卡片组件
+         不要改错业务逻辑，只改文案
+
+      4. 商品库页面（ProductLibrary.vue 或相关组件）：
+         - 确认联盟推广状态(statusText)列正确展示
+         - 确认活动推广状态筛选可用（按 colonel_activity.statusText 筛选）
+         - 确认筛选条件里"推广中"选项能正确过滤
+
+      【约束】
+      - 所有 API 调用使用已有的 axios 实例或 fetch 封装
+      - 不新增路由
+      - 不修改后端接口契约
+      - 前端测试: npx vitest run --reporter=verbose（全部通过）
+
+      【交付】
+      - 完成上述所有文件修改
+      - 前端测试: npx vitest run --reporter=verbose 在 D:/Projects/SAAS/frontend 确认通过
+      - 前端构建: npm run build 在 D:/Projects/SAAS/frontend 确认通过
+      - 交付清单写入 D:/Projects/SAAS/.mavis/plans/frontend-activity-assign-deliverable.md
+    assigned_to: developer
+    depends_on: [backend-recommender-fields]
+    verified_by: verifier
+    verify_prompt: |
+      验证前端实现：
+
+      1. 检查是否有 assignColonelActivity API 客户端方法（调用 PUT /colonel/activities/{id}/assignee）
+      2. 检查活动列表页面是否有"分配招商组长"按钮或入口
+      3. 检查分配弹窗的下拉候选人是否来自 /users/master-data/recruiters
+      4. 检查"招商经理"/"招商负责人"等旧文案是否已统一改为"招商组长"
+      5. 运行 npx vitest run 在 D:/Projects/SAAS/frontend 确认所有测试通过
+      6. 运行 npm run build 在 D:/Projects/SAAS/frontend 确认构建通过
+
+      每个检查项独立验证。
+    timeout_ms: 2400000

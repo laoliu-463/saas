@@ -43,7 +43,7 @@ class SysRoleServiceTest {
         sysRoleService = new SysRoleService(sysRoleMapper, sysUserRoleMapper, operationLogService);
         testRole = new SysRole();
         testRole.setId(roleId);
-        testRole.setRoleCode("TEST_ROLE");
+        testRole.setRoleCode("test_role");
         testRole.setRoleName("测试角色");
         testRole.setDataScope(1);
         testRole.setStatus(1);
@@ -54,7 +54,7 @@ class SysRoleServiceTest {
     void findPage_returnsPageWithData() {
         SysRoleVO vo = new SysRoleVO();
         vo.setId(roleId);
-        vo.setRoleCode("TEST_ROLE");
+        vo.setRoleCode("test_role");
         Page<SysRoleVO> page = new Page<>(1, 10);
         page.setRecords(List.of(vo));
         page.setTotal(1);
@@ -74,7 +74,7 @@ class SysRoleServiceTest {
 
         SysRoleVO result = sysRoleService.getById(roleId);
 
-        assertThat(result.getRoleCode()).isEqualTo("TEST_ROLE");
+        assertThat(result.getRoleCode()).isEqualTo("test_role");
         verify(sysRoleMapper).selectById(roleId);
     }
 
@@ -89,7 +89,7 @@ class SysRoleServiceTest {
 
     @Test
     void create_successfullyCreatesRole() {
-        when(sysRoleMapper.findByRoleCode("NEW_ROLE")).thenReturn(Optional.empty());
+        when(sysRoleMapper.findByRoleCode(anyString())).thenReturn(Optional.empty());
         when(sysRoleMapper.insert(any())).thenAnswer(invocation -> {
             SysRole role = invocation.getArgument(0);
             role.setId(UUID.randomUUID());
@@ -97,23 +97,23 @@ class SysRoleServiceTest {
         });
 
         SysRoleCreateRequest request = new SysRoleCreateRequest(
-                "NEW_ROLE", "新角色", 1, 1, "新角色备注");
+                null, "新角色", 1, 1, "新角色备注");
 
         SysRoleVO result = sysRoleService.create(request, UUID.randomUUID());
 
         ArgumentCaptor<SysRole> captor = ArgumentCaptor.forClass(SysRole.class);
         verify(sysRoleMapper).insert(captor.capture());
-        assertThat(captor.getValue().getRoleCode()).isEqualTo("NEW_ROLE");
+        assertThat(captor.getValue().getRoleCode()).matches("^[a-z][a-z0-9_]*$");
         assertThat(captor.getValue().getDataScope()).isEqualTo(1);
         assertThat(result.getRoleName()).isEqualTo("新角色");
     }
 
     @Test
     void create_throwsWhenRoleCodeExists() {
-        when(sysRoleMapper.findByRoleCode("EXISTING")).thenReturn(Optional.of(testRole));
+        when(sysRoleMapper.findByRoleCode("existing")).thenReturn(Optional.of(testRole));
 
         SysRoleCreateRequest request = new SysRoleCreateRequest(
-                "EXISTING", "重复角色", 1, 1, null);
+                "existing", "重复角色", 1, 1, null);
 
         assertThatThrownBy(() -> sysRoleService.create(request, UUID.randomUUID()))
                 .isInstanceOf(RuntimeException.class)
@@ -123,10 +123,10 @@ class SysRoleServiceTest {
     @Test
     void update_successfullyUpdatesRole() {
         when(sysRoleMapper.selectById(roleId)).thenReturn(testRole);
-        when(sysRoleMapper.findByRoleCode("UPDATED_ROLE")).thenReturn(Optional.empty());
+        when(sysRoleMapper.findByRoleCode("updated_role")).thenReturn(Optional.empty());
 
         SysRoleUpdateRequest request = new SysRoleUpdateRequest(
-                "UPDATED_ROLE", "更新角色", 2, 1, "更新备注");
+                "updated_role", "更新角色", 2, 1, "更新备注");
 
         SysRoleVO result = sysRoleService.update(roleId, request, UUID.randomUUID());
 
@@ -140,7 +140,7 @@ class SysRoleServiceTest {
         when(sysRoleMapper.selectById(roleId)).thenReturn(null);
 
         SysRoleUpdateRequest request = new SysRoleUpdateRequest(
-                "CODE", "名称", 1, 1, null);
+                "code", "名称", 1, 1, null);
 
         assertThatThrownBy(() -> sysRoleService.update(roleId, request, UUID.randomUUID()))
                 .isInstanceOf(RuntimeException.class)
@@ -184,6 +184,31 @@ class SysRoleServiceTest {
         assertThatThrownBy(() -> sysRoleService.delete(roleId, UUID.randomUUID()))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("角色仍被用户使用");
+    }
+
+    @Test
+    void create_throwsWhenUsingReservedSystemRoleCode() {
+        SysRoleCreateRequest request = new SysRoleCreateRequest(
+                RoleCodes.BIZ_STAFF, "重复预置", 1, 1, null);
+
+        assertThatThrownBy(() -> sysRoleService.create(request, UUID.randomUUID()))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("不能使用系统预置角色编码");
+        verify(sysRoleMapper, never()).insert(any());
+    }
+
+    @Test
+    void update_throwsWhenChangingSystemRoleCode() {
+        testRole.setRoleCode(RoleCodes.BIZ_LEADER);
+        when(sysRoleMapper.selectById(roleId)).thenReturn(testRole);
+
+        SysRoleUpdateRequest request = new SysRoleUpdateRequest(
+                "other_leader", "招商组长", 2, 1, null);
+
+        assertThatThrownBy(() -> sysRoleService.update(roleId, request, UUID.randomUUID()))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("系统内置角色编码不允许修改");
+        verify(sysRoleMapper, never()).updateById(any());
     }
 
     @Test

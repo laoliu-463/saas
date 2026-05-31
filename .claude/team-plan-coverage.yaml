@@ -1,0 +1,160 @@
+version: 1
+plan:
+  name: '补充测试覆盖率'
+  max_concurrency: 5
+  max_consecutive_failures: 2
+  max_cycles: 3
+  auto_reject_retries: 1
+
+tasks:
+  - id: frontend-api-tests
+    title: '补前端 api 模块测试（douyin/activityProduct/auth/dashboard/order）'
+    prompt: |
+      在 D:\Projects\SAAS\frontend 目录下补充以下 API 模块的单元测试，使覆盖率达标：
+
+      **目标文件及当前覆盖：**
+      1. `src/api/douyin.ts` — 当前 39%，需补到 80%+
+      2. `src/api/activityProduct.ts` — 当前 37%，需补到 80%+
+      3. `src/api/auth.ts` — 当前 0%，需补到 60%+
+      4. `src/api/dashboard.ts` — 当前 0%，需补到 60%+
+      5. `src/api/order.ts` — 当前 0%，需补到 60%+
+
+      **原则：**
+      - 每个导出函数都要有测试
+      - 优先测错误分支（网络失败、401、500、timeout）
+      - 使用 Vitest + mock axios（参考现有 `src/api/*.test.ts` 的写法，如 `src/api/sample.test.ts`）
+      - 不要 mock 掉整个模块，要 mock 依赖的 request 方法
+      - 同步跑 `npm run test:coverage` 确认覆盖率达标（statement 80%+）
+      - 如果跑完低于 80%，继续补测试直到达标
+      - 测试文件命名：`src/api/{module}.test.ts`
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      在 D:\Projects\SAAS\frontend 目录下执行 `npm run test:coverage`，检查输出中以下文件的覆盖率：
+      - api/activityProduct.ts >= 80%
+      - api/douyin.ts >= 80%
+      - api/auth.ts >= 60%
+      - api/dashboard.ts >= 60%
+      - api/order.ts >= 60%
+      如果任何一项低于目标，报告具体数字和未覆盖行号。
+    timeout_ms: 1800000
+
+  - id: frontend-utils-stores
+    title: '补前端 utils/stores/theme/composables 测试'
+    prompt: |
+      在 D:\Projects\SAAS\frontend 目录下补充以下模块的单元测试：
+
+      **目标文件及当前覆盖：**
+      1. `src/utils/request.ts` — 当前 14%，需补到 60%+（重点！测试请求拦截器、错误处理）
+      2. `src/utils/shippingBatch.ts` — 当前 0%，需补到 80%+
+      3. `src/utils/media.ts` — 当前 0%，需补到 80%+
+      4. `src/stores/app.ts` — 当前 0%，需补到 60%+
+      5. `src/composables/useEnvironment.ts` — 当前 0%，需补到 60%+
+      6. `src/theme/brand.ts` — 当前 0%，需补到 60%+
+      7. `src/theme/naiveTheme.ts` — 当前 0%，需补到 60%+
+
+      **原则：**
+      - 参考现有测试写法（如 `src/utils/requestError.test.ts`、`src/router/guard.test.ts`）
+      - `request.ts` 重点测试拦截器逻辑、token 刷新、401 处理
+      - `shippingBatch.ts` 测解析函数的各种输入边界
+      - `media.ts` 测 URL 生成、尺寸处理
+      - stores/composables/theme 测 Pinia store 状态、theme 生成
+      - 同步跑 `npm run test:coverage` 确认各文件达标
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      在 D:\Projects\SAAS\frontend 目录下执行 `npm run test:coverage`，检查输出中：
+      - utils/request.ts >= 60%
+      - utils/shippingBatch.ts >= 80%
+      - utils/media.ts >= 80%
+      - stores/app.ts >= 60%
+      - composables/useEnvironment.ts >= 60%
+      - theme/brand.ts >= 60%
+      - theme/naiveTheme.ts >= 60%
+      报告具体数字。
+    timeout_ms: 1800000
+
+  - id: frontend-views-gaps
+    title: '补前端 views 覆盖率缺口'
+    prompt: |
+      在 D:\Projects\SAAS\frontend 目录下，针对以下 views 文件补测试：
+
+      **目标文件及当前覆盖：**
+      1. `src/views/product/product-library-display.ts` — 当前 57%，需补到 80%+
+         - 未覆盖行: 1-32, 133-173, 151-173（按测试输出）
+      2. `src/views/product/product-filters.ts` — 当前 75%，需补到 80%+
+         - 未覆盖行: 66-476, 485-491
+      3. `src/views/product/product-operation-log-display.ts` — 当前 78%，需补到 85%+
+         - 未覆盖行: 49, 251, 279-283
+      4. `src/views/talent/composables/useTalentFilters.ts` — 当前 49%，需补到 70%+
+         - 未覆盖行: 25-144, 156-158
+
+      **原则：**
+      - 先读现有测试文件 `src/views/product/*.test.ts` 了解写法
+      - 用 `@vue/test-utils` mount 组件
+      - 用 `vi.mock` mock API 调用
+      - 跑 `npm run test:coverage` 确认覆盖率
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      在 D:\Projects\SAAS\frontend 目录下执行 `npm run test:coverage`，检查：
+      - views/product/product-library-display.ts >= 80%
+      - views/product/product-filters.ts >= 80%
+      - views/product/product-operation-log-display.ts >= 85%
+      - views/talent/composables/useTalentFilters.ts >= 70%
+      报告具体数字。
+    timeout_ms: 1800000
+
+  - id: backend-dto-tests
+    title: '补后端 DTO/Entity/Mapper 测试'
+    prompt: |
+      在 D:\Projects\SAAS\backend 目录下补充测试：
+
+      **重点包（当前 0-17%）：**
+      1. `src/main/java/com/colonel/saas/mapper/` — 所有 Mapper 写集成测试
+         - 用 Testcontainers 跑真实 PostgreSQL（参考 `BaseIntegrationTest.java` 的写法）
+         - 每个 Mapper 测 findAllActive、findByDeptCode、countUsersByDeptId、countChildGroups、softDeleteById
+      2. `src/main/java/com/colonel/saas/dto/` — DTO 序列化/反序列化测试
+         - 每个 DTO 类测 JSON 序列化/反序列化、字段校验
+      3. `src/main/java/com/colonel/saas/entity/` — Entity 构造和 getter 测试
+         - 重点: SysDept、SysUser、ColonelPartner、PromotionLink、PerformanceRecord 等低覆盖 entity
+      4. `src/main/java/com/colonel/saas/gateway/logistics/kdniao/` — 当前 41%，补到 70%+
+
+      **已有集成测试基类参考：**
+      `src/test/java/com/colonel/saas/testsupport/BaseIntegrationTest.java`
+
+      **原则：**
+      - Mapper 测试必须用 Testcontainers，不能 mock 数据库
+      - 跑 `mvn test` 确认所有新测试通过
+      - JaCoCo 报告会生成到 `target/site/jacoco/`
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      在 D:\Projects\SAAS\backend 目录下执行 `mvn test -DskipTests=false` 确认新测试全部通过。
+      然后检查 `target/site/jacoco/jacoco.csv` 中以下包的覆盖率是否提升：
+      - mapper 包: 应 >= 60%
+      - dto.performance: 应 >= 40%
+      - dto.order: 应 >= 40%
+      - dto.sample: 应 >= 40%
+      - entity: 应 >= 30%
+      - gateway.logistics.kdniao: 应 >= 70%
+      报告具体数字。
+    timeout_ms: 1800000
+
+  - id: update-thresholds
+    title: '更新前端 Vitest 覆盖率阈值'
+    prompt: |
+      修改 D:\Projects\SAAS\frontend\vitest.config.ts 中的覆盖率阈值：
+      - 当前 thresholds 设置为 100%（不合理，导致测试无法通过）
+      - 调整为合理阈值：statements: 75, branches: 70, functions: 65, lines: 75
+      - 跑 `npm run test:coverage` 确认全局通过（所有文件 coverage 达标）
+
+      注意：阈值调低是为了让 CI 能跑通，后续迭代再提高。
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      在 D:\Projects\SAAS\frontend 目录下执行 `npm run test:coverage`，确认：
+      1. 无 "Coverage does not meet global threshold" 错误
+      2. 总覆盖率 >= 72%（不低于修改前）
+      3. 所有单独文件的覆盖率均达到 vitest.config.ts 中设置的阈值
+    timeout_ms: 300000

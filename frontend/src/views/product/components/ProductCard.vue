@@ -55,6 +55,14 @@
               {{ product.latestDecisionLabel }}
             </n-tag>
           </div>
+          <p
+            v-if="product.libraryStatusHint"
+            class="card-library-hint"
+            data-testid="product-library-status-hint"
+            :title="product.libraryStatusHint"
+          >
+            {{ product.libraryStatusHint }}
+          </p>
 
           <div class="card-metrics">
             <div class="metric-item">
@@ -605,6 +613,17 @@ const handleImageError = (event: Event) => {
   gap: 4px;
   flex-wrap: wrap;
   min-height: 28px;
+}
+
+.card-library-hint {
+  margin: -4px 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--n-text-color-3);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .card-metrics {

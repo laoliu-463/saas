@@ -6,7 +6,17 @@ import {
   formatActivityCategories,
   formatMechanismSummary,
   resolveActivityAssigneeName,
-  resolveActivityStatusLabel
+  resolveActivityStatusLabel,
+  resolveActivitySyncTime,
+  formatActivitySyncTime,
+  ACTIVITY_ASSIGNMENT_FILTER_OPTIONS,
+  RECRUITER_MINE_ASSIGNMENT_FILTER_OPTIONS,
+  resolveDefaultAssignmentFilter,
+  resolveAssignmentFilterOptions,
+  resolveEffectiveAssignmentFilter,
+  isActivityPromoting,
+  isActivityAssigned,
+  shouldForceLibraryDisplayFromRow
 } from './activity-list-display'
 
 describe('activity-list-display', () => {
@@ -29,8 +39,13 @@ describe('activity-list-display', () => {
   })
 
   it('resolves status label from row', () => {
-    expect(resolveActivityStatusLabel({ statusText: '报名中' })).toBe('报名中')
+    expect(resolveActivityStatusLabel({ status: 3 })).toBe('报名中')
     expect(resolveActivityStatusLabel({ status: 5 })).toBe('推广中')
+    expect(resolveActivityStatusLabel({ activityStatus: 5 })).toBe('推广中')
+    expect(resolveActivityStatusLabel({ status: 7 })).toBe('报名结束')
+    expect(resolveActivityStatusLabel({})).toBe('未知')
+    expect(resolveActivityStatusLabel({ status: 0 })).toBe('未知')
+    expect(resolveActivityStatusLabel({ status: 5, statusText: '报名中' })).toBe('推广中')
   })
 
   it('counts promoting and pending products', () => {
@@ -54,5 +69,44 @@ describe('activity-list-display', () => {
   it('exposes seven status tabs including all', () => {
     expect(ACTIVITY_STATUS_TABS).toHaveLength(7)
     expect(ACTIVITY_STATUS_TABS[0]?.label).toBe('全部')
+  })
+
+  it('formats activity sync time for list display', () => {
+    expect(formatActivitySyncTime('2026-05-29T16:52:00')).toBe('2026-05-29 16:52')
+    expect(resolveActivitySyncTime({ lastSyncAt: '2026-05-29T16:52:00' })).toBe('2026-05-29 16:52')
+  })
+
+  it('exposes assignment filter options', () => {
+    expect(ACTIVITY_ASSIGNMENT_FILTER_OPTIONS.map((item) => item.value)).toEqual([
+      'all',
+      'assigned',
+      'unassigned',
+      'mine'
+    ])
+    expect(RECRUITER_MINE_ASSIGNMENT_FILTER_OPTIONS.map((item) => item.value)).toEqual(['mine'])
+  })
+
+  it('resolves role-based assignment filter defaults', () => {
+    expect(resolveDefaultAssignmentFilter(true)).toBe('all')
+    expect(resolveDefaultAssignmentFilter(false)).toBe('mine')
+    expect(resolveAssignmentFilterOptions(true)).toHaveLength(4)
+    expect(resolveAssignmentFilterOptions(false)).toHaveLength(1)
+    expect(resolveEffectiveAssignmentFilter(true, 'assigned')).toBe('assigned')
+    expect(resolveEffectiveAssignmentFilter(false, 'all')).toBe('mine')
+  })
+
+  it('detects promoting activity and auto library eligibility', () => {
+    expect(isActivityPromoting({ status: 5 })).toBe(true)
+    expect(isActivityPromoting({ statusText: '推广中' })).toBe(true)
+    expect(isActivityPromoting({ status: 3, statusText: '报名中' })).toBe(false)
+    expect(isActivityPromoting({ status: 3, statusText: '推广中' })).toBe(false)
+    expect(isActivityAssigned({ recruiterUserId: 'uuid' })).toBe(true)
+    expect(
+      shouldForceLibraryDisplayFromRow({
+        status: 5,
+        activityAssigneeId: 'uuid'
+      })
+    ).toBe(true)
+    expect(shouldForceLibraryDisplayFromRow({ status: 5 })).toBe(false)
   })
 })

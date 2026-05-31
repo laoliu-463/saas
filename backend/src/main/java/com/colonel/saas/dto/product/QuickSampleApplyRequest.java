@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 快速寄样申请请求 DTO。
@@ -52,4 +53,7 @@ public class QuickSampleApplyRequest {
     /** 收货地址，最大 512 字符 */
     @Size(max = 512, message = "recipientAddress 不能超过 512 字符")
     private String recipientAddress;
+
+    /** 渠道人员用户 ID（管理员代选渠道时必填），用于指定寄样归属的渠道人员 */
+    private UUID channelUserId;
 }

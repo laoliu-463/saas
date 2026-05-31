@@ -14,6 +14,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -39,6 +40,15 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
      */
     @Select("SELECT * FROM sys_user WHERE username = #{username} AND deleted = 0 LIMIT 1")
     Optional<SysUser> findByUsername(@Param("username") String username);
+
+    /**
+     * 根据真实姓名查询用户（精确匹配，用于姓名登录）。
+     *
+     * @param realName 真实姓名（已 trim）
+     * @return 匹配的用户列表；同名多人时由业务层拒绝登录
+     */
+    @Select("SELECT * FROM sys_user WHERE real_name = #{realName} AND deleted = 0")
+    List<SysUser> findByRealName(@Param("realName") String realName);
 
     /**
      * 检查渠道编码是否已存在（包含已删除的记录）

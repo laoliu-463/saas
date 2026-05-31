@@ -18,7 +18,7 @@ import java.util.UUID;
  *   <li>CHANNEL_STAFF：仅可查看自己作为 final_channel_user 的业绩</li>
  *   <li>CHANNEL_LEADER：可查看本部门下所有渠道人员的业绩</li>
  *   <li>BIZ_STAFF：仅可查看自己作为 final_recruiter_user 的业绩</li>
- *   <li>BIZ_LEADER / COLONEL_LEADER：可查看本部门下所有招商人员的业绩</li>
+ *   <li>BIZ_LEADER：可查看本部门下所有招商人员的业绩</li>
  *   <li>PERSONAL 数据范围：当前用户既是渠道又是招商时，可查看两个维度中自己的记录</li>
  * </ul>
  *
@@ -39,7 +39,7 @@ public final class PerformanceAccessScope {
      *
      * <ol>
      *   <li>ADMIN 角色：可导出</li>
-     *   <li>BIZ_LEADER / COLONEL_LEADER / CHANNEL_LEADER：可导出本部门数据</li>
+     *   <li>BIZ_LEADER / CHANNEL_LEADER：可导出本部门数据</li>
      *   <li>其他角色：不可导出</li>
      * </ol>
      *
@@ -52,7 +52,7 @@ public final class PerformanceAccessScope {
         }
         List<String> roles = context.roleCodes();
         return hasAnyRole(roles, RoleCodes.ADMIN)
-                || hasAnyRole(roles, RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER, RoleCodes.CHANNEL_LEADER);
+                || hasAnyRole(roles, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
     }
 
     /**
@@ -109,7 +109,7 @@ public final class PerformanceAccessScope {
      *   <li>CHANNEL_STAFF：仅当记录的 finalChannelUserId 等于当前用户</li>
      *   <li>BIZ_STAFF：仅当记录的 finalRecruiterUserId 等于当前用户</li>
      *   <li>CHANNEL_LEADER：记录的渠道归属人属于本部门</li>
-     *   <li>BIZ_LEADER / COLONEL_LEADER：记录的招商归属人属于本部门</li>
+     *   <li>BIZ_LEADER：记录的招商归属人属于本部门</li>
      *   <li>PERSONAL 数据范围：渠道或招商归属人任一等于当前用户即放行</li>
      * </ol>
      *
@@ -162,7 +162,7 @@ public final class PerformanceAccessScope {
      *   <li>CHANNEL_STAFF：追加 final_channel_user_id = ? 条件</li>
      *   <li>BIZ_STAFF：追加 final_recruiter_user_id = ? 条件</li>
      *   <li>CHANNEL_LEADER：追加 final_channel_user_id IN (部门子查询) 条件</li>
-     *   <li>BIZ_LEADER / COLONEL_LEADER：追加 final_recruiter_user_id IN (部门子查询) 条件</li>
+     *   <li>BIZ_LEADER：追加 final_recruiter_user_id IN (部门子查询) 条件</li>
      *   <li>DEPT 数据范围：渠道或招商归属人任一属于本部门即放行（OR 条件）</li>
      *   <li>PERSONAL 数据范围：渠道或招商归属人任一等于当前用户（OR 条件）</li>
      * </ol>
@@ -288,7 +288,7 @@ public final class PerformanceAccessScope {
     }
 
     /**
-     * 判断是否为"纯招商人员"角色（BIZ_STAFF 且不是 ADMIN / BIZ_LEADER / COLONEL_LEADER / OPS_STAFF）。
+     * 判断是否为"纯招商人员"角色（BIZ_STAFF 且不是 ADMIN / BIZ_LEADER / OPS_STAFF）。
      *
      * @param context 访问上下文
      * @return true 表示纯招商人员，仅查看自己的招商维度业绩
@@ -296,7 +296,7 @@ public final class PerformanceAccessScope {
     private static boolean isRecruiterStaffOnly(PerformanceAccessContext context) {
         List<String> roles = context.roleCodes();
         return hasAnyRole(roles, RoleCodes.BIZ_STAFF)
-                && !hasAnyRole(roles, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER, RoleCodes.OPS_STAFF);
+                && !hasAnyRole(roles, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.OPS_STAFF);
     }
 
     /**
@@ -311,13 +311,13 @@ public final class PerformanceAccessScope {
     }
 
     /**
-     * 判断是否为"招商组长"角色（BIZ_LEADER / COLONEL_LEADER 且不是 ADMIN）。
+     * 判断是否为"招商组长"角色（BIZ_LEADER 且不是 ADMIN）。
      *
      * @param context 访问上下文
      * @return true 表示招商组长，可查看本部门招商人员业绩
      */
     private static boolean isRecruiterLeader(PerformanceAccessContext context) {
-        return hasAnyRole(context.roleCodes(), RoleCodes.BIZ_LEADER, RoleCodes.COLONEL_LEADER)
+        return hasAnyRole(context.roleCodes(), RoleCodes.BIZ_LEADER)
                 && !hasAnyRole(context.roleCodes(), RoleCodes.ADMIN);
     }
 

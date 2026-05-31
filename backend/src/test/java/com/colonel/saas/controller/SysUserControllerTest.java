@@ -119,11 +119,11 @@ class SysUserControllerTest {
         vo.setId(testUserId);
         vo.setUsername("bizstaff");
 
-        when(sysUserService.findAssignableUsers("招商", List.of(RoleCodes.COLONEL_LEADER), deptId)).thenReturn(List.of(vo));
+        when(sysUserService.findAssignableUsers("招商", List.of(RoleCodes.BIZ_LEADER), deptId)).thenReturn(List.of(vo));
 
         mockMvc.perform(get("/users/assignable")
                         .param("keyword", "招商")
-                        .requestAttr("roleCodes", List.of(RoleCodes.COLONEL_LEADER))
+                        .requestAttr("roleCodes", List.of(RoleCodes.BIZ_LEADER))
                         .requestAttr("deptId", deptId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].username").value("bizstaff"));

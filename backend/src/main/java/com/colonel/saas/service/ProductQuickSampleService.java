@@ -195,6 +195,8 @@ public class ProductQuickSampleService {
 
         /* 寄样数量默认为 1 */
         int quantity = request.getQuantity() == null ? 1 : request.getQuantity();
+        /* 管理员代选渠道时使用指定的 channelUserId，否则使用当前登录用户 */
+        UUID effectiveChannelUserId = request.getChannelUserId() != null ? request.getChannelUserId() : userId;
         /* 检查外部网关是否可用（配置开关 + SDK 是否支持） */
         boolean externalEnabled = douyinQuickSampleEnabled;
         boolean externalSupported = douyinQuickSampleGateway.isSupported();
@@ -211,7 +213,7 @@ public class ProductQuickSampleService {
             item.setTalentId(talentId);
             try {
                 UUID sampleId = createSingleSample(
-                        product, request, talentId, quantity, userId, deptId, roleCodes, item, externalEnabled, externalSupported);
+                        product, request, talentId, quantity, userId, deptId, roleCodes, item, externalEnabled, externalSupported, effectiveChannelUserId);
                 item.setSuccess(true);
                 item.setSampleRequestId(sampleId);
                 if (!StringUtils.hasText(item.getMessage())) {
@@ -258,6 +260,7 @@ public class ProductQuickSampleService {
      * @param item              当前达人的结果项（通过引用填充）
      * @param externalEnabled   外部网关配置开关
      * @param externalSupported 外部网关 SDK 是否支持
+     * @param channelUserId     渠道归属用户 ID（管理员代选时为指定渠道，否则为当前登录用户）
      * @return 新创建的寄样申请 ID
      * @throws BusinessException 达人不存在、商品状态异常、资质不足且无备注时
      * @throws ForbiddenException 达人不在私海中
@@ -273,15 +276,16 @@ public class ProductQuickSampleService {
             Object roleCodes,
             QuickSampleApplyResponse.QuickSampleApplyItemResult item,
             boolean externalEnabled,
-            boolean externalSupported) {
+            boolean externalSupported,
+            UUID channelUserId) {
         /* 解析达人外部信息 */
         CrawlerTalentInfo talentInfo = resolveSampleTalentInfo(talentExternalId);
         /* 查找已有达人记录，不存在则自动创建 */
         Talent talent = findOrCreateTalent(talentInfo);
-        /* 校验达人是否在当前用户私海中（管理员跳过） */
-        ensureChannelTalentClaim(userId, talent.getId(), roleCodes);
+        /* 校验达人是否在指定渠道人员私海中（管理员跳过） */
+        ensureChannelTalentClaim(channelUserId, talent.getId(), roleCodes);
         /* 七日去重校验（管理员和主管跳过） */
-        checkSevenDaysLimit(userId, talent.getId(), product.getId(), roleCodes);
+        checkSevenDaysLimit(channelUserId, talent.getId(), product.getId(), roleCodes);
         /* 达人资质评估：不满足标准时必须填写备注说明原因 */
         SampleEligibilityService.EligibilityResult eligibility = sampleEligibilityService.evaluate(talent, talentInfo);
         if (!eligibility.eligible() && !StringUtils.hasText(request.getRemark())) {
@@ -335,8 +339,8 @@ public class ProductQuickSampleService {
         sample.setProductId(product.getId());
         sample.setUserId(userId);
         sample.setDeptId(deptId);
-        /* 渠道归属人（寄样由发起人所在渠道负责） */
-        sample.setChannelUserId(userId);
+        /* 渠道归属人（寄样由指定渠道人员负责，管理员代选时为指定渠道） */
+        sample.setChannelUserId(channelUserId);
         sample.setChannelDeptId(deptId);
         sample.setExpectedSampleNum(quantity);
         sample.setActualSampleNum(0);

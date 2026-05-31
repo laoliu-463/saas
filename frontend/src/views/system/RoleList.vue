@@ -1,6 +1,6 @@
 <template>
   <div class="role-list app-page" data-testid="system-roles-page">
-    <PageHeader title="角色管理" description="配置角色编码、数据范围与启用状态。">
+    <PageHeader title="角色管理" description="配置角色名称、数据范围与启用状态。">
       <template #actions>
         <n-button type="primary" @click="openModal('add')">新增角色</n-button>
       </template>
@@ -21,9 +21,6 @@
 
     <n-modal v-model:show="showModal" preset="card" :title="modalTitle" :style="{ width: MODAL_WIDTH.md }">
       <n-form ref="formRef" :model="formData" :rules="rules" label-placement="left" label-width="100">
-        <n-form-item label="角色编码" path="roleCode">
-          <n-input v-model:value="formData.roleCode" placeholder="如 admin" :disabled="modalType === 'edit'" />
-        </n-form-item>
         <n-form-item label="角色名称" path="roleName">
           <n-input v-model:value="formData.roleName" placeholder="如 管理员" />
         </n-form-item>
@@ -54,6 +51,9 @@ import { MODAL_WIDTH } from '../../constants/ui';
 import { getRolePage, createRole, updateRole, deleteRole } from '../../api/sys';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
 import { sanitizeRoleName } from './user-list-options';
+import { ROLE_CODES } from '../../constants/rbac';
+
+const SYSTEM_ROLE_CODES = new Set<string>(Object.values(ROLE_CODES));
 
 const message = useMessage();
 
@@ -133,7 +133,6 @@ const formData = reactive({
 const isValidationFailure = (error: unknown): boolean => Array.isArray(error);
 
 const rules = {
-  roleCode: { required: true, message: '请输入角色编码', trigger: 'blur' },
   roleName: { required: true, message: '请输入角色名称', trigger: 'blur' },
   dataScope: { type: 'number', required: true, message: '请选择数据范围', trigger: 'change' }
 };
@@ -143,7 +142,7 @@ const openModal = (type: 'add'|'edit', row?: any) => {
   modalTitle.value = type === 'add' ? '新增角色' : '编辑角色';
   
   if (type === 'add') {
-    Object.assign(formData, { id: undefined, roleCode: '', roleName: '', dataScope: 1, status: 1, remark: '' });
+    Object.assign(formData, { id: undefined, roleCode: '', roleName: '', dataScope: 1, status: 1, remark: '' }); // roleCode 由后端自动生成
   } else if (row) {
     Object.assign(formData, {
       id: row.id,
@@ -172,7 +171,8 @@ const handleSubmit = async () => {
   submitting.value = true;
   try {
     if (modalType.value === 'add') {
-      await createRole(formData);
+      const { roleCode: _ignored, ...payload } = formData;
+      await createRole(payload);
       message.success('新增成功');
     } else {
       await updateRole(formData.id!, formData);
@@ -203,8 +203,23 @@ const handleDelete = async (id: string) => {
 const scopeMap: Record<number, string> = { 1: '仅本人', 2: '本组数据', 3: '全部数据' };
 
 const columns = [
-  { title: '角色编码', key: 'roleCode' },
-  { title: '角色名称', key: 'roleName', render(row: any) { return sanitizeRoleName(row); } },
+  {
+    title: '角色名称',
+    key: 'roleName',
+    render(row: any) {
+      const code = String(row.roleCode || '');
+      return h(
+        'div',
+        { style: 'display: flex; align-items: center; gap: 8px;' },
+        [
+          h('span', sanitizeRoleName(row)),
+          SYSTEM_ROLE_CODES.has(code)
+            ? h(NTag, { size: 'small', type: 'info', bordered: false }, { default: () => '系统内置' })
+            : null
+        ]
+      );
+    }
+  },
   { title: '数据范围', key: 'dataScope', render(row: any) { return scopeMap[row.dataScope] || '-'; } },
   { title: '状态', key: 'status', render(row: any) { return h(NTag, { type: row.status ? 'success' : 'error' }, { default: () => (row.status ? '正常' : '停用') }); } },
   { title: '创建时间', key: 'createTime' },

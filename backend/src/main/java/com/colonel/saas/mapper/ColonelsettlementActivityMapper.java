@@ -175,4 +175,24 @@ public interface ColonelsettlementActivityMapper {
      * 批量读取活动分配摘要（用于列表回填）。
      */
     List<ColonelsettlementActivity> selectAssignmentByActivityIds(@Param("activityIds") List<String> activityIds);
+
+    /**
+     * 按分配筛选条件统计活动数量（本地库分页）。
+     */
+    long countPageByAssignment(
+            @Param("activityStatusCode") Integer activityStatusCode,
+            @Param("assignmentFilter") String assignmentFilter,
+            @Param("recruiterUserId") UUID recruiterUserId,
+            @Param("activityKeyword") String activityKeyword);
+
+    /**
+     * 按分配筛选条件分页查询活动（本地库分页）。
+     */
+    List<ColonelsettlementActivity> selectPageByAssignment(
+            @Param("offset") long offset,
+            @Param("limit") long limit,
+            @Param("activityStatusCode") Integer activityStatusCode,
+            @Param("assignmentFilter") String assignmentFilter,
+            @Param("recruiterUserId") UUID recruiterUserId,
+            @Param("activityKeyword") String activityKeyword);
 }

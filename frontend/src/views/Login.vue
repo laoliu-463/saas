@@ -69,7 +69,7 @@
           <n-form-item path="username">
             <n-input
               v-model:value="form.username"
-              placeholder="请输入用户名"
+              placeholder="请输入用户名或姓名"
               data-testid="login-username"
               :input-props="{ autocomplete: 'username' }"
             >
@@ -136,7 +136,7 @@ const form = ref({ username: '', password: '' })
 
 /** 表单验证规则：用户名和密码均必填，失去焦点时触发验证 */
 const rules = {
-  username: { required: true, message: '请输入用户名', trigger: 'blur' },
+  username: { required: true, message: '请输入用户名或姓名', trigger: 'blur' },
   password: { required: true, message: '请输入密码', trigger: 'blur' }
 }
 

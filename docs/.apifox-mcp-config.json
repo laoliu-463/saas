@@ -1,0 +1,50 @@
+{
+  "comment": "Apifox MCP 配置示例 - 复制到 Claude Desktop / Cursor / Hermes 的 mcpServers 节",
+  "note": "优先使用离线 OAS；后端已启动时可切换到 live /api/v3/api-docs/business 或 /sdk-debug",
+  "mcpServers": {
+    "SAAS-business-offline": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "apifox-mcp-server@latest",
+        "--oas=D:/Projects/SAAS/out/openapi-business.json"
+      ],
+      "description": "业务接口离线文档：商品 / 订单 / 看板 / 用户 / 权限"
+    },
+    "SAAS-sdk-debug-offline": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "apifox-mcp-server@latest",
+        "--oas=D:/Projects/SAAS/out/openapi-sdk-debug.json"
+      ],
+      "description": "抖音联调辅助接口离线文档：Token / Webhook / 上游探测"
+    },
+    "SAAS-business-live-8080": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "apifox-mcp-server@latest",
+        "--oas=http://localhost:8080/api/v3/api-docs/business"
+      ],
+      "description": "test 栈业务接口 live 文档"
+    },
+    "SAAS-business-live-8081": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "apifox-mcp-server@latest",
+        "--oas=http://localhost:8081/api/v3/api-docs/business"
+      ],
+      "description": "real-pre 栈业务接口 live 文档"
+    }
+  }
+}

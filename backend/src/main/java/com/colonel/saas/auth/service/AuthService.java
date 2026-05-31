@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -135,22 +136,30 @@ public class AuthService {
      * @throws BusinessException 用户名不存在、密码错误、账号已停用或登录被锁定时抛出
      */
     public LoginResponse login(LoginRequest request) {
-        String loginKey = normalizeLoginKey(request.getUsername());
-        if (isLoginLocked(loginKey)) {
-            recordAuthEvent(null, loginKey, "登录锁定", "POST", "/api/auth/login",
+        String account = request.getUsername() == null ? "" : request.getUsername().trim();
+        final String accountLockKey = normalizeLoginKey(account);
+        if (isLoginLocked(accountLockKey)) {
+            recordAuthEvent(null, accountLockKey, "登录锁定", "POST", "/api/auth/login",
                     false, "登录失败次数过多，账号临时锁定", "登录失败次数过多，请15分钟后再试");
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "登录失败次数过多，请15分钟后再试");
         }
 
-        SysUser user = sysUserMapper.findByUsername(request.getUsername())
-                .orElseThrow(() -> {
-                    boolean locked = recordLoginFailure(loginKey);
-                    recordAuthEvent(null, loginKey, locked ? "登录锁定" : "登录失败", "POST", "/api/auth/login",
-                            false,
-                            locked ? "登录失败次数达到阈值，账号临时锁定" : "用户名或密码错误",
-                            "用户名或密码错误");
-                    return new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "用户名或密码错误");
-                });
+        Optional<SysUser> resolvedUser = resolveLoginUser(account);
+        SysUser user = resolvedUser.orElseThrow(() -> {
+            boolean locked = recordLoginFailure(accountLockKey);
+            recordAuthEvent(null, accountLockKey, locked ? "登录锁定" : "登录失败", "POST", "/api/auth/login",
+                    false,
+                    locked ? "登录失败次数达到阈值，账号临时锁定" : "用户名或密码错误",
+                    "用户名或密码错误");
+            return new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "用户名或密码错误");
+        });
+
+        String userLockKey = normalizeLoginKey(user.getUsername());
+        if (!userLockKey.equals(accountLockKey) && isLoginLocked(userLockKey)) {
+            recordAuthEvent(user.getId(), user.getUsername(), "登录锁定", "POST", "/api/auth/login",
+                    false, "登录失败次数过多，账号临时锁定", "登录失败次数过多，请15分钟后再试");
+            throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "登录失败次数过多，请15分钟后再试");
+        }
 
         if (!SysUserStatus.canLogin(user.getStatus())) {
             recordAuthEvent(user.getId(), user.getUsername(), "登录失败", "POST", "/api/auth/login",
@@ -159,14 +168,14 @@ public class AuthService {
         }
 
         if (!matchesPassword(request.getPassword(), user.getPassword())) {
-            boolean locked = recordLoginFailure(loginKey);
+            boolean locked = recordLoginFailure(userLockKey);
             recordAuthEvent(user.getId(), user.getUsername(), locked ? "登录锁定" : "登录失败", "POST", "/api/auth/login",
                     false,
                     locked ? "登录失败次数达到阈值，账号临时锁定" : "用户名或密码错误",
                     "用户名或密码错误");
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "用户名或密码错误");
         }
-        clearLoginFailures(loginKey);
+        clearLoginFailures(userLockKey);
 
         List<SysRole> roles = sysRoleMapper.findByUserId(user.getId());
         int dataScope = roles.stream()
@@ -439,6 +448,31 @@ public class AuthService {
     private void clearLoginFailures(String loginKey) {
         redisTemplate.delete(loginFailKey(loginKey));
         redisTemplate.delete(loginLockKey(loginKey));
+    }
+
+    /**
+     * 按账号解析用户：先匹配用户名，再匹配真实姓名（精确、trim）。
+     *
+     * @param account 登录账号（用户名或姓名）
+     * @return 唯一匹配的用户；无匹配为空；姓名重复匹配时抛出业务异常
+     */
+    private Optional<SysUser> resolveLoginUser(String account) {
+        if (account == null || account.isBlank()) {
+            return Optional.empty();
+        }
+        String trimmed = account.trim();
+        Optional<SysUser> byUsername = sysUserMapper.findByUsername(trimmed);
+        if (byUsername.isPresent()) {
+            return byUsername;
+        }
+        List<SysUser> byRealName = sysUserMapper.findByRealName(trimmed);
+        if (byRealName.isEmpty()) {
+            return Optional.empty();
+        }
+        if (byRealName.size() > 1) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "存在多个同名账号，请使用用户名登录");
+        }
+        return Optional.of(byRealName.get(0));
     }
 
     /**

@@ -21,6 +21,8 @@
       :show-assignee-filter="false"
       :library-category-options="libraryCategoryOptions"
       :recruiter-options="recruiterOptions"
+      :assigned-activity-options="assignedActivityOptions"
+      :assigned-activity-options-loading="assignedActivityOptionsLoading"
       @update:filters="filters = $event"
       @update:selected-product="selectedProduct = $event"
       @update:library-status="libraryStatus = $event"
@@ -126,6 +128,7 @@ import {
 } from './product-filters'
 import { copyProductBriefWithLink, resolveProductBriefCopyMessage } from './product-copy'
 import { mergeLibraryDisplayFields, normalizeProductCard } from './product-library-display'
+import { loadAssignedActivityOptions } from './assigned-activity-options'
 
 const PAGE_SIZE = 12
 
@@ -146,6 +149,8 @@ const libraryStatus = ref<number | null>(null)
 const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
 const libraryCategoryOptions = ref<{ label: string; value: string }[]>([])
 const recruiterOptions = ref<{ label: string; value: string }[]>([])
+const assignedActivityOptions = ref<{ label: string; value: string }[]>([])
+const assignedActivityOptionsLoading = ref(false)
 const productOptions = ref<{ label: string; value: string }[]>([])
 const productOptionsLoading = ref(false)
 const currentRow = ref<any | null>(null)
@@ -164,8 +169,8 @@ const convertLinkForBriefCopy = (
   data: { scene: 'PRODUCT_LIBRARY' | 'PRODUCT_DETAIL' | 'TALENT_SHARE' | 'SAMPLE_DESK' }
 ) => convertActivityProductLink(activityId, productId, data, { suppressErrorNotice: true })
 
-/** 与旧版 ProductCard「快速寄样」一致：仅渠道角色可发起（后端 quick-sample 接口同限） */
-const canQuickSample = canCopyPromotionLink
+/** 渠道与管理员可发起快速寄样（后端 quick-sample 同限） */
+const canQuickSample = computed(() => canCopyPromotionLink.value || authStore.isAdmin)
 
 const normalizeText = (value?: string | number | null) => {
   if (value === null || value === undefined) return ''
@@ -458,10 +463,12 @@ const mergeCategoryOptions = (dynamicNames: string[]) => {
 
 const loadFilterOptions = async () => {
   let categoryFailed = false
+  assignedActivityOptionsLoading.value = true
   try {
-    const [categoryRes, recruiterRes]: any[] = await Promise.all([
+    const [categoryRes, recruiterRes, activityOptions]: any[] = await Promise.all([
       getProductLibraryCategories(),
-      getUserMasterRecruiters({ limit: MAX_PAGE_SIZE })
+      getUserMasterRecruiters({ limit: MAX_PAGE_SIZE }),
+      loadAssignedActivityOptions(authStore.isAdmin)
     ])
     const categories = Array.isArray(categoryRes?.data) ? categoryRes.data : []
     libraryCategoryOptions.value = mergeCategoryOptions(categories)
@@ -472,10 +479,14 @@ const loadFilterOptions = async () => {
         value: String(item?.id || item?.userId || '').trim()
       }))
       .filter((item: { label: string; value: string }) => item.label && item.value)
+    assignedActivityOptions.value = activityOptions
   } catch {
     categoryFailed = true
     libraryCategoryOptions.value = []
     recruiterOptions.value = []
+    assignedActivityOptions.value = []
+  } finally {
+    assignedActivityOptionsLoading.value = false
   }
   if (categoryFailed) {
     message.warning('类目选项加载失败，可继续浏览商品库')
