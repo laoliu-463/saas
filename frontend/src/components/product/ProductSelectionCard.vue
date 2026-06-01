@@ -1,171 +1,149 @@
 <!--
-  ProductSelectionCard - 商品选品卡片组件
+  ProductSelectionCard - 商品库选品卡片（V2 优化版）
 
-  用途：在商品库和选品场景中以卡片形式展示单个商品的核心信息。
-  卡片包含商品图片、店铺标签、销量、佣金率、操作按钮等关键字段。
+  用途：在商品库页面以紧凑卡片展示商品核心信息；桌面端 hover 时弹出下拉抽屉，
+       移动端点击卡片展开 / 收起，展示低频业务字段（招商/寄样/时间/团长/店铺/活动/库存）
+       并提供逐字段复制按钮。
+
+  布局：
+    - 默认态：252px × 254px 固定尺寸（响应式断点降为 4 列 / 3 列 / 1 列）
+    - 顶部图片区（aspect-ratio 1:1）+ 底部标题+价格
+    - 鼠标悬浮：从卡片底部展开一个绝对定位的字段抽屉（z-index 30），
+      覆盖下方一排卡片，避免整行布局跳动
 
   Props:
-    - card: 商品卡片视图数据（ProductCardView 类型），必填。包含商品名、图片、价格、佣金等。
-    - canCopyBrief: 是否允许复制简介，默认 false。
-    - canQuickSample: 是否显示快速寄样按钮，默认 true。
-    - copyBriefLoading: 复制简介按钮的加载状态，默认 false。
+    - card: 商品卡片视图数据（ProductCardView 类型），必填
+    - canCopyBrief: 是否允许"复制简介"按钮，默认 false
+    - canQuickSample: 是否显示"快速寄样"按钮，默认 true
+    - copyBriefLoading: 复制简介按钮的 loading 状态，默认 false
 
   Events:
-    - detail: 点击卡片或"查看详情"按钮时触发，传递原始商品数据。
-    - copyBrief: 点击"复制简介"按钮时触发。
-    - quickSample: 点击"快速寄样"按钮时触发。
-    - refresh: 点击"刷新"按钮时触发。
-
-  使用场景：商品库页面的卡片列表视图、选品推荐列表。
+    - detail: 点击卡片或"查看详情"按钮时触发
+    - copyBrief: 点击"复制简介"按钮时触发
+    - quickSample: 点击"快速寄样"按钮时触发
+    - refresh: 点击"刷新"按钮时触发
 -->
 <template>
-  <!-- 整张卡片可点击，跳转商品详情 -->
   <article
+    ref="cardRef"
     class="selection-card"
+    :class="{ 'is-expanded': expanded, 'hover-mode': supportsHover, 'opens-up': drawerDirection === 'up' }"
     data-testid="product-selection-card"
-    @click="$emit('detail', card.raw)"
+    @mouseenter="handleMouseEnter"
+    @mouseleave="handleMouseLeave"
+    @focusin="updateDrawerDirection"
   >
-    <!-- 卡片顶部：商品图片区域，叠加店铺标签、置顶标记和操作按钮 -->
-    <div class="selection-card__media">
-      <img
-        v-if="imageVisible"
-        :src="card.imageUrl"
-        :alt="card.productName"
-        class="selection-card__img"
-        @error="onImageError"
-      />
-      <div v-else class="selection-card__img-fallback" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <circle cx="8.5" cy="8.5" r="1.5" />
-          <path d="M21 15l-5-5L5 21" />
-        </svg>
-      </div>
-
-      <span v-if="card.isPinned" class="selection-card__pin" data-testid="product-pinned-badge">置顶</span>
-      <span class="selection-card__shop-tag">{{ shopTagText }}</span>
-      <span v-if="card.supportInvestment" class="selection-card__ads-tag">投流</span>
-
-      <div class="selection-card__media-actions" @click.stop>
-        <button
-          type="button"
-          class="selection-card__btn selection-card__btn--ghost"
-          :disabled="!canCopyBrief || copyBriefLoading"
-          data-testid="product-copy-brief"
-          @click.stop="$emit('copyBrief', card.raw)"
-        >
-          {{ copyBriefLoading ? '复制中…' : '复制简介' }}
-        </button>
-        <button
-          v-if="canQuickSample"
-          type="button"
-          class="selection-card__btn selection-card__btn--primary"
-          data-testid="product-quick-sample"
-          @click.stop="$emit('quickSample', card.raw)"
-        >
-          快速寄样
-        </button>
-      </div>
-    </div>
-
-    <div class="selection-card__body">
-      <div class="selection-card__title-row">
-        <span class="selection-card__platform" aria-label="抖音">抖</span>
-        <h3 class="selection-card__title" :title="card.productName">{{ card.productName }}</h3>
-        <span v-if="card.productId" class="selection-card__id-tag">{{ card.productId }}</span>
-      </div>
-
-      <div class="selection-card__inline-actions" @click.stop>
-        <n-button
-          size="tiny"
-          quaternary
-          :disabled="!linkUrl"
-          data-testid="product-open-link"
-          @click="openLink"
-        >
-          链接
-        </n-button>
-        <n-button size="tiny" quaternary data-testid="product-refresh" @click="$emit('refresh', card.raw)">
-          刷新
-        </n-button>
-        <n-button size="tiny" quaternary data-testid="product-detail-button" @click="$emit('detail', card.raw)">
-          查看详情
-        </n-button>
-      </div>
-
-      <div class="selection-card__sales-row" @click.stop>
-        <div class="selection-card__sales-badge">
-          总销量 <strong>{{ card.totalSalesText }}</strong>单
+    <div class="selection-card__body" @click="handleCardBodyClick">
+      <div class="selection-card__media">
+        <img
+          v-if="imageVisible"
+          :src="card.imageUrl"
+          :alt="card.productName"
+          class="selection-card__img"
+          @error="onImageError"
+        />
+        <div v-else class="selection-card__img-fallback" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <path d="M21 15l-5-5L5 21" />
+          </svg>
         </div>
-        <button
-          type="button"
-          class="selection-card__baiying-btn"
-          :disabled="!card.baiyingUrl && !card.productUrl"
-          data-testid="product-baiying"
-          @click="openBaiying"
-        >
-          去百应
-        </button>
-      </div>
 
-      <div class="selection-card__commission">
-        <div class="selection-card__commission-row">
-          <div class="selection-card__metric">
-            <span class="selection-card__metric-label">直播价</span>
-            <span class="selection-card__metric-value">{{ card.livePrice }}</span>
-          </div>
-          <div class="selection-card__metric">
-            <span class="selection-card__metric-label">佣金率</span>
-            <span class="selection-card__metric-value selection-card__metric-value--accent">{{ card.commissionRate }}</span>
-          </div>
-          <div class="selection-card__metric">
-            <span class="selection-card__metric-label">服务费率</span>
-            <span class="selection-card__metric-value">{{ card.serviceFeeRate }}</span>
-          </div>
-        </div>
-        <div class="selection-card__commission-sub">
-          <span>投放期佣金率 {{ card.campaignCommissionRate }}</span>
-          <span>投放期服务费率 {{ card.campaignServiceFeeRate }}</span>
-        </div>
-      </div>
+        <span v-if="card.isPinned" class="selection-card__pin" data-testid="product-pinned-badge">置顶</span>
+        <span v-if="stockAlertText" class="selection-card__stock-alert" data-testid="product-stock-alert">
+          {{ stockAlertText }}
+        </span>
+        <span class="selection-card__shop-tag" :title="card.shopName">{{ shopTagText }}</span>
+        <span v-if="card.supportInvestment" class="selection-card__ads-tag">投流</span>
 
-      <dl class="selection-card__fields" @click.stop>
-        <div v-for="field in infoFields" :key="field.key" class="selection-card__field">
-          <dt>{{ field.label }}</dt>
-          <dd :title="field.value">{{ field.value }}</dd>
+        <div class="selection-card__media-actions" @click.stop>
           <button
             type="button"
-            class="selection-card__copy-icon"
-            :aria-label="`复制${field.label}`"
-            :disabled="!field.copyText"
-            @click="copyField(field.copyText, field.label)"
+            class="selection-card__btn selection-card__btn--ghost"
+            :disabled="!canCopyBrief || copyBriefLoading"
+            data-testid="product-copy-brief"
+            @click.stop="$emit('copyBrief', card.raw)"
           >
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" />
-              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-            </svg>
+            {{ copyBriefLoading ? '复制中…' : '复制简介' }}
+          </button>
+          <button
+            v-if="canQuickSample"
+            type="button"
+            class="selection-card__btn selection-card__btn--primary"
+            data-testid="product-quick-sample"
+            @click.stop="$emit('quickSample', card.raw)"
+          >
+            快速寄样
           </button>
         </div>
-      </dl>
+      </div>
+
+      <div class="selection-card__footer">
+        <h3 class="selection-card__title" :title="card.productName">{{ card.productName }}</h3>
+        <div class="selection-card__price-row">
+          <span class="selection-card__price">{{ card.livePrice }}</span>
+          <span class="selection-card__commission">佣 {{ card.commissionRate }}</span>
+        </div>
+      </div>
     </div>
+
+    <NCollapseTransition :show="drawerVisible || supportsHover">
+      <div class="selection-card__drawer-shell" @click.stop>
+        <div
+          class="selection-card__drawer"
+          data-testid="product-selection-drawer"
+        >
+          <div class="selection-card__drawer-header">
+            <span class="selection-card__drawer-title">商品信息</span>
+          </div>
+          <dl class="selection-card__fields">
+            <div v-for="field in infoFields" :key="field.key" class="selection-card__field">
+              <dt>{{ field.label }}</dt>
+              <dd
+                :class="{
+                  'is-empty': !field.value || field.value === '-',
+                  'is-warning': field.warning
+                }"
+                :title="field.value"
+              >
+                {{ field.value || '-' }}
+              </dd>
+              <button
+                type="button"
+                class="selection-card__copy-icon"
+                :aria-label="`复制${field.label}`"
+                :disabled="!field.copyText"
+                data-testid="product-field-copy"
+                @click="copyField(field.copyText, field.label)"
+              >
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                </svg>
+              </button>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </NCollapseTransition>
   </article>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useMessage } from 'naive-ui'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { NCollapseTransition, useMessage } from 'naive-ui'
 import type { ProductCardView } from '../../views/product/product-library-display'
 
-/* Props 定义，使用 withDefaults 设置默认值 */
 const props = withDefaults(
   defineProps<{
     /** 商品卡片视图数据，必填 */
     card: ProductCardView
-    /** 是否允许复制简介操作，默认 false */
+    /** 是否允许"复制简介"按钮，默认 false */
     canCopyBrief?: boolean
-    /** 是否显示快速寄样按钮，默认 true */
+    /** 是否显示"快速寄样"按钮，默认 true */
     canQuickSample?: boolean
-    /** 复制简介按钮的加载状态，默认 false */
+    /** 复制简介按钮的 loading 状态，默认 false */
     copyBriefLoading?: boolean
   }>(),
   {
@@ -175,43 +153,146 @@ const props = withDefaults(
   }
 )
 
-/* 组件事件定义 */
-defineEmits<{
-  /** 查看商品详情 */
+const emit = defineEmits<{
   detail: [raw: Record<string, unknown>]
-  /** 复制商品简介 */
   copyBrief: [raw: Record<string, unknown>]
-  /** 快速寄样 */
   quickSample: [raw: Record<string, unknown>]
-  /** 刷新商品信息 */
   refresh: [raw: Record<string, unknown>]
 }>()
 
 const message = useMessage()
-/** 控制商品图片是否可见，图片加载失败时切换为占位图 */
+const cardRef = ref<HTMLElement | null>(null)
 const imageVisible = ref(Boolean(props.card.imageUrl))
+/**
+ * 设备能力：mount 时一次性探测，之后不再变动。
+ * - hover-mode=true：桌面/支持 hover 的环境，drawer 由 hoverActive 控制；
+ * - hover-mode=false：触屏/无 hover 设备，drawer 由 expanded（点击）控制。
+ *
+ * 注意：探测条件是"明确不支持 hover"，而不是"必须同时满足 hover:hover + pointer:fine"。
+ * 之前的 `(hover: hover) and (pointer: fine)` 在触屏笔记本、特殊 webview、容器化部署等
+ * 真实环境中可能误判为 false，导致桌面端 hover 抽屉永不展开。
+ */
+const supportsHover = ref(true)
+/** 桌面/支持 hover 设备的 hover 状态，与 expanded 互斥使用。 */
+const hoverActive = ref(false)
+/** 触屏设备的点击展开态。 */
+const expanded = ref(false)
+const drawerDirection = ref<'down' | 'up'>('down')
+let closeTimer: number | undefined
 
 /**
- * 店铺标签显示文本
- * 店铺名为空或"未识别店铺"时显示"官方旗舰店"，超长则截断
+ * 抽屉实际可见性：按设备能力路由到对应状态。
+ * 这样 NCollapseTransition 的 show 单一驱动，模板里不写双分支。
  */
+const drawerVisible = computed(() =>
+  supportsHover.value ? hoverActive.value : expanded.value
+)
+
+const isHoverCapable = () => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true
+  // 仅在"明确不支持 hover"时才走 click 分支
+  return !window.matchMedia('(hover: none)').matches
+}
+
+const clearCloseTimer = () => {
+  if (closeTimer !== undefined) {
+    window.clearTimeout(closeTimer)
+    closeTimer = undefined
+  }
+}
+
+const updateDrawerDirection = () => {
+  if (!supportsHover.value || typeof window === 'undefined') {
+    drawerDirection.value = 'down'
+    return
+  }
+
+  const card = cardRef.value
+  const drawer = card?.querySelector<HTMLElement>('.selection-card__drawer-shell')
+  if (!card || !drawer) {
+    drawerDirection.value = 'down'
+    return
+  }
+
+  const cardRect = card.getBoundingClientRect()
+  const drawerHeight = drawer.getBoundingClientRect().height || 230
+  const gap = 4
+  const spaceBelow = window.innerHeight - cardRect.bottom
+  const spaceAbove = cardRect.top
+  drawerDirection.value = spaceBelow < drawerHeight + gap && spaceAbove > drawerHeight + gap ? 'up' : 'down'
+}
+
+const handleMouseEnter = () => {
+  if (!supportsHover.value) {
+    // 触屏分支保留旧逻辑：mouseenter 时直接展开
+    clearCloseTimer()
+    expanded.value = true
+    return
+  }
+  // 桌面分支：直接翻状态，不走 closeTimer
+  clearCloseTimer()
+  updateDrawerDirection()
+  hoverActive.value = true
+}
+
+const handleMouseLeave = () => {
+  if (!supportsHover.value) {
+    clearCloseTimer()
+    closeTimer = window.setTimeout(() => {
+      expanded.value = false
+      closeTimer = undefined
+    }, 120)
+    return
+  }
+  // 桌面分支：直接翻状态
+  clearCloseTimer()
+  hoverActive.value = false
+}
+
+const handleCardBodyClick = () => {
+  if (supportsHover.value) {
+    emit('detail', props.card.raw)
+    return
+  }
+  clearCloseTimer()
+  expanded.value = !expanded.value
+}
+
+onMounted(() => {
+  supportsHover.value = isHoverCapable()
+})
+
+onBeforeUnmount(() => {
+  clearCloseTimer()
+})
+
 const shopTagText = computed(() => {
   const shop = props.card.shopName?.trim()
   if (!shop || shop === '未识别店铺') return '官方旗舰店'
-  return shop.length > 14 ? `${shop.slice(0, 14)}…` : shop
+  return shop.length > 10 ? `${shop.slice(0, 10)}…` : shop
 })
 
-/** 商品链接 URL，优先取商品链接，其次百应链接 */
-const linkUrl = computed(() => props.card.productUrl || props.card.baiyingUrl || '')
-
-/** 活动信息行：格式为"活动名称（活动ID）"，无名称时仅显示 ID */
-const activityLine = computed(() => {
-  const id = props.card.activityId || '-'
-  const name = props.card.activityName
-  return name ? `${name}（${id}）` : id
+/** 库存文本（来自上游 productStock）。空值返回 '-'，由复制按钮 disabled 控制。 */
+const stockValue = computed(() => {
+  const text = String(props.card.productStock ?? '').trim()
+  return text
 })
 
-/** 活动时间范围：格式为"开始时间 ~ 结束时间"，仅有单侧时间时只显示一侧 */
+/** 库存告警：0 / 非正数 视为"无库存"；≤10 视为"库存紧张"。用于红色高亮 + 角标。 */
+const stockAlertText = computed(() => {
+  const raw = String(props.card.productStock ?? '').trim()
+  if (!raw) return ''
+  const num = Number(raw.replace(/[^0-9]/g, ''))
+  if (!Number.isFinite(num)) return ''
+  if (num <= 0) return '无库存'
+  if (num <= 10) return '库存紧张'
+  return ''
+})
+
+/** 库存字段在抽屉里是否用 warning 样式 */
+const stockWarning = computed(() => Boolean(stockAlertText.value))
+
+/** 活动时间范围：start ~ end，仅单侧时只显示一侧 */
 const timeLine = computed(() => {
   const start = props.card.activityStartTime
   const end = props.card.activityEndTime
@@ -222,26 +303,63 @@ const timeLine = computed(() => {
 })
 
 /**
- * 卡片底部信息字段列表
- * 包含招商、寄样、时间、团长、店铺、活动等字段
- * 每个字段有标签、显示值和可复制文本
+ * 抽屉字段列表
+ * 顺序：招商 / 寄样要求 / 推广时间 / 团长 / 店铺 / 活动 / 库存
+ * - label: 显示名
+ * - value: 抽屉中显示的文本
+ * - copyText: 复制按钮写入剪贴板的文本（空时按钮 disabled）
+ * - warning: 是否用 warning 样式（库存告警）
  */
 const infoFields = computed(() => [
-  { key: 'recruiter', label: '招商', value: props.card.recruiterName || '-', copyText: props.card.recruiterName },
-  { key: 'sync', label: '同步', value: props.card.syncTimeText || '-', copyText: props.card.syncTimeText },
-  { key: 'sample', label: '寄样', value: props.card.sampleRequirement || '-', copyText: props.card.sampleRequirement },
-  { key: 'time', label: '时间', value: timeLine.value, copyText: timeLine.value !== '-' ? timeLine.value : '' },
-  { key: 'colonel', label: '团长', value: props.card.colonelName || '-', copyText: props.card.colonelName },
-  { key: 'shop', label: '店铺', value: props.card.shopName || '-', copyText: props.card.shopName },
-  { key: 'activity', label: '活动', value: activityLine.value, copyText: activityLine.value !== '-' ? activityLine.value : '' }
+  {
+    key: 'recruiter',
+    label: '招商',
+    value: props.card.recruiterName,
+    copyText: props.card.recruiterName
+  },
+  {
+    key: 'sample',
+    label: '寄样要求',
+    value: props.card.sampleRequirement,
+    copyText: props.card.sampleRequirement
+  },
+  {
+    key: 'time',
+    label: '推广时间',
+    value: timeLine.value,
+    copyText: timeLine.value !== '-' ? timeLine.value : ''
+  },
+  {
+    key: 'colonel',
+    label: '团长',
+    value: props.card.colonelName,
+    copyText: props.card.colonelName
+  },
+  {
+    key: 'shop',
+    label: '店铺',
+    value: props.card.shopName,
+    copyText: props.card.shopName
+  },
+  {
+    key: 'activity',
+    label: '活动',
+    value: props.card.activityName,
+    copyText: props.card.activityName
+  },
+  {
+    key: 'stock',
+    label: '库存',
+    value: stockValue.value,
+    copyText: stockValue.value,
+    warning: stockWarning.value
+  }
 ])
 
-/** 图片加载失败时的回调，隐藏图片并显示占位 SVG */
 const onImageError = () => {
   imageVisible.value = false
 }
 
-/** 写入剪贴板的封装方法，静默处理异常并返回是否成功 */
 const writeClipboard = async (text: string) => {
   if (!text) return false
   try {
@@ -252,7 +370,6 @@ const writeClipboard = async (text: string) => {
   }
 }
 
-/** 复制字段值到剪贴板，空值时提示用户暂无内容 */
 const copyField = async (text: string | undefined, label: string) => {
   const value = String(text || '').trim()
   if (!value) {
@@ -263,48 +380,49 @@ const copyField = async (text: string | undefined, label: string) => {
   if (ok) message.success(`已复制${label}`)
   else message.warning('浏览器未允许写入剪贴板')
 }
-
-/** 打开商品链接（新窗口），无链接时给出提示 */
-const openLink = () => {
-  const url = linkUrl.value
-  if (!url) {
-    message.warning('暂无商品链接')
-    return
-  }
-  window.open(url, '_blank', 'noopener,noreferrer')
-}
-
-/** 打开百应平台链接（新窗口），优先百应链接，其次商品链接 */
-const openBaiying = () => {
-  const url = props.card.baiyingUrl || props.card.productUrl
-  if (!url) {
-    message.warning('暂无百应链接，请稍后在商品详情中查看')
-    return
-  }
-  window.open(url, '_blank', 'noopener,noreferrer')
-}
 </script>
 
 <style scoped>
+/* ============================================================
+   容器
+   - 固定 252×254（响应式断点由父级 grid 控制列数）
+   - 抽屉绝对定位覆盖下方卡片（不影响布局）
+   ============================================================ */
 .selection-card {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+  position: relative;
+  width: 252px;
+  height: 254px;
+  container-type: inline-size;
   background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08);
-  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  overflow: visible;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
 }
 
-.selection-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+.selection-card:hover,
+.selection-card.is-expanded {
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+  transform: translateY(-1px);
+}
+
+/* ============================================================
+   默认态（254 高度内）：图片 + 标题 + 价格
+   ============================================================ */
+.selection-card__body {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .selection-card__media {
   position: relative;
+  flex: 0 0 auto;
+  width: 100%;
   aspect-ratio: 1 / 1;
   background: #f8fafc;
   overflow: hidden;
@@ -329,30 +447,44 @@ const openBaiying = () => {
 
 .selection-card__pin {
   position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 2;
-  padding: 2px 10px;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
+  padding: 1px 8px;
   border-radius: 999px;
   background: rgba(220, 38, 38, 0.92);
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  line-height: 20px;
+  line-height: 18px;
+}
+
+.selection-card__stock-alert {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f97316;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 18px;
 }
 
 .selection-card__shop-tag {
   position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  max-width: calc(100% - 88px);
-  padding: 2px 10px;
+  bottom: 38px;
+  left: 6px;
+  z-index: 3;
+  max-width: calc(100% - 12px);
+  padding: 1px 8px;
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.72);
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 16px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -360,15 +492,16 @@ const openBaiying = () => {
 
 .selection-card__ads-tag {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 2;
-  padding: 2px 8px;
+  top: 28px;
+  right: 6px;
+  z-index: 3;
+  padding: 1px 6px;
   border-radius: 4px;
   background: #f97316;
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
+  line-height: 16px;
 }
 
 .selection-card__media-actions {
@@ -376,22 +509,23 @@ const openBaiying = () => {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 2;
+  z-index: 3;
   display: flex;
-  gap: 8px;
-  padding: 10px;
+  gap: 4px;
+  padding: 6px;
   background: linear-gradient(180deg, transparent, rgba(15, 23, 42, 0.55));
 }
 
 .selection-card__btn {
   flex: 1;
   border: none;
-  border-radius: 8px;
-  padding: 8px 6px;
-  font-size: 13px;
+  border-radius: 6px;
+  padding: 4px 4px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.15s ease;
+  line-height: 18px;
 }
 
 .selection-card__btn:disabled {
@@ -409,162 +543,136 @@ const openBaiying = () => {
   color: #fff;
 }
 
-.selection-card__body {
-  padding: 12px 14px 14px;
+.selection-card__footer {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-
-.selection-card__title-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  min-width: 0;
-}
-
-.selection-card__platform {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: #111827;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
+  justify-content: space-between;
+  padding: 6px 8px 8px;
+  min-height: 0;
 }
 
 .selection-card__title {
-  flex: 1;
   margin: 0;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.35;
   color: #0f172a;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  word-break: break-all;
 }
 
-.selection-card__id-tag {
-  flex-shrink: 0;
-  max-width: 88px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #f1f5f9;
-  color: #64748b;
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.selection-card__inline-actions {
+.selection-card__price-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.selection-card__sales-row {
-  display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
-.selection-card__sales-badge {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: #fef2f2;
-  color: #b91c1c;
-  font-size: 13px;
-}
-
-.selection-card__sales-badge strong {
-  font-size: 16px;
+.selection-card__price {
+  font-size: 14px;
   font-weight: 700;
-  margin: 0 2px;
-}
-
-.selection-card__baiying-btn {
-  flex-shrink: 0;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 12px;
-  background: #ffedd5;
-  color: #c2410c;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.selection-card__baiying-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+  color: #0f172a;
 }
 
 .selection-card__commission {
-  border-top: 1px solid #f1f5f9;
-  padding-top: 10px;
-}
-
-.selection-card__commission-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.selection-card__metric-label {
-  display: block;
   font-size: 11px;
-  color: #94a3b8;
-  margin-bottom: 2px;
+  color: #dc2626;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
-.selection-card__metric-value {
-  font-size: 15px;
+/* ============================================================
+   Hover 抽屉（桌面端绝对定位覆盖下方，z-index 30）
+
+   桌面端（hover-mode）：
+   - NCollapseTransition 的 show 在 hover-mode 下保持 true（DOM 常驻），
+     避免 JS hoverActive 链路异常时抽屉被折叠掉。
+   - 抽屉可见性由 CSS 单独控制：默认 opacity 0 + pointer-events: none，
+     父 :hover / :focus-within 时切到 opacity 1 + pointer-events: auto。
+   - 即便 JS 链路失效（hoverActive 翻不过 true），纯 CSS :hover 也能兜底展开。
+   ============================================================ */
+.selection-card__drawer-shell {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  z-index: 30;
+  border-radius: 8px;
+}
+
+.selection-card.hover-mode .selection-card__drawer-shell {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.selection-card.hover-mode.opens-up .selection-card__drawer-shell {
+  top: auto;
+  bottom: calc(100% + 4px);
+  transform: translateY(4px);
+}
+
+.selection-card.hover-mode:hover .selection-card__drawer-shell,
+.selection-card.hover-mode:focus-within .selection-card__drawer-shell {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.selection-card__drawer {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  border: 1px solid #e2e8f0;
+  padding: 8px 10px 10px;
+  animation: drawerFadeIn 0.15s ease;
+}
+
+@keyframes drawerFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.selection-card__drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.selection-card__drawer-title {
+  font-size: 12px;
   font-weight: 700;
   color: #0f172a;
-}
-
-.selection-card__metric-value--accent {
-  color: #dc2626;
-}
-
-.selection-card__commission-sub {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 8px;
-  font-size: 12px;
-  color: #64748b;
 }
 
 .selection-card__fields {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .selection-card__field {
   display: grid;
-  grid-template-columns: 42px 1fr 24px;
-  gap: 8px;
+  grid-template-columns: 68px 1fr 22px;
+  gap: 6px;
   align-items: center;
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .selection-card__field dt {
   margin: 0;
   color: #94a3b8;
+  font-weight: 500;
 }
 
 .selection-card__field dd {
@@ -573,29 +681,104 @@ const openBaiying = () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 500;
+}
+
+.selection-card__field dd.is-empty {
+  color: #cbd5e1;
+  font-weight: 400;
+}
+
+.selection-card__field dd.is-warning {
+  color: #dc2626;
+  font-weight: 600;
 }
 
 .selection-card__copy-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   border: none;
   border-radius: 4px;
   background: transparent;
   color: #94a3b8;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .selection-card__copy-icon:hover:not(:disabled) {
-  background: #f1f5f9;
+  background: #fef2f2;
   color: #dc2626;
 }
 
 .selection-card__copy-icon:disabled {
-  opacity: 0.35;
+  opacity: 0.3;
   cursor: not-allowed;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .selection-card {
+    width: 252px;
+    height: auto;
+  }
+
+  .selection-card__body {
+    height: 254px;
+  }
+
+  .selection-card__drawer-shell {
+    position: static;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .selection-card__drawer {
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.1);
+  }
+}
+
+@container (max-width: 220px) {
+  .selection-card__media-actions {
+    flex-direction: column;
+  }
+
+  .selection-card__btn {
+    width: 100%;
+    min-width: 0;
+    padding: 3px 2px;
+    font-size: 10px;
+    line-height: 14px;
+    white-space: normal;
+  }
+
+  .selection-card__price-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .selection-card__field {
+    grid-template-columns: 1fr 22px;
+    align-items: start;
+  }
+
+  .selection-card__field dt {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .selection-card__field dd {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    white-space: normal;
+  }
+
+  .selection-card__copy-icon {
+    grid-column: 2;
+    grid-row: 1;
+  }
 }
 </style>
