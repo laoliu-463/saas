@@ -9,24 +9,13 @@
       </template>
     </PageHeader>
 
-    <ProductFilters
-      mode="library"
+    <ProductLibraryFilterPanel
       :filters="filters"
-      :selected-product="selectedProduct"
-      :status="null"
       :library-status="libraryStatus"
-      :product-options="productOptions"
-      :product-options-loading="productOptionsLoading"
       :loading="loading"
-      :show-assignee-filter="false"
-      :library-category-options="libraryCategoryOptions"
-      :recruiter-options="recruiterOptions"
-      :assigned-activity-options="assignedActivityOptions"
-      :assigned-activity-options-loading="assignedActivityOptionsLoading"
+      :category-options="libraryCategoryOptions"
       @update:filters="filters = $event"
-      @update:selected-product="selectedProduct = $event"
       @update:library-status="libraryStatus = $event"
-      @search="handleProductSearch"
       @search-click="refreshProducts"
       @reset="resetFilters"
     />
@@ -101,22 +90,19 @@
 </template>
 
 <script setup lang="ts">
-import { handleApiFailure, notifyApiFailure } from '../../utils/requestError'
+import { notifyApiFailure } from '../../utils/requestError'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
 import { getProducts, getProductLibraryCategories } from '../../api/product'
-import { getUserMasterRecruiters } from '../../api/sys'
 import { convertActivityProductLink } from '../../api/activityProduct'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES, hasAccess } from '../../constants/rbac'
 import { useDelayedFlag } from '../../utils/delayedFlag'
-import { useDebouncedFn } from '../../utils/debounce'
-import { MAX_PAGE_SIZE } from '../../utils/pagination'
 
-import ProductFilters from './components/ProductFilters.vue'
+import ProductLibraryFilterPanel from './components/ProductLibraryFilterPanel.vue'
 import ProductSelectionCard from '../../components/product/ProductSelectionCard.vue'
 import QuickSampleModal from './components/QuickSampleModal.vue'
 import ProductDetail from './ProductDetail.vue'
@@ -128,7 +114,6 @@ import {
 } from './product-filters'
 import { copyProductBriefWithLink, resolveProductBriefCopyMessage } from './product-copy'
 import { mergeLibraryDisplayFields, normalizeProductCard } from './product-library-display'
-import { loadAssignedActivityOptions } from './assigned-activity-options'
 
 const PAGE_SIZE = 12
 
@@ -143,16 +128,9 @@ const promotionLoadingIds = ref<Set<string>>(new Set())
 const products = ref<any[]>([])
 const hasMore = ref(false)
 const totalCount = ref(0)
-const selectedProduct = ref<string | null>(null)
-const productKeyword = ref('')
 const libraryStatus = ref<number | null>(null)
 const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
 const libraryCategoryOptions = ref<{ label: string; value: string }[]>([])
-const recruiterOptions = ref<{ label: string; value: string }[]>([])
-const assignedActivityOptions = ref<{ label: string; value: string }[]>([])
-const assignedActivityOptionsLoading = ref(false)
-const productOptions = ref<{ label: string; value: string }[]>([])
-const productOptionsLoading = ref(false)
 const currentRow = ref<any | null>(null)
 const quickSampleVisible = ref(false)
 const quickSampleProduct = ref<any | null>(null)
@@ -237,10 +215,7 @@ const fetchProducts = async (reset: boolean) => {
     const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
       page,
       size: PAGE_SIZE,
-      keyword: selectedProduct.value || productKeyword.value.trim() || undefined,
       status: libraryStatus.value ?? undefined,
-      partnerId: route.query.partnerId as string | undefined,
-      partnerType: route.query.partnerType as string | undefined,
       sortBy: (route.query.sortBy as string | undefined) || 'default'
     }))
     const data = res?.data || {}
@@ -270,57 +245,7 @@ const fetchProducts = async (reset: boolean) => {
   }
 }
 
-const buildProductOption = (item: any) => {
-  const title = String(item?.title || item?.productName || '未命名商品').trim()
-  const shopName = String(item?.shopName || '').trim()
-  const productId = String(item?.productId || '').trim()
-  return {
-    label: shopName ? `${title} / ${shopName}` : title,
-    value: productId
-  }
-}
-
-const loadProductOptions = async (keyword: string) => {
-  const normalizedKeyword = String(keyword || '').trim()
-  if (!normalizedKeyword) {
-    productOptions.value = []
-    return
-  }
-  productOptionsLoading.value = true
-  try {
-    const res: any = await getProducts({ page: 1, size: 20, keyword: normalizedKeyword })
-    const records = Array.isArray(res?.data?.records) ? res.data.records : []
-    productOptions.value = records
-      .map((p: any) => buildProductOption({
-        ...p,
-        title: p.title || p.name || '未命名商品',
-        productId: String(p.productId || '')
-      }))
-      .filter((item: { label: string; value: string }) => Boolean(item.value))
-  } catch (error: any) {
-    handleApiFailure(error, {
-      permissionFallback: '当前角色无权搜索商品',
-      onFallback: (msg) => message.warning(msg),
-      fallbackMessage: '商品搜索暂不可用'
-    })
-    productOptions.value = []
-  } finally {
-    productOptionsLoading.value = false
-  }
-}
-
-const debouncedLoadProductOptions = useDebouncedFn((keyword: string) => {
-  void loadProductOptions(keyword)
-}, 250)
-
-const handleProductSearch = (keyword: string) => {
-  productKeyword.value = String(keyword || '').trim()
-  debouncedLoadProductOptions(productKeyword.value)
-}
-
 const resetFilters = () => {
-  selectedProduct.value = null
-  productKeyword.value = ''
   libraryStatus.value = null
   filters.value = DEFAULT_PRODUCT_FILTERS()
   refreshProducts()
@@ -418,10 +343,9 @@ const refreshProductRow = async (item: any) => {
   }
   try {
     const res: any = await getProducts(
-      buildProductLibraryQueryParams(filters.value, {
+      buildProductLibraryQueryParams({ ...DEFAULT_PRODUCT_FILTERS(), productId }, {
         page: 1,
-        size: 1,
-        keyword: productId
+        size: 1
       })
     )
     const record = Array.isArray(res?.data?.records) ? res.data.records[0] : null
@@ -463,30 +387,13 @@ const mergeCategoryOptions = (dynamicNames: string[]) => {
 
 const loadFilterOptions = async () => {
   let categoryFailed = false
-  assignedActivityOptionsLoading.value = true
   try {
-    const [categoryRes, recruiterRes, activityOptions]: any[] = await Promise.all([
-      getProductLibraryCategories(),
-      getUserMasterRecruiters({ limit: MAX_PAGE_SIZE }),
-      loadAssignedActivityOptions(authStore.isAdmin)
-    ])
+    const categoryRes: any = await getProductLibraryCategories()
     const categories = Array.isArray(categoryRes?.data) ? categoryRes.data : []
     libraryCategoryOptions.value = mergeCategoryOptions(categories)
-    const recruiters = Array.isArray(recruiterRes?.data) ? recruiterRes.data : []
-    recruiterOptions.value = recruiters
-      .map((item: any) => ({
-        label: String(item?.label || item?.realName || item?.username || '').trim(),
-        value: String(item?.id || item?.userId || '').trim()
-      }))
-      .filter((item: { label: string; value: string }) => item.label && item.value)
-    assignedActivityOptions.value = activityOptions
   } catch {
     categoryFailed = true
     libraryCategoryOptions.value = []
-    recruiterOptions.value = []
-    assignedActivityOptions.value = []
-  } finally {
-    assignedActivityOptionsLoading.value = false
   }
   if (categoryFailed) {
     message.warning('类目选项加载失败，可继续浏览商品库')
