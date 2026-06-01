@@ -4,8 +4,8 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.colonel.saas.common.handler.UUIDTypeHandler;
+import com.colonel.saas.common.typehandler.JsonbTypeHandler;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -147,7 +147,7 @@ public class PromotionLink implements Serializable {
      * <p>JSON 格式，对应数据库列：{@code raw_response}，抖店平台转链接口的原始返回数据，
      * 由 JacksonTypeHandler 自动序列化/反序列化，用于问题排查</p>
      */
-    @TableField(value = "raw_response", typeHandler = JacksonTypeHandler.class)
+    @TableField(value = "raw_response", typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> rawResponse;
 
     /**

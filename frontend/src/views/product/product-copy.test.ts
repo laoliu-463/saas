@@ -67,7 +67,7 @@ describe('product copy helpers', () => {
 
   it('converts before copying when the product has no promotion link', async () => {
     const convertLink = vi.fn().mockResolvedValue({ data: { shortLink: 'https://v.douyin.com/generated/' } })
-    const writeText = vi.fn().mockResolvedValue(undefined)
+    const writeText = vi.fn().mockResolvedValue(true)
 
     const result = await copyProductBriefWithLink({
       item: { title: '待转链商品', shopName: '测试店铺', auditSupplement: {} },
@@ -83,6 +83,7 @@ describe('product copy helpers', () => {
     expect(result.link).toBe('https://v.douyin.com/generated/')
     expect(result.linkGenerationFailed).toBe(false)
     expect(result.promotionLinkGenerated).toBe(true)
+    expect(result.copied).toBe(true)
   })
 
   it('uses backend fallback copy text when promotion write is disabled', async () => {
@@ -98,7 +99,7 @@ describe('product copy helpers', () => {
         allowRealPromotionWrite: false
       }
     })
-    const writeText = vi.fn().mockResolvedValue(undefined)
+    const writeText = vi.fn().mockResolvedValue(true)
 
     const result = await copyProductBriefWithLink({
       item: { title: '降级复制商品', shopName: '测试店铺', auditSupplement: {} },
@@ -115,11 +116,12 @@ describe('product copy helpers', () => {
     expect(result.promotionLinkGenerated).toBe(false)
     expect(result.fallbackReason).toBe('REAL_PROMOTION_WRITE_DISABLED')
     expect(result.error).toBeNull()
+    expect(result.copied).toBe(true)
   })
 
   it('copies the brief without link when conversion fails', async () => {
     const convertLink = vi.fn().mockRejectedValue(new Error('convert failed'))
-    const writeText = vi.fn().mockResolvedValue(undefined)
+    const writeText = vi.fn().mockResolvedValue(true)
 
     const result = await copyProductBriefWithLink({
       item: { title: '转链失败商品', shopName: '测试店铺', auditSupplement: {} },
@@ -135,6 +137,25 @@ describe('product copy helpers', () => {
     expect(writeText.mock.calls[0][0]).not.toContain('【链接】')
     expect(result.link).toBeNull()
     expect(result.linkGenerationFailed).toBe(true)
+    expect(result.copied).toBe(true)
+  })
+
+  it('reports clipboard write failure without throwing away the generated brief', async () => {
+    const convertLink = vi.fn().mockResolvedValue({ data: { shortLink: 'https://v.douyin.com/generated/' } })
+    const writeText = vi.fn().mockResolvedValue(false)
+
+    const result = await copyProductBriefWithLink({
+      item: { title: '复制受限商品', shopName: '测试店铺', auditSupplement: {} },
+      activityId: 'A1',
+      productId: 'P1',
+      scene: 'PRODUCT_LIBRARY',
+      convertLink,
+      writeText
+    })
+
+    expect(result.text).toContain('【链接】https://v.douyin.com/generated/')
+    expect(result.link).toBe('https://v.douyin.com/generated/')
+    expect(result.copied).toBe(false)
   })
 
   it('resolves copy messages from backend promotion generation state', () => {

@@ -121,7 +121,7 @@
                 <n-card title="推进判断" size="small" style="margin-top: 16px;">
                   <div class="decision-card">
                     <n-alert v-if="!libraryDisplay.selectedToLibrary" type="info" :bordered="false">
-                      商品通过审核后会自动进入商品库；仅当满足联盟「推广中」等展示规则时，才会出现在共享商品库列表。
+                      商品通过审核后可加入商品库；仅当商品自身联盟状态满足「推广中」等展示规则时，才会出现在共享商品库列表。
                     </n-alert>
                     <div class="decision-current">
                       <n-tag :type="decisionTagType(latestDecision?.level)" size="small" round>
@@ -429,6 +429,17 @@
       </n-spin>
     </n-drawer-content>
   </n-drawer>
+  <ManualCopyDialog
+    :show="manualCopyDialog.show"
+    :content="manualCopyDialog.content"
+    :promotion-link="manualCopyDialog.promotionLink"
+    :pick-source="manualCopyDialog.pickSource"
+    :pick-source-warning="manualCopyDialog.pickSourceWarning"
+    :reason="manualCopyDialog.reason"
+    :baiying-url="manualCopyDialog.baiyingUrl"
+    @retry="retryManualCopy"
+    @close="closeManualCopyDialog"
+  />
 </template>
 
 <script setup lang="ts">
@@ -437,10 +448,12 @@ import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useMessage } from 'naive-ui';
 import { DRAWER_WIDTH_PX } from '../../constants/ui';
+import ManualCopyDialog from '../../components/common/ManualCopyDialog.vue';
 import { convertActivityProductLink, getActivityProductDetail, getActivityProductOperationLogs, getActivityProductSkus, updateActivityProductDecision } from '../../api/activityProduct';
 import { useAuthStore } from '../../stores/auth';
 import { hasAccess } from '../../constants/rbac';
 import { copyProductBriefWithLink } from './product-copy';
+import { createEmptyManualCopyDialogState, resolveManualCopyDialogState } from './manual-copy';
 import { mergeLibraryDisplayFields, resolveProductLibraryDisplay, resolveProductLibraryReadiness } from './product-library-display';
 import {
   buildOperationSummary,
@@ -454,6 +467,7 @@ import {
   parseOperationPayload
 } from './product-operation-log-display';
 import { buildProductSampleContext } from '../sample/sample-context';
+import { tryCopyText } from '../../utils/clipboard';
 import ProductSpecSelector from './components/ProductSpecSelector.vue';
 
 const props = defineProps<{
@@ -490,6 +504,7 @@ const decisionSaving = ref(false);
 const detail = ref<any>(null);
 const productSkus = ref<any[]>([]);
 const selectedSkuName = ref('');
+const manualCopyDialog = ref(createEmptyManualCopyDialogState());
 
 const skuColumns = [
   { title: 'SKU ID', key: 'skuId', width: 180, ellipsis: { tooltip: true } },
@@ -919,7 +934,6 @@ const copyProductBrief = async () => {
   }
 
   briefCopying.value = true;
-  let clipboardWriteFailed = false;
   try {
     const convertLinkForBriefCopy = (
       activityId: string | number,
@@ -932,13 +946,7 @@ const copyProductBrief = async () => {
       productId: props.productId,
       scene: 'PRODUCT_DETAIL',
       convertLink: convertLinkForBriefCopy,
-      writeText: async (text: string) => {
-        try {
-          await navigator.clipboard.writeText(text);
-        } catch {
-          clipboardWriteFailed = true;
-        }
-      }
+      writeText: async (text: string) => tryCopyText(text)
     });
 
     if (result.link && result.responseData) {
@@ -961,8 +969,16 @@ const copyProductBrief = async () => {
       await fetchData();
     }
 
-    if (clipboardWriteFailed) {
-      message.warning('讲解已生成，但浏览器未允许写入剪贴板，请手动复制');
+    const manualState = resolveManualCopyDialogState(result, detail.value);
+    if (manualState) {
+      manualCopyDialog.value = manualState;
+      if (manualState.reason === 'PROMOTION_LINK_FAILED') {
+        message.warning('真实推广链接未生成，请前往百应手动生成');
+      } else if (manualState.reason === 'PROMOTION_LINK_MISSING_PICK_SOURCE') {
+        message.warning('推广链接已生成，但无法确认 pick_source，请手动核对');
+      } else {
+        message.warning('讲解已生成，但浏览器未允许写入剪贴板，请手动复制');
+      }
     } else if (result.linkGenerationFailed) {
       message.error('短链生成失败，已复制讲解（不含短链）');
     } else {
@@ -972,6 +988,20 @@ const copyProductBrief = async () => {
     notifyApiFailure(error, message, { fallbackMessage: '讲解复制失败，请稍后重试' });
   } finally {
     briefCopying.value = false;
+  }
+};
+
+const closeManualCopyDialog = () => {
+  manualCopyDialog.value = createEmptyManualCopyDialogState();
+};
+
+const retryManualCopy = async () => {
+  const ok = await tryCopyText(manualCopyDialog.value.content);
+  if (ok) {
+    message.success('复制成功');
+    closeManualCopyDialog();
+  } else {
+    message.warning('仍无法自动写入剪贴板，请手动复制下方内容');
   }
 };
 

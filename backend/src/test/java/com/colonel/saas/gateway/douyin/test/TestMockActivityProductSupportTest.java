@@ -15,9 +15,11 @@ class TestMockActivityProductSupportTest {
     }
 
     @Test
-    void resolveMockProductStatus_shouldPreferPromotingForPromotingActivity() {
-        assertThat(TestMockActivityProductSupport.resolveMockProductStatus(100017L, 12)).isEqualTo(1);
-        assertThat(TestMockActivityProductSupport.resolveMockProductStatus(100017L, 17)).isEqualTo(2);
+    void resolveMockProductStatus_shouldDependOnlyOnProductRank() {
+        assertThat(TestMockActivityProductSupport.resolveMockProductStatus(100017L, 12)).isEqualTo(0);
+        assertThat(TestMockActivityProductSupport.resolveMockProductStatus(100001L, 12)).isEqualTo(0);
+        assertThat(TestMockActivityProductSupport.resolveMockProductStatus(100017L, 13)).isEqualTo(1);
+        assertThat(TestMockActivityProductSupport.resolveMockProductStatus(100017L, 14)).isEqualTo(2);
     }
 
     @Test

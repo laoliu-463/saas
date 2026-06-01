@@ -16,6 +16,8 @@ export const testIds = {
   // Product library
   productLibraryPage: 'product-library-page',
   productLibraryRefresh: 'product-library-refresh',
+  productLibraryActivityFilterApplied: 'product-library-activity-filter-applied',
+  productLibraryActivityFilterClear: 'product-library-activity-filter-clear',
   productGrid: 'product-grid',
   productCard: 'product-selection-card',
   productDetailButton: 'product-detail-button',

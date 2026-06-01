@@ -15,8 +15,7 @@ import {
   resolveAssignmentFilterOptions,
   resolveEffectiveAssignmentFilter,
   isActivityPromoting,
-  isActivityAssigned,
-  shouldForceLibraryDisplayFromRow
+  isActivityAssigned
 } from './activity-list-display'
 
 describe('activity-list-display', () => {
@@ -95,18 +94,12 @@ describe('activity-list-display', () => {
     expect(resolveEffectiveAssignmentFilter(false, 'all')).toBe('mine')
   })
 
-  it('detects promoting activity and auto library eligibility', () => {
+  it('detects promoting activity and assignment independently', () => {
     expect(isActivityPromoting({ status: 5 })).toBe(true)
     expect(isActivityPromoting({ statusText: '推广中' })).toBe(true)
     expect(isActivityPromoting({ status: 3, statusText: '报名中' })).toBe(false)
     expect(isActivityPromoting({ status: 3, statusText: '推广中' })).toBe(false)
     expect(isActivityAssigned({ recruiterUserId: 'uuid' })).toBe(true)
-    expect(
-      shouldForceLibraryDisplayFromRow({
-        status: 5,
-        activityAssigneeId: 'uuid'
-      })
-    ).toBe(true)
-    expect(shouldForceLibraryDisplayFromRow({ status: 5 })).toBe(false)
+    expect(isActivityAssigned({ status: 5 })).toBe(false)
   })
 })

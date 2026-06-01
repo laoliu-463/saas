@@ -12,6 +12,7 @@ import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.service.activity.ActivityAccessService;
 import com.colonel.saas.service.ColonelsettlementActivityService;
+import com.colonel.saas.service.ProductActivityManualSyncService;
 import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import org.springframework.http.MediaType;
@@ -41,6 +42,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -61,6 +63,8 @@ class ColonelActivityControllerTest {
     @Mock
     private ColonelsettlementActivityService colonelActivityService;
     @Mock
+    private ProductActivityManualSyncService productActivityManualSyncService;
+    @Mock
     private SysUserMapper sysUserMapper;
     @Mock
     private ColonelsettlementActivityMapper colonelActivityMapper;
@@ -79,6 +83,7 @@ class ColonelActivityControllerTest {
                 new ShortTtlCacheService(),
                 sysUserService,
                 colonelActivityService,
+                productActivityManualSyncService,
                 sysUserMapper,
                 activityAccessService
         );
@@ -124,6 +129,7 @@ class ColonelActivityControllerTest {
                 cacheService,
                 sysUserService,
                 colonelActivityService,
+                productActivityManualSyncService,
                 sysUserMapper,
                 activityAccessService);
         MockMvc localMvc = MockMvcBuilders.standaloneSetup(localController)
@@ -433,7 +439,6 @@ class ColonelActivityControllerTest {
         when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null)).thenReturn(listView);
         when(productService.refreshActivitySnapshots(any())).thenReturn(
                 new ProductService.ActivityProductRefreshResult(1, 1, 1, 0, 0));
-        when(colonelActivityService.findByActivityId("100018")).thenReturn(null);
 
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
                         .param("count", "20")
@@ -443,7 +448,9 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.activityId").value(100018))
                 .andExpect(jsonPath("$.data.items[0].productId").value(9002))
-                .andExpect(jsonPath("$.data.nextCursor").value("fresh-cursor"));
+                .andExpect(jsonPath("$.data.nextCursor").value("fresh-cursor"))
+                .andExpect(jsonPath("$.data.syncStats.libraryEntryCount").value(1))
+                .andExpect(jsonPath("$.data.syncStats.autoLibraryEligible").value(true));
 
         verify(productService, never()).hasActivitySnapshots("100018");
         verify(colonelActivityService).syncActivitySummaryFromUpstream(eq("100018"), eq(null));
@@ -451,6 +458,23 @@ class ColonelActivityControllerTest {
         verify(douyinProductGateway, never()).queryActivityProducts(any());
         verify(productService, never()).upsertSnapshots(eq("100018"), any());
         verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
+    }
+
+    @Test
+    void syncProducts_shouldTriggerBackgroundSyncAndReturnAcceptedImmediately() throws Exception {
+        when(productActivityManualSyncService.trigger("100018", null)).thenReturn(
+                new ProductActivityManualSyncService.SyncTriggerResult("100018", "ACCEPTED"));
+
+        mockMvc.perform(post("/colonel/activities/{activityId}/products/sync", "100018")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.activityId").value("100018"))
+                .andExpect(jsonPath("$.data.syncStatus").value("ACCEPTED"))
+                .andExpect(jsonPath("$.data.message").value("商品同步已转入后台执行"));
+
+        verify(productActivityManualSyncService).trigger("100018", null);
+        verify(productService, never()).refreshActivitySnapshots(any());
     }
 
     @Test
@@ -475,6 +499,7 @@ class ColonelActivityControllerTest {
                     new ShortTtlCacheService(),
                     sysUserService,
                     colonelActivityService,
+                    productActivityManualSyncService,
                     sysUserMapper,
                     activityAccessService);
 
@@ -511,6 +536,7 @@ class ColonelActivityControllerTest {
                     new ShortTtlCacheService(),
                     sysUserService,
                     colonelActivityService,
+                    productActivityManualSyncService,
                     sysUserMapper,
                     activityAccessService);
 

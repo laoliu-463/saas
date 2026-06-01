@@ -54,6 +54,8 @@ public final class JobLockKeys {
     public static final String PRODUCT_DISPLAY_RULE = "product:display:rule:job:lock";
     /** 商品置顶过期自动清除任务锁 */
     public static final String PRODUCT_PIN_EXPIRE = "product:pin:expire:job:lock";
+    /** 活动商品快照定时同步任务锁 */
+    public static final String PRODUCT_ACTIVITY_SYNC = "product:activity:sync:job:lock";
     /** 上校合作伙伴数据同步任务锁 */
     public static final String COLONEL_PARTNER_SYNC = "colonel:partner:sync:job:lock";
     /** 分区自动维护任务锁 */

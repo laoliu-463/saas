@@ -461,6 +461,63 @@ public class ProductController extends BaseController {
     }
 
     /**
+     * 商品管理页审核通过。
+     *
+     * <p>最新商品管理口径中，待审核阶段只做通过 / 拒绝。审核通过后由服务层把当前商品关联
+     * 加入商品库展示竞争，并触发展示规则。</p>
+     *
+     * @param relationId 商品关联主键（product_snapshot.id）
+     * @param request    审核通过备注
+     * @return 审核后的商品详情
+     */
+    @Operation(summary = "商品管理审核通过", description = "待审核商品通过后直接进入商品库展示竞争。")
+    @RequireRoles({RoleCodes.BIZ_STAFF})
+    @PostMapping("/manage/{relationId}/approve")
+    public ApiResult<Product> approveManagedProduct(
+            @Parameter(description = "商品关联主键，使用 UUID 格式。") @PathVariable UUID relationId,
+            @Valid @RequestBody ProductManageApproveRequest request) {
+        return ok(productService.auditProduct(relationId, true, request == null ? null : request.getRemark()));
+    }
+
+    /**
+     * 商品管理页审核拒绝。
+     *
+     * <p>审核拒绝后商品不会进入商品库展示，并由服务层把展示状态置为隐藏。</p>
+     *
+     * @param relationId 商品关联主键（product_snapshot.id）
+     * @param request    拒绝原因
+     * @return 审核后的商品详情
+     */
+    @Operation(summary = "商品管理审核拒绝", description = "待审核商品拒绝后不进入商品库展示。")
+    @RequireRoles({RoleCodes.BIZ_STAFF})
+    @PostMapping("/manage/{relationId}/reject")
+    public ApiResult<Product> rejectManagedProduct(
+            @Parameter(description = "商品关联主键，使用 UUID 格式。") @PathVariable UUID relationId,
+            @Valid @RequestBody ProductManageRejectRequest request) {
+        return ok(productService.auditProduct(relationId, false, request == null ? null : request.getReason()));
+    }
+
+    @Operation(summary = "暂停发布商品", description = "将商品关系标记为本地暂停发布，商品库列表不再展示该关系。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @PostMapping("/{relationId}/pause")
+    public ApiResult<Product> pausePublish(
+            @Parameter(description = "商品关联主键，使用 UUID 格式。") @PathVariable UUID relationId,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId) {
+        return ok(productService.pausePublish(relationId, userId, deptId));
+    }
+
+    @Operation(summary = "恢复发布商品", description = "清除本地暂停发布标记，并重新进入商品库展示规则计算。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @PostMapping("/{relationId}/resume")
+    public ApiResult<Product> resumePublish(
+            @Parameter(description = "商品关联主键，使用 UUID 格式。") @PathVariable UUID relationId,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId) {
+        return ok(productService.resumePublish(relationId, userId, deptId));
+    }
+
+    /**
      * 商品生成推广链接（已废弃）。
      *
      * <p>为商品生成抖音推广链接（转链）。CHANNEL_LEADER / CHANNEL_STAFF 角色可操作。
@@ -627,6 +684,39 @@ public class ProductController extends BaseController {
         public void setApproved(boolean approved) {
             this.approved = approved;
         }
+
+        public String getReason() {
+            return reason;
+        }
+
+        public void setReason(String reason) {
+            this.reason = reason;
+        }
+    }
+
+    /**
+     * 商品管理审核通过请求体。
+     */
+    public static class ProductManageApproveRequest {
+        @Schema(description = "审核通过备注，可为空。", example = "素材完整，允许进入商品库")
+        private String remark;
+
+        public String getRemark() {
+            return remark;
+        }
+
+        public void setRemark(String remark) {
+            this.remark = remark;
+        }
+    }
+
+    /**
+     * 商品管理审核拒绝请求体。
+     */
+    public static class ProductManageRejectRequest {
+        @Schema(description = "拒绝原因，必填。", example = "商品信息不完整")
+        @NotBlank(message = "拒绝原因不能为空")
+        private String reason;
 
         public String getReason() {
             return reason;

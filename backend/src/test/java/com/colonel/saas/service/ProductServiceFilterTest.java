@@ -20,6 +20,7 @@ import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -31,7 +32,11 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -237,6 +242,126 @@ class ProductServiceFilterTest {
 
         assertThat(result.getTotal()).isEqualTo(1);
         assertThat(result.getRecords()).singleElement().extracting("productId").isEqualTo("9001");
+    }
+
+    @Test
+    void getSelectedLibraryPage_shouldOnlyReturnPromotingVisibleNotRejectedNotPausedProducts() {
+        ProductOperationState promoting = state("10001", "9001");
+        promoting.setAuditStatus(null);
+
+        ProductOperationState upstreamNotPromoting = state("10002", "9002");
+
+        ProductOperationState rejected = state("10003", "9003");
+        rejected.setAuditStatus(3);
+        rejected.setBizStatus(ProductBizStatus.REJECTED.name());
+
+        ProductOperationState paused = state("10004", "9004");
+        paused.setManualDisabled(true);
+
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 4);
+        statePage.setRecords(List.of(promoting, upstreamNotPromoting, rejected, paused));
+
+        ProductSnapshot promotingSnap = snapshot("10001", "9001", "玩具乐器", 9900L);
+        ProductSnapshot notPromotingSnap = snapshot("10002", "9002", "美妆", 8800L);
+        notPromotingSnap.setStatus(0);
+        notPromotingSnap.setStatusText("待审核");
+        ProductSnapshot rejectedSnap = snapshot("10003", "9003", "食品", 6600L);
+        ProductSnapshot pausedSnap = snapshot("10004", "9004", "家清", 5500L);
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(
+                promotingSnap,
+                notPromotingSnap,
+                rejectedSnap,
+                pausedSnap));
+        when(productBizStatusService.readBizStatus(rejected)).thenReturn(ProductBizStatus.REJECTED);
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().build());
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getRecords()).singleElement().extracting("productId").isEqualTo("9001");
+    }
+
+    @Test
+    void pausePublish_shouldManualDisableAndHideProductFromSelectedLibrary() {
+        UUID relationId = UUID.randomUUID();
+        UUID operatorId = UUID.randomUUID();
+        UUID operatorDeptId = UUID.randomUUID();
+        ProductSnapshot snapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        snapshot.setId(relationId);
+        ProductOperationState state = state("10001", "9001");
+        state.setManualDisabled(false);
+        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setHiddenReason(null);
+
+        when(snapshotMapper.selectById(relationId)).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(operationStateMapper.updateById(any())).thenReturn(1);
+
+        var result = service.pausePublish(relationId, operatorId, operatorDeptId);
+
+        ArgumentCaptor<ProductOperationState> stateCaptor = ArgumentCaptor.forClass(ProductOperationState.class);
+        verify(operationStateMapper).updateById(stateCaptor.capture());
+        ProductOperationState saved = stateCaptor.getValue();
+        assertThat(saved.getSelectedToLibrary()).isTrue();
+        assertThat(saved.getManualDisabled()).isTrue();
+        assertThat(saved.getDisplayStatus()).isEqualTo(ProductDisplayStatus.HIDDEN.name());
+        assertThat(saved.getHiddenReason()).isEqualTo(ProductDisplayRuleService.HIDDEN_REASON_PUBLISH_PAUSED);
+        assertThat(result.getProductId()).isEqualTo("9001");
+        verify(productBizStatusService).logStatusChange(
+                eq("10001"),
+                eq("9001"),
+                eq("PUBLISH_PAUSE"),
+                eq(ProductBizStatus.APPROVED),
+                eq(ProductBizStatus.APPROVED),
+                eq(operatorId),
+                eq(operatorDeptId),
+                anyMap(),
+                eq("暂停发布"),
+                eq(true),
+                isNull());
+        verify(productDisplayRuleService).applyForProductId("9001");
+    }
+
+    @Test
+    void resumePublish_shouldClearManualDisabledAndReconcileDisplayRules() {
+        UUID relationId = UUID.randomUUID();
+        UUID operatorId = UUID.randomUUID();
+        UUID operatorDeptId = UUID.randomUUID();
+        ProductSnapshot snapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        snapshot.setId(relationId);
+        ProductOperationState state = state("10001", "9001");
+        state.setManualDisabled(true);
+        state.setDisplayStatus(ProductDisplayStatus.HIDDEN.name());
+        state.setHiddenReason(ProductDisplayRuleService.HIDDEN_REASON_PUBLISH_PAUSED);
+
+        when(snapshotMapper.selectById(relationId)).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(operationStateMapper.updateById(any())).thenReturn(1);
+
+        var result = service.resumePublish(relationId, operatorId, operatorDeptId);
+
+        ArgumentCaptor<ProductOperationState> stateCaptor = ArgumentCaptor.forClass(ProductOperationState.class);
+        verify(operationStateMapper).updateById(stateCaptor.capture());
+        ProductOperationState saved = stateCaptor.getValue();
+        assertThat(saved.getSelectedToLibrary()).isTrue();
+        assertThat(saved.getManualDisabled()).isFalse();
+        assertThat(saved.getDisplayStatus()).isEqualTo(ProductDisplayStatus.PENDING.name());
+        assertThat(saved.getHiddenReason()).isNull();
+        assertThat(result.getProductId()).isEqualTo("9001");
+        verify(productBizStatusService).logStatusChange(
+                eq("10001"),
+                eq("9001"),
+                eq("PUBLISH_RESUME"),
+                eq(ProductBizStatus.APPROVED),
+                eq(ProductBizStatus.APPROVED),
+                eq(operatorId),
+                eq(operatorDeptId),
+                anyMap(),
+                eq("恢复发布"),
+                eq(true),
+                isNull());
+        verify(productDisplayRuleService).applyForProductId("9001");
     }
 
     @Test

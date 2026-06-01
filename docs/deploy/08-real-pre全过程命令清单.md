@@ -12,7 +12,7 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 仓库 | `https://github.com/laoliu-463/saas.git` |
+| 仓库 | 优先 `https://gitee.com/cao-jianing463/saas.git`；GitHub 远端为 `https://github.com/laoliu-463/saas.git` |
 | 部署分支 | `feature/auth-system` |
 | Compose 文件 | `docker-compose.real-pre.yml` |
 | Compose project | `saas-active` |
@@ -58,9 +58,9 @@ cd backend
 mvn clean test
 
 cd ../frontend
-pnpm install --frozen-lockfile
-pnpm test
-pnpm build
+npm install
+npm run test
+npm run build
 ```
 
 根目录 E2E 命令只在服务已经启动后执行：
@@ -74,6 +74,14 @@ npm run e2e:real-pre:p0
 ```
 
 ### 1. SSH 登录服务器
+
+如果本机已配置 SSH 别名：
+
+```bash
+ssh saas
+```
+
+未配置别名时：
 
 ```bash
 ssh root@服务器IP
@@ -148,9 +156,8 @@ docker compose version
 
 ```bash
 cd /opt/saas
-git clone https://github.com/laoliu-463/saas.git app
+git clone -o gitee -b feature/auth-system https://gitee.com/cao-jianing463/saas.git app
 cd /opt/saas/app
-git checkout feature/auth-system
 git pull --ff-only
 git rev-parse --short HEAD
 ```
@@ -159,11 +166,24 @@ git rev-parse --short HEAD
 
 ```bash
 cd /opt/saas/app
-git fetch origin
+git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
+git fetch gitee
 git checkout feature/auth-system
 git pull --ff-only
 git rev-parse --short HEAD
 ```
+
+本地更新同步到服务器时，先在本地提交并推送：
+
+```bash
+cd D:/Projects/SAAS
+git status
+git add <本次修改文件>
+git commit -m "描述本次修改"
+git push gitee feature/auth-system
+```
+
+再在服务器执行上面的 `git fetch gitee && git pull --ff-only`。
 
 查看最近提交，记录可回滚版本：
 
@@ -297,7 +317,6 @@ cd /opt/saas/app
 export REAL_PRE_ENV_FILE=/opt/saas/env/.env.real-pre
 docker compose \
   --env-file /opt/saas/env/.env.real-pre \
-  --project-name saas-active \
   -f docker-compose.real-pre.yml \
   config >/opt/saas/runtime/qa/out/docker-compose.real-pre.rendered.yml
 ```
@@ -307,7 +326,6 @@ docker compose \
 ```bash
 docker compose \
   --env-file /opt/saas/env/.env.real-pre \
-  --project-name saas-active \
   -f docker-compose.real-pre.yml \
   config --quiet
 ```
@@ -336,7 +354,6 @@ cd /opt/saas/app
 export REAL_PRE_ENV_FILE=/opt/saas/env/.env.real-pre
 docker compose \
   --env-file /opt/saas/env/.env.real-pre \
-  --project-name saas-active \
   -f docker-compose.real-pre.yml \
   up -d --build
 ```
@@ -347,7 +364,6 @@ docker compose \
 cd /opt/saas/app
 docker compose \
   --env-file /opt/saas/env/.env.real-pre \
-  --project-name saas-active \
   -f docker-compose.real-pre.yml \
   ps
 ```
@@ -400,16 +416,16 @@ ok
 
 ```bash
 cd /opt/saas/app
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml logs --tail=300 backend-real-pre
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml logs --tail=300 frontend-real-pre
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml logs --tail=300 postgres-real-pre
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml logs --tail=300 redis-real-pre
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml logs --tail=300 backend-real-pre
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml logs --tail=300 frontend-real-pre
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml logs --tail=300 postgres-real-pre
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml logs --tail=300 redis-real-pre
 ```
 
 持续观察后端日志：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml logs -f --tail=300 backend-real-pre
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml logs -f --tail=300 backend-real-pre
 ```
 
 重点看：
@@ -531,7 +547,7 @@ curl -I https://real-pre.xxx.com/api/douyin/oauth/callback
 
 ```bash
 cd /opt/saas/app
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml logs -f --tail=300 backend-real-pre | grep -Ei "oauth|TokenCreateResponse|Douyin|token"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml logs -f --tail=300 backend-real-pre | grep -Ei "oauth|TokenCreateResponse|Douyin|token"
 ```
 
 授权成功后，浏览器最终应跳到：
@@ -546,57 +562,57 @@ https://real-pre.xxx.com/system/douyin?oauth=success
 
 ```bash
 cd /opt/saas/app
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre
 ```
 
 用单条命令检查表：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "\\dt"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "\\dt"
 ```
 
 检查配置 seed：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select count(*) from system_configs;"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select count(*) from system_configs;"
 ```
 
 检查订单同步：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select count(*) from colonelsettlement_order;"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select count(*) from colonelsettlement_order;"
 ```
 
 最近订单：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select order_id, product_id, activity_id, pick_source, channel_user_id, pay_time, settle_time from colonelsettlement_order order by created_at desc limit 20;"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select order_id, product_id, activity_id, pick_source, channel_user_id, pay_time, settle_time from colonelsettlement_order order by created_at desc limit 20;"
 ```
 
 归因映射：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select * from pick_source_mapping order by created_at desc limit 20;"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select * from pick_source_mapping order by created_at desc limit 20;"
 ```
 
 寄样自动完成：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select id, status, channel_user_id, talent_uid, product_id, homework_time from sample_request order by created_at desc limit 20;"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select id, status, channel_user_id, talent_uid, product_id, homework_time from sample_request order by created_at desc limit 20;"
 ```
 
 业绩记录：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select * from performance_record order by created_at desc limit 20;"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select * from performance_record order by created_at desc limit 20;"
 ```
 
 如果表名和当前数据库不一致，先查表：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "\\dt *order*"
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "\\dt *sample*"
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "\\dt *performance*"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "\\dt *order*"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "\\dt *sample*"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "\\dt *performance*"
 ```
 
 ### 17. 部署后 E2E 门禁
@@ -640,13 +656,13 @@ p0 PASS：具备进一步验收条件，但仍不是正式全量上线。
 
 ```bash
 date
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml logs --tail=500 backend-real-pre | grep -Ei "order|settlement|colonel|pick_source|buyin"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml logs --tail=500 backend-real-pre | grep -Ei "order|settlement|colonel|pick_source|buyin"
 ```
 
 重复检查订单数量：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select count(*) from colonelsettlement_order;"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select count(*) from colonelsettlement_order;"
 ```
 
 如果没有真实订单，结论只能写：
@@ -680,7 +696,7 @@ ls -lh /opt/saas/backups | tail
 
 ```bash
 cd /opt/saas/app
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre pg_dump -U saas -d saas_real_pre -F c > /opt/saas/backups/saas_real_pre-$(date +%Y%m%d-%H%M%S).dump
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre pg_dump -U saas -d saas_real_pre -F c > /opt/saas/backups/saas_real_pre-$(date +%Y%m%d-%H%M%S).dump
 ```
 
 ### 20. 重启和重建
@@ -689,31 +705,31 @@ docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active
 
 ```bash
 cd /opt/saas/app
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml restart backend-real-pre
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml restart backend-real-pre
 ```
 
 重启前端：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml restart frontend-real-pre
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml restart frontend-real-pre
 ```
 
 重建并启动：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml up -d --build
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml up -d --build
 ```
 
 停止应用容器但保留数据卷：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml stop backend-real-pre frontend-real-pre
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml stop backend-real-pre frontend-real-pre
 ```
 
 禁止无确认执行：
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml down -v
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml down -v
 ```
 
 ### 21. 回滚
@@ -743,7 +759,8 @@ ROLLBACK_REF=上一个稳定commit ENV_FILE=/opt/saas/env/.env.real-pre ./script
 
 ```bash
 cd /opt/saas/app
-git fetch origin
+git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
+git fetch gitee
 git checkout 上一个稳定commit
 ENV_FILE=/opt/saas/env/.env.real-pre PROJECT_NAME=saas-active ./scripts/deploy-real-pre.sh
 ```
@@ -846,7 +863,7 @@ ss -lntp | grep -E '3001|8081'
 ### 2. Compose 渲染失败
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml config
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml config
 ```
 
 判断：多数是 env 缺值、占位符未替换或 YAML 渲染失败。
@@ -854,7 +871,7 @@ docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active
 ### 3. 后端不健康
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml logs --tail=300 backend-real-pre
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml logs --tail=300 backend-real-pre
 ```
 
 判断：重点查 DB、Redis、JWT、抖音配置、profile。
@@ -878,7 +895,7 @@ curl -v https://real-pre.xxx.com/api/system/health
 ### 6. OAuth 失败
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml logs -f --tail=300 backend-real-pre | grep -Ei "oauth|token"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml logs -f --tail=300 backend-real-pre | grep -Ei "oauth|token"
 ```
 
 判断：查 callback 地址、code 是否过期、`client_key` / `client_secret`、权限包、店铺授权和 Nginx `/api/` 转发。
@@ -886,7 +903,7 @@ docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active
 ### 7. 没有真实订单
 
 ```bash
-docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select count(*) from colonelsettlement_order;"
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml exec -T postgres-real-pre psql -U saas -d saas_real_pre -c "select count(*) from colonelsettlement_order;"
 ```
 
 判断：没有真实订单样本时只能标记 `PENDING`，不能写成 `P0 PASS`。

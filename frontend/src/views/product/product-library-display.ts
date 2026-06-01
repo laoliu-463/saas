@@ -128,7 +128,7 @@ function resolvePreEntryLibraryReadiness(item: any, now: Date): ProductLibraryRe
       code: 'READY_AFTER_ENTRY',
       label: '审核入库后可展示',
       tagType: 'success',
-      hint: '审核通过后将自动入库；当前联盟为推广中且推广期有效，入库后会出现在共享商品库列表。',
+      hint: '审核通过并加入商品库后，若商品自身联盟状态为推广中且推广期有效，会出现在共享商品库列表。',
       canDisplayAfterEntry: true
     }
   }
@@ -136,7 +136,7 @@ function resolvePreEntryLibraryReadiness(item: any, now: Date): ProductLibraryRe
     code: 'PENDING_AUDIT',
     label: '审核后不可展示',
     tagType: 'warning',
-    hint: `审核通过后将自动入库，但不会在共享商品库列表展示：${blockReason}。请待联盟商品变为「推广中」后重新同步活动商品。`,
+    hint: `审核通过并加入商品库后，仍不会在共享商品库列表展示：${blockReason}。请待商品自身联盟状态变为「推广中」后重新同步商品。`,
     canDisplayAfterEntry: false
   }
 }
@@ -169,8 +169,8 @@ export function resolveProductLibraryReadiness(item: any, now = new Date()): Pro
     const blockReason = resolveLibraryEntryBlockReason(item, now)
     const hint = display.visibilityHint
       || (blockReason
-        ? `已自动入库，但${blockReason}。`
-        : '已自动入库，但当前不满足商品库展示规则。')
+        ? `已入库，但${blockReason}。`
+        : '已入库，但当前不满足商品库展示规则。')
     return {
       code: 'STORED_HIDDEN',
       label: '已入库·列表不可见',
@@ -234,7 +234,7 @@ export function resolveProductLibraryDisplay(item: any): ProductLibraryDisplayVi
     entryTagType = 'warning'
     listVisibilityLabel = '商品库列表不可见'
     if (hiddenReason === 'NOT_ELIGIBLE' && allianceStatusText) {
-      visibilityHint = `当前联盟推广状态为「${allianceStatusText}」。共享商品库仅展示联盟状态为「推广中」的商品；活动「推广中」不代表每个商品都可展示。`
+      visibilityHint = `当前商品联盟推广状态为「${allianceStatusText}」。共享商品库仅展示商品自身联盟状态为「推广中」的商品。`
     } else if (hiddenReasonLabel) {
       visibilityHint = `${hiddenReasonLabel}，因此不会在共享商品库列表中展示。`
     } else {
@@ -314,8 +314,8 @@ export function formatLibraryEntrySuccessMessage(item: any) {
   if (display.hiddenFromList || !readiness.canDisplayAfterEntry) {
     const hint = readiness.hint || display.visibilityHint
     return hint
-      ? `审核通过并已自动入库，但暂不在共享商品库列表展示：${hint}`
-      : '审核通过并已自动入库，但当前不满足商品库展示条件，暂不在共享商品库列表展示'
+      ? `审核通过并已入库，但暂不在共享商品库列表展示：${hint}`
+      : '审核通过并已入库，但当前不满足商品库展示条件，暂不在共享商品库列表展示'
   }
   return '审核通过，已加入商品库'
 }
@@ -335,6 +335,11 @@ export interface ProductCardView {
   imageUrl: string
   shopName: string
   partnerName: string
+  /**
+   * 商家名称（来自上游 merchantName / merchant_name）。
+   * 与 shopName（店铺名）区分：商家是品牌/公司主体，店铺是抖店店铺名。
+   */
+  merchantName: string
   activityId: string
   activityName: string
   recruiterName: string
@@ -350,10 +355,35 @@ export interface ProductCardView {
   sampleRequirement: string
   activityStartTime: string
   activityEndTime: string
+  /**
+   * 库存（来自上游 productStock / product_stock）。
+   * 后端 view 透传为 String，前端展示时直接用，不再二次格式化。
+   * 用于商品库卡片 hover 抽屉中的"库存"字段。
+   */
+  productStock: string
+  /**
+   * 店铺评分（来自上游 shopScore / shop_score）。
+   * 后端 view 透传为 Integer（解析 rawPayload 后回填），缺失时为 null。
+   * 用于商品库卡片 hover 抽屉中的"店铺评分"字段。
+   */
+  shopScore: number | null
   isPinned: boolean
   supportInvestment: boolean
+  /**
+   * 上游原始商品链接（详情页 H5 / 商详页 URL）。
+   * 不允许把真实转链 / 百应后台链接兜底到这里 — 见 ADR-003。
+   */
   productUrl: string
+  /**
+   * 百应后台商品链接（Buyin / 百应 商品管理后台 URL）。
+   * 仅作为"渠道转链失败后人工去百应生成"的后路展示，不参与复制简介流程。
+   */
   baiyingUrl: string
+  /**
+   * 真实转链后的推广链接（抖音 / 百应 / 第三方短链），带 pick_source。
+   * 与 promotion.promotionLink 同步；不可与 productUrl / baiyingUrl 混用。
+   */
+  promotionUrl: string
   specs: unknown[]
   raw: Record<string, unknown>
 }
@@ -427,10 +457,14 @@ export function normalizeProductCard(raw: any): ProductCardView {
   const productName = normalizeText(raw?.productName || raw?.title || raw?.name) || '未命名商品'
   const imageUrl = normalizeText(raw?.imageUrl || raw?.cover || raw?.mainImage)
   const shopName = normalizeText(raw?.shopName || raw?.merchantShopName || raw?.merchantName) || '未识别店铺'
+  // 三种链接字段必须严格分离兜底链，避免上游字段漂移导致"商品原链 / 百应 / 转链"互相冒充。
+  // 口径详见 docs/决策/ADR-003-活动列表与商品库入口路由统一.md
   const productUrl =
-    normalizeText(raw?.productUrl || raw?.detailUrl || raw?.promotionLink || raw?.promoteLink) || ''
+    normalizeText(raw?.productUrl || raw?.detailUrl) || ''
   const baiyingUrl =
-    normalizeText(raw?.baiyingUrl || raw?.baiyingLink || raw?.buyinUrl || raw?.detailUrl) || ''
+    normalizeText(raw?.baiyingUrl || raw?.baiyingLink || raw?.buyinUrl) || ''
+  const promotionUrl =
+    normalizeText(raw?.promotionLink || raw?.promoteLink || raw?.shortLink || raw?.promotionUrl) || ''
 
   return {
     id: relationId,
@@ -440,6 +474,7 @@ export function normalizeProductCard(raw: any): ProductCardView {
     imageUrl,
     shopName,
     partnerName: normalizeText(raw?.partnerName || raw?.merchantName || raw?.colonelName),
+    merchantName: normalizeText(raw?.merchantName || raw?.merchant_name || raw?.partnerName),
     activityId,
     activityName: normalizeText(raw?.activityName || raw?.boundActivityName),
     recruiterName: normalizeText(raw?.recruiterName || raw?.assigneeName),
@@ -461,10 +496,13 @@ export function normalizeProductCard(raw: any): ProductCardView {
       raw?.activityStartTime || raw?.promotionStartTime || raw?.startTime
     ),
     activityEndTime: normalizeText(raw?.activityEndTime || raw?.promotionEndTime || raw?.endTime),
+    productStock: normalizeText(raw?.productStock ?? raw?.product_stock),
+    shopScore: parseShopScore(raw?.shopScore ?? raw?.shop_score),
     isPinned: Boolean(raw?.isPinned ?? raw?.pinned),
     supportInvestment: resolveSupportInvestment(raw),
     productUrl,
     baiyingUrl,
+    promotionUrl,
     specs: Array.isArray(raw?.specs)
       ? raw.specs
       : Array.isArray(raw?.specPrices)
@@ -472,4 +510,17 @@ export function normalizeProductCard(raw: any): ProductCardView {
         : [],
     raw: raw && typeof raw === 'object' ? { ...raw } : {}
   }
+}
+
+/**
+ * 解析店铺评分：上游可能是 Integer（后端 view 已统一为 Integer）或 String（抖音 gateway），
+ * 缺失或非法时返回 null。用于 hover 抽屉中的"店铺评分"展示。
+ */
+function parseShopScore(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  const digits = String(value).replace(/[^0-9]/g, '')
+  if (!digits) return null
+  const num = Number(digits)
+  return Number.isFinite(num) ? num : null
 }

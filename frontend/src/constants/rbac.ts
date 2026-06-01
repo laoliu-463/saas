@@ -31,8 +31,7 @@ export const ROLE_CODES = {
 
 /**
  * 角色代码 → 中文标签映射（供 UI 展示用）。
- * 自定义角色不在此映射中时，sanitizeRoleName 会 fallback 到 "自定义角色"，
- * 永远不展示原始 roleCode。
+ * 自定义角色不在此映射中时，具体展示 fallback 由各页面处理。
  */
 export const ROLE_NAME_MAP: Record<string, string> = {
   admin: '系统管理员',

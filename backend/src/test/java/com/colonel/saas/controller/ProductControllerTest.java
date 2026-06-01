@@ -131,6 +131,104 @@ class ProductControllerTest {
     }
 
     @Test
+    void approveManagedProduct_shouldCallAuditAndUseManagePath() throws NoSuchMethodException {
+        UUID relationId = UUID.randomUUID();
+        Product product = new Product();
+        product.setId(relationId);
+        product.setCheckStatus(2);
+        when(productService.auditProduct(relationId, true, "素材完整")).thenReturn(product);
+
+        ProductController.ProductManageApproveRequest request = new ProductController.ProductManageApproveRequest();
+        request.setRemark("素材完整");
+
+        var response = productController.approveManagedProduct(relationId, request);
+
+        assertThat(response.getData().getCheckStatus()).isEqualTo(2);
+        verify(productService).auditProduct(relationId, true, "素材完整");
+        Method method = ProductController.class.getMethod(
+                "approveManagedProduct",
+                UUID.class,
+                ProductController.ProductManageApproveRequest.class);
+        assertThat(method.getAnnotation(org.springframework.web.bind.annotation.PostMapping.class).value())
+                .containsExactly("/manage/{relationId}/approve");
+    }
+
+    @Test
+    void rejectManagedProduct_shouldCallAuditAndUseManagePath() throws NoSuchMethodException {
+        UUID relationId = UUID.randomUUID();
+        Product product = new Product();
+        product.setId(relationId);
+        product.setCheckStatus(3);
+        when(productService.auditProduct(relationId, false, "不符合商品库要求")).thenReturn(product);
+
+        ProductController.ProductManageRejectRequest request = new ProductController.ProductManageRejectRequest();
+        request.setReason("不符合商品库要求");
+
+        var response = productController.rejectManagedProduct(relationId, request);
+
+        assertThat(response.getData().getCheckStatus()).isEqualTo(3);
+        verify(productService).auditProduct(relationId, false, "不符合商品库要求");
+        Method method = ProductController.class.getMethod(
+                "rejectManagedProduct",
+                UUID.class,
+                ProductController.ProductManageRejectRequest.class);
+        assertThat(method.getAnnotation(org.springframework.web.bind.annotation.PostMapping.class).value())
+                .containsExactly("/manage/{relationId}/reject");
+    }
+
+    @Test
+    void pausePublish_shouldCallServiceAndUseRelationPath() throws NoSuchMethodException {
+        UUID relationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        Product product = new Product();
+        product.setId(relationId);
+        product.setSelectedToLibrary(true);
+        product.setDisplayStatus("HIDDEN");
+        when(productService.pausePublish(relationId, userId, deptId)).thenReturn(product);
+
+        var response = productController.pausePublish(relationId, userId, deptId);
+
+        assertThat(response.getData().getDisplayStatus()).isEqualTo("HIDDEN");
+        verify(productService).pausePublish(relationId, userId, deptId);
+        Method method = ProductController.class.getMethod(
+                "pausePublish",
+                UUID.class,
+                UUID.class,
+                UUID.class);
+        assertThat(method.getAnnotation(org.springframework.web.bind.annotation.PostMapping.class).value())
+                .containsExactly("/{relationId}/pause");
+        RequireRoles roles = method.getAnnotation(RequireRoles.class);
+        assertThat(roles.value()).containsExactly(RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
+    }
+
+    @Test
+    void resumePublish_shouldCallServiceAndUseRelationPath() throws NoSuchMethodException {
+        UUID relationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        Product product = new Product();
+        product.setId(relationId);
+        product.setSelectedToLibrary(true);
+        product.setDisplayStatus("PENDING");
+        when(productService.resumePublish(relationId, userId, deptId)).thenReturn(product);
+
+        var response = productController.resumePublish(relationId, userId, deptId);
+
+        assertThat(response.getData().getDisplayStatus()).isEqualTo("PENDING");
+        verify(productService).resumePublish(relationId, userId, deptId);
+        Method method = ProductController.class.getMethod(
+                "resumePublish",
+                UUID.class,
+                UUID.class,
+                UUID.class);
+        assertThat(method.getAnnotation(org.springframework.web.bind.annotation.PostMapping.class).value())
+                .containsExactly("/{relationId}/resume");
+        RequireRoles roles = method.getAnnotation(RequireRoles.class);
+        assertThat(roles.value()).containsExactly(RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
+    }
+
+    @Test
     void generatePromotionLink_shouldCallService() {
         UUID id = UUID.randomUUID();
         UUID userId = UUID.randomUUID();

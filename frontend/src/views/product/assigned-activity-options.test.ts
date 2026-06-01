@@ -27,13 +27,13 @@ describe('assigned-activity-options', () => {
     ])
   })
 
-  it('loadAssignedActivityOptions uses assigned for admin', async () => {
+  it('loadAssignedActivityOptions uses all activities for admin', async () => {
     vi.mocked(getColonelActivityPage).mockResolvedValue({
       data: { total: 1, activityList: [{ activityId: '88', activityName: '测试活动' }] }
     } as any)
     const options = await loadAssignedActivityOptions(true)
     expect(getColonelActivityPage).toHaveBeenCalledWith(
-      expect.objectContaining({ assignmentFilter: 'assigned', pageSize: 20, page: 1 })
+      expect.objectContaining({ assignmentFilter: 'all', pageSize: 20, page: 1 })
     )
     expect(options).toEqual([{ label: '测试活动 (88)', value: '88' }])
   })

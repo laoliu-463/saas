@@ -59,6 +59,9 @@ app:
     logistics: true
 
 talent:
+  preset-tags:
+    bootstrap:
+      enabled: false
   profile:
     schema-bootstrap:
       enabled: false

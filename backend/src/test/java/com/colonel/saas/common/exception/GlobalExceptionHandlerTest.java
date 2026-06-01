@@ -94,7 +94,9 @@ class GlobalExceptionHandlerTest {
     @Test
     void handleForbidden_returnsForbiddenResult() {
         ForbiddenException ex = new ForbiddenException("无权限访问该资源");
-        ApiResult<Void> result = handler.handleForbidden(ex);
+        ResponseEntity<ApiResult<Void>> response = handler.handleForbidden(ex);
+        ApiResult<Void> result = response.getBody();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(result.getCode()).isEqualTo(403);
         assertThat(result.getMsg()).isEqualTo("无权限访问该资源");
     }

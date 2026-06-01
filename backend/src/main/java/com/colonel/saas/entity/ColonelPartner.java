@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("colonel_partner")
+@TableName(value = "colonel_partner", autoResultMap = true)
 public class ColonelPartner extends VersionedEntity {
 
     /**

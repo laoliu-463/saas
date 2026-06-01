@@ -62,14 +62,14 @@ npx playwright install
 → 上传/拉取代码
 → 配置 real-pre 环境变量
 → mvn clean test
-→ pnpm install --frozen-lockfile && pnpm build
+→ npm install && npm run build
 → mvn clean package -DskipTests
 → export REAL_PRE_ENV_FILE=/opt/saas/env/.env.real-pre
-→ docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml config
-→ docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml up -d postgres-real-pre redis-real-pre
+→ docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml config
+→ docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml up -d postgres-real-pre redis-real-pre
 → scripts/backup-db.sh
 → scripts/run-real-pre-db-migrations.sh
-→ docker compose --env-file /opt/saas/env/.env.real-pre --project-name saas-active -f docker-compose.real-pre.yml up -d backend-real-pre frontend-real-pre
+→ docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml up -d backend-real-pre frontend-real-pre
 → /api/system/health 与 /login 端口验活
 → npm run e2e:real-pre:p0:preflight
 → npm run e2e:real-pre:p0

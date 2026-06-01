@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import {
   batchSyncActivityProducts,
   formatActivityProductSyncMessage,
-  resolveActivitySyncFlags,
   summarizeActivityProductSyncResults
 } from './activity-sync'
 
@@ -16,26 +15,6 @@ describe('activity-sync', () => {
   beforeEach(() => {
     vi.mocked(getActivityProducts).mockReset()
     vi.mocked(getActivityProducts).mockResolvedValue({ data: { items: [] } } as never)
-  })
-
-  it('resolveActivitySyncFlags detects auto library eligibility', () => {
-    expect(
-      resolveActivitySyncFlags({
-        status: 5,
-        recruiterUserId: 'user-1'
-      })
-    ).toEqual({
-      autoLibraryEligible: true,
-      promotingWithoutAssignee: false
-    })
-    expect(
-      resolveActivitySyncFlags({
-        status: 5
-      })
-    ).toEqual({
-      autoLibraryEligible: false,
-      promotingWithoutAssignee: true
-    })
   })
 
   it('batch syncs selected activities sequentially', async () => {
@@ -55,19 +34,15 @@ describe('activity-sync', () => {
       {
         activityId: '1',
         ok: true,
-        autoLibraryEligible: true,
-        promotingWithoutAssignee: false,
         syncedProductCount: 12,
         libraryEntryCount: 12
       },
-      { activityId: '2', ok: true, autoLibraryEligible: false, promotingWithoutAssignee: true, syncedProductCount: 5 },
-      { activityId: '3', ok: false, autoLibraryEligible: false, promotingWithoutAssignee: false, error: 'fail' }
+      { activityId: '2', ok: true, syncedProductCount: 5 },
+      { activityId: '3', ok: false, error: 'fail' }
     ])
     expect(summary).toMatchObject({
       succeeded: 2,
       failed: 1,
-      autoLibraryCount: 1,
-      promotingWithoutAssigneeCount: 1,
       totalSyncedProducts: 17,
       totalLibraryEntries: 12
     })
@@ -75,7 +50,7 @@ describe('activity-sync', () => {
     expect(message).toContain('已同步 2 个活动')
     expect(message).toContain('共拉取 17 个商品')
     expect(message).toContain('12 个已进入商品库')
-    expect(message).toContain('尚未分配招商')
+    expect(message).not.toContain('尚未分配招商')
     expect(message).toContain('1 个活动同步失败')
   })
 })

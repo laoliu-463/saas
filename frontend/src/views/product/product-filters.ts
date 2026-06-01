@@ -4,14 +4,20 @@
 export const libraryCategoryOptionsPreset: { label: string; value: string }[] = []
 
 export interface ProductFilterState {
+  /** 商品 ID 精确/模糊查询 */
+  productId: string | null
+  /** 商品名称关键字 */
+  productName: string | null
   /** 系统人工标签（原 category 字段） */
   systemTag: string | null
   commission: string | null
   hasSample: string | null
   assignee: string | null
   decision: string | null
-  /** 店铺 / 合作方名称模糊匹配 */
+  /** 店铺名称模糊匹配 */
   shopKeyword: string | null
+  /** 商家状态 */
+  merchantStatus: string | null
   /** 抖音同步类目（单选兼容，活动商品页） */
   categoryName: string | null
   /** 商品库类目多选 */
@@ -22,6 +28,8 @@ export interface ProductFilterState {
   assigneeId: string | null
   /** 服务费率区间 */
   serviceFee: string | null
+  /** 本系统发布状态 */
+  publishStatus: string | null
   /** 是否支持投流 */
   supportsAds: string | null
   /** 近 30 天销量区间 */
@@ -44,10 +52,16 @@ export interface ProductFilterState {
   freeSample: string | null
   /** 合作类型 */
   cooperationType: string | null
+  /** 商品机制 */
+  productMechanism: string | null
   /** 直播价格下限 */
   livePriceMin: string | null
   /** 直播价格上限 */
   livePriceMax: string | null
+  /** 库存下限 */
+  stockMin: string | null
+  /** 库存上限 */
+  stockMax: string | null
   /** 佣金率下限 */
   commissionMin: string | null
   /** 佣金率上限 */
@@ -64,6 +78,12 @@ export interface ProductFilterState {
   doubleCommission: boolean
   /** 仅未加入货盘 */
   notInLibrary: boolean
+  /** 补录信息是否完整 */
+  supplemented: string | null
+  /** 更新时间范围 */
+  updatedTimeRange: [string, string] | null
+  /** 同步时间范围 */
+  syncTimeRange: [string, string] | null
   /** 选品去重 */
   dedup: boolean
   /** 招商活动 ID */
@@ -73,17 +93,21 @@ export interface ProductFilterState {
 }
 
 export const DEFAULT_PRODUCT_FILTERS = (): ProductFilterState => ({
+  productId: null,
+  productName: null,
   systemTag: null,
   commission: null,
   hasSample: null,
   assignee: null,
   decision: null,
   shopKeyword: null,
+  merchantStatus: null,
   categoryName: null,
   categories: [],
   activityId: null,
   assigneeId: null,
   serviceFee: null,
+  publishStatus: null,
   supportsAds: null,
   salesRange: null,
   promotionLink: null,
@@ -95,8 +119,11 @@ export const DEFAULT_PRODUCT_FILTERS = (): ProductFilterState => ({
   listed: null,
   freeSample: null,
   cooperationType: null,
+  productMechanism: null,
   livePriceMin: null,
   livePriceMax: null,
+  stockMin: null,
+  stockMax: null,
   commissionMin: null,
   commissionMax: null,
   sampleSalesMin: null,
@@ -107,6 +134,9 @@ export const DEFAULT_PRODUCT_FILTERS = (): ProductFilterState => ({
   handCard: false,
   doubleCommission: false,
   notInLibrary: false,
+  supplemented: null,
+  updatedTimeRange: null,
+  syncTimeRange: null,
   dedup: false,
   recruitActivityId: null,
   recruitActivityName: null
@@ -311,6 +341,18 @@ export function matchShopKeyword(item: any, shopKeyword: string | null) {
   return shop.includes(keyword)
 }
 
+export function matchProductId(item: any, productId: string | null) {
+  if (!productId) return true
+  return normalizeText(item?.productId).includes(normalizeText(productId))
+}
+
+export function matchProductName(item: any, productName: string | null) {
+  if (!productName) return true
+  const keyword = normalizeText(productName).toLowerCase()
+  const name = normalizeText(item?.productName || item?.title || item?.name).toLowerCase()
+  return name.includes(keyword)
+}
+
 export function matchCategoryName(item: any, categoryName: string | null) {
   if (!categoryName) return true
   const name = normalizeText(item?.categoryName).toLowerCase()
@@ -390,13 +432,17 @@ export function buildProductLibraryQueryParams(
     page: extra.page,
     size: extra.size,
     keyword: keyword || undefined,
+    productId: filters.productId || undefined,
+    productName: filters.productName || undefined,
     status: extra.status ?? undefined,
     shopKeyword: filters.shopKeyword || undefined,
+    merchantStatus: filters.merchantStatus || undefined,
     categoryName: filters.categoryName || undefined,
     categories: filters.categories?.length ? filters.categories.join(',') : undefined,
     activityId: filters.activityId || undefined,
     assigneeId: filters.assigneeId || undefined,
     serviceFee: filters.serviceFee || undefined,
+    publishStatus: filters.publishStatus || undefined,
     supportsAds: filters.supportsAds || undefined,
     salesRange: filters.salesRange || undefined,
     promotionLink: filters.promotionLink || undefined,
@@ -416,8 +462,11 @@ export function buildProductLibraryQueryParams(
     listed: filters.listed || undefined,
     freeSample: filters.freeSample || undefined,
     cooperationType: filters.cooperationType || undefined,
+    productMechanism: filters.productMechanism || undefined,
     livePriceMin: filters.livePriceMin || undefined,
     livePriceMax: filters.livePriceMax || undefined,
+    stockMin: filters.stockMin || undefined,
+    stockMax: filters.stockMax || undefined,
     commissionMin: filters.commissionMin || undefined,
     commissionMax: filters.commissionMax || undefined,
     sampleSalesMin: filters.sampleSalesMin || undefined,
@@ -428,6 +477,11 @@ export function buildProductLibraryQueryParams(
     handCard: filters.handCard ? '1' : undefined,
     doubleCommission: filters.doubleCommission ? '1' : undefined,
     notInLibrary: filters.notInLibrary ? '1' : undefined,
+    supplemented: filters.supplemented || undefined,
+    updatedStartTime: filters.updatedTimeRange?.[0] || undefined,
+    updatedEndTime: filters.updatedTimeRange?.[1] || undefined,
+    syncStartTime: filters.syncTimeRange?.[0] || undefined,
+    syncEndTime: filters.syncTimeRange?.[1] || undefined,
     dedup: filters.dedup ? '1' : undefined,
     recruitActivityId: filters.recruitActivityId || undefined,
     recruitActivityName: filters.recruitActivityName || undefined
@@ -446,6 +500,8 @@ export function applyProductFilters(
     if (!matchHasSample(item, filters.hasSample)) return false
     if (!matchAssignee(item, filters.assignee)) return false
     if (!matchDecision(item, filters.decision)) return false
+    if (!matchProductId(item, filters.productId)) return false
+    if (!matchProductName(item, filters.productName)) return false
     if (!matchShopKeyword(item, filters.shopKeyword)) return false
     if (!matchCategoryName(item, filters.categoryName)) return false
     if (filters.categories?.length && !filters.categories.some((category) => matchCategoryName(item, category))) return false

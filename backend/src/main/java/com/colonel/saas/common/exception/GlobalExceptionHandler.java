@@ -111,8 +111,9 @@ public class GlobalExceptionHandler {
      * @return 状态码 403 的统一响应
      */
     @ExceptionHandler(ForbiddenException.class)
-    public ApiResult<Void> handleForbidden(ForbiddenException e) {
-        return ApiResult.of(ResultCode.FORBIDDEN.getCode(), e.getMessage(), null);
+    public ResponseEntity<ApiResult<Void>> handleForbidden(ForbiddenException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResult.of(ResultCode.FORBIDDEN.getCode(), e.getMessage(), null));
     }
 
     /**

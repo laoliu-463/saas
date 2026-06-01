@@ -177,6 +177,16 @@ public interface ColonelsettlementActivityMapper {
     List<ColonelsettlementActivity> selectAssignmentByActivityIds(@Param("activityIds") List<String> activityIds);
 
     /**
+     * 批量读取活动 ID → 活动名映射（轻量字段，仅取 activity_id 和 activity_name）。
+     * <p>用于商品库视图构造时回填 {@code Product.activityName}，避免对每条商品单独查库。
+     * 上游 activityId 列表为空时直接返回空集合。</p>
+     *
+     * @param activityIds 抖店活动 ID 集合
+     * @return 活动记录列表（仅含 activityId 和 name 两个字段）
+     */
+    List<ColonelsettlementActivity> selectNamesByActivityIds(@Param("activityIds") List<String> activityIds);
+
+    /**
      * 按分配筛选条件统计活动数量（本地库分页）。
      */
     long countPageByAssignment(
@@ -195,4 +205,18 @@ public interface ColonelsettlementActivityMapper {
             @Param("assignmentFilter") String assignmentFilter,
             @Param("recruiterUserId") UUID recruiterUserId,
             @Param("activityKeyword") String activityKeyword);
+
+    /**
+     * 读取需要执行活动商品快照同步的活动 ID。
+     */
+    List<String> selectActiveActivityIds(
+            @Param("limit") int limit,
+            @Param("lastSyncedBefore") LocalDateTime lastSyncedBefore);
+
+    /**
+     * 更新活动商品快照同步时间。
+     */
+    int touchLastSyncAt(
+            @Param("activityId") String activityId,
+            @Param("syncedAt") LocalDateTime syncedAt);
 }

@@ -253,6 +253,18 @@
         </foreach>
     </select>
 
+    <select id="selectNamesByActivityIds" resultType="com.colonel.saas.entity.ColonelsettlementActivity">
+        SELECT
+            activity_id AS activityId,
+            activity_name AS name
+        FROM colonel_activity
+        WHERE deleted = 0
+          AND activity_id IN
+        <foreach collection="activityIds" item="activityId" open="(" separator="," close=")">
+            #{activityId}
+        </foreach>
+    </select>
+
     <sql id="AssignmentFilterExpr">
         <choose>
             <when test="assignmentFilter == 'mine'">
@@ -322,6 +334,26 @@
         ORDER BY assigned_at DESC NULLS LAST, last_sync_at DESC NULLS LAST, create_time DESC NULLS LAST
         LIMIT #{limit} OFFSET #{offset}
     </select>
+
+    <select id="selectActiveActivityIds" resultType="string">
+        SELECT activity_id
+        FROM colonel_activity
+        WHERE deleted = 0
+          AND activity_id IS NOT NULL
+          AND (end_time IS NULL OR end_time &gt;= CURRENT_TIMESTAMP)
+          AND COALESCE(status, '') NOT IN ('已结束', '结束', 'CLOSED', 'ENDED', 'FINISHED', '0')
+          AND (last_sync_at IS NULL OR last_sync_at &lt; #{lastSyncedBefore})
+        ORDER BY last_sync_at ASC NULLS FIRST, update_time DESC NULLS LAST, create_time DESC NULLS LAST
+        LIMIT #{limit}
+    </select>
+
+    <update id="touchLastSyncAt">
+        UPDATE colonel_activity
+        SET last_sync_at = #{syncedAt},
+            update_time = #{syncedAt}
+        WHERE deleted = 0
+          AND activity_id = #{activityId}
+    </update>
 
     <!-- 仅取 extra_data 字段，用于 colonel_buyin_id 回源查询 -->
     <select id="selectExtraDataByActivityId" resultType="map">

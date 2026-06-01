@@ -4,8 +4,6 @@ import com.colonel.saas.entity.ColonelsettlementActivity;
 import org.springframework.util.StringUtils;
 
 import java.util.Map;
-import java.util.UUID;
-
 /**
  * 抖店活动「推广中」状态判定（以活动维度为准，不用商品联盟 status 代替）。
  */
@@ -31,24 +29,6 @@ public final class ActivityPromotionSupport {
             return false;
         }
         return isPromoting(activity.getActivityStatusCode(), activity.getActivityStatusText());
-    }
-
-    /**
-     * 是否应对该活动下商品强制全量进入商品库并展示。
-     * <p>条件：活动推广中且已分配招商（recruiter_user_id 非空）。</p>
-     */
-    public static boolean shouldForceLibraryDisplay(ColonelsettlementActivity activity) {
-        if (activity == null) {
-            return false;
-        }
-        return isPromoting(activity) && activity.getRecruiterUserId() != null;
-    }
-
-    public static boolean shouldForceLibraryDisplay(UUID recruiterUserId, Integer activityStatusCode, String activityStatusText) {
-        if (recruiterUserId == null) {
-            return false;
-        }
-        return isPromoting(activityStatusCode, activityStatusText);
     }
 
     public static boolean isPromoting(Map<String, Object> activityRow) {

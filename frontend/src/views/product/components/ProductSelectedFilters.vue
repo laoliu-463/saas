@@ -34,7 +34,7 @@ import {
 } from '../product-filters'
 
 type SelectedFilter =
-  | { id: string; type: 'array'; key: 'categories' | 'goodsTags' | 'productTags'; label: string; text: string; value: string }
+  | { id: string; type: 'array'; key: 'categories' | 'productTags'; label: string; text: string; value: string }
   | { id: string; type: 'field'; key: keyof ProductFilterState; label: string; text: string }
   | { id: string; type: 'libraryStatus'; label: string; text: string }
 
@@ -79,7 +79,7 @@ function findLabel(options: { label: string; value: string }[], value: string | 
 
 const selectedFilters = computed<SelectedFilter[]>(() => {
   const result: SelectedFilter[] = []
-  const addArray = (key: 'categories' | 'goodsTags' | 'productTags', label: string) => {
+  const addArray = (key: 'categories' | 'productTags', label: string) => {
     props.filters[key].forEach((value) => {
       result.push({ id: `${key}:${value}`, type: 'array', key, label, text: value, value })
     })
@@ -89,7 +89,6 @@ const selectedFilters = computed<SelectedFilter[]>(() => {
   }
 
   addArray('categories', '商品类目')
-  addArray('goodsTags', '货盘标签')
   addArray('productTags', '商品标签')
   addField('commission', '佣金区间', findLabel(commissionOptions, props.filters.commission))
   addField('serviceFee', '服务费率', findLabel(serviceFeeOptions, props.filters.serviceFee))

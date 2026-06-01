@@ -176,6 +176,26 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
     }
 
     // 5) biz_staff 审核通过 -> 待发货。
+    //    biz_staff 审核依赖 isSampleProductAssignedToUser(product_operation_state.assigneeId = userId)。
+    //    当商品来自商品库时 product_operation_state 由运营选品时建立，
+    //    但当商品来自 colonel 活动时需要先通过 biz_leader 调用 audit-assignee 接口
+    //    将商品分配给 biz_staff。
+    const bizStaffUserId = String(
+      (await apiLogin(`${backend}/api`, 'biz_staff', BIZ_STAFF_PASSWORD)).userId || ''
+    );
+    if (bizStaffUserId && productLookup.mapping?.activityId && productLookup.mapping?.productId) {
+      const assignRes = await rawApi(
+        api,
+        'PUT',
+        `/api/colonel/activities/${productLookup.mapping.activityId}/products/${productLookup.mapping.productId}/audit-assignee`,
+        String(admin.token || ''),
+        { data: { assigneeId: bizStaffUserId } }
+      );
+      setDetail(ctx, 'bizStaffAssignResult', { status: assignRes.status, ok: assignRes.ok });
+      if (!assignRes.ok) {
+        markBlocked(ctx, `分配商品给 biz_staff 失败 HTTP ${assignRes.status}`);
+      }
+    }
     if (bizStaffToken && sampleId) {
       const audit = await rawApi(api, 'PUT', `/api/samples/${sampleId}/status`, bizStaffToken, {
         data: { action: 'PENDING_SHIP', reason: `real-pre P0 33 biz audit ${ctx.runId}` }

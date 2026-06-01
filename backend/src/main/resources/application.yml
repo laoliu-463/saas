@@ -83,6 +83,14 @@ performance:
     cron: ${PERFORMANCE_RECALCULATE_FAILED_CRON:0 */10 * * * ?}
     limit: ${PERFORMANCE_RECALCULATE_FAILED_LIMIT:100}
 
+product:
+  activity:
+    sync:
+      enabled: ${PRODUCT_ACTIVITY_SYNC_ENABLED:false}
+      cron: "${PRODUCT_ACTIVITY_SYNC_CRON:0 0 */2 * * ?}"
+      batch-size: ${PRODUCT_ACTIVITY_SYNC_BATCH_SIZE:20}
+      whitelist-activities: "${PRODUCT_ACTIVITY_SYNC_WHITELIST_ACTIVITIES:}"
+
 app:
   performance:
     slow-query-threshold-ms: ${APP_SLOW_QUERY_THRESHOLD_MS:500}

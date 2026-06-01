@@ -27,17 +27,13 @@ class ColonelsettlementActivityServiceTest {
     private ColonelsettlementActivityMapper activityMapper;
     @Mock
     private DouyinActivityGateway douyinActivityGateway;
-    @Mock
-    private ProductDisplayRuleService productDisplayRuleService;
-    @Mock
-    private ProductService productService;
 
     private ColonelsettlementActivityService service;
 
     @BeforeEach
     void setUp() {
         service = new ColonelsettlementActivityService(
-                activityMapper, douyinActivityGateway, productDisplayRuleService, productService, true);
+                activityMapper, douyinActivityGateway, true);
     }
 
     @Test
@@ -93,7 +89,7 @@ class ColonelsettlementActivityServiceTest {
     @Test
     void getPage_shouldNotSeedWhenDemoSeedingDisabled() {
         service = new ColonelsettlementActivityService(
-                activityMapper, douyinActivityGateway, productDisplayRuleService, productService, false);
+                activityMapper, douyinActivityGateway, false);
         when(activityMapper.selectPage(eq(0L), eq(2L), eq(null), any(LocalDateTime.class)))
                 .thenReturn(List.of());
         when(activityMapper.countPage(eq(null), any(LocalDateTime.class))).thenReturn(0L);

@@ -17,6 +17,18 @@ backend/temp-*.log
 backend/lib/doudian-sdk-java-1.1.0-*.jar
 .tmp.compose*.yml
 
+# Local agent/tooling and run artifacts
+/.opencode/
+/.worktrees/
+/tmp/
+/args.json
+/env.json
+/health.json
+/preflight.log
+/realpre-p0.log
+/start-real-pre.log
+/snap*.txt
+
 
 out/
 runtime/*

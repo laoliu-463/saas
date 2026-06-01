@@ -68,7 +68,7 @@ public abstract class BaseEntity implements Serializable {
      * <p>在 INSERT 和 UPDATE 操作时由 MetaObjectHandler 自动填充，
      * 反映该记录最近一次被修改的时间点。</p>
      */
-    @TableField(fill = FieldFill.INSERT_UPDATE)
+    @TableField(fill = FieldFill.INSERT_UPDATE, update = "now()")
     private LocalDateTime updateTime;
 
     /**

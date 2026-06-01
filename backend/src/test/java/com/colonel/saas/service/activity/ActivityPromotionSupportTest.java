@@ -3,8 +3,6 @@ package com.colonel.saas.service.activity;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import org.junit.jupiter.api.Test;
 
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ActivityPromotionSupportTest {
@@ -34,20 +32,13 @@ class ActivityPromotionSupportTest {
     }
 
     @Test
-    void shouldForceLibraryDisplay_requiresPromotingAndRecruiterAssigned() {
-        UUID recruiterId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    void isPromoting_shouldIgnoreRecruiterAssignment() {
         ColonelsettlementActivity assignedPromoting = new ColonelsettlementActivity();
         assignedPromoting.setActivityStatusCode(5);
-        assignedPromoting.setRecruiterUserId(recruiterId);
-        assertThat(ActivityPromotionSupport.shouldForceLibraryDisplay(assignedPromoting)).isTrue();
+        assertThat(ActivityPromotionSupport.isPromoting(assignedPromoting)).isTrue();
 
-        ColonelsettlementActivity promotingOnly = new ColonelsettlementActivity();
-        promotingOnly.setActivityStatusCode(5);
-        assertThat(ActivityPromotionSupport.shouldForceLibraryDisplay(promotingOnly)).isFalse();
-
-        ColonelsettlementActivity assignedNotPromoting = new ColonelsettlementActivity();
-        assignedNotPromoting.setActivityStatusCode(3);
-        assignedNotPromoting.setRecruiterUserId(recruiterId);
-        assertThat(ActivityPromotionSupport.shouldForceLibraryDisplay(assignedNotPromoting)).isFalse();
+        ColonelsettlementActivity unassignedPromoting = new ColonelsettlementActivity();
+        unassignedPromoting.setActivityStatusCode(5);
+        assertThat(ActivityPromotionSupport.isPromoting(unassignedPromoting)).isTrue();
     }
 }

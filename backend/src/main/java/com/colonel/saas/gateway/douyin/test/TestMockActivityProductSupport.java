@@ -13,7 +13,7 @@ import java.util.Locale;
  *
  * <ul>
  *   <li><b>活动状态生成</b>：根据 activityId 的种子值（seed）循环分配 6 种抖店活动状态（未上线、报名未开始、报名中、推广未开始、推广中、报名结束）</li>
- *   <li><b>商品状态生成</b>：根据活动状态和商品排名推导商品在联盟中的状态（待审核、推广中、申请未通过、合作已终止等）</li>
+ *   <li><b>商品状态生成</b>：根据商品自身排名生成联盟状态，不读取活动状态</li>
  *   <li><b>时间口径</b>：活动与推广的起止日期基于当前日期相对计算，确保本地联调时数据始终处于合理的时间窗口内</li>
  *   <li><b>工具方法</b>：提供价格格式化、游标解析、安全的 Long 转换等公共工具方法</li>
  * </ul>
@@ -57,38 +57,18 @@ final class TestMockActivityProductSupport {
     }
 
     /**
-     * 判断给定活动是否处于「推广中」状态。
-     *
-     * @param activitySeed 活动 ID 种子值
-     * @return {@code true} 表示活动状态为推广中（5），{@code false} 表示其他状态
-     */
-    static boolean isPromotingActivity(long activitySeed) {
-        return resolveMockActivityStatus(activitySeed) == 5;
-    }
-
-    /**
-     * 根据活动状态和商品排名解析 Mock 商品在联盟中的状态。
+     * 根据商品排名解析 Mock 商品在联盟中的状态。
      * <p>处理流程：</p>
      * <ol>
-     *   <li>判断活动是否处于「推广中」状态</li>
-     *   <li>推广中的活动：商品以「推广中」为主（rank % 8 的 4/5/6/7 为推广中），少量分配待审核(0)、申请未通过(2)、合作已终止(3)、合作已到期(6)</li>
-     *   <li>非推广中的活动：商品状态分布更均匀，包含合作前取消(4) 状态</li>
+     *   <li>仅使用商品排名构造稳定分布</li>
+     *   <li>同一活动下可同时出现待审核、推广中、申请未通过、合作已终止、合作前取消、合作已到期</li>
      * </ol>
      *
-     * @param activitySeed 活动 ID 种子值
+     * @param activitySeed 活动 ID 种子值，仅用于保持方法签名兼容
      * @param rank         商品在列表中的排名（从 1 开始）
      * @return 商品状态码（0=待审核, 1=推广中, 2=申请未通过, 3=合作已终止, 4=合作前取消, 6=合作已到期）
      */
     static int resolveMockProductStatus(long activitySeed, int rank) {
-        if (isPromotingActivity(activitySeed)) {
-            return switch (Math.floorMod(rank, 8)) {
-                case 0 -> 0;
-                case 1 -> 2;
-                case 2 -> 3;
-                case 3 -> 6;
-                default -> 1;
-            };
-        }
         return switch (Math.floorMod(rank, 6)) {
             case 0 -> 0;
             case 1 -> 1;

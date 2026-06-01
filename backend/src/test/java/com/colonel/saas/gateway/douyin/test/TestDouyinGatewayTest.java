@@ -143,7 +143,7 @@ class TestDouyinGatewayTest {
                         100,
                         null,
                         null,
-                        "1900116",
+                        "1900118",
                         0,
                         0L,
                         null,
@@ -155,7 +155,7 @@ class TestDouyinGatewayTest {
         assertThat(pageResult.items())
                 .singleElement()
                 .satisfies(item -> {
-                    assertThat(item.productId()).isEqualTo(1900116L);
+                    assertThat(item.productId()).isEqualTo(1900118L);
                     assertThat(item.status()).isEqualTo(0);
                     assertThat(item.statusText()).isNotBlank();
                 });
@@ -211,7 +211,7 @@ class TestDouyinGatewayTest {
                         100,
                         null,
                         null,
-                        "1900116",
+                        "1900118",
                         0,
                         0L,
                         null,
@@ -221,7 +221,7 @@ class TestDouyinGatewayTest {
 
         assertThat(pageResult.total()).isEqualTo(1L);
         assertThat(pageResult.items()).singleElement().satisfies(item -> {
-            assertThat(item.productId()).isEqualTo(1900116L);
+            assertThat(item.productId()).isEqualTo(1900118L);
             assertThat(item.status()).isEqualTo(0);
             assertThat(item.statusText()).isNotBlank();
         });

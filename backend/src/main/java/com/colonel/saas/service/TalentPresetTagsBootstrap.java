@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -36,6 +37,10 @@ import java.util.UUID;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(
+        name = "talent.preset-tags.bootstrap.enabled",
+        havingValue = "true",
+        matchIfMissing = true)
 public class TalentPresetTagsBootstrap implements ApplicationRunner {
 
     /** 默认预设标签列表：涵盖跟单状态、达人类型和商业能力等维度 */

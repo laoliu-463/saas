@@ -96,14 +96,14 @@ export const MENU_TREE: MenuTreeNode[] = [
     showInTop: true,
     roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.ADMIN],
     children: [
-      { label: '活动列表', key: '/product/manage', topKey: 'product-manage', path: '/product/manage', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] },
       {
         label: '商品列表',
         key: '/product/manage/products',
         topKey: 'product-manage',
         path: '/product/manage/products',
         roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF]
-      }
+      },
+      { label: '活动列表', key: '/product/manage', topKey: 'product-manage', path: '/product/manage', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
     ]
   },
   {

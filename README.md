@@ -1,116 +1,162 @@
-# 抖音团长 SaaS V2.2
+# 抖音团长 SaaS V1
 
-本项目是一套面向抖音电商“团长”业务的全链路管理系统。
+本项目是抖音团长 SaaS V1 的业务记录系统与 real-pre 联调工作台。当前事实以代码、测试、运行配置和 `docs/` 文档共同确认，旧 V2.2、FastAPI、Celery、Python 爬虫式方案只作为历史归档背景。
 
-当前默认运行口径：
+## 当前口径
 
-- 环境：`test`
-- 后端端口：`8080`
-- 前端接口前缀：`/api`
-- 调试台页面：`/dev/test`
-- 初始化接口：`/api/test/seed`
-- 登录账号：`admin / admin123`
+- 技术栈：Spring Boot 3.2、Java 17、PostgreSQL、Redis、Docker Compose、Vue 3、TypeScript、Playwright。
+- 当前环境只保留 `test` 和 `real-pre` 两类入口。
+- `test` 是 mock 回归基线。
+- `real-pre` 是真实上游 / 生产形态验证环境，不允许用 mock 数据冒充真实闭环。
+- 服务器 real-pre 目标是受控部署验证，不是正式生产全量放量。
 
-## 核心能力
+## 文档入口
 
-- **商品主链路**：同步团长活动商品、内部初筛、招商分配、自动化转链。
-- **订单归因**：基于 `pick_source` 的自动化订单业绩对账与负责人归因。
-- **寄样管理**：达人选品寄样申请、审核、发货、签收、订单触发自动结算。
-- **达人 CRM**：公海/私海保护期机制、达人画像补全。
+- 总地图：[CLAUDE.md](./CLAUDE.md)
+- 文档地图：[docs/README.md](./docs/README.md)
+- 用户手册：[docs/11-用户操作手册.md](./docs/11-用户操作手册.md)
+- V1 范围：[docs/01-V1交付范围与边界.md](./docs/01-V1交付范围与边界.md)
+- 测试验收：[docs/09-测试验收总览.md](./docs/09-测试验收总览.md)
+- 部署运行：[docs/10-部署运行总览.md](./docs/10-部署运行总览.md)
+- real-pre 联调：[docs/验收/real-pre联调手册.md](./docs/验收/real-pre联调手册.md)
+- 服务器部署：[docs/deploy/README.md](./docs/deploy/README.md)
+- Playwright：[README-e2e.md](./README-e2e.md)
 
-## 目录导航
+## 环境与端口
 
-- 当前主导航链路：
-  - [04-开发进度](./docs/04-开发进度.md)
-  - [10-上线前验收清单](./docs/10-上线前验收清单.md)
-  - [11-real-pre证据索引](./docs/11-real-pre证据索引.md)
-- [docs/README](./docs/README.md)
-- [00-项目总览](./docs/00-项目总览.md)
-- [01-业务闭环](./docs/01-业务闭环.md)
-- [02-架构设计](./docs/02-架构设计.md)
-- [03-Test与Real网关契约](./docs/03-Test与Real网关契约.md)
-- [04-开发进度](./docs/04-开发进度.md)
-- [05-接口与数据模型](./docs/05-接口与数据模型.md)
-- [06-部署与对接计划](./docs/06-部署与对接计划.md)
-- [09-真实SDK联调准备清单](./docs/09-真实SDK联调准备清单.md)
-- [10-上线前验收清单](./docs/10-上线前验收清单.md)
-- [11-real-pre证据索引](./docs/11-real-pre证据索引.md)
-- [10-V2.2场景覆盖矩阵](./docs/10-V2.2场景覆盖矩阵.md)
-- [archive/README](./docs/archive/README.md)
-- [README-e2e](./README-e2e.md)（根目录 Playwright）
-
-## 快速上手
-
-1. 测试环境：`docker compose --env-file .env.test --project-name saas-test -f docker-compose.test.yml up -d`
-2. 预生产环境：`docker compose --env-file .env.real-pre --project-name saas-active -f docker-compose.real-pre.yml up -d`
-3. 打开前端：`http://localhost:3000`
-4. 登录后访问 `/dev/test` 进行 reset / seed / 造数调试。
-
-## 当前标准启动格局
-
-以后本机启动统一按下面这套执行，不再接受混合占用：
-
-| 用途 | 前端 | 后端 | 数据库 | Redis | 启动来源 |
+| 环境 | 前端 | 后端 | 数据库 | Redis | 用途 |
 | --- | --- | --- | --- | --- | --- |
-| `test` 人工联调 / 自动化基线 | `3000` | `8080` | `5432` | `6379` | `test` compose + 本机单前端 |
-| `real-pre` 浏览器回归 | `3001` | `8081` | `5433` | `6380` | `real-pre` compose |
+| `test` | `3000` | `8080` | Compose 内 PostgreSQL | Compose 内 Redis | mock 回归、P0 基线 |
+| `real-pre` | `3001` | `8081` | `saas_real_pre` | Compose 内 Redis | 真实上游、部署验证 |
 
-强制要求：
+强制约束：
 
-- `3000` 只保留一个本机前端进程
-- `3001` 只保留 `real-pre` 前端来源，不允许本机再起第二个 `vite --port 3001`
-- `8080` 只对应 `test` backend
-- `8081` 只对应 `real-pre` backend
-- 非明确需要时，不单独启动本机 `redis-server` 占用 `6379`
+- 不混起第二个 `3001` Vite。
+- 不额外手工启动占用 `8080` 的后端。
+- real-pre 必须保持 `APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`、`DOUYIN_REAL_UPSTREAM_MODE=live`。
+- real-pre 受控部署默认关闭真实推广写入：`DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false`、`ALLOW_REAL_PROMOTION_WRITE=false`。
 
-real-pre 回归口径：
+## 本地开发
 
-- 后端：`http://localhost:8081/api`
-- 前端：`http://localhost:3001`
-- 适用于页面级 E2E 回归、权限验收、部署形态验证和 `/api/system/health` 健康检查；`/api/actuator/**` 需携带 JWT
-- 当前 `real-pre` 是独立端口/容器拓扑和当前生产形态入口，使用 `SPRING_PROFILES_ACTIVE=real-pre`、`APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`
-- `test` 是 Mock 联调和回归基线；旧 `local-mock` 入口已合并进 `test`，不再作为脚本或 Compose 入口保留
+安装根目录 E2E 依赖：
 
-当前基线：
+```bash
+npm install
+npx playwright install
+```
 
-- `backend mvn test`：以 `docs/04-开发进度.md` 最近一次全量为准（2026-05-09：`652 tests, 0 failures, 0 errors`）
-- `frontend npm.cmd run build`：通过
-- real-pre 浏览器回归报告：`runtime/qa/out/e2e-20260503-1353/report.md`，2026-05-03 全路径回归 `45/45` 通过
-- test QA 脚本入口：`runtime/qa/full-browser-e2e.cjs`、`runtime/qa/data-gap4-visible.cjs`
-- 根目录 Playwright：`README-e2e.md`（`npm run e2e`、`npm run e2e:real-pre`）
-- QA 一键命令：`powershell -ExecutionPolicy Bypass -File .\scripts\run-real-pre-e2e.ps1`、`powershell -ExecutionPolicy Bypass -File .\scripts\run-data-gap4-visible.ps1`
-- QA 串行总入口：`powershell -ExecutionPolicy Bypass -File .\scripts\run-qa-all.ps1`
-- 拓扑检查命令：`powershell -ExecutionPolicy Bypass -File .\scripts\check-env-topology.ps1`
+后端回归：
 
-补充说明：
+```bash
+cd backend
+mvn test
+```
 
-- 抖店 SDK 依赖不再使用 `systemPath`
-- 项目通过 `backend/lib/maven-repo/` 加载 `com.doudian:open-sdk:1.1.0`
+前端构建：
 
-## Environment Secret Policy
+```bash
+cd frontend
+npm run build
+```
 
-- Real credentials must not be stored in tracked repository files.
-- Repository example files may contain field names and placeholders only, never live values.
-- Local real-integration credentials must live in untracked env files, CI/CD secrets, or server environment variables.
-- If a real Douyin secret was ever shared in a working tree, screenshots, or prior commits, rotate `DOUYIN_CLIENT_SECRET` and related credentials.
+启动 test：
 
-## Local Startup Checklist
+```bash
+npm run start:test
+```
 
-1. Use `docker compose --env-file .env.test --project-name saas-test -f docker-compose.test.yml up -d` for isolated `test`.
-2. Start only one local frontend for `3000`; do not start another local Vite on `3001`.
-3. Use `docker compose --env-file .env.real-pre --project-name saas -f docker-compose.real-pre.yml up -d --build backend-real-pre frontend-real-pre` for `real-pre` browser regression.
-4. Do not use `dev` as the default local walkthrough profile.
-5. Do not store real Douyin credentials in tracked files.
-6. Use `/api/test/**` only in `test`; `real-pre` 不注册测试控制器。
-7. If `3001` is already occupied by a local Node/Vite process, stop it before starting `real-pre`.
-8. If `6379` is already occupied by a standalone local Redis, stop it unless you explicitly need it.
+启动 real-pre：
 
-## 开发规范
+```bash
+npm run start:real-pre
+```
 
-- 统一使用 **UTF-8** 编码。
-- 业务逻辑面向 **Gateway 契约** 开发，确保 Test 与 Real 环境平滑切换。
-- 前端组件遵循 **Naive UI** 与 **Vue 3** 最佳实践。
+停止本地服务：
 
----
+```bash
+npm run stop
+```
 
-> **核心价值**：流量分发有闭环，业绩归因有回流。
+## 验收命令
+
+test/mock 基线：
+
+```bash
+npm run e2e:smoke
+npm run e2e:v1-p0
+```
+
+real-pre 预检和 P0：
+
+```bash
+npm run e2e:real-pre:p0:preflight
+npm run e2e:real-pre:p0
+npm run e2e:real-pre:roles
+```
+
+当前最近一次本地证据：
+
+- `mvn test`：`1499 tests, 0 failures, 0 errors`
+- `npm run build`：通过，仅有 Vite chunk 体积警告
+- `npm run e2e:real-pre:p0:preflight`：通过，证据目录 `runtime/qa/out/real-pre-preflight-20260531-200252/`
+
+## 同步到服务器
+
+当前本地分支为 `feature/auth-system`，跟踪 `gitee/feature/auth-system`。本机 SSH 已配置 `saas` 别名时，可直接：
+
+```bash
+ssh saas
+```
+
+本地修改需要先提交并推送，否则服务器无法通过 `git pull` 获取：
+
+```bash
+git status
+git add <本次修改文件>
+git commit -m "描述本次修改"
+git push gitee feature/auth-system
+```
+
+首次同步到服务器：
+
+```bash
+ssh saas
+mkdir -p /opt/saas/app /opt/saas/env /opt/saas/logs /opt/saas/backups /opt/saas/runtime/qa/out
+cd /opt/saas
+git clone -o gitee -b feature/auth-system https://gitee.com/cao-jianing463/saas.git app
+cd /opt/saas/app
+ln -sfn /opt/saas/env/.env.real-pre .env.real-pre
+```
+
+后续更新：
+
+```bash
+ssh saas
+cd /opt/saas/app
+git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
+git fetch gitee
+git pull --ff-only
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml up -d --build
+```
+
+部署后检查：
+
+```bash
+docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml ps
+curl -s http://127.0.0.1:8081/api/system/health
+curl -I http://127.0.0.1:3001/login
+```
+
+不要执行 `docker compose down -v`，避免清空 real-pre 数据卷。
+
+## 环境密钥规则
+
+- 真实密钥不能提交到 Git。
+- `.env.real-pre`、`.env.test`、`.env` 均被 `.gitignore` 排除。
+- 示例文件只能保留字段名和占位值。
+- 不要直接把本机 `.env.real-pre` 复制到服务器；远端必须基于 `.env.real-pre.example` 重新填写域名、OAuth 回调、CORS 和真实写入开关。
+- 如果真实抖音密钥曾出现在提交、截图或日志中，必须轮换相关密钥。
+
+## 核心价值
+
+流量分发有闭环，业绩归因有回流。

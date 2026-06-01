@@ -68,6 +68,7 @@ describe('product-library-display', () => {
 
   it('blocks non-promoting alliance products before entry', () => {
     const readiness = resolveProductLibraryReadiness({
+      activityStatus: 5,
       bizStatus: 'PENDING_AUDIT',
       status: 2,
       statusText: '申请未通过',
@@ -77,7 +78,7 @@ describe('product-library-display', () => {
     expect(readiness.label).toBe('审核后不可展示')
     expect(readiness.canDisplayAfterEntry).toBe(false)
     expect(readiness.hint).toContain('申请未通过')
-    expect(readiness.hint).toContain('自动入库')
+    expect(readiness.hint).toContain('商品自身联盟状态')
   })
 
   it('blocks expired promotion products before entry', () => {
@@ -147,7 +148,9 @@ describe('product-library-display', () => {
       sales30d: 25000,
       pinned: true,
       supportsAds: true,
-      detailUrl: 'https://buyin.example/p',
+      productUrl: 'https://item.jd.com/origin.html',
+      baiyingUrl: 'https://buyin.example/manage',
+      promotionLink: 'https://v.douyin.com/abc/?pick_source=ps_001',
       promotionStartTime: '2026-01-01',
       promotionEndTime: '2026-12-31',
       syncTime: '2026-05-29T16:52:00',
@@ -163,8 +166,13 @@ describe('product-library-display', () => {
     expect(card.shopName).toBe('旗舰店')
     expect(card.livePrice).toBe('¥99')
     expect(card.commissionRate).toBe('20%')
-    expect(card.productUrl).toBe('https://buyin.example/p')
-    expect(card.baiyingUrl).toContain('buyin.example')
+    // 三种链接字段严格分离（ADR-003）：
+    // - productUrl 不再被 promotionLink 兜底污染
+    // - baiyingUrl 不再被 productUrl / detailUrl 兜底污染
+    // - promotionUrl 独立承载真实转链
+    expect(card.productUrl).toBe('https://item.jd.com/origin.html')
+    expect(card.baiyingUrl).toBe('https://buyin.example/manage')
+    expect(card.promotionUrl).toBe('https://v.douyin.com/abc/?pick_source=ps_001')
     expect(card.activityStartTime).toBe('2026-01-01')
     expect(card.activityEndTime).toBe('2026-12-31')
     expect(card.sampleRequirement).toContain('1000')
@@ -364,11 +372,126 @@ describe('product-library-display', () => {
   it('mergeLibraryDisplayFields exposes libraryStatusHint for list rendering', () => {
     const merged = mergeLibraryDisplayFields({
       bizStatus: 'PENDING_AUDIT',
+      activityStatus: 5,
       status: 0,
       statusText: '待审核',
       promotionEndTime: '2027-05-31'
     })
-    expect(merged.libraryStatusHint).toContain('自动入库')
+    expect(merged.libraryStatusHint).toContain('商品自身联盟状态')
     expect(merged.libraryStatusTagLabel).toBe('审核后不可展示')
+  })
+
+  describe('normalizeProductCard - 商品库 hover 抽屉字段', () => {
+    it('透传 merchantName / productStock / shopScore', () => {
+      const view = normalizeProductCard({
+        productId: 'P-1001',
+        title: '测试商品',
+        merchantName: '品牌方A',
+        productStock: '50',
+        shopScore: 90
+      })
+      expect(view.merchantName).toBe('品牌方A')
+      expect(view.productStock).toBe('50')
+      expect(view.shopScore).toBe(90)
+    })
+
+    it('shopScore 支持 String 输入（兼容抖音 gateway）', () => {
+      const view = normalizeProductCard({
+        productId: 'P-1002',
+        shopScore: '85'
+      })
+      expect(view.shopScore).toBe(85)
+    })
+
+    it('shopScore 缺失时为 null，不抛错', () => {
+      const view = normalizeProductCard({
+        productId: 'P-1003'
+      })
+      expect(view.shopScore).toBeNull()
+    })
+
+    it('shopScore 非法字符串时为 null', () => {
+      const view = normalizeProductCard({
+        productId: 'P-1004',
+        shopScore: 'N/A'
+      })
+      expect(view.shopScore).toBeNull()
+    })
+
+    it('productStock 缺失时为空字符串', () => {
+      const view = normalizeProductCard({
+        productId: 'P-1005'
+      })
+      expect(view.productStock).toBe('')
+    })
+
+    it('merchantName 兜底到 partnerName', () => {
+      const view = normalizeProductCard({
+        productId: 'P-1006',
+        partnerName: '团长兼商家A'
+      })
+      expect(view.merchantName).toBe('团长兼商家A')
+    })
+  })
+
+  /**
+   * ADR-003：三种链接字段必须严格分离兜底链。
+   * - productUrl：上游原始商品链接（不含 pick_source）
+   * - baiyingUrl：百应后台商品链接
+   * - promotionUrl：真实转链后的推广链接（带 pick_source）
+   */
+  describe('normalizeProductCard - 三种链接字段兜底分离 (ADR-003)', () => {
+    it('仅有 promotionLink 时，productUrl 必须为空（不允许把转链当商品原链展示）', () => {
+      const view = normalizeProductCard({
+        productId: 'P-2001',
+        promotionLink: 'https://v.douyin.com/abc/?pick_source=ps_001'
+      })
+      expect(view.productUrl).toBe('')
+      expect(view.promotionUrl).toBe('https://v.douyin.com/abc/?pick_source=ps_001')
+    })
+
+    it('仅有 promoteLink / shortLink / promotionUrl 时，promotionUrl 取第一个非空值', () => {
+      const a = normalizeProductCard({ productId: 'P-2002', promoteLink: 'https://a.douyin.com/p' })
+      expect(a.promotionUrl).toBe('https://a.douyin.com/p')
+
+      const b = normalizeProductCard({ productId: 'P-2003', shortLink: 'https://b.douyin.com/s' })
+      expect(b.promotionUrl).toBe('https://b.douyin.com/s')
+
+      const c = normalizeProductCard({ productId: 'P-2004', promotionUrl: 'https://c.douyin.com/u' })
+      expect(c.promotionUrl).toBe('https://c.douyin.com/u')
+    })
+
+    it('仅有 productUrl 时，baiyingUrl 必须为空（不允许把商品原链当百应链接）', () => {
+      const view = normalizeProductCard({
+        productId: 'P-2005',
+        productUrl: 'https://item.jd.com/123.html'
+      })
+      expect(view.baiyingUrl).toBe('')
+      expect(view.productUrl).toBe('https://item.jd.com/123.html')
+    })
+
+    it('仅有 baiyingUrl / baiyingLink / buyinUrl 时，baiyingUrl 取第一个非空值', () => {
+      expect(
+        normalizeProductCard({ productId: 'P-2006', baiyingUrl: 'https://buyin.example/a' }).baiyingUrl
+      ).toBe('https://buyin.example/a')
+      expect(
+        normalizeProductCard({ productId: 'P-2007', baiyingLink: 'https://buyin.example/b' }).baiyingUrl
+      ).toBe('https://buyin.example/b')
+      expect(
+        normalizeProductCard({ productId: 'P-2008', buyinUrl: 'https://buyin.example/c' }).baiyingUrl
+      ).toBe('https://buyin.example/c')
+    })
+
+    it('三种字段同时存在时互不污染', () => {
+      const view = normalizeProductCard({
+        productId: 'P-2009',
+        productUrl: 'https://item.jd.com/origin.html',
+        baiyingUrl: 'https://buyin.example/manage',
+        promotionLink: 'https://v.douyin.com/abc/?pick_source=ps_001'
+      })
+      expect(view.productUrl).toBe('https://item.jd.com/origin.html')
+      expect(view.baiyingUrl).toBe('https://buyin.example/manage')
+      expect(view.promotionUrl).toBe('https://v.douyin.com/abc/?pick_source=ps_001')
+    })
   })
 })

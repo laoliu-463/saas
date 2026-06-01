@@ -33,7 +33,7 @@ describe('ProductLibraryFilterPanel', () => {
     })
 
     expect(wrapper.find('[data-testid="product-category-filter"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="goods-tag-filter"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="goods-tag-filter"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="product-tag-filter"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="product-demand-filter"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="product-other-filter"]').exists()).toBe(true)

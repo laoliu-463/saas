@@ -56,11 +56,6 @@ export function isActivityAssigned(row: ActivityRow): boolean {
   return Boolean(assigneeId)
 }
 
-/** 是否满足「推广中且已分配招商」自动入商品库条件 */
-export function shouldForceLibraryDisplayFromRow(row: ActivityRow): boolean {
-  return isActivityPromoting(row) && isActivityAssigned(row)
-}
-
 export type ActivityProductStats = {
   promoting: number | null
   pending: number | null

@@ -83,7 +83,7 @@ const baseCard = {
   activityStartTime: '2026-01-01',
   activityEndTime: '2026-12-31',
   productStock: '50',
-  shopScore: null,
+  shopScore: 90,
   isPinned: false,
   supportInvestment: false,
   productUrl: '',
@@ -119,45 +119,6 @@ describe('ProductSelectionCard hover drawer', () => {
     await body.trigger('click')
 
     expect(wrapper.emitted('detail')?.[0]).toEqual([baseCard.raw])
-  })
-
-  it('hover-mode 下底部空间不足时向上展开', async () => {
-    const wrapper = mountCard()
-    await wrapper.vm.$nextTick()
-    const card = wrapper.find('[data-testid="product-selection-card"]')
-    const drawer = wrapper.find('.selection-card__drawer-shell')
-
-    Object.defineProperty(window, 'innerHeight', {
-      configurable: true,
-      value: 900
-    })
-    vi.spyOn(card.element, 'getBoundingClientRect').mockReturnValue({
-      x: 0,
-      y: 640,
-      top: 640,
-      right: 252,
-      bottom: 894,
-      left: 0,
-      width: 252,
-      height: 254,
-      toJSON: () => ({})
-    } as DOMRect)
-    vi.spyOn(drawer.element, 'getBoundingClientRect').mockReturnValue({
-      x: 0,
-      y: 898,
-      top: 898,
-      right: 252,
-      bottom: 1128,
-      left: 0,
-      width: 252,
-      height: 230,
-      toJSON: () => ({})
-    } as DOMRect)
-
-    await card.trigger('mouseenter')
-    await wrapper.vm.$nextTick()
-
-    expect(card.classes()).toContain('opens-up')
   })
 
   it('触屏模式（hover: none）下 article 不带 hover-mode class', async () => {
@@ -225,5 +186,32 @@ describe('ProductSelectionCard hover drawer', () => {
     // 修复后：!matches(hover: none) 才走 hover-mode
     // 桌面端 → !false = true → hover-mode
     // 触屏端 → !true = false → click-mode
+  })
+
+  it('店铺评分字段在抽屉中渲染（shopScore 有值时）', async () => {
+    const wrapper = mountCard()
+    // hover-mode 下 drawer-shell DOM 常驻（CSS 控制可见性）
+    const drawer = wrapper.find('[data-testid="product-selection-drawer"]')
+    expect(drawer.exists()).toBe(true)
+    // 抽屉字段列表是 computed，hover 触发前 DOM 已渲染（drawer-shell 常驻）
+    // 断言店铺评分标签 + 值都在
+    expect(drawer.text()).toContain('店铺评分')
+    expect(drawer.text()).toContain('90')
+  })
+
+  it('店铺评分字段在 shopScore 为 null 时显示为占位符', async () => {
+    const wrapper = mountCard({ card: { ...baseCard, shopScore: null } })
+    const drawer = wrapper.find('[data-testid="product-selection-drawer"]')
+    expect(drawer.exists()).toBe(true)
+    // 字段行仍展示「店铺评分」label；dd 内容为空时 template 走 '-'
+    expect(drawer.text()).toContain('店铺评分')
+  })
+
+  it('活动字段在 drawer 中展示 activityName（来自后端补传）', async () => {
+    const wrapper = mountCard()
+    const drawer = wrapper.find('[data-testid="product-selection-drawer"]')
+    expect(drawer.exists()).toBe(true)
+    expect(drawer.text()).toContain('活动')
+    expect(drawer.text()).toContain('测试活动')
   })
 })

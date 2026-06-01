@@ -8,8 +8,7 @@
   布局：
     - 默认态：252px × 254px 固定尺寸（响应式断点降为 4 列 / 3 列 / 1 列）
     - 顶部图片区（aspect-ratio 1:1）+ 底部标题+价格
-    - 鼠标悬浮：从卡片底部展开一个绝对定位的字段抽屉（z-index 30），
-      覆盖下方一排卡片，避免整行布局跳动
+    - 鼠标悬浮：从卡片底部覆盖弹出字段抽屉，不改变商品网格布局
 
   Props:
     - card: 商品卡片视图数据（ProductCardView 类型），必填
@@ -25,13 +24,11 @@
 -->
 <template>
   <article
-    ref="cardRef"
     class="selection-card"
-    :class="{ 'is-expanded': expanded, 'hover-mode': supportsHover, 'opens-up': drawerDirection === 'up' }"
+    :class="{ 'is-expanded': expanded, 'hover-mode': supportsHover }"
     data-testid="product-selection-card"
     @mouseenter="handleMouseEnter"
     @mouseleave="handleMouseLeave"
-    @focusin="updateDrawerDirection"
   >
     <div class="selection-card__body" @click="handleCardBodyClick">
       <div class="selection-card__media">
@@ -161,7 +158,6 @@ const emit = defineEmits<{
 }>()
 
 const message = useMessage()
-const cardRef = ref<HTMLElement | null>(null)
 const imageVisible = ref(Boolean(props.card.imageUrl))
 /**
  * 设备能力：mount 时一次性探测，之后不再变动。
@@ -177,7 +173,6 @@ const supportsHover = ref(true)
 const hoverActive = ref(false)
 /** 触屏设备的点击展开态。 */
 const expanded = ref(false)
-const drawerDirection = ref<'down' | 'up'>('down')
 let closeTimer: number | undefined
 
 /**
@@ -201,27 +196,6 @@ const clearCloseTimer = () => {
   }
 }
 
-const updateDrawerDirection = () => {
-  if (!supportsHover.value || typeof window === 'undefined') {
-    drawerDirection.value = 'down'
-    return
-  }
-
-  const card = cardRef.value
-  const drawer = card?.querySelector<HTMLElement>('.selection-card__drawer-shell')
-  if (!card || !drawer) {
-    drawerDirection.value = 'down'
-    return
-  }
-
-  const cardRect = card.getBoundingClientRect()
-  const drawerHeight = drawer.getBoundingClientRect().height || 230
-  const gap = 4
-  const spaceBelow = window.innerHeight - cardRect.bottom
-  const spaceAbove = cardRect.top
-  drawerDirection.value = spaceBelow < drawerHeight + gap && spaceAbove > drawerHeight + gap ? 'up' : 'down'
-}
-
 const handleMouseEnter = () => {
   if (!supportsHover.value) {
     // 触屏分支保留旧逻辑：mouseenter 时直接展开
@@ -231,7 +205,6 @@ const handleMouseEnter = () => {
   }
   // 桌面分支：直接翻状态，不走 closeTimer
   clearCloseTimer()
-  updateDrawerDirection()
   hoverActive.value = true
 }
 
@@ -304,12 +277,18 @@ const timeLine = computed(() => {
 
 /**
  * 抽屉字段列表
- * 顺序：招商 / 寄样要求 / 推广时间 / 团长 / 店铺 / 活动 / 库存
+ * 顺序：招商 / 寄样要求 / 推广时间 / 团长 / 店铺 / 店铺评分 / 活动 / 库存
  * - label: 显示名
  * - value: 抽屉中显示的文本
  * - copyText: 复制按钮写入剪贴板的文本（空时按钮 disabled）
  * - warning: 是否用 warning 样式（库存告警）
  */
+const shopScoreValue = computed(() => {
+  const score = props.card.shopScore
+  if (score === null || score === undefined) return ''
+  return String(score)
+})
+
 const infoFields = computed(() => [
   {
     key: 'recruiter',
@@ -340,6 +319,12 @@ const infoFields = computed(() => [
     label: '店铺',
     value: props.card.shopName,
     copyText: props.card.shopName
+  },
+  {
+    key: 'shopScore',
+    label: '店铺评分',
+    value: shopScoreValue.value,
+    copyText: shopScoreValue.value
   },
   {
     key: 'activity',
@@ -385,26 +370,33 @@ const copyField = async (text: string | undefined, label: string) => {
 <style scoped>
 /* ============================================================
    容器
-   - 固定 252×254（响应式断点由父级 grid 控制列数）
-   - 抽屉绝对定位覆盖下方卡片（不影响布局）
+   - 默认主卡保持 252×254（响应式断点由父级 grid 控制列数）
+   - 桌面详情抽屉 absolute 覆盖下方卡片，不参与商品网格布局
    ============================================================ */
 .selection-card {
   position: relative;
   width: 252px;
   height: 254px;
+  min-height: 254px;
   container-type: inline-size;
   background: #fff;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
   overflow: visible;
+  z-index: 1;
   cursor: pointer;
   transition: box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .selection-card:hover,
 .selection-card.is-expanded {
+  z-index: 30;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
   transform: translateY(-1px);
+}
+
+.selection-card:not(.hover-mode) {
+  height: auto;
 }
 
 /* ============================================================
@@ -412,7 +404,7 @@ const copyField = async (text: string | undefined, label: string) => {
    ============================================================ */
 .selection-card__body {
   width: 100%;
-  height: 100%;
+  height: 254px;
   border-radius: 8px;
   overflow: hidden;
   display: flex;
@@ -586,39 +578,35 @@ const copyField = async (text: string | undefined, label: string) => {
 }
 
 /* ============================================================
-   Hover 抽屉（桌面端绝对定位覆盖下方，z-index 30）
+   Hover 抽屉（桌面 absolute 覆盖，不推动下方商品）
 
    桌面端（hover-mode）：
    - NCollapseTransition 的 show 在 hover-mode 下保持 true（DOM 常驻），
      避免 JS hoverActive 链路异常时抽屉被折叠掉。
-   - 抽屉可见性由 CSS 单独控制：默认 opacity 0 + pointer-events: none，
-     父 :hover / :focus-within 时切到 opacity 1 + pointer-events: auto。
+   - 抽屉可见性由 CSS 单独控制：默认 max-height 0 + opacity 0，
+     父 :hover / :focus-within 时展开 max-height。
    - 即便 JS 链路失效（hoverActive 翻不过 true），纯 CSS :hover 也能兜底展开。
    ============================================================ */
 .selection-card__drawer-shell {
   position: absolute;
-  top: calc(100% + 4px);
   left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 40;
   width: 100%;
-  z-index: 30;
-  border-radius: 8px;
-}
-
-.selection-card.hover-mode .selection-card__drawer-shell {
+  max-height: 0;
   opacity: 0;
   pointer-events: none;
+  overflow: hidden;
   transform: translateY(-4px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
-}
-
-.selection-card.hover-mode.opens-up .selection-card__drawer-shell {
-  top: auto;
-  bottom: calc(100% + 4px);
-  transform: translateY(4px);
+  transition: max-height 0.22s ease, opacity 0.18s ease, transform 0.18s ease;
+  border-radius: 0 0 8px 8px;
 }
 
 .selection-card.hover-mode:hover .selection-card__drawer-shell,
-.selection-card.hover-mode:focus-within .selection-card__drawer-shell {
+.selection-card.hover-mode:focus-within .selection-card__drawer-shell,
+.selection-card.is-expanded .selection-card__drawer-shell {
+  max-height: 360px;
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
@@ -626,10 +614,11 @@ const copyField = async (text: string | undefined, label: string) => {
 
 .selection-card__drawer {
   background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
-  border: 1px solid #e2e8f0;
-  padding: 8px 10px 10px;
+  border: 1px solid #f0f0f0;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+  padding: 12px 16px;
   animation: drawerFadeIn 0.15s ease;
 }
 
@@ -657,16 +646,16 @@ const copyField = async (text: string | undefined, label: string) => {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .selection-card__field {
   display: grid;
-  grid-template-columns: 68px 1fr 22px;
+  grid-template-columns: 60px 1fr 22px;
   gap: 6px;
   align-items: center;
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .selection-card__field dt {
@@ -719,24 +708,26 @@ const copyField = async (text: string | undefined, label: string) => {
   cursor: not-allowed;
 }
 
-@media (hover: none), (pointer: coarse) {
-  .selection-card {
-    width: 252px;
-    height: auto;
-  }
+.selection-card:not(.hover-mode) .selection-card__drawer-shell {
+  position: static;
+  max-height: none;
+  opacity: 1;
+  pointer-events: auto;
+  overflow: visible;
+  transform: none;
+}
 
+.selection-card:not(.hover-mode) .selection-card__drawer {
+  margin-top: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.1);
+  padding: 8px 10px 10px;
+}
+
+@media (hover: none), (pointer: coarse) {
   .selection-card__body {
     height: 254px;
-  }
-
-  .selection-card__drawer-shell {
-    position: static;
-    width: 100%;
-    margin-top: 4px;
-  }
-
-  .selection-card__drawer {
-    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.1);
   }
 }
 

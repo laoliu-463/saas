@@ -43,23 +43,15 @@ public class ColonelsettlementActivityService {
     private final ColonelsettlementActivityMapper activityMapper;
     /** 抖店活动网关（商品同步前刷新活动状态码） */
     private final DouyinActivityGateway douyinActivityGateway;
-    /** 商品展示规则（活动状态变更后清理推广中缓存） */
-    private final ProductDisplayRuleService productDisplayRuleService;
-    /** 商品服务（推广中且已分配招商时批量补齐商品库） */
-    private final ProductService productService;
     /** 是否启用演示数据播种（由配置项 app.activities.seed-demo-on-empty 控制） */
     private final boolean seedDemoActivities;
 
     public ColonelsettlementActivityService(
             ColonelsettlementActivityMapper activityMapper,
             DouyinActivityGateway douyinActivityGateway,
-            ProductDisplayRuleService productDisplayRuleService,
-            ProductService productService,
             @Value("${app.activities.seed-demo-on-empty:false}") boolean seedDemoActivities) {
         this.activityMapper = activityMapper;
         this.douyinActivityGateway = douyinActivityGateway;
-        this.productDisplayRuleService = productDisplayRuleService;
-        this.productService = productService;
         this.seedDemoActivities = seedDemoActivities;
     }
 
@@ -104,7 +96,7 @@ public class ColonelsettlementActivityService {
      */
     /**
      * 商品全量同步前，从抖店活动列表回写活动状态码/文案到本地库。
-     * <p>避免列表展示为「推广中」但 {@code colonel_activity.activity_status_code} 未更新导致无法自动入商品库。</p>
+     * <p>活动状态只作为活动事实落库，不驱动商品入库或商品展示状态。</p>
      */
     @Transactional(rollbackFor = Exception.class)
     public boolean syncActivitySummaryFromUpstream(String activityId, String appId) {
@@ -152,11 +144,6 @@ public class ColonelsettlementActivityService {
                 item.statusText(),
                 now
         );
-        productDisplayRuleService.clearPromotingActivityCache(activityId);
-        ColonelsettlementActivity synced = activityMapper.selectByActivityId(activityId);
-        if (ActivityPromotionSupport.shouldForceLibraryDisplay(synced)) {
-            productService.ensureAssignedPromotingActivityProductsInLibrary(activityId);
-        }
     }
 
     public ColonelsettlementActivity findByActivityId(String activityId) {
@@ -282,4 +269,3 @@ public class ColonelsettlementActivityService {
         }
     }
 }
-

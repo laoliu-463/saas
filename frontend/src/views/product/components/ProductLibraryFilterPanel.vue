@@ -6,13 +6,6 @@
       @update:model-value="updateFilter('categories', $event)"
     />
     <ProductTagFilter
-      title="货盘标签"
-      test-id="goods-tag-filter"
-      :model-value="filters.goodsTags"
-      :options="goodsTagOptions"
-      @update:model-value="updateFilter('goodsTags', $event)"
-    />
-    <ProductTagFilter
       title="商品标签"
       test-id="product-tag-filter"
       :model-value="filters.productTags"
@@ -48,7 +41,7 @@
 
 <script setup lang="ts">
 import type { ProductFilterState } from '../product-filters'
-import { goodsTagOptions, productTagOptions } from '../product-filters'
+import { productTagOptions } from '../product-filters'
 import ProductBasicSearchBar from './ProductBasicSearchBar.vue'
 import ProductCategoryFilter from './ProductCategoryFilter.vue'
 import ProductDemandFilter from './ProductDemandFilter.vue'

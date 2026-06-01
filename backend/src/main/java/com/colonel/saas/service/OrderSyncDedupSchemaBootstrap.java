@@ -63,6 +63,11 @@ public class OrderSyncDedupSchemaBootstrap implements ApplicationRunner {
                 CREATE INDEX IF NOT EXISTS idx_order_sync_dedup_claim_row_id
                     ON order_sync_dedup_claim(order_row_id)
                 """);
+        if (!sourceOrderTableExists()) {
+            log.warn("Skip order sync dedup claim backfill because colonelsettlement_order does not exist");
+            log.info("Order sync dedup claim schema ensured");
+            return;
+        }
         // 第三步：从已有订单表回填历史数据（每笔订单取最新一条，幂等插入）
         jdbcTemplate.execute("""
                 INSERT INTO order_sync_dedup_claim(order_id, order_row_id, first_seen_at, last_seen_at)
@@ -80,5 +85,12 @@ public class OrderSyncDedupSchemaBootstrap implements ApplicationRunner {
                     last_seen_at = NOW()
                 """);
         log.info("Order sync dedup claim schema ensured");
+    }
+
+    private boolean sourceOrderTableExists() {
+        return Boolean.TRUE.equals(jdbcTemplate.queryForObject(
+                "SELECT to_regclass('public.colonelsettlement_order') IS NOT NULL",
+                Boolean.class
+        ));
     }
 }

@@ -136,13 +136,18 @@ describe('router configuration', () => {
       .map((route) => route.component)
       .filter((component): component is () => Promise<unknown> => typeof component === 'function')
 
-    expect(componentLoaders).toHaveLength(26)
+    expect(componentLoaders).toHaveLength(25)
     await Promise.all(componentLoaders.map((loadComponent) => loadComponent()))
 
     const activityRedirect = allRoutes.find((route) => route.path === 'product/activity/:activityId')?.redirect
     expect(typeof activityRedirect).toBe('function')
-    expect((activityRedirect as (to: { params: { activityId: string } }) => string)({ params: { activityId: 'A-100' } }))
-      .toBe('/product/manage/A-100')
+    // ADR-003：历史 /product/manage/:activityId 与 /product/activity/:activityId
+    // 都统一重定向到 /product/library?activityId={id}，不再走 path param
+    expect(
+      (activityRedirect as (to: { params: { activityId: string } }) => { path: string; query: { activityId: string } })(
+        { params: { activityId: 'A-100' } }
+      )
+    ).toEqual({ path: '/product/library', query: { activityId: 'A-100' } })
   }, 60000)
 })
 

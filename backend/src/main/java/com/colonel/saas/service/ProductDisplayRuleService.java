@@ -11,7 +11,6 @@ import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
-import com.colonel.saas.service.activity.ActivityPromotionSupport;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -91,6 +90,14 @@ public class ProductDisplayRuleService {
     public static final String HIDDEN_REASON_REPLACED_BY_ADVANTAGE = "REPLACED_BY_ADVANTAGE";
     /** 隐藏原因：不满足展示资格（未通过审核、商品未推广、已手动禁用等） */
     public static final String HIDDEN_REASON_NOT_ELIGIBLE = "NOT_ELIGIBLE";
+    /** 隐藏原因：本地审核拒绝 */
+    public static final String HIDDEN_REASON_LOCAL_REJECTED = "LOCAL_REJECTED";
+    /** 隐藏原因：上游商品不是推广中 */
+    public static final String HIDDEN_REASON_UPSTREAM_NOT_PROMOTING = "UPSTREAM_NOT_PROMOTING";
+    /** 隐藏原因：本地发布已暂停 */
+    public static final String HIDDEN_REASON_LOCAL_PAUSED = "LOCAL_PAUSED";
+    /** 隐藏原因：本地发布已暂停（历史常量名，值已统一为 LOCAL_PAUSED） */
+    public static final String HIDDEN_REASON_PUBLISH_PAUSED = HIDDEN_REASON_LOCAL_PAUSED;
     /** 隐藏原因：活动已过期（推广结束时间早于当前时间） */
     public static final String HIDDEN_REASON_ACTIVITY_EXPIRED = "ACTIVITY_EXPIRED";
     /** 隐藏原因：被管理员强制替换 */
@@ -101,11 +108,23 @@ public class ProductDisplayRuleService {
     public static final String DISPLAY_REASON_ADVANTAGE = "ADVANTAGE_OVERRIDE";
     /** 展示原因：规则引擎正常选择（基于优先级比较器选出最优候选） */
     public static final String DISPLAY_REASON_RULE = "RULE_ENGINE";
+    /** 修复原因：上游推广中自动入库 */
+    public static final String REPAIR_REASON_UPSTREAM_PROMOTING_AUTO_LIBRARY = "UPSTREAM_PROMOTING_AUTO_LIBRARY";
+    /** 修复原因：上游不是推广中 */
+    public static final String REPAIR_REASON_UPSTREAM_NOT_PROMOTING = "UPSTREAM_NOT_PROMOTING";
+    /** 修复原因：本地审核拒绝 */
+    public static final String REPAIR_REASON_LOCAL_REJECTED = "LOCAL_REJECTED";
+    /** 修复原因：本地暂停 */
+    public static final String REPAIR_REASON_LOCAL_PAUSED = "LOCAL_PAUSED";
+    /** 修复原因：推广期已结束 */
+    public static final String REPAIR_REASON_EXPIRED = "EXPIRED";
 
     /** 商品推广中状态码（snapshot.status == 1 表示商品正在推广） */
     private static final int PROMOTING_STATUS = 1;
+    private static final int DEFAULT_REPAIR_LIMIT = 1000;
+    private static final int MAX_REPAIR_LIMIT = 10000;
+    private static final String AUTO_LIBRARY_REPAIR_REMARK = "上游状态为推广中，系统自动入库展示";
 
-    private final Map<String, Boolean> promotingActivityCache = new java.util.concurrent.ConcurrentHashMap<>();
     /** JSON 序列化/反序列化工具，用于解析审核附加数据 payload */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     /** 多格式时间解析器列表，按优先级尝试解析各种日期时间格式 */
@@ -219,78 +238,40 @@ public class ProductDisplayRuleService {
         if (!StringUtils.hasText(activityId)) {
             return;
         }
+        long totalStartedAt = System.nanoTime();
         String normalizedActivityId = activityId.trim();
+        long queryStartedAt = System.nanoTime();
         /* 查询该活动下已入商品库的运营状态（仅选取 productId 字段以减少 IO） */
         List<ProductOperationState> states = operationStateMapper.selectList(
                 new LambdaQueryWrapper<ProductOperationState>()
                         .eq(ProductOperationState::getActivityId, normalizedActivityId)
-                        .eq(ProductOperationState::getSelectedToLibrary, true)
-                        .select(ProductOperationState::getProductId));
+                        .eq(ProductOperationState::getSelectedToLibrary, true));
+        long queryCostMs = elapsedMs(queryStartedAt);
+        long calcStartedAt = System.nanoTime();
         /* 提取去重后的商品 ID 集合（LinkedHashSet 保持插入顺序） */
         Set<String> productIds = states.stream()
                 .map(ProductOperationState::getProductId)
                 .filter(StringUtils::hasText)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
+        long calcCostMs = elapsedMs(calcStartedAt);
+        long updateStartedAt = System.nanoTime();
         /* 逐个商品执行展示去重规则 */
         for (String productId : productIds) {
             applyForProductId(productId, operator);
         }
-        /* 推广中活动商品保护：确保入库商品强制展示 */
-        applyPromotionActivityDisplayProtection(normalizedActivityId);
-    }
-
-    /**
-     * 推广中活动商品展示保护。
-     * <p>
-     * 如果活动已推广中（colonel_activity.status 包含"推广中"），
-     * 且商品已入库（selectedToLibrary=true），
-     * 则强制保证 displayStatus = DISPLAYING，
-     * 即使被去重规则选为 HIDDEN 也要覆盖为 DISPLAYING。
-     * </p>
-     *
-     * @param activityId 活动 ID
-     */
-    private void applyPromotionActivityDisplayProtection(String activityId) {
-        if (!StringUtils.hasText(activityId)) {
-            return;
-        }
-        // 查询活动状态，判断是否推广中
-        ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(activityId);
-        if (!ActivityPromotionSupport.shouldForceLibraryDisplay(activity)) {
-            return;
-        }
-        // 查询该活动下已入库的所有状态
-        List<ProductOperationState> libraryStates = operationStateMapper.selectList(
-                new LambdaQueryWrapper<ProductOperationState>()
-                        .eq(ProductOperationState::getActivityId, activityId)
-                        .eq(ProductOperationState::getSelectedToLibrary, true));
-        if (libraryStates == null || libraryStates.isEmpty()) {
-            return;
-        }
-        LocalDateTime now = LocalDateTime.now();
-        int protectedCount = 0;
-        for (ProductOperationState state : libraryStates) {
-            // 已被强制展示或待审核的不需要处理
-            if (!ProductDisplayStatus.HIDDEN.name().equals(state.getDisplayStatus())) {
-                continue;
-            }
-            // 强制覆盖为 DISPLAYING
-            state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
-            state.setDisplayReason(DISPLAY_REASON_RULE);
-            state.setHiddenReason(null);
-            state.setDisplayRuleVersion(DISPLAY_RULE_VERSION);
-            if (state.getFirstDisplayedAt() == null) {
-                state.setFirstDisplayedAt(now);
-            }
-            state.setLastDisplayedAt(now);
-            OptimisticLockSupport.requireUpdated(operationStateMapper.updateById(state));
-            protectedCount++;
-            log.info("[推广中展示保护] activityId={}, productId={} 强制展示",
-                    activityId, state.getProductId());
-        }
-        if (protectedCount > 0) {
-            log.info("[推广中展示保护] activityId={} 保护了 {} 个商品", activityId, protectedCount);
-        }
+        long updateCostMs = elapsedMs(updateStartedAt);
+        DisplayRuleActivityStats stats = countActivityDisplayStats(normalizedActivityId);
+        long totalCostMs = elapsedMs(totalStartedAt);
+        log.info("[ProductDisplayRule] activityId={}, relations={}, productIds={}, displaying={}, hidden={}, totalCostMs={}, queryCostMs={}, calcCostMs={}, updateCostMs={}",
+                normalizedActivityId,
+                states.size(),
+                productIds.size(),
+                stats.displaying(),
+                stats.hidden(),
+                totalCostMs,
+                queryCostMs,
+                calcCostMs,
+                updateCostMs);
     }
 
     /**
@@ -321,8 +302,7 @@ public class ProductDisplayRuleService {
         /* 查询所有已入商品库的运营状态（仅选取 productId 字段） */
         List<ProductOperationState> libraryStates = operationStateMapper.selectList(
                 new LambdaQueryWrapper<ProductOperationState>()
-                        .eq(ProductOperationState::getSelectedToLibrary, true)
-                        .select(ProductOperationState::getProductId));
+                        .eq(ProductOperationState::getSelectedToLibrary, true));
         /* 提取去重后的商品 ID 集合 */
         Set<String> productIds = libraryStates.stream()
                 .map(ProductOperationState::getProductId)
@@ -336,6 +316,322 @@ public class ProductDisplayRuleService {
         }
         log.info("Product display rule reconcile completed, productIds={}", processed);
         return processed;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public LibraryRepairResult repairLibraryStateForActivity(String activityId, boolean dryRun, int limit) {
+        if (!StringUtils.hasText(activityId)) {
+            return LibraryRepairResult.empty(null, dryRun);
+        }
+        String normalizedActivityId = activityId.trim();
+        int normalizedLimit = normalizeRepairLimit(limit);
+        List<ProductSnapshot> snapshots = snapshotMapper.selectList(new LambdaQueryWrapper<ProductSnapshot>()
+                .eq(ProductSnapshot::getActivityId, normalizedActivityId)
+                .orderByAsc(ProductSnapshot::getProductId)
+                .last("LIMIT " + normalizedLimit));
+        return repairSnapshots(normalizedActivityId, snapshots, dryRun);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public LibraryRepairResult repairLibraryStateForAllPromoting(boolean dryRun, int limit) {
+        int normalizedLimit = normalizeRepairLimit(limit);
+        List<ProductSnapshot> snapshots = snapshotMapper.selectList(new LambdaQueryWrapper<ProductSnapshot>()
+                .eq(ProductSnapshot::getStatus, PROMOTING_STATUS)
+                .orderByAsc(ProductSnapshot::getActivityId)
+                .orderByAsc(ProductSnapshot::getProductId)
+                .last("LIMIT " + normalizedLimit));
+        return repairSnapshots(null, snapshots, dryRun);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public LibraryRepairResult repairLibraryStateForProducts(List<String> productIds, boolean dryRun, int limit) {
+        if (productIds == null || productIds.isEmpty()) {
+            return LibraryRepairResult.empty(null, dryRun);
+        }
+        List<String> normalizedProductIds = productIds.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .limit(normalizeRepairLimit(limit))
+                .toList();
+        if (normalizedProductIds.isEmpty()) {
+            return LibraryRepairResult.empty(null, dryRun);
+        }
+        List<ProductSnapshot> snapshots = snapshotMapper.selectList(new LambdaQueryWrapper<ProductSnapshot>()
+                .in(ProductSnapshot::getProductId, normalizedProductIds)
+                .orderByAsc(ProductSnapshot::getActivityId)
+                .orderByAsc(ProductSnapshot::getProductId));
+        return repairSnapshots(null, snapshots, dryRun);
+    }
+
+    @Transactional(readOnly = true)
+    public LibraryHealthResult inspectLibraryHealth() {
+        List<ProductSnapshot> snapshots = snapshotMapper.selectList(new LambdaQueryWrapper<ProductSnapshot>()
+                .orderByAsc(ProductSnapshot::getActivityId)
+                .orderByAsc(ProductSnapshot::getProductId));
+        Map<String, ProductOperationState> stateMap = loadOperationStateMap(snapshots);
+        long snapshotTotal = snapshots.size();
+        long promotingTotal = 0;
+        long promotingNotSelected = 0;
+        long promotingNotDisplaying = 0;
+        long displayingWithHiddenReason = 0;
+        long selectedButNotPromoting = 0;
+        long upstreamNotPromoting = 0;
+        long localRejected = 0;
+        long localPaused = 0;
+        LocalDateTime lastSyncTime = null;
+
+        for (ProductSnapshot snapshot : snapshots) {
+            ProductOperationState state = stateMap.get(snapshotKey(snapshot.getActivityId(), snapshot.getProductId()));
+            boolean promoting = isLocallyDisplayableSnapshotStatus(snapshot);
+            if (promoting) {
+                promotingTotal++;
+            } else {
+                upstreamNotPromoting++;
+            }
+            if (state != null) {
+                if (promoting && !Boolean.TRUE.equals(state.getSelectedToLibrary())) {
+                    promotingNotSelected++;
+                }
+                if (promoting && !ProductDisplayStatus.DISPLAYING.name().equals(state.getDisplayStatus())) {
+                    promotingNotDisplaying++;
+                }
+                if (ProductDisplayStatus.DISPLAYING.name().equals(state.getDisplayStatus())
+                        && StringUtils.hasText(state.getHiddenReason())) {
+                    displayingWithHiddenReason++;
+                }
+                if (Boolean.TRUE.equals(state.getSelectedToLibrary()) && !promoting) {
+                    selectedButNotPromoting++;
+                }
+                if (isLocalRejected(state)) {
+                    localRejected++;
+                }
+                if (isLocalPaused(state)) {
+                    localPaused++;
+                }
+            } else if (promoting) {
+                promotingNotSelected++;
+                promotingNotDisplaying++;
+            }
+            if (snapshot.getSyncTime() != null && (lastSyncTime == null || snapshot.getSyncTime().isAfter(lastSyncTime))) {
+                lastSyncTime = snapshot.getSyncTime();
+            }
+        }
+        return new LibraryHealthResult(
+                snapshotTotal,
+                promotingTotal,
+                promotingNotSelected,
+                promotingNotDisplaying,
+                displayingWithHiddenReason,
+                selectedButNotPromoting,
+                upstreamNotPromoting,
+                localRejected,
+                localPaused,
+                lastSyncTime,
+                null);
+    }
+
+    private LibraryRepairResult repairSnapshots(String activityId, List<ProductSnapshot> snapshots, boolean dryRun) {
+        if (snapshots == null || snapshots.isEmpty()) {
+            return LibraryRepairResult.empty(activityId, dryRun);
+        }
+        Map<String, ProductOperationState> stateMap = loadOperationStateMap(snapshots);
+        LocalDateTime now = LocalDateTime.now();
+        LibraryRepairAccumulator accumulator = new LibraryRepairAccumulator(activityId, dryRun);
+        Set<String> affectedActivityIds = new LinkedHashSet<>();
+
+        for (ProductSnapshot snapshot : snapshots) {
+            ProductOperationState existingState = stateMap.get(snapshotKey(snapshot.getActivityId(), snapshot.getProductId()));
+            ProductOperationState state = existingState;
+            if (state == null) {
+                state = new ProductOperationState();
+                state.setActivityId(snapshot.getActivityId());
+                state.setProductId(snapshot.getProductId());
+                state.setSelectedToLibrary(false);
+                state.setAuditStatus(1);
+                state.setBizStatus(ProductBizStatus.PENDING_AUDIT.name());
+                state.setDisplayStatus(ProductDisplayStatus.PENDING.name());
+            }
+            LibraryRepairDecision decision = buildRepairDecision(snapshot, state, now);
+            accumulator.accept(snapshot, state, decision);
+            if (!dryRun && decision.changed()) {
+                ProductOperationState target = existingState == null
+                        ? productBizStatusService.initStateIfAbsent(null, snapshot.getActivityId(), snapshot.getProductId(), null, null, "商品库展示状态修复")
+                        : existingState;
+                applyRepairDecision(target, decision, now);
+                OptimisticLockSupport.requireUpdated(operationStateMapper.updateById(target));
+                affectedActivityIds.add(snapshot.getActivityId());
+            }
+        }
+
+        if (!dryRun) {
+            for (String affectedActivityId : affectedActivityIds) {
+                applyForActivityId(affectedActivityId, DisplayRuleOperatorContext.system());
+            }
+        }
+        LibraryRepairResult result = accumulator.toResult();
+        log.info("Product library repair completed, activityId={}, dryRun={}, scanned={}, willSelectToLibrary={}, willDisplay={}, unchanged={}",
+                activityId,
+                dryRun,
+                result.scanned(),
+                result.willSelectToLibrary(),
+                result.willDisplay(),
+                result.unchanged());
+        return result;
+    }
+
+    private Map<String, ProductOperationState> loadOperationStateMap(List<ProductSnapshot> snapshots) {
+        Set<String> activityIds = snapshots.stream()
+                .map(ProductSnapshot::getActivityId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> productIds = snapshots.stream()
+                .map(ProductSnapshot::getProductId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (activityIds.isEmpty() || productIds.isEmpty()) {
+            return Map.of();
+        }
+        return operationStateMapper.selectList(new LambdaQueryWrapper<ProductOperationState>()
+                        .in(ProductOperationState::getActivityId, activityIds)
+                        .in(ProductOperationState::getProductId, productIds))
+                .stream()
+                .collect(Collectors.toMap(
+                        state -> snapshotKey(state.getActivityId(), state.getProductId()),
+                        state -> state,
+                        (left, right) -> left));
+    }
+
+    private LibraryRepairDecision buildRepairDecision(ProductSnapshot snapshot, ProductOperationState state, LocalDateTime now) {
+        boolean oldSelected = Boolean.TRUE.equals(state.getSelectedToLibrary());
+        String oldDisplayStatus = ProductDisplayStatus.fromCode(state.getDisplayStatus()).name();
+        String oldHiddenReason = state.getHiddenReason();
+        Integer oldAuditStatus = state.getAuditStatus();
+        String oldBizStatus = state.getBizStatus();
+
+        boolean newSelected = oldSelected;
+        String newDisplayStatus = oldDisplayStatus;
+        String newHiddenReason = oldHiddenReason;
+        Integer newAuditStatus = oldAuditStatus;
+        String newBizStatus = oldBizStatus;
+        String reason = null;
+        boolean willDisplay = false;
+
+        if (isLocalRejected(state)) {
+            newSelected = false;
+            newDisplayStatus = ProductDisplayStatus.HIDDEN.name();
+            newHiddenReason = HIDDEN_REASON_LOCAL_REJECTED;
+            reason = REPAIR_REASON_LOCAL_REJECTED;
+        } else if (isLocalPaused(state)) {
+            newDisplayStatus = ProductDisplayStatus.HIDDEN.name();
+            newHiddenReason = HIDDEN_REASON_LOCAL_PAUSED;
+            reason = REPAIR_REASON_LOCAL_PAUSED;
+        } else if (shouldAutoEnterLibrary(snapshot, state, now)) {
+            newSelected = true;
+            newDisplayStatus = ProductDisplayStatus.PENDING.name();
+            newHiddenReason = null;
+            newAuditStatus = 2;
+            ProductBizStatus currentBizStatus = safeBizStatus(newBizStatus);
+            if (currentBizStatus == null || currentBizStatus == ProductBizStatus.PENDING_AUDIT) {
+                newBizStatus = ProductBizStatus.APPROVED.name();
+            }
+            reason = REPAIR_REASON_UPSTREAM_PROMOTING_AUTO_LIBRARY;
+            willDisplay = true;
+        } else {
+            newDisplayStatus = ProductDisplayStatus.HIDDEN.name();
+            newHiddenReason = resolveLibraryHiddenReason(snapshot, state, now);
+            reason = HIDDEN_REASON_ACTIVITY_EXPIRED.equals(newHiddenReason)
+                    ? REPAIR_REASON_EXPIRED
+                    : REPAIR_REASON_UPSTREAM_NOT_PROMOTING;
+        }
+
+        boolean changed = oldSelected != newSelected
+                || !Objects.equals(oldDisplayStatus, newDisplayStatus)
+                || !Objects.equals(oldHiddenReason, newHiddenReason)
+                || !Objects.equals(oldAuditStatus, newAuditStatus)
+                || !Objects.equals(oldBizStatus, newBizStatus);
+        return new LibraryRepairDecision(
+                oldSelected,
+                newSelected,
+                oldDisplayStatus,
+                newDisplayStatus,
+                oldHiddenReason,
+                newHiddenReason,
+                oldAuditStatus,
+                newAuditStatus,
+                oldBizStatus,
+                newBizStatus,
+                reason,
+                changed,
+                willDisplay);
+    }
+
+    private void applyRepairDecision(ProductOperationState state, LibraryRepairDecision decision, LocalDateTime now) {
+        state.setSelectedToLibrary(decision.newSelectedToLibrary());
+        if (decision.newSelectedToLibrary() && state.getSelectedAt() == null) {
+            state.setSelectedAt(now);
+        }
+        state.setDisplayStatus(decision.newDisplayStatus());
+        state.setHiddenReason(decision.newHiddenReason());
+        state.setAuditStatus(decision.newAuditStatus());
+        state.setBizStatus(decision.newBizStatus());
+        state.setDisplayRuleVersion(DISPLAY_RULE_VERSION);
+        if (REPAIR_REASON_UPSTREAM_PROMOTING_AUTO_LIBRARY.equals(decision.reason())
+                && !StringUtils.hasText(state.getAuditRemark())) {
+            state.setAuditRemark(AUTO_LIBRARY_REPAIR_REMARK);
+        }
+        state.setLastOperationAt(now);
+    }
+
+    public boolean shouldAutoEnterLibrary(ProductSnapshot snapshot, ProductOperationState state) {
+        return shouldAutoEnterLibrary(snapshot, state, LocalDateTime.now());
+    }
+
+    boolean shouldAutoEnterLibrary(ProductSnapshot snapshot, ProductOperationState state, LocalDateTime now) {
+        if (snapshot == null) {
+            return false;
+        }
+        if (!isLocallyDisplayableSnapshotStatus(snapshot)) {
+            return false;
+        }
+        if (isLocalRejected(state)) {
+            return false;
+        }
+        if (isLocalPaused(state)) {
+            return false;
+        }
+        return !isPromotionExpired(snapshot, now);
+    }
+
+    private String resolveLibraryHiddenReason(ProductSnapshot snapshot, ProductOperationState state, LocalDateTime now) {
+        if (isLocalRejected(state)) {
+            return HIDDEN_REASON_LOCAL_REJECTED;
+        }
+        if (isLocalPaused(state)) {
+            return HIDDEN_REASON_LOCAL_PAUSED;
+        }
+        if (snapshot != null && !isLocallyDisplayableSnapshotStatus(snapshot)) {
+            return HIDDEN_REASON_UPSTREAM_NOT_PROMOTING;
+        }
+        if (snapshot != null && isPromotionExpired(snapshot, now)) {
+            return HIDDEN_REASON_ACTIVITY_EXPIRED;
+        }
+        return HIDDEN_REASON_NOT_ELIGIBLE;
+    }
+
+    private ProductBizStatus safeBizStatus(String raw) {
+        try {
+            return ProductBizStatus.fromCode(raw);
+        } catch (IllegalArgumentException ex) {
+            return ProductBizStatus.PENDING_AUDIT;
+        }
+    }
+
+    private int normalizeRepairLimit(int limit) {
+        if (limit <= 0) {
+            return DEFAULT_REPAIR_LIMIT;
+        }
+        return Math.min(limit, MAX_REPAIR_LIMIT);
     }
 
     /**
@@ -408,36 +704,7 @@ public class ProductDisplayRuleService {
                 .findFirst()
                 .orElse(null);
 
-        List<ProductOperationState> promotingStates = new ArrayList<>();
-        List<ProductOperationState> normalStates = new ArrayList<>();
-        for (ProductOperationState state : states) {
-            if (isPromotingActivity(state.getActivityId())) {
-                promotingStates.add(state);
-            } else {
-                normalStates.add(state);
-            }
-        }
-
-        for (ProductOperationState state : promotingStates) {
-            ProductSnapshot snapshot = snapshotMap.get(snapshotKey(state.getActivityId(), state.getProductId()));
-            ProductDisplayStatus nextStatus;
-            String hiddenReason = null;
-            String displayReason = null;
-            if (isPromotingEligibleForDisplay(state, snapshot)) {
-                nextStatus = ProductDisplayStatus.DISPLAYING;
-                displayReason = DISPLAY_REASON_RULE;
-            } else if (Boolean.TRUE.equals(state.getSelectedToLibrary())) {
-                nextStatus = ProductDisplayStatus.HIDDEN;
-                hiddenReason = snapshot == null ? HIDDEN_REASON_NOT_ELIGIBLE : HIDDEN_REASON_NOT_ELIGIBLE;
-            } else {
-                nextStatus = ProductDisplayStatus.PENDING;
-            }
-            persistDisplayDecision(state, nextStatus, hiddenReason, displayReason, null, now);
-        }
-
-        if (!normalStates.isEmpty()) {
-            applyNormalDisplayDedup(productId, normalStates, snapshotMap, operator, now, oldDisplayRelationId);
-        }
+        applyNormalDisplayDedup(productId, states, snapshotMap, operator, now, oldDisplayRelationId);
     }
 
     private void applyNormalDisplayDedup(
@@ -512,33 +779,6 @@ public class ProductDisplayRuleService {
                     operator.operatorId(),
                     selectedReason == null ? Map.of() : Map.of("selectedReason", selectedReason));
         }
-    }
-
-    void clearPromotingActivityCache(String activityId) {
-        if (StringUtils.hasText(activityId)) {
-            promotingActivityCache.remove(activityId.trim());
-        }
-    }
-
-    boolean isPromotingActivity(String activityId) {
-        if (!StringUtils.hasText(activityId)) {
-            return false;
-        }
-        String key = activityId.trim();
-        return promotingActivityCache.computeIfAbsent(key, id -> {
-            ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(id);
-            return ActivityPromotionSupport.shouldForceLibraryDisplay(activity);
-        });
-    }
-
-    boolean isPromotingEligibleForDisplay(ProductOperationState state, ProductSnapshot snapshot) {
-        if (state == null || snapshot == null) {
-            return false;
-        }
-        if (Boolean.TRUE.equals(state.getManualDisabled())) {
-            return false;
-        }
-        return Boolean.TRUE.equals(state.getSelectedToLibrary());
     }
 
     private String resolveSelectedReason(DisplayCandidate winner, DisplayCandidate currentDisplaying, LocalDateTime now) {
@@ -634,11 +874,17 @@ public class ProductDisplayRuleService {
     }
 
     private String resolveIneligibleReason(ProductOperationState state, ProductSnapshot snapshot, LocalDateTime now) {
+        if (isLocalRejected(state)) {
+            return HIDDEN_REASON_LOCAL_REJECTED;
+        }
+        if (snapshot != null && !isLocallyDisplayableSnapshotStatus(snapshot)) {
+            return HIDDEN_REASON_UPSTREAM_NOT_PROMOTING;
+        }
+        if (isLocalPaused(state)) {
+            return HIDDEN_REASON_LOCAL_PAUSED;
+        }
         if (snapshot != null && isPromotionExpired(snapshot, now)) {
             return HIDDEN_REASON_ACTIVITY_EXPIRED;
-        }
-        if (snapshot != null && !Integer.valueOf(PROMOTING_STATUS).equals(snapshot.getStatus())) {
-            return HIDDEN_REASON_NOT_ELIGIBLE;
         }
         return HIDDEN_REASON_NOT_ELIGIBLE;
     }
@@ -747,20 +993,41 @@ public class ProductDisplayRuleService {
         if (state == null || snapshot == null) {
             return false;
         }
-        if (Boolean.TRUE.equals(state.getManualDisabled())) {
+        if (isLocalPaused(state)) {
             return false;
         }
         if (!Boolean.TRUE.equals(state.getSelectedToLibrary())) {
             return false;
         }
-        ProductBizStatus bizStatus = productBizStatusService.readBizStatus(state);
-        if (bizStatus != ProductBizStatus.APPROVED) {
+        if (isLocalRejected(state)) {
             return false;
         }
-        if (!Integer.valueOf(PROMOTING_STATUS).equals(snapshot.getStatus())) {
+        if (!isLocallyDisplayableSnapshotStatus(snapshot)) {
             return false;
         }
         return !isPromotionExpired(snapshot, now);
+    }
+
+    private boolean isLocallyDisplayableSnapshotStatus(ProductSnapshot snapshot) {
+        if (snapshot == null) {
+            return false;
+        }
+        Integer status = snapshot.getStatus();
+        return Integer.valueOf(PROMOTING_STATUS).equals(status);
+    }
+
+    private boolean isLocalRejected(ProductOperationState state) {
+        if (state == null) {
+            return false;
+        }
+        if (Integer.valueOf(3).equals(state.getAuditStatus())) {
+            return true;
+        }
+        return productBizStatusService.readBizStatus(state) == ProductBizStatus.REJECTED;
+    }
+
+    private boolean isLocalPaused(ProductOperationState state) {
+        return state != null && Boolean.TRUE.equals(state.getManualDisabled());
     }
 
     private boolean isPromotionExpired(ProductSnapshot snapshot, LocalDateTime now) {
@@ -933,6 +1200,167 @@ public class ProductDisplayRuleService {
 
     private String snapshotKey(String activityId, String productId) {
         return activityId + "::" + productId;
+    }
+
+    private long elapsedMs(long startedAt) {
+        return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+    }
+
+    private DisplayRuleActivityStats countActivityDisplayStats(String activityId) {
+        List<ProductOperationState> states = operationStateMapper.selectList(
+                new LambdaQueryWrapper<ProductOperationState>()
+                        .eq(ProductOperationState::getActivityId, activityId)
+                        .eq(ProductOperationState::getSelectedToLibrary, true));
+        long displaying = states.stream()
+                .filter(state -> ProductDisplayStatus.DISPLAYING.name().equals(state.getDisplayStatus()))
+                .count();
+        long hidden = states.stream()
+                .filter(state -> ProductDisplayStatus.HIDDEN.name().equals(state.getDisplayStatus()))
+                .count();
+        return new DisplayRuleActivityStats(displaying, hidden);
+    }
+
+    public record LibraryRepairResult(
+            String activityId,
+            boolean dryRun,
+            int scanned,
+            int promoting,
+            int willSelectToLibrary,
+            int willDisplay,
+            int willHideByUpstream,
+            int willHideByLocalRejected,
+            int willHideByLocalPaused,
+            int unchanged,
+            List<LibraryRepairItem> items) {
+
+        static LibraryRepairResult empty(String activityId, boolean dryRun) {
+            return new LibraryRepairResult(activityId, dryRun, 0, 0, 0, 0, 0, 0, 0, 0, List.of());
+        }
+    }
+
+    public record LibraryRepairItem(
+            String activityId,
+            String productId,
+            Boolean oldSelectedToLibrary,
+            Boolean newSelectedToLibrary,
+            String oldDisplayStatus,
+            String newDisplayStatus,
+            String oldHiddenReason,
+            String newHiddenReason,
+            Integer oldAuditStatus,
+            Integer newAuditStatus,
+            String oldBizStatus,
+            String newBizStatus,
+            String reason) {
+    }
+
+    public record LibraryHealthResult(
+            long snapshotTotal,
+            long promotingTotal,
+            long promotingNotSelected,
+            long promotingNotDisplaying,
+            long displayingWithHiddenReason,
+            long selectedButNotPromoting,
+            long upstreamNotPromoting,
+            long localRejected,
+            long localPaused,
+            LocalDateTime lastSyncTime,
+            String lastSyncError) {
+    }
+
+    private record LibraryRepairDecision(
+            Boolean oldSelectedToLibrary,
+            Boolean newSelectedToLibrary,
+            String oldDisplayStatus,
+            String newDisplayStatus,
+            String oldHiddenReason,
+            String newHiddenReason,
+            Integer oldAuditStatus,
+            Integer newAuditStatus,
+            String oldBizStatus,
+            String newBizStatus,
+            String reason,
+            boolean changed,
+            boolean willDisplay) {
+    }
+
+    private static final class LibraryRepairAccumulator {
+        private final String activityId;
+        private final boolean dryRun;
+        private final List<LibraryRepairItem> items = new ArrayList<>();
+        private int scanned;
+        private int promoting;
+        private int willSelectToLibrary;
+        private int willDisplay;
+        private int willHideByUpstream;
+        private int willHideByLocalRejected;
+        private int willHideByLocalPaused;
+        private int unchanged;
+
+        private LibraryRepairAccumulator(String activityId, boolean dryRun) {
+            this.activityId = activityId;
+            this.dryRun = dryRun;
+        }
+
+        private void accept(ProductSnapshot snapshot, ProductOperationState state, LibraryRepairDecision decision) {
+            scanned++;
+            if (snapshot != null && Integer.valueOf(PROMOTING_STATUS).equals(snapshot.getStatus())) {
+                promoting++;
+            }
+            if (!Boolean.TRUE.equals(decision.oldSelectedToLibrary())
+                    && Boolean.TRUE.equals(decision.newSelectedToLibrary())) {
+                willSelectToLibrary++;
+            }
+            if (decision.willDisplay()) {
+                willDisplay++;
+            }
+            if (HIDDEN_REASON_UPSTREAM_NOT_PROMOTING.equals(decision.newHiddenReason())
+                    || HIDDEN_REASON_ACTIVITY_EXPIRED.equals(decision.newHiddenReason())) {
+                willHideByUpstream++;
+            }
+            if (HIDDEN_REASON_LOCAL_REJECTED.equals(decision.newHiddenReason())) {
+                willHideByLocalRejected++;
+            }
+            if (HIDDEN_REASON_LOCAL_PAUSED.equals(decision.newHiddenReason())) {
+                willHideByLocalPaused++;
+            }
+            if (!decision.changed()) {
+                unchanged++;
+                return;
+            }
+            items.add(new LibraryRepairItem(
+                    snapshot == null ? null : snapshot.getActivityId(),
+                    snapshot == null ? null : snapshot.getProductId(),
+                    decision.oldSelectedToLibrary(),
+                    decision.newSelectedToLibrary(),
+                    decision.oldDisplayStatus(),
+                    decision.newDisplayStatus(),
+                    decision.oldHiddenReason(),
+                    decision.newHiddenReason(),
+                    decision.oldAuditStatus(),
+                    decision.newAuditStatus(),
+                    decision.oldBizStatus(),
+                    decision.newBizStatus(),
+                    decision.reason()));
+        }
+
+        private LibraryRepairResult toResult() {
+            return new LibraryRepairResult(
+                    activityId,
+                    dryRun,
+                    scanned,
+                    promoting,
+                    willSelectToLibrary,
+                    willDisplay,
+                    willHideByUpstream,
+                    willHideByLocalRejected,
+                    willHideByLocalPaused,
+                    unchanged,
+                    List.copyOf(items));
+        }
+    }
+
+    private record DisplayRuleActivityStats(long displaying, long hidden) {
     }
 
     private static final Comparator<DisplayCandidate> DISPLAY_CANDIDATE_COMPARATOR = Comparator

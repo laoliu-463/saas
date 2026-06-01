@@ -14,8 +14,8 @@ import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.service.activity.ActivityAccessService;
-import com.colonel.saas.service.activity.ActivityPromotionSupport;
 import com.colonel.saas.service.ColonelsettlementActivityService;
+import com.colonel.saas.service.ProductActivityManualSyncService;
 import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,6 +27,7 @@ import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -62,6 +63,7 @@ public class ColonelActivityController extends BaseController {
     private final ShortTtlCacheService shortTtlCacheService;
     private final SysUserService sysUserService;
     private final ColonelsettlementActivityService colonelActivityService;
+    private final ProductActivityManualSyncService productActivityManualSyncService;
     private final SysUserMapper sysUserMapper;
     private final ActivityAccessService activityAccessService;
 
@@ -72,6 +74,7 @@ public class ColonelActivityController extends BaseController {
             ShortTtlCacheService shortTtlCacheService,
             SysUserService sysUserService,
             ColonelsettlementActivityService colonelActivityService,
+            ProductActivityManualSyncService productActivityManualSyncService,
             SysUserMapper sysUserMapper,
             ActivityAccessService activityAccessService) {
         this.douyinActivityGateway = douyinActivityGateway;
@@ -80,6 +83,7 @@ public class ColonelActivityController extends BaseController {
         this.shortTtlCacheService = shortTtlCacheService;
         this.sysUserService = sysUserService;
         this.colonelActivityService = colonelActivityService;
+        this.productActivityManualSyncService = productActivityManualSyncService;
         this.sysUserMapper = sysUserMapper;
         this.activityAccessService = activityAccessService;
     }
@@ -153,6 +157,30 @@ public class ColonelActivityController extends BaseController {
         return ok(payload);
     }
 
+    @Operation(summary = "触发活动商品后台同步", description = "提交活动商品同步后台任务，接口立即返回，不阻塞前端列表查询。")
+    @PostMapping("/{activityId}/products/sync")
+    public ApiResult<Map<String, Object>> syncProducts(
+            @Parameter(description = "团长活动 ID。") @PathVariable("activityId") String activityId,
+            @Parameter(description = "抖音应用 appId。") @RequestParam(name = "appId", required = false) String appId,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        activityAccessService.assertActivityReadable(
+                activityId,
+                userId,
+                deptId,
+                ActivityAccessService.normalizeRoleCodes(roleCodes));
+        ProductActivityManualSyncService.SyncTriggerResult triggerResult =
+                productActivityManualSyncService.trigger(activityId, appId);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("activityId", triggerResult.activityId());
+        payload.put("syncStatus", triggerResult.syncStatus());
+        payload.put("message", "RUNNING".equals(triggerResult.syncStatus())
+                ? "商品同步已在后台执行，请稍后刷新列表"
+                : "商品同步已转入后台执行");
+        return ok(payload);
+    }
+
     @Operation(summary = "活动商品列表", description = "查询团长活动下的商品列表。优先使用本地快照构造业务视图，未命中时回退到上游接口后再落库。")
     @GetMapping("/{activityId}/products")
     public ApiResult<Map<String, Object>> listProducts(
@@ -202,9 +230,7 @@ public class ColonelActivityController extends BaseController {
                 syncStats.put("createdCount", refreshResult.createdCount());
                 syncStats.put("updatedCount", refreshResult.updatedCount());
                 syncStats.put("skippedCount", refreshResult.skippedCount());
-                ColonelsettlementActivity activity = colonelActivityService.findByActivityId(activityId);
-                syncStats.put("autoLibraryEligible", activity != null
-                        && ActivityPromotionSupport.shouldForceLibraryDisplay(activity));
+                syncStats.put("autoLibraryEligible", refreshResult.libraryEntryCount() > 0);
                 payload.put("syncStats", syncStats);
             } else {
                 DouyinProductGateway.ActivityProductListResult result = douyinProductGateway.queryActivityProducts(queryRequest);

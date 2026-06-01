@@ -132,7 +132,7 @@ class TalentProfileControllerTest {
                         .requestAttr("userId", userId)
                         .requestAttr("deptId", deptId)
                         .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_STAFF)))
-                .andExpect(status().isOk())
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403));
 
         verify(talentProfileSyncService, never()).syncExistingProfile(any(UUID.class), eq(true));

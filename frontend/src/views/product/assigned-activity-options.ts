@@ -29,9 +29,9 @@ export function mapActivityRowsToAssignedOptions(rows: ActivityRow[]): AssignedA
   return options
 }
 
-/** 加载当前用户可见的已分配活动（admin=全部已分配，招商=分配给我） */
+/** 加载当前用户可同步的活动（admin=全部活动，招商=分配给我） */
 export async function loadAssignedActivityOptions(isAdmin: boolean): Promise<AssignedActivityOption[]> {
-  const assignmentFilter = isAdmin ? 'assigned' : 'mine'
+  const assignmentFilter = isAdmin ? 'all' : 'mine'
   const allRows: ActivityRow[] = []
   let page = 1
   let total = Number.POSITIVE_INFINITY

@@ -17,7 +17,7 @@
         <n-input
           :value="filters.shopKeyword"
           clearable
-          placeholder="店铺 / 合作方"
+          placeholder="店铺名称"
           style="width: 160px"
           @update:value="updateFilter('shopKeyword', $event)"
         />

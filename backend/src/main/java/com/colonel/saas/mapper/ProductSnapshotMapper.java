@@ -54,6 +54,9 @@ public interface ProductSnapshotMapper extends BaseMapper<ProductSnapshot> {
             WHERE pos.display_status = 'DISPLAYING'
               AND pos.selected_to_library = TRUE
               AND pos.deleted = 0
+              AND ps.status = 1
+              AND (pos.audit_status IS NULL OR pos.audit_status <> 3)
+              AND COALESCE(pos.manual_disabled, FALSE) = FALSE
               AND ps.category_name IS NOT NULL
               AND TRIM(ps.category_name) <> ''
             ORDER BY ps.category_name
@@ -79,6 +82,9 @@ public interface ProductSnapshotMapper extends BaseMapper<ProductSnapshot> {
                 WHERE pos.display_status = 'DISPLAYING'
                   AND pos.selected_to_library = TRUE
                   AND pos.deleted = 0
+                  AND ps.status = 1
+                  AND (pos.audit_status IS NULL OR pos.audit_status <> 3)
+                  AND COALESCE(pos.manual_disabled, FALSE) = FALSE
                   AND ps.category_name IS NOT NULL
                   AND TRIM(ps.category_name) <> ''
             ) categories

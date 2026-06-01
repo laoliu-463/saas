@@ -405,7 +405,16 @@ const columns = computed(() => [
             type: 'error',
             size: 'small',
             'data-testid': 'activity-view-products',
-            onClick: () => router.push(`/product/manage/${row.activityId}`)
+            onClick: () => {
+              const id = String(row.activityId ?? '').trim()
+              if (!id) {
+                message.warning('活动 ID 无效，无法进入商品库')
+                return
+              }
+              // V1 统一入口契约：活动列表 → 商品库，使用 query 参数而非 path param
+              // 与 /product/library?activityId=... 一致，便于收藏、刷新与权限审计
+              router.push({ path: '/product/library', query: { activityId: id } })
+            }
           },
           { default: () => '商品信息' }
         )
@@ -573,7 +582,7 @@ const syncSelectedActivityProducts = async () => {
     const summary = await batchSyncActivityProducts(checkedRowKeys.value, rowByActivityId)
     const text = formatActivityProductSyncMessage(summary)
     if (summary.succeeded > 0) {
-      if (summary.failed > 0 || summary.promotingWithoutAssigneeCount > 0) {
+      if (summary.failed > 0) {
         message.warning(text)
       } else {
         message.success(text)

@@ -71,14 +71,11 @@ export function toGroupSelectOptions(nodes: DeptNode[] = []): SelectOption[] {
     }));
 }
 
-import { ROLE_NAME_MAP } from '../../constants/rbac';
-
 export function sanitizeRoleName(role: { roleCode?: unknown; roleName?: unknown }) {
   const roleCode = String(role?.roleCode || '');
   const rawName = String(role?.roleName || '').trim();
   if (rawName && !/^\?+$/.test(rawName)) {
     return rawName;
   }
-  // 自定义角色走中文映射表兜底，永远不展示原始 code
-  return ROLE_NAME_MAP[roleCode] ?? '自定义角色';
+  return roleCode || '自定义角色';
 }

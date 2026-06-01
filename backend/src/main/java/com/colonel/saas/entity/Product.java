@@ -260,4 +260,23 @@ public class Product extends BaseEntity {
     /** 虚拟字段：商品快照最近同步时间 */
     @TableField(exist = false)
     private LocalDateTime syncTime;
+
+    /**
+     * 虚拟字段：所属活动名称
+     * <p>来源于 {@code colonel_activity.activity_name}，由 Service 层在构造视图时预加载，
+     * 用于商品库卡片 hover 抽屉中的"活动"字段展示。
+     * 旧 {@code toLegacyProduct} 漏传该字段，导致前端 drawer 中"活动"一直显示为 {@code -}。</p>
+     */
+    @TableField(exist = false)
+    private String activityName;
+
+    /**
+     * 虚拟字段：店铺评分
+     * <p>来源于商品快照 rawPayload 中的 {@code shopScore / shop_score}（抖音字段），
+     * 由 Service 层通过 {@code resolveShopScoreFromSnapshot} 解析后注入。
+     * 缺失或非法时为 null；Integer/String/Number 三种上游形态均兼容。
+     * 用于商品库卡片 hover 抽屉中的"店铺评分"字段展示。</p>
+     */
+    @TableField(exist = false)
+    private Integer shopScore;
 }

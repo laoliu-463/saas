@@ -41,6 +41,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -91,10 +92,60 @@ class TestDataServiceTest {
 
     @Test
     void runEnsuresSchemaAndDemoDepartmentsWithoutSeedingWhenDisabled() {
+        stubTestSupportTablesExist();
+
         service.run(mock(org.springframework.boot.ApplicationArguments.class));
 
         verify(jdbcTemplate, atLeast(17)).execute(anyString());
         verify(jdbcTemplate, atLeast(5)).update(anyString(), any(Object[].class));
+    }
+
+    @Test
+    void runSkipsOptionalProductStateSchemaPatchWhenTableDoesNotExist() {
+        when(jdbcTemplate.queryForObject(anyString(), eq(Boolean.class)))
+                .thenAnswer(invocation -> {
+                    String sql = invocation.getArgument(0, String.class);
+                    return !sql.contains("product_operation_state");
+                });
+
+        service.run(mock(org.springframework.boot.ApplicationArguments.class));
+
+        verify(jdbcTemplate, never()).execute(ArgumentMatchers.contains("ALTER TABLE product_operation_state"));
+        verify(jdbcTemplate).execute(ArgumentMatchers.contains("CREATE TABLE IF NOT EXISTS douyin_webhook_event"));
+        verify(jdbcTemplate, atLeast(5)).update(anyString(), any(Object[].class));
+    }
+
+    @Test
+    void runSkipsDemoDepartmentPatchWhenSysUserTableDoesNotExist() {
+        when(jdbcTemplate.queryForObject(anyString(), eq(Boolean.class)))
+                .thenAnswer(invocation -> {
+                    String sql = invocation.getArgument(0, String.class);
+                    return !sql.contains("sys_user");
+                });
+
+        service.run(mock(org.springframework.boot.ApplicationArguments.class));
+
+        verify(jdbcTemplate, never()).update(ArgumentMatchers.contains("UPDATE sys_user"), any(Object[].class));
+        verify(jdbcTemplate).execute(ArgumentMatchers.contains("CREATE TABLE IF NOT EXISTS douyin_webhook_event"));
+    }
+
+    @Test
+    void runSkipsSeedWhenSeedTablesDoNotExist() {
+        service = service(true);
+        when(jdbcTemplate.queryForObject(anyString(), eq(Boolean.class)))
+                .thenAnswer(invocation -> {
+                    String sql = invocation.getArgument(0, String.class);
+                    return !sql.contains("sys_user");
+                });
+
+        service.run(mock(org.springframework.boot.ApplicationArguments.class));
+
+        verify(jdbcTemplate, never()).query(
+                ArgumentMatchers.contains("SELECT id FROM sys_user"),
+                ArgumentMatchers.<ResultSetExtractor<Object>>any(),
+                any(Object[].class)
+        );
+        verify(productMapper, never()).selectOne(any(LambdaQueryWrapper.class));
     }
 
     @Test
@@ -396,5 +447,9 @@ class TestDataServiceTest {
                     }
                     return USER_ID;
                 });
+    }
+
+    private void stubTestSupportTablesExist() {
+        when(jdbcTemplate.queryForObject(anyString(), eq(Boolean.class))).thenReturn(true);
     }
 }

@@ -23,6 +23,8 @@
 核心口径：
 
 ```text
+当前开发分支: feature/auth-system
+当前优先同步仓库: https://gitee.com/cao-jianing463/saas.git
 Compose project: saas-active
 后端: backend-real-pre, 127.0.0.1:8081 -> 容器 8080
 前端: frontend-real-pre, 127.0.0.1:3001 -> 容器 80
@@ -57,6 +59,7 @@ Compose project: saas-active
 - 已创建 `/opt/saas/app`、`/opt/saas/env`、`/opt/saas/logs`、`/opt/saas/backups`、`/opt/saas/runtime/qa/out`。
 - 已准备真实 `.env.real-pre`。
 - 未把 `.env.real-pre` 提交 Git。
+- 不直接复用本机 `.env.real-pre`；服务器环境文件必须重新核对域名、OAuth 回调、CORS、快递100回调和真实推广写入开关。
 
 ## 新手第一次部署步骤
 
@@ -67,14 +70,14 @@ sudo mkdir -p /opt/saas/app /opt/saas/env /opt/saas/logs /opt/saas/backups /opt/
 sudo chown -R "$USER":"$USER" /opt/saas
 
 cd /opt/saas
-git clone https://github.com/laoliu-463/saas.git app
+git clone -o gitee -b feature/auth-system https://gitee.com/cao-jianing463/saas.git app
 cd /opt/saas/app
-git checkout feature/auth-system
 git pull --ff-only
 
 cp .env.real-pre.example /opt/saas/env/.env.real-pre
 chmod 600 /opt/saas/env/.env.real-pre
 vi /opt/saas/env/.env.real-pre
+ln -sfn /opt/saas/env/.env.real-pre /opt/saas/app/.env.real-pre
 
 # 部署前自检：验证 .env.real-pre 开关基线（参考 docs/deploy/08-real-pre参数开关契约.md）
 ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
@@ -88,6 +91,34 @@ ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
 curl -fsS http://127.0.0.1:8081/api/system/health
 curl -fsS http://127.0.0.1:3001/healthz
 ```
+
+## 本地更新后如何同步到服务器
+
+本地修改必须先提交并推送，服务器再拉取。未提交的工作区改动不会被服务器获取。
+
+本地执行：
+
+```bash
+cd D:/Projects/SAAS
+git status
+git add <本次修改文件>
+git commit -m "描述本次修改"
+git push gitee feature/auth-system
+```
+
+服务器执行：
+
+```bash
+ssh saas
+cd /opt/saas/app
+git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
+git fetch gitee
+git pull --ff-only
+ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
+ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
+```
+
+如服务器没有 `saas` SSH 别名，则使用实际登录方式，例如 `ssh root@服务器IP`。
 
 ## 只有服务器无域名时
 

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="product-page app-page" data-testid="product-library-page">
     <PageHeader
       title="商品库"
@@ -19,6 +19,24 @@
       @search-click="refreshProducts"
       @reset="resetFilters"
     />
+
+    <div
+      v-if="appliedActivityId"
+      class="product-library-activity-filter"
+      data-testid="product-library-activity-filter-applied"
+    >
+      <span class="product-library-activity-filter__label">已按活动筛选</span>
+      <code class="product-library-activity-filter__value">{{ appliedActivityId }}</code>
+      <n-button
+        text
+        type="primary"
+        size="small"
+        data-testid="product-library-activity-filter-clear"
+        @click="clearActivityFilter"
+      >
+        清除筛选
+      </n-button>
+    </div>
 
     <div
       v-if="products.length"
@@ -91,8 +109,8 @@
 
 <script setup lang="ts">
 import { notifyApiFailure } from '../../utils/requestError'
-import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
@@ -114,11 +132,17 @@ import {
 } from './product-filters'
 import { copyProductBriefWithLink, resolveProductBriefCopyMessage } from './product-copy'
 import { mergeLibraryDisplayFields, normalizeProductCard } from './product-library-display'
+import {
+  buildQueryWithoutActivityId,
+  isSameActivityId,
+  resolveActivityIdFromQuery
+} from './product-library-route-sync'
 
-const PAGE_SIZE = 12
+const PAGE_SIZE = 20
 
 const message = useMessage()
 const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
 
 const loading = ref(false)
@@ -248,6 +272,11 @@ const fetchProducts = async (reset: boolean) => {
 const resetFilters = () => {
   libraryStatus.value = null
   filters.value = DEFAULT_PRODUCT_FILTERS()
+  // 重置时同步清掉 URL 上的 activityId，避免 query 与 filters 漂移
+  if (appliedActivityId.value) {
+    const nextQuery = buildQueryWithoutActivityId(route.query)
+    void router.replace({ path: route.path, query: nextQuery })
+  }
   refreshProducts()
 }
 
@@ -292,8 +321,10 @@ const copyPromotionLink = async (item: any) => {
       writeText: async (text: string) => {
         try {
           await navigator.clipboard.writeText(text)
+          return true
         } catch {
           clipboardWriteFailed = true
+          return false
         }
       }
     })
@@ -370,6 +401,22 @@ const openSampleApply = (item: any) => {
   quickSampleVisible.value = true
 }
 
+/**
+ * 当前 URL 上活动筛选的"权威值"。活动列表 / 路由重定向都会把 activityId
+ * 写入 query，商品库只读 query 作为单一事实源，避免 path / query 两套入口
+ * 出现"两边都改但不一致"的状态。详见 ADR-003。
+ */
+const appliedActivityId = computed(() => resolveActivityIdFromQuery(route.query))
+
+/** 清除活动筛选：清 query、filters.activityId、立即刷新。 */
+const clearActivityFilter = () => {
+  if (!appliedActivityId.value && !filters.value.activityId) return
+  const nextQuery = buildQueryWithoutActivityId(route.query)
+  void router.replace({ path: route.path, query: nextQuery })
+  filters.value = { ...filters.value, activityId: null }
+  void refreshProducts()
+}
+
 const mergeCategoryOptions = (dynamicNames: string[]) => {
   const seen = new Set<string>()
   const options: { label: string; value: string }[] = []
@@ -401,12 +448,32 @@ const loadFilterOptions = async () => {
 }
 
 onMounted(async () => {
+  // 首次进入：把 query.activityId 同步进 filters 作为"硬筛选"。
+  // 后端 GET /products 已支持 activityId 过滤，前端不二次判断"是否应用"。
+  if (appliedActivityId.value && !filters.value.activityId) {
+    filters.value = { ...filters.value, activityId: appliedActivityId.value }
+  }
   try {
     await Promise.all([loadFilterOptions(), refreshProducts()])
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '页面初始化失败' })
   }
 })
+
+/**
+ * 监听 query 变化：例如活动列表点其他活动的"商品信息"、或外部代码
+ * router.push({ query: { activityId: '...' } })，都要把 filters.activityId
+ * 一起刷新，避免"URL 是新活动、列表还停留在旧活动"的状态。
+ */
+watch(
+  () => appliedActivityId.value,
+  (next) => {
+    const normalized = next || null
+    if (isSameActivityId(filters.value.activityId, normalized)) return
+    filters.value = { ...filters.value, activityId: normalized }
+    void refreshProducts()
+  }
+)
 </script>
 
 <style scoped>
@@ -447,16 +514,50 @@ onMounted(async () => {
   font-size: var(--text-sm);
 }
 
-.product-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
-  align-items: start;
+.product-library-activity-filter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 8px 14px;
+  border: 1px solid rgba(232, 69, 85, 0.32);
+  border-radius: 8px;
+  background: rgba(255, 246, 248, 0.92);
+  color: #7f1d1d;
+  font-size: 13px;
 }
 
-@media (min-width: 1280px) {
+.product-library-activity-filter__label {
+  font-weight: 600;
+}
+
+.product-library-activity-filter__value {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(252px, 1fr));
+  gap: 16px;
+  align-items: start;
+  justify-items: center;
+}
+
+@media (min-width: 1600px) {
   .product-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) and (max-width: 1599px) {
+  .product-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

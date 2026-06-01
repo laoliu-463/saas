@@ -7,7 +7,7 @@ import { createGuardWarningDeduper, resolveGuardDecision, type GuardRedirectDeci
 const ROLE = ROLE_CODES
 const HOME_CANDIDATES = ['/data', '/orders', '/product', '/product/manage', '/product/manage/products', '/talent', '/ops/shipping', '/sample', '/system/users']
 const CHANNEL_STAFF_HOME_CANDIDATES = ['/product', '/talent', '/sample', '/data']
-const BIZ_STAFF_HOME_CANDIDATES = ['/product/manage', '/product/manage/products', '/sample', '/data']
+const BIZ_STAFF_HOME_CANDIDATES = ['/product/manage/products', '/product/manage', '/sample', '/data']
 const OPS_STAFF_HOME_CANDIDATES = ['/ops/shipping']
 
 const router = createRouter({
@@ -43,9 +43,15 @@ const router = createRouter({
           redirect: '/product/manage/products'
         },
         {
+          // V1 入口契约统一：活动列表 → 商品库（?activityId={id}）
+          // 旧的 /product/manage/:activityId 工作台入口合并到商品库，保留为兼容重定向
+          // 参见 docs/决策/ADR-003-活动列表与商品库入口路由统一.md
           path: 'product/manage/:activityId',
-          component: () => import('../views/product/index.vue'),
-          meta: { title: '商品列表', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
+          redirect: (to) => ({
+            path: '/product/library',
+            query: { activityId: String(to.params.activityId ?? '') }
+          }),
+          meta: { title: '商品库' }
         },
         {
           path: 'product/activity',
@@ -53,9 +59,13 @@ const router = createRouter({
           meta: { title: '商品管理', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
         },
         {
+          // 同步重定向到统一入口，避免二次跳转
           path: 'product/activity/:activityId',
-          redirect: (to) => `/product/manage/${to.params.activityId}`,
-          meta: { title: '商品列表', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
+          redirect: (to) => ({
+            path: '/product/library',
+            query: { activityId: String(to.params.activityId ?? '') }
+          }),
+          meta: { title: '商品库' }
         },
         {
           path: 'product/:id',

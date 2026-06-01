@@ -124,6 +124,18 @@ public class TestDataService implements ApplicationRunner {
     private static final String AMBIGUOUS_NATIVE_BUYIN_ID = "900000000001";
     /** 历史不可回填场景使用的原生百应 ID */
     private static final String HISTORY_UNSAFE_BUYIN_ID = "900000000002";
+    private static final List<String> SEED_REQUIRED_TABLES = List.of(
+            "sys_user",
+            "product",
+            "product_snapshot",
+            "talent",
+            "sample_request",
+            "pick_source_mapping",
+            "colonelsettlement_order",
+            "product_operation_state",
+            "talent_claim",
+            "crawler_talent_info"
+    );
 
     /** 商品 Mapper，用于插入/更新测试商品数据 */
     private final ProductMapper productMapper;
@@ -223,7 +235,7 @@ public class TestDataService implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         ensureSchema();
         ensureDemoUserDeptIds();
-        if (seedOnStartup) {
+        if (seedOnStartup && seedRequiredTablesExist()) {
             seedAll(false);
         }
     }
@@ -237,77 +249,29 @@ public class TestDataService implements ApplicationRunner {
      * </p>
      */
     private void ensureSchema() {
-        jdbcTemplate.execute("""
-                DO $$ BEGIN
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                      WHERE table_name = 'product_operation_state' AND column_name = 'biz_status') THEN
-                    ALTER TABLE product_operation_state ADD COLUMN biz_status VARCHAR(64);
-                  END IF;
-                END $$""");
-        jdbcTemplate.execute("""
-                DO $$ BEGIN
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                      WHERE table_name = 'product_operation_state' AND column_name = 'selected_to_library') THEN
-                    ALTER TABLE product_operation_state ADD COLUMN selected_to_library BOOLEAN DEFAULT FALSE;
-                  END IF;
-                END $$""");
-        jdbcTemplate.execute("""
-                DO $$ BEGIN
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                      WHERE table_name = 'product_operation_state' AND column_name = 'selected_at') THEN
-                    ALTER TABLE product_operation_state ADD COLUMN selected_at TIMESTAMP;
-                  END IF;
-                END $$""");
-        jdbcTemplate.execute("""
-                DO $$ BEGIN
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                      WHERE table_name = 'product_operation_state' AND column_name = 'selected_by') THEN
-                    ALTER TABLE product_operation_state ADD COLUMN selected_by UUID;
-                  END IF;
-                END $$""");
-        jdbcTemplate.execute("""
-                DO $$ BEGIN
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                      WHERE table_name = 'product_operation_log' AND column_name = 'before_status') THEN
-                    ALTER TABLE product_operation_log ADD COLUMN before_status VARCHAR(64);
-                  END IF;
-                END $$""");
-        jdbcTemplate.execute("""
-                DO $$ BEGIN
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                      WHERE table_name = 'product_operation_log' AND column_name = 'after_status') THEN
-                    ALTER TABLE product_operation_log ADD COLUMN after_status VARCHAR(64);
-                  END IF;
-                END $$""");
-        jdbcTemplate.execute("""
-                DO $$ BEGIN
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                      WHERE table_name = 'product_operation_log' AND column_name = 'success') THEN
-                    ALTER TABLE product_operation_log ADD COLUMN success BOOLEAN DEFAULT TRUE;
-                  END IF;
-                END $$""");
-        jdbcTemplate.execute("""
-                DO $$ BEGIN
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                      WHERE table_name = 'product_operation_log' AND column_name = 'error_message') THEN
-                    ALTER TABLE product_operation_log ADD COLUMN error_message TEXT;
-                  END IF;
-                END $$""");
-        jdbcTemplate.execute("""
-                DO $$ BEGIN
-                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                      WHERE table_name = 'pick_source_mapping' AND column_name = 'colonel_buyin_id') THEN
-                    ALTER TABLE pick_source_mapping ADD COLUMN colonel_buyin_id VARCHAR(32);
-                  END IF;
-                END $$""");
-        jdbcTemplate.execute("DROP INDEX IF EXISTS uk_psm_pick_source");
-        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_psm_pick_source ON pick_source_mapping(pick_source)");
-        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_psm_colonel_buyin_id ON pick_source_mapping(colonel_buyin_id)");
-        jdbcTemplate.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS uk_psm_pick_source_product_activity_user
-                ON pick_source_mapping(pick_source, product_id, activity_id, user_id)
-                WHERE deleted = 0
-                """);
+        if (tableExists("product_operation_state")) {
+            addMissingColumn("product_operation_state", "biz_status", "VARCHAR(64)");
+            addMissingColumn("product_operation_state", "selected_to_library", "BOOLEAN DEFAULT FALSE");
+            addMissingColumn("product_operation_state", "selected_at", "TIMESTAMP");
+            addMissingColumn("product_operation_state", "selected_by", "UUID");
+        }
+        if (tableExists("product_operation_log")) {
+            addMissingColumn("product_operation_log", "before_status", "VARCHAR(64)");
+            addMissingColumn("product_operation_log", "after_status", "VARCHAR(64)");
+            addMissingColumn("product_operation_log", "success", "BOOLEAN DEFAULT TRUE");
+            addMissingColumn("product_operation_log", "error_message", "TEXT");
+        }
+        if (tableExists("pick_source_mapping")) {
+            addMissingColumn("pick_source_mapping", "colonel_buyin_id", "VARCHAR(32)");
+            jdbcTemplate.execute("DROP INDEX IF EXISTS uk_psm_pick_source");
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_psm_pick_source ON pick_source_mapping(pick_source)");
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_psm_colonel_buyin_id ON pick_source_mapping(colonel_buyin_id)");
+            jdbcTemplate.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS uk_psm_pick_source_product_activity_user
+                    ON pick_source_mapping(pick_source, product_id, activity_id, user_id)
+                    WHERE deleted = 0
+                    """);
+        }
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS douyin_webhook_event (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -335,6 +299,32 @@ public class TestDataService implements ApplicationRunner {
                 """);
         jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_douyin_webhook_event_status ON douyin_webhook_event(status, create_time)");
         jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_douyin_webhook_event_type ON douyin_webhook_event(event_type)");
+    }
+
+    private boolean tableExists(String tableName) {
+        return Boolean.TRUE.equals(jdbcTemplate.queryForObject(
+                "SELECT to_regclass('public." + tableName + "') IS NOT NULL",
+                Boolean.class
+        ));
+    }
+
+    private boolean seedRequiredTablesExist() {
+        for (String tableName : SEED_REQUIRED_TABLES) {
+            if (!tableExists(tableName)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void addMissingColumn(String tableName, String columnName, String columnDefinition) {
+        jdbcTemplate.execute("""
+                DO $$ BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_schema = 'public' AND table_name = '%s' AND column_name = '%s') THEN
+                    ALTER TABLE %s ADD COLUMN %s %s;
+                  END IF;
+                END $$""".formatted(tableName, columnName, tableName, columnName, columnDefinition));
     }
 
     /**
@@ -2193,6 +2183,9 @@ public class TestDataService implements ApplicationRunner {
      * 仅在用户 dept_id 为 null 时才更新，避免覆盖已有配置。
      */
     private void ensureDemoUserDeptIds() {
+        if (!tableExists("sys_user")) {
+            return;
+        }
         assignDeptIdIfMissing(BIZ_USERNAME, BIZ_DEPT_ID);
         assignDeptIdIfMissing(BIZ_STAFF_USERNAME, BIZ_DEPT_ID);
         assignDeptIdIfMissing(CHANNEL_USERNAME, CHANNEL_DEPT_ID);

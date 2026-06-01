@@ -11,12 +11,13 @@ type CopyProductBriefOptions = {
     productId: string | number,
     data: { scene: ProductPromotionScene }
   ) => Promise<unknown>
-  writeText: (text: string) => Promise<void>
+  writeText: (text: string) => Promise<boolean>
 }
 
 type CopyProductBriefResult = {
   text: string
   link: string | null
+  copied: boolean
   converted: boolean
   linkGenerationFailed: boolean
   promotionLinkGenerated: boolean
@@ -152,11 +153,17 @@ export const copyProductBriefWithLink = async ({
   }
 
   const text = backendCopyText || buildProductBriefCopy(item, link)
-  await writeText(text)
+  let copied = false
+  try {
+    copied = await writeText(text)
+  } catch {
+    copied = false
+  }
 
   return {
     text,
     link,
+    copied,
     converted,
     linkGenerationFailed,
     promotionLinkGenerated,
