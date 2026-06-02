@@ -24,6 +24,7 @@ import { useMessage } from 'naive-ui'
 import { notifyApiFailure } from '../../../utils/requestError'
 import { extendPromotion } from '../../../api/productManage'
 import type { ProductManageRow } from '../../../types/productManage'
+import { resolveProductRelationId } from '../product-relation-id'
 
 const props = defineProps<{ show: boolean; row: ProductManageRow | null }>()
 const emit = defineEmits<{ 'update:show': [value: boolean]; success: [payload?: unknown] }>()
@@ -45,9 +46,9 @@ async function submit() {
     message.warning('请填写延期结束时间和延期原因')
     return
   }
-  const id = String(props.row?.relationId || props.row?.productId || '')
+  const id = resolveProductRelationId(props.row)
   if (!id) {
-    message.warning('缺少商品关系 ID，暂时无法保存')
+    message.warning('缺少有效商品关系 ID，暂时无法保存')
     return
   }
   submitting.value = true

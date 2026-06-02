@@ -15,7 +15,8 @@ import {
   resolveLibraryEntryBlockReason,
   resolveProductLibraryDisplay,
   resolveProductLibraryReadiness,
-  resolveSupportInvestment
+  resolveSupportInvestment,
+  shouldShowLibraryEntryAction
 } from './product-library-display'
 
 describe('product-library-display', () => {
@@ -111,6 +112,22 @@ describe('product-library-display', () => {
       promotionEndTime: '2026-12-31'
     }, { manageMode: true })
     expect(tags).toEqual([{ text: '审核入库后可展示', type: 'success' }])
+  })
+
+  it('allows library entry action based on upstream promoting status', () => {
+    expect(shouldShowLibraryEntryAction({
+      selectedToLibrary: false,
+      status: 1,
+      bizStatus: 'PENDING_AUDIT',
+      auditStatus: 3
+    }, true)).toBe(true)
+
+    expect(shouldShowLibraryEntryAction({
+      selectedToLibrary: false,
+      status: 0,
+      statusText: '待审核',
+      bizStatus: 'APPROVED'
+    }, true)).toBe(false)
   })
 
   it('builds warning tag when product is stored but hidden from shared library', () => {

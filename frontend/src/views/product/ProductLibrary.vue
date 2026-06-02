@@ -239,6 +239,8 @@ const fetchProducts = async (reset: boolean) => {
     const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
       page,
       size: PAGE_SIZE,
+      keyword: filters.value.productId || filters.value.productName || undefined,
+      productIdMode: 'keyword',
       status: libraryStatus.value ?? undefined,
       sortBy: (route.query.sortBy as string | undefined) || 'default'
     }))

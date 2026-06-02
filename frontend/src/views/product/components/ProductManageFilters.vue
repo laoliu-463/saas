@@ -7,6 +7,7 @@
         placeholder="商品ID"
         data-testid="filter-product-id"
         @update:value="updateFilter('productId', $event)"
+        @keyup.enter="$emit('search-click')"
       />
       <n-input
         :value="props.filters.productName"
@@ -14,6 +15,7 @@
         placeholder="商品名称"
         data-testid="filter-product-name"
         @update:value="updateFilter('productName', $event)"
+        @keyup.enter="$emit('search-click')"
       />
       <n-select
         :value="props.filters.recruitActivityId"

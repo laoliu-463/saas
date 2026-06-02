@@ -267,7 +267,7 @@ export const allianceStatusToUpstreamStatus: Record<string, number> = {
   expired: 6
 }
 
-/** 联盟推广状态（匹配 statusText 关键字；无 upstream 码时用客户端兜底） */
+/** 联盟推广状态（优先匹配 upstream status；无 upstream 码时用 statusText 兜底） */
 export const allianceStatusOptions = [
   { label: '推广中', value: 'promoting' },
   { label: '待审核', value: 'pending_audit' },
@@ -384,6 +384,14 @@ const allianceStatusKeywords: Record<string, string[]> = {
 
 export function matchAllianceStatus(item: any, allianceStatus: string | null) {
   if (!allianceStatus) return true
+  const expectedStatus = allianceStatusToUpstreamStatus[allianceStatus]
+  const rawStatus = normalizeText(item?.status)
+  if (rawStatus) {
+    const statusCode = Number(rawStatus)
+    if (Number.isFinite(statusCode)) {
+      return statusCode === expectedStatus
+    }
+  }
   const text = normalizeText(item?.statusText || item?.allianceStatusText).toLowerCase()
   const keywords = allianceStatusKeywords[allianceStatus] || []
   return keywords.some((word) => text.includes(word))
@@ -418,6 +426,7 @@ export type ProductLibraryQueryExtra = {
   partnerId?: string | null
   partnerType?: string | null
   sortBy?: string | null
+  productIdMode?: 'exact' | 'keyword'
 }
 
 /** 商品库 GET /products 查询参数，与后端 SelectedLibraryFilter 字段一一对应。 */
@@ -426,13 +435,15 @@ export function buildProductLibraryQueryParams(
   extra: ProductLibraryQueryExtra = {}
 ) {
   const keyword = normalizeText(extra.keyword)
+  const productId = normalizeText(filters.productId)
   const partnerId = normalizeText(extra.partnerId)
   const partnerType = normalizeText(extra.partnerType)
+  const keywordSearch = keyword || (extra.productIdMode === 'keyword' ? productId : '')
   return {
     page: extra.page,
     size: extra.size,
-    keyword: keyword || undefined,
-    productId: filters.productId || undefined,
+    keyword: keywordSearch || undefined,
+    productId: productId && extra.productIdMode !== 'keyword' ? productId : undefined,
     productName: filters.productName || undefined,
     status: extra.status ?? undefined,
     shopKeyword: filters.shopKeyword || undefined,

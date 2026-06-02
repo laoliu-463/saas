@@ -43,6 +43,15 @@ describe('ProductManageFilters', () => {
     expect(wrapper.emitted('reset')).toBeTruthy()
   })
 
+  it('emits search when pressing enter in product id or name input', async () => {
+    const wrapper = mountFilters()
+
+    await wrapper.find('[data-testid="filter-product-id"]').trigger('keyup.enter')
+    await wrapper.find('[data-testid="filter-product-name"]').trigger('keyup.enter')
+
+    expect(wrapper.emitted('search-click')).toHaveLength(2)
+  })
+
   it('hides the assignee filter when showAssigneeFilter is false', () => {
     const wrapper = mount(ProductManageFilters, {
       props: {

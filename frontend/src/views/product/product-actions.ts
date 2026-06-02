@@ -78,7 +78,7 @@ export function resolveOfficialStatus(row: ProductManageRow): ProductOfficialSta
   if (bizStatus === 'REJECTED') return 'REJECTED'
   if (['APPROVED', 'BOUND', 'ASSIGNED', 'LINKED', 'FOLLOWING'].includes(bizStatus)) return 'PROMOTING'
 
-  return 'PROMOTING'
+  return 'PENDING_REVIEW'
 }
 
 export function resolvePublishStatus(row: ProductManageRow): ProductPublishStatus {
@@ -86,7 +86,7 @@ export function resolvePublishStatus(row: ProductManageRow): ProductPublishStatu
   if (direct && direct !== 'ALL') return direct
 
   const bizStatus = normalizeText(row.bizStatus)
-  if (bizStatus === 'PAUSED' || row.latestDecisionLevel === 'PAUSE') return 'PAUSED'
+  if (row.manualDisabled === true || bizStatus === 'PAUSED' || row.latestDecisionLevel === 'PAUSE') return 'PAUSED'
   if (row.selectedToLibrary || normalizeText(row.promotionLink)) return 'PUBLISHED'
   return 'UNPUBLISHED'
 }
@@ -149,9 +149,7 @@ export function getProductActions(row: ProductManageRow, context: ProductActionC
   const publishStatus = resolvePublishStatus(row)
   const isLocalRejected = reviewStatus === 'REJECTED'
   const isPendingReview = officialStatus === 'PENDING_REVIEW' && reviewStatus !== 'APPROVED'
-  const isPromoting = officialStatus === 'PROMOTING'
-    && publishStatus === 'PUBLISHED'
-    && !isLocalRejected
+  const isUpstreamPromoting = officialStatus === 'PROMOTING'
   const canOperateProduct = hasRole(context, ['biz_leader', 'biz_staff'])
   const canAssign = canByRow(row, 'canAssign', hasRole(context, ['biz_leader']))
   const canApprove = canByRow(row, 'canApprove', hasRole(context, ['biz_staff']))
@@ -164,7 +162,7 @@ export function getProductActions(row: ProductManageRow, context: ProductActionC
   const canCopyLink = canByRow(row, 'canCopyLink', hasRole(context, ['biz_leader', 'biz_staff', 'channel_leader', 'channel_staff']))
   const canDownloadHandCard = canByRow(row, 'canDownloadHandCard', true)
 
-  if (isLocalRejected || officialStatus === 'REJECTED') {
+  if (officialStatus === 'REJECTED' || (isLocalRejected && !isUpstreamPromoting)) {
     return [
       action('detail', '查看详情', true, 'main')
     ].filter((item) => item.visible)
@@ -178,7 +176,7 @@ export function getProductActions(row: ProductManageRow, context: ProductActionC
     ].filter((item) => item.visible)
   }
 
-  if (officialStatus === 'PROMOTING' && publishStatus === 'PAUSED') {
+  if (isUpstreamPromoting && publishStatus === 'PAUSED') {
     return [
       action('resume', '恢复发布', canResume, 'main'),
       action('edit', '编辑商品', canEdit, 'main'),
@@ -188,7 +186,7 @@ export function getProductActions(row: ProductManageRow, context: ProductActionC
     ].filter((item) => item.visible)
   }
 
-  if (isPromoting) {
+  if (isUpstreamPromoting) {
     return [
       action('pause', '暂停发布', canPause, 'main'),
       action('edit', '编辑商品', canEdit, 'main'),
@@ -221,8 +219,7 @@ export function getProductActions(row: ProductManageRow, context: ProductActionC
     ].filter((item) => item.visible)
   }
 
-  if ((officialStatus === 'PROMOTING' && publishStatus === 'UNPUBLISHED')
-    || officialStatus === 'PENDING_REVIEW') {
+  if (officialStatus === 'PENDING_REVIEW') {
     return [
       action('detail', '查看详情', true, 'main')
     ]

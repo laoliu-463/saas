@@ -65,6 +65,7 @@ export interface ProductSampleSetting {
 }
 
 export interface ProductManageRow {
+  id?: string
   relationId?: string
   productId?: string
   productName?: string
@@ -93,6 +94,7 @@ export interface ProductManageRow {
   statusText?: string
   allianceStatusText?: string
   latestDecisionLevel?: string
+  manualDisabled?: boolean
 
   commissionRate?: string | number
   dailyCommissionRate?: string | number

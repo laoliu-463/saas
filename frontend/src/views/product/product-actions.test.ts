@@ -75,7 +75,35 @@ describe('product action rules', () => {
       hasHandCard: true,
       hasOrders: true,
       baiyingUrl: 'https://buyin.example.test'
-    })).toEqual(['detail'])
+    })).toEqual([
+      'pause',
+      'edit',
+      'cooperationSetting',
+      'sampleSetting',
+      'copyScript',
+      'downloadHandCard',
+      'detail',
+      'copyLink',
+      'assign',
+      'extendPromotion',
+      'viewOrders',
+      'openBaiying'
+    ])
+  })
+
+  it('uses upstream promoting status even when local review is rejected', () => {
+    expect(keys({
+      status: 1,
+      reviewStatus: 'REJECTED',
+      publishStatus: 'UNPUBLISHED',
+      hasHandCard: true,
+      hasOrders: true,
+      baiyingUrl: 'https://buyin.example.test'
+    })).toContain('pause')
+  })
+
+  it('does not treat unknown upstream status as promoting', () => {
+    expect(keys({ status: 9 } as ProductManageRow)).not.toContain('pause')
   })
 
   it('shows resume flow for paused publish status', () => {
@@ -88,9 +116,18 @@ describe('product action rules', () => {
     ])
   })
 
+  it('uses manual disabled as paused publish status for upstream promoting rows', () => {
+    expect(keys({ status: 1, manualDisabled: true } as ProductManageRow)).toEqual([
+      'resume',
+      'edit',
+      'cooperationSetting',
+      'sampleSetting',
+      'detail'
+    ])
+  })
+
   it('hides link and sample actions for rejected rows', () => {
     expect(keys({ officialStatus: 'REJECTED' })).toEqual(['detail'])
-    expect(keys({ officialStatus: 'PROMOTING', reviewStatus: 'REJECTED', publishStatus: 'PUBLISHED' })).toEqual(['detail'])
   })
 
   it('keeps terminated rows read only except orders when available', () => {

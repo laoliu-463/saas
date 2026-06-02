@@ -163,6 +163,7 @@
     <ProductAuditDialog
       v-model:show="dialogs.audit"
       :relation-id="resolveRelationId(currentRow)"
+      :row="currentRow"
       @success="(payload: any) => handleActionSuccess('audit', payload)"
     />
     <ProductAssignDialog
@@ -266,7 +267,8 @@ import {
   getLibraryDisplayTags,
   mergeLibraryDisplayFields,
   resolveProductLibraryDisplay,
-  resolveProductLibraryReadiness
+  resolveProductLibraryReadiness,
+  shouldShowLibraryEntryAction
 } from './product-library-display'
 import {
   formatBatchResultMessage,
@@ -275,6 +277,7 @@ import {
   type BatchActionResult
 } from './product-batch'
 import { copyProductBriefWithLink } from './product-copy'
+import { resolveProductRelationId } from './product-relation-id'
 import { createEmptyManualCopyDialogState, resolveManualCopyDialogState } from './manual-copy'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 import { tryCopyText } from '../../utils/clipboard'
@@ -702,7 +705,8 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
       const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
         page,
         size: PRODUCT_LIST_PAGE_SIZE,
-        keyword: filters.value.productId || filters.value.productName || undefined
+        keyword: filters.value.productId || filters.value.productName || undefined,
+        productIdMode: 'keyword'
       }))
       const data = res?.data || {}
       const records = Array.isArray(data.records) ? data.records : []
@@ -929,7 +933,7 @@ const handleDetailAction = (payload: { action: string; row: any }) => {
   openDialog(payload.action as keyof typeof dialogs.value, payload.row)
 }
 
-const resolveRelationId = (row: ProductManageRow | null) => String(row?.relationId || row?.productId || '')
+const resolveRelationId = (row: ProductManageRow | null) => resolveProductRelationId(row)
 
 const handleModalSuccess = async () => {
   detailRefreshKey.value += 1
@@ -964,7 +968,7 @@ const copyScriptOnly = async (row: ProductManageRow) => {
 const handlePauseOrResume = async (row: ProductManageRow, paused: boolean) => {
   const id = resolveRelationId(row)
   if (!id) {
-    message.warning('缺少商品关系 ID，暂时无法操作发布状态')
+    message.warning('缺少有效商品关系 ID，暂时无法操作发布状态')
     return
   }
   try {
@@ -1386,10 +1390,7 @@ const renderTagList = (row: any) => {
   const libraryDisplay = resolveProductLibraryDisplay(row)
   const readiness = resolveProductLibraryReadiness(row)
   const libraryTags = getLibraryDisplayTags(row, { manageMode: true })
-  const canShowLibraryEntry =
-    !row.selectedToLibrary &&
-    ['APPROVED', 'BOUND'].includes(String(row.bizStatus || '')) &&
-    canDo('audit')
+  const canShowLibraryEntry = shouldShowLibraryEntryAction(row, canDo('audit'))
   return h(
     'div',
     { class: 'table-tag-block' },
@@ -1411,12 +1412,12 @@ const renderTagList = (row: any) => {
             undefined,
             !libraryDisplay.hiddenFromList
           )
-        : readiness.code === 'READY_AFTER_ENTRY'
-          ? null
-          : readiness.code === 'BLOCKED_AFTER_ENTRY' || readiness.code === 'PENDING_AUDIT'
+        : canShowLibraryEntry
+          ? renderTextAction('加入商品库', () => handlePutIntoLibrary(row))
+          : readiness.code === 'READY_AFTER_ENTRY'
             ? null
-            : canShowLibraryEntry
-              ? renderTextAction('加入商品库', () => handlePutIntoLibrary(row))
+            : readiness.code === 'BLOCKED_AFTER_ENTRY' || readiness.code === 'PENDING_AUDIT'
+              ? null
               : null,
       row.libraryStatusHint
         ? h('div', { class: 'table-stack-line muted library-status-hint', 'data-testid': 'product-library-status-hint' }, row.libraryStatusHint)

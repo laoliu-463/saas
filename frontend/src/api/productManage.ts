@@ -6,7 +6,26 @@ export const fetchProductManageList = (params: Record<string, unknown>) =>
 export const fetchProductFilterOptions = () =>
   request.get('/products/filter-options')
 
-export const approveProduct = (relationId: string, data: Record<string, unknown>) =>
+export interface ProductManageApprovePayload {
+  remark?: string
+  exclusivePriceRemark?: string
+  shippingInfo?: string
+  sellingPoints?: string[]
+  promotionScript?: string
+  supportsAds?: boolean
+  adsRule?: string
+  rewardRemark?: string
+  participationRequirements?: string
+  campaignTimeRemark?: string
+  materialFiles?: string[]
+  goodsTags?: string[]
+  productTags?: string[]
+  sampleThresholdSales?: number
+  sampleThresholdLevel?: number
+  sampleThresholdRemark?: string
+}
+
+export const approveProduct = (relationId: string, data: ProductManageApprovePayload) =>
   request.post(`/products/manage/${relationId}/approve`, data)
 
 export const rejectProduct = (relationId: string, data: Record<string, unknown>) =>

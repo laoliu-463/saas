@@ -39,6 +39,7 @@ import { useMessage } from 'naive-ui'
 import { notifyApiFailure } from '../../../utils/requestError'
 import { updateCooperationSetting } from '../../../api/productManage'
 import { cooperationTypeOptions, type ProductManageRow } from '../../../types/productManage'
+import { resolveProductRelationId } from '../product-relation-id'
 
 const props = defineProps<{ show: boolean; row: ProductManageRow | null }>()
 const emit = defineEmits<{ 'update:show': [value: boolean]; success: [payload?: unknown] }>()
@@ -77,9 +78,9 @@ function resetForm() {
 }
 
 async function submit() {
-  const id = String(props.row?.relationId || props.row?.productId || '')
+  const id = resolveProductRelationId(props.row)
   if (!id) {
-    message.warning('缺少商品关系 ID，暂时无法保存')
+    message.warning('缺少有效商品关系 ID，暂时无法保存')
     return
   }
   submitting.value = true

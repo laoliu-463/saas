@@ -110,6 +110,26 @@ describe('product filters', () => {
     expect(params.freeSample).toBeUndefined()
   })
 
+  it('buildProductLibraryQueryParams can route productId search through keyword for fuzzy list search', () => {
+    const params = buildProductLibraryQueryParams(
+      { ...DEFAULT_PRODUCT_FILTERS(), productId: '9001' },
+      { page: 1, size: 20, productIdMode: 'keyword' }
+    )
+
+    expect(params.keyword).toBe('9001')
+    expect(params.productId).toBeUndefined()
+  })
+
+  it('buildProductLibraryQueryParams keeps productId exact by default', () => {
+    const params = buildProductLibraryQueryParams(
+      { ...DEFAULT_PRODUCT_FILTERS(), productId: '9001' },
+      { page: 1, size: 1 }
+    )
+
+    expect(params.keyword).toBeUndefined()
+    expect(params.productId).toBe('9001')
+  })
+
   it('buildProductLibraryQueryParams forwards partner scope and sort', () => {
     expect(buildProductLibraryQueryParams(DEFAULT_PRODUCT_FILTERS(), {
       partnerId: '7351155267604218149',
@@ -217,6 +237,8 @@ describe('product filters', () => {
   })
 
   it('matchAllianceStatus matches promoting status', () => {
+    expect(matchAllianceStatus({ status: 1, statusText: '' }, 'promoting')).toBe(true)
+    expect(matchAllianceStatus({ status: 2, statusText: '推广中' }, 'promoting')).toBe(false)
     expect(matchAllianceStatus({ statusText: '推广中' }, 'promoting')).toBe(true)
     expect(matchAllianceStatus({ statusText: '推广' }, 'promoting')).toBe(true)
   })

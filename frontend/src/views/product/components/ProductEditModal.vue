@@ -41,6 +41,7 @@ import { useMessage } from 'naive-ui'
 import { notifyApiFailure } from '../../../utils/requestError'
 import { updateProduct } from '../../../api/productManage'
 import type { ProductManageRow } from '../../../types/productManage'
+import { resolveProductRelationId } from '../product-relation-id'
 
 const props = defineProps<{
   show: boolean
@@ -73,7 +74,7 @@ const form = reactive({
 })
 
 function relationId() {
-  return String(props.row?.relationId || props.row?.productId || '')
+  return resolveProductRelationId(props.row)
 }
 
 function resetForm() {
@@ -94,7 +95,7 @@ function updateShow(value: boolean) {
 async function submit() {
   const id = relationId()
   if (!id) {
-    message.warning('缺少商品关系 ID，暂时无法保存')
+    message.warning('缺少有效商品关系 ID，暂时无法保存')
     return
   }
   submitting.value = true

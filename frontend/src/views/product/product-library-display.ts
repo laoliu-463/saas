@@ -305,6 +305,12 @@ export function getLibraryDisplayTags(item: any, options: { manageMode?: boolean
   return tags
 }
 
+export function shouldShowLibraryEntryAction(item: any, canPutIntoLibrary: boolean): boolean {
+  return Boolean(canPutIntoLibrary)
+    && !Boolean(item?.selectedToLibrary)
+    && isPromotingAllianceStatus(item)
+}
+
 export function formatLibraryEntrySuccessMessage(item: any) {
   const readiness = resolveProductLibraryReadiness(item)
   const display = resolveProductLibraryDisplay(item)
