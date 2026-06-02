@@ -144,7 +144,7 @@ class ProductDisplayRuleServiceTest {
     }
 
     @Test
-    void applyForProductId_localRejectedShouldHideEvenWhenUpstreamPromoting() {
+    void applyForProductId_upstreamPromotingShouldOverrideHistoricalLocalRejected() {
         String productId = "9015";
         ProductOperationState rejected = libraryState("60005", productId, 2000L, false, LocalDateTime.now());
         rejected.setAuditStatus(3);
@@ -158,8 +158,8 @@ class ProductDisplayRuleServiceTest {
 
         verify(operationStateMapper).updateById(argThat(state ->
                 state.getId().equals(rejected.getId())
-                        && ProductDisplayStatus.HIDDEN.name().equals(state.getDisplayStatus())
-                        && "LOCAL_REJECTED".equals(state.getHiddenReason())
+                        && ProductDisplayStatus.DISPLAYING.name().equals(state.getDisplayStatus())
+                        && state.getHiddenReason() == null
         ));
     }
 
@@ -227,7 +227,7 @@ class ProductDisplayRuleServiceTest {
     }
 
     @Test
-    void repairLibraryStateForActivity_writeShouldPromoteHistoricalPendingAuditAndApplyDisplayRule() {
+    void repairLibraryStateForActivity_writeShouldPromoteHistoricalPendingAuditWithoutForcingDisplayRule() {
         String activityId = "3859423";
         ProductOperationState pending = pendingState(activityId, "99003");
         ProductSnapshot snapshot = snapshot(activityId, "99003", 2000L, 1);
@@ -244,13 +244,39 @@ class ProductDisplayRuleServiceTest {
         assertThat(pending.getAuditStatus()).isEqualTo(2);
         assertThat(pending.getBizStatus()).isEqualTo(ProductBizStatus.APPROVED.name());
         assertThat(pending.getAuditRemark()).isEqualTo("上游状态为推广中，系统自动入库展示");
-        assertThat(pending.getDisplayStatus()).isEqualTo(ProductDisplayStatus.DISPLAYING.name());
+        assertThat(pending.getDisplayStatus()).isEqualTo(ProductDisplayStatus.PENDING.name());
         assertThat(pending.getHiddenReason()).isNull();
-        verify(operationStateMapper, atLeastOnce()).updateById(pending);
+        verify(operationStateMapper).updateById(pending);
     }
 
     @Test
-    void repairLibraryStateForActivity_manualPausedShouldStayHiddenAndNotEnterLibrary() {
+    void repairLibraryStateForActivity_writeShouldKeepAlreadyDisplayingPromotingProduct() {
+        String activityId = "3859423";
+        ProductOperationState displaying = pendingState(activityId, "99005");
+        displaying.setSelectedToLibrary(true);
+        displaying.setAuditStatus(3);
+        displaying.setBizStatus(ProductBizStatus.REJECTED.name());
+        displaying.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        displaying.setHiddenReason(ProductDisplayRuleService.HIDDEN_REASON_LOCAL_REJECTED);
+        ProductSnapshot snapshot = snapshot(activityId, "99005", 2000L, 1);
+
+        when(snapshotMapper.selectList(any())).thenReturn(List.of(snapshot));
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(displaying));
+
+        ProductDisplayRuleService.LibraryRepairResult result =
+                service.repairLibraryStateForActivity(activityId, false, 1000);
+
+        assertThat(result.dryRun()).isFalse();
+        assertThat(displaying.getSelectedToLibrary()).isTrue();
+        assertThat(displaying.getAuditStatus()).isEqualTo(2);
+        assertThat(displaying.getBizStatus()).isEqualTo(ProductBizStatus.APPROVED.name());
+        assertThat(displaying.getDisplayStatus()).isEqualTo(ProductDisplayStatus.DISPLAYING.name());
+        assertThat(displaying.getHiddenReason()).isNull();
+        verify(operationStateMapper).updateById(displaying);
+    }
+
+    @Test
+    void repairLibraryStateForActivity_manualPausedPromotingProductShouldEnterLibraryButStayHidden() {
         String activityId = "3859423";
         ProductOperationState paused = pendingState(activityId, "99004");
         paused.setManualDisabled(true);
@@ -264,8 +290,19 @@ class ProductDisplayRuleServiceTest {
 
         assertThat(result.willHideByLocalPaused()).isEqualTo(1);
         assertThat(result.items()).hasSize(1);
-        assertThat(result.items().get(0).newHiddenReason())
-                .isEqualTo(ProductDisplayRuleService.HIDDEN_REASON_LOCAL_PAUSED);
+        assertThat(result.items().get(0))
+                .extracting(
+                        ProductDisplayRuleService.LibraryRepairItem::newSelectedToLibrary,
+                        ProductDisplayRuleService.LibraryRepairItem::newAuditStatus,
+                        ProductDisplayRuleService.LibraryRepairItem::newBizStatus,
+                        ProductDisplayRuleService.LibraryRepairItem::newDisplayStatus,
+                        ProductDisplayRuleService.LibraryRepairItem::newHiddenReason)
+                .containsExactly(
+                        true,
+                        2,
+                        ProductBizStatus.APPROVED.name(),
+                        ProductDisplayStatus.HIDDEN.name(),
+                        ProductDisplayRuleService.HIDDEN_REASON_LOCAL_PAUSED);
         verify(operationStateMapper, never()).updateById(any(ProductOperationState.class));
     }
 

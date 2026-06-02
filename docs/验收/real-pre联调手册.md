@@ -14,6 +14,8 @@
 | --- | --- | --- | --- |
 | test 开关 | `APP_TEST_ENABLED=false` | 环境变量、启动日志 | V1 必做 |
 | 抖音 mock 开关 | `DOUYIN_TEST_ENABLED=false` | 环境变量、启动日志 | V1 必做 |
+| 真实 upstream | `DOUYIN_REAL_UPSTREAM_MODE=live` | 环境变量、启动日志 | V1 必做 |
+| 上游同步 / 刷新 / 写入开关 | 涉及上游的订单同步、活动商品同步、达人 API 采集、物流同步、真实推广写入默认开启 | 环境变量、preflight、后端日志 | V1 必做 |
 | 端口 | 前端 `3001`、后端 `8081`；PostgreSQL / Redis 仅 Compose 内网访问 | Docker ps、启动日志 | V1 必做 |
 | Token | 真实授权和有效 Token | preflight、后端日志 | V1 必做 |
 | 数据 | 真实商品、订单、达人或明确 BLOCKED 证据 | API/SQL/第三方响应 | V1 必做 |

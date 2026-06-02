@@ -639,6 +639,10 @@ public class ProductService {
                 return false;
             }
         }
+        if (StringUtils.hasText(filter.productId())
+                && !filter.productId().trim().equals(product.getProductId())) {
+            return false;
+        }
         if (filter.status() != null && !java.util.Objects.equals(product.getStatus(), filter.status())) {
             return false;
         }
@@ -1348,8 +1352,13 @@ public class ProductService {
 
     @Transactional(rollbackFor = Exception.class)
     public Product auditProduct(UUID id, boolean approved, String reason) {
+        return auditProduct(id, approved, reason, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Product auditProduct(UUID id, boolean approved, String reason, Map<String, Object> supplement) {
         ProductSnapshot snapshot = getSnapshotById(id);
-        auditProduct(snapshot.getActivityId(), snapshot.getProductId(), approved, reason, null, null, null);
+        auditProduct(snapshot.getActivityId(), snapshot.getProductId(), approved, reason, supplement, null, null);
         return getById(id);
     }
 
@@ -1522,17 +1531,6 @@ public class ProductService {
         }
         boolean selectedBefore = Boolean.TRUE.equals(state.getSelectedToLibrary());
         boolean changed = false;
-        if (isLocalRejectedState(state)) {
-            changed = setIfDifferent(state::getSelectedToLibrary, state::setSelectedToLibrary, false) || changed;
-            changed = setIfDifferent(state::getDisplayStatus, state::setDisplayStatus, ProductDisplayStatus.HIDDEN.name()) || changed;
-            changed = setIfDifferent(state::getHiddenReason, state::setHiddenReason, ProductDisplayRuleService.HIDDEN_REASON_LOCAL_REJECTED) || changed;
-            return new UpstreamProductLibraryDecision(changed, false);
-        }
-        if (Boolean.TRUE.equals(state.getManualDisabled())) {
-            changed = setIfDifferent(state::getDisplayStatus, state::setDisplayStatus, ProductDisplayStatus.HIDDEN.name()) || changed;
-            changed = setIfDifferent(state::getHiddenReason, state::setHiddenReason, ProductDisplayRuleService.HIDDEN_REASON_PUBLISH_PAUSED) || changed;
-            return new UpstreamProductLibraryDecision(changed, false);
-        }
         if (!isUpstreamPromoting(item)) {
             changed = setIfDifferent(state::getSelectedToLibrary, state::setSelectedToLibrary, false) || changed;
             changed = setIfDifferent(state::getDisplayStatus, state::setDisplayStatus, ProductDisplayStatus.HIDDEN.name()) || changed;
@@ -1540,6 +1538,22 @@ public class ProductService {
             return new UpstreamProductLibraryDecision(changed, false);
         }
 
+        boolean wasLocalRejected = isLocalRejectedState(state);
+        changed = applyUpstreamPromotingLibraryState(state, wasLocalRejected) || changed;
+        if (Boolean.TRUE.equals(state.getManualDisabled())) {
+            changed = setIfDifferent(state::getDisplayStatus, state::setDisplayStatus, ProductDisplayStatus.HIDDEN.name()) || changed;
+            changed = setIfDifferent(state::getHiddenReason, state::setHiddenReason, ProductDisplayRuleService.HIDDEN_REASON_LOCAL_PAUSED) || changed;
+            return new UpstreamProductLibraryDecision(changed, !selectedBefore);
+        }
+        if (!ProductDisplayStatus.DISPLAYING.name().equals(state.getDisplayStatus())) {
+            changed = setIfDifferent(state::getDisplayStatus, state::setDisplayStatus, ProductDisplayStatus.PENDING.name()) || changed;
+        }
+        changed = setIfDifferent(state::getHiddenReason, state::setHiddenReason, null) || changed;
+        return new UpstreamProductLibraryDecision(changed, !selectedBefore);
+    }
+
+    private boolean applyUpstreamPromotingLibraryState(ProductOperationState state, boolean wasLocalRejected) {
+        boolean changed = false;
         changed = setIfDifferent(state::getSelectedToLibrary, state::setSelectedToLibrary, true) || changed;
         if (state.getSelectedAt() == null) {
             state.setSelectedAt(LocalDateTime.now());
@@ -1550,19 +1564,17 @@ public class ProductService {
             changed = true;
         }
         ProductBizStatus currentStatus = readStateBizStatus(state);
-        if (currentStatus == null || currentStatus == ProductBizStatus.PENDING_AUDIT) {
+        if (currentStatus == null
+                || currentStatus == ProductBizStatus.PENDING_AUDIT
+                || currentStatus == ProductBizStatus.REJECTED) {
             state.setBizStatus(ProductBizStatus.APPROVED.name());
             changed = true;
         }
-        if (!StringUtils.hasText(state.getAuditRemark())) {
+        if (!StringUtils.hasText(state.getAuditRemark()) || wasLocalRejected) {
             state.setAuditRemark(AUTO_APPROVE_PROMOTING_REMARK);
             changed = true;
         }
-        if (!ProductDisplayStatus.DISPLAYING.name().equals(state.getDisplayStatus())) {
-            changed = setIfDifferent(state::getDisplayStatus, state::setDisplayStatus, ProductDisplayStatus.PENDING.name()) || changed;
-        }
-        changed = setIfDifferent(state::getHiddenReason, state::setHiddenReason, null) || changed;
-        return new UpstreamProductLibraryDecision(changed, !selectedBefore);
+        return changed;
     }
 
     private ProductBizStatus readStateBizStatus(ProductOperationState state) {
@@ -1890,6 +1902,7 @@ public class ProductService {
 
         data.put("items", items.stream().map(item -> {
             Map<String, Object> view = new LinkedHashMap<>(item.toMap());
+            view.put("relationId", buildSnapshotId(String.valueOf(result.activityId()), String.valueOf(item.productId())));
             ProductOperationState state = stateMap.get(String.valueOf(item.productId()));
             DecisionSummary decisionSummary = decisionSummaryMap.get(String.valueOf(item.productId()));
             if (state != null) {
@@ -1903,10 +1916,12 @@ public class ProductService {
                 view.put("auditRemark", state.getAuditRemark());
                 view.put("shortLink", state.getShortLink());
                 view.put("promoteLink", state.getPromoteLink());
+                applyActivityProductStatusFields(view, item.status(), state);
             } else {
                 ProductBizStatus bizStatus = ProductBizStatus.PENDING_AUDIT;
                 view.put("bizStatus", bizStatus.name());
                 view.put("bizStatusLabel", bizStatus.getLabel());
+                applyActivityProductStatusFields(view, item.status(), null);
             }
             applyDecisionSummary(view, decisionSummary);
             return view;
@@ -2190,36 +2205,17 @@ public class ProductService {
             existingDetail.put("libraryVisible", true);
             return existingDetail;
         }
-        requireApprovedAuditForLibraryEntry(state);
+        requireUpstreamPromotingForLibraryEntry(snapshot);
         state.setSelectedToLibrary(true);
         state.setSelectedAt(LocalDateTime.now());
         state.setSelectedBy(operatorId);
         state.setLastOperationAt(LocalDateTime.now());
         ProductBizStatus currentStatus = productBizStatusService.readBizStatus(state);
-        if (currentStatus == ProductBizStatus.PENDING_AUDIT) {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("eventLabel", "加入商品库");
-            payload.put("productTitle", safeText(snapshot.getTitle(), "活动商品"));
-            productBizStatusService.changeStatus(
-                    state,
-                    ProductBizStatus.APPROVED,
-                    "LIBRARY_ENTRY",
-                    operatorId,
-                    operatorDeptId,
-                    payload,
-                    "已加入商品库，对全员可见",
-                    current -> {
-                        current.setSelectedToLibrary(true);
-                        current.setSelectedAt(LocalDateTime.now());
-                        current.setSelectedBy(operatorId);
-                    }
-            );
-            Map<String, Object> detail = getActivityProductDetail(activityId, productId);
-            detail.put("selectedToLibrary", true);
-            detail.put("libraryVisible", true);
-            productDisplayRuleService.applyForProductId(productId);
-            return detail;
-        } else if (state.getId() == null) {
+        state.setAuditStatus(2);
+        state.setAuditRemark(AUTO_APPROVE_PROMOTING_REMARK);
+        state.setBizStatus(ProductBizStatus.APPROVED.name());
+
+        if (state.getId() == null) {
             operationStateMapper.insert(state);
         } else {
             persistOperationState(state);
@@ -2228,13 +2224,13 @@ public class ProductService {
         ProductOperationLog log = new ProductOperationLog();
         log.setActivityId(activityId);
         log.setProductId(productId);
-        log.setBeforeStatus(state.getBizStatus());
+        log.setBeforeStatus(currentStatus == null ? null : currentStatus.name());
         log.setAfterStatus(state.getBizStatus());
         log.setSuccess(true);
         log.setOperationType("LIBRARY_ENTRY");
         log.setOperatorId(operatorId);
         log.setOperatorDeptId(operatorDeptId);
-        log.setOperationRemark("已加入商品库，对全员可见");
+        log.setOperationRemark("上游状态为推广中，已加入商品库");
         log.setOperationPayload("{eventLabel=加入商品库, productTitle=" + safeText(snapshot.getTitle(), "活动商品") + "}");
         operationLogMapper.insert(log);
 
@@ -3622,6 +3618,7 @@ public class ProductService {
             String activityName) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", snapshot.getId());
+        view.put("relationId", snapshot.getId());
         view.put("activityId", snapshot.getActivityId());
         view.put("activityName", activityName);
         view.put("productId", snapshot.getProductId());
@@ -3684,8 +3681,10 @@ public class ProductService {
                 view.put("adsRule", adsRule);
             }
             applyDisplayMark(view, state);
+            applyActivityProductStatusFields(view, snapshot.getStatus(), state);
         } else {
             applyDisplayMark(view, null);
+            applyActivityProductStatusFields(view, snapshot.getStatus(), null);
         }
         applyDecisionSummary(view, decisionSummary);
 
@@ -4373,15 +4372,11 @@ public class ProductService {
         return null;
     }
 
-    private void requireApprovedAuditForLibraryEntry(ProductOperationState state) {
-        Integer auditStatus = state == null ? null : state.getAuditStatus();
-        if (Integer.valueOf(2).equals(auditStatus)) {
+    private void requireUpstreamPromotingForLibraryEntry(ProductSnapshot snapshot) {
+        if (isUpstreamPromoting(snapshot)) {
             return;
         }
-        if (Integer.valueOf(3).equals(auditStatus)) {
-            throw BusinessException.stateInvalid("审核拒绝的商品不能加入商品库");
-        }
-        throw BusinessException.stateInvalid("请先完成审核通过，再继续后续业务操作");
+        throw BusinessException.stateInvalid("上游商品未处于推广中，暂不能加入商品库");
     }
 
     private void persistOperationState(ProductOperationState state) {
@@ -4577,6 +4572,97 @@ public class ProductService {
             view.put("lastDisplayedAt", state.getLastDisplayedAt());
             view.put("libraryVisible", displayStatus == ProductDisplayStatus.DISPLAYING);
         }
+    }
+
+    private void applyActivityProductStatusFields(
+            Map<String, Object> view,
+            Integer upstreamStatus,
+            ProductOperationState state) {
+        String officialStatus = resolveOfficialStatus(upstreamStatus, readString(view, "statusText"));
+        view.put("officialStatus", officialStatus);
+        view.put("reviewStatus", resolveReviewStatus(officialStatus, state));
+        view.put("publishStatus", resolvePublishStatus(state));
+        view.put("manualDisabled", state != null && Boolean.TRUE.equals(state.getManualDisabled()));
+        view.put("selectedToLibrary", state != null && Boolean.TRUE.equals(state.getSelectedToLibrary()));
+        ProductDisplayStatus displayStatus = state == null
+                ? ProductDisplayStatus.PENDING
+                : ProductDisplayStatus.fromCode(state.getDisplayStatus());
+        view.put("displayStatus", displayStatus.name());
+        view.put("displayMark", toLegacyDisplayMark(displayStatus));
+        view.put("displayMarkLabel", displayStatus.getLabel());
+        view.put("hiddenReason", state == null ? null : state.getHiddenReason());
+    }
+
+    private String resolveOfficialStatus(Integer upstreamStatus, String statusText) {
+        if (upstreamStatus != null) {
+            switch (upstreamStatus) {
+                case 0:
+                    return "PENDING_REVIEW";
+                case 1:
+                    return "PROMOTING";
+                case 2:
+                    return "REJECTED";
+                case 3:
+                    return "TERMINATED";
+                case 6:
+                    return "EXPIRED";
+                default:
+                    break;
+            }
+        }
+        String text = statusText == null ? "" : statusText.trim();
+        if (text.contains("待审核") || text.contains("审核中")) {
+            return "PENDING_REVIEW";
+        }
+        if (text.contains("未通过") || text.contains("拒绝")) {
+            return "REJECTED";
+        }
+        if (text.contains("终止")) {
+            return "TERMINATED";
+        }
+        if (text.contains("到期") || text.contains("过期")) {
+            return "EXPIRED";
+        }
+        if (text.contains("推广")) {
+            return "PROMOTING";
+        }
+        return "PENDING_REVIEW";
+    }
+
+    private String resolveReviewStatus(String officialStatus, ProductOperationState state) {
+        if ("PROMOTING".equals(officialStatus)) {
+            return "APPROVED";
+        }
+        Integer auditStatus = state == null ? null : state.getAuditStatus();
+        if (Integer.valueOf(1).equals(auditStatus)) {
+            return "PENDING";
+        }
+        if (Integer.valueOf(2).equals(auditStatus)) {
+            return "APPROVED";
+        }
+        if (Integer.valueOf(3).equals(auditStatus)) {
+            return "REJECTED";
+        }
+        if ("PENDING_REVIEW".equals(officialStatus)) {
+            return "PENDING";
+        }
+        if ("REJECTED".equals(officialStatus)) {
+            return "REJECTED";
+        }
+        ProductBizStatus status = readStateBizStatus(state);
+        return status == ProductBizStatus.REJECTED ? "REJECTED" : "APPROVED";
+    }
+
+    private String resolvePublishStatus(ProductOperationState state) {
+        if (state != null && Boolean.TRUE.equals(state.getManualDisabled())) {
+            return "PAUSED";
+        }
+        if (state != null && (Boolean.TRUE.equals(state.getSelectedToLibrary())
+                || StringUtils.hasText(state.getPromoteLink())
+                || StringUtils.hasText(state.getShortLink()))) {
+            return "PUBLISHED";
+        }
+        return "UNPUBLISHED";
     }
 
     private String toLegacyDisplayMark(ProductDisplayStatus displayStatus) {
@@ -5168,14 +5254,15 @@ public class ProductService {
             String recruitActivityId,
             String recruitActivityName,
             String listed,
-            String freeSample
+            String freeSample,
+            String productId
     ) {
         public static SelectedLibraryFilter empty() {
             return new SelectedLibraryFilter(
                     null, null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null);
+                    null, null, null, null, null, null, null);
         }
 
         public static SelectedLibraryFilter of(String keyword, Integer status) {
@@ -5222,7 +5309,8 @@ public class ProductService {
                     empty.recruitActivityId(),
                     empty.recruitActivityName(),
                     empty.listed(),
-                    empty.freeSample());
+                    empty.freeSample(),
+                    empty.productId());
         }
 
         public SelectedLibraryFilter normalized() {
@@ -5268,7 +5356,8 @@ public class ProductService {
                     trimToNull(recruitActivityId),
                     trimToNull(recruitActivityName),
                     normalizeToken(listed),
-                    normalizeToken(freeSample)
+                    normalizeToken(freeSample),
+                    trimToNull(productId)
             );
         }
 

@@ -184,6 +184,27 @@ class ProductServiceFilterTest {
     }
 
     @Test
+    void getSelectedLibraryPage_shouldFilterByProductId() {
+        ProductOperationState state1 = state("10001", "9001");
+        ProductOperationState state2 = state("10002", "90010");
+        ProductOperationState state3 = state("10003", "9002");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 3);
+        statePage.setRecords(List.of(state1, state2, state3));
+
+        ProductSnapshot snap1 = snapshot("10001", "9001", "玩具乐器", 9900L);
+        ProductSnapshot snap2 = snapshot("10002", "90010", "美妆", 8800L);
+        ProductSnapshot snap3 = snapshot("10003", "9002", "食品饮料", 6600L);
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(snap1, snap2, snap3));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().productId("9001").build());
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getRecords()).singleElement().extracting("productId").isEqualTo("9001");
+    }
+
+    @Test
     void getSelectedLibraryPage_shouldFilterFreeSampleListedAndSupplementCheckboxes() {
         ProductOperationState matchedState = state("10001", "9001");
         matchedState.setAuditPayload("""
@@ -365,6 +386,30 @@ class ProductServiceFilterTest {
     }
 
     @Test
+    void putIntoLibrary_shouldUseUpstreamPromotingInsteadOfLocalAuditStatus() {
+        UUID operatorId = UUID.randomUUID();
+        UUID operatorDeptId = UUID.randomUUID();
+        ProductSnapshot snapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        ProductOperationState state = state("10001", "9001");
+        state.setSelectedToLibrary(false);
+        state.setAuditStatus(3);
+        state.setBizStatus(ProductBizStatus.REJECTED.name());
+
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(operationStateMapper.updateById(any())).thenReturn(1);
+        when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.REJECTED);
+
+        var result = service.putIntoLibrary("10001", "9001", operatorId, operatorDeptId);
+
+        ArgumentCaptor<ProductOperationState> stateCaptor = ArgumentCaptor.forClass(ProductOperationState.class);
+        verify(operationStateMapper).updateById(stateCaptor.capture());
+        assertThat(stateCaptor.getValue().getSelectedToLibrary()).isTrue();
+        assertThat(result).containsEntry("selectedToLibrary", true);
+        verify(productDisplayRuleService).applyForProductId("9001");
+    }
+
+    @Test
     void listLibraryCategories_shouldReturnDistinctSortedNames() {
         when(snapshotMapper.listDisplayingLibraryCategoryNames()).thenReturn(List.of("美妆", "食品饮料", "美妆"));
 
@@ -418,6 +463,7 @@ class ProductServiceFilterTest {
         private String recruitActivityName;
         private String listed;
         private String freeSample;
+        private String productId;
 
         FilterBuilder categories(String value) { this.categories = value; return this; }
         FilterBuilder activityId(String value) { this.activityId = value; return this; }
@@ -435,6 +481,7 @@ class ProductServiceFilterTest {
         FilterBuilder doubleCommission(String value) { this.doubleCommission = value; return this; }
         FilterBuilder notInLibrary(String value) { this.notInLibrary = value; return this; }
         FilterBuilder dedup(String value) { this.dedup = value; return this; }
+        FilterBuilder productId(String value) { this.productId = value; return this; }
 
         ProductService.SelectedLibraryFilter build() {
             return new ProductService.SelectedLibraryFilter(
@@ -443,7 +490,8 @@ class ProductServiceFilterTest {
                     assignee, systemTag, decision, partnerId, partnerType, sortBy, goodsTags, productTags,
                     colonelName, published, cooperationType, livePriceMin, livePriceMax, commissionMin, commissionMax,
                     sampleSalesMin, sampleSalesMax, materialDownload, exclusivePrice, productChain, handCard,
-                    doubleCommission, notInLibrary, dedup, recruitActivityId, recruitActivityName, listed, freeSample);
+                    doubleCommission, notInLibrary, dedup, recruitActivityId, recruitActivityName, listed, freeSample,
+                    productId);
         }
     }
 

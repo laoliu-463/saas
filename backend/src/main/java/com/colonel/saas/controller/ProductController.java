@@ -27,6 +27,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,7 +41,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -151,6 +155,7 @@ public class ProductController extends BaseController {
      * @param recruitActivityName 招商活动名称关键字（可选）
      * @param listed            是否已挂车：1/0（可选）
      * @param freeSample        是否有免费样：1/0（可选）
+     * @param productId         商品 ID，精确匹配（可选）
      * @return 分页商品列表
      */
     @Operation(summary = "商品库分页", description = "查询已从选品库沉淀到共享商品库的商品列表，对全员可见。")
@@ -200,7 +205,8 @@ public class ProductController extends BaseController {
             @Parameter(description = "招商活动ID。") @RequestParam(required = false) String recruitActivityId,
             @Parameter(description = "招商活动名称关键字。") @RequestParam(required = false) String recruitActivityName,
             @Parameter(description = "是否已挂车：1/0。") @RequestParam(required = false) String listed,
-            @Parameter(description = "是否有免费样：1/0。") @RequestParam(required = false) String freeSample) {
+            @Parameter(description = "是否有免费样：1/0。") @RequestParam(required = false) String freeSample,
+            @Parameter(description = "商品 ID，精确匹配。") @RequestParam(name = "productId", required = false) String productId) {
         IPage<Product> result = productService.getSelectedLibraryPage(
                 page,
                 size,
@@ -246,7 +252,8 @@ public class ProductController extends BaseController {
                         recruitActivityId,
                         recruitActivityName,
                         listed,
-                        freeSample
+                        freeSample,
+                        productId
                 )
         );
         return okPage(result);
@@ -476,7 +483,11 @@ public class ProductController extends BaseController {
     public ApiResult<Product> approveManagedProduct(
             @Parameter(description = "商品关联主键，使用 UUID 格式。") @PathVariable UUID relationId,
             @Valid @RequestBody ProductManageApproveRequest request) {
-        return ok(productService.auditProduct(relationId, true, request == null ? null : request.getRemark()));
+        return ok(productService.auditProduct(
+                relationId,
+                true,
+                request == null ? null : request.getRemark(),
+                request == null ? null : request.toSupplementMap()));
     }
 
     /**
@@ -694,10 +705,229 @@ public class ProductController extends BaseController {
         }
     }
 
+    public static class AuditSupplementRequest {
+        @Schema(description = "专属价说明。", example = "直播间专属价 129 元，日常到手价 149 元。")
+        private String exclusivePriceRemark;
+
+        @Schema(description = "发货信息。", example = "48 小时内发货，江浙沪次日达。")
+        private String shippingInfo;
+
+        @Schema(description = "商品卖点列表。", example = "[\"高复购刚需品\", \"夏季场景强\"]")
+        private List<String> sellingPoints;
+
+        @Schema(description = "推广话术。", example = "可主打复购和夏季囤货场景。")
+        private String promotionScript;
+
+        @Schema(description = "是否支持投流。", example = "true")
+        private Boolean supportsAds;
+
+        @Schema(description = "投流规则说明。", example = "投流比例1:0.5，保量10万曝光")
+        private String adsRule;
+
+        @Schema(description = "奖励说明。", example = "破 3 万 GMV 额外返 2 个点。")
+        private String rewardRemark;
+
+        @Schema(description = "参与要求。", example = "近 30 天食品饮料类目有成交。")
+        private String participationRequirements;
+
+        @Schema(description = "活动时间说明。", example = "4 月 1 日至 4 月 15 日。")
+        private String campaignTimeRemark;
+
+        @Schema(description = "手卡或素材文件列表。", example = "[\"https://example.com/material-1.png\"]")
+        private List<String> materialFiles;
+
+        @Schema(description = "货品标签列表。", example = "[\"家居\", \"零食\"]")
+        private List<String> goodsTags;
+
+        @Schema(description = "商品标签列表。", example = "[\"主推\", \"商品链组\"]")
+        private List<String> productTags;
+
+        @Schema(description = "30天销售额门槛。", example = "30000")
+        private Long sampleThresholdSales;
+
+        @Schema(description = "达人等级门槛。", example = "1")
+        private Integer sampleThresholdLevel;
+
+        @Schema(description = "寄样补充要求。", example = "需真人出镜，粉丝量>10万")
+        private String sampleThresholdRemark;
+
+        public String getExclusivePriceRemark() {
+            return exclusivePriceRemark;
+        }
+
+        public void setExclusivePriceRemark(String exclusivePriceRemark) {
+            this.exclusivePriceRemark = exclusivePriceRemark;
+        }
+
+        public String getShippingInfo() {
+            return shippingInfo;
+        }
+
+        public void setShippingInfo(String shippingInfo) {
+            this.shippingInfo = shippingInfo;
+        }
+
+        public List<String> getSellingPoints() {
+            return sellingPoints;
+        }
+
+        public void setSellingPoints(List<String> sellingPoints) {
+            this.sellingPoints = sellingPoints;
+        }
+
+        public String getPromotionScript() {
+            return promotionScript;
+        }
+
+        public void setPromotionScript(String promotionScript) {
+            this.promotionScript = promotionScript;
+        }
+
+        public Boolean getSupportsAds() {
+            return supportsAds;
+        }
+
+        public void setSupportsAds(Boolean supportsAds) {
+            this.supportsAds = supportsAds;
+        }
+
+        public String getAdsRule() {
+            return adsRule;
+        }
+
+        public void setAdsRule(String adsRule) {
+            this.adsRule = adsRule;
+        }
+
+        public String getRewardRemark() {
+            return rewardRemark;
+        }
+
+        public void setRewardRemark(String rewardRemark) {
+            this.rewardRemark = rewardRemark;
+        }
+
+        public String getParticipationRequirements() {
+            return participationRequirements;
+        }
+
+        public void setParticipationRequirements(String participationRequirements) {
+            this.participationRequirements = participationRequirements;
+        }
+
+        public String getCampaignTimeRemark() {
+            return campaignTimeRemark;
+        }
+
+        public void setCampaignTimeRemark(String campaignTimeRemark) {
+            this.campaignTimeRemark = campaignTimeRemark;
+        }
+
+        public List<String> getMaterialFiles() {
+            return materialFiles;
+        }
+
+        public void setMaterialFiles(List<String> materialFiles) {
+            this.materialFiles = materialFiles;
+        }
+
+        public List<String> getGoodsTags() {
+            return goodsTags;
+        }
+
+        public void setGoodsTags(List<String> goodsTags) {
+            this.goodsTags = goodsTags;
+        }
+
+        public List<String> getProductTags() {
+            return productTags;
+        }
+
+        public void setProductTags(List<String> productTags) {
+            this.productTags = productTags;
+        }
+
+        public Long getSampleThresholdSales() {
+            return sampleThresholdSales;
+        }
+
+        public void setSampleThresholdSales(Long sampleThresholdSales) {
+            this.sampleThresholdSales = sampleThresholdSales;
+        }
+
+        public Integer getSampleThresholdLevel() {
+            return sampleThresholdLevel;
+        }
+
+        public void setSampleThresholdLevel(Integer sampleThresholdLevel) {
+            this.sampleThresholdLevel = sampleThresholdLevel;
+        }
+
+        public String getSampleThresholdRemark() {
+            return sampleThresholdRemark;
+        }
+
+        public void setSampleThresholdRemark(String sampleThresholdRemark) {
+            this.sampleThresholdRemark = sampleThresholdRemark;
+        }
+
+        public Map<String, Object> toSupplementMap() {
+            Map<String, Object> supplement = new LinkedHashMap<>();
+            putText(supplement, "exclusivePriceRemark", exclusivePriceRemark);
+            putText(supplement, "shippingInfo", shippingInfo);
+            putText(supplement, "promotionScript", promotionScript);
+            putText(supplement, "rewardRemark", rewardRemark);
+            putText(supplement, "participationRequirements", participationRequirements);
+            putText(supplement, "campaignTimeRemark", campaignTimeRemark);
+            putText(supplement, "sampleThresholdRemark", sampleThresholdRemark);
+            if (supportsAds != null) {
+                supplement.put("supportsAds", supportsAds);
+            }
+            putText(supplement, "adsRule", adsRule);
+            if (sampleThresholdSales != null) {
+                supplement.put("sampleThresholdSales", sampleThresholdSales);
+            }
+            if (sampleThresholdLevel != null) {
+                supplement.put("sampleThresholdLevel", sampleThresholdLevel);
+            }
+            putList(supplement, "sellingPoints", sellingPoints);
+            putList(supplement, "materialFiles", materialFiles);
+            putList(supplement, "goodsTags", goodsTags);
+            putList(supplement, "productTags", productTags);
+            return supplement;
+        }
+
+        private void putText(Map<String, Object> supplement, String key, String value) {
+            if (StringUtils.hasText(value)) {
+                supplement.put(key, value.trim());
+            }
+        }
+
+        private void putList(Map<String, Object> supplement, String key, List<String> values) {
+            List<String> normalized = normalizeList(values);
+            if (!normalized.isEmpty()) {
+                supplement.put(key, normalized);
+            }
+        }
+
+        private List<String> normalizeList(List<String> values) {
+            if (values == null || values.isEmpty()) {
+                return List.of();
+            }
+            List<String> normalized = new ArrayList<>();
+            for (String value : values) {
+                if (StringUtils.hasText(value)) {
+                    normalized.add(value.trim());
+                }
+            }
+            return normalized;
+        }
+    }
+
     /**
      * 商品管理审核通过请求体。
      */
-    public static class ProductManageApproveRequest {
+    public static class ProductManageApproveRequest extends AuditSupplementRequest {
         @Schema(description = "审核通过备注，可为空。", example = "素材完整，允许进入商品库")
         private String remark;
 

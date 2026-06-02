@@ -1,5 +1,6 @@
 package com.colonel.saas.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.colonel.saas.common.base.VersionedEntity;
@@ -120,7 +121,7 @@ public class ProductOperationState extends VersionedEntity {
     private LocalDateTime lastDisplayedAt;
 
     /** 隐藏原因，当商品被隐藏时记录具体原因（如"违规下架""手动隐藏"） */
-    @TableField("hidden_reason")
+    @TableField(value = "hidden_reason", updateStrategy = FieldStrategy.ALWAYS)
     private String hiddenReason;
 
     /** 展示原因，记录商品当前展示状态的触发原因 */

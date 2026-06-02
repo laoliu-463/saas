@@ -19,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.time.LocalDateTime;
@@ -194,7 +195,7 @@ class ProductServiceActivityStatusIndependenceTest {
     }
 
     @Test
-    void upsertSnapshotsWithStats_localRejectedProductShouldStayHiddenEvenWhenUpstreamPromoting() {
+    void upsertSnapshotsWithStats_upstreamPromotingShouldOverrideHistoricalLocalRejected() {
         String activityId = "ACT006";
         ProductOperationState rejected = state(activityId, "6");
         rejected.setBizStatus(ProductBizStatus.REJECTED.name());
@@ -210,15 +211,127 @@ class ProductServiceActivityStatusIndependenceTest {
         ProductService.ActivitySnapshotUpsertStats stats =
                 productService.upsertSnapshotsWithStats(activityId, List.of(item(6L, "测试商品")));
 
-        assertThat(stats.libraryEntryCount()).isEqualTo(0);
+        assertThat(stats.libraryEntryCount()).isEqualTo(1);
         ArgumentCaptor<ProductOperationState> captor = ArgumentCaptor.forClass(ProductOperationState.class);
         verify(operationStateMapper).updateById(captor.capture());
         ProductOperationState saved = captor.getValue();
-        assertThat(saved.getBizStatus()).isEqualTo(ProductBizStatus.REJECTED.name());
-        assertThat(saved.getAuditStatus()).isEqualTo(3);
-        assertThat(saved.getSelectedToLibrary()).isFalse();
+        assertThat(saved.getBizStatus()).isEqualTo(ProductBizStatus.APPROVED.name());
+        assertThat(saved.getAuditStatus()).isEqualTo(2);
+        assertThat(saved.getSelectedToLibrary()).isTrue();
+        assertThat(saved.getDisplayStatus()).isEqualTo(ProductDisplayStatus.PENDING.name());
+        assertThat(saved.getHiddenReason()).isNull();
+        assertThat(saved.getAuditRemark()).isEqualTo("上游状态为推广中，系统自动入库展示");
+    }
+
+    @Test
+    void upsertSnapshotsWithStats_manualPausedPromotingProductShouldStayPausedButEnterLibrary() {
+        String activityId = "ACT009";
+        ProductOperationState paused = state(activityId, "9");
+        paused.setManualDisabled(true);
+        paused.setSelectedToLibrary(false);
+        paused.setDisplayStatus(ProductDisplayStatus.PENDING.name());
+        paused.setHiddenReason(null);
+
+        when(colonelActivityMapper.selectByActivityId(activityId))
+                .thenReturn(activity(activityId, 5, "推广中", null));
+        when(operationStateMapper.selectOne(any())).thenReturn(paused);
+        when(productBizStatusService.initStateIfAbsent(any(), eq(activityId), eq("9"), any(), any(), any()))
+                .thenReturn(paused);
+
+        ProductService.ActivitySnapshotUpsertStats stats =
+                productService.upsertSnapshotsWithStats(activityId, List.of(item(9L, "暂停商品")));
+
+        assertThat(stats.libraryEntryCount()).isEqualTo(1);
+        ArgumentCaptor<ProductOperationState> captor = ArgumentCaptor.forClass(ProductOperationState.class);
+        verify(operationStateMapper).updateById(captor.capture());
+        ProductOperationState saved = captor.getValue();
+        assertThat(saved.getSelectedToLibrary()).isTrue();
+        assertThat(saved.getAuditStatus()).isEqualTo(2);
+        assertThat(saved.getBizStatus()).isEqualTo(ProductBizStatus.APPROVED.name());
+        assertThat(saved.getManualDisabled()).isTrue();
         assertThat(saved.getDisplayStatus()).isEqualTo(ProductDisplayStatus.HIDDEN.name());
-        assertThat(saved.getHiddenReason()).isEqualTo("LOCAL_REJECTED");
+        assertThat(saved.getHiddenReason()).isEqualTo("LOCAL_PAUSED");
+    }
+
+    @Test
+    void buildActivityProductListView_shouldExposeCanonicalStatusFieldsForPromotingPausedRow() {
+        String activityId = "12345";
+        ProductOperationState paused = state(activityId, "10");
+        paused.setManualDisabled(true);
+        paused.setSelectedToLibrary(true);
+        paused.setAuditStatus(2);
+        paused.setBizStatus(ProductBizStatus.APPROVED.name());
+        paused.setDisplayStatus(ProductDisplayStatus.HIDDEN.name());
+        paused.setHiddenReason("LOCAL_PAUSED");
+
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(paused), List.of());
+        when(productBizStatusService.readBizStatus(paused)).thenReturn(ProductBizStatus.APPROVED);
+
+        Map<String, Object> view = productService.buildActivityProductListView(
+                new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        Long.parseLong(activityId),
+                        30001L,
+                        1L,
+                        null,
+                        List.of(item(10L, "暂停商品"))));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> row = ((List<Map<String, Object>>) view.get("items")).get(0);
+        assertThat(row)
+                .containsEntry("officialStatus", "PROMOTING")
+                .containsEntry("reviewStatus", "APPROVED")
+                .containsEntry("publishStatus", "PAUSED")
+                .containsEntry("manualDisabled", true)
+                .containsEntry("selectedToLibrary", true)
+                .containsEntry("displayStatus", ProductDisplayStatus.HIDDEN.name())
+                .containsEntry("hiddenReason", "LOCAL_PAUSED");
+    }
+
+    @Test
+    void buildActivityProductListView_unknownUpstreamStatusShouldNotDefaultToPromoting() {
+        String activityId = "12345";
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(), List.of());
+
+        Map<String, Object> view = productService.buildActivityProductListView(
+                new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        Long.parseLong(activityId),
+                        30001L,
+                        1L,
+                        null,
+                        List.of(item(11L, "未知状态商品", 9, ""))));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> row = ((List<Map<String, Object>>) view.get("items")).get(0);
+        assertThat(row)
+                .containsEntry("officialStatus", "PENDING_REVIEW")
+                .containsEntry("reviewStatus", "PENDING")
+                .containsEntry("publishStatus", "UNPUBLISHED")
+                .containsEntry("selectedToLibrary", false);
+    }
+
+    @Test
+    void buildActivityProductListView_realtimeRowsShouldExposeSnapshotRelationId() {
+        String activityId = "12345";
+        long productId = 12L;
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(), List.of());
+
+        Map<String, Object> view = productService.buildActivityProductListView(
+                new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        Long.parseLong(activityId),
+                        30001L,
+                        1L,
+                        null,
+                        List.of(item(productId, "实时商品"))));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> row = ((List<Map<String, Object>>) view.get("items")).get(0);
+        UUID expectedRelationId = UUID.nameUUIDFromBytes((activityId + ":" + productId).getBytes(StandardCharsets.UTF_8));
+        assertThat(row)
+                .containsEntry("productId", productId)
+                .containsEntry("relationId", expectedRelationId);
     }
 
     @Test

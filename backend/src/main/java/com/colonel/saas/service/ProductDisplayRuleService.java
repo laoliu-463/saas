@@ -438,7 +438,6 @@ public class ProductDisplayRuleService {
         Map<String, ProductOperationState> stateMap = loadOperationStateMap(snapshots);
         LocalDateTime now = LocalDateTime.now();
         LibraryRepairAccumulator accumulator = new LibraryRepairAccumulator(activityId, dryRun);
-        Set<String> affectedActivityIds = new LinkedHashSet<>();
 
         for (ProductSnapshot snapshot : snapshots) {
             ProductOperationState existingState = stateMap.get(snapshotKey(snapshot.getActivityId(), snapshot.getProductId()));
@@ -460,15 +459,9 @@ public class ProductDisplayRuleService {
                         : existingState;
                 applyRepairDecision(target, decision, now);
                 OptimisticLockSupport.requireUpdated(operationStateMapper.updateById(target));
-                affectedActivityIds.add(snapshot.getActivityId());
             }
         }
 
-        if (!dryRun) {
-            for (String affectedActivityId : affectedActivityIds) {
-                applyForActivityId(affectedActivityId, DisplayRuleOperatorContext.system());
-            }
-        }
         LibraryRepairResult result = accumulator.toResult();
         log.info("Product library repair completed, activityId={}, dryRun={}, scanned={}, willSelectToLibrary={}, willDisplay={}, unchanged={}",
                 activityId,
@@ -517,26 +510,35 @@ public class ProductDisplayRuleService {
         String reason = null;
         boolean willDisplay = false;
 
-        if (isLocalRejected(state)) {
-            newSelected = false;
-            newDisplayStatus = ProductDisplayStatus.HIDDEN.name();
-            newHiddenReason = HIDDEN_REASON_LOCAL_REJECTED;
-            reason = REPAIR_REASON_LOCAL_REJECTED;
-        } else if (isLocalPaused(state)) {
-            newDisplayStatus = ProductDisplayStatus.HIDDEN.name();
-            newHiddenReason = HIDDEN_REASON_LOCAL_PAUSED;
-            reason = REPAIR_REASON_LOCAL_PAUSED;
-        } else if (shouldAutoEnterLibrary(snapshot, state, now)) {
+        if (shouldAutoEnterLibrary(snapshot, state, now)) {
             newSelected = true;
-            newDisplayStatus = ProductDisplayStatus.PENDING.name();
+            newDisplayStatus = ProductDisplayStatus.DISPLAYING.name().equals(oldDisplayStatus)
+                    ? ProductDisplayStatus.DISPLAYING.name()
+                    : ProductDisplayStatus.PENDING.name();
             newHiddenReason = null;
             newAuditStatus = 2;
             ProductBizStatus currentBizStatus = safeBizStatus(newBizStatus);
-            if (currentBizStatus == null || currentBizStatus == ProductBizStatus.PENDING_AUDIT) {
+            if (currentBizStatus == null
+                    || currentBizStatus == ProductBizStatus.PENDING_AUDIT
+                    || currentBizStatus == ProductBizStatus.REJECTED) {
                 newBizStatus = ProductBizStatus.APPROVED.name();
             }
             reason = REPAIR_REASON_UPSTREAM_PROMOTING_AUTO_LIBRARY;
             willDisplay = true;
+        } else if (isLocalPaused(state)
+                && isLocallyDisplayableSnapshotStatus(snapshot)
+                && !isPromotionExpired(snapshot, now)) {
+            newSelected = true;
+            newDisplayStatus = ProductDisplayStatus.HIDDEN.name();
+            newHiddenReason = HIDDEN_REASON_LOCAL_PAUSED;
+            newAuditStatus = 2;
+            ProductBizStatus currentBizStatus = safeBizStatus(newBizStatus);
+            if (currentBizStatus == null
+                    || currentBizStatus == ProductBizStatus.PENDING_AUDIT
+                    || currentBizStatus == ProductBizStatus.REJECTED) {
+                newBizStatus = ProductBizStatus.APPROVED.name();
+            }
+            reason = REPAIR_REASON_LOCAL_PAUSED;
         } else {
             newDisplayStatus = ProductDisplayStatus.HIDDEN.name();
             newHiddenReason = resolveLibraryHiddenReason(snapshot, state, now);
@@ -594,9 +596,6 @@ public class ProductDisplayRuleService {
         if (!isLocallyDisplayableSnapshotStatus(snapshot)) {
             return false;
         }
-        if (isLocalRejected(state)) {
-            return false;
-        }
         if (isLocalPaused(state)) {
             return false;
         }
@@ -604,17 +603,17 @@ public class ProductDisplayRuleService {
     }
 
     private String resolveLibraryHiddenReason(ProductSnapshot snapshot, ProductOperationState state, LocalDateTime now) {
-        if (isLocalRejected(state)) {
-            return HIDDEN_REASON_LOCAL_REJECTED;
+        if (snapshot != null && !isLocallyDisplayableSnapshotStatus(snapshot)) {
+            return HIDDEN_REASON_UPSTREAM_NOT_PROMOTING;
         }
         if (isLocalPaused(state)) {
             return HIDDEN_REASON_LOCAL_PAUSED;
         }
-        if (snapshot != null && !isLocallyDisplayableSnapshotStatus(snapshot)) {
-            return HIDDEN_REASON_UPSTREAM_NOT_PROMOTING;
-        }
         if (snapshot != null && isPromotionExpired(snapshot, now)) {
             return HIDDEN_REASON_ACTIVITY_EXPIRED;
+        }
+        if (isLocalRejected(state)) {
+            return HIDDEN_REASON_LOCAL_REJECTED;
         }
         return HIDDEN_REASON_NOT_ELIGIBLE;
     }
@@ -874,9 +873,6 @@ public class ProductDisplayRuleService {
     }
 
     private String resolveIneligibleReason(ProductOperationState state, ProductSnapshot snapshot, LocalDateTime now) {
-        if (isLocalRejected(state)) {
-            return HIDDEN_REASON_LOCAL_REJECTED;
-        }
         if (snapshot != null && !isLocallyDisplayableSnapshotStatus(snapshot)) {
             return HIDDEN_REASON_UPSTREAM_NOT_PROMOTING;
         }
@@ -885,6 +881,9 @@ public class ProductDisplayRuleService {
         }
         if (snapshot != null && isPromotionExpired(snapshot, now)) {
             return HIDDEN_REASON_ACTIVITY_EXPIRED;
+        }
+        if (isLocalRejected(state)) {
+            return HIDDEN_REASON_LOCAL_REJECTED;
         }
         return HIDDEN_REASON_NOT_ELIGIBLE;
     }
@@ -997,9 +996,6 @@ public class ProductDisplayRuleService {
             return false;
         }
         if (!Boolean.TRUE.equals(state.getSelectedToLibrary())) {
-            return false;
-        }
-        if (isLocalRejected(state)) {
             return false;
         }
         if (!isLocallyDisplayableSnapshotStatus(snapshot)) {

@@ -14,8 +14,10 @@ import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.time.LocalDateTime;
 import java.lang.reflect.Method;
@@ -136,15 +138,40 @@ class ProductControllerTest {
         Product product = new Product();
         product.setId(relationId);
         product.setCheckStatus(2);
-        when(productService.auditProduct(relationId, true, "素材完整")).thenReturn(product);
+        when(productService.auditProduct(eq(relationId), eq(true), eq("素材完整"), any())).thenReturn(product);
 
         ProductController.ProductManageApproveRequest request = new ProductController.ProductManageApproveRequest();
         request.setRemark("素材完整");
+        request.setExclusivePriceRemark("直播间专属价 129 元");
+        request.setShippingInfo("48 小时内发货");
+        request.setSellingPoints(Arrays.asList("高复购", "夏季场景强"));
+        request.setPromotionScript("主打复购和囤货场景");
+        request.setSupportsAds(false);
+        request.setRewardRemark("破 3 万 GMV 额外奖励");
+        request.setParticipationRequirements("近 30 天有成交记录");
+        request.setCampaignTimeRemark("6 月 1 日至 6 月 15 日");
+        request.setMaterialFiles(Arrays.asList("https://example.com/card.png"));
 
         var response = productController.approveManagedProduct(relationId, request);
 
         assertThat(response.getData().getCheckStatus()).isEqualTo(2);
-        verify(productService).auditProduct(relationId, true, "素材完整");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> supplementCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(productService).auditProduct(eq(relationId), eq(true), eq("素材完整"), supplementCaptor.capture());
+        assertThat(supplementCaptor.getValue())
+                .containsEntry("exclusivePriceRemark", "直播间专属价 129 元")
+                .containsEntry("shippingInfo", "48 小时内发货")
+                .containsEntry("promotionScript", "主打复购和囤货场景")
+                .containsEntry("supportsAds", false)
+                .containsEntry("rewardRemark", "破 3 万 GMV 额外奖励")
+                .containsEntry("participationRequirements", "近 30 天有成交记录")
+                .containsEntry("campaignTimeRemark", "6 月 1 日至 6 月 15 日");
+        assertThat(supplementCaptor.getValue().get("sellingPoints"))
+                .asList()
+                .containsExactly("高复购", "夏季场景强");
+        assertThat(supplementCaptor.getValue().get("materialFiles"))
+                .asList()
+                .containsExactly("https://example.com/card.png");
         Method method = ProductController.class.getMethod(
                 "approveManagedProduct",
                 UUID.class,
@@ -356,11 +383,40 @@ class ProductControllerTest {
                 null, null, null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
 
         assertThat(response.getData().getTotal()).isEqualTo(1);
         assertThat(response.getData().getRecords().get(0).getName()).isEqualTo("共享商品");
         verify(productService).getSelectedLibraryPage(eq(1L), eq(10L), any(ProductService.SelectedLibraryFilter.class));
+    }
+
+    @Test
+    void page_shouldPassProductIdToSelectedLibraryFilter() {
+        Page<Product> page = new Page<>(1, 10);
+        when(productService.getSelectedLibraryPage(eq(1L), eq(10L), any(ProductService.SelectedLibraryFilter.class))).thenReturn(page);
+
+        productController.page(
+                1, 10,
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, "9001");
+
+        ArgumentCaptor<ProductService.SelectedLibraryFilter> filterCaptor =
+                ArgumentCaptor.forClass(ProductService.SelectedLibraryFilter.class);
+        verify(productService).getSelectedLibraryPage(eq(1L), eq(10L), filterCaptor.capture());
+        assertThat(filterCaptor.getValue().productId()).isEqualTo("9001");
+    }
+
+    @Test
+    void page_shouldExposeProductIdRequestParam() throws NoSuchMethodException {
+        Method pageMethod = selectedLibraryPageMethod();
+
+        assertThat(Arrays.stream(pageMethod.getParameters())
+                .map(parameter -> parameter.getAnnotation(RequestParam.class))
+                .filter(java.util.Objects::nonNull)
+                .map(ProductControllerTest::requestParamName))
+                .contains("productId");
     }
 
     @Test
@@ -390,11 +446,7 @@ class ProductControllerTest {
 
     @Test
     void controllerRoleAnnotations_shouldKeepSharedLibraryVisibleToBusinessRoles() throws NoSuchMethodException {
-        Method pageMethod = Arrays.stream(ProductController.class.getDeclaredMethods())
-                .filter(method -> "page".equals(method.getName()))
-                .filter(method -> method.getParameterTypes().length > 2)
-                .findFirst()
-                .orElseThrow(() -> new NoSuchMethodException("page"));
+        Method pageMethod = selectedLibraryPageMethod();
         RequireRoles pageRoles = pageMethod.getAnnotation(RequireRoles.class);
         RequireRoles detailRoles = ProductController.class.getMethod("detail", UUID.class)
                 .getAnnotation(RequireRoles.class);
@@ -428,5 +480,20 @@ class ProductControllerTest {
                 RoleCodes.CHANNEL_LEADER,
                 RoleCodes.CHANNEL_STAFF
         );
+    }
+
+    private static Method selectedLibraryPageMethod() throws NoSuchMethodException {
+        return Arrays.stream(ProductController.class.getDeclaredMethods())
+                .filter(method -> "page".equals(method.getName()))
+                .filter(method -> method.getParameterTypes().length > 2)
+                .findFirst()
+                .orElseThrow(() -> new NoSuchMethodException("page"));
+    }
+
+    private static String requestParamName(RequestParam requestParam) {
+        if (!requestParam.name().isBlank()) {
+            return requestParam.name();
+        }
+        return requestParam.value();
     }
 }
