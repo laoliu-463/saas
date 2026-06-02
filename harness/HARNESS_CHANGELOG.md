@@ -6,7 +6,7 @@
 - 调整 `agent-do.ps1` 顺序为安全检查 -> 构建 -> Compose 重建 -> 健康检查 -> 业务验证，避免业务验证失败时跳过重启和健康证据。
 - `agent-do.ps1` 成功路径按实际验证状态写入 evidence conclusion：docs / 跳过业务验证 / 待远端部署为 `PARTIAL`，本地完整验证通过为 `PASS`。
 - 修复 `Get-HarnessChangedFiles` 和 `collect-evidence.ps1` 对 `git status` 首行前导空格的处理，避免首个 modified 文件名被截断。
-- `deploy-remote.ps1` 在远端 `git pull --ff-only` 后通过 Docker Maven 镜像执行 `mvn -f backend/pom.xml -DskipTests package`，适配后端 Dockerfile 需要预构建 `backend/target/*.jar` 且服务器未安装 Maven 的场景。
+- `deploy-remote.ps1` 在远端 `git pull --ff-only` 后通过 `maven:3.9.10-eclipse-temurin-17` Docker 镜像执行 `mvn -f backend/pom.xml -DskipTests package`，适配后端 Dockerfile 需要预构建 `backend/target/*.jar` 且服务器未安装 Maven 的场景。
 - 更新 AGENTS、Task Routing、Tools、Runbook 和 Harness 文档中的默认入口示例，明确远端部署仍必须显式传 `-DeployRemote true`。
 
 ## v0.1.4
