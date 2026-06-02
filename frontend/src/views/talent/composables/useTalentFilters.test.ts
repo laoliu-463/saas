@@ -115,14 +115,12 @@ describe('useTalentFilters', () => {
     filters.videoSalesBand = '1W~2.5W'
     filters.videoPlayBand = '5千~1W'
     filters.level = 'LV5'
-    filters.gender = 'FEMALE'
     filters.contactStatus = 'HAS_CONTACT'
 
     const params = toRequestParams('MY_TALENTS')
     expect(params.liveSalesBand).toBe('1W以下')
     expect(params.videoSalesBand).toBe('1W~2.5W')
     expect(params.level).toBe('LV5')
-    expect(params.gender).toBe('FEMALE')
     expect(params.contactStatus).toBe('HAS_CONTACT')
   })
 

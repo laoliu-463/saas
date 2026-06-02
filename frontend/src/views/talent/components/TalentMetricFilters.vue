@@ -97,13 +97,6 @@
           clearable
           @update:value="(value: string | null) => applyFilter('fansBand', value)"
         />
-        <n-select
-          :value="filters.gender"
-          :options="genderOptions"
-          placeholder="达人性别"
-          clearable
-          @update:value="(value: string | null) => applyFilter('gender', value)"
-        />
         <n-input
           :value="filters.region"
           placeholder="达人地区"
@@ -162,7 +155,6 @@ import type { TalentFiltersState } from '../composables/useTalentFilters'
 import {
   TALENT_CONTACT_STATUS_OPTIONS,
   TALENT_FANS_BAND_OPTIONS,
-  TALENT_GENDER_OPTIONS,
   TALENT_GPM_BAND_OPTIONS,
   TALENT_LEVEL_OPTIONS,
   TALENT_MAIN_CATEGORY_TAGS,
@@ -189,7 +181,6 @@ const fansBandOptions = TALENT_FANS_BAND_OPTIONS.filter((item) => item.value !==
 const playBandOptions = TALENT_PLAY_BAND_OPTIONS.filter((item) => item.value !== null)
 const gpmBandOptions = TALENT_GPM_BAND_OPTIONS.filter((item) => item.value !== null)
 const levelOptions = TALENT_LEVEL_OPTIONS.filter((item) => item.value !== null)
-const genderOptions = TALENT_GENDER_OPTIONS.filter((item) => item.value !== null)
 const contactStatusOptions = TALENT_CONTACT_STATUS_OPTIONS.filter((item) => item.value !== null)
 const claimStatusOptions = CLAIM_STATUS_OPTIONS.filter((item) => item.value !== null)
 

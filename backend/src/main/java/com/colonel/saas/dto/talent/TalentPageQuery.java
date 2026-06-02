@@ -67,7 +67,7 @@ public class TalentPageQuery {
     private String videoGpmBand;
     /** 达人等级筛选 */
     private String level;
-    /** 性别筛选 */
+    /** 性别筛选（V1 暂不支持；传入时 service 返回参数错误，避免静默假筛选） */
     private String gender;
     /** 联系状态筛选 */
     private String contactStatus;

@@ -27,7 +27,7 @@
         </div>
         <div class="filter-field">
           <span class="filter-label">招商</span>
-          <n-select v-model:value="searchParams.colonelName" :options="recruiterOptions" placeholder="请选择" clearable filterable />
+          <n-select v-model:value="searchParams.recruiterName" :options="recruiterOptions" placeholder="请选择" clearable filterable />
         </div>
 
         <div class="filter-field">
@@ -265,7 +265,12 @@ const searchParams = reactive({
   talentName: '',
   colonelName: '',
   channelName: '',
-  recruitType: null as string | null
+  recruitType: null as string | null,
+  // t2-orders 修复：原模板中"招商"与"团长名称"两个筛选控件都
+  // v-model 到 searchParams.colonelName（行 30 与行 64），改其一即双向覆盖。
+  // 现拆出独立字段 recruiterName 承载"招商"下拉（仅前端状态，不入后端 query），
+  // 后端仍由 buildOrderExportParams 通过 colonelName 转发团长名称。
+  recruiterName: null as string | null
 })
 
 const channelOptions = ref<Array<{ label: string; value: string }>>([])
@@ -618,6 +623,7 @@ const resetFilters = () => {
   searchParams.colonelName = ''
   searchParams.channelName = ''
   searchParams.recruitType = null
+  searchParams.recruiterName = null
   timeField.value = 'createTime'
   applyTimePreset('week')
 }

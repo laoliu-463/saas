@@ -9,15 +9,15 @@ import {
 } from './sample-permissions'
 
 describe('sample permissions', () => {
-  it('allows admins, biz roles, and ops staff to export samples', () => {
+  it('allows admins, biz roles, ops staff, and channel leaders to export samples', () => {
     expect(canExportSamplesByRole([ROLE_CODES.ADMIN])).toBe(true)
     expect(canExportSamplesByRole([ROLE_CODES.BIZ_LEADER])).toBe(true)
     expect(canExportSamplesByRole([ROLE_CODES.BIZ_STAFF])).toBe(true)
     expect(canExportSamplesByRole([ROLE_CODES.OPS_STAFF])).toBe(true)
+    expect(canExportSamplesByRole([ROLE_CODES.CHANNEL_LEADER])).toBe(true)
   })
 
-  it('keeps channel roles from exporting samples', () => {
-    expect(canExportSamplesByRole([ROLE_CODES.CHANNEL_LEADER])).toBe(false)
+  it('keeps channel staff from exporting samples', () => {
     expect(canExportSamplesByRole([ROLE_CODES.CHANNEL_STAFF])).toBe(false)
   })
 

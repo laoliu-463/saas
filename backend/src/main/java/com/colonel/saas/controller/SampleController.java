@@ -367,7 +367,7 @@ public class SampleController extends SampleApplicationService {
         return super.batchShip(request, userId, deptId, dataScope, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF, RoleCodes.CHANNEL_LEADER})
     @GetMapping("/exports")
     @Override
     public void exportSamples(

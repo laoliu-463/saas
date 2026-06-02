@@ -57,7 +57,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -140,16 +139,10 @@ public class DataController extends DataApplicationService {
     @GetMapping("/dashboard/metrics")
     @Override
     public ApiResult<DualTrackMetricsVO> getMetrics(
-            @Parameter(description = "时间字段：createTime（默认）/ settleTime / both（双轨）。") @RequestParam(required = false) String timeField,
-            @Parameter(description = "业务线维度：CHANNEL（仅渠道）/ RECRUITER（仅招商）；不传则同时聚合渠道+招商口径。") @RequestParam(required = false) String businessLine,
-            @Parameter(description = "渠道用户 ID，与业务线联动精确过滤渠道归属业绩。") @RequestParam(required = false) UUID channelId,
-            @Parameter(description = "招商用户 ID，与业务线联动精确过滤招商归属业绩。") @RequestParam(required = false) UUID recruiterId,
-            @Parameter(description = "时间范围起点（yyyy-MM-dd HH:mm:ss）。") @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
-            @Parameter(description = "时间范围终点（yyyy-MM-dd HH:mm:ss）。") @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        return super.getMetrics(timeField, businessLine, channelId, recruiterId, startTime, endTime, userId, deptId, dataScope);
+        return super.getMetrics(userId, deptId, dataScope);
     }
 
     @GetMapping("/orders/exports")

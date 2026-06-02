@@ -6,12 +6,13 @@
  */
 import { ROLE_CODES } from '../../constants/rbac';
 
-/** 允许导出寄样数据的角色集合：管理员、业务组长、业务专员、运营专员 */
+/** 允许导出寄样数据的角色集合：管理员、业务组长、业务专员、运营专员、渠道组长 */
 const SAMPLE_EXPORT_ROLES = new Set<string>([
   ROLE_CODES.ADMIN,
   ROLE_CODES.BIZ_LEADER,
   ROLE_CODES.BIZ_STAFF,
-  ROLE_CODES.OPS_STAFF
+  ROLE_CODES.OPS_STAFF,
+  ROLE_CODES.CHANNEL_LEADER
 ]);
 
 /** 寄样 Tab 选项的基础类型（label 显示文本 + value 状态标识） */
@@ -43,7 +44,7 @@ export const filterSampleTabsForOps = (tabs: SampleTabOption[]) =>
 /**
  * 判断当前用户角色是否具有寄样数据导出权限
  *
- * 允许导出的角色：管理员、业务组长、业务专员、运营专员。
+ * 允许导出的角色：管理员、业务组长、业务专员、运营专员、渠道组长。
  *
  * @param roles - 当前用户的角色编码数组
  * @returns 若拥有导出权限返回 true，否则返回 false

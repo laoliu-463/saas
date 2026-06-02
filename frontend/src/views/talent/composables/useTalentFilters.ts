@@ -12,7 +12,6 @@ export interface TalentFiltersState {
   videoGpmBand: string | null
   level: string | null
   fansBand: string | null
-  gender: string | null
   region: string
   douyinNo: string
   nickname: string
@@ -31,7 +30,6 @@ const defaults = (): TalentFiltersState => ({
   videoGpmBand: DEFAULT_TALENT_FILTERS.videoGpmBand,
   level: DEFAULT_TALENT_FILTERS.level,
   fansBand: DEFAULT_TALENT_FILTERS.fansBand,
-  gender: DEFAULT_TALENT_FILTERS.gender,
   region: DEFAULT_TALENT_FILTERS.region,
   douyinNo: DEFAULT_TALENT_FILTERS.douyinNo,
   nickname: DEFAULT_TALENT_FILTERS.nickname,
@@ -54,7 +52,6 @@ export function useTalentFilters() {
       filters.videoGpmBand ||
       filters.level ||
       filters.fansBand ||
-      filters.gender ||
       filters.region.trim() ||
       filters.douyinNo.trim() ||
       filters.nickname.trim() ||
@@ -78,7 +75,6 @@ export function useTalentFilters() {
     filters.videoGpmBand = parseNullableString(query.videoGpmBand)
     filters.level = parseNullableString(query.level)
     filters.fansBand = parseNullableString(query.fansBand)
-    filters.gender = parseNullableString(query.gender)
     filters.claimStatus = parseNullableString(query.claimStatus)
     filters.contactStatus = parseNullableString(query.contactStatus)
     filters.region = typeof query.region === 'string' ? query.region : ''
@@ -111,7 +107,6 @@ export function useTalentFilters() {
     if (filters.videoPlayBand) params.videoPlayBand = filters.videoPlayBand
     if (filters.videoGpmBand) params.videoGpmBand = filters.videoGpmBand
     if (filters.level) params.level = filters.level
-    if (filters.gender) params.gender = filters.gender
     if (filters.contactStatus) params.contactStatus = filters.contactStatus
 
     const fansRange = resolveFansBandRange(filters.fansBand as TalentFansBand)
@@ -133,7 +128,6 @@ export function useTalentFilters() {
       videoGpmBand: filters.videoGpmBand || undefined,
       level: filters.level || undefined,
       fansBand: filters.fansBand || undefined,
-      gender: filters.gender || undefined,
       contactStatus: filters.contactStatus || undefined,
       claimStatus: filters.claimStatus || undefined,
       region: filters.region || undefined,

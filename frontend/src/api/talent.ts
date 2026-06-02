@@ -49,7 +49,6 @@ export interface TalentQueryParams {
   videoPlayBand?: string
   videoGpmBand?: string
   level?: string
-  gender?: string
   contactStatus?: string
 }
 
@@ -108,6 +107,8 @@ export interface TalentProfilePayload {
   nickname?: string | null
   avatarUrl?: string | null
   fansCount?: number | null
+  likesCount?: number | null
+  /** @deprecated 后端 JSON 字段已统一为 likesCount，保留旧字段用于兼容历史响应 */
   likeCount?: number | null
   followingCount?: number | null
   worksCount?: number | null

@@ -1491,7 +1491,7 @@ public class SampleApplicationService extends BaseController {
      *
      * @param status            寄样状态筛选（可选，如 PENDING_AUDIT）
      * @param keyword           关键词搜索（可选，模糊匹配寄样单号/达人昵称）
-     * @param channelUserId     渠道负责人用户 ID（可选）
+     * @param channelUserIds    渠道负责人用户 ID 列表（可选）
      * @param recruiterUserId   招商负责人用户 ID（可选）
      * @param productKeyword    商品 ID 或商品名称（可选）
      * @param shopKeyword       店铺 ID 或店铺名称（可选）
@@ -1522,7 +1522,7 @@ public class SampleApplicationService extends BaseController {
     public void exportSamples(
             @Parameter(description = "寄样状态。") @RequestParam(required = false) String status,
             @Parameter(description = "关键字。") @RequestParam(required = false) String keyword,
-            @Parameter(description = "渠道负责人用户 ID。") @RequestParam(required = false) UUID channelUserId,
+            @Parameter(description = "渠道负责人用户 ID 列表（多选，IN 查询）。") @RequestParam(required = false) List<UUID> channelUserIds,
             @Parameter(description = "招商负责人用户 ID。") @RequestParam(required = false) UUID recruiterUserId,
             @Parameter(description = "商品 ID 或商品名称。") @RequestParam(required = false) String productKeyword,
             @Parameter(description = "店铺 ID 或店铺名称。") @RequestParam(required = false) String shopKeyword,
@@ -1555,7 +1555,7 @@ public class SampleApplicationService extends BaseController {
                 wrapper,
                 status,
                 keyword,
-                channelUserId,
+                channelUserIds,
                 productKeyword,
                 shopKeyword,
                 trackingNo,
@@ -1632,7 +1632,7 @@ public class SampleApplicationService extends BaseController {
      * 导出寄样申请列表的简化版（不含渠道/招商负责人筛选），委托给带完整参数的重载版本。
      *
      * <p>所有渠道负责人与招商负责人参数固定传 {@code null}，其余参数透传至
-     * {@link #exportSamples(String, String, UUID, UUID, UUID, UUID, DataScope, Object, HttpServletResponse)}。
+     * {@link #exportSamples(String, String, List, UUID, UUID, UUID, DataScope, Object, HttpServletResponse)}。
      *
      * @param status     寄样状态筛选（可选）
      * @param keyword    关键词搜索（可选）
@@ -1642,7 +1642,7 @@ public class SampleApplicationService extends BaseController {
      * @param roleCodes  当前用户角色编码列表（可选）
      * @param response   HTTP 响应对象（用于输出 CSV 文件流）
      * @throws IOException CSV 写入响应输出流失败时抛出
-     * @see #exportSamples(String, String, UUID, UUID, UUID, UUID, DataScope, Object, HttpServletResponse)
+     * @see #exportSamples(String, String, List, UUID, UUID, UUID, DataScope, Object, HttpServletResponse)
      */
     public void exportSamples(
             String status,
@@ -1652,7 +1652,7 @@ public class SampleApplicationService extends BaseController {
             DataScope dataScope,
             Object roleCodes,
             HttpServletResponse response) throws IOException {
-        exportSamples(status, keyword, null, null, userId, deptId, dataScope, roleCodes, response);
+        exportSamples(status, keyword, (UUID) null, null, userId, deptId, dataScope, roleCodes, response);
     }
 
     /**
@@ -1673,7 +1673,7 @@ public class SampleApplicationService extends BaseController {
      * @param roleCodes        当前用户角色编码列表（可选）
      * @param response         HTTP 响应对象（用于输出 CSV 文件流）
      * @throws IOException CSV 写入响应输出流失败时抛出
-     * @see #exportSamples(String, String, UUID, UUID, UUID, UUID, DataScope, Object, HttpServletResponse)
+     * @see #exportSamples(String, String, List, UUID, UUID, UUID, DataScope, Object, HttpServletResponse)
      */
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF})
     public void exportSamples(
@@ -1687,7 +1687,7 @@ public class SampleApplicationService extends BaseController {
             Object roleCodes,
             HttpServletResponse response) throws IOException {
         exportSamples(
-                status, keyword, channelUserId, recruiterUserId,
+                status, keyword, channelUserId == null ? null : List.of(channelUserId), recruiterUserId,
                 null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null,
                 userId, deptId, dataScope, roleCodes, response);
@@ -2210,15 +2210,16 @@ public class SampleApplicationService extends BaseController {
      *     <li>BIZ_LEADER（招商主管）—— 管理团队寄样数据</li>
      *     <li>BIZ_STAFF（招商专员）—— 导出本人经手的寄样数据</li>
      *     <li>OPS_STAFF（运营专员）—— 导出运营相关寄样物流数据</li>
+     *     <li>CHANNEL_LEADER（渠道组长）—— 导出本组数据范围内寄样数据</li>
      * </ul>
-     * 渠道角色（CHANNEL_LEADER、CHANNEL_STAFF）无导出权限。
+     * 渠道专员（CHANNEL_STAFF）无导出权限。
      *
      * @param roleCodes 当前用户的角色编码集合
      * @throws ForbiddenException 角色不在允许列表时抛出
      */
     private void ensureSampleExportPermission(Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF)) {
-            throw new ForbiddenException("仅管理员、招商或运营可导出寄样数据");
+        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF, RoleCodes.CHANNEL_LEADER)) {
+            throw new ForbiddenException("仅管理员、招商、运营或渠道组长可导出寄样数据");
         }
     }
 

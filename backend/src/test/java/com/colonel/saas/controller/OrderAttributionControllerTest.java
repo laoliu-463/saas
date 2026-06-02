@@ -7,6 +7,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.service.OrderAttributionService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,7 +45,7 @@ class OrderAttributionControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new com.colonel.saas.controller.OrderAttributionController(orderMapper))
+                .standaloneSetup(new OrderAttributionController(new OrderAttributionService(orderMapper)))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

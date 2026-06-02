@@ -81,12 +81,11 @@ class TalentControllerTest {
                         .param("contactStatus", "HAS_CONTACT")
                         .param("claimStatus", "UNCLAIMED")
                         .param("category", "食品饮料")
-                        .param("gender", "MALE")
                         .requestAttr("userId", userId)
                         .requestAttr("deptId", deptId)
                         .requestAttr("dataScope", DataScope.PERSONAL))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.records").isArray())
                 .andExpect(jsonPath("$.data.total").value(0));
 
@@ -106,7 +105,6 @@ class TalentControllerTest {
         assertThat(query.getContactStatus()).isEqualTo("HAS_CONTACT");
         assertThat(query.getClaimStatus()).isEqualTo("UNCLAIMED");
         assertThat(query.getCategory()).isEqualTo("食品饮料");
-        assertThat(query.getGender()).isEqualTo("MALE");
 
         // 验证 dataScope / userId / deptId 被注入到 query 中（来自 request attribute）
         assertThat(query.getUserId()).isEqualTo(userId);

@@ -3,6 +3,7 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
@@ -124,6 +125,7 @@ public class TalentQueryService {
      * @return 分页结果，records 为目标页记录，total 为过滤后总条数
      */
     public IPage<Talent> page(TalentPageQuery query) {
+        rejectUnsupportedFilters(query);
         // 第一步：计算分页参数
         long requestedPage = query == null ? 1L : Math.max(query.getPage(), 1L);
         long requestedSize = query == null ? 10L : Math.max(query.getSize(), 1L);
@@ -203,6 +205,15 @@ public class TalentQueryService {
             return 10L;
         }
         return Math.min(requestedSize, TALENT_QUERY_BATCH_SIZE);
+    }
+
+    /**
+     * 拦截当前没有事实字段支撑的筛选，避免前端或 API 调用方误以为筛选已生效。
+     */
+    private void rejectUnsupportedFilters(TalentPageQuery query) {
+        if (query != null && StringUtils.hasText(query.getGender())) {
+            throw BusinessException.param("gender 筛选当前不支持：达人表尚无 gender 字段，请移除该筛选后重试");
+        }
     }
 
     /**

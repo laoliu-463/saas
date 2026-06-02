@@ -70,6 +70,11 @@ class OrderControllerTest {
     private PerformanceBackfillService performanceBackfillService;
     @Mock
     private SysDeptMapper sysDeptMapper;
+    /**
+     * t2-orders 抽 service：OrderController 委托 {@link com.colonel.saas.service.OrderService}
+     * 做 wrapper 拼装。测试用真实 OrderService 实例 + mock mapper，wrapper 行为与生产一致。
+     */
+    private com.colonel.saas.service.OrderService orderService;
 
     private MockMvc mockMvc;
 
@@ -81,6 +86,8 @@ class OrderControllerTest {
             MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
             TableInfoHelper.initTableInfo(assistant, ColonelsettlementOrder.class);
         }
+        DashboardService dashboardService = org.mockito.Mockito.mock(DashboardService.class);
+        orderService = new com.colonel.saas.service.OrderService(orderMapper, dashboardService);
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new OrderController(
                         orderSyncService,
@@ -91,7 +98,8 @@ class OrderControllerTest {
                         new ShortTtlCacheService(),
                         commissionService,
                         performanceBackfillService,
-                        sysDeptMapper))
+                        sysDeptMapper,
+                        orderService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -482,21 +490,13 @@ class OrderControllerTest {
 
     @Test
     void sanitizeDiagnosisSqlPrefix_shouldRejectUnknownAlias() throws Exception {
-        OrderController controller = new OrderController(
-                orderSyncService,
-                orderMapper,
-                orderQueryService,
-                orderAttributionReplayService,
-                operationLogService,
-                new ShortTtlCacheService(),
-                commissionService,
-                performanceBackfillService,
-                sysDeptMapper);
-        Method method = OrderController.class.getDeclaredMethod("sanitizeDiagnosisSqlPrefix", String.class);
-        method.setAccessible(true);
-
-        assertThat(method.invoke(controller, "evil; DROP TABLE--")).isEqualTo("colonelsettlement_order.");
-        assertThat(method.invoke(controller, "fo.")).isEqualTo("fo.");
+        // t2-orders 抽 service：sanitizeDiagnosisSqlPrefix 已迁移到 OrderService，
+        // controller 端不再持有该方法，单测断言已搬到 OrderServiceTest。
+        // 这里保留一个轻量回归，避免 controller 端误重新持有该方法被误调。
+        org.junit.jupiter.api.Assumptions.assumeTrue(orderService != null);
+        assertThat(orderService.sanitizeDiagnosisSqlPrefix("evil; DROP TABLE--"))
+                .isEqualTo("colonelsettlement_order.");
+        assertThat(orderService.sanitizeDiagnosisSqlPrefix("fo.")).isEqualTo("fo.");
     }
 
     @Test

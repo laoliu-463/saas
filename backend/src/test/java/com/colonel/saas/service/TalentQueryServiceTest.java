@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
@@ -355,6 +356,16 @@ class TalentQueryServiceTest {
         assertThat(page.getRecords()).hasSize(2);
         assertThat(page.getRecords()).extracting(Talent::getDouyinUid).containsExactlyInAnyOrder("public_1", "shared_1");
         assertThat(page.getRecords()).allMatch(item -> "PUBLIC".equals(item.getPoolStatus()));
+    }
+
+    @Test
+    void page_shouldRejectUnsupportedGenderFilter() {
+        TalentPageQuery query = new TalentPageQuery();
+        query.setGender("FEMALE");
+
+        assertThatThrownBy(() -> talentQueryService.page(query))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("gender 筛选当前不支持");
     }
 
     @Test

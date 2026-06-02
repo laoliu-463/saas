@@ -73,7 +73,6 @@ export const DEFAULT_TALENT_FILTERS = {
   videoGpmBand: null as string | null,
   level: null as string | null,
   fansBand: null as string | null,
-  gender: null as string | null,
   region: '',
   douyinNo: '',
   nickname: '',

@@ -21,6 +21,7 @@ import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
+import com.colonel.saas.service.OrderService;
 import com.colonel.saas.service.OrderSyncService;
 import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;

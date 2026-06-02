@@ -1,5 +1,6 @@
 package com.colonel.saas.service.talent.profile;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
 
@@ -83,7 +84,8 @@ public class TalentProfileResult {
     /** 采集到的粉丝数 */
     private Long fansCount;
 
-    /** 采集到的累计获赞数 */
+    /** 累计获赞数 — JSON 输出 {@code likesCount}（与 {@code Talent.likesCount} 对齐） */
+    @JsonProperty("likesCount")
     private Long likeCount;
 
     /** 采集到的关注数 */

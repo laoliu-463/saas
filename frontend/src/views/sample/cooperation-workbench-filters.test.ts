@@ -16,7 +16,7 @@ const emptyFilters = (): CooperationWorkbenchFilters => ({
   homeworkType: null,
   recipientName: '',
   recipientPhone: '',
-  channelUserId: null,
+  channelUserIds: [],
   recruiterUserId: null,
   applyRange: null,
   homeworkRange: null,
@@ -37,7 +37,7 @@ describe('cooperation workbench filters', () => {
       homeworkType: 'HAS_ORDER',
       recipientName: '张三',
       recipientPhone: '13800138000',
-      channelUserId: 'channel-user',
+      channelUserIds: ['channel-user'],
       recruiterUserId: 'recruiter-user',
       applyRange: [Date.parse('2026-05-01T08:00:00'), Date.parse('2026-05-02T09:30:00')],
       homeworkRange: [Date.parse('2026-05-03T10:00:00'), Date.parse('2026-05-04T11:30:00')],
@@ -56,7 +56,7 @@ describe('cooperation workbench filters', () => {
       homeworkType: 'HAS_ORDER',
       recipientName: '张三',
       recipientPhone: '13800138000',
-      channelUserId: 'channel-user',
+      channelUserIds: ['channel-user'],
       recruiterUserId: 'recruiter-user',
       applyStartTime: '2026-05-01T08:00:00',
       applyEndTime: '2026-05-02T09:30:00',
@@ -72,5 +72,22 @@ describe('cooperation workbench filters', () => {
       productKeyword: undefined,
       trackingNo: undefined
     })
+  })
+
+  it('serializes multi-select channelUserIds as array params', () => {
+    const filters = emptyFilters()
+    Object.assign(filters, {
+      channelUserIds: ['channel-A', 'channel-B', 'channel-C']
+    })
+    const params = buildCooperationSampleFilterParams(filters, 'PENDING_SHIP')
+    expect(Array.isArray(params.channelUserIds)).toBe(true)
+    expect(params.channelUserIds).toEqual(['channel-A', 'channel-B', 'channel-C'])
+  })
+
+  it('omits channelUserIds when array is empty (no filter applied)', () => {
+    const filters = emptyFilters()
+    Object.assign(filters, { channelUserIds: [] })
+    const params = buildCooperationSampleFilterParams(filters, 'PENDING_SHIP')
+    expect(params.channelUserIds).toBeUndefined()
   })
 })

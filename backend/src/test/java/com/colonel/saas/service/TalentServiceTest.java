@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
@@ -202,6 +203,52 @@ class TalentServiceTest {
 
         assertThat(talentService.page(2, 5, "bob", "杭州", 10L, 100L, DataScope.ALL, null, null).getRecords())
                 .hasSize(1);
+    }
+
+    @Test
+    void page_shouldCallMapperWithCorrectPageAndWrapper_whenMinAndMaxFansProvided() {
+        // [V1 必做 t4-talent 2026-06-02] 指标筛选 (fansBand) -> minFans/maxFans 范围下推
+        Page<Talent> empty = new Page<>(1, 10, 0);
+        when(talentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(empty);
+
+        IPage<Talent> result = talentService.page(1, 10, null, null, 10_000L, 99_999L, DataScope.ALL, null, null);
+
+        ArgumentCaptor<Page<Talent>> pageCaptor = ArgumentCaptor.forClass(Page.class);
+        verify(talentMapper).selectPage(pageCaptor.capture(), any(LambdaQueryWrapper.class));
+        assertThat(pageCaptor.getValue().getCurrent()).isEqualTo(1L);
+        assertThat(pageCaptor.getValue().getSize()).isEqualTo(10L);
+        assertThat(result).isNotNull();
+    }
+
+    @Test
+    void page_shouldNotThrowAndCallMapper_whenBothMinAndMaxFansAreNull() {
+        // [V1 必做 t4-talent 2026-06-02] 边界：无 fans 范围时不应在 SQL 中追加 fans_count 条件
+        Page<Talent> empty = new Page<>(1, 10, 0);
+        when(talentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(empty);
+
+        IPage<Talent> result = talentService.page(1, 10, null, null, null, null, DataScope.ALL, null, null);
+
+        assertThat(result).isNotNull();
+        verify(talentMapper, times(1))
+                .selectPage(any(Page.class), any(LambdaQueryWrapper.class));
+    }
+
+    @Test
+    void page_shouldHandleAllFiltersTogetherWithoutShortCircuiting() {
+        // [V1 必做 t4-talent 2026-06-02] 文本筛选（keyword/region）与指标筛选（minFans/maxFans）
+        // 独立下推；keyword + region + minFans + maxFans 同时给出，不应抛错
+        Page<Talent> empty = new Page<>(1, 10, 0);
+        when(talentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(empty);
+
+        IPage<Talent> result = talentService.page(1, 10, "食品达人", "上海", 5_000L, 50_000L, DataScope.ALL, null, null);
+
+        assertThat(result).isNotNull();
+        verify(talentMapper, times(1))
+                .selectPage(any(Page.class), any(LambdaQueryWrapper.class));
+        when(talentClaimMapper.findActiveByUserId(any())).thenReturn(List.of());
+        IPage<Talent> personalResult = talentService.page(1, 10, "食品达人", "上海", 5_000L, 50_000L,
+                DataScope.PERSONAL, UUID.randomUUID(), null);
+        assertThat(personalResult.getTotal()).isZero();
     }
 
     @Test

@@ -92,3 +92,21 @@
 [V1 必做] **主数据接口不得直连第三方**：所有主数据均来自本地 PostgreSQL 表（`sys_user`/`sys_role`/`sys_user_role`/`colonel_partner`），不通过网关调用抖音/抖店开放接口。`DouyinOAuthController`（`/douyin/oauth/authorize-url` 与 `/douyin/oauth/callback`）仅用于后台 OAuth 授权流程，不参与下拉候选。
 
 [V1 必做] **缓存策略**：当前 `/users/master-data/**` 与 `/users/current/**` **未引入 Redis 缓存**（避免脏读，用户/角色变更时缓存失效复杂），单次响应在 50 ~ 100 条限制下数据库直查耗时可接受；如果未来出现 N+1 或并发压力，应优先在 service 层引入短 TTL 缓存并配合 `user/role update` 事件主动失效，**不**直接堆 Redis 注解。
+
+## 佣金规则与规则中心 API 补充事实（2026-06-02 / t6-commission）
+
+[V1 必做] `GET /commission-rules`（`CommissionRuleController.page`）：分页查询提成规则（V2 差异化），筛选参数彼此通过 AND 组合：
+- `dimensionType`（可选，eq）：`global` / `activity` / `product` / `user`，非法值由 service 抛 `BusinessException.param`（code=460）；
+- `commissionType`（可选，eq）：`recruiter` / `channel`，非法值由 service 抛 `BusinessException.param`；
+- `status`（可选，eq）：`1` 启用 / `0` 禁用；非法值（既非 0 也非 1）按"不筛选"处理，**不**抛错（避免静默回错数据）；
+- `effectiveStart`（可选，ISO 8601）：查询生效区间起点，与规则有效期做"区间重叠"判定（`rule.effective_end IS NULL OR rule.effective_end >= effectiveStart`）；
+- `effectiveEnd`（可选，ISO 8601）：查询生效区间终点（`rule.effective_start IS NULL OR rule.effective_start <= effectiveEnd`）；
+- 当 `effectiveStart > effectiveEnd` 时抛 `BusinessException.param("查询生效区间终点不能早于起点")`；
+- `page` / `size` 默认 `1` / `20`，按 `update_time DESC, create_time DESC` 排序。
+- 委派 `CommissionRuleService.findPage` 实现。
+
+[V1 必做] `GET /rule-center/schema` / `GET /rule-center` / `POST /rule-center/validate` / `PUT /rule-center/groups/{groupCode}` / `PUT /rule-center/batch` / `GET /rule-center/change-logs` / `GET /rule-center/events`：规则中心 7 个端点，统一 `@RequireRoles({RoleCodes.ADMIN})`，全部委派 `RuleCenterService` 实现。**`dataScope` 在规则中心不参与**——理由：① 配置域是平台级事实（"配置域只提供配置事实，不执行具体业务规则"），不存在按部门/按用户的过滤语义；② 唯一访问角色 `admin` 的 `dataScope=3 (ALL)` 已经隐式覆盖"全部配置"；③ 变更日志和事件消费方都返回全量，便于事后审计与回溯。Controller 不消费 `@RequestAttribute("dataScope")`，不需要在 service 注入 `dataScope` 形参。
+- 前端 `rule-center/index.vue` 抽屉变更历史按 `key` 过滤（每次只查一个 key），不引入额外全量模式；`loadEventStatus(eventId)` 在抽屉展开时按需触发。
+- 配置项 `enabled=false`（V2 预留）在前端统一 `:disabled="!item.enabled"`，后端 validate 拒绝 `enabled=false` 项的修改（"该规则项当前未启用，不能修改"）。
+
+[V1 必做] **T6 端到端测试入口**：`cd backend; mvn "-Dtest=CommissionRuleServiceTest,CommissionRuleControllerTest,RuleCenterServiceTest,RuleCenterControllerTest" test` 共 4 个测试类。

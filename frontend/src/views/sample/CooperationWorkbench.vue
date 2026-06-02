@@ -46,13 +46,14 @@
         <n-input v-model:value="filters.recipientName" clearable placeholder="收货人姓名" />
         <n-input v-model:value="filters.recipientPhone" clearable placeholder="收货人手机号" />
         <n-select
-          v-model:value="filters.channelUserId"
+          v-model:value="filters.channelUserIds"
+          multiple
           clearable
           filterable
           remote
           :options="channelOptions"
           :loading="channelOptionsLoading"
-          placeholder="渠道负责人"
+          placeholder="渠道负责人（可多选）"
           data-testid="sample-channel-filter"
           @search="handleChannelSearch"
         />
@@ -232,7 +233,7 @@ const filters = reactive<CooperationWorkbenchFilters>({
   homeworkType: null as string | null,
   recipientName: '',
   recipientPhone: '',
-  channelUserId: null as string | null,
+  channelUserIds: [] as string[],
   recruiterUserId: null as string | null,
   applyRange: null as [number, number] | null,
   homeworkRange: null as [number, number] | null,
@@ -373,7 +374,7 @@ const resetFilters = () => {
     homeworkType: null,
     recipientName: '',
     recipientPhone: '',
-    channelUserId: null,
+    channelUserIds: [],
     recruiterUserId: null,
     applyRange: null,
     homeworkRange: null,

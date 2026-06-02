@@ -49,12 +49,6 @@ export const TALENT_LEVEL_OPTIONS = [
   { label: 'LV7', value: 'LV7' }
 ] as const
 
-export const TALENT_GENDER_OPTIONS = [
-  { label: '请选择', value: null },
-  { label: '男', value: 'MALE' },
-  { label: '女', value: 'FEMALE' }
-] as const
-
 export const TALENT_CONTACT_STATUS_OPTIONS = [
   { label: '请选择', value: null },
   { label: '有联系方式', value: 'HAS_CONTACT' },

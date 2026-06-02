@@ -829,17 +829,37 @@ class SampleControllerTest {
     }
 
     @Test
-    void exportSamples_shouldRejectChannelRoles() {
+    void exportSamples_shouldRejectChannelStaff() {
         assertThatThrownBy(() -> sampleController.exportSamples(
                 null,
                 null,
                 UUID.randomUUID(),
                 null,
                 DataScope.ALL,
-                List.of(RoleCodes.CHANNEL_LEADER),
+                List.of(RoleCodes.CHANNEL_STAFF),
                 new MockHttpServletResponse()))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("仅管理员、招商或运营");
+                .hasMessageContaining("仅管理员、招商、运营或渠道组长");
+    }
+
+    @Test
+    void exportSamples_shouldAllowChannelLeader() throws Exception {
+        Page<SampleRequest> emptyPage = new Page<>(1, 500, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any())).thenReturn(emptyPage);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        sampleController.exportSamples(
+                null,
+                null,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.CHANNEL_LEADER),
+                response);
+
+        assertThat(response.getContentType()).isEqualTo("text/csv; charset=UTF-8");
     }
 
     @Test
@@ -906,7 +926,7 @@ class SampleControllerTest {
                         "exportSamples",
                         String.class,
                         String.class,
-                        UUID.class,
+                        List.class,
                         UUID.class,
                         String.class,
                         String.class,
@@ -939,7 +959,7 @@ class SampleControllerTest {
         assertThat(refreshLogistics).isNotNull();
         assertThat(refreshLogistics.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
         assertThat(exportSamples).isNotNull();
-        assertThat(exportSamples.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF);
+        assertThat(exportSamples.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF, RoleCodes.CHANNEL_LEADER);
     }
 
     @Test
@@ -1407,7 +1427,7 @@ class SampleControllerTest {
                 10,
                 null,
                 "PENDING_SHIP",
-                channelUserId,
+                List.of(channelUserId),
                 recruiterUserId,
                 "合作单筛选商品",
                 "合作单店铺",
@@ -1517,6 +1537,84 @@ class SampleControllerTest {
         verify(sampleRequestMapper, times(2)).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues().get(0).getSqlSegment()).contains("sr.status");
         assertThat(wrapperCaptor.getAllValues().get(1).getSqlSegment()).contains("homeworkType");
+    }
+
+    @Test
+    void getSamplePage_shouldUseExactMatchForTrackingAndRequestNo() {
+        Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        sampleController.getSamplePage(
+                1, 10, null, "PENDING_SHIP", null, null, null, null,
+                "SF123456", "TEST-SAMPLE-EXACT-001", null, null, null, null, null, null, null, null, null, null, null,
+                UUID.randomUUID(), null, DataScope.ALL, List.of(RoleCodes.ADMIN));
+
+        ArgumentCaptor<QueryWrapper<SampleRequest>> wrapperCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(sampleRequestMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        String sqlSegment = wrapperCaptor.getValue().getSqlSegment();
+        // 精确匹配：必须是 = 而不是 LIKE（不再包含 %）
+        assertThat(sqlSegment)
+                .contains("sr.tracking_no =")
+                .contains("sr.request_no =");
+        assertThat(wrapperCaptor.getValue().getParamNameValuePairs().values())
+                .contains("SF123456", "TEST-SAMPLE-EXACT-001");
+        assertThat(sqlSegment)
+                .doesNotContain("sr.tracking_no like")
+                .doesNotContain("sr.request_no like")
+                .doesNotContain("%SF123456%")
+                .doesNotContain("%TEST-SAMPLE-EXACT-001%");
+    }
+
+    @Test
+    void getSamplePage_shouldApplyMultiSelectChannelUsers() {
+        UUID channel1 = UUID.randomUUID();
+        UUID channel2 = UUID.randomUUID();
+        UUID channel3 = UUID.randomUUID();
+        Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        // 多选渠道（3 个 ID，含 null 噪声与重复）
+        List<UUID> channelIds = new java.util.ArrayList<>();
+        channelIds.add(channel1);
+        channelIds.add(channel2);
+        channelIds.add(null);
+        channelIds.add(channel3);
+        channelIds.add(channel1); // 重复也应被去重
+
+        sampleController.getSamplePage(
+                1, 10, null, "PENDING_SHIP", channelIds, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null,
+                UUID.randomUUID(), null, DataScope.ALL, List.of(RoleCodes.ADMIN));
+
+        ArgumentCaptor<QueryWrapper<SampleRequest>> wrapperCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(sampleRequestMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        String sqlSegment = wrapperCaptor.getValue().getSqlSegment();
+        // 包含 IN 多选过滤
+        assertThat(sqlSegment).contains("sr.channel_user_id").contains("IN");
+    }
+
+    @Test
+    void getSamplePage_shouldHandleEmptyChannelListAsNoFilter() {
+        Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        // 空列表等同于不过滤
+        sampleController.getSamplePage(
+                1, 10, null, "PENDING_SHIP", List.of(), null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null,
+                UUID.randomUUID(), null, DataScope.ALL, List.of(RoleCodes.ADMIN));
+
+        ArgumentCaptor<QueryWrapper<SampleRequest>> wrapperCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(sampleRequestMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        String sqlSegment = wrapperCaptor.getValue().getSqlSegment();
+        // 空列表：不过滤 channel_user_id
+        assertThat(sqlSegment).doesNotContain("sr.channel_user_id");
     }
 
     @Test
