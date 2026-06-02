@@ -1,5 +1,11 @@
 # Harness Changelog
 
+## v0.1.6
+
+- `deploy-remote.ps1` 在远端构建和重启后端前，先启动 `postgres-real-pre` 并执行活动商品依赖的幂等结构迁移 `V20260529_001__alter-colonel-activity-add-recruiter-fields.sql`。
+- 新增远端活动商品 schema guard：校验 `colonel_activity` 已存在 `recruiter_user_id`、`recruiter_dept_id`、`assigned_at`、`assigned_by`、`activity_status_code`、`activity_status_text` 6 个字段，否则中止远端部署。
+- 暂不将 `scripts/run-real-pre-db-migrations.sh` 的聚合 `migrate-all.sql` 接入每次 Harness 远端部署；该文件仍含历史非幂等 DML，重复执行存在数据漂移风险。
+
 ## v0.1.5
 
 - 将 `agent-do.ps1`、`safety-check.ps1`、`restart-compose.ps1`、`verify-local.ps1`、`collect-evidence.ps1` 和 `new-retro.ps1` 的默认环境切换为本地 `real-pre`；`test` 仅作为显式专项环境。

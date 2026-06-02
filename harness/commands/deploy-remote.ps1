@@ -19,6 +19,43 @@ $remoteScript = @"
 set -e
 cd '$RemoteDir'
 git pull --ff-only
+compose() {
+  docker compose --env-file '$RemoteEnvFile' -f docker-compose.real-pre.yml "`$@"
+}
+echo "Preparing postgres-real-pre before schema guard ..."
+compose up -d postgres-real-pre
+ready=false
+for i in `$(seq 1 60); do
+  if compose exec -T postgres-real-pre sh -lc 'pg_isready -U "`$POSTGRES_USER" -d "`$POSTGRES_DB"' >/dev/null 2>&1; then
+    ready=true
+    break
+  fi
+  sleep 2
+done
+if [ "`$ready" != "true" ]; then
+  echo "postgres-real-pre did not become ready before schema guard"
+  compose logs --tail=200 postgres-real-pre
+  exit 1
+fi
+activity_migration="backend/src/main/resources/db/migrate/V20260529_001__alter-colonel-activity-add-recruiter-fields.sql"
+if [ ! -f "`$activity_migration" ]; then
+  echo "Required activity schema migration not found: `$activity_migration"
+  exit 1
+fi
+pg_container="`$(compose ps -q postgres-real-pre)"
+if [ -z "`$pg_container" ]; then
+  echo "postgres-real-pre container id not found"
+  exit 1
+fi
+echo "Applying required activity schema migration ..."
+docker cp "`$activity_migration" "`$pg_container:/tmp/V20260529_001__alter-colonel-activity-add-recruiter-fields.sql"
+compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/V20260529_001__alter-colonel-activity-add-recruiter-fields.sql'
+schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -c "\d public.colonel_activity"' | grep -E '^[[:space:]]*(recruiter_user_id|recruiter_dept_id|assigned_at|assigned_by|activity_status_code|activity_status_text)[[:space:]]' | wc -l | tr -d '[:space:]')"
+if [ "`$schema_count" != "6" ]; then
+  echo "colonel_activity schema guard failed: expected 6 required columns, got `$schema_count"
+  exit 1
+fi
+echo "Activity schema guard passed."
 mkdir -p "`$HOME/.m2"
 docker run --rm \
   -v "`$PWD:/workspace" \
@@ -26,8 +63,8 @@ docker run --rm \
   -w /workspace \
   maven:3.9.10-eclipse-temurin-17 \
   mvn -f backend/pom.xml -DskipTests package
-docker compose --env-file '$RemoteEnvFile' -f docker-compose.real-pre.yml up -d --build backend-real-pre frontend-real-pre
-docker compose --env-file '$RemoteEnvFile' -f docker-compose.real-pre.yml ps
+compose up -d --build backend-real-pre frontend-real-pre
+compose ps
 curl -fsS http://127.0.0.1:8081/api/system/health
 curl -fsS http://127.0.0.1:3001/healthz
 "@

@@ -3,7 +3,7 @@
 ## 当前日期
 
 - 记录日期：2026-06-02
-- Harness 版本：v0.1.4
+- Harness 版本：v0.1.6
 
 ## 当前技术栈
 
@@ -116,6 +116,7 @@ real-pre 必须保持：
 - 真实渠道订单样本是否已经通过系统转链产生。
 - 远端每次部署是否要求同步执行完整 `e2e:real-pre:p0`、`roles` 与 preflight。
 - 若远端 SSH alias、目录或仓库 remote 变化，需要更新 `harness/runbooks/remote-deploy.md` 和 `harness/commands/deploy-remote.ps1` 参数默认值。
+- 远端部署已纳入活动商品 schema guard，但完整数据库迁移治理仍未闭环；`migrate-all.sql` 含历史非幂等 DML，不允许在 Harness 中无条件重复执行。
 
 ## 状态子系统
 
