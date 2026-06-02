@@ -54,6 +54,6 @@
 ```powershell
 Test-Path .\harness\doc\00-HARNESS-README.md
 Get-ChildItem .\harness\doc -Directory
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-check.ps1 -Env test -Scope docs -DryRun
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-check.ps1 -Env real-pre -Scope docs -DryRun
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\retire-content.ps1 -Action Plan -DryRun
 ```

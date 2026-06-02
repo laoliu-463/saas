@@ -41,10 +41,10 @@
 默认入口：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope full -Message "说明本次修改"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明本次修改"
 ```
 
-后续 Agent 不允许临时发明构建、重启、部署流程。除非用户明确要求，否则必须优先调用 `harness/commands/agent-do.ps1` 或其中的子脚本。
+后续 Agent 不允许临时发明构建、重启、部署流程。除非用户明确要求 `test`，默认使用本地 `real-pre`；远端部署仍必须由用户明确要求后再传 `-DeployRemote true`。除非用户明确要求，否则必须优先调用 `harness/commands/agent-do.ps1` 或其中的子脚本。
 
 ## Definition of Done
 

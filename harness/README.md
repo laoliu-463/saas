@@ -31,13 +31,15 @@
 ## 总入口
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope full -Message "说明本次修改"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明本次修改"
 ```
+
+`agent-do.ps1` 和主要子命令默认 `Env=real-pre`。`test` 只作为显式指定的专项验证环境；远端部署仍必须显式传 `-DeployRemote true`。
 
 ## 最小验证
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-check.ps1 -Env test -Scope docs -DryRun
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-check.ps1 -Env real-pre -Scope docs -DryRun
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\retire-content.ps1 -Action Plan -DryRun
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope docs -DeployRemote false -Message "docs: initialize harness engineering system" -DryRun
 ```

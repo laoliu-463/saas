@@ -35,10 +35,11 @@
 ## 操作入口
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\restart-compose.ps1 -Env test -Scope full
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\restart-compose.ps1 -Env real-pre -Scope full
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\verify-local.ps1 -Env real-pre -Scope full
 ```
+
+`test` Compose 仅作为显式专项环境使用，不能作为默认工程修改目标。
 
 ## 安全规则
 
@@ -46,4 +47,3 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\verify-lo
 - 不删除 PostgreSQL / Redis volume。
 - 不临时改 project name 导致创建第二套 real-pre 数据卷。
 - real-pre 必须保持真实模式开关。
-

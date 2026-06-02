@@ -1,7 +1,7 @@
 param(
     [Alias("Env")]
     [ValidateSet("test", "real-pre")]
-    [string]$TargetEnv = "test",
+    [string]$TargetEnv = "real-pre",
     [ValidateSet("backend", "frontend", "full", "docs")]
     [string]$Scope = "full",
     [string]$BuildResult = "not collected",
@@ -29,7 +29,8 @@ Write-Host "Report path: $reportPath"
 
 $branch = Get-HarnessGitValue -Arguments @("branch", "--show-current")
 $commit = Get-HarnessGitValue -Arguments @("rev-parse", "--short", "HEAD")
-$status = Get-HarnessGitValue -Arguments @("status", "--short")
+$statusOutput = & git -c core.quotepath=false status --short 2>$null
+$status = if ($LASTEXITCODE -eq 0) { ($statusOutput -join "`n") } else { "" }
 $changedFiles = @(Get-HarnessChangedFiles)
 $changedFilesBlock = if ($changedFiles.Count -eq 0) { "(none)" } else { ($changedFiles -join "`n") }
 $dirty = if ([string]::IsNullOrWhiteSpace($status)) { "clean" } else { "dirty" }

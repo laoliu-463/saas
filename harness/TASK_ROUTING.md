@@ -4,6 +4,8 @@
 
 任务开始后先判断所属类型和领域，再读取对应文档。不能只凭文件名或报错内容直接下结论。
 
+默认执行环境为本地 `real-pre`。除非用户明确要求 `test`，或专项测试只能在 `test` 中验证，否则后端、前端、全链路和 Harness 变更都应使用 `-Env real-pre`。远端 `real-pre` 部署仍只在用户明确要求时添加 `-DeployRemote true`。
+
 ## 任务类型分流
 
 | 任务类型 | 必读文件 | 默认 Scope | 默认验证 |
@@ -35,13 +37,13 @@
 
 ```powershell
 # 文档 / Harness 变更
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope docs -Message "docs: update harness"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope docs -Message "docs: update harness"
 
 # 后端变更
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope backend -Message "fix: update backend logic"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope backend -Message "fix: update backend logic"
 
 # 前端变更
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope frontend -Message "fix: update frontend flow"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope frontend -Message "fix: update frontend flow"
 
 # real-pre 全链路验证
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "fix: update real-pre flow"

@@ -1,5 +1,13 @@
 # Harness Changelog
 
+## v0.1.5
+
+- 将 `agent-do.ps1`、`safety-check.ps1`、`restart-compose.ps1`、`verify-local.ps1`、`collect-evidence.ps1` 和 `new-retro.ps1` 的默认环境切换为本地 `real-pre`；`test` 仅作为显式专项环境。
+- 调整 `agent-do.ps1` 顺序为安全检查 -> 构建 -> Compose 重建 -> 健康检查 -> 业务验证，避免业务验证失败时跳过重启和健康证据。
+- `agent-do.ps1` 成功路径按实际验证状态写入 evidence conclusion：docs / 跳过业务验证 / 待远端部署为 `PARTIAL`，本地完整验证通过为 `PASS`。
+- 修复 `Get-HarnessChangedFiles` 和 `collect-evidence.ps1` 对 `git status` 首行前导空格的处理，避免首个 modified 文件名被截断。
+- 更新 AGENTS、Task Routing、Tools、Runbook 和 Harness 文档中的默认入口示例，明确远端部署仍必须显式传 `-DeployRemote true`。
+
 ## v0.1.4
 
 - 修复 `git-push-safe.ps1` 对非 ASCII 文件名的兼容性：`Get-ChangedFiles` 和 `git diff --cached --name-only` 改用 `git -c core.quotepath=false` 输出原始 UTF-8 路径，避免 octal 转义导致 `Test-Path` 报错。

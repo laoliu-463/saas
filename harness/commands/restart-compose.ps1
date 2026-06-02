@@ -1,7 +1,7 @@
 param(
     [Alias("Env")]
     [ValidateSet("test", "real-pre")]
-    [string]$TargetEnv = "test",
+    [string]$TargetEnv = "real-pre",
     [ValidateSet("backend", "frontend", "full", "docs")]
     [string]$Scope = "full",
     [switch]$DryRun

@@ -14,11 +14,13 @@
 
 按 `harness/TASK_ROUTING.md` 判断：
 
+- 默认环境：`Env=real-pre`
 - 后端修复：`Scope=backend`
 - 前端修复：`Scope=frontend`
 - 全链路修复：`Scope=full`
 - real-pre 排障：`Scope=full`
 - 文档 / Harness 调整：`Scope=docs`
+- `test`：只有用户明确要求或专项验证需要时显式指定
 - 远端部署：只有用户明确要求时执行 `DeployRemote=true`
 
 ## 3. 修改前确认
@@ -56,8 +58,8 @@
 
 ## 8. 业务验证
 
-- test 默认：`npm run e2e:v1-p0`
-- real-pre 默认：`npm run e2e:real-pre:p0:preflight`
+- 默认 real-pre：`npm run e2e:real-pre:p0:preflight`
+- 显式 `-Env test`：`npm run e2e:v1-p0`
 - 业务专项按领域 skill / eval / runbook 补充 API、SQL 或 E2E 证据。
 
 ## 9. 旧内容维护

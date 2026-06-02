@@ -13,6 +13,8 @@
 - 部署：Docker Compose
 - 环境：`test`、`real-pre`、远端 `real-pre`
 
+默认工程修改环境为本地 `real-pre`。`test` 仅在用户明确要求或专项测试需要时使用；远端 `real-pre` 部署仍必须由用户明确要求后才允许执行。
+
 旧文档中的 FastAPI、Celery、Python 爬虫、旧 V2.2 全量方案只作为历史背景，不作为当前运行事实。
 
 V1 核心闭环以三条主链为准：
@@ -84,13 +86,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 
 ```powershell
 # 文档 / Harness 变更
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope docs -Message "docs: update harness"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope docs -Message "docs: update harness"
 
 # 后端变更
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope backend -Message "fix: update backend"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope backend -Message "fix: update backend"
 
 # 前端变更
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope frontend -Message "fix: update frontend"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope frontend -Message "fix: update frontend"
 
 # real-pre 全链路
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "fix: update real-pre flow"

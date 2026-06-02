@@ -33,12 +33,13 @@ function Assert-HarnessRepoRoot {
 }
 
 function Get-HarnessChangedFiles {
-    $status = Get-HarnessGitValue -Arguments @("status", "--porcelain=v1")
-    if ([string]::IsNullOrWhiteSpace($status)) {
+    $statusLines = & git -c core.quotepath=false status --porcelain=v1 2>$null
+    if ($LASTEXITCODE -ne 0 -or $null -eq $statusLines -or $statusLines.Count -eq 0) {
         return @()
     }
+
     $files = @()
-    foreach ($line in ($status -split "`n")) {
+    foreach ($line in $statusLines) {
         if ($line.Length -lt 4) {
             continue
         }

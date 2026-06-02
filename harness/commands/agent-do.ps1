@@ -1,7 +1,7 @@
 param(
     [Alias("Env")]
     [ValidateSet("test", "real-pre")]
-    [string]$TargetEnv = "test",
+    [string]$TargetEnv = "real-pre",
     [ValidateSet("backend", "frontend", "full", "docs")]
     [string]$Scope = "full",
     [object]$DeployRemote = $false,
@@ -83,30 +83,6 @@ try {
                 $buildResult = ($buildResult + "`nFrontend build: PASS ($installCmd; npm --prefix frontend run build)").Trim()
             }
 
-            if ($SkipBusinessValidation) {
-                $businessResult = "Business validation skipped by -SkipBusinessValidation; not a full PASS."
-            }
-            else {
-                $effectiveBusinessCommand = $BusinessCommand
-                if ([string]::IsNullOrWhiteSpace($effectiveBusinessCommand)) {
-                    if ($TargetEnv -eq "real-pre") {
-                        $effectiveBusinessCommand = "npm run e2e:real-pre:p0:preflight"
-                    }
-                    else {
-                        $effectiveBusinessCommand = "npm run e2e:v1-p0"
-                    }
-                }
-
-                Write-HarnessStage "Business validation"
-                Write-Host $effectiveBusinessCommand
-                if (-not $DryRun) {
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command $effectiveBusinessCommand
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Business validation failed: $effectiveBusinessCommand"
-                    }
-                }
-                $businessResult = "Business validation: PASS ($effectiveBusinessCommand)"
-            }
         }
     }
     finally {
@@ -120,6 +96,39 @@ try {
     }
     else {
         $healthResult = "Local health verification: PASS"
+    }
+
+    if ($Scope -ne "docs") {
+        if ($SkipBusinessValidation) {
+            $businessResult = "Business validation skipped by -SkipBusinessValidation; not a full PASS."
+        }
+        else {
+            $effectiveBusinessCommand = $BusinessCommand
+            if ([string]::IsNullOrWhiteSpace($effectiveBusinessCommand)) {
+                if ($TargetEnv -eq "real-pre") {
+                    $effectiveBusinessCommand = "npm run e2e:real-pre:p0:preflight"
+                }
+                else {
+                    $effectiveBusinessCommand = "npm run e2e:v1-p0"
+                }
+            }
+
+            Write-HarnessStage "Business validation"
+            Write-Host $effectiveBusinessCommand
+            if (-not $DryRun) {
+                Push-Location $config.RepoRoot
+                try {
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command $effectiveBusinessCommand
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Business validation failed: $effectiveBusinessCommand"
+                    }
+                }
+                finally {
+                    Pop-Location
+                }
+            }
+            $businessResult = "Business validation: PASS ($effectiveBusinessCommand)"
+        }
     }
 
     if ($ContentMaintenance -eq "off") {
@@ -150,6 +159,13 @@ try {
         $contentMaintenanceResult = "Content maintenance: $contentAction. Manifest=$ContentMaintenanceManifest. DryRun=$($DryRun.IsPresent)."
     }
 
+    if ($Scope -eq "docs" -or $SkipBusinessValidation -or $deployRemoteValue) {
+        $conclusion = "PARTIAL"
+    }
+    else {
+        $conclusion = "PASS"
+    }
+
     & (Join-Path $PSScriptRoot "collect-evidence.ps1") `
         -Env $TargetEnv `
         -Scope $Scope `
@@ -158,7 +174,7 @@ try {
         -BusinessResult $businessResult `
         -ContentMaintenanceResult $contentMaintenanceResult `
         -RemoteResult $remoteResult `
-        -Conclusion "PARTIAL" `
+        -Conclusion $conclusion `
         -DeployRemote $deployRemoteValue `
         -DryRun:$DryRun
 
@@ -178,6 +194,7 @@ try {
             -Conclusion "PASS" `
             -DeployRemote $true `
             -DryRun:$DryRun
+        $conclusion = "PASS"
     }
 
     & (Join-Path $PSScriptRoot "new-retro.ps1") `
@@ -189,13 +206,6 @@ try {
         -DryRun:$DryRun
 
     Write-Host "Review HARNESS_CHANGELOG.md and update it when Harness behavior changed." -ForegroundColor Yellow
-
-    if ($Scope -eq "docs" -or $SkipBusinessValidation) {
-        $conclusion = "PARTIAL"
-    }
-    else {
-        $conclusion = "PASS"
-    }
 
     Write-HarnessStage "Agent do result"
     Write-Host "Conclusion: $conclusion" -ForegroundColor Green
