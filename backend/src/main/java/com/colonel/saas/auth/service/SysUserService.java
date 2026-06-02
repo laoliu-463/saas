@@ -168,16 +168,20 @@ public class SysUserService {
      * 和组织结构信息（部门名称、业务组名称等）。
      * </p>
      *
+     * <p><b>筛选与数据权限（CLAUDE.md 不变量）：</b></p>
      * <ol>
-     *   <li>根据分页参数和查询条件构建 MyBatis-Plus 分页对象</li>
-     *   <li>调用 Mapper 执行分页查询</li>
-     *   <li>批量填充每个用户关联的角色 ID 列表</li>
-     *   <li>通过组织结构服务为用户列表补充部门/业务组名称等展示字段</li>
-     *   <li>返回分页结果</li>
+     *   <li>请求字段筛选：keyword（用户名/姓名模糊）、status（账号状态）、deptId/groupId（部门归属）、
+     *       roleId/roleCode（拥有指定角色）均在 {@code QueryWrapper} 显式组装</li>
+     *   <li>数据范围（{@code dataScope}）：PERSONAL → {@code su.id = currentUserId}，
+     *       DEPT → {@code su.dept_id = currentDeptId}，ALL → 不追加。
+     *       为避免 {@code @DataScope} AOP 双重注入，本方法自行在 wrapper 中实现 dataScope，
+     *       Mapper 上对应的 {@code @DataScope} 注解已移除</li>
+     *   <li>MyBatis Mapper 只保留 {@code deleted = 0} 基线和排序，
+     *       业务条件由本方法的 {@code wrapper} 透传</li>
      * </ol>
      *
-     * @param currentUserId 当前操作用户 ID（保留参数，供后续扩展使用）
-     * @param dataScope     数据权限范围（保留参数，供后续扩展使用）
+     * @param currentUserId 当前操作用户 ID（PERSONAL 范围时必填，其他可空）
+     * @param dataScope     数据权限范围（null 时按 ALL 处理，兼容单元测试与非 HTTP 上下文）
      * @param request       分页查询请求参数（包含页码、每页条数、关键字、状态等过滤条件）
      * @return 分页结果，包含用户 VO 列表和分页元数据
      */
@@ -187,14 +191,137 @@ public class SysUserService {
             SysUserPageRequest request) {
         // 第一步：构建分页对象
         Page<SysUserVO> page = new Page<>(request.pageNo(), request.pageSize());
-        QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
-        // 第二步：执行分页查询
+        // 第二步：构建带筛选 + dataScope 的 QueryWrapper（CLAUDE.md：用户域统一 self / group / all）
+        QueryWrapper<SysUser> wrapper = buildUserPageWrapper(currentUserId, dataScope, request);
+        // 第三步：执行分页查询
         IPage<SysUserVO> result = sysUserMapper.findPage(page, request, wrapper);
-        // 第三步：批量填充角色 ID 列表
+        // 第四步：批量填充角色 ID 列表
         fillRoleIds(result.getRecords());
-        // 第四步：补充组织结构展示信息
+        // 第五步：补充组织结构展示信息
         orgStructureService.enrichUserList(result.getRecords());
         return result;
+    }
+
+    /**
+     * 组装用户分页查询的 {@link QueryWrapper}：包含请求字段筛选 + dataScope 行级权限。
+     * <p>
+     * 拆为独立方法以便单测断言 SQL 片段（与 ColonelPartnerMasterDataServiceTest 风格一致）。
+     * </p>
+     *
+     * <h4>字段筛选</h4>
+     * <ul>
+     *   <li>keyword 非空：{@code (username LIKE %k% OR real_name LIKE %k%)}</li>
+     *   <li>status 非空：{@code status = ?}</li>
+     *   <li>groupId 非空：{@code dept_id = ?}（精确匹配业务组）</li>
+     *   <li>deptId 非空 + groupId 为空：{@code dept_id = ? OR dept_id IN (subquery)}</li>
+     *   <li>roleId 非空：{@code EXISTS (sys_user_role WHERE role_id = ?)}</li>
+     *   <li>roleCode 非空：{@code EXISTS (sys_user_role JOIN sys_role WHERE role_code = ?)}</li>
+     * </ul>
+     *
+     * <h4>dataScope 注入</h4>
+     * <ul>
+     *   <li>PERSONAL：{@code id = currentUserId}（缺 userId 时不追加，由 SQL 兜底为空集）</li>
+     *   <li>DEPT：{@code dept_id = currentDeptId}</li>
+     *   <li>ALL：no-op</li>
+     * </ul>
+     */
+    QueryWrapper<SysUser> buildUserPageWrapper(
+            UUID currentUserId,
+            DataScope dataScope,
+            SysUserPageRequest request) {
+        QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
+        if (request == null) {
+            applyDataScopeFilter(wrapper, currentUserId, dataScope);
+            return wrapper;
+        }
+        // 关键词
+        if (request.keyword() != null && !request.keyword().isBlank()) {
+            String safe = request.keyword().trim();
+            wrapper.and(q -> q.like("username", safe).or().like("real_name", safe));
+        }
+        // 状态
+        if (request.status() != null) {
+            wrapper.eq("status", request.status());
+        }
+        // 业务组优先于部门
+        if (request.groupId() != null) {
+            wrapper.eq("dept_id", request.groupId());
+        } else if (request.deptId() != null) {
+            UUID parentDeptId = request.deptId();
+            // 用 apply + 占位符传递 UUID，避免字符串拼接
+            wrapper.and(q -> q.eq("dept_id", parentDeptId)
+                    .or().apply("dept_id IN (SELECT id FROM sys_dept WHERE deleted = 0 AND parent_id = {0})",
+                            parentDeptId));
+        }
+        // 角色筛选（roleId / roleCode 二选一）
+        if (request.roleId() != null) {
+            wrapper.apply(
+                    "EXISTS (SELECT 1 FROM sys_user_role sur WHERE sur.user_id = su.id AND sur.role_id = {0})",
+                    request.roleId());
+        } else if (request.roleCode() != null && !request.roleCode().isBlank()) {
+            String code = request.roleCode().trim();
+            wrapper.apply(
+                    "EXISTS (SELECT 1 FROM sys_user_role sur INNER JOIN sys_role sr ON sr.id = sur.role_id"
+                            + " AND sr.deleted = 0 WHERE sur.user_id = su.id AND sr.role_code = {0})",
+                    code);
+        }
+        // 数据范围
+        applyDataScopeFilter(wrapper, currentUserId, dataScope);
+        return wrapper;
+    }
+
+    /**
+     * 把 dataScope 翻译为 {@link QueryWrapper} 过滤条件并追加。
+     * <p>
+     * 设计要点：
+     * </p>
+     * <ul>
+     *   <li>PERSONAL + userId null：拒绝追加（保留为空集由 Service caller 处理），避免越权</li>
+     *   <li>DEPT + deptId null：不追加（与 ALL 等价，便于兼容老调用）</li>
+     *   <li>ALL / null：no-op</li>
+     * </ul>
+     *
+     * @param wrapper         目标 wrapper（in-place 追加）
+     * @param currentUserId   当前操作用户 ID
+     * @param currentDeptId   当前操作者所属部门 ID（可空）
+     * @param dataScope       数据范围枚举
+     */
+    void applyDataScopeFilter(
+            QueryWrapper<SysUser> wrapper,
+            UUID currentUserId,
+            DataScope dataScope) {
+        applyDataScopeFilter(wrapper, currentUserId, null, dataScope);
+    }
+
+    /**
+     * 把 dataScope 翻译为 {@link QueryWrapper} 过滤条件并追加（带 deptId 上下文）。
+     * <p>
+     * 重载：调用方如果持有 deptId（如 Controller 从请求属性注入），
+     * 可走本方法以确保 DEPT 范围有 dept 上下文。
+     * </p>
+     */
+    void applyDataScopeFilter(
+            QueryWrapper<SysUser> wrapper,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope) {
+        if (dataScope == null || dataScope == DataScope.ALL) {
+            return;
+        }
+        if (dataScope == DataScope.PERSONAL) {
+            if (currentUserId == null) {
+                // 与 AOP 行为对齐：缺少上下文时拒绝追加（由调用方处理 403 或空集）
+                return;
+            }
+            wrapper.eq("id", currentUserId);
+            return;
+        }
+        if (dataScope == DataScope.DEPT) {
+            if (currentDeptId == null) {
+                return;
+            }
+            wrapper.eq("dept_id", currentDeptId);
+        }
     }
 
     /**

@@ -9,18 +9,22 @@ import com.colonel.saas.service.CommissionRuleService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -51,7 +55,9 @@ class CommissionRuleControllerTest {
         Page<CommissionRule> page = new Page<>(1, 20);
         page.setRecords(List.of(rule));
         page.setTotal(1);
-        when(commissionRuleService.findPage("activity", "channel", 1, 20)).thenReturn(page);
+        when(commissionRuleService.findPage(eq("activity"), eq("channel"), eq(null),
+                eq(null), eq(null), eq(1), eq(20)))
+                .thenReturn(page);
 
         mockMvc.perform(get("/commission-rules")
                         .param("dimensionType", "activity")
@@ -61,6 +67,61 @@ class CommissionRuleControllerTest {
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.records[0].dimensionType").value("activity"))
                 .andExpect(jsonPath("$.data.records[0].commissionType").value("channel"));
+    }
+
+    @Test
+    void page_passesStatusAndEffectiveRangeToService() throws Exception {
+        Page<CommissionRule> empty = new Page<>(1, 20);
+        when(commissionRuleService.findPage(any(), any(), any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(empty);
+
+        mockMvc.perform(get("/commission-rules")
+                        .param("dimensionType", "activity")
+                        .param("commissionType", "recruiter")
+                        .param("status", "1")
+                        .param("effectiveStart", "2026-06-01T00:00:00")
+                        .param("effectiveEnd", "2026-06-30T23:59:59")
+                        .param("page", "2")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        ArgumentCaptor<LocalDateTime> startCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<LocalDateTime> endCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(commissionRuleService).findPage(
+                eq("activity"),
+                eq("recruiter"),
+                eq(1),
+                startCaptor.capture(),
+                endCaptor.capture(),
+                eq(2),
+                eq(10));
+        assertThat(startCaptor.getValue()).isEqualTo(LocalDateTime.of(2026, 6, 1, 0, 0));
+        assertThat(endCaptor.getValue()).isEqualTo(LocalDateTime.of(2026, 6, 30, 23, 59, 59));
+    }
+
+    @Test
+    void page_returnsBadRequestWhenEffectiveEndBeforeStart() throws Exception {
+        when(commissionRuleService.findPage(any(), any(), any(), any(), any(), anyInt(), anyInt()))
+                .thenThrow(com.colonel.saas.common.exception.BusinessException.param("查询生效区间终点不能早于起点"));
+
+        mockMvc.perform(get("/commission-rules")
+                        .param("effectiveStart", "2026-06-30T00:00:00")
+                        .param("effectiveEnd", "2026-06-01T00:00:00"))
+                .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    void page_acceptsAbsentStatusAndTimeRange() throws Exception {
+        Page<CommissionRule> empty = new Page<>(1, 20);
+        when(commissionRuleService.findPage(any(), any(), any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(empty);
+
+        mockMvc.perform(get("/commission-rules"))
+                .andExpect(status().isOk());
+
+        verify(commissionRuleService).findPage(eq(null), eq(null), eq(null),
+                eq(null), eq(null), eq(1), eq(20));
     }
 
     @Test

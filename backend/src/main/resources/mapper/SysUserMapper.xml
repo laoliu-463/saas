@@ -15,40 +15,6 @@
             su.create_time AS createTime
         FROM sys_user su
         WHERE su.deleted = 0
-        <if test="request != null and request.keyword != null and request.keyword != ''">
-            AND (
-                su.username LIKE CONCAT('%', #{request.keyword}, '%')
-                OR su.real_name LIKE CONCAT('%', #{request.keyword}, '%')
-            )
-        </if>
-        <if test="request != null and request.status != null">
-            AND su.status = #{request.status}
-        </if>
-        <if test="request != null and request.groupId != null">
-            AND su.dept_id = #{request.groupId}
-        </if>
-        <if test="request != null and request.deptId != null and request.groupId == null">
-            AND (
-                su.dept_id = #{request.deptId}
-                OR su.dept_id IN (
-                    SELECT id FROM sys_dept
-                    WHERE deleted = 0 AND parent_id = #{request.deptId}
-                )
-            )
-        </if>
-        <if test="request != null and request.roleId != null">
-            AND EXISTS (
-                SELECT 1 FROM sys_user_role sur
-                WHERE sur.user_id = su.id AND sur.role_id = #{request.roleId}
-            )
-        </if>
-        <if test="request != null and request.roleCode != null and request.roleCode != ''">
-            AND EXISTS (
-                SELECT 1 FROM sys_user_role sur
-                INNER JOIN sys_role sr ON sr.id = sur.role_id AND sr.deleted = 0
-                WHERE sur.user_id = su.id AND sr.role_code = #{request.roleCode}
-            )
-        </if>
         <if test="ew != null and ew.sqlSegment != null and ew.sqlSegment != ''">
             AND ${ew.sqlSegment}
         </if>

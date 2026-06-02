@@ -87,13 +87,32 @@ public class CommissionRuleService {
     /**
      * 分页查询提成规则列表。
      *
+     * <p>支持的可选筛选条件（彼此通过 AND 组合）：
+     * <ul>
+     *   <li>{@code dimensionType} —— 维度类型（global/activity/product/user）</li>
+     *   <li>{@code commissionType} —— 提成类型（recruiter/channel）</li>
+     *   <li>{@code status} —— 启用状态（1 启用 / 0 禁用）</li>
+     *   <li>{@code effectiveStart} / {@code effectiveEnd} —— 生效时间区间
+     *       （与规则有效期做"区间重叠"判定，区间端点可空表示不约束）</li>
+     * </ul>
+     *
      * @param dimensionType 维度类型筛选（可选，null 表示不筛选）
      * @param commissionType 提成类型筛选（可选，null 表示不筛选）
+     * @param status        启用状态筛选（可选，null 表示不筛选）
+     * @param effectiveStart 查询生效区间起点（可选，null 表示不限起点）
+     * @param effectiveEnd   查询生效区间终点（可选，null 表示不限终点）
      * @param page          页码
      * @param size          每页大小
      * @return 分页结果
      */
-    public IPage<CommissionRule> findPage(String dimensionType, String commissionType, int page, int size) {
+    public IPage<CommissionRule> findPage(
+            String dimensionType,
+            String commissionType,
+            Integer status,
+            LocalDateTime effectiveStart,
+            LocalDateTime effectiveEnd,
+            int page,
+            int size) {
         LambdaQueryWrapper<CommissionRule> wrapper = new LambdaQueryWrapper<CommissionRule>()
                 .eq(CommissionRule::getDeleted, 0)
                 .orderByDesc(CommissionRule::getUpdateTime)
@@ -103,6 +122,28 @@ public class CommissionRuleService {
         }
         if (StringUtils.hasText(commissionType)) {
             wrapper.eq(CommissionRule::getCommissionType, normalizeCommissionType(commissionType));
+        }
+        if (status != null) {
+            // 仅接受 0/1，非法值当作"不筛选"以避免静默回错数据
+            if (status == 0 || status == 1) {
+                wrapper.eq(CommissionRule::getStatus, status);
+            }
+        }
+        // 生效区间重叠判定：规则有效期与查询区间相交。
+        // 查询区间端点为 null 时表示该方向不约束。
+        if (effectiveStart != null && effectiveEnd != null
+                && effectiveEnd.isBefore(effectiveStart)) {
+            throw BusinessException.param("查询生效区间终点不能早于起点");
+        }
+        if (effectiveStart != null) {
+            // 规则 effectiveEnd 为 null（长期） 或 >= 查询起点
+            wrapper.and(w -> w.isNull(CommissionRule::getEffectiveEnd)
+                    .or().ge(CommissionRule::getEffectiveEnd, effectiveStart));
+        }
+        if (effectiveEnd != null) {
+            // 规则 effectiveStart 为 null（即时） 或 <= 查询终点
+            wrapper.and(w -> w.isNull(CommissionRule::getEffectiveStart)
+                    .or().le(CommissionRule::getEffectiveStart, effectiveEnd));
         }
         return commissionRuleMapper.selectPage(new Page<>(page, size), wrapper);
     }

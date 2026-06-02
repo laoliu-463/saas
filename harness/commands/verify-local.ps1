@@ -1,0 +1,83 @@
+param(
+    [Alias("Env")]
+    [ValidateSet("test", "real-pre")]
+    [string]$TargetEnv = "test",
+    [ValidateSet("backend", "frontend", "full", "docs")]
+    [string]$Scope = "full",
+    [switch]$DryRun
+)
+
+$ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "_lib.ps1")
+
+$config = Get-HarnessEnvConfig -Env $TargetEnv
+$envMap = Read-HarnessEnvFile -Path $config.EnvFile
+$backendDefault = Get-HarnessPortFromCompose -ComposeFile $config.ComposeFile -EnvKey "BACKEND_HOST_PORT" -Default $config.BackendPort
+$frontendDefault = Get-HarnessPortFromCompose -ComposeFile $config.ComposeFile -EnvKey "FRONTEND_HOST_PORT" -Default $config.FrontendPort
+$backendPort = Get-HarnessPort -EnvMap $envMap -Key "BACKEND_HOST_PORT" -Default $backendDefault
+$frontendPort = Get-HarnessPort -EnvMap $envMap -Key "FRONTEND_HOST_PORT" -Default $frontendDefault
+
+Write-HarnessStage "Local verification"
+Write-Host "Env: $TargetEnv"
+Write-Host "Scope: $Scope"
+
+$repoRoot = Get-HarnessRepoRoot
+Assert-HarnessRepoRoot -RepoRoot $repoRoot
+
+if ($Scope -eq "docs") {
+    Write-Host "Scope=docs: repository structure check passed; HTTP health checks skipped."
+    return
+}
+
+$failures = @()
+
+if ($Scope -eq "backend" -or $Scope -eq "full") {
+    $backendUrl = "http://127.0.0.1:$backendPort$($config.BackendHealthPath)"
+    Write-Host "Backend health: $backendUrl"
+    if ($DryRun) {
+        Write-Host "DRY-RUN backend check skipped."
+    }
+    else {
+        $backend = Invoke-HarnessHttp -Url $backendUrl
+        $backendUp = $backend.Ok -and ($backend.Body -match '"status"\s*:\s*"UP"')
+        Write-Host "Backend statusCode=$($backend.StatusCode)"
+        if ($backend.Body) {
+            Write-Host "Backend body=$($backend.Body)"
+        }
+        if (-not $backendUp) {
+            $failures += "Backend health failed: $($backend.Error)"
+        }
+    }
+}
+
+if ($Scope -eq "frontend" -or $Scope -eq "full") {
+    $frontendOk = $false
+    foreach ($path in $config.FrontendHealthCandidates) {
+        $frontendUrl = "http://127.0.0.1:$frontendPort$path"
+        Write-Host "Frontend probe: $frontendUrl"
+        if ($DryRun) {
+            $frontendOk = $true
+            Write-Host "DRY-RUN frontend check skipped."
+            break
+        }
+        $frontend = Invoke-HarnessHttp -Url $frontendUrl
+        Write-Host "Frontend statusCode=$($frontend.StatusCode)"
+        if ($frontend.Ok) {
+            $frontendOk = $true
+            break
+        }
+    }
+    if (-not $frontendOk) {
+        $failures += "Frontend health failed for all candidates."
+    }
+}
+
+if ($failures.Count -gt 0) {
+    foreach ($failure in $failures) {
+        Write-Host $failure -ForegroundColor Red
+    }
+    throw "Local verification failed."
+}
+
+Write-Host "Local verification passed." -ForegroundColor Green

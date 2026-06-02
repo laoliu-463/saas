@@ -456,12 +456,12 @@ public class SampleApplicationService extends BaseController {
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
             @Parameter(description = "关键字，可匹配达人昵称、达人 UID、寄样单号或商品名称。") @RequestParam(required = false) String keyword,
             @Parameter(description = "寄样状态。可用值包括 PENDING_AUDIT、PENDING_SHIP、SHIPPING、DELIVERED、PENDING_HOMEWORK、COMPLETED、REJECTED、CLOSED。") @RequestParam(required = false) String status,
-            @Parameter(description = "渠道负责人用户 ID。") @RequestParam(required = false) UUID channelUserId,
+            @Parameter(description = "渠道负责人用户 ID 列表（多选，IN 查询），与数据权限范围叠加。") @RequestParam(required = false) List<UUID> channelUserIds,
             @Parameter(description = "招商负责人用户 ID。") @RequestParam(required = false) UUID recruiterUserId,
             @Parameter(description = "商品 ID 或商品名称。") @RequestParam(required = false) String productKeyword,
             @Parameter(description = "店铺 ID 或店铺名称。") @RequestParam(required = false) String shopKeyword,
-            @Parameter(description = "物流单号。") @RequestParam(required = false) String trackingNo,
-            @Parameter(description = "申请编号 / 合作单号。") @RequestParam(required = false) String requestNo,
+            @Parameter(description = "物流单号（精确匹配）。") @RequestParam(required = false) String trackingNo,
+            @Parameter(description = "申请编号 / 合作单号（精确匹配）。") @RequestParam(required = false) String requestNo,
             @Parameter(description = "达人昵称或达人号。") @RequestParam(required = false) String talentKeyword,
             @Parameter(description = "合作类型。") @RequestParam(required = false) String cooperationType,
             @Parameter(description = "寄样负责方。") @RequestParam(required = false) String sampleOwnerType,
@@ -496,7 +496,7 @@ public class SampleApplicationService extends BaseController {
                 wrapper,
                 status,
                 keyword,
-                channelUserId,
+                channelUserIds,
                 productKeyword,
                 shopKeyword,
                 trackingNo,
@@ -514,7 +514,7 @@ public class SampleApplicationService extends BaseController {
                 logisticsCompany);
 
         IPage<SampleRequest> samplePage;
-        // 招商专员且数据范围为个人：按“我负责的商品”过滤
+        // 招商专员且数据范围为个人：按"我负责的商品"过滤
         if (dataScope == com.colonel.saas.common.enums.DataScope.PERSONAL && hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) && !hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
             samplePage = recruiterUserId == null
                     ? sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper)
@@ -571,16 +571,15 @@ public class SampleApplicationService extends BaseController {
     }
 
     /**
-     * 寄样分页查询的中等重载版本，支持渠道负责人和招商负责人筛选。
+     * 寄样分页查询的中等重载版本，支持渠道负责人（单选）和招商负责人筛选。
      *
-     * <p>直接委托给全参版本 {@link #getSamplePage(long, long, String, String, UUID, UUID, String, String, String, String, String, String, String, String, String, String, LocalDateTime, LocalDateTime, LocalDateTime, LocalDateTime, String, UUID, UUID, com.colonel.saas.common.enums.DataScope, Object)}，
-     * 将商品/店铺/物流/达人等关键词筛选条件传入 null。
+     * <p>直接委托给全参版本，将单值 {@code channelUserId} 包装为单元素 {@code channelUserIds} 列表。
      *
      * @param page            页码（从 1 开始）
      * @param size            每页条数
      * @param keyword         关键字（匹配达人昵称、达人 UID、寄样单号或商品名称）
      * @param status          寄样状态筛选
-     * @param channelUserId   渠道负责人用户 ID 筛选
+     * @param channelUserId   渠道负责人用户 ID（单值）；非 null 时包装为单元素列表传给全参版本
      * @param recruiterUserId 招商负责人用户 ID 筛选
      * @param userId          当前登录用户 ID
      * @param deptId          当前用户所属部门 ID
@@ -599,8 +598,9 @@ public class SampleApplicationService extends BaseController {
             UUID deptId,
             com.colonel.saas.common.enums.DataScope dataScope,
             Object roleCodes) {
+        List<UUID> channelUserIds = channelUserId == null ? null : List.of(channelUserId);
         return getSamplePage(
-                page, size, keyword, status, channelUserId, recruiterUserId,
+                page, size, keyword, status, channelUserIds, recruiterUserId,
                 null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null,
                 userId, deptId, dataScope, roleCodes);
@@ -2818,11 +2818,11 @@ public class SampleApplicationService extends BaseController {
      * <ol>
      *     <li>寄样状态（status）——精确匹配</li>
      *     <li>通用关键词（keyword）——模糊匹配达人昵称/UID/寄样单号，或精确匹配关联商品 ID</li>
-     *     <li>渠道人员（channelUserId）——精确匹配</li>
+     *     <li>渠道人员（channelUserIds）——多选 IN 匹配</li>
      *     <li>商品关键词（productKeyword）——先模糊匹配商品，再过滤寄样单</li>
      *     <li>店铺关键词（shopKeyword）——先按店铺名/ID 匹配快照，再过滤寄样单</li>
-     *     <li>快递单号（trackingNo）——模糊匹配</li>
-     *     <li>寄样单号（requestNo）——模糊匹配</li>
+     *     <li>快递单号（trackingNo）——精确匹配</li>
+     *     <li>寄样单号（requestNo）——精确匹配</li>
      *     <li>达人关键词（talentKeyword）——模糊匹配达人昵称/UID</li>
      *     <li>合作类型（cooperationType）——JSON 字段精确匹配</li>
      *     <li>寄样归属类型（sampleOwnerType）——JSON 字段精确匹配</li>
@@ -2836,11 +2836,11 @@ public class SampleApplicationService extends BaseController {
      * @param wrapper            MyBatis-Plus 查询包装器（会被直接修改）
      * @param status             寄样状态
      * @param keyword            通用关键词
-     * @param channelUserId      渠道人员用户 ID
+     * @param channelUserIds     渠道人员用户 ID 列表（多选）；null/空时不过滤
      * @param productKeyword     商品名称/ID 关键词
      * @param shopKeyword        店铺名称/ID 关键词
-     * @param trackingNo         快递单号
-     * @param requestNo          寄样单号
+     * @param trackingNo         快递单号（精确匹配）
+     * @param requestNo          寄样单号（精确匹配）
      * @param talentKeyword      达人昵称/UID 关键词
      * @param cooperationType    合作类型
      * @param sampleOwnerType    寄样归属类型
@@ -2857,7 +2857,7 @@ public class SampleApplicationService extends BaseController {
             QueryWrapper<SampleRequest> wrapper,
             String status,
             String keyword,
-            UUID channelUserId,
+            List<UUID> channelUserIds,
             String productKeyword,
             String shopKeyword,
             String trackingNo,
@@ -2889,8 +2889,14 @@ public class SampleApplicationService extends BaseController {
                 }
             });
         }
-        if (channelUserId != null) {
-            wrapper.eq("sr.channel_user_id", channelUserId);
+        if (channelUserIds != null && !channelUserIds.isEmpty()) {
+            // 多选：去重后使用 IN 过滤；与数据权限范围 (channel_user_id = userId) AND 叠加
+            List<UUID> distinct = channelUserIds.stream().filter(Objects::nonNull).distinct().toList();
+            if (distinct.size() == 1) {
+                wrapper.eq("sr.channel_user_id", distinct.get(0));
+            } else if (!distinct.isEmpty()) {
+                wrapper.in("sr.channel_user_id", distinct);
+            }
         }
         if (StringUtils.hasText(productKeyword)) {
             applyProductIdsFilter(wrapper, loadMatchedProductIds(productKeyword.trim()));
@@ -2899,10 +2905,12 @@ public class SampleApplicationService extends BaseController {
             applyProductIdsFilter(wrapper, loadMatchedProductIdsByShop(shopKeyword.trim()));
         }
         if (StringUtils.hasText(trackingNo)) {
-            wrapper.like("sr.tracking_no", trackingNo.trim());
+            // 物流单号必须精确匹配（用户按运单号精准查找）
+            wrapper.eq("sr.tracking_no", trackingNo.trim());
         }
         if (StringUtils.hasText(requestNo)) {
-            wrapper.like("sr.request_no", requestNo.trim());
+            // 寄样单号必须精确匹配（用户按单号精准查找）
+            wrapper.eq("sr.request_no", requestNo.trim());
         }
         if (StringUtils.hasText(talentKeyword)) {
             String trimmed = talentKeyword.trim();

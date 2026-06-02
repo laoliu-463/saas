@@ -1,0 +1,58 @@
+{
+  "items": [
+    {
+      "path": "args.json",
+      "action": "delete",
+      "category": "root-transient-file",
+      "reason": "顶层一次性调试参数文件，非事实主源，非验收证据"
+    },
+    {
+      "path": "env.json",
+      "action": "delete",
+      "category": "root-transient-file",
+      "reason": "顶层一次性调试环境输出，非 env 源文件，非验收证据"
+    },
+    {
+      "path": "health.json",
+      "action": "delete",
+      "category": "root-transient-file",
+      "reason": "顶层一次性健康检查输出，非事实主源，非验收证据"
+    },
+    {
+      "path": "jmeter.log",
+      "action": "delete",
+      "category": "root-transient-file",
+      "reason": "顶层临时日志，非 harness evidence，非 runtime/qa 证据目录"
+    },
+    {
+      "path": "preflight.log",
+      "action": "delete",
+      "category": "root-transient-file",
+      "reason": "顶层临时日志，real-pre 预检证据以 runtime/qa/out 与 harness/reports 为准"
+    },
+    {
+      "path": "realpre-p0.log",
+      "action": "delete",
+      "category": "root-transient-file",
+      "reason": "顶层临时日志，real-pre P0 证据以 runtime/qa/out 与 harness/reports 为准"
+    },
+    {
+      "path": "snap1.txt",
+      "action": "delete",
+      "category": "root-transient-file",
+      "reason": "顶层一次性快照文件，非事实主源，非验收证据"
+    },
+    {
+      "path": "snap2.txt",
+      "action": "delete",
+      "category": "root-transient-file",
+      "reason": "顶层一次性快照文件，非事实主源，非验收证据"
+    },
+    {
+      "path": "snap3.txt",
+      "action": "delete",
+      "category": "root-transient-file",
+      "reason": "顶层一次性快照文件，非事实主源，非验收证据"
+    }
+  ]
+}

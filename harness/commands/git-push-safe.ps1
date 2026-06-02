@@ -1,0 +1,143 @@
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$Message,
+    [switch]$DryRun
+)
+
+$ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "_lib.ps1")
+
+$repoRoot = Get-HarnessRepoRoot
+
+function Get-ChangedFiles {
+    $lines = & git -c core.quotepath=false status --porcelain=v1
+    if ($LASTEXITCODE -ne 0) {
+        throw "git status failed."
+    }
+    $files = @()
+    foreach ($line in $lines) {
+        if ($line.Length -lt 4) {
+            continue
+        }
+        $path = $line.Substring(3).Trim().Trim('"')
+        if ($path -match "\s+->\s+") {
+            $path = ($path -split "\s+->\s+")[-1].Trim().Trim('"')
+        }
+        if ($path) {
+            $files += $path
+        }
+    }
+    return $files | Sort-Object -Unique
+}
+
+function Assert-NoSensitiveFile {
+    param([string[]]$Files)
+
+    foreach ($file in $Files) {
+        $name = Split-Path -Leaf $file
+        $lower = $file.ToLowerInvariant()
+        $isEnv = ($name -like ".env*" -and -not $name.EndsWith(".example"))
+        $blocked = $isEnv `
+            -or $lower.EndsWith(".pem") `
+            -or $lower.EndsWith(".key") `
+            -or $lower.EndsWith(".p12") `
+            -or $lower.EndsWith(".jks") `
+            -or $name.ToLowerInvariant().StartsWith("credentials") `
+            -or $name.ToLowerInvariant().StartsWith("secrets")
+        if ($blocked) {
+            throw "Sensitive file must not be committed: $file"
+        }
+    }
+}
+
+function Assert-NoPlainSecrets {
+    param([string[]]$Files)
+
+    $pattern = "(password|secret|token|client_secret|jwt_secret)\s*[:=]\s*['""]?[A-Za-z0-9_\-/.+=]{12,}"
+    foreach ($file in $Files) {
+        $path = Join-Path $repoRoot $file
+        $exists = $false
+        try { $exists = Test-Path -LiteralPath $path } catch { continue }
+        if (-not $exists) {
+            continue
+        }
+        $name = Split-Path -Leaf $file
+        if ($name -like "*.md" -or $name -like "*.prompt.md" -or $name -like "*.skill.md") {
+            continue
+        }
+        $hits = Select-String -LiteralPath $path -Pattern $pattern -ErrorAction SilentlyContinue
+        foreach ($hit in $hits) {
+            $line = $hit.Line
+            if ($line -match "\$pattern\s*=") {
+                continue
+            }
+            if ($line -match "\$\{" -or $line -match "REDACTED|placeholder|example|change-me|false|true") {
+                continue
+            }
+            throw "Potential plaintext secret in $file line $($hit.LineNumber)."
+        }
+    }
+}
+
+Write-HarnessStage "Git push safe"
+Assert-HarnessRepoRoot -RepoRoot $repoRoot
+
+if ([string]::IsNullOrWhiteSpace($Message) -or $Message.Trim().Length -lt 8) {
+    throw "Commit message is required and must be readable."
+}
+
+Push-Location $repoRoot
+try {
+    Write-Host "Current git status:"
+    git status --short
+    if ($LASTEXITCODE -ne 0) {
+        throw "git status failed."
+    }
+
+    $changedFiles = @(Get-ChangedFiles)
+    if ($changedFiles.Count -eq 0) {
+        Write-Host "No changes to commit." -ForegroundColor Yellow
+        return
+    }
+
+    Assert-NoSensitiveFile -Files $changedFiles
+    Assert-NoPlainSecrets -Files $changedFiles
+
+    if ($DryRun) {
+        Write-Host "DRY-RUN changed files:"
+        $changedFiles | ForEach-Object { Write-Host "- $_" }
+        Write-Host "DRY-RUN would run: git add -A; git commit -m `"$Message`"; git push"
+        return
+    }
+
+    git add -A
+    if ($LASTEXITCODE -ne 0) {
+        throw "git add failed."
+    }
+
+    $stagedFiles = & git -c core.quotepath=false diff --cached --name-only
+    if ($LASTEXITCODE -ne 0) {
+        throw "git diff --cached failed."
+    }
+    Assert-NoSensitiveFile -Files $stagedFiles
+    Assert-NoPlainSecrets -Files $stagedFiles
+
+    git commit -m $Message
+    if ($LASTEXITCODE -ne 0) {
+        throw "git commit failed."
+    }
+
+    $commit = (& git rev-parse --short HEAD).Trim()
+    Write-Host "Commit: $commit" -ForegroundColor Green
+
+    git push
+    if ($LASTEXITCODE -ne 0) {
+        throw "git push failed. Check upstream remote and credentials."
+    }
+
+    Write-Host "Git push completed." -ForegroundColor Green
+}
+finally {
+    Pop-Location
+}

@@ -36,11 +36,16 @@ export interface CommissionRuleItem {
 /**
  * 获取提成规则分页列表
  *
- * @param params - 可选的分页及筛选参数
+ * @param params - 可选的分页及筛选参数（任意字段缺省表示不筛选）
  * @param params.page - 页码，默认 1
  * @param params.size - 每页条数，默认 20
- * @param params.dimensionType - 按维度类型筛选
- * @param params.commissionType - 按提成类型筛选
+ * @param params.dimensionType - 按维度类型筛选（global/activity/product/user）
+ * @param params.commissionType - 按提成类型筛选（recruiter/channel）
+ * @param params.status - 按启用状态筛选（1=启用，0=禁用）
+ * @param params.effectiveStart - 查询生效区间起点（ISO 8601 格式），
+ *                                与规则有效期做"区间重叠"判定
+ * @param params.effectiveEnd - 查询生效区间终点（ISO 8601 格式），
+ *                              与规则有效期做"区间重叠"判定
  * @returns AxiosPromise，响应体包含规则列表和分页元数据
  */
 export const getCommissionRulePage = (params?: {
@@ -48,6 +53,9 @@ export const getCommissionRulePage = (params?: {
   size?: number
   dimensionType?: string
   commissionType?: string
+  status?: number
+  effectiveStart?: string
+  effectiveEnd?: string
 }) => request.get('/commission-rules', { params });
 
 /**

@@ -1,432 +1,207 @@
-# AGENTS.md — 抖音团长 SaaS V1 Harness Engineering 开发地图
+# AGENTS.md — 抖音团长 SaaS Harness 强制执行协议
 
-**版本**：V1 Harness Engineering 维护版
-**最后更新**：2026-05-26（事实口径与 `CLAUDE.md`、`docs/README.md` 对齐）
-**适用对象**：AI 智能体 / 开发者
+## 1. 项目定位
 
----
+本仓库是抖音团长内部 SaaS V1 工程，服务商品管理、达人 CRM、寄样、订单归因、业绩统计和看板分析。
 
-## Agent skills
+当前实际技术栈以源码和部署脚本为准：
 
-### Issue tracker
+- 后端：Spring Boot / Java 17
+- 前端：Vue 3 / Vite / Pinia / Naive UI / TypeScript
+- 数据库：PostgreSQL
+- 缓存：Redis
+- 部署：Docker Compose
+- 环境：`test`、`real-pre`、远端 `real-pre`
 
-本仓库默认使用 GitHub Issues 作为 issue tracker，相关 skill 统一按当前仓库 remote 使用 `gh` CLI。见 `docs/agents/issue-tracker.md`。
+旧文档中的 FastAPI、Celery、Python 爬虫、旧 V2.2 全量方案只作为历史背景，不作为当前运行事实。
 
-### Triage labels
+V1 核心闭环以三条主链为准：
 
-当前仓库未声明自定义 triage 标签词汇，先使用 `needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix` 作为默认映射。见 `docs/agents/triage-labels.md`。
+- 渠道链：认领达人 -> 商品库选品 -> 复制讲解 / 转链 -> 寄样申请 -> 订单同步 -> 渠道业绩 -> 寄样自动完成。
+- 招商链：同步活动 -> 活动商品入库 -> 商品上架 -> 审核寄样 -> 订单同步 -> 招商业绩。
+- 管理链：用户角色 -> 数据范围 -> 规则配置 -> 各领域读取配置 -> 权限生效。
 
-### Domain docs
+详细状态见 `harness/CURRENT_STATE.md`，领域职责见 `harness/DOMAIN_MAP.md` 和 `docs/领域/*.md`。
 
-当前仓库按单上下文布局接入：根目录 `CONTEXT.md` 提供术语表，主业务与执行口径以 `AGENTS.md`、`CLAUDE.md` 和 `docs/*.md` 为准。见 `docs/agents/domain.md`。
+## 2. 最高优先级规则
 
-### Codex Harness 工作台
+后续 AI Agent 执行任务必须遵守：
 
-本项目已经建立 Harness Engineering 工作台：
+1. 修改代码后必须构建。
+2. 修改代码后必须重启对应 Docker 容器。
+3. 修改代码后必须执行健康检查。
+4. 修改代码后必须执行相关业务验证。
+5. 修改代码后必须生成 evidence report。
+6. 需要远端部署时必须执行固定部署脚本。
+7. 禁止只修改代码后声明完成。
+8. 禁止口头说“建议重启”，必须实际执行可用脚本。
+9. 禁止把未验证项写成已完成。
+10. 禁止把 `BLOCKED`、`PENDING`、`PARTIAL` 写成 `PASS`。
+11. 每次任务后必须生成 retro summary，或明确说明本次无需 Harness 升级。
 
-- `CLAUDE.md`：只做地图，告诉智能体先读什么、怎么找证据、如何进入任务。
-- `.claude/`：存放智能体工作台文档，包括 hooks、skills、plugins、LSP、MCP、subagents、commands、memory、qa、templates。
-- `docs/`：存放事实、领域合同、流程、接口、事件、数据模型、验收、部署和 ADR。
+文档 / Harness 变更可使用 `Scope=docs`，此时跳过构建、重启和健康检查，但仍必须执行安全检查、生成 evidence report，并说明未执行项。
 
-Codex 在本项目执行任务时默认按以下顺序进入：
+## 3. 必读顺序
 
-1. 先读 `CLAUDE.md`，确认当前任务入口和禁止越界项。
-2. 再读 `docs/README.md`，进入对应主干文档或专题目录。
-3. 如果用户要求审计、验收、排障、文档重构，优先读取 `.claude/commands/` 中同名命令文档。
-4. 如果任务需要复用方法，读取 `.claude/skills/` 下对应 `SKILL.md`。
-5. 如果需要分领域检查，按 `.claude/subagents/` 中的代理职责拆分证据，不自行扩展业务规则。
+任务开始必须先读：
 
-注意：`.claude/hooks/*.md`、`.claude/commands/*.md`、`.claude/subagents/*.md` 在 Codex 中是可读工作流文档，不是自动执行机制。用户说“按 CLAUDE.md 执行”或“按某个 command/skill 执行”时，Codex 必须显式读取并遵循。
-
----
-
-## 1. 当前执行口径
-
-本项目采用 Harness Engineering：
-- 地图入口：`CLAUDE.md`
-- 智能体工作台：`.claude/**/*.md`
-- 文档主源：`docs/*.md`
-- 代码事实来源：`backend/src/**` + `frontend/src/**`
-
-后续开发统一遵循一句验收准则：
-
-> **开发角度看功能是否闭环，用户角度看业务是否顺手。**
-
-执行时不要只看“接口通了、页面有了、按钮能点”，而要看用户是否能完成真实业务动作，是否减少重复记录、重复沟通和线下补表。
-
-文档优先级：
 1. `CLAUDE.md`
 2. `docs/README.md`
-3. `docs/00-项目总览.md` ~ `docs/10-部署运行总览.md`
-4. `docs/领域/`、`docs/流程/`、`docs/对接/`、`docs/验收/`、`docs/决策/`
-5. `.claude/commands/`、`.claude/skills/`、`.claude/hooks/`、`.claude/subagents/`、`.claude/mcp/`
-6. `docs/归档/` 与 `docs/archive/` 中的历史资料
-7. 当前代码和测试结果
+3. `harness/CURRENT_STATE.md`
+4. `harness/TASK_ROUTING.md`
+5. 当前任务对应的领域、流程、接口、数据、权限、验收和部署文档
 
-补充要求：
-- 进入真实 SDK 联调、P0 验收、乱码治理等专项任务时，必须同时阅读 `CLAUDE.md`、`docs/README.md` 和对应专题目录，不能只按单个旧文档执行。
-- 旧 V2.2 完整方案、FastAPI、Celery、Python 爬虫等历史口径只能作为归档背景，不得写成当前事实。
-- 当前打开中的任务文档、当前里程碑引用的补充文档，默认视为本次任务约束的一部分。
+涉及 real-pre 必须补读：
 
----
+- `docs/08-第三方对接总览.md`
+- `docs/10-部署运行总览.md`
+- `docs/验收/real-pre联调手册.md`
+- `harness/skills/real-pre-debug.skill.md`
 
-## 2. 当前阶段（以代码实况为准）
+涉及订单归因、寄样、商品库、业绩或看板，必须读取 `harness/skills/` 下对应 skill。
 
-- 已完成：V0.5（M0.1~M0.8）
-- 已完成：V1.0 到 M1.5（SDK 封装、订单同步、爬虫、寄样真实数据接入、寄样自动闭环）
-- 已完成：P0/P1 本地 Mock 收口（环境口径统一、数据基线固化、日志降噪、SOP 文档化）
-- 已完成：real-pre 环境浏览器 E2E 全路径自动化联调（2026-05-02 首轮 10/10 PASS；2026-05-03 全量 45/45 PASS）
-- 进行中：P2 工程治理（权限注解口径统一）；real-pre 订单归因与看板口径收口（当前入口见 `docs/验收/real-pre联调手册.md`、`docs/决策/ADR-002-V1范围优先级.md`）
-- 待完成：M1.6 数据看板真实化**剩余项**、M1.7 部署验证；联盟侧能力中仍依赖外部 Token / 权限包 / 真实样本的分支（见 `docs/09`）
+## 4. code-review-graph 先行
 
-关键说明：
-- 当前 `mvn test` 全绿（以 `docs/04` 最近一次记录为准：`652 tests, 0 failures, 0 errors`；重大变更后请先本地跑 `mvn clean test` 再更新数字）
-- real-pre：当前唯一真实上游 / 生产形态环境，`docker-compose.real-pre` 后端使用 **`real-pre` profile**，典型 `.env.real-pre` 为 **`APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`**，可命中真实抖店上游；浏览器全路径回归 **45/45**（见 `docs/README.md`）。旧文档中把 real-pre 指向其他 profile 或 test/mock 开关的说法均为历史口径，以主干文档为准。
-- 根目录 Playwright：`README-e2e.md`，日常 `npm run e2e`；抖店联调专项 `npm run e2e:real-pre`（等价 `runtime/qa/real-pre-douyin-frontend-e2e.cjs` → `tests/e2e/08-real-pre-douyin-integration.spec.ts`）。
-- 第三方 SDK：主链路已具备大量 real-pre 取证；限流 / 429、部分权限包阻塞分支仍以清单跟踪（`docs/09`、`docs/04` 未完成项）。
-- 商品页已实现抖音 Token 缺失时降级本地商品库；Dashboard 已兼容后端实际 Summary 字段格式
-- 当前本机标准启动格局已固定为：`3000/8080` 一组、`3001/8081` 一组；执行时不得混起第二个 `3001` 本机 Vite 或额外 `8080` 手工后端
+本项目已有 code-review-graph 知识图谱。探索代码前必须先使用 code-review-graph MCP：
 
----
+- 了解变更影响：`detect_changes`
+- 查找函数 / 类 / 文件：`semantic_search_nodes`
+- 查依赖关系：`query_graph`
+- 查影响半径：`get_impact_radius`
+- 做代码审查：`get_review_context`
 
-## 3. 目录导航
+只有图谱不能覆盖或结果不足时，才回退到 `rg`、文件读取和手工追踪。
+
+## 5. 唯一执行入口
+
+默认执行入口：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1
+```
+
+常用示例：
+
+```powershell
+# 文档 / Harness 变更
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope docs -Message "docs: update harness"
+
+# 后端变更
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope backend -Message "fix: update backend"
+
+# 前端变更
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope frontend -Message "fix: update frontend"
+
+# real-pre 全链路
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "fix: update real-pre flow"
+
+# 用户明确要求远端部署时
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
+```
+
+后续 Agent 不允许临时发明构建、重启、部署流程。若确需绕过，必须说明原因和风险。
+
+## 6. 禁止事项
+
+### real-pre 禁止
+
+- 禁止清库。
+- 禁止 `docker compose down -v`。
+- 禁止删除 PostgreSQL / Redis volume。
+- 禁止把 real-pre 改成 test / mock。
+- 禁止开启 `APP_TEST_ENABLED=true`。
+- 禁止开启 `DOUYIN_TEST_ENABLED=true`。
+- 禁止把 `DOUYIN_REAL_UPSTREAM_MODE` 改为非 `live`。
+- 禁止关闭真实抖音 API 开关后仍声明真实闭环通过。
+- 禁止用 mock 数据证明 real-pre 业务闭环。
+
+### V1 禁止
+
+- 不做独家达人。
+- 不做独家商家。
+- 不做毛利口径扩展。
+- 不做个别品负责人覆盖。
+- 不做商品负责人变更历史重算。
+- 不做差异化提成。
+- 不做 Cookie 池 / 代理池。
+- 不做物流 API 自动跟踪作为 V1 必需能力。
+- 不做外部抖店快速寄样作为 V1 必需能力。
+- 不做数据平台整体导出。
+
+### 模块边界禁止
+
+- 前端不得直接调用抖音 / 抖店开放接口。
+- 前端不得硬编码核心业务规则、权限规则或状态机。
+- 订单域不得计算提成或最终归属。
+- 配置域不得执行具体业务规则。
+- 分析模块不得重算业绩归属。
+- SDK / Gateway 不得泄漏业务语义到第三方接口适配层。
+
+### Git 与密钥禁止
+
+- 禁止提交 `.env`、`.env.real-pre`、`.env.test`。
+- 禁止提交 `*.pem`、`*.key`、凭证、私钥、证书。
+- 禁止输出或提交密钥、Token、密码、OAuth code。
+
+完整禁止清单见 `harness/FORBIDDEN_SCOPE.md`。
+
+## 7. Definition of Done
+
+一个任务只有同时满足以下条件，才允许声明完成：
+
+- 代码或文档已修改。
+- 构建通过，或 `Scope=docs` 明确跳过构建。
+- 对应 Docker 容器已重启，或 `Scope=docs` 明确不需要重启。
+- 健康检查通过，或明确说明阻塞原因。
+- 相关业务验证通过，或明确说明 `BLOCKED` / `PENDING` / `FAIL` 证据。
+- evidence report 已生成。
+- retro summary 已生成，或明确说明本次无需 Harness 升级。
+- Git commit 已生成并 push 到当前分支上游，或用户明确要求本轮不提交 / 不推送。
+- 如果用户要求远端部署，远端部署已完成。
+- 剩余风险已列出。
+
+没有完成这些步骤，不允许声明任务完成。
+
+## 8. 证据报告
+
+证据报告统一生成到：
 
 ```text
-SAAS/
-├── CLAUDE.md                   # Codex / 智能体地图入口
-├── .claude/                    # 智能体工作台文档
-│   ├── commands/               # 审计、E2E、real-pre、文档重构等命令说明
-│   ├── skills/                 # 需求对齐、领域审计、real-pre 验收等技能说明
-│   ├── hooks/                  # 变更前、测试前、提交前守卫说明
-│   ├── subagents/              # 分领域代理职责说明
-│   ├── mcp/                    # MCP 使用和安全边界
-│   └── qa/                     # P0、E2E、覆盖率、证据映射
-├── backend/                    # Spring Boot 后端
-├── frontend/                   # Vue3 前端
-├── docs/                       # 项目主文档与事实层
-│   ├── README.md
-│   ├── 00-项目总览.md
-│   ├── 01-V1交付范围与边界.md
-│   ├── 02-业务闭环总览.md
-│   ├── 03-领域架构总览.md
-│   ├── 04-事件契约总表.md
-│   ├── 05-API契约总表.md
-│   ├── 06-数据模型总表.md
-│   ├── 07-权限与数据范围.md
-│   ├── 08-第三方对接总览.md
-│   ├── 09-测试验收总览.md
-│   ├── 10-部署运行总览.md
-│   ├── 领域/
-│   ├── 流程/
-│   ├── 对接/
-│   ├── 验收/
-│   ├── 决策/
-│   ├── 归档/
-│   └── archive/
-├── scripts/
-└── docker-compose.test.yml
+harness/reports/evidence-YYYYMMDD-HHMMSS.md
 ```
 
----
-
-## 4. 文档阅读入口
-
-### 开发新功能
-1. 先读 `CLAUDE.md` 和 `docs/README.md`。
-2. 再读 `docs/01-V1交付范围与边界.md`、`docs/02-业务闭环总览.md`、`docs/03-领域架构总览.md`。
-3. 涉及领域职责时读 `docs/领域/` 对应领域合同。
-4. 涉及业务链路时读 `docs/流程/` 对应流程。
-5. 涉及接口、事件、数据、权限时读 `docs/04-事件契约总表.md`、`docs/05-API契约总表.md`、`docs/06-数据模型总表.md`、`docs/07-权限与数据范围.md`。
-6. 涉及第三方或 real-pre 时读 `docs/08-第三方对接总览.md`、`docs/对接/` 和 `docs/验收/real-pre联调手册.md`。
-7. 对照当前代码实现落地，增加 / 更新测试并完成最小验证。
-
-### 修复 Bug
-1. 定位模块
-2. 查 `CLAUDE.md`、`docs/README.md`、对应领域合同、流程文档和验收文档
-3. 修复 + 回归测试
-4. 如影响接口、事件、数据、验收或 ADR，必须同步对应 `docs/*.md`
-
-### 文档维护
-1. 改实现后必须同步对应 `docs/*.md`。
-2. 涉及 SDK / Gateway 时同步 `docs/08-第三方对接总览.md` 和 `docs/对接/`。
-3. 涉及真实联调时同步 `docs/验收/real-pre联调手册.md` 与 `docs/验收/验收证据索引.md`。
-4. 涉及 P0 / E2E 验收时同步 `docs/09-测试验收总览.md`、`docs/验收/` 与 `.claude/qa/`。
-5. 涉及领域边界时同步 `docs/领域/` 和 `docs/决策/`。
-6. 涉及乱码、编码、文档可读性治理时对照 `docs/archive/audits/12-文档编码乱码问题分析报告.md`。
-
----
-
-## 5. 当前重点风险
-
-1. 第三方 SDK 真实联调未完成（高优先级，依赖外部 Token 配置）
-2. 权限注解口径不统一（`@RequiresRole` / `@DataScope` 覆盖未完整审计）
-3. 商品主链路状态机和操作日志仍待完全统一
-4. 达人跟进与真实数据回流尚未完全接入主链路
-5. `CrawlerScheduler` 的 Java 变更已编译，需容器重启后完全生效（`spring.devtools.restart.enabled=false`）
-6. 部分补充文档曾出现编码 / 乱码问题，修改文档时需确认文件编码一致且可读
-
----
-
-## 6. 强制规则速查
-
-1. Codex 任务先读 `CLAUDE.md`，再读 `docs/README.md`。
-2. V1 范围以 `docs/01-V1交付范围与边界.md` 为准，旧 V2.2 只能作为归档背景。
-3. 前端只调用内部 API：`docs/05-API契约总表.md`。
-4. 事件契约以 `docs/04-事件契约总表.md` 为入口。
-5. 数据模型以 `docs/06-数据模型总表.md` 为入口。
-6. 权限与数据范围以 `docs/07-权限与数据范围.md` 为入口。
-7. 第三方对接以 `docs/08-第三方对接总览.md` 与 `docs/对接/` 为入口。
-8. P0 / E2E / real-pre 验收以 `docs/09-测试验收总览.md` 与 `docs/验收/` 为准。
-9. 部署和联调按 `docs/10-部署运行总览.md` 执行。
-10. 发现 V1/V2 或当前事实冲突时，写入 `docs/决策/ADR-002-V1范围优先级.md`。
-
----
-
-## 7. 常用命令
-
-```bash
-cd backend
-mvn test
-
-cd frontend
-npm run dev
-npm run build
-
-# 仓库根目录（Playwright，见 README-e2e.md）
-cd ..
-npm install
-npm run e2e
-```
-
-### 7.1 常见症状与标准修复
-
-#### A. 商品库漂移（"推广中" Tab 下操作列只剩"查看详情"）
-
-**症状**：在活动商品页或共享商品库页"推广中" Tab 下看到商品，但行操作列只剩"查看详情"，没有"暂停发布 / 恢复发布 / 编辑 / 寄样设置"等。
-
-**根因**：本地 `product_operation_state.selected_to_library` 没被自动维护为 `true`。`ProductService.applyUpstreamProductLibraryDecision`（`backend/.../service/ProductService.java:1517`）只在上游百应/抖音 `status === 1`（`UPSTREAM_PRODUCT_STATUS_PROMOTING`）时把 `selectedToLibrary` 设为 `true`，且只有 `ProductActivitySyncJob`（定时）或 `ProductActivityManualSyncService.trigger`（手动）会调用它。
-
-> 注：`ProductLibraryRepairController.repair-library-state` 只改 `displayStatus`，**不**改 `selectedToLibrary`，不能解此症状。
-
-**标准动作**（按活动粒度，无需 admin，无需重启）：
-
-1. 进活动商品页（`/product/manage/products/<activityId>` 或活动详情里进商品 Tab）。
-2. 工具栏右侧点 **"一键同步商品"**（`frontend/.../views/product/components/ProductManageToolbar.vue:4`）。
-3. 弹"同步商品"确认框 → 确认。
-4. **等 5-10 秒**（后端走 `applicationTaskExecutor` 异步跑，不阻塞前端）。
-5. 刷新活动商品列表，看 `selected_to_library` 是否变 `true`、前端 `publishStatus` 是否变 `PUBLISHED`、操作列是否恢复。
-
-**内部调用链**（手动同步与定时 job 走**同一条** `productService.refreshActivitySnapshots`，效果完全等价）：
-
-```
-ProductSyncActivityDialog 确认
-  → syncActivityProductsFromRemote  (frontend/.../views/product/index.vue:848)
-  → POST /colonel/activities/{activityId}/products/sync
-  → ColonelActivityController.syncProducts  (ColonelActivityController.java:161)
-  → ProductActivityManualSyncService.trigger (ProductActivityManualSyncService.java:42)
-  → CompletableFuture.runAsync → productService.refreshActivitySnapshots(...)
-      → applyUpstreamProductLibraryDecision(...)
-          → selectedToLibrary=true   （上游 status=1 + 未本地拒 + 未手动禁用）
-          → selectedToLibrary=false  （其他情况）
-```
-
-**验证**（查后端日志）：
-
-```bash
-docker logs --tail 500 saas-active-backend-real-pre-1 | grep ProductActivityManualSync
-# 期望: ProductActivityManualSync completed, activityId=..., libraryEntryCount=N
-# N > 0  → 真的有商品被新加入商品库
-# N = 0  → 上游百应/抖音确认这些商品不是推广中；本地状态跟上游一致
-#         （不是漂移，是真实数据状态；只有前端"查看详情"也是预期表现）
-```
-
-**长线预防**：`PRODUCT_ACTIVITY_SYNC_ENABLED=true` + `PRODUCT_ACTIVITY_SYNC_CRON=0 */5 * * * ?`（`.env.real-pre` 现状）。定时 job `ProductActivitySyncJob` 全量模式（无 whitelist）每 5 分钟自动跑一次 `refreshActivitySnapshots`，**新活动商品入库后 5 分钟内就会自动被补**，不再漂移。如需调回 2 小时，将 cron 改回 `0 0 */2 * * ?` 即可。
-
-#### B. real-pre 必开开关清单（2026-06-02 核实）
-
-`saas-active-backend-real-pre-1` 容器内 `env` 已确认的事实状态：
-
-| 开关 | 值 | 作用 / 是否必开 |
-| --- | --- | --- |
-| `PRODUCT_ACTIVITY_SYNC_ENABLED` | `true` | 商品库定时同步（每 5 min，cron `0 */5 * * * ?`） |
-| `ORDER_SYNC_ENABLED` | `true` | 订单定时同步 |
-| `LOGISTICS_SYNC_ENABLED` | `true` | 物流定时同步 |
-| `DOUYIN_TOKEN_AUTO_REFRESH_ENABLED` | `true` | 抖店 Token 自动刷新 |
-| `DOUYIN_TOKEN_AUTO_REFRESH_CRON` | `0 */10 * * * ?` | Token 刷新 cron |
-| `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` | `true` | 真实推广写开关（双开之一） |
-| `ALLOW_REAL_PROMOTION_WRITE` | `true` | 真实推广写开关（双开之二） |
-| `DOUYIN_TEST_ENABLED` | `false` | **必为 false**（real-pre 形态） |
-| `APP_TEST_ENABLED` | `false` | **必为 false**（real-pre 形态） |
-| `DOUYIN_REAL_UPSTREAM_MODE` | `live` | **必为 live**（real-pre 形态） |
-
-> 任何新增 / 调整 real-pre 开关需同步 `docs/10-部署运行总览.md` 部署后第一轮验收清单。
-
----
-
-## 8. Superpowers 使用准则
-
-本项目允许在 Codex 中使用 `superpowers`，但使用方式必须遵循：
-
-> **项目文档决定业务口径，superpowers 只负责执行方法。**
-
-也就是说：
-
-- `AGENTS.md` 与 `docs/*.md` 决定做什么、做到什么算通过
-- `superpowers` skill 决定如何拆解、排查、验证、回归
-- 当前代码与测试结果决定最终事实
-
-### 8.1 使用优先级
-
-执行优先级固定为：
-
-1. 用户当前直接要求
-2. 本项目 `AGENTS.md`
-3. 本项目相关文档（尤其是当前阶段对应专项文档）
-4. `superpowers` skills
-5. 默认自由发挥
-
-如果 `superpowers` 的建议与本项目文档冲突，以本项目文档为准。
-
-### 8.2 本项目推荐使用的 skills
-
-#### 1. `writing-plans`
-
-适用场景：
-
-- 拆解里程碑任务
-- 拆解跨后端 / 前端 / 文档的阶段任务
-- 拆解真实 SDK 联调计划
-
-本项目典型用法：
-
-- `用 writing-plans 拆一下 M1.6 数据看板真实化，先按 docs/04、docs/10 执行`
-- `用 writing-plans 拆一下真实 SDK 首轮联调任务，先读 docs/03、docs/06、docs/09`
-
-#### 2. `systematic-debugging`
-
-适用场景：
-
-- 真实 SDK 联调失败
-- token 获取 / 刷新异常
-- 限流、空数据、权限错误排查
-- webhook 收到但业务未消费
-
-本项目典型用法：
-
-- `用 systematic-debugging 排查 RealDouyinAuthGateway token 获取失败，先按 docs/03、docs/09`
-- `用 systematic-debugging 排查订单真实回流未入库，先读 docs/03、docs/archive/records/14`
-
-#### 3. `verification-before-completion`
-
-适用场景：
-
-- 改完代码后做验收
-- 做 P0 收口前检查
-- 检查是否破坏 test / real 契约
-
-本项目典型用法：
-
-- `用 verification-before-completion 检查这次 Gateway 改动是否满足 docs/03 契约`
-- `用 verification-before-completion 检查这次改动能否进入 P0 验收，重点对照 docs/10、docs/archive/runbooks/11`
-
-#### 4. `test-driven-development`
-
-适用场景：
-
-- 后端 service / gateway / controller 的小范围功能开发
-- bug 修复后的回归测试补齐
-
-限制：
-
-- 不要求把所有联调任务都机械改造成 TDD
-- 真实 SDK 首轮探索阶段，以联调和契约验证优先，不强行追求完整 TDD 节奏
-
-#### 5. `requesting-code-review` / `receiving-code-review`
-
-适用场景：
-
-- 合并前做风险复查
-- 检查是否把第三方字段、Token、日志口径污染进主链路
-- 检查是否破坏现有 Mock / Test 闭环
-
-### 8.3 本项目不建议重度使用的 skills
-
-#### 1. `subagent-driven-development`
-
-当前项目处于联调收口阶段，口径集中比并行速度更重要。除非任务边界非常清晰，否则不建议默认拆成多个代理并行执行。
-
-#### 2. `using-git-worktrees`
-
-当前阶段重点是联调与收口，不是多分支并发试验。没有明确需要时，不额外引入 worktree 流程复杂度。
-
-### 8.4 使用前必做动作
-
-在本项目中调用任何 skill 之前，先判断任务类型，并完成对应阅读：
-
-- 新功能 / 新阶段任务：至少先读 `docs/04`、`docs/01`、`docs/02`
-- 接口 / 环境 / 联调：补读 `docs/03`、`docs/05`、`docs/06`
-- 真实 SDK 联调：必须补读 `docs/09`
-- P0 / 场景验收：必须补读 `docs/10`、`docs/archive/runbooks/11`
-- 文档编码 / 乱码治理：必须补读 `docs/archive/audits/12`
-
-### 8.5 推荐提问模板
-
-为了让 Codex 更稳定地把 `superpowers` 用对，优先使用下面的话术：
-
-1. 拆任务
-   - `用 writing-plans 拆一下这个任务，先按 AGENTS.md 和 docs/04 执行`
-2. 查问题
-   - `用 systematic-debugging 排查这个问题，先按 docs/03、docs/09 走`
-3. 改完验收
-   - `用 verification-before-completion 检查这次改动能不能收口`
-4. 补测试
-   - `用 test-driven-development 给这个模块补测试，但不要破坏现有 test 闭环`
-5. 做代码复查
-   - `用 requesting-code-review 检查这次改动的风险，重点看 real/test 契约和日志泄漏`
-
-### 8.6 一句话原则
-
-> **superpowers 不是本项目的总指挥，它是执行手册；本项目的总指挥仍然是 AGENTS.md 与 docs/*.md。**
-
----
-
-本文件用于“按当前代码推进任务”，不是历史需求归档。
-
-<!-- code-review-graph MCP tools -->
-## MCP Tools: code-review-graph
-
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
-
-### When to use graph tools FIRST
-
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
-
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
-
-### Key Tools
-
-| Tool | Use when |
-| ------ | ---------- |
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
+报告必须包含：
+
+- 时间
+- 环境
+- 分支
+- commit hash
+- 工作区是否干净
+- 构建结果
+- Docker 状态
+- 健康检查结果
+- 业务验证结果
+- 是否部署远端
+- 远端健康检查结果
+- 结论：`PASS` / `PARTIAL` / `FAIL`
+- 剩余风险
+
+脚本能采集多少写多少；采集不到必须写“未采集 / 阻塞原因”，不得编造。
+
+## 9. 当前文档关系
+
+- `CLAUDE.md`：仓库地图。
+- `docs/`：事实主源、领域合同、流程、接口、数据、验收、部署和 ADR。
+- `.claude/`：保留为 Claude 工作台和历史 Agent 工作流文档。
+- `scripts/`：保留现有启动、QA 和部署辅助脚本。
+- `harness/`：新增统一执行系统，负责固定入口、脚本、skills、evals、runbooks、prompts 和 reports。
+
+## 10. Harness 五子系统
+
+- Instructions：`harness/instructions/`、`AGENT_CONTRACT.md`、`FORBIDDEN_SCOPE.md`、`TASK_ROUTING.md`。
+- Tools：`harness/commands/`、`harness/tools/README.md`。
+- Environment：`harness/environment/`。
+- State：`harness/CURRENT_STATE.md`、`harness/state/`、`HARNESS_CHANGELOG.md`。
+- Feedback：`harness/feedback/`、`harness/evals/`、`harness/reports/`。
+
+发现旧文档与当前事实冲突时，不得自行拍板，写入 `docs/决策/ADR-002-V1范围优先级.md`。

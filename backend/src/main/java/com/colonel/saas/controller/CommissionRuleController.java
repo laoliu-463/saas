@@ -10,6 +10,7 @@ import com.colonel.saas.entity.CommissionRule;
 import com.colonel.saas.service.CommissionRuleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
@@ -62,8 +64,8 @@ public class CommissionRuleController extends BaseController {
      *
      * <p>处理流程：
      * <ol>
-     *   <li>接收可选的维度类型（dimensionType）和提成类型（commissionType）筛选条件</li>
-     *   <li>构建分页查询，按创建时间倒序返回</li>
+     *   <li>接收可选的维度类型、提成类型、状态、查询生效区间等筛选条件</li>
+     *   <li>构建分页查询，按更新时间倒序返回</li>
      *   <li>返回分页结果，包含规则列表和总记录数</li>
      * </ol>
      *
@@ -71,6 +73,10 @@ public class CommissionRuleController extends BaseController {
      *
      * @param dimensionType  维度类型筛选（如商品、达人等），可为空
      * @param commissionType 提成类型筛选（如固定比例、阶梯等），可为空
+     * @param status         启用状态筛选（1=启用，0=禁用），可为空表示不筛选
+     * @param effectiveStart 查询生效区间起点（{@code yyyy-MM-dd HH:mm:ss}），可为空表示不限起点
+     * @param effectiveEnd   查询生效区间终点（{@code yyyy-MM-dd HH:mm:ss}），可为空表示不限终点；
+     *                       规则的有效期与该查询区间存在重叠时即被命中
      * @param page           当前页码，默认为 1
      * @param size           每页记录数，默认为 20
      * @return 分页后的提成规则列表
@@ -80,9 +86,21 @@ public class CommissionRuleController extends BaseController {
     public ApiResult<PageResult<CommissionRule>> page(
             @RequestParam(name = "dimensionType", required = false) String dimensionType,
             @RequestParam(name = "commissionType", required = false) String commissionType,
+            @RequestParam(name = "status", required = false) Integer status,
+            @RequestParam(name = "effectiveStart", required = false)
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime effectiveStart,
+            @RequestParam(name = "effectiveEnd", required = false)
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime effectiveEnd,
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
-        IPage<CommissionRule> result = commissionRuleService.findPage(dimensionType, commissionType, page, size);
+        IPage<CommissionRule> result = commissionRuleService.findPage(
+                dimensionType,
+                commissionType,
+                status,
+                effectiveStart,
+                effectiveEnd,
+                page,
+                size);
         return okPage(result);
     }
 

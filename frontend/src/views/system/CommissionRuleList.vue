@@ -9,6 +9,7 @@
           placeholder="维度类型"
           style="width: 140px"
           clearable
+          data-testid="commission-rule-filter-dimension"
         />
         <n-select
           v-model:value="searchParams.commissionType"
@@ -16,8 +17,30 @@
           placeholder="提成类型"
           style="width: 140px"
           clearable
+          data-testid="commission-rule-filter-commission-type"
         />
-        <n-button type="primary" size="small" @click="fetchData">查询</n-button>
+        <n-select
+          v-model:value="searchParams.status"
+          :options="statusOptions"
+          placeholder="状态"
+          style="width: 120px"
+          clearable
+          data-testid="commission-rule-filter-status"
+        />
+        <n-date-picker
+          v-model:value="searchParams.effectiveRange"
+          type="datetimerange"
+          clearable
+          placeholder="生效区间"
+          style="width: 360px"
+          data-testid="commission-rule-filter-effective-range"
+        />
+        <n-button type="primary" size="small" data-testid="commission-rule-search" @click="fetchData">
+          查询
+        </n-button>
+        <n-button size="small" data-testid="commission-rule-reset" @click="resetSearch">
+          重置
+        </n-button>
         <n-button type="primary" size="small" data-testid="commission-rule-create" @click="openModal('add')">
           新增规则
         </n-button>
@@ -95,7 +118,9 @@ const pagination = reactive(createPaginationState())
 
 const searchParams = reactive({
   dimensionType: null as string | null,
-  commissionType: null as string | null
+  commissionType: null as string | null,
+  status: null as number | null,
+  effectiveRange: null as [number, number] | null
 })
 
 const dimensionOptions = [
@@ -109,6 +134,24 @@ const commissionTypeOptions = [
   { label: '招商', value: 'recruiter' },
   { label: '渠道', value: 'channel' }
 ]
+
+const statusOptions = [
+  { label: '启用', value: 1 },
+  { label: '停用', value: 0 }
+]
+
+function toIsoString(value: number | null) {
+  return value ? new Date(value).toISOString().slice(0, 19).replace('T', ' ') : null
+}
+
+function resetSearch() {
+  searchParams.dimensionType = null
+  searchParams.commissionType = null
+  searchParams.status = null
+  searchParams.effectiveRange = null
+  pagination.page = 1
+  fetchData()
+}
 
 const dimensionLabelMap: Record<string, string> = {
   global: '全局',
@@ -125,11 +168,15 @@ const commissionTypeLabelMap: Record<string, string> = {
 const fetchData = async () => {
   loading.value = true
   try {
+    const range = searchParams.effectiveRange
     const res = await getCommissionRulePage({
       page: pagination.page,
       size: pagination.pageSize,
       dimensionType: searchParams.dimensionType || undefined,
-      commissionType: searchParams.commissionType || undefined
+      commissionType: searchParams.commissionType || undefined,
+      status: searchParams.status ?? undefined,
+      effectiveStart: range && range[0] != null ? toIsoString(range[0]) ?? undefined : undefined,
+      effectiveEnd: range && range[1] != null ? toIsoString(range[1]) ?? undefined : undefined
     })
     const responseData = res?.data || res
     data.value = responseData?.records || []
@@ -179,10 +226,6 @@ const rules = {
 
 function formatDateTimeValue(value?: string | null) {
   return value ? new Date(value).getTime() : null
-}
-
-function toIsoString(value: number | null) {
-  return value ? new Date(value).toISOString().slice(0, 19).replace('T', ' ') : null
 }
 
 const openModal = (type: 'add' | 'edit', row?: any) => {

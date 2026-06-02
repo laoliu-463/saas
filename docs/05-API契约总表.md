@@ -26,7 +26,7 @@
 | 运维 | `/api/operations/**`、`/actuator/**` | 操作日志、健康检查 | 健康检查、操作审计 | V1 简化 |
 | 抖音授权 | `/api/douyin/auth/**`、`/api/douyin/token/**` | 授权、Token、刷新 | real-pre Token 证据 | V1 必做 |
 | 抖音物流 | `/api/douyin/logistics/**` | 物流接口适配 | real-pre 响应或阻塞证据 | V1 简化 |
-| 主数据 | `/api/master-data/**`、`/api/current-user/**` | 前端下拉、当前用户上下文 | Network 响应 | V1 必做 |
+| 主数据 | `/api/master-data/**`、`/api/current-user/**`、`/api/colonel-partners` | 前端下拉、当前用户上下文、团长主数据 | Network 响应、单测 | V1 必做 |
 
 ## 活动 API 补充事实（2026-05-29 / 2026-06-01）
 
@@ -67,3 +67,28 @@
 - [V1 不做] 不让前端直接调用第三方开放接口。
 - [V1 不做] 不把旧 OpenAPI 缓存当作 2026-05-22 之后所有接口的最终事实。
 - [V1 不做] 不在 API 总表中虚构字段级契约；字段级契约需由代码、OpenAPI 或真实响应证明。
+
+## 主数据与当前用户 API 补充事实（2026-06-02 / t0-master-data）
+
+[V1 必做] `GET /users/master-data/channels`：返回 `channel_leader` 与 `channel_staff` 角色下的用户选项，关键词命中 username / realName 模糊匹配，按姓名/用户名升序裁剪到 limit（默认 50，最大 100），由 `UserMasterDataController.channels` 委托 `UserMasterDataService.listChannels` → `UserMasterDataService.listByRoleCodes(CHANNEL_ROLE_CODES, ...)` 实现，鉴权开放给已登录用户。
+
+[V1 必做] `GET /users/master-data/recruiters`：返回 `biz_leader` 与 `biz_staff` 角色下的用户选项，行为同 channels，由 `UserMasterDataController.recruiters` 委托 `UserMasterDataService.listRecruiters` 实现。
+
+[V1 必做] `GET /users/master-data/group-members`：返回当前用户部门下的活跃成员；仅 `admin` 可传入 `deptId` 查看指定部门，其他角色传 `deptId` 也会回退到当前部门（防越权），由 `UserMasterDataController.groupMembers` 委托 `UserMasterDataService.listGroupMembers` 实现，Controller 用 `@RequireRoles({ADMIN, BIZ_LEADER, CHANNEL_LEADER})` 限制访问。
+
+[V1 必做] `GET /users/current`：返回 `CurrentUserResponse{userId, username, realName, deptId, dataScope, dataScopeName, roleCodes, permissions, status, forcePasswordChange}`；`dataScope` 数字编码与 `dataScopeName`（`self`/`group`/`all`）必须一致，由 `UserDomainService.getCurrentUser` 计算并返回。
+
+[V1 必做] `GET /users/current/data-scope`：返回 `UserDataScopeResponse{scope, code, userIds}`；`scope` 文本（`self`/`group`/`all`）与 `code` 数字编码必须一致，`userIds` 仅在 `self`/`group` 时返回非空集合；`all` 范围时 `userIds` 为空。
+
+[V1 必做] `PUT /users/current/password`、`POST /users/current/permissions/check`：当前用户自服务；不暴露他人数据。
+
+[V1 必做] `GET /api/colonel-partners`：团长主数据分页查询，支持 `keyword`（团长名称 like）、`source`（来源 eq）、`hasContact`（联系方式可用性）、`page`、`size`，按 `last_sync_at DESC, colonel_name ASC` 排序；Controller 与 service 拆分：`ColonelPartnerMasterDataController.list` 委托 `ColonelPartnerMasterDataService.list` 实现，访问限定 `BIZ_LEADER` / `BIZ_STAFF` / `ADMIN`。
+- ⚠ **当前未在前端接入**：前端 `frontend/src/api/product.ts:listPartners` 调用的是 `/colonel/partners`（由 `ColonelPartnerController` 暴露，返回 `PartnerVO` 视图），而不是本主数据接口（返回 `ColonelPartner` 实体）。本主数据接口的 consumer 暂缺，需要决定：(a) 在 V1 后续阶段接入团长下拉（招商人员维护/查看团长列表）；(b) 标记为 V2 预留。
+
+[V1 必做] `GET /api/colonel-partners/{id}`：按 ID 查团长主数据详情；记录不存在时抛 `BusinessException.notFound`（code=404）。
+
+[V1 必做] `GET /api/colonel-partners/sources`：列出已存在的团长来源（如 `BUYIN` / `MANUAL`），供下拉候选使用；由 `ColonelPartnerMasterDataService.listSources` 实现，distinct + 字典序排序。
+
+[V1 必做] **主数据接口不得直连第三方**：所有主数据均来自本地 PostgreSQL 表（`sys_user`/`sys_role`/`sys_user_role`/`colonel_partner`），不通过网关调用抖音/抖店开放接口。`DouyinOAuthController`（`/douyin/oauth/authorize-url` 与 `/douyin/oauth/callback`）仅用于后台 OAuth 授权流程，不参与下拉候选。
+
+[V1 必做] **缓存策略**：当前 `/users/master-data/**` 与 `/users/current/**` **未引入 Redis 缓存**（避免脏读，用户/角色变更时缓存失效复杂），单次响应在 50 ~ 100 条限制下数据库直查耗时可接受；如果未来出现 N+1 或并发压力，应优先在 service 层引入短 TTL 缓存并配合 `user/role update` 事件主动失效，**不**直接堆 Redis 注解。

@@ -1,210 +1,469 @@
 version: 1
 plan:
-  name: '活动分配与推广入库后端+前端并行实现'
-  max_concurrency: 3
+  name: 'V1 筛选代码审查与端到端修复'
+  max_concurrency: 8
   max_consecutive_failures: 2
-  max_cycles: 5
-  message_to_user: '后端和前端并行实现中，完成后会汇报进度。'
-
+  max_cycles: 10
+  verifier_config:
+    default_verifiers: [verifier]
+    audit_sample_rate: 0.0
 tasks:
-  - id: backend-recommender-fields
-    title: '后端：colonel_activity 增加 recruiter 字段 + 分配 API + cascade'
-    prompt: |
-      实现活动分配招商负责人的后端逻辑。
-
-      【契约文档】必须严格参考：D:/Projects/SAAS/docs/接口/活动分配与推广入库API契约.md
-
-      【已有代码背景】
-      - colonelsettlementActivityMapper.selectByActivityId() 已存在
-      - colonel_activity 表已有 status 字段（varchar，存状态文本如"推广中"）
-      - ProductOperationState.assigneeId 字段已存在
-      - ProductBizStatusService.initStateIfAbsent() 已存在
-      - admin 用户角色代码: ROLE.ADMIN
-      - 招商用户角色: ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.COLONEL_LEADER
-      - SysUserMapper、SysUserService 存在
-
-      【必须实现的文件清单】
-
-      1. 新建 Flyway migration 文件：
-         D:/Projects/SAAS/backend/src/main/resources/db/migrate/V*__alter-colonel-activity-add-recruiter-fields.sql
-         添加字段: recruiter_user_id (UUID, NULL), recruiter_dept_id (UUID, NULL), assigned_at (TIMESTAMP, NULL), assigned_by (UUID, NULL)
-         使用 ADD COLUMN IF NOT EXISTS
-
-      2. 修改 ColonelsettlementActivity.java：
-         新增 4 个字段：recruiterUserId (UUID), recruiterDeptId (UUID), assignedAt (LocalDateTime), assignedBy (UUID)
-         加上 @TableField 注解
-
-      3. 修改 ColonelsettlementActivityMapper.java：
-         新增方法: updateAssignee(String activityId, UUID recruiterUserId, UUID recruiterDeptId, UUID assignedBy)
-         方法: selectByActivityId (已存在)
-
-      4. 修改 ColonelsettlementActivityMapper.xml：
-         新增 <update id="updateAssignee"> SQL
-         修改 selectByActivityId 结果映射，增加 recruiterUserId, recruiterDeptId, assignedAt, assignedBy 字段映射
-
-      5. 修改 ColonelActivityController.java：
-         新增接口: PUT /colonel/activities/{activityId}/assignee
-         请求体: { "assigneeId": "UUID" } (assigneeId 为 null 时清除分配)
-         权限: 仅 admin
-         校验: 目标用户存在、启用、拥有 biz_leader/biz_staff/colonel_leader 角色之一
-         业务: 更新 colonel_activity 的 4 个字段 + 级联更新 product_operation_state 的 assignee_id
-         复用 SysUserService 查询用户信息
-
-      6. 修改 ProductService.java：
-         在 upsertSnapshotsWithStats() 中：
-         - 已实现: 查询 colonel_activity.status，"推广中" 则 autoAddToLibraryIfPromoting
-         - 补充: 同时查询 colonel_activity.recruiterUserId，
-           对新同步商品（state 不存在或 assignee_id 为 null）设置 state.assigneeId = recruiterUserId
-           已有 assignee_id 的商品不要覆盖
-
-      【约束】
-      - 不改现有其他接口的返回结构，只在 colonel_activity 相关查询上追加字段
-      - 不引入新的 role 校验方式，复用 SysUserService.findById 或类似方法
-      - 级联更新 product_operation_state.assignee_id 使用 batch update 或单条 update，不做全表扫描
-      - 所有 Java 代码编译通过
-
-      【交付】
-      - 完成上述所有文件修改
-      - 编译确认: mvn compile -q (在 D:/Projects/SAAS/backend 目录)
-      - 交付清单写入 D:/Projects/SAAS/.mavis/plans/backend-recommender-fields-deliverable.md
+  # ============================================================
+  # T0 — 主数据/下拉:所有其他 track 的数据源,必须先于其他 track
+  # ============================================================
+  - id: t0-master-data
+    title: '主数据下拉链路审查与修复(其他 track 前置依赖)'
     assigned_to: developer
     verified_by: verifier
-    verify_prompt: |
-      验证后端 recruiter 字段实现是否完整：
-
-      1. 检查 Flyway migration 文件是否存在且包含正确的 ADD COLUMN 语句
-      2. 检查 ColonelsettlementActivity.java 是否包含 4 个新字段（带 @TableField）
-      3. 检查 ColonelActivityController 是否有 PUT /colonel/activities/{activityId}/assignee 接口
-      4. 检查接口是否有 admin 权限校验
-      5. 检查是否有级联更新 product_operation_state.assignee_id 的逻辑
-      6. 检查 upsertSnapshotsWithStats 是否在同步时继承 recruiterUserId
-      7. 编译确认: 在 D:/Projects/SAAS/backend 执行 mvn compile -q 确认无编译错误
-
-      每个检查项独立验证，不只看文件存在。
-    timeout_ms: 2400000
-
-  - id: backend-display-rules
-    title: '后端：推广中展示规则 + autoAddToLibraryIfPromoting 完善'
-    prompt: |
-      实现推广中活动的商品库强制展示规则。
-
-      【契约文档】必须严格参考：D:/Projects/SAAS/docs/接口/活动分配与推广入库API契约.md
-
-      【已有代码背景】
-      - ProductService.upsertSnapshotsWithStats() 已新增:
-        - 查询 colonel_activity.status 判断是否"推广中"
-        - 调用 autoAddToLibraryIfPromoting(state, activityId)
-      - autoAddToLibraryIfPromoting() 已实现：设置 selectedToLibrary=true, selectedAt=NOW(), 调用 operationStateMapper.updateById(state)
-      - ProductDisplayRuleService.applyForActivityId(String activityId) 存在
-      - autoAddToLibraryIfPromoting 尚未调用 productDisplayRuleService.applyForActivityId
-
-      【必须修改的内容】
-
-      1. ProductService.java:
-         在 autoAddToLibraryIfPromoting() 方法末尾，
-         添加: productDisplayRuleService.applyForActivityId(activityId)
-         注意：方法签名需要注入 ProductDisplayRuleService
-
-      2. ProductDisplayRuleService.java:
-         找到 applyForActivityId(String activityId, DisplayRuleOperatorContext operator) 方法
-         在处理展示规则时，增加以下逻辑（不能破坏现有逻辑）：
-         - 先执行现有的去重和优先级选择逻辑
-         - 然后对"推广中"活动的商品做保护：
-           如果某 product_operation_state 对应的 colonel_activity.status 包含"推广中"，
-           且 selectedToLibrary == true，
-           则强制保证该记录的 displayStatus = DISPLAYING，
-           即使被现有去重规则选为"HIDDEN"也要覆盖为"DISPLAYING"
-         - 查询 colonel_activity 的 status 字段判断是否推广中（通过 activityId 查 mapper）
-         - 使用 ColonelsettlementActivityMapper.selectByActivityId()
-
-      【约束】
-      - displayStatus 只在推广中活动的商品上做保护，不要影响其他商品的去重逻辑
-      - 保护的是"入库+推广中"的商品，不是所有入库商品
-      - 编译通过
-
-      【交付】
-      - 完成上述所有文件修改
-      - 编译确认: mvn compile -q (在 D:/Projects/SAAS/backend 目录)
-      - 交付清单写入 D:/Projects/SAAS/.mavis/plans/backend-display-rules-deliverable.md
-    assigned_to: developer
-    depends_on: []
-    verified_by: verifier
-    verify_prompt: |
-      验证推广中展示规则实现：
-
-      1. 检查 autoAddToLibraryIfPromoting 是否调用了 productDisplayRuleService.applyForActivityId
-      2. 检查 ProductDisplayRuleService.applyForActivityId 中是否有推广中活动商品强制展示的逻辑
-      3. 确认强制展示的条件是：colonel_activity.status 包含"推广中" 且 selectedToLibrary=true
-      4. 确认不会对非推广中活动的商品做强制展示
-      5. 编译确认: mvn compile -q 在 D:/Projects/SAAS/backend
     timeout_ms: 1800000
-
-  - id: frontend-activity-assign
-    title: '前端：活动列表分配入口 + 商品库推广中展示'
     prompt: |
-      实现活动分配招商负责人和商品库推广中展示的前端逻辑。
+      # 任务
+      审查并修复"主数据/下拉"链路。这是其他业务域筛选的前置依赖 — 你的产出被商品、订单、寄样、达人、业绩、系统等所有 track 依赖。
 
-      【契约文档】必须严格参考：D:/Projects/SAAS/docs/接口/活动分配与推广入库API契约.md
+      # 涉及文件(必须先通读)
+      - 前端 API: `frontend/src/api/auth.ts`、`frontend/src/api/douyin.ts`、其他 `frontend/src/api/*.ts` 中拉下拉的接口
+      - 后端 controller: `backend/src/main/java/com/colonel/saas/controller/UserMasterDataController.java`、`ColonelPartnerMasterDataController.java`、`CurrentUserController.java`、`DouyinOAuthController.java`
+      - 后端 service: `UserMasterDataService.java`、`ColonelPartnerMasterDataService.java`
 
-      【已有代码背景】
-      - 前端已有活动列表页面（可能在 views/ 下）
-      - 前端已有商品库页面 (ProductLibrary.vue)
-      - 前端 API 客户端在 api/ 目录下
-      - 路由定义在 src/router/
-      - 前端使用 Vue 3 + TypeScript + Naive UI
-      - 已有 GET /users/master-data/recruiters 接口
-      - 已有 PUT colonelActivities.assignee 的后端 API（本次一并实现）
+      # 必做事项
+      1. **6 层端到端走读**:列出所有 `/api/master-data/**` 和 `/api/current-user/**` 端点,逐端点对每条下拉筛选项走 UI→state→API→controller→service→SQL 六层,贴出每层证据
+      2. 重点查:
+         - 招商 / 团长下拉,商品 / 活动 / 达人 / 部门 / 角色下拉数据是否真到前端
+         - 当前用户上下文接口(`/api/current-user`)返回的 `dataScope`(`self/group/all`)是否被前端正确应用到每个业务域筛选
+         - 下拉数据是否被缓存(避免 N+1),缓存 key 是否会脏
+      3. **修复**:发现的 bug 按 CLAUDE.md 规则修(代码 + docs/05 + docs/09 + 领域文档)
+      4. **测试**:后端必须给每个下拉接口加单测,覆盖正常返回 / 空数据 / 鉴权失败三种 case
+      5. 跑通:
+         - `cd backend && mvn test -Dtest=UserMasterDataServiceTest,ColonelPartnerMasterDataServiceTest,CurrentUserControllerTest`
+         - `cd frontend && npm run build`
 
-      【必须实现的文件清单】
+      # 不允许
+      - 不让前端直连抖音开放接口
+      - 不动 `docs/归档/`
+      - 不在订单域加业绩/提成/独家覆盖
 
-      1. 新增 API 客户端方法:
-         在 D:/Projects/SAAS/frontend/src/api/ 下找到 colonel 或 activity 相关 API 文件
-         新增方法: assignColonelActivity(activityId: string, assigneeId: string | null)
-         调用: PUT /colonel/activities/{activityId}/assignee
+      # 交付
+      1. **改动文件清单**(用 `git diff --stat`)
+      2. **6 层闭环审查表**(每条下拉一行,L1-L6 各列贴证据,FAIL 用 ⚠ 标)
+      3. **修复 commit 列表**
+      4. **跑通的命令输出**(`mvn test` / `npm run build` 末 20 行)
+      5. **同步更新的文档清单**
 
-      2. 活动列表页面改造（找到对应的 .vue 或 .tsx 文件）：
-         - 找到活动列表的操作列（如果有的话）
-         - 新增"分配招商组长"按钮
-         - 点击按钮弹出 N-Drawer 或 N-Modal 弹窗
-         - 弹窗内下拉框选项来自 GET /users/master-data/recruiters
-         - 提交时调用 assignColonelActivity
-         - 成功后刷新列表（重新请求 GET /colonel/activities）
-         - 列展示 recruiterUserName（如果后端已返回该字段）
+      # 参考
+      - 整体 plan: `tmp/plan-审查所有筛选代码.md`
+      - 项目地图: `CLAUDE.md`(`[V1 必做]` 不变量必须遵守)
+      - API 契约: `docs/05-API契约总表.md`
+      - 数据范围: `docs/07-权限与数据范围.md`
 
-      3. 文案统一（V1 必做）：
-         搜索所有包含"招商经理"、"招商负责人"、"招商人员"的文本，
-         统一替换为"招商组长"
-         重点文件: views/product/、views/sample/、商品卡片组件
-         不要改错业务逻辑，只改文案
+      # 沟通
+      任何跨 track 冲突(比如下拉 key 命名不一致)发回 orchestrator。
 
-      4. 商品库页面（ProductLibrary.vue 或相关组件）：
-         - 确认联盟推广状态(statusText)列正确展示
-         - 确认活动推广状态筛选可用（按 colonel_activity.statusText 筛选）
-         - 确认筛选条件里"推广中"选项能正确过滤
-
-      【约束】
-      - 所有 API 调用使用已有的 axios 实例或 fetch 封装
-      - 不新增路由
-      - 不修改后端接口契约
-      - 前端测试: npx vitest run --reporter=verbose（全部通过）
-
-      【交付】
-      - 完成上述所有文件修改
-      - 前端测试: npx vitest run --reporter=verbose 在 D:/Projects/SAAS/frontend 确认通过
-      - 前端构建: npm run build 在 D:/Projects/SAAS/frontend 确认通过
-      - 交付清单写入 D:/Projects/SAAS/.mavis/plans/frontend-activity-assign-deliverable.md
-    assigned_to: developer
-    depends_on: [backend-recommender-fields]
-    verified_by: verifier
     verify_prompt: |
-      验证前端实现：
+      # 你的任务
+      独立审查 T0 主数据下拉链路的修复产出。不要只读 producer 的 6 层表,要**自己实跑**验证。
 
-      1. 检查是否有 assignColonelActivity API 客户端方法（调用 PUT /colonel/activities/{id}/assignee）
-      2. 检查活动列表页面是否有"分配招商组长"按钮或入口
-      3. 检查分配弹窗的下拉候选人是否来自 /users/master-data/recruiters
-      4. 检查"招商经理"/"招商负责人"等旧文案是否已统一改为"招商组长"
-      5. 运行 npx vitest run 在 D:/Projects/SAAS/frontend 确认所有测试通过
-      6. 运行 npm run build 在 D:/Projects/SAAS/frontend 确认构建通过
+      # 必做
+      1. 抽 1-2 个下拉接口,**自己 curl**(test 环境)看返回结构
+      2. **自己 grep** 验证 controller `@RequestParam` 与前端 API `.ts` 中 query key 一致
+      3. **自己 grep** 验证 service 的 `LambdaQueryWrapper` 真用了这些参数
+      4. 跑 `cd backend && mvn test -Dtest=UserMasterDataServiceTest,ColonelPartnerMasterDataServiceTest` 验证测试真过
+      5. 跑 `cd frontend && npm run build` 验证前端能编译
+      6. 检查改动是否同步更新了 `docs/05-API契约总表.md`
 
-      每个检查项独立验证。
-    timeout_ms: 2400000
+      # FAIL 条件
+      - 任何端点的 6 层里有一层缺失证据
+      - 单测有缺漏或假绿(mock 代替真查询)
+      - 数据范围 `self/group/all` 没在前端 store/composable 中体现
+      - 没改 docs
+
+  # ============================================================
+  # T1 — 商品域(T1+T2+T3 同 worker 串行,共享 product-filters.ts)
+  # ============================================================
+  - id: t1-product
+    title: '商品域筛选审查与修复(product-filters / ProductManage / ProductLibrary / ActivityList)'
+    assigned_to: developer
+    depends_on: [t0-master-data]
+    verified_by: verifier
+    timeout_ms: 1800000
+    prompt: |
+      # 任务
+      串行完成商品域三个子筛选(用户决策:同 worker 串行,避免争用 `product-filters.ts`):
+      1. **子筛选 1 — 商品管理**: `product/index.vue` + `ProductManageFilters` + 状态/工具栏/操作列
+      2. **子筛选 2 — 商品库**: `product/ProductLibrary.vue` + `ProductLibraryFilterPanel` + 8 个子 filter 组件
+      3. **子筛选 3 — 活动列表**: `product/ActivityList.vue`
+
+      # 涉及文件(必须先通读)
+      ## 状态(state)
+      - `frontend/src/views/product/product-filters.ts`(核心 state)
+      - `frontend/src/views/product/product-filters.test.ts`
+      ## 页面
+      - `frontend/src/views/product/index.vue`
+      - `frontend/src/views/product/ProductLibrary.vue`
+      - `frontend/src/views/product/ActivityList.vue`
+      ## 组件(商品库为重点)
+      - `frontend/src/views/product/components/ProductManageFilters.vue`
+      - `frontend/src/views/product/components/ProductManageToolbar.vue`
+      - `frontend/src/views/product/components/ProductStatusTabs.vue`
+      - `frontend/src/views/product/components/ProductLibraryFilterPanel.vue`
+      - `frontend/src/views/product/components/ProductBasicSearchBar.vue`
+      - `frontend/src/views/product/components/ProductFilters.vue`(9+ chip)
+      - `frontend/src/views/product/components/ProductSelectedFilters.vue`
+      - `frontend/src/views/product/components/ProductDemandFilter.vue`
+      - `frontend/src/views/product/components/ProductOtherFilter.vue`
+      - `frontend/src/views/product/components/ProductTagFilter.vue`
+      - `frontend/src/views/product/components/ProductCategoryFilter.vue`
+      - `frontend/src/views/product/components/ProductManageTable.vue`
+      - `frontend/src/views/product/components/ProductActionColumn.vue`
+      ## API
+      - `frontend/src/api/product.ts`、`frontend/src/api/activityProduct.ts`、`frontend/src/api/productManage.ts`
+      ## 后端 controller
+      - `ProductController.java`、`ColonelActivityController.java`、`ColonelActivityProductController.java`、`AdminProductDisplayController.java`、`ProductLibraryRepairController.java`
+      ## 后端 service
+      - `ProductService.java`、`ProductDisplayRuleService.java`、`ProductActivityManualSyncService.java`、`ProductActivitySyncJob.java`
+
+      # 必做事项
+      1. **6 层端到端走读**:逐条筛选项走 UI→state→API→controller→service→SQL,**每条都要有 ID**(如 T1-F-001)
+      2. **重点验证**:
+         - `product-filters.ts` 是唯一 state 源(无第二份副本)
+         - `applyProductFilters` 内部过滤 vs 远端 query 的边界
+         - `activityId` 联动赋值(三联赋值 recruitActivityId/activityId/recruitActivityName)
+         - `allianceStatus` 转换到 `status` 的空值/非法值兜底
+         - 招商/活动快速筛选 `displayReady` / `pendingAudit` / `readyAssign` 真能筛出不同数据集
+         - 9+ chip 全部能从 state 写回并发出(ProductFilters.vue)
+         - `ProductSelectedFilters` 的"清除"按钮真清掉 state
+         - `assignmentFilter`(`assigned/unassigned/mine`)与 `self/group/all` 数据范围对齐
+      3. **修复**:按 CLAUDE.md 规则(代码 + docs/05 + docs/09 + 领域文档)
+      4. **测试**:后端给 `ProductService`、`ProductDisplayRuleService` 关键筛选方法加单测,前端 vitest 跑 product-filters.test.ts
+      5. 跑通:
+         - `cd backend && mvn test -Dtest=ProductServiceTest,ProductDisplayRuleServiceTest,ColonelActivityControllerTest`
+         - `cd frontend && npm run build && npx vitest run frontend/src/views/product/product-filters.test.ts`
+
+      # 不允许
+      - 不在订单域加业绩/提成/独家覆盖(本任务不做订单)
+      - 不动 `docs/归档/`
+      - 不让前端直连抖音开放接口
+      - 不在商品域塞业务规则(CLAUDE.md 不变量)
+
+      # 交付
+      1. 改动文件清单(`git diff --stat`)
+      2. 6 层闭环审查表(每条筛选项一行,共 30+ 条,L1-L6 各列贴证据,FAIL ⚠ 标)
+      3. 修复 commit 列表
+      4. 跑通的命令输出
+      5. 同步更新的文档清单
+
+      # 参考
+      - 整体 plan: `tmp/plan-审查所有筛选代码.md`(§5 详写)
+      - 项目地图: `CLAUDE.md`、`AGENTS.md`
+      - API 契约: `docs/05-API契约总表.md`(商品域部分)
+      - 业务闭环: `docs/02-业务闭环总览.md`
+
+    verify_prompt: |
+      # 你的任务
+      独立审查 T1 商品域三子筛选的修复。**自己实跑**,不只听汇报。
+
+      # 必做
+      1. **抽 1-2 个筛选条件**(例如 `displayReady` 快速筛选 / 商品库 `handCard` chip),自己从 UI 一路追到 SQL,确认 6 层都有证据
+      2. **grep** 验证 `product-filters.ts` 是唯一 state 源(无第二份 `ref<...filters>` 出现)
+      3. 跑 `cd backend && mvn test -Dtest=ProductServiceTest,ProductDisplayRuleServiceTest,ColonelActivityControllerTest`
+      4. 跑 `cd frontend && npm run build`
+      5. 跑 `cd frontend && npx vitest run frontend/src/views/product/product-filters.test.ts`
+      6. 验证文档:`docs/05-API契约总表.md` 和商品域领域合同是否同步
+
+      # FAIL 条件
+      - `displayReady` / `pendingAudit` / `readyAssign` 快速筛选任何一条缺失 L5 SQL 条件
+      - 9+ chip 任何一个 chip 没有 state 写回逻辑
+      - 招商角色数据范围没对齐(例如 biz_staff 能看到别人的活动)
+      - 文档没同步
+
+  # ============================================================
+  # T2 — 订单域
+  # ============================================================
+  - id: t2-orders
+    title: '订单域筛选审查与修复(订单列表 / 归因)'
+    assigned_to: developer
+    depends_on: [t0-master-data]
+    verified_by: verifier
+    timeout_ms: 1800000
+    prompt: |
+      # 任务
+      审查并修复订单域的筛选功能。
+
+      # 涉及文件
+      ## 前端
+      - `frontend/src/views/data/OrderList.vue`
+      - `frontend/src/views/orders/index.vue`
+      - `frontend/src/views/orders/components/OrderDetailModal.vue`
+      - `frontend/src/api/order.ts`
+      ## 后端
+      - `OrderController.java`、`OrderAttributionController.java`
+      - `OrderService.java`、`OrderAttributionService.java`
+
+      # 必做事项
+      1. **6 层端到端走读**,每条筛选项 ID(如 T2-F-001)
+      2. **重点验证**:
+         - 订单归因字段在两 view 间是否一致(`orders/index.vue` 与 `data/OrderList.vue` 字段名、类型、是否传空)
+         - 时间区间筛选(起/止)是否被后端正确解析(类型、时区)
+         - 导出按钮是否与筛选状态绑定(导出的是筛选后还是全量)
+         - `dataScope` 在订单域是否生效(非 admin 只能看自己/本组)
+         - 订单域**不应用独家覆盖**(CLAUDE.md 不变量)
+      3. **修复**:按 CLAUDE.md 规则
+      4. **测试**:后端给 `OrderService.findPage`、`OrderAttributionService` 加单测
+      5. 跑通:
+         - `cd backend && mvn test -Dtest=OrderServiceTest,OrderAttributionServiceTest,OrderControllerTest`
+         - `cd frontend && npm run build`
+
+      # 不允许
+      - **绝不在订单域加业绩/提成/独家覆盖逻辑**
+      - 不动 `docs/归档/`
+
+      # 交付
+      同 T1 结构。
+
+      # 参考
+      - 整体 plan: `tmp/plan-审查所有筛选代码.md` §6 T4
+      - 项目地图: `CLAUDE.md`
+      - API 契约: `docs/05-API契约总表.md`(订单域)
+
+    verify_prompt: |
+      # 你的任务
+      独立审查 T2 订单域。
+
+      # 必做
+      1. 抽 1-2 条筛选(时间区间、归因字段)自己实跑 mvn test
+      2. grep 验证订单域**没有**业绩/提成/独家覆盖的字段(只有事实)
+      3. 跑 `cd backend && mvn test -Dtest=OrderServiceTest,OrderAttributionServiceTest`
+      4. 跑 `cd frontend && npm run build`
+
+      # FAIL 条件
+      - 时间区间参数类型不匹配(后端期望 LocalDateTime 收 String)
+      - 订单域出现 `commission` / `royalty` / `finalAmount` 字段(L1L5 任何一处)
+      - 归因字段在两 view 间不一致
+
+  # ============================================================
+  # T3 — 寄样域
+  # ============================================================
+  - id: t3-sample
+    title: '寄样域筛选审查与修复(申请/审批/工作台)'
+    assigned_to: developer
+    depends_on: [t0-master-data]
+    verified_by: verifier
+    timeout_ms: 1800000
+    prompt: |
+      # 任务
+      审查并修复寄样域的筛选功能(6 个输入 + 1 个多选,字段最多)。
+
+      # 涉及文件
+      ## 前端
+      - `frontend/src/views/sample/Apply.vue`
+      - `frontend/src/views/sample/index.vue`
+      - `frontend/src/views/sample/CooperationWorkbench.vue`(字段最多,重点)
+      - `frontend/src/views/sample/SampleDetail.vue`
+      - `frontend/src/views/sample/components/*.vue`
+      - `frontend/src/api/sample.ts`
+      ## 后端
+      - `SampleController.java`、`SampleFilterOptionsController.java`
+      - `SampleService.java` 等
+
+      # 必做事项
+      1. **6 层端到端走读**,每条筛选项 ID
+      2. **重点验证**:
+         - `CooperationWorkbench` 的 6 个输入(商品/店铺/物流单号/申请编号/达人/招商) + 1 个渠道多选,每个都从 UI 到 SQL
+         - 申请编号 / 物流单号 / 达人昵称 是不是真作为精确查询(不是模糊)
+         - `SampleFilterOptionsController` 给到所有需要的下拉项
+         - 寄样完成判断:`orders-synced` 事件(CLAUDE.md 不变量)
+      3. **修复** + **测试** + **跑通**:
+         - `cd backend && mvn test -Dtest=SampleServiceTest,SampleControllerTest`
+         - `cd frontend && npm run build`
+
+      # 交付
+      同 T1 结构。
+
+      # 参考
+      - 整体 plan: `tmp/plan-审查所有筛选代码.md` §6 T5
+      - 寄样域: `docs/领域/寄样域.md`(如有)
+
+    verify_prompt: |
+      # 你的任务
+      抽 CooperationWorkbench 的 2-3 个筛选项实跑 mvn test + npm run build。验证 6 层证据。FAIL 条件同前。
+
+  # ============================================================
+  # T4 — 达人域
+  # ============================================================
+  - id: t4-talent
+    title: '达人域筛选审查与修复'
+    assigned_to: developer
+    depends_on: [t0-master-data]
+    verified_by: verifier
+    timeout_ms: 1800000
+    prompt: |
+      # 任务
+      审查并修复达人域筛选。
+
+      # 涉及文件
+      - 前端: `frontend/src/views/talent/index.vue`、`frontend/src/views/talent/components/TalentMetricFilters.vue`、`frontend/src/views/talent/components/TalentDetailModal.vue`
+      - API: `frontend/src/api/talent.ts`
+      - 后端 controller: `TalentController.java`、`TalentProfileController.java`
+      - 后端 service: `TalentService.java`
+
+      # 必做
+      1. 6 层走读,每条 ID
+      2. 重点: 指标筛选(粉丝数/GMV 等范围)与文本筛选分离;`TalentProfileController` 字段一致性
+      3. 修复 + 测试
+      4. 跑通:`mvn test -Dtest=TalentServiceTest,TalentControllerTest` + `npm run build`
+
+      # 交付
+      同 T1 结构。
+
+      # 参考
+      - 整体 plan: §6 T6
+      - 达人域: `docs/领域/达人域.md`(如有)
+
+    verify_prompt: |
+      抽 TalentMetricFilters 1-2 个筛选项实跑。FAIL 条件同前。
+
+  # ============================================================
+  # T5 — 业绩/数据分析
+  # ============================================================
+  - id: t5-performance
+    title: '业绩与数据分析筛选审查与修复'
+    assigned_to: developer
+    depends_on: [t0-master-data]
+    verified_by: verifier
+    timeout_ms: 1800000
+    prompt: |
+      # 任务
+      审查并修复业绩/分析/看板的筛选功能。
+
+      # 涉及文件
+      - 前端: `frontend/src/views/data/index.vue`、`frontend/src/views/dashboard/index.vue`
+      - API: `frontend/src/api/performance.ts`、`frontend/src/api/data.ts`、`frontend/src/api/dashboard.ts`
+      - 后端: `PerformanceController.java`、`DataController.java`、`DashboardController.java` 及 service
+
+      # 必做
+      1. 6 层走读
+      2. 重点: 时间维度 + 部门维度 + 业务线 联动;**CLAUDE.md 不变量**:"分析模块只读汇总表,不重算业绩归属"
+      3. 修复 + 测试
+      4. 跑通:`mvn test -Dtest=PerformanceServiceTest,DataServiceTest,DashboardServiceTest` + `npm run build`
+
+      # 不允许
+      - **绝不在分析模块加业绩归属重算逻辑**
+      - 业绩域专属逻辑(归属/提成/冲正)只能在 `PerformanceService` / `CommissionRuleService`
+
+      # 交付
+      同 T1 结构。
+
+      # 参考
+      - 整体 plan: §6 T7
+      - 业绩域: `docs/领域/业绩域.md`(如有)
+
+    verify_prompt: |
+      抽 1-2 条业绩/分析筛选实跑。**特别检查**:分析模块有没有重算归属的代码,如果有直接 FAIL。
+
+  # ============================================================
+  # T6 — 佣金/规则
+  # ============================================================
+  - id: t6-commission
+    title: '佣金规则与规则中心筛选审查与修复'
+    assigned_to: developer
+    depends_on: [t0-master-data]
+    verified_by: verifier
+    timeout_ms: 1800000
+    prompt: |
+      # 任务
+      审查并修复佣金规则、规则中心的筛选。
+
+      # 涉及文件
+      - 前端: `frontend/src/views/system/rule-center/index.vue`、`frontend/src/views/system/CommissionRuleList.vue`
+      - API: `frontend/src/api/commission.ts`、`frontend/src/api/ruleCenter.ts`
+      - 后端: `CommissionRuleController.java`、`RuleCenterController.java` 及 service
+
+      # 必做
+      1. 6 层走读
+      2. 重点: 规则生效时间区间 / 状态 / 类型 联动;`dataScope` 在规则中心是否生效
+      3. 修复 + 测试
+      4. 跑通:`mvn test -Dtest=CommissionRuleServiceTest,RuleCenterServiceTest` + `npm run build`
+
+      # 交付
+      同 T1 结构。
+
+      # 参考
+      - 整体 plan: §6 T8
+
+    verify_prompt: |
+      抽 1-2 条规则筛选实跑。FAIL 条件同前。
+
+  # ============================================================
+  # T7 — 系统管理
+  # ============================================================
+  - id: t7-system
+    title: '系统管理筛选审查与修复(用户/角色/部门/日志/配置)'
+    assigned_to: developer
+    depends_on: [t0-master-data]
+    verified_by: verifier
+    timeout_ms: 1800000
+    prompt: |
+      # 任务
+      审查并修复系统管理域筛选(5 个页面,1 个聚合任务)。
+
+      # 涉及文件
+      - 前端: `frontend/src/views/system/UserList.vue`、`RoleList.vue`、`DeptList.vue`、`OperationLogList.vue`、`ConfigList.vue`
+      - API: `frontend/src/api/sys.ts`
+      - 后端: `SysUserController.java`、`SysRoleController.java`、`SysDeptController.java`、`SysMenuController.java`、`SysConfigController.java`、`OperationLogController.java` 及对应 service
+
+      # 必做
+      1. 6 层走读
+      2. 重点:
+         - 用户列表"角色/部门/状态"三联筛选
+         - `SysUserService.findPage` 的 queryWrapper **必须用** `dataScope`(CLAUDE.md 不变量)
+         - 操作日志的"操作人/时间区间/模块"三联筛选
+      3. 修复 + 测试
+      4. 跑通:`mvn test -Dtest=SysUserServiceTest,SysRoleServiceTest,SysDeptServiceTest,OperationLogServiceTest` + `npm run build`
+
+      # 交付
+      同 T1 结构。
+
+      # 参考
+      - 整体 plan: §6 T9
+
+    verify_prompt: |
+      抽 1-2 条系统管理筛选实跑。**特别检查** `SysUserService` 的 `dataScope` 是否被 LambdaQueryWrapper 用上(没用到直接 FAIL,因为这违反 CLAUDE.md 不变量)。
+
+  # ============================================================
+  # T8 — 最终 verify-as-task 收口(深度,2 路 verifier 二次抽样实跑)
+  # ============================================================
+  - id: t8-final-audit
+    title: '筛选代码端到端收口审计(verify-as-task)'
+    role: verify-as-task
+    assigned_to: verifier
+    depends_on: [t0-master-data, t1-product, t2-orders, t3-sample, t4-talent, t5-performance, t6-commission, t7-system]
+    timeout_ms: 1800000
+    prompt: |
+      # 任务
+      跨 7 个 track 做总收口。**不只听 worker 汇报**,要**自己实跑**。
+
+      # 必做
+      1. **抽 2-3 个 track**(建议:商品 + 订单 + 系统),从每个抽 1-2 条筛选项,**自己 grep / 自己实跑**复现 6 层
+      2. **总跑一次**:
+         - `cd backend && mvn test` 验证全绿
+         - `cd frontend && npm run build` 验证编译
+         - `cd frontend && npx vitest run` 跑全部前端单测
+      3. **汇总报告**(写到 `docs/验收/筛选代码审计-{YYYYMMDD}.md`):
+         - 7 个 track 的 6 层闭环总表(每行: track / 筛选项 / L1-L6 状态 / 证据)
+         - 按"严重度 × 业务域"矩阵的问题清单
+         - 仍存在的风险(标 BLOCKED / PENDING)
+         - 同步更新的文档列表
+         - 一句话结论:哪些筛选在落地前不可用,修后可用
+      4. **回归 `docs/09-测试验收总览.md`**:为每条筛选加一条 P0 验收项
+      5. 把 verifier 报告写到 `tmp/筛选代码审计-verifier-报告.md`,供 orchestrator 收口
+
+      # FAIL 条件
+      - `mvn test` 任何一条红
+      - `npm run build` 失败
+      - 任何一条筛选项的 6 层仍有断裂
+      - 数据范围 `self/group/all` 在某个业务域没生效
+      - 文档不同步
+
+      # 交付
+      - `docs/验收/筛选代码审计-{YYYYMMDD}.md`
+      - `tmp/筛选代码审计-verifier-报告.md`
+      - PASS/FAIL 决议

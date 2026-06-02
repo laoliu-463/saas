@@ -1,0 +1,262 @@
+$ErrorActionPreference = "Stop"
+
+function Get-HarnessRepoRoot {
+    return (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..")).Path
+}
+
+function Write-HarnessStage {
+    param([Parameter(Mandatory = $true)][string]$Title)
+    Write-Host ""
+    Write-Host "=== $Title ===" -ForegroundColor Cyan
+}
+
+function Assert-HarnessRepoRoot {
+    param([Parameter(Mandatory = $true)][string]$RepoRoot)
+
+    $current = (Resolve-Path -LiteralPath (Get-Location)).Path
+    if ($current -ne $RepoRoot) {
+        throw "Current path must be project root. current=$current expected=$RepoRoot"
+    }
+    foreach ($path in @("backend", "frontend")) {
+        if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot $path))) {
+            throw "Required directory not found: $path"
+        }
+    }
+    foreach ($path in @("AGENTS.md", "harness")) {
+        if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot $path))) {
+            throw "Required harness entry not found: $path"
+        }
+    }
+    if (-not (Get-ChildItem -LiteralPath $RepoRoot -Filter "docker-compose*.yml" -ErrorAction SilentlyContinue)) {
+        throw "No docker-compose*.yml file found in project root."
+    }
+}
+
+function Get-HarnessChangedFiles {
+    $status = Get-HarnessGitValue -Arguments @("status", "--porcelain=v1")
+    if ([string]::IsNullOrWhiteSpace($status)) {
+        return @()
+    }
+    $files = @()
+    foreach ($line in ($status -split "`n")) {
+        if ($line.Length -lt 4) {
+            continue
+        }
+        $path = $line.Substring(3).Trim().Trim('"')
+        if ($path -match "\s+->\s+") {
+            $path = ($path -split "\s+->\s+")[-1].Trim().Trim('"')
+        }
+        if ($path) {
+            $files += $path
+        }
+    }
+    return $files | Sort-Object -Unique
+}
+
+function Assert-HarnessNoSensitiveChangedFiles {
+    $files = @(Get-HarnessChangedFiles)
+    foreach ($file in $files) {
+        $name = Split-Path -Leaf $file
+        $lower = $file.ToLowerInvariant()
+        $isEnv = ($name -like ".env*" -and -not $name.EndsWith(".example"))
+        $blocked = $isEnv `
+            -or $lower.EndsWith(".pem") `
+            -or $lower.EndsWith(".key") `
+            -or $lower.EndsWith(".p12") `
+            -or $lower.EndsWith(".jks") `
+            -or $name.ToLowerInvariant().StartsWith("credentials") `
+            -or $name.ToLowerInvariant().StartsWith("secrets")
+        if ($blocked) {
+            throw "Sensitive changed file is blocked: $file"
+        }
+    }
+}
+
+function Get-HarnessPortFromCompose {
+    param(
+        [Parameter(Mandatory = $true)][string]$ComposeFile,
+        [Parameter(Mandatory = $true)][string]$EnvKey,
+        [Parameter(Mandatory = $true)][string]$Default
+    )
+
+    if (-not (Test-Path -LiteralPath $ComposeFile)) {
+        return $Default
+    }
+    $content = Get-Content -LiteralPath $ComposeFile -Raw
+    $escaped = [regex]::Escape($EnvKey)
+    $patternWithDefault = "\$\{${escaped}:-(?<port>\d+)\}:"
+    $match = [regex]::Match($content, $patternWithDefault)
+    if ($match.Success) {
+        return $match.Groups["port"].Value
+    }
+    return $Default
+}
+
+function Read-HarnessEnvFile {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $map = @{}
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $map
+    }
+
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        $trimmed = $line.Trim()
+        if (-not $trimmed -or $trimmed.StartsWith("#")) {
+            continue
+        }
+        $eqIndex = $trimmed.IndexOf("=")
+        if ($eqIndex -lt 1) {
+            continue
+        }
+        $key = $trimmed.Substring(0, $eqIndex).Trim()
+        $value = $trimmed.Substring($eqIndex + 1).Trim().Trim("'`"")
+        $map[$key] = $value
+    }
+    return $map
+}
+
+function Get-HarnessEnvConfig {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("test", "real-pre")]
+        [string]$Env
+    )
+
+    $repoRoot = Get-HarnessRepoRoot
+    if ($Env -eq "real-pre") {
+        return [pscustomobject]@{
+            Env = "real-pre"
+            RepoRoot = $repoRoot
+            ComposeFile = Join-Path $repoRoot "docker-compose.real-pre.yml"
+            EnvFile = Join-Path $repoRoot ".env.real-pre"
+            ProjectName = "saas-active"
+            BackendService = "backend-real-pre"
+            FrontendService = "frontend-real-pre"
+            BackendPort = "8081"
+            FrontendPort = "3001"
+            BackendHealthPath = "/api/system/health"
+            FrontendHealthCandidates = @("/healthz", "/login", "/")
+        }
+    }
+
+    return [pscustomobject]@{
+        Env = "test"
+        RepoRoot = $repoRoot
+        ComposeFile = Join-Path $repoRoot "docker-compose.test.yml"
+        EnvFile = Join-Path $repoRoot ".env.test"
+        ProjectName = "saas-test"
+        BackendService = "backend"
+        FrontendService = "frontend"
+        BackendPort = "8080"
+        FrontendPort = "3000"
+        BackendHealthPath = "/api/system/health"
+        FrontendHealthCandidates = @("/healthz", "/favicon.svg", "/")
+    }
+}
+
+function Get-HarnessPort {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$EnvMap,
+        [Parameter(Mandatory = $true)][string]$Key,
+        [Parameter(Mandatory = $true)][string]$Default
+    )
+
+    if ($EnvMap.ContainsKey($Key) -and $EnvMap[$Key]) {
+        return $EnvMap[$Key]
+    }
+    return $Default
+}
+
+function Invoke-HarnessExternal {
+    param(
+        [Parameter(Mandatory = $true)][string]$CommandName,
+        [Parameter(Mandatory = $true)][scriptblock]$Script
+    )
+
+    & $Script
+    if ($LASTEXITCODE -ne 0) {
+        throw "$CommandName failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-HarnessHttp {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [int]$TimeoutSec = 10
+    )
+
+    try {
+        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec $TimeoutSec
+        $content = if ($null -eq $response.Content) { "" } else { [string]$response.Content }
+        return [pscustomobject]@{
+            Ok = ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400)
+            StatusCode = $response.StatusCode
+            Body = $content
+            Error = ""
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            Ok = $false
+            StatusCode = 0
+            Body = ""
+            Error = ($_.Exception.Message)
+        }
+    }
+}
+
+function Get-HarnessGitValue {
+    param([Parameter(Mandatory = $true)][string[]]$Arguments)
+    try {
+        $value = & git @Arguments 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            return ($value -join "`n").Trim()
+        }
+    }
+    catch {
+        return ""
+    }
+    return ""
+}
+
+function Get-HarnessComposeArgs {
+    param([Parameter(Mandatory = $true)]$Config)
+
+    $args = @("compose")
+    if (Test-Path -LiteralPath $Config.EnvFile) {
+        $args += @("--env-file", $Config.EnvFile)
+    }
+    $args += @("-f", $Config.ComposeFile)
+    return $args
+}
+
+function New-HarnessReportPath {
+    param([Parameter(Mandatory = $true)][string]$RepoRoot)
+
+    $reportsDir = Join-Path $RepoRoot "harness\reports"
+    if (-not (Test-Path -LiteralPath $reportsDir)) {
+        New-Item -ItemType Directory -Force -Path $reportsDir | Out-Null
+    }
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    return Join-Path $reportsDir "evidence-$stamp.md"
+}
+
+function Convert-HarnessBool {
+    param([Parameter(Mandatory = $false)]$Value)
+
+    if ($null -eq $Value) {
+        return $false
+    }
+    if ($Value -is [bool]) {
+        return [bool]$Value
+    }
+    $text = ([string]$Value).Trim().ToLowerInvariant()
+    if ($text -in @("true", "1", "yes", "y")) {
+        return $true
+    }
+    if ($text -in @("false", "0", "no", "n", "")) {
+        return $false
+    }
+    throw "Cannot convert to bool: $Value"
+}

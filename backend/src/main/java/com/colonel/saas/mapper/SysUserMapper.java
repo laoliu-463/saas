@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Constants;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.DataScope;
 import com.colonel.saas.auth.dto.SysUserPageRequest;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.vo.SysUserVO;
@@ -26,6 +25,16 @@ import java.util.UUID;
  * 主要操作：用户的 CRUD 操作、软删除，按用户名查询，渠道编码唯一性校验，
  * 带数据权限的分页查询
  * </p>
+ *
+ * <p><b>分页查询 dataScope 来源（t7-system 重构）：</b></p>
+ * <ul>
+ *   <li>原方案：在 {@code findPage} 上加 {@link com.colonel.saas.annotation.DataScope @DataScope} 注解，
+ *       由 {@link com.colonel.saas.aspect.DataScopeAspect AOP} 从 request attribute 注入
+ *       {@code su.id = userId} / {@code dept_id = deptId} 到 wrapper</li>
+ *   <li>新方案：{@code @DataScope} 注解已移除（避免 AOP + Service 双重注入）；
+ *       dataScope 由 {@link com.colonel.saas.auth.service.SysUserService#buildUserPageWrapper}
+ *       在 wrapper 中显式组装，与 CLAUDE.md 不变量「用户域统一 self/group/all」保持一致</li>
+ * </ul>
  *
  * @see com.colonel.saas.entity.SysUser
  */
@@ -74,19 +83,18 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
     /**
      * 带数据权限范围的分页查询用户
      * <p>
-     * 通过 @DataScope 注解按 su.id 字段注入数据权限过滤条件，
-     * 根据当前用户的数据范围（self/group/all）过滤用户列表。
-     * 支持请求参数中的各种筛选条件。
+     * 字段筛选（keyword/status/deptId/groupId/roleId/roleCode）与数据范围（self/group/all）
+     * 全部由 {@code wrapper} 承载，参见 {@link com.colonel.saas.auth.service.SysUserService#buildUserPageWrapper}。
+     * 本方法不再使用 {@code @DataScope} 注解，避免 AOP 与 Service 双重注入导致 SQL 重复条件。
      * </p>
      *
      * @param page    分页参数
-     * @param request 用户分页查询请求参数
-     * @param wrapper 查询条件构造器
+     * @param request 用户分页查询请求参数（保留以便 MyBatis 别名解析；目前 XML 仅引用 {@code ew}）
+     * @param wrapper 业务条件 + dataScope 过滤条件
      * @return 分页结果
      * @see com.colonel.saas.vo.SysUserVO
      * @see com.colonel.saas.auth.dto.SysUserPageRequest
      */
-    @DataScope(userField = "su.id")
     IPage<SysUserVO> findPage(
             Page<SysUserVO> page,
             @Param("request") SysUserPageRequest request,

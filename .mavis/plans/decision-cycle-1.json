@@ -1,0 +1,12 @@
+{
+  "last_cycle": [
+    {
+      "task_id": "t0-master-data",
+      "verdict": "accept",
+      "reason": "T0 deliverable 包含 10 个端点的 6 层走读、28 个后端单测全绿、前端 build + vitest 全绿、文档同步到 docs/05 / docs/09 / docs/领域/用户域.md,关键发现(团长主数据接口当前未消费、数据范围 self/group/all 由 UserDomainService 统一计算)明确。verifier 已确认 PASS。"
+    }
+  ],
+  "next_cycle": [],
+  "plan_complete": false,
+  "message_to_user": "主数据下拉已收口,商品/订单/寄样/达人/业绩/佣金/系统 7 个筛选模块开跑。"
+}

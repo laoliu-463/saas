@@ -1,0 +1,10 @@
+{
+  "items": [
+    {
+      "path": "doc/计划.md",
+      "action": "archive",
+      "category": "historical-plan",
+      "reason": "旧计划混用 FastAPI/Celery/V2 独家机制等历史口径，已在文档债务台账登记，仅作历史背景归档保留"
+    }
+  ]
+}

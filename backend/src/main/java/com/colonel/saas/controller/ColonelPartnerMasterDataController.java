@@ -1,22 +1,21 @@
 package com.colonel.saas.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.ColonelPartner;
-import com.colonel.saas.mapper.ColonelPartnerMapper;
+import com.colonel.saas.service.ColonelPartnerMasterDataService;
 import io.swagger.v3.oas.annotations.Operation;
-import org.springframework.util.StringUtils;
+import io.swagger.v3.oas.annotations.Parameter;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -25,28 +24,31 @@ import java.util.UUID;
  * <ul>
  *   <li>分页查询团长主数据列表，支持关键字、来源和联系方式筛选</li>
  *   <li>按 ID 查询团长主数据详情</li>
+ *   <li>查询团长来源下拉数据</li>
  * </ul>
  *
  * <p>所属业务领域：用户域 / 团长主数据
  * <p>API 路径前缀：{@code /api/colonel-partners}
  * <p>访问权限：招商组长、招商专员和管理员（{@link com.colonel.saas.constant.RoleCodes#BIZ_LEADER}、{@link com.colonel.saas.constant.RoleCodes#BIZ_STAFF}、{@link com.colonel.saas.constant.RoleCodes#ADMIN}）
  *
- * @see com.colonel.saas.mapper.ColonelPartnerMapper
+ * <p><b>不变量：</b>本控制器只读，不写业务规则；不参与业绩归属、提成、独家覆盖。</p>
+ *
+ * @see com.colonel.saas.service.ColonelPartnerMasterDataService
  */
 @RestController
 @RequestMapping("/api/colonel-partners")
 public class ColonelPartnerMasterDataController {
 
-    /** 团长主数据 Mapper，直接负责团长数据的分页查询和详情查询 */
-    private final ColonelPartnerMapper colonelPartnerMapper;
+    /** 团长主数据查询服务，负责团长数据的分页查询、详情查询和来源枚举 */
+    private final ColonelPartnerMasterDataService colonelPartnerMasterDataService;
 
     /**
-     * 构造注入团长主数据 Mapper。
+     * 构造注入团长主数据查询服务。
      *
-     * @param colonelPartnerMapper 团长主数据 Mapper 实例
+     * @param colonelPartnerMasterDataService 团长主数据查询服务实例
      */
-    public ColonelPartnerMasterDataController(ColonelPartnerMapper colonelPartnerMapper) {
-        this.colonelPartnerMapper = colonelPartnerMapper;
+    public ColonelPartnerMasterDataController(ColonelPartnerMasterDataService colonelPartnerMasterDataService) {
+        this.colonelPartnerMasterDataService = colonelPartnerMasterDataService;
     }
 
     /**
@@ -55,7 +57,7 @@ public class ColonelPartnerMasterDataController {
      * <p>处理流程：
      * <ol>
      *   <li>接收可选的关键字、来源和联系方式筛选条件</li>
-     *   <li>构建 LambdaQueryWrapper 动态拼接查询条件</li>
+     *   <li>委托服务层构建 LambdaQueryWrapper 动态拼接查询条件</li>
      *   <li>按最后同步时间倒序、团长名称正序排列</li>
      *   <li>执行分页查询并返回结果</li>
      * </ol>
@@ -73,38 +75,12 @@ public class ColonelPartnerMasterDataController {
     @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.ADMIN})
     @GetMapping
     public ApiResult<PageResult<ColonelPartner>> list(
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String source,
-            @RequestParam(required = false) Boolean hasContact,
+            @Parameter(description = "团长名称关键字。") @RequestParam(required = false) String keyword,
+            @Parameter(description = "数据来源（如 BUYIN/MANUAL）。") @RequestParam(required = false) String source,
+            @Parameter(description = "是否有联系方式，true=有 / false=无 / 不传=不限。") @RequestParam(required = false) Boolean hasContact,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size) {
-        // 第一步：构建查询条件
-        LambdaQueryWrapper<ColonelPartner> wrapper = new LambdaQueryWrapper<ColonelPartner>()
-                .orderByDesc(ColonelPartner::getLastSyncAt)
-                .orderByAsc(ColonelPartner::getColonelName);
-        // 第二步：按关键字模糊匹配团长名称
-        if (StringUtils.hasText(keyword)) {
-            wrapper.like(ColonelPartner::getColonelName, keyword.trim());
-        }
-        // 第三步：按来源精确匹配
-        if (StringUtils.hasText(source)) {
-            wrapper.eq(ColonelPartner::getSource, source.trim());
-        }
-        // 第四步：按联系方式存在与否筛选
-        if (Boolean.TRUE.equals(hasContact)) {
-            wrapper.and(w -> w.isNotNull(ColonelPartner::getContactPhone)
-                    .or()
-                    .isNotNull(ColonelPartner::getContactWechat)
-                    .or()
-                    .isNotNull(ColonelPartner::getContactName));
-        } else if (Boolean.FALSE.equals(hasContact)) {
-            wrapper.isNull(ColonelPartner::getContactPhone)
-                    .isNull(ColonelPartner::getContactWechat)
-                    .isNull(ColonelPartner::getContactName);
-        }
-        // 第五步：执行分页查询
-        Page<ColonelPartner> result = colonelPartnerMapper.selectPage(new Page<>(page, size), wrapper);
-        return ApiResult.ok(PageResult.of(result));
+        return ApiResult.ok(colonelPartnerMasterDataService.list(keyword, source, hasContact, page, size));
     }
 
     /**
@@ -121,18 +97,26 @@ public class ColonelPartnerMasterDataController {
      *
      * @param id 团长主数据 ID
      * @return 团长主数据详情
-     * @throws com.colonel.saas.common.exception.BusinessException 团长主数据不存在
+     * @throws BusinessException 团长主数据不存在
      */
     @Operation(summary = "团长主数据详情")
     @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.ADMIN})
     @GetMapping("/{id}")
     public ApiResult<ColonelPartner> detail(@PathVariable UUID id) {
-        // 第一步：查询团长主数据
-        ColonelPartner partner = colonelPartnerMapper.selectById(id);
-        // 第二步：验证记录存在性
-        if (partner == null) {
-            throw BusinessException.notFound("团长主数据不存在");
-        }
-        return ApiResult.ok(partner);
+        return ApiResult.ok(colonelPartnerMasterDataService.detail(id));
+    }
+
+    /**
+     * 列出全部团长来源（去重），用于来源下拉候选。
+     *
+     * <p>HTTP 方法与路径：{@code GET /api/colonel-partners/sources}
+     *
+     * @return 来源字符串列表（按字典序排序）
+     */
+    @Operation(summary = "团长来源下拉")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.ADMIN})
+    @GetMapping("/sources")
+    public ApiResult<List<String>> sources() {
+        return ApiResult.ok(colonelPartnerMasterDataService.listSources());
     }
 }

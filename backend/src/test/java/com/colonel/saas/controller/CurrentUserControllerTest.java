@@ -134,4 +134,99 @@ class CurrentUserControllerTest {
                 .andExpect(jsonPath("$.data.action").value("audit"))
                 .andExpect(jsonPath("$.data.allowed").value(true));
     }
+
+    // ========================== 空数据 ==========================
+
+    @Test
+    void currentUser_returnsEmptyPermissionsAndDataScopeWhenServiceReturnsEmpty() throws Exception {
+        when(userDomainService.getCurrentUser(userId, null, null, List.of()))
+                .thenReturn(new CurrentUserResponse(
+                        userId,
+                        "ops_staff",
+                        "运营",
+                        null,
+                        1,
+                        "self",
+                        List.of(),
+                        Map.of(),
+                        1,
+                        false
+                ));
+
+        mockMvc.perform(get("/users/current")
+                        .requestAttr("userId", userId)
+                        .requestAttr("roleCodes", List.of()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.username").value("ops_staff"))
+                .andExpect(jsonPath("$.data.dataScopeName").value("self"))
+                .andExpect(jsonPath("$.data.roleCodes").isArray())
+                .andExpect(jsonPath("$.data.roleCodes").isEmpty())
+                .andExpect(jsonPath("$.data.permissions").isMap());
+    }
+
+    @Test
+    void dataScope_returnsEmptyUserIdsForAllScope() throws Exception {
+        when(userDomainService.getUserDataScope(userId, null, DataScope.ALL))
+                .thenReturn(new UserDataScopeResponse("all", 3, List.of()));
+
+        mockMvc.perform(get("/users/current/data-scope")
+                        .requestAttr("userId", userId)
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.scope").value("all"))
+                .andExpect(jsonPath("$.data.code").value(3))
+                .andExpect(jsonPath("$.data.userIds").isArray())
+                .andExpect(jsonPath("$.data.userIds").isEmpty());
+    }
+
+    @Test
+    void checkPermission_returnsNotAllowedFlag() throws Exception {
+        when(userDomainService.checkPermission(eq(userId), eq(List.of(RoleCodes.CHANNEL_STAFF)), any()))
+                .thenReturn(new CheckPermissionResponse("product", "audit", false));
+
+        mockMvc.perform(post("/users/current/permissions/check")
+                        .requestAttr("userId", userId)
+                        .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_STAFF))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "resource", "product",
+                                "action", "audit"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.allowed").value(false));
+    }
+
+    // ========================== 鉴权失败 ==========================
+    // standaloneSetup 不激活 @RequireRoles 切面，因此本测试只能验证
+    // controller 不会因缺失 request attribute 而把 service 误调。
+    // 真实鉴权失败的端到端验证见 ColonelActivityControllerTest 中 403 相关测试。
+
+    @Test
+    void currentUser_shouldPassNullAttributesWhenNotProvided() throws Exception {
+        when(userDomainService.getCurrentUser(userId, null, null, List.of()))
+                .thenReturn(new CurrentUserResponse(
+                        userId, "x", "X", null, 1, "self", List.of(), Map.of(), 1, false));
+
+        // 不传 deptId / dataScope / roleCodes
+        mockMvc.perform(get("/users/current")
+                        .requestAttr("userId", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userId").value(userId.toString()));
+
+        // controller 必须显式回退到空集合（避免 NPE 传到 service）
+        verify(userDomainService).getCurrentUser(userId, null, null, List.of());
+    }
+
+    @Test
+    void dataScope_shouldPassNullsWhenAttributesMissing() throws Exception {
+        when(userDomainService.getUserDataScope(userId, null, null))
+                .thenReturn(new UserDataScopeResponse("self", 1, List.of(userId)));
+
+        mockMvc.perform(get("/users/current/data-scope")
+                        .requestAttr("userId", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.scope").value("self"));
+
+        verify(userDomainService).getUserDataScope(userId, null, null);
+    }
 }

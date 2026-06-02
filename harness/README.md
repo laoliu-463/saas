@@ -1,0 +1,61 @@
+# Harness Engineering
+
+本目录是抖音团长 SaaS 的 AI Agent 工程执行系统。它不替代 `docs/` 的业务事实，而是把后续 Agent 修改代码后的固定流程沉淀为脚本、清单、模板和证据入口。
+
+## 目录
+
+| 路径 | 作用 |
+| --- | --- |
+| `AGENT_CONTRACT.md` | Agent 执行合同和 DoD |
+| `CURRENT_STATE.md` | 当前状态、V1 闭环、旧文档冲突 |
+| `TASK_ROUTING.md` | 任务类型到领域、skill、验证的分流 |
+| `FORBIDDEN_SCOPE.md` | V1、real-pre、Git、密钥和模块边界禁止项 |
+| `DOMAIN_MAP.md` | 七域 + 分析模块职责地图 |
+| `commands/` | PowerShell 固定执行入口 |
+| `skills/` | AI Agent 可执行技能规范 |
+| `evals/` | 验收目标、步骤、通过标准和证据要求 |
+| `runbooks/` | real-pre、远端部署、回滚、归因等执行手册 |
+| `prompts/` | 可复用提示词 |
+| `reports/` | evidence report 输出目录 |
+
+## 五个子系统
+
+| 子系统 | 路径 | 作用 |
+| --- | --- | --- |
+| Instructions | `instructions/`、`AGENT_CONTRACT.md`、`FORBIDDEN_SCOPE.md` | 项目规则、V1 边界、禁止事项、完成标准 |
+| Tools | `commands/`、`tools/README.md` | 构建、重启、验证、部署、报告、复盘 |
+| Environment | `environment/` | test、real-pre、remote real-pre 和 compose 边界 |
+| State | `CURRENT_STATE.md`、`state/`、`HARNESS_CHANGELOG.md` | 当前状态、风险、证据、版本 |
+| Feedback | `feedback/`、`evals/`、`reports/` | 验收、证据报告、复盘和 Harness 升级闭环 |
+
+## 总入口
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope full -Message "说明本次修改"
+```
+
+## 最小验证
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-check.ps1 -Env test -Scope docs -DryRun
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\retire-content.ps1 -Action Plan -DryRun
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope docs -DeployRemote false -Message "docs: initialize harness engineering system" -DryRun
+```
+
+## 旧内容维护
+
+每次任务后默认生成旧内容维护计划：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\retire-content.ps1 -Action Plan
+```
+
+归档或删除必须提供 manifest；默认归档目录为 `harness/archive/retired-content/`。
+
+## 远端部署
+
+远端部署只有用户明确要求时执行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\deploy-remote.ps1 -Env real-pre -RemoteHost saas -RemoteDir /opt/saas/app
+```

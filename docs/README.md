@@ -39,6 +39,19 @@
 | [10-部署运行总览.md](10-部署运行总览.md) | test / real-pre 运行口径 | V1 必做 |
 | [11-用户操作手册.md](11-用户操作手册.md) | 面向业务用户的登录、菜单、角色和日常操作说明 | V1 必做 |
 
+## 兼容入口
+
+以下文件是 Harness 五子系统要求的兼容入口，只引用主源，不重复维护第二套事实：
+
+| 文档 | 指向主源 |
+| --- | --- |
+| [01-V1交付合同.md](01-V1交付合同.md) | [01-V1交付范围与边界.md](01-V1交付范围与边界.md) |
+| [02-业务闭环地图.md](02-业务闭环地图.md) | [02-业务闭环总览.md](02-业务闭环总览.md) |
+| [03-领域边界总表.md](03-领域边界总表.md) | [03-领域架构总览.md](03-领域架构总览.md) 与 [领域/](领域/) |
+| [04-上线验收清单.md](04-上线验收清单.md) | [09-测试验收总览.md](09-测试验收总览.md)、[10-部署运行总览.md](10-部署运行总览.md) |
+| [05-real-pre证据索引.md](05-real-pre证据索引.md) | [验收/验收证据索引.md](验收/验收证据索引.md) |
+| [06-P0-P1问题台账.md](06-P0-P1问题台账.md) | [../harness/state/p0-p1-register.md](../harness/state/p0-p1-register.md) |
+
 ## 专项目录
 
 - [V1 必做] [领域/](领域/)：按统一领域合同模板维护。
@@ -48,6 +61,19 @@
 - [V1 必做] [release/](release/)：real-pre 上线前总审查报告和证据目录索引；最近审查见 [release/real-pre上线总审查报告-20260528-171543.md](release/real-pre上线总审查报告-20260528-171543.md)。
 - [V1 必做] [决策/](决策/)：ADR 和冲突处理。
 - [历史归档] [归档/](归档/)：旧 V2.2 主干、旧七域文档、历史记录、审计与 runbook。
+
+## Harness Engineering
+
+- [V1 必做] [../harness/README.md](../harness/README.md)：AI Agent 固定执行入口、脚本、skills、evals、runbooks、prompts 和 evidence reports。
+- [V1 必做] [../harness/CURRENT_STATE.md](../harness/CURRENT_STATE.md)：当前技术栈、V1 闭环、real-pre 状态和旧文档冲突处理。
+- [V1 必做] [../harness/TASK_ROUTING.md](../harness/TASK_ROUTING.md)：任务分流到领域、验证和执行 Scope。
+- [V1 必做] [../harness/FORBIDDEN_SCOPE.md](../harness/FORBIDDEN_SCOPE.md)：V1、real-pre、Git 密钥和模块边界禁止项。
+- [V1 必做] [../harness/instructions/](../harness/instructions/)：Instructions 指令系统。
+- [V1 必做] [../harness/tools/README.md](../harness/tools/README.md)：Tools 工具系统。
+- [V1 必做] [../harness/environment/](../harness/environment/)：Environment 环境系统。
+- [V1 必做] [../harness/state/](../harness/state/)：State 状态系统。
+- [V1 必做] [../harness/feedback/](../harness/feedback/)：Feedback 反馈系统。
+- [V1 必做] Harness 不替代本目录事实主源；涉及业务规则仍以 `docs/*.md` 和当前代码证据为准。
 
 ## 不变量
 
