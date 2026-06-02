@@ -738,6 +738,36 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
       return true
     }
 
+    // 兜底路径:
+    // - isPickLibraryMode 但 recruitActivityId 为空:走 T2 共享商品库 `/products` 接口,
+    //   把 40+ 筛选条件全发到服务端,避免 `getProductPickPage` 拉 200 条后纯本地过滤造成的
+    //   远端窄化失效/数据截断问题(详见 audit §2.3)。
+    // - 否则(无活动上下文/无任何路径活动):保留旧的 `getProductPickPage` 兜底,适用于
+    //   Token 缺失场景下的本地选品候选列表。
+    if (isPickLibraryMode.value) {
+      const page = reset ? 1 : Math.floor(products.value.length / PRODUCT_LIST_PAGE_SIZE) + 1
+      const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
+        page,
+        size: PRODUCT_LIST_PAGE_SIZE,
+        keyword: filters.value.productId || filters.value.productName || undefined,
+        productIdMode: 'keyword'
+      }))
+      const data = res?.data || {}
+      const records = Array.isArray(data.records) ? data.records : []
+      const items = records.map((p: any) => normalizeItem({
+        ...p,
+        title: p.title || p.name || '未命名商品',
+        productId: String(p.productId || '')
+      }))
+      products.value = reset ? items : products.value.concat(items)
+      const currentPage = Number(data.page || page || 1)
+      const pageSize = Number(data.size || PRODUCT_LIST_PAGE_SIZE)
+      const total = Number(data.total || 0)
+      hasMore.value = currentPage * pageSize < total
+      nextCursor.value = ''
+      return true
+    }
+
     const page = reset ? 1 : Math.floor(products.value.length / PRODUCT_LIST_PAGE_SIZE) + 1
     const res: any = await getProductPickPage({ page, size: PRODUCT_LIST_PAGE_SIZE })
     const data = res?.data || {}
@@ -798,30 +828,97 @@ const handleOfficialStatusChange = (value: ProductOfficialStatus | null) => {
   officialStatus.value = value
   allianceStatus.value = value ? officialStatusToAllianceStatus[value] : null
   filters.value = { ...filters.value, allianceStatus: allianceStatus.value }
+  // 切官方状态时清空业务状态 stage,避免"联盟推广状态=promoting AND bizStatus=PENDING_AUDIT"等
+  // 隐式 AND 死集;同时把 activeStage 复位为 all。
+  if (value !== null) {
+    status.value = null
+  }
   activeStage.value = 'all'
   refreshProducts()
+}
+
+/**
+ * 活动快速筛选(stage 按钮 / 阶段 chip)互斥重置:
+ * 1. 切 stage 时清 `filters.allianceStatus` 与 `officialStatus.value`,避免官方状态 tab 的选择叠加成"业务状态+联盟状态"两条件相交导致空集;
+ * 2. 同时清空 `categories` / `systemTag` / `commission` / `salesRange` / `promotionLink` / `goodsTags` /
+ *    `productTags` / `publishStatus` / `hasSample` / `freeSample` / `listed` / `published` /
+ *    `supportsAds` / `merchantStatus` / `categoryName` / `serviceFee` / `cooperationType` / `productMechanism` /
+ *    `materialDownload` / `exclusivePrice` / `productChain` / `handCard` / `doubleCommission` /
+ *    `notInLibrary` / `dedup` / `supplemented` / 时间区间 / 招商/活动 ID 等,以保证 stage 表达的是
+ *    "按业务状态 + 招商归属"独立语义,不会被其他窄化条件 AND 死集;
+ * 3. 保留 `productId` / `productName` / `shopKeyword` / `colonelName` 等用户已显式输入的查询字段(其
+ *    语义是定位,与 stage 正交)。
+ *
+ * See also: `handleOfficialStatusChange`(切官方状态时反向清 `status.value`)。
+ */
+function resetStageExclusiveFilters() {
+  allianceStatus.value = null
+  officialStatus.value = null
+  filters.value = {
+    ...filters.value,
+    assignee: null,
+    allianceStatus: null,
+    categoryName: null,
+    systemTag: null,
+    commission: null,
+    serviceFee: null,
+    salesRange: null,
+    promotionLink: null,
+    hasSample: null,
+    publishStatus: null,
+    goodsTags: [],
+    productTags: [],
+    categories: [],
+    merchantStatus: null,
+    cooperationType: null,
+    productMechanism: null,
+    supportsAds: null,
+    published: null,
+    listed: null,
+    freeSample: null,
+    materialDownload: false,
+    exclusivePrice: false,
+    productChain: false,
+    handCard: false,
+    doubleCommission: false,
+    notInLibrary: false,
+    dedup: false,
+    supplemented: null,
+    updatedTimeRange: null,
+    syncTimeRange: null,
+    livePriceMin: null,
+    livePriceMax: null,
+    stockMin: null,
+    stockMax: null,
+    commissionMin: null,
+    commissionMax: null,
+    sampleSalesMin: null,
+    sampleSalesMax: null
+  }
 }
 
 const applyActivityQuickFilter = (stage: ActivityStageKey) => {
   activeStage.value = stage
   if (stage === 'all') {
     status.value = null
-    filters.value = { ...filters.value, assignee: null }
+    resetStageExclusiveFilters()
   } else if (stage === 'pendingAudit') {
     status.value = 'PENDING_AUDIT'
-    filters.value = { ...filters.value, assignee: null }
+    resetStageExclusiveFilters()
   } else if (stage === 'readyAssign') {
     status.value = 'APPROVED'
+    resetStageExclusiveFilters()
     filters.value = { ...filters.value, assignee: 'unassigned' }
   } else if (stage === 'assigned') {
     status.value = 'ASSIGNED'
+    resetStageExclusiveFilters()
     filters.value = { ...filters.value, assignee: 'assigned' }
   } else if (stage === 'linked') {
     status.value = 'LINKED'
-    filters.value = { ...filters.value, assignee: null }
+    resetStageExclusiveFilters()
   } else if (stage === 'displayReady') {
     status.value = null
-    filters.value = { ...filters.value, assignee: null }
+    resetStageExclusiveFilters()
   }
   refreshProducts()
 }
@@ -853,7 +950,20 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
     message.warning('缺少活动 ID，暂时无法同步活动商品')
     return
   }
-  filters.value = { ...filters.value, recruitActivityId: selectedActivityId }
+  // 三联赋值:recruitActivityId / activityId(供 T2 商品库联动) / recruitActivityName
+  // name 从 assignedActivityOptions 的 label 解析,label 形如 `${name} (${value})`
+  const matchedOption = assignedActivityOptions.value.find(
+    (option) => option.value === selectedActivityId
+  )
+  const matchedName = matchedOption
+    ? matchedOption.label.replace(/\s*\([^)]*\)\s*$/, '').trim()
+    : ''
+  filters.value = {
+    ...filters.value,
+    recruitActivityId: selectedActivityId,
+    activityId: selectedActivityId,
+    recruitActivityName: matchedName || null
+  }
   fallbackActivityId.value = selectedActivityId
   clearBatchSelection()
   syncing.value = true

@@ -70,6 +70,20 @@ public class PerformanceMetricsQueryService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
+        return aggregateRange(startInclusive, endExclusive, timeField,
+                null, null, null, userId, deptId, dataScope);
+    }
+
+    public PerformanceAggregate aggregateRange(
+            LocalDateTime startInclusive,
+            LocalDateTime endExclusive,
+            String timeField,
+            String businessLine,
+            UUID channelId,
+            UUID recruiterId,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
         boolean estimateTrack = isEstimateTrack(timeField);
         String timeColumn = resolveTimeColumn(timeField);
         List<Object> args = new ArrayList<>();
@@ -79,12 +93,8 @@ public class PerformanceMetricsQueryService {
                 WHERE pr.is_valid = TRUE
                 """);
         appendScope(where, args, userId, deptId, dataScope);
-        where.append(" AND co.").append(timeColumn).append(" >= ? AND co.").append(timeColumn).append(" < ?");
-        args.add(startInclusive);
-        args.add(endExclusive);
-        if ("settle_time".equals(timeColumn)) {
-            where.append(" AND co.settle_time IS NOT NULL");
-        }
+        appendBusinessLineFilter(where, args, businessLine, channelId, recruiterId);
+        appendRangeFilter(where, args, timeColumn, startInclusive, endExclusive);
 
         String amountColumn = estimateTrack ? "pr.pay_amount" : "pr.settle_amount";
         String serviceFeeColumn = estimateTrack ? "pr.estimate_service_fee" : "pr.effective_service_fee";
@@ -132,6 +142,20 @@ public class PerformanceMetricsQueryService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
+        return trendByDay(startInclusive, endExclusive, timeField,
+                null, null, null, userId, deptId, dataScope);
+    }
+
+    public List<TrendPoint> trendByDay(
+            LocalDateTime startInclusive,
+            LocalDateTime endExclusive,
+            String timeField,
+            String businessLine,
+            UUID channelId,
+            UUID recruiterId,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
         boolean estimateTrack = isEstimateTrack(timeField);
         String timeColumn = resolveTimeColumn(timeField);
         List<Object> args = new ArrayList<>();
@@ -141,12 +165,8 @@ public class PerformanceMetricsQueryService {
                 WHERE pr.is_valid = TRUE
                 """);
         appendScope(where, args, userId, deptId, dataScope);
-        where.append(" AND co.").append(timeColumn).append(" >= ? AND co.").append(timeColumn).append(" < ?");
-        args.add(startInclusive);
-        args.add(endExclusive);
-        if ("settle_time".equals(timeColumn)) {
-            where.append(" AND co.settle_time IS NOT NULL");
-        }
+        appendBusinessLineFilter(where, args, businessLine, channelId, recruiterId);
+        appendRangeFilter(where, args, timeColumn, startInclusive, endExclusive);
 
         String amountColumn = estimateTrack ? "pr.pay_amount" : "pr.settle_amount";
         String sql = """
@@ -270,6 +290,70 @@ public class PerformanceMetricsQueryService {
                 // no filter
             }
         }
+    }
+
+    /**
+     * 追加时间范围过滤条件，并在 settle 轨道时强制要求 settle_time 不为空。
+     *
+     * <p>用于聚合/趋势查询统一处理时间范围 + 已结算限定：
+     * 任意一端为 null 时跳过该方向，时间范围在 settle 轨道上自动要求
+     * {@code co.settle_time IS NOT NULL}，与原有 SQL 行为一致。</p>
+     */
+    private void appendRangeFilter(
+            StringBuilder where,
+            List<Object> args,
+            String timeColumn,
+            LocalDateTime startInclusive,
+            LocalDateTime endExclusive) {
+        if (startInclusive != null) {
+            where.append(" AND co.").append(timeColumn).append(" >= ?");
+            args.add(startInclusive);
+        }
+        if (endExclusive != null) {
+            where.append(" AND co.").append(timeColumn).append(" < ?");
+            args.add(endExclusive);
+        }
+        if ("settle_time".equals(timeColumn) && (startInclusive != null || endExclusive != null)) {
+            where.append(" AND co.settle_time IS NOT NULL");
+        }
+    }
+
+    /**
+     * 追加业务线 + 渠道/招商 筛选条件。
+     *
+     * <p>业务线取值：
+     * <ul>
+     *   <li>CHANNEL：仅保留有 final_channel_user_id 的记录；可叠加 channelId 精确过滤</li>
+     *   <li>RECRUITER：仅保留有 final_recruiter_user_id 的记录；可叠加 recruiterId 精确过滤</li>
+     *   <li>其他值（含 null）：不追加业务线筛选</li>
+     * </ul>
+     *
+     * <p>此过滤在数据范围过滤之后追加，确保业务线筛选与 dataScope 兼容叠加。</p>
+     */
+    private void appendBusinessLineFilter(
+            StringBuilder where,
+            List<Object> args,
+            String businessLine,
+            UUID channelId,
+            UUID recruiterId) {
+        if (businessLine == null) {
+            return;
+        }
+        String normalized = businessLine.trim().toUpperCase(Locale.ROOT);
+        if ("CHANNEL".equals(normalized)) {
+            where.append(" AND pr.final_channel_user_id IS NOT NULL");
+            if (channelId != null) {
+                where.append(" AND pr.final_channel_user_id = ?");
+                args.add(channelId);
+            }
+        } else if ("RECRUITER".equals(normalized)) {
+            where.append(" AND pr.final_recruiter_user_id IS NOT NULL");
+            if (recruiterId != null) {
+                where.append(" AND pr.final_recruiter_user_id = ?");
+                args.add(recruiterId);
+            }
+        }
+        // 其他取值：忽略，避免非法值或注入
     }
 
     private void appendSettleTimeRangeInclusive(

@@ -143,6 +143,17 @@ public class OrderController extends BaseController {
     /** 部门 Mapper：用于加载部门下拉选项 */
     private final SysDeptMapper sysDeptMapper;
 
+    /**
+     * 订单域查询服务：封装筛选条件构造与分页 / 统计聚合（t2-orders 抽 service）。
+     * <p>
+     * 历史实现中本 controller 自身持有 14 参数 {@code buildWrapper}、归因 / 时间 / 数据范围 / 诊断分类
+     * 应用等私有方法，单测只能通过 {@code MockMvc} 端到端验证，wrapper 拼装逻辑被锁在 controller
+     * 内部。现委托给 {@link OrderService}，controller 仍负责 HTTP 接入层（参数解析、缓存、审计日志），
+     * 业务层逻辑可独立单测。
+     * </p>
+     */
+    private final OrderService orderService;
+
     public OrderController(
             OrderSyncService orderSyncService,
             ColonelsettlementOrderMapper orderMapper,
@@ -152,7 +163,8 @@ public class OrderController extends BaseController {
             ShortTtlCacheService shortTtlCacheService,
             CommissionService commissionService,
             PerformanceBackfillService performanceBackfillService,
-            SysDeptMapper sysDeptMapper) {
+            SysDeptMapper sysDeptMapper,
+            OrderService orderService) {
         this.orderSyncService = orderSyncService;
         this.orderMapper = orderMapper;
         this.orderQueryService = orderQueryService;
@@ -162,6 +174,7 @@ public class OrderController extends BaseController {
         this.commissionService = commissionService;
         this.performanceBackfillService = performanceBackfillService;
         this.sysDeptMapper = sysDeptMapper;
+        this.orderService = orderService;
     }
 
     /**

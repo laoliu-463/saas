@@ -164,12 +164,12 @@ public class SampleController extends SampleApplicationService {
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(100) long size,
             @Parameter(description = "关键字，可匹配达人昵称、达人 UID、寄样单号或商品名称。") @RequestParam(required = false) String keyword,
             @Parameter(description = "寄样状态。可用值包括 PENDING_AUDIT、PENDING_SHIP、SHIPPING、DELIVERED、PENDING_HOMEWORK、COMPLETED、REJECTED、CLOSED。") @RequestParam(required = false) String status,
-            @Parameter(description = "渠道负责人用户 ID。") @RequestParam(required = false) UUID channelUserId,
+            @Parameter(description = "渠道负责人用户 ID 列表（多选，IN 查询），与数据权限范围叠加。") @RequestParam(required = false) List<UUID> channelUserIds,
             @Parameter(description = "招商负责人用户 ID。") @RequestParam(required = false) UUID recruiterUserId,
             @Parameter(description = "商品 ID 或商品名称。") @RequestParam(required = false) String productKeyword,
             @Parameter(description = "店铺 ID 或店铺名称。") @RequestParam(required = false) String shopKeyword,
-            @Parameter(description = "物流单号。") @RequestParam(required = false) String trackingNo,
-            @Parameter(description = "申请编号 / 合作单号。") @RequestParam(required = false) String requestNo,
+            @Parameter(description = "物流单号（精确匹配）。") @RequestParam(required = false) String trackingNo,
+            @Parameter(description = "申请编号 / 合作单号（精确匹配）。") @RequestParam(required = false) String requestNo,
             @Parameter(description = "达人昵称或达人号。") @RequestParam(required = false) String talentKeyword,
             @Parameter(description = "合作类型。") @RequestParam(required = false) String cooperationType,
             @Parameter(description = "寄样负责方。") @RequestParam(required = false) String sampleOwnerType,
@@ -185,7 +185,7 @@ public class SampleController extends SampleApplicationService {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) com.colonel.saas.common.enums.DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return super.getSamplePage(page, size, keyword, status, channelUserId, recruiterUserId, productKeyword, shopKeyword, trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany, userId, deptId, dataScope, roleCodes);
+        return super.getSamplePage(page, size, keyword, status, channelUserIds, recruiterUserId, productKeyword, shopKeyword, trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany, userId, deptId, dataScope, roleCodes);
     }
 
     @GetMapping("/talent-candidates")
@@ -373,7 +373,7 @@ public class SampleController extends SampleApplicationService {
     public void exportSamples(
             @Parameter(description = "寄样状态。") @RequestParam(required = false) String status,
             @Parameter(description = "关键字。") @RequestParam(required = false) String keyword,
-            @Parameter(description = "渠道负责人用户 ID。") @RequestParam(required = false) UUID channelUserId,
+            @Parameter(description = "渠道负责人用户 ID 列表（多选，IN 查询）。") @RequestParam(required = false) List<UUID> channelUserIds,
             @Parameter(description = "招商负责人用户 ID。") @RequestParam(required = false) UUID recruiterUserId,
             @Parameter(description = "商品 ID 或商品名称。") @RequestParam(required = false) String productKeyword,
             @Parameter(description = "店铺 ID 或店铺名称。") @RequestParam(required = false) String shopKeyword,
@@ -395,6 +395,6 @@ public class SampleController extends SampleApplicationService {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes,
             HttpServletResponse response) throws IOException {
-        super.exportSamples(status, keyword, channelUserId, recruiterUserId, productKeyword, shopKeyword, trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany, userId, deptId, dataScope, roleCodes, response);
+        super.exportSamples(status, keyword, channelUserIds, recruiterUserId, productKeyword, shopKeyword, trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany, userId, deptId, dataScope, roleCodes, response);
     }
 }

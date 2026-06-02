@@ -124,6 +124,10 @@ function Get-AutoCandidates {
             if ($cells.Count -lt 3 -or $cells[1].Trim() -eq "文件") {
                 continue
             }
+            $status = $cells[$cells.Count - 2].Trim().ToUpperInvariant()
+            if ($status -in @("ARCHIVED", "RESOLVED")) {
+                continue
+            }
             $matches = [regex]::Matches($cells[1], '`([^`]+)`')
             foreach ($match in $matches) {
                 $candidatePath = $match.Groups[1].Value

@@ -22,6 +22,12 @@
 - real-pre 误用 mock 会导致假闭环。
 - 远端代码目录当前事实为 `/opt/saas/app`，与部分模板中的 `/opt/saas` 可能不一致。
 - 禁止删除 real-pre volume。
+- test 环境 E2E auth setup 可能因后端容器初始化未完成（`health: starting` 状态持续 1-2 分钟）而超时，导致 `agent-do.ps1 -Scope backend` 在业务验证阶段失败。需要在容器启动后等待就绪或增加重试机制。
+
+## Harness 工具
+
+- `git-push-safe.ps1` 在 v0.1.4 前对中文文件名使用了 octal 转义路径，导致 `Test-Path -LiteralPath` 报非法字符错误。已通过 `-c core.quotepath=false` 修复。
+- `verify-local.ps1` 在容器刚启动时立即做 HTTP 健康检查，未等待 Spring Boot 初始化完成（通常需要 60-90 秒）。
 
 ## 文档
 

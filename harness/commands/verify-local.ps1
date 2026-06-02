@@ -39,14 +39,28 @@ if ($Scope -eq "backend" -or $Scope -eq "full") {
         Write-Host "DRY-RUN backend check skipped."
     }
     else {
-        $backend = Invoke-HarnessHttp -Url $backendUrl
-        $backendUp = $backend.Ok -and ($backend.Body -match '"status"\s*:\s*"UP"')
-        Write-Host "Backend statusCode=$($backend.StatusCode)"
-        if ($backend.Body) {
-            Write-Host "Backend body=$($backend.Body)"
+        $maxRetries = 12
+        $retryInterval = 10
+        $backendUp = $false
+        for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+            $backend = Invoke-HarnessHttp -Url $backendUrl
+            $backendUp = $backend.Ok -and ($backend.Body -match '"status"\s*:\s*"UP"')
+            if ($backendUp) {
+                Write-Host "Backend statusCode=$($backend.StatusCode)"
+                Write-Host "Backend body=$($backend.Body)"
+                break
+            }
+            if ($attempt -lt $maxRetries) {
+                Write-Host "Backend not ready (attempt $attempt/$maxRetries), retrying in ${retryInterval}s..."
+                Start-Sleep -Seconds $retryInterval
+            }
         }
         if (-not $backendUp) {
-            $failures += "Backend health failed: $($backend.Error)"
+            Write-Host "Backend statusCode=$($backend.StatusCode)"
+            if ($backend.Body) {
+                Write-Host "Backend body=$($backend.Body)"
+            }
+            $failures += "Backend health failed after $maxRetries attempts: $($backend.Error)"
         }
     }
 }
