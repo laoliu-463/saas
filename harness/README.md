@@ -29,6 +29,14 @@
 | State | `CURRENT_STATE.md`、`state/`、`HARNESS_CHANGELOG.md` | 当前状态、风险、证据、版本 |
 | Feedback | `feedback/`、`evals/`、`reports/` | 验收、证据报告、复盘和 Harness 升级闭环 |
 
+## Harness 与 DDD 的分工
+
+- `docs/03-领域架构总览.md` 和 `docs/领域/*.md` 负责定义 DDD 边界、领域职责和禁止越界项。
+- `harness/TASK_ROUTING.md` 负责把任务路由到对应领域、Scope、runbook 和验证入口。
+- `harness/skills/domain-alignment.skill.md` 负责在修改前确认主责领域、关联领域、V1 边界和证据要求。
+- `harness/feedback/*.md` 负责把失败经验、重复问题和旧内容债务回收到可执行规则。
+- Harness 不新增业务规则；发现业务冲突时，必须回到 `docs/决策/ADR-002-V1范围优先级.md` 或对应领域主源处理。
+
 ## 任务入口索引
 
 | 任务 | 入口 |
