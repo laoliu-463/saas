@@ -13,6 +13,35 @@
 5. `harness/TASK_ROUTING.md`
 6. 当前任务对应的领域、流程、接口、数据、权限、验收和部署文档
 
+## DDD 优化总规则
+
+本项目采用 V1 模块化单体 + DDD 方式持续优化。DDD 优化只约束领域边界、任务顺序、执行证据和反馈同步，不改变当前 Spring Boot / PostgreSQL / Redis / Docker Compose 技术事实。
+
+领域优化顺序固定为：
+
+1. 用户域
+2. 配置域
+3. 订单域
+4. 业绩域
+5. 分析模块
+6. 商品域
+7. 达人域
+8. 寄样域
+9. Outbox 事件
+10. 前端领域化
+11. E2E 验收
+12. 垃圾回收
+
+所有 DDD 领域优化必须遵守：
+
+- 先读 `harness/plans/DDD_OPTIMIZATION_ROADMAP.md` 和 `harness/plans/DDD_DOMAIN_TASK_MATRIX.md`。
+- 再读对应 `harness/instructions/*.md` 与 `docs/领域/*.md`。
+- 修改前必须确认 `harness/FORBIDDEN_SCOPE.md`，不得扩大 V1 范围。
+- 一次任务只推进一个主责领域任务卡；跨域影响只记录依赖和验证点。
+- 修改后必须执行当前 Scope 的固定验证；docs-only 使用 `Scope=docs`。
+- 测试或验证后必须更新 state；失败、阻塞或新风险必须写入 feedback 或 evidence report。
+- 业务规则、架构边界或旧文档冲突不得由 AI 自行裁决，必须补证据并回到 ADR 或领域主源。
+
 ## 执行主线
 
 任何工程任务必须按以下主线推进：

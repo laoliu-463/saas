@@ -11,6 +11,7 @@
 | `TASK_ROUTING.md` | 任务类型到领域、skill、验证的分流 |
 | `FORBIDDEN_SCOPE.md` | V1、real-pre、Git、密钥和模块边界禁止项 |
 | `DOMAIN_MAP.md` | 七域 + 分析模块职责地图 |
+| `plans/` | DDD 优化路线、领域任务矩阵和后续执行计划 |
 | `commands/` | PowerShell 固定执行入口 |
 | `skills/` | AI Agent 可执行技能规范 |
 | `evals/` | 验收目标、步骤、通过标准和证据要求 |
@@ -32,8 +33,11 @@
 ## Harness 与 DDD 的分工
 
 - `docs/03-领域架构总览.md` 和 `docs/领域/*.md` 负责定义 DDD 边界、领域职责和禁止越界项。
+- `harness/plans/DDD_OPTIMIZATION_ROADMAP.md` 负责记录 DDD 优化顺序、阶段目标、验收标准和执行原因。
+- `harness/plans/DDD_DOMAIN_TASK_MATRIX.md` 负责记录各领域任务卡，不代表任务已经完成。
 - `harness/TASK_ROUTING.md` 负责把任务路由到对应领域、Scope、runbook 和验证入口。
 - `harness/skills/domain-alignment.skill.md` 负责在修改前确认主责领域、关联领域、V1 边界和证据要求。
+- `harness/skills/ddd-domain-optimization.skill.md`、`ddd-boundary-check.skill.md`、`ddd-post-task-sync.skill.md` 负责约束 DDD 领域优化的读取、边界检查和收尾同步。
 - `harness/feedback/*.md` 负责把失败经验、重复问题和旧内容债务回收到可执行规则。
 - Harness 不新增业务规则；发现业务冲突时，必须回到 `docs/决策/ADR-002-V1范围优先级.md` 或对应领域主源处理。
 

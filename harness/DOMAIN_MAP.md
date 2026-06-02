@@ -54,5 +54,7 @@
 | 前端体验 | `harness/skills/frontend-ux.skill.md` |
 | 证据报告 | `harness/skills/evidence-report.skill.md` |
 | 领域边界确认 | `harness/skills/domain-alignment.skill.md` |
+| DDD 领域优化任务 | `harness/skills/ddd-domain-optimization.skill.md` |
+| DDD 边界检查 | `harness/skills/ddd-boundary-check.skill.md` |
+| DDD 任务后同步 | `harness/skills/ddd-post-task-sync.skill.md` |
 | 代码审查 | `harness/skills/code-review.skill.md` |
-

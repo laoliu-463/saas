@@ -38,6 +38,51 @@
 - 规则参数、配置变更、配置审计：配置域。
 - dashboard、报表、导出、汇总展示：分析模块。
 
+## DDD 优化任务路由
+
+当任务涉及 DDD、领域边界、业务规则下沉、跨域依赖治理、Facade 收口、事件解耦或前端领域化时，必须先读取：
+
+1. `harness/AGENT_CONTRACT.md`
+2. `harness/FORBIDDEN_SCOPE.md`
+3. `harness/plans/DDD_OPTIMIZATION_ROADMAP.md`
+4. `harness/plans/DDD_DOMAIN_TASK_MATRIX.md`
+5. 当前领域对应的 `harness/instructions/*.md`
+6. 当前领域对应的 `docs/领域/*.md`
+
+DDD 优化顺序固定为：
+
+1. 用户域
+2. 配置域
+3. 订单域
+4. 业绩域
+5. 分析模块
+6. 商品域
+7. 达人域
+8. 寄样域
+9. Outbox 事件
+10. 前端领域化
+11. E2E 验收与垃圾回收
+
+### DDD 识别规则
+
+| 关键词 / 现象 | 主责领域 | 必读 instruction |
+| --- | --- | --- |
+| 登录、权限、菜单、角色、组织、数据范围 | 用户域 | `harness/instructions/user-domain.md` |
+| 系统配置、规则参数、提成比例、复制模板、`pick_extra` | 配置域 | `harness/instructions/config-domain.md` |
+| 订单同步、`pick_source`、`colonel_buyin_id`、默认归因、`raw_payload`、双轨金额输入 | 订单域 | `harness/instructions/order-domain.md` |
+| `performance_records`、提成、冲正、最终归属 | 业绩域 | `harness/instructions/performance-domain.md` |
+| 看板、汇总表、趋势、排行、对账 | 分析模块 | `harness/instructions/analytics-module.md` |
+| 商品库、活动商品、展示规则、转链、`pick_source_mapping` | 商品域 | `harness/instructions/product-domain.md` |
+| 达人、认领、保护期、地址、标签 | 达人域 | `harness/instructions/talent-domain.md` |
+| 寄样申请、审核、发货、签收、待交作业、交作业完成 | 寄样域 | `harness/instructions/sample-domain.md` |
+
+### DDD 执行口径
+
+- 单个任务只允许推进一个主责领域的一个任务卡；跨域影响必须记录为依赖，不得顺手重构。
+- 修改前必须执行 `harness/skills/ddd-boundary-check.skill.md` 的边界检查清单。
+- 修改后必须按当前 Scope 执行固定入口；文档任务使用 `Scope=docs`。
+- 任务完成后必须更新 `harness/state/DOMAIN_STATUS.md`、相关 state 和 feedback；没有证据不得把任务状态写成完成。
+
 ## 执行入口选择
 
 ```powershell

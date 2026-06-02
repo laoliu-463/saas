@@ -197,4 +197,6 @@ harness/reports/evidence-YYYYMMDD-HHMMSS.md
 - State：`harness/CURRENT_STATE.md`、`harness/state/`、`HARNESS_CHANGELOG.md`。
 - Feedback：`harness/feedback/`、`harness/evals/`、`harness/reports/`。
 
+DDD 优化任务的总规则、顺序和执行口径见 `harness/AGENT_CONTRACT.md`、`harness/TASK_ROUTING.md`、`harness/plans/DDD_OPTIMIZATION_ROADMAP.md` 和 `harness/plans/DDD_DOMAIN_TASK_MATRIX.md`；本文件只保留跳转说明，不重复维护第二套 DDD 规则。
+
 发现旧文档与当前事实冲突时，不得自行拍板，写入 `docs/决策/ADR-002-V1范围优先级.md`。

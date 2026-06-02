@@ -1,5 +1,13 @@
 # Harness Changelog
 
+## v0.1.8
+
+- 增量合并 DDD 优化路线到现有 Harness，不重建 Harness，不覆盖既有入口。
+- 新增 `harness/plans/DDD_OPTIMIZATION_ROADMAP.md` 和 `harness/plans/DDD_DOMAIN_TASK_MATRIX.md`，记录领域优化顺序、阶段验收和任务矩阵。
+- 新增八个领域 instruction，约束领域职责、不负责事项、V1 规则、禁止越界、测试和 state / feedback 同步。
+- 新增 DDD 三个 skill，用于领域优化执行、边界检查和任务后同步。
+- 扩展 `TASK_ROUTING.md`、`FORBIDDEN_SCOPE.md`、`AGENT_CONTRACT.md`、`CURRENT_STATE.md` 和 `state/DECISIONS.md`，把 DDD 路由、禁止范围、总规则和决策摘要接入现有主线。
+
 ## v0.1.7
 
 - 修正 `CODEX.md` 默认入口为本地 `real-pre`，与 `AGENTS.md`、Harness 命令默认值保持一致。

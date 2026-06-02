@@ -97,6 +97,16 @@ real-pre 必须保持：
 - `docs/09-测试验收总览.md` 与 `docs/验收/*.md` 是验收入口。
 - `docs/10-部署运行总览.md` 与 `docs/deploy/README.md` 是部署入口。
 
+## DDD 优化合并状态
+
+- 本次完成：将 DDD 优化计划增量合并进现有 Harness，不新建第二套 Harness。
+- 新增主源：`harness/plans/DDD_OPTIMIZATION_ROADMAP.md`、`harness/plans/DDD_DOMAIN_TASK_MATRIX.md`。
+- 新增领域执行入口：`harness/instructions/user-domain.md`、`config-domain.md`、`order-domain.md`、`performance-domain.md`、`analytics-module.md`、`product-domain.md`、`talent-domain.md`、`sample-domain.md`。
+- 新增 DDD skill：`ddd-domain-optimization.skill.md`、`ddd-boundary-check.skill.md`、`ddd-post-task-sync.skill.md`。
+- 状态跟踪入口：`harness/state/DOMAIN_STATUS.md`。
+- 下一阶段：按照 `DDD_DOMAIN_TASK_MATRIX.md` 从用户域 U-1 现状盘点开始逐领域优化。
+- 重要口径：本次是 Harness 文档治理，不代表 Java / Vue / SQL 已完成 DDD 重构。
+
 ## 旧文档冲突处理
 
 | 冲突 | 当前处理 |

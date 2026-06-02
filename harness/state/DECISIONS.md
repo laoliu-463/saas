@@ -14,6 +14,18 @@
 | 业绩域边界 | `docs/决策/ADR-004-业绩域负责最终归属.md` | 最终归属、提成、冲正属于业绩域 |
 | 分析模块边界 | `docs/决策/ADR-005-分析模块只读汇总.md` | 分析模块不重算业绩 |
 | real-pre 环境 | `docs/决策/ADR-006-real-pre作为上线前联调环境.md` | real-pre 是真实上游 / 生产形态联调环境 |
+| DDD 增量合并 | `harness/plans/DDD_OPTIMIZATION_ROADMAP.md` | 本项目已有 Harness，本次只增量合并 DDD 计划，不重建 Harness |
+
+## 2026-06-02 DDD 优化决策摘要
+
+- 本项目已有 Harness，本次采用增量合并，不重建 Harness。
+- DDD 优化顺序固定为：用户域 -> 配置域 -> 订单域 -> 业绩域 -> 分析模块 -> 商品域 -> 达人域 -> 寄样域 -> Outbox 事件 -> 前端领域化 -> E2E 验收与垃圾回收。
+- V1 使用 Spring Boot + PostgreSQL + Redis + Docker Compose，不切换 FastAPI。
+- V1 采用模块化单体，不拆微服务。
+- V1 订单域只存事实，不计算提成，不直接写 `performance_records`。
+- V1 业绩域负责最终归属、提成、冲正和汇总刷新。
+- V1 分析模块只读汇总，不重新计算归因。
+- V1 不启用独家达人、独家商家、个别品负责人覆盖或毛利核心验收。
 
 ## 新决策写入规则
 
