@@ -66,9 +66,14 @@ dump.rdb
 .gemini/
 .kiro/
 .qoder/
+.codex/
 .opencode.json
 .mcp.json
 .code-review-graphignore
+
+# Local utility / debug scripts (not part of the product)
+verify-*.mjs
+everos-*.py
 
 # Debug logs
 debug-*.log
