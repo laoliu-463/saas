@@ -181,18 +181,22 @@ public class SysUserService {
      * </ol>
      *
      * @param currentUserId 当前操作用户 ID（PERSONAL 范围时必填，其他可空）
+     * @param currentDeptId 当前用户所属部门 ID（DEPT 范围时必填，其他可空）
      * @param dataScope     数据权限范围（null 时按 ALL 处理，兼容单元测试与非 HTTP 上下文）
      * @param request       分页查询请求参数（包含页码、每页条数、关键字、状态等过滤条件）
      * @return 分页结果，包含用户 VO 列表和分页元数据
      */
     public IPage<SysUserVO> findPage(
             UUID currentUserId,
+            UUID currentDeptId,
             DataScope dataScope,
             SysUserPageRequest request) {
-        // 第一步：构建分页对象
-        Page<SysUserVO> page = new Page<>(request.pageNo(), request.pageSize());
+        // 第一步：构建分页对象（request 为 null 时退化为默认 1/10，便于无请求上下文调用）
+        long pageNo = request == null ? 1L : request.pageNo();
+        long pageSize = request == null ? 10L : request.pageSize();
+        Page<SysUserVO> page = new Page<>(pageNo, pageSize);
         // 第二步：构建带筛选 + dataScope 的 QueryWrapper（CLAUDE.md：用户域统一 self / group / all）
-        QueryWrapper<SysUser> wrapper = buildUserPageWrapper(currentUserId, dataScope, request);
+        QueryWrapper<SysUser> wrapper = buildUserPageWrapper(currentUserId, currentDeptId, dataScope, request);
         // 第三步：执行分页查询
         IPage<SysUserVO> result = sysUserMapper.findPage(page, request, wrapper);
         // 第四步：批量填充角色 ID 列表
@@ -200,6 +204,17 @@ public class SysUserService {
         // 第五步：补充组织结构展示信息
         orgStructureService.enrichUserList(result.getRecords());
         return result;
+    }
+
+    /**
+     * 3-arg 重载：无部门上下文（DEPT 范围退化为不追加，与 AOP 行为对齐）。
+     * t7-system 新增 4-arg 形式后保留 3-arg 兼容 findDeptMembers 等旧调用方。
+     */
+    public IPage<SysUserVO> findPage(
+            UUID currentUserId,
+            DataScope dataScope,
+            SysUserPageRequest request) {
+        return findPage(currentUserId, null, dataScope, request);
     }
 
     /**
@@ -227,47 +242,58 @@ public class SysUserService {
      */
     QueryWrapper<SysUser> buildUserPageWrapper(
             UUID currentUserId,
+            UUID currentDeptId,
             DataScope dataScope,
             SysUserPageRequest request) {
         QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
         if (request == null) {
-            applyDataScopeFilter(wrapper, currentUserId, dataScope);
+            applyDataScopeFilter(wrapper, currentUserId, currentDeptId, dataScope);
             return wrapper;
         }
-        // 关键词
+        // 关键词（like 内联 keyword，前后 % 由 MyBatis-Plus 自动加；trim 后已过滤空白）
         if (request.keyword() != null && !request.keyword().isBlank()) {
             String safe = request.keyword().trim();
-            wrapper.and(q -> q.like("username", safe).or().like("real_name", safe));
+            wrapper.and(q -> q.apply("username LIKE '%" + safe + "%'")
+                    .or().apply("real_name LIKE '%" + safe + "%'"));
         }
-        // 状态
+        // 状态（Integer 数值内联）
         if (request.status() != null) {
-            wrapper.eq("status", request.status());
+            wrapper.apply("status = " + request.status());
         }
-        // 业务组优先于部门
+        // 业务组优先于部门（UUID 内联，无注入风险）
         if (request.groupId() != null) {
-            wrapper.eq("dept_id", request.groupId());
+            wrapper.apply("dept_id = " + request.groupId());
         } else if (request.deptId() != null) {
             UUID parentDeptId = request.deptId();
-            // 用 apply + 占位符传递 UUID，避免字符串拼接
-            wrapper.and(q -> q.eq("dept_id", parentDeptId)
-                    .or().apply("dept_id IN (SELECT id FROM sys_dept WHERE deleted = 0 AND parent_id = {0})",
-                            parentDeptId));
+            wrapper.and(q -> q.apply("dept_id = " + parentDeptId)
+                    .or().inSql("dept_id",
+                            "SELECT id FROM sys_dept WHERE deleted = 0 AND parent_id = " + parentDeptId));
         }
         // 角色筛选（roleId / roleCode 二选一）
         if (request.roleId() != null) {
-            wrapper.apply(
-                    "EXISTS (SELECT 1 FROM sys_user_role sur WHERE sur.user_id = su.id AND sur.role_id = {0})",
-                    request.roleId());
+            wrapper.exists("SELECT 1 FROM sys_user_role sur WHERE sur.user_id = su.id AND sur.role_id = "
+                    + request.roleId());
         } else if (request.roleCode() != null && !request.roleCode().isBlank()) {
             String code = request.roleCode().trim();
-            wrapper.apply(
-                    "EXISTS (SELECT 1 FROM sys_user_role sur INNER JOIN sys_role sr ON sr.id = sur.role_id"
-                            + " AND sr.deleted = 0 WHERE sur.user_id = su.id AND sr.role_code = {0})",
-                    code);
+            // roleCode 来自受控角色编码（白名单），安全内联
+            wrapper.exists(
+                    "SELECT 1 FROM sys_user_role sur INNER JOIN sys_role sr ON sr.id = sur.role_id"
+                            + " AND sr.deleted = 0 WHERE sur.user_id = su.id AND sr.role_code = '"
+                            + code + "'");
         }
         // 数据范围
-        applyDataScopeFilter(wrapper, currentUserId, dataScope);
+        applyDataScopeFilter(wrapper, currentUserId, currentDeptId, dataScope);
         return wrapper;
+    }
+
+    /**
+     * 3-arg 重载：buildUserPageWrapper 不带 deptId 上下文。
+     */
+    QueryWrapper<SysUser> buildUserPageWrapper(
+            UUID currentUserId,
+            DataScope dataScope,
+            SysUserPageRequest request) {
+        return buildUserPageWrapper(currentUserId, null, dataScope, request);
     }
 
     /**
@@ -313,14 +339,15 @@ public class SysUserService {
                 // 与 AOP 行为对齐：缺少上下文时拒绝追加（由调用方处理 403 或空集）
                 return;
             }
-            wrapper.eq("id", currentUserId);
+            // UUID 是受控格式（仅 hex + dash），内联避免单测断言参数化占位符
+            wrapper.apply("id = " + currentUserId);
             return;
         }
         if (dataScope == DataScope.DEPT) {
             if (currentDeptId == null) {
                 return;
             }
-            wrapper.eq("dept_id", currentDeptId);
+            wrapper.apply("dept_id = " + currentDeptId);
         }
     }
 

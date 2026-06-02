@@ -58,19 +58,42 @@
               </n-popconfirm>
             </n-space>
 
-            <n-data-table
-              v-if="isDepartmentSelected"
-              remote
-              data-testid="dept-members-table"
-              size="small"
-              title="部门成员"
-              :columns="memberColumns"
-              :data="memberRows"
-              :loading="membersLoading"
-              :pagination="memberPagination"
-              @update:page="handleMemberPageChange"
-              @update:page-size="handleMemberPageSizeChange"
-            />
+            <div v-if="isDepartmentSelected" class="dept-members">
+              <div class="dept-members__filter">
+                <n-space :size="8" wrap>
+                  <n-input
+                    v-model:value="memberSearch.keyword"
+                    placeholder="用户名/姓名"
+                    clearable
+                    data-testid="dept-member-filter-keyword"
+                    style="width: 180px"
+                    @keyup.enter="handleMemberSearch"
+                  />
+                  <n-select
+                    v-model:value="memberSearch.status"
+                    :options="memberStatusOptions"
+                    placeholder="状态"
+                    clearable
+                    data-testid="dept-member-filter-status"
+                    style="width: 130px"
+                  />
+                  <n-button type="primary" size="small" data-testid="dept-member-filter-search" @click="handleMemberSearch">查询</n-button>
+                  <n-button size="small" data-testid="dept-member-filter-reset" @click="handleMemberFilterReset">重置</n-button>
+                </n-space>
+              </div>
+              <n-data-table
+                remote
+                data-testid="dept-members-table"
+                size="small"
+                title="部门成员"
+                :columns="memberColumns"
+                :data="memberRows"
+                :loading="membersLoading"
+                :pagination="memberPagination"
+                @update:page="handleMemberPageChange"
+                @update:page-size="handleMemberPageSizeChange"
+              />
+            </div>
           </n-space>
         </template>
         <n-empty v-else description="请在左侧选择部门" />
@@ -163,6 +186,17 @@ const stats = reactive({
 const membersLoading = ref(false)
 const memberRows = ref<any[]>([])
 const memberPagination = reactive(createPaginationState())
+
+// t7-system: 部门成员表筛选 (后端 DeptMemberPageRequest 已支持 keyword/status)
+const memberSearch = reactive({
+  keyword: '',
+  status: null as number | null
+})
+const memberStatusOptions = [
+  { label: '正常', value: 1 },
+  { label: '停用', value: 0 },
+  { label: '待激活', value: 2 }
+]
 
 const showDeptModal = ref(false)
 const deptModalType = ref<'add' | 'edit'>('add')
@@ -275,6 +309,9 @@ const handleTreeSelect = async (keys: string[]) => {
   selectedKeys.value = keys
   selectedNode.value = flatDepts.value.find((item) => String(item.id) === keys[0]) || null
   memberPagination.page = 1
+  // 切换部门时重置成员筛选
+  memberSearch.keyword = ''
+  memberSearch.status = null
   await loadDetail()
 }
 
@@ -299,7 +336,9 @@ const loadMembers = async (deptId: string) => {
   try {
     const res: any = await getDeptMembers(deptId, {
       page: memberPagination.page,
-      size: normalizePageSize(memberPagination.pageSize)
+      size: normalizePageSize(memberPagination.pageSize),
+      keyword: memberSearch.keyword || undefined,
+      status: memberSearch.status ?? undefined
     })
     const data = res?.data || res
     memberRows.value = Array.isArray(data?.records) ? data.records : []
@@ -310,6 +349,22 @@ const loadMembers = async (deptId: string) => {
     memberPagination.itemCount = 0
   } finally {
     membersLoading.value = false
+  }
+}
+
+const handleMemberSearch = () => {
+  memberPagination.page = 1
+  if (selectedNode.value?.id && isDepartmentSelected.value) {
+    loadMembers(String(selectedNode.value.id))
+  }
+}
+
+const handleMemberFilterReset = () => {
+  memberSearch.keyword = ''
+  memberSearch.status = null
+  memberPagination.page = 1
+  if (selectedNode.value?.id && isDepartmentSelected.value) {
+    loadMembers(String(selectedNode.value.id))
   }
 }
 
@@ -445,6 +500,10 @@ onMounted(() => {
 .dept-layout__tree,
 .dept-layout__detail {
   min-height: 520px;
+}
+
+.dept-members__filter {
+  margin-bottom: 8px;
 }
 
 @media (max-width: 960px) {

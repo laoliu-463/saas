@@ -6,6 +6,29 @@
       </template>
     </PageHeader>
 
+    <div class="app-toolbar">
+      <n-space wrap :size="10">
+        <n-input
+          v-model:value="searchParams.keyword"
+          placeholder="角色名称/编码"
+          clearable
+          data-testid="role-filter-keyword"
+          style="width: 200px"
+          @keyup.enter="handleSearch"
+        />
+        <n-select
+          v-model:value="searchParams.status"
+          :options="statusOptions"
+          placeholder="状态"
+          clearable
+          data-testid="role-filter-status"
+          style="width: 130px"
+        />
+        <n-button type="primary" size="small" data-testid="role-filter-search" @click="handleSearch">查询</n-button>
+        <n-button size="small" data-testid="role-filter-reset" @click="handleReset">重置</n-button>
+      </n-space>
+    </div>
+
     <n-card :bordered="false" class="app-panel app-table-shell">
       <n-data-table
         remote
@@ -61,6 +84,16 @@ const loading = ref(false);
 const data = ref([]);
 const pagination = reactive(createPaginationState());
 
+// t7-system: 角色三联筛选 - 关键词 + 状态 (后端 SysRoleService.findPage 已支持 keyword/status)
+const searchParams = reactive({
+  keyword: '',
+  status: null as number | null
+});
+const statusOptions = [
+  { label: '正常', value: 1 },
+  { label: '停用', value: 0 }
+];
+
 const dataScopeOptions = [
   { label: '全部数据', value: 3 },
   { label: '本组数据', value: 2 },
@@ -83,7 +116,9 @@ const fetchData = async () => {
   try {
     const res = await getRolePage({
       page: pagination.page,
-      size: pagination.pageSize
+      size: pagination.pageSize,
+      keyword: searchParams.keyword || undefined,
+      status: searchParams.status ?? undefined
     });
     // 处理多种响应格式
     const responseData = res?.data || res;
@@ -102,6 +137,18 @@ const fetchData = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const handleSearch = () => {
+  pagination.page = 1;
+  fetchData();
+};
+
+const handleReset = () => {
+  searchParams.keyword = '';
+  searchParams.status = null;
+  pagination.page = 1;
+  fetchData();
 };
 
 const handlePageChange = (page: number) => {
@@ -140,7 +187,7 @@ const rules = {
 const openModal = (type: 'add'|'edit', row?: any) => {
   modalType.value = type;
   modalTitle.value = type === 'add' ? '新增角色' : '编辑角色';
-  
+
   if (type === 'add') {
     Object.assign(formData, { id: undefined, roleCode: '', roleName: '', dataScope: 1, status: 1, remark: '' }); // roleCode 由后端自动生成
   } else if (row) {
@@ -153,7 +200,7 @@ const openModal = (type: 'add'|'edit', row?: any) => {
       remark: row.remark
     });
   }
-  
+
   showModal.value = true;
 };
 

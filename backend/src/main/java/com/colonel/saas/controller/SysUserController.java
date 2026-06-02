@@ -89,7 +89,7 @@ public class SysUserController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        return okPage(sysUserService.findPage(userId, dataScope, request));
+        return okPage(sysUserService.findPage(userId, deptId, dataScope, request));
     }
 
     /**
