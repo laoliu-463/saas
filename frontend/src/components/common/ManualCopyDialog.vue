@@ -73,7 +73,7 @@ const props = withDefaults(
   }>(),
   {
     title: '复制受限，请手动复制',
-    description: '当前浏览器环境不允许自动写入剪贴板，请从下方内容中手动复制。',
+    description: '当前浏览器环境或不安全端口不允许自动写入剪贴板，请从下方内容中手动复制。',
     promotionLink: null,
     pickSource: null,
     pickSourceWarning: null,

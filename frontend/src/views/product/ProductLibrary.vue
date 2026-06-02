@@ -104,6 +104,17 @@
       @action="handleDetailAction"
     />
     <QuickSampleModal v-model:show="quickSampleVisible" :product="quickSampleProduct" @success="refreshProducts" />
+    <ManualCopyDialog
+      :show="manualCopyDialog.show"
+      :content="manualCopyDialog.content"
+      :promotion-link="manualCopyDialog.promotionLink"
+      :pick-source="manualCopyDialog.pickSource"
+      :pick-source-warning="manualCopyDialog.pickSourceWarning"
+      :reason="manualCopyDialog.reason"
+      :baiying-url="manualCopyDialog.baiyingUrl"
+      @retry="retryManualCopy"
+      @close="closeManualCopyDialog"
+    />
   </div>
 </template>
 
@@ -114,6 +125,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
+import ManualCopyDialog from '../../components/common/ManualCopyDialog.vue'
 import { getProducts, getProductLibraryCategories } from '../../api/product'
 import { convertActivityProductLink } from '../../api/activityProduct'
 import { useAuthStore } from '../../stores/auth'
@@ -131,12 +143,14 @@ import {
   type ProductFilterState
 } from './product-filters'
 import { copyProductBriefWithLink, resolveProductBriefCopyMessage } from './product-copy'
+import { createEmptyManualCopyDialogState, resolveManualCopyDialogState } from './manual-copy'
 import { mergeLibraryDisplayFields, normalizeProductCard } from './product-library-display'
 import {
   buildQueryWithoutActivityId,
   isSameActivityId,
   resolveActivityIdFromQuery
 } from './product-library-route-sync'
+import { tryCopyText } from '../../utils/clipboard'
 
 const PAGE_SIZE = 20
 
@@ -160,6 +174,7 @@ const quickSampleVisible = ref(false)
 const quickSampleProduct = ref<any | null>(null)
 const showDetail = ref(false)
 const detailRefreshKey = ref(0)
+const manualCopyDialog = ref(createEmptyManualCopyDialogState())
 
 const canCopyPromotionLink = computed(() =>
   hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
@@ -312,7 +327,6 @@ const copyPromotionLink = async (item: any) => {
   }
   if (promotionLoadingIds.value.has(productId)) return
   promotionLoadingIds.value = new Set(promotionLoadingIds.value).add(productId)
-  let clipboardWriteFailed = false
   try {
     const result = await copyProductBriefWithLink({
       item,
@@ -320,15 +334,7 @@ const copyPromotionLink = async (item: any) => {
       productId,
       scene: 'PRODUCT_LIBRARY',
       convertLink: convertLinkForBriefCopy,
-      writeText: async (text: string) => {
-        try {
-          await navigator.clipboard.writeText(text)
-          return true
-        } catch {
-          clipboardWriteFailed = true
-          return false
-        }
-      }
+      writeText: async (text: string) => tryCopyText(text)
     })
 
     if (result.link && result.responseData) {
@@ -353,18 +359,44 @@ const copyPromotionLink = async (item: any) => {
       replaceProductRow(productId, normalizeItem(merged))
     }
 
-    const notice = resolveProductBriefCopyMessage({
-      clipboardWriteFailed,
-      linkGenerationFailed: result.linkGenerationFailed,
-      promotionLinkGenerated: result.promotionLinkGenerated
-    })
-    message[notice.type](notice.content)
+    const manualState = resolveManualCopyDialogState(result, item)
+    if (manualState) {
+      manualCopyDialog.value = manualState
+      if (manualState.reason === 'PROMOTION_LINK_FAILED') {
+        message.warning('真实推广链接未生成，请前往百应手动生成')
+      } else if (manualState.reason === 'PROMOTION_LINK_MISSING_PICK_SOURCE') {
+        message.warning('推广链接已生成，但无法确认 pick_source，请手动核对')
+      } else {
+        message.warning('简介已生成，但浏览器未允许写入剪贴板，请手动复制')
+      }
+    } else {
+      const notice = resolveProductBriefCopyMessage({
+        clipboardWriteFailed: !result.copied,
+        linkGenerationFailed: result.linkGenerationFailed,
+        promotionLinkGenerated: result.promotionLinkGenerated
+      })
+      message[notice.type](notice.content)
+    }
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '讲解复制失败，请稍后重试' })
   } finally {
     const next = new Set(promotionLoadingIds.value)
     next.delete(productId)
     promotionLoadingIds.value = next
+  }
+}
+
+const closeManualCopyDialog = () => {
+  manualCopyDialog.value = createEmptyManualCopyDialogState()
+}
+
+const retryManualCopy = async () => {
+  const ok = await tryCopyText(manualCopyDialog.value.content)
+  if (ok) {
+    message.success('复制成功')
+    closeManualCopyDialog()
+  } else {
+    message.warning('仍无法自动写入剪贴板，请手动复制下方内容')
   }
 }
 
