@@ -19,6 +19,13 @@ $remoteScript = @"
 set -e
 cd '$RemoteDir'
 git pull --ff-only
+mkdir -p "`$HOME/.m2"
+docker run --rm \
+  -v "`$PWD:/workspace" \
+  -v "`$HOME/.m2:/root/.m2" \
+  -w /workspace \
+  maven:3.9-eclipse-temurin-17 \
+  mvn -f backend/pom.xml -DskipTests package
 docker compose --env-file '$RemoteEnvFile' -f docker-compose.real-pre.yml up -d --build backend-real-pre frontend-real-pre
 docker compose --env-file '$RemoteEnvFile' -f docker-compose.real-pre.yml ps
 curl -fsS http://127.0.0.1:8081/api/system/health
