@@ -1,6 +1,6 @@
-# 抖音团长 SaaS V2.2 Context
+# 抖音团长 SaaS V1 Context
 
-This glossary standardizes the business and environment language used in this repo. `AGENTS.md` and `docs/*.md` remain the source of truth for requirements, milestones, and execution rules.
+This glossary standardizes the current V1 business and environment language used in this repo. `AGENTS.md` and `docs/*.md` remain the source of truth for requirements, milestones, and execution rules. Historical V2.2 terms are reference only and must not override V1 scope.
 
 ## Language
 

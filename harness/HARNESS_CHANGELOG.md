@@ -1,5 +1,14 @@
 # Harness Changelog
 
+## v0.1.7
+
+- 修正 `CODEX.md` 默认入口为本地 `real-pre`，与 `AGENTS.md`、Harness 命令默认值保持一致。
+- 将 `CONTEXT.md` 标题从 V2.2 改为 V1 术语上下文，明确旧 V2.2 仅作历史参考。
+- 压缩 `AGENTS.md` 执行入口示例，保持入口文件短小，并把 Scope 细节交给 `harness/TASK_ROUTING.md`。
+- 扩展 `TASK_ROUTING.md`，覆盖数据库变更、接口联调、第三方联调、Docker、部署、测试验收、Bug、性能、权限、数据问题和任务收尾。
+- 新增环境索引、local dev 环境事实、状态索引和变更类 runbook，补齐 Harness 五子系统可发现性。
+- 新增 `harness/feedback/garbage-collection-policy.md`，明确保留、归档、删除、合并和删除前检查规则。
+
 ## v0.1.6
 
 - `deploy-remote.ps1` 在远端构建和重启后端前，先启动 `postgres-real-pre` 并执行活动商品依赖的幂等结构迁移 `V20260529_001__alter-colonel-activity-add-recruiter-fields.sql`。

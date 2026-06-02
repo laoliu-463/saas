@@ -54,7 +54,9 @@ function Assert-NoSensitiveFile {
 function Assert-NoPlainSecrets {
     param([string[]]$Files)
 
-    $pattern = "(password|secret|token|client_secret|jwt_secret)\s*[:=]\s*['""]?[A-Za-z0-9_\-/.+=]{12,}"
+    $pattern = @'
+(password|secret|token|client_secret|jwt_secret)\s*[:=]\s*['"]?[A-Za-z0-9_\-/.+=]{12,}
+'@.Trim()
     foreach ($file in $Files) {
         $path = Join-Path $repoRoot $file
         $exists = $false
@@ -69,10 +71,16 @@ function Assert-NoPlainSecrets {
         $hits = Select-String -LiteralPath $path -Pattern $pattern -ErrorAction SilentlyContinue
         foreach ($hit in $hits) {
             $line = $hit.Line
-            if ($line -match "\$pattern\s*=") {
-                continue
+            $hasSkipKeyword = $false
+            $skipKeywords = @('REDACTED', 'placeholder', 'example', 'change-me')
+            foreach ($kw in $skipKeywords) {
+                if ($line.Contains($kw)) {
+                    $hasSkipKeyword = $true
+                    break
+                }
             }
-            if ($line -match "\$\{" -or $line -match "REDACTED|placeholder|example|change-me|false|true") {
+            $hasInterpolation = $line.Contains('$' + '{')
+            if ($hasSkipKeyword -eq $true -or $hasInterpolation -eq $true) {
                 continue
             }
             throw "Potential plaintext secret in $file line $($hit.LineNumber)."

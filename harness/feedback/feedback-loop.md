@@ -14,6 +14,27 @@
 -> 提交推送
 ```
 
+## Closeout 检查
+
+| 检查项 | 要求 |
+| --- | --- |
+| Scope | 明确本轮是 `docs`、`backend`、`frontend` 还是 `full` |
+| 构建 / 重启 / 健康 | 代码修改必须执行；`Scope=docs` 必须明确跳过原因 |
+| 业务验证 | 必须有脚本、API、SQL、日志或截图证据；样本不足不能写 PASS |
+| Evidence | 生成 `harness/reports/evidence-*.md` |
+| Retro | 生成 `harness/reports/retro-*.md` |
+| 状态更新 | 项目状态变化时更新 `CURRENT_STATE.md` 或 `state/*.md` |
+| 旧内容维护 | 运行 `retire-content.ps1 -Action Plan` 或说明本轮无需 GC |
+
+## 旧内容处理
+
+旧内容处理按 `garbage-collection-policy.md` 执行：
+
+- 保留当前事实主源和关键证据。
+- 不确定的旧文档先归档，不直接删除。
+- 删除必须有 manifest、路径检查和证据报告。
+- 禁止删除 `.env*`、密钥、Compose、migration、源码和 Git 元数据。
+
 ## 触发 Harness 升级的情况
 
 - Agent 重复试探命令。

@@ -17,6 +17,7 @@
 | `runbooks/` | real-pre、远端部署、回滚、归因等执行手册 |
 | `prompts/` | 可复用提示词 |
 | `reports/` | evidence report 输出目录 |
+| `doc/` | 历史 Harness 聚合文档；保留为兼容参考，不作为新的主事实源 |
 
 ## 五个子系统
 
@@ -27,6 +28,18 @@
 | Environment | `environment/` | test、real-pre、remote real-pre 和 compose 边界 |
 | State | `CURRENT_STATE.md`、`state/`、`HARNESS_CHANGELOG.md` | 当前状态、风险、证据、版本 |
 | Feedback | `feedback/`、`evals/`、`reports/` | 验收、证据报告、复盘和 Harness 升级闭环 |
+
+## 任务入口索引
+
+| 任务 | 入口 |
+| --- | --- |
+| 后端变更 | `TASK_ROUTING.md`、`runbooks/backend-change.md` |
+| 前端变更 | `TASK_ROUTING.md`、`runbooks/frontend-change.md` |
+| 数据库变更 | `TASK_ROUTING.md`、`runbooks/database-change.md` |
+| Docker 操作 | `environment/docker-compose-map.md`、`runbooks/docker-compose-operations.md` |
+| 测试验收 | `runbooks/test-validation.md`、`evals/` |
+| 第三方联调 | `runbooks/third-party-integration.md`、`skills/real-pre-debug.skill.md` |
+| 任务收尾 / GC | `runbooks/closeout-and-gc.md`、`feedback/garbage-collection-policy.md` |
 
 ## 总入口
 

@@ -13,14 +13,13 @@ Codex 在本仓库执行任务时必须优先遵守 `AGENTS.md`。
 默认执行入口：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope full -Message "说明本次修改"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明本次修改"
 ```
 
 文档 / Harness 变更：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope docs -Message "docs: update harness"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope docs -Message "docs: update harness"
 ```
 
-real-pre、密钥、Docker volume 和远端部署安全边界以 `harness/FORBIDDEN_SCOPE.md` 为准。
-
+`test` 只在用户明确要求或专项测试需要时显式指定。real-pre、密钥、Docker volume 和远端部署安全边界以 `harness/FORBIDDEN_SCOPE.md` 为准。

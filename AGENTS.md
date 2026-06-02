@@ -79,29 +79,22 @@ V1 核心闭环以三条主链为准：
 默认执行入口：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明本次修改"
 ```
 
-常用示例：
+文档 / Harness 变更：
 
 ```powershell
-# 文档 / Harness 变更
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope docs -Message "docs: update harness"
-
-# 后端变更
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope backend -Message "fix: update backend"
-
-# 前端变更
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope frontend -Message "fix: update frontend"
-
-# real-pre 全链路
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "fix: update real-pre flow"
-
-# 用户明确要求远端部署时
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
 ```
 
-后续 Agent 不允许临时发明构建、重启、部署流程。若确需绕过，必须说明原因和风险。
+其他任务的 Scope 与必读文档见 `harness/TASK_ROUTING.md`，后续 Agent 不允许临时发明构建、重启、部署流程。若确需绕过，必须说明原因和风险。
+
+用户明确要求远端部署时才允许增加：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
+```
 
 ## 6. 禁止事项
 
@@ -144,8 +137,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 - 禁止提交 `.env`、`.env.real-pre`、`.env.test`。
 - 禁止提交 `*.pem`、`*.key`、凭证、私钥、证书。
 - 禁止输出或提交密钥、Token、密码、OAuth code。
-
-完整禁止清单见 `harness/FORBIDDEN_SCOPE.md`。
 
 ## 7. Definition of Done
 
