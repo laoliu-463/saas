@@ -1543,14 +1543,14 @@ CREATE INDEX IF NOT EXISTS idx_order_sync_dedup_claim_row_id
 -- 后续迁移不得覆盖已有用户的密码，否则会导致已修改的密码在迁移后被意外重置。
 -- 如需强制重置管理员密码，应通过后台管理界面或专门的 SQL 脚本操作。
 -- ============================================================
-\\i alter-colonel-activity-recruiter-assignment.sql
-\\i alter-role-code-merge-colonel-leader.sql
-\\i alter-colonel-activity-product-state-split.sql
-\\i alter-colonelsettlement-order-dual-track.sql
-\\i alter-ops-staff-data-scope-20260520.sql
-\\i alter-order-pay-time.sql
-\\i alter-sys-dept-uuid-canonical-20260530.sql
-\\i alter-talent-claim-shipping-address.sql
-\\i create-colonel-order-settlement.sql
-\\i migrate-sys-dept-dept-type.sql
+\i alter-colonel-activity-recruiter-assignment.sql
+\i alter-role-code-merge-colonel-leader.sql
+\i alter-colonel-activity-product-state-split.sql
+\i alter-colonelsettlement-order-dual-track.sql
+\i alter-ops-staff-data-scope-20260520.sql
+\i alter-order-pay-time.sql
+\i alter-sys-dept-uuid-canonical-20260530.sql
+\i alter-talent-claim-shipping-address.sql
+\i create-colonel-order-settlement.sql
+\i migrate-sys-dept-dept-type.sql
 
