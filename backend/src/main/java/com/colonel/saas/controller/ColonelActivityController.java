@@ -5,6 +5,7 @@ import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.common.base.BaseController;
 import lombok.extern.slf4j.Slf4j;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.UpstreamErrorCode;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.DouyinApiException;
@@ -88,7 +89,7 @@ public class ColonelActivityController extends BaseController {
         this.activityAccessService = activityAccessService;
     }
 
-    @Operation(summary = "团长活动列表", description = "查询机构创建的团长活动列表，并回填本地分配信息。")
+    @Operation(summary = "团长活动列表", description = "查询机构创建的团长活动列表，并回填本地分配信息。默认仅查本地 DB；DB 为空时返回 needSync=true 提示先同步活动，永不在线调抖音。")
     @GetMapping
     public ApiResult<Map<String, Object>> list(
             @Parameter(description = "活动状态。") @RequestParam(name = "status", defaultValue = "0") Integer status,
@@ -104,41 +105,34 @@ public class ColonelActivityController extends BaseController {
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         Collection<String> normalizedRoles = ActivityAccessService.normalizeRoleCodes(roleCodes);
         String effectiveFilter = activityAccessService.resolveEffectiveAssignmentFilter(assignmentFilter, normalizedRoles);
+        // 改造后路径（504 根因修复）：
+        // 永远走本地 DB，admin+all filter 也不调抖音，避免上游超时/慢响应导致 504
         try {
-            if (activityAccessService.shouldUseLocalAssignmentList(effectiveFilter, normalizedRoles)) {
-                Map<String, Object> payload = colonelActivityService.buildAssignmentListPage(
-                        page,
-                        pageSize,
-                        status,
-                        effectiveFilter,
-                        userId,
-                        activityInfo,
-                        this::resolveUserName);
-                return ok(payload);
+            Map<String, Object> payload = colonelActivityService.buildAssignmentListPage(
+                    page,
+                    pageSize,
+                    status,
+                    effectiveFilter,
+                    userId,
+                    activityInfo,
+                    this::resolveUserName);
+            // 探测 DB 是否为空：total=0 且当前 page=1 时给前端 needSync 提示
+            Object totalNode = payload.get("total");
+            long total = totalNode instanceof Number n ? n.longValue() : 0L;
+            if (total == 0L && page == 1L) {
+                Map<String, Object> hintPayload = new LinkedHashMap<>(payload);
+                hintPayload.put("needSync", Boolean.TRUE);
+                hintPayload.put("errorCode", UpstreamErrorCode.DATA_NOT_READY.name());
+                hintPayload.put("message", "活动列表尚未同步，请先点击「同步活动」");
+                return ok(hintPayload);
             }
-            String cacheKey = ACTIVITY_LIST_CACHE_PREFIX + cacheKey(status, searchType, sortType, page, pageSize, activityInfo, appId);
-            Map<String, Object> payload = shortTtlCacheService.get(cacheKey, ACTIVITY_LIST_CACHE_TTL, () -> {
-                DouyinActivityGateway.ActivityListResult result = douyinActivityGateway.listActivities(
-                        new DouyinActivityGateway.ActivityListQuery(
-                                appId, status, searchType, sortType, page, pageSize, activityInfo
-                        ));
-                if (result.activityList() != null) {
-                    for (DouyinActivityGateway.ActivityItem item : result.activityList()) {
-                        colonelActivityService.syncFromGatewayItem(item);
-                    }
-                }
-                log.info("[活动列表] status={}, upstreamTotal={}, returned={}, items={}",
-                        status, result.total(),
-                        result.activityList() == null ? 0 : result.activityList().size(),
-                        result.activityList() == null ? "[]" :
-                                result.activityList().stream()
-                                        .map(i -> String.format("{id=%d,status=%d,text=%s}", i.activityId(), i.status(), i.statusText()))
-                                        .toList());
-                return enrichActivityList(result.toMap());
-            });
             return ok(payload);
-        } catch (DouyinApiException e) {
-            throw mapActivityError(e);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            log.error("[活动列表] 异常, status={}, filter={}", status, effectiveFilter, e);
+            throw BusinessException.upstream(UpstreamErrorCode.EXTERNAL_GENERIC,
+                    "活动列表查询失败: " + e.getMessage(), e);
         }
     }
 
@@ -181,7 +175,7 @@ public class ColonelActivityController extends BaseController {
         return ok(payload);
     }
 
-    @Operation(summary = "活动商品列表", description = "查询团长活动下的商品列表。优先使用本地快照构造业务视图，未命中时回退到上游接口后再落库。")
+    @Operation(summary = "活动商品列表", description = "查询团长活动下的商品列表。优先使用本地快照构造业务视图；本地无快照且未要求 refresh 时返回 needSync=true 提示先同步，永不在线调抖音。")
     @GetMapping("/{activityId}/products")
     public ApiResult<Map<String, Object>> listProducts(
             @Parameter(description = "团长活动 ID。") @PathVariable("activityId") String activityId,
@@ -210,17 +204,18 @@ public class ColonelActivityController extends BaseController {
                 deptId,
                 ActivityAccessService.normalizeRoleCodes(roleCodes));
         try {
-            if (!Boolean.TRUE.equals(refresh) && productService.hasActivitySnapshots(activityId)) {
-                return ok(productService.buildActivityProductListViewFromDb(
-                        activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags));
-            }
-            DouyinProductGateway.ActivityProductQueryRequest queryRequest =
-                    new DouyinProductGateway.ActivityProductQueryRequest(
-                            appId, activityId, searchType, sortType, count, cooperationInfo, cooperationType,
-                            productInfo, status, retrieveMode, cursor, page);
-            Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
-                    activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags);
+            // 改造后路径（504 根因修复）：
+            // 1) refresh=true 强制走抖音同步（用户主动触发，已知耗时）
+            // 2) refresh=false 且 DB 有快照 → 走 DB（理想路径）
+            // 3) refresh=false 且 DB 无快照 → 返回 needSync=true + DATA_NOT_READY 提示
+            //    **永不在线调抖音** —— 这是 504 根因
             if (Boolean.TRUE.equals(refresh)) {
+                DouyinProductGateway.ActivityProductQueryRequest queryRequest =
+                        new DouyinProductGateway.ActivityProductQueryRequest(
+                                appId, activityId, searchType, sortType, count, cooperationInfo, cooperationType,
+                                productInfo, status, retrieveMode, cursor, page);
+                Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
+                        activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags);
                 colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
                 ProductService.ActivityProductRefreshResult refreshResult =
                         productService.refreshActivitySnapshots(queryRequest);
@@ -232,13 +227,31 @@ public class ColonelActivityController extends BaseController {
                 syncStats.put("skippedCount", refreshResult.skippedCount());
                 syncStats.put("autoLibraryEligible", refreshResult.libraryEntryCount() > 0);
                 payload.put("syncStats", syncStats);
-            } else {
-                DouyinProductGateway.ActivityProductListResult result = douyinProductGateway.queryActivityProducts(queryRequest);
-                productService.upsertSnapshots(activityId, result.items());
+                return ok(payload);
             }
-            return ok(payload);
+            if (productService.hasActivitySnapshots(activityId)) {
+                return ok(productService.buildActivityProductListViewFromDb(
+                        activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags));
+            }
+            // DB 无快照：返回 needSync=true 提示，引导前端调 syncProducts
+            Map<String, Object> hintPayload = new LinkedHashMap<>();
+            hintPayload.put("items", java.util.List.of());
+            hintPayload.put("total", 0L);
+            hintPayload.put("activityId", activityId);
+            hintPayload.put("needSync", Boolean.TRUE);
+            hintPayload.put("errorCode", UpstreamErrorCode.DATA_NOT_READY.name());
+            hintPayload.put("message", "该活动尚未同步商品，请先点击「同步商品」");
+            hintPayload.put("lastSyncAt", null);
+            return ok(hintPayload);
         } catch (DouyinApiException e) {
+            // refresh=true 路径调用抖音，捕获 DouyinApiException 映射为带 errorCode 的 BusinessException
             throw mapProductError(e);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            log.error("[活动商品列表] 异常, activityId={}, refresh={}", activityId, refresh, e);
+            throw BusinessException.upstream(UpstreamErrorCode.EXTERNAL_GENERIC,
+                    "活动商品查询失败: " + e.getMessage(), e);
         }
     }
 
@@ -310,19 +323,28 @@ public class ColonelActivityController extends BaseController {
 
     private BusinessException mapActivityError(DouyinApiException e) {
         String subCode = e.getSubCode() == null ? "" : e.getSubCode();
+        // 改造后：错误码分类映射到 UpstreamErrorCode，前端可按 errorCode 分支提示
         if (e.getErrorCode() == 50002 && subCode.contains("4197")) {
-            return BusinessException.stateInvalid("当前账号未完成招商团长授权，请检查抖店授权状态");
+            return BusinessException.upstream(UpstreamErrorCode.DOUYIN_TOKEN_INVALID,
+                    "当前账号未完成招商团长授权，请检查抖店授权状态");
         }
         if (e.getErrorCode() == 50002 && subCode.contains("4200")) {
-            return BusinessException.stateInvalid("抖店账号状态异常，请检查账号可用状态");
+            return BusinessException.upstream(UpstreamErrorCode.DOUYIN_TOKEN_INVALID,
+                    "抖店账号状态异常，请检查账号可用状态");
         }
         if (e.getErrorCode() == 40004 && subCode.contains("257")) {
             return BusinessException.param("查询参数不合法，请检查筛选条件");
         }
         if (e.getErrorCode() == 20000 && subCode.contains("256")) {
-            return BusinessException.external("抖店服务异常，请稍后重试");
+            return BusinessException.upstream(UpstreamErrorCode.UPSTREAM_SERVICE_ERROR,
+                    "抖店服务异常，请稍后重试");
         }
-        return BusinessException.external("团长活动查询失败: " + e.getErrorMsg());
+        if (e.getErrorCode() == 429) {
+            return BusinessException.upstream(UpstreamErrorCode.UPSTREAM_RATE_LIMIT,
+                    "抖店接口限流，请稍后重试");
+        }
+        return BusinessException.upstream(UpstreamErrorCode.UPSTREAM_SERVICE_ERROR,
+                "团长活动查询失败: " + e.getErrorMsg());
     }
 
     private BusinessException mapProductError(DouyinApiException e) {
@@ -334,18 +356,26 @@ public class ColonelActivityController extends BaseController {
             return BusinessException.stateInvalid("不允许继续翻页，请使用游标模式加载更多");
         }
         if (e.getErrorCode() == 50002 && subCode.contains("4197")) {
-            return BusinessException.stateInvalid("当前账号未完成招商团长授权，请检查抖店授权状态");
+            return BusinessException.upstream(UpstreamErrorCode.DOUYIN_TOKEN_INVALID,
+                    "当前账号未完成招商团长授权，请检查抖店授权状态");
         }
         if (e.getErrorCode() == 50002 && subCode.contains("4200")) {
-            return BusinessException.stateInvalid("抖店账号状态异常，请检查账号可用状态");
+            return BusinessException.upstream(UpstreamErrorCode.DOUYIN_TOKEN_INVALID,
+                    "抖店账号状态异常，请检查账号可用状态");
         }
         if (e.getErrorCode() == 50002 && subCode.contains("257")) {
             return BusinessException.param("查询参数不合法，请检查筛选条件");
         }
         if (e.getErrorCode() == 20000 && subCode.contains("256")) {
-            return BusinessException.external("抖店服务异常，请稍后重试");
+            return BusinessException.upstream(UpstreamErrorCode.UPSTREAM_SERVICE_ERROR,
+                    "抖店服务异常，请稍后重试");
         }
-        return BusinessException.external("活动商品查询失败: " + e.getErrorMsg());
+        if (e.getErrorCode() == 429) {
+            return BusinessException.upstream(UpstreamErrorCode.UPSTREAM_RATE_LIMIT,
+                    "抖店接口限流，请稍后重试");
+        }
+        return BusinessException.upstream(UpstreamErrorCode.UPSTREAM_SERVICE_ERROR,
+                "活动商品查询失败: " + e.getErrorMsg());
     }
 
     private String cacheKey(Object... values) {

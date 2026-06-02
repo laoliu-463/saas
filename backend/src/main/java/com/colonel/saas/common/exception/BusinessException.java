@@ -47,6 +47,14 @@ public class BusinessException extends RuntimeException {
     private final int code;
 
     /**
+     * 错误码（机器可读），对应 {@link UpstreamErrorCode} 枚举的字符串名。
+     *
+     * <p>前端可按 errorCode 分支提示用户。例如：{@code DOUYIN_TIMEOUT} → "抖音服务响应较慢，请稍后重试"。
+     * 默认 null 表示不携带细分错误码。</p>
+     */
+    private final String errorCode;
+
+    /**
      * 兼容旧调用方式的通用业务异常构造器。
      *
      * @param message 异常描述信息
@@ -72,8 +80,7 @@ public class BusinessException extends RuntimeException {
      * @param message 异常描述信息
      */
     public BusinessException(int code, String message) {
-        super(message);
-        this.code = code;
+        this(code, message, null, null);
     }
 
     /**
@@ -84,8 +91,24 @@ public class BusinessException extends RuntimeException {
      * @param cause   原始异常，用于保留异常链（便于日志追踪根因）
      */
     public BusinessException(int code, String message, Throwable cause) {
+        this(code, message, null, cause);
+    }
+
+    /**
+     * 根据数字状态码、错误码和原因构造异常。
+     *
+     * <p>错误码（{@code errorCode}）是 {@link UpstreamErrorCode} 枚举的字符串名，
+     * 透传到 {@link com.colonel.saas.common.result.ApiResult#getErrorCode()} 供前端分支处理。</p>
+     *
+     * @param code      业务状态码数字值
+     * @param message   异常描述信息
+     * @param errorCode 错误码（{@link UpstreamErrorCode} 枚举名），可为 null
+     * @param cause     原始异常，用于保留异常链（便于日志追踪根因）
+     */
+    public BusinessException(int code, String message, String errorCode, Throwable cause) {
         super(message, cause);
         this.code = code;
+        this.errorCode = errorCode;
     }
 
     /**
@@ -247,11 +270,65 @@ public class BusinessException extends RuntimeException {
     }
 
     /**
+     * 上游错误异常（状态码 470 + UpstreamErrorCode 细分）。
+     *
+     * <p>用于调用外部 API 时已知具体失败原因的场景。前端可按 errorCode 字符串
+     * （{@link UpstreamErrorCode} 枚举名）分支提示用户。</p>
+     *
+     * <p>典型场景：</p>
+     * <pre>{@code
+     * throw BusinessException.upstream(UpstreamErrorCode.DOUYIN_TIMEOUT, "抖音接口调用超时");
+     * throw BusinessException.upstream(UpstreamErrorCode.DATA_NOT_READY, "活动未同步，请先点击同步活动");
+     * }</pre>
+     *
+     * @param errorCode 上游错误码（{@link UpstreamErrorCode} 枚举值）
+     * @param message   异常描述信息
+     * @return 新的 BusinessException 实例
+     */
+    public static BusinessException upstream(UpstreamErrorCode errorCode, String message) {
+        return new BusinessException(ResultCode.EXTERNAL_SERVICE.getCode(), message, errorCode.name(), null);
+    }
+
+    /**
+     * 上游错误异常（状态码 470 + UpstreamErrorCode 细分 + 原始异常）。
+     *
+     * @param errorCode 上游错误码（{@link UpstreamErrorCode} 枚举值）
+     * @param message   异常描述信息
+     * @param cause     原始异常
+     * @return 新的 BusinessException 实例
+     */
+    public static BusinessException upstream(UpstreamErrorCode errorCode, String message, Throwable cause) {
+        return new BusinessException(ResultCode.EXTERNAL_SERVICE.getCode(), message, errorCode.name(), cause);
+    }
+
+    /**
+     * 数据未就绪异常（业务码 460 + DATA_NOT_READY）。
+     *
+     * <p>用于本地未命中快照、需先触发异步同步的场景。Controller 可直接抛出，
+     * 前端识别 errorCode=DATA_NOT_READY 后展示"立即同步"按钮。</p>
+     *
+     * @param message 异常描述信息（建议说明需要先做什么）
+     * @return 新的 BusinessException 实例
+     */
+    public static BusinessException dataNotReady(String message) {
+        return new BusinessException(ResultCode.BUSINESS_ERROR.getCode(), message, UpstreamErrorCode.DATA_NOT_READY.name(), null);
+    }
+
+    /**
      * 获取业务状态码。
      *
      * @return 业务状态码数字值，对应 {@link ResultCode} 中的 code
      */
     public int getCode() {
         return code;
+    }
+
+    /**
+     * 获取错误码（机器可读）。
+     *
+     * @return 错误码字符串（{@link UpstreamErrorCode} 枚举名），未设置时返回 null
+     */
+    public String getErrorCode() {
+        return errorCode;
     }
 }

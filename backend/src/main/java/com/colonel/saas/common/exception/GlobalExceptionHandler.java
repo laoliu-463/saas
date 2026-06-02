@@ -74,10 +74,12 @@ public class GlobalExceptionHandler {
      * 处理业务异常。
      *
      * <p>携带业务状态码的异常，大多数情况返回 HTTP 200（前端通过 code 判断），
-     * 但未授权（401）场景返回 HTTP 401 状态码以触发前端重新登录。</p>
+     * 但未授权（401）场景返回 HTTP 401 状态码以触发前端重新登录。
+     * 透传 {@link BusinessException#getErrorCode()} 到 ApiResult，
+     * 供前端按错误码字符串分支处理。</p>
      *
      * @param e 业务异常
-     * @return 包含业务状态码和错误消息的响应实体
+     * @return 包含业务状态码、错误码和错误消息的响应实体
      */
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResult<Void>> handleBusiness(BusinessException e) {
@@ -86,22 +88,23 @@ public class GlobalExceptionHandler {
                 ? HttpStatus.UNAUTHORIZED
                 : HttpStatus.OK;
         return ResponseEntity.status(status)
-                .body(ApiResult.of(e.getCode(), e.getMessage(), null));
+                .body(ApiResult.of(e.getCode(), e.getMessage(), null, e.getErrorCode()));
     }
 
     /**
      * 处理抖音开放平台 API 调用异常。
      *
      * <p>将抖音接口的错误码和错误信息格式化为统一的业务失败响应，
-     * 方便前端展示"抖店接口错误"相关的用户提示。</p>
+     * 同时透传 {@link DouyinApiException#getErrorCodeTag()} 字符串，
+     * 供前端按错误码分支处理。</p>
      *
-     * @param e 抖音 API 异常，包含 errorCode 和 errorMsg
+     * @param e 抖音 API 异常，包含 errorCode、errorMsg 和 errorCodeTag
      * @return 业务失败响应（状态码 460）
      */
     @ExceptionHandler(DouyinApiException.class)
     public ApiResult<Void> handleDouyinApi(DouyinApiException e) {
         String msg = String.format("抖店接口错误[%s]: %s", e.getErrorCode(), e.getErrorMsg());
-        return ApiResult.fail(msg);
+        return ApiResult.of(ResultCode.BUSINESS_ERROR.getCode(), msg, null, e.getErrorCodeTag());
     }
 
     /**

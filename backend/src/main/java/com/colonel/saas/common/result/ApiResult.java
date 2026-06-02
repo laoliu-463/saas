@@ -54,6 +54,16 @@ public class ApiResult<T> implements Serializable {
     @Schema(description = "响应数据")
     private T data;
 
+    /**
+     * 错误码（字符串，机器可读），用于前端按错误码分支提示。
+     *
+     * <p>仅在业务失败时填充；成功时为 null。
+     * 配合 {@link com.colonel.saas.common.exception.UpstreamErrorCode} 枚举使用，
+     * 提供稳定的、可机读的失败原因标识。</p>
+     */
+    @Schema(description = "错误码（机器可读）", example = "DOUYIN_TIMEOUT")
+    private String errorCode;
+
     /** 服务器处理完成时的时间戳（毫秒），用于前端时序对齐和请求链路追踪 */
     @Schema(description = "服务器时间戳（毫秒）", example = "1713628800000")
     private long timestamp;
@@ -124,10 +134,28 @@ public class ApiResult<T> implements Serializable {
      * @return 完整的统一响应对象
      */
     public static <T> ApiResult<T> of(int code, String msg, T data) {
+        return of(code, msg, data, null);
+    }
+
+    /**
+     * 使用自定义 code、msg、data、errorCode 构建响应（带错误码的通用工厂方法）。
+     *
+     * <p>在 {@link #of(int, String, Object)} 基础上额外透传 {@link com.colonel.saas.common.exception.UpstreamErrorCode}
+     * 字符串值，供前端按错误码分支处理。</p>
+     *
+     * @param code      业务状态码
+     * @param msg       响应消息
+     * @param data      响应数据，可为 null
+     * @param errorCode 错误码字符串（{@link com.colonel.saas.common.exception.UpstreamErrorCode} 枚举名），可为 null
+     * @param <T>       响应数据类型
+     * @return 完整的统一响应对象
+     */
+    public static <T> ApiResult<T> of(int code, String msg, T data, String errorCode) {
         ApiResult<T> result = new ApiResult<>();
         result.code = code;
         result.msg = msg;
         result.data = data;
+        result.errorCode = errorCode;
         result.timestamp = System.currentTimeMillis();
         return result;
     }

@@ -150,24 +150,29 @@ class ColonelActivityControllerTest {
     }
 
     @Test
-    void list_shouldExposeNormalizedAndLegacyActivityFields() throws Exception {
-        DouyinActivityGateway.ActivityItem item = new DouyinActivityGateway.ActivityItem(
-                3916506L,
-                "星链达客-zy",
-                "2026-05-06",
-                "2026-08-03",
-                3,
-                "报名中",
-                "2026-05-06",
-                "2035-12-31",
-                Map.of("9", "美妆"),
-                0L
-        );
-        DouyinActivityGateway.ActivityListResult result =
-                new DouyinActivityGateway.ActivityListResult(false, 7351155267604201765L, 21L, List.of(item));
-
-        when(douyinActivityGateway.listActivities(any())).thenReturn(result);
-        when(colonelActivityService.findAssignmentsByActivityIds(any())).thenReturn(Map.of());
+    void list_shouldQueryLocalDbEvenForAdminAllFilterWithoutCallingUpstream() throws Exception {
+        // 改造后：即使是 admin + all filter，也走 DB，不调抖音（504 根因修复）
+        Map<String, Object> dbPayload = new LinkedHashMap<>();
+        dbPayload.put("total", 21L);
+        dbPayload.put("activityList", List.of(Map.of(
+                "activityId", "3916506",
+                "activityName", "星链达客-zy",
+                "status", 3,
+                "activityStatus", 3,
+                "activityStartTime", "2026-05-06",
+                "startTime", "2026-05-06",
+                "activityEndTime", "2026-08-03",
+                "endTime", "2026-08-03",
+                "statusText", "报名中"
+        )));
+        when(colonelActivityService.buildAssignmentListPage(
+                eq(1L),
+                eq(20L),
+                eq(0),
+                eq("all"),
+                eq(null),
+                eq(null),
+                any())).thenReturn(dbPayload);
 
         mockMvc.perform(get("/colonel/activities")
                         .param("page", "1")
@@ -176,14 +181,36 @@ class ColonelActivityControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.total").value(21))
-                .andExpect(jsonPath("$.data.activityList[0].activityId").value(3916506))
+                .andExpect(jsonPath("$.data.activityList[0].activityId").value("3916506"))
                 .andExpect(jsonPath("$.data.activityList[0].status").value(3))
-                .andExpect(jsonPath("$.data.activityList[0].activityStatus").value(3))
-                .andExpect(jsonPath("$.data.activityList[0].activityStartTime").value("2026-05-06"))
-                .andExpect(jsonPath("$.data.activityList[0].startTime").value("2026-05-06"))
-                .andExpect(jsonPath("$.data.activityList[0].activityEndTime").value("2026-08-03"))
-                .andExpect(jsonPath("$.data.activityList[0].endTime").value("2026-08-03"))
                 .andExpect(jsonPath("$.data.activityList[0].statusText").value("报名中"));
+
+        // 关键断言：admin+all filter 也不调抖音
+        verify(douyinActivityGateway, never()).listActivities(any());
+    }
+
+    @Test
+    void list_shouldReturnNeedSyncHintWhenDbEmpty() throws Exception {
+        // 改造后：DB 空（total=0）时返回 needSync=true + DATA_NOT_READY 提示，永不调抖音
+        Map<String, Object> emptyPayload = new LinkedHashMap<>();
+        emptyPayload.put("total", 0L);
+        emptyPayload.put("activityList", List.of());
+        when(colonelActivityService.buildAssignmentListPage(
+                any(Long.class), any(Long.class), any(), any(), any(), any(), any()))
+                .thenReturn(emptyPayload);
+
+        mockMvc.perform(get("/colonel/activities")
+                        .param("page", "1")
+                        .param("pageSize", "20")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.total").value(0))
+                .andExpect(jsonPath("$.data.needSync").value(true))
+                .andExpect(jsonPath("$.data.errorCode").value("DATA_NOT_READY"))
+                .andExpect(jsonPath("$.data.message").value(org.hamcrest.Matchers.containsString("同步活动")));
+
+        verify(douyinActivityGateway, never()).listActivities(any());
     }
 
     @Test
@@ -280,50 +307,8 @@ class ColonelActivityControllerTest {
     }
 
     @Test
-    void listProducts_shouldExposeBizStatusFields() throws Exception {
-        DouyinProductGateway.ActivityProductItem item = new DouyinProductGateway.ActivityProductItem(
-                9001L,
-                "洁面乳",
-                "https://img.test/product.jpg",
-                5900L,
-                "59.00",
-                20L,
-                1180L,
-                25L,
-                "25%",
-                1,
-                "普通佣金",
-                "5%",
-                10L,
-                true,
-                true,
-                128L,
-                7001L,
-                "示例店铺",
-                "4.9",
-                1,
-                "推广中",
-                "美妆",
-                "1000",
-                "满减券",
-                "2026-04-25 00:00:00",
-                "2026-04-30 23:59:59",
-                "2026-04-25 00:00:00",
-                "2026-04-30 23:59:59",
-                "https://detail.test/products/9001",
-                null,
-                Map.of()
-        );
-        DouyinProductGateway.ActivityProductListResult gatewayResult =
-                new DouyinProductGateway.ActivityProductListResult(
-                        true,
-                        100018L,
-                        30001L,
-                        1L,
-                        "next-cursor",
-                        List.of(item)
-                );
-
+    void listProducts_shouldExposeBizStatusFieldsFromLocalSnapshot() throws Exception {
+        // 改造后：DB 有快照时走 DB，永远不调抖音
         Map<String, Object> itemView = new LinkedHashMap<>();
         itemView.put("productId", 9001L);
         itemView.put("title", "洁面乳");
@@ -338,8 +323,8 @@ class ColonelActivityControllerTest {
         listView.put("nextCursor", "next-cursor");
         listView.put("items", List.of(itemView));
 
-        when(productService.hasActivitySnapshots("100018")).thenReturn(false);
-        when(douyinProductGateway.queryActivityProducts(any())).thenReturn(gatewayResult);
+        // 改造后：hasActivitySnapshots=true 直接走 DB
+        when(productService.hasActivitySnapshots("100018")).thenReturn(true);
         when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null)).thenReturn(listView);
 
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
@@ -356,8 +341,35 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.items[0].bizStatusLabel").value("审核通过"));
 
         verify(productService).hasActivitySnapshots("100018");
-        verify(productService).upsertSnapshots(eq("100018"), eq(gatewayResult.items()));
         verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
+        // 关键断言：DB 有快照时绝不调抖音
+        verify(douyinProductGateway, never()).queryActivityProducts(any());
+    }
+
+    @Test
+    void listProducts_shouldNeverCallUpstreamByDefaultAndReturnNeedSyncWhenNoSnapshots() throws Exception {
+        // 改造后（504 根因修复）：refresh=false 且 DB 无快照时，永不调抖音
+        when(productService.hasActivitySnapshots("100018")).thenReturn(false);
+
+        mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
+                        .param("searchType", "4")
+                        .param("sortType", "1")
+                        .param("count", "20")
+                        .param("retrieveMode", "1")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.activityId").value("100018"))
+                .andExpect(jsonPath("$.data.total").value(0))
+                .andExpect(jsonPath("$.data.needSync").value(true))
+                .andExpect(jsonPath("$.data.errorCode").value("DATA_NOT_READY"))
+                .andExpect(jsonPath("$.data.message").value(org.hamcrest.Matchers.containsString("同步商品")))
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.items").isEmpty());
+
+        // 关键断言：默认 refresh=false 时绝不调抖音
+        verify(douyinProductGateway, never()).queryActivityProducts(any());
+        verify(productService, never()).upsertSnapshots(any(), any());
     }
 
     @Test
@@ -478,41 +490,10 @@ class ColonelActivityControllerTest {
     }
 
     @Test
-    void list_shouldMapActivityGatewayErrorsToBusinessMessages() {
-        record ErrorCase(DouyinApiException exception, String message) {
-        }
-        List<ErrorCase> cases = List.of(
-                new ErrorCase(new DouyinApiException(50002, "UPSTREAM", "isv.business-failed:4197", "log", "activity"), "招商团长授权"),
-                new ErrorCase(new DouyinApiException(50002, "UPSTREAM", "isv.business-failed:4200", "log", "activity"), "账号状态异常"),
-                new ErrorCase(new DouyinApiException(40004, "UPSTREAM", "isv.parameter-invalid:257", "log", "activity"), "查询参数不合法"),
-                new ErrorCase(new DouyinApiException(20000, "UPSTREAM", "isv.system-error:256", "log", "activity"), "抖店服务异常"),
-                new ErrorCase(new DouyinApiException(99999, "fallback", null, "log", "activity"), "团长活动查询失败: fallback")
-        );
-
-        for (ErrorCase item : cases) {
-            DouyinActivityGateway activityGateway = mock(DouyinActivityGateway.class);
-            when(activityGateway.listActivities(any())).thenThrow(item.exception());
-            ColonelActivityController errorController = new ColonelActivityController(
-                    activityGateway,
-                    douyinProductGateway,
-                    productService,
-                    new ShortTtlCacheService(),
-                    sysUserService,
-                    colonelActivityService,
-                    productActivityManualSyncService,
-                    sysUserMapper,
-                    activityAccessService);
-
-            assertThatThrownBy(() -> errorController.list(
-                    0, 0L, 1L, 1L, 20L, null, null, "all", null, List.of(RoleCodes.ADMIN)))
-                    .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining(item.message());
-        }
-    }
-
-    @Test
-    void listProducts_shouldMapProductGatewayErrorsToBusinessMessages() {
-        record ErrorCase(DouyinApiException exception, String message) {
+    void listProducts_shouldMapProductGatewayErrorsToBusinessMessagesOnRefresh() {
+        // 改造后：refresh=true 仍调抖音（用户主动触发），错误映射测试保留
+        // 默认 refresh=false 已不再调抖音（见 listProducts_shouldNeverCallUpstreamByDefaultAndReturnNeedSyncWhenNoSnapshots）
+        record ErrorCase(DouyinApiException exception, String messageContains) {
         }
         List<ErrorCase> cases = List.of(
                 new ErrorCase(new DouyinApiException(50002, "UPSTREAM", "isv.business-failed:4097", "log", "product"), "每页最多查询 20 条商品"),
@@ -528,7 +509,11 @@ class ColonelActivityControllerTest {
             DouyinProductGateway productGateway = mock(DouyinProductGateway.class);
             ProductService localProductService = mock(ProductService.class);
             when(localProductService.hasActivitySnapshots("100018")).thenReturn(false);
-            when(productGateway.queryActivityProducts(any())).thenThrow(item.exception());
+            when(localProductService.buildActivityProductListViewFromDb(eq("100018"), any(), any(), any(), any(), any(), any(), any(), any()))
+                    .thenReturn(Map.of("items", List.of(), "total", 0));
+            // refresh=true 路径调用的是 refreshActivitySnapshots（不是 queryActivityProducts）
+            when(localProductService.refreshActivitySnapshots(any()))
+                    .thenThrow(item.exception());
             ColonelActivityController errorController = new ColonelActivityController(
                     douyinActivityGateway,
                     productGateway,
@@ -540,6 +525,7 @@ class ColonelActivityControllerTest {
                     sysUserMapper,
                     activityAccessService);
 
+            // refresh=true：触发 syncActivitySummaryFromUpstream + refreshActivitySnapshots
             assertThatThrownBy(() -> errorController.listProducts(
                     "100018",
                     4L,
@@ -554,7 +540,7 @@ class ColonelActivityControllerTest {
                     null,
                     null,
                     null,
-                    false,
+                    true, // refresh=true 触发上游调用
                     null,
                     null,
                     null,
@@ -562,7 +548,7 @@ class ColonelActivityControllerTest {
                     null,
                     List.of(RoleCodes.ADMIN)))
                     .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining(item.message());
+                    .hasMessageContaining(item.messageContains());
         }
     }
 

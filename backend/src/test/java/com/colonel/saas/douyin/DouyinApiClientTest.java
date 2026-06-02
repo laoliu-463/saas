@@ -325,8 +325,15 @@ class DouyinApiClientTest {
         try {
             assertThatThrownBy(() -> douyinApiClient.post("test.method", Map.of()))
                     .isInstanceOf(BusinessException.class)
-                    .hasMessage("Douyin API request failed")
-                    .satisfies(ex -> assertThat(ex.getCause()).isNull());
+                    // 改造后：timeout 场景映射为 DOUYIN_TIMEOUT 错误码（用于前端按 errorCode 分支）
+                    .hasMessageContaining("抖音接口调用超时")
+                    .hasMessageContaining("method=test.method")
+                    .satisfies(ex -> {
+                        BusinessException be = (BusinessException) ex;
+                        assertThat(be.getErrorCode()).isEqualTo("DOUYIN_TIMEOUT");
+                        // ResourceAccessException 应当作为 cause 保留，便于日志追踪根因
+                        assertThat(be.getCause()).isNotNull();
+                    });
 
             String logText = appender.list.stream()
                     .map(ILoggingEvent::getFormattedMessage)

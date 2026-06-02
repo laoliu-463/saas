@@ -1,6 +1,7 @@
 package com.colonel.saas.douyin;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.UpstreamErrorCode;
 import com.doudian.open.utils.SignUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -149,9 +150,10 @@ public class DouyinApiClient {
             } catch (RuntimeException ex) {
                 lastFailure = ex;
                 if (!isRetryableTransport(ex) || attempt >= attempts) {
+                    // 改造后：按异常类型映射 UpstreamErrorCode，便于前端按错误码分支提示
                     log.error("Douyin API request failed, method={}, exception={}",
                             method, ex.getClass().getSimpleName());
-                    throw BusinessException.external("Douyin API request failed");
+                    throw wrapTransportException(method, ex);
                 }
                 sleepBeforeRetry(method, attempt, attempts, ex.getClass().getSimpleName());
             }
@@ -160,8 +162,47 @@ public class DouyinApiClient {
             throw douyinApiException;
         }
         throw lastFailure == null
-                ? BusinessException.external("Douyin API request failed")
-                : BusinessException.external("Douyin API request failed", lastFailure);
+                ? BusinessException.upstream(UpstreamErrorCode.EXTERNAL_GENERIC, "Douyin API request failed")
+                : wrapTransportException(method, lastFailure);
+    }
+
+    /**
+     * 将传输层异常包装为带 UpstreamErrorCode 的 BusinessException。
+     *
+     * <p>区分规则：</p>
+     * <ul>
+     *   <li>{@link ResourceAccessException}（连接 / 读取超时）→ {@code DOUYIN_TIMEOUT}</li>
+     *   <li>其他 → {@code UPSTREAM_SERVICE_ERROR}</li>
+     * </ul>
+     */
+    private BusinessException wrapTransportException(String method, RuntimeException ex) {
+        if (isTimeoutException(ex)) {
+            return BusinessException.upstream(UpstreamErrorCode.DOUYIN_TIMEOUT,
+                    "抖音接口调用超时（method=" + method + "）", ex);
+        }
+        return BusinessException.upstream(UpstreamErrorCode.UPSTREAM_SERVICE_ERROR,
+                "Douyin API request failed: " + ex.getMessage(), ex);
+    }
+
+    /**
+     * 判断异常是否为超时（连接 / 读取）。
+     */
+    private boolean isTimeoutException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof java.net.SocketTimeoutException) {
+                return true;
+            }
+            if (current instanceof ResourceAccessException) {
+                return true;
+            }
+            Throwable cause = current.getCause();
+            if (cause == current) {
+                break;
+            }
+            current = cause;
+        }
+        return false;
     }
 
     /**
