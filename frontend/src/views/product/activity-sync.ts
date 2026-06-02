@@ -1,10 +1,11 @@
-import { getActivityProducts } from '../../api/activityProduct'
+import { syncActivityProducts } from '../../api/activityProduct'
 import { type ActivityRow } from './activity-list-display'
 
 export type ActivityProductSyncItemResult = {
   activityId: string
   ok: boolean
   error?: string
+  syncStatus?: string
   syncedProductCount?: number
   libraryEntryCount?: number
 }
@@ -13,27 +14,26 @@ export type ActivityProductSyncBatchSummary = {
   results: ActivityProductSyncItemResult[]
   succeeded: number
   failed: number
+  running: number
   totalSyncedProducts: number
   totalLibraryEntries: number
 }
 
-const ACTIVITY_PRODUCT_SYNC_QUERY = {
-  count: 20,
-  retrieveMode: 1,
-  refresh: true
-} as const
-
 type ActivityProductSyncStats = {
+  syncStatus?: string
   syncedProductCount?: number
   libraryEntryCount?: number
 }
 
 function readSyncStats(payload: unknown): ActivityProductSyncStats {
   if (!payload || typeof payload !== 'object') return {}
+  const data = payload as Record<string, unknown>
   const syncStats = (payload as Record<string, unknown>).syncStats
-  if (!syncStats || typeof syncStats !== 'object') return {}
-  const stats = syncStats as Record<string, unknown>
+  const stats = syncStats && typeof syncStats === 'object'
+    ? syncStats as Record<string, unknown>
+    : {}
   return {
+    syncStatus: typeof data.syncStatus === 'string' ? data.syncStatus : undefined,
     syncedProductCount: Number(stats.syncedProductCount ?? 0) || undefined,
     libraryEntryCount: Number(stats.libraryEntryCount ?? 0) || undefined
   }
@@ -53,11 +53,12 @@ export async function syncSingleActivityProducts(
     }
   }
   try {
-    const res: any = await getActivityProducts(normalizedId, ACTIVITY_PRODUCT_SYNC_QUERY)
+    const res: any = await syncActivityProducts(normalizedId)
     const stats = readSyncStats(res?.data)
     return {
       activityId: normalizedId,
       ok: true,
+      syncStatus: stats.syncStatus,
       syncedProductCount: stats.syncedProductCount,
       libraryEntryCount: stats.libraryEntryCount
     }
@@ -91,11 +92,15 @@ export function summarizeActivityProductSyncResults(
 ): ActivityProductSyncBatchSummary {
   let succeeded = 0
   let failed = 0
+  let running = 0
   let totalSyncedProducts = 0
   let totalLibraryEntries = 0
   results.forEach((item) => {
     if (item.ok) {
       succeeded += 1
+      if (item.syncStatus === 'RUNNING') {
+        running += 1
+      }
       totalSyncedProducts += Number(item.syncedProductCount ?? 0)
       totalLibraryEntries += Number(item.libraryEntryCount ?? 0)
     } else {
@@ -106,6 +111,7 @@ export function summarizeActivityProductSyncResults(
     results,
     succeeded,
     failed,
+    running,
     totalSyncedProducts,
     totalLibraryEntries
   }
@@ -118,7 +124,10 @@ export function formatActivityProductSyncMessage(summary: ActivityProductSyncBat
   if (summary.succeeded === 0) {
     return '活动商品同步失败，请稍后重试'
   }
-  const parts = [`已同步 ${summary.succeeded} 个活动`]
+  const parts = [`已提交 ${summary.succeeded} 个活动商品后台同步`]
+  if (summary.running > 0) {
+    parts.push(`${summary.running} 个活动已在同步中`)
+  }
   if (summary.totalSyncedProducts > 0) {
     parts.push(`共拉取 ${summary.totalSyncedProducts} 个商品`)
   }

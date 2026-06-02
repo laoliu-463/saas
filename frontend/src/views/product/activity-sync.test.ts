@@ -6,25 +6,22 @@ import {
 } from './activity-sync'
 
 vi.mock('../../api/activityProduct', () => ({
-  getActivityProducts: vi.fn()
+  syncActivityProducts: vi.fn()
 }))
 
-import { getActivityProducts } from '../../api/activityProduct'
+import { syncActivityProducts } from '../../api/activityProduct'
 
 describe('activity-sync', () => {
   beforeEach(() => {
-    vi.mocked(getActivityProducts).mockReset()
-    vi.mocked(getActivityProducts).mockResolvedValue({ data: { items: [] } } as never)
+    vi.mocked(syncActivityProducts).mockReset()
+    vi.mocked(syncActivityProducts).mockResolvedValue({ data: { syncStatus: 'ACCEPTED' } } as never)
   })
 
-  it('batch syncs selected activities sequentially', async () => {
+  it('submits selected activities to the background sync endpoint sequentially', async () => {
     const summary = await batchSyncActivityProducts(['1001', '1002'])
-    expect(getActivityProducts).toHaveBeenCalledTimes(2)
-    expect(getActivityProducts).toHaveBeenNthCalledWith(1, '1001', {
-      count: 20,
-      retrieveMode: 1,
-      refresh: true
-    })
+    expect(syncActivityProducts).toHaveBeenCalledTimes(2)
+    expect(syncActivityProducts).toHaveBeenNthCalledWith(1, '1001')
+    expect(syncActivityProducts).toHaveBeenNthCalledWith(2, '1002')
     expect(summary.succeeded).toBe(2)
     expect(summary.failed).toBe(0)
   })
@@ -43,14 +40,24 @@ describe('activity-sync', () => {
     expect(summary).toMatchObject({
       succeeded: 2,
       failed: 1,
+      running: 0,
       totalSyncedProducts: 17,
       totalLibraryEntries: 12
     })
     const message = formatActivityProductSyncMessage(summary)
-    expect(message).toContain('已同步 2 个活动')
+    expect(message).toContain('已提交 2 个活动商品后台同步')
     expect(message).toContain('共拉取 17 个商品')
     expect(message).toContain('12 个已进入商品库')
     expect(message).not.toContain('尚未分配招商')
     expect(message).toContain('1 个活动同步失败')
+  })
+
+  it('mentions activities that are already syncing', () => {
+    const summary = summarizeActivityProductSyncResults([
+      { activityId: '1', ok: true, syncStatus: 'RUNNING' },
+      { activityId: '2', ok: true, syncStatus: 'ACCEPTED' }
+    ])
+    expect(summary.running).toBe(1)
+    expect(formatActivityProductSyncMessage(summary)).toContain('1 个活动已在同步中')
   })
 })
