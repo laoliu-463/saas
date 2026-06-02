@@ -37,15 +37,18 @@
 - [V1 必做] 活动分配成功后驱逐 `activities:list:` 短缓存，避免前端刷新活动行时读取旧分配人。
 - [V1 必做] 活动状态只描述活动自身，用于活动列表展示、活动筛选和活动数据范围判断；不得驱动商品入库、审核状态或展示状态。
 - [V1 必做] `POST /api/colonel/activities/{activityId}/products/sync` 用于前端手动触发活动商品后台同步；接口只提交后台任务并立即返回 `syncStatus=ACCEPTED/RUNNING`，前端提示“后台同步中”，不得阻塞列表查询等待上游完成。
-- [V1 必做] `GET /api/colonel/activities/{activityId}/products?refresh=true` 继续兼容返回 `syncStats`；`libraryEntryCount` 表示本次因上游商品自身 `status=1/推广中` 新进入商品库的数量，`autoLibraryEligible` 表示本次存在自动入库商品。商品是否入库和是否展示只由商品自身上游状态、本地拒绝/暂停、推广期和去重规则决定，不由活动状态驱动。
+- [V1 必做] `GET /api/colonel/activities/{activityId}/products` 活动商品列表行需透出 `relationId`（`product_snapshot.id`，UUID）以及规范状态字段：`officialStatus`、`reviewStatus`、`publishStatus`、`manualDisabled`、`selectedToLibrary`、`displayStatus`、`hiddenReason`。前端审核、暂停/恢复等商品关系写操作必须使用 `relationId`，不能用平台 `productId` 代替；前端筛选和操作按钮优先使用上游数字状态与这些规范字段，不依赖 `statusText` 文案漂移。
+- [V1 必做] `GET /api/colonel/activities/{activityId}/products?refresh=true` 继续兼容返回 `syncStats`；`libraryEntryCount` 表示本次因上游商品自身 `status=1/推广中` 新进入商品库的数量，`autoLibraryEligible` 表示本次存在自动入库商品。商品是否入库和活动商品页是否可操作以商品自身上游状态为主：`status=1` 自动补齐 `selectedToLibrary=true`、`auditStatus=2` 和可操作业务状态，历史本地拒绝不得阻断；本地暂停仅表示发布控制，不使活动商品行退化为只读。
 - 字段级契约见 [接口/活动分配与推广入库API契约.md](接口/活动分配与推广入库API契约.md)。
 
 ## 商品 API 补充事实
 
 - [V1 必做] `GET /api/products` 商品库分页返回的 `records[]` 需带出商品卡片展示输入：`shopName`、`detailUrl`、`promotionStartTime`、`promotionEndTime`。这些字段来源于 `product_snapshot`，用于前端商品库卡片展示店铺、商品链接和推广时间范围。
+- [V1 必做] `GET /api/products` 商品库分页支持 `productId` 查询参数，按商品外部 ID 精确匹配；该参数独立于 `keyword`，`keyword` 仍用于商品名称 / 商品 ID / 店铺关键字模糊匹配。前端商品库搜索框输入商品 ID 时走 `keyword` 模糊查询；内部单行刷新等精确定位场景才使用 `productId`。
+- [V1 必做] `POST /api/products/manage/{relationId}/approve` 为旧商品管理审核通过兼容入口，仍必须遵守活动商品审核补充字段契约：审核通过前请求体需携带 `exclusivePriceRemark`、`shippingInfo`、`sellingPoints`、`promotionScript`、`supportsAds`、`rewardRemark`、`participationRequirements`、`campaignTimeRemark`、`materialFiles`；后端透传到商品域审核服务写入 `audit_payload`，缺失时返回业务错误 `code=461` 和“审核通过前请补充：...”提示。拒绝入口 `POST /api/products/manage/{relationId}/reject` 只要求拒绝原因。
 - [V1 必做] `POST /api/products/{relationId}/pause`：招商角色可暂停当前商品关系发布，后端写入 `product_operation_state.manual_disabled=true`、`display_status=HIDDEN`、`hidden_reason=LOCAL_PAUSED`，保留 `selected_to_library` 入库事实；`GET /api/products` 商品库分页必须不再返回该关系。
-- [V1 必做] `POST /api/products/{relationId}/resume`：招商角色可清除当前商品关系暂停标记，写入 `manual_disabled=false`、`display_status=PENDING` 并触发商品展示规则重新计算；是否重新出现在商品库由上游推广状态、推广期、本地拒绝/暂停和去重规则共同决定。
-- [V1 必做] `POST /api/colonel/activities/{activityId}/products/repair-library-state`：仅管理员可执行活动商品库展示状态修复；默认 `dryRun=true`，返回历史推广中但未入库/未展示的差异，`dryRun=false` 写入后触发展示规则重算。real-pre 写入前必须先保存 dryRun 结果并人工确认窗口。
+- [V1 必做] `POST /api/products/{relationId}/resume`：招商角色可清除当前商品关系暂停标记，写入 `manual_disabled=false`、`display_status=PENDING` 并触发商品展示规则重新计算；是否重新出现在商品库由上游推广状态、推广期和去重规则共同决定。
+- [V1 必做] `POST /api/colonel/activities/{activityId}/products/repair-library-state`：仅管理员可执行活动商品库展示状态修复；默认 `dryRun=true`，返回历史推广中但未入库/未展示的差异。repair 与活动商品同步使用同一套规则：`status=1` 自动补齐入库、审核通过和可操作状态；非推广中不自动入库；本地暂停保持 `publishStatus=PAUSED`、商品库隐藏但活动商品页可恢复。`dryRun=false` 只写入历史入库状态，不强制所有商品进入 `DISPLAYING`；活动商品刷新链路可在 repair 后按展示规则单独重算。real-pre 写入前必须先保存 dryRun 结果并人工确认窗口。
 - [V1 必做] `GET /api/colonel/products/library/health`：仅管理员可读取商品库状态巡检指标，包括 `status=1` 未入库、未展示、展示但有隐藏原因、已入库但非推广中、本地拒绝/暂停和最近同步时间。
 
 ## 第三方 API 入口

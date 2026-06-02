@@ -251,6 +251,12 @@ try {
         expected   = "false"
     }
 
+    $productActivitySyncEnabled = Normalize-BoolString ($envMap["PRODUCT_ACTIVITY_SYNC_ENABLED"])
+    Add-Check -List $checks -Name "configured_product_activity_sync_enabled" -Status $(if ($productActivitySyncEnabled -eq "true") { "PASS" } else { "FAIL" }) -Detail @{
+        configured = $productActivitySyncEnabled
+        expected   = "true"
+    }
+
     $seedConfigured = Normalize-BoolString ($envMap["APP_TEST_SEED_ON_STARTUP"])
     $seedOk = $seedConfigured -eq "false" -or (-not $seedConfigured -and $profileDefaults.seedOnStartupFalse)
     Add-Check -List $checks -Name "configured_test_seed_disabled" -Status $(if ($seedOk) { "PASS" } else { "FAIL" }) -Detail @{
@@ -293,13 +299,15 @@ try {
         }
         $runtimeAppTest = Normalize-BoolString ($containerEnv["APP_TEST_ENABLED"])
         $runtimeDouyinTest = Normalize-BoolString ($containerEnv["DOUYIN_TEST_ENABLED"])
+        $runtimeProductActivitySync = Normalize-BoolString ($containerEnv["PRODUCT_ACTIVITY_SYNC_ENABLED"])
         $runtimeSeed = Normalize-BoolString ($containerEnv["APP_TEST_SEED_ON_STARTUP"])
         $runtimeSeedDisabled = $runtimeSeed -eq "false" -or (-not $runtimeSeed -and $profileDefaults.seedOnStartupFalse)
-        $runtimeOk = ($runtimeProfile -eq "real-pre" -or $runtimeProfile -eq "real") -and $runtimeAppTest -eq "false" -and $runtimeDouyinTest -eq "false" -and $runtimeSeedDisabled
+        $runtimeOk = ($runtimeProfile -eq "real-pre" -or $runtimeProfile -eq "real") -and $runtimeAppTest -eq "false" -and $runtimeDouyinTest -eq "false" -and $runtimeProductActivitySync -eq "true" -and $runtimeSeedDisabled
         Add-Check -List $checks -Name "runtime_container_env_safe" -Status $(if ($runtimeOk) { "PASS" } else { "FAIL" }) -Detail @{
             SPRING_PROFILES_ACTIVE = $runtimeProfile
             APP_TEST_ENABLED = $runtimeAppTest
             DOUYIN_TEST_ENABLED = $runtimeDouyinTest
+            PRODUCT_ACTIVITY_SYNC_ENABLED = $runtimeProductActivitySync
             APP_TEST_SEED_ON_STARTUP = $runtimeSeed
             APP_TEST_SEED_DISABLED_EFFECTIVE = $runtimeSeedDisabled
         }
@@ -349,6 +357,7 @@ try {
             springProfilesActive = $configuredProfile
             appTestEnabled = $appTestEnabled
             douyinTestEnabled = $douyinTestEnabled
+            productActivitySyncEnabled = $productActivitySyncEnabled
             appTestSeedOnStartup = if ($seedConfigured) { $seedConfigured } else { "(not set)" }
         }
         blockingChecks = @($blockingChecks | ForEach-Object { $_.name })

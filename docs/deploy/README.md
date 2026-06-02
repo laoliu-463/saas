@@ -25,11 +25,62 @@
 ```text
 当前开发分支: feature/auth-system
 当前优先同步仓库: https://gitee.com/cao-jianing463/saas.git
+本机 SSH 部署入口: ssh saas
+SSH 目标: root@1.14.108.159:22
+SSH IdentityFile: C:\Users\caojianing\.ssh\saas_ed25519
 Compose project: saas-active
 后端: backend-real-pre, 127.0.0.1:8081 -> 容器 8080
 前端: frontend-real-pre, 127.0.0.1:3001 -> 容器 80
 后端健康检查: /api/system/health
 前端健康检查: /healthz
+```
+
+## 本机 SSH 部署入口
+
+> 记录日期：2026-06-02。这里只记录可用于部署的 SSH alias 和公钥指纹，不记录私钥内容、密码、Token 或 `.env.real-pre`。
+
+当前本机 `C:\Users\caojianing\.ssh\config` 已配置：
+
+```sshconfig
+Host saas
+    HostName 1.14.108.159
+    User root
+    Port 22
+    IdentityFile C:\Users\caojianing\.ssh\saas_ed25519
+    IdentitiesOnly yes
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+```
+
+本机公钥指纹：
+
+```text
+saas_ed25519.pub: 256 SHA256:bXULR/UyKWCrNdXcO3pIM1xuKDvjpF1DiKPnEA8EfbQ saas-server (ED25519)
+```
+
+已验证的只读连通性：
+
+```bash
+ssh -o BatchMode=yes -o ConnectTimeout=8 saas "hostname; whoami; test -d /opt/saas && echo OPT_SAAS_EXISTS"
+```
+
+最近验证结果：
+
+```text
+hostname: VM-0-12-ubuntu
+whoami: root
+/opt/saas: exists
+```
+
+后续远程部署默认直接使用：
+
+```bash
+ssh saas
+cd /opt/saas/app
+git fetch gitee
+git pull --ff-only gitee feature/auth-system
+ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
+ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
 ```
 
 ## 推荐阅读顺序
@@ -204,8 +255,8 @@ Jenkins 放在第二阶段：
 - `APP_TEST_ENABLED=false`。
 - `DOUYIN_TEST_ENABLED=false`。
 - `DOUYIN_REAL_UPSTREAM_MODE=live`。
-- real-pre 受控部署默认关闭真实推广写入：`DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false` 且 `ALLOW_REAL_PROMOTION_WRITE=false`。
-- 当验收目标包含商品库复制简介携带推广链接、真实转链或 `pick_source` 归因时，必须人工批准并同时设置 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true` 与 `ALLOW_REAL_PROMOTION_WRITE=true`；验收结束后按窗口结论恢复。
+- real-pre 涉及上游的读、同步、刷新、回调和写入类开关默认开启；真实推广写入保持 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true` 且 `ALLOW_REAL_PROMOTION_WRITE=true`。
+- 如因风控、上游冻结或只读排障临时关闭真实写入，必须记录关闭原因、影响范围和恢复计划；相关验收项只能记为 `BLOCKED` / `PENDING`，不能记为通过。
 - 三组门禁已执行并归档。
 
 最终结论口径：
@@ -215,7 +266,7 @@ Jenkins 放在第二阶段：
 环境健康检查通过。
 real-pre 测试开关关闭。
 真实 upstream 模式开启。
-真实推广写开关保持关闭；如本轮验收包含商品库复制简介携带推广链接、真实转链或 pick_source 归因，再进入单独人工批准的写窗口，同时开启两个开关并记录批准证据。
+真实上游读、同步、刷新、回调和写入类开关默认开启；真实推广写双开关保持开启。
 E2E preflight / roles / p0 已执行。
 若仍有 PENDING，原因归类为真实订单样本不足，不定义为代码硬失败。
 ```
@@ -228,5 +279,5 @@ E2E preflight / roles / p0 已执行。
 | 没域名能不能部署 | 可以端口测试，但不能完整验证百应授权体验 |
 | Jenkins 要不要先上 | 不要，先手动部署跑通 |
 | PENDING 算不算成功 | 不算 PASS，也不算代码硬失败，需要按样本不足记录 |
-| 能不能直接开真实推广写入 | 不行，必须人工确认后再改 |
-| 复制简介不含推广链接 | 如本轮要验收真实转链，人工批准后同时开启 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` 与 `ALLOW_REAL_PROMOTION_WRITE`，重启 backend 后复验 |
+| 真实推广写入默认是否开启 | 开启；real-pre 是真实上游 / 生产形态环境 |
+| 复制简介不含推广链接 | 先查两个真实推广写开关是否被临时关闭；若关闭，按降级原因记录并恢复后复验 |

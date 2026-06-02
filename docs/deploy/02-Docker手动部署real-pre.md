@@ -80,8 +80,8 @@ vi /opt/saas/env/.env.real-pre
 | `DOUYIN_TEST_ENABLED` | 必须 `false`，表示关闭抖音 / 抖店 mock gateway |
 | `DOUYIN_REAL_UPSTREAM_MODE` | 必须 `live`，real-pre 真实联调不可使用 contract/mock upstream |
 | `ORDER_SYNC_ENABLED` | 必须 `true`，否则真实订单回流与后续归因无输入 |
-| `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` | 真实转链写操作主开关，受控部署默认 `false` |
-| `ALLOW_REAL_PROMOTION_WRITE` | 真实转链写操作二次确认开关，必须与 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` 同时为 `true` 才允许真实 `instPickSourceConvert` |
+| `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` | 真实转链写操作主开关，real-pre 默认 `true` |
+| `ALLOW_REAL_PROMOTION_WRITE` | 真实转链写操作二次确认开关，real-pre 默认 `true`，必须与 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` 同时为 `true` 才允许真实 `instPickSourceConvert` |
 | `TALENT_COLLECT_MODE` | real-pre 守卫要求 `api`，不能用 `crawler` 或 `api_then_crawler` |
 | `TALENT_COLLECT_API_ENABLED` | 上线部署为 `true` |
 | `TALENT_PUBLIC_PAGE_CRAWL_ENABLED` | 必须 `false`，real-pre 守卫禁止公开页爬虫 |
@@ -97,8 +97,6 @@ vi /opt/saas/env/.env.real-pre
 APP_TEST_ENABLED=false
 APP_TEST_SEED_ON_STARTUP=false
 DOUYIN_TEST_ENABLED=false
-DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false
-ALLOW_REAL_PROMOTION_WRITE=false
 TALENT_PUBLIC_PAGE_CRAWL_ENABLED=false
 TALENT_PROFILE_PUBLIC_WEB_ENABLED=false
 TALENT_PROFILE_HTTP_ENABLED=false
@@ -107,13 +105,13 @@ EXCLUSIVE_ENABLED=false
 
 这些不是“功能没上线”，而是避免 real-pre 切回测试 / Mock、公开爬虫或未决归因规则。当前代码的 `RealProdEnvironmentGuard` 会阻断其中部分危险组合。
 
-真实推广写窗口开启后，`docker-compose.real-pre.yml` 会将 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` 与 `ALLOW_REAL_PROMOTION_WRITE` 显式传入 backend；后端 `douyin.real.promotion-write-enabled` 与 `douyin.real.allow-promotion-write` 必须同时为 `true`，否则不会调用真实 `buyin.instPickSourceConvert`，也不会写入 `pick_source_mapping`。
+real-pre 默认开启真实推广写入，`docker-compose.real-pre.yml` 会将 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true` 与 `ALLOW_REAL_PROMOTION_WRITE=true` 显式传入 backend；后端 `douyin.real.promotion-write-enabled` 与 `douyin.real.allow-promotion-write` 必须同时为 `true`，才会调用真实 `buyin.instPickSourceConvert` 并写入 `pick_source_mapping`。
 
 商品库“复制简介”与真实转链写操作已解耦：
 
-- 双开关关闭时，“复制基础简介”应返回 PASS，接口返回 `promotionLinkGenerated=false`、`fallbackReason=REAL_PROMOTION_WRITE_DISABLED`，复制文案不包含真实推广链接。
-- 双开关关闭时，真实推广链接、`pick_source` 归因和真实成交回流应标记为 `BLOCKED_BY_PROMOTION_WRITE_DISABLED`，不得记为代码失败。
-- 当验收目标包含真实推广链接、`pick_source` 归因或真实成交回流时，必须进入人工批准写窗口，并同时设置 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true` 与 `ALLOW_REAL_PROMOTION_WRITE=true`。
+- 双开关开启时，“复制简介”应真实生成推广链接，接口返回 `promotionLinkGenerated=true`，并写入 `pick_source_mapping`。
+- 双开关被临时关闭时，“复制基础简介”应返回 PASS，接口返回 `promotionLinkGenerated=false`、`fallbackReason=REAL_PROMOTION_WRITE_DISABLED`，复制文案不包含真实推广链接。
+- 双开关被临时关闭时，真实推广链接、`pick_source` 归因和真实成交回流应标记为 `BLOCKED_BY_PROMOTION_WRITE_DISABLED`，不得记为代码失败。
 
 IP 端口测试示例：
 
@@ -123,8 +121,8 @@ SPRING_PROFILES_ACTIVE=real-pre
 APP_TEST_ENABLED=false
 DOUYIN_TEST_ENABLED=false
 DOUYIN_REAL_UPSTREAM_MODE=live
-DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false
-ALLOW_REAL_PROMOTION_WRITE=false
+DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true
+ALLOW_REAL_PROMOTION_WRITE=true
 ORDER_SYNC_ENABLED=true
 TALENT_COLLECT_MODE=api
 TALENT_COLLECT_API_ENABLED=true

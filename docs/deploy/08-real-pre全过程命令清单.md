@@ -225,8 +225,8 @@ DB_NAME=saas_real_pre
 APP_TEST_ENABLED=false
 DOUYIN_TEST_ENABLED=false
 DOUYIN_REAL_UPSTREAM_MODE=live
-DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false
-ALLOW_REAL_PROMOTION_WRITE=false
+DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true
+ALLOW_REAL_PROMOTION_WRITE=true
 ORDER_SYNC_ENABLED=true
 TALENT_COLLECT_MODE=api
 TALENT_COLLECT_API_ENABLED=true
@@ -239,7 +239,7 @@ LOGISTICS_SYNC_ENABLED=true
 EXCLUSIVE_ENABLED=false
 ```
 
-若本轮验收目标包含商品库复制简介携带推广链接、真实 `instPickSourceConvert` 或 `pick_source` 归因，需在单独人工批准写窗口把两个真实推广写开关同时改为 `true`，并在验收报告中记录批准人、时间、目标商品、回滚时间。只改其中一个开关时，后端仍会拒绝真实转链。
+real-pre 默认开启真实 `instPickSourceConvert` 与 `pick_source` 写入，两个真实推广写开关必须同时为 `true`。若因风控、上游冻结或只读排障临时关闭，需在验收报告中记录关闭原因、影响范围、恢复时间和责任人。只改其中一个开关时，后端仍会拒绝真实转链。
 
 如果只做 IP + 端口测试，临时配置示例：
 
@@ -282,8 +282,8 @@ DB_NAME=saas_real_pre
 APP_TEST_ENABLED=false
 DOUYIN_TEST_ENABLED=false
 DOUYIN_REAL_UPSTREAM_MODE=live
-DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false
-ALLOW_REAL_PROMOTION_WRITE=false
+DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true
+ALLOW_REAL_PROMOTION_WRITE=true
 ORDER_SYNC_ENABLED=true
 TALENT_COLLECT_MODE=api
 TALENT_COLLECT_API_ENABLED=true

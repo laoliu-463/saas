@@ -85,6 +85,7 @@ check_baseline "APP_TEST_ENABLED"                    "false"  "关闭应用侧 m
 check_baseline "DOUYIN_TEST_ENABLED"                 "false"  "关闭抖音 mock gateway"          "false"
 check_baseline "DOUYIN_REAL_UPSTREAM_MODE"           "live"   "使用真实抖店 upstream"           "live"
 check_baseline "ORDER_SYNC_ENABLED"                  "true"   "开启真实订单同步"               "true"
+check_baseline "PRODUCT_ACTIVITY_SYNC_ENABLED"       "true"   "开启活动商品定时同步"           "false"
 
 echo ""
 

@@ -101,7 +101,7 @@ chmod 600 /opt/saas/env/.env.real-pre
 vi /opt/saas/env/.env.real-pre
 ```
 
-必须保持测试开关关闭；本次 real-pre 受控部署默认关闭真实推广写操作：
+必须保持测试开关关闭；real-pre 上游读、同步、刷新、回调和写入类开关默认开启：
 
 ```dotenv
 COMPOSE_PROJECT_NAME=saas-active
@@ -109,8 +109,8 @@ SPRING_PROFILES_ACTIVE=real-pre
 APP_TEST_ENABLED=false
 DOUYIN_TEST_ENABLED=false
 DOUYIN_REAL_UPSTREAM_MODE=live
-DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false
-ALLOW_REAL_PROMOTION_WRITE=false
+DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true
+ALLOW_REAL_PROMOTION_WRITE=true
 DB_NAME=saas_real_pre
 BACKEND_HOST_PORT=8081
 FRONTEND_HOST_PORT=3001
@@ -227,7 +227,7 @@ activeProfiles=real-pre
 APP_TEST_ENABLED=false
 DOUYIN_TEST_ENABLED=false
 DOUYIN_REAL_UPSTREAM_MODE=live
-DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false 且 ALLOW_REAL_PROMOTION_WRITE=false（受控部署默认）
+DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true 且 ALLOW_REAL_PROMOTION_WRITE=true（real-pre 默认开启真实推广写）
 订单同步任务已启动
 抖音 API 请求无系统性 401/403/5xx
 ```
@@ -478,7 +478,7 @@ commit:
 环境健康检查:
 real-pre 测试开关:
 真实 upstream 模式:
-真实推广写开关: 默认关闭；如进入单独人工批准写窗口，记录批准人与时间
+真实推广写开关: 默认开启；如因风控、上游冻结或只读排障临时关闭，记录原因、影响范围和恢复计划
 E2E preflight:
 E2E p0:
 E2E roles:

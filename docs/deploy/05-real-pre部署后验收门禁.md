@@ -163,30 +163,15 @@ limit 20;
 服务器 real-pre 受控部署完成。
 环境健康检查通过。
 real-pre 测试开关关闭：`APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`，表示关闭应用侧和抖音侧 mock/test。
-真实 upstream 模式开启：`DOUYIN_REAL_UPSTREAM_MODE=live`；订单联调开启：`ORDER_SYNC_ENABLED=true`。
-真实推广写开关保持关闭：`DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false` 且 `ALLOW_REAL_PROMOTION_WRITE=false`；如进入单独人工批准写窗口，需要另行留存批准证据。
+真实 upstream 模式开启：`DOUYIN_REAL_UPSTREAM_MODE=live`；订单联调开启：`ORDER_SYNC_ENABLED=true`；活动商品同步开启：`PRODUCT_ACTIVITY_SYNC_ENABLED=true`。
+真实上游读、同步、刷新、回调和写入类开关默认开启；真实推广写双开关保持 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true` 且 `ALLOW_REAL_PROMOTION_WRITE=true`。
 E2E preflight / roles / p0 已执行。
 若仍有 PENDING，原因归类为真实订单样本不足，不定义为代码硬失败。
 ```
 
 ## 商品库复制简介 / 转链取证
 
-默认受控部署下，`DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false` 且 `ALLOW_REAL_PROMOTION_WRITE=false`。此时商品库“复制简介”只验收基础文案降级：
-
-1. 使用渠道角色进入商品库，点击目标商品“复制简介”。
-2. 接口返回 `promotionLinkGenerated=false`、`promotionLink=null`、`pickSource=null`、`fallbackReason=REAL_PROMOTION_WRITE_DISABLED`。
-3. 前端提示“已复制基础简介；真实推广链接未生成，因为真实转链开关未开启。”。
-4. 该项按“复制基础简介 PASS”记录；真实推广链接、`pick_source` 归因和真实成交回流记录为 `BLOCKED_BY_PROMOTION_WRITE_DISABLED`，不得写成代码失败。
-5. 数据库不应新增本次商品对应的 `pick_source_mapping`。
-
-仅当本轮验收目标包含商品库复制简介携带真实推广链接、真实转链、`pick_source` 归因或真实成交回流时，才执行真实写窗口验证。执行前必须确认 `APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`、`DOUYIN_REAL_UPSTREAM_MODE=live`、`ORDER_SYNC_ENABLED=true`，并在人工批准写窗口内同时设置：
-
-```dotenv
-DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true
-ALLOW_REAL_PROMOTION_WRITE=true
-```
-
-真实写窗口验证步骤：
+默认受控部署下，`DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true` 且 `ALLOW_REAL_PROMOTION_WRITE=true`。此时商品库“复制简介”应验证真实转链写入：
 
 1. 使用渠道角色进入商品库，点击目标商品“复制简介”。
 2. 接口返回 `promotionLinkGenerated=true`、`promotionLink` 非空、`pickSource` 非空。
@@ -194,6 +179,21 @@ ALLOW_REAL_PROMOTION_WRITE=true
 4. 查询 `pick_source_mapping`，确认目标 `product_id`、`activity_id`、`pick_source`、`promotion_link_id`、`converted_url` 写入成功。
 5. 后端日志出现 `promotion_convert_result=success`，并包含 `product_id`、`channel_id`、`pick_source`、`result=success`。
 6. 前端复制文案包含 `【链接】` 推广链接，并提示“复制成功，已生成推广链接”。
+
+若因风控、上游冻结或只读排障临时关闭真实推广写双开关，则必须明确记录降级原因，并设置：
+
+```dotenv
+DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false
+ALLOW_REAL_PROMOTION_WRITE=false
+```
+
+降级验证步骤：
+
+1. 使用渠道角色进入商品库，点击目标商品“复制简介”。
+2. 接口返回 `promotionLinkGenerated=false`、`promotionLink=null`、`pickSource=null`、`fallbackReason=REAL_PROMOTION_WRITE_DISABLED`。
+3. 前端提示基础简介复制成功，但真实推广链接因开关关闭未生成。
+4. 该项按“复制基础简介 PASS”记录；真实推广链接、`pick_source` 归因和真实成交回流记录为 `BLOCKED_BY_PROMOTION_WRITE_DISABLED`，不得写成代码失败。
+5. 数据库不应新增本次商品对应的 `pick_source_mapping`。
 
 不允许写：
 

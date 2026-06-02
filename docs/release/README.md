@@ -6,7 +6,7 @@
 
 - real-pre 受控部署不等于正式生产全量上线。
 - `PENDING` / `BLOCKED` 不得写成 `PASS`。
-- 真实推广写开关默认关闭：`DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false`、`ALLOW_REAL_PROMOTION_WRITE=false`。
+- 真实推广写开关在 real-pre 默认开启：`DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true`、`ALLOW_REAL_PROMOTION_WRITE=true`；如临时关闭，必须记录原因、影响范围和恢复计划。
 - 真实 Token、订单样本、归因、寄样和业绩证据不足时，只能记录为 `PENDING` 或 `BLOCKED`。
 
 每次审查应同时生成：
