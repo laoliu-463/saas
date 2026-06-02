@@ -198,6 +198,69 @@ npm install
 npm run e2e
 ```
 
+### 7.1 常见症状与标准修复
+
+#### A. 商品库漂移（"推广中" Tab 下操作列只剩"查看详情"）
+
+**症状**：在活动商品页或共享商品库页"推广中" Tab 下看到商品，但行操作列只剩"查看详情"，没有"暂停发布 / 恢复发布 / 编辑 / 寄样设置"等。
+
+**根因**：本地 `product_operation_state.selected_to_library` 没被自动维护为 `true`。`ProductService.applyUpstreamProductLibraryDecision`（`backend/.../service/ProductService.java:1517`）只在上游百应/抖音 `status === 1`（`UPSTREAM_PRODUCT_STATUS_PROMOTING`）时把 `selectedToLibrary` 设为 `true`，且只有 `ProductActivitySyncJob`（定时）或 `ProductActivityManualSyncService.trigger`（手动）会调用它。
+
+> 注：`ProductLibraryRepairController.repair-library-state` 只改 `displayStatus`，**不**改 `selectedToLibrary`，不能解此症状。
+
+**标准动作**（按活动粒度，无需 admin，无需重启）：
+
+1. 进活动商品页（`/product/manage/products/<activityId>` 或活动详情里进商品 Tab）。
+2. 工具栏右侧点 **"一键同步商品"**（`frontend/.../views/product/components/ProductManageToolbar.vue:4`）。
+3. 弹"同步商品"确认框 → 确认。
+4. **等 5-10 秒**（后端走 `applicationTaskExecutor` 异步跑，不阻塞前端）。
+5. 刷新活动商品列表，看 `selected_to_library` 是否变 `true`、前端 `publishStatus` 是否变 `PUBLISHED`、操作列是否恢复。
+
+**内部调用链**（手动同步与定时 job 走**同一条** `productService.refreshActivitySnapshots`，效果完全等价）：
+
+```
+ProductSyncActivityDialog 确认
+  → syncActivityProductsFromRemote  (frontend/.../views/product/index.vue:848)
+  → POST /colonel/activities/{activityId}/products/sync
+  → ColonelActivityController.syncProducts  (ColonelActivityController.java:161)
+  → ProductActivityManualSyncService.trigger (ProductActivityManualSyncService.java:42)
+  → CompletableFuture.runAsync → productService.refreshActivitySnapshots(...)
+      → applyUpstreamProductLibraryDecision(...)
+          → selectedToLibrary=true   （上游 status=1 + 未本地拒 + 未手动禁用）
+          → selectedToLibrary=false  （其他情况）
+```
+
+**验证**（查后端日志）：
+
+```bash
+docker logs --tail 500 saas-active-backend-real-pre-1 | grep ProductActivityManualSync
+# 期望: ProductActivityManualSync completed, activityId=..., libraryEntryCount=N
+# N > 0  → 真的有商品被新加入商品库
+# N = 0  → 上游百应/抖音确认这些商品不是推广中；本地状态跟上游一致
+#         （不是漂移，是真实数据状态；只有前端"查看详情"也是预期表现）
+```
+
+**长线预防**：`PRODUCT_ACTIVITY_SYNC_ENABLED=true` + `PRODUCT_ACTIVITY_SYNC_CRON=0 */5 * * * ?`（`.env.real-pre` 现状）。定时 job `ProductActivitySyncJob` 全量模式（无 whitelist）每 5 分钟自动跑一次 `refreshActivitySnapshots`，**新活动商品入库后 5 分钟内就会自动被补**，不再漂移。如需调回 2 小时，将 cron 改回 `0 0 */2 * * ?` 即可。
+
+#### B. real-pre 必开开关清单（2026-06-02 核实）
+
+`saas-active-backend-real-pre-1` 容器内 `env` 已确认的事实状态：
+
+| 开关 | 值 | 作用 / 是否必开 |
+| --- | --- | --- |
+| `PRODUCT_ACTIVITY_SYNC_ENABLED` | `true` | 商品库定时同步（每 5 min，cron `0 */5 * * * ?`） |
+| `ORDER_SYNC_ENABLED` | `true` | 订单定时同步 |
+| `LOGISTICS_SYNC_ENABLED` | `true` | 物流定时同步 |
+| `DOUYIN_TOKEN_AUTO_REFRESH_ENABLED` | `true` | 抖店 Token 自动刷新 |
+| `DOUYIN_TOKEN_AUTO_REFRESH_CRON` | `0 */10 * * * ?` | Token 刷新 cron |
+| `DOUYIN_REAL_PROMOTION_WRITE_ENABLED` | `true` | 真实推广写开关（双开之一） |
+| `ALLOW_REAL_PROMOTION_WRITE` | `true` | 真实推广写开关（双开之二） |
+| `DOUYIN_TEST_ENABLED` | `false` | **必为 false**（real-pre 形态） |
+| `APP_TEST_ENABLED` | `false` | **必为 false**（real-pre 形态） |
+| `DOUYIN_REAL_UPSTREAM_MODE` | `live` | **必为 live**（real-pre 形态） |
+
+> 任何新增 / 调整 real-pre 开关需同步 `docs/10-部署运行总览.md` 部署后第一轮验收清单。
+
 ---
 
 ## 8. Superpowers 使用准则
