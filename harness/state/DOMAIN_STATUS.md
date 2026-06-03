@@ -112,8 +112,10 @@
 
 ## 寄样域
 
-- 当前状态：申请、审批、发货和订单事件自动完成链路已具备，real-pre 仍依赖真实归因订单样本。
-- 已完成能力：寄样申请、审批、发货、状态日志、订单事件消费。
+- 当前状态：申请、审批、发货和订单事件自动完成链路已具备。TALENT-ADDRESS-SAMPLE-DEFAULT 达人寄样地址默认保存已完成（2026-06-03），real-pre 仍依赖真实归因订单样本。
+- 已完成能力：寄样申请、审批、发货、状态日志、订单事件消费；**地址默认保存**（寄样成功后回写 `talent_claim`，下次选达人自动带入，修改后更新，历史快照不变，多渠道隔离）。
+- TALENT-ADDRESS-SAMPLE-DEFAULT 报告路径：`harness/reports/talent-address-sample-default-20260603-224000.md`。
+- TALENT-ADDRESS-SAMPLE-DEFAULT 修改文件：`ProductQuickSampleService.java`、`SampleApplicationService.java`（后端回写）；`QuickSampleModal.vue`、`SampleCreateModal.vue`（前端加载+提交）；测试 4 文件 8 用例。
 - 待优化能力：状态机完整验证、交作业命中条件、重复消费幂等和真实样本证据补齐。
 - DDD 优化下一步：S-1 盘点寄样域代码、接口、表、状态机和测试。
 - 标记：P0。

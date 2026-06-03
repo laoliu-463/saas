@@ -1,5 +1,33 @@
 # Harness Changelog
 
+## v0.5.5
+
+- 完成 TALENT-ADDRESS-SAMPLE-DEFAULT 达人寄样地址默认保存（2026-06-03）。
+- 生成报告：`harness/reports/talent-address-sample-default-20260603-224000.md`。
+- 后端修复：`ProductQuickSampleService` 和 `SampleApplicationService` 添加 `writeBackClaimAddress()` 方法，寄样创建成功后自动回写地址到 `talent_claim`。
+- 前端修复：`QuickSampleModal.vue` 添加 `watch(talentIds)` 自动加载默认地址；`SampleCreateModal.vue` 添加 `loadDefaultAddress()` 和地址字段传递。
+- 无新增字段或 migration，复用 `talent_claim` 已有 `recipient_name/recipient_phone/recipient_address` 字段。
+- 测试结果：后端 1708/0/0、前端 QuickSampleModal 5/5、SampleCreateModal 3/3、typecheck ✅、build ✅。
+- real-pre 验收：地址回写 PASS、快照不变 PASS、地址更新 PASS、多渠道隔离 PASS（biz_leader 访问 403）。
+- 未部署远端。
+- Final Status：`PASS`。
+
+## v0.5.6
+
+- 完成 GIT-INTAKE-001 会话启动 dirty 校验与 Batch 重分类（2026-06-03 22:30–22:50）。
+- 生成报告：`harness/reports/git-intake-001-dirty-classify-20260603-225000.md`。
+- 关键发现：会话启动 hook 报告 HEAD = `ab03d729` 与实际 HEAD = `49aefbda docs(harness): record sample remote verification` 偏差 1 个 commit；启动 hook 报告的 6 个 staged 文档（`harness/CURRENT_STATE.md` / `HARNESS_CHANGELOG.md` / `p0-sample-001-remote-verify-20260603-221004.md` / `retro-20260603-223153.md` / `p0-p1-register.md` / `real-pre-evidence-index.md`）已由上游会话 commit 并推送到 gitee + origin，本会话无需再次 commit/push。
+- 远端 HEAD 对齐：本地 = gitee/feature/auth-system = origin/feature/auth-system = `49aefbda`。
+- Batch 重分类：
+  - Batch A（6 文档）已 clean——`49aefbda` 已包含并推送。
+  - Batch B（14 文件，dirty）保持脏状态：6 modified 业务代码（`ProductQuickSampleService` / `SampleApplicationService` / `QuickSampleApplyTest` / `QuickSampleModal.test.ts` / `QuickSampleModal.vue` / `SampleCreateModal.vue`）+ 1 untracked 测试（`SampleCreateModal.test.ts`）+ 3 untracked 报告（`talent-address-sample-default-20260603-224000.md` / `git-intake-001-dirty-classify-20260603-225000.md` / `order-attribution-sample-20260603-222120.md`）+ 3 modified 状态文件（`HARNESS_CHANGELOG.md` / `state/DOMAIN_STATUS.md` / `state/KNOWN_ISSUES.md` / `state/p0-p1-register.md`）。
+- 上游会话已先于本会话完成 TALENT-ADDRESS-SAMPLE-DEFAULT 任务（`v0.5.5`），含 6 modified 业务代码 + 1 untracked evidence 报告 + 2 modified 状态文件（`DOMAIN_STATUS.md` / `KNOWN_ISSUES.md`），但未 commit / 未 push / 未部署远端。
+- 用户授权："等代码批次一起部署"——Batch B 必须包含 TALENT-ADDRESS-SAMPLE-DEFAULT 任务 + GIT-INTAKE-001 报告 + 订单归因样本报告，一并 commit + 推送 + 远端部署对齐。
+- 风险登记：`harness/state/p0-p1-register.md` 追加 RISK-007（订单归因样本不足 BLOCKED_BY_SAMPLE）与 RISK-008（Batch B 14 文件 dirty 未提交）。
+- 远端部署：本次未触发（仅 docs 状态收口，无代码变更）。
+- 未修改业务代码、未写库、未重启容器、未执行数据库写入 SQL。
+- 状态：Batch A `DONE_CLEAN`，Batch B `PARTIAL_DIRTY_REMAINING`（Git Exit Gate：`DONE_WITH_REGISTERED_DIRTY`）。
+
 ## v0.5.4
 
 - 完成 P0-SAMPLE-001-REMOTE-VERIFY 远端 real-pre 部署验证状态收口（2026-06-03 22:10-22:30）。
