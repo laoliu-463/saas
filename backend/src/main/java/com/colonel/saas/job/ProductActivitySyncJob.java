@@ -11,6 +11,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import jakarta.annotation.PostConstruct;
+
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -35,6 +37,8 @@ public class ProductActivitySyncJob {
 
     @Value("${product.activity.sync.enabled:false}")
     private boolean enabled;
+    @Value("${product.activity.sync.cron:0 */5 * * * ?}")
+    private String cronExpression;
     @Value("${product.activity.sync.batch-size:20}")
     private int batchSize;
     @Value("${product.activity.sync.whitelist-activities:}")
@@ -59,10 +63,19 @@ public class ProductActivitySyncJob {
         this.qpsGuardSleepMillis = Math.max(0, qpsGuardSleepMillis);
     }
 
-    @Scheduled(cron = "${product.activity.sync.cron:0 0 */2 * * ?}")
+    @PostConstruct
+    void logStartupConfig() {
+        log.info("ProductActivitySyncJob config: enabled={}, cron={}, batchSize={}, whitelist={}",
+                enabled,
+                cronExpression,
+                batchSize,
+                whitelistActivities.isBlank() ? "(all active)" : whitelistActivities);
+    }
+
+    @Scheduled(cron = "${product.activity.sync.cron:0 */5 * * * ?}")
     public void syncAll() {
         if (!enabled) {
-            log.info("ProductActivitySyncJob skipped (disabled by config)");
+            log.debug("ProductActivitySyncJob skipped (disabled by config)");
             return;
         }
         if (!jobLockService.tryAcquire(JobLockKeys.PRODUCT_ACTIVITY_SYNC, LOCK_TTL)) {

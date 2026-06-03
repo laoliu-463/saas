@@ -30,7 +30,9 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -475,6 +477,36 @@ class ProductDisplayRuleServiceTest {
     }
 
     @Test
+    void applyForProductId_shouldHideCurrentDisplayingBeforePromotingNewWinner() {
+        String productId = "9020";
+        ProductOperationState challenger = libraryState("50202", productId, 3000L, false, LocalDateTime.now().minusDays(1));
+        ProductOperationState displaying = libraryState("50201", productId, 1500L, false, LocalDateTime.now().minusMonths(2));
+        displaying.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        displaying.setFirstDisplayedAt(LocalDateTime.now().minusMonths(2));
+
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(challenger, displaying));
+        when(snapshotMapper.selectList(any())).thenReturn(List.of(
+                snapshot("50202", productId, 3000L, 1),
+                snapshot("50201", productId, 1500L, 1)
+        ));
+        when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
+
+        service.applyForProductId(productId);
+
+        ArgumentCaptor<ProductOperationState> captor = ArgumentCaptor.forClass(ProductOperationState.class);
+        verify(operationStateMapper, times(2)).updateById(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(ProductOperationState::getId)
+                .containsExactly(displaying.getId(), challenger.getId());
+        assertThat(captor.getAllValues().get(0))
+                .extracting(ProductOperationState::getDisplayStatus, ProductOperationState::getHiddenReason)
+                .containsExactly(ProductDisplayStatus.HIDDEN.name(), ProductDisplayRuleService.HIDDEN_REASON_REPLACED_BY_ADVANTAGE);
+        assertThat(captor.getAllValues().get(1))
+                .extracting(ProductOperationState::getDisplayStatus, ProductOperationState::getDisplayReason)
+                .containsExactly(ProductDisplayStatus.DISPLAYING.name(), ProductDisplayRuleService.DISPLAY_REASON_ADVANTAGE);
+    }
+
+    @Test
     void protectionPeriod_shouldAllowOverrideWithLowerServiceFee() {
         String productId = "9012";
         ProductOperationState displaying = libraryState("60001", productId, 2000L, false, LocalDateTime.now().minusMonths(1));
@@ -704,6 +736,103 @@ class ProductDisplayRuleServiceTest {
         ProductOperationState state = new ProductOperationState();
         state.setFirstDisplayedAt(LocalDateTime.now().minusMonths(4));
         assertThat(service.isInProtectionPeriod(state.getFirstDisplayedAt(), 3, LocalDateTime.now())).isFalse();
+    }
+
+    @Test
+    void displaySwitchShouldDemoteOldDisplayingBeforePromotingNewWinner() {
+        String productId = "two-pass-1";
+        ProductOperationState oldDisplaying = libraryState("A001", productId, 1000L, false, LocalDateTime.now().minusDays(10));
+        oldDisplaying.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        oldDisplaying.setFirstDisplayedAt(LocalDateTime.now().minusDays(10));
+
+        ProductOperationState newWinner = libraryState("A002", productId, 3000L, false, LocalDateTime.now().minusDays(1));
+
+        ColonelsettlementActivity activity = new ColonelsettlementActivity();
+        activity.setActivityStatusCode(5);
+        activity.setRecruiterUserId(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+        when(colonelActivityMapper.selectByActivityId("A001")).thenReturn(activity);
+        when(colonelActivityMapper.selectByActivityId("A002")).thenReturn(activity);
+
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(oldDisplaying, newWinner));
+        when(snapshotMapper.selectList(any())).thenReturn(List.of(
+                snapshot("A001", productId, 1000L, 1),
+                snapshot("A002", productId, 3000L, 1)
+        ));
+        when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
+
+        service.applyForProductId(productId);
+
+        var orderVerifier = inOrder(operationStateMapper);
+        orderVerifier.verify(operationStateMapper).updateById(argThat(s ->
+                s.getId().equals(oldDisplaying.getId())
+                        && ProductDisplayStatus.HIDDEN.name().equals(s.getDisplayStatus())));
+        orderVerifier.verify(operationStateMapper).updateById(argThat(s ->
+                s.getId().equals(newWinner.getId())
+                        && ProductDisplayStatus.DISPLAYING.name().equals(s.getDisplayStatus())));
+    }
+
+    @Test
+    void displaySwitchIdempotentWhenWinnerIsAlreadyDisplaying() {
+        String productId = "two-pass-2";
+        ProductOperationState currentDisplaying = libraryState("A010", productId, 3000L, false, LocalDateTime.now().minusDays(5));
+        currentDisplaying.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        currentDisplaying.setFirstDisplayedAt(LocalDateTime.now().minusDays(5));
+        currentDisplaying.setDisplayReason(ProductDisplayRuleService.DISPLAY_REASON_RULE);
+
+        ProductOperationState loser = libraryState("A011", productId, 1000L, false, LocalDateTime.now().minusDays(1));
+
+        ColonelsettlementActivity activity = new ColonelsettlementActivity();
+        activity.setActivityStatusCode(5);
+        activity.setRecruiterUserId(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+        when(colonelActivityMapper.selectByActivityId("A010")).thenReturn(activity);
+        when(colonelActivityMapper.selectByActivityId("A011")).thenReturn(activity);
+
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(currentDisplaying, loser));
+        when(snapshotMapper.selectList(any())).thenReturn(List.of(
+                snapshot("A010", productId, 3000L, 1),
+                snapshot("A011", productId, 1000L, 1)
+        ));
+        when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
+
+        service.applyForProductId(productId);
+
+        verify(operationStateMapper, atLeastOnce()).updateById(argThat(s ->
+                s.getId().equals(loser.getId())
+                        && ProductDisplayStatus.HIDDEN.name().equals(s.getDisplayStatus())));
+        assertThat(currentDisplaying.getDisplayStatus()).isEqualTo(ProductDisplayStatus.DISPLAYING.name());
+    }
+
+    @Test
+    void multipleCandidatesOnlyOneDisplaying() {
+        String productId = "two-pass-3";
+        ProductOperationState s1 = libraryState("A020", productId, 1000L, false, LocalDateTime.now().minusDays(10));
+        ProductOperationState s2 = libraryState("A021", productId, 2000L, false, LocalDateTime.now().minusDays(5));
+        ProductOperationState s3 = libraryState("A022", productId, 3000L, false, LocalDateTime.now().minusDays(1));
+
+        ColonelsettlementActivity activity = new ColonelsettlementActivity();
+        activity.setActivityStatusCode(5);
+        activity.setRecruiterUserId(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+        when(colonelActivityMapper.selectByActivityId(any())).thenReturn(activity);
+
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(s1, s2, s3));
+        when(snapshotMapper.selectList(any())).thenReturn(List.of(
+                snapshot("A020", productId, 1000L, 1),
+                snapshot("A021", productId, 2000L, 1),
+                snapshot("A022", productId, 3000L, 1)
+        ));
+        when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
+
+        service.applyForProductId(productId);
+
+        ArgumentCaptor<ProductOperationState> captor = ArgumentCaptor.forClass(ProductOperationState.class);
+        verify(operationStateMapper, atLeastOnce()).updateById(captor.capture());
+        long displayingCount = captor.getAllValues().stream()
+                .filter(s -> ProductDisplayStatus.DISPLAYING.name().equals(s.getDisplayStatus()))
+                .count();
+        assertThat(displayingCount).isEqualTo(1);
+        assertThat(captor.getAllValues().stream()
+                .filter(s -> ProductDisplayStatus.DISPLAYING.name().equals(s.getDisplayStatus()))
+                .findFirst().get().getId()).isEqualTo(s3.getId());
     }
 
     private ProductOperationState libraryState(

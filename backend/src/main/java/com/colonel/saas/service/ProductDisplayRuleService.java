@@ -728,8 +728,10 @@ public class ProductDisplayRuleService {
         DisplayCandidate winner = selectWinner(eligible, currentDisplaying, productFirstDisplayedAt, protectionMonths, now);
         String selectedReason = resolveSelectedReason(winner, currentDisplaying, now);
 
+        List<DisplayDecision> decisions = new ArrayList<>();
         for (ProductOperationState state : states) {
             ProductSnapshot snapshot = snapshotMap.get(snapshotKey(state.getActivityId(), state.getProductId()));
+            ProductDisplayStatus currentStatus = ProductDisplayStatus.fromCode(state.getDisplayStatus());
             ProductDisplayStatus nextStatus;
             String hiddenReason = null;
             String displayReason = null;
@@ -748,7 +750,26 @@ public class ProductDisplayRuleService {
             } else {
                 nextStatus = ProductDisplayStatus.PENDING;
             }
-            persistDisplayDecision(state, nextStatus, hiddenReason, displayReason, productFirstDisplayedAt, now);
+            decisions.add(new DisplayDecision(state, currentStatus, nextStatus, hiddenReason, displayReason));
+        }
+
+        for (DisplayDecision decision : decisions) {
+            if (decision.demotesDisplaying()) {
+                persistDisplayDecision(decision.state(), decision.nextStatus(),
+                        decision.hiddenReason(), decision.displayReason(), productFirstDisplayedAt, now);
+            }
+        }
+        for (DisplayDecision decision : decisions) {
+            if (!decision.demotesDisplaying() && decision.nextStatus() != ProductDisplayStatus.DISPLAYING) {
+                persistDisplayDecision(decision.state(), decision.nextStatus(),
+                        decision.hiddenReason(), decision.displayReason(), productFirstDisplayedAt, now);
+            }
+        }
+        for (DisplayDecision decision : decisions) {
+            if (decision.nextStatus() == ProductDisplayStatus.DISPLAYING) {
+                persistDisplayDecision(decision.state(), decision.nextStatus(),
+                        decision.hiddenReason(), decision.displayReason(), productFirstDisplayedAt, now);
+            }
         }
 
         UUID newDisplayRelationId = states.stream()
@@ -1278,6 +1299,19 @@ public class ProductDisplayRuleService {
             String reason,
             boolean changed,
             boolean willDisplay) {
+    }
+
+    private record DisplayDecision(
+            ProductOperationState state,
+            ProductDisplayStatus currentStatus,
+            ProductDisplayStatus nextStatus,
+            String hiddenReason,
+            String displayReason) {
+
+        private boolean demotesDisplaying() {
+            return currentStatus == ProductDisplayStatus.DISPLAYING
+                    && nextStatus != ProductDisplayStatus.DISPLAYING;
+        }
     }
 
     private static final class LibraryRepairAccumulator {

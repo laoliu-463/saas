@@ -19,8 +19,20 @@ $remoteScript = @"
 set -e
 cd '$RemoteDir'
 git pull --ff-only
+echo "Checking product sync env vars ..."
+if grep -q PRODUCT_ACTIVITY_SYNC_ENABLED '$RemoteEnvFile' 2>/dev/null; then
+  grep PRODUCT_ACTIVITY_SYNC '$RemoteEnvFile'
+else
+  echo "WARNING: PRODUCT_ACTIVITY_SYNC_ENABLED not found in $RemoteEnvFile"
+  echo "Compose and real-pre profile default to enabled, but remote env must set PRODUCT_ACTIVITY_SYNC_* explicitly."
+fi
 compose() {
   docker compose --env-file '$RemoteEnvFile' -f docker-compose.real-pre.yml "`$@"
+}
+echo "Checking product sync compose config ..."
+compose config | grep PRODUCT_ACTIVITY || {
+  echo "PRODUCT_ACTIVITY sync env not found in docker compose config"
+  exit 1
 }
 echo "Preparing postgres-real-pre before schema guard ..."
 compose up -d postgres-real-pre
@@ -67,6 +79,13 @@ compose up -d --build backend-real-pre frontend-real-pre
 compose ps
 curl -fsS http://127.0.0.1:8081/api/system/health
 curl -fsS http://127.0.0.1:3001/healthz
+echo "Checking backend product sync env ..."
+docker exec "`$(compose ps -q backend-real-pre)" printenv | grep PRODUCT_ACTIVITY || {
+  echo "PRODUCT_ACTIVITY env not found in backend container"
+  exit 1
+}
+echo "Checking ProductActivitySyncJob config ..."
+docker logs --tail=200 "`$(compose ps -q backend-real-pre)" 2>&1 | grep -i ProductActivitySyncJob || echo "WARNING: ProductActivitySyncJob config log not found"
 "@
 
 Write-Host "Remote host: $RemoteHost"
