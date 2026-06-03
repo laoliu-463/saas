@@ -3,7 +3,7 @@
 ## 当前日期
 
 - 记录日期：2026-06-03
-- Harness 版本：v0.1.9
+- Harness 版本：v0.2.0
 
 ## 当前技术栈
 
@@ -104,8 +104,10 @@ real-pre 必须保持：
 - 新增领域执行入口：`harness/instructions/user-domain.md`、`config-domain.md`、`order-domain.md`、`performance-domain.md`、`analytics-module.md`、`product-domain.md`、`talent-domain.md`、`sample-domain.md`。
 - 新增 DDD skill：`ddd-domain-optimization.skill.md`、`ddd-boundary-check.skill.md`、`ddd-post-task-sync.skill.md`。
 - 状态跟踪入口：`harness/state/DOMAIN_STATUS.md`。
-- 已完成：用户域 U-1 现状盘点（2026-06-03），报告路径：`harness/reports/user-domain-u1-inventory-20260603-120000.md`。
-- 下一阶段：按照 `DDD_DOMAIN_TASK_MATRIX.md` 执行用户域 U-2 表结构与模型对齐。
+- 已完成：用户域 U-1 现状盘点（2026-06-03），报告路径：`harness/reports/user-domain-u1-inventory-20260603-090000.md`。
+- 已完成：用户域 U-2 表结构与领域模型对齐（2026-06-03），报告路径：`harness/reports/user-domain-u2-model-schema-alignment-20260603-150000.md`。核心结论：7 张用户域表字段与 Entity 对齐；同时确认 P0 风险：`dept_type` 常量类、migration 和 real-pre 数据值冲突。
+- 已完成：用户域 U-2.5-A dept_type 统一与最小修复方案设计（2026-06-03），报告路径：`harness/reports/user-domain-u2_5-dept-type-unification-plan-20260603-094513.md`。本次未修改 Java / Vue / SQL，未执行数据库写操作，未重启容器，未部署；仅执行 real-pre 只读 SELECT 和 docs 范围安全检查。
+- 下一阶段：用户域 U-2.5-B dept_type 最小修复。修复后再进入 U-3 CurrentUser / PermissionContext 统一。
 - 重要口径：本次是 Harness 文档治理，不代表 Java / Vue / SQL 已完成 DDD 重构。
 
 ## 旧文档冲突处理

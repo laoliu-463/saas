@@ -12,10 +12,12 @@
 
 ## 用户域
 
-- 当前状态：U-1 现状盘点已完成（2026-06-03），报告路径：`harness/reports/user-domain-u1-inventory-20260603-120000.md`。
-- 已完成能力：登录、角色、菜单、组织、`self/group/all`。
-- 待优化能力：CurrentUser、PermissionContext、DataScopeResolver、PermissionChecker、统一出口和越权负例补齐。
-- DDD 优化下一步：U-2 表结构与模型对齐（核对 sys_user/sys_role/sys_menu/sys_dept/sys_user_role/sys_role_menu/operation_log 与领域模型一致性）。
+- 当前状态：U-1 现状盘点、U-2 表结构与领域模型对齐、U-2.5-A dept_type 统一方案设计已完成（2026-06-03）。
+- 报告路径：U-1 `harness/reports/user-domain-u1-inventory-20260603-120000.md`；U-2 `harness/reports/user-domain-u2-model-schema-alignment-20260603-150000.md`；U-2.5-A `harness/reports/user-domain-u2_5-dept-type-unification-plan-20260603-094513.md`。
+- U-2.5-A 核心结论：`DeptType.java` 与 `DeptTypes.java` 两套常量冲突成立；migration / init-db 同时存在 `recruiter/channel/dept`、`recruiter_group/channel_group/ops_group`、`BUSINESS` 和全 `department` 口径；real-pre 只读查询确认当前有效 `sys_dept.dept_type` 全部为 `department`（3 条）。
+- 当前风险：依赖 `DeptType.isGroup()` 的组织归属、业务组列表/统计、组长校验和订单筛选元数据存在误判基础；多数现有业务 data_scope 仍按 `dept_id` 等值过滤，不能扩大写成所有 group 过滤已经必然为空。
+- 待优化能力：dept_type 最小修复、CurrentUser record、PermissionContext 多角色并集、DataScopeResolver 统一、PermissionChecker 统一、UserDomainFacade、越权负例补齐。
+- DDD 优化下一步：U-2.5-B dept_type 最小修复，完成后再进入 U-3 CurrentUser / PermissionContext 统一。
 - 标记：P0。
 
 ## 配置域

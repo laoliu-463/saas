@@ -1,11 +1,32 @@
 # Harness Changelog
 
+## v0.2.1
+
+- 完成用户域 U-2.5-A dept_type 统一与最小修复方案设计（2026-06-03）。
+- 生成报告：`harness/reports/user-domain-u2_5-dept-type-unification-plan-20260603-094513.md`，覆盖常量类、migration / seed、real-pre 只读数据、代码调用点、group 数据范围影响、统一标准、最小修复顺序、migration 需求和 U-2.5-B 建议。
+- 核心发现：`DeptType.java` 标准为 `department/recruiter_group/channel_group/ops_group`，`DeptTypes.java` 仍定义旧值 `recruiter/channel/dept`，且 `service.SysDeptService` 仍引用旧常量。
+- real-pre 只读查询确认：当前有效 `sys_dept` 共 3 条，`dept_type` 全部为 `department`；`sys_user.dept_id` 当前无孤儿活跃用户；`sys_user.dept_id` 无 FK，`sys_role_menu` 仅有联合主键无 FK。
+- 阶段性结论：先执行 U-2.5-B dept_type 最小修复，再进入 U-3；U-2.5-B 应统一到 `DeptType.java`、替换/废弃 `DeptTypes.java`、更新 seed 并新增幂等 migration，FK/CHECK 等 DB hardening 可后置。
+- 未修改 Java 业务代码、Vue 前端代码或 SQL migration；未执行数据库写操作；未重启容器；未部署远端。
+
+## v0.2.0
+
+- 完成用户域 U-2 表结构与领域模型对齐任务（2026-06-03）。
+- 生成报告：`harness/reports/user-domain-u2-model-schema-alignment-20260603-150000.md`，覆盖 15 个章节：表清单、DDD 模型映射、一人多角色、数据范围、菜单权限、部门组别、Token/黑名单、操作日志、跨域访问风险、schema 问题清单、迁移建议、结论和下一步。
+- 核心发现：7 张表字段与 Entity 完全对齐；一人多角色表结构真正支持（非代码临时拼凑）；P0 问题——`dept_type` 值和两个常量类（`DeptType.java` vs `DeptTypes.java`）严重冲突，三套 migration 脚本设置不同 dept_type 值。
+- 识别 12 处跨域 Mapper 直接访问（DDD 越界），PerformanceAccessScope 含硬编码 SQL 子查询 sys_user。
+- 建议 U-2.5 最小 migration：统一 dept_type 值、为 sys_user.dept_id 添加 FK 约束、为 sys_role_menu 添加 FK CASCADE。
+- 更新 `CURRENT_STATE.md`、`state/DOMAIN_STATUS.md`，记录 U-2 完成状态和 U-3 下一步。
+- 未修改 Java 业务代码、Vue 前端代码或数据库；仅执行只读盘点和 Harness 状态更新。
+
 ## v0.1.9
 
 - 完成用户域 U-1 现状盘点任务（2026-06-03）。
-- 生成报告：`harness/reports/user-domain-u1-inventory-20260603-120000.md`，覆盖认证、用户、角色、菜单、组织、数据范围、操作日志、安全过滤器、当前用户、RBAC、菜单树、多角色等 13 个维度。
-- 识别关键 DDD 架构问题：三套并行数据范围实现（DataScopeAspect AOP、PerformanceAccessScope 独立实现、Service 手动过滤）、缺少 UserDomainFacade、业务域直接访问用户域 Mapper。
-- 更新 `CURRENT_STATE.md`、`state/DOMAIN_STATUS.md`，记录 U-1 完成状态和 U-2 下一步。
+- 生成 U-1 报告：`harness/reports/user-domain-u1-inventory-20260603-090000.md`，覆盖认证链路、权限模型、数据范围模型、对外能力、跨域关系、DDD 越界风险、测试覆盖 13 个维度。
+- 完成用户域 U-2 表结构与领域模型对齐（2026-06-03）。
+- 生成 U-2 报告：`harness/reports/user-domain-u2-model-schema-alignment-20260603-093000.md`，覆盖 8 张表清单、12 个 DDD 模型映射、跨域访问风险、schema 问题分级。
+- U-2 核心结论：用户域 schema 无需任何 migration；7 张表（sys_user/sys_role/sys_dept/sys_menu/sys_user_role/sys_role_menu/operation_log）完整对齐 DDD 模型；V1 阶段所有抽象均可纯代码层实现；P1 风险为跨域直接访问 Mapper 和 DEPT scope 不区分 dept_type。
+- 更新 `CURRENT_STATE.md`、`state/DOMAIN_STATUS.md`，记录 U-1 + U-2 完成状态和 U-3 下一步。
 - 未修改 Java 业务代码、Vue 前端代码或数据库；仅执行只读盘点和 Harness 状态更新。
 
 ## v0.1.8
