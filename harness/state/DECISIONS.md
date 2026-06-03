@@ -16,6 +16,7 @@
 | real-pre 环境 | `docs/决策/ADR-006-real-pre作为上线前联调环境.md` | real-pre 是真实上游 / 生产形态联调环境 |
 | DDD 增量合并 | `harness/plans/DDD_OPTIMIZATION_ROADMAP.md` | 本项目已有 Harness，本次只增量合并 DDD 计划，不重建 Harness |
 | 用户域 dept_type 标准 | `harness/reports/user-domain-u2_5b-dept-type-minimal-fix-20260603-101503.md` | `sys_dept.dept_type` Java / seed 标准统一为 `department/recruiter_group/channel_group/ops_group`，旧 `recruiter/channel/dept` 仅允许出现在 migration 兼容映射中 |
+| Git 工作区治理与批次提交门禁 | `harness/reports/git-harness-001-worktree-governance-20260603-*.md` + `harness/skills/git-change-control.md` | 远端部署必须只使用已提交 commit；本地 dirty 文件禁止直接部署；所有任务必须有任务编号；所有提交必须按任务编号或 batch 编号拆分；任何任务提交前禁止使用 `git add .`；工作区不干净时，新任务必须先执行 Git Intake Gate |
 
 ## 2026-06-02 DDD 优化决策摘要
 
@@ -27,6 +28,16 @@
 - V1 业绩域负责最终归属、提成、冲正和汇总刷新。
 - V1 分析模块只读汇总，不重新计算归因。
 - V1 不启用独家达人、独家商家、个别品负责人覆盖或毛利核心验收。
+
+## 2026-06-03 Git 工作区治理决策摘要
+
+- 远端部署必须只使用已提交 commit；本地 dirty 工作区不得直接部署。
+- 所有任务必须有任务编号（如 `GIT-HARNESS-001` / `GIT-BATCH-N` / 业务任务 ID）。
+- 所有提交必须按任务编号或 batch 编号拆分，不允许把多任务 commit 合并为单 commit。
+- 任何任务提交前禁止使用 `git add .` / `git add -A` / `git add <dir>/`。
+- 工作区不干净时，新任务必须先执行 Git Intake Gate。
+- 任务结束前必须输出 `DONE_CLEAN` / `DONE_WITH_REGISTERED_DIRTY` / `PARTIAL_DIRTY_REMAINING` / `BLOCKED_DIRTY_UNKNOWN` 之一。
+- unknown dirty 不得进入任何 commit / push / deploy，必须先在 `harness/reports/unknown-dirty-investigation-*.md` 调查。
 
 ## 新决策写入规则
 

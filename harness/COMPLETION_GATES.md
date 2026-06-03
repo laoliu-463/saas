@@ -307,3 +307,93 @@ curl http://localhost:3001/healthz
 7. 只允许 docs-only 任务跳过容器重启，但必须说明未修改代码。
 8. 未更新 DOMAIN_STATUS / CURRENT_STATE 就结束任务，不得 DONE。
 9. 未生成 evidence report 就结束任务，不得 DONE。
+
+## Git Gate（G0-G4 内部子门禁）
+
+任何 Gate 都必须按 `harness/skills/git-change-control.md` 执行下列 Git 子门禁。
+
+### Gate G0：Docs-only clean
+
+适用：纯文档 / Harness 规则 / 状态文件 / 报告变更。
+
+必须验证：
+
+- `git status --short` 输出已分类。
+- `git diff --name-only` 仅含 `harness/` / `docs/` / `AGENTS.md` / `CLAUDE.md` / 报告。
+- `git diff --check` 无输出。
+- `git diff --cached --check` 无输出（如有 staged）。
+- 状态文件变更已记录到 `CURRENT_STATE.md` / `DOMAIN_STATUS.md` / `HARNESS_CHANGELOG.md`。
+- 未使用 `git add .` / `git add -A` / `git add <dir>/`。
+- commit message 含类型和 scope（如 `docs(harness): GIT-HARNESS-001 add git worktree governance gates`）。
+
+### Gate G1：Frontend clean
+
+适用：纯前端 UI / 路由 / 状态 / API 调用变更。
+
+必须验证：
+
+- `git status --short` 输出已分类。
+- `git diff --name-only` 仅含 `frontend/src/` / `frontend/package.json` / `frontend/vite.config.ts` / E2E。
+- `git diff --check` 无输出。
+- frontend `npm run build` 通过。
+- 相关 vitest 通过。
+- frontend `safety-check` 通过。
+- commit message 含类型和 scope（如 `feat(product-ui)` / `fix(frontend)`）。
+- 不含 backend / SQL / Docker / env / harness docs。
+
+### Gate G2：Backend clean
+
+适用：纯后端 Java / MyBatis-Plus / Service / Controller / Mapper / 测试变更。
+
+必须验证：
+
+- `git status --short` 输出已分类。
+- `git diff --name-only` 仅含 `backend/src/main/` / `backend/src/test/` / `backend/pom.xml`。
+- `git diff --check` 无输出。
+- `mvn -f backend/pom.xml test` 通过。
+- `mvn -f backend/pom.xml -DskipTests package` 通过。
+- backend `safety-check` 通过。
+- commit message 含类型和 scope（如 `fix(user-domain)` / `feat(order)`）。
+- 不含 frontend / SQL / Docker / env / harness docs。
+
+### Gate G3：Deploy clean
+
+适用：Docker / Compose / env / 部署脚本 / 部署配置变更。
+
+必须验证：
+
+- `git status --short` 输出已分类。
+- `git diff --name-only` 仅含 `docker-compose*.yml` / `Dockerfile*` / `deploy-*.ps1` / `runbook` / `harness/environment/`。
+- `git diff --check` 无输出。
+- 远端 `git fetch` + `git checkout` + `git pull --ff-only` 成功。
+- 远端 `git rev-parse HEAD` 等于本地 HEAD。
+- 远端 `git status --short` 为空。
+- 部署后 `docker compose ps` 全部 healthy。
+- health check 通过。
+- jar / dist 时间与 commit 时间一致。
+- commit message 含类型和 scope（如 `chore(deploy)` / `feat(deploy)`）。
+- `.env` 文件未 commit。
+
+### Gate G4：Session clean
+
+适用：所有任务结束 / Session Exit Gate。
+
+必须验证：
+
+- `git status --short` 输出已分类。
+- 所有 dirty 已归入十种分类之一（`current_task / previous_partial / docs_state / report_only / frontend / backend / sql_migration / docker_deploy / cleanup_retire / unknown`）。
+- 不存在 unknown dirty；如存在，写 `BLOCKED_DIRTY_UNKNOWN`，禁止 DONE。
+- 当前任务已 commit + push 到目标 remote。
+- 状态文件已更新。
+- 临时 debug 文件已清理。
+- 报告已生成并归档。
+- Dirty 归属登记表已写入。
+- 下一任务队列已更新（如有 PARTIAL 残留）。
+- 终态为 `DONE_CLEAN` / `DONE_WITH_REGISTERED_DIRTY` / `PARTIAL_DIRTY_REMAINING` / `BLOCKED_DIRTY_UNKNOWN` 之一。
+
+### Git 子门禁强制规则
+
+- Gate G0-G4 任一未通过，最终状态不得 DONE。
+- 同一 commit 不得跨 Gate（如 docs commit 不得含 backend Java）。
+- 业务代码 commit 不得含状态文件（除非范围清晰且有说明）。
+- 多任务 dirty 必须分批提交，禁止单 commit 包含多任务变更。

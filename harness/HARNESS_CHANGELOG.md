@@ -1,5 +1,40 @@
 # Harness Changelog
 
+## v0.5.0
+
+- 完成 GIT-HARNESS-001 Git 工作区治理与批次提交门禁强化（2026-06-03）。
+- 生成报告：`harness/reports/git-harness-001-worktree-governance-20260603-*.md`。
+- 新增 `harness/skills/git-change-control.md`：定义 Git Intake Gate、Allowed Change Set、Dirty Classification、Staged Scope Gate、Commit Gate、Push Gate、Deploy Commit Gate、Git Exit Gate、Unknown Dirty Policy、Rollback Policy 十项强约束。
+- 新增 `harness/skills/git-batch-submit.md`：定义批次划分原则、提交步骤、文件归属分类、9 项审查规则、commit message 规范、Gitee/origin 推送规则和部署前 commit 对齐规则。
+- 新增 `harness/skills/post-task-gc.md`：定义任务后清理流程，含临时文件清理、报告提交、状态文件检查、Dirty 归属登记和未提交项进入下一任务队列的流程。
+- 修改 `harness/AGENT_CONTRACT.md`：新增"Git 工作区治理强约束"章节，要求所有 Agent 任务按 `git-change-control.md` 执行 12 条强制 Gate。
+- 修改 `harness/TASK_ROUTING.md`：新增"Git 任务路由"章节，定义 `GIT-INTAKE` / `GIT-SCOPE` / `GIT-BATCH` / `GIT-CLEANUP` / `GIT-DEPLOY-GATE` / `GIT-EXIT` 六个子任务路由。
+- 修改 `harness/FORBIDDEN_SCOPE.md`：新增"Git 工作区治理禁止事项"章节，列出 18 条 Git 禁止行为（`git add .`、混合提交、dirty 部署、PARTIAL 写成 DONE 等）。
+- 修改 `harness/COMPLETION_GATES.md`：新增"Git Gate（G0-G4 内部子门禁）"章节，定义 Gate G0（Docs-only clean）、Gate G1（Frontend clean）、Gate G2（Backend clean）、Gate G3（Deploy clean）、Gate G4（Session clean）五个 Git 子门禁。
+- 修改 `harness/SESSION_EXIT_GATE.md`：新增"Git 状态 Clean（Git Exit Gate 强约束）"作为 Session Exit Gate 第六项硬门禁；退出检查模板新增"Git State Clean"行；新增 5 条 Git 禁止事项（11-15）。
+- 修改 `harness/state/KNOWN_ISSUES.md`：记录"Git 工作区 dirty 膨胀与批次提交门禁缺失"为 fixed，状态"通过 GIT-HARNESS-001 治理"。
+- 修改 `harness/state/DECISIONS.md`：新增 2026-06-03 Git 工作区治理决策摘要（6 条决策）；新增决策索引条目。
+- 核心约束：所有任务必须按 Git Intake Gate → Allowed Change Set → Staged Scope Gate → Commit Gate → Push Gate → Deploy Commit Gate → Git Exit Gate 顺序执行；任务终态只能为 `DONE_CLEAN` / `DONE_WITH_REGISTERED_DIRTY` / `PARTIAL_DIRTY_REMAINING` / `BLOCKED_DIRTY_UNKNOWN` 之一。
+- 未修改后端 / 前端 / SQL / Docker / env。
+- 未执行数据库操作。
+- 未重启容器。
+- 未部署远端。
+
+## v0.4.11
+
+- 完成 GIT-BATCH-2 frontend-product-ui 提交与远端 frontend 部署（2026-06-03）。
+- 生成报告：`harness/reports/git-batch-2-frontend-product-ui-20260603-140800.md`。
+- commit：`5fe6ba23 feat(product-ui): product card hover expand and library load-more pagination`。
+- 5 文件变更：`ProductSelectionCard.vue`、`ProductSelectionCard.test.ts`、`ProductLibrary.vue`、`ProductLibrary.test.ts`（新建 188 行）、`tests/e2e/03b-product-library-drawer-fields.spec.ts`。
+- 验证：typecheck PASS、ProductLibrary + ProductSelectionCard vitest 18 tests / 3 files PASS、frontend build PASS（`vue-tsc -b && vite build`，1.58s，ProductLibrary bundle 37.86 kB / gzip 12.22 kB）、`git diff --check` PASS、frontend safety-check PASS。
+- 推送：`gitee` + `origin` 同步推送 `49035d3c..5fe6ba23`。
+- 远端部署：`docker compose up -d --build frontend-real-pre` → frontend-real-pre Recreated + Healthy；backend-real-pre 同时被 recreate 但 jar 来自同一 commit `5fe6ba23`（无 backend 变更，行为零差异），4 容器全部 healthy。
+- 远端 healthz：backend `{"status":"UP"}` / frontend `ok`。
+- 新 bundle `ProductLibrary-iepQIAKR.js` 已部署到容器，nginx 入口 200。
+- 未修改后端 / SQL / 数据库 / `docker compose down -v` / 远端数据库写操作 / 商品同步逻辑 / 订单归因 / 业绩计算 / 寄样状态机。
+- 残留 dirty：34 个文件（Batch 3 backend 14 + Batch 4 / 5 报告 20），与本批次正交。
+- 状态 `DONE`。下一步：Batch 3 `backend-user-domain-u2_5-test1`（15 文件，commit + 部署 backend）。
+
 ## v0.4.10
 
 - 完成 SYNC-PLAN-001 本地未推送内容分批同步与部署计划（2026-06-03）。

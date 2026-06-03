@@ -69,6 +69,31 @@
 - 禁止输出或提交 Token、密码、密钥、OAuth code、数据库密码。
 - 禁止把 `.env.real-pre` 从本机直接复制到远端作为交付结论。
 
+## Git 工作区治理禁止事项
+
+按 `harness/skills/git-change-control.md` 执行：
+
+- 禁止 `git add .`。
+- 禁止 `git add -A`。
+- 禁止 `git add <dir>/`（如 `git add backend/`、`git add frontend/`、`git add harness/`）。
+- 禁止提交来源不明文件（unknown dirty）。
+- 禁止混合多任务 commit。
+- 禁止 dirty 工作区部署。
+- 禁止从本地 dirty 拷贝到远端。
+- 禁止未提交代码部署。
+- 禁止远端 dirty 源码部署。
+- 禁止把未部署写成已部署。
+- 禁止把未提交写成已推送。
+- 禁止把 PARTIAL 状态写成 DONE。
+- 禁止状态文件混合错误状态（PARTIAL / BLOCKED / FAILED 与 DONE 混记）。
+- 禁止任务未收口继续新任务，除非明确 PARTIAL 并登记。
+- 禁止 `git commit --amend`（除非用户明确要求）。
+- 禁止 `--no-verify` 跳过 commit hook（除非用户明确要求）。
+- 禁止 `git push --force` 到 `main` / `master`。
+- 禁止使用未在 `git status` 中归类为 `current_task` / `previous_partial` / `docs_state` / `report_only` / `frontend` / `backend` / `sql_migration` / `docker_deploy` / `cleanup_retire` 的文件进行 commit。
+- 禁止 Git Intake Gate 不通过就开始任务。
+- 禁止 Git Exit Gate 不输出合法终态就结束任务。
+
 ## 代码边界禁止事项
 
 - 前端不得直接调用抖音 / 抖店开放接口。

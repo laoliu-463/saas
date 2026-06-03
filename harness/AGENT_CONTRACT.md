@@ -132,6 +132,32 @@ Session Exit Gate 证明"仓库是否处于可交接状态"。
 - 剩余风险已列出。
 - 统一最终输出模板已按 `harness/COMPLETION_GATES.md` 格式填写。
 
+## Git 工作区治理强约束
+
+任何 Agent 任务必须按 `harness/skills/git-change-control.md` 的 Gate 顺序执行：
+
+1. **Git Intake Gate**：任务开始前必须执行 `git status --short` / `git diff --name-only` / `git log -1 --oneline` / `git branch --show-current` / `git remote -v`，并输出 Intake 报告。dirty 不干净时当前任务不得开始；unknown dirty 必须先调查。
+2. **Allowed Change Set**：每个任务开始时必须明确本次允许修改的文件目录与命名空间；超出范围的修改必须立即回滚或停止。
+3. **Dirty Classification**：所有 dirty 必须归入 `current_task / previous_partial / docs_state / report_only / frontend / backend / sql_migration / docker_deploy / cleanup_retire / unknown` 之一。unknown 文件禁止 stage / commit / push / deploy。
+4. **Staged Scope Gate**：提交前必须执行 `git diff --cached --name-only` / `git diff --cached --stat` / `git diff --cached --check`，并逐项确认 6 条通过条件。禁止 `git add .` / `git add -A` / `git add <dir>/`。
+5. **Commit Gate**：commit message 必须含类型和 scope（如 `feat(product-ui)` / `fix(user-domain)` / `docs(harness)` / `chore(cleanup)`）。不允许 `git commit --amend`、空 message、`--no-verify` 跳过 hook。
+6. **Push Gate**：本项目使用 Gitee 作为远端服务器拉取源，GitHub 作为备份。运行态部署相关提交必须先 `git push gitee feature/<branch>`，再 `git push origin feature/<branch>`。
+7. **Deploy Commit Gate**：部署前远端必须 `git fetch` + `git checkout` + `git pull --ff-only` 拉到目标 commit；远端 `git rev-parse HEAD` 必须等于目标 commit；远端 `git status --short` 必须为空。禁止从本地 dirty 工作区直接部署，禁止使用未提交代码部署，禁止远端 dirty 源码部署。
+8. **Git Exit Gate**：任务结束前必须输出 `DONE_CLEAN` / `DONE_WITH_REGISTERED_DIRTY` / `PARTIAL_DIRTY_REMAINING` / `BLOCKED_DIRTY_UNKNOWN` 之一。`DONE` 状态不得有 unknown dirty。
+9. **Unknown Dirty Policy**：unknown 文件必须立即停止 commit / push / deploy，先执行 `harness/reports/unknown-dirty-investigation-*.md` 调查。
+10. **Rollback Policy**：部署失败时立即生成 `rollback-<task>-<timestamp>.md` 报告，远端 `git revert`，重新构建/重启，最终状态写 `ROLLBACK_REQUIRED`。
+11. **批次提交**：多任务 dirty 必须按 `harness/skills/git-batch-submit.md` 划分批次，业务代码批次和 docs / reports 批次必须分开。
+12. **禁止行为**：
+    - 禁止 `git add .` / `git add -A` / `git add <dir>/`。
+    - 禁止提交 unknown 文件。
+    - 禁止混合多任务 commit。
+    - 禁止从 dirty 工作区部署。
+    - 禁止把 PARTIAL 写成 DONE。
+    - 禁止把未部署写成已部署。
+    - 禁止把未提交写成已推送。
+
+详细规则、命令模板、报告模板见 `harness/skills/git-change-control.md` 和 `harness/skills/git-batch-submit.md`。
+
 ## 状态结论口径
 
 | 状态 | 含义 |

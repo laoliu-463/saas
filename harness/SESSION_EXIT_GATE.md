@@ -115,6 +115,35 @@
 
 ---
 
+### 6. Git 状态 Clean（Git Exit Gate 强约束）
+
+按 `harness/skills/git-change-control.md` 第 9 节执行：
+
+必须满足：
+
+- `git status --short` 输出已分类。
+- 所有 dirty 文件必须归入十种分类之一（`current_task / previous_partial / docs_state / report_only / frontend / backend / sql_migration / docker_deploy / cleanup_retire / unknown`）。
+- 所有 staged 必须为空或已提交并推送。
+- 所有 untracked 必须归属（report_only / cleanup_retire / docs_state / 显式当前任务）。
+- 不能留下 unknown dirty。
+- 当前任务 commit 已推送到目标 remote（`gitee` + `origin`）。
+- 状态文件（`CURRENT_STATE.md` / `DOMAIN_STATUS.md` / `HARNESS_CHANGELOG.md`）已更新或明确不更新。
+
+终态判定：
+
+| 终态 | 含义 | 允许后续 |
+| --- | --- | --- |
+| `DONE_CLEAN` | 工作区干净，commit + push 完成 | 进入下一任务 |
+| `DONE_WITH_REGISTERED_DIRTY` | dirty 已分类并登记到下一任务 | 下一任务 Git Intake Gate 必须确认继承 |
+| `PARTIAL_DIRTY_REMAINING` | 存在未收口 dirty | 禁止进入无关新任务；只能继续当前任务或收口 |
+| `BLOCKED_DIRTY_UNKNOWN` | 存在 unknown dirty | 必须先调查；禁止输出 DONE |
+
+**关键约束**：如果存在 dirty，最终状态不能是 `DONE`，只能是 `DONE_WITH_REGISTERED_DIRTY` / `PARTIAL_DIRTY_REMAINING` / `BLOCKED_DIRTY_UNKNOWN` 之一。
+
+如果存在 unknown dirty，禁止输出 `DONE` 任何变种，必须输出 `BLOCKED_DIRTY_UNKNOWN` 并在 `harness/reports/unknown-dirty-investigation-*.md` 调查。
+
+---
+
 ## 三、最终状态规则
 
 ### DONE
@@ -187,6 +216,7 @@ Gate X - xxx
 | Progress Recorded | PASS/FAIL | |
 | Artifacts Clean | PASS/FAIL | |
 | Startup Path Clean | PASS/FAIL/SKIP | |
+| Git State Clean | PASS/FAIL/BLOCKED | |
 
 ## Changed Files
 - ...
@@ -207,7 +237,7 @@ Gate X - xxx
 - ...
 
 ## Git Status
-（git status --short 输出）
+（git status --short 输出 + Git Exit Gate 终态：DONE_CLEAN / DONE_WITH_REGISTERED_DIRTY / PARTIAL_DIRTY_REMAINING / BLOCKED_DIRTY_UNKNOWN）
 ```
 
 ---
@@ -226,6 +256,11 @@ Gate X - xxx
 8. 留下临时 debug 文件。
 9. 留下无解释 TODO。
 10. 下一个 Agent 无法根据文档继续工作。
+11. 工作区存在 unknown dirty。
+12. 工作区存在未分类 dirty。
+13. 业务代码 commit 混入 docs / 报告 / 状态文件。
+14. 当前任务 commit 未推送到目标 remote。
+15. 状态文件未更新。
 
 ---
 

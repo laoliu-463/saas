@@ -26,6 +26,7 @@
 | 权限 / 数据范围 | `docs/07-权限与数据范围.md`、用户域、对应业务域 | `harness/evals/rbac-scope.evals.md` | `full` | `npm run e2e:real-pre:roles` 或专项 API/SQL | admin/group/self 多账号对比、越权负例 |
 | 数据问题 / 数据漂移 | `docs/06-数据模型总表.md`、对应领域合同、`harness/state/KNOWN_ISSUES.md` | 对应 repair/backfill runbook | 先不定 | 先只读 SQL/API 取证；禁止裸 SQL 批量直改 | 数据前置、影响范围、repair dry-run、回滚计划 |
 | 任务收尾与复盘 | `harness/AGENT_CONTRACT.md`、`harness/feedback/feedback-loop.md`、`harness/runbooks/closeout-and-gc.md` | `harness/feedback/garbage-collection-policy.md` | 当前 Scope | `collect-evidence.ps1`、`new-retro.ps1`、`retire-content.ps1` | evidence、retro、旧内容候选、状态更新、剩余风险 |
+| Git 工作区治理 / 批次提交 | `harness/skills/git-change-control.md`、`harness/skills/git-batch-submit.md`、`harness/skills/post-task-gc.md` | `harness/COMPLETION_GATES.md`、`harness/SESSION_EXIT_GATE.md` | `docs` 或 `git-batch` | `git status`、`git diff --cached --check` | 详细见下表 |
 
 ## 领域判断
 
@@ -121,6 +122,38 @@ Completion Gate 通过
 ```
 
 Session Exit Gate 定义和检查模板见 `harness/SESSION_EXIT_GATE.md`。
+
+## Git 任务路由
+
+Git 类任务必须按以下子任务路由执行，先读 `harness/skills/git-change-control.md` 和 `harness/skills/git-batch-submit.md`。
+
+| 子任务 | 必读 | 触发条件 | 关键命令 | 输出 |
+| --- | --- | --- | --- | --- |
+| `GIT-INTAKE` | `git-change-control.md` 第 2 节 | 每个任务开始前 | `git status --short`、`git diff --name-only`、`git log -1 --oneline`、`git branch --show-current`、`git remote -v` | Intake 报告 + Dirty Classification 表 |
+| `GIT-SCOPE` | `git-change-control.md` 第 3 节 | 任务范围变更时 | Allowed Change Set 检查 | scope 隔离清单 |
+| `GIT-BATCH` | `git-batch-submit.md` | 多个任务 dirty 同时存在 | 批次划分 + 逐文件 `git add` + Staged Scope Gate | `git-batch-<N>-*.md` 报告 |
+| `GIT-CLEANUP` | `git-change-control.md` 第 11 节 + `post-task-gc.md` | dirty 含 unknown 或临时文件 | 删除临时文件、归档报告、状态收口 | 调查 / 归档 / 删除报告 |
+| `GIT-DEPLOY-GATE` | `git-change-control.md` 第 8 节 | 任何部署任务前 | 远端 fetch / checkout / pull / rev-parse | 远端 commit 对齐证据 |
+| `GIT-EXIT` | `git-change-control.md` 第 9 节 | 每个任务结束前 | `git status --short`、`git diff --name-only` | 终态：DONE_CLEAN / DONE_WITH_REGISTERED_DIRTY / PARTIAL_DIRTY_REMAINING / BLOCKED_DIRTY_UNKNOWN |
+
+### Git 任务与 Completion Gate 对应
+
+| Git 子任务 | 默认 Gate | 验证命令 |
+| --- | --- | --- |
+| `GIT-INTAKE` | Gate 0 | `git status --short` 输出分析 |
+| `GIT-BATCH`（docs） | Gate 0 | `safety-check -Scope docs -DryRun` |
+| `GIT-BATCH`（frontend） | Gate 2 | `npm run build`、`vitest run`、`frontend safety-check` |
+| `GIT-BATCH`（backend） | Gate 1 | `mvn test`、`backend safety-check` |
+| `GIT-BATCH`（cleanup） | Gate 0 | `git diff --cached --check`、`safety-check -Scope docs -DryRun` |
+| `GIT-DEPLOY-GATE` | Gate 1/2 + 运维 | `verify-local`、远端 health、commit 对齐 |
+| `GIT-EXIT` | Session Exit Gate | 五项硬门禁 |
+
+### Git 任务禁止
+
+- 禁止把 `GIT-INTAKE` / `GIT-SCOPE` 与业务代码 commit 混在一起。
+- 禁止 `GIT-BATCH` 中混入 `unknown` 文件。
+- 禁止跳过 `GIT-EXIT` 直接进入下一任务。
+- 禁止 `GIT-DEPLOY-GATE` 通过后未在远端验证就声明 DONE。
 
 ## 执行入口选择
 

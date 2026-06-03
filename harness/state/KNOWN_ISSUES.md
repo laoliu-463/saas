@@ -18,6 +18,7 @@
 | 远端同步任务禁用（`PRODUCT_ACTIVITY_SYNC_ENABLED` 未设置） | fixed | `harness/reports/p-fix-002a-product-sync-5min-config-20260603-120100.md`、`harness/reports/p-fix-002d-remote-deploy-verify-20260603-132805.md` | P-FIX-002A 已完成配置准备；P-FIX-002D-REMOTE 远端已补齐 env 并验证生效（`enabled=true, cron=0 */5 * * * ?`） |
 | 唯一索引 `uk_pos_one_displaying_per_product` 冲突导致同步事务回滚 | fixed | `harness/reports/p-fix-002-product-sync-display-5min-20260603-121257.md`、`harness/reports/p-fix-002d-real-pre-runtime-verify-20260603-123411.md`、`harness/reports/p-fix-002d-remote-deploy-verify-20260603-132805.md` | P-FIX-002B 已修复 + P-FIX-002D 本地验证通过 + P-FIX-002D-REMOTE 远端验证通过：两个周期零冲突 |
 | 推广中商品仍有未 DISPLAYING 记录 | open | `harness/reports/p-fix-002-product-sync-display-5min-20260603-121257.md`、`harness/reports/p-fix-002d-real-pre-runtime-verify-20260603-123411.md`、`harness/reports/p-fix-002d-remote-deploy-verify-20260603-132805.md` | 本地 PENDING=371，远端 PENDING=2128；仍需 P-FIX-002E repair（dry-run → 实际执行），区分过期活动、未选中和待重算来源 |
+| Git 工作区 dirty 膨胀与批次提交门禁缺失 | fixed | `harness/reports/git-harness-001-worktree-governance-20260603-*.md` | GIT-HARNESS-001 已治理：新增 `harness/skills/git-change-control.md`（Git 全套 Gate）、`harness/skills/git-batch-submit.md`（批次提交流程）、`harness/skills/post-task-gc.md`（Git 清理流程）；在 `AGENT_CONTRACT.md` / `TASK_ROUTING.md` / `FORBIDDEN_SCOPE.md` / `COMPLETION_GATES.md` / `SESSION_EXIT_GATE.md` 落地 Git 强约束和 G0-G4 Git 子门禁。后续每个任务开始前必须执行 Git Intake Gate，结束前必须输出 `DONE_CLEAN` / `DONE_WITH_REGISTERED_DIRTY` / `PARTIAL_DIRTY_REMAINING` / `BLOCKED_DIRTY_UNKNOWN` 之一 |
 
 ## 更新规则
 
