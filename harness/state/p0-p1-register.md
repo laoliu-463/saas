@@ -1,5 +1,12 @@
 # P0/P1/P2 Register
 
+> **三文件分工指针**：
+> - 本文件（`p0-p1-register.md`）：业务 P0/P1/P2 风险表，编号 `RISK-NNN`，按级别排版。
+> - `state/KNOWN_ISSUES.md`：业务问题卡片，含 open / blocked / fixed / wontfix / deferred 状态。
+> - `state/known-risks.md`：风险分类视图（按业务域组织）。
+> - `state/HARNESS_DEBT.md`：**Harness 自身**的工程债务（harness / docs / scripts / 临时文件）。
+> 业务 DEBT 优先进入本文件或 `KNOWN_ISSUES.md`；harness DEBT 必须进 `HARNESS_DEBT.md`。
+
 | 编号 | 领域 | 级别 | 现象 | 根因 | 当前状态 | 证据路径 | 下一步 | 是否阻塞 V1 闭环 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | RISK-001 | 订单域 / 商品域 | P0 | real-pre 历史订单 / 6468 样本 `pick_source` 为空 | 历史订单未通过系统转链或当前样本不足；远端 6468 已入库但 100 单 `pick_source=0`、`channel_user_id=0` | PENDING_BY_SAMPLE | `harness/reports/order-p0-dual-source-remote-verify-20260603-205719.md` | 采集真实系统转链订单样本，并执行渠道正向可见性验证 | 是，阻塞渠道真实闭环 |

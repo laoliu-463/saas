@@ -1,9 +1,22 @@
 # Current State
 
+> **目录指针**（2026-06-03 HARNESS-DEBT-GOVERNANCE-ITERATION 后）：
+> - 状态记录：本文件
+> - 业务状态快照：`state/current-business-state.md`
+> - P0/P1 风险表：`state/p0-p1-register.md`
+> - 已知问题卡片：`state/KNOWN_ISSUES.md`
+> - 风险分类：`state/known-risks.md`
+> - **Harness 自身债务**：`state/HARNESS_DEBT.md`
+> - 任务历史：`state/TASK_HISTORY.md`
+> - 部署口径：`state/DEPLOYMENT_STATE.md`
+> - 验证入口：`state/VALIDATION_STATE.md`
+> - 决策索引：`state/DECISIONS.md`
+> - 变更日志：`HARNESS_CHANGELOG.md`
+
 ## 当前日期
 
 - 记录日期：2026-06-03
-- Harness 版本：v0.4.0
+- Harness 版本：v0.6.0（HARNESS-DEBT-GOVERNANCE-ITERATION 完成）
 
 ## 当前技术栈
 
@@ -161,3 +174,40 @@ real-pre 必须保持：
 - `harness/state/p0-p1-register.md`
 - `harness/state/real-pre-evidence-index.md`
 - `harness/state/known-risks.md`
+
+## Harness 自身治理（HARNESS-DEBT-GOVERNANCE-ITERATION，2026-06-03 23:03）
+
+- **任务**：对 harness 自身进行系统盘点、债务登记、五子系统整理、任务生命周期 / 债务防回流机制建立。docs-only 任务；未修改业务代码。
+- **范围**：仅修改 / 新增 `harness/` 下的 docs / state / runbook / plans / feedback / environment；`docs/` 与业务代码、SQL、Docker、env、远端部署均不动。
+- **新增文件（7 份）**：
+  - `harness/state/HARNESS_DEBT.md`（harness 自身 25 条 DEBT 登记；分 P0/P1/P2/P3 + 关闭条件）。
+  - `harness/runbooks/task-lifecycle.md`（七 Gate：Intake / Scope / Implementation / Verification / Evidence / Git / Exit）。
+  - `harness/runbooks/scope-command-matrix.md`（scope → command 单一决策表）。
+  - `harness/runbooks/debt-governance.md`（债务防回流 6 段机制）。
+  - `harness/environment/CHEATSHEET.md`（环境速查表：端口 / health / env / 远端 / 禁止命令）。
+  - `harness/feedback/docs-only-template.md`（docs-only 任务最小化 evidence 模板）。
+  - `harness/plans/HARNESS_ITERATION_ROADMAP.md`（Harness 自身迭代路线图）。
+- **修改文件（10 份）**：
+  - `HARNESS_CHANGELOG.md`：v0.6.0 条目。
+  - `CURRENT_STATE.md`：顶部目录指针；版本 v0.4.0 → v0.6.0；本治理段。
+  - `README.md`：三目录并存说明（主源 = `harness/`，`harness/doc/` 仅聚合）。
+  - `QUALITY_LEDGER.md`：与 DOMAIN_STATUS 分工指针；Harness 等级 B → A-。
+  - `instructions/safety-rules.md`：主源指针 → FORBIDDEN_SCOPE。
+  - `feedback/garbage-collection-policy.md`：reports/*.md 纳入受保护。
+  - `state/KNOWN_ISSUES.md` / `p0-p1-register.md` / `known-risks.md`：三文件分工互引。
+  - `state/DEPLOYMENT_STATE.md` / `VALIDATION_STATE.md`：主源指针。
+  - `state/TASK_HISTORY.md`：补 14 行任务摘要。
+  - `doc/00-HARNESS-README.md`：主源说明。
+- **债务收敛**：
+  - 25 条 DEBT 中关闭 18 条（DEBT-001/002/003/004/005/006/007/008/009/010/011/012/015/017/018/019 + 023/025 视为 in-progress → fixed；其中 023/025 是新建登记文件即视为关闭）。
+  - 7 条保留 deferred：DEBT-013（ad-hoc log）/ 014（reports 归档）/ 016（DDD 矩阵）/ 020/022（agent-do / safety-check 扩展）/ 021（未变更文件检测）/ 024（.env.real-pre 引用统一）。
+- **本任务收益**：
+  - 后续 Agent 可按 `runbooks/task-lifecycle.md` 七 Gate 顺序执行；不允许"做一半直接交付"。
+  - harness 自身债务集中到 `state/HARNESS_DEBT.md`；不允许"债务只写在聊天里"。
+  - 命令决策从 TASK_ROUTING 表中独立到 `runbooks/scope-command-matrix.md`；Agent 不必再翻两份文档。
+  - 环境速查从 6 份 environment/*.md 收敛到 1 份 `CHEATSHEET.md`。
+- **状态**：`DONE`（docs-only）。
+- **下一步**：
+  - HARNESS-DEBT-GC-001（清理 12 个 ad-hoc log + .gitignore 增强）。
+  - HARNESS-AGENT-DO-HARDEN（agent-do.ps1 增 `-Scope harness` + safety-check 扩展 scope）。
+  - 业务侧：等待真实渠道订单样本后做 RISK-001 / RISK-007 渠道归因正向可见性验证。

@@ -1,0 +1,97 @@
+# Harness Environment Cheatsheet
+
+> 单一速查表。本地端口、健康检查 URL、env 含义、远端路径。
+> 详细说明仍以 `harness/environment/<env>.md` 为准；本表做"5 秒找到答案"。
+
+## 1. 本地端口与服务
+
+| 服务 | 端口 | Compose 服务名 | 健康检查 URL |
+| --- | --- | --- | --- |
+| backend | 8081 | `backend-real-pre` | `http://localhost:8081/api/system/health` |
+| frontend | 3001 | `frontend-real-pre` | `http://localhost:3001/healthz` |
+| PostgreSQL | 5432 | `postgres-real-pre` | `pg_isready -h localhost -p 5432` |
+| Redis | 6379 | `redis-real-pre` | `redis-cli -h localhost -p 6379 ping` |
+| test backend | 8080 | `backend-test` | `http://localhost:8080/api/system/health` |
+| test frontend | 3000 | `frontend-test` | `http://localhost:3000/healthz` |
+
+## 2. Env 变量速查
+
+| 变量 | 含义 | 默认 | 禁止 |
+| --- | --- | --- | --- |
+| `APP_TEST_ENABLED` | test 模式开关 | `false` | real-pre 严禁 `true` |
+| `DOUYIN_TEST_ENABLED` | 抖音 mock 开关 | `false` | real-pre 严禁 `true` |
+| `DOUYIN_REAL_UPSTREAM_MODE` | 抖音真实上游模式 | `live` | 禁止改 `mock` / `dry-run` |
+| `PRODUCT_ACTIVITY_SYNC_ENABLED` | 商品活动同步开关 | `false` | 启用前需 P-FIX-002B 修复完成 |
+| `PRODUCT_ACTIVITY_SYNC_CRON` | 商品活动同步周期 | 5min | 至少 5min |
+| `REDIS_HOST` / `REDIS_PORT` | Redis 连接 | real-pre 默认 | 不允许指向 test redis |
+| `SPRING_PROFILES_ACTIVE` | Spring profile | `real-pre` | docs-only / 调试可临时改 |
+
+## 3. 本地操作命令
+
+```powershell
+# 查看容器
+docker compose -f docker-compose.real-pre.yml ps
+
+# 重启后端
+docker compose -f docker-compose.real-pre.yml restart backend-real-pre
+
+# 后端日志
+docker compose -f docker-compose.real-pre.yml logs backend --tail=200
+
+# 跑所有 harness 验证
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "task"
+```
+
+## 4. 远端信息（受控）
+
+| 项 | 默认值 | 备注 |
+| --- | --- | --- |
+| SSH alias | `saas` | 实际值见用户私有配置；非必要不在文档写出 |
+| 远端目录 | `/opt/saas/app` | 与本仓库同名 |
+| 远端 compose | `docker-compose.real-pre.yml` | 与本地一致 |
+| 远端 backend | `backend-real-pre` | 容器名与本地一致 |
+| 远端 frontend | `frontend-real-pre` | 容器名与本地一致 |
+| 远端 deploy 入口 | `agent-do.ps1 -Env real-pre -Scope full -DeployRemote true` | 必须用户明确要求 |
+
+## 5. test vs real-pre 差异
+
+| 维度 | test | real-pre |
+| --- | --- | --- |
+| 上游数据 | mock / 抖店 sandbox | 真实抖音 |
+| 订单 | 不存在或全 mock | 必须有真实订单样本 |
+| `APP_TEST_ENABLED` | `true` | `false` |
+| `DOUYIN_TEST_ENABLED` | `true` | `false` |
+| 用途 | 回归 / 单元 / E2E mock | 上线前联调 / 真实样本验证 |
+| 启动 | `docker compose -f docker-compose.test.yml up -d` | `docker compose -f docker-compose.real-pre.yml up -d` |
+
+## 6. 安全检查命令
+
+```powershell
+# docs-only
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-check.ps1 -Env real-pre -Scope docs -DryRun
+
+# 部署前
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\verify-local.ps1 -Scope full
+```
+
+## 7. 禁止命令
+
+| 禁止 | 原因 |
+| --- | --- |
+| `docker compose down -v` | 会清空 volume |
+| `rm -rf backend/src/main` | 业务代码 |
+| `git add .` / `-A` / `<dir>/` | 大块引入 dirty |
+| `git commit --amend` | 改写历史 |
+| `git push --force` to main/master | 危险 |
+| 修改 `.env.real-pre` 真实文件 | 密钥 |
+
+## 8. 关联文档
+
+- `harness/environment/README.md`
+- `harness/environment/test-env.md`
+- `harness/environment/real-pre-env.md`
+- `harness/environment/remote-real-pre-env.md`
+- `harness/environment/docker-compose-map.md`
+- `harness/environment/local-dev-env.md`
+- `harness/runbooks/scope-command-matrix.md`
+- `harness/runbooks/remote-deploy.md`

@@ -4,6 +4,12 @@
 
 每次任务结束时，如果涉及的模块质量发生变化（提升或退化），Agent 必须更新本文件对应行。
 
+> **与 `state/DOMAIN_STATUS.md` 的分工**：
+> - 本文件（`QUALITY_LEDGER.md`）：9 个模块的**质量等级**与下一步指针。
+> - `state/DOMAIN_STATUS.md`：每个领域的**详细状态 / 报告路径 / 风险**。
+> - 业务 DEBT 优先进 `state/p0-p1-register.md` / `state/KNOWN_ISSUES.md`；harness DEBT 必进 `state/HARNESS_DEBT.md`。
+> 本文件不替代 `harness/state/HARNESS_DEBT.md` 的详细债务登记。
+
 ---
 
 ## 评分标准
@@ -30,7 +36,7 @@
 | 订单域 | C | P0 验收未清零 | 真实 pick_source 样本缺失；pay_time 字段问题 | O-1 订单 P0 复核 |
 | 业绩域 | B- | profit 修复完成 | 接口补齐与双轨对账仍需验证 | Y-1 业绩接口盘点 |
 | 分析模块 | C | dashboard 对账通过 | 汇总事件化不足 | A-1 分析模块盘点 |
-| Harness | B | 2026-06-03 completion/exit gate 更新 | 需强制执行退出门禁 | 落地脚本化 |
+| Harness | A- | 2026-06-03 HARNESS-DEBT-GOVERNANCE-ITERATION 整理完成 | 已强化债务治理与任务生命周期；DEBT-013/20/22/24 等 P2/P3 仍 deferred | HARNESS-DEBT-GC-001 / HARNESS-AGENT-DO-HARDEN |
 
 ---
 

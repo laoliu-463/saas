@@ -1,5 +1,10 @@
 # Validation State
 
+> **主源说明**：本文件的"验证入口表"与 `harness/TASK_ROUTING.md` 的"任务类型分流表"互为对偶：
+> - 本文件：列**命令**与适用环境。
+> - `TASK_ROUTING.md`：列**任务类型**与必读文件。
+> 详细 scope → command 决策以 `harness/runbooks/scope-command-matrix.md` 为权威表。
+
 ## 当前验证入口
 
 | 类型 | 命令 | 适用环境 | 说明 |

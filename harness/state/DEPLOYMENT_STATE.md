@@ -1,5 +1,8 @@
 # Deployment State
 
+> **主源说明**：本文件保留精简口径。远端部署的完整环境说明以 `harness/environment/remote-real-pre-env.md` 为准；
+> 命令决策表以 `harness/runbooks/scope-command-matrix.md` 为准。如本文件与上述文件冲突，必须以主源为准并在 `HARNESS_CHANGELOG.md` 记录。
+
 ## 当前部署口径
 
 | 环境 | 状态 | 证据主源 | 说明 |

@@ -1,5 +1,8 @@
 # Safety Rules
 
+> **主源说明**：本文件保留精简条款。完整安全 / 禁止口径以 `harness/FORBIDDEN_SCOPE.md` 为准；
+> 本文件与 `FORBIDDEN_SCOPE.md` 内容重叠时一律以后者为准。如本文件与 `FORBIDDEN_SCOPE.md` 冲突，必须更新 `FORBIDDEN_SCOPE.md` 并在 `HARNESS_CHANGELOG.md` 记录，不得在本文件覆盖。
+
 ## real-pre 安全边界
 
 - real-pre 是真实联调环境。

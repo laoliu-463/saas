@@ -1,5 +1,39 @@
 # Harness Changelog
 
+## v0.6.0
+
+- HARNESS-DEBT-GOVERNANCE-ITERATION 完成（2026-06-03 23:03）。本轮为 harness 自身治理的 docs-only 任务。
+- **新增文件**：
+  - `harness/state/HARNESS_DEBT.md`（harness 自身工程债务登记；25 条 DEBT）。
+  - `harness/runbooks/task-lifecycle.md`（任务生命周期七 Gate 模板：Intake / Scope / Implementation / Verification / Evidence / Git / Exit）。
+  - `harness/runbooks/scope-command-matrix.md`（Scope → Command 决策表，取代分散在 TASK_ROUTING 和 doc/02-tools 的描述）。
+  - `harness/runbooks/debt-governance.md`（债务防回流机制：Intake / Register / Exit / Dirty / Rotation / Prompt Upgrade）。
+  - `harness/environment/CHEATSHEET.md`（环境速查表：本地端口 / 健康检查 URL / env 变量 / 远端信息 / 禁止命令）。
+  - `harness/feedback/docs-only-template.md`（docs-only 任务最小化 evidence 模板）。
+  - `harness/plans/HARNESS_ITERATION_ROADMAP.md`（Harness 自身迭代路线图；区别于业务 DDD 路线图）。
+  - `harness/reports/harness-debt-governance-inventory-20260603-230334.md`（现状盘点）。
+  - `harness/reports/harness-debt-governance-plan-20260603-230334.md`（治理计划与债务总表）。
+  - `harness/reports/evidence-20260603-230334-harness-debt-governance.md`（执行证据）。
+  - `harness/reports/retro-20260603-230334-harness-debt-governance.md`（本次复盘）。
+- **修改文件**：
+  - `harness/CURRENT_STATE.md`：顶部加目录指针。
+  - `harness/QUALITY_LEDGER.md`：加与 DOMAIN_STATUS 分工指针；Harness 等级 B → A-。
+  - `harness/README.md`：三目录并存说明（主源 = `harness/`，`harness/doc/` 仅做聚合）。
+  - `harness/instructions/safety-rules.md`：主源指针 → `FORBIDDEN_SCOPE.md`。
+  - `harness/feedback/garbage-collection-policy.md`：reports/*.md 纳入受保护范围。
+  - `harness/state/KNOWN_ISSUES.md` / `p0-p1-register.md` / `known-risks.md`：三文件分工互引。
+  - `harness/state/DEPLOYMENT_STATE.md` / `VALIDATION_STATE.md`：主源指针。
+  - `harness/state/TASK_HISTORY.md`：补 14 行 2026-06-02 / 2026-06-03 任务摘要。
+  - `harness/doc/00-HARNESS-README.md`：主源说明。
+- **DEBT 状态**：
+  - 关闭：DEBT-001/002/003/004/005/006/007/008/009/010/011/012/015/017/018/019/023/025（共 18 条 in-progress → fixed；DEBT-023/025 是新建登记文件）。
+  - 保持 deferred：DEBT-013/014/016/020/021/022/024（共 7 条，明确登记为后续任务）。
+- **未做**：
+  - 未修改任何业务代码。
+  - 未修改 backend / frontend / SQL / Docker / env。
+  - 未重启容器 / 未部署远端。
+  - 未删除任何报告 / 临时 log / 已存在的 evidence。
+
 ## v0.5.7
 
 - 完成 GIT-BATCH-C 业务代码批次提交 + 推送 + 远端部署（2026-06-03 22:50–23:00）。

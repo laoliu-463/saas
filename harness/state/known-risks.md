@@ -1,6 +1,11 @@
 # Known Risks
 
-## 真实订单归因
+> **三文件分工指针**：
+> - 本文件（`known-risks.md`）：风险分类视图（按业务域组织）。
+> - `state/KNOWN_ISSUES.md`：业务问题卡片。
+> - `state/p0-p1-register.md`：业务 P0/P1/P2 风险表。
+> - `state/HARNESS_DEBT.md`：**Harness 自身**的工程债务。
+> 业务风险归本文件 / `KNOWN_ISSUES.md` / `p0-p1-register.md`；harness 风险归 `HARNESS_DEBT.md`。
 
 - real-pre 历史订单 `pick_source` 为空，不能证明系统转链闭环。
 - 没走系统复制讲解链接的订单，不能证明渠道链闭环。

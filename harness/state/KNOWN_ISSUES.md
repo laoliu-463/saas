@@ -1,5 +1,12 @@
 # Known Issues
 
+> **三文件分工指针**：
+> - 本文件（`KNOWN_ISSUES.md`）：业务问题卡片，含 open / blocked / fixed / wontfix / deferred 状态；每条问题有完整证据。
+> - `state/p0-p1-register.md`：业务 P0/P1/P2 风险表，编号 `RISK-NNN`，按级别排版。
+> - `state/known-risks.md`：风险分类视图（按业务域组织）。
+> - `state/HARNESS_DEBT.md`：**Harness 自身**的工程债务（harness / docs / scripts / 临时文件）。
+> 互引规则：业务 DEBT 进 `p0-p1-register.md` / `KNOWN_ISSUES.md`；harness DEBT 进 `HARNESS_DEBT.md`。
+
 ## 作用
 
 本文件汇总当前仍影响 Agent 判断的 open / blocked / deferred 问题。细节主源仍在 `p0-p1-register.md`、`known-risks.md`、`real-pre-evidence-index.md` 和 `docs/验收/验收证据索引.md`。

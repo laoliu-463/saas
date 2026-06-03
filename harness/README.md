@@ -2,6 +2,12 @@
 
 本目录是抖音团长 SaaS 的 AI Agent 工程执行系统。它不替代 `docs/` 的业务事实，而是把后续 Agent 修改代码后的固定流程沉淀为脚本、清单、模板和证据入口。
 
+> **三目录并存说明**（2026-06-03 HARNESS-DEBT-GOVERNANCE-ITERATION）：
+> - 本目录（`harness/`，**主源**）：所有 rules / skills / state / runbook / feedback / environment / commands / plans / evals 的**权威入口**。
+> - `harness/doc/`：**聚合阅读入口**，按五子系统（Instructions / Tools / Environment / State / Feedback）组织，便于一次性浏览；不作为事实主源。
+> - 仓库根 `README.md` / `AGENTS.md` / `CLAUDE.md`：入口性文档，把 Agent 引导到本目录。
+> 互引规则：所有事实 / 命令 / 状态 / 报告 / runbook 必以**本目录**为权威；`harness/doc/` 仅做"快速浏览"，主源存在差异时以**本目录**为准。
+
 ## 目录
 
 | 路径 | 作用 |

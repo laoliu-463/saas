@@ -2,6 +2,11 @@
 
 本目录按 Harness Engineering 五个子模型重构，用于让后续 AI Agent 快速确认项目规则、执行入口、环境边界、当前状态和验证方式。
 
+> **主源说明**（2026-06-03 HARNESS-DEBT-GOVERNANCE-ITERATION）：
+> 本目录（`harness/doc/`）是**聚合阅读入口**，仅做"快速浏览"。
+> 所有事实 / 命令 / 状态 / 报告 / runbook 的**权威主源**在 `harness/` 根目录的平铺文件（`AGENT_CONTRACT.md` / `CURRENT_STATE.md` / `TASK_ROUTING.md` / `FORBIDDEN_SCOPE.md` / `COMPLETION_GATES.md` / `SESSION_EXIT_GATE.md` / `state/*.md` / `runbooks/*.md` / `feedback/*.md` / `environment/*.md` / `commands/*.ps1`）。
+> 本目录与主源冲突时，**以 `harness/` 根目录为准**。本目录内容必须由主源同步，不在本目录独立裁决事实。
+
 本目录不替代 `docs/` 的业务事实主源，也不替代 `harness/commands/` 的脚本入口。涉及业务规则、接口、数据模型、验收和部署事实时，仍以仓库当前源码、运行配置、`docs/` 与既有 `harness/` 为准。
 
 ## 阅读顺序

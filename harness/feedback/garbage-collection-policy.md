@@ -1,5 +1,10 @@
 # Garbage Collection Policy
 
+> **受保护范围扩展**（2026-06-03 HARNESS-DEBT-GOVERNANCE-ITERATION）：
+> 除 `.env*` 真实文件、密钥、证书、私钥、Docker Compose、数据库 migration、源码、脚本与 Git 元数据外，
+> `harness/reports/*.md` 全部报告（evidence / retro / retire / diagnose / domain-* / git-* / p-*-* / func-*）默认**受保护**；
+> 任何归档 / 删除必须按 `harness/runbooks/debt-governance.md` 的"Report Rotation"流程走 manifest。
+
 ## 目标
 
 防止临时报告、重复文档、过期方案和无入口文件持续堆积，同时避免误删业务事实、证据和部署安全资产。
