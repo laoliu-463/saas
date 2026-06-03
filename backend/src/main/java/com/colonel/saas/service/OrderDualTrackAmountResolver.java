@@ -138,15 +138,70 @@ public final class OrderDualTrackAmountResolver {
         if (existing == null || incoming == null) {
             return;
         }
-        if (isEmpty(incoming.getEstimateServiceFee()) && hasValue(existing.getEstimateServiceFee())) {
+        if (hasValue(existing.getEstimateServiceFee())) {
             incoming.setEstimateServiceFee(existing.getEstimateServiceFee());
         }
-        if (isEmpty(incoming.getEstimateTechServiceFee()) && hasValue(existing.getEstimateTechServiceFee())) {
+        if (hasValue(existing.getEstimateTechServiceFee())) {
             incoming.setEstimateTechServiceFee(existing.getEstimateTechServiceFee());
         }
-        if (isEmpty(incoming.getOrderAmount()) && hasValue(existing.getOrderAmount())) {
+        if (hasValue(existing.getOrderAmount())) {
             incoming.setOrderAmount(existing.getOrderAmount());
         }
+    }
+
+    /**
+     * 事实源再次同步时保留已有结算轨快照。
+     * <p>
+     * 6468 只负责事实/预估轨；当该来源更新已存在订单时，不能清空 2704 已补充的
+     * settle/effective 字段。
+     * </p>
+     */
+    public static void mergeSettlementSnapshot(
+            com.colonel.saas.entity.ColonelsettlementOrder existing,
+            com.colonel.saas.entity.ColonelsettlementOrder incoming) {
+        if (existing == null || incoming == null) {
+            return;
+        }
+        if (isEmpty(incoming.getSettleAmount()) && hasValue(existing.getSettleAmount())) {
+            incoming.setSettleAmount(existing.getSettleAmount());
+        }
+        if (isEmpty(incoming.getEffectiveServiceFee()) && hasValue(existing.getEffectiveServiceFee())) {
+            incoming.setEffectiveServiceFee(existing.getEffectiveServiceFee());
+        }
+        if (isEmpty(incoming.getEffectiveTechServiceFee()) && hasValue(existing.getEffectiveTechServiceFee())) {
+            incoming.setEffectiveTechServiceFee(existing.getEffectiveTechServiceFee());
+        }
+        if (isEmpty(incoming.getSettleColonelCommission()) && hasValue(existing.getSettleColonelCommission())) {
+            incoming.setSettleColonelCommission(existing.getSettleColonelCommission());
+        }
+        if (isEmpty(incoming.getSettleColonelTechServiceFee()) && hasValue(existing.getSettleColonelTechServiceFee())) {
+            incoming.setSettleColonelTechServiceFee(existing.getSettleColonelTechServiceFee());
+        }
+        if (isEmpty(incoming.getSettleSecondColonelCommission()) && hasValue(existing.getSettleSecondColonelCommission())) {
+            incoming.setSettleSecondColonelCommission(existing.getSettleSecondColonelCommission());
+        }
+        if (incoming.getSettleTime() == null && existing.getSettleTime() != null) {
+            incoming.setSettleTime(existing.getSettleTime());
+        }
+    }
+
+    /**
+     * 将 6468 事实源金额写入订单实体。
+     * <p>
+     * 6468 只负责事实/预估轨：写入实付金额、actualAmount 兼容字段和预估费用；
+     * 不写 settle/effective/settleColonel* 字段，避免污染 2704 结算轨。
+     * </p>
+     */
+    public static void applyInstituteFactToOrder(
+            com.colonel.saas.entity.ColonelsettlementOrder order,
+            DualTrackAmounts amounts) {
+        if (order == null || amounts == null) {
+            return;
+        }
+        order.setOrderAmount(amounts.payAmount());
+        order.setActualAmount(amounts.payAmount());
+        order.setEstimateServiceFee(amounts.estimateServiceFee());
+        order.setEstimateTechServiceFee(amounts.estimateTechServiceFee());
     }
 
     /**

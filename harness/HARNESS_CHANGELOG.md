@@ -1,5 +1,57 @@
 # Harness Changelog
 
+## v0.5.3
+
+- 完成 ORDER-P0-DUAL-SOURCE-SYNC 本地 real-pre 修复与验证（2026-06-03 19:xx-20:23）。
+- 生成报告：`harness/reports/evidence-20260603-202253.md`、`harness/reports/evidence-20260603-202320.md`、`harness/reports/retro-20260603-202309.md`、`harness/reports/retro-20260603-202500.md`。
+- 修改后端代码：
+  - `OrderSyncJob`：新增 `syncInstituteOrdersRecent()` 定时入口，默认每 10 分钟调用 6468。
+  - `OrderSyncService`：新增 `syncInstituteOrdersRecentWindow()`，使用独立锁 `ORDER_SYNC_INSTITUTE`、独立 Redis key `order:sync:institute_recent_last_time`、24h 窗口和 `ORDER_SYNC_INSTITUTE api=buyin.instituteOrderColonel` 日志。
+  - `OrderDualTrackAmountResolver` / `OrderSyncPersistenceService`：按来源保护双轨，6468 只写事实/预估轨，2704 保留结算/有效轨，按 `order_id` 幂等合并。
+  - `ColonelsettlementOrder` / Mapper：映射 `pay_time`、`order_create_time`，并新增非持久化 `syncSource`。
+- 验证：
+  - 聚焦测试：37 tests, 0 failures。
+  - API/网关/订单测试：43 tests, 0 failures。
+  - `mvn -f backend/pom.xml -DskipTests package`：PASS。
+  - 本地 backend-real-pre 重启 + health：PASS。
+  - real-pre preflight：PASS。
+  - 运行态：`ORDER_SYNC_INSTITUTE ... fetched=100 inserted=100 updated=0`；`colonelsettlement_order count(*)=100`；100 条均有 `order_amount/pay_time/estimate_*`，`settle_amount/effective_*` 均未由 6468 写入。
+  - 管理员订单列表和未归因列表均返回 `total=100`。
+- 未修改 Dashboard summary；另开 `ANALYTICS-DUAL-TRACK-SUMMARY-FIX`。
+- 未部署远端；远端验证待用户明确授权。
+- 本轮上游样本 `pick_source=0`，渠道 mapping 命中正向验证仍为 PENDING。
+- Final Status：`PARTIAL_DIRTY_REMAINING`——本地 real-pre 订单入库和管理员可见通过；远端部署/验证未执行；混合 dirty 工作区下未使用 `git add -A`。
+
+## v0.5.2
+
+- 完成 P0-ORDER-001 真实订单同步与渠道可见修复（2026-06-03 17:30–18:04）。
+- 生成报告：`harness/reports/p0-order-001-real-order-visible-20260603-180450.md`、`harness/reports/p0-order-001-diagnosis-20260603-173500.md`、`harness/reports/p0-order-001-intake-20260603-172923.md`。
+- 修改后端代码：
+  - `backend/src/main/java/com/colonel/saas/job/JobLockKeys.java`：新增 `ORDER_SYNC_PAY_RECENT` 锁常量。
+  - `backend/src/main/java/com/colonel/saas/job/OrderSyncJob.java`：新增 `syncPayRecent()` `@Scheduled`（cron `0 */30 * * * ?`） + 独立 `payRecentEnabled` 开关 + 增强 mode/inserted/updated/attributed/unattributed/failed 日志。
+  - `backend/src/main/java/com/colonel/saas/service/OrderSyncService.java`：新增 `syncPayRecentWindow()` 6h 窗口 + 独立 Redis key `order:sync:pay_recent_last_time` + 独立锁；`syncRange` → `syncRangeWithMode` 透传 mode；`syncItems` 增加 `noPickSourceCount` / `noMappingCount` 计数；日志格式升级 `mode/timeType/range/pages/fetched/inserted/updated/attributed/unattributed/noPickSource/noMapping/failed` 全字段。
+  - `backend/src/main/resources/application.yml`：新增 `order.sync.cron` + `order.sync.pay-recent.{enabled,cron}` 默认值。
+- 新增/增强测试 13 用例：
+  - 新建 `backend/src/test/java/com/colonel/saas/service/OrderSyncServiceTest.java`（6 用例，验证 PAY_RECENT 独立锁/key/6h 窗口/双轨水位隔离）。
+  - 增强 `backend/src/test/java/com/colonel/saas/job/OrderSyncJobTest.java` +4 用例（syncPayRecent 调用/disabled/locked/exception）。
+  - 增强 `backend/src/test/java/com/colonel/saas/controller/OrderControllerTest.java` +3 用例（admin ALL 不加业务过滤、channel PERSONAL 按 userId 过滤、admin /orders/unattributed 强制 UNATTRIBUTED）。
+- 验证：
+  - `mvn test`：**1688 tests, 0 failures, 0 errors**, total 6:53。
+  - `mvn -DskipTests package`：BUILD SUCCESS, repackage 13.8s。
+  - `safety-check.ps1 -Env real-pre -Scope backend -DryRun`：PASS。
+  - `restart-compose.ps1 -Env real-pre -Scope backend`：image rebuilt, container Recreated, 4/4 healthy。
+  - Backend health：`{"status":"UP"}`。
+  - 启动日志：Started in 30.458s, 无异常。
+  - 双轨 Scheduled 立即首次执行：INCREMENTAL 窗口 628s ≈ 10min+overlap，PAY_RECENT 窗口 21600s = 6h；scheduler-2/scheduler-4 独立线程。
+  - Redis 双 key 独立：`order:sync:last_time=1780480740` + `order:sync:pay_recent_last_time=1780480740` 共存。
+- 状态文件更新：
+  - `harness/CURRENT_STATE.md`：追加 P0-ORDER-001 完成段。
+  - `harness/state/DOMAIN_STATUS.md`：订单域条目改写，含 PAY_RECENT 修复、运行态对账、下一步任务。
+  - `harness/state/KNOWN_ISSUES.md`：新增"真实付款订单 10 分钟 update 窗口可能丢单"为 fixed-code,blocked-by-sample。
+- 未修改寄样 / 达人 / 商品 / 业绩 / 独家 / 前端 / 数据库 schema / docker-compose / env / `application-real-pre.yml`。
+- 未 `git add .`、未 `down -v`、未清库、未部署远端。
+- Final Status：`PARTIAL_DIRTY_REMAINING`——代码 / 测试 / 构建 / 容器 / 日志 / 双轨调度全部 PASS；真实订单端到端业务验证 BLOCKED_BY_SAMPLE（需等待商务侧真实付款样本）；本任务未执行 git commit/push，dirty 已分类（6 modified 本任务 backend + 4 untracked 本任务 reports/test + 3 untracked 与本任务无关），留待下个会话单独批次提交。
+
 ## v0.5.1
 
 - 完成 GIT-BATCH-4-REPORTS 报告批次提交（2026-06-03）。

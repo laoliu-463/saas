@@ -559,4 +559,99 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.channels[0].label").value("渠道甲"))
                 .andExpect(jsonPath("$.data.colonels[0].label").value("团长甲"));
     }
+
+    /**
+     * P0-ORDER-001 渠道可见性回归：管理员（DataScope.ALL）订单列表查询
+     * 不得在 wrapper 中追加 user_id / channel_dept_id 业务过滤，
+     * 确保已归因与未归因订单都能看到。
+     */
+    @Test
+    @SuppressWarnings("rawtypes")
+    void getOrders_adminWithDataScopeAll_shouldNotFilterByUserOrChannelDept() throws Exception {
+        when(orderMapper.selectPage(any(), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Page<ColonelsettlementOrder> page = invocation.getArgument(0);
+            page.setRecords(List.of());
+            page.setTotal(0);
+            return page;
+        });
+
+        mockMvc.perform(get("/orders")
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .requestAttr("deptId", java.util.UUID.randomUUID())
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<LambdaQueryWrapper> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(orderMapper).selectPage(any(), captor.capture());
+        String sqlSegment = captor.getValue().getSqlSegment();
+        // ALL 范围不应注入 user_id / channel_dept_id / dept_id 业务过滤
+        assertThat(sqlSegment).doesNotContain("user_id");
+        assertThat(sqlSegment).doesNotContain("channel_dept_id");
+        // 注意：dept_id 不应作为 DataScope.ALL 的注入项；deleted/order_id 等业务列可能出现
+        assertThat(sqlSegment).doesNotContain("dept_id =");
+    }
+
+    /**
+     * P0-ORDER-001 渠道可见性回归：渠道账号（DataScope.PERSONAL）
+     * 订单列表 wrapper 必须按当前 userId 过滤，未归因订单（user_id=null）
+     * 自然被排除——这是产品设计：渠道只看自己归属订单。
+     */
+    @Test
+    @SuppressWarnings("rawtypes")
+    void getOrders_channelWithDataScopePersonal_shouldFilterByOwnUserId() throws Exception {
+        java.util.UUID channelUserId = java.util.UUID.randomUUID();
+        when(orderMapper.selectPage(any(), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Page<ColonelsettlementOrder> page = invocation.getArgument(0);
+            page.setRecords(List.of());
+            page.setTotal(0);
+            return page;
+        });
+
+        mockMvc.perform(get("/orders")
+                        .requestAttr("userId", channelUserId)
+                        .requestAttr("dataScope", DataScope.PERSONAL))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<LambdaQueryWrapper> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(orderMapper).selectPage(any(), captor.capture());
+        LambdaQueryWrapper captured = captor.getValue();
+        String sqlSegment = captured.getSqlSegment();
+        // PERSONAL 范围必须注入 user_id 等值过滤
+        assertThat(sqlSegment).contains("user_id");
+        // 当前 userId 必须出现在参数表中（被绑定到 user_id = ?）
+        assertThat(captured.getParamNameValuePairs().values()).contains(channelUserId);
+    }
+
+    /**
+     * P0-ORDER-001 管理员未归因订单专项：/orders/unattributed 端点
+     * 不论入参 attributionStatus 是否提供，都强制按 STATUS_UNATTRIBUTED 过滤，
+     * 用于 admin 排查"刚付款订单可能 NO_PICK_SOURCE / NO_MAPPING"场景。
+     */
+    @Test
+    void getUnattributedOrders_adminShouldForceUnattributedFilter() throws Exception {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("order-no-pick-source");
+        order.setAttributionStatus("UNATTRIBUTED");
+        order.setAttributionRemark("NO_PICK_SOURCE");
+
+        when(orderMapper.selectPage(any(), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Page<ColonelsettlementOrder> page = invocation.getArgument(0);
+            page.setRecords(List.of(order));
+            page.setTotal(1);
+            return page;
+        });
+
+        mockMvc.perform(get("/orders/unattributed")
+                        // 即便管理员不传 attributionStatus，端点也强制 UNATTRIBUTED
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.records[0].attributionStatus").value("UNATTRIBUTED"))
+                .andExpect(jsonPath("$.data.records[0].unattributedReason").value("NO_PICK_SOURCE"));
+    }
 }

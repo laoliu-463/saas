@@ -42,8 +42,12 @@ public final class JobLockKeys {
     public static final String LOGISTICS_TRACK = "logistics:track:job:lock";
     /** 操作日志分区清理任务锁 */
     public static final String LOG_CLEANUP = "operation-log:cleanup:job:lock";
-    /** 订单同步任务锁 */
+    /** 订单同步任务锁（默认增量 update 窗口） */
     public static final String ORDER_SYNC = "order:sync:lock";
+    /** 订单事实源同步任务锁（6468 instituteOrderColonel）。与结算同步互不影响。 */
+    public static final String ORDER_SYNC_INSTITUTE = "order:sync:institute:lock";
+    /** 订单同步近窗口（PAY_RECENT）补拉任务锁。与 {@link #ORDER_SYNC} 互不影响。 */
+    public static final String ORDER_SYNC_PAY_RECENT = "order:sync:pay-recent:lock";
     /** 业绩记录补录任务锁 */
     public static final String PERFORMANCE_BACKFILL = "performance:backfill:job:lock";
     /** 业绩汇总缓存预热任务锁 */

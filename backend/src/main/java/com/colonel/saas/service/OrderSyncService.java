@@ -18,16 +18,17 @@ import org.springframework.util.StringUtils;
 import java.time.Instant;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -43,10 +44,18 @@ public class OrderSyncService {
 
     /** Redis key 存储上次同步的截止时间（epoch seconds）。 */
     private static final String LAST_SYNC_TIME_KEY = "order:sync:last_time";
+    /** Redis key 存储 PAY_RECENT 近窗口补拉的上次同步截止时间（与 {@link #LAST_SYNC_TIME_KEY} 完全独立）。 */
+    private static final String PAY_RECENT_LAST_SYNC_TIME_KEY = "order:sync:pay_recent_last_time";
+    /** Redis key 存储 INSTITUTE_RECENT（6468 团长事实源）的上次同步截止时间。 */
+    private static final String INSTITUTE_RECENT_LAST_SYNC_TIME_KEY = "order:sync:institute_recent_last_time";
     /** 分布式同步锁 TTL，防止同步任务长时间占用。 */
     private static final Duration SYNC_LOCK_TTL = Duration.ofMinutes(10);
     /** 默认同步时间窗口长度（秒），约 10 分钟。 */
     private static final long WINDOW_SECONDS = 600L;
+    /** PAY_RECENT 近窗口补拉的回扫长度（秒），约 6 小时；用于兜底"刚付款订单 update 延迟"。 */
+    private static final long PAY_RECENT_WINDOW_SECONDS = 6L * 60L * 60L;
+    /** INSTITUTE_RECENT（6468）同步回扫窗口（秒），约 24 小时；用于批量补拉团长事实订单。 */
+    private static final long INSTITUTE_RECENT_WINDOW_SECONDS = 24L * 60L * 60L;
     /** 时间窗口重叠（秒），用于补偿边界订单。 */
     private static final long OVERLAP_SECONDS = 60L;
     /** 相对当前时间的滞后（秒），避免查询未稳定的上游数据。 */
@@ -55,6 +64,32 @@ public class OrderSyncService {
     private static final int DEFAULT_COUNT = 100;
     /** 最大翻页次数，超过后强制停止，防止无限循环。 */
     private static final int MAX_PAGES = 200;
+
+    /** 同步模式标签：默认 10 分钟增量窗口（依赖 last_time 滚动）。 */
+    static final String SYNC_MODE_INCREMENTAL = "INCREMENTAL";
+    /** 同步模式标签：6 小时近窗口补拉（保留独立 last_time，避免覆盖增量水位）。 */
+    static final String SYNC_MODE_PAY_RECENT = "PAY_RECENT";
+    /** 同步模式标签：手动按订单号精确同步。 */
+    static final String SYNC_MODE_SPECIFIC = "SPECIFIC";
+    /** 同步模式标签：团长事实源（6468 / buyin.instituteOrderColonel），只写事实/预估轨。 */
+    static final String SYNC_MODE_INSTITUTE_RECENT = "INSTITUTE_RECENT";
+    private static final String API_INSTITUTE_ORDER_COLONEL = "buyin.instituteOrderColonel";
+    private static final String API_COLONEL_MULTI_SETTLEMENT_ORDERS = "buyin.colonelMultiSettlementOrders";
+
+    /**
+     * 抖音 colonelMultiSettlementOrders 的 time_type 取值，仅支持 settle / update。
+     * 当前所有内部同步链路统一使用 update，因为 update 必然在 PAY_SUCC 之后命中，
+     * 等价于"按付款时间"的语义；抖音不存在 time_type=pay。
+     */
+    static final String GATEWAY_TIME_TYPE_UPDATE = "update";
+
+    private static final DateTimeFormatter RAW_DATE_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    private enum SyncSource {
+        INSTITUTE,
+        SETTLEMENT
+    }
 
     private final DouyinOrderGateway douyinOrderGateway;
     private final OrderSyncPersistenceService persistenceService;
@@ -119,6 +154,130 @@ public class OrderSyncService {
     }
 
     /**
+     * PAY_RECENT 近窗口补拉。
+     * <p>
+     * 用于兜底"刚付款订单 update 延迟"导致的不可见。固定窗口 now-6h ~ now，
+     * 使用 {@link JobLockKeys#ORDER_SYNC_PAY_RECENT} 独立锁、{@link #PAY_RECENT_LAST_SYNC_TIME_KEY}
+     * 独立 Redis key，<strong>不覆盖 {@link #LAST_SYNC_TIME_KEY}</strong>，与 10 分钟增量同步互不影响。
+     * <p>
+     * 上游 time_type 与增量同步一致使用 {@value #GATEWAY_TIME_TYPE_UPDATE}，因为抖音
+     * colonelMultiSettlementOrders 不存在 time_type=pay；update 必然在 PAY_SUCC 之后命中，
+     * 语义等效。
+     *
+     * @return 同步结果；锁冲突时返回 {@code locked=true}
+     */
+    public SyncResult syncPayRecentWindow() {
+        long now = Instant.now().getEpochSecond();
+        long endTime = now - LAG_SECONDS;
+        long startTime = Math.max(0L, endTime - PAY_RECENT_WINDOW_SECONDS);
+        if (!jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC_PAY_RECENT, SYNC_LOCK_TTL)) {
+            log.info("Order sync skipped, mode={}, timeType={}, reason=locked",
+                    SYNC_MODE_PAY_RECENT, GATEWAY_TIME_TYPE_UPDATE);
+            return new SyncResult(startTime, endTime, 0, 0, 0, true);
+        }
+        try {
+            SyncResult result = syncRangeWithMode(startTime, endTime, DEFAULT_COUNT, SYNC_MODE_PAY_RECENT);
+            persistPayRecentLastSyncTime(endTime);
+            return result;
+        } finally {
+            jobLockService.release(JobLockKeys.ORDER_SYNC_PAY_RECENT);
+        }
+    }
+
+    /**
+     * INSTITUTE_RECENT（6468 / buyin.instituteOrderColonel）团长事实源同步。
+     * <p>
+     * 固定窗口 now-24h ~ now，使用 {@link JobLockKeys#ORDER_SYNC_INSTITUTE} 独立锁、
+     * {@link #INSTITUTE_RECENT_LAST_SYNC_TIME_KEY} 独立 Redis key，
+     * <strong>不覆盖</strong> {@link #LAST_SYNC_TIME_KEY} 和 {@link #PAY_RECENT_LAST_SYNC_TIME_KEY}。
+     * <p>
+     * 6468 为订单事实源，只写事实/预估轨，不填充或清零结算轨字段。
+     *
+     * @return 同步结果；锁冲突时返回 {@code locked=true}
+     */
+    public SyncResult syncInstituteOrdersRecentWindow() {
+        long now = Instant.now().getEpochSecond();
+        long endTime = now - LAG_SECONDS;
+        long startTime = Math.max(0L, endTime - INSTITUTE_RECENT_WINDOW_SECONDS);
+        if (!jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC_INSTITUTE, SYNC_LOCK_TTL)) {
+            log.info("ORDER_SYNC_INSTITUTE api={} mode={} reason=locked",
+                    API_INSTITUTE_ORDER_COLONEL, SYNC_MODE_INSTITUTE_RECENT);
+            return new SyncResult(startTime, endTime, 0, 0, 0, true);
+        }
+        try {
+            DouyinOrderGateway.OrderListResult firstPage = fetchInstitute(
+                    new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, DEFAULT_COUNT, "0"));
+            SyncResult result = syncItems(firstPage, startTime, endTime, true, DEFAULT_COUNT,
+                    SYNC_MODE_INSTITUTE_RECENT,
+                    SyncSource.INSTITUTE,
+                    cursor -> fetchInstitute(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, DEFAULT_COUNT, cursor)));
+            persistInstituteLastSyncTime(endTime);
+            return result;
+        } finally {
+            jobLockService.release(JobLockKeys.ORDER_SYNC_INSTITUTE);
+        }
+    }
+
+    /** 按时间范围调用抖音团长事实源接口 6468（受熔断器保护）。 */
+    private DouyinOrderGateway.OrderListResult fetchInstitute(DouyinOrderGateway.DouyinOrderQueryRequest request) {
+        return executeGatewayCall(() -> douyinOrderGateway.listInstituteOrders(request));
+    }
+
+    /** 读取 INSTITUTE 独立 Redis key 的上次同步时间；test 模式下 Redis 不可用时返回 0。 */
+    long readInstituteLastSyncTime() {
+        try {
+            Object raw = redisTemplate.opsForValue().get(INSTITUTE_RECENT_LAST_SYNC_TIME_KEY);
+            return asLong(raw, 0L);
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled()) {
+                log.warn("Redis unavailable in test mode when reading institute last sync time, fallback to 0: {}", ex.getMessage());
+                return 0L;
+            }
+            throw ex;
+        }
+    }
+
+    /** 写入 INSTITUTE 独立 Redis key 的上次同步时间；test 模式下 Redis 不可用时静默跳过。 */
+    private void persistInstituteLastSyncTime(long endTime) {
+        try {
+            redisTemplate.opsForValue().set(INSTITUTE_RECENT_LAST_SYNC_TIME_KEY, String.valueOf(endTime));
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled()) {
+                log.warn("Redis unavailable in test mode when persisting institute last sync time, skip: {}", ex.getMessage());
+                return;
+            }
+            throw ex;
+        }
+    }
+
+    /** 读取 PAY_RECENT 独立 Redis key 的上次同步时间；test 模式下 Redis 不可用时返回 0。 */
+    long readPayRecentLastSyncTime() {
+        try {
+            Object raw = redisTemplate.opsForValue().get(PAY_RECENT_LAST_SYNC_TIME_KEY);
+            return asLong(raw, 0L);
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled()) {
+                log.warn("Redis unavailable in test mode when reading pay_recent last sync time, fallback to 0: {}", ex.getMessage());
+                return 0L;
+            }
+            throw ex;
+        }
+    }
+
+    /** 写入 PAY_RECENT 独立 Redis key 的上次同步时间；test 模式下 Redis 不可用时静默跳过。 */
+    private void persistPayRecentLastSyncTime(long endTime) {
+        try {
+            redisTemplate.opsForValue().set(PAY_RECENT_LAST_SYNC_TIME_KEY, String.valueOf(endTime));
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled()) {
+                log.warn("Redis unavailable in test mode when persisting pay_recent last sync time, skip: {}", ex.getMessage());
+                return;
+            }
+            throw ex;
+        }
+    }
+
+    /**
      * 按指定订单号列表精确同步。
      * <p>
      * 先去重并校验，获取分布式锁后调用网关精确查询接口；
@@ -171,7 +330,7 @@ public class OrderSyncService {
             return new SyncResult(startTime, endTime, 0, 0, 0, true);
         }
         try {
-            SyncResult result = syncRange(startTime, endTime, DEFAULT_COUNT);
+            SyncResult result = syncRangeWithMode(startTime, endTime, DEFAULT_COUNT, SYNC_MODE_INCREMENTAL);
             persistLastSyncTime(endTime);
             return result;
         } finally {
@@ -217,14 +376,20 @@ public class OrderSyncService {
         jobLockService.release(JobLockKeys.ORDER_SYNC);
     }
 
-    /** 按时间窗口同步：构造首屏查询请求并委托到 syncItems 处理翻页。 */
-    private SyncResult syncRange(long startTime, long endTime, int count) {
+    /**
+     * 按时间窗口同步，附带 {@code mode} 标签用于日志和监控。
+     * mode 取值：{@link #SYNC_MODE_INCREMENTAL} / {@link #SYNC_MODE_PAY_RECENT} / {@link #SYNC_MODE_SPECIFIC}。
+     */
+    private SyncResult syncRangeWithMode(long startTime, long endTime, int count, String mode) {
         return syncItems(
                 fetchSettlement(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, "0")),
                 startTime,
                 endTime,
                 true,
-                count
+                count,
+                mode,
+                SyncSource.SETTLEMENT,
+                cursor -> fetchSettlement(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, cursor))
         );
     }
 
@@ -236,7 +401,10 @@ public class OrderSyncService {
                 now,
                 now,
                 false,
-                orderIds.size()
+                orderIds.size(),
+                SYNC_MODE_SPECIFIC,
+                SyncSource.SETTLEMENT,
+                cursor -> new DouyinOrderGateway.OrderListResult(List.of(), false, null, Map.of())
         );
     }
 
@@ -246,13 +414,18 @@ public class OrderSyncService {
      * 每页先 mapOrder 映射原始数据，再通过 AttributionService 解析归属，
      * 随后批量加载用户名填充渠道/招募人名称，最后持久化（新建/更新）。
      * continuePaging=true 时自动翻页直至无更多数据或达到 MAX_PAGES。
+     * <p>
+     * 完成后输出统一格式的同步日志，包含 mode/timeType/窗口/计数等可观测维度。
      */
     private SyncResult syncItems(
             DouyinOrderGateway.OrderListResult firstPage,
             long startTime,
             long endTime,
             boolean continuePaging,
-            int count) {
+            int count,
+            String mode,
+            SyncSource source,
+            Function<String, DouyinOrderGateway.OrderListResult> fetchNextPage) {
         String cursor = "0";
         boolean hasMore = true;
         int totalFetched = 0;
@@ -261,6 +434,8 @@ public class OrderSyncService {
         int attributedCount = 0;
         int unattributedCount = 0;
         int failedCount = 0;
+        int noPickSourceCount = 0;
+        int noMappingCount = 0;
         int pages = 0;
         DouyinOrderGateway.OrderListResult response = firstPage;
 
@@ -275,7 +450,7 @@ public class OrderSyncService {
             List<ColonelsettlementOrder> pageOrders = new ArrayList<>();
             for (DouyinOrderGateway.DouyinOrderItem item : items) {
                 try {
-                    ColonelsettlementOrder order = mapOrder(item);
+                    ColonelsettlementOrder order = mapOrder(item, source);
                     if (!StringUtils.hasText(order.getOrderId())) {
                         continue;
                     }
@@ -316,11 +491,15 @@ public class OrderSyncService {
 
             for (ColonelsettlementOrder order : pageOrders) {
                 try {
-                    SysUser channelUser = usersById.get(order.getChannelUserId());
+                    SysUser channelUser = order.getChannelUserId() == null
+                            ? null
+                            : usersById.get(order.getChannelUserId());
                     if (channelUser != null) {
                         order.setChannelUserName(channelUser.getRealName());
                     }
-                    SysUser colonelUser = usersById.get(order.getColonelUserId());
+                    SysUser colonelUser = order.getColonelUserId() == null
+                            ? null
+                            : usersById.get(order.getColonelUserId());
                     if (colonelUser != null) {
                         order.setColonelUserName(colonelUser.getRealName());
                     }
@@ -329,6 +508,13 @@ public class OrderSyncService {
                         attributedCount++;
                     } else {
                         unattributedCount++;
+                        String remark = order.getAttributionRemark();
+                        if (AttributionService.REASON_NO_PICK_SOURCE.equals(remark)) {
+                            noPickSourceCount++;
+                        } else if (AttributionService.REASON_MAPPING_NOT_FOUND.equals(remark)
+                                || AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND.equals(remark)) {
+                            noMappingCount++;
+                        }
                     }
 
                     boolean isNew = persistenceService.persistOrder(order);
@@ -350,14 +536,19 @@ public class OrderSyncService {
             cursor = response.nextCursor();
             hasMore = continuePaging && response.hasMore() && pages < MAX_PAGES;
             if (hasMore) {
-                response = fetchSettlement(
-                        new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, cursor)
-                );
+                response = fetchNextPage.apply(cursor);
             }
         }
 
-        log.info("Order sync completed, range=[{}, {}], pages={}, fetched={}, created={}, updated={}, attributed={}",
-                startTime, endTime, pages, totalFetched, created, updated, attributedCount);
+        String logName = source == SyncSource.INSTITUTE ? "ORDER_SYNC_INSTITUTE" : "ORDER_SYNC_SETTLEMENT";
+        String api = source == SyncSource.INSTITUTE ? API_INSTITUTE_ORDER_COLONEL : API_COLONEL_MULTI_SETTLEMENT_ORDERS;
+        log.info("{} api={} mode={} timeType={} range=[{}, {}] pages={} fetched={} inserted={} updated={} attributed={} unattributed={} noPickSource={} noMapping={} failed={}",
+                logName,
+                api,
+                mode,
+                GATEWAY_TIME_TYPE_UPDATE,
+                startTime, endTime, pages, totalFetched, created, updated,
+                attributedCount, unattributedCount, noPickSourceCount, noMappingCount, failedCount);
 
         return new SyncResult(startTime, endTime, pages, totalFetched, created, updated, attributedCount, unattributedCount, failedCount, false);
     }
@@ -418,7 +609,7 @@ public class OrderSyncService {
      * 从 rawPayload 中提取商品名、店铺、团长信息、金额（双轨）、
      * 派单来源等字段；归属状态初始化为 UNATTRIBUTED。
      */
-    private ColonelsettlementOrder mapOrder(DouyinOrderGateway.DouyinOrderItem item) {
+    private ColonelsettlementOrder mapOrder(DouyinOrderGateway.DouyinOrderItem item, SyncSource source) {
         Map<String, Object> rawPayload = item.rawPayload();
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setId(UUID.randomUUID());
@@ -431,7 +622,13 @@ public class OrderSyncService {
                 rawPayload,
                 item.orderAmount(),
                 item.serviceFee());
-        OrderDualTrackAmountResolver.applyToOrder(order, dualTrack);
+        if (source == SyncSource.INSTITUTE) {
+            OrderDualTrackAmountResolver.applyInstituteFactToOrder(order, dualTrack);
+            order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE);
+        } else {
+            OrderDualTrackAmountResolver.applyToOrder(order, dualTrack);
+            order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_SETTLEMENT);
+        }
         order.setColonelBuyinId(asNullableLong(rawOrderInfoValue(rawPayload, "colonel_buyin_id", "colonelBuyinId")));
         order.setSecondColonelBuyinId(asNullableLong(rawOrderInfoValue(rawPayload, "second_colonel_buyin_id", "secondColonelBuyinId")));
         order.setSecondActivityId(asString(rawOrderInfoValue(rawPayload, "second_colonel_activity_id", "secondColonelActivityId")));
@@ -440,8 +637,13 @@ public class OrderSyncService {
         order.setOrderType(asNullableInteger(rawValue(rawPayload, "order_type", "orderType")));
         order.setPickSource(item.pickSource());
         order.setCursor(asString(rawValue(rawPayload, "cursor")));
-        order.setCreateTime(AppZone.fromEpochSecond(item.createTime()));
-        if (item.settleTime() != null) {
+        LocalDateTime orderCreateTime = rawDateTime(rawPayload, "order_create_time", "orderCreateTime", "create_time", "createTime");
+        LocalDateTime payTime = rawDateTime(rawPayload, "pay_success_time", "paySuccessTime", "pay_time", "payTime");
+        LocalDateTime itemCreateTime = item.createTime() == null ? null : AppZone.fromEpochSecond(item.createTime());
+        order.setOrderCreateTime(firstNonNullTime(orderCreateTime, itemCreateTime));
+        order.setPayTime(payTime);
+        order.setCreateTime(firstNonNullTime(payTime, orderCreateTime, itemCreateTime, LocalDateTime.now()));
+        if (source != SyncSource.INSTITUTE && item.settleTime() != null) {
             order.setSettleTime(AppZone.fromEpochSecond(item.settleTime()));
         }
         order.setAttributionStatus("UNATTRIBUTED");
@@ -463,17 +665,6 @@ public class OrderSyncService {
         return Long.parseLong(digits);
     }
 
-    /** 从 rawPayload 中读取 actual_amount，不存在时回退到 item.orderAmount()。 */
-    private Long resolveActualAmount(DouyinOrderGateway.DouyinOrderItem item) {
-        if (item.rawPayload() != null) {
-            Object actual = item.rawPayload().get("actual_amount");
-            if (actual instanceof Number number) {
-                return number.longValue();
-            }
-        }
-        return item.orderAmount();
-    }
-
     /** 返回第一个非空白字符串，全部为空白时返回 null。 */
     private String firstNonBlank(String... values) {
         if (values == null) {
@@ -487,9 +678,53 @@ public class OrderSyncService {
         return null;
     }
 
+    /** 返回第一个非 null 时间。 */
+    private LocalDateTime firstNonNullTime(LocalDateTime... values) {
+        if (values == null) {
+            return null;
+        }
+        for (LocalDateTime value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     /** 将任意对象转为 String，null 安全。 */
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    /** 从 rawPayload 中按候选键解析时间，兼容 epoch 秒、epoch 毫秒和 yyyy-MM-dd HH:mm:ss 字符串。 */
+    private LocalDateTime rawDateTime(Map<String, Object> rawPayload, String... keys) {
+        return asDateTime(rawValue(rawPayload, keys));
+    }
+
+    /** 将上游时间值转换为应用时区 LocalDateTime。 */
+    private LocalDateTime asDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            long raw = number.longValue();
+            return raw > 9_999_999_999L ? AppZone.fromEpochMilli(raw) : AppZone.fromEpochSecond(raw);
+        }
+        String text = String.valueOf(value).trim();
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        try {
+            long raw = Long.parseLong(text);
+            return raw > 9_999_999_999L ? AppZone.fromEpochMilli(raw) : AppZone.fromEpochSecond(raw);
+        } catch (NumberFormatException ignore) {
+            // Fall through to formatted date parsing.
+        }
+        try {
+            return LocalDateTime.parse(text, RAW_DATE_TIME_FORMATTER);
+        } catch (DateTimeParseException ignore) {
+            return null;
+        }
     }
 
     /** 在 rawPayload 中按 keys 顺序查找，返回第一个命中的值，均未命中返回 null。 */

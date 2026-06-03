@@ -46,4 +46,48 @@ class OrderDualTrackAmountResolverTest {
         assertThat(incoming.getEstimateTechServiceFee()).isEqualTo(90L);
         assertThat(incoming.getOrderAmount()).isEqualTo(3000L);
     }
+
+    @Test
+    void mergeSettlementSnapshot_shouldPreserveExistingSettlementOnUpdate() {
+        com.colonel.saas.entity.ColonelsettlementOrder existing = new com.colonel.saas.entity.ColonelsettlementOrder();
+        existing.setSettleAmount(2480L);
+        existing.setEffectiveServiceFee(50L);
+        existing.setEffectiveTechServiceFee(6L);
+
+        com.colonel.saas.entity.ColonelsettlementOrder incoming = new com.colonel.saas.entity.ColonelsettlementOrder();
+        incoming.setOrderAmount(2550L);
+        incoming.setEstimateServiceFee(55L);
+        incoming.setEstimateTechServiceFee(7L);
+        // incoming settlement fields are null or 0
+
+        OrderDualTrackAmountResolver.mergeSettlementSnapshot(existing, incoming);
+
+        // Settlement fields preserved from existing
+        assertThat(incoming.getSettleAmount()).isEqualTo(2480L);
+        assertThat(incoming.getEffectiveServiceFee()).isEqualTo(50L);
+        assertThat(incoming.getEffectiveTechServiceFee()).isEqualTo(6L);
+        // Estimate fields untouched
+        assertThat(incoming.getOrderAmount()).isEqualTo(2550L);
+        assertThat(incoming.getEstimateServiceFee()).isEqualTo(55L);
+    }
+
+    @Test
+    void mergeSettlementSnapshot_shouldNotOverwriteWhenIncomingHasValue() {
+        com.colonel.saas.entity.ColonelsettlementOrder existing = new com.colonel.saas.entity.ColonelsettlementOrder();
+        existing.setSettleAmount(2480L);
+        existing.setEffectiveServiceFee(50L);
+        existing.setEffectiveTechServiceFee(6L);
+
+        com.colonel.saas.entity.ColonelsettlementOrder incoming = new com.colonel.saas.entity.ColonelsettlementOrder();
+        incoming.setSettleAmount(2500L);
+        incoming.setEffectiveServiceFee(55L);
+        incoming.setEffectiveTechServiceFee(7L);
+
+        OrderDualTrackAmountResolver.mergeSettlementSnapshot(existing, incoming);
+
+        // Incoming already has values, should NOT be overwritten by existing
+        assertThat(incoming.getSettleAmount()).isEqualTo(2500L);
+        assertThat(incoming.getEffectiveServiceFee()).isEqualTo(55L);
+        assertThat(incoming.getEffectiveTechServiceFee()).isEqualTo(7L);
+    }
 }

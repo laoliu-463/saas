@@ -39,6 +39,8 @@
         <result property="productTitle" column="product_title"/>
         <result property="talentName" column="talent_name"/>
         <result property="activityId" column="colonel_activity_id"/>
+        <result property="payTime" column="pay_time"/>
+        <result property="orderCreateTime" column="order_create_time"/>
         <result property="settleTime" column="settle_time"/>
         <result property="attributionStatus" column="attribution_status"/>
         <result property="attributionRemark" column="attribution_remark"/>
@@ -69,7 +71,7 @@
             talent_id,
             channel_user_id, channel_user_name, channel_dept_id,
             user_id, dept_id, colonel_user_id, colonel_user_name, promotion_link_id, product_title, talent_name,
-            colonel_activity_id, settle_time,
+            colonel_activity_id, pay_time, order_create_time, settle_time,
             attribution_status, attribution_remark, create_time, update_time, version, deleted, extra_data
         )
         SELECT
@@ -83,7 +85,7 @@
             #{talentId},
             #{channelUserId}, #{channelUserName}, #{channelDeptId},
             #{userId}, #{deptId}, #{colonelUserId}, #{colonelUserName}, #{promotionLinkId}, #{productTitle}, #{talentName},
-            #{activityId}, #{settleTime},
+            #{activityId}, #{payTime}, #{orderCreateTime}, #{settleTime},
             #{attributionStatus}, #{attributionRemark}, #{createTime}, #{updateTime},
             COALESCE(#{version}, 0), #{deleted},
             CAST(#{extraData, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB)
@@ -132,6 +134,8 @@
             product_title = #{productTitle},
             talent_name = #{talentName},
             colonel_activity_id = #{activityId},
+            pay_time = #{payTime},
+            order_create_time = #{orderCreateTime},
             settle_time = #{settleTime},
             attribution_status = #{attributionStatus},
             attribution_remark = #{attributionRemark},
@@ -182,6 +186,8 @@
             co.product_title,
             co.talent_name,
             co.talent_id,
+            co.pay_time,
+            co.order_create_time,
             co.attribution_status,
             co.attribution_remark,
             co.create_time,

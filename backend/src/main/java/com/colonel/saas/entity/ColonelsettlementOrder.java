@@ -293,6 +293,20 @@ public class ColonelsettlementOrder implements Serializable {
     private String activityId;
 
     /**
+     * 支付成功时间。
+     * <p>对应数据库列：{@code pay_time}，仅保存上游明确返回的支付成功时间。</p>
+     */
+    @TableField("pay_time")
+    private LocalDateTime payTime;
+
+    /**
+     * 上游订单创建时间。
+     * <p>对应数据库列：{@code order_create_time}，用于区分订单事实时间与本地入库分区时间。</p>
+     */
+    @TableField("order_create_time")
+    private LocalDateTime orderCreateTime;
+
+    /**
      * 结算时间
      * <p>对应数据库列：{@code settle_time}，订单完成结算的时间</p>
      */
@@ -358,6 +372,13 @@ public class ColonelsettlementOrder implements Serializable {
      */
     @TableField(value = "extra_data", typeHandler = JacksonTypeHandler.class)
     private Map<String, Object> extraData;
+
+    /**
+     * 同步来源。
+     * <p>非数据库字段，用于持久化层判断本次更新属于事实源还是结算源，避免双轨字段互相覆盖。</p>
+     */
+    @TableField(exist = false)
+    private String syncSource;
 
     /**
      * 获取主键 ID。

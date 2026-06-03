@@ -182,6 +182,39 @@ class OrderSyncPersistenceServiceTest {
     }
 
     @Test
+    void persistOrder_shouldPreserveSettlementTrackWhenInstituteSourceUpdatesExistingOrder() {
+        ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
+        order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE);
+        order.setOrderAmount(2550L);
+        order.setEstimateServiceFee(55L);
+        order.setEstimateTechServiceFee(7L);
+        // incoming has no settlement data
+        order.setSettleAmount(0L);
+        order.setEffectiveServiceFee(0L);
+        order.setEffectiveTechServiceFee(0L);
+
+        ColonelsettlementOrder existing = makeOrder(UUID.randomUUID());
+        existing.setId(UUID.randomUUID());
+        existing.setCreateTime(java.time.LocalDateTime.now().minusHours(2));
+        existing.setSettleAmount(2480L);
+        existing.setEffectiveServiceFee(50L);
+        existing.setEffectiveTechServiceFee(6L);
+
+        when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(existing);
+
+        service.persistOrder(order);
+
+        ArgumentCaptor<ColonelsettlementOrder> captor = ArgumentCaptor.forClass(ColonelsettlementOrder.class);
+        verify(orderMapper).updateSyncedById(captor.capture());
+        ColonelsettlementOrder updated = captor.getValue();
+        // Settlement track preserved from existing despite incoming having zeros
+        assertThat(updated.getSettleAmount()).isEqualTo(2480L);
+        assertThat(updated.getEffectiveServiceFee()).isEqualTo(50L);
+        assertThat(updated.getEffectiveTechServiceFee()).isEqualTo(6L);
+    }
+
+    @Test
     void persistOrder_shouldStillEnsureMerchantWhenChannelIdMissing() {
         ColonelsettlementOrder order = makeOrder(null);
         when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);

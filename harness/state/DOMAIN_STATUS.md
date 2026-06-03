@@ -52,10 +52,15 @@
 
 ## 订单域
 
-- 当前状态：订单事实、退款事实、同步日志和归因输入已具备；real-pre 真实渠道归因样本不足。
-- 已完成能力：订单同步、订单入库、退款事实、归因输入保存。
-- 待优化能力：`raw_payload`、`pick_source`、`colonel_buyin_id`、默认归因、事件和幂等证据补齐。
-- DDD 优化下一步：O-1 盘点订单域代码、接口、表、同步任务和测试。
+- 当前状态：订单事实、退款事实、同步日志和归因输入已具备；P0-ORDER-001 PAY_RECENT 6h 补拉与同步日志增强已完成（2026-06-03，代码 + 运行态）；ORDER-P0-DUAL-SOURCE-SYNC 已在本地 real-pre 接入 6468 事实订单源并验证入库，远端验证仍待用户明确部署授权。
+- 已完成能力：订单同步（默认 2704 update 10min 增量 + PAY_RECENT update 6h 30min 兜底回扫 + 6468 INSTITUTE_RECENT 24h 事实订单源）、订单入库、退款事实、归因输入保存、双轨独立 Redis 水位 + 独立锁、同步日志含 `api/mode/timeType/inserted/updated/attributed/unattributed/noPickSource/noMapping/failed` 维度。
+- P0-ORDER-001 报告路径：`harness/reports/p0-order-001-real-order-visible-20260603-180450.md`、`harness/reports/p0-order-001-diagnosis-20260603-173500.md`、`harness/reports/p0-order-001-intake-20260603-172923.md`。
+- P0-ORDER-001 修改文件：`backend/src/main/java/com/colonel/saas/job/JobLockKeys.java`、`OrderSyncJob.java`、`backend/src/main/java/com/colonel/saas/service/OrderSyncService.java`、`backend/src/main/resources/application.yml`，新增/增强测试 3 个文件 13 用例。
+- P0-ORDER-001 运行态对账：本地 backend-real-pre 重启后 health=UP，scheduler-2 立即执行 INCREMENTAL（窗口 628s ≈ 10min+overlap），scheduler-4 立即执行 PAY_RECENT（窗口 21600s = 6h），两 Redis key `order:sync:last_time` + `order:sync:pay_recent_last_time` 共存独立。
+- ORDER-P0-DUAL-SOURCE-SYNC 本地证据：`harness/reports/evidence-20260603-202253.md`；6468 日志 `fetched=100 inserted=100`，订单表 `count(*)=100`，100 条均有 `order_amount/pay_time/estimate_*`，`settle_amount/effective_*` 为 0 条有值，管理员订单列表和未归因列表均返回 `total=100`。
+- 待优化能力：远端部署同步代码；`pick_source` 返回样本与 mapping 命中后的渠道正向可见性验证；Dashboard summary 双轨聚合另开 `ANALYTICS-DUAL-TRACK-SUMMARY-FIX`。
+- 当前风险：真实订单 PAY_RECENT 周期最坏 30 分钟可见延迟，如商务要求更短可调小 cron；抖音 update_time 上限延迟超 6h 时 PAY_RECENT 也会丢，6h 为当前观测经验值；本轮 6468 样本未返回 `pick_source`，渠道可见性正向样本仍 PENDING。
+- DDD 优化下一步：远端部署同步代码（需用户明确授权后执行 DEPLOY-REMOTE）；有 `pick_source` 样本后做渠道可见性验证；之后进入 P0-SAMPLE-001 寄样流转，Dashboard summary 双轨单独处理。
 - 标记：P0。
 
 ## 业绩域

@@ -28,6 +28,11 @@ import java.util.stream.Collectors;
 @Service
 public class OrderSyncPersistenceService {
 
+    /** 同步来源：6468 instituteOrderColonel，负责事实/预估轨。 */
+    public static final String SYNC_SOURCE_INSTITUTE = "INSTITUTE";
+    /** 同步来源：2704 colonelMultiSettlementOrders，负责结算/有效轨。 */
+    public static final String SYNC_SOURCE_SETTLEMENT = "SETTLEMENT";
+
     /** 订单表 Mapper，提供按 orderId 查询、乐观锁更新和幂等插入能力 */
     private final ColonelsettlementOrderMapper orderMapper;
     /** 订单同步去重声明 Mapper，用于 claim 机制防止并发重复持久化 */
@@ -104,7 +109,7 @@ public class OrderSyncPersistenceService {
         ColonelsettlementOrder existing = orderMapper.findByOrderId(order.getOrderId());
         if (existing != null) {
             orderSyncDedupClaimMapper.bindOrderRow(order.getOrderId(), existing.getId());
-            OrderDualTrackAmountResolver.mergeEstimateSnapshot(existing, order);
+            mergeBySource(existing, order);
             order.setId(existing.getId());
             order.setCreateTime(existing.getCreateTime());
             order.setVersion(existing.getVersion());
@@ -123,7 +128,7 @@ public class OrderSyncPersistenceService {
                 return false;
             }
             orderSyncDedupClaimMapper.bindOrderRow(order.getOrderId(), existing.getId());
-            OrderDualTrackAmountResolver.mergeEstimateSnapshot(existing, order);
+            mergeBySource(existing, order);
             order.setId(existing.getId());
             order.setCreateTime(existing.getCreateTime());
             order.setVersion(existing.getVersion());
@@ -135,6 +140,15 @@ public class OrderSyncPersistenceService {
         runAttributionFollowUps(order);
         publishOrderSynced(order, true);
         return true;
+    }
+
+    /** 根据同步来源保护对方轨道，避免 6468/2704 互相覆盖不属于自己的字段。 */
+    private void mergeBySource(ColonelsettlementOrder existing, ColonelsettlementOrder incoming) {
+        if (SYNC_SOURCE_INSTITUTE.equals(incoming.getSyncSource())) {
+            OrderDualTrackAmountResolver.mergeSettlementSnapshot(existing, incoming);
+            return;
+        }
+        OrderDualTrackAmountResolver.mergeEstimateSnapshot(existing, incoming);
     }
 
     /** 发布订单同步完成事件，将订单的金额快照和归因信息通知下游消费者。 */

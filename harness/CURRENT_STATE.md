@@ -38,20 +38,20 @@ real-pre 必须保持：
 - 商品域：商品库、活动商品同步、转链和映射主链路已具备，历史推广中入库仍需持续验证。
 - 达人域：达人资料、标签、地址和跟进主链路已具备。
 - 寄样域：申请、审批、发货和订单事件自动完成链路已具备，real-pre 仍依赖真实归因订单样本。
-- 订单域：订单事实、退款事实、同步日志和归因输入已具备。
+- 订单域：订单事实、退款事实、同步日志和归因输入已具备；本地 real-pre 已接入 6468 事实订单源并验证订单入库。
 - 业绩域：最终归属、提成、冲正和汇总主链路已具备。
 - 分析模块：dashboard、报表和只读汇总主链路已具备。
 
 ## 当前未闭环点
 
-- 渠道链真实闭环仍依赖真实通过系统转链产生的订单样本。
-- real-pre 历史订单 `pick_source` 大量为空，不能证明渠道归因闭环。
+- 渠道链真实闭环仍依赖真实通过系统转链产生且带 `pick_source` 的订单样本。
+- real-pre 已通过 6468 入库真实订单，但本轮样本 `pick_source=0`，不能证明渠道归因闭环。
 - 寄样自动完成需要订单归因后的 `channel_id + talent_id + product_id + pay_time`。
 - 推广中商品历史数据可能需要 repair / backfill。
 
 ## 当前 P0 / P1
 
-- P0：真实渠道订单归因样本不足，阻塞 real-pre 渠道链真实闭环 PASS。
+- P0：6468 事实订单源本地 real-pre 已入库，远端部署/验证待授权；真实渠道订单归因样本仍不足，阻塞渠道链真实闭环 PASS。
 - P1：寄样自动完成依赖真实归因订单样本。
 - P1：推广中商品历史数据可能存在入库漂移。
 - P1：权限注解和数据范围覆盖仍需持续审计。
@@ -75,7 +75,7 @@ real-pre 必须保持：
 - 管理链基本可闭环。
 - 招商链大部分可闭环。
 - 渠道链真实闭环仍依赖真实通过系统转链产生的订单样本。
-- 当前 real-pre 历史订单 `pick_source` 大量为空，不能证明渠道归因闭环。
+- 当前 real-pre 6468 已入库真实订单，但本轮样本 `pick_source=0`，不能证明渠道归因闭环。
 - 寄样自动完成依赖订单归因后的 `channel_id + talent_id + product_id`。
 - 寄样自动完成的真实判定还需要 `pay_time` 命中。
 - 推广中商品历史数据需要入库 / 重算，避免商品库选品入口不完整。
@@ -125,6 +125,8 @@ real-pre 必须保持：
 - 已完成：GIT-HARNESS-001 Git 工作区治理与批次提交门禁强化（2026-06-03）。报告路径：`harness/reports/git-harness-001-worktree-governance-20260603-*.md`。新增 `harness/skills/git-change-control.md`（Git 全套 Gate：Intake / Allowed Change Set / Dirty Classification / Staged Scope / Commit / Push / Deploy / Exit / Unknown / Rollback）、`harness/skills/git-batch-submit.md`（批次提交流程）、`harness/skills/post-task-gc.md`（Git 清理流程）。修改 `AGENT_CONTRACT.md` 新增"Git 工作区治理强约束"12 条；`TASK_ROUTING.md` 新增"Git 任务路由"六个子任务（GIT-INTAKE / GIT-SCOPE / GIT-BATCH / GIT-CLEANUP / GIT-DEPLOY-GATE / GIT-EXIT）；`FORBIDDEN_SCOPE.md` 新增"Git 工作区治理禁止事项"18 条；`COMPLETION_GATES.md` 新增 Gate G0-G4 Git 子门禁；`SESSION_EXIT_GATE.md` 新增"Git 状态 Clean"作为第六项硬门禁和 5 条 Git 禁止事项。更新 `KNOWN_ISSUES.md` 记录"Git 工作区 dirty 膨胀与批次提交门禁缺失"为 fixed；更新 `DECISIONS.md` 新增 2026-06-03 Git 工作区治理决策摘要（6 条）。核心约束：所有任务必须按 Git Intake → Allowed Change Set → Staged Scope → Commit → Push → Deploy Commit → Git Exit 顺序执行；任务终态只能为 `DONE_CLEAN` / `DONE_WITH_REGISTERED_DIRTY` / `PARTIAL_DIRTY_REMAINING` / `BLOCKED_DIRTY_UNKNOWN` 之一。docs-only 任务，仅修改 harness 文档与状态文件；未修改后端 / 前端 / SQL / Docker / env / 数据库；未重启容器；未部署远端。状态 `DONE`（docs-only）。
 - 已完成提交：GIT-BATCH-4-REPORTS 报告批次提交（2026-06-03 15:15）。报告路径：`harness/reports/git-batch-4-reports-20260603-151500.md`。commit `7c69986e docs(harness): sync remaining task reports`；24 文件全部为 `harness/reports/*.md` 报告，覆盖 B3-SCOPE-001 / B3-VERIFY-001 / TEST-1（主报告+evidence+retro）/ U-2.5-B（主报告+evidence）/ FUNC-001（主报告+evidence+retro）/ P-FIX-001C（早期+最终主报告+evidence+retro）/ P-FIX-002（evidence）/ P-FIX-002D（retro）/ GIT-BATCH-2 / GIT-BATCH-3 / content-retire × 3 / 本批次报告。验证：`git diff --check` PASS（仅 CRLF 警告）、`git diff --cached --check` PASS、`safety-check -Scope docs -DryRun` PASS、`verify-local -Scope docs` PASS。推送 `gitee` + `origin` 成功（`ba7f1996..7c69986e`）。未修改后端 / 前端 / SQL / Docker / 数据库；未执行数据库操作；未重启容器；未部署远端。Git Exit Gate 终态 `DONE_WITH_REGISTERED_DIRTY`。残留 dirty：1（`backend/src/main/resources/application-real-pre.yml` P-FIX-002A 同步配置残留，5 行 `product.activity.sync`，已分类为 `previous_partial`，留待 P-FIX-002-CONFIG-RESIDUAL 任务单独处理）。状态 `DONE`。
 - 重要口径：本次治理针对 SYNC-PLAN-001 暴露的"多任务 dirty 膨胀 + 提交门禁缺失"问题。Batch 3 提交时已使用 Dirty Classification 和 B3-SCOPE-001 范围隔离作为本任务新规的事前验证，证明强约束可执行。下一步：执行 P-FIX-002-CONFIG-RESIDUAL 单独处理 `application-real-pre.yml`，然后执行 GIT-EXIT-001 最终清洁检查。两者完成后才能进入新业务任务（U-3 / P-VERIFY-002 等）。
+- 已完成：P-FIX-002-CONFIG-RESIDUAL 处理 application-real-pre.yml 商品同步配置残留（2026-06-03 15:20）。报告路径：`harness/reports/p-fix-002-config-residual-20260603-152000.md`。state commit `78bdf8fa docs(harness): GIT-BATCH-4-REPORTS record batch 4 state`（CURRENT_STATE + HARNESS_CHANGELOG v0.5.1）已 push 双远端；`application-real-pre.yml` 已 `git restore` 至 HEAD 一致（5 行 `product.activity.sync` 与 `application.yml` + compose env 行为等价，无需提交）。未修改业务代码、未写库、未重启容器、未部署远端。Git Exit Gate 终态 `DONE_CLEAN`。
+- 已完成（代码 + 运行态）：P0-ORDER-001 真实订单同步与渠道可见修复（2026-06-03 17:30–18:04）。报告路径：`harness/reports/p0-order-001-real-order-visible-20260603-180450.md`、`harness/reports/p0-order-001-diagnosis-20260603-173500.md`、`harness/reports/p0-order-001-intake-20260603-172923.md`。**根因**：`RealDouyinOrderGateway#listSettlement` 调用 `buyin.colonelMultiSettlementOrders` 时硬编码 `time_type=update` + 10 分钟滚动窗口，刚 PAY_SUCC 订单遇上游 update_time 延迟会丢单（抖音不存在 `time_type=pay`）。**修复**：新增 `OrderSyncService#syncPayRecentWindow()` 6 小时大窗口低频回扫，独立锁 `ORDER_SYNC_PAY_RECENT` + 独立 Redis 水位 `order:sync:pay_recent_last_time`，不覆盖 10 分钟增量同步水位；`OrderSyncJob` 新增 `syncPayRecent()` `@Scheduled` 每 30 分钟；服务层 / job 层同步日志增加 `mode/timeType/inserted/updated/attributed/unattributed/noPickSource/noMapping/failed` 维度；attribution_status 字段已存在无需 migration；admin/channel 数据范围逻辑已正确（admin ALL 见全部，channel PERSONAL 只见自己已归因，`/orders/unattributed` admin 排查 NO_PICK_SOURCE / NO_MAPPING）。**测试**：新建 `OrderSyncServiceTest` 6 用例、`OrderSyncJobTest` +4、`OrderControllerTest` +3，全量 `mvn test` **1688 / 0 / 0** 通过；`mvn package` BUILD SUCCESS；`safety-check -Scope backend -DryRun` PASS；本地 backend-real-pre rebuild + recreate 后 `{"status":"UP"}`，双 scheduler 立即首次执行：INCREMENTAL 窗口 628s（10min + overlap），PAY_RECENT 窗口 21600s（6h），两 Redis key 共存独立。**Final Status**：`PARTIAL_DIRTY_REMAINING`——代码 / 测试 / 构建 / 容器 / 日志 / 双轨调度全部 PASS，真实订单端到端业务验证 BLOCKED_BY_SAMPLE（需等待商务侧真实付款样本）；本任务未执行 git commit/push，dirty 已分类，残留 3 个 untracked 报告（2 个并行会话的 ORDER-API-729-VERIFY + 1 个 P-FIX-002-CONFIG-RESIDUAL）与本任务正交，留待下个会话单独批次处理。未修改寄样 / 达人 / 商品 / 业绩 / 独家 / 前端 / 数据库 schema / docker-compose / env / `application-real-pre.yml`，未 `git add .`，未 `down -v`。
 
 ## 旧文档冲突处理
 
