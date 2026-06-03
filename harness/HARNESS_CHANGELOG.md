@@ -1,5 +1,20 @@
 # Harness Changelog
 
+## v0.5.1
+
+- 完成 GIT-BATCH-4-REPORTS 报告批次提交（2026-06-03）。
+- 生成报告：`harness/reports/git-batch-4-reports-20260603-151500.md`。
+- commit：`7c69986e docs(harness): sync remaining task reports`。
+- 24 文件全部为 `harness/reports/*.md`，覆盖：B3-SCOPE-001 / B3-VERIFY-001 / TEST-1（主报告+evidence+retro）/ U-2.5-B（主报告+evidence）/ FUNC-001（主报告+evidence+retro）/ P-FIX-001C（早期+最终主报告+evidence+retro）/ P-FIX-002（evidence）/ P-FIX-002D（retro）/ GIT-BATCH-2 / GIT-BATCH-3 / content-retire × 3 / 本批次报告。
+- 验证：typecheck N/A、staged check N/A、`safety-check -Scope docs -DryRun` PASS、`verify-local -Scope docs` PASS、`git diff --check` PASS（仅 CRLF 警告）、`git diff --cached --check` PASS。
+- 推送：`gitee` + `origin` 同步推送 `ba7f1996..7c69986e`。
+- 未修改后端 / SQL / Docker / 业务代码 / 数据库。
+- 未执行数据库操作。
+- 未重启容器。
+- 未部署远端。
+- 状态 `DONE`。
+- 残留 dirty：1（`backend/src/main/resources/application-real-pre.yml` P-FIX-002A 配置残留，`previous_partial` 已登记到 P-FIX-002-CONFIG-RESIDUAL 任务）。
+
 ## v0.5.0
 
 - 完成 GIT-HARNESS-001 Git 工作区治理与批次提交门禁强化（2026-06-03）。
