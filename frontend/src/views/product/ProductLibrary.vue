@@ -14,8 +14,8 @@
       :library-status="libraryStatus"
       :loading="loading"
       :category-options="libraryCategoryOptions"
-      @update:filters="filters = $event"
-      @update:library-status="libraryStatus = $event"
+      @update:filters="handleFiltersChange"
+      @update:library-status="handleLibraryStatusChange"
       @search-click="refreshProducts"
       @reset="resetFilters"
     />
@@ -152,7 +152,7 @@ import {
 } from './product-library-route-sync'
 import { tryCopyText } from '../../utils/clipboard'
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 100
 
 const message = useMessage()
 const route = useRoute()
@@ -164,6 +164,7 @@ const showInitialLoading = useDelayedFlag(loading, 200)
 const loadingMore = ref(false)
 const promotionLoadingIds = ref<Set<string>>(new Set())
 const products = ref<any[]>([])
+const currentPage = ref(1)
 const hasMore = ref(false)
 const totalCount = ref(0)
 const libraryStatus = ref<number | null>(null)
@@ -248,9 +249,15 @@ const replaceProductRow = (productId: string, nextRow: any) => {
 const fetchProducts = async (reset: boolean) => {
   if (reset) loading.value = true
   else loadingMore.value = true
+  if (reset) {
+    currentPage.value = 1
+    products.value = []
+    hasMore.value = false
+    totalCount.value = 0
+  }
 
   try {
-    const page = reset ? 1 : Math.floor(products.value.length / PAGE_SIZE) + 1
+    const page = reset ? 1 : currentPage.value + 1
     const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
       page,
       size: PAGE_SIZE,
@@ -268,15 +275,19 @@ const fetchProducts = async (reset: boolean) => {
       })
     )
     products.value = reset ? items : products.value.concat(items)
-    const currentPage = Number(data.page || page || 1)
+    const responsePage = Number(data.page || page || 1)
     const pageSize = Number(data.size || PAGE_SIZE)
     const total = Number(data.total || 0)
+    currentPage.value = Number.isFinite(responsePage) && responsePage > 0 ? responsePage : page
     totalCount.value = total
-    hasMore.value = currentPage * pageSize < total
+    hasMore.value = total > 0
+      ? products.value.length < total
+      : items.length >= pageSize
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '商品查询失败' })
     if (reset) {
       products.value = []
+      currentPage.value = 1
       hasMore.value = false
       totalCount.value = 0
     }
@@ -302,7 +313,17 @@ const refreshProducts = async () => {
 }
 
 const loadMore = () => {
-  if (hasMore.value) fetchProducts(false)
+  if (hasMore.value && !loading.value && !loadingMore.value) fetchProducts(false)
+}
+
+const handleFiltersChange = (nextFilters: ProductFilterState) => {
+  filters.value = nextFilters
+  void refreshProducts()
+}
+
+const handleLibraryStatusChange = (nextStatus: number | null) => {
+  libraryStatus.value = nextStatus
+  void refreshProducts()
 }
 
 const openDetail = (row: any) => {

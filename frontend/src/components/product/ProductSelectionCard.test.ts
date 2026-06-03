@@ -188,23 +188,23 @@ describe('ProductSelectionCard hover drawer', () => {
     // 触屏端 → !true = false → click-mode
   })
 
-  it('店铺评分字段在抽屉中渲染（shopScore 有值时）', async () => {
+  it('商家评分字段在抽屉中渲染（shopScore 有值时）', async () => {
     const wrapper = mountCard()
     // hover-mode 下 drawer-shell DOM 常驻（CSS 控制可见性）
     const drawer = wrapper.find('[data-testid="product-selection-drawer"]')
     expect(drawer.exists()).toBe(true)
     // 抽屉字段列表是 computed，hover 触发前 DOM 已渲染（drawer-shell 常驻）
-    // 断言店铺评分标签 + 值都在
-    expect(drawer.text()).toContain('店铺评分')
+    // 断言商家评分标签 + 值都在
+    expect(drawer.text()).toContain('商家评分')
     expect(drawer.text()).toContain('90')
   })
 
-  it('店铺评分字段在 shopScore 为 null 时显示为占位符', async () => {
+  it('商家评分字段在 shopScore 为 null 时显示为占位符', async () => {
     const wrapper = mountCard({ card: { ...baseCard, shopScore: null } })
     const drawer = wrapper.find('[data-testid="product-selection-drawer"]')
     expect(drawer.exists()).toBe(true)
-    // 字段行仍展示「店铺评分」label；dd 内容为空时 template 走 '-'
-    expect(drawer.text()).toContain('店铺评分')
+    // 字段行仍展示「商家评分」label；dd 内容为空时 template 走 '-'
+    expect(drawer.text()).toContain('商家评分')
   })
 
   it('活动字段在 drawer 中展示 activityName（来自后端补传）', async () => {
@@ -213,5 +213,36 @@ describe('ProductSelectionCard hover drawer', () => {
     expect(drawer.exists()).toBe(true)
     expect(drawer.text()).toContain('活动')
     expect(drawer.text()).toContain('测试活动')
+  })
+
+  it('展示默认态核心指标（直播价、佣金率、服务费率）', () => {
+    const wrapper = mountCard()
+    const metricsGrid = wrapper.find('.selection-card__metrics-grid')
+    expect(metricsGrid.exists()).toBe(true)
+    expect(metricsGrid.text()).toContain('¥99.00') // price
+    expect(metricsGrid.text()).toContain('20%') // commission
+    expect(metricsGrid.text()).toContain('-') // service fee rate
+  })
+
+  it('提供复制ID和复制链接按钮且行为正确', async () => {
+    const wrapper = mountCard()
+    const copyIdBtn = wrapper.find('[data-testid="product-copy-id"]')
+    const copyUrlBtn = wrapper.find('[data-testid="product-copy-url"]')
+    expect(copyIdBtn.exists()).toBe(true)
+    expect(copyUrlBtn.exists()).toBe(true)
+  })
+
+  it('默认态投放期佣金为空占位时回退展示佣金率', () => {
+    const wrapper = mountCard()
+    const firstMetric = wrapper.find('.selection-card__metric-tag')
+
+    expect(firstMetric.text()).toBe('佣 20%')
+  })
+
+  it('hover 详情字段按 FUNC-001 要求展示标签顺序', () => {
+    const wrapper = mountCard()
+    const labels = wrapper.findAll('.selection-card__field dt').map((node) => node.text())
+
+    expect(labels).toEqual(['招商', '寄样', '时间', '团长', '店铺', '活动', '库存', '商家评分'])
   })
 })
