@@ -32,6 +32,7 @@ import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.SampleStatusLog;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
@@ -368,6 +369,8 @@ public class SampleApplicationService extends BaseController {
         sample.setRemark(request.getRemark());
         sample.setExtraData(buildSampleExtraData(request, eligibility));
         sampleRequestMapper.insert(sample);
+        /* 回写收货地址到认领记录，供下次寄样自动带入 */
+        writeBackClaimAddress(userId, talent.getId(), sample);
         sampleStatusLogService.log(sample.getId(), null, sample.getStatus(), userId, "create sample request");
         sampleDomainEventPublisher.publishSampleCreated(
                 sample,
@@ -3660,5 +3663,33 @@ public class SampleApplicationService extends BaseController {
      */
     private void persistSample(SampleRequest sample) {
         OptimisticLockSupport.requireUpdated(sampleRequestMapper.updateById(sample));
+    }
+
+    /**
+     * 寄样创建成功后，将本次填写的收货地址回写到认领记录。
+     * <p>仅当地址非空时才回写；认领关系不存在时静默跳过。</p>
+     *
+     * @param channelUserId 渠道归属用户 ID
+     * @param talentId      达人 ID
+     * @param sample        本次创建的寄样申请
+     */
+    private void writeBackClaimAddress(UUID channelUserId, UUID talentId, SampleRequest sample) {
+        if (channelUserId == null || talentId == null) {
+            return;
+        }
+        String name = sample.getRecipientName();
+        String phone = sample.getRecipientPhone();
+        String address = sample.getRecipientAddress();
+        if (!StringUtils.hasText(name) && !StringUtils.hasText(phone) && !StringUtils.hasText(address)) {
+            return;
+        }
+        TalentClaim claim = talentClaimMapper.findActiveByTalentAndUser(talentId, channelUserId);
+        if (claim != null) {
+            claim.setRecipientName(name);
+            claim.setRecipientPhone(phone);
+            claim.setRecipientAddress(address);
+            talentClaimMapper.updateById(claim);
+            log.debug("T-ADDR: writeback claim address for talent={}, channel={}", talentId, channelUserId);
+        }
     }
 }

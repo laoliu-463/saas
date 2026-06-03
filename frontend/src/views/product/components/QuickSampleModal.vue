@@ -85,6 +85,7 @@ import { getActivityProductSkus } from '../../../api/activityProduct'
 import {
   getTalentPrivate,
   getTalentByChannel,
+  getTalentShippingAddress,
   parsePrivateTalentPoolResponse,
   toPrivateTalentSelectOption
 } from '../../../api/talent'
@@ -220,9 +221,16 @@ const loadTalents = async () => {
 const handleChannelChange = () => {
   // 切换渠道时清空已选达人，重新加载该渠道的达人
   form.value.talentIds = []
+  clearAddressFields()
   if (form.value.channelUserId) {
     loadTalents()
   }
+}
+
+const clearAddressFields = () => {
+  form.value.recipientName = ''
+  form.value.recipientPhone = ''
+  form.value.recipientAddress = ''
 }
 
 const formatQuickSampleFailureDetail = (data: any) => {
@@ -247,6 +255,23 @@ watch(visible, (show) => {
     }
     loadTalents()
     loadSkus()
+  }
+})
+
+/** 选择达人后自动加载默认收货地址 */
+watch(() => form.value.talentIds, async (talentIds) => {
+  if (!talentIds || talentIds.length === 0) return
+  const talentId = talentIds[0]
+  if (!talentId || !UUID_PATTERN.test(talentId)) return
+  try {
+    const addr = await getTalentShippingAddress(talentId)
+    if (!form.value.recipientName && !form.value.recipientPhone && !form.value.recipientAddress) {
+      form.value.recipientName = addr?.recipientName || ''
+      form.value.recipientPhone = addr?.recipientPhone || ''
+      form.value.recipientAddress = addr?.recipientAddress || ''
+    }
+  } catch {
+    // 加载地址失败不阻断寄样流程
   }
 })
 

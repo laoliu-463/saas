@@ -78,6 +78,7 @@
 import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { createSample, getSampleProductCandidates, searchSampleTalents } from '../../../api/sample'
+import { getTalentShippingAddress } from '../../../api/talent'
 import { resolveSafeAvatarUrl } from '../../../utils/media'
 import { notifyApiFailure } from '../../../utils/requestError'
 
@@ -210,15 +211,30 @@ function chooseTalent(row: any) {
   formData.talentFansCount = row.fansCount
   formData.talentCreditScore = row.creditScore
   formData.talentMainCategory = row.mainCategory
+  // 选择达人后自动加载默认收货地址
+  loadDefaultAddress(row.talentId)
+}
+
+/**
+ * 加载达人默认收货地址并填充到表单。
+ * 仅在所有地址字段都为空时自动填充，不覆盖用户已修改内容。
+ */
+async function loadDefaultAddress(talentId: string) {
+  if (!talentId) return
+  try {
+    const addr = await getTalentShippingAddress(talentId)
+    if (!formData.receiverName && !formData.receiverPhone && !formData.receiverAddress) {
+      formData.receiverName = addr?.recipientName || ''
+      formData.receiverPhone = addr?.recipientPhone || ''
+      formData.receiverAddress = addr?.recipientAddress || ''
+    }
+  } catch {
+    // 加载地址失败不阻断寄样流程，用户可手动填写
+  }
 }
 
 function buildRemark() {
-  return [
-    `申请理由：${formData.reason}`,
-    `收货人：${formData.receiverName}`,
-    `手机号：${formData.receiverPhone}`,
-    `地址：${formData.receiverAddress}`
-  ].join('\n')
+  return formData.reason ? `申请理由：${formData.reason}` : ''
 }
 
 function resetForm() {
@@ -253,6 +269,9 @@ function handleSubmit() {
         talentMainCategory: formData.talentMainCategory,
         productId: formData.productId,
         quantity: 1,
+        receiverName: formData.receiverName || undefined,
+        receiverPhone: formData.receiverPhone || undefined,
+        receiverAddress: formData.receiverAddress || undefined,
         remark: buildRemark()
       })
       message.success('寄样申请已提交，状态为待审核')

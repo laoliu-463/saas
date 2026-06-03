@@ -12,6 +12,7 @@ import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
@@ -30,6 +31,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -516,5 +518,160 @@ class QuickSampleApplyTest {
 
         assertThat(response.getSuccessCount()).isEqualTo(1);
         assertThat(response.getFailureCount()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldSaveTalentAddressAfterSampleApply() {
+        UUID relationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Product product = new Product();
+        product.setId(relationId);
+        product.setProductId("9001");
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(relationId);
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+
+        ProductOperationState state = new ProductOperationState();
+        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setSelectedToLibrary(true);
+
+        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
+        talentInfo.setTalentId("douyin_talent_001");
+        talentInfo.setNickname("达人A");
+
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        talent.setDouyinUid("douyin_talent_001");
+
+        TalentClaim claim = new TalentClaim();
+        claim.setTalentId(talent.getId());
+        claim.setUserId(userId);
+
+        when(productService.getById(relationId)).thenReturn(product);
+        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
+        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
+        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId)).thenReturn(claim);
+        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
+                new SampleEligibilityService.EligibilityResult(true, null, null, null));
+        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
+        when(talentClaimMapper.updateById(any(TalentClaim.class))).thenReturn(1);
+
+        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
+        request.setTalentIds(List.of("douyin_talent_001"));
+        request.setRecipientName("张三");
+        request.setRecipientPhone("13800138000");
+        request.setRecipientAddress("北京市朝阳区某地址");
+
+        service.applyQuickSample(
+                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+
+        verify(talentClaimMapper).updateById(any(TalentClaim.class));
+    }
+
+    @Test
+    void shouldNotWriteBackAddressWhenEmpty() {
+        UUID relationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Product product = new Product();
+        product.setId(relationId);
+        product.setProductId("9001");
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(relationId);
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+
+        ProductOperationState state = new ProductOperationState();
+        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setSelectedToLibrary(true);
+
+        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
+        talentInfo.setTalentId("douyin_talent_001");
+        talentInfo.setNickname("达人A");
+
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        talent.setDouyinUid("douyin_talent_001");
+
+        TalentClaim claim = new TalentClaim();
+        claim.setTalentId(talent.getId());
+        claim.setUserId(userId);
+
+        when(productService.getById(relationId)).thenReturn(product);
+        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
+        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
+        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId)).thenReturn(claim);
+        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
+                new SampleEligibilityService.EligibilityResult(true, null, null, null));
+        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
+
+        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
+        request.setTalentIds(List.of("douyin_talent_001"));
+        // 不设置地址字段
+
+        service.applyQuickSample(
+                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+
+        // 地址为空时不应调用 updateById 回写
+        verify(talentClaimMapper, never()).updateById(any(TalentClaim.class));
+    }
+
+    @Test
+    void shouldSkipWriteBackWhenClaimNotFound() {
+        UUID relationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Product product = new Product();
+        product.setId(relationId);
+        product.setProductId("9001");
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(relationId);
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+
+        ProductOperationState state = new ProductOperationState();
+        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setSelectedToLibrary(true);
+
+        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
+        talentInfo.setTalentId("douyin_talent_001");
+        talentInfo.setNickname("达人A");
+
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        talent.setDouyinUid("douyin_talent_001");
+
+        when(productService.getById(relationId)).thenReturn(product);
+        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
+        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
+        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        org.mockito.Mockito.lenient().when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        org.mockito.Mockito.lenient().when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
+                new SampleEligibilityService.EligibilityResult(true, null, null, null));
+        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
+        // 管理员场景下 findActiveByTalentAndUser 返回 null
+        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId)).thenReturn(null);
+
+        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
+        request.setTalentIds(List.of("douyin_talent_001"));
+        request.setRecipientName("张三");
+        request.setRecipientPhone("13800138000");
+        request.setRecipientAddress("北京市朝阳区某地址");
+
+        // 不应抛出异常
+        var response = service.applyQuickSample(
+                relationId, request, userId, UUID.randomUUID(), List.of("admin"));
+
+        // claim 不存在时不应调用 updateById
+        verify(talentClaimMapper, never()).updateById(any(TalentClaim.class));
     }
 }
