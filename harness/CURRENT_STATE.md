@@ -3,7 +3,7 @@
 ## 当前日期
 
 - 记录日期：2026-06-03
-- Harness 版本：v0.2.0
+- Harness 版本：v0.4.0
 
 ## 当前技术栈
 
@@ -107,8 +107,19 @@ real-pre 必须保持：
 - 已完成：用户域 U-1 现状盘点（2026-06-03），报告路径：`harness/reports/user-domain-u1-inventory-20260603-090000.md`。
 - 已完成：用户域 U-2 表结构与领域模型对齐（2026-06-03），报告路径：`harness/reports/user-domain-u2-model-schema-alignment-20260603-150000.md`。核心结论：7 张用户域表字段与 Entity 对齐；同时确认 P0 风险：`dept_type` 常量类、migration 和 real-pre 数据值冲突。
 - 已完成：用户域 U-2.5-A dept_type 统一与最小修复方案设计（2026-06-03），报告路径：`harness/reports/user-domain-u2_5-dept-type-unification-plan-20260603-094513.md`。本次未修改 Java / Vue / SQL，未执行数据库写操作，未重启容器，未部署；仅执行 real-pre 只读 SELECT 和 docs 范围安全检查。
-- 下一阶段：用户域 U-2.5-B dept_type 最小修复。修复后再进入 U-3 CurrentUser / PermissionContext 统一。
-- 重要口径：本次是 Harness 文档治理，不代表 Java / Vue / SQL 已完成 DDD 重构。
+- 已完成：用户域 U-2.5-B dept_type 最小修复（2026-06-03），报告路径：`harness/reports/user-domain-u2_5b-dept-type-minimal-fix-20260603-101503.md`。统一 Java 标准到 `DeptType.java`，删除 `DeptTypes.java`，更新 seed/init 和既有 dept_type 幂等脚本；未新增独立 migration，未执行 real-pre 数据库写操作，未重启容器，未部署远端。
+- 已完成：TEST-1 全量后端测试 6 failures 归因与最小修复（2026-06-03），报告路径：`harness/reports/test-1-full-backend-failures-fix-20260603-104601.md`。指定失败集合复现时实际为 53 tests / 3 failures / 7 errors；修复仅涉及 `SysUserServiceTest`、`SysUserControllerTest`、`CommissionRuleServiceTest`、`CommissionRuleControllerTest` 测试夹具/断言，未修改业务代码、Vue、数据库或容器配置；全量 `mvn -f backend/pom.xml test` 已通过 1671 tests / 0 failures / 0 errors。
+- 下一阶段：建议先执行 U-2.5-D 安全拆分提交与状态收口，再进入用户域 U-3 CurrentUser / PermissionContext 统一；real-pre 历史 `sys_dept.dept_type` 如需写库修复，必须另起 DB 任务执行备份、dry-run、审批和回滚方案。
+- 重要口径：U-2.5-B 是 dept_type 最小修复，不代表 Java / Vue / SQL 已完成完整 DDD 重构。
+- 已完成：Completion Gate 完成门禁系统新增（2026-06-03）。新增 `harness/COMPLETION_GATES.md`，定义 Gate 0-4 五个完成门禁；修改 `AGENT_CONTRACT.md` 增加禁止提前完成强约束；修改 `FORBIDDEN_SCOPE.md` 增加 13 条禁止虚假完成规则和 6 种合法状态；修改 `TASK_ROUTING.md` 增加 Task -> Gate 路由表和升级规则；修改 `state/DOMAIN_STATUS.md` 增加任务结束状态更新规则。
+- 已完成：Session Exit Gate 会话退出门禁 + Quality Ledger 质量账本新增（2026-06-03）。新增 `harness/SESSION_EXIT_GATE.md`，定义 Clean State 五项硬门禁（Build Clean、Test Clean、Progress Recorded、Artifacts Clean、Startup Path Clean）和退出检查模板；新增 `harness/QUALITY_LEDGER.md`，初始化 9 个模块质量评分；修改 `AGENT_CONTRACT.md` 增加 Session Exit Gate 强约束；修改 `FORBIDDEN_SCOPE.md` 增加 10 条禁止留下脏状态规则；修改 `TASK_ROUTING.md` 增加 Session Exit Gate 路由；修改 `state/DOMAIN_STATUS.md` 增加 Session Exit 时领域状态更新规则。
+- 已完成验证：FUNC-001 商品库卡片默认态与悬浮展开态改造（2026-06-03）。报告路径：`harness/reports/func-001-product-card-hover-ui-20260603-111451.md`，evidence：`harness/reports/evidence-20260603-111733.md`。完成商品库卡片佣金兜底、hover 详情字段顺序和 E2E real-pre 验证；未修改后端或数据库。会话最终状态为 `PARTIAL`，原因是工作区存在任务前遗留 dirty 变更且未安全提交/推送。
+- 已完成验证：P-FIX-001C 商品库分页弱化改造（2026-06-03）。报告路径：`harness/reports/p-fix-001c-product-library-pagination-20260603-113616.md`，evidence：`harness/reports/evidence-20260603-113632.md`。方案为"加载更多"；商品库默认 `pageSize=100`；已加载商品 append 展示，筛选/推广状态变更重置到第一页；未修改后端或数据库；已执行 frontend build、typecheck、相关 Vitest、real-pre 前端容器重启、健康检查和页面 smoke。会话最终状态为 `PARTIAL`，原因是工作区存在任务前遗留 dirty / untracked 且未安全提交/推送，远端未部署。
+- 已完成：P-DIAG-002 商品库数量不足排查（2026-06-03）。报告路径：`harness/reports/p-diag-002-product-library-count-sync-remote-20260603-114742.md`。纯只读排查，未修改代码、未写库、未重启容器、未部署远端。三个并存根因：(A) 远端同步任务禁用（`PRODUCT_ACTIVITY_SYNC_ENABLED` 未设置），(B) 唯一索引 `uk_pos_one_displaying_per_product` 冲突导致同步事务回滚，(C) 过期活动商品卡 PENDING 状态。本地 1958 展示中 vs 远端 420 展示中。下一步建议：P-FIX-002A 同步链路修复 / P-FIX-002B 展示规则重算 / P-FIX-002D 远端部署对齐。
+- 已完成：P-FIX-002A 商品活动同步任务启用与 5 分钟周期配置（2026-06-03）。报告路径：`harness/reports/p-fix-002a-product-sync-5min-config-20260603-120100.md`。将 `@Scheduled` 默认 cron 从每 2 小时改为每 5 分钟，新增启动配置日志，compose environment 显式传递同步参数，部署 runbook/脚本新增同步参数检查。未执行数据库写操作、未重启容器、未部署远端。必须先完成 P-FIX-002B 修复唯一索引冲突再实际启用远端同步。
+- 已完成配置准备：P-FIX-002 商品库数量不足修复（2026-06-03）。报告路径：`harness/reports/p-fix-002-product-sync-display-5min-20260603-121257.md`，evidence：`harness/reports/evidence-20260603-122021.md`。包含四阶段：A) 同步周期 5 分钟配置（已完成）；B) 唯一索引 `uk_pos_one_displaying_per_product` 冲突修复——`ProductDisplayRuleService.applyNormalDisplayDedup` 改为三阶段持久化（先降级旧 DISPLAYING，再处理其他非 DISPLAYING，最后升级新 winner），新增/补齐 4 个相关测试；C) 只读对账（本地 7284 快照 / 1963 展示中 / 无重复 DISPLAYING / 716 推广中但未展示）；D) 远端参数对齐（配置已准备，待独立部署任务）。未执行数据库写操作、未重启容器、未部署远端。任务口径 `DONE_CONFIG_READY`；Completion Gate 口径 `PARTIAL`，因为新 jar 尚未加载到运行态。
+- 已完成运行态验证：P-FIX-002D 本地 real-pre 重启加载商品同步修复并验证 5 分钟同步任务（2026-06-03）。报告路径：`harness/reports/p-fix-002d-real-pre-runtime-verify-20260603-123411.md`。重启 backend-real-pre 容器，新 jar 已加载（Jun 3 04:15 UTC），同步配置生效（`enabled=true, cron=0 */5 * * * ?`），两个 5 分钟周期正常执行（ok=3+ok=0, fail=0），零唯一索引冲突。同步后本地 7323 快照 / 2377 DISPLAYING / 4575 HIDDEN / 371 PENDING / 无重复。API total=2377 与 SQL 一致。状态 `DONE_RUNTIME_VERIFIED`。未执行手工数据库写操作、未部署远端。可进入远端部署对齐阶段。
+- 已完成远端部署验证：P-FIX-002D-REMOTE 远端部署对齐商品同步修复并验证 5 分钟同步任务（2026-06-03）。报告路径：`harness/reports/p-fix-002d-remote-deploy-verify-20260603-132805.md`。远端 commit 对齐 `dea06e4c`（通过 Gitee 推送后拉取），同步参数生效（`enabled=true, cron=0 */5 * * * ?`），两个 5 分钟周期正常执行（ok=5+ok=0, fail=0），零唯一索引冲突。远端 3846 快照 / 604 DISPLAYING / 1114 HIDDEN / 2128 PENDING / 无重复。API total=604 与 SQL 一致。远端 env 手工补齐 `PRODUCT_ACTIVITY_SYNC_ENABLED=true` 和 `PRODUCT_ACTIVITY_SYNC_CRON`。状态 `DONE_REMOTE_VERIFIED`。未执行手工数据库写操作、未清库。下一步：P-VERIFY-002 远端商品库数量复核（建议 1-2 小时后），如有需要再做 P-FIX-002E repair。
 
 ## 旧文档冲突处理
 
@@ -123,6 +134,8 @@ real-pre 必须保持：
 | 物流 API 自动跟踪 | V1 以手动物流和可证据物流接口为准 |
 
 冲突不得靠 AI 自行裁决；必须补充证据并写入 `docs/决策/ADR-002-V1范围优先级.md`。
+
+- 已完成：SYNC-PLAN-001 本地未推送内容分批同步与部署计划（2026-06-03）。报告路径：`harness/reports/sync-plan-001-batch-sync-deploy-plan-20260603-143000.md`。共清点 110 个 dirty 文件，分为 5 个批次：Batch 1 harness-docs（19 文件）、Batch 2 frontend-product-ui（5 文件）、Batch 3 backend-user-domain-u2_5-test1（15 文件）、Batch 4 任务报告（15 文件）、Batch 5 cleanup-retire（78 文件）。推荐执行顺序：Batch 4 → Batch 1 → Batch 5 → Batch 2 → Batch 3。未提交业务代码、未执行数据库操作、未部署远端。
 
 ## 待确认
 

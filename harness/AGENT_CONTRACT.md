@@ -75,11 +75,50 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 
 后续 Agent 不允许临时发明构建、重启、部署流程。除非用户明确要求 `test`，默认使用本地 `real-pre`；远端部署仍必须由用户明确要求后再传 `-DeployRemote true`。除非用户明确要求，否则必须优先调用 `harness/commands/agent-do.ps1` 或其中的子脚本。
 
+## Completion Gate：禁止提前完成
+
+Agent 不得仅因完成代码修改、文档修改、编译通过、单个接口通过、单个页面可打开而声明 DONE。
+
+除 Gate 0（docs-only）任务外，DONE 必须同时满足：
+
+1. **Scope 已确认**：明确本次任务影响哪些领域、接口、页面、表、脚本、容器。
+2. **Code 已落地**：相关后端 / 前端 / SQL / 测试脚本已完成最小必要修改。
+3. **Build 已通过**：后端编译 / 测试、前端构建或对应最小验证通过。
+4. **Runtime 已加载**：如修改 Java / Vue / SQL / Docker，必须按 real-pre / test 规则重启或确认热更新生效。
+5. **Health 已通过**：后端 health、前端 health、容器状态、日志异常检查通过。
+6. **Business Flow 已验证**：按任务影响范围跑通最小业务闭环，而不是只测单点。
+7. **Evidence 已落盘**：报告、命令输出、关键截图 / 日志 / SQL 结果必须写入 `harness/reports` 或 `runtime/qa/out`。
+8. **State 已更新**：更新 DOMAIN_STATUS、CURRENT_STATE、DECISIONS / CHANGELOG 中与本任务相关的状态。
+9. **Git 已确认**：展示 `git diff` / `git status`；如用户要求，提交并推送。
+10. **Remaining Risks 已说明**：未验证项必须标记 BLOCKED 或 RISK，不能隐藏。
+
+只要任一项缺失，最终状态不得写 DONE，只能写 PARTIAL、BLOCKED_BY_SAMPLE、BLOCKED_BY_EXTERNAL 或 FAILED。
+
+Gate 定义、分类和验证要求见 `harness/COMPLETION_GATES.md`。Agent 必须在任务开始时声明本次选择的 Gate，执行中发现影响范围扩大时必须升级 Gate，不能降级。
+
+## Session Exit Gate
+
+所有 Agent 会话结束前必须执行 `harness/SESSION_EXIT_GATE.md`。
+
+Completion Gate 只证明"本次任务有没有做成"；
+Session Exit Gate 证明"仓库是否处于可交接状态"。
+
+最终 DONE 必须同时满足：
+
+1. 任务对应的 Completion Gate 通过。
+2. Session Exit Gate 五项硬门禁通过（Build Clean、Test Clean、Progress Recorded、Artifacts Clean、Startup Path Clean）。
+3. Evidence 已落盘。
+4. State 已更新。
+5. Git 状态已说明。
+
+如果任务完成但仓库状态不干净，最终状态必须是 PARTIAL，而不是 DONE。
+
 ## Definition of Done
 
 只有同时满足以下条件，才允许声明任务完成：
 
 - 已说明修改范围和影响范围。
+- 已选择 Completion Gate 并按 Gate 要求执行验证。
 - 代码或文档已按任务要求修改。
 - 构建通过，或 `Scope=docs` 明确跳过构建。
 - 对应 Docker 服务已重启，或 `Scope=docs` 明确不需要重启。
@@ -91,6 +130,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 - 若用户明确要求远端部署，远端部署完成并记录远端健康检查。
 - 已生成 `harness/reports/retro-*.md`，或明确说明本次无需 Harness 升级。
 - 剩余风险已列出。
+- 统一最终输出模板已按 `harness/COMPLETION_GATES.md` 格式填写。
 
 ## 状态结论口径
 

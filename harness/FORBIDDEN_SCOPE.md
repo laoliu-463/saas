@@ -86,4 +86,54 @@
 - 禁止未执行健康检查就声明服务正常。
 - 禁止未生成 evidence report 就声明完成。
 - 禁止把 `BLOCKED`、`PENDING`、`PARTIAL` 写成 `PASS`。
-- 禁止用“应该没问题”替代验证结果。
+- 禁止用"应该没问题"替代验证结果。
+
+## 禁止提前完成 / 虚假完成
+
+以下行为禁止：
+
+1. 未重启容器却声称新代码已生效。
+2. 只编译通过就声称业务完成。
+3. 只测 Controller / API，不测数据库落库和下游领域。
+4. 只测后端，不测前端实际页面或接口联动。
+5. 只测 mock，不说明 real-pre 是否验证。
+6. 将 BLOCKED、SKIP、WARN 包装成 PASS 或 DONE。
+7. 缺少真实订单、真实 pick_source、真实 token 时声称订单闭环完成。
+8. 未生成 evidence / report 就声称已验收。
+9. 未更新 DOMAIN_STATUS / CURRENT_STATE 就结束任务。
+10. 把"应该可以""理论上可以"写成"已完成"。
+11. 未选择 Completion Gate 就声明任务完成。
+12. 只验证本域，不验证下游消费者就声称领域闭环。
+13. 修改影响两个以上领域但未跑 E2E 就声称完成。
+
+如果任务存在无法验证项，必须使用以下状态之一：
+
+- `DONE`：按 Gate 要求全部验证通过。
+- `PARTIAL`：部分验证通过，仍有明确未验证项。
+- `BLOCKED_BY_SAMPLE`：缺少真实订单 / pick_source / 样本。
+- `BLOCKED_BY_EXTERNAL`：外部 API / token / 权限包不可用。
+- `FAILED`：已复现失败，需要继续修复或回滚。
+- `RISK_ACCEPTED_BY_USER`：用户明确接受剩余风险。
+
+禁止使用模糊状态：
+
+- 基本完成
+- 应该没问题
+- 已大致完成
+- 待后续观察但算完成
+- 理论上可以
+
+## 禁止留下脏状态
+
+Agent 禁止在以下状态退出：
+
+1. build / test 失败但未说明。
+2. 容器异常但未说明。
+3. 临时文件未清理。
+4. debug 日志、console.log、debugger 残留。
+5. TODO / FIXME 无归属、无计划、无报告。
+6. 修改了启动路径但未更新文档。
+7. 修改了领域状态但未更新 DOMAIN_STATUS。
+8. 修改了 harness 规则但未更新 HARNESS_CHANGELOG。
+9. 没有最终 Session Exit Report。
+10. 让下一个 Agent 需要重新猜测当前状态。

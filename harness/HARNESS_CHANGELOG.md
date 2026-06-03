@@ -1,5 +1,147 @@
 # Harness Changelog
 
+## v0.4.10
+
+- 完成 SYNC-PLAN-001 本地未推送内容分批同步与部署计划（2026-06-03）。
+- 生成报告：`harness/reports/sync-plan-001-batch-sync-deploy-plan-20260603-143000.md`。
+- 共清点 110 个 dirty / untracked 文件，分为 5 个批次：
+  - Batch 1：harness-docs（19 文件，Harness 规则 + 状态 + 新门禁系统）
+  - Batch 2：frontend-product-ui（5 文件，FUNC-001 + P-FIX-001C）
+  - Batch 3：backend-user-domain-u2_5-test1（15 文件，U-2.5-B + TEST-1）
+  - Batch 4：p-fix-002d-remote-report（15 文件，任务报告）
+  - Batch 5：cleanup-retire（78 文件，历史报告归档 + .gitignore）
+- 推荐执行顺序：Batch 4 → Batch 1 → Batch 5 → Batch 2 → Batch 3。
+- 审查确认 `.gitignore` 变更安全（仅添加 `/nul` 忽略 Windows 设备文件）。
+- 审查确认 `application-real-pre.yml` 变更为 P-FIX-002A 同步配置残留，随 Batch 3 一起提交。
+- 未提交业务代码、未执行数据库操作、未部署远端。状态 `DONE_PLAN_GENERATED`。
+- 下一步：用户确认后按计划执行 Batch 4（任务报告）开始分批提交。
+
+## v0.4.9
+
+- 完成 P-FIX-002D-REMOTE 远端部署对齐商品同步修复并验证 5 分钟同步任务（2026-06-03）。
+- 生成报告：`harness/reports/p-fix-002d-remote-deploy-verify-20260603-132805.md`。
+- 远端 commit 对齐 `dea06e4c`（通过 Gitee 推送后拉取，远端服务器从 Gitee 拉取而非 GitHub）。
+- 远端 env 补齐：追加 `PRODUCT_ACTIVITY_SYNC_ENABLED=true` 和 `PRODUCT_ACTIVITY_SYNC_CRON=0 */5 * * * ?` 到 `/opt/saas/env/.env.real-pre`。
+- 远端 Docker Maven 构建（77MB jar, Jun 3 05:17 UTC）+ 容器重启，4 个均 healthy。
+- 同步配置生效（`enabled=true, cron=0 */5 * * * ?, batchSize=20`）。
+- 两个 5 分钟周期正常执行：ok=5+ok=0, fail=0，零唯一索引冲突。
+- 远端对账：3846 快照 / 604 DISPLAYING（从 420 增长 +184）/ 1114 HIDDEN / 2128 PENDING / 无重复。
+- API total=604 与 SQL DISPLAYING=604 完全一致。
+- 未执行手工数据库写操作；未清库。状态 `DONE_REMOTE_VERIFIED`。
+- 更新 `CURRENT_STATE.md`、`state/DOMAIN_STATUS.md`、`state/KNOWN_ISSUES.md`。
+
+## v0.4.8
+
+- 完成 P-FIX-002D 本地 real-pre 运行态验证（2026-06-03）。
+- 生成报告：`harness/reports/p-fix-002d-real-pre-runtime-verify-20260603-123411.md`。
+- 重启 backend-real-pre 容器，新 jar 已加载（Jun 3 04:15 UTC），同步配置生效（`enabled=true, cron=0 */5 * * * ?`）。
+- 两个 5 分钟周期正常执行：ok=3+ok=0, fail=0，零唯一索引冲突。
+- 同步后本地对账：7323 快照 / 2377 DISPLAYING / 4575 HIDDEN / 371 PENDING / 无重复。
+- API total=2377 与 SQL DISPLAYING=2377 完全一致。
+- 未执行手工数据库写操作；未部署远端。状态 `DONE_RUNTIME_VERIFIED`。
+- 更新 `CURRENT_STATE.md`、`state/DOMAIN_STATUS.md`、`state/KNOWN_ISSUES.md`。
+
+## v0.4.7
+
+- 完成 P-FIX-002 商品库数量不足修复的代码与配置准备（2026-06-03），包含 A/B/C/D 四阶段；运行态仍待重启 / 部署验证。
+- 生成报告：`harness/reports/p-fix-002-product-sync-display-5min-20260603-121257.md`。
+- P-FIX-002B 核心修复：`ProductDisplayRuleService.applyNormalDisplayDedup` 从单遍处理改为三阶段持久化（先降级旧 DISPLAYING→HIDDEN，再处理其他非 DISPLAYING，最后升级新 winner→DISPLAYING），避免 `uk_pos_one_displaying_per_product` partial unique index 冲突。
+- 修改 `ProductDisplayRuleService.java`：新增 typed `DisplayDecision record`；`applyNormalDisplayDedup` 改为计算决策 + 三阶段持久化；未删除唯一索引，未改变 winner 选择规则。
+- 修改 `ProductDisplayRuleServiceTest.java`：新增/补齐 4 个相关测试（严格调用顺序、切换顺序、winner 已 DISPLAYING 的幂等性、多候选唯一 DISPLAYING）。
+- P-FIX-002C 只读对账：本地 7284 快照 / 1963 展示中 / 无重复 DISPLAYING / 716 推广中但未展示；商品库 API total=1963 与 SQL DISPLAYING 一致。
+- P-FIX-002D 确认：远端参数已在 P-FIX-002A 中完成配置准备。
+- 验证通过：`ProductDisplayRuleServiceTest` 31 tests / 0 failures、商品相关定向测试 49 tests / 0 failures、全量后端测试 1675 tests / 0 failures、Maven package BUILD SUCCESS、`git diff --check` PASS、`safety-check -Scope full -DryRun` PASS、docker compose config 正确。
+- `safety-check -Scope code -DryRun` 因当前脚本 ValidateSet 仅支持 `backend/frontend/full/docs` 而失败，作为 Harness 口径缺口记录。
+- 未执行数据库写操作；未重启容器；未部署远端。任务口径最终状态 `DONE_CONFIG_READY`；Completion Gate 口径 `PARTIAL`。
+- 更新 `CURRENT_STATE.md`、`state/DOMAIN_STATUS.md`、`state/KNOWN_ISSUES.md`。
+
+## v0.4.6
+
+- 完成 P-FIX-002A 商品活动同步任务启用与 5 分钟周期配置（2026-06-03）。
+- 生成报告：`harness/reports/p-fix-002a-product-sync-5min-config-20260603-120100.md`。
+- 修改 `ProductActivitySyncJob.java`：`@Scheduled` 默认 cron 从 `0 0 */2 * * ?`（每 2 小时）改为 `0 */5 * * * ?`（每 5 分钟）；新增 `@PostConstruct logStartupConfig()` 启动时记录 enabled/cron/batchSize/whitelist；新增 `cronExpression` `@Value` 字段；disabled 日志级别从 info 降为 debug。
+- 修改 `application.yml`：默认 cron 从 `0 0 */2 * * ?` 改为 `0 */5 * * * ?`。
+- 修改 `docker-compose.real-pre.yml`：`backend-real-pre` environment 块新增 `PRODUCT_ACTIVITY_SYNC_ENABLED: ${PRODUCT_ACTIVITY_SYNC_ENABLED:-true}` 和 `PRODUCT_ACTIVITY_SYNC_CRON`。
+- 修改 `.env.real-pre.example`：新增 `PRODUCT_ACTIVITY_SYNC_CRON=0 */5 * * * ?`。
+- 修改 `harness/runbooks/remote-deploy.md`：新增部署前/后同步参数检查章节。
+- 修改 `harness/commands/deploy-remote.ps1`：新增远端 env 同步参数检查和部署后日志验证。
+- 验证通过：Maven package BUILD SUCCESS、`git diff --check` PASS、safety-check PASS、docker compose config 正确解析同步参数。
+- 未执行数据库写操作；未重启容器；未部署远端。必须先完成 P-FIX-002B 修复唯一索引冲突再实际启用远端同步。
+- 更新 `CURRENT_STATE.md`、`state/DOMAIN_STATUS.md`、`state/KNOWN_ISSUES.md`。
+
+## v0.4.5
+
+- 完成 P-DIAG-002 商品库数量不足排查（2026-06-03）。
+- 生成报告：`harness/reports/p-diag-002-product-library-count-sync-remote-20260603-114742.md`。
+- 纯只读排查，未修改 Java/Vue/SQL 代码，未执行数据库写操作，未重启容器，未部署远端。
+- 执行本地 real-pre 只读 SQL 对账（24 活动 / 7278 快照 / 2673 推广中 / 1958 展示中 / 684 PENDING）。
+- 执行后端商品库接口排查（API total=1958 与 SQL 完全一致，P-FIX-001C pageSize=100 正确生效，@Max(100) 限制正常拦截）。
+- 执行同步链路排查（`ProductActivitySyncJob` 默认每 2 小时，默认禁用；`refreshActivitySnapshots` @Transactional 包裹完整事务；`applyForActivityId` 展示去重失败导致事务回滚）。
+- 执行远端服务器只读对账（远端 3601 快照 / 420 展示中 vs 本地 7278 / 1958，远端同步任务禁用、唯一索引冲突、过期活动商品卡 PENDING）。
+- 确认 P-FIX-001C 前端分页改造已生效（PAGE_SIZE=100，loadMore 追加）。
+- 三个并存根因：A) 远端同步任务禁用；B) 唯一索引冲突导致事务回滚；C) 过期活动商品卡 PENDING。
+- 建议下一步：P-FIX-002A 同步链路修复、P-FIX-002B 展示规则重算、P-FIX-002D 远端部署对齐。
+- 更新 `CURRENT_STATE.md`、`state/DOMAIN_STATUS.md`、`state/KNOWN_ISSUES.md`，记录 P-DIAG-002 完成状态和下一步建议。
+
+## v0.4.4
+
+- 完成 P-FIX-001C 商品库分页弱化改造（2026-06-03）。
+- 生成任务报告：`harness/reports/p-fix-001c-product-library-pagination-20260603-113616.md`；生成 evidence：`harness/reports/evidence-20260603-113632.md`；生成 retro：`harness/reports/retro-20260603-113645.md`。
+- 修改前端商品库 `ProductLibrary.vue`：默认 `PAGE_SIZE` 调整为 100；新增 `currentPage`；加载更多按下一页追加；筛选和推广状态变更重置第一页；加载更多增加 loading 锁。
+- 新增 `ProductLibrary.test.ts`，覆盖默认 `size=100`、加载更多 append、筛选重置。
+- 验证通过：相关前端单测 4 files / 50 tests PASS、typecheck PASS、frontend build PASS、`git diff --check` PASS、frontend safety-check PASS、real-pre frontend restart PASS、verify-local PASS、页面 smoke PASS_WITH_NON_TASK_WARNING。
+- 未修改后端或数据库；未部署远端。最终会话状态为 `PARTIAL`，原因是工作区存在任务前遗留 dirty / untracked 且未安全提交/推送。
+- 暴露 Harness 差异：任务模板要求的 `frontend-domain-change.md`、`post-task-gc.md` 不存在；`safety-check -Scope code` 与当前脚本 ValidateSet 不一致，已记录到 `KNOWN_ISSUES.md`。
+
+## v0.4.3
+
+- 完成 FUNC-001 商品库卡片默认态与悬浮展开态改造（2026-06-03）。
+- 生成任务报告：`harness/reports/func-001-product-card-hover-ui-20260603-111451.md`；生成 evidence：`harness/reports/evidence-20260603-111733.md`。
+- 修改前端卡片 `ProductSelectionCard.vue`：修正默认态公开佣金兜底（投放期佣金为 `-` 时回退普通佣金率），调整 hover 详情字段顺序为招商、寄样、时间、团长、店铺、活动、库存、商家评分。
+- 补充 `ProductSelectionCard.test.ts` 测试用例，验证佣金回退和 FUNC-001 字段顺序；更新 `tests/e2e/03b-product-library-drawer-fields.spec.ts`，支持 real-pre 通过 `E2E_SKIP_TEST_SEED=true` 跳过测试种子接口。
+- 验证通过：前端构建（`vue-tsc -b && vite build`）PASS、ProductSelectionCard 12 tests PASS、相关前端单测 82 tests PASS、real-pre 商品库 hover E2E 2 tests PASS、`git diff --check` PASS、frontend safety-check PASS、verify-local PASS。
+- 已执行本地 real-pre 前端 Scope 容器重启；Docker Compose 实际重建/重启了 frontend/backend，最终均 healthy。
+- 未修改任何后端代码或数据库表结构；未部署远端。最终会话状态为 `PARTIAL`，原因是工作区存在任务前遗留 dirty 变更且未安全提交/推送。
+
+## v0.4.2
+
+- 完成 TEST-1 全量后端测试 failures 归因与最小修复（2026-06-03）。
+- 生成报告：`harness/reports/test-1-full-backend-failures-fix-20260603-104601.md`；生成 evidence：`harness/reports/evidence-20260603-104601.md`。
+- 复现指定失败集合时实际为 53 tests / 3 failures / 7 errors；根因为测试夹具/断言未同步当前 `SysUserService.findPage` 4 参数调用、全局 `BusinessException` HTTP 语义，以及 MyBatis-Plus `LambdaQueryWrapper` 表元数据初始化。
+- 最小修改 `SysUserServiceTest`、`SysUserControllerTest`、`CommissionRuleServiceTest`、`CommissionRuleControllerTest`，未修改 Java 业务代码、Vue 前端、数据库、Docker/Compose 或部署配置。
+- 验证通过：4 个失败测试类单跑、失败集合组合测试、U-2.5-B 定向测试、全量 `mvn -f backend/pom.xml test`（1671 tests / 0 failures / 0 errors）、`mvn -f backend/pom.xml -DskipTests package`、`git diff --check`、Harness backend safety-check 和 verify-local。
+- 未执行 real-pre 数据库写操作；未重启容器；未部署远端。U-2.5-B 运行态加载与 real-pre 历史 `dept_type` 写库修复仍需后续独立任务。
+
+## v0.4.1
+
+- 完成用户域 U-2.5-B dept_type 最小修复（2026-06-03）。
+- 生成报告：`harness/reports/user-domain-u2_5b-dept-type-minimal-fix-20260603-101503.md`。
+- 统一 Java dept_type 标准为 `department/recruiter_group/channel_group/ops_group`，以 `DeptType.java` 为唯一标准；删除旧 `DeptTypes.java`，迁移 `service.SysDeptService` 调用点。
+- 更新 `init-db.sql`、`alter-sys-dept.sql`、`alter-sys-dept-uuid-canonical-20260530.sql` 和 `migrate-sys-dept-dept-type.sql`，避免新环境继续写入 `recruiter/channel/dept` 作为 dept_type 标准值。
+- 未新增独立 migration；未执行 real-pre 数据库写操作；未重启容器；未部署远端。real-pre 历史 `dept_type` 写库修复需单独 DB 任务执行。
+- 下一步：用户域 U-3 CurrentUser / PermissionContext 统一。
+
+## v0.4.0
+
+- 新增 Session Exit Gate 会话退出门禁系统（2026-06-03）。
+- 新增 `harness/SESSION_EXIT_GATE.md`：定义 Clean State 五项硬门禁（Build Clean、Test Clean、Progress Recorded、Artifacts Clean、Startup Path Clean）、最终状态规则（DONE / PARTIAL / BLOCKED_BY_SAMPLE / BLOCKED_BY_EXTERNAL / FAILED）、退出检查模板和 10 条禁止事项。
+- 新增 `harness/QUALITY_LEDGER.md`：初始化 9 个模块质量评分（用户域 C、配置域 B、商品域 C、达人域 C、寄样域 B-、订单域 C、业绩域 B-、分析模块 C、Harness B），定义评分标准和更新规则。
+- 修改 `harness/AGENT_CONTRACT.md`：新增"Session Exit Gate"章节，DONE 必须同时满足 Completion Gate + Session Exit Gate。
+- 修改 `harness/FORBIDDEN_SCOPE.md`：新增"禁止留下脏状态"章节，列出 10 条禁止行为。
+- 修改 `harness/TASK_ROUTING.md`：新增"Session Exit Gate 路由"章节，所有任务结束后必须进入退出门禁。
+- 修改 `harness/state/DOMAIN_STATUS.md`：新增"Session Exit 时的领域状态更新"规则。
+- 核心约束：Agent 只有在"任务跑通 + 仓库干净 + 状态可交接"三者同时满足时，才允许说 DONE。
+
+## v0.3.0
+
+- 新增 Completion Gate 完成门禁系统（2026-06-03）。
+- 新增 `harness/COMPLETION_GATES.md`：定义 Gate 0（Docs Only）、Gate 1（Backend Change）、Gate 2（Frontend Change）、Gate 3（Domain Change）、Gate 4（E2E Business Flow）五个完成门禁，包含统一最终输出模板和 9 条强制规则。
+- 修改 `harness/AGENT_CONTRACT.md`：在 Definition of Done 前新增"Completion Gate：禁止提前完成"章节，要求 DONE 必须同时满足 10 项条件；Definition of Done 增加 Gate 选择和统一输出模板要求。
+- 修改 `harness/FORBIDDEN_SCOPE.md`：新增"禁止提前完成 / 虚假完成"章节，列出 13 条禁止行为、6 种合法状态（DONE / PARTIAL / BLOCKED_BY_SAMPLE / BLOCKED_BY_EXTERNAL / FAILED / RISK_ACCEPTED_BY_USER）和 5 种禁止模糊状态。
+- 修改 `harness/TASK_ROUTING.md`：新增"Task -> Completion Gate 路由"章节，按任务关键词绑定默认 Gate；新增 Gate 选择升级规则。
+- 修改 `harness/state/DOMAIN_STATUS.md`：新增"任务结束状态更新规则"章节，要求每次任务结束前必须更新相关领域状态。
+- 核心约束：Agent 不得仅因代码修改、编译通过、单接口通过或单页面打开而声明 DONE；必须按 Gate 验证通过并有证据才能 DONE。
+
 ## v0.2.1
 
 - 完成用户域 U-2.5-A dept_type 统一与最小修复方案设计（2026-06-03）。

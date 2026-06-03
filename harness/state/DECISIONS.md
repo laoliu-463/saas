@@ -15,6 +15,7 @@
 | 分析模块边界 | `docs/决策/ADR-005-分析模块只读汇总.md` | 分析模块不重算业绩 |
 | real-pre 环境 | `docs/决策/ADR-006-real-pre作为上线前联调环境.md` | real-pre 是真实上游 / 生产形态联调环境 |
 | DDD 增量合并 | `harness/plans/DDD_OPTIMIZATION_ROADMAP.md` | 本项目已有 Harness，本次只增量合并 DDD 计划，不重建 Harness |
+| 用户域 dept_type 标准 | `harness/reports/user-domain-u2_5b-dept-type-minimal-fix-20260603-101503.md` | `sys_dept.dept_type` Java / seed 标准统一为 `department/recruiter_group/channel_group/ops_group`，旧 `recruiter/channel/dept` 仅允许出现在 migration 兼容映射中 |
 
 ## 2026-06-02 DDD 优化决策摘要
 

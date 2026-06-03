@@ -83,6 +83,45 @@ DDD 优化顺序固定为：
 - 修改后必须按当前 Scope 执行固定入口；文档任务使用 `Scope=docs`。
 - 任务完成后必须更新 `harness/state/DOMAIN_STATUS.md`、相关 state 和 feedback；没有证据不得把任务状态写成完成。
 
+## Task -> Completion Gate 路由
+
+Agent 必须在任务开始时声明本次选择的 Gate。如果执行中发现影响范围扩大，必须升级 Gate，不能降级。
+
+| 任务关键词 | 默认 Gate | 说明 |
+| --- | --- | --- |
+| 文档、计划、报告、提示词、harness 规则 | Gate 0 | 不允许改业务代码 |
+| 后端、接口、Service、Mapper、SQL、权限、定时任务 | Gate 1 + Gate 3 | 必须跑后端和领域验证 |
+| 前端、页面、按钮、路由、筛选、交互 | Gate 2 + Gate 3 | 必须打开页面验证 |
+| 商品、达人、寄样、订单、业绩、配置、分析 | Gate 3 | 必须验证上下游 |
+| 归因、订单同步、寄样完成、看板、P0、上线、验收 | Gate 4 | 必须跑 E2E |
+| Docker、部署、real-pre、服务器 | Gate 1/2 + 运维验证 | 必须确认容器健康 |
+| 修 bug | 至少复现 -> 修复 -> 回归 | 没有复现不能直接宣称修复 |
+
+Gate 定义和验证要求见 `harness/COMPLETION_GATES.md`。
+
+### Gate 选择升级规则
+
+1. 如果任务开始时判断为 Gate 1，但修改后发现影响下游领域，必须升级到 Gate 3。
+2. 如果任务涉及订单、寄样、业绩或看板，默认 Gate 4。
+3. 如果任务涉及权限 / 数据范围修改且影响多个业务域，默认 Gate 4。
+4. Bug 修复必须先复现，再修复，再回归；没有复现步骤不能直接宣称修复。
+
+## Session Exit Gate 路由
+
+所有任务结束后，无论任务类型和 Gate 级别，都必须进入 Session Exit Gate。
+
+执行顺序：
+
+```text
+Completion Gate 通过
+-> Session Exit Gate 五项检查
+-> 生成 Session Exit Report
+-> 更新 QUALITY_LEDGER.md（如涉及模块质量变化）
+-> 输出最终状态
+```
+
+Session Exit Gate 定义和检查模板见 `harness/SESSION_EXIT_GATE.md`。
+
 ## 执行入口选择
 
 ```powershell
