@@ -1,5 +1,32 @@
 # Harness Changelog
 
+## v0.6.1
+
+- HARNESS-DEBT-GC-001 完成（2026-06-04 00:14）。本轮为 harness 安全清理、归档、瘦身的 docs-only 任务。
+- **新增文件**：
+  - `harness/archive/manifests/manifest-20260604-001052-harness-debt-gc-001-delete.json`（delete manifest：`nul` + `test-results/` + `playwright-report/`）。
+  - `harness/reports/harness-debt-gc-001-inventory-20260604-001052.md`（清理前盘点报告）。
+  - `harness/reports/content-retire-20260604-001401.md`（retire-content.ps1 生成的执行报告）。
+  - `harness/reports/evidence-20260604-001401-harness-debt-gc-001.md`（执行证据）。
+  - `harness/reports/retro-20260604-001401-harness-debt-gc-001.md`（复盘）。
+- **修改文件**：
+  - `harness/state/HARNESS_DEBT.md`：DEBT-013 deferred → **fixed**；DEBT-014 deferred → **wontfix**。
+  - `harness/CURRENT_STATE.md`：追加 HARNESS-DEBT-GC-001 完成段。
+  - `harness/QUALITY_LEDGER.md`：Harness A- → A（垃圾清理与归档已明确口径）。
+- **DEBT 状态**：
+  - 关闭：DEBT-013（共 1 条 deferred → fixed）。
+  - 重新分类：DEBT-014（共 1 条 deferred → wontfix；76 份 reports 全部被证据链引用，reclassify 为受保护）。
+- **删除对象**：
+  - `nul`（Windows 设备文件残留 0 bytes）。
+  - `test-results/`（playwright 测试结果目录）。
+  - `playwright-report/`（playwright HTML 报告 528 KB）。
+- **未做**：
+  - 未归档任何 reports（全部被证据链引用）。
+  - 未修改业务代码 / SQL / Docker / env。
+  - 未重启容器 / 未部署远端。
+  - 未删除已存在的归档批次（`harness/archive/retired-content/20260603-reports-archive/`）。
+  - 未删除任何 evidence / retro 报告。
+
 ## v0.6.0
 
 - HARNESS-DEBT-GOVERNANCE-ITERATION 完成（2026-06-03 23:03）。本轮为 harness 自身治理的 docs-only 任务。

@@ -36,7 +36,7 @@
 | 订单域 | C | P0 验收未清零 | 真实 pick_source 样本缺失；pay_time 字段问题 | O-1 订单 P0 复核 |
 | 业绩域 | B- | profit 修复完成 | 接口补齐与双轨对账仍需验证 | Y-1 业绩接口盘点 |
 | 分析模块 | C | dashboard 对账通过 | 汇总事件化不足 | A-1 分析模块盘点 |
-| Harness | A- | 2026-06-03 HARNESS-DEBT-GOVERNANCE-ITERATION 整理完成 | 已强化债务治理与任务生命周期；DEBT-013/20/22/24 等 P2/P3 仍 deferred | HARNESS-DEBT-GC-001 / HARNESS-AGENT-DO-HARDEN |
+| Harness | A | 2026-06-04 HARNESS-DEBT-GC-001 清理完成 | DEBT-013 fixed / DEBT-014 wontfix；reports 目录受保护状态明确；playwright / nul 临时物已清理 | HARNESS-AGENT-DO-HARDEN |
 
 ---
 

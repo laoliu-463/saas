@@ -36,8 +36,8 @@
 | DEBT-010 | P2 | State | CURRENT_STATE.md 缺目录级索引 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | CURRENT_STATE.md 顶部目录 |
 | DEBT-011 | P2 | State | QUALITY_LEDGER 与 DOMAIN_STATUS 重复 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | QUALITY_LEDGER 顶部指针 |
 | DEBT-012 | P2 | Instruction | doc/ + harness/ + README.md 三方并存 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | harness/README.md 顶部声明 |
-| DEBT-013 | P2 | Environment | 12 个 ad-hoc log 未 .gitignore 排除 | deferred | HARNESS-DEBT-GC-001 | （后续） |
-| DEBT-014 | P2 | Reports | reports/ 72 份未触发归档 | deferred | 超过 100 启动 | — |
+| DEBT-013 | P2 | Environment | 12 个 ad-hoc log 未 .gitignore 排除 | fixed | HARNESS-DEBT-GC-001 | harness/reports/harness-debt-gc-001-inventory-20260604-001052.md |
+| DEBT-014 | P2 | Reports | reports/ 72 份未触发归档 | wontfix | HARNESS-DEBT-GC-001 | harness/reports/harness-debt-gc-001-inventory-20260604-001052.md |
 | DEBT-015 | P2 | doc | doc/01-instructions/05 与 instructions/* 重叠 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | doc 顶部加指针 |
 | DEBT-016 | P2 | Plan | DDD_DOMAIN_TASK_MATRIX 未更新 | deferred | DDD 任务 | — |
 | DEBT-017 | P2 | Feedback | garbage-collection-policy 未列 reports/ 为受保护 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | GC 政策顶部声明 |

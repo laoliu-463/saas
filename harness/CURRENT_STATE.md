@@ -211,3 +211,26 @@ real-pre 必须保持：
   - HARNESS-DEBT-GC-001（清理 12 个 ad-hoc log + .gitignore 增强）。
   - HARNESS-AGENT-DO-HARDEN（agent-do.ps1 增 `-Scope harness` + safety-check 扩展 scope）。
   - 业务侧：等待真实渠道订单样本后做 RISK-001 / RISK-007 渠道归因正向可见性验证。
+
+## Harness 清理（HARNESS-DEBT-GC-001，2026-06-04 00:14）
+
+- **任务**：对 harness 自身做一次安全清理、归档、瘦身；不破坏证据链、状态文件、业务代码。
+- **范围**：docs-only / harness-cleanup；新增 `harness/archive/manifests/manifest-20260604-001052-harness-debt-gc-001-delete.json`、`harness/reports/harness-debt-gc-001-inventory-20260604-001052.md`、`harness/reports/content-retire-20260604-001401.md`、`harness/reports/evidence-20260604-001401-harness-debt-gc-001.md`、`harness/reports/retro-20260604-001401-harness-debt-gc-001.md`；修改 `harness/state/HARNESS_DEBT.md`、`harness/QUALITY_LEDGER.md`、`harness/HARNESS_CHANGELOG.md`。
+- **清理对象（3 项，全部已执行删除）**：
+  - `nul`（Windows 设备文件残留 0 bytes，`.gitignore` 已覆盖，工作区层删除）。
+  - `test-results/`（playwright 测试结果目录，`.gitignore` 已覆盖，可再生）。
+  - `playwright-report/`（playwright HTML 报告 528 KB，`.gitignore` 已覆盖，可再生）。
+- **归档对象（0 项）**：盘点 76 份 `harness/reports/*.md` 全部被其他 evidence/retro/git-batch/state 文件交叉引用（最少 1 处、最多 9 处）；3 对"重复"早期报告（u1 inventory 120000 / u2 schema 093000 / p-fix-001c 112740）均被主源/批次报告显式引用；7 份 content-retire Plan 报告全部被 git-batch / sync-plan / evidence 引用。**结论：reports/ 目录在当前证据链结构下没有可安全归档的对象**。
+- **Manifest 路径**：`harness/archive/manifests/manifest-20260604-001052-harness-debt-gc-001-delete.json`。
+- **脚本**：`harness/commands/retire-content.ps1 -Action Delete -Manifest ...` 显式 manifest 删除，DryRun 验证保护检查通过。
+- **DEBT 收敛**：
+  - DEBT-013（12 个 ad-hoc log 未 .gitignore）deferred → **fixed**（实际只有 1 个 `nul` 设备文件 + 2 个 playwright 目录，全部已 gitignore + 全部已删除）。
+  - DEBT-014（reports/ 72 份未触发归档）deferred → **wontfix**（76 份全部被证据链引用；归档会破坏引用；建议保留为受 GC 政策保护状态）。
+- **本任务收益**：
+  - 工作区释放 `playwright-report/index.html` 528 KB + `test-results/playwright/` 测试结果 + 1 个 0-byte `nul`。
+  - DEBT-013 关闭；DEBT-014 重新分类为 wontfix（语义明确：reports 目录受保护、不可随意归档）。
+  - GC 政策不变：受保护 reports 全部 keep；生成型临时目录明确可删。
+- **状态**：`DONE`（docs-only）。
+- **下一步**：
+  - HARNESS-AGENT-DO-HARDEN（agent-do.ps1 增 `-Scope harness` + safety-check 扩展 scope）。
+  - 业务侧：等待真实渠道订单样本后做 RISK-001 / RISK-007 渠道归因正向可见性验证。
