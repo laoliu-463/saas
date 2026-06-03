@@ -79,5 +79,8 @@ everos-*.py
 debug-*.log
 jmeter.log
 
+# Windows device name artifacts
+/nul
+
 # Added by code-review-graph
 .code-review-graph/
