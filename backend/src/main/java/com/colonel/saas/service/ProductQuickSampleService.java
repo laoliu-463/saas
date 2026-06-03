@@ -564,10 +564,28 @@ public class ProductQuickSampleService {
         if (!StringUtils.hasText(talentId)) {
             throw new ValidateException("talentId 不能为空");
         }
-        CrawlerTalentInfo info = crawlerTalentInfoService.findByTalentId(talentId.trim());
-        if (info == null) {
+        String normalizedTalentId = talentId.trim();
+        CrawlerTalentInfo info = crawlerTalentInfoService.findByTalentId(normalizedTalentId);
+        if (info != null) {
+            return info;
+        }
+        Talent manualTalent = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
+                .eq(Talent::getDouyinUid, normalizedTalentId)
+                .last("LIMIT 1"));
+        if (manualTalent == null) {
             throw BusinessException.notFound("达人不存在");
         }
+        return buildCrawlerSnapshotFromTalent(manualTalent, normalizedTalentId);
+    }
+
+    private CrawlerTalentInfo buildCrawlerSnapshotFromTalent(Talent talent, String selectedTalentId) {
+        CrawlerTalentInfo info = new CrawlerTalentInfo();
+        info.setTalentId(StringUtils.hasText(talent.getDouyinUid()) ? talent.getDouyinUid() : selectedTalentId);
+        info.setNickname(talent.getNickname());
+        info.setAvatarUrl(talent.getAvatarUrl());
+        info.setFansCount(talent.getFans());
+        info.setMainCategory(StringUtils.hasText(talent.getMainCategory()) ? talent.getMainCategory() : talent.getCategories());
+        info.setRegion(talent.getIpLocation());
         return info;
     }
 

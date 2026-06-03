@@ -338,6 +338,62 @@ class QuickSampleApplyTest {
     }
 
     @Test
+    void applyQuickSample_shouldUseManualTalentWhenCrawlerInfoMissing() {
+        UUID relationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Product product = new Product();
+        product.setId(relationId);
+        product.setProductId("9001");
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(relationId);
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+        snapshot.setTitle("商品标题");
+
+        ProductOperationState state = new ProductOperationState();
+        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setSelectedToLibrary(true);
+
+        Talent manualTalent = new Talent();
+        manualTalent.setId(UUID.randomUUID());
+        manualTalent.setDouyinUid("manual_talent_001");
+        manualTalent.setNickname("手动达人");
+        manualTalent.setFans(12000L);
+        manualTalent.setCategories("食品");
+
+        when(productService.getById(relationId)).thenReturn(product);
+        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
+        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
+        when(crawlerTalentInfoService.findByTalentId("manual_talent_001")).thenReturn(null);
+        when(talentMapper.selectOne(any())).thenReturn(manualTalent);
+        when(talentClaimMapper.findActiveByTalentAndUser(manualTalent.getId(), userId))
+                .thenReturn(new com.colonel.saas.entity.TalentClaim());
+        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
+                new SampleEligibilityService.EligibilityResult(true, List.of(), null, null));
+        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
+
+        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
+        request.setTalentIds(List.of("manual_talent_001"));
+        request.setQuantity(1);
+
+        var response = service.applyQuickSample(
+                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThat(response.getSuccessCount()).isEqualTo(1);
+
+        org.mockito.ArgumentCaptor<SampleRequest> sampleCaptor = org.mockito.ArgumentCaptor.forClass(SampleRequest.class);
+        verify(sampleRequestMapper).insert(sampleCaptor.capture());
+        assertThat(sampleCaptor.getValue().getTalentId()).isEqualTo(manualTalent.getId());
+        assertThat(sampleCaptor.getValue().getTalentUid()).isEqualTo("manual_talent_001");
+        assertThat(sampleCaptor.getValue().getTalentNickname()).isEqualTo("手动达人");
+        assertThat(sampleCaptor.getValue().getTalentFansCount()).isEqualTo(12000L);
+        assertThat(sampleCaptor.getValue().getTalentMainCategory()).isEqualTo("食品");
+        assertThat(sampleCaptor.getValue().getStatus()).isEqualTo(1);
+    }
+
+    @Test
     void applyQuickSample_shouldUseLocalFallbackWhenGatewayUnsupported() {
         UUID relationId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -440,7 +496,7 @@ class QuickSampleApplyTest {
         when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
         when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
         when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentMapper.selectOne(any())).thenReturn(talent, null);
         when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
                 .thenReturn(new com.colonel.saas.entity.TalentClaim());
         when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
