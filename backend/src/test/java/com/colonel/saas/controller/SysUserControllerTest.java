@@ -67,7 +67,7 @@ class SysUserControllerTest {
         page.setRecords(List.of(vo));
         page.setTotal(1);
 
-        when(sysUserService.findPage(any(), any(), any())).thenReturn(page);
+        when(sysUserService.findPage(any(), any(), any(), any())).thenReturn(page);
 
         mockMvc.perform(get("/users")
                         .requestAttr("userId", userId)
@@ -77,7 +77,7 @@ class SysUserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(sysUserService).findPage(any(), any(), any());
+        verify(sysUserService).findPage(any(), any(), any(), any());
     }
 
     @Test

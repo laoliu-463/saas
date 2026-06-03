@@ -1,12 +1,17 @@
 package com.colonel.saas.service;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.CommissionRule;
 import com.colonel.saas.mapper.CommissionRuleMapper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,6 +41,12 @@ class CommissionRuleServiceTest {
 
     @BeforeEach
     void setUp() {
+        if (TableInfoHelper.getTableInfo(CommissionRule.class) == null) {
+            MybatisConfiguration configuration = new MybatisConfiguration();
+            configuration.getTypeHandlerRegistry().register(UUID.class, UUIDTypeHandler.class);
+            MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
+            TableInfoHelper.initTableInfo(assistant, CommissionRule.class);
+        }
         service = new CommissionRuleService(commissionRuleMapper);
     }
 
@@ -168,10 +180,12 @@ class CommissionRuleServiceTest {
         assertThat(page.getCurrent()).isEqualTo(1L);
         assertThat(page.getSize()).isEqualTo(20L);
         // 通过自定义 toString 检查关键 SQL 片段（MyBatis-Plus wrapper 不暴露谓词列表）
-        String sql = wrapperSql(wrapperCaptor.getValue());
-        assertThat(sql).contains("dimension_type = activity");
-        assertThat(sql).contains("commission_type = channel");
-        assertThat(sql).contains("deleted = 0");
+        Wrapper<CommissionRule> wrapper = wrapperCaptor.getValue();
+        String sql = wrapperSql(wrapper);
+        assertThat(sql).contains("dimension_type =");
+        assertThat(sql).contains("commission_type =");
+        assertThat(sql).contains("deleted =");
+        assertThat(wrapperParams(wrapper).values()).contains(0, "activity", "channel");
     }
 
     @Test
@@ -181,8 +195,10 @@ class CommissionRuleServiceTest {
 
         service.findPage(null, null, 1, null, null, 1, 20);
 
-        String sql = wrapperSql(captorWrapper().getValue());
-        assertThat(sql).contains("status = 1");
+        Wrapper<CommissionRule> wrapper = captorWrapper().getValue();
+        String sql = wrapperSql(wrapper);
+        assertThat(sql).contains("status =");
+        assertThat(wrapperParams(wrapper).values()).contains(1);
     }
 
     @Test
@@ -206,11 +222,13 @@ class CommissionRuleServiceTest {
 
         service.findPage(null, null, null, queryStart, queryEnd, 1, 20);
 
-        String sql = wrapperSql(captorWrapper().getValue());
+        Wrapper<CommissionRule> wrapper = captorWrapper().getValue();
+        String sql = wrapperSql(wrapper);
         // 区间重叠：rule.end IS NULL OR rule.end >= query.start
         //          AND rule.start IS NULL OR rule.start <= query.end
         assertThat(sql).contains("effective_end >=");
         assertThat(sql).contains("effective_start <=");
+        assertThat(wrapperParams(wrapper).values()).contains(queryStart, queryEnd);
     }
 
     @Test
@@ -220,9 +238,11 @@ class CommissionRuleServiceTest {
 
         service.findPage(null, null, null, LocalDateTime.of(2026, 6, 1, 0, 0), null, 1, 20);
 
-        String sql = wrapperSql(captorWrapper().getValue());
+        Wrapper<CommissionRule> wrapper = captorWrapper().getValue();
+        String sql = wrapperSql(wrapper);
         assertThat(sql).contains("effective_end >=");
         assertThat(sql).doesNotContain("effective_start <=");
+        assertThat(wrapperParams(wrapper).values()).contains(LocalDateTime.of(2026, 6, 1, 0, 0));
     }
 
     @Test
@@ -232,9 +252,11 @@ class CommissionRuleServiceTest {
 
         service.findPage(null, null, null, null, LocalDateTime.of(2026, 6, 30, 0, 0), 1, 20);
 
-        String sql = wrapperSql(captorWrapper().getValue());
+        Wrapper<CommissionRule> wrapper = captorWrapper().getValue();
+        String sql = wrapperSql(wrapper);
         assertThat(sql).doesNotContain("effective_end >=");
         assertThat(sql).contains("effective_start <=");
+        assertThat(wrapperParams(wrapper).values()).contains(LocalDateTime.of(2026, 6, 30, 0, 0));
     }
 
     @Test
@@ -261,12 +283,19 @@ class CommissionRuleServiceTest {
                 LocalDateTime.of(2026, 6, 30, 0, 0),
                 1, 20);
 
-        String sql = wrapperSql(captorWrapper().getValue());
-        assertThat(sql).contains("dimension_type = activity");
-        assertThat(sql).contains("commission_type = channel");
-        assertThat(sql).contains("status = 1");
+        Wrapper<CommissionRule> wrapper = captorWrapper().getValue();
+        String sql = wrapperSql(wrapper);
+        assertThat(sql).contains("dimension_type =");
+        assertThat(sql).contains("commission_type =");
+        assertThat(sql).contains("status =");
         assertThat(sql).contains("effective_end >=");
         assertThat(sql).contains("effective_start <=");
+        assertThat(wrapperParams(wrapper).values()).contains(
+                "activity",
+                "channel",
+                1,
+                LocalDateTime.of(2026, 6, 1, 0, 0),
+                LocalDateTime.of(2026, 6, 30, 0, 0));
     }
 
     @Test
@@ -327,5 +356,12 @@ class CommissionRuleServiceTest {
         } catch (Exception ex) {
             throw new IllegalStateException("无法读取 wrapper SQL 片段: " + wrapper, ex);
         }
+    }
+
+    private Map<String, Object> wrapperParams(Wrapper<CommissionRule> wrapper) {
+        if (wrapper instanceof AbstractWrapper<?, ?, ?> abstractWrapper) {
+            return abstractWrapper.getParamNameValuePairs();
+        }
+        throw new IllegalStateException("无法读取 wrapper 参数: " + wrapper);
     }
 }

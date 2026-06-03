@@ -3,6 +3,7 @@ package com.colonel.saas.service;
 import com.colonel.saas.auth.dto.SysDeptCreateRequest;
 import com.colonel.saas.auth.dto.SysDeptUpdateRequest;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.constant.DeptType;
 import com.colonel.saas.constant.SysDeptCodes;
 import com.colonel.saas.entity.SysDept;
 import com.colonel.saas.mapper.SysDeptMapper;
@@ -58,13 +59,13 @@ class SysDeptServiceTest {
                 15,
                 1,
                 null,
-                "recruiter",
+                DeptType.RECRUITER_GROUP,
                 null);
 
         var vo = sysDeptService.create(request, adminId);
 
         assertThat(vo.getDeptCode()).isEqualTo("BIZ_EAST");
-        assertThat(vo.getDeptType()).isEqualTo("recruiter");
+        assertThat(vo.getDeptType()).isEqualTo(DeptType.RECRUITER_GROUP);
 
         ArgumentCaptor<SysDept> captor = ArgumentCaptor.forClass(SysDept.class);
         verify(sysDeptMapper).insert(captor.capture());
@@ -113,7 +114,7 @@ class SysDeptServiceTest {
         root.setId(rootId);
         root.setDeptCode("BIZ");
         root.setDeptName("招商组");
-        root.setDeptType("recruiter");
+        root.setDeptType(DeptType.RECRUITER_GROUP);
         root.setSortOrder(10);
         root.setStatus(1);
 
@@ -122,7 +123,7 @@ class SysDeptServiceTest {
         child.setParentId(rootId);
         child.setDeptCode("BIZ_EAST");
         child.setDeptName("招商一组");
-        child.setDeptType("recruiter");
+        child.setDeptType(DeptType.RECRUITER_GROUP);
         child.setSortOrder(20);
         child.setStatus(1);
 
@@ -162,5 +163,29 @@ class SysDeptServiceTest {
         assertThatThrownBy(() -> sysDeptService.update(deptId, request, adminId))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("无效的部门类型");
+    }
+
+    @Test
+    void create_shouldRejectLegacyDeptTypeValues() {
+        when(sysDeptMapper.findByDeptCode("BIZ_LEGACY")).thenReturn(Optional.empty());
+
+        SysDeptCreateRequest request = new SysDeptCreateRequest(
+                null,
+                "BIZ_LEGACY",
+                "旧招商组",
+                null,
+                null,
+                null,
+                15,
+                1,
+                null,
+                "recruiter",
+                null);
+
+        assertThatThrownBy(() -> sysDeptService.create(request, adminId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("无效的部门类型");
+
+        verify(sysDeptMapper, never()).insert(any());
     }
 }

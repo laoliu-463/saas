@@ -5,6 +5,7 @@ import com.colonel.saas.auth.service.SysDeptService;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.constant.DeptType;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.vo.SysDeptVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,7 +61,7 @@ class SysDeptControllerTest {
         dept.setId(deptId);
         dept.setDeptCode("BIZ");
         dept.setDeptName("招商组");
-        dept.setDeptType("recruiter");
+        dept.setDeptType(DeptType.RECRUITER_GROUP);
 
         when(sysDeptService.findAll()).thenReturn(List.of(dept));
 
@@ -77,11 +78,11 @@ class SysDeptControllerTest {
         SysDeptVO vo = new SysDeptVO();
         vo.setId(deptId);
         vo.setDeptCode("BIZ_EAST");
-        vo.setDeptType("recruiter");
+        vo.setDeptType(DeptType.RECRUITER_GROUP);
 
         SysDeptCreateRequest request = new SysDeptCreateRequest(
                 null, "BIZ_EAST", "招商一组", null,
-                null, null, 10, 1, null, "recruiter", null);
+                null, null, 10, 1, null, DeptType.RECRUITER_GROUP, null);
 
         when(sysDeptService.create(any(), eq(adminId))).thenReturn(vo);
 

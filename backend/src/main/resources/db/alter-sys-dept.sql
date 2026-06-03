@@ -26,7 +26,7 @@ CREATE INDEX IF NOT EXISTS idx_sys_dept_deleted   ON sys_dept(deleted);
 
 INSERT INTO sys_dept (id, parent_id, dept_code, dept_name, dept_type, sort_order, status)
 VALUES
-    ('a2b3c4d5-e6f7-4890-abcd-ef0123456789', NULL, 'BIZ', '招商部', 'department', 10, 1),
-    ('b3c4d5e6-f7a8-4901-bcde-f01234567890', NULL, 'CHANNEL', '渠道部', 'department', 20, 1),
-    ('c4d5e6f7-a8b9-4012-cdef-012345678901', NULL, 'OPS', '运营部', 'department', 30, 1)
+    ('a2b3c4d5-e6f7-4890-abcd-ef0123456789', NULL, 'BIZ', '招商部', 'recruiter_group', 10, 1),
+    ('b3c4d5e6-f7a8-4901-bcde-f01234567890', NULL, 'CHANNEL', '渠道部', 'channel_group', 20, 1),
+    ('c4d5e6f7-a8b9-4012-cdef-012345678901', NULL, 'OPS', '运营部', 'ops_group', 30, 1)
 ON CONFLICT (dept_code) DO NOTHING;

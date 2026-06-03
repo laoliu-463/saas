@@ -15,7 +15,7 @@ import java.util.Set;
  *   <li>{@code recruiter_group} — 招商组，负责达人招募和招商对接</li>
  *   <li>{@code channel_group} — 渠道组，负责渠道资源管理和拓展</li>
  *   <li>{@code ops_group} — 运营组，负责日常运营和数据分析</li>
- *   <li>{@code BUSINESS} — 历史遗留类型，写入时应规范化为具体类型</li>
+ *   <li>{@code BUSINESS} — 历史遗留类型，写入时应规范化为 {@code department}</li>
  * </ul>
  * </p>
  *
@@ -45,13 +45,12 @@ public final class DeptType {
      */
     public static final String LEGACY_BUSINESS = "BUSINESS";
 
-    /** 允许的组织类型集合，用于输入校验 */
+    /** 标准组织类型集合，用于新写入输入校验 */
     private static final Set<String> ALLOWED = Set.of(
             DEPARTMENT,
             RECRUITER_GROUP,
             CHANNEL_GROUP,
-            OPS_GROUP,
-            LEGACY_BUSINESS
+            OPS_GROUP
     );
 
     /**

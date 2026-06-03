@@ -6,7 +6,7 @@
 -- 改动：
 --   1. 部门 UUID 替换为标准 v4 格式
 --   2. 部门名称统一去掉"组"字后缀（招商部 / 渠道部 / 运营部）
---   3. sys_dept.dept_type 统一为 'department'
+--   3. sys_dept.dept_type 统一为 V1 标准值
 --   4. sys_user.dept_id 同步更新
 --
 -- 旧 → 新 UUID 映射：
@@ -27,7 +27,9 @@ UPDATE sys_dept SET dept_name = '渠道部' WHERE dept_code = 'CHANNEL';
 UPDATE sys_dept SET dept_name = '运营部' WHERE dept_code = 'OPS';
 
 -- 统一 dept_type
-UPDATE sys_dept SET dept_type = 'department' WHERE dept_code IN ('BIZ', 'CHANNEL', 'OPS');
+UPDATE sys_dept SET dept_type = 'recruiter_group' WHERE dept_code = 'BIZ';
+UPDATE sys_dept SET dept_type = 'channel_group' WHERE dept_code = 'CHANNEL';
+UPDATE sys_dept SET dept_type = 'ops_group' WHERE dept_code = 'OPS';
 
 -- 同步用户 dept_id（按 username 而非 dept_id 防止迁移顺序问题）
 UPDATE sys_user SET dept_id = 'a2b3c4d5-e6f7-4890-abcd-ef0123456789'

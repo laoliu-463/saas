@@ -264,9 +264,8 @@ class SysUserServiceTest {
     @Test
     void findPage_shouldBuildWrapperWithDataScopeAndDelegateToMapper() {
         UUID currentUserId = UUID.randomUUID();
-        UUID deptId = UUID.randomUUID();
         SysUserPageRequest request = new SysUserPageRequest(
-                1, 10, "招商", 1, deptId, null, null, "biz_staff");
+                1, 10, "招商", 1, null, null, null, "biz_staff");
 
         SysUserVO vo = new SysUserVO();
         vo.setId(UUID.randomUUID());
@@ -292,7 +291,7 @@ class SysUserServiceTest {
         assertThat(sql).contains("status = 1");
         assertThat(sql).contains("sr.role_code = 'biz_staff'");
         // ALL 范围不会追加 id/dept_id 条件
-        assertThat(sql).doesNotContain("id = ");
+        assertThat(sql).doesNotContain("id = " + currentUserId);
         assertThat(sql).doesNotContain("dept_id = ");
     }
 

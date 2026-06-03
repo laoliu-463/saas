@@ -108,7 +108,9 @@ class CommissionRuleControllerTest {
         mockMvc.perform(get("/commission-rules")
                         .param("effectiveStart", "2026-06-30T00:00:00")
                         .param("effectiveEnd", "2026-06-01T00:00:00"))
-                .andExpect(status().is4xxClientError());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("查询生效区间终点不能早于起点"));
     }
 
     @Test

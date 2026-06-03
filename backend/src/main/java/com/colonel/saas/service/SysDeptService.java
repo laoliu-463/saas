@@ -3,7 +3,7 @@ package com.colonel.saas.service;
 import com.colonel.saas.auth.dto.SysDeptCreateRequest;
 import com.colonel.saas.auth.dto.SysDeptUpdateRequest;
 import com.colonel.saas.common.exception.BusinessException;
-import com.colonel.saas.constant.DeptTypes;
+import com.colonel.saas.constant.DeptType;
 import com.colonel.saas.constant.SysDeptCodes;
 import com.colonel.saas.entity.SysDept;
 import com.colonel.saas.entity.SysUser;
@@ -42,8 +42,8 @@ public class SysDeptService {
     }
 
     public List<SysDept> listByDeptType(String deptType) {
-        String normalized = DeptTypes.normalize(deptType);
-        if (!DeptTypes.isValid(normalized)) {
+        String normalized = DeptType.normalize(deptType);
+        if (!DeptType.isAllowed(normalized)) {
             throw new BusinessException("无效的部门类型: " + deptType);
         }
         return sysDeptMapper.findByDeptType(normalized);
@@ -154,9 +154,9 @@ public class SysDeptService {
     }
 
     private String requireValidDeptType(String deptType) {
-        String normalized = DeptTypes.normalize(deptType);
-        if (!DeptTypes.isValid(normalized)) {
-            throw new BusinessException("无效的部门类型，允许值: recruiter, channel, dept");
+        String normalized = DeptType.normalize(deptType);
+        if (!DeptType.isAllowed(normalized)) {
+            throw new BusinessException("无效的部门类型，允许值: department, recruiter_group, channel_group, ops_group");
         }
         return normalized;
     }
