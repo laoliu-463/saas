@@ -26,7 +26,7 @@
 - 无新增字段或 migration，复用 `talent_claim` 已有 `recipient_name/recipient_phone/recipient_address` 字段。
 - 测试结果：后端 1708/0/0、前端 QuickSampleModal 5/5、SampleCreateModal 3/3、typecheck ✅、build ✅。
 - real-pre 验收：地址回写 PASS、快照不变 PASS、地址更新 PASS、多渠道隔离 PASS（biz_leader 访问 403）。
-- 未部署远端。
+- 已部署远端 real-pre（2026-06-03 23:00 SSH deploy），远端健康检查 PASS、容器全 healthy、JAR 新构建。
 - Final Status：`PASS`。
 
 ## v0.5.6

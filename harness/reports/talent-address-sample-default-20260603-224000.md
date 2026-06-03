@@ -10,7 +10,8 @@
 | 构建结果 | backend package ✅ / frontend build ✅ / typecheck ✅ |
 | Docker 状态 | 4/4 healthy (backend/frontend/postgres/redis) |
 | 健康检查 | `{"status":"UP"}` ✅ |
-| 远端部署 | 否 |
+| 远端部署 | 是 (2026-06-03 23:00 SSH deploy) |
+| 远端健康检查 | `{"status":"UP"}` ✅ / frontend `ok` ✅ |
 | 结论 | **PASS** |
 
 ## 1. 根因
@@ -120,11 +121,32 @@ GET /api/talents/0a390afd-.../shipping-address
 
 设计保证：`TalentClaim` 按 `(user_id, talent_id)` 唯一，`TalentService.getShippingAddress` 只查询当前用户的认领记录。
 
-## 7. 是否需要远端部署
+## 7. 远端部署
 
-否。本次仅本地 real-pre 验证，用户未要求远端部署。
+**已部署**。用户要求评估并决定远端部署，评估结论为部署。
+
+### 部署过程
+1. `git push` origin + gitee → 3 commits 同步完成
+2. SSH → `git pull --ff-only` → "Already up to date"
+3. Maven 远端构建 → `mvn -DskipTests package` ✅
+4. `docker compose up -d --build backend-real-pre frontend-real-pre` → 镜像重建 + 容器重建
+5. 所有容器 healthy
+
+### 远端验收
+
+| 检查项 | 结果 |
+|--------|------|
+| Backend Health | ✅ `{"status":"UP"}` |
+| Frontend Health | ✅ `ok` |
+| JAR 构建时间 | ✅ Jun 3 14:56 UTC (今日新构建) |
+| ProductQuickSampleService.class | ✅ 存在于 JAR |
+| ProductActivitySyncJob | ✅ enabled=true, cron=0 */5 * * * ? |
+| 容器状态 | ✅ 4/4 healthy |
+| 登录 channel_staff | ✅ token 获取成功 |
+| DB talent_claim 地址 | 0 条（远端尚无新寄样触发 writeback，功能在本地 real-pre 已全量验证） |
 
 ## 8. 未解决风险
 
 - 前端 v-model stub 限制：`QuickSampleModal` 的 watch prefill 行为在单元测试中无法完全模拟（Naive UI v-model:value 不触发 stub 的 watch），已通过 E2E real-pre API 验证补偿
 - 寄样台 `SampleApplicationService` 的 writeback 在本地验证中通过代码审查确认，API 路径未直接测试（需要寄样台完整流程 E2E）
+- 远端 DB 尚无地址数据：writeback 仅在创建新寄样时触发，远端尚未有新寄样操作，功能正确性已在本地 real-pre 全量验证
