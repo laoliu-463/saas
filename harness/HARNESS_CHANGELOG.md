@@ -1,5 +1,22 @@
 # Harness Changelog
 
+## v0.5.7
+
+- 完成 GIT-BATCH-C 业务代码批次提交 + 推送 + 远端部署（2026-06-03 22:50–23:00）。
+- 生成报告：`harness/reports/git-batch-c-talent-address-deploy-20260603-225500.md`。
+- 提交内容：3 个 commit 全部 push 到 gitee + origin + 远端 deploy。
+  - `804f96dc` 上游 `feat(sample): implement talent address default save (TALENT-ADDRESS-SAMPLE-DEFAULT)`（7 文件 / 476 行 +）
+  - `16b23416` 上游 `docs(harness): TALENT-ADDRESS-SAMPLE-DEFAULT evidence report and state updates`（4 文件 / 130+ 行）
+  - `159fa38d` 本会话 `docs(harness): GIT-INTAKE-001 dirty classify + ORDER-ATTRIBUTION-SAMPLE report`（3 文件 / 660 行 +）
+- 推送：gitee + origin 同步推送 `49aefbda..159fa38d`（3 commits ahead）。
+- 远端部署：`harness/commands/deploy-remote.ps1` 触发 `compose up -d --build backend-real-pre frontend-real-pre`，远端 backend 容器 Created/Started 2026-06-03T13:57:25.833735461Z，新 jar（Jun 3 13:57 UTC）已加载 `TalentClaimMapper` 注入 + `writeBackClaimAddress` 编译产物。
+- 健康检查：远端 backend `{"status":"UP"}` + frontend `ok` + 4 容器全部 healthy。
+- 业务验证：字符串验证确认 `ProductQuickSampleService` 已注入 `TalentClaimMapper` + `Lcom/colonel/saas/entity/TalentClaim;` 已链接；完整端到端业务验证在本地 real-pre 已有 evidence（`talent-address-sample-default-20260603-224000.md` H1-H9 PASS）。
+- 远端 HEAD 对齐：本地 = gitee/feature/auth-system = origin/feature/auth-system = 远端 `/opt/saas/app` HEAD = `159fa38d`。
+- 未清库、未使用 `docker compose down -v`、未执行破坏性 SQL。
+- Final Status：`DONE_REMOTE_VERIFIED`。Git Exit Gate：`DONE_CLEAN`（本地工作区 clean + 远端容器 healthy + 远端 commit 对齐）。
+- 状态：Batch A/B/C 全部完成。下一步：等 RISK-007 商务侧真实抖店订单样本解锁 / 1-2 小时后 P-VERIFY-002 远端商品库数量复核。
+
 ## v0.5.5
 
 - 完成 TALENT-ADDRESS-SAMPLE-DEFAULT 达人寄样地址默认保存（2026-06-03）。
