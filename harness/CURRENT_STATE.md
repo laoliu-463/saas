@@ -38,7 +38,7 @@ real-pre 必须保持：
 - 商品域：商品库、活动商品同步、转链和映射主链路已具备，历史推广中入库仍需持续验证。
 - 达人域：达人资料、标签、地址和跟进主链路已具备。
 - 寄样域：申请、审批、发货和订单事件自动完成链路已具备，real-pre 仍依赖真实归因订单样本。
-- 订单域：订单事实、退款事实、同步日志和归因输入已具备；本地 real-pre 已接入 6468 事实订单源并验证订单入库。
+- 订单域：订单事实、退款事实、同步日志和归因输入已具备；本地与远端 real-pre 已接入 6468 事实订单源并验证订单入库。
 - 业绩域：最终归属、提成、冲正和汇总主链路已具备。
 - 分析模块：dashboard、报表和只读汇总主链路已具备。
 
@@ -51,7 +51,7 @@ real-pre 必须保持：
 
 ## 当前 P0 / P1
 
-- P0：6468 事实订单源本地 real-pre 已入库，远端部署/验证待授权；真实渠道订单归因样本仍不足，阻塞渠道链真实闭环 PASS。
+- P0：6468 事实订单源本地与远端 real-pre 已入库；真实渠道订单归因样本仍不足，阻塞渠道链真实闭环 PASS。
 - P1：寄样自动完成依赖真实归因订单样本。
 - P1：推广中商品历史数据可能存在入库漂移。
 - P1：权限注解和数据范围覆盖仍需持续审计。
@@ -127,6 +127,7 @@ real-pre 必须保持：
 - 重要口径：本次治理针对 SYNC-PLAN-001 暴露的"多任务 dirty 膨胀 + 提交门禁缺失"问题。Batch 3 提交时已使用 Dirty Classification 和 B3-SCOPE-001 范围隔离作为本任务新规的事前验证，证明强约束可执行。下一步：执行 P-FIX-002-CONFIG-RESIDUAL 单独处理 `application-real-pre.yml`，然后执行 GIT-EXIT-001 最终清洁检查。两者完成后才能进入新业务任务（U-3 / P-VERIFY-002 等）。
 - 已完成：P-FIX-002-CONFIG-RESIDUAL 处理 application-real-pre.yml 商品同步配置残留（2026-06-03 15:20）。报告路径：`harness/reports/p-fix-002-config-residual-20260603-152000.md`。state commit `78bdf8fa docs(harness): GIT-BATCH-4-REPORTS record batch 4 state`（CURRENT_STATE + HARNESS_CHANGELOG v0.5.1）已 push 双远端；`application-real-pre.yml` 已 `git restore` 至 HEAD 一致（5 行 `product.activity.sync` 与 `application.yml` + compose env 行为等价，无需提交）。未修改业务代码、未写库、未重启容器、未部署远端。Git Exit Gate 终态 `DONE_CLEAN`。
 - 已完成（代码 + 运行态）：P0-ORDER-001 真实订单同步与渠道可见修复（2026-06-03 17:30–18:04）。报告路径：`harness/reports/p0-order-001-real-order-visible-20260603-180450.md`、`harness/reports/p0-order-001-diagnosis-20260603-173500.md`、`harness/reports/p0-order-001-intake-20260603-172923.md`。**根因**：`RealDouyinOrderGateway#listSettlement` 调用 `buyin.colonelMultiSettlementOrders` 时硬编码 `time_type=update` + 10 分钟滚动窗口，刚 PAY_SUCC 订单遇上游 update_time 延迟会丢单（抖音不存在 `time_type=pay`）。**修复**：新增 `OrderSyncService#syncPayRecentWindow()` 6 小时大窗口低频回扫，独立锁 `ORDER_SYNC_PAY_RECENT` + 独立 Redis 水位 `order:sync:pay_recent_last_time`，不覆盖 10 分钟增量同步水位；`OrderSyncJob` 新增 `syncPayRecent()` `@Scheduled` 每 30 分钟；服务层 / job 层同步日志增加 `mode/timeType/inserted/updated/attributed/unattributed/noPickSource/noMapping/failed` 维度；attribution_status 字段已存在无需 migration；admin/channel 数据范围逻辑已正确（admin ALL 见全部，channel PERSONAL 只见自己已归因，`/orders/unattributed` admin 排查 NO_PICK_SOURCE / NO_MAPPING）。**测试**：新建 `OrderSyncServiceTest` 6 用例、`OrderSyncJobTest` +4、`OrderControllerTest` +3，全量 `mvn test` **1688 / 0 / 0** 通过；`mvn package` BUILD SUCCESS；`safety-check -Scope backend -DryRun` PASS；本地 backend-real-pre rebuild + recreate 后 `{"status":"UP"}`，双 scheduler 立即首次执行：INCREMENTAL 窗口 628s（10min + overlap），PAY_RECENT 窗口 21600s（6h），两 Redis key 共存独立。**Final Status**：`PARTIAL_DIRTY_REMAINING`——代码 / 测试 / 构建 / 容器 / 日志 / 双轨调度全部 PASS，真实订单端到端业务验证 BLOCKED_BY_SAMPLE（需等待商务侧真实付款样本）；本任务未执行 git commit/push，dirty 已分类，残留 3 个 untracked 报告（2 个并行会话的 ORDER-API-729-VERIFY + 1 个 P-FIX-002-CONFIG-RESIDUAL）与本任务正交，留待下个会话单独批次处理。未修改寄样 / 达人 / 商品 / 业绩 / 独家 / 前端 / 数据库 schema / docker-compose / env / `application-real-pre.yml`，未 `git add .`，未 `down -v`。
+- 已完成远端部署验证：ORDER-P0-DUAL-SOURCE-REMOTE-VERIFY（2026-06-03 20:57）。报告路径：`harness/reports/order-p0-dual-source-remote-verify-20260603-205719.md`。远端 `/opt/saas/app` commit 对齐 `77b723b6`，远端工作区 clean；远端无 Maven，使用本地 `77b723b6` jar（SHA256 `ea6e86bda9684f035338f8e1300b7331bac73076dee00ee35ee7f4ad49142450`）上传后仅重建 `backend-real-pre`；后端 health `{"status":"UP"}`。远端 12:50 UTC 同步日志确认 6468 `ORDER_SYNC_INSTITUTE api=buyin.instituteOrderColonel fetched=100 inserted=100 updated=0`，2704 `ORDER_SYNC_SETTLEMENT api=buyin.colonelMultiSettlementOrders fetched=0` 仍保留；SQL 只读确认 `colonelsettlement_order count=100`，`order_amount/pay_time/estimate_*` 有值，`settle_amount/effective_*` 为空；管理员 `/api/orders total=100`、`/api/orders/unattributed total=100`。渠道正向可见性仍为 `PENDING_BY_SAMPLE`：远端 100 单 `pick_source=0`、`channel_user_id=0`、全部 `COLONEL_MAPPING_NOT_FOUND`。未清库、未执行破坏性 SQL、未部署前端。
 
 ## 旧文档冲突处理
 
