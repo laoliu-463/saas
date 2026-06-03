@@ -7,3 +7,4 @@
 | RISK-003 | 商品域 | P1 | 推广中历史商品可能未入库 | 历史 `selected_to_library` 未补齐 | PARTIAL | `harness/runbooks/product-library-backfill-check.md` | repair dry-run 后确认写入 | 条件阻塞 |
 | RISK-004 | 权限 | P1 | 权限注解口径仍需审计 | `@RequiresRole` / `@DataScope` 覆盖不完整风险 | PENDING | `docs/07-权限与数据范围.md` | 运行 RBAC eval | 可能阻塞 |
 | RISK-005 | 文档 | P2 | V2/V2.5 旧口径可能干扰 V1 | 旧文档范围大于 V1 | ACTIVE | `harness/instructions/document-priority.md` | 冲突追加 ADR-002 | 不直接阻塞 |
+| RISK-006 | 寄样域 / 权限 | P1 | P0-SAMPLE-001 远端核心寄样链路已通过，但不能按指定 `channel_staff` 和“已分配商品 biz_leader”完成全量验收 | 远端 `channel_staff` 无私海达人；等价渠道账号“玄同”无法用已知测试口径登录；远端全部 `product_operation_state.assignee_id` 为空；另观察到 `channel_staff` 可查到该待审核单 | PARTIAL_CORE_PASS | `harness/reports/p0-sample-001-remote-verify-20260603-221004.md` | 单独准备渠道账号私海达人与商品 assignee 前置；另起 RBAC 专项复核 `/api/samples` 待审核单可见性 | 条件阻塞 |

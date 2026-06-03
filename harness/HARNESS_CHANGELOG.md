@@ -1,5 +1,18 @@
 # Harness Changelog
 
+## v0.5.4
+
+- 完成 P0-SAMPLE-001-REMOTE-VERIFY 远端 real-pre 部署验证状态收口（2026-06-03 22:10-22:30）。
+- 生成报告：`harness/reports/p0-sample-001-remote-verify-20260603-221004.md`、`harness/reports/retro-20260603-223153.md`。
+- 远端 `/opt/saas/app` 从 `77b723b` 快进到 `ab03d72`（目标 `ab03d729`），远端工作区 clean。
+- 部署方式：远端用 Maven Docker 镜像构建后端 jar，仅 rebuild/recreate `backend-real-pre` 与 `frontend-real-pre`；未使用 `-v`，未清库，未重建 PostgreSQL / Redis volume，未执行数据库写入 SQL。
+- 健康检查：远端 backend/frontend/postgres/redis 均 healthy；`/api/system/health={"status":"UP"}`，`/healthz=ok`。
+- 业务验证：商品库快照 `81a5d39b-e661-3b19-96d3-e55b145f15f1` 快速寄样成功生成 `sample_request=9c655738-76b1-4fd0-9676-8f307c694f3f`，`request_no=QS2026060337AF9AAB`，`status=1 / PENDING_AUDIT / 待审核`；`product` 主表已物化；`crawler_talent_info` 缺失时按 `talent.douyin_uid=56723079343` 兜底。
+- 审核列表验证：`admin` 可见，`biz_leader` 可见，`biz_staff` 不可见；失败分支返回 `items[].message` 明细（“该达人未在你的私海中...” / “达人不存在”）。
+- 限制：远端 `channel_staff` 无私海达人，唯一有私海达人的等价渠道账号“玄同”无法用已知测试口径登录；远端全部 `product_operation_state.assignee_id` 为空，无法严格证明“该商品分配给 biz_leader”前提。
+- 额外风险：`channel_staff` 可查到该待审核单，建议另起 RBAC 专项复核，不在本次远端部署验证中修改。
+- Final Status：`PARTIAL`。核心修复链路远端通过；指定账号/分配前置数据不足导致完成标准不能写成全量 PASS。
+
 ## v0.5.3
 
 - 完成 ORDER-P0-DUAL-SOURCE-SYNC 本地 real-pre 修复与验证（2026-06-03 19:xx-20:23）。
