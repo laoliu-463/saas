@@ -21,7 +21,9 @@ import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway;
+import com.colonel.saas.mapper.ProductMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -85,6 +87,8 @@ public class ProductQuickSampleService {
 
     /** 商品服务，用于查询商品信息 */
     private final ProductService productService;
+    /** 商品主表 Mapper，用于在寄样落库前确保 sample_request.product_id 有有效外键 */
+    private final ProductMapper productMapper;
     /** 商品快照 Mapper，用于获取商品快照详情 */
     private final ProductSnapshotMapper productSnapshotMapper;
     /** 商品运营状态 Mapper，用于校验展示状态 */
@@ -129,6 +133,7 @@ public class ProductQuickSampleService {
      */
     public ProductQuickSampleService(
             ProductService productService,
+            ProductMapper productMapper,
             ProductSnapshotMapper productSnapshotMapper,
             ProductOperationStateMapper productOperationStateMapper,
             SampleRequestMapper sampleRequestMapper,
@@ -142,6 +147,7 @@ public class ProductQuickSampleService {
             SampleDomainEventPublisher sampleDomainEventPublisher,
             @Value("${app.douyin.quick-sample.enabled:false}") boolean douyinQuickSampleEnabled) {
         this.productService = productService;
+        this.productMapper = productMapper;
         this.productSnapshotMapper = productSnapshotMapper;
         this.productOperationStateMapper = productOperationStateMapper;
         this.sampleRequestMapper = sampleRequestMapper;
@@ -186,12 +192,9 @@ public class ProductQuickSampleService {
             Object roleCodes) {
         /* 第一步：校验调用方必须是渠道角色或管理员 */
         ensureChannelRole(roleCodes);
-        Product product = productService.getById(relationId);
-        if (product == null) {
-            throw BusinessException.notFound("商品不存在");
-        }
-        /* 第二步：校验商品处于展示中状态 */
-        ensureDisplaying(product);
+        /* 第二步：解析商品库快照，并确保后续 sample_request.product_id 可引用 product 主表 */
+        QuickSampleProductContext productContext = resolveQuickSampleProductContext(relationId);
+        Product product = productContext.product();
 
         /* 寄样数量默认为 1 */
         int quantity = request.getQuantity() == null ? 1 : request.getQuantity();
@@ -213,7 +216,7 @@ public class ProductQuickSampleService {
             item.setTalentId(talentId);
             try {
                 UUID sampleId = createSingleSample(
-                        product, request, talentId, quantity, userId, deptId, roleCodes, item, externalEnabled, externalSupported, effectiveChannelUserId);
+                        productContext, request, talentId, quantity, userId, deptId, roleCodes, item, externalEnabled, externalSupported, effectiveChannelUserId);
                 item.setSuccess(true);
                 item.setSampleRequestId(sampleId);
                 if (!StringUtils.hasText(item.getMessage())) {
@@ -267,7 +270,7 @@ public class ProductQuickSampleService {
      * @throws ValidateException  达人 ID 为空或达人信息不完整
      */
     private UUID createSingleSample(
-            Product product,
+            QuickSampleProductContext productContext,
             QuickSampleApplyRequest request,
             String talentExternalId,
             int quantity,
@@ -278,6 +281,9 @@ public class ProductQuickSampleService {
             boolean externalEnabled,
             boolean externalSupported,
             UUID channelUserId) {
+        Product product = productContext.product();
+        ProductSnapshot snapshot = productContext.snapshot();
+        ProductOperationState state = productContext.state();
         /* 解析达人外部信息 */
         CrawlerTalentInfo talentInfo = resolveSampleTalentInfo(talentExternalId);
         /* 查找已有达人记录，不存在则自动创建 */
@@ -292,9 +298,6 @@ public class ProductQuickSampleService {
             throw BusinessException.stateInvalid("达人未满足默认寄样标准，请填写备注说明申请原因");
         }
 
-        ProductSnapshot snapshot = productSnapshotMapper.selectById(product.getId());
-        /* 再次校验商品展示状态（确保并发安全） */
-        resolveDisplayingState(product);
         /* 默认设置为降级模式，外部网关成功后覆盖 */
         item.setExternalApplied(false);
         item.setFallback(true);
@@ -375,9 +378,77 @@ public class ProductQuickSampleService {
                 sample,
                 product.getName(),
                 null,
-                resolveRecruiterId(product),
+                state == null ? null : state.getAssigneeId(),
                 snapshot == null || snapshot.getActivityId() == null ? null : snapshot.getActivityId());
         return sample.getId();
+    }
+
+    /**
+     * 解析商品库入口的商品上下文。
+     * <p>
+     * 商品库前端传入的是 {@code product_snapshot.id}，但 {@code sample_request.product_id}
+     * 外键指向 {@code product.id}。因此快速寄样写入前必须把快照商品物化为主商品表事实，
+     * 否则大部分真实商品会在插入寄样单时因外键缺失而失败。
+     * </p>
+     *
+     * @param relationId 商品库快照 ID
+     * @return 已校验展示状态、且 product 主表存在的商品上下文
+     */
+    private QuickSampleProductContext resolveQuickSampleProductContext(UUID relationId) {
+        Product legacyProduct = productService.getById(relationId);
+        if (legacyProduct == null) {
+            throw BusinessException.notFound("商品不存在或已不在商品库，请刷新商品后重试");
+        }
+        ProductSnapshot snapshot = productSnapshotMapper.selectById(legacyProduct.getId());
+        if (snapshot == null || !StringUtils.hasText(snapshot.getProductId())) {
+            throw BusinessException.notFound("商品快照不存在或商品 ID 缺失，请刷新商品后重试");
+        }
+        ProductOperationState state = resolveDisplayingState(snapshot);
+        Product product = ensurePersistedProduct(snapshot);
+        return new QuickSampleProductContext(product, snapshot, state);
+    }
+
+    /**
+     * 确保商品主表存在对应记录，用于满足寄样单外键约束。
+     */
+    private Product ensurePersistedProduct(ProductSnapshot snapshot) {
+        Product existing = findPersistedProduct(snapshot.getProductId());
+        if (existing != null) {
+            return existing;
+        }
+        Product product = materializeProductFromSnapshot(snapshot);
+        try {
+            productMapper.insert(product);
+            return product;
+        } catch (DuplicateKeyException ex) {
+            Product raced = findPersistedProduct(snapshot.getProductId());
+            if (raced != null) {
+                return raced;
+            }
+            throw ex;
+        }
+    }
+
+    private Product findPersistedProduct(String productId) {
+        if (!StringUtils.hasText(productId)) {
+            return null;
+        }
+        return productMapper.selectOne(new LambdaQueryWrapper<Product>()
+                .eq(Product::getProductId, productId)
+                .last("LIMIT 1"));
+    }
+
+    private Product materializeProductFromSnapshot(ProductSnapshot snapshot) {
+        Product product = new Product();
+        product.setId(snapshot.getId());
+        product.setProductId(snapshot.getProductId());
+        product.setName(StringUtils.hasText(snapshot.getTitle()) ? snapshot.getTitle() : snapshot.getProductId());
+        product.setPrice(snapshot.getPrice());
+        product.setCover(snapshot.getCover());
+        product.setDetailUrl(snapshot.getDetailUrl());
+        product.setStatus(snapshot.getStatus() == null ? 1 : snapshot.getStatus());
+        product.setCheckStatus(2);
+        return product;
     }
 
     /**
@@ -387,15 +458,11 @@ public class ProductQuickSampleService {
      * 仅展示中的商品才允许发起快速寄样。
      * </p>
      *
-     * @param product 商品实体
+     * @param snapshot 商品快照
      * @return 展示中的运营状态
      * @throws BusinessException 商品快照不存在或商品非展示状态时
      */
-    private ProductOperationState resolveDisplayingState(Product product) {
-        ProductSnapshot snapshot = productSnapshotMapper.selectById(product.getId());
-        if (snapshot == null) {
-            throw BusinessException.stateInvalid("商品快照不存在");
-        }
+    private ProductOperationState resolveDisplayingState(ProductSnapshot snapshot) {
         /* 通过 activityId + productId 查询运营状态 */
         ProductOperationState state = productOperationStateMapper.selectOne(new LambdaQueryWrapper<ProductOperationState>()
                 .eq(ProductOperationState::getActivityId, snapshot.getActivityId())
@@ -404,17 +471,10 @@ public class ProductQuickSampleService {
         if (state == null || !ProductDisplayStatus.DISPLAYING.name().equals(state.getDisplayStatus())) {
             throw BusinessException.stateInvalid("仅展示中的商品可发起快速寄样");
         }
+        if (!Boolean.TRUE.equals(state.getSelectedToLibrary())) {
+            throw BusinessException.stateInvalid("该商品尚未加入商品库，请先审核并加入商品库后再进行寄样操作");
+        }
         return state;
-    }
-
-    /**
-     * 前置校验：商品必须处于展示中状态。
-     *
-     * @param product 商品实体
-     * @throws BusinessException 非展示状态时
-     */
-    private void ensureDisplaying(Product product) {
-        resolveDisplayingState(product);
     }
 
     /**
@@ -593,26 +653,10 @@ public class ProductQuickSampleService {
         return remark.isEmpty() ? null : remark.toString();
     }
 
-    /**
-     * 解析商品的招商组长 ID。
-     * <p>
-     * 通过商品快照找到对应的运营状态，取其 assigneeId（分配人）。
-     * </p>
-     *
-     * @param product 商品实体
-     * @return 招商组长 ID；快照或状态不存在时返回 null
-     */
-    private UUID resolveRecruiterId(Product product) {
-        ProductSnapshot snapshot = productSnapshotMapper.selectById(product.getId());
-        if (snapshot == null) {
-            return null;
-        }
-        ProductOperationState state = productOperationStateMapper.selectOne(
-                new LambdaQueryWrapper<ProductOperationState>()
-                        .eq(ProductOperationState::getActivityId, snapshot.getActivityId())
-                        .eq(ProductOperationState::getProductId, snapshot.getProductId())
-                        .last("LIMIT 1"));
-        return state == null ? null : state.getAssigneeId();
+    private record QuickSampleProductContext(
+            Product product,
+            ProductSnapshot snapshot,
+            ProductOperationState state) {
     }
 
     /**

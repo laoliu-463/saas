@@ -12,6 +12,7 @@ import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
@@ -29,12 +30,14 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class QuickSampleApplyTest {
 
     @Mock private ProductService productService;
+    @Mock private ProductMapper productMapper;
     @Mock private ProductSnapshotMapper productSnapshotMapper;
     @Mock private ProductOperationStateMapper productOperationStateMapper;
     @Mock private SampleRequestMapper sampleRequestMapper;
@@ -53,6 +56,7 @@ class QuickSampleApplyTest {
     void setUp() {
         service = new ProductQuickSampleService(
                 productService,
+                productMapper,
                 productSnapshotMapper,
                 productOperationStateMapper,
                 sampleRequestMapper,
@@ -139,6 +143,7 @@ class QuickSampleApplyTest {
 
         ProductOperationState state = new ProductOperationState();
         state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setSelectedToLibrary(true);
 
         CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
         talentInfo.setTalentId("douyin_talent_001");
@@ -184,6 +189,7 @@ class QuickSampleApplyTest {
 
         ProductOperationState state = new ProductOperationState();
         state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setSelectedToLibrary(true);
 
         CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
         talentInfo.setTalentId("douyin_talent_001");
@@ -230,6 +236,7 @@ class QuickSampleApplyTest {
 
         ProductOperationState state = new ProductOperationState();
         state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setSelectedToLibrary(true);
 
         CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
         talentInfo.setTalentId("douyin_talent_001");
@@ -266,6 +273,71 @@ class QuickSampleApplyTest {
     }
 
     @Test
+    void applyQuickSample_shouldMaterializeProductAndPersistPendingSampleFromSnapshotId() {
+        UUID relationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Product legacyProduct = new Product();
+        legacyProduct.setId(relationId);
+        legacyProduct.setProductId("9001");
+        legacyProduct.setName("快照视图商品");
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(relationId);
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+        snapshot.setTitle("快照商品标题");
+        snapshot.setPrice(19900L);
+        snapshot.setCover("https://example.test/cover.jpg");
+
+        ProductOperationState state = new ProductOperationState();
+        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setSelectedToLibrary(true);
+
+        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
+        talentInfo.setTalentId("douyin_talent_001");
+        talentInfo.setNickname("达人A");
+
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        talent.setDouyinUid("douyin_talent_001");
+
+        when(productService.getById(relationId)).thenReturn(legacyProduct);
+        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
+        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
+        when(productMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+        when(productMapper.insert(any(Product.class))).thenReturn(1);
+        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
+        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
+                .thenReturn(new com.colonel.saas.entity.TalentClaim());
+        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
+                new SampleEligibilityService.EligibilityResult(true, List.of(), null, null));
+        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
+
+        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
+        request.setTalentIds(List.of("douyin_talent_001"));
+        request.setQuantity(1);
+
+        var response = service.applyQuickSample(
+                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThat(response.getSuccessCount()).isEqualTo(1);
+
+        org.mockito.ArgumentCaptor<Product> productCaptor = org.mockito.ArgumentCaptor.forClass(Product.class);
+        verify(productMapper).insert(productCaptor.capture());
+        assertThat(productCaptor.getValue().getId()).isEqualTo(relationId);
+        assertThat(productCaptor.getValue().getProductId()).isEqualTo("9001");
+        assertThat(productCaptor.getValue().getName()).isEqualTo("快照商品标题");
+
+        org.mockito.ArgumentCaptor<SampleRequest> sampleCaptor = org.mockito.ArgumentCaptor.forClass(SampleRequest.class);
+        verify(sampleRequestMapper).insert(sampleCaptor.capture());
+        assertThat(sampleCaptor.getValue().getProductId()).isEqualTo(relationId);
+        assertThat(sampleCaptor.getValue().getStatus()).isEqualTo(1);
+        assertThat(sampleCaptor.getValue().getApplySource()).isEqualTo(ProductQuickSampleService.APPLY_SOURCE_LOCAL_FALLBACK);
+    }
+
+    @Test
     void applyQuickSample_shouldUseLocalFallbackWhenGatewayUnsupported() {
         UUID relationId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -280,6 +352,7 @@ class QuickSampleApplyTest {
 
         ProductOperationState state = new ProductOperationState();
         state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setSelectedToLibrary(true);
 
         CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
         talentInfo.setTalentId("douyin_talent_001");
@@ -304,6 +377,7 @@ class QuickSampleApplyTest {
 
         ProductQuickSampleService enabledService = new ProductQuickSampleService(
                 productService,
+                productMapper,
                 productSnapshotMapper,
                 productOperationStateMapper,
                 sampleRequestMapper,
@@ -352,6 +426,7 @@ class QuickSampleApplyTest {
 
         ProductOperationState state = new ProductOperationState();
         state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setSelectedToLibrary(true);
 
         CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
         talentInfo.setTalentId("douyin_talent_001");

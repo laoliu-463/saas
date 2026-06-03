@@ -225,6 +225,21 @@ const handleChannelChange = () => {
   }
 }
 
+const formatQuickSampleFailureDetail = (data: any) => {
+  const failures = Array.isArray(data?.items)
+    ? data.items.filter((item: any) => item && item.success === false)
+    : []
+  return failures
+    .map((item: any) => {
+      const talentLabel = String(item?.talentName || item?.talentNickname || item?.talentId || '未知达人').trim()
+      const reason = String(item?.message || '未返回失败原因').trim()
+      return `${talentLabel}：${reason}`
+    })
+    .filter(Boolean)
+    .slice(0, 5)
+    .join('；')
+}
+
 watch(visible, (show) => {
   if (show) {
     if (isAdmin.value) {
@@ -271,9 +286,23 @@ const submit = async () => {
     })
     const data = res?.data || {}
     const fallbackUsed = data.items?.some((item: any) => item.fallback || item.fallbackType === 'LOCAL_FALLBACK')
+    const successCount = data.successCount ?? 0
+    const failureCount = data.failureCount ?? 0
+    if (failureCount > 0) {
+      const detail = formatQuickSampleFailureDetail(data)
+      const suffix = detail ? `。失败原因：${detail}` : '。失败原因：服务端未返回明细，请联系管理员查看日志'
+      if (successCount > 0) {
+        message.warning(`部分提交成功：成功 ${successCount}，失败 ${failureCount}${suffix}`)
+        visible.value = false
+        emit('success')
+      } else {
+        message.error(`快速寄样失败：成功 ${successCount}，失败 ${failureCount}${suffix}`)
+      }
+      return
+    }
     const msg = fallbackUsed
-      ? `提交完成：成功 ${data.successCount ?? 0}，失败 ${data.failureCount ?? 0}。抖店外部寄样暂未接通，已创建系统内寄样申请`
-      : `提交完成：成功 ${data.successCount ?? 0}，失败 ${data.failureCount ?? 0}`
+      ? `提交完成：成功 ${successCount}，失败 ${failureCount}。抖店外部寄样暂未接通，已创建系统内寄样申请`
+      : `提交完成：成功 ${successCount}，失败 ${failureCount}`
     message.success(msg)
     visible.value = false
     emit('success')

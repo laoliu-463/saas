@@ -79,6 +79,7 @@ import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { createSample, getSampleProductCandidates, searchSampleTalents } from '../../../api/sample'
 import { resolveSafeAvatarUrl } from '../../../utils/media'
+import { notifyApiFailure } from '../../../utils/requestError'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{
@@ -196,7 +197,7 @@ async function fetchTalents(page = 1) {
     talentRows.value = payload?.records || []
     talentQuery.total = payload?.total || 0
   } catch (error: any) {
-    message.error(error?.message || '获取达人列表失败')
+    notifyApiFailure(error, message, { fallbackMessage: '获取达人列表失败' })
   } finally {
     loadingTalents.value = false
   }
@@ -259,7 +260,7 @@ function handleSubmit() {
       handleClose()
       resetForm()
     } catch (error: any) {
-      message.error(error?.message || '提交寄样申请失败')
+      notifyApiFailure(error, message, { fallbackMessage: '提交寄样申请失败' })
     } finally {
       submitting.value = false
     }
