@@ -2,8 +2,8 @@
 
 ## 当前日期
 
-- 记录日期：2026-06-02
-- Harness 版本：v0.1.6
+- 记录日期：2026-06-03
+- Harness 版本：v0.1.9
 
 ## 当前技术栈
 
@@ -104,7 +104,8 @@ real-pre 必须保持：
 - 新增领域执行入口：`harness/instructions/user-domain.md`、`config-domain.md`、`order-domain.md`、`performance-domain.md`、`analytics-module.md`、`product-domain.md`、`talent-domain.md`、`sample-domain.md`。
 - 新增 DDD skill：`ddd-domain-optimization.skill.md`、`ddd-boundary-check.skill.md`、`ddd-post-task-sync.skill.md`。
 - 状态跟踪入口：`harness/state/DOMAIN_STATUS.md`。
-- 下一阶段：按照 `DDD_DOMAIN_TASK_MATRIX.md` 从用户域 U-1 现状盘点开始逐领域优化。
+- 已完成：用户域 U-1 现状盘点（2026-06-03），报告路径：`harness/reports/user-domain-u1-inventory-20260603-120000.md`。
+- 下一阶段：按照 `DDD_DOMAIN_TASK_MATRIX.md` 执行用户域 U-2 表结构与模型对齐。
 - 重要口径：本次是 Harness 文档治理，不代表 Java / Vue / SQL 已完成 DDD 重构。
 
 ## 旧文档冲突处理

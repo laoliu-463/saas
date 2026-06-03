@@ -12,10 +12,10 @@
 
 ## 用户域
 
-- 当前状态：主链路已具备，数据范围和权限覆盖仍需持续审计。
+- 当前状态：U-1 现状盘点已完成（2026-06-03），报告路径：`harness/reports/user-domain-u1-inventory-20260603-120000.md`。
 - 已完成能力：登录、角色、菜单、组织、`self/group/all`。
 - 待优化能力：CurrentUser、PermissionContext、DataScopeResolver、PermissionChecker、统一出口和越权负例补齐。
-- DDD 优化下一步：U-1 盘点当前用户域代码、接口、表和测试。
+- DDD 优化下一步：U-2 表结构与模型对齐（核对 sys_user/sys_role/sys_menu/sys_dept/sys_user_role/sys_role_menu/operation_log 与领域模型一致性）。
 - 标记：P0。
 
 ## 配置域

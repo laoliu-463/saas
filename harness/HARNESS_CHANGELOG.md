@@ -1,5 +1,13 @@
 # Harness Changelog
 
+## v0.1.9
+
+- 完成用户域 U-1 现状盘点任务（2026-06-03）。
+- 生成报告：`harness/reports/user-domain-u1-inventory-20260603-120000.md`，覆盖认证、用户、角色、菜单、组织、数据范围、操作日志、安全过滤器、当前用户、RBAC、菜单树、多角色等 13 个维度。
+- 识别关键 DDD 架构问题：三套并行数据范围实现（DataScopeAspect AOP、PerformanceAccessScope 独立实现、Service 手动过滤）、缺少 UserDomainFacade、业务域直接访问用户域 Mapper。
+- 更新 `CURRENT_STATE.md`、`state/DOMAIN_STATUS.md`，记录 U-1 完成状态和 U-2 下一步。
+- 未修改 Java 业务代码、Vue 前端代码或数据库；仅执行只读盘点和 Harness 状态更新。
+
 ## v0.1.8
 
 - 增量合并 DDD 优化路线到现有 Harness，不重建 Harness，不覆盖既有入口。
