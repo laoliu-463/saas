@@ -17,6 +17,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,6 +47,7 @@ class PerformanceMetricsQueryServiceTest {
                         "order_amount_cent", 5000L,
                         "service_fee_income_cent", 600L,
                         "tech_service_fee_cent", 60L,
+                        "talent_commission_cent", 0L,
                         "service_profit_cent", 540L,
                         "recruiter_commission_cent", 54L,
                         "channel_commission_cent", 108L,
@@ -62,6 +64,34 @@ class PerformanceMetricsQueryServiceTest {
 
         assertThat(aggregate.orderCount()).isEqualTo(2L);
         assertThat(aggregate.grossProfitCent()).isEqualTo(378L);
+    }
+
+    @Test
+    void aggregateRange_shouldReadTalentCommissionFromOrderSettlementField() {
+        when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
+                .thenReturn(Map.of(
+                        "order_count", 1L,
+                        "order_amount_cent", 10000L,
+                        "service_fee_income_cent", 1000L,
+                        "tech_service_fee_cent", 100L,
+                        "talent_commission_cent", 250L,
+                        "service_profit_cent", 900L,
+                        "recruiter_commission_cent", 90L,
+                        "channel_commission_cent", 180L,
+                        "gross_profit_cent", 630L));
+
+        LocalDate today = LocalDate.now();
+        service.aggregateRange(
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay(),
+                "settleTime",
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL);
+
+        verify(jdbcTemplate).queryForMap(
+                contains("settle_second_colonel_commission"),
+                any(Object[].class));
     }
 
     @Test

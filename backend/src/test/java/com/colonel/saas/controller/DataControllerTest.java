@@ -192,7 +192,7 @@ class DataControllerTest {
         when(performanceMetricsQueryService.resolveAmountTrackLabel("createTime")).thenReturn("estimate");
         when(performanceMetricsQueryService.aggregateRange(any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PerformanceMetricsQueryService.PerformanceAggregate(
-                        3L, 9000L, 900L, 90L, 810L, 81L, 162L, 567L));
+                        3L, 9000L, 900L, 90L, 50L, 810L, 81L, 162L, 567L));
         when(performanceMetricsQueryService.trendByDay(any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(new PerformanceMetricsQueryService.TrendPoint(LocalDate.now().toString(), 3L, 9000L)));
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
@@ -202,6 +202,7 @@ class DataControllerTest {
 
         assertThat(response.getData().getEstimate().getMetricsSource()).isEqualTo("performance_records");
         assertThat(response.getData().getEstimate().getAmountTrack()).isEqualTo("estimate");
+        assertThat(response.getData().getEstimate().getTalentCommission()).isEqualByComparingTo("0.50");
         assertThat(response.getData().getEstimate().getGrossProfit()).isEqualByComparingTo("5.67");
         verify(commissionService, never()).calculateByActivityBuckets(any());
     }

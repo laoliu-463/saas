@@ -110,7 +110,7 @@ public class PerformanceCalculationService {
 
         // 第二步：映射双轨金额（单位：分）
         long payAmount = nvl(order.getOrderAmount());
-        long settleAmount = nvl(order.getSettleAmount()) > 0 ? nvl(order.getSettleAmount()) : nvl(order.getActualAmount());
+        long settleAmount = nvl(order.getSettleAmount());
         long estimateServiceFee = nvl(order.getEstimateServiceFee());
         long effectiveServiceFee = nvl(order.getEffectiveServiceFee());
         long estimateTechServiceFee = nvl(order.getEstimateTechServiceFee());

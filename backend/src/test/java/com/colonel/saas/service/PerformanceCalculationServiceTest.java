@@ -106,7 +106,7 @@ class PerformanceCalculationServiceTest {
     }
 
     @Test
-    void upsertFromOrder_shouldPreserveExistingRecordAndFallbackSettleAmount() {
+    void upsertFromOrder_shouldPreserveExistingRecordAndKeepUnsettledAmountZero() {
         UUID existingId = UUID.randomUUID();
         UUID orderRowId = UUID.randomUUID();
         UUID recruiterId = UUID.randomUUID();
@@ -143,7 +143,7 @@ class PerformanceCalculationServiceTest {
         assertThat(record.getCreatedAt()).isEqualTo(createdAt);
         assertThat(record.getCalculationVersion()).isEqualTo(4);
         assertThat(record.getPayAmount()).isEqualTo(15000L);
-        assertThat(record.getSettleAmount()).isEqualTo(12300L);
+        assertThat(record.getSettleAmount()).isZero();
         assertThat(record.getDefaultChannelUserId()).isNull();
         assertThat(record.getFinalChannelUserId()).isNull();
         assertThat(record.getChannelAttribution()).isEqualTo("unattributed");

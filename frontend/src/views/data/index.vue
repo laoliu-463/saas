@@ -6,7 +6,7 @@
     - 创建时间轨（createTime）：覆盖已同步订单，适合运营日报与 real-pre 回流复核。
     - 结算时间轨（settleTime）：仅纳入已结算订单，适合收益复核。
   角色适配：
-    - ADMIN / BIZ_LEADER / CHANNEL_LEADER：团队维度指标（今日订单数 / GMV / 毛利）
+    - ADMIN / BIZ_LEADER / CHANNEL_LEADER：团队维度指标（今日订单数 / GMV / 提成）
     - BIZ_STAFF：个人维度"我的订单数 / 我的订单总额"
     - CHANNEL_STAFF：个人维度"我的推广订单数 / 我的订单总额"
   数据来源：
@@ -183,7 +183,7 @@
           </div>
         </div>
 
-        <!-- 指标卡片 4：毛利 / 招商提成（渠道员为渠道提成） -->
+        <!-- 指标卡片 4：提成指标（按角色展示合计 / 招商 / 渠道提成） -->
         <div
           class="metric-card app-metric-card clickable"
           data-testid="dashboard-metric-profit"
@@ -199,7 +199,7 @@
           </div>
           <div class="metric-body">
             <div class="metric-label">{{ metricLabels.profit }}</div>
-            <div class="metric-value">¥{{ metrics.grossProfit || '0.00' }}</div>
+            <div class="metric-value">¥{{ displayCommissionMetric }}</div>
             <div class="metric-trend neutral">{{ metricScopeText }}</div>
           </div>
         </div>
@@ -227,7 +227,7 @@
         ></div>
       </div>
 
-      <!-- 业绩域双轨汇总：展示 performance_records 表的预估轨和结算轨订单数及毛利 -->
+      <!-- 业绩域双轨汇总：展示 performance_records 表的预估轨和结算轨订单数及订单额 -->
       <div v-if="performanceSummary" class="breakdown-section app-section-panel" data-testid="dashboard-performance-summary">
         <h3 class="section-title">业绩双轨汇总</h3>
         <div class="breakdown-tags">
@@ -236,16 +236,16 @@
             <span class="breakdown-value">{{ performanceSummary.estimate?.orderCount ?? 0 }}</span>
           </div>
           <div class="breakdown-item">
-            <span class="breakdown-label">预估轨毛利</span>
-            <span class="breakdown-value accent">¥{{ centToYuan(performanceSummary.estimate?.grossProfit) }}</span>
+            <span class="breakdown-label">预估轨订单额</span>
+            <span class="breakdown-value accent">¥{{ centToYuan(performanceSummary.estimate?.orderAmount) }}</span>
           </div>
           <div class="breakdown-item">
             <span class="breakdown-label">结算轨订单数</span>
             <span class="breakdown-value">{{ performanceSummary.effective?.orderCount ?? 0 }}</span>
           </div>
           <div class="breakdown-item">
-            <span class="breakdown-label">结算轨毛利</span>
-            <span class="breakdown-value accent">¥{{ centToYuan(performanceSummary.effective?.grossProfit) }}</span>
+            <span class="breakdown-label">结算轨订单额</span>
+            <span class="breakdown-value accent">¥{{ centToYuan(performanceSummary.effective?.orderAmount) }}</span>
           </div>
         </div>
       </div>
@@ -322,9 +322,9 @@ import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import PageHeader from '../../components/PageHeader.vue'
 import { getMetrics } from '../../api/data'
-  import { centToYuan, getPerformanceSummary, type PerformanceSummary } from '../../api/performance'
-  import { useRuntimeEnvironment } from '../../composables/useRuntimeEnvironment'
-  import { resolveDualTrackMetrics } from './dashboard-metrics'
+import { centToYuan, getPerformanceSummary, type PerformanceSummary } from '../../api/performance'
+import { useRuntimeEnvironment } from '../../composables/useRuntimeEnvironment'
+import { resolveDualTrackMetrics } from './dashboard-metrics'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES } from '../../constants/rbac'
 import { useDelayedFlag } from '../../utils/delayedFlag'
@@ -411,7 +411,7 @@ const metricLabels = computed(() => {
     orders: `今日订单数${trackSuffix}`,
     amount: `今日 GMV${trackSuffix}`,
     fee: `今日服务费净收${amountSuffix}`,
-    profit: `今日毛利${amountSuffix}`
+    profit: `今日提成${amountSuffix}`
   }
 })
 
@@ -432,7 +432,7 @@ const dualTrackGapHint = computed(() => {
   const createOrders = toNumber(dualTrackCreate.value?.todayOrderCount ?? dualTrackCreate.value?.totalOrders)
   const settleOrders = toNumber(dualTrackSettle.value?.todayOrderCount ?? dualTrackSettle.value?.totalOrders)
   if (createOrders > 0 && settleOrders === 0) {
-    return '今日已有创建轨订单，但结算轨为 0：多为订单尚未结算，服务费与毛利请以结算时间轨在结算后复核。'
+    return '今日已有创建轨订单，但结算轨为 0：多为订单尚未结算，服务费与提成请以结算时间轨在结算后复核。'
   }
   if (createOrders > settleOrders && settleOrders > 0) {
     const gap = Math.trunc(createOrders - settleOrders)
@@ -460,11 +460,21 @@ const displayOrderCount = computed(() => toNumber(metrics.value?.todayOrderCount
 
 const displayGmv = computed(() => formatAmount(toNumber(metrics.value?.todayGmv ?? metrics.value?.totalAmount)))
 
+const displayCommissionMetric = computed(() => {
+  if (isChannelStaffOnly.value) {
+    return formatAmount(toNumber(metrics.value?.channelCommission))
+  }
+  if (isBizStaffOnly.value) {
+    return formatAmount(toNumber(metrics.value?.bizCommission))
+  }
+  return formatAmount(toNumber(metrics.value?.commission))
+})
+
 const timeScopeLabel = computed(() => timeField.value === 'createTime' ? '按创建时间统计' : '按结算时间统计')
 
 const metricScopeText = computed(() => {
   if (timeField.value === 'createTime') {
-    return '服务费 / 毛利按当前创建轨订单的结算字段汇总'
+    return '服务费 / 提成按当前创建轨订单字段汇总'
   }
   const settleOrders = toNumber(metricsSettle.value?.todayOrderCount ?? metricsSettle.value?.totalOrders)
   return settleOrders > 0

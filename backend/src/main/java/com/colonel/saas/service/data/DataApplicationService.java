@@ -543,9 +543,7 @@ public class DataApplicationService extends BaseController {
             metrics.setTotalAmount(centToYuan(aggregate.orderAmountCent()));
             metrics.setServiceFeeIncome(centToYuan(aggregate.serviceFeeIncomeCent()));
             metrics.setTechServiceFee(centToYuan(aggregate.techServiceFeeCent()));
-            metrics.setTalentCommission(centToYuan(Math.max(
-                    aggregate.serviceFeeIncomeCent() - aggregate.techServiceFeeCent() - aggregate.serviceProfitCent(),
-                    0L)));
+            metrics.setTalentCommission(centToYuan(aggregate.talentCommissionCent()));
             metrics.setServiceFee(centToYuan(aggregate.serviceProfitCent()));
             metrics.setBizCommission(centToYuan(aggregate.recruiterCommissionCent()));
             metrics.setChannelCommission(centToYuan(aggregate.channelCommissionCent()));
