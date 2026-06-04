@@ -315,6 +315,33 @@ public class ColonelsettlementOrder implements Serializable {
     private String channelName;
 
     /**
+     * 出单视频 ID（前端展示用）。
+     * <p>非数据库字段，由 Service 从订单 {@code extra_data} 的
+     * {@code aweme_id / video_id / item_id} 轻量投影补齐。历史订单或上游未返回
+     * 时为 null，前端走"无值不渲染"路径。</p>
+     */
+    @TableField(exist = false)
+    private String awemeId;
+
+    /**
+     * 订单类型文本（前端展示用）。
+     * <p>非数据库字段，由 Service 从 {@link #orderType} 派生：
+     * 1=MAIN、2=SETTLEMENT、其它 / null=UNKNOWN。
+     * 历史数据或上游未返回时为空字符串。</p>
+     */
+    @TableField(exist = false)
+    private String orderTypeText;
+
+    /**
+     * 内容类型文本（前端展示用）。
+     * <p>非数据库字段，由 Service 从订单 {@code extra_data} 的
+     * {@code content_type / contentType / content_type_text} 轻量投影补齐。
+     * 历史订单或上游未返回时为空字符串。</p>
+     */
+    @TableField(exist = false)
+    private String contentTypeText;
+
+    /**
      * 达人名称
      * <p>对应数据库列：{@code talent_name}，冗余存储达人昵称，便于展示</p>
      */

@@ -1200,11 +1200,35 @@ class DataControllerTest {
 
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null,
                 UUID.randomUUID(), null, DataScope.ALL);
 
         assertThat(result).isNotNull();
         assertThat(result.getData().getRecords()).isEmpty();
+    }
+
+    @Test
+    void getOrderDetailPage_shouldApplyDetailSpecificFilters() {
+        IPage<ColonelsettlementOrder> empty = new Page<>(1, 20);
+        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+
+        dataController.getOrderDetailPage(
+                1, 20, null, null, null, "legacy-partner-ignored",
+                null, null, null, null, "旧招商字段", "渠道甲", "ACT-1",
+                "活动甲", "PARTNER-1", "合作方甲", "招商甲",
+                null, null, null, "createTime",
+                UUID.randomUUID(), null, DataScope.ALL);
+
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        String segment = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(segment).contains("merchant_id");
+        assertThat(segment).contains("colonel_activity");
+        assertThat(segment).contains("activity_name");
+        assertThat(segment).contains("partner_name");
+        assertThat(segment).contains("final_channel_user_id");
+        assertThat(segment).contains("final_recruiter_user_id");
+        assertThat(segment).doesNotContain("media");
     }
 
     @Test
@@ -1241,8 +1265,8 @@ class DataControllerTest {
         perf.setEffectiveRecruiterCommission(380L);
         perf.setEstimateChannelCommission(300L);
         perf.setEffectiveChannelCommission(285L);
-        perf.setEstimateServiceProfit(500L);
-        perf.setEffectiveServiceProfit(470L);
+        perf.setEstimateServiceProfit(999L);
+        perf.setEffectiveServiceProfit(888L);
         when(performanceRecordMapper.findByOrderIds(List.of("ORD001"))).thenReturn(List.of(perf));
 
         ColonelsettlementActivity activity = new ColonelsettlementActivity();
@@ -1260,7 +1284,7 @@ class DataControllerTest {
 
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null,
                 UUID.randomUUID(), null, DataScope.ALL);
 
         assertThat(result).isNotNull();
@@ -1278,6 +1302,8 @@ class DataControllerTest {
         assertThat(vo.getEstimateServiceFeeExpense().doubleValue()).isEqualTo(7.00); // 400+300 cents = 7 yuan
         assertThat(vo.getEffectiveServiceFeeExpense()).isNotNull();
         assertThat(vo.getEffectiveServiceFeeExpense().doubleValue()).isEqualTo(6.65); // 380+285 cents
+        assertThat(vo.getEstimateServiceProfit()).isEqualByComparingTo("5.00");
+        assertThat(vo.getEffectiveServiceProfit()).isEqualByComparingTo("4.70");
 
         // 双轨金额
         assertThat(vo.getPayAmount()).isNotNull();
@@ -1306,7 +1332,7 @@ class DataControllerTest {
 
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null,
                 UUID.randomUUID(), null, DataScope.ALL);
 
         List<OrderDetailVO> records = result.getData().getRecords();
@@ -1318,6 +1344,10 @@ class DataControllerTest {
         assertThat(vo.getRecruiterName()).isNull();
         assertThat(vo.getEstimateRecruiterCommission()).isNull();
         assertThat(vo.getEstimateChannelCommission()).isNull();
+        assertThat(vo.getSettleAmount()).isNull();
+        assertThat(vo.getEffectiveServiceFee()).isNull();
+        assertThat(vo.getEffectiveTechServiceFee()).isNull();
+        assertThat(vo.getEffectiveServiceProfit()).isNull();
         // 服务费收益 = 服务费收入 - 技术服务费 (when no perf record)
         assertThat(vo.getEstimateServiceProfit()).isNotNull();
         assertThat(vo.getEstimateServiceProfit().doubleValue()).isEqualTo(1.00); // 200-100 cents = 1 yuan
@@ -1343,13 +1373,14 @@ class DataControllerTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         dataController.exportOrderDetail(
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null,
                 UUID.randomUUID(), null, DataScope.ALL, response);
 
         assertThat(response.getContentType()).contains("text/csv");
         String content = response.getContentAsString();
-        assertThat(content).contains("订单号");
+        assertThat(content).contains("订单ID,活动信息,商品信息,合作方信息,推广者,渠道,招商,订单状态,订单额,服务费收入,技术服务费,服务费支出,服务费收益,招商提成,渠道提成,订单时间");
         assertThat(content).contains("ORD_EXP");
+        assertThat(content).contains("结算：-");
     }
 
     @Test
@@ -1357,6 +1388,7 @@ class DataControllerTest {
         Method exportOrderDetail = DataController.class.getDeclaredMethod(
                 "exportOrderDetail",
                 String.class, String.class, UUID.class, String.class,
+                String.class, String.class, String.class, String.class,
                 String.class, String.class, String.class, String.class,
                 String.class, String.class, String.class, String.class,
                 LocalDate.class, LocalDate.class, String.class,

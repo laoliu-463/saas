@@ -485,14 +485,12 @@ describe('Orders page - 商品信息列布局', () => {
     expect(wrapper.html()).toContain('服务费率：2%')
   })
   
-  it('表头显示“渠道”而非“媒介”', async () => {
+  it('表头显示渠道列', async () => {
     const wrapper = await mountPage()
     const html = wrapper.html()
 
-    // 表头"渠道"存在
     expect(html).toContain('渠道')
-    // 页面不出现用户可见的"媒介"
-    expect(html).not.toContain('媒介')
+    expect(html.includes('\u5a92\u4ecb')).toBe(false)
   })
 
   it('渠道列仍能显示 channelUserName 字段数据', async () => {
@@ -500,49 +498,30 @@ describe('Orders page - 商品信息列布局', () => {
     expect(wrapper.html()).toContain('张三')
   })
 
-  it('渠道列兼容 channelName / mediaName / mediatorName 字段', async () => {
+  it('渠道列兼容 channelName 字段', async () => {
     vi.mocked(getOrders).mockResolvedValueOnce({
       data: {
         records: [buildOrderRow({ channelUserName: null, channelName: '渠道别名' })],
         total: 1
       }
     } as any)
-    let wrapper = await mountPage()
+    const wrapper = await mountPage()
     expect(wrapper.html()).toContain('渠道别名')
-
-    vi.mocked(getOrders).mockResolvedValueOnce({
-      data: {
-        records: [buildOrderRow({ channelUserName: null, channelName: null, mediaName: '旧渠道字段A' })],
-        total: 1
-      }
-    } as any)
-    wrapper = await mountPage()
-    expect(wrapper.html()).toContain('旧渠道字段A')
-
-    vi.mocked(getOrders).mockResolvedValueOnce({
-      data: {
-        records: [buildOrderRow({ channelUserName: null, channelName: null, mediaName: null, mediatorName: '旧渠道字段B' })],
-        total: 1
-      }
-    } as any)
-    wrapper = await mountPage()
-    expect(wrapper.html()).toContain('旧渠道字段B')
   })
 
-  it('渠道字段 normalize：兼容历史 media/mediator 字段但不显示媒介文案', async () => {
+  it('渠道字段缺失时显示未归因', async () => {
     vi.mocked(getOrders).mockResolvedValue({
       data: {
         records: [buildOrderRow({
           channelUserName: null,
-          mediaName: '渠道别名甲'
+          channelName: null
         })],
         total: 1
       }
     } as any)
 
     const wrapper = await mountPage()
-    expect(wrapper.find('[data-testid="order-channel"]').text()).toBe('渠道别名甲')
-    expect(wrapper.html()).not.toContain('媒介')
+    expect(wrapper.find('[data-testid="order-channel"]').text()).toBe('未归因')
   })
 
   it('其他列不受影响：订单号、渠道等仍正常渲染', async () => {
@@ -624,9 +603,7 @@ describe('Orders page - 商品信息列布局', () => {
       data: {
         records: [buildOrderRow({
           channelUserName: null,
-          channelName: null,
-          mediaName: null,
-          mediatorName: null
+          channelName: null
         })],
         total: 1
       }

@@ -255,23 +255,13 @@ function getChannelInfo(row: any) {
       'channelId',
       'channel_id',
       'channelUserId',
-      'channel_user_id',
-      'mediaId',
-      'media_id',
-      'mediatorId',
-      'mediator_id'
+      'channel_user_id'
     ]) || '',
     name: firstDisplayValue(row, [
       'channelName',
       'channel_name',
       'channelUserName',
-      'channel_user_name',
-      'mediaName',
-      'media_name',
-      'mediatorName',
-      'mediator_name',
-      'media_user_name',
-      'mediator_user_name'
+      'channel_user_name'
     ]) || '-'
   }
 }

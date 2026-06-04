@@ -364,6 +364,26 @@ class OrderServiceTest {
         assertThat(order.getServiceFeeRate()).isEqualByComparingTo("2");
     }
 
+    @Test
+    void enrichOrderList_shouldFillListExtrasFromProjection() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORDER-EXTRA-1");
+        order.setOrderType(1);
+
+        when(orderMapper.listDisplayProductInfoByOrderIds(any())).thenReturn(List.of(Map.of(
+                "orderId", "ORDER-EXTRA-1",
+                "productPic", "https://cdn.example.com/order-product.jpg",
+                "awemeId", "AWEME-EXTRA-1",
+                "contentTypeText", "短视频"
+        )));
+        service.enrichOrderList(List.of(order));
+
+        assertThat(order.getProductImage()).isEqualTo("https://cdn.example.com/order-product.jpg");
+        assertThat(order.getAwemeId()).isEqualTo("AWEME-EXTRA-1");
+        assertThat(order.getContentTypeText()).isEqualTo("短视频");
+        assertThat(order.getOrderTypeText()).isEqualTo("推广者推广");
+    }
+
     // ============================================================
     // findPage + findStats — 委托 mapper 验证
     // ============================================================

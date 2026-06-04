@@ -9,12 +9,16 @@ export interface OrderListFilters {
   talentId: string       // 达人 ID
   merchantId: string     // 商家 ID
   activityId: string     // 团长活动 ID
+  activityName: string   // 活动名称（模糊匹配）
   shopName: string       // 店铺名称（模糊匹配）
+  partnerId: string      // 合作方 ID
+  partnerName: string    // 合作方名称（模糊匹配）
   productId: string      // 商品 ID
   productName: string    // 商品名称（模糊匹配）
   talentName: string     // 达人名称（模糊匹配）
   colonelName: string    // 团长名称（模糊匹配）
   channelName: string    // 渠道名称（模糊匹配）
+  recruiterName?: string | null // 招商名称（模糊匹配）
   recruitType: string | null // 招募类型（null 表示全部）
 }
 
@@ -81,14 +85,18 @@ export function buildOrderExportParams(input: BaseOrderQueryInput) {
     orderId: filters.orderId || undefined,
     status: filters.status || undefined,
     talentId: filters.talentId || undefined,
-    merchantId: filters.merchantId || undefined,
+    merchantId: filters.partnerId || filters.merchantId || undefined,
+    partnerId: filters.partnerId || undefined,
     colonelActivityId: filters.activityId || undefined,
-    shopName: filters.shopName || undefined,
+    activityName: filters.activityName || undefined,
+    shopName: filters.partnerName || filters.shopName || undefined,
+    partnerName: filters.partnerName || undefined,
     productId: filters.productId || undefined,
     productName: filters.productName || undefined,
     talentName: filters.talentName || undefined,
-    colonelName: filters.colonelName || undefined,
+    colonelName: filters.recruiterName || filters.colonelName || undefined,
     channelName: filters.channelName || undefined,
+    recruiterName: filters.recruiterName || undefined,
     recruitType: filters.recruitType || undefined,
     timeField,
     ...resolveDateParams(dateRange)

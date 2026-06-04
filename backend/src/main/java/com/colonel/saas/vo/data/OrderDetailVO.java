@@ -34,6 +34,8 @@ public class OrderDetailVO {
     private String activityId;
     /** 活动名称 */
     private String activityName;
+    /** 内容类型文本（短视频/直播） */
+    private String contentTypeText;
 
     // ── 商品信息 ──────────────────────────────
 
@@ -43,6 +45,12 @@ public class OrderDetailVO {
     private String productName;
     /** 商品图片 URL */
     private String productImage;
+    /** 商品数量 */
+    private Integer productQuantity;
+    /** 佣金率（百分比，如 10 表示 10%） */
+    private BigDecimal commissionRate;
+    /** 服务费率（百分比，如 2 表示 2%） */
+    private BigDecimal serviceFeeRate;
 
     // ── 合作方信息 ──────────────────────────────
 
@@ -57,6 +65,10 @@ public class OrderDetailVO {
     private String talentId;
     /** 达人昵称 */
     private String talentName;
+    /** 达人抖音 ID（如 tg12201212） */
+    private String talentDouyinId;
+    /** 出单视频 ID */
+    private String videoId;
 
     // ── 渠道 ──────────────────────────────
 
@@ -129,4 +141,6 @@ public class OrderDetailVO {
     private LocalDateTime settleTime;
     /** 订单创建时间 */
     private LocalDateTime orderCreateTime;
+    /** 结算状态文本（失效/已结算/待结算） */
+    private String settleStatusText;
 }

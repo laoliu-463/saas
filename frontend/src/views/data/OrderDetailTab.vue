@@ -36,7 +36,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, reactive, ref, watch } from 'vue'
+import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { NImage, NTag, NText, NTooltip, useMessage } from 'naive-ui'
 import { getOrderDetailPage } from '../../api/data'
 import { buildOrderDetailPageParams, type OrderListFilters, type OrderTimeField } from './order-list-query'
@@ -64,16 +64,29 @@ const pagination = reactive(createPaginationState())
 
 const statusTextMap: Record<string, string> = {
   ORDERED: '待结算',
-  SHIPPED: '已发货',
+  SHIPPED: '待结算',
   FINISHED: '已结算',
-  CANCELLED: '已失效'
+  CANCELLED: '已失效',
+  REFUNDED: '已退款'
 }
 
 const statusTagType = (text: string) => {
   if (text === '已结算') return 'success'
   if (text === '待结算') return 'warning'
-  if (text === '已失效') return 'error'
+  if (text === '已退款' || text === '已失效') return 'error'
   return 'info'
+}
+
+const resolveStatusText = (row: any) => {
+  const raw = row.orderStatusText
+  if (raw && statusTextMap[String(raw)]) return statusTextMap[String(raw)]
+  if (raw && ['待结算', '已结算', '已退款', '已失效'].includes(String(raw))) return String(raw)
+  const code = Number(row.orderStatus)
+  if (code === 1 || code === 2) return '待结算'
+  if (code === 3) return '已结算'
+  if (code === 4) return '已失效'
+  if (code === 5) return '已退款'
+  return '-'
 }
 
 const fmtMoney = (v: unknown) => {
@@ -100,7 +113,7 @@ const hasVisibleColumn = (key: string) => visibleColumnKeys.value.includes(key)
 const detailConfigurableColumns = [
   { title: '活动信息', key: 'activity' },
   { title: '商品信息', key: 'product' },
-  { title: '合作方', key: 'partner' },
+  { title: '合作方信息', key: 'partner' },
   { title: '推广者', key: 'talent' },
   { title: '渠道', key: 'channel' },
   { title: '招商', key: 'recruiter' },
@@ -186,7 +199,7 @@ const columns = computed(() => {
 
   if (hasVisibleColumn('partner')) {
     cols.push({
-      title: '合作方',
+      title: '合作方信息',
       key: 'partner',
       width: 160,
       render: (row: any) =>
@@ -234,7 +247,7 @@ const columns = computed(() => {
       key: 'status',
       width: 110,
       render: (row: any) => {
-        const text = row.orderStatusText || statusTextMap[row.orderStatus] || '-'
+        const text = resolveStatusText(row)
         return h(NTag, { type: statusTagType(text), size: 'small', bordered: false }, { default: () => text })
       }
     })
@@ -381,6 +394,10 @@ const handlePageSizeChange = (pageSize: number) => {
 defineExpose({
   refresh: fetchDetailData,
   hasData: () => rows.value.length > 0
+})
+
+onMounted(() => {
+  void fetchDetailData()
 })
 
 watch(

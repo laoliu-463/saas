@@ -91,6 +91,20 @@ public interface ColonelsettlementOrderMapper extends BaseMapper<Colonelsettleme
                     NULLIF(extra_data ->> 'product_pic', ''),
                     NULLIF(extra_data ->> 'productPic', '')
                 ) AS "productPic",
+                COALESCE(
+                    NULLIF(extra_data ->> 'aweme_id', ''),
+                    NULLIF(extra_data ->> 'awemeId', ''),
+                    NULLIF(extra_data ->> 'video_id', ''),
+                    NULLIF(extra_data ->> 'videoId', ''),
+                    NULLIF(extra_data ->> 'item_id', ''),
+                    NULLIF(extra_data ->> 'itemId', '')
+                ) AS "awemeId",
+                COALESCE(
+                    NULLIF(extra_data ->> 'content_type_text', ''),
+                    NULLIF(extra_data ->> 'contentTypeText', ''),
+                    NULLIF(extra_data ->> 'content_type', ''),
+                    NULLIF(extra_data ->> 'contentType', '')
+                ) AS "contentTypeText",
                 CASE
                     WHEN COALESCE(
                         NULLIF(extra_data ->> 'item_num', ''),

@@ -201,6 +201,7 @@ describe('OrderList 订单汇总页面', () => {
     expect(wrapper.text()).toContain('4,209')
     expect(wrapper.text()).toContain('¥81185.26')
     expect(wrapper.text()).toContain('2026-05-25')
+    expect(wrapper.text()).not.toContain('毛利')
   })
 
   /** 验证手动搜索时，所有支持的筛选字段（订单号/状态/达人/商家/活动/店铺/商品/招商人等）正确传递给汇总查询接口 */
@@ -213,11 +214,13 @@ describe('OrderList 订单汇总页面', () => {
       talentId: '4d6c5562-f19f-4e49-a06d-111111111111',
       merchantId: 'merchant_10086',
       activityId: 'ACT-1',
-      shopName: '测试店铺',
+      activityName: '活动甲',
+      partnerId: 'PARTNER-1',
+      partnerName: '合作方甲',
       productId: 'P-1',
       productName: '测试商品',
       talentName: '达人甲',
-      colonelName: '招商甲',
+      recruiterName: '招商甲',
       recruitType: 'PROMOTION'
     })
 
@@ -227,13 +230,17 @@ describe('OrderList 订单汇总页面', () => {
       orderId: 'ORDER-7788',
       status: 'FINISHED',
       talentId: '4d6c5562-f19f-4e49-a06d-111111111111',
-      merchantId: 'merchant_10086',
+      merchantId: 'PARTNER-1',
+      partnerId: 'PARTNER-1',
       colonelActivityId: 'ACT-1',
-      shopName: '测试店铺',
+      activityName: '活动甲',
+      shopName: '合作方甲',
+      partnerName: '合作方甲',
       productId: 'P-1',
       productName: '测试商品',
       talentName: '达人甲',
       colonelName: '招商甲',
+      recruiterName: '招商甲',
       recruitType: 'PROMOTION'
     }))
   })

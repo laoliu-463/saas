@@ -356,6 +356,10 @@ public class DataApplicationService extends BaseController {
             @Parameter(description = "团长名称") @RequestParam(required = false) String colonelName,
             @Parameter(description = "渠道名称") @RequestParam(required = false) String channelName,
             @Parameter(description = "活动 ID") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "活动名称") @RequestParam(required = false) String activityName,
+            @Parameter(description = "合作方 ID") @RequestParam(required = false) String partnerId,
+            @Parameter(description = "合作方名称") @RequestParam(required = false) String partnerName,
+            @Parameter(description = "招商名称") @RequestParam(required = false) String recruiterName,
             @Parameter(description = "招商类型") @RequestParam(required = false) String recruitType,
             @Parameter(description = "开始日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
@@ -371,10 +375,13 @@ public class DataApplicationService extends BaseController {
                 ? LocalDate.now().plusDays(1).atStartOfDay()
                 : endDate.plusDays(1).atStartOfDay();
 
+        String effectivePartnerId = firstText(partnerId, merchantId);
+        String effectiveRecruiterName = firstText(recruiterName, colonelName);
         QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
-                true, timeField, start, end, orderId, status, talentId, merchantId,
-                productId, productName, shopName, talentName, colonelName, channelName,
+                true, timeField, start, end, orderId, status, talentId, effectivePartnerId,
+                productId, productName, shopName, talentName, null, null,
                 colonelActivityId, recruitType, userId, deptId, dataScope);
+        applyOrderDetailExtraFilters(wrapper, true, activityName, effectivePartnerId, partnerName, channelName, effectiveRecruiterName);
 
         IPage<ColonelsettlementOrder> orderPage = orderMapper.findPageWithScope(new Page<>(page, size), wrapper);
         List<ColonelsettlementOrder> orders = orderPage.getRecords();
@@ -483,17 +490,21 @@ public class DataApplicationService extends BaseController {
         // 订单基本信息
         vo.setOrderId(StringUtils.hasText(order.getOrderId()) ? order.getOrderId() : String.valueOf(order.getId()));
         vo.setOrderStatus(order.getOrderStatus());
-        vo.setOrderStatusText(fromOrderStatusCode(order.getOrderStatus()));
+        vo.setOrderStatusText(toDetailOrderStatusText(order.getOrderStatus()));
 
         // 活动
         String activityId = order.getActivityId();
         vo.setActivityId(activityId);
         vo.setActivityName(StringUtils.hasText(activityId) ? activityNameMap.getOrDefault(activityId, null) : null);
+        vo.setContentTypeText(order.getContentTypeText());
 
         // 商品
         vo.setProductId(order.getProductId());
         vo.setProductName(StringUtils.hasText(order.getProductTitle()) ? order.getProductTitle() : order.getProductName());
         vo.setProductImage(StringUtils.hasText(order.getProductImage()) ? order.getProductImage() : order.getProductPic());
+        vo.setProductQuantity(order.getProductQuantity() != null ? order.getProductQuantity() : order.getItemNum());
+        vo.setCommissionRate(order.getCommissionRate());
+        vo.setServiceFeeRate(order.getServiceFeeRate());
 
         // 合作方
         vo.setPartnerId(order.getShopId() != null ? String.valueOf(order.getShopId()) : null);
@@ -503,6 +514,9 @@ public class DataApplicationService extends BaseController {
         vo.setTalentId(order.getTalentId() != null ? order.getTalentId().toString() : null);
         vo.setTalentName(StringUtils.hasText(order.getTalentName()) ? order.getTalentName()
                 : pickText(order.getExtraData(), "talentName", "talent_nickname", "author_name"));
+        vo.setTalentDouyinId(pickText(order.getExtraData(), "talent_unique_id", "author_id", "douyin_id"));
+        vo.setVideoId(StringUtils.hasText(order.getAwemeId()) ? order.getAwemeId()
+                : pickText(order.getExtraData(), "aweme_id", "video_id"));
 
         // 渠道/招商：优先从业绩记录获取最终归属
         if (perf != null) {
@@ -532,17 +546,16 @@ public class DataApplicationService extends BaseController {
             vo.setEffectiveRecruiterCommission(safeCentToYuan(perf.getEffectiveRecruiterCommission()));
             vo.setEstimateChannelCommission(centToYuan(perf.getEstimateChannelCommission()));
             vo.setEffectiveChannelCommission(safeCentToYuan(perf.getEffectiveChannelCommission()));
-            vo.setEstimateServiceProfit(centToYuan(perf.getEstimateServiceProfit()));
-            vo.setEffectiveServiceProfit(safeCentToYuan(perf.getEffectiveServiceProfit()));
         } else {
-            // 无业绩记录：服务费收益 = 服务费收入 - 技术服务费
-            vo.setEstimateServiceProfit(safeSubtract(order.getEstimateServiceFee(), order.getEstimateTechServiceFee()));
-            vo.setEffectiveServiceProfit(safeSubtract(order.getEffectiveServiceFee(), order.getEffectiveTechServiceFee()));
             vo.setEstimateRecruiterCommission(null);
             vo.setEffectiveRecruiterCommission(null);
             vo.setEstimateChannelCommission(null);
             vo.setEffectiveChannelCommission(null);
         }
+
+        // 服务费收益 = 服务费收入 - 技术服务费。这里按展示字段计算，不使用毛利或提成口径。
+        vo.setEstimateServiceProfit(safeSubtract(vo.getEstimateServiceFee(), vo.getEstimateTechServiceFee()));
+        vo.setEffectiveServiceProfit(safeSubtract(vo.getEffectiveServiceFee(), vo.getEffectiveTechServiceFee()));
 
         // 服务费支出 = 招商提成 + 渠道提成
         vo.setEstimateServiceFeeExpense(safeAdd(vo.getEstimateRecruiterCommission(), vo.getEstimateChannelCommission()));
@@ -552,6 +565,15 @@ public class DataApplicationService extends BaseController {
         vo.setPayTime(order.getPayTime() != null ? order.getPayTime() : order.getOrderCreateTime());
         vo.setSettleTime(order.getSettleTime());
         vo.setOrderCreateTime(order.getOrderCreateTime());
+
+        // 结算状态
+        if (order.getOrderStatus() != null && order.getOrderStatus() == 4) {
+            vo.setSettleStatusText("失效");
+        } else if (order.getSettleTime() != null) {
+            vo.setSettleStatusText("已结算");
+        } else {
+            vo.setSettleStatusText("待结算");
+        }
 
         return vo;
     }
@@ -578,6 +600,13 @@ public class DataApplicationService extends BaseController {
         BigDecimal a = centToYuan(aCent);
         BigDecimal b = centToYuan(bCent);
         return a.subtract(b);
+    }
+
+    private BigDecimal safeSubtract(BigDecimal a, BigDecimal b) {
+        if (a == null && b == null) return null;
+        BigDecimal va = a != null ? a : BigDecimal.ZERO;
+        BigDecimal vb = b != null ? b : BigDecimal.ZERO;
+        return va.subtract(vb);
     }
 
     /**
@@ -1008,6 +1037,10 @@ public class DataApplicationService extends BaseController {
             @Parameter(description = "团长名称") @RequestParam(required = false) String colonelName,
             @Parameter(description = "渠道名称") @RequestParam(required = false) String channelName,
             @Parameter(description = "活动 ID") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "活动名称") @RequestParam(required = false) String activityName,
+            @Parameter(description = "合作方 ID") @RequestParam(required = false) String partnerId,
+            @Parameter(description = "合作方名称") @RequestParam(required = false) String partnerName,
+            @Parameter(description = "招商名称") @RequestParam(required = false) String recruiterName,
             @Parameter(description = "招商类型") @RequestParam(required = false) String recruitType,
             @Parameter(description = "开始日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
@@ -1024,16 +1057,19 @@ public class DataApplicationService extends BaseController {
                 ? LocalDate.now().plusDays(1).atStartOfDay()
                 : endDate.plusDays(1).atStartOfDay();
 
+        String effectivePartnerId = firstText(partnerId, merchantId);
+        String effectiveRecruiterName = firstText(recruiterName, colonelName);
         QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
-                true, timeField, start, end, orderId, status, talentId, merchantId,
-                productId, productName, shopName, talentName, colonelName, channelName,
+                true, timeField, start, end, orderId, status, talentId, effectivePartnerId,
+                productId, productName, shopName, talentName, null, null,
                 colonelActivityId, recruitType, userId, deptId, dataScope);
+        applyOrderDetailExtraFilters(wrapper, true, activityName, effectivePartnerId, partnerName, channelName, effectiveRecruiterName);
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"order-detail.csv\"");
         PrintWriter writer = response.getWriter();
         writer.write('\ufeff');
-        writer.println("订单号,活动名称,商品名称,商品ID,合作方,达人,渠道,招商,订单状态,订单额,预估服务费,结算服务费,预估技术服务费,结算技术服务费,服务费支出,服务费收益,招商提成,渠道提成,付款时间,结算时间");
+        writer.println("订单ID,活动信息,商品信息,合作方信息,推广者,渠道,招商,订单状态,订单额,服务费收入,技术服务费,服务费支出,服务费收益,招商提成,渠道提成,订单时间");
 
         long current = 1L;
         while (true) {
@@ -1054,27 +1090,23 @@ public class DataApplicationService extends BaseController {
             for (ColonelsettlementOrder order : orders) {
                 PerformanceRecord perf = perfMap.get(order.getOrderId());
                 OrderDetailVO vo = toOrderDetailVO(order, perf, activityNameMap, userNameMap);
-                writer.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
+                writer.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
                         csvEscape(vo.getOrderId()),
-                        csvEscape(vo.getActivityName()),
-                        csvEscape(vo.getProductName()),
-                        csvEscape(vo.getProductId()),
-                        csvEscape(vo.getPartnerName()),
-                        csvEscape(vo.getTalentName()),
-                        csvEscape(vo.getChannelName()),
-                        csvEscape(vo.getRecruiterName()),
+                        csvEscape(compactPair(valueOrDefault(vo.getActivityName(), "未归属活动"), vo.getActivityId())),
+                        csvEscape(compactPair(vo.getProductName(), vo.getProductId())),
+                        csvEscape(compactPair(vo.getPartnerName(), vo.getPartnerId())),
+                        csvEscape(compactPair(vo.getTalentName(), vo.getTalentId())),
+                        csvEscape(valueOrDefault(vo.getChannelName(), "未归因")),
+                        csvEscape(valueOrDefault(vo.getRecruiterName(), "未归因")),
                         csvEscape(vo.getOrderStatusText()),
-                        csvEscape(vo.getPayAmount()),
-                        csvEscape(vo.getEstimateServiceFee()),
-                        csvEscape(vo.getEffectiveServiceFee()),
-                        csvEscape(vo.getEstimateTechServiceFee()),
-                        csvEscape(vo.getEffectiveTechServiceFee()),
-                        csvEscape(vo.getEstimateServiceFeeExpense()),
-                        csvEscape(vo.getEstimateServiceProfit()),
-                        csvEscape(vo.getEstimateRecruiterCommission()),
-                        csvEscape(vo.getEstimateChannelCommission()),
-                        csvEscape(vo.getPayTime()),
-                        csvEscape(vo.getSettleTime()));
+                        csvEscape(compactTrack("支付", vo.getPayAmount(), "结算", vo.getSettleAmount())),
+                        csvEscape(compactTrack("预估", vo.getEstimateServiceFee(), "结算", vo.getEffectiveServiceFee())),
+                        csvEscape(compactTrack("预估", vo.getEstimateTechServiceFee(), "结算", vo.getEffectiveTechServiceFee())),
+                        csvEscape(compactTrack("预估", vo.getEstimateServiceFeeExpense(), "结算", vo.getEffectiveServiceFeeExpense())),
+                        csvEscape(compactTrack("预估", vo.getEstimateServiceProfit(), "结算", vo.getEffectiveServiceProfit())),
+                        csvEscape(compactTrack("预估", vo.getEstimateRecruiterCommission(), "结算", vo.getEffectiveRecruiterCommission())),
+                        csvEscape(compactTrack("预估", vo.getEstimateChannelCommission(), "结算", vo.getEffectiveChannelCommission())),
+                        csvEscape(compactOrderTime(vo)));
             }
             if (current >= pageResult.getPages()) {
                 break;
@@ -1198,6 +1230,41 @@ public class DataApplicationService extends BaseController {
         return text;
     }
 
+    private static String valueOrDefault(String value, String fallback) {
+        return StringUtils.hasText(value) ? value : fallback;
+    }
+
+    private static String firstText(String first, String second) {
+        if (StringUtils.hasText(first)) {
+            return first.trim();
+        }
+        return StringUtils.hasText(second) ? second.trim() : null;
+    }
+
+    private static String compactPair(String first, String second) {
+        String primary = valueOrDefault(first, "-");
+        String secondary = valueOrDefault(second, "-");
+        return primary + " / ID：" + secondary;
+    }
+
+    private static String compactTrack(String firstLabel, BigDecimal firstValue, String secondLabel, BigDecimal secondValue) {
+        return firstLabel + "：" + formatCsvMoney(firstValue) + "；" + secondLabel + "：" + formatCsvMoney(secondValue);
+    }
+
+    private static String formatCsvMoney(BigDecimal value) {
+        return value == null ? "-" : value.setScale(2, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    private static String compactOrderTime(OrderDetailVO vo) {
+        return "付款：" + valueOrDefault(formatCsvTime(vo.getPayTime()), "-")
+                + "；结算：" + valueOrDefault(formatCsvTime(vo.getSettleTime()), "-")
+                + "；创建：" + valueOrDefault(formatCsvTime(vo.getOrderCreateTime()), "-");
+    }
+
+    private static String formatCsvTime(LocalDateTime value) {
+        return value == null ? null : value.toString().replace('T', ' ');
+    }
+
     private String cacheKey(Object... values) {
         StringBuilder builder = new StringBuilder();
         for (Object value : values) {
@@ -1318,6 +1385,19 @@ public class DataApplicationService extends BaseController {
             case 3 -> "FINISHED";
             case 4 -> "CANCELLED";
             default -> "ORDERED";
+        };
+    }
+
+    private String toDetailOrderStatusText(Integer statusCode) {
+        if (statusCode == null) {
+            return "待结算";
+        }
+        return switch (statusCode) {
+            case 1, 2 -> "待结算";
+            case 3 -> "已结算";
+            case 4 -> "已失效";
+            case 5 -> "已退款";
+            default -> "待结算";
         };
     }
 
@@ -1646,6 +1726,65 @@ public class DataApplicationService extends BaseController {
             wrapper.eq(column(aliased, "order_type"), toOrderTypeCode(recruitType));
         }
         return wrapper;
+    }
+
+    private void applyOrderDetailExtraFilters(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            boolean aliased,
+            String activityName,
+            String partnerId,
+            String partnerName,
+            String channelName,
+            String recruiterName) {
+        String prefix = aliased ? "co." : "";
+        if (StringUtils.hasText(activityName)) {
+            wrapper.apply("""
+                    EXISTS (
+                        SELECT 1
+                        FROM colonel_activity ca
+                        WHERE ca.activity_id = %scolonel_activity_id
+                          AND ca.activity_name ILIKE CONCAT('%%', {0}, '%%')
+                    )
+                    """.formatted(prefix), activityName.trim());
+        }
+        if (StringUtils.hasText(partnerName)) {
+            String normalized = partnerName.trim();
+            wrapper.and(w -> w.like(column(aliased, "shop_name"), normalized)
+                    .or().apply(prefix + "extra_data->>'partner_name' ILIKE CONCAT('%%', {0}, '%%')", normalized)
+                    .or().apply(prefix + "extra_data->>'partnerName' ILIKE CONCAT('%%', {0}, '%%')", normalized)
+                    .or().apply(prefix + "extra_data->>'merchant_name' ILIKE CONCAT('%%', {0}, '%%')", normalized)
+                    .or().apply(prefix + "extra_data->>'merchantName' ILIKE CONCAT('%%', {0}, '%%')", normalized));
+        }
+        if (StringUtils.hasText(channelName)) {
+            String normalized = channelName.trim();
+            wrapper.and(w -> w.like(column(aliased, "channel_user_name"), normalized)
+                    .or().apply("""
+                            EXISTS (
+                                SELECT 1
+                                FROM performance_records pr
+                                JOIN sys_user su ON su.id = pr.final_channel_user_id
+                                WHERE pr.is_valid = TRUE
+                                  AND pr.order_id = %sorder_id
+                                  AND (su.real_name ILIKE CONCAT('%%', {0}, '%%')
+                                       OR su.username ILIKE CONCAT('%%', {0}, '%%'))
+                            )
+                            """.formatted(prefix), normalized));
+        }
+        if (StringUtils.hasText(recruiterName)) {
+            String normalized = recruiterName.trim();
+            wrapper.and(w -> w.like(column(aliased, "colonel_user_name"), normalized)
+                    .or().apply("""
+                            EXISTS (
+                                SELECT 1
+                                FROM performance_records pr
+                                JOIN sys_user su ON su.id = pr.final_recruiter_user_id
+                                WHERE pr.is_valid = TRUE
+                                  AND pr.order_id = %sorder_id
+                                  AND (su.real_name ILIKE CONCAT('%%', {0}, '%%')
+                                       OR su.username ILIKE CONCAT('%%', {0}, '%%'))
+                            )
+                            """.formatted(prefix), normalized));
+        }
     }
 
     private void applyOrderDataScope(

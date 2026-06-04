@@ -14,12 +14,16 @@
     <section class="order-filter-panel app-panel">
       <div class="filter-grid">
         <div class="filter-field">
-          <span class="filter-label">活动信息</span>
+          <span class="filter-label">订单ID</span>
+          <n-input v-model:value="searchParams.orderId" placeholder="请输入" clearable />
+        </div>
+        <div class="filter-field">
+          <span class="filter-label">活动ID</span>
           <n-input v-model:value="searchParams.activityId" placeholder="请选择" clearable />
         </div>
         <div class="filter-field">
-          <span class="filter-label">店铺名称</span>
-          <n-input v-model:value="searchParams.shopName" placeholder="请输入" clearable />
+          <span class="filter-label">活动名称</span>
+          <n-input v-model:value="searchParams.activityName" placeholder="请输入" clearable />
         </div>
         <div class="filter-field">
           <span class="filter-label">渠道</span>
@@ -48,16 +52,16 @@
         </div>
 
         <div class="filter-field">
-          <span class="filter-label">推广者类型</span>
-          <n-select placeholder="请选择" disabled />
+          <span class="filter-label">合作方ID</span>
+          <n-input v-model:value="searchParams.partnerId" placeholder="请输入" clearable />
+        </div>
+        <div class="filter-field">
+          <span class="filter-label">合作方名称</span>
+          <n-input v-model:value="searchParams.partnerName" placeholder="请输入" clearable />
         </div>
         <div class="filter-field">
           <span class="filter-label">合作类型</span>
           <n-select v-model:value="searchParams.recruitType" :options="recruitTypeOptions" placeholder="请选择" clearable />
-        </div>
-        <div class="filter-field">
-          <span class="filter-label">合作方信息</span>
-          <n-input v-model:value="searchParams.merchantId" placeholder="请输入" clearable />
         </div>
         <div class="filter-field">
           <span class="filter-label">团长名称</span>
@@ -300,7 +304,10 @@ const searchParams = reactive({
   talentId: '',
   merchantId: '',
   activityId: '',
+  activityName: '',
   shopName: '',
+  partnerId: '',
+  partnerName: '',
   productId: '',
   productName: '',
   talentName: '',
@@ -328,8 +335,7 @@ const emptySummary: SummaryRow = {
   serviceFeeIncome: '0.00',
   techServiceFee: '0.00',
   serviceFeeExpense: '0.00',
-  serviceFeeProfit: '0.00',
-  grossProfit: '0.00'
+  serviceFeeProfit: '0.00'
 }
 
 const totalSummary = ref<SummaryRow>({ ...emptySummary })
@@ -378,8 +384,7 @@ const configurableColumns = [
   { title: '服务费收入', key: 'serviceFeeIncome' },
   { title: '技术服务费', key: 'techServiceFee' },
   { title: '服务费支出', key: 'serviceFeeExpense' },
-  { title: '服务费收益', key: 'serviceFeeProfit' },
-  { title: '毛利', key: 'grossProfit' }
+  { title: '服务费收益', key: 'serviceFeeProfit' }
 ]
 
 const visibleColumnKeys = ref(configurableColumns.map((item) => item.key))
@@ -477,14 +482,6 @@ const summaryItems = computed(() => {
       lines: [
         { label: '预估：', value: formatEstimateTrack(total.serviceFeeProfit) },
         { label: '结算：', value: formatSettleTrack(total.serviceFeeProfit) }
-      ]
-    },
-    {
-      key: 'gross',
-      title: '毛利',
-      lines: [
-        { label: '预估：', value: formatEstimateTrack(total.grossProfit) },
-        { label: '结算：', value: formatSettleTrack(total.grossProfit) }
       ]
     }
   ]
@@ -587,17 +584,6 @@ const columns = computed(() => {
       ])
     })
   }
-  if (hasVisibleColumn('grossProfit')) {
-    cols.push({
-      title: '毛利',
-      key: 'grossProfit',
-      width: 150,
-      render: (row: SummaryRow) => h('div', { class: 'table-multi-line' }, [
-        h('div', `预估：${formatEstimateTrack(row.grossProfit)}`),
-        h(NText, { depth: 3 }, { default: () => `结算：${formatSettleTrack(row.grossProfit)}` })
-      ])
-    })
-  }
   return cols
 })
 
@@ -609,6 +595,7 @@ const syncFiltersFromRoute = () => {
   }
   searchParams.productId = typeof route.query.productId === 'string' ? route.query.productId : ''
   searchParams.activityId = typeof route.query.activityId === 'string' ? route.query.activityId : ''
+  searchParams.activityName = typeof route.query.activityName === 'string' ? route.query.activityName : ''
 }
 
 const applyTimePreset = (preset: TimePreset) => {
@@ -658,7 +645,10 @@ const resetFilters = () => {
   searchParams.talentId = ''
   searchParams.merchantId = ''
   searchParams.activityId = ''
+  searchParams.activityName = ''
   searchParams.shopName = ''
+  searchParams.partnerId = ''
+  searchParams.partnerName = ''
   searchParams.productId = ''
   searchParams.productName = ''
   searchParams.talentName = ''

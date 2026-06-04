@@ -286,6 +286,8 @@ class OrderControllerTest {
         when(orderMapper.listDisplayProductInfoByOrderIds(any())).thenReturn(List.of(Map.of(
                 "orderId", "order-1",
                 "productPic", "https://cdn.example.com/product.jpg",
+                "awemeId", "AWEME-1",
+                "contentTypeText", "短视频",
                 "itemNum", 2,
                 "commissionRate", new BigDecimal("500"),
                 "serviceFeeRate", new BigDecimal("1")
@@ -322,6 +324,8 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.records[0].itemNum").value(2))
                 .andExpect(jsonPath("$.data.records[0].commissionRate").value(500))
                 .andExpect(jsonPath("$.data.records[0].serviceFeeRate").value(1))
+                .andExpect(jsonPath("$.data.records[0].awemeId").value("AWEME-1"))
+                .andExpect(jsonPath("$.data.records[0].contentTypeText").value("短视频"))
                 .andExpect(jsonPath("$.data.records[0].channelId").value(channelUserId.toString()))
                 .andExpect(jsonPath("$.data.records[0].channelName").value("渠道甲"))
                 .andExpect(jsonPath("$.data.records[0].channelUserName").value("渠道甲"))

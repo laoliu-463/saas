@@ -580,6 +580,67 @@ public class OrderService {
         }
         order.setChannelId(order.getChannelUserId() == null ? null : order.getChannelUserId().toString());
         order.setChannelName(order.getChannelUserName());
+        order.setOrderTypeText(deriveOrderTypeText(order.getOrderType()));
+    }
+
+    /**
+     * 列表展示用的统一补齐入口。
+     *
+     * <p>在原有 {@link #enrichOrderProductInfo} 基础上，额外从 {@code extra_data} 投影中
+     * 注入出单视频 ID 与内容类型文本，并补充订单类型文本。该方法为 Controller 委托入口，
+     * 不改变原方法签名，旧调用者保持兼容。</p>
+     */
+    public void enrichOrderList(List<ColonelsettlementOrder> orders) {
+        if (orders == null || orders.isEmpty()) {
+            return;
+        }
+        enrichOrderProductInfo(orders);
+        enrichOrderListExtras(orders);
+    }
+
+    /**
+     * 将 {@code listDisplayProductInfoByOrderIds} 投影中的出单视频 ID / 内容类型文本
+     * 回填到实体上（exist=false 展示字段），并规范化订单类型文本。
+     */
+    private void enrichOrderListExtras(List<ColonelsettlementOrder> orders) {
+        Map<String, DisplayProductInfo> orderInfoByOrderId = loadDisplayProductInfo(orders);
+        for (ColonelsettlementOrder order : orders) {
+            if (order == null || !StringUtils.hasText(order.getOrderId())) {
+                continue;
+            }
+            if (!StringUtils.hasText(order.getOrderTypeText())) {
+                order.setOrderTypeText(deriveOrderTypeText(order.getOrderType()));
+            }
+            DisplayProductInfo info = orderInfoByOrderId.get(order.getOrderId());
+            if (info == null) {
+                continue;
+            }
+            if (!StringUtils.hasText(order.getAwemeId()) && StringUtils.hasText(info.awemeId())) {
+                order.setAwemeId(info.awemeId());
+            }
+            if (!StringUtils.hasText(order.getContentTypeText()) && StringUtils.hasText(info.contentTypeText())) {
+                order.setContentTypeText(info.contentTypeText());
+            }
+        }
+    }
+
+    /**
+     * 订单类型 Integer → 中文文本派生（与前端列表约定对齐）。
+     * <ul>
+     *   <li>1 → "推广者推广"（招商类型订单）</li>
+     *   <li>2 → "结算"（结算类型订单）</li>
+     *   <li>其它 / null → ""（不展示文本，前端不会渲染空节点）</li>
+     * </ul>
+     */
+    static String deriveOrderTypeText(Integer orderType) {
+        if (orderType == null) {
+            return "";
+        }
+        return switch (orderType) {
+            case 1 -> "推广者推广";
+            case 2 -> "结算";
+            default -> "";
+        };
     }
 
     /**
@@ -637,7 +698,9 @@ public class OrderService {
                     asText(readValue(row, "productPic")),
                     asInteger(readValue(row, "itemNum")),
                     asBigDecimal(readValue(row, "commissionRate")),
-                    asBigDecimal(readValue(row, "serviceFeeRate"))
+                    asBigDecimal(readValue(row, "serviceFeeRate")),
+                    asText(readValue(row, "awemeId")),
+                    asText(readValue(row, "contentTypeText"))
             ));
         }
         return result;
@@ -875,7 +938,7 @@ public class OrderService {
         return value != null && value.compareTo(BigDecimal.ZERO) > 0;
     }
 
-    private record DisplayProductInfo(String productPic, Integer itemNum, BigDecimal commissionRate, BigDecimal serviceFeeRate) {
+    private record DisplayProductInfo(String productPic, Integer itemNum, BigDecimal commissionRate, BigDecimal serviceFeeRate, String awemeId, String contentTypeText) {
     }
 
     private record ProductSnapshotKey(String activityId, String productId) {

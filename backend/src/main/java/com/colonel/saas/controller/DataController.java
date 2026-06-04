@@ -133,6 +133,10 @@ public class DataController extends DataApplicationService {
             @Parameter(description = "团长名称。") @RequestParam(required = false) String colonelName,
             @Parameter(description = "渠道名称。") @RequestParam(required = false) String channelName,
             @Parameter(description = "活动 ID。") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "活动名称。") @RequestParam(required = false) String activityName,
+            @Parameter(description = "合作方 ID。") @RequestParam(required = false) String partnerId,
+            @Parameter(description = "合作方名称。") @RequestParam(required = false) String partnerName,
+            @Parameter(description = "招商名称。") @RequestParam(required = false) String recruiterName,
             @Parameter(description = "招商类型。") @RequestParam(required = false) String recruitType,
             @Parameter(description = "开始日期。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
@@ -140,7 +144,7 @@ public class DataController extends DataApplicationService {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        return super.getOrderDetailPage(page, size, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, recruitType, startDate, endDate, timeField, userId, deptId, dataScope);
+        return super.getOrderDetailPage(page, size, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, activityName, partnerId, partnerName, recruiterName, recruitType, startDate, endDate, timeField, userId, deptId, dataScope);
     }
 
     @GetMapping("/data/orders/summary")
@@ -217,6 +221,10 @@ public class DataController extends DataApplicationService {
             @Parameter(description = "团长名称") @RequestParam(required = false) String colonelName,
             @Parameter(description = "渠道名称") @RequestParam(required = false) String channelName,
             @Parameter(description = "活动 ID") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "活动名称") @RequestParam(required = false) String activityName,
+            @Parameter(description = "合作方 ID") @RequestParam(required = false) String partnerId,
+            @Parameter(description = "合作方名称") @RequestParam(required = false) String partnerName,
+            @Parameter(description = "招商名称") @RequestParam(required = false) String recruiterName,
             @Parameter(description = "招商类型") @RequestParam(required = false) String recruitType,
             @Parameter(description = "开始日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
@@ -225,7 +233,7 @@ public class DataController extends DataApplicationService {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             HttpServletResponse response) throws IOException {
-        super.exportOrderDetail(orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, recruitType, startDate, endDate, timeField, userId, deptId, dataScope, response);
+        super.exportOrderDetail(orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, activityName, partnerId, partnerName, recruiterName, recruitType, startDate, endDate, timeField, userId, deptId, dataScope, response);
     }
 
     @GetMapping("/operations/exclusive-talents")

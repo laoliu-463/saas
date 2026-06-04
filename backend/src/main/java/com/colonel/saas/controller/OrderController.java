@@ -496,7 +496,7 @@ public class OrderController extends BaseController {
                 .orderByDesc(ColonelsettlementOrder::getCreateTime);
         IPage<ColonelsettlementOrder> result = orderMapper.selectPage(query, wrapper);
         result.getRecords().forEach(orderService::normalizeOrderRow);
-        orderService.enrichOrderProductInfo(result.getRecords());
+        orderService.enrichOrderList(result.getRecords());
         return ok(result);
     }
 
