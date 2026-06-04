@@ -6,16 +6,24 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.Product;
+import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.ProductMapper;
+import com.colonel.saas.mapper.ProductSnapshotMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -51,10 +59,18 @@ public class OrderService {
 
     private final ColonelsettlementOrderMapper orderMapper;
     private final DashboardService dashboardService;
+    private final ProductSnapshotMapper productSnapshotMapper;
+    private final ProductMapper productMapper;
 
-    public OrderService(ColonelsettlementOrderMapper orderMapper, DashboardService dashboardService) {
+    public OrderService(
+            ColonelsettlementOrderMapper orderMapper,
+            DashboardService dashboardService,
+            ProductSnapshotMapper productSnapshotMapper,
+            ProductMapper productMapper) {
         this.orderMapper = orderMapper;
         this.dashboardService = dashboardService;
+        this.productSnapshotMapper = productSnapshotMapper;
+        this.productMapper = productMapper;
     }
 
     // ============================================================
@@ -112,6 +128,7 @@ public class OrderService {
         IPage<ColonelsettlementOrder> result = orderMapper.selectPage(query, wrapper);
         if (result != null && result.getRecords() != null) {
             result.getRecords().forEach(this::normalizeOrderRow);
+            enrichOrderProductInfo(result.getRecords());
         }
         return result;
     }
@@ -555,6 +572,335 @@ public class OrderService {
             return;
         }
         order.setUnattributedReason(order.getAttributionRemark());
+        if (!StringUtils.hasText(order.getProductImage())) {
+            order.setProductImage(order.getProductPic());
+        }
+        if (order.getProductQuantity() == null) {
+            order.setProductQuantity(order.getItemNum());
+        }
+        order.setChannelId(order.getChannelUserId() == null ? null : order.getChannelUserId().toString());
+        order.setChannelName(order.getChannelUserName());
+    }
+
+    /**
+     * 补齐订单列表商品信息展示字段。
+     *
+     * <p>主列表查询排除了 {@code extra_data} 大字段；这里按当前页订单号做轻量 JSON 投影，
+     * 再用商品快照 / 商品基础信息补齐图片、标题、店铺、佣金率和服务费率。</p>
+     */
+    public void enrichOrderProductInfo(List<ColonelsettlementOrder> orders) {
+        if (orders == null || orders.isEmpty()) {
+            return;
+        }
+        Map<String, DisplayProductInfo> orderInfoByOrderId = loadDisplayProductInfo(orders);
+        SnapshotLookups snapshotLookups = loadSnapshotLookups(orders);
+        Map<String, Product> productById = loadProductsByOrderProductId(orders);
+
+        for (ColonelsettlementOrder order : orders) {
+            if (order == null) {
+                continue;
+            }
+            DisplayProductInfo displayInfo = StringUtils.hasText(order.getOrderId())
+                    ? orderInfoByOrderId.get(order.getOrderId())
+                    : null;
+            Product product = StringUtils.hasText(order.getProductId())
+                    ? productById.get(order.getProductId())
+                    : null;
+            applyDisplayProductInfo(order, displayInfo);
+            applyProductSnapshot(order, snapshotLookups.find(order.getActivityId(), order.getProductId()));
+            applyProduct(order, product);
+            syncProductDisplayAliases(order);
+        }
+    }
+
+    private Map<String, DisplayProductInfo> loadDisplayProductInfo(List<ColonelsettlementOrder> orders) {
+        List<String> orderIds = orders.stream()
+                .filter(Objects::nonNull)
+                .map(ColonelsettlementOrder::getOrderId)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+        if (orderIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, DisplayProductInfo> result = new HashMap<>();
+        List<Map<String, Object>> rows = orderMapper.listDisplayProductInfoByOrderIds(orderIds);
+        if (rows == null || rows.isEmpty()) {
+            return result;
+        }
+        for (Map<String, Object> row : rows) {
+            String orderId = asText(readValue(row, "orderId"));
+            if (!StringUtils.hasText(orderId)) {
+                continue;
+            }
+            result.put(orderId, new DisplayProductInfo(
+                    asText(readValue(row, "productPic")),
+                    asInteger(readValue(row, "itemNum")),
+                    asBigDecimal(readValue(row, "commissionRate")),
+                    asBigDecimal(readValue(row, "serviceFeeRate"))
+            ));
+        }
+        return result;
+    }
+
+    private SnapshotLookups loadSnapshotLookups(List<ColonelsettlementOrder> orders) {
+        if (productSnapshotMapper == null) {
+            return SnapshotLookups.empty();
+        }
+        Set<String> productIds = orders.stream()
+                .filter(Objects::nonNull)
+                .map(ColonelsettlementOrder::getProductId)
+                .filter(StringUtils::hasText)
+                .collect(java.util.stream.Collectors.toSet());
+        if (productIds.isEmpty()) {
+            return SnapshotLookups.empty();
+        }
+        Set<String> activityIds = orders.stream()
+                .filter(Objects::nonNull)
+                .map(ColonelsettlementOrder::getActivityId)
+                .filter(StringUtils::hasText)
+                .collect(java.util.stream.Collectors.toSet());
+        LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<>();
+        wrapper.in(ProductSnapshot::getProductId, productIds)
+                .in(!activityIds.isEmpty(), ProductSnapshot::getActivityId, activityIds)
+                .select(
+                        ProductSnapshot::getActivityId,
+                        ProductSnapshot::getProductId,
+                        ProductSnapshot::getTitle,
+                        ProductSnapshot::getCover,
+                        ProductSnapshot::getShopName,
+                        ProductSnapshot::getActivityCosRatio,
+                        ProductSnapshot::getActivityCosRatioText,
+                        ProductSnapshot::getAdServiceRatio,
+                        ProductSnapshot::getActivityAdCosRatio,
+                        ProductSnapshot::getSyncTime
+                )
+                .orderByDesc(ProductSnapshot::getSyncTime);
+        List<ProductSnapshot> snapshots = productSnapshotMapper.selectList(wrapper);
+        if (snapshots == null || snapshots.isEmpty()) {
+            return SnapshotLookups.empty();
+        }
+        Map<ProductSnapshotKey, ProductSnapshot> byPair = new HashMap<>();
+        Map<String, ProductSnapshot> byProductId = new HashMap<>();
+        for (ProductSnapshot snapshot : snapshots) {
+            if (snapshot == null || !StringUtils.hasText(snapshot.getProductId())) {
+                continue;
+            }
+            if (StringUtils.hasText(snapshot.getActivityId())) {
+                byPair.putIfAbsent(new ProductSnapshotKey(snapshot.getActivityId(), snapshot.getProductId()), snapshot);
+            }
+            byProductId.putIfAbsent(snapshot.getProductId(), snapshot);
+        }
+        return new SnapshotLookups(byPair, byProductId);
+    }
+
+    private Map<String, Product> loadProductsByOrderProductId(List<ColonelsettlementOrder> orders) {
+        if (productMapper == null) {
+            return Map.of();
+        }
+        Set<String> productIds = orders.stream()
+                .filter(Objects::nonNull)
+                .map(ColonelsettlementOrder::getProductId)
+                .filter(StringUtils::hasText)
+                .collect(java.util.stream.Collectors.toSet());
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
+        wrapper.and(nested -> nested
+                        .in(Product::getProductId, productIds)
+                        .or()
+                        .in(Product::getOuterProductId, productIds))
+                .select(
+                        Product::getProductId,
+                        Product::getOuterProductId,
+                        Product::getName,
+                        Product::getCover,
+                        Product::getCosRatio,
+                        Product::getServiceRatio
+                );
+        List<Product> products = productMapper.selectList(wrapper);
+        if (products == null || products.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Product> result = new HashMap<>();
+        for (Product product : products) {
+            if (product == null) {
+                continue;
+            }
+            if (StringUtils.hasText(product.getProductId())) {
+                result.putIfAbsent(product.getProductId(), product);
+            }
+            if (StringUtils.hasText(product.getOuterProductId())) {
+                result.putIfAbsent(product.getOuterProductId(), product);
+            }
+        }
+        return result;
+    }
+
+    private void applyDisplayProductInfo(ColonelsettlementOrder order, DisplayProductInfo info) {
+        if (order == null || info == null) {
+            return;
+        }
+        if (!StringUtils.hasText(order.getProductPic()) && StringUtils.hasText(info.productPic())) {
+            order.setProductPic(info.productPic());
+        }
+        if (order.getItemNum() == null && info.itemNum() != null) {
+            order.setItemNum(info.itemNum());
+        }
+        if (order.getCommissionRate() == null && info.commissionRate() != null) {
+            order.setCommissionRate(info.commissionRate());
+        }
+        if (order.getServiceFeeRate() == null && info.serviceFeeRate() != null) {
+            order.setServiceFeeRate(info.serviceFeeRate());
+        }
+    }
+
+    private void applyProductSnapshot(ColonelsettlementOrder order, ProductSnapshot snapshot) {
+        if (order == null || snapshot == null) {
+            return;
+        }
+        if (!StringUtils.hasText(order.getProductPic()) && StringUtils.hasText(snapshot.getCover())) {
+            order.setProductPic(snapshot.getCover());
+        }
+        if (!StringUtils.hasText(order.getProductTitle()) && StringUtils.hasText(snapshot.getTitle())) {
+            order.setProductTitle(snapshot.getTitle());
+        }
+        if (!StringUtils.hasText(order.getShopName()) && StringUtils.hasText(snapshot.getShopName())) {
+            order.setShopName(snapshot.getShopName());
+        }
+        if (order.getCommissionRate() == null) {
+            order.setCommissionRate(resolveSnapshotCommissionRate(snapshot));
+        }
+        if (order.getServiceFeeRate() == null) {
+            order.setServiceFeeRate(resolveSnapshotServiceFeeRate(snapshot));
+        }
+    }
+
+    private void applyProduct(ColonelsettlementOrder order, Product product) {
+        if (order == null || product == null) {
+            return;
+        }
+        if (!StringUtils.hasText(order.getProductPic()) && StringUtils.hasText(product.getCover())) {
+            order.setProductPic(product.getCover());
+        }
+        if (!StringUtils.hasText(order.getProductTitle()) && StringUtils.hasText(product.getName())) {
+            order.setProductTitle(product.getName());
+        }
+        if (!StringUtils.hasText(order.getProductName()) && StringUtils.hasText(product.getName())) {
+            order.setProductName(product.getName());
+        }
+        if (order.getCommissionRate() == null) {
+            order.setCommissionRate(normalizePercentRate(product.getCosRatio()));
+        }
+        if (order.getServiceFeeRate() == null) {
+            order.setServiceFeeRate(normalizePercentRate(product.getServiceRatio()));
+        }
+    }
+
+    private void syncProductDisplayAliases(ColonelsettlementOrder order) {
+        if (order == null) {
+            return;
+        }
+        if (!StringUtils.hasText(order.getProductImage()) && StringUtils.hasText(order.getProductPic())) {
+            order.setProductImage(order.getProductPic());
+        }
+        if (!StringUtils.hasText(order.getProductPic()) && StringUtils.hasText(order.getProductImage())) {
+            order.setProductPic(order.getProductImage());
+        }
+        if (order.getProductQuantity() == null && order.getItemNum() != null) {
+            order.setProductQuantity(order.getItemNum());
+        }
+        if (order.getItemNum() == null && order.getProductQuantity() != null) {
+            order.setItemNum(order.getProductQuantity());
+        }
+        if (!StringUtils.hasText(order.getChannelId()) && order.getChannelUserId() != null) {
+            order.setChannelId(order.getChannelUserId().toString());
+        }
+        if (!StringUtils.hasText(order.getChannelName()) && StringUtils.hasText(order.getChannelUserName())) {
+            order.setChannelName(order.getChannelUserName());
+        }
+    }
+
+    private BigDecimal resolveSnapshotCommissionRate(ProductSnapshot snapshot) {
+        BigDecimal fromText = parsePercentText(snapshot.getActivityCosRatioText());
+        if (positive(fromText)) {
+            return fromText;
+        }
+        return normalizeBasisPointRate(snapshot.getActivityCosRatio());
+    }
+
+    private BigDecimal resolveSnapshotServiceFeeRate(ProductSnapshot snapshot) {
+        BigDecimal fromText = parsePercentText(snapshot.getAdServiceRatio());
+        if (positive(fromText)) {
+            return fromText;
+        }
+        return normalizeBasisPointRate(snapshot.getActivityAdCosRatio());
+    }
+
+    private BigDecimal normalizeBasisPointRate(Long raw) {
+        if (raw == null || raw <= 0) {
+            return null;
+        }
+        return BigDecimal.valueOf(raw).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal normalizePercentRate(BigDecimal raw) {
+        if (raw == null || raw.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        BigDecimal abs = raw.abs();
+        if (abs.compareTo(BigDecimal.ONE) <= 0) {
+            return raw.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP);
+        }
+        if (abs.compareTo(BigDecimal.valueOf(100)) > 0) {
+            return raw.divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        }
+        return raw.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal parsePercentText(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String normalized = raw.trim()
+                .replace("%", "")
+                .replace("％", "")
+                .replace(",", "")
+                .replace(" ", "");
+        return asBigDecimal(normalized);
+    }
+
+    private boolean positive(BigDecimal value) {
+        return value != null && value.compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    private record DisplayProductInfo(String productPic, Integer itemNum, BigDecimal commissionRate, BigDecimal serviceFeeRate) {
+    }
+
+    private record ProductSnapshotKey(String activityId, String productId) {
+    }
+
+    private record SnapshotLookups(
+            Map<ProductSnapshotKey, ProductSnapshot> byPair,
+            Map<String, ProductSnapshot> byProductId) {
+
+        static SnapshotLookups empty() {
+            return new SnapshotLookups(Map.of(), Map.of());
+        }
+
+        ProductSnapshot find(String activityId, String productId) {
+            if (!StringUtils.hasText(productId)) {
+                return null;
+            }
+            if (StringUtils.hasText(activityId)) {
+                ProductSnapshot byExactPair = byPair.get(new ProductSnapshotKey(activityId, productId));
+                if (byExactPair != null) {
+                    return byExactPair;
+                }
+            }
+            return byProductId.get(productId);
+        }
     }
 
     // ============================================================
@@ -598,6 +944,44 @@ public class OrderService {
             return Long.parseLong(String.valueOf(raw));
         } catch (NumberFormatException ex) {
             return 0L;
+        }
+    }
+
+    private Integer asInteger(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(raw).trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private BigDecimal asBigDecimal(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        if (raw instanceof Number number) {
+            return new BigDecimal(number.toString());
+        }
+        String text = String.valueOf(raw).trim()
+                .replace("%", "")
+                .replace("％", "")
+                .replace(",", "");
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        try {
+            return new BigDecimal(text);
+        } catch (NumberFormatException ex) {
+            return null;
         }
     }
 

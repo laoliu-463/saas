@@ -126,6 +126,9 @@ function buildOrderRow(overrides: Record<string, unknown> = {}) {
     productName: '测试商品-新疆大枣',
     productTitle: '新疆大枣 500g 特级红枣',
     shopName: '新日月新炒货',
+    productQuantity: 1,
+    commissionRate: 10,
+    serviceFeeRate: 1,
     activityId: 'ACT-001',
     orderAmount: 9900,
     attributionStatus: 'ATTRIBUTED',
@@ -206,6 +209,9 @@ describe('Orders page - 商品信息列布局', () => {
     expect(html).toContain('新疆大枣 500g 特级红枣')
     expect(html).toContain('商品ID：3762868644720279662')
     expect(html).toContain('店铺：新日月新炒货')
+    expect(html).toContain('商品数量：1')
+    expect(html).toContain('佣金率：10%')
+    expect(html).toContain('服务费率：1%')
   })
 
   it('商品信息列：使用 order-product-cell 类名', async () => {
@@ -234,7 +240,11 @@ describe('Orders page - 商品信息列布局', () => {
           productName: null,
           productId: null,
           shopName: null,
+          productQuantity: null,
+          product_quantity: null,
+          goodsNum: null,
           itemNum: null,
+          itemCount: null,
           quantity: null,
           commissionRate: null,
           serviceFeeRate: null
@@ -273,10 +283,56 @@ describe('Orders page - 商品信息列布局', () => {
     expect(img.attributes('src')).toBe('https://example.com/product.jpg')
   })
 
+  it('商品信息列：兼容后端字段别名', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({
+          productImage: 'https://example.com/product-image.jpg',
+          productTitle: null,
+          productName: null,
+          goodsName: '别名商品标题',
+          productId: null,
+          goodsId: 'GOODS-001',
+          shopName: null,
+          storeName: '别名店铺',
+          productQuantity: null,
+          goodsNum: 4,
+          commissionRate: null,
+          cosRatio: 0.1,
+          serviceFeeRate: null,
+          serviceRate: '2%'
+        })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    const html = wrapper.html()
+    expect(wrapper.find('.order-product-image').attributes('src')).toBe('https://example.com/product-image.jpg')
+    expect(html).toContain('别名商品标题')
+    expect(html).toContain('商品ID：GOODS-001')
+    expect(html).toContain('店铺：别名店铺')
+    expect(html).toContain('商品数量：4')
+    expect(html).toContain('佣金率：10%')
+    expect(html).toContain('服务费率：2%')
+  })
+
   it('佣金率格式化：小数形式 (0.1 → 10%)', async () => {
     vi.mocked(getOrders).mockResolvedValue({
       data: {
         records: [buildOrderRow({ commissionRate: 0.1 })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    expect(wrapper.html()).toContain('佣金率：10%')
+  })
+
+  it('佣金率格式化：整数百分比 (10 → 10%)', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({ commissionRate: 10 })],
         total: 1
       }
     } as any)
@@ -369,10 +425,22 @@ describe('Orders page - 商品信息列布局', () => {
     expect(wrapper.html()).toContain('服务费率：1%')
   })
 
+  it('服务费率格式化：整数百分比 (10 → 10%)', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({ serviceFeeRate: 10 })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    expect(wrapper.html()).toContain('服务费率：10%')
+  })
+
   it('商品数量显示 itemNum 字段', async () => {
     vi.mocked(getOrders).mockResolvedValue({
       data: {
-        records: [buildOrderRow({ itemNum: 3 })],
+        records: [buildOrderRow({ productQuantity: null, itemNum: 3 })],
         total: 1
       }
     } as any)
@@ -380,13 +448,49 @@ describe('Orders page - 商品信息列布局', () => {
     const wrapper = await mountPage()
     expect(wrapper.html()).toContain('商品数量：3')
   })
+
+  it('商品字段 normalize：兼容 snake_case 和历史别名', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({
+          productPic: null,
+          productImage: null,
+          product_pic: 'https://example.com/snake-product.jpg',
+          productTitle: null,
+          productName: null,
+          product_title: '蛇形字段商品标题',
+          productId: null,
+          product_id: 'P-SNAKE',
+          shopName: null,
+          shop_name: '蛇形字段店铺',
+          productQuantity: null,
+          product_quantity: null,
+          goodsNum: 4,
+          commissionRate: null,
+          commission_rate: 700,
+          serviceFeeRate: null,
+          service_fee_rate: 2
+        })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    expect(wrapper.find('.order-product-image').attributes('src')).toBe('https://example.com/snake-product.jpg')
+    expect(wrapper.html()).toContain('蛇形字段商品标题')
+    expect(wrapper.html()).toContain('商品ID：P-SNAKE')
+    expect(wrapper.html()).toContain('店铺：蛇形字段店铺')
+    expect(wrapper.html()).toContain('商品数量：4')
+    expect(wrapper.html()).toContain('佣金率：7%')
+    expect(wrapper.html()).toContain('服务费率：2%')
+  })
   
   it('表头显示“渠道”而非“媒介”', async () => {
     const wrapper = await mountPage()
     const html = wrapper.html()
 
-    // 表头"渠道负责人"存在
-    expect(html).toContain('渠道负责人')
+    // 表头"渠道"存在
+    expect(html).toContain('渠道')
     // 页面不出现用户可见的"媒介"
     expect(html).not.toContain('媒介')
   })
@@ -396,12 +500,188 @@ describe('Orders page - 商品信息列布局', () => {
     expect(wrapper.html()).toContain('张三')
   })
 
-  it('其他列不受影响：订单号、归因状态等仍正常渲染', async () => {
+  it('渠道列兼容 channelName / mediaName / mediatorName 字段', async () => {
+    vi.mocked(getOrders).mockResolvedValueOnce({
+      data: {
+        records: [buildOrderRow({ channelUserName: null, channelName: '渠道别名' })],
+        total: 1
+      }
+    } as any)
+    let wrapper = await mountPage()
+    expect(wrapper.html()).toContain('渠道别名')
+
+    vi.mocked(getOrders).mockResolvedValueOnce({
+      data: {
+        records: [buildOrderRow({ channelUserName: null, channelName: null, mediaName: '旧渠道字段A' })],
+        total: 1
+      }
+    } as any)
+    wrapper = await mountPage()
+    expect(wrapper.html()).toContain('旧渠道字段A')
+
+    vi.mocked(getOrders).mockResolvedValueOnce({
+      data: {
+        records: [buildOrderRow({ channelUserName: null, channelName: null, mediaName: null, mediatorName: '旧渠道字段B' })],
+        total: 1
+      }
+    } as any)
+    wrapper = await mountPage()
+    expect(wrapper.html()).toContain('旧渠道字段B')
+  })
+
+  it('渠道字段 normalize：兼容历史 media/mediator 字段但不显示媒介文案', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({
+          channelUserName: null,
+          mediaName: '渠道别名甲'
+        })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-testid="order-channel"]').text()).toBe('渠道别名甲')
+    expect(wrapper.html()).not.toContain('媒介')
+  })
+
+  it('其他列不受影响：订单号、渠道等仍正常渲染', async () => {
     const wrapper = await mountPage()
     const html = wrapper.html()
 
     expect(html).toContain('ORDER-001')
-    expect(html).toContain('已归因')
     expect(html).toContain('张三')
+  })
+
+  it('订单ID列：显示订单号、订单类型和内容类型标签', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({ orderTypeText: '推广者推广', contentTypeText: '短视频' })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    const html = wrapper.html()
+    expect(html).toContain('ORDER-001')
+    expect(html).toContain('推广者推广')
+    expect(html).toContain('短视频')
+  })
+
+  it('活动信息列：显示活动名称和活动ID', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({ activityName: '星链达客3' })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    const html = wrapper.html()
+    expect(html).toContain('星链达客3')
+    expect(html).toContain('ID: ACT-001')
+  })
+
+  it('合作方信息列：显示商家和团长', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({ colonelUserName: '众鼎' })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    const html = wrapper.html()
+    expect(html).toContain('商家:')
+    expect(html).toContain('新日月新炒货')
+    expect(html).toContain('团长:')
+    expect(html).toContain('众鼎')
+  })
+
+  it('推广者列：显示达人昵称、ID、达人标签和出单视频', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({
+          talentName: '哆咪哆零食',
+          talentId: '123456',
+          awemeId: '7621357005994936827'
+        })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    const html = wrapper.html()
+    expect(html).toContain('哆咪哆零食')
+    expect(html).toContain('ID: 123456')
+    expect(html).toContain('达人')
+    expect(html).toContain('7621357005994936827')
+    expect(html).toContain('出单视频:')
+  })
+
+  it('渠道列：未归因时显示"未归因"', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({
+          channelUserName: null,
+          channelName: null,
+          mediaName: null,
+          mediatorName: null
+        })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-testid="order-channel"]').text()).toBe('未归因')
+  })
+
+  it('订单时间列：显示付款/收货/结算/失效四行', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({
+          payTime: '2026-06-01 10:00:00',
+          deliveryTime: '2026-06-02 14:00:00',
+          settleTime: '2026-06-03 14:00:00',
+          expireTime: '2026-07-01 00:00:00'
+        })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    const html = wrapper.html()
+    expect(html).toContain('付款:')
+    expect(html).toContain('2026-06-01 10:00:00')
+    expect(html).toContain('收货:')
+    expect(html).toContain('2026-06-02 14:00:00')
+    expect(html).toContain('结算:')
+    expect(html).toContain('2026-06-03 14:00:00')
+    expect(html).toContain('失效:')
+    expect(html).toContain('2026-07-01 00:00:00')
+  })
+
+  it('订单时间列：无值时标签保留但值为空', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({
+          payTime: null,
+          deliveryTime: null,
+          settleTime: null,
+          expireTime: null
+        })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    const html = wrapper.html()
+    expect(html).toContain('付款:')
+    expect(html).toContain('收货:')
+    expect(html).toContain('结算:')
+    expect(html).toContain('失效:')
+    // 不应显示 null
+    expect(html).not.toContain('null')
+    expect(html).not.toContain('undefined')
   })
 })

@@ -2,9 +2,17 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.Product;
+import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.ProductMapper;
+import com.colonel.saas.mapper.ProductSnapshotMapper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -37,12 +46,26 @@ class OrderServiceTest {
     private ColonelsettlementOrderMapper orderMapper;
     @Mock
     private DashboardService dashboardService;
-
+    @Mock
+    private ProductSnapshotMapper productSnapshotMapper;
+    @Mock
+    private ProductMapper productMapper;
     private OrderService service;
 
     @BeforeEach
     void setUp() {
-        service = new OrderService(orderMapper, dashboardService);
+        initTableInfo(ProductSnapshot.class);
+        initTableInfo(Product.class);
+        service = new OrderService(orderMapper, dashboardService, productSnapshotMapper, productMapper);
+    }
+
+    private void initTableInfo(Class<?> entityClass) {
+        if (TableInfoHelper.getTableInfo(entityClass) == null) {
+            MybatisConfiguration configuration = new MybatisConfiguration();
+            configuration.getTypeHandlerRegistry().register(java.util.UUID.class, UUIDTypeHandler.class);
+            MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
+            TableInfoHelper.initTableInfo(assistant, entityClass);
+        }
     }
 
     // ============================================================
@@ -284,14 +307,61 @@ class OrderServiceTest {
     @Test
     void normalizeOrderRow_shouldCopyAttributionRemarkToUnattributedReason() {
         ColonelsettlementOrder order = new ColonelsettlementOrder();
+        UUID channelUserId = UUID.randomUUID();
         order.setAttributionRemark("MAPPING_NOT_FOUND");
+        order.setProductPic("https://cdn.example.com/product.jpg");
+        order.setItemNum(3);
+        order.setChannelUserId(channelUserId);
+        order.setChannelUserName("渠道甲");
         service.normalizeOrderRow(order);
         assertThat(order.getUnattributedReason()).isEqualTo("MAPPING_NOT_FOUND");
+        assertThat(order.getProductImage()).isEqualTo("https://cdn.example.com/product.jpg");
+        assertThat(order.getProductQuantity()).isEqualTo(3);
+        assertThat(order.getChannelId()).isEqualTo(channelUserId.toString());
+        assertThat(order.getChannelName()).isEqualTo("渠道甲");
     }
 
     @Test
     void normalizeOrderRow_nullOrderShouldNotThrow() {
         service.normalizeOrderRow(null);
+    }
+
+    @Test
+    void enrichOrderProductInfo_shouldFillDisplayFieldsFromProjectionAndSnapshot() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORDER-1");
+        order.setProductId("P-1");
+        order.setActivityId("A-1");
+
+        when(orderMapper.listDisplayProductInfoByOrderIds(any())).thenReturn(List.of(Map.of(
+                "orderId", "ORDER-1",
+                "productPic", "https://cdn.example.com/order-product.jpg",
+                "itemNum", 2,
+                "commissionRate", new BigDecimal("500"),
+                "serviceFeeRate", new BigDecimal("2")
+        )));
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId("A-1");
+        snapshot.setProductId("P-1");
+        snapshot.setTitle("快照商品标题");
+        snapshot.setShopName("快照店铺");
+        snapshot.setCover("https://cdn.example.com/snapshot.jpg");
+        snapshot.setActivityCosRatio(1400L);
+        snapshot.setAdServiceRatio("1%");
+        when(productSnapshotMapper.selectList(any())).thenReturn(List.of(snapshot));
+        when(productMapper.selectList(any())).thenReturn(List.of());
+
+        service.enrichOrderProductInfo(List.of(order));
+
+        assertThat(order.getProductPic()).isEqualTo("https://cdn.example.com/order-product.jpg");
+        assertThat(order.getProductImage()).isEqualTo("https://cdn.example.com/order-product.jpg");
+        assertThat(order.getProductTitle()).isEqualTo("快照商品标题");
+        assertThat(order.getShopName()).isEqualTo("快照店铺");
+        assertThat(order.getItemNum()).isEqualTo(2);
+        assertThat(order.getProductQuantity()).isEqualTo(2);
+        assertThat(order.getCommissionRate()).isEqualByComparingTo("500");
+        assertThat(order.getServiceFeeRate()).isEqualByComparingTo("2");
     }
 
     // ============================================================

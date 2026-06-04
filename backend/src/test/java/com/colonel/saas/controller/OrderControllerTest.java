@@ -12,7 +12,11 @@ import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.Product;
+import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.ProductMapper;
+import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SysDeptMapper;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
@@ -34,6 +38,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.math.BigDecimal;
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -70,6 +75,10 @@ class OrderControllerTest {
     private PerformanceBackfillService performanceBackfillService;
     @Mock
     private SysDeptMapper sysDeptMapper;
+    @Mock
+    private ProductSnapshotMapper productSnapshotMapper;
+    @Mock
+    private ProductMapper productMapper;
     /**
      * t2-orders 抽 service：OrderController 委托 {@link com.colonel.saas.service.OrderService}
      * 做 wrapper 拼装。测试用真实 OrderService 实例 + mock mapper，wrapper 行为与生产一致。
@@ -80,14 +89,11 @@ class OrderControllerTest {
 
     @BeforeEach
     void setUp() {
-        if (TableInfoHelper.getTableInfo(ColonelsettlementOrder.class) == null) {
-            MybatisConfiguration configuration = new MybatisConfiguration();
-            configuration.getTypeHandlerRegistry().register(java.util.UUID.class, UUIDTypeHandler.class);
-            MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
-            TableInfoHelper.initTableInfo(assistant, ColonelsettlementOrder.class);
-        }
+        initTableInfo(ColonelsettlementOrder.class);
+        initTableInfo(ProductSnapshot.class);
+        initTableInfo(Product.class);
         DashboardService dashboardService = org.mockito.Mockito.mock(DashboardService.class);
-        orderService = new com.colonel.saas.service.OrderService(orderMapper, dashboardService);
+        orderService = new com.colonel.saas.service.OrderService(orderMapper, dashboardService, productSnapshotMapper, productMapper);
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new OrderController(
                         orderSyncService,
@@ -102,6 +108,15 @@ class OrderControllerTest {
                         orderService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    private void initTableInfo(Class<?> entityClass) {
+        if (TableInfoHelper.getTableInfo(entityClass) == null) {
+            MybatisConfiguration configuration = new MybatisConfiguration();
+            configuration.getTypeHandlerRegistry().register(java.util.UUID.class, UUIDTypeHandler.class);
+            MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
+            TableInfoHelper.initTableInfo(assistant, entityClass);
+        }
     }
 
     @Test
@@ -249,8 +264,15 @@ class OrderControllerTest {
     void getOrders_shouldReturnPagedOrdersAndNormalizeReason() throws Exception {
         java.util.UUID userId = java.util.UUID.randomUUID();
         java.util.UUID deptId = java.util.UUID.randomUUID();
+        java.util.UUID channelUserId = java.util.UUID.randomUUID();
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setOrderId("order-1");
+        order.setProductId("product-1");
+        order.setProductName("订单商品");
+        order.setProductTitle("订单商品标题");
+        order.setShopName("订单店铺");
+        order.setChannelUserId(channelUserId);
+        order.setChannelUserName("渠道甲");
         order.setAttributionStatus("UNATTRIBUTED");
         order.setAttributionRemark("SYNC_FAILED");
 
@@ -261,6 +283,13 @@ class OrderControllerTest {
             page.setTotal(1);
             return page;
         });
+        when(orderMapper.listDisplayProductInfoByOrderIds(any())).thenReturn(List.of(Map.of(
+                "orderId", "order-1",
+                "productPic", "https://cdn.example.com/product.jpg",
+                "itemNum", 2,
+                "commissionRate", new BigDecimal("500"),
+                "serviceFeeRate", new BigDecimal("1")
+        )));
 
         mockMvc.perform(get("/orders")
                         .param("page", "2")
@@ -284,6 +313,18 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.records[0].orderId").value("order-1"))
+                .andExpect(jsonPath("$.data.records[0].productId").value("product-1"))
+                .andExpect(jsonPath("$.data.records[0].productName").value("订单商品"))
+                .andExpect(jsonPath("$.data.records[0].productImage").value("https://cdn.example.com/product.jpg"))
+                .andExpect(jsonPath("$.data.records[0].productPic").value("https://cdn.example.com/product.jpg"))
+                .andExpect(jsonPath("$.data.records[0].shopName").value("订单店铺"))
+                .andExpect(jsonPath("$.data.records[0].productQuantity").value(2))
+                .andExpect(jsonPath("$.data.records[0].itemNum").value(2))
+                .andExpect(jsonPath("$.data.records[0].commissionRate").value(500))
+                .andExpect(jsonPath("$.data.records[0].serviceFeeRate").value(1))
+                .andExpect(jsonPath("$.data.records[0].channelId").value(channelUserId.toString()))
+                .andExpect(jsonPath("$.data.records[0].channelName").value("渠道甲"))
+                .andExpect(jsonPath("$.data.records[0].channelUserName").value("渠道甲"))
                 .andExpect(jsonPath("$.data.records[0].unattributedReason").value("SYNC_FAILED"));
     }
 

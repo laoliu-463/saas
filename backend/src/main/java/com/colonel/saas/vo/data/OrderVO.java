@@ -16,8 +16,24 @@ import java.time.LocalDateTime;
 public class OrderVO {
     /** 订单唯一标识（抖音侧订单号或系统内部 ID） */
     private String id;
+    /** 商品 ID */
+    private String productId;
     /** 商品名称 */
     private String productName;
+    /** 商品图片 URL */
+    private String productImage;
+    /** 店铺名称 */
+    private String shopName;
+    /** 商品数量 */
+    private Integer productQuantity;
+    /** 佣金率，原始单位沿用上游/订单扩展字段 */
+    private BigDecimal commissionRate;
+    /** 服务费率，原始单位沿用上游/订单扩展字段 */
+    private BigDecimal serviceFeeRate;
+    /** 渠道负责人 ID */
+    private String channelId;
+    /** 渠道负责人名称 */
+    private String channelName;
     /** 达人名称（带货达人昵称） */
     private String talentName;
     /** 订单总金额（含佣金、运费等），单位：元 */

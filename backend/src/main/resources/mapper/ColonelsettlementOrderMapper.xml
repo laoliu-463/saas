@@ -37,6 +37,12 @@
         <result property="colonelUserName" column="colonel_user_name"/>
         <result property="promotionLinkId" column="promotion_link_id"/>
         <result property="productTitle" column="product_title"/>
+        <result property="productPic" column="product_pic"/>
+        <result property="productImage" column="product_pic"/>
+        <result property="itemNum" column="item_num"/>
+        <result property="productQuantity" column="item_num"/>
+        <result property="commissionRate" column="commission_rate"/>
+        <result property="serviceFeeRate" column="service_fee_rate"/>
         <result property="talentName" column="talent_name"/>
         <result property="activityId" column="colonel_activity_id"/>
         <result property="payTime" column="pay_time"/>
@@ -184,6 +190,62 @@
             co.colonel_user_name,
             co.promotion_link_id,
             co.product_title,
+            COALESCE(
+                NULLIF(co.product_pic, ''),
+                NULLIF(co.extra_data ->> 'product_img', ''),
+                NULLIF(co.extra_data ->> 'productImg', ''),
+                NULLIF(co.extra_data ->> 'product_pic', ''),
+                NULLIF(co.extra_data ->> 'productPic', '')
+            ) AS product_pic,
+            CASE
+                WHEN COALESCE(
+                    NULLIF(co.extra_data ->> 'item_num', ''),
+                    NULLIF(co.extra_data ->> 'itemNum', ''),
+                    NULLIF(co.extra_data ->> 'quantity', ''),
+                    NULLIF(co.extra_data ->> 'productQuantity', ''),
+                    NULLIF(co.extra_data ->> 'goods_num', ''),
+                    NULLIF(co.extra_data ->> 'goodsNum', '')
+                ) ~ '^[0-9]+$'
+                THEN COALESCE(
+                    NULLIF(co.extra_data ->> 'item_num', ''),
+                    NULLIF(co.extra_data ->> 'itemNum', ''),
+                    NULLIF(co.extra_data ->> 'quantity', ''),
+                    NULLIF(co.extra_data ->> 'productQuantity', ''),
+                    NULLIF(co.extra_data ->> 'goods_num', ''),
+                    NULLIF(co.extra_data ->> 'goodsNum', '')
+                )::INTEGER
+                ELSE NULL
+            END AS item_num,
+            CASE
+                WHEN COALESCE(
+                    NULLIF(co.extra_data ->> 'commission_rate', ''),
+                    NULLIF(co.extra_data ->> 'commissionRate', ''),
+                    NULLIF(co.extra_data ->> 'cos_ratio', ''),
+                    NULLIF(co.extra_data ->> 'cosRatio', '')
+                ) ~ '^[0-9]+([.][0-9]+)?$'
+                THEN COALESCE(
+                    NULLIF(co.extra_data ->> 'commission_rate', ''),
+                    NULLIF(co.extra_data ->> 'commissionRate', ''),
+                    NULLIF(co.extra_data ->> 'cos_ratio', ''),
+                    NULLIF(co.extra_data ->> 'cosRatio', '')
+                )::NUMERIC
+                ELSE NULL
+            END AS commission_rate,
+            CASE
+                WHEN COALESCE(
+                    NULLIF(co.extra_data ->> 'service_fee_rate', ''),
+                    NULLIF(co.extra_data ->> 'serviceFeeRate', ''),
+                    NULLIF(co.extra_data ->> 'service_rate', ''),
+                    NULLIF(co.extra_data ->> 'serviceRate', '')
+                ) ~ '^[0-9]+([.][0-9]+)?$'
+                THEN COALESCE(
+                    NULLIF(co.extra_data ->> 'service_fee_rate', ''),
+                    NULLIF(co.extra_data ->> 'serviceFeeRate', ''),
+                    NULLIF(co.extra_data ->> 'service_rate', ''),
+                    NULLIF(co.extra_data ->> 'serviceRate', '')
+                )::NUMERIC
+                ELSE NULL
+            END AS service_fee_rate,
             co.talent_name,
             co.talent_id,
             co.pay_time,

@@ -1553,19 +1553,3 @@ CREATE INDEX IF NOT EXISTS idx_order_sync_dedup_claim_row_id
 \i alter-talent-claim-shipping-address.sql
 \i create-colonel-order-settlement.sql
 \i migrate-sys-dept-dept-type.sql
-
--- 订单商品信息补充字段（从抖音 API extra_data 提取）
-ALTER TABLE colonelsettlement_order
-    ADD COLUMN IF NOT EXISTS item_num INTEGER,
-    ADD COLUMN IF NOT EXISTS commission_rate INTEGER;
-
--- 从 extra_data 回填商品图片 / 数量 / 佣金率
-UPDATE colonelsettlement_order
-SET product_pic = extra_data->>'product_img',
-    item_num = CASE WHEN extra_data->>'item_num' ~ '^\d+$' THEN (extra_data->>'item_num')::INTEGER ELSE NULL END,
-    commission_rate = CASE WHEN extra_data->>'commission_rate' ~ '^\d+$' THEN (extra_data->>'commission_rate')::INTEGER ELSE NULL END
-WHERE extra_data IS NOT NULL
-  AND jsonb_typeof(extra_data) = 'object'
-  AND extra_data->>'product_img' IS NOT NULL
-  AND (product_pic IS NULL OR product_pic = '');
-

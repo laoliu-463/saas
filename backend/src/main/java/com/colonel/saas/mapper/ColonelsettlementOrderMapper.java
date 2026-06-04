@@ -8,6 +8,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * 团长结算订单数据访问层
@@ -69,4 +73,80 @@ public interface ColonelsettlementOrderMapper extends BaseMapper<Colonelsettleme
             Page<ColonelsettlementOrder> page,
             @Param(Constants.WRAPPER) QueryWrapper<ColonelsettlementOrder> wrapper
     );
+
+    /**
+     * 批量读取订单列表展示所需的商品扩展字段。
+     *
+     * <p>列表主查询仍排除 {@code extra_data} 大字段；这里仅投影图片、数量、
+     * 佣金率和服务费率四个轻量字段，用于补齐订单列表的商品信息列。</p>
+     */
+    @Select("""
+            <script>
+            SELECT
+                order_id AS "orderId",
+                COALESCE(
+                    NULLIF(product_pic, ''),
+                    NULLIF(extra_data ->> 'product_img', ''),
+                    NULLIF(extra_data ->> 'productImg', ''),
+                    NULLIF(extra_data ->> 'product_pic', ''),
+                    NULLIF(extra_data ->> 'productPic', '')
+                ) AS "productPic",
+                CASE
+                    WHEN COALESCE(
+                        NULLIF(extra_data ->> 'item_num', ''),
+                        NULLIF(extra_data ->> 'itemNum', ''),
+                        NULLIF(extra_data ->> 'quantity', ''),
+                        NULLIF(extra_data ->> 'productQuantity', ''),
+                        NULLIF(extra_data ->> 'goods_num', ''),
+                        NULLIF(extra_data ->> 'goodsNum', '')
+                    ) ~ '^[0-9]+$'
+                    THEN COALESCE(
+                        NULLIF(extra_data ->> 'item_num', ''),
+                        NULLIF(extra_data ->> 'itemNum', ''),
+                        NULLIF(extra_data ->> 'quantity', ''),
+                        NULLIF(extra_data ->> 'productQuantity', ''),
+                        NULLIF(extra_data ->> 'goods_num', ''),
+                        NULLIF(extra_data ->> 'goodsNum', '')
+                    )::INTEGER
+                    ELSE NULL
+                END AS "itemNum",
+                CASE
+                    WHEN COALESCE(
+                        NULLIF(extra_data ->> 'commission_rate', ''),
+                        NULLIF(extra_data ->> 'commissionRate', ''),
+                        NULLIF(extra_data ->> 'cos_ratio', ''),
+                        NULLIF(extra_data ->> 'cosRatio', '')
+                    ) ~ '^[0-9]+([.][0-9]+)?$'
+                    THEN COALESCE(
+                        NULLIF(extra_data ->> 'commission_rate', ''),
+                        NULLIF(extra_data ->> 'commissionRate', ''),
+                        NULLIF(extra_data ->> 'cos_ratio', ''),
+                        NULLIF(extra_data ->> 'cosRatio', '')
+                    )::NUMERIC
+                    ELSE NULL
+                END AS "commissionRate",
+                CASE
+                    WHEN COALESCE(
+                        NULLIF(extra_data ->> 'service_fee_rate', ''),
+                        NULLIF(extra_data ->> 'serviceFeeRate', ''),
+                        NULLIF(extra_data ->> 'service_rate', ''),
+                        NULLIF(extra_data ->> 'serviceRate', '')
+                    ) ~ '^[0-9]+([.][0-9]+)?$'
+                    THEN COALESCE(
+                        NULLIF(extra_data ->> 'service_fee_rate', ''),
+                        NULLIF(extra_data ->> 'serviceFeeRate', ''),
+                        NULLIF(extra_data ->> 'service_rate', ''),
+                        NULLIF(extra_data ->> 'serviceRate', '')
+                    )::NUMERIC
+                    ELSE NULL
+                END AS "serviceFeeRate"
+            FROM colonelsettlement_order
+            WHERE deleted = 0
+              AND order_id IN
+              <foreach collection="orderIds" item="orderId" open="(" separator="," close=")">
+                  #{orderId}
+              </foreach>
+            </script>
+            """)
+    List<Map<String, Object>> listDisplayProductInfoByOrderIds(@Param("orderIds") List<String> orderIds);
 }

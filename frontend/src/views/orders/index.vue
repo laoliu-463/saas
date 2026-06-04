@@ -91,26 +91,26 @@
         :data="data"
         :loading="tableLoading"
         :pagination="pagination"
-        :scroll-x="1600"
+        :scroll-x="2200"
         :row-key="(row: any) => row.orderId"
+        :row-selection="{ type: 'selection' }"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
       />
     </n-card>
 
-    <OrderDetailModal v-model:show="showDetail" :order-id="activeOrderId" />
+    <OrderDetailModal v-if="showDetail" v-model:show="showDetail" :order-id="activeOrderId" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { notifyApiFailure } from '../../utils/requestError'
 import { h, computed, onMounted, reactive, ref, watch } from 'vue'
-import { NButton, NSpace, NTag, NText, useMessage } from 'naive-ui'
+import { NButton, NSpace, NTag, useMessage } from 'naive-ui'
 import { useRoute } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import OrderDetailModal from './components/OrderDetailModal.vue'
 import { getOrders, getOrderFilterOptions, getOrderStats, syncOrders } from '../../api/order'
-import { getAttributionReasonText } from '../../constants/orderAttribution'
 import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 import { useDebouncedFn } from '../../utils/debounce'
@@ -206,11 +206,6 @@ const handleRecruiterSearch = useDebouncedFn((keyword: string) => {
   void fetchRecruiterOptions(keyword)
 }, 250)
 
-function formatMoney(value?: number | null) {
-  if (value === null || value === undefined) return '-'
-  return `¥${(Number(value) / 100).toFixed(2)}`
-}
-
 /**
  * 格式化佣金率 / 服务费率。
  * 后端若返回 0.07（小数）则乘 100 展示 7%；若返回 7（整数百分比）则直接展示 7%。
@@ -218,8 +213,7 @@ function formatMoney(value?: number | null) {
  */
 function formatRate(value: unknown): string {
   if (value === null || value === undefined || value === '') return '-'
-  // 如果已经是 "10%" 形式字符串，直接返回
-  if (typeof value === 'string' && value.endsWith('%')) return value
+  if (typeof value === 'string' && value.trim().endsWith('%')) return value.trim()
   const num = Number(value)
   if (!Number.isFinite(num)) return '-'
   let pct: number
@@ -235,126 +229,229 @@ function formatRate(value: unknown): string {
   return `${pct}%`
 }
 
+function firstDisplayValue(row: any, keys: string[]) {
+  for (const key of keys) {
+    const value = row?.[key]
+    if (value !== null && value !== undefined && value !== '') return value
+  }
+  return null
+}
+
+function getProductInfo(row: any) {
+  return {
+    image: firstDisplayValue(row, ['productImage', 'product_image', 'goodsImage', 'imageUrl', 'productPic', 'product_pic', 'cover']),
+    name: firstDisplayValue(row, ['productTitle', 'product_title', 'productName', 'product_name', 'goodsName', 'goodsTitle', 'itemTitle', 'title']) || '-',
+    id: firstDisplayValue(row, ['productId', 'product_id', 'goodsId', 'goods_id', 'itemId']) || '-',
+    shop: firstDisplayValue(row, ['shopName', 'shop_name', 'storeName', 'partnerName', 'partner_name', 'merchantName', 'merchant_name']) || '-',
+    quantity: firstDisplayValue(row, ['productQuantity', 'product_quantity', 'quantity', 'goodsNum', 'goods_num', 'itemNum', 'item_num', 'itemCount']),
+    commissionRate: firstDisplayValue(row, ['commissionRate', 'commission_rate', 'cosRatio', 'cos_ratio', 'activityCosRatio', 'activity_cos_ratio']),
+    serviceFeeRate: firstDisplayValue(row, ['serviceFeeRate', 'service_fee_rate', 'serviceRate', 'service_rate', 'adServiceRatio', 'ad_service_ratio'])
+  }
+}
+
+function getChannelInfo(row: any) {
+  return {
+    id: firstDisplayValue(row, [
+      'channelId',
+      'channel_id',
+      'channelUserId',
+      'channel_user_id',
+      'mediaId',
+      'media_id',
+      'mediatorId',
+      'mediator_id'
+    ]) || '',
+    name: firstDisplayValue(row, [
+      'channelName',
+      'channel_name',
+      'channelUserName',
+      'channel_user_name',
+      'mediaName',
+      'media_name',
+      'mediatorName',
+      'mediator_name',
+      'media_user_name',
+      'mediator_user_name'
+    ]) || '-'
+  }
+}
+
 /**
  * 渲染商品信息列：左图右文布局（96px 图片 + 右侧详情文本）。
  * 严格按照用户截图样式展示：图片顶部对齐、标题红色省略、元信息灰字紧凑排列。
  */
 function renderProductInfo(row: any) {
-  const image = row.productPic || row.productImage || row.cover || null
-  const name = row.productTitle || row.productName || '-'
-  const id = row.productId || '-'
-  const shop = row.shopName || '-'
-  const qty = row.itemNum ?? row.quantity ?? null
-  const commRate = row.commissionRate ?? row.commission_rate ?? null
-  const svcRate = row.serviceFeeRate ?? row.service_fee_rate ?? null
+  const product = getProductInfo(row)
 
-  const imageNode = image
-    ? h('img', { class: 'order-product-image', src: image, alt: name })
+  const imageNode = product.image
+    ? h('img', { class: 'order-product-image', src: product.image, alt: product.name })
     : h('div', { class: 'order-product-image order-product-image--placeholder' })
 
   const contentNode = h('div', { class: 'order-product-content' }, [
-    h('div', { class: 'order-product-title', title: name }, name),
-    h('div', { class: 'order-product-line' }, `商品ID：${id}`),
-    h('div', { class: 'order-product-line' }, `店铺：${shop}`),
-    h('div', { class: 'order-product-line' }, `商品数量：${qty != null ? qty : '-'}`),
-    h('div', { class: 'order-product-line' }, `佣金率：${formatRate(commRate)}`),
-    h('div', { class: 'order-product-line' }, `服务费率：${formatRate(svcRate)}`)
+    h('div', { class: 'order-product-title', title: product.name }, product.name),
+    h('div', { class: 'order-product-line' }, `商品ID：${product.id}`),
+    h('div', { class: 'order-product-line' }, `店铺：${product.shop}`),
+    h('div', { class: 'order-product-line' }, `商品数量：${product.quantity != null ? product.quantity : '-'}`),
+    h('div', { class: 'order-product-line' }, `佣金率：${formatRate(product.commissionRate)}`),
+    h('div', { class: 'order-product-line' }, `服务费率：${formatRate(product.serviceFeeRate)}`)
   ])
 
   return h('div', { class: 'order-product-cell' }, [imageNode, contentNode])
 }
 
-function getDiagnosticSummary(row: any) {
-  const status = row.attributionStatus || 'UNATTRIBUTED'
-  const reason = row.unattributedReason || row.attributionRemark
-
-  if (status === 'ATTRIBUTED') {
-    return {
-      tag: '可复盘',
-      type: 'success' as const,
-      text: row.pickSource ? `已通过 ${row.pickSource} 完成归因` : '已完成渠道归因'
-    }
+/** 格式化日期时间，null/undefined 返回空字符串 */
+function formatTime(value: unknown): string {
+  if (value === null || value === undefined || value === '') return ''
+  const s = String(value)
+  // 已经是 YYYY-MM-DD HH:mm:ss 格式 (19字符)
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) {
+    return s.replace('T', ' ').slice(0, 19)
   }
+  return s
+}
 
-  if (reason === 'NO_PICK_SOURCE' || !row.pickSource) {
-    return {
-      tag: '先查推广参数',
-      type: 'error' as const,
-      text: '订单未携带 pick_source'
-    }
-  }
+function renderTalentInfo(row: any) {
+  const talentName = firstDisplayValue(row, ['talentName', 'talent_name', 'talentNickname', 'authorName'])
+  const talentId = firstDisplayValue(row, ['talentId', 'talent_id', 'talentUid', 'authorId', 'authorBuyinId'])
+  const awemeId = firstDisplayValue(row, ['awemeId', 'aweme_id', 'videoId', 'video_id', 'itemId', 'item_id'])
 
-  if (reason === 'MAPPING_NOT_FOUND') {
-    return {
-      tag: '先查转链映射',
-      type: 'warning' as const,
-      text: `未找到 ${row.pickSource} 对应映射`
-    }
+  const nodes: any[] = []
+  if (talentName) {
+    nodes.push(h('div', { class: 'talent-name-line' }, [
+      h('span', { class: 'talent-name' }, String(talentName)),
+      talentId ? h('span', { class: 'talent-id' }, `ID: ${talentId}`) : null,
+      h(NTag, { type: 'info', size: 'tiny', round: true, class: 'talent-tag' }, { default: () => '达人' }),
+      h('span', { class: 'douyin-icon', innerHTML: '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M16.6 5.82s.51.5 0 0A4.28 4.28 0 0 1 15.54 3h-3.09v12.04c0 .76-.42 1.65-1.65 1.65-1.03 0-1.84-.85-1.84-1.88 0-1.1.83-1.84 1.84-1.88.19 0 .41.02.57.08V9.8a5.07 5.07 0 0 0-.57-.03C7.83 9.77 6 11.57 6 14.57c0 2.79 2.05 4.63 4.8 4.63 2.76 0 4.84-1.84 4.84-4.63V8.56a7.3 7.3 0 0 0 4.36 1.43V6.9a4.28 4.28 0 0 1-3.4-1.08z"/></svg>' })
+    ]))
   }
+  if (awemeId) {
+    nodes.push(h('div', { class: 'aweme-line' }, [
+      h('span', { class: 'aweme-label' }, '出单视频:'),
+      h('span', { class: 'aweme-id' }, String(awemeId))
+    ]))
+  }
+  if (!talentName && !awemeId) {
+    nodes.push(h('span', { style: 'color: #999' }, '-'))
+  }
+  return h('div', { class: 'talent-cell' }, nodes)
+}
 
-  return {
-    tag: '待排查',
-    type: 'warning' as const,
-    text: getAttributionReasonText(reason) || '等待补充排查原因'
+function renderOrderTime(row: any) {
+  const payTime = formatTime(firstDisplayValue(row, ['payTime', 'pay_time', 'createTime', 'create_time']))
+  const deliveryTime = formatTime(firstDisplayValue(row, ['deliveryTime', 'delivery_time']))
+  const settleTime = formatTime(firstDisplayValue(row, ['settleTime', 'settle_time']))
+  const expireTime = formatTime(firstDisplayValue(row, ['expireTime', 'expire_time']))
+
+  return h('div', { class: 'order-time-cell' }, [
+    h('div', { class: 'time-line' }, [h('span', { class: 'time-label' }, '付款:'), h('span', { class: 'time-value' }, payTime || '')]),
+    h('div', { class: 'time-line' }, [h('span', { class: 'time-label' }, '收货:'), h('span', { class: 'time-value' }, deliveryTime || '')]),
+    h('div', { class: 'time-line' }, [h('span', { class: 'time-label' }, '结算:'), h('span', { class: 'time-value' }, settleTime || '')]),
+    h('div', { class: 'time-line' }, [h('span', { class: 'time-label' }, '失效:'), h('span', { class: 'time-value' }, expireTime || '')])
+  ])
+}
+
+function renderPartnerInfo(row: any) {
+  const shopName = firstDisplayValue(row, ['shopName', 'shop_name', 'partnerName', 'partner_name', 'storeName'])
+  const colonelName = firstDisplayValue(row, ['colonelUserName', 'colonel_user_name', 'colonelName', 'colonel_name'])
+
+  const nodes: any[] = []
+  if (shopName) {
+    nodes.push(h('div', { class: 'partner-line' }, [h('span', { class: 'partner-label' }, '商家:'), h('span', String(shopName))]))
   }
+  if (colonelName) {
+    nodes.push(h('div', { class: 'partner-line' }, [h('span', { class: 'partner-label' }, '团长:'), h('span', String(colonelName))]))
+  }
+  if (!shopName && !colonelName) {
+    nodes.push(h('span', { style: 'color: #999' }, '-'))
+  }
+  return h('div', { class: 'partner-cell' }, nodes)
+}
+
+function renderActivityInfo(row: any) {
+  const activityName = firstDisplayValue(row, ['activityName', 'activity_name'])
+  const activityId = firstDisplayValue(row, ['activityId', 'activity_id'])
+
+  const nodes: any[] = []
+  if (activityName) {
+    nodes.push(h('div', { class: 'activity-name', title: String(activityName) }, String(activityName)))
+  }
+  if (activityId) {
+    nodes.push(h('div', { class: 'activity-id-line' }, `ID: ${activityId}`))
+  }
+  if (!activityName && !activityId) {
+    nodes.push(h('span', { style: 'color: #999' }, '-'))
+  }
+  return h('div', { class: 'activity-cell' }, nodes)
+}
+
+function renderOrderId(row: any) {
+  const orderTypeText = row.orderTypeText || ''
+  const contentTypeText = row.contentTypeText || ''
+
+  const nodes: any[] = [
+    h('div', { class: 'order-id-text' }, String(row.orderId || '-'))
+  ]
+  if (orderTypeText) {
+    nodes.push(h('div', { class: 'order-type-text' }, orderTypeText))
+  }
+  if (contentTypeText) {
+    nodes.push(h(NTag, { type: 'error', size: 'tiny', round: true, class: 'content-type-tag' }, { default: () => contentTypeText }))
+  }
+  return h('div', { class: 'order-id-cell' }, nodes)
 }
 
 const columns = [
-  { title: '订单号/结算时间', key: 'orderInfo', width: 220, render: (row: any) => h('div', { 'data-testid': 'order-row' }, [
-    h('div', { style: 'font-weight: 600' }, row.orderId),
-    h('div', { style: 'font-size: var(--text-xs); color: var(--text-tertiary)' }, row.settleTime || '-')
-  ]) },
-  { title: '商品信息', key: 'productInfo', width: 430, minWidth: 430, render: (row: any) => renderProductInfo(row) },
-  { title: '订单金额', key: 'orderAmount', width: 100, render: (row: any) => formatMoney(row.orderAmount) },
   {
-    title: '归因状态',
-    key: 'attributionStatus',
-    width: 120,
-    render: (row: any) => {
-      const status = row.attributionStatus || 'UNATTRIBUTED'
-      const type = status === 'ATTRIBUTED' ? 'success' : (status === 'UNATTRIBUTED' ? 'error' : 'info')
-      const labels: Record<string, string> = { ATTRIBUTED: '已归因', UNATTRIBUTED: '待排查', PARTIAL: '部分归因' }
-      return h(NTag, { type, size: 'small', 'data-testid': 'order-attribution-status' }, { default: () => labels[status] || status })
-    }
+    title: '订单ID',
+    key: 'orderId',
+    width: 210,
+    fixed: 'left' as const,
+    render: (row: any) => renderOrderId(row)
   },
   {
-    title: '排查摘要',
-    key: 'diagnosticSummary',
-    minWidth: 220,
-    render: (row: any) => {
-      const summary = getDiagnosticSummary(row)
-      return h('div', { class: 'diagnostic-summary' }, [
-        h(NTag, { type: summary.type, size: 'small', round: true }, { default: () => summary.tag }),
-        h(NText, { depth: 3, class: 'diagnostic-summary-text' }, { default: () => summary.text })
-      ])
-    }
+    title: '活动信息',
+    key: 'activityInfo',
+    width: 180,
+    render: (row: any) => renderActivityInfo(row)
   },
-  { title: '渠道负责人', key: 'channelUserName', width: 120, render: (row: any) => h('span', { 'data-testid': 'order-channel' }, row.channelUserName || '-') },
-  { title: '归因标识 (pick_source)', key: 'pickSource', width: 180, ellipsis: true },
   {
-    title: '操作',
-    key: 'actions',
+    title: '商品信息',
+    key: 'productInfo',
+    width: 430,
+    minWidth: 430,
+    render: (row: any) => renderProductInfo(row)
+  },
+  {
+    title: '合作方信息',
+    key: 'partnerInfo',
+    width: 180,
+    render: (row: any) => renderPartnerInfo(row)
+  },
+  {
+    title: '推广者',
+    key: 'talentInfo',
+    width: 280,
+    render: (row: any) => renderTalentInfo(row)
+  },
+  {
+    title: '渠道',
+    key: 'channelInfo',
     width: 120,
-    fixed: 'right',
     render: (row: any) => {
-      return h(
-        NButton,
-        {
-          size: 'small',
-          quaternary: true,
-          'data-testid': 'order-detail-button',
-          onClick: () => openDetail(row)
-        },
-        { default: () => '查看详情' }
+      const ch = getChannelInfo(row)
+      const name = ch.name
+      return h('div', { 'data-testid': 'order-channel', class: 'channel-cell' },
+        name === '-' ? h('span', { style: 'color: #999' }, '未归因') : h('span', name)
       )
     }
+  },
+  {
+    title: '订单时间',
+    key: 'orderTime',
+    width: 260,
+    render: (row: any) => renderOrderTime(row)
   }
 ]
-
-function openDetail(row: any) {
-  activeOrderId.value = String(row.orderId || '')
-  showDetail.value = true
-}
 
 function formatDateTime(value: number, endOfDay = false) {
   const date = new Date(value)
@@ -572,6 +669,128 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* ---- 订单ID列 ---- */
+.order-id-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.order-id-text {
+  font-weight: 600;
+  font-size: 13px;
+  word-break: break-all;
+}
+.order-type-text {
+  font-size: 12px;
+  color: #666;
+}
+.content-type-tag {
+  margin-top: 2px;
+  align-self: flex-start;
+}
+
+/* ---- 活动信息列 ---- */
+.activity-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.activity-name {
+  font-weight: 500;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+  cursor: default;
+}
+.activity-id-line {
+  font-size: 12px;
+  color: #888;
+}
+
+/* ---- 合作方信息列 ---- */
+.partner-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.partner-line {
+  font-size: 13px;
+  line-height: 20px;
+}
+.partner-label {
+  color: #888;
+  margin-right: 4px;
+}
+
+/* ---- 推广者列 ---- */
+.talent-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.talent-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.talent-name {
+  font-weight: 500;
+  font-size: 13px;
+}
+.talent-id {
+  font-size: 12px;
+  color: #888;
+}
+.talent-tag {
+  flex-shrink: 0;
+}
+.douyin-icon {
+  display: inline-flex;
+  align-items: center;
+  color: #333;
+}
+.aweme-line {
+  font-size: 12px;
+  line-height: 18px;
+}
+.aweme-label {
+  color: #888;
+}
+.aweme-id {
+  color: #ff2f2f;
+  font-weight: 500;
+}
+
+/* ---- 渠道列 ---- */
+.channel-cell {
+  font-size: 13px;
+}
+
+/* ---- 订单时间列 ---- */
+.order-time-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.time-line {
+  font-size: 12px;
+  line-height: 18px;
+  display: flex;
+  gap: 4px;
+}
+.time-label {
+  color: #888;
+  flex-shrink: 0;
+  width: 36px;
+}
+.time-value {
+  color: #333;
+  white-space: nowrap;
+}
+
 /* ---- 商品信息列 ---- */
 .order-product-cell {
   display: flex;
@@ -641,5 +860,11 @@ onMounted(() => {
   font-size: var(--text-xs);
   line-height: 1.5;
   word-break: break-all;
+}
+
+/* ---- 行高控制 ---- */
+:deep(.n-data-table-td) {
+  padding: 12px 8px !important;
+  vertical-align: top !important;
 }
 </style>

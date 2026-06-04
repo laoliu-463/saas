@@ -905,7 +905,15 @@ public class DataApplicationService extends BaseController {
     private OrderVO toOrderVO(ColonelsettlementOrder order) {
         OrderVO vo = new OrderVO();
         vo.setId(StringUtils.hasText(order.getOrderId()) ? order.getOrderId() : String.valueOf(order.getId()));
-        vo.setProductName(order.getProductName());
+        vo.setProductId(order.getProductId());
+        vo.setProductName(StringUtils.hasText(order.getProductTitle()) ? order.getProductTitle() : order.getProductName());
+        vo.setProductImage(StringUtils.hasText(order.getProductImage()) ? order.getProductImage() : order.getProductPic());
+        vo.setShopName(order.getShopName());
+        vo.setProductQuantity(order.getProductQuantity() != null ? order.getProductQuantity() : order.getItemNum());
+        vo.setCommissionRate(order.getCommissionRate());
+        vo.setServiceFeeRate(order.getServiceFeeRate());
+        vo.setChannelId(order.getChannelUserId() == null ? null : order.getChannelUserId().toString());
+        vo.setChannelName(order.getChannelUserName());
         vo.setTalentName(pickText(order.getExtraData(), "talentName", "talent_nickname", "author_name"));
         vo.setAmount(centToYuan(order.getOrderAmount()));
         vo.setGoodsPrice(centToYuan(order.getActualAmount()));

@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
@@ -259,28 +260,59 @@ public class ColonelsettlementOrder implements Serializable {
 
     /**
      * 商品图片 URL
-     * <p>对应数据库列：{@code product_pic}，冗余存储商品封面图，便于列表展示。
-     * 同步时从抖音 API 原始数据的 {@code product_img} 字段提取。</p>
+     * <p>对应数据库列：{@code product_pic}，冗余存储商品封面图，便于列表展示。</p>
      */
     @TableField("product_pic")
     private String productPic;
 
     /**
-     * 商品数量
-     * <p>对应数据库列：{@code item_num}，订单中商品的购买数量。
-     * 同步时从抖音 API 原始数据的 {@code item_num} 字段提取。</p>
+     * 商品图片 URL（前端标准展示别名）
+     * <p>非数据库字段，返回时与 {@link #productPic} 保持兼容。</p>
      */
-    @TableField("item_num")
+    @TableField(exist = false)
+    private String productImage;
+
+    /**
+     * 商品数量
+     * <p>列表展示字段，查询时从订单 {@code extra_data} 的轻量投影补齐，不参与落库。</p>
+     */
+    @TableField(exist = false)
     private Integer itemNum;
 
     /**
-     * 佣金率（基点，100 = 1%）
-     * <p>对应数据库列：{@code commission_rate}，抖音 API 返回的佣金比例，
-     * 单位为基点（百分之一的百分之一），例如 500 表示 5%。
-     * 同步时从抖音 API 原始数据的 {@code commission_rate} 字段提取。</p>
+     * 商品数量（前端标准展示别名）
+     * <p>非数据库字段，返回时与 {@link #itemNum} 保持兼容。</p>
      */
-    @TableField("commission_rate")
-    private Integer commissionRate;
+    @TableField(exist = false)
+    private Integer productQuantity;
+
+    /**
+     * 佣金率
+     * <p>列表展示字段，优先从订单 {@code extra_data} 轻量投影读取，缺失时回退商品快照。</p>
+     */
+    @TableField(exist = false)
+    private BigDecimal commissionRate;
+
+    /**
+     * 服务费率
+     * <p>列表展示字段，从商品快照或商品基础信息补齐，不参与订单事实落库。</p>
+     */
+    @TableField(exist = false)
+    private BigDecimal serviceFeeRate;
+
+    /**
+     * 渠道负责人 ID（前端标准展示别名）
+     * <p>非数据库字段，返回时由 {@link #channelUserId} 转换。</p>
+     */
+    @TableField(exist = false)
+    private String channelId;
+
+    /**
+     * 渠道负责人名称（前端标准展示别名）
+     * <p>非数据库字段，返回时与 {@link #channelUserName} 保持兼容。</p>
+     */
+    @TableField(exist = false)
+    private String channelName;
 
     /**
      * 达人名称

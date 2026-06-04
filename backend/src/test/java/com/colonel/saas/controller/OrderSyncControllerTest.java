@@ -2,6 +2,8 @@ package com.colonel.saas.controller;
 
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.ProductMapper;
+import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SysDeptMapper;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
@@ -46,7 +48,10 @@ class OrderSyncControllerTest {
     private PerformanceBackfillService performanceBackfillService;
     @Mock
     private SysDeptMapper sysDeptMapper;
-
+    @Mock
+    private ProductSnapshotMapper productSnapshotMapper;
+    @Mock
+    private ProductMapper productMapper;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -54,7 +59,7 @@ class OrderSyncControllerTest {
         // t2-orders 抽 service：OrderController 现在依赖 OrderService（t2 抽 service 后）。
         // 本测试只覆盖 /orders/sync 端点，OrderService 不会被调用，但仍需传入真实实例。
         DashboardService dashboardService = org.mockito.Mockito.mock(DashboardService.class);
-        OrderService orderService = new OrderService(orderMapper, dashboardService);
+        OrderService orderService = new OrderService(orderMapper, dashboardService, productSnapshotMapper, productMapper);
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new OrderController(
                         orderSyncService,
