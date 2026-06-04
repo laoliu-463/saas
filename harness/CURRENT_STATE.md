@@ -16,7 +16,7 @@
 ## 当前日期
 
 - 记录日期：2026-06-04
-- Harness 版本：v0.6.2（DASHBOARD-MONEY-AUDIT-001 完成）
+- Harness 版本：v0.6.3（订单明细表复刻与前后端字段对齐完成）
 
 ## 当前技术栈
 
@@ -263,3 +263,27 @@ real-pre 必须保持：
   - DASHBOARD-MONEY-FIX-001（P0 修复：settle_amount 回退 + 毛利隐藏 + talentCommission）。
   - DASHBOARD-MONEY-FIX-002（旧版接口治理：废弃 or 修复）。
   - DASHBOARD-MONEY-TEST-001（测试补齐：双轨隔离 + settle=0 + 对账）。
+
+## 订单明细表复刻与前后端字段对齐（2026-06-04 18:15）
+
+- **任务**：在数据平台/订单页面新增"订单明细"Tab，展示逐笔订单的完整 16 列明细信息（含双轨金额）。
+- **范围**：full（后端 + 前端 + 测试 + 容器）。
+- **新增文件**：
+  - `backend/.../vo/data/OrderDetailVO.java`（16 列订单明细 VO）
+  - `frontend/src/views/data/OrderDetailTab.vue`（明细 Tab 子组件，16 列 + 分页 + 自定义表头 + 导出按钮）
+  - `harness/reports/evidence-20260604-181500-order-detail-tab.md`（执行证据）
+- **后端变更**：
+  - `PerformanceRecordMapper` 新增 `findByOrderIds` 批量查询 + 空列表守卫
+  - `DataApplicationService` 新增 `getOrderDetailPage` + `exportOrderDetail` + 辅助方法（loadPerformanceMap / loadActivityNameMap / loadUserNameMap / toOrderDetailVO / safeCentToYuan / safeAdd / safeSubtract）
+  - `DataController` 新增 `/data/orders/detail` + `/orders/exports/detail` 端点
+  - `DataControllerTest` 新增 5 个测试（40/40 PASS）
+  - `PerformanceRecordMapperTest` 新增 3 个集成测试
+- **前端变更**：
+  - `api/data.ts` 新增 `getOrderDetailPage` + `exportOrderDetail`
+  - `order-list-query.ts` 新增 `buildOrderDetailPageParams`
+  - `OrderList.vue` 新增 Tab 切换器（汇总 / 订单明细）+ 条件渲染 + Tab 感知导出调度
+  - `OrderList.test.ts` 新增 4 个测试（8/8 PASS）
+- **构建验证**：mvn compile/test/package PASS, vitest 8/8 PASS, vite build PASS, docker real-pre rebuild+restart 4 容器 healthy
+- **关键设计**：批量关联避免 N+1；活动名称用 `selectNamesByActivityIds`（纯 MyBatis）；双轨 null → "-"；服务费双轨分别算
+- **状态**：`PARTIAL`（代码完成 + 构建通过 + 容器重启 healthy；smoke 受沙箱网络限制未验证，需浏览器打开 `http://localhost:3001/data/orders` 验证 Tab 切换和明细表渲染）。
+- **未做**：浏览器 smoke test、E2E 测试、远端部署。

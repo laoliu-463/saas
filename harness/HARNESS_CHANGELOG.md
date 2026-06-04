@@ -1,5 +1,25 @@
 # Harness Changelog
 
+## v0.6.3
+
+- 订单明细表复刻与前后端字段对齐完成（2026-06-04 18:15）。
+- **新增文件**：
+  - `backend/.../vo/data/OrderDetailVO.java`（16列订单明细 VO）
+  - `frontend/src/views/data/OrderDetailTab.vue`（明细Tab子组件）
+  - `harness/reports/evidence-20260604-181500-order-detail-tab.md`（执行证据）
+- **后端变更**：
+  - `PerformanceRecordMapper` 新增 `findByOrderIds` 批量查询
+  - `DataApplicationService` 新增 `getOrderDetailPage` + `exportOrderDetail` + 辅助方法
+  - `DataController` 新增 `/data/orders/detail` + `/orders/exports/detail` 端点
+  - `DataControllerTest` 新增 5 个测试（40/40 PASS）
+- **前端变更**：
+  - `api/data.ts` 新增 `getOrderDetailPage` + `exportOrderDetail`
+  - `order-list-query.ts` 新增 `buildOrderDetailPageParams`
+  - `OrderList.vue` 新增Tab切换 + 明细Tab导出调度
+  - `OrderList.test.ts` 新增 4 个测试（8/8 PASS）
+- **构建验证**：mvn compile/test/package PASS, vitest PASS, vite build PASS, docker real-pre restart healthy
+- **终态**：PARTIAL（smoke 受沙箱网络限制未验证）
+
 ## v0.6.2
 
 - DASHBOARD-MONEY-AUDIT-001 数据看板资金口径只读审查完成（2026-06-04 13:19）。
