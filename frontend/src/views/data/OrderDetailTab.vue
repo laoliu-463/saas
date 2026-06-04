@@ -12,7 +12,7 @@
       :data="rows"
       :loading="loading"
       :row-key="(row: any) => row.orderId || row.orderCreateTime"
-      :scroll-x="2200"
+      :scroll-x="1600"
       :pagination="pagination"
       remote
       @update:page="handlePageChange"
@@ -97,8 +97,6 @@ const getProductInfo = (row: any) => ({
 
 const renderOrderId = (row: any) => {
   const orderId = String(firstDisplayValue(row, ['orderId', 'order_id']) || '-')
-  const orderTypeText = firstDisplayValue(row, ['orderTypeText', 'order_type_text'])
-  const contentTypeText = firstDisplayValue(row, ['contentTypeText', 'content_type_text'])
   return h('div', { class: 'order-detail-id-cell' }, [
     h(
       'button',
@@ -109,20 +107,20 @@ const renderOrderId = (row: any) => {
         onClick: () => copyToClipboard(orderId)
       },
       orderId
-    ),
-    orderTypeText ? h('div', { class: 'order-detail-subline' }, `订单类型：${orderTypeText}`) : null,
-    contentTypeText
-      ? h(NTag, { size: 'small', type: 'error', round: true, bordered: false, class: 'order-detail-content-tag' }, { default: () => String(contentTypeText) })
-      : null
+    )
   ])
 }
 
 const renderActivityInfo = (row: any) => {
   const activityName = firstDisplayValue(row, ['activityName', 'activity_name'])
   const activityId = firstDisplayValue(row, ['activityId', 'activity_id'])
+  const contentTypeText = firstDisplayValue(row, ['contentTypeText', 'content_type_text'])
   return h('div', { class: 'order-detail-stack' }, [
     activityName ? h('div', { class: 'order-detail-main', title: String(activityName) }, String(activityName)) : null,
     activityId ? h('div', { class: 'order-detail-muted' }, `ID：${activityId}`) : null,
+    contentTypeText
+      ? h(NTag, { size: 'small', type: contentTypeText === '直播' ? 'warning' : 'info', round: true, bordered: false, class: 'order-detail-content-tag' }, { default: () => String(contentTypeText) })
+      : null,
     !activityName && !activityId ? h('span', { class: 'order-detail-empty' }, '-') : null
   ])
 }
@@ -176,26 +174,30 @@ const renderPromoterInfo = (row: any) => {
 
 const renderMediaInfo = (row: any) => {
   const mediaName = firstDisplayValue(row, ['channelName', 'channel_name', 'channelUserName', 'channel_user_name'])
-  const mediaGroup = firstDisplayValue(row, ['channelDeptName', 'channel_dept_name', 'mediaGroupName', 'media_group_name'])
   return h('div', { class: 'order-detail-stack', 'data-testid': 'data-order-detail-media' }, [
-    mediaName ? h('div', { class: 'order-detail-main' }, String(mediaName)) : h('span', { class: 'order-detail-empty' }, '-'),
-    mediaGroup ? h('div', { class: 'order-detail-muted' }, String(mediaGroup)) : null
+    mediaName ? h('div', { class: 'order-detail-main' }, String(mediaName)) : h('span', { class: 'order-detail-empty' }, '-')
+  ])
+}
+
+const renderRecruiterInfo = (row: any) => {
+  const recruiterName = firstDisplayValue(row, ['recruiterName', 'recruiter_name', 'colonelName', 'colonel_name'])
+  return h('div', { class: 'order-detail-stack' }, [
+    recruiterName ? h('div', { class: 'order-detail-main' }, String(recruiterName)) : h('span', { class: 'order-detail-empty' }, '-')
   ])
 }
 
 const renderOrderTime = (row: any) => {
-  const lines = [
-    ['付款:', formatDateTime(firstDisplayValue(row, ['payTime', 'pay_time', 'createTime', 'create_time', 'orderCreateTime', 'order_create_time']))],
-    ['收货:', formatDateTime(firstDisplayValue(row, ['deliveryTime', 'delivery_time', 'receiveTime', 'receive_time']))],
-    ['结算:', formatDateTime(firstDisplayValue(row, ['settleTime', 'settle_time']))],
-    ['失效:', formatDateTime(firstDisplayValue(row, ['expireTime', 'expire_time', 'invalidTime', 'invalid_time']))]
-  ]
-  return h('div', { class: 'order-detail-time-cell' }, lines.map(([label, value]) =>
-    h('div', { class: 'order-detail-time-line' }, [
-      h('span', { class: 'order-detail-time-label' }, label),
-      h('span', { class: 'order-detail-time-value' }, value)
-    ])
-  ))
+  const payTime = formatDateTime(firstDisplayValue(row, ['payTime', 'pay_time', 'createTime', 'create_time', 'orderCreateTime', 'order_create_time']))
+  const statusText = firstDisplayValue(row, ['settleStatusText', 'settle_status_text']) || '-'
+  const statusColor = statusText === '失效'
+    ? '#e74c3c'
+    : statusText === '已结算'
+      ? '#18a058'
+      : '#999'
+  return h('div', { class: 'order-detail-time-cell' }, [
+    payTime ? h('div', { class: 'order-detail-time-line' }, String(payTime)) : null,
+    h('div', { style: `font-size:13px;color:${statusColor};margin-top:4px` }, String(statusText))
+  ])
 }
 
 /* ── 列定义：按上游订单明细截图布局渲染 ── */
@@ -207,45 +209,51 @@ const columns = computed(() => {
     {
       title: '订单ID',
       key: 'orderId',
-      width: 220,
+      width: 180,
       fixed: 'left' as const,
       render: renderOrderId
     },
     {
       title: '活动信息',
       key: 'activity',
-      width: 240,
+      width: 190,
       render: renderActivityInfo
     },
     {
       title: '商品信息',
       key: 'product',
-      width: 470,
-      minWidth: 470,
+      width: 420,
+      minWidth: 420,
       render: renderProductInfo
     },
     {
       title: '合作方信息',
       key: 'partner',
-      width: 220,
+      width: 180,
       render: renderPartnerInfo
     },
     {
       title: '推广者',
       key: 'talent',
-      width: 260,
+      width: 210,
       render: renderPromoterInfo
     },
     {
       title: '媒介',
       key: 'channel',
-      width: 150,
+      width: 120,
       render: renderMediaInfo
+    },
+    {
+      title: '招商',
+      key: 'recruiter',
+      width: 120,
+      render: renderRecruiterInfo
     },
     {
       title: '订单时间',
       key: 'orderTime',
-      width: 280,
+      width: 200,
       render: renderOrderTime
     }
   ]
@@ -401,7 +409,7 @@ watch(
   align-items: flex-start;
   gap: 14px;
   width: 100%;
-  min-width: 450px;
+  min-width: 0;
   box-sizing: border-box;
 }
 
@@ -425,7 +433,7 @@ watch(
 }
 
 :deep(.order-detail-product-title) {
-  max-width: 300px;
+  max-width: 260px;
   overflow: hidden;
   color: #ff2f2f;
   font-size: 14px;
