@@ -340,10 +340,10 @@ watch(
   padding: 14px 10px !important;
 }
 
-.order-detail-id-cell,
-.order-detail-stack,
-.order-detail-talent-cell,
-.order-detail-time-cell {
+:deep(.order-detail-id-cell),
+:deep(.order-detail-stack),
+:deep(.order-detail-talent-cell),
+:deep(.order-detail-time-cell) {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -351,7 +351,7 @@ watch(
   line-height: 1.5;
 }
 
-.order-detail-id {
+:deep(.order-detail-id) {
   padding: 0;
   border: 0;
   background: transparent;
@@ -363,27 +363,27 @@ watch(
   cursor: pointer;
 }
 
-.order-detail-id:hover {
+:deep(.order-detail-id:hover) {
   color: var(--primary-color, #2563eb);
 }
 
-.order-detail-subline,
-.order-detail-muted,
-.order-detail-line,
-.order-detail-time-line,
-.order-detail-product-line,
-.order-detail-video-line {
+:deep(.order-detail-subline),
+:deep(.order-detail-muted),
+:deep(.order-detail-line),
+:deep(.order-detail-time-line),
+:deep(.order-detail-product-line),
+:deep(.order-detail-video-line) {
   color: #4b5563;
   font-size: 13px;
   line-height: 20px;
 }
 
-.order-detail-content-tag {
+:deep(.order-detail-content-tag) {
   align-self: flex-start;
   margin-top: 2px;
 }
 
-.order-detail-main {
+:deep(.order-detail-main) {
   max-width: 100%;
   overflow: hidden;
   color: #242934;
@@ -392,11 +392,11 @@ watch(
   white-space: nowrap;
 }
 
-.order-detail-empty {
+:deep(.order-detail-empty) {
   color: #9ca3af;
 }
 
-.order-detail-product-cell {
+:deep(.order-detail-product-cell) {
   display: flex;
   align-items: flex-start;
   gap: 14px;
@@ -405,7 +405,7 @@ watch(
   box-sizing: border-box;
 }
 
-.order-detail-product-image {
+:deep(.order-detail-product-image) {
   display: block;
   width: 104px;
   height: 104px;
@@ -415,16 +415,16 @@ watch(
   object-fit: cover;
 }
 
-.order-detail-product-image--placeholder {
+:deep(.order-detail-product-image--placeholder) {
   border: 1px solid #e5e7eb;
 }
 
-.order-detail-product-content {
+:deep(.order-detail-product-content) {
   min-width: 0;
   flex: 1;
 }
 
-.order-detail-product-title {
+:deep(.order-detail-product-title) {
   max-width: 300px;
   overflow: hidden;
   color: #ff2f2f;
@@ -434,12 +434,12 @@ watch(
   white-space: nowrap;
 }
 
-.order-detail-label {
+:deep(.order-detail-label) {
   margin-right: 4px;
   color: #6b7280;
 }
 
-.order-detail-talent-name {
+:deep(.order-detail-talent-name) {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -448,11 +448,11 @@ watch(
   font-weight: 500;
 }
 
-.order-detail-talent-tag {
+:deep(.order-detail-talent-tag) {
   flex-shrink: 0;
 }
 
-.order-detail-douyin-icon {
+:deep(.order-detail-douyin-icon) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -466,30 +466,30 @@ watch(
   box-shadow: inset 3px 0 0 #23f4ee, inset -3px 0 0 #ff2d55;
 }
 
-.order-detail-video-line {
+:deep(.order-detail-video-line) {
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
 
-.order-detail-video-id {
+:deep(.order-detail-video-id) {
   color: #ff2f2f;
   word-break: break-all;
 }
 
-.order-detail-time-line {
+:deep(.order-detail-time-line) {
   display: flex;
   gap: 6px;
   min-height: 20px;
 }
 
-.order-detail-time-label {
+:deep(.order-detail-time-label) {
   width: 40px;
   flex: 0 0 40px;
   color: #6b7280;
 }
 
-.order-detail-time-value {
+:deep(.order-detail-time-value) {
   color: #111827;
   white-space: nowrap;
 }
