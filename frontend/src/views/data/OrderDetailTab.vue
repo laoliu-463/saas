@@ -12,7 +12,7 @@
       :data="rows"
       :loading="loading"
       :row-key="(row: any) => row.orderId || row.orderCreateTime"
-      :scroll-x="1720"
+      :scroll-x="3000"
       :pagination="pagination"
       remote
       @update:page="handlePageChange"
@@ -80,6 +80,14 @@ const formatRate = (value: unknown) => {
   if (num > 0 && num < 1) return `${Math.round(num * 10000) / 100}%`
   if (num >= 100) return `${Math.round(num) / 100}%`
   return `${num}%`
+}
+
+const formatMoney = (value: unknown) => {
+  if (value === null || value === undefined) return '-'
+  if (typeof value === 'string' && value.trim() === '') return '-'
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '-'
+  return `¥${num.toFixed(2)}`
 }
 
 const getProductInfo = (row: any) => ({
@@ -167,12 +175,12 @@ const renderTalentInfo = (row: any) => {
   ])
 }
 
-const renderMediaInfo = (row: any) => {
-  const mediaName = firstDisplayValue(row, ['channelName', 'channel_name', 'channelUserName', 'channel_user_name'])
-  const mediaGroup = firstDisplayValue(row, ['channelDeptName', 'channel_dept_name', 'mediaGroupName', 'media_group_name'])
-  return h('div', { class: 'od-cell', 'data-testid': 'data-order-detail-media' }, [
-    mediaName ? h('div', { class: 'od-main' }, String(mediaName)) : h('span', { class: 'od-empty' }, '-'),
-    mediaGroup ? h('div', { class: 'od-muted' }, String(mediaGroup)) : null
+const renderChannelInfo = (row: any) => {
+  const channelName = firstDisplayValue(row, ['channelName', 'channel_name', 'channelUserName', 'channel_user_name', 'mediaName', 'media_name'])
+  const channelGroup = firstDisplayValue(row, ['channelDeptName', 'channel_dept_name', 'channelGroupName', 'channel_group_name', 'mediaGroupName', 'media_group_name'])
+  return h('div', { class: 'od-cell', 'data-testid': 'data-order-detail-channel' }, [
+    channelName ? h('div', { class: 'od-main' }, String(channelName)) : h('span', { class: 'od-empty' }, '-'),
+    channelGroup ? h('div', { class: 'od-muted' }, String(channelGroup)) : null
   ])
 }
 
@@ -182,6 +190,59 @@ const renderRecruiterInfo = (row: any) => {
     recruiterName ? h('div', { class: 'od-main' }, String(recruiterName)) : h('span', { class: 'od-empty' }, '-')
   ])
 }
+
+const renderOrderStatus = (row: any) => {
+  const statusText = firstDisplayValue(row, ['orderStatusText', 'order_status_text', 'settleStatusText', 'settle_status_text'])
+  const statusCode = firstDisplayValue(row, ['orderStatus', 'order_status', 'status'])
+  return h('div', { class: 'od-cell od-status-cell' }, [
+    statusText ? h('div', { class: 'od-main' }, String(statusText)) : null,
+    !statusText && statusCode !== null ? h('div', { class: 'od-main' }, String(statusCode)) : null,
+    !statusText && statusCode === null ? h('span', { class: 'od-empty' }, '-') : null
+  ])
+}
+
+const renderMoneyLines = (row: any, lines: Array<[string, string[]]>) =>
+  h('div', { class: 'od-cell od-money-cell' }, lines.map(([label, keys]) =>
+    h('div', { class: 'od-money-line' }, [
+      h('span', { class: 'od-money-label' }, label),
+      h('span', { class: 'od-money-value' }, formatMoney(firstDisplayValue(row, keys)))
+    ])
+  ))
+
+const renderOrderAmount = (row: any) => renderMoneyLines(row, [
+  ['付款:', ['payAmount', 'pay_amount', 'actualAmount', 'actual_amount', 'orderAmount', 'order_amount']],
+  ['结算:', ['settleAmount', 'settle_amount']]
+])
+
+const renderServiceFeeIncome = (row: any) => renderMoneyLines(row, [
+  ['预估:', ['estimateServiceFee', 'estimate_service_fee', 'serviceFeeIncome', 'service_fee_income']],
+  ['结算:', ['effectiveServiceFee', 'effective_service_fee', 'settleServiceFee', 'settle_service_fee']]
+])
+
+const renderTechServiceFee = (row: any) => renderMoneyLines(row, [
+  ['预估:', ['estimateTechServiceFee', 'estimate_tech_service_fee', 'estimateTechnicalServiceFee', 'estimate_technical_service_fee', 'technicalServiceFee', 'technical_service_fee']],
+  ['结算:', ['effectiveTechServiceFee', 'effective_tech_service_fee', 'effectiveTechnicalServiceFee', 'effective_technical_service_fee']]
+])
+
+const renderServiceFeeExpense = (row: any) => renderMoneyLines(row, [
+  ['预估:', ['estimateServiceFeeExpense', 'estimate_service_fee_expense', 'serviceFeeCost', 'service_fee_cost', 'serviceFeeExpense', 'service_fee_expense', 'talentCommission', 'talent_commission']],
+  ['结算:', ['effectiveServiceFeeExpense', 'effective_service_fee_expense', 'settleServiceFeeExpense', 'settle_service_fee_expense']]
+])
+
+const renderServiceFeeProfit = (row: any) => renderMoneyLines(row, [
+  ['预估:', ['estimateServiceProfit', 'estimate_service_profit', 'serviceFeeProfit', 'service_fee_profit']],
+  ['结算:', ['effectiveServiceProfit', 'effective_service_profit', 'settleServiceFeeProfit', 'settle_service_fee_profit']]
+])
+
+const renderRecruiterCommission = (row: any) => renderMoneyLines(row, [
+  ['预估:', ['estimateRecruiterCommission', 'estimate_recruiter_commission', 'recruiterCommission', 'recruiter_commission']],
+  ['结算:', ['effectiveRecruiterCommission', 'effective_recruiter_commission', 'settleRecruiterCommission', 'settle_recruiter_commission']]
+])
+
+const renderChannelCommission = (row: any) => renderMoneyLines(row, [
+  ['预估:', ['estimateChannelCommission', 'estimate_channel_commission', 'channelCommission', 'channel_commission']],
+  ['结算:', ['effectiveChannelCommission', 'effective_channel_commission', 'settleChannelCommission', 'settle_channel_commission']]
+])
 
 const renderOrderTime = (row: any) => {
   const lines = [
@@ -193,20 +254,27 @@ const renderOrderTime = (row: any) => {
   return h('div', { class: 'od-cell od-time-cell' }, lines.map(([label, value]) =>
     h('div', { class: 'od-time-line' }, [
       h('span', { class: 'od-time-label' }, label),
-      h('span', { class: 'od-time-value' }, value)
+      h('span', { class: 'od-time-value' }, value || '-')
     ])
   ))
 }
 
 const columns = computed(() => [
-  { type: 'selection' },
   { title: '订单ID', key: 'orderId', width: 180, fixed: 'left' as const, render: renderOrderId },
   { title: '活动信息', key: 'activity', width: 190, render: renderActivityInfo },
   { title: '商品信息', key: 'product', width: 420, render: renderProductInfo },
   { title: '合作方信息', key: 'partner', width: 180, render: renderPartnerInfo },
   { title: '推广者', key: 'talent', width: 210, render: renderTalentInfo },
-  { title: '媒介', key: 'channel', width: 120, render: renderMediaInfo },
-  { title: '招商', key: 'recruiter', width: 120, render: renderRecruiterInfo },
+  { title: '渠道', key: 'channel', width: 140, render: renderChannelInfo },
+  { title: '招商', key: 'recruiter', width: 140, render: renderRecruiterInfo },
+  { title: '订单状态', key: 'orderStatus', width: 120, render: renderOrderStatus },
+  { title: '订单额', key: 'amount', width: 150, render: renderOrderAmount },
+  { title: '服务费收入', key: 'serviceFeeIncome', width: 150, render: renderServiceFeeIncome },
+  { title: '技术服务费', key: 'techServiceFee', width: 150, render: renderTechServiceFee },
+  { title: '服务费支出', key: 'serviceFeeExpense', width: 150, render: renderServiceFeeExpense },
+  { title: '服务费收益', key: 'serviceFeeProfit', width: 150, render: renderServiceFeeProfit },
+  { title: '招商提成', key: 'recruiterCommission', width: 150, render: renderRecruiterCommission },
+  { title: '渠道提成', key: 'channelCommission', width: 150, render: renderChannelCommission },
   { title: '订单时间', key: 'orderTime', width: 250, render: renderOrderTime }
 ])
 
@@ -423,6 +491,27 @@ watch(
   display: flex;
   gap: 6px;
   min-height: 20px;
+}
+
+:deep(.od-money-line) {
+  display: flex;
+  gap: 4px;
+  min-height: 20px;
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+:deep(.od-money-label) {
+  width: 40px;
+  flex: 0 0 40px;
+  color: #6b7280;
+}
+
+:deep(.od-money-value) {
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 :deep(.od-time-label) {

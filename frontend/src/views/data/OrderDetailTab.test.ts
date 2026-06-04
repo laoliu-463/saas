@@ -47,19 +47,19 @@ const row = {
   recruiterName: '招商甲',
   contentTypeText: '短视频',
   orderStatusText: '待结算',
-  payAmount: 199,
+  payAmount: 20.00,
   settleAmount: null,
-  estimateServiceFee: 10,
+  estimateServiceFee: 0.60,
   effectiveServiceFee: null,
-  estimateTechServiceFee: 2,
+  estimateTechServiceFee: 0.06,
   effectiveTechServiceFee: null,
-  estimateServiceFeeExpense: 3,
+  estimateServiceFeeExpense: 0,
   effectiveServiceFeeExpense: null,
-  estimateServiceProfit: 8,
+  estimateServiceProfit: 0.54,
   effectiveServiceProfit: null,
-  estimateRecruiterCommission: 1,
+  estimateRecruiterCommission: null,
   effectiveRecruiterCommission: null,
-  estimateChannelCommission: 2,
+  estimateChannelCommission: 0,
   effectiveChannelCommission: null,
   payTime: '2026-06-04T13:57:32',
   deliveryTime: '2026-06-05T10:00:00',
@@ -103,6 +103,25 @@ const globalStubs = {
   NText: { template: '<span><slot /></span>' },
   NTooltip: { template: '<span><slot name="trigger" /><slot /></span>' }
 }
+
+const finalHeaders = [
+  '订单ID',
+  '活动信息',
+  '商品信息',
+  '合作方信息',
+  '推广者',
+  '渠道',
+  '招商',
+  '订单状态',
+  '订单额',
+  '服务费收入',
+  '技术服务费',
+  '服务费支出',
+  '服务费收益',
+  '招商提成',
+  '渠道提成',
+  '订单时间'
+]
 
 function mountTab() {
   const pinia = createPinia()
@@ -153,22 +172,18 @@ describe('OrderDetailTab', () => {
     vi.mocked(getOrderDetailPage).mockResolvedValue({ data: { records: [row], total: 1 } } as any)
   })
 
-  it('renders screenshot-style order detail columns and upstream product image', async () => {
+  it('renders V1 order detail 16 columns, channel wording and upstream product image', async () => {
     const wrapper = mountTab()
     await flushPromises()
 
+    const headers = wrapper.findAll('th').map((th) => th.text()).filter(Boolean)
+    expect(headers).toEqual(finalHeaders)
+
     const text = wrapper.text()
-    expect(text).toContain('订单ID')
-    expect(text).toContain('活动信息')
-    expect(text).toContain('商品信息')
-    expect(text).toContain('合作方信息')
-    expect(text).toContain('推广者')
-    expect(text).toContain('媒介')
-    expect(text).toContain('招商')
-    expect(text).toContain('订单时间')
-    expect(text).not.toContain('订单状态')
-    expect(text).not.toContain('服务费收益')
-    expect(text).not.toContain('渠道提成')
+    for (const header of finalHeaders) {
+      expect(text).toContain(header)
+    }
+    expect(text).not.toContain('媒介')
     expect(text).not.toContain('毛利')
 
     expect(wrapper.html()).toContain(row.productImage)
@@ -187,6 +202,13 @@ describe('OrderDetailTab', () => {
     expect(text).toContain('7621357005994936827')
     expect(text).toContain('渠道甲')
     expect(text).toContain('招商甲')
+    expect(text).toContain('待结算')
+    expect(text).toContain('¥20.00')
+    expect(text).toContain('¥0.60')
+    expect(text).toContain('¥0.06')
+    expect(text).toContain('¥0.54')
+    expect(text).toContain('¥0.00')
+    expect(text).toContain('结算:-')
     expect(text).toContain('付款:')
     expect(text).toContain('2026-06-04 13:57:32')
     expect(text).toContain('收货:')
@@ -222,5 +244,47 @@ describe('OrderDetailTab', () => {
     await flushPromises()
 
     expect(wrapper.find('.order-detail-product-image').attributes('src')).toBe('https://cdn.example.com/product-snake.jpg')
+  })
+
+  it('renders empty partner, channel and recruiter as dash while keeping zero money explicit', async () => {
+    vi.mocked(getOrderDetailPage).mockResolvedValue({
+      data: {
+        records: [{
+          ...row,
+          partnerName: null,
+          colonelName: null,
+          channelName: null,
+          channelUserName: null,
+          mediaName: '渠道兼容字段',
+          recruiterName: null,
+          payAmount: 0,
+          settleAmount: null,
+          estimateServiceFee: null,
+          estimateTechServiceFee: null,
+          estimateServiceFeeExpense: null,
+          estimateServiceProfit: null,
+          estimateRecruiterCommission: null,
+          estimateChannelCommission: null
+        }],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = mountTab()
+    await flushPromises()
+
+    const headers = wrapper.findAll('th').map((th) => th.text()).filter(Boolean)
+    const cells = wrapper.findAll('tbody td')
+    const cellText = (header: string) => cells[headers.indexOf(header)].text()
+
+    expect(cellText('合作方信息')).toBe('-')
+    expect(cellText('渠道')).toContain('渠道兼容字段')
+    expect(cellText('招商')).toBe('-')
+    expect(cellText('订单额')).toContain('¥0.00')
+    expect(cellText('订单额')).toContain('结算:-')
+    expect(cellText('服务费收入')).toContain('预估:-')
+    expect(cellText('服务费收入')).not.toContain('¥0.00')
+    expect(wrapper.text()).not.toContain('媒介')
+    expect(wrapper.text()).not.toContain('毛利')
   })
 })

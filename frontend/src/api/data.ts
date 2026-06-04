@@ -9,6 +9,58 @@
  * 在前端架构中属于 API 层（api/），被 views/data/ 下的数据看板和订单列表视图调用。
  */
 import request from '../utils/request';
+import type { PageResult } from '../types';
+
+export interface OrderDetailRecord {
+  orderId?: string | null;
+  orderStatus?: number | string | null;
+  orderStatusText?: string | null;
+  orderTypeText?: string | null;
+  activityId?: string | null;
+  activityName?: string | null;
+  contentTypeText?: string | null;
+  productId?: string | null;
+  productName?: string | null;
+  productImage?: string | null;
+  productQuantity?: number | string | null;
+  commissionRate?: number | string | null;
+  serviceFeeRate?: number | string | null;
+  partnerId?: string | null;
+  partnerName?: string | null;
+  colonelName?: string | null;
+  talentId?: string | null;
+  talentName?: string | null;
+  talentDouyinId?: string | null;
+  videoId?: string | null;
+  channelId?: string | null;
+  channelName?: string | null;
+  channelUserName?: string | null;
+  mediaName?: string | null;
+  recruiterId?: string | null;
+  recruiterName?: string | null;
+  payAmount?: number | string | null;
+  settleAmount?: number | string | null;
+  estimateServiceFee?: number | string | null;
+  effectiveServiceFee?: number | string | null;
+  estimateTechServiceFee?: number | string | null;
+  effectiveTechServiceFee?: number | string | null;
+  estimateServiceFeeExpense?: number | string | null;
+  effectiveServiceFeeExpense?: number | string | null;
+  estimateServiceProfit?: number | string | null;
+  effectiveServiceProfit?: number | string | null;
+  estimateRecruiterCommission?: number | string | null;
+  effectiveRecruiterCommission?: number | string | null;
+  estimateChannelCommission?: number | string | null;
+  effectiveChannelCommission?: number | string | null;
+  payTime?: string | null;
+  deliveryTime?: string | null;
+  settleTime?: string | null;
+  expireTime?: string | null;
+  orderCreateTime?: string | null;
+  settleStatusText?: string | null;
+}
+
+export type OrderDetailPageResponse = PageResult<OrderDetailRecord>;
 
 /**
  * 获取数据看板订单分页列表
@@ -26,7 +78,8 @@ export const getOrderPage = (params: any) => request.get('/data/orders', { param
  * @param params - 分页及筛选参数
  * @returns AxiosPromise，响应体包含 OrderDetailVO 列表和分页元数据
  */
-export const getOrderDetailPage = (params: any) => request.get('/data/orders/detail', { params });
+export const getOrderDetailPage = (params: any) =>
+  request.get<any, { data?: OrderDetailPageResponse; records?: OrderDetailRecord[]; total?: number }>('/data/orders/detail', { params });
 
 /**
  * 获取订单汇总统计
