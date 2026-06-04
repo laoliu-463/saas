@@ -1,20 +1,6 @@
 <template>
   <section class="table-panel app-panel app-table-shell">
     <div class="table-toolbar">
-      <n-popover trigger="click" placement="bottom-end">
-        <template #trigger>
-          <n-button quaternary>⚙ 自定义表头</n-button>
-        </template>
-        <n-checkbox-group v-model:value="visibleColumnKeys" class="column-picker">
-          <n-checkbox
-            v-for="column in detailConfigurableColumns"
-            :key="column.key"
-            :value="column.key"
-          >
-            {{ column.title }}
-          </n-checkbox>
-        </n-checkbox-group>
-      </n-popover>
       <n-button v-if="canExport" type="primary" secondary data-testid="data-order-detail-export" @click="$emit('export')">
         导 出
       </n-button>
@@ -26,7 +12,7 @@
       :data="rows"
       :loading="loading"
       :row-key="(row: any) => row.orderId || row.orderCreateTime"
-      :scroll-x="2800"
+      :scroll-x="2200"
       :pagination="pagination"
       remote
       @update:page="handlePageChange"
@@ -62,43 +48,12 @@ const loading = ref(false)
 const rows = ref<any[]>([])
 const pagination = reactive(createPaginationState())
 
-const statusTextMap: Record<string, string> = {
-  ORDERED: '待结算',
-  SHIPPED: '待结算',
-  FINISHED: '已结算',
-  CANCELLED: '已失效',
-  REFUNDED: '已退款'
-}
+/* ── 格式化辅助 ── */
 
-const statusTagType = (text: string) => {
-  if (text === '已结算') return 'success'
-  if (text === '待结算') return 'warning'
-  if (text === '已退款' || text === '已失效') return 'error'
-  return 'info'
-}
-
-const resolveStatusText = (row: any) => {
-  const raw = row.orderStatusText
-  if (raw && statusTextMap[String(raw)]) return statusTextMap[String(raw)]
-  if (raw && ['待结算', '已结算', '已退款', '已失效'].includes(String(raw))) return String(raw)
-  const code = Number(row.orderStatus)
-  if (code === 1 || code === 2) return '待结算'
-  if (code === 3) return '已结算'
-  if (code === 4) return '已失效'
-  if (code === 5) return '已退款'
+const formatDateTime = (v: unknown) => {
+  if (!v) return '-'
+  if (typeof v === 'string') return v.replace('T', ' ').slice(0, 19)
   return '-'
-}
-
-const fmtMoney = (v: unknown) => {
-  if (v == null) return '-'
-  const n = Number(v)
-  return Number.isFinite(n) ? `¥${n.toFixed(2)}` : '-'
-}
-
-const fmtTrackMoney = (estimate: unknown, effective: unknown) => {
-  const est = fmtMoney(estimate)
-  const eff = fmtMoney(effective)
-  return { est, eff }
 }
 
 const copyToClipboard = (text: string) => {
@@ -108,42 +63,26 @@ const copyToClipboard = (text: string) => {
   )
 }
 
-const hasVisibleColumn = (key: string) => visibleColumnKeys.value.includes(key)
-
-const detailConfigurableColumns = [
-  { title: '活动信息', key: 'activity' },
-  { title: '商品信息', key: 'product' },
-  { title: '合作方信息', key: 'partner' },
-  { title: '推广者', key: 'talent' },
-  { title: '渠道', key: 'channel' },
-  { title: '招商', key: 'recruiter' },
-  { title: '订单状态', key: 'status' },
-  { title: '订单额', key: 'orderAmount' },
-  { title: '服务费收入', key: 'serviceFee' },
-  { title: '技术服务费', key: 'techServiceFee' },
-  { title: '服务费支出', key: 'serviceFeeExpense' },
-  { title: '服务费收益', key: 'serviceFeeProfit' },
-  { title: '招商提成', key: 'recruiterCommission' },
-  { title: '渠道提成', key: 'channelCommission' },
-  { title: '订单时间', key: 'orderTime' }
-]
-
-const visibleColumnKeys = ref(detailConfigurableColumns.map((c) => c.key))
-
-const renderDualMoney = (estimate: unknown, effective: unknown) => {
-  const { est, eff } = fmtTrackMoney(estimate, effective)
-  return h('div', { class: 'table-multi-line' }, [
-    h('div', `预估：${est}`),
-    h(NText, { depth: 3 }, { default: () => `结算：${eff}` })
-  ])
+/** 佣金率 / 服务费率：值 > 100 视为万分比（‱），否则视为百分比（%） */
+const fmtRate = (v: unknown) => {
+  if (v == null) return '-'
+  const n = Number(v)
+  if (!Number.isFinite(n) || n <= 0) return '-'
+  if (n >= 100) return `${(n / 100).toFixed(2)}%`
+  return `${n}%`
 }
+
+/* ── 列定义：严格按截图 9 列 ── */
 
 const columns = computed(() => {
   const cols: any[] = [
+    { type: 'selection' },
+
+    /* 1. 订单ID */
     {
       title: '订单ID',
       key: 'orderId',
-      width: 200,
+      width: 180,
       fixed: 'left' as const,
       render: (row: any) =>
         h(
@@ -155,202 +94,132 @@ const columns = computed(() => {
           },
           row.orderId || '-'
         )
-    }
-  ]
+    },
 
-  if (hasVisibleColumn('activity')) {
-    cols.push({
+    /* 2. 活动信息：名称 + ID + 内容类型标签 */
+    {
       title: '活动信息',
       key: 'activity',
-      width: 180,
+      width: 200,
       render: (row: any) =>
-        h('div', { class: 'table-multi-line' }, [
-          h('div', row.activityName || '未归属活动'),
-          h(NText, { depth: 3, style: 'font-size:12px' }, { default: () => row.activityId || '' })
+        h('div', { class: 'cell-multi' }, [
+          h('div', { class: 'cell-main' }, row.activityName || '未归属活动'),
+          h(NText, { depth: 3, style: 'font-size:12px' }, { default: () => row.activityId || '' }),
+          row.contentTypeText
+            ? h(NTag, { size: 'small', type: row.contentTypeText === '直播' ? 'warning' : 'info', bordered: false, style: 'margin-top:2px;width:fit-content' }, { default: () => row.contentTypeText })
+            : null
         ])
-    })
-  }
+    },
 
-  if (hasVisibleColumn('product')) {
-    cols.push({
+    /* 3. 商品信息：图片 + 名称 + 商品ID + 店铺 + 数量 + 佣金率 + 服务费率 */
+    {
       title: '商品信息',
       key: 'product',
-      width: 220,
+      width: 320,
       render: (row: any) =>
         h('div', { style: 'display:flex;gap:8px;align-items:flex-start' }, [
           row.productImage
-            ? h(NImage, { src: row.productImage, width: 40, height: 40, objectFit: 'cover', previewDisabled: true, fallbackSrc: '' })
-            : h('div', { style: 'width:40px;height:40px;background:#f5f5f5;border-radius:4px;flex-shrink:0' }),
-          h('div', { class: 'table-multi-line', style: 'min-width:0' }, [
+            ? h(NImage, {
+                src: row.productImage,
+                width: 48,
+                height: 48,
+                objectFit: 'cover',
+                previewDisabled: true,
+                fallbackSrc: '',
+                style: 'border-radius:4px;flex-shrink:0'
+              })
+            : h('div', { style: 'width:48px;height:48px;background:#f5f5f5;border-radius:4px;flex-shrink:0' }),
+          h('div', { class: 'cell-multi', style: 'min-width:0' }, [
             h(
               NTooltip,
               { trigger: 'hover' },
               {
                 trigger: () =>
-                  h('div', { class: 'text-ellipsis', style: 'max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, row.productName || '-'),
+                  h('div', { class: 'text-ellipsis cell-main', style: 'max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, row.productName || '-'),
                 default: () => row.productName || '-'
               }
             ),
-            h(NText, { depth: 3, style: 'font-size:12px' }, { default: () => row.productId || '' })
+            h(NText, { depth: 3, style: 'font-size:12px' }, { default: () => `ID: ${row.productId || '-'}` }),
+            h(NText, { depth: 3, style: 'font-size:12px' }, { default: () => row.partnerName || '-' }),
+            h('div', { style: 'font-size:12px;color:#666;display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:2px' }, [
+              h('span', null, `数量 x ${row.productQuantity ?? '-'}`),
+              h('span', null, `佣金率 ${fmtRate(row.commissionRate)}`),
+              h('span', null, `服务费率 ${fmtRate(row.serviceFeeRate)}`)
+            ])
           ])
         ])
-    })
-  }
+    },
 
-  if (hasVisibleColumn('partner')) {
-    cols.push({
+    /* 4. 合作方信息 */
+    {
       title: '合作方信息',
       key: 'partner',
-      width: 160,
+      width: 140,
       render: (row: any) =>
-        h('div', { class: 'table-multi-line' }, [
-          h('div', row.partnerName || '-'),
+        h('div', { class: 'cell-multi' }, [
+          h('div', { class: 'cell-main' }, row.partnerName || '-'),
           h(NText, { depth: 3, style: 'font-size:12px' }, { default: () => row.partnerId || '' })
         ])
-    })
-  }
+    },
 
-  if (hasVisibleColumn('talent')) {
-    cols.push({
+    /* 5. 推广者：昵称 + "达人" 标签 + 抖音ID + 出单视频ID */
+    {
       title: '推广者',
       key: 'talent',
-      width: 160,
+      width: 200,
       render: (row: any) =>
-        h('div', { class: 'table-multi-line' }, [
-          h('div', row.talentName || '-'),
-          h(NText, { depth: 3, style: 'font-size:12px' }, { default: () => row.talentId || '' })
+        h('div', { class: 'cell-multi' }, [
+          h('div', { style: 'display:flex;align-items:center;gap:4px' }, [
+            h('span', { class: 'cell-main' }, row.talentName || '-'),
+            h(NTag, { size: 'tiny', type: 'success', bordered: false }, { default: () => '达人' })
+          ]),
+          h(NText, { depth: 3, style: 'font-size:12px' }, { default: () => row.talentDouyinId && row.talentDouyinId !== '-' ? row.talentDouyinId : '' }),
+          row.videoId && row.videoId !== '-'
+            ? h(NText, { depth: 3, style: 'font-size:12px' }, { default: () => `出单视频: ${row.videoId}` })
+            : null
         ])
-    })
-  }
+    },
 
-  if (hasVisibleColumn('channel')) {
-    cols.push({
-      title: '渠道',
+    /* 6. 媒介 */
+    {
+      title: '媒介',
       key: 'channel',
-      width: 120,
-      render: (row: any) => row.channelName || '未归因'
-    })
-  }
+      width: 100,
+      render: (row: any) => row.channelName || '-'
+    },
 
-  if (hasVisibleColumn('recruiter')) {
-    cols.push({
+    /* 7. 招商 */
+    {
       title: '招商',
       key: 'recruiter',
-      width: 120,
-      render: (row: any) => row.recruiterName || '未归因'
-    })
-  }
+      width: 100,
+      render: (row: any) => row.recruiterName || '-'
+    },
 
-  if (hasVisibleColumn('status')) {
-    cols.push({
-      title: '订单状态',
-      key: 'status',
-      width: 110,
-      render: (row: any) => {
-        const text = resolveStatusText(row)
-        return h(NTag, { type: statusTagType(text), size: 'small', bordered: false }, { default: () => text })
-      }
-    })
-  }
-
-  if (hasVisibleColumn('orderAmount')) {
-    cols.push({
-      title: '订单额',
-      key: 'orderAmount',
-      width: 180,
-      sorter: (a: any, b: any) => Number(a.payAmount || 0) - Number(b.payAmount || 0),
-      render: (row: any) =>
-        h('div', { class: 'table-multi-line' }, [
-          h('div', `支付：${fmtMoney(row.payAmount)}`),
-          h(NText, { depth: 3 }, { default: () => `结算：${fmtMoney(row.settleAmount)}` })
-        ])
-    })
-  }
-
-  if (hasVisibleColumn('serviceFee')) {
-    cols.push({
-      title: '服务费收入',
-      key: 'serviceFee',
-      width: 180,
-      render: (row: any) => renderDualMoney(row.estimateServiceFee, row.effectiveServiceFee)
-    })
-  }
-
-  if (hasVisibleColumn('techServiceFee')) {
-    cols.push({
-      title: '技术服务费',
-      key: 'techServiceFee',
-      width: 180,
-      render: (row: any) => renderDualMoney(row.estimateTechServiceFee, row.effectiveTechServiceFee)
-    })
-  }
-
-  if (hasVisibleColumn('serviceFeeExpense')) {
-    cols.push({
-      title: '服务费支出',
-      key: 'serviceFeeExpense',
-      width: 180,
-      render: (row: any) => renderDualMoney(row.estimateServiceFeeExpense, row.effectiveServiceFeeExpense)
-    })
-  }
-
-  if (hasVisibleColumn('serviceFeeProfit')) {
-    cols.push({
-      title: '服务费收益',
-      key: 'serviceFeeProfit',
-      width: 180,
-      render: (row: any) => renderDualMoney(row.estimateServiceProfit, row.effectiveServiceProfit)
-    })
-  }
-
-  if (hasVisibleColumn('recruiterCommission')) {
-    cols.push({
-      title: '招商提成',
-      key: 'recruiterCommission',
-      width: 180,
-      render: (row: any) => renderDualMoney(row.estimateRecruiterCommission, row.effectiveRecruiterCommission)
-    })
-  }
-
-  if (hasVisibleColumn('channelCommission')) {
-    cols.push({
-      title: '渠道提成',
-      key: 'channelCommission',
-      width: 180,
-      render: (row: any) => renderDualMoney(row.estimateChannelCommission, row.effectiveChannelCommission)
-    })
-  }
-
-  if (hasVisibleColumn('orderTime')) {
-    cols.push({
+    /* 8. 订单时间：付款时间 + 结算状态 */
+    {
       title: '订单时间',
       key: 'orderTime',
       width: 180,
-      render: (row: any) =>
-        h(
-          NTooltip,
-          { trigger: 'hover' },
-          {
-            trigger: () => h('div', formatDateTime(row.payTime || row.orderCreateTime)),
-            default: () =>
-              h('div', { class: 'table-multi-line' }, [
-                h('div', `付款：${formatDateTime(row.payTime)}`),
-                h('div', `结算：${formatDateTime(row.settleTime)}`),
-                h('div', `创建：${formatDateTime(row.orderCreateTime)}`)
-              ])
-          }
-        )
-    })
-  }
+      render: (row: any) => {
+        const statusText = row.settleStatusText || '-'
+        const statusColor = statusText === '失效'
+          ? '#e74c3c'
+          : statusText === '已结算'
+            ? '#18a058'
+            : '#999'
+        return h('div', { class: 'cell-multi' }, [
+          h('div', null, formatDateTime(row.payTime)),
+          h('div', { style: `font-size:12px;color:${statusColor};margin-top:2px` }, statusText)
+        ])
+      }
+    }
+  ]
 
   return cols
 })
 
-const formatDateTime = (v: unknown) => {
-  if (!v) return '-'
-  if (typeof v === 'string') return v.replace('T', ' ').slice(0, 19)
-  return '-'
-}
+/* ── 数据请求 ── */
 
 const fetchDetailData = async () => {
   loading.value = true
@@ -424,16 +293,14 @@ watch(
   margin-bottom: 26px;
 }
 
-.column-picker {
-  display: grid;
-  gap: 8px;
-  min-width: 150px;
-}
-
-.table-multi-line {
+.cell-multi {
   display: grid;
   gap: 4px;
   line-height: 1.5;
+}
+
+.cell-main {
+  font-weight: 500;
 }
 
 :deep(.n-data-table-th) {
