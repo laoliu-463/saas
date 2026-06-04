@@ -91,6 +91,7 @@
         :data="data"
         :loading="tableLoading"
         :pagination="pagination"
+        :scroll-x="1500"
         :row-key="(row: any) => row.orderId"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
@@ -210,6 +211,53 @@ function formatMoney(value?: number | null) {
   return `¥${(Number(value) / 100).toFixed(2)}`
 }
 
+/**
+ * 格式化佣金率 / 服务费率。
+ * 后端若返回 0.07（小数）则乘 100 展示 7%；若返回 7（整数百分比）则直接展示 7%。
+ * 空值显示 '-'。
+ */
+function formatRate(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-'
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '-'
+  // 如果值 <= 1 且不为 0，认为是小数形式（如 0.07 → 7%）
+  const pct = (num > 0 && num < 1) ? Math.round(num * 10000) / 100 : num
+  return `${pct}%`
+}
+
+/**
+ * 渲染商品信息列：左图右文布局。
+ * 展示商品图片（占位）、商品标题（红色）、商品ID、店铺、商品数量、佣金率、服务费率。
+ */
+function renderProductInfo(row: any) {
+  const productImage = row.productImage || row.productPic || row.cover || null
+  const productTitle = row.productTitle || row.productName || '-'
+  const productId = row.productId || '-'
+  const shopName = row.shopName || '-'
+  const quantity = row.quantity ?? row.productQuantity ?? row.goodsNum ?? row.itemNum ?? null
+  const commissionRate = row.commissionRate ?? row.commission_rate ?? row.cosRatio ?? null
+  const serviceFeeRate = row.serviceFeeRate ?? row.service_fee_rate ?? row.serviceRate ?? null
+
+  const imageNode = h('div', { class: 'product-info-image-wrap' }, [
+    productImage
+      ? h('img', { class: 'product-info-image', src: productImage, alt: productTitle })
+      : h('div', { class: 'product-info-image-placeholder' }, [
+          h('span', null, '暂无图片')
+        ])
+  ])
+
+  const detailNode = h('div', { class: 'product-info-detail' }, [
+    h('div', { class: 'product-info-title', title: productTitle }, productTitle),
+    h('div', { class: 'product-info-meta' }, `商品ID：${productId}`),
+    h('div', { class: 'product-info-meta' }, `店铺：${shopName}`),
+    h('div', { class: 'product-info-meta' }, `商品数量：${quantity != null ? quantity : '-'}`),
+    h('div', { class: 'product-info-meta' }, `佣金率：${formatRate(commissionRate)}`),
+    h('div', { class: 'product-info-meta' }, `服务费率：${formatRate(serviceFeeRate)}`)
+  ])
+
+  return h('div', { class: 'product-info-cell' }, [imageNode, detailNode])
+}
+
 function getDiagnosticSummary(row: any) {
   const status = row.attributionStatus || 'UNATTRIBUTED'
   const reason = row.unattributedReason || row.attributionRemark
@@ -250,7 +298,7 @@ const columns = [
     h('div', { style: 'font-weight: 600' }, row.orderId),
     h('div', { style: 'font-size: var(--text-xs); color: var(--text-tertiary)' }, row.settleTime || '-')
   ]) },
-  { title: '商品信息', key: 'productTitle', minWidth: 200, ellipsis: true },
+  { title: '商品信息', key: 'productInfo', minWidth: 380, render: (row: any) => renderProductInfo(row) },
   { title: '订单金额', key: 'orderAmount', width: 100, render: (row: any) => formatMoney(row.orderAmount) },
   {
     title: '归因状态',
@@ -518,6 +566,60 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* ---- 商品信息列 ---- */
+.product-info-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 360px;
+}
+
+.product-info-image-wrap {
+  flex-shrink: 0;
+}
+
+.product-info-image {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+}
+
+.product-info-image-placeholder {
+  width: 80px;
+  height: 80px;
+  border-radius: 6px;
+  background: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.product-info-detail {
+  min-width: 0;
+  line-height: 1.7;
+}
+
+.product-info-title {
+  color: #f5222d;
+  font-weight: 500;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.product-info-meta {
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
 .summary-label {
   font-size: var(--text-sm);
   font-weight: 600;
