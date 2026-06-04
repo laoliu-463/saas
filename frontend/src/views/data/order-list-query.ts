@@ -109,3 +109,13 @@ export function buildOrderPageParams(input: OrderPageQueryInput) {
     ...buildOrderExportParams(input)
   }
 }
+
+/**
+ * 构建订单明细分页查询参数
+ * 与 buildOrderPageParams 相同结构，服务于订单明细接口
+ * @param input 分页查询输入
+ * @returns 后端明细分页接口参数对象
+ */
+export function buildOrderDetailPageParams(input: OrderPageQueryInput) {
+  return buildOrderPageParams(input)
+}

@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -205,6 +206,44 @@ class PerformanceRecordMapperTest extends BaseIntegrationTest {
             assertThat(found.getCalculationVersion()).isEqualTo(1);
             assertThat(found.getCalculatedAt()).isNotNull();
             assertThat(found.getCreatedAt()).isNotNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("findByOrderIds")
+    class FindByOrderIdsTest {
+
+        @Test
+        void shouldReturnEmptyForEmptyList() {
+            List<PerformanceRecord> result = performanceRecordMapper.findByOrderIds(List.of());
+            assertThat(result).isEmpty();
+        }
+
+        @Test
+        void shouldReturnMatchingRecords() {
+            PerformanceRecord r1 = createRecord("BATCH_001");
+            PerformanceRecord r2 = createRecord("BATCH_002");
+            PerformanceRecord r3 = createRecord("BATCH_003");
+            performanceRecordMapper.upsert(r1);
+            performanceRecordMapper.upsert(r2);
+            performanceRecordMapper.upsert(r3);
+
+            List<PerformanceRecord> result = performanceRecordMapper.findByOrderIds(
+                    List.of("BATCH_001", "BATCH_003", "NONEXISTENT"));
+
+            assertThat(result).hasSize(2);
+            List<String> orderIds = result.stream().map(PerformanceRecord::getOrderId).toList();
+            assertThat(orderIds).containsExactlyInAnyOrder("BATCH_001", "BATCH_003");
+        }
+
+        @Test
+        void shouldExcludeInvalidRecords() {
+            PerformanceRecord record = createRecord("BATCH_INVALID");
+            record.setValid(false);
+            performanceRecordMapper.upsert(record);
+
+            List<PerformanceRecord> result = performanceRecordMapper.findByOrderIds(List.of("BATCH_INVALID"));
+            assertThat(result).isEmpty();
         }
     }
 

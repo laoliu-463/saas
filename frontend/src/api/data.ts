@@ -19,6 +19,16 @@ import request from '../utils/request';
 export const getOrderPage = (params: any) => request.get('/data/orders', { params });
 
 /**
+ * 获取订单明细分页列表
+ *
+ * 返回逐订单粒度的明细数据，含双轨金额（预估/结算）。
+ *
+ * @param params - 分页及筛选参数
+ * @returns AxiosPromise，响应体包含 OrderDetailVO 列表和分页元数据
+ */
+export const getOrderDetailPage = (params: any) => request.get('/data/orders/detail', { params });
+
+/**
  * 获取订单汇总统计
  *
  * 返回指定筛选条件下的订单数量、金额、服务费等汇总指标。
@@ -48,6 +58,16 @@ export const getMetrics = (params?: any, config: any = {}) => request.get('/dash
  * @returns AxiosPromise，响应类型为 blob（Excel 文件）
  */
 export const exportOrders = (params: any) => request.get('/orders/exports', { params, responseType: 'blob' });
+
+/**
+ * 导出订单明细 CSV
+ *
+ * 以文件流（blob）形式下载订单明细数据，含双轨金额。
+ *
+ * @param params - 导出筛选参数
+ * @returns AxiosPromise，响应类型为 blob（CSV 文件）
+ */
+export const exportOrderDetail = (params: any) => request.get('/orders/exports/detail', { params, responseType: 'blob' });
 
 /**
  * 导出活动数据

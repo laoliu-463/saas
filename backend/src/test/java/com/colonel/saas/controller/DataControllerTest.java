@@ -15,6 +15,11 @@ import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
+import com.colonel.saas.mapper.PerformanceRecordMapper;
+import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.entity.PerformanceRecord;
+import com.colonel.saas.entity.SysUser;
+import com.colonel.saas.vo.data.OrderDetailVO;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -59,6 +64,10 @@ class DataControllerTest {
     private ColonelsettlementActivityMapper activityMapper;
     @Mock
     private PerformanceMetricsQueryService performanceMetricsQueryService;
+    @Mock
+    private PerformanceRecordMapper performanceRecordMapper;
+    @Mock
+    private SysUserMapper sysUserMapper;
 
     private DataController dataController;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -76,7 +85,9 @@ class DataControllerTest {
                 exclusiveMerchantMapper,
                 activityMapper,
                 new ShortTtlCacheService(),
-                performanceMetricsQueryService
+                performanceMetricsQueryService,
+                performanceRecordMapper,
+                sysUserMapper
         );
         org.mockito.Mockito.lenient().when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(false);
         org.mockito.Mockito.lenient()
@@ -1179,6 +1190,181 @@ class DataControllerTest {
                 .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
         assertThat(exportActivities.getAnnotation(RequireRoles.class)).isNotNull();
         assertThat(exportActivities.getAnnotation(RequireRoles.class).value())
+                .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
+    }
+
+    @Test
+    void getOrderDetailPage_shouldReturnEmptyWhenNoOrders() {
+        IPage<ColonelsettlementOrder> empty = new Page<>(1, 20);
+        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+
+        var result = dataController.getOrderDetailPage(
+                1, 20, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null,
+                UUID.randomUUID(), null, DataScope.ALL);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getData().getRecords()).isEmpty();
+    }
+
+    @Test
+    void getOrderDetailPage_shouldMergePerformanceData() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORD001");
+        order.setOrderStatus(3);
+        order.setOrderAmount(19900L);
+        order.setSettleAmount(18900L);
+        order.setEstimateServiceFee(1000L);
+        order.setEffectiveServiceFee(950L);
+        order.setEstimateTechServiceFee(500L);
+        order.setEffectiveTechServiceFee(480L);
+        order.setProductTitle("Test Product");
+        order.setProductId("P001");
+        order.setShopName("Test Shop");
+        order.setTalentName("TestTalent");
+        order.setActivityId("ACT001");
+        order.setOrderCreateTime(LocalDateTime.now());
+        order.setPayTime(LocalDateTime.now());
+
+        Page<ColonelsettlementOrder> orderPage = new Page<>(1, 20);
+        orderPage.setRecords(List.of(order));
+        orderPage.setTotal(1);
+        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
+
+        PerformanceRecord perf = new PerformanceRecord();
+        perf.setOrderId("ORD001");
+        UUID channelUserId = UUID.randomUUID();
+        UUID recruiterUserId = UUID.randomUUID();
+        perf.setFinalChannelUserId(channelUserId);
+        perf.setFinalRecruiterUserId(recruiterUserId);
+        perf.setEstimateRecruiterCommission(400L);
+        perf.setEffectiveRecruiterCommission(380L);
+        perf.setEstimateChannelCommission(300L);
+        perf.setEffectiveChannelCommission(285L);
+        perf.setEstimateServiceProfit(500L);
+        perf.setEffectiveServiceProfit(470L);
+        when(performanceRecordMapper.findByOrderIds(List.of("ORD001"))).thenReturn(List.of(perf));
+
+        ColonelsettlementActivity activity = new ColonelsettlementActivity();
+        activity.setActivityId("ACT001");
+        activity.setName("Test Activity");
+        when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of(activity));
+
+        SysUser channelUser = new SysUser();
+        channelUser.setId(channelUserId);
+        channelUser.setRealName("ChannelZhang");
+        SysUser recruiterUser = new SysUser();
+        recruiterUser.setId(recruiterUserId);
+        recruiterUser.setRealName("RecruiterLi");
+        when(sysUserMapper.selectList(any())).thenReturn(List.of(channelUser, recruiterUser));
+
+        var result = dataController.getOrderDetailPage(
+                1, 20, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null,
+                UUID.randomUUID(), null, DataScope.ALL);
+
+        assertThat(result).isNotNull();
+        List<OrderDetailVO> records = result.getData().getRecords();
+        assertThat(records).hasSize(1);
+        OrderDetailVO vo = records.get(0);
+
+        assertThat(vo.getOrderId()).isEqualTo("ORD001");
+        assertThat(vo.getActivityName()).isEqualTo("Test Activity");
+        assertThat(vo.getChannelName()).isEqualTo("ChannelZhang");
+        assertThat(vo.getRecruiterName()).isEqualTo("RecruiterLi");
+
+        // 服务费支出 = 招商提成 + 渠道提成
+        assertThat(vo.getEstimateServiceFeeExpense()).isNotNull();
+        assertThat(vo.getEstimateServiceFeeExpense().doubleValue()).isEqualTo(7.00); // 400+300 cents = 7 yuan
+        assertThat(vo.getEffectiveServiceFeeExpense()).isNotNull();
+        assertThat(vo.getEffectiveServiceFeeExpense().doubleValue()).isEqualTo(6.65); // 380+285 cents
+
+        // 双轨金额
+        assertThat(vo.getPayAmount()).isNotNull();
+        assertThat(vo.getSettleAmount()).isNotNull();
+        assertThat(vo.getEstimateServiceFee()).isNotNull();
+        assertThat(vo.getEffectiveServiceFee()).isNotNull();
+    }
+
+    @Test
+    void getOrderDetailPage_shouldHandleOrderWithoutPerformance() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORD002");
+        order.setOrderStatus(1);
+        order.setOrderAmount(5000L);
+        order.setEstimateServiceFee(200L);
+        order.setEstimateTechServiceFee(100L);
+        order.setProductTitle("NoPerf Product");
+        order.setOrderCreateTime(LocalDateTime.now());
+
+        Page<ColonelsettlementOrder> orderPage = new Page<>(1, 20);
+        orderPage.setRecords(List.of(order));
+        orderPage.setTotal(1);
+        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
+        when(performanceRecordMapper.findByOrderIds(List.of("ORD002"))).thenReturn(List.of());
+        org.mockito.Mockito.lenient().when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of());
+
+        var result = dataController.getOrderDetailPage(
+                1, 20, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null,
+                UUID.randomUUID(), null, DataScope.ALL);
+
+        List<OrderDetailVO> records = result.getData().getRecords();
+        assertThat(records).hasSize(1);
+        OrderDetailVO vo = records.get(0);
+
+        assertThat(vo.getOrderId()).isEqualTo("ORD002");
+        assertThat(vo.getChannelName()).isNull();
+        assertThat(vo.getRecruiterName()).isNull();
+        assertThat(vo.getEstimateRecruiterCommission()).isNull();
+        assertThat(vo.getEstimateChannelCommission()).isNull();
+        // 服务费收益 = 服务费收入 - 技术服务费 (when no perf record)
+        assertThat(vo.getEstimateServiceProfit()).isNotNull();
+        assertThat(vo.getEstimateServiceProfit().doubleValue()).isEqualTo(1.00); // 200-100 cents = 1 yuan
+    }
+
+    @Test
+    void exportOrderDetail_shouldWriteCsv() throws Exception {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORD_EXP");
+        order.setOrderStatus(3);
+        order.setOrderAmount(10000L);
+        order.setProductTitle("Export Product");
+        order.setOrderCreateTime(LocalDateTime.now());
+
+        Page<ColonelsettlementOrder> orderPage = new Page<>(1, 2000);
+        orderPage.setRecords(List.of(order));
+        orderPage.setTotal(1);
+        orderPage.setPages(1);
+        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
+        when(performanceRecordMapper.findByOrderIds(any())).thenReturn(List.of());
+        org.mockito.Mockito.lenient().when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of());
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        dataController.exportOrderDetail(
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null,
+                UUID.randomUUID(), null, DataScope.ALL, response);
+
+        assertThat(response.getContentType()).contains("text/csv");
+        String content = response.getContentAsString();
+        assertThat(content).contains("订单号");
+        assertThat(content).contains("ORD_EXP");
+    }
+
+    @Test
+    void exportOrderDetail_shouldHaveCorrectRoleAnnotation() throws Exception {
+        Method exportOrderDetail = DataController.class.getDeclaredMethod(
+                "exportOrderDetail",
+                String.class, String.class, UUID.class, String.class,
+                String.class, String.class, String.class, String.class,
+                String.class, String.class, String.class, String.class,
+                LocalDate.class, LocalDate.class, String.class,
+                UUID.class, UUID.class, DataScope.class,
+                jakarta.servlet.http.HttpServletResponse.class
+        );
+        assertThat(exportOrderDetail.getAnnotation(RequireRoles.class)).isNotNull();
+        assertThat(exportOrderDetail.getAnnotation(RequireRoles.class).value())
                 .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
     }
 }

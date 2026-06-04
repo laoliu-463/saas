@@ -15,10 +15,15 @@ import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import com.colonel.saas.entity.ExclusiveTalent;
+import com.colonel.saas.entity.PerformanceRecord;
+import com.colonel.saas.entity.SysUser;
+import com.colonel.saas.vo.data.OrderDetailVO;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
+import com.colonel.saas.mapper.PerformanceRecordMapper;
+import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -58,10 +63,13 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -126,6 +134,12 @@ public class DataApplicationService extends BaseController {
     /** 业绩指标聚合查询服务，负责从 performance_records 表聚合核心指标与趋势数据 */
     private final PerformanceMetricsQueryService performanceMetricsQueryService;
 
+    /** 业绩记录 Mapper，负责按订单号批量查询业绩提成数据 */
+    private final PerformanceRecordMapper performanceRecordMapper;
+
+    /** 用户 Mapper，负责查询渠道/招商负责人姓名 */
+    private final SysUserMapper sysUserMapper;
+
     /**
      * 构造注入所有依赖服务与 Mapper。
      *
@@ -144,7 +158,9 @@ public class DataApplicationService extends BaseController {
             ExclusiveMerchantMapper exclusiveMerchantMapper,
             ColonelsettlementActivityMapper activityMapper,
             ShortTtlCacheService shortTtlCacheService,
-            PerformanceMetricsQueryService performanceMetricsQueryService) {
+            PerformanceMetricsQueryService performanceMetricsQueryService,
+            PerformanceRecordMapper performanceRecordMapper,
+            SysUserMapper sysUserMapper) {
         this.orderMapper = orderMapper;
         this.commissionService = commissionService;
         this.exclusiveTalentMapper = exclusiveTalentMapper;
@@ -152,6 +168,8 @@ public class DataApplicationService extends BaseController {
         this.activityMapper = activityMapper;
         this.shortTtlCacheService = shortTtlCacheService;
         this.performanceMetricsQueryService = performanceMetricsQueryService;
+        this.performanceRecordMapper = performanceRecordMapper;
+        this.sysUserMapper = sysUserMapper;
     }
 
     /**
@@ -314,6 +332,252 @@ public class DataApplicationService extends BaseController {
                 userId,
                 deptId,
                 dataScope);
+    }
+
+    /**
+     * 订单明细分页查询（数据页）。
+     * <p>
+     * 返回逐订单粒度的明细数据，聚合订单事实与业绩域提成数据。
+     * 每页查询订单后，批量关联 performance_records 获取提成字段。
+     * </p>
+     */
+    @Operation(summary = "订单明细分页", description = "分页查询订单明细，含业绩提成双轨金额。")
+    public ApiResult<PageResult<OrderDetailVO>> getOrderDetailPage(
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") @Min(1) @Max(1000) long page,
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "20") @Min(1) @Max(200) long size,
+            @Parameter(description = "订单号") @RequestParam(required = false) String orderId,
+            @Parameter(description = "订单状态") @RequestParam(required = false) String status,
+            @Parameter(description = "达人 ID") @RequestParam(required = false) UUID talentId,
+            @Parameter(description = "商家 ID") @RequestParam(required = false) String merchantId,
+            @Parameter(description = "商品 ID") @RequestParam(required = false) String productId,
+            @Parameter(description = "商品名称") @RequestParam(required = false) String productName,
+            @Parameter(description = "店铺名称") @RequestParam(required = false) String shopName,
+            @Parameter(description = "达人昵称") @RequestParam(required = false) String talentName,
+            @Parameter(description = "团长名称") @RequestParam(required = false) String colonelName,
+            @Parameter(description = "渠道名称") @RequestParam(required = false) String channelName,
+            @Parameter(description = "活动 ID") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "招商类型") @RequestParam(required = false) String recruitType,
+            @Parameter(description = "开始日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "结束日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "时间字段") @RequestParam(required = false) String timeField,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+
+        LocalDateTime start = startDate == null
+                ? LocalDate.now().minusDays(30).atStartOfDay()
+                : startDate.atStartOfDay();
+        LocalDateTime end = endDate == null
+                ? LocalDate.now().plusDays(1).atStartOfDay()
+                : endDate.plusDays(1).atStartOfDay();
+
+        QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
+                true, timeField, start, end, orderId, status, talentId, merchantId,
+                productId, productName, shopName, talentName, colonelName, channelName,
+                colonelActivityId, recruitType, userId, deptId, dataScope);
+
+        IPage<ColonelsettlementOrder> orderPage = orderMapper.findPageWithScope(new Page<>(page, size), wrapper);
+        List<ColonelsettlementOrder> orders = orderPage.getRecords();
+
+        if (orders.isEmpty()) {
+            Page<OrderDetailVO> emptyPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
+            emptyPage.setRecords(List.of());
+            return okPage(emptyPage);
+        }
+
+        // 批量查询业绩记录
+        List<String> orderIds = orders.stream()
+                .map(ColonelsettlementOrder::getOrderId)
+                .filter(StringUtils::hasText)
+                .toList();
+        Map<String, PerformanceRecord> perfMap = loadPerformanceMap(orderIds);
+
+        // 批量查询活动名称
+        Map<String, String> activityNameMap = loadActivityNameMap(orders);
+
+        // 批量查询用户姓名（渠道 + 招商）
+        Map<UUID, String> userNameMap = loadUserNameMap(perfMap.values());
+
+        // 组装 VO
+        Page<OrderDetailVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
+        voPage.setRecords(orders.stream().map(order -> {
+            PerformanceRecord perf = perfMap.get(order.getOrderId());
+            return toOrderDetailVO(order, perf, activityNameMap, userNameMap);
+        }).toList());
+        return okPage(voPage);
+    }
+
+    /**
+     * 批量加载业绩记录，构建 orderId → PerformanceRecord 映射。
+     */
+    private Map<String, PerformanceRecord> loadPerformanceMap(List<String> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return Map.of();
+        }
+        List<PerformanceRecord> records = performanceRecordMapper.findByOrderIds(orderIds);
+        Map<String, PerformanceRecord> map = new LinkedHashMap<>();
+        for (PerformanceRecord r : records) {
+            if (r.getOrderId() != null) {
+                map.put(r.getOrderId(), r);
+            }
+        }
+        return map;
+    }
+
+    /**
+     * 批量加载活动名称映射 activityId → activityName。
+     */
+    private Map<String, String> loadActivityNameMap(List<ColonelsettlementOrder> orders) {
+        List<String> activityIds = orders.stream()
+                .map(ColonelsettlementOrder::getActivityId)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+        if (activityIds.isEmpty()) {
+            return Map.of();
+        }
+        List<ColonelsettlementActivity> activities = activityMapper.selectNamesByActivityIds(activityIds);
+        Map<String, String> map = new LinkedHashMap<>();
+        for (ColonelsettlementActivity a : activities) {
+            if (a.getActivityId() != null && a.getName() != null) {
+                map.put(a.getActivityId(), a.getName());
+            }
+        }
+        return map;
+    }
+
+    /**
+     * 批量加载用户姓名映射 userId → realName。
+     */
+    private Map<UUID, String> loadUserNameMap(Collection<PerformanceRecord> records) {
+        Set<UUID> userIds = new HashSet<>();
+        for (PerformanceRecord r : records) {
+            if (r.getFinalChannelUserId() != null) userIds.add(r.getFinalChannelUserId());
+            if (r.getFinalRecruiterUserId() != null) userIds.add(r.getFinalRecruiterUserId());
+        }
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+        LambdaQueryWrapper<SysUser> uw = new LambdaQueryWrapper<>();
+        uw.in(SysUser::getId, userIds);
+        List<SysUser> users = sysUserMapper.selectList(uw);
+        Map<UUID, String> map = new LinkedHashMap<>();
+        for (SysUser u : users) {
+            if (u.getId() != null) {
+                map.put(u.getId(), StringUtils.hasText(u.getRealName()) ? u.getRealName() : u.getUsername());
+            }
+        }
+        return map;
+    }
+
+    /**
+     * 将订单实体 + 业绩记录合并为 OrderDetailVO。
+     */
+    private OrderDetailVO toOrderDetailVO(
+            ColonelsettlementOrder order,
+            PerformanceRecord perf,
+            Map<String, String> activityNameMap,
+            Map<UUID, String> userNameMap) {
+        OrderDetailVO vo = new OrderDetailVO();
+
+        // 订单基本信息
+        vo.setOrderId(StringUtils.hasText(order.getOrderId()) ? order.getOrderId() : String.valueOf(order.getId()));
+        vo.setOrderStatus(order.getOrderStatus());
+        vo.setOrderStatusText(fromOrderStatusCode(order.getOrderStatus()));
+
+        // 活动
+        String activityId = order.getActivityId();
+        vo.setActivityId(activityId);
+        vo.setActivityName(StringUtils.hasText(activityId) ? activityNameMap.getOrDefault(activityId, null) : null);
+
+        // 商品
+        vo.setProductId(order.getProductId());
+        vo.setProductName(StringUtils.hasText(order.getProductTitle()) ? order.getProductTitle() : order.getProductName());
+        vo.setProductImage(StringUtils.hasText(order.getProductImage()) ? order.getProductImage() : order.getProductPic());
+
+        // 合作方
+        vo.setPartnerId(order.getShopId() != null ? String.valueOf(order.getShopId()) : null);
+        vo.setPartnerName(order.getShopName());
+
+        // 推广者
+        vo.setTalentId(order.getTalentId() != null ? order.getTalentId().toString() : null);
+        vo.setTalentName(StringUtils.hasText(order.getTalentName()) ? order.getTalentName()
+                : pickText(order.getExtraData(), "talentName", "talent_nickname", "author_name"));
+
+        // 渠道/招商：优先从业绩记录获取最终归属
+        if (perf != null) {
+            vo.setChannelId(perf.getFinalChannelUserId() != null ? perf.getFinalChannelUserId().toString() : null);
+            vo.setChannelName(userNameMap.getOrDefault(perf.getFinalChannelUserId(), null));
+            vo.setRecruiterId(perf.getFinalRecruiterUserId() != null ? perf.getFinalRecruiterUserId().toString() : null);
+            vo.setRecruiterName(userNameMap.getOrDefault(perf.getFinalRecruiterUserId(), null));
+        } else {
+            // 无业绩记录时回退到订单事实字段
+            vo.setChannelId(order.getChannelUserId() != null ? order.getChannelUserId().toString() : null);
+            vo.setChannelName(order.getChannelUserName());
+            vo.setRecruiterId(null);
+            vo.setRecruiterName(null);
+        }
+
+        // 金额双轨（分 → 元）
+        vo.setPayAmount(centToYuan(order.getOrderAmount()));
+        vo.setSettleAmount(safeCentToYuan(order.getSettleAmount()));
+        vo.setEstimateServiceFee(centToYuan(order.getEstimateServiceFee()));
+        vo.setEffectiveServiceFee(safeCentToYuan(order.getEffectiveServiceFee()));
+        vo.setEstimateTechServiceFee(centToYuan(order.getEstimateTechServiceFee()));
+        vo.setEffectiveTechServiceFee(safeCentToYuan(order.getEffectiveTechServiceFee()));
+
+        // 提成字段从业绩记录获取
+        if (perf != null) {
+            vo.setEstimateRecruiterCommission(centToYuan(perf.getEstimateRecruiterCommission()));
+            vo.setEffectiveRecruiterCommission(safeCentToYuan(perf.getEffectiveRecruiterCommission()));
+            vo.setEstimateChannelCommission(centToYuan(perf.getEstimateChannelCommission()));
+            vo.setEffectiveChannelCommission(safeCentToYuan(perf.getEffectiveChannelCommission()));
+            vo.setEstimateServiceProfit(centToYuan(perf.getEstimateServiceProfit()));
+            vo.setEffectiveServiceProfit(safeCentToYuan(perf.getEffectiveServiceProfit()));
+        } else {
+            // 无业绩记录：服务费收益 = 服务费收入 - 技术服务费
+            vo.setEstimateServiceProfit(safeSubtract(order.getEstimateServiceFee(), order.getEstimateTechServiceFee()));
+            vo.setEffectiveServiceProfit(safeSubtract(order.getEffectiveServiceFee(), order.getEffectiveTechServiceFee()));
+            vo.setEstimateRecruiterCommission(null);
+            vo.setEffectiveRecruiterCommission(null);
+            vo.setEstimateChannelCommission(null);
+            vo.setEffectiveChannelCommission(null);
+        }
+
+        // 服务费支出 = 招商提成 + 渠道提成
+        vo.setEstimateServiceFeeExpense(safeAdd(vo.getEstimateRecruiterCommission(), vo.getEstimateChannelCommission()));
+        vo.setEffectiveServiceFeeExpense(safeAdd(vo.getEffectiveRecruiterCommission(), vo.getEffectiveChannelCommission()));
+
+        // 时间
+        vo.setPayTime(order.getPayTime() != null ? order.getPayTime() : order.getOrderCreateTime());
+        vo.setSettleTime(order.getSettleTime());
+        vo.setOrderCreateTime(order.getOrderCreateTime());
+
+        return vo;
+    }
+
+    /**
+     * 分转元，null 时返回 null（区别于 centToYuan 的 0 默认值）。
+     */
+    private BigDecimal safeCentToYuan(Long cent) {
+        if (cent == null || cent == 0L) {
+            return null;
+        }
+        return BigDecimal.valueOf(cent).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal safeAdd(BigDecimal a, BigDecimal b) {
+        if (a == null && b == null) return null;
+        BigDecimal va = a != null ? a : BigDecimal.ZERO;
+        BigDecimal vb = b != null ? b : BigDecimal.ZERO;
+        return va.add(vb);
+    }
+
+    private BigDecimal safeSubtract(Long aCent, Long bCent) {
+        if (aCent == null && bCent == null) return null;
+        BigDecimal a = centToYuan(aCent);
+        BigDecimal b = centToYuan(bCent);
+        return a.subtract(b);
     }
 
     /**
@@ -712,39 +976,112 @@ public class DataApplicationService extends BaseController {
         writer.flush();
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    /**
+     * 简化版导出订单 CSV（不含商品名称/店铺名称等高级筛选）。
+     * 委托给完整版 exportOrders，将未提供的筛选字段传 null。
+     */
     public void exportOrders(
-            String orderId,
-            String status,
-            UUID talentId,
-            String merchantId,
-            LocalDate startDate,
-            LocalDate endDate,
-            String timeField,
-            UUID userId,
-            UUID deptId,
-            DataScope dataScope,
+            String orderId, String status, UUID talentId, String merchantId,
+            LocalDate startDate, LocalDate endDate, String timeField,
+            UUID userId, UUID deptId, DataScope dataScope,
             HttpServletResponse response) throws IOException {
-        exportOrders(
-                orderId,
-                status,
-                talentId,
-                merchantId,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                startDate,
-                endDate,
-                timeField,
-                userId,
-                deptId,
-                dataScope,
-                response);
+        exportOrders(orderId, status, talentId, merchantId,
+                null, null, null, null, null, null, null, null,
+                startDate, endDate, timeField, userId, deptId, dataScope, response);
+    }
+
+    /**
+     * 订单明细导出 CSV。
+     */
+    @Operation(summary = "导出订单明细CSV", description = "按筛选条件导出订单明细 CSV，含双轨金额。")
+    @GetMapping("/orders/exports/detail")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    public void exportOrderDetail(
+            @Parameter(description = "订单号") @RequestParam(required = false) String orderId,
+            @Parameter(description = "订单状态") @RequestParam(required = false) String status,
+            @Parameter(description = "达人 ID") @RequestParam(required = false) UUID talentId,
+            @Parameter(description = "商家 ID") @RequestParam(required = false) String merchantId,
+            @Parameter(description = "商品 ID") @RequestParam(required = false) String productId,
+            @Parameter(description = "商品名称") @RequestParam(required = false) String productName,
+            @Parameter(description = "店铺名称") @RequestParam(required = false) String shopName,
+            @Parameter(description = "达人昵称") @RequestParam(required = false) String talentName,
+            @Parameter(description = "团长名称") @RequestParam(required = false) String colonelName,
+            @Parameter(description = "渠道名称") @RequestParam(required = false) String channelName,
+            @Parameter(description = "活动 ID") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "招商类型") @RequestParam(required = false) String recruitType,
+            @Parameter(description = "开始日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "结束日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "时间字段") @RequestParam(required = false) String timeField,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            HttpServletResponse response) throws IOException {
+
+        LocalDateTime start = startDate == null
+                ? LocalDate.now().minusDays(30).atStartOfDay()
+                : startDate.atStartOfDay();
+        LocalDateTime end = endDate == null
+                ? LocalDate.now().plusDays(1).atStartOfDay()
+                : endDate.plusDays(1).atStartOfDay();
+
+        QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
+                true, timeField, start, end, orderId, status, talentId, merchantId,
+                productId, productName, shopName, talentName, colonelName, channelName,
+                colonelActivityId, recruitType, userId, deptId, dataScope);
+
+        response.setContentType("text/csv; charset=UTF-8");
+        response.setHeader("Content-Disposition", "attachment; filename=\"order-detail.csv\"");
+        PrintWriter writer = response.getWriter();
+        writer.write('\ufeff');
+        writer.println("订单号,活动名称,商品名称,商品ID,合作方,达人,渠道,招商,订单状态,订单额,预估服务费,结算服务费,预估技术服务费,结算技术服务费,服务费支出,服务费收益,招商提成,渠道提成,付款时间,结算时间");
+
+        long current = 1L;
+        while (true) {
+            IPage<ColonelsettlementOrder> pageResult = orderMapper.findPageWithScope(new Page<>(current, EXPORT_BATCH_SIZE), wrapper);
+            List<ColonelsettlementOrder> orders = pageResult.getRecords();
+            if (orders == null || orders.isEmpty()) {
+                break;
+            }
+
+            List<String> orderIds = orders.stream()
+                    .map(ColonelsettlementOrder::getOrderId)
+                    .filter(StringUtils::hasText)
+                    .toList();
+            Map<String, PerformanceRecord> perfMap = loadPerformanceMap(orderIds);
+            Map<String, String> activityNameMap = loadActivityNameMap(orders);
+            Map<UUID, String> userNameMap = loadUserNameMap(perfMap.values());
+
+            for (ColonelsettlementOrder order : orders) {
+                PerformanceRecord perf = perfMap.get(order.getOrderId());
+                OrderDetailVO vo = toOrderDetailVO(order, perf, activityNameMap, userNameMap);
+                writer.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
+                        csvEscape(vo.getOrderId()),
+                        csvEscape(vo.getActivityName()),
+                        csvEscape(vo.getProductName()),
+                        csvEscape(vo.getProductId()),
+                        csvEscape(vo.getPartnerName()),
+                        csvEscape(vo.getTalentName()),
+                        csvEscape(vo.getChannelName()),
+                        csvEscape(vo.getRecruiterName()),
+                        csvEscape(vo.getOrderStatusText()),
+                        csvEscape(vo.getPayAmount()),
+                        csvEscape(vo.getEstimateServiceFee()),
+                        csvEscape(vo.getEffectiveServiceFee()),
+                        csvEscape(vo.getEstimateTechServiceFee()),
+                        csvEscape(vo.getEffectiveTechServiceFee()),
+                        csvEscape(vo.getEstimateServiceFeeExpense()),
+                        csvEscape(vo.getEstimateServiceProfit()),
+                        csvEscape(vo.getEstimateRecruiterCommission()),
+                        csvEscape(vo.getEstimateChannelCommission()),
+                        csvEscape(vo.getPayTime()),
+                        csvEscape(vo.getSettleTime()));
+            }
+            if (current >= pageResult.getPages()) {
+                break;
+            }
+            current++;
+        }
+        writer.flush();
     }
 
     @Operation(summary = "独家状态监控 - 达人", description = "分页查询达人独家状态监控数据。支持按月份、关键字、状态筛选。")

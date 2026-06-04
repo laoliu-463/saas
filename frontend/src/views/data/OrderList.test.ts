@@ -6,7 +6,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { exportOrders, getOrderSummary } from '../../api/data'
+import { exportOrders, exportOrderDetail, getOrderSummary, getOrderDetailPage } from '../../api/data'
 import OrderList from './OrderList.vue'
 
 /** 模拟路由查询参数，用于测试路由驱动的筛选联动 */
@@ -25,7 +25,9 @@ vi.mock('vue-router', () => ({
 /** 模拟订单数据 API 接口 */
 vi.mock('../../api/data', () => ({
   exportOrders: vi.fn(),
-  getOrderSummary: vi.fn()
+  exportOrderDetail: vi.fn(),
+  getOrderSummary: vi.fn(),
+  getOrderDetailPage: vi.fn()
 }))
 
 /** 模拟订单用户筛选选项加载函数（招商人/渠道） */
@@ -133,7 +135,13 @@ const globalStubs = {
   NInput: stubControl('div'),
   NPopover: { template: '<div><slot name="trigger" /><slot /></div>' },
   NSelect: stubControl('div'),
-  NText: { template: '<span><slot /></span>' }
+  NText: { template: '<span><slot /></span>' },
+  OrderDetailTab: {
+    props: ['filters', 'timeField', 'dateRange'],
+    emits: ['rowCount', 'export'],
+    template: '<div data-testid="order-detail-tab-stub">明细表</div>',
+    methods: { refresh() {} }
+  }
 }
 
 /**
@@ -174,6 +182,8 @@ describe('OrderList 订单汇总页面', () => {
     }
     vi.mocked(getOrderSummary).mockResolvedValue({ data: summaryPayload } as any)
     vi.mocked(exportOrders).mockResolvedValue(new Blob(['订单号\nORDER-1']) as any)
+    vi.mocked(exportOrderDetail).mockResolvedValue(new Blob(['订单号\nORDER-1']) as any)
+    vi.mocked(getOrderDetailPage).mockResolvedValue({ data: { records: [], total: 0 } } as any)
   })
 
   /** 验证页面加载时使用路由参数作为筛选条件请求汇总数据，并正确渲染聚合统计值 */
@@ -274,5 +284,51 @@ describe('OrderList 订单汇总页面', () => {
     expect(vm.searchParams.productId).toBe('')
     expect(vm.searchParams.activityId).toBe('')
     expect(vm.timeField).toBe('createTime')
+  })
+
+  it('renders tab switcher with summary and detail tabs', async () => {
+    const wrapper = await mountOrderList()
+    const tabs = wrapper.findAll('.data-tab')
+    expect(tabs).toHaveLength(2)
+    expect(tabs[0].text()).toBe('汇总')
+    expect(tabs[1].text()).toBe('订单明细')
+    expect(tabs[0].classes()).toContain('active')
+  })
+
+  it('hides summary panel when switching to detail tab', async () => {
+    const wrapper = await mountOrderList()
+    const vm = wrapper.vm as any
+
+    expect(wrapper.find('.summary-panel').exists()).toBe(true)
+    vm.switchTab('detail')
+    await flushPromises()
+    expect(wrapper.find('.summary-panel').exists()).toBe(false)
+  })
+
+  it('shows OrderDetailTab when detail tab is active', async () => {
+    const wrapper = await mountOrderList()
+    const vm = wrapper.vm as any
+
+    vm.switchTab('detail')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="order-detail-tab-stub"]').exists()).toBe(true)
+  })
+
+  it('calls exportOrderDetail when exporting from detail tab', async () => {
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:detail')
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    const wrapper = await mountOrderList()
+    const vm = wrapper.vm as any
+
+    vm.switchTab('detail')
+    await flushPromises()
+    vm.handleDetailRowCount(5)
+    await vm.handleExport()
+
+    expect(exportOrderDetail).toHaveBeenCalled()
+    expect(exportOrders).not.toHaveBeenCalled()
+
+    createObjectURL.mockRestore()
+    revokeObjectURL.mockRestore()
   })
 })

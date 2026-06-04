@@ -4,6 +4,8 @@ import com.colonel.saas.entity.PerformanceRecord;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.List;
+
 /**
  * 业绩记录数据访问层
  * <p>
@@ -36,4 +38,16 @@ public interface PerformanceRecordMapper {
      * @return 受影响行数
      */
     int upsert(PerformanceRecord record);
+
+    /**
+     * 根据多个订单号批量查询业绩记录
+     * <p>
+     * 用于订单明细表的业绩数据批量关联，避免 N+1 查询。
+     * 仅返回 is_valid = TRUE 的记录。
+     * </p>
+     *
+     * @param orderIds 订单号列表
+     * @return 匹配的业绩记录列表，入参为空时返回空列表
+     */
+    List<PerformanceRecord> findByOrderIds(@Param("orderIds") List<String> orderIds);
 }

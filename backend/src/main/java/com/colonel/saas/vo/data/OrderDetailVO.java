@@ -1,0 +1,132 @@
+package com.colonel.saas.vo.data;
+
+import lombok.Data;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+/**
+ * 订单明细展示 VO。
+ * <p>
+ * 用于数据平台"订单明细"Tab 的逐单展示，聚合订单事实与业绩域提成数据，
+ * 包含 16 列表头所需的全部字段。金额单位统一为元（BigDecimal），由后端从分转换。
+ * </p>
+ * <p>
+ * 双轨金额：预估轨（estimate*）基于支付金额实时估算，结算轨（effective*）基于结算金额最终确认。
+ * 未结算订单的 effective* 字段为 null，前端展示为 "-"。
+ * </p>
+ */
+@Data
+public class OrderDetailVO {
+
+    // ── 订单基本信息 ──────────────────────────────
+
+    /** 订单号（抖音侧订单号） */
+    private String orderId;
+    /** 订单状态码（1=已下单, 2=已发货, 3=已完成, 4=已取消） */
+    private Integer orderStatus;
+    /** 订单状态文本（待结算/已结算/已退款/已失效） */
+    private String orderStatusText;
+
+    // ── 活动信息 ──────────────────────────────
+
+    /** 活动 ID */
+    private String activityId;
+    /** 活动名称 */
+    private String activityName;
+
+    // ── 商品信息 ──────────────────────────────
+
+    /** 商品 ID */
+    private String productId;
+    /** 商品名称 */
+    private String productName;
+    /** 商品图片 URL */
+    private String productImage;
+
+    // ── 合作方信息 ──────────────────────────────
+
+    /** 合作方（商家）ID */
+    private String partnerId;
+    /** 合作方（商家）名称 */
+    private String partnerName;
+
+    // ── 推广者 ──────────────────────────────
+
+    /** 达人 ID */
+    private String talentId;
+    /** 达人昵称 */
+    private String talentName;
+
+    // ── 渠道 ──────────────────────────────
+
+    /** 渠道负责人 ID */
+    private String channelId;
+    /** 渠道负责人名称 */
+    private String channelName;
+
+    // ── 招商 ──────────────────────────────
+
+    /** 招商负责人 ID */
+    private String recruiterId;
+    /** 招商负责人名称 */
+    private String recruiterName;
+
+    // ── 金额：订单额（元） ──────────────────────────────
+
+    /** 支付金额（元） */
+    private BigDecimal payAmount;
+    /** 结算金额（元），未结算时为 null */
+    private BigDecimal settleAmount;
+
+    // ── 金额：服务费收入（元） ──────────────────────────────
+
+    /** 预估服务费收入（元） */
+    private BigDecimal estimateServiceFee;
+    /** 生效服务费收入（元） */
+    private BigDecimal effectiveServiceFee;
+
+    // ── 金额：技术服务费（元） ──────────────────────────────
+
+    /** 预估技术服务费（元） */
+    private BigDecimal estimateTechServiceFee;
+    /** 生效技术服务费（元） */
+    private BigDecimal effectiveTechServiceFee;
+
+    // ── 金额：服务费支出 = 招商提成 + 渠道提成（元） ──────────────────────────────
+
+    /** 预估服务费支出（元）= estimateRecruiterCommission + estimateChannelCommission */
+    private BigDecimal estimateServiceFeeExpense;
+    /** 生效服务费支出（元）= effectiveRecruiterCommission + effectiveChannelCommission */
+    private BigDecimal effectiveServiceFeeExpense;
+
+    // ── 金额：服务费收益 = 服务费收入 - 技术服务费（元） ──────────────────────────────
+
+    /** 预估服务费收益（元）= estimateServiceFee - estimateTechServiceFee */
+    private BigDecimal estimateServiceProfit;
+    /** 生效服务费收益（元）= effectiveServiceFee - effectiveTechServiceFee */
+    private BigDecimal effectiveServiceProfit;
+
+    // ── 金额：招商提成（元） ──────────────────────────────
+
+    /** 预估招商提成（元） */
+    private BigDecimal estimateRecruiterCommission;
+    /** 生效招商提成（元） */
+    private BigDecimal effectiveRecruiterCommission;
+
+    // ── 金额：渠道提成（元） ──────────────────────────────
+
+    /** 预估渠道提成（元） */
+    private BigDecimal estimateChannelCommission;
+    /** 生效渠道提成（元） */
+    private BigDecimal effectiveChannelCommission;
+
+    // ── 时间 ──────────────────────────────
+
+    /** 付款时间 */
+    private LocalDateTime payTime;
+    /** 结算时间 */
+    private LocalDateTime settleTime;
+    /** 订单创建时间 */
+    private LocalDateTime orderCreateTime;
+}

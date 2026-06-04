@@ -50,6 +50,21 @@
         LIMIT 1
     </select>
 
+    <select id="findByOrderIds" resultMap="PerformanceRecordMap">
+        <if test="orderIds != null and orderIds.size() > 0">
+            SELECT *
+            FROM performance_records
+            WHERE is_valid = TRUE
+            AND order_id IN
+            <foreach collection="orderIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+        <if test="orderIds == null or orderIds.size() == 0">
+            SELECT * FROM performance_records WHERE 1 = 0
+        </if>
+    </select>
+
     <insert id="upsert" parameterType="com.colonel.saas.entity.PerformanceRecord">
         INSERT INTO performance_records (
             id, order_id, order_row_id,

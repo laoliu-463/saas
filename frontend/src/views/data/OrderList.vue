@@ -114,7 +114,20 @@
         <n-button type="primary" data-testid="data-orders-search-submit" @click="fetchData">搜 索</n-button>
       </div>
 
-      <div class="dimension-row">
+      <div class="data-tab-bar">
+        <button
+          type="button"
+          :class="['data-tab', { active: activeTab === 'summary' }]"
+          @click="switchTab('summary')"
+        >汇总</button>
+        <button
+          type="button"
+          :class="['data-tab', { active: activeTab === 'detail' }]"
+          @click="switchTab('detail')"
+        >订单明细</button>
+      </div>
+
+      <div v-if="activeTab === 'summary'" class="dimension-row">
         <span class="dimension-label">汇总维度</span>
         <n-checkbox :checked="true" disabled />
         <n-select
@@ -133,7 +146,7 @@
       </div>
     </section>
 
-    <section class="summary-panel app-panel" aria-label="订单汇总">
+    <section v-if="activeTab === 'summary'" class="summary-panel app-panel" aria-label="订单汇总">
       <div class="summary-strip">
         <div v-for="item in summaryItems" :key="item.key" class="summary-item">
           <div class="summary-title">{{ item.title }}</div>
@@ -145,7 +158,7 @@
       </div>
     </section>
 
-    <section class="table-panel app-panel app-table-shell">
+    <section v-if="activeTab === 'summary'" class="table-panel app-panel app-table-shell">
       <div class="table-toolbar">
         <n-popover trigger="click" placement="bottom-end">
           <template #trigger>
@@ -175,6 +188,16 @@
         :scroll-x="1280"
       />
     </section>
+
+    <OrderDetailTab
+      v-if="activeTab === 'detail'"
+      ref="detailTabRef"
+      :filters="searchParams"
+      :time-field="timeField"
+      :date-range="dateRange"
+      @row-count="handleDetailRowCount"
+      @export="handleExport"
+    />
   </div>
 </template>
 
@@ -182,11 +205,12 @@
 import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { NText, useMessage } from 'naive-ui'
-import { exportOrders, getOrderSummary } from '../../api/data'
+import { exportOrders, exportOrderDetail, getOrderSummary } from '../../api/data'
 import { loadOrderRecruiterOptions, loadOrderChannelOptions } from '../orders/order-user-filter-options'
 import { useAuthStore } from '../../stores/auth'
 import { notifyApiFailure, notifyClientPermission } from '../../utils/requestError'
 import { buildOrderExportParams, type OrderTimeField } from './order-list-query'
+import OrderDetailTab from './OrderDetailTab.vue'
 
 type TimePreset = 'recent' | 'week' | 'month' | 'custom'
 
@@ -211,6 +235,23 @@ const route = useRoute()
 const message = useMessage()
 const loading = ref(false)
 const canExport = computed(() => authStore.isAdmin || authStore.isLeader)
+
+const activeTab = ref<'summary' | 'detail'>('summary')
+const detailTabRef = ref<InstanceType<typeof OrderDetailTab> | null>(null)
+const detailRowCount = ref(0)
+
+const switchTab = (tab: 'summary' | 'detail') => {
+  activeTab.value = tab
+  if (tab === 'summary') {
+    void fetchData()
+  } else {
+    detailTabRef.value?.refresh()
+  }
+}
+
+const handleDetailRowCount = (count: number) => {
+  detailRowCount.value = count
+}
 
 const startOfDay = (date: Date) => {
   const copy = new Date(date)
@@ -591,6 +632,7 @@ const handleTimeFieldChange = () => {
 }
 
 const fetchData = async () => {
+  if (activeTab.value !== 'summary') return
   loading.value = true
   try {
     const res = await getOrderSummary(buildOrderExportParams({
@@ -633,17 +675,25 @@ const handleExport = async () => {
     notifyClientPermission('当前角色无权导出订单数据')
     return
   }
-  if (!tableRows.value.length) {
+
+  const isDetail = activeTab.value === 'detail'
+  const hasData = isDetail ? detailRowCount.value > 0 : tableRows.value.length > 0
+  if (!hasData) {
     message.warning('暂无数据可导出')
     return
   }
+
   try {
-    const res: any = await exportOrders(buildOrderExportParams({
+    const params = buildOrderExportParams({
       timeField: timeField.value,
       dateRange: dateRange.value,
       filters: searchParams
-    }))
-    const filename = `orders-${new Date().toISOString().slice(0, 10)}.csv`
+    })
+    const res: any = isDetail
+      ? await exportOrderDetail(params)
+      : await exportOrders(params)
+    const prefix = isDetail ? 'order-detail' : 'orders'
+    const filename = `${prefix}-${new Date().toISOString().slice(0, 10)}.csv`
     const url = window.URL.createObjectURL(new Blob([res]))
     const link = document.createElement('a')
     link.href = url
@@ -823,6 +873,43 @@ onMounted(async () => {
 
 .dimension-select {
   width: 170px;
+}
+
+.data-tab-bar {
+  display: flex;
+  gap: 0;
+  margin-top: 20px;
+  border-bottom: 2px solid var(--border-color-light);
+}
+
+.data-tab {
+  position: relative;
+  padding: 10px 28px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.data-tab:hover {
+  color: var(--text-primary, #111827);
+}
+
+.data-tab.active {
+  color: var(--text-primary, #111827);
+}
+
+.data-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  background: #111827;
 }
 
 .summary-panel,

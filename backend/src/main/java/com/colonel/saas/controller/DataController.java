@@ -19,6 +19,8 @@ import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
+import com.colonel.saas.mapper.PerformanceRecordMapper;
+import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -27,6 +29,7 @@ import com.colonel.saas.vo.ExclusiveMerchantStatusVO;
 import com.colonel.saas.vo.ExclusiveTalentStatusVO;
 import com.colonel.saas.vo.data.DualTrackMetricsVO;
 import com.colonel.saas.vo.data.MetricsVO;
+import com.colonel.saas.vo.data.OrderDetailVO;
 import com.colonel.saas.vo.data.OrderSummaryRowVO;
 import com.colonel.saas.vo.data.OrderSummaryVO;
 import com.colonel.saas.vo.data.OrderVO;
@@ -82,8 +85,10 @@ public class DataController extends DataApplicationService {
             ExclusiveMerchantMapper exclusiveMerchantMapper,
             ColonelsettlementActivityMapper activityMapper,
             ShortTtlCacheService shortTtlCacheService,
-            PerformanceMetricsQueryService performanceMetricsQueryService) {
-        super(orderMapper, commissionService, exclusiveTalentMapper, exclusiveMerchantMapper, activityMapper, shortTtlCacheService, performanceMetricsQueryService);
+            PerformanceMetricsQueryService performanceMetricsQueryService,
+            PerformanceRecordMapper performanceRecordMapper,
+            SysUserMapper sysUserMapper) {
+        super(orderMapper, commissionService, exclusiveTalentMapper, exclusiveMerchantMapper, activityMapper, shortTtlCacheService, performanceMetricsQueryService, performanceRecordMapper, sysUserMapper);
     }
 
     @GetMapping("/data/orders")
@@ -110,6 +115,32 @@ public class DataController extends DataApplicationService {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
         return super.getOrderPage(page, size, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, recruitType, startDate, endDate, timeField, userId, deptId, dataScope);
+    }
+
+    @GetMapping("/data/orders/detail")
+    @Override
+    public ApiResult<PageResult<OrderDetailVO>> getOrderDetailPage(
+            @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(defaultValue = "1") @Min(1) @Max(1000) long page,
+            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") @Min(1) @Max(200) long size,
+            @Parameter(description = "订单号，支持模糊匹配。") @RequestParam(required = false) String orderId,
+            @Parameter(description = "订单状态。") @RequestParam(required = false) String status,
+            @Parameter(description = "达人 ID（UUID）。") @RequestParam(required = false) UUID talentId,
+            @Parameter(description = "商家 ID。") @RequestParam(required = false) String merchantId,
+            @Parameter(description = "商品 ID。") @RequestParam(required = false) String productId,
+            @Parameter(description = "商品名称。") @RequestParam(required = false) String productName,
+            @Parameter(description = "店铺名称。") @RequestParam(required = false) String shopName,
+            @Parameter(description = "达人昵称。") @RequestParam(required = false) String talentName,
+            @Parameter(description = "团长名称。") @RequestParam(required = false) String colonelName,
+            @Parameter(description = "渠道名称。") @RequestParam(required = false) String channelName,
+            @Parameter(description = "活动 ID。") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "招商类型。") @RequestParam(required = false) String recruitType,
+            @Parameter(description = "开始日期。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "结束日期。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "时间字段。") @RequestParam(required = false) String timeField,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        return super.getOrderDetailPage(page, size, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, recruitType, startDate, endDate, timeField, userId, deptId, dataScope);
     }
 
     @GetMapping("/data/orders/summary")
@@ -169,6 +200,32 @@ public class DataController extends DataApplicationService {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             HttpServletResponse response) throws IOException {
         super.exportOrders(orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, recruitType, startDate, endDate, timeField, userId, deptId, dataScope, response);
+    }
+
+    @GetMapping("/orders/exports/detail")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    @Override
+    public void exportOrderDetail(
+            @Parameter(description = "订单号") @RequestParam(required = false) String orderId,
+            @Parameter(description = "订单状态") @RequestParam(required = false) String status,
+            @Parameter(description = "达人 ID") @RequestParam(required = false) UUID talentId,
+            @Parameter(description = "商家 ID") @RequestParam(required = false) String merchantId,
+            @Parameter(description = "商品 ID") @RequestParam(required = false) String productId,
+            @Parameter(description = "商品名称") @RequestParam(required = false) String productName,
+            @Parameter(description = "店铺名称") @RequestParam(required = false) String shopName,
+            @Parameter(description = "达人昵称") @RequestParam(required = false) String talentName,
+            @Parameter(description = "团长名称") @RequestParam(required = false) String colonelName,
+            @Parameter(description = "渠道名称") @RequestParam(required = false) String channelName,
+            @Parameter(description = "活动 ID") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "招商类型") @RequestParam(required = false) String recruitType,
+            @Parameter(description = "开始日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "结束日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "时间字段") @RequestParam(required = false) String timeField,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            HttpServletResponse response) throws IOException {
+        super.exportOrderDetail(orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, recruitType, startDate, endDate, timeField, userId, deptId, dataScope, response);
     }
 
     @GetMapping("/operations/exclusive-talents")
