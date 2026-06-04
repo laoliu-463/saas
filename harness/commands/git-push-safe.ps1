@@ -119,9 +119,11 @@ try {
         return
     }
 
-    git add -A
-    if ($LASTEXITCODE -ne 0) {
-        throw "git add failed."
+    foreach ($file in $changedFiles) {
+        git add -- $file
+        if ($LASTEXITCODE -ne 0) {
+            throw "git add failed for $file."
+        }
     }
 
     $stagedFiles = & git -c core.quotepath=false diff --cached --name-only
@@ -131,6 +133,11 @@ try {
     Assert-NoSensitiveFile -Files $stagedFiles
     Assert-NoPlainSecrets -Files $stagedFiles
 
+    git diff --cached --check
+    if ($LASTEXITCODE -ne 0) {
+        throw "git diff --cached --check failed."
+    }
+
     git commit -m $Message
     if ($LASTEXITCODE -ne 0) {
         throw "git commit failed."
@@ -139,9 +146,19 @@ try {
     $commit = (& git rev-parse --short HEAD).Trim()
     Write-Host "Commit: $commit" -ForegroundColor Green
 
-    git push
+    $branch = (& git branch --show-current).Trim()
+    if ([string]::IsNullOrWhiteSpace($branch)) {
+        throw "Cannot determine current branch for push."
+    }
+
+    git push gitee $branch
     if ($LASTEXITCODE -ne 0) {
-        throw "git push failed. Check upstream remote and credentials."
+        throw "git push gitee failed. Check remote and credentials."
+    }
+
+    git push origin $branch
+    if ($LASTEXITCODE -ne 0) {
+        throw "git push origin failed. Check remote and credentials."
     }
 
     Write-Host "Git push completed." -ForegroundColor Green
