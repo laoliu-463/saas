@@ -616,6 +616,10 @@ public class OrderSyncService {
         order.setOrderId(item.externalOrderId());
         order.setProductId(item.productId());
         order.setProductName(rawPayload != null ? asString(rawValue(rawPayload, "product_name", "productName")) : null);
+        // 商品图片 / 数量 / 佣金率 —— 从抖音 API 原始数据提取
+        order.setProductPic(rawPayload != null ? asString(rawValue(rawPayload, "product_img", "productImg", "product_pic", "productPic")) : null);
+        order.setItemNum(rawPayload != null ? asNullableInteger(rawValue(rawPayload, "item_num", "itemNum")) : null);
+        order.setCommissionRate(rawPayload != null ? asNullableInteger(rawValue(rawPayload, "commission_rate", "commissionRate")) : null);
         order.setShopId(parseMerchantId(item.merchantId()));
         order.setShopName(item.merchantName());
         OrderDualTrackAmountResolver.DualTrackAmounts dualTrack = OrderDualTrackAmountResolver.resolve(

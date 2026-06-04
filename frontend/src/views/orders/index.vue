@@ -222,8 +222,16 @@ function formatRate(value: unknown): string {
   if (typeof value === 'string' && value.endsWith('%')) return value
   const num = Number(value)
   if (!Number.isFinite(num)) return '-'
-  // 如果值 <= 1 且不为 0，认为是小数形式（如 0.07 → 7%）
-  const pct = (num > 0 && num < 1) ? Math.round(num * 10000) / 100 : num
+  let pct: number
+  if (num > 0 && num < 1) {
+    // 小数形式（如 0.07 → 7%）
+    pct = Math.round(num * 10000) / 100
+  } else if (num >= 100) {
+    // 基点形式（如 500 → 5%，1400 → 14%）
+    pct = Math.round(num) / 100
+  } else {
+    pct = num
+  }
   return `${pct}%`
 }
 
@@ -232,13 +240,13 @@ function formatRate(value: unknown): string {
  * 严格按照用户截图样式展示：图片顶部对齐、标题红色省略、元信息灰字紧凑排列。
  */
 function renderProductInfo(row: any) {
-  const image = row.productImage || row.productPic || row.cover || null
+  const image = row.productPic || row.productImage || row.cover || null
   const name = row.productTitle || row.productName || '-'
   const id = row.productId || '-'
   const shop = row.shopName || '-'
-  const qty = row.quantity ?? row.productQuantity ?? row.goodsNum ?? row.itemNum ?? null
-  const commRate = row.commissionRate ?? row.commission_rate ?? row.cosRatio ?? null
-  const svcRate = row.serviceFeeRate ?? row.service_fee_rate ?? row.serviceRate ?? null
+  const qty = row.itemNum ?? row.quantity ?? null
+  const commRate = row.commissionRate ?? row.commission_rate ?? null
+  const svcRate = row.serviceFeeRate ?? row.service_fee_rate ?? null
 
   const imageNode = image
     ? h('img', { class: 'order-product-image', src: image, alt: name })

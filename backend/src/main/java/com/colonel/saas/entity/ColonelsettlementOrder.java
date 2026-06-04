@@ -258,6 +258,31 @@ public class ColonelsettlementOrder implements Serializable {
     private String productTitle;
 
     /**
+     * 商品图片 URL
+     * <p>对应数据库列：{@code product_pic}，冗余存储商品封面图，便于列表展示。
+     * 同步时从抖音 API 原始数据的 {@code product_img} 字段提取。</p>
+     */
+    @TableField("product_pic")
+    private String productPic;
+
+    /**
+     * 商品数量
+     * <p>对应数据库列：{@code item_num}，订单中商品的购买数量。
+     * 同步时从抖音 API 原始数据的 {@code item_num} 字段提取。</p>
+     */
+    @TableField("item_num")
+    private Integer itemNum;
+
+    /**
+     * 佣金率（基点，100 = 1%）
+     * <p>对应数据库列：{@code commission_rate}，抖音 API 返回的佣金比例，
+     * 单位为基点（百分之一的百分之一），例如 500 表示 5%。
+     * 同步时从抖音 API 原始数据的 {@code commission_rate} 字段提取。</p>
+     */
+    @TableField("commission_rate")
+    private Integer commissionRate;
+
+    /**
      * 达人名称
      * <p>对应数据库列：{@code talent_name}，冗余存储达人昵称，便于展示</p>
      */

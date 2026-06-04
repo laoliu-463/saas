@@ -234,6 +234,7 @@ describe('Orders page - 商品信息列布局', () => {
           productName: null,
           productId: null,
           shopName: null,
+          itemNum: null,
           quantity: null,
           commissionRate: null,
           serviceFeeRate: null
@@ -261,7 +262,7 @@ describe('Orders page - 商品信息列布局', () => {
   it('商品信息列：有图片时渲染 img 标签', async () => {
     vi.mocked(getOrders).mockResolvedValue({
       data: {
-        records: [buildOrderRow({ productImage: 'https://example.com/product.jpg' })],
+        records: [buildOrderRow({ productPic: 'https://example.com/product.jpg' })],
         total: 1
       }
     } as any)
@@ -284,16 +285,28 @@ describe('Orders page - 商品信息列布局', () => {
     expect(wrapper.html()).toContain('佣金率：10%')
   })
 
-  it('佣金率格式化：整数形式 (10 → 10%)', async () => {
+  it('佣金率格式化：基点形式 (500 → 5%)', async () => {
     vi.mocked(getOrders).mockResolvedValue({
       data: {
-        records: [buildOrderRow({ commissionRate: 10 })],
+        records: [buildOrderRow({ commissionRate: 500 })],
         total: 1
       }
     } as any)
 
     const wrapper = await mountPage()
-    expect(wrapper.html()).toContain('佣金率：10%')
+    expect(wrapper.html()).toContain('佣金率：5%')
+  })
+
+  it('佣金率格式化：基点形式 (1400 → 14%)', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({ commissionRate: 1400 })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    expect(wrapper.html()).toContain('佣金率：14%')
   })
 
   it('佣金率格式化：字符串 "10%" 直接展示', async () => {
@@ -356,7 +369,19 @@ describe('Orders page - 商品信息列布局', () => {
     expect(wrapper.html()).toContain('服务费率：1%')
   })
 
-  it('表头显示"渠道"而非"媒介"', async () => {
+  it('商品数量显示 itemNum 字段', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({ itemNum: 3 })],
+        total: 1
+      }
+    } as any)
+  
+    const wrapper = await mountPage()
+    expect(wrapper.html()).toContain('商品数量：3')
+  })
+  
+  it('表头显示“渠道”而非“媒介”', async () => {
     const wrapper = await mountPage()
     const html = wrapper.html()
 
