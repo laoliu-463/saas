@@ -95,51 +95,48 @@ const getProductInfo = (row: any) => ({
   serviceFeeRate: firstDisplayValue(row, ['serviceFeeRate', 'service_fee_rate', 'serviceRate', 'service_rate', 'adServiceRatio', 'ad_service_ratio'])
 })
 
+/* ── 列渲染函数 ── */
+
 const renderOrderId = (row: any) => {
   const orderId = String(firstDisplayValue(row, ['orderId', 'order_id']) || '-')
-  return h('div', { class: 'order-detail-id-cell' }, [
-    h(
-      'button',
-      {
-        type: 'button',
-        class: 'order-detail-id',
-        title: '复制订单ID',
-        onClick: () => copyToClipboard(orderId)
-      },
-      orderId
-    )
+  const orderTypeText = firstDisplayValue(row, ['orderTypeText', 'order_type_text'])
+  const contentTypeText = firstDisplayValue(row, ['contentTypeText', 'content_type_text'])
+  return h('div', { class: 'od-cell' }, [
+    h('button', {
+      type: 'button', class: 'od-id-btn', title: '复制订单ID',
+      onClick: () => copyToClipboard(orderId)
+    }, orderId),
+    orderTypeText ? h('div', { class: 'od-muted' }, `订单类型：${orderTypeText}`) : null,
+    contentTypeText
+      ? h(NTag, { size: 'small', type: 'error', round: true, bordered: false, class: 'od-content-tag' }, { default: () => String(contentTypeText) })
+      : null
   ])
 }
 
 const renderActivityInfo = (row: any) => {
   const activityName = firstDisplayValue(row, ['activityName', 'activity_name'])
   const activityId = firstDisplayValue(row, ['activityId', 'activity_id'])
-  const contentTypeText = firstDisplayValue(row, ['contentTypeText', 'content_type_text'])
-  return h('div', { class: 'order-detail-stack' }, [
-    activityName ? h('div', { class: 'order-detail-main', title: String(activityName) }, String(activityName)) : null,
-    activityId ? h('div', { class: 'order-detail-muted' }, `ID：${activityId}`) : null,
-    contentTypeText
-      ? h(NTag, { size: 'small', type: contentTypeText === '直播' ? 'warning' : 'info', round: true, bordered: false, class: 'order-detail-content-tag' }, { default: () => String(contentTypeText) })
-      : null,
-    !activityName && !activityId ? h('span', { class: 'order-detail-empty' }, '-') : null
+  return h('div', { class: 'od-cell' }, [
+    activityName ? h('div', { class: 'od-main', title: String(activityName) }, String(activityName)) : null,
+    activityId ? h('div', { class: 'od-muted' }, `ID：${activityId}`) : null,
+    !activityName && !activityId ? h('span', { class: 'od-empty' }, '-') : null
   ])
 }
 
 const renderProductInfo = (row: any) => {
-  const product = getProductInfo(row)
-  const image = product.image
-    ? h('img', { class: 'order-detail-product-image', src: String(product.image), alt: String(product.name) })
-    : h('div', { class: 'order-detail-product-image order-detail-product-image--placeholder' })
-
-  return h('div', { class: 'order-detail-product-cell' }, [
+  const p = getProductInfo(row)
+  const image = p.image
+    ? h('img', { class: 'od-product-img order-detail-product-image', src: String(p.image), alt: String(p.name) })
+    : h('div', { class: 'od-product-img order-detail-product-image od-product-img--placeholder' })
+  return h('div', { class: 'od-product-cell' }, [
     image,
-    h('div', { class: 'order-detail-product-content' }, [
-      h('div', { class: 'order-detail-product-title', title: String(product.name) }, String(product.name)),
-      h('div', { class: 'order-detail-product-line' }, `商品ID：${product.id}`),
-      h('div', { class: 'order-detail-product-line' }, `店铺：${product.shop}`),
-      h('div', { class: 'order-detail-product-line' }, `商品数量：${product.quantity != null ? product.quantity : '-'}`),
-      h('div', { class: 'order-detail-product-line' }, `佣金率：${formatRate(product.commissionRate)}`),
-      h('div', { class: 'order-detail-product-line' }, `服务费率：${formatRate(product.serviceFeeRate)}`)
+    h('div', { class: 'od-product-content' }, [
+      h('div', { class: 'od-product-title', title: String(p.name) }, String(p.name)),
+      h('div', { class: 'od-line' }, `商品ID：${p.id}`),
+      h('div', { class: 'od-line' }, `店铺：${p.shop}`),
+      h('div', { class: 'od-line' }, `商品数量：${p.quantity != null ? p.quantity : '-'}`),
+      h('div', { class: 'od-line' }, `佣金率：${formatRate(p.commissionRate)}`),
+      h('div', { class: 'od-line' }, `服务费率：${formatRate(p.serviceFeeRate)}`)
     ])
   ])
 }
@@ -147,119 +144,67 @@ const renderProductInfo = (row: any) => {
 const renderPartnerInfo = (row: any) => {
   const shopName = firstDisplayValue(row, ['partnerName', 'partner_name', 'shopName', 'shop_name', 'storeName', 'merchantName', 'merchant_name'])
   const colonelName = firstDisplayValue(row, ['colonelName', 'colonel_name', 'colonelUserName', 'colonel_user_name', 'recruiterName', 'recruiter_name'])
-  return h('div', { class: 'order-detail-stack' }, [
-    shopName ? h('div', { class: 'order-detail-line' }, [h('span', { class: 'order-detail-label' }, '商家:'), h('span', String(shopName))]) : null,
-    colonelName ? h('div', { class: 'order-detail-line' }, [h('span', { class: 'order-detail-label' }, '团长:'), h('span', String(colonelName))]) : null,
-    !shopName && !colonelName ? h('span', { class: 'order-detail-empty' }, '-') : null
+  return h('div', { class: 'od-cell' }, [
+    shopName ? h('div', { class: 'od-line' }, [h('span', { class: 'od-label' }, '商家:'), h('span', String(shopName))]) : null,
+    colonelName ? h('div', { class: 'od-line' }, [h('span', { class: 'od-label' }, '团长:'), h('span', String(colonelName))]) : null,
+    !shopName && !colonelName ? h('span', { class: 'od-empty' }, '-') : null
   ])
 }
 
 const renderPromoterInfo = (row: any) => {
   const talentName = firstDisplayValue(row, ['talentName', 'talent_name', 'talentNickname', 'authorName'])
-  const talentIdentity = firstDisplayValue(row, ['talentDouyinId', 'talent_douyin_id', 'talentId', 'talent_id', 'talentUid', 'authorId', 'authorBuyinId'])
+  const douyinId = firstDisplayValue(row, ['talentDouyinId', 'talent_douyin_id', 'talentId', 'talent_id', 'talentUid', 'authorId', 'authorBuyinId'])
   const videoId = firstDisplayValue(row, ['videoId', 'video_id', 'awemeId', 'aweme_id', 'itemId', 'item_id'])
-  return h('div', { class: 'order-detail-talent-cell' }, [
+  return h('div', { class: 'od-cell' }, [
     talentName
-      ? h('div', { class: 'order-detail-talent-name' }, [
-          h('span', String(talentName)),
-          h(NTag, { size: 'small', type: 'warning', round: true, bordered: false, class: 'order-detail-talent-tag' }, { default: () => '达人' }),
-          h('span', { class: 'order-detail-douyin-icon', 'aria-hidden': 'true' }, '抖')
+      ? h('div', { style: 'display:flex;align-items:center;gap:4px;flex-wrap:wrap' }, [
+          h('span', { class: 'od-main' }, String(talentName)),
+          h(NTag, { size: 'small', type: 'warning', round: true, bordered: false }, { default: () => '达人' }),
+          h('span', { class: 'od-douyin-icon', 'aria-hidden': 'true' }, '抖')
         ])
       : null,
-    talentIdentity ? h('div', { class: 'order-detail-muted' }, String(talentIdentity)) : null,
-    videoId ? h('div', { class: 'order-detail-video-line' }, [h('span', '出单视频:'), h('span', { class: 'order-detail-video-id' }, String(videoId))]) : null,
-    !talentName && !talentIdentity && !videoId ? h('span', { class: 'order-detail-empty' }, '-') : null
+    douyinId && String(douyinId) !== '-' ? h('div', { class: 'od-muted' }, String(douyinId)) : null,
+    videoId && String(videoId) !== '-' ? h('div', { class: 'od-video-line' }, [h('span', null, '出单视频:'), h('span', { class: 'od-video-id' }, String(videoId))]) : null,
+    !talentName ? h('span', { class: 'od-empty' }, '-') : null
   ])
 }
 
 const renderMediaInfo = (row: any) => {
-  const mediaName = firstDisplayValue(row, ['channelName', 'channel_name', 'channelUserName', 'channel_user_name'])
-  return h('div', { class: 'order-detail-stack', 'data-testid': 'data-order-detail-media' }, [
-    mediaName ? h('div', { class: 'order-detail-main' }, String(mediaName)) : h('span', { class: 'order-detail-empty' }, '-')
-  ])
-}
-
-const renderRecruiterInfo = (row: any) => {
-  const recruiterName = firstDisplayValue(row, ['recruiterName', 'recruiter_name', 'colonelName', 'colonel_name'])
-  return h('div', { class: 'order-detail-stack' }, [
-    recruiterName ? h('div', { class: 'order-detail-main' }, String(recruiterName)) : h('span', { class: 'order-detail-empty' }, '-')
+  const name = firstDisplayValue(row, ['channelName', 'channel_name', 'channelUserName', 'channel_user_name'])
+  const group = firstDisplayValue(row, ['channelDeptName', 'channel_dept_name', 'mediaGroupName', 'media_group_name'])
+  return h('div', { class: 'od-cell' }, [
+    name ? h('div', { class: 'od-main' }, String(name)) : h('span', { class: 'od-empty' }, '-'),
+    group ? h('div', { class: 'od-muted' }, String(group)) : null
   ])
 }
 
 const renderOrderTime = (row: any) => {
-  const payTime = formatDateTime(firstDisplayValue(row, ['payTime', 'pay_time', 'createTime', 'create_time', 'orderCreateTime', 'order_create_time']))
-  const statusText = firstDisplayValue(row, ['settleStatusText', 'settle_status_text']) || '-'
-  const statusColor = statusText === '失效'
-    ? '#e74c3c'
-    : statusText === '已结算'
-      ? '#18a058'
-      : '#999'
-  return h('div', { class: 'order-detail-time-cell' }, [
-    payTime ? h('div', { class: 'order-detail-time-line' }, String(payTime)) : null,
-    h('div', { style: `font-size:13px;color:${statusColor};margin-top:4px` }, String(statusText))
-  ])
+  const lines = [
+    ['付款:', formatDateTime(firstDisplayValue(row, ['payTime', 'pay_time', 'createTime', 'create_time', 'orderCreateTime', 'order_create_time']))],
+    ['收货:', formatDateTime(firstDisplayValue(row, ['deliveryTime', 'delivery_time', 'receiveTime', 'receive_time']))],
+    ['结算:', formatDateTime(firstDisplayValue(row, ['settleTime', 'settle_time']))],
+    ['失效:', formatDateTime(firstDisplayValue(row, ['expireTime', 'expire_time', 'invalidTime', 'invalid_time']))]
+  ]
+  return h('div', { class: 'od-cell od-time-cell' }, lines.map(([label, value]) =>
+    h('div', { class: 'od-time-line' }, [
+      h('span', { class: 'od-time-label' }, label),
+      h('span', { class: 'od-time-value' }, value)
+    ])
+  ))
 }
 
 /* ── 列定义：按上游订单明细截图布局渲染 ── */
 
-const columns = computed(() => {
-  const cols: any[] = [
-    { type: 'selection' },
-
-    {
-      title: '订单ID',
-      key: 'orderId',
-      width: 180,
-      fixed: 'left' as const,
-      render: renderOrderId
-    },
-    {
-      title: '活动信息',
-      key: 'activity',
-      width: 190,
-      render: renderActivityInfo
-    },
-    {
-      title: '商品信息',
-      key: 'product',
-      width: 420,
-      minWidth: 420,
-      render: renderProductInfo
-    },
-    {
-      title: '合作方信息',
-      key: 'partner',
-      width: 180,
-      render: renderPartnerInfo
-    },
-    {
-      title: '推广者',
-      key: 'talent',
-      width: 210,
-      render: renderPromoterInfo
-    },
-    {
-      title: '媒介',
-      key: 'channel',
-      width: 120,
-      render: renderMediaInfo
-    },
-    {
-      title: '招商',
-      key: 'recruiter',
-      width: 120,
-      render: renderRecruiterInfo
-    },
-    {
-      title: '订单时间',
-      key: 'orderTime',
-      width: 200,
-      render: renderOrderTime
-    }
-  ]
-
-  return cols
-})
+const columns = computed(() => [
+  { type: 'selection' },
+  { title: '订单ID', key: 'orderId', width: 180, fixed: 'left' as const, render: renderOrderId },
+  { title: '活动信息', key: 'activity', width: 200, render: renderActivityInfo },
+  { title: '商品信息', key: 'product', width: 420, render: renderProductInfo },
+  { title: '合作方信息', key: 'partner', width: 180, render: renderPartnerInfo },
+  { title: '推广者', key: 'talent', width: 210, render: renderPromoterInfo },
+  { title: '媒介', key: 'channel', width: 120, render: renderMediaInfo },
+  { title: '订单时间', key: 'orderTime', width: 230, render: renderOrderTime }
+])
 
 /* ── 数据请求 ── */
 
@@ -291,214 +236,44 @@ const fetchDetailData = async () => {
   }
 }
 
-const handlePageChange = (page: number) => {
-  pagination.page = page
-  void fetchDetailData()
-}
+const handlePageChange = (page: number) => { pagination.page = page; void fetchDetailData() }
+const handlePageSizeChange = (pageSize: number) => { pagination.pageSize = pageSize; pagination.page = 1; void fetchDetailData() }
 
-const handlePageSizeChange = (pageSize: number) => {
-  pagination.pageSize = pageSize
-  pagination.page = 1
-  void fetchDetailData()
-}
+defineExpose({ refresh: fetchDetailData, hasData: () => rows.value.length > 0 })
 
-defineExpose({
-  refresh: fetchDetailData,
-  hasData: () => rows.value.length > 0
-})
+onMounted(() => { void fetchDetailData() })
 
-onMounted(() => {
-  void fetchDetailData()
-})
-
-watch(
-  () => [props.filters, props.timeField, props.dateRange],
-  () => {
-    pagination.page = 1
-    void fetchDetailData()
-  },
-  { deep: true }
-)
+watch(() => [props.filters, props.timeField, props.dateRange], () => { pagination.page = 1; void fetchDetailData() }, { deep: true })
 </script>
 
 <style scoped>
-.table-panel {
-  border-radius: 8px;
-  padding: 20px 0 0;
-  overflow: hidden;
-}
+.table-panel { border-radius: 8px; padding: 20px 0 0; overflow: hidden; }
+.table-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 14px; margin: 0 18px 12px; }
 
-.table-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 14px;
-  margin: 0 18px 12px;
-}
+:deep(.n-data-table-th) { color: #111827; font-size: 15px; font-weight: 700; }
+:deep(.n-data-table-td) { color: #242934; vertical-align: top; padding: 12px 10px !important; }
 
-:deep(.n-data-table-th) {
-  color: #111827;
-  font-size: 15px;
-  font-weight: 700;
-}
+:deep(.od-cell) { display: flex; flex-direction: column; gap: 4px; line-height: 1.5; min-width: 0; }
+:deep(.od-main) { color: #242934; font-weight: 500; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:deep(.od-muted) { color: #4b5563; font-size: 13px; line-height: 20px; }
+:deep(.od-line) { color: #4b5563; font-size: 13px; line-height: 20px; }
+:deep(.od-empty) { color: #9ca3af; }
+:deep(.od-label) { margin-right: 4px; color: #6b7280; }
+:deep(.od-content-tag) { align-self: flex-start; margin-top: 2px; }
 
-:deep(.n-data-table-td) {
-  color: #242934;
-  vertical-align: top;
-  padding: 14px 10px !important;
-}
+:deep(.od-id-btn) { padding: 0; border: 0; background: transparent; color: #242934; font: inherit; line-height: 20px; text-align: left; word-break: break-all; cursor: pointer; }
+:deep(.od-id-btn:hover) { color: var(--primary-color, #2563eb); }
 
-:deep(.order-detail-id-cell),
-:deep(.order-detail-stack),
-:deep(.order-detail-talent-cell),
-:deep(.order-detail-time-cell) {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  line-height: 1.5;
-}
+:deep(.od-product-cell) { display: flex; align-items: flex-start; gap: 12px; width: 100%; min-width: 380px; box-sizing: border-box; }
+:deep(.od-product-img) { display: block; width: 80px; height: 80px; flex: 0 0 80px; border-radius: 4px; background: #f3f4f6; object-fit: cover; }
+:deep(.od-product-img--placeholder) { border: 1px solid #e5e7eb; }
+:deep(.od-product-content) { min-width: 0; flex: 1; }
+:deep(.od-product-title) { max-width: 280px; overflow: hidden; color: #ff2f2f; font-size: 14px; line-height: 22px; text-overflow: ellipsis; white-space: nowrap; }
 
-:deep(.order-detail-id) {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #242934;
-  font: inherit;
-  line-height: 20px;
-  text-align: left;
-  word-break: break-all;
-  cursor: pointer;
-}
-
-:deep(.order-detail-id:hover) {
-  color: var(--primary-color, #2563eb);
-}
-
-:deep(.order-detail-subline),
-:deep(.order-detail-muted),
-:deep(.order-detail-line),
-:deep(.order-detail-time-line),
-:deep(.order-detail-product-line),
-:deep(.order-detail-video-line) {
-  color: #4b5563;
-  font-size: 13px;
-  line-height: 20px;
-}
-
-:deep(.order-detail-content-tag) {
-  align-self: flex-start;
-  margin-top: 2px;
-}
-
-:deep(.order-detail-main) {
-  max-width: 100%;
-  overflow: hidden;
-  color: #242934;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-:deep(.order-detail-empty) {
-  color: #9ca3af;
-}
-
-:deep(.order-detail-product-cell) {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-}
-
-:deep(.order-detail-product-image) {
-  display: block;
-  width: 104px;
-  height: 104px;
-  flex: 0 0 104px;
-  border-radius: 2px;
-  background: #f3f4f6;
-  object-fit: cover;
-}
-
-:deep(.order-detail-product-image--placeholder) {
-  border: 1px solid #e5e7eb;
-}
-
-:deep(.order-detail-product-content) {
-  min-width: 0;
-  flex: 1;
-}
-
-:deep(.order-detail-product-title) {
-  max-width: 260px;
-  overflow: hidden;
-  color: #ff2f2f;
-  font-size: 14px;
-  line-height: 22px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-:deep(.order-detail-label) {
-  margin-right: 4px;
-  color: #6b7280;
-}
-
-:deep(.order-detail-talent-name) {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  color: #242934;
-  font-weight: 500;
-}
-
-:deep(.order-detail-talent-tag) {
-  flex-shrink: 0;
-}
-
-:deep(.order-detail-douyin-icon) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 5px;
-  background: #111827;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 800;
-  box-shadow: inset 3px 0 0 #23f4ee, inset -3px 0 0 #ff2d55;
-}
-
-:deep(.order-detail-video-line) {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-:deep(.order-detail-video-id) {
-  color: #ff2f2f;
-  word-break: break-all;
-}
-
-:deep(.order-detail-time-line) {
-  display: flex;
-  gap: 6px;
-  min-height: 20px;
-}
-
-:deep(.order-detail-time-label) {
-  width: 40px;
-  flex: 0 0 40px;
-  color: #6b7280;
-}
-
-:deep(.order-detail-time-value) {
-  color: #111827;
-  white-space: nowrap;
-}
+:deep(.od-douyin-icon) { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 4px; background: #111827; color: #fff; font-size: 11px; font-weight: 800; box-shadow: inset 2px 0 0 #23f4ee, inset -2px 0 0 #ff2d55; }
+:deep(.od-video-line) { display: flex; gap: 4px; font-size: 13px; color: #4b5563; }
+:deep(.od-video-id) { color: #ff2f2f; word-break: break-all; }
+:deep(.od-time-line) { display: flex; gap: 6px; min-height: 20px; color: #4b5563; font-size: 13px; line-height: 20px; }
+:deep(.od-time-label) { width: 40px; flex: 0 0 40px; color: #6b7280; }
+:deep(.od-time-value) { color: #111827; white-space: nowrap; }
 </style>
