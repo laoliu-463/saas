@@ -1,5 +1,17 @@
 # Harness Changelog
 
+## v0.6.6
+
+- 远端部署 JAR 刷新门禁加固（2026-06-04 20:55）。
+- **问题证据**：`agent-do.ps1 -DeployRemote true` 首次完成后，远端源码已到 `20500b2`，但运行容器 `/app/app.jar` 仍是 6 月 3 日产物，且不含 `OrderDetailVO.class`；手动执行远端 Maven 构建后，新 `backend/target/colonel-saas.jar` 才包含该 class。
+- **修改文件**：
+  - `harness/commands/deploy-remote.ps1`。
+- **行为变化**：
+  - 远端 Maven 构建从 `mvn -DskipTests package` 改为 `mvn -DskipTests clean package`，避免旧 `target/` 产物残留。
+  - 远端构建后输出 `backend/target/colonel-saas.jar` 时间和大小。
+  - compose 重建后比较 host JAR 与容器 `/app/app.jar` size，不一致则部署失败。
+- **运行态修正**：已手动重新执行远端 Maven build + `docker compose up -d --build backend-real-pre frontend-real-pre`，容器内已确认存在 `OrderDetailVO.class`，backend/frontend health 通过。
+
 ## v0.6.5
 
 - Git 推送 helper 与当前 Git 门禁对齐（2026-06-04 20:44）。

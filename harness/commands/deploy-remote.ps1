@@ -74,18 +74,32 @@ docker run --rm \
   -v "`$HOME/.m2:/root/.m2" \
   -w /workspace \
   maven:3.9.10-eclipse-temurin-17 \
-  mvn -f backend/pom.xml -DskipTests package
+  mvn -f backend/pom.xml -DskipTests clean package
+echo "Remote backend jar after Maven build:"
+ls -l backend/target/colonel-saas.jar
 compose up -d --build backend-real-pre frontend-real-pre
 compose ps
+backend_container="`$(compose ps -q backend-real-pre)"
+if [ -z "`$backend_container" ]; then
+  echo "backend-real-pre container id not found after compose up"
+  exit 1
+fi
+host_jar_size="`$(stat -c %s backend/target/colonel-saas.jar)"
+container_jar_size="`$(docker exec "`$backend_container" stat -c %s /app/app.jar)"
+if [ "`$host_jar_size" != "`$container_jar_size" ]; then
+  echo "Backend jar guard failed: host=`$host_jar_size container=`$container_jar_size"
+  exit 1
+fi
+echo "Backend jar guard passed: size=`$container_jar_size"
 curl -fsS http://127.0.0.1:8081/api/system/health
 curl -fsS http://127.0.0.1:3001/healthz
 echo "Checking backend product sync env ..."
-docker exec "`$(compose ps -q backend-real-pre)" printenv | grep PRODUCT_ACTIVITY || {
+docker exec "`$backend_container" printenv | grep PRODUCT_ACTIVITY || {
   echo "PRODUCT_ACTIVITY env not found in backend container"
   exit 1
 }
 echo "Checking ProductActivitySyncJob config ..."
-docker logs --tail=200 "`$(compose ps -q backend-real-pre)" 2>&1 | grep -i ProductActivitySyncJob || echo "WARNING: ProductActivitySyncJob config log not found"
+docker logs --tail=200 "`$backend_container" 2>&1 | grep -i ProductActivitySyncJob || echo "WARNING: ProductActivitySyncJob config log not found"
 "@
 
 Write-Host "Remote host: $RemoteHost"
