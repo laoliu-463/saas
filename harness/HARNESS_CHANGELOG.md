@@ -1,5 +1,23 @@
 # Harness Changelog
 
+## v0.6.2
+
+- DASHBOARD-MONEY-AUDIT-001 数据看板资金口径只读审查完成（2026-06-04 13:19）。
+- **新增文件**：
+  - `harness/reports/dashboard-money-audit-001-20260604-131908.md`（主审计报告，451 行，12 节完整审查）。
+  - `harness/reports/evidence-20260604-131908-dashboard-money-audit-001.md`（执行证据，160 行）。
+  - `harness/reports/retro-20260604-131908-dashboard-money-audit-001.md`（复盘，100 行）。
+- **修改文件**：
+  - `harness/CURRENT_STATE.md`：版本 v0.6.0 → v0.6.2；新增 DASHBOARD-MONEY-AUDIT-001 完成段；当前 P0/P1 新增 4 条。
+  - `harness/state/KNOWN_ISSUES.md`：新增 3 条 P0 问题卡片（DASH-MONEY-P0-001/002/004）。
+  - `harness/state/p0-p1-register.md`：新增 RISK-009/010/011/012。
+  - `harness/QUALITY_LEDGER.md`：业绩域 B- → C、分析模块 C → D。
+- **结论**：FAIL（4 P0 + 4 P1 + 2 P2）。
+- **未做**：
+  - 未修改业务代码 / SQL / Docker / env。
+  - 未重启容器 / 未部署远端。
+  - 未执行数据库写操作。
+
 ## v0.6.1
 
 - HARNESS-DEBT-GC-001 完成（2026-06-04 00:14）。本轮为 harness 安全清理、归档、瘦身的 docs-only 任务。

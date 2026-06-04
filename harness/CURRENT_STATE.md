@@ -15,8 +15,8 @@
 
 ## 当前日期
 
-- 记录日期：2026-06-03
-- Harness 版本：v0.6.0（HARNESS-DEBT-GOVERNANCE-ITERATION 完成）
+- 记录日期：2026-06-04
+- Harness 版本：v0.6.2（DASHBOARD-MONEY-AUDIT-001 完成）
 
 ## 当前技术栈
 
@@ -65,9 +65,13 @@ real-pre 必须保持：
 ## 当前 P0 / P1
 
 - P0：6468 事实订单源本地与远端 real-pre 已入库；真实渠道订单归因样本仍不足，阻塞渠道链真实闭环 PASS。
+- P0：performance_records.settle_amount 被回退逻辑污染（DASH-MONEY-P0-001），阻塞结算轨验收。
+- P0：旧版 /dashboard/summary 单轨接口（DASH-MONEY-P0-002），字段映射错误。
+- P0：V1 不做毛利但前端仍展示 grossProfit（DASH-MONEY-P0-004）。
 - P1：寄样自动完成依赖真实归因订单样本。
 - P1：推广中商品历史数据可能存在入库漂移。
 - P1：权限注解和数据范围覆盖仍需持续审计。
+- P1：DataApplicationService talentCommission 计算逻辑错误（DASH-MONEY-P1-002）。
 
 ## V1 核心闭环
 
@@ -234,3 +238,28 @@ real-pre 必须保持：
 - **下一步**：
   - HARNESS-AGENT-DO-HARDEN（agent-do.ps1 增 `-Scope harness` + safety-check 扩展 scope）。
   - 业务侧：等待真实渠道订单样本后做 RISK-001 / RISK-007 渠道归因正向可见性验证。
+
+## DASHBOARD-MONEY-AUDIT-001 数据看板资金口径审查（2026-06-04 13:19）
+
+- **任务**：对数据看板 / 资金指标进行只读审查，核查双轨金额、服务费收益、提成、字段映射、SQL 汇总口径是否符合 V1 需求。
+- **范围**：docs-only / 只读审查；未修改 Java / Vue / SQL / Docker / .env。
+- **审查维度**：8 个维度（A-H）全部完成：字段链路、双轨计算、看板指标、时间口径、权限数据范围、SQL 对账、前端展示、测试覆盖。
+- **结论**：**FAIL**。发现 4 个 P0 + 4 个 P1 + 2 个 P2 问题。
+- **P0 问题**：
+  - DASH-MONEY-P0-001：PerformanceCalculationService:113 settle_amount 回退逻辑污染业绩表（404 条 settle_amount=pay_amount，应=0）。
+  - DASH-MONEY-P0-002：旧版 /dashboard/summary 是单轨接口，无双轨结构。
+  - DASH-MONEY-P0-003：aggregateDashboardSummary() 被 P0-001 污染（下游效应）。
+  - DASH-MONEY-P0-004：V1 不做毛利但前端仍展示 grossProfit。
+- **P1 问题**：
+  - DASH-MONEY-P1-001：旧版 DashboardService 回退用 settle_colonel_commission 当服务费。
+  - DASH-MONEY-P1-002：DataApplicationService.buildMetrics talentCommission 计算=0。
+  - DASH-MONEY-P1-003：estimate 轨使用 create_time 而非 pay_time。
+  - DASH-MONEY-P1-004：旧版 DashboardController 无 time_filter_type 参数。
+- **SQL 对账**：订单表 settle_amount=0 vs 业绩表 settle_amount=771125（确认 P0-001）。
+- **报告路径**：`harness/reports/dashboard-money-audit-001-20260604-131908.md`、`harness/reports/evidence-20260604-131908-dashboard-money-audit-001.md`、`harness/reports/retro-20260604-131908-dashboard-money-audit-001.md`。
+- **状态更新**：KNOWN_ISSUES.md 新增 3 条 P0 问题卡片；p0-p1-register.md 新增 RISK-009/010/011/012；QUALITY_LEDGER.md 分析模块 C → D、业绩域 B- → C。
+- **状态**：`DONE`（docs-only / 只读审查）。
+- **下一步**：
+  - DASHBOARD-MONEY-FIX-001（P0 修复：settle_amount 回退 + 毛利隐藏 + talentCommission）。
+  - DASHBOARD-MONEY-FIX-002（旧版接口治理：废弃 or 修复）。
+  - DASHBOARD-MONEY-TEST-001（测试补齐：双轨隔离 + settle=0 + 对账）。
