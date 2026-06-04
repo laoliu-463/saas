@@ -1,5 +1,19 @@
 # Harness Changelog
 
+## v0.6.5
+
+- Git 推送 helper 与当前 Git 门禁对齐（2026-06-04 20:44）。
+- **修改文件**：
+  - `harness/commands/git-push-safe.ps1`。
+- **行为变化**：
+  - 删除 `git add -A`，改为对 `git status` 识别出的变更逐文件执行 `git add -- <file>`。
+  - 提交前新增 `git diff --cached --check`。
+  - 推送从单一默认上游改为按 `gitee` -> `origin` 顺序双远端推送当前分支。
+- **证据**：
+  - `harness/reports/evidence-20260604-204437.md`。
+  - `harness/reports/retro-20260604-204454.md`。
+- **范围**：Harness 工具链最小修正；未修改后端、前端、SQL、Docker 或 env；未重启容器；未部署远端。
+
 ## v0.6.4
 
 - 订单明细表字段对齐 real-pre 验证收口完成（2026-06-04 19:17）。
