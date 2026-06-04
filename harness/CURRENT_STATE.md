@@ -16,7 +16,7 @@
 ## 当前日期
 
 - 记录日期：2026-06-04
-- Harness 版本：v0.6.3（订单明细表复刻与前后端字段对齐完成）
+- Harness 版本：v0.6.4（订单明细表字段对齐 real-pre 验证收口完成）
 
 ## 当前技术栈
 
@@ -287,3 +287,26 @@ real-pre 必须保持：
 - **关键设计**：批量关联避免 N+1；活动名称用 `selectNamesByActivityIds`（纯 MyBatis）；双轨 null → "-"；服务费双轨分别算
 - **状态**：`PARTIAL`（代码完成 + 构建通过 + 容器重启 healthy；smoke 受沙箱网络限制未验证，需浏览器打开 `http://localhost:3001/data/orders` 验证 Tab 切换和明细表渲染）。
 - **未做**：浏览器 smoke test、E2E 测试、远端部署。
+
+## 订单明细表字段对齐 real-pre 验证收口（2026-06-04 19:17）
+
+- **任务**：补齐订单明细表复刻任务的前后端字段对齐、筛选导出、real-pre 运行态和页面 smoke 证据。
+- **代码提交**：`abf3f9eb fix: align order detail table fields`，已推送 `feature/auth-system` 上游。
+- **后端收口**：
+  - `/api/data/orders/detail` 与 `/api/orders/exports/detail` 支持订单级明细 16 列口径。
+  - 新增兼容筛选：`activityName`、`partnerId`、`partnerName`、`recruiterName`；旧 `merchantId/shopName/colonelName` 保留兼容。
+  - 订单明细导出表头调整为：订单ID、活动信息、商品信息、合作方信息、推广者、渠道、招商、订单状态、订单额、服务费收入、技术服务费、服务费支出、服务费收益、招商提成、渠道提成、订单时间。
+  - 服务费收益按 `服务费收入 - 技术服务费` 展示口径计算；服务费支出按 `招商提成 + 渠道提成` 计算；未结算 effective/settle 字段不回退到 estimate/pay。
+- **前端收口**：
+  - `OrderDetailTab.vue` 保留自定义表头和导出按钮，订单明细表 `scroll-x=2800`，左侧固定订单ID，商品信息使用图片 + 商品名 + 商品ID。
+  - `OrderList.vue` 保留汇总模块，新增订单明细 Tab；汇总默认不再展示 V1 不做的毛利。
+  - “媒介”文案已从前端活跃源码、后端活跃源码和测试断言中移除，统一为“渠道”。
+- **验证**：
+  - 后端 targeted：`mvn -f .\backend\pom.xml "-Dtest=DataControllerTest,OrderControllerTest,OrderServiceTest,PerformanceRecordMapperTest" test`，99 tests PASS。
+  - 前端 targeted：`npm run test -- OrderDetailTab.test.ts OrderList.test.ts order-list-query.test.ts orders/index.test.ts`，43 tests PASS。
+  - 后端 package：`mvn -f .\backend\pom.xml -DskipTests package`，BUILD SUCCESS。
+  - 前端 build：`npm run build`，PASS；存在既有 Vite chunk size warning。
+  - Harness：`agent-do.ps1 -Env real-pre -Scope full`，后端/前端 build PASS，backend-real-pre 与 frontend-real-pre rebuild/recreate 后 healthy，`/api/system/health=UP`，`/healthz=ok`，`e2e:real-pre:p0:preflight` PASS，evidence `harness/reports/evidence-20260604-191102.md`。
+  - 页面 smoke：Playwright 登录 admin 后访问 `http://127.0.0.1:3001/data/orders` 并切换“订单明细”，`/api/data/orders/detail` 返回 200、total=738、首屏 records=20；16 个目标列均可见；商品信息可见；页面不含“媒介”和“毛利”；导出按钮和自定义表头存在；未结算样本 `6953418877360936032` 显示 `结算：-`。结果：`runtime/qa/out/order-detail-page-smoke-20260604-191711/result.json`，截图：`runtime/qa/out/order-detail-page-smoke-20260604-191711/order-detail-table.png`。
+- **非阻塞噪声**：页面 smoke 记录到 Google Fonts 被 CSP 拦截，归类为外部字体噪声；关键业务接口无失败请求。
+- **状态**：`DONE_CLEAN`（本地 real-pre 已验证，远端部署未请求）。

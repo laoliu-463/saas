@@ -1,5 +1,27 @@
 # Harness Changelog
 
+## v0.6.4
+
+- 订单明细表字段对齐 real-pre 验证收口完成（2026-06-04 19:17）。
+- **代码提交**：`abf3f9eb fix: align order detail table fields`，已推送 `feature/auth-system`。
+- **后端补齐**：
+  - `/data/orders/detail` 与 `/orders/exports/detail` 增加 `activityName`、`partnerId`、`partnerName`、`recruiterName` 兼容参数。
+  - 导出字段更新为 16 列订单明细口径。
+  - 未结算 effective/settle 字段不回退 estimate/pay；服务费收益 = 服务费收入 - 技术服务费；服务费支出 = 招商提成 + 渠道提成。
+- **前端补齐**：
+  - 数据平台保留汇总模块，订单明细 Tab 展示订单级 16 列。
+  - 商品信息展示商品图、商品名和商品ID；保留自定义表头和导出。
+  - V1 订单页默认不展示毛利；“媒介”文案统一为“渠道”。
+- **验证**：
+  - 后端 targeted 99 tests PASS。
+  - 前端 targeted 43 tests PASS。
+  - `mvn -DskipTests package` PASS。
+  - `npm run build` PASS。
+  - `agent-do.ps1 -Env real-pre -Scope full` PASS，evidence `harness/reports/evidence-20260604-191102.md`。
+  - Playwright 页面 smoke PASS：`runtime/qa/out/order-detail-page-smoke-20260604-191711/result.json`，截图 `runtime/qa/out/order-detail-page-smoke-20260604-191711/order-detail-table.png`。
+- **非阻塞噪声**：Google Fonts 被 CSP 拦截，未影响订单明细关键业务请求。
+- **终态**：DONE_CLEAN（本地 real-pre 已验证；远端部署未请求）。
+
 ## v0.6.3
 
 - 订单明细表复刻与前后端字段对齐完成（2026-06-04 18:15）。

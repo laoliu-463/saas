@@ -36,6 +36,17 @@ vi.mock('../orders/order-user-filter-options', () => ({
   loadOrderChannelOptions: vi.fn().mockResolvedValue([])
 }))
 
+/** 模拟订单明细Tab子组件，避免解析其内部依赖 */
+vi.mock('./OrderDetailTab.vue', () => ({
+  default: {
+    name: 'OrderDetailTab',
+    props: ['filters', 'timeField', 'dateRange'],
+    emits: ['rowCount', 'export'],
+    template: '<div data-testid="order-detail-tab-stub">明细表</div>',
+    methods: { refresh() {} }
+  }
+}))
+
 /** 模拟请求错误通知工具 */
 vi.mock('../../utils/requestError', () => ({
   notifyApiFailure: vi.fn(),
