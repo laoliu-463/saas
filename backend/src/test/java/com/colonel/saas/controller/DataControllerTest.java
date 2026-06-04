@@ -1245,10 +1245,16 @@ class DataControllerTest {
         order.setProductTitle("Test Product");
         order.setProductId("P001");
         order.setShopName("Test Shop");
+        order.setColonelUserName("ColonelWang");
+        order.setOrderType(1);
         order.setTalentName("TestTalent");
         order.setActivityId("ACT001");
-        order.setOrderCreateTime(LocalDateTime.now());
-        order.setPayTime(LocalDateTime.now());
+        order.setOrderCreateTime(LocalDateTime.of(2026, 6, 4, 13, 50));
+        order.setPayTime(LocalDateTime.of(2026, 6, 4, 13, 57, 32));
+        order.setExtraData(Map.of(
+                "delivery_time", "2026-06-05 10:00:00",
+                "expire_time", "2026-07-04 00:00:00"
+        ));
 
         Page<ColonelsettlementOrder> orderPage = new Page<>(1, 20);
         orderPage.setRecords(List.of(order));
@@ -1294,8 +1300,13 @@ class DataControllerTest {
 
         assertThat(vo.getOrderId()).isEqualTo("ORD001");
         assertThat(vo.getActivityName()).isEqualTo("Test Activity");
+        assertThat(vo.getOrderTypeText()).isEqualTo("推广者推广");
+        assertThat(vo.getColonelName()).isEqualTo("ColonelWang");
         assertThat(vo.getChannelName()).isEqualTo("ChannelZhang");
         assertThat(vo.getRecruiterName()).isEqualTo("RecruiterLi");
+        assertThat(vo.getPayTime()).isEqualTo(LocalDateTime.of(2026, 6, 4, 13, 57, 32));
+        assertThat(vo.getDeliveryTime()).isEqualTo(LocalDateTime.of(2026, 6, 5, 10, 0));
+        assertThat(vo.getExpireTime()).isEqualTo(LocalDateTime.of(2026, 7, 4, 0, 0));
 
         // 服务费支出 = 招商提成 + 渠道提成
         assertThat(vo.getEstimateServiceFeeExpense()).isNotNull();

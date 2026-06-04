@@ -27,6 +27,8 @@ public class OrderDetailVO {
     private Integer orderStatus;
     /** 订单状态文本（待结算/已结算/已退款/已失效） */
     private String orderStatusText;
+    /** 订单类型文本（如推广者推广/结算） */
+    private String orderTypeText;
 
     // ── 活动信息 ──────────────────────────────
 
@@ -58,6 +60,8 @@ public class OrderDetailVO {
     private String partnerId;
     /** 合作方（商家）名称 */
     private String partnerName;
+    /** 团长名称，来自订单事实中的 colonel_user_name */
+    private String colonelName;
 
     // ── 推广者 ──────────────────────────────
 
@@ -137,8 +141,12 @@ public class OrderDetailVO {
 
     /** 付款时间 */
     private LocalDateTime payTime;
+    /** 收货时间，上游返回时展示 */
+    private LocalDateTime deliveryTime;
     /** 结算时间 */
     private LocalDateTime settleTime;
+    /** 失效时间，上游返回时展示 */
+    private LocalDateTime expireTime;
     /** 订单创建时间 */
     private LocalDateTime orderCreateTime;
     /** 结算状态文本（失效/已结算/待结算） */

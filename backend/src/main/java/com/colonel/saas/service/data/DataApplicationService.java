@@ -10,6 +10,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
+import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
@@ -62,6 +63,8 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -112,6 +115,9 @@ public class DataApplicationService extends BaseController {
 
     /** 指标缓存键前缀，格式：dashboard:metrics:{track}:{scope}:{id} */
     private static final String METRICS_CACHE_PREFIX = "dashboard:metrics:";
+
+    /** 上游订单时间字符串常见格式。 */
+    private static final DateTimeFormatter UPSTREAM_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     /** 订单 Mapper，负责订单表的基础查询与分页（含数据范围过滤） */
     private final ColonelsettlementOrderMapper orderMapper;
@@ -491,6 +497,7 @@ public class DataApplicationService extends BaseController {
         vo.setOrderId(StringUtils.hasText(order.getOrderId()) ? order.getOrderId() : String.valueOf(order.getId()));
         vo.setOrderStatus(order.getOrderStatus());
         vo.setOrderStatusText(toDetailOrderStatusText(order.getOrderStatus()));
+        vo.setOrderTypeText(toOrderTypeText(order.getOrderType()));
 
         // 活动
         String activityId = order.getActivityId();
@@ -509,6 +516,7 @@ public class DataApplicationService extends BaseController {
         // 合作方
         vo.setPartnerId(order.getShopId() != null ? String.valueOf(order.getShopId()) : null);
         vo.setPartnerName(order.getShopName());
+        vo.setColonelName(order.getColonelUserName());
 
         // 推广者
         vo.setTalentId(order.getTalentId() != null ? order.getTalentId().toString() : null);
@@ -563,7 +571,9 @@ public class DataApplicationService extends BaseController {
 
         // 时间
         vo.setPayTime(order.getPayTime() != null ? order.getPayTime() : order.getOrderCreateTime());
+        vo.setDeliveryTime(pickDateTime(order.getExtraData(), "delivery_time", "deliveryTime", "receive_time", "receiveTime"));
         vo.setSettleTime(order.getSettleTime());
+        vo.setExpireTime(pickDateTime(order.getExtraData(), "expire_time", "expireTime", "invalid_time", "invalidTime"));
         vo.setOrderCreateTime(order.getOrderCreateTime());
 
         // 结算状态
@@ -1348,6 +1358,56 @@ public class DataApplicationService extends BaseController {
         return "-";
     }
 
+    private LocalDateTime pickDateTime(Map<String, Object> extraData, String... keys) {
+        if (extraData == null || extraData.isEmpty()) {
+            return null;
+        }
+        Object value = pickRawValue(extraData, keys);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            long raw = number.longValue();
+            return raw > 9_999_999_999L ? AppZone.fromEpochMilli(raw) : AppZone.fromEpochSecond(raw);
+        }
+        String text = value.toString().trim();
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        if (text.matches("^-?\\d+$")) {
+            long raw = Long.parseLong(text);
+            return raw > 9_999_999_999L ? AppZone.fromEpochMilli(raw) : AppZone.fromEpochSecond(raw);
+        }
+        try {
+            return LocalDateTime.parse(text.replace('T', ' ').substring(0, Math.min(19, text.length())), UPSTREAM_DATE_TIME_FORMATTER);
+        } catch (DateTimeParseException ignored) {
+            return null;
+        }
+    }
+
+    private Object pickRawValue(Map<String, Object> extraData, String... keys) {
+        if (extraData == null || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            if (extraData.containsKey(key)) {
+                return extraData.get(key);
+            }
+        }
+        Object nested = extraData.get("colonel_order_info");
+        if (nested == null) {
+            nested = extraData.get("colonelOrderInfo");
+        }
+        if (nested instanceof Map<?, ?> nestedMap) {
+            for (String key : keys) {
+                if (nestedMap.containsKey(key)) {
+                    return nestedMap.get(key);
+                }
+            }
+        }
+        return null;
+    }
+
     private Integer toOrderStatusCode(String status) {
         String normalized = status.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
@@ -1372,6 +1432,17 @@ public class DataApplicationService extends BaseController {
             case "MIXED" -> 3;
             case "COLONEL" -> 4;
             default -> throw BusinessException.param("非法招商类型: " + recruitType);
+        };
+    }
+
+    private String toOrderTypeText(Integer orderType) {
+        if (orderType == null) {
+            return "";
+        }
+        return switch (orderType) {
+            case 1 -> "推广者推广";
+            case 2 -> "结算";
+            default -> "";
         };
     }
 
