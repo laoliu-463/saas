@@ -1,6 +1,6 @@
 /**
- * @file orders/index.vue 商品信息列渲染测试
- * @description 验证订单归因页面商品信息列的丰富展示
+ * @file orders/index.vue 商品信息列 + 渠道文案测试
+ * @description 验证订单归因页面商品信息列布局（96px 图片 + 右侧文字）和渠道文案统一
  */
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -79,6 +79,11 @@ const globalStubs = {
     props: ['columns', 'data', 'loading'],
     template: `
       <table data-testid="orders-table">
+        <thead>
+          <tr>
+            <th v-for="column in columns" :key="column.key">{{ column.title }}</th>
+          </tr>
+        </thead>
         <tbody>
           <tr v-for="row in data" :key="row.orderId">
             <td v-for="column in columns" :key="column.key">
@@ -159,7 +164,7 @@ const defaultFilterOptionsResponse = {
   }
 }
 
-describe('Orders page - 商品信息列', () => {
+describe('Orders page - 商品信息列布局', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.setItem('userInfo', JSON.stringify({ roleCodes: ['biz_leader'] }))
@@ -194,7 +199,7 @@ describe('Orders page - 商品信息列', () => {
     return wrapper
   }
 
-  it('商品信息列展示：完整字段正常渲染', async () => {
+  it('商品信息列：完整字段正常渲染', async () => {
     const wrapper = await mountPage()
     const html = wrapper.html()
 
@@ -203,7 +208,25 @@ describe('Orders page - 商品信息列', () => {
     expect(html).toContain('店铺：新日月新炒货')
   })
 
-  it('商品信息列展示：字段为空时显示 -', async () => {
+  it('商品信息列：使用 order-product-cell 类名', async () => {
+    const wrapper = await mountPage()
+    expect(wrapper.find('.order-product-cell').exists()).toBe(true)
+  })
+
+  it('商品信息列：标题使用 order-product-title 类名（红色样式）', async () => {
+    const wrapper = await mountPage()
+    const title = wrapper.find('.order-product-title')
+    expect(title.exists()).toBe(true)
+    expect(title.text()).toContain('新疆大枣 500g 特级红枣')
+  })
+
+  it('商品信息列：详情使用 order-product-line 类名', async () => {
+    const wrapper = await mountPage()
+    const lines = wrapper.findAll('.order-product-line')
+    expect(lines.length).toBe(5) // 商品ID、店铺、商品数量、佣金率、服务费率
+  })
+
+  it('商品信息列：字段为空时显示 -', async () => {
     vi.mocked(getOrders).mockResolvedValue({
       data: {
         records: [buildOrderRow({
@@ -229,12 +252,13 @@ describe('Orders page - 商品信息列', () => {
     expect(html).toContain('服务费率：-')
   })
 
-  it('商品信息列展示：无图片时显示占位', async () => {
+  it('商品信息列：无图片时显示占位 div', async () => {
     const wrapper = await mountPage()
-    expect(wrapper.html()).toContain('暂无图片')
+    const placeholder = wrapper.find('.order-product-image--placeholder')
+    expect(placeholder.exists()).toBe(true)
   })
 
-  it('商品信息列展示：有图片时渲染 img 标签', async () => {
+  it('商品信息列：有图片时渲染 img 标签', async () => {
     vi.mocked(getOrders).mockResolvedValue({
       data: {
         records: [buildOrderRow({ productImage: 'https://example.com/product.jpg' })],
@@ -243,33 +267,57 @@ describe('Orders page - 商品信息列', () => {
     } as any)
 
     const wrapper = await mountPage()
-    const img = wrapper.find('.product-info-image')
+    const img = wrapper.find('.order-product-image')
     expect(img.exists()).toBe(true)
     expect(img.attributes('src')).toBe('https://example.com/product.jpg')
   })
 
-  it('佣金率格式化：小数形式 (0.07 → 7%)', async () => {
+  it('佣金率格式化：小数形式 (0.1 → 10%)', async () => {
     vi.mocked(getOrders).mockResolvedValue({
       data: {
-        records: [buildOrderRow({ commissionRate: 0.07 })],
+        records: [buildOrderRow({ commissionRate: 0.1 })],
         total: 1
       }
     } as any)
 
     const wrapper = await mountPage()
-    expect(wrapper.html()).toContain('佣金率：7%')
+    expect(wrapper.html()).toContain('佣金率：10%')
   })
 
-  it('佣金率格式化：整数形式 (7 → 7%)', async () => {
+  it('佣金率格式化：整数形式 (10 → 10%)', async () => {
     vi.mocked(getOrders).mockResolvedValue({
       data: {
-        records: [buildOrderRow({ commissionRate: 7 })],
+        records: [buildOrderRow({ commissionRate: 10 })],
         total: 1
       }
     } as any)
 
     const wrapper = await mountPage()
-    expect(wrapper.html()).toContain('佣金率：7%')
+    expect(wrapper.html()).toContain('佣金率：10%')
+  })
+
+  it('佣金率格式化：字符串 "10%" 直接展示', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({ commissionRate: '10%' })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    expect(wrapper.html()).toContain('佣金率：10%')
+  })
+
+  it('佣金率格式化：null → -', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({ commissionRate: null })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    expect(wrapper.html()).toContain('佣金率：-')
   })
 
   it('服务费率格式化：不重复乘 100', async () => {
@@ -294,6 +342,33 @@ describe('Orders page - 商品信息列', () => {
 
     const wrapper = await mountPage()
     expect(wrapper.html()).toContain('服务费率：1%')
+  })
+
+  it('服务费率格式化：字符串 "1%" 直接展示', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      data: {
+        records: [buildOrderRow({ serviceFeeRate: '1%' })],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = await mountPage()
+    expect(wrapper.html()).toContain('服务费率：1%')
+  })
+
+  it('表头显示"渠道"而非"媒介"', async () => {
+    const wrapper = await mountPage()
+    const html = wrapper.html()
+
+    // 表头"渠道负责人"存在
+    expect(html).toContain('渠道负责人')
+    // 页面不出现用户可见的"媒介"
+    expect(html).not.toContain('媒介')
+  })
+
+  it('渠道列仍能显示 channelUserName 字段数据', async () => {
+    const wrapper = await mountPage()
+    expect(wrapper.html()).toContain('张三')
   })
 
   it('其他列不受影响：订单号、归因状态等仍正常渲染', async () => {
