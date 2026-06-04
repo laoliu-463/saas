@@ -507,9 +507,9 @@ public class DataApplicationService extends BaseController {
         // 渠道/招商：优先从业绩记录获取最终归属
         if (perf != null) {
             vo.setChannelId(perf.getFinalChannelUserId() != null ? perf.getFinalChannelUserId().toString() : null);
-            vo.setChannelName(userNameMap.getOrDefault(perf.getFinalChannelUserId(), null));
+            vo.setChannelName(perf.getFinalChannelUserId() != null ? userNameMap.getOrDefault(perf.getFinalChannelUserId(), null) : null);
             vo.setRecruiterId(perf.getFinalRecruiterUserId() != null ? perf.getFinalRecruiterUserId().toString() : null);
-            vo.setRecruiterName(userNameMap.getOrDefault(perf.getFinalRecruiterUserId(), null));
+            vo.setRecruiterName(perf.getFinalRecruiterUserId() != null ? userNameMap.getOrDefault(perf.getFinalRecruiterUserId(), null) : null);
         } else {
             // 无业绩记录时回退到订单事实字段
             vo.setChannelId(order.getChannelUserId() != null ? order.getChannelUserId().toString() : null);
