@@ -57,7 +57,7 @@
 ## 业绩域
 
 - 已完成：最终归属、提成、冲正、双轨金额和汇总输出主链路。
-- 未完成：复杂财务结算和毛利不属于 V1。
+- 未完成：复杂财务结算、多账期治理和财务毛利不属于 V1；经营毛利已按 2026-06-05 用户决策纳入 V1 指标。
 - 当前风险：订单域或分析模块误算业绩归属。
 - 验证方式：`performance_records` SQL、汇总表、计算日志。
 - 关联 eval：`harness/evals/v1-business-closure.evals.md`
@@ -71,4 +71,3 @@
 - 验证方式：dashboard API、汇总 SQL、E2E。
 - 关联 eval：`harness/evals/v1-business-closure.evals.md`
 - 关联 skill：`harness/skills/performance-dashboard.skill.md`
-

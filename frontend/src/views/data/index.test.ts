@@ -129,7 +129,7 @@ const metricsPayload = {
   }
 }
 
-describe('DataDashboard V1 money cards', () => {
+describe('DataDashboard business metric matrix', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -151,7 +151,7 @@ describe('DataDashboard V1 money cards', () => {
     } as any)
   })
 
-  it('does not render gross profit labels on the V1 dashboard', async () => {
+  it('renders all required business metrics with trade/estimate and settlement tracks', async () => {
     const wrapper = mount(DataDashboard, {
       global: {
         plugins: [createPinia()],
@@ -161,8 +161,29 @@ describe('DataDashboard V1 money cards', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('今日毛利')
-    expect(wrapper.text()).not.toContain('预估轨毛利')
-    expect(wrapper.text()).not.toContain('结算轨毛利')
+    const text = wrapper.text()
+    for (const label of [
+      '总订单数',
+      '订单额',
+      '服务费收入',
+      '技术服务费',
+      '服务费支出',
+      '服务费收益',
+      '招商提成',
+      '媒介提成',
+      '毛利'
+    ]) {
+      expect(text).toContain(label)
+    }
+
+    expect(text).toContain('成交：2')
+    expect(text).toContain('结算：0')
+    expect(text).toContain('成交：¥300.00')
+    expect(text).toContain('预估：¥10.00')
+    expect(text).toContain('预估：¥3.00')
+    expect(text).toContain('预估：¥9.00')
+    expect(text).toContain('预估：¥1.00')
+    expect(text).toContain('预估：¥2.00')
+    expect(text).toContain('预估：¥6.00')
   })
 })

@@ -21,12 +21,26 @@
 | 达人 | `/api/talents/**`、`/api/colonel/talents/**` | 达人资料、标签、地址、跟进 | 达人表、操作日志 | V1 必做 |
 | 寄样 | `/api/samples/**`、`/api/sample-applications/**` | 寄样申请、审批、发货、状态 | 寄样状态日志、E2E | V1 必做 |
 | 订单 | `/api/orders/**`、`/api/order-sync/**` | 订单同步、订单事实、退款事实 | 订单表、同步日志 | V1 必做 |
-| 业绩 | `/api/performance/**`、`/api/commission/**` | 归属、提成、冲正、汇总 | 业绩明细、汇总 API | V1 必做 |
-| 分析 | `/api/dashboard/**`、`/api/analytics/**`、`/api/reports/**` | dashboard、只读汇总、导出 | 看板 API、导出文件 | V1 必做 |
+| 业绩 | `/api/performance/**`、`/api/commission/**` | 归属、提成、冲正、经营毛利、汇总 | 业绩明细、汇总 API | V1 必做 |
+| 分析 | `/api/dashboard/**`、`/api/analytics/**`、`/api/reports/**` | dashboard、经营指标矩阵、只读汇总、导出 | 看板 API、导出文件 | V1 必做 |
 | 运维 | `/api/operations/**`、`/actuator/**` | 操作日志、健康检查 | 健康检查、操作审计 | V1 简化 |
 | 抖音授权 | `/api/douyin/auth/**`、`/api/douyin/token/**` | 授权、Token、刷新 | real-pre Token 证据 | V1 必做 |
 | 抖音物流 | `/api/douyin/logistics/**` | 物流接口适配 | real-pre 响应或阻塞证据 | V1 简化 |
 | 主数据 | `/api/master-data/**`、`/api/current-user/**`、`/api/colonel-partners` | 前端下拉、当前用户上下文、团长主数据 | Network 响应、单测 | V1 必做 |
+
+## 经营指标 API 补充事实（2026-06-05）
+
+- [V1 必做] `GET /api/dashboard/metrics` 返回 `estimate` 与 `settle` 双轨对象，数据页经营指标矩阵必须展示：
+  - 总订单数：`estimate.totalOrders/todayOrderCount` 展示为“成交”，`settle.totalOrders/todayOrderCount` 展示为“结算”。
+  - 订单额：`estimate.totalAmount/todayGmv` 展示为“成交”，`settle.totalAmount/todayGmv` 展示为“结算”。
+  - 服务费收入：`serviceFeeIncome`，展示“预估 / 结算”。
+  - 技术服务费：`techServiceFee`，展示“预估 / 结算”。
+  - 服务费支出：优先读取 `serviceFeeExpense`，缺失时按 `bizCommission + channelCommission` 或 `commission` 派生，展示“预估 / 结算”。
+  - 服务费收益：`serviceFee`，业务公式为 `服务费收入 - 技术服务费`，展示“预估 / 结算”。
+  - 招商提成：`bizCommission`，展示“预估 / 结算”。
+  - 媒介提成：当前代码字段为 `channelCommission`，页面可按业务文案展示为“媒介提成”，展示“预估 / 结算”。
+  - 毛利：`grossProfit`，公式为 `服务费收益 - 招商提成 - 媒介/渠道提成`，展示“预估 / 结算”。
+- [V1 必做] 以上字段属于经营指标，不代表财务结算、商家结算或多账期治理；后者仍为 V2 预留。
 
 ## 活动 API 补充事实（2026-05-29 / 2026-06-01）
 

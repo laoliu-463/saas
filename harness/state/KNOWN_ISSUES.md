@@ -31,7 +31,7 @@
 | 真实付款订单 10 分钟 update 窗口可能丢单 | fixed-code, blocked-by-sample | `harness/reports/p0-order-001-real-order-visible-20260603-180450.md` | P0-ORDER-001 已增加 PAY_RECENT 6h 30min 回扫，使用独立锁 `ORDER_SYNC_PAY_RECENT` + 独立 Redis 水位 `order:sync:pay_recent_last_time`，不覆盖 10min 增量水位；增强同步日志含 mode/timeType/inserted/updated/attributed/unattributed/noPickSource/noMapping/failed；mvn test 1688/0/0、backend-real-pre 重启后双 scheduler 立即首次执行均正常；真实订单端到端业务验证需等待商务真实付款样本。注：本任务仅修复"同步窗口/水位/可观测性"层面；如订单数据源本身缺失（见上一条 ORDER-P0 2704/6468），仍需独立任务处理。 |
 | DASH-MONEY-P0-001 settle_amount 回退逻辑污染业绩表 | open | `harness/reports/dashboard-money-audit-001-20260604-131908.md` | PerformanceCalculationService:113 回退 `settleAmount > 0 ? settleAmount : actualAmount` 导致全部 404 条 performance_records.settle_amount = pay_amount（应=0）；SQL 证据：订单表 settle_amount=0 vs 业绩表 settle_amount=771125。下一步：DASHBOARD-MONEY-FIX-001 |
 | DASH-MONEY-P0-002 旧版 /dashboard/summary 是单轨接口 | open | `harness/reports/dashboard-money-audit-001-20260604-131908.md` | DashboardController.getSummary() 返回扁平 Summary DTO 无双轨结构。下一步：DASHBOARD-MONEY-FIX-002 评估废弃或修复 |
-| DASH-MONEY-P0-004 V1 不做毛利但前端仍展示 | open | `harness/reports/dashboard-money-audit-001-20260604-131908.md` | MetricsVO 含 grossProfit、data/index.vue 多处展示毛利。下一步：DASHBOARD-MONEY-FIX-001 前端隐藏毛利展示 |
+| ~~DASH-MONEY-P0-004 V1 不做毛利但前端仍展示~~ | **revoked** | `harness/reports/dashboard-money-audit-001-20260604-131908.md` | 2026-06-05 用户决策：毛利纳入 V1 交付与验收。原 P0 降级为前端展示补齐任务 GROSS-PROFIT-DISPLAY-001。后端已计算并返回 grossProfit，前端需补齐展示。 |
 
 ## 更新规则
 

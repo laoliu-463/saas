@@ -250,6 +250,22 @@
         </div>
       </div>
 
+      <!-- 经营指标矩阵：按业务要求同时展示成交/预估轨与结算轨 -->
+      <div class="business-metrics-section app-section-panel" data-testid="dashboard-business-metrics">
+        <h3 class="section-title">经营指标</h3>
+        <div class="business-metrics-grid">
+          <div
+            v-for="row in businessMetricRows"
+            :key="row.label"
+            class="business-metric-row"
+          >
+            <span class="business-metric-label">{{ row.label }}</span>
+            <span class="business-metric-value primary">{{ row.primaryLabel }}：{{ row.primaryValue }}</span>
+            <span class="business-metric-value">结算：{{ row.settleValue }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- 业绩分拆标签组 -->
       <div class="breakdown-section app-section-panel">
         <h3 class="section-title">{{ isChannelStaffOnly ? '我的收益分拆' : '收入分拆' }}</h3>
@@ -455,6 +471,80 @@ const toNumber = (value: unknown) => {
 }
 
 const formatAmount = (value: number) => toNumber(value).toFixed(2)
+
+const formatMoney = (value: number) => `¥${formatAmount(value)}`
+
+const metricAmount = (track: Record<string, any>, key: string) => formatMoney(toNumber(track?.[key]))
+
+const serviceFeeExpense = (track: Record<string, any>) => {
+  const explicit = toNumber(track?.serviceFeeExpense)
+  if (explicit > 0) return formatMoney(explicit)
+  return formatMoney(toNumber(track?.commission) || toNumber(track?.bizCommission) + toNumber(track?.channelCommission))
+}
+
+const businessMetricRows = computed(() => {
+  const createTrack = dualTrackCreate.value
+  const settleTrack = dualTrackSettle.value
+  const createOrders = Math.trunc(toNumber(createTrack?.totalOrders ?? createTrack?.todayOrderCount))
+  const settleOrders = Math.trunc(toNumber(settleTrack?.totalOrders ?? settleTrack?.todayOrderCount))
+
+  return [
+    {
+      label: '总订单数',
+      primaryLabel: '成交',
+      primaryValue: String(createOrders),
+      settleValue: String(settleOrders)
+    },
+    {
+      label: '订单额',
+      primaryLabel: '成交',
+      primaryValue: formatMoney(toNumber(createTrack?.totalAmount ?? createTrack?.todayGmv)),
+      settleValue: formatMoney(toNumber(settleTrack?.totalAmount ?? settleTrack?.todayGmv))
+    },
+    {
+      label: '服务费收入',
+      primaryLabel: '预估',
+      primaryValue: metricAmount(createTrack, 'serviceFeeIncome'),
+      settleValue: metricAmount(settleTrack, 'serviceFeeIncome')
+    },
+    {
+      label: '技术服务费',
+      primaryLabel: '预估',
+      primaryValue: metricAmount(createTrack, 'techServiceFee'),
+      settleValue: metricAmount(settleTrack, 'techServiceFee')
+    },
+    {
+      label: '服务费支出',
+      primaryLabel: '预估',
+      primaryValue: serviceFeeExpense(createTrack),
+      settleValue: serviceFeeExpense(settleTrack)
+    },
+    {
+      label: '服务费收益',
+      primaryLabel: '预估',
+      primaryValue: metricAmount(createTrack, 'serviceFee'),
+      settleValue: metricAmount(settleTrack, 'serviceFee')
+    },
+    {
+      label: '招商提成',
+      primaryLabel: '预估',
+      primaryValue: metricAmount(createTrack, 'bizCommission'),
+      settleValue: metricAmount(settleTrack, 'bizCommission')
+    },
+    {
+      label: '媒介提成',
+      primaryLabel: '预估',
+      primaryValue: metricAmount(createTrack, 'channelCommission'),
+      settleValue: metricAmount(settleTrack, 'channelCommission')
+    },
+    {
+      label: '毛利',
+      primaryLabel: '预估',
+      primaryValue: metricAmount(createTrack, 'grossProfit'),
+      settleValue: metricAmount(settleTrack, 'grossProfit')
+    }
+  ]
+})
 
 const displayOrderCount = computed(() => toNumber(metrics.value?.todayOrderCount ?? metrics.value?.totalOrders))
 
@@ -1058,6 +1148,46 @@ watch(timeField, () => {
   margin-bottom: var(--content-gap);
 }
 
+.business-metrics-section {
+  margin-bottom: var(--content-gap);
+}
+
+.business-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.business-metric-row {
+  display: grid;
+  grid-template-columns: minmax(84px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-page);
+}
+
+.business-metric-label {
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.business-metric-value {
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.business-metric-value.primary {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
 .section-title {
   font-size: var(--text-base);
   font-weight: 600;
@@ -1150,6 +1280,11 @@ watch(timeField, () => {
 
   .trend-summary-list {
     grid-template-columns: 1fr;
+  }
+
+  .business-metric-row {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
   }
 
   .trend-chart {

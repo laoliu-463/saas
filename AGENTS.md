@@ -114,7 +114,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 
 - 不做独家达人。
 - 不做独家商家。
-- 不做毛利口径扩展。
+- ~~不做毛利口径扩展。~~ **已撤销**（2026-06-05 用户决策：毛利要做，纳入 V1 交付与验收）
 - 不做个别品负责人覆盖。
 - 不做商品负责人变更历史重算。
 - 不做差异化提成。

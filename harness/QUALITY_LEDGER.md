@@ -35,7 +35,7 @@
 | 寄样域 | B- | 已有主链 | 真实订单触发完成依赖订单归因 | 跟订单样本联动验证 |
 | 订单域 | C | P0 验收未清零 | 真实 pick_source 样本缺失；pay_time 字段问题 | O-1 订单 P0 复核 |
 | 业绩域 | C | DASHBOARD-MONEY-AUDIT-001 审查 | settle_amount 回退逻辑污染（P0-001）；提成计算正确但输入数据不可信 | DASHBOARD-MONEY-FIX-001 |
-| 分析模块 | D | DASHBOARD-MONEY-AUDIT-001 审查 | 旧版单轨接口（P0-002）、毛利展示（P0-004）、talentCommission 错误（P1-002） | DASHBOARD-MONEY-FIX-001 / FIX-002 |
+| 分析模块 | D | DASHBOARD-MONEY-AUDIT-001 审查 | 旧版单轨接口（P0-002）、~~毛利展示（P0-004）~~已撤销、talentCommission 错误（P1-002） | DASHBOARD-MONEY-FIX-001 / FIX-002；毛利已纳入 V1（2026-06-05） |
 | Harness | A | 2026-06-04 HARNESS-DEBT-GC-001 清理完成 | DEBT-013 fixed / DEBT-014 wontfix；reports 目录受保护状态明确；playwright / nul 临时物已清理 | HARNESS-AGENT-DO-HARDEN |
 
 ---

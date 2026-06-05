@@ -67,7 +67,7 @@ real-pre 必须保持：
 - P0：6468 事实订单源本地与远端 real-pre 已入库；真实渠道订单归因样本仍不足，阻塞渠道链真实闭环 PASS。
 - P0：performance_records.settle_amount 被回退逻辑污染（DASH-MONEY-P0-001），阻塞结算轨验收。
 - P0：旧版 /dashboard/summary 单轨接口（DASH-MONEY-P0-002），字段映射错误。
-- P0：V1 不做毛利但前端仍展示 grossProfit（DASH-MONEY-P0-004）。
+- ~~P0：V1 不做毛利但前端仍展示 grossProfit（DASH-MONEY-P0-004）。~~ **已撤销**：2026-06-05 用户决策毛利纳入 V1，P0-004 降级为前端展示补齐任务。
 - P1：寄样自动完成依赖真实归因订单样本。
 - P1：推广中商品历史数据可能存在入库漂移。
 - P1：权限注解和数据范围覆盖仍需持续审计。
@@ -154,7 +154,7 @@ real-pre 必须保持：
 | 旧 V2.2 完整方案 vs 当前 V1 范围 | 以 `docs/01-V1交付范围与边界.md` 和本文件为准 |
 | FastAPI / Celery 旧技术建议 | 标记为历史归档，当前以 Spring Boot 源码为准 |
 | 独家达人 / 独家商家 | V1 不启用 |
-| 毛利字段设计 | V1 不做毛利口径扩展；不得扩大为财务结算 |
+| 毛利字段设计 | **V1 纳入毛利**（2026-06-05 用户决策）；毛利 = 服务费收益 - 招商提成 - 渠道提成，双轨展示 |
 | 寄样 30 天自动关闭 | V1 不自动关闭，按当前寄样状态机和订单事件验证 |
 | 个别品负责人覆盖 | V1 不做 |
 | 物流 API 自动跟踪 | V1 以手动物流和可证据物流接口为准 |
@@ -249,7 +249,7 @@ real-pre 必须保持：
   - DASH-MONEY-P0-001：PerformanceCalculationService:113 settle_amount 回退逻辑污染业绩表（404 条 settle_amount=pay_amount，应=0）。
   - DASH-MONEY-P0-002：旧版 /dashboard/summary 是单轨接口，无双轨结构。
   - DASH-MONEY-P0-003：aggregateDashboardSummary() 被 P0-001 污染（下游效应）。
-  - DASH-MONEY-P0-004：V1 不做毛利但前端仍展示 grossProfit。
+  - ~~DASH-MONEY-P0-004：V1 不做毛利但前端仍展示 grossProfit。~~ **已撤销**：2026-06-05 用户决策毛利纳入 V1，降级为前端展示补齐任务。
 - **P1 问题**：
   - DASH-MONEY-P1-001：旧版 DashboardService 回退用 settle_colonel_commission 当服务费。
   - DASH-MONEY-P1-002：DataApplicationService.buildMetrics talentCommission 计算=0。
@@ -260,7 +260,7 @@ real-pre 必须保持：
 - **状态更新**：KNOWN_ISSUES.md 新增 3 条 P0 问题卡片；p0-p1-register.md 新增 RISK-009/010/011/012；QUALITY_LEDGER.md 分析模块 C → D、业绩域 B- → C。
 - **状态**：`DONE`（docs-only / 只读审查）。
 - **下一步**：
-  - DASHBOARD-MONEY-FIX-001（P0 修复：settle_amount 回退 + 毛利隐藏 + talentCommission）。
+  - DASHBOARD-MONEY-FIX-001（P0 修复：settle_amount 回退 + talentCommission；毛利隐藏方向已撤销，经营毛利改为前端展示补齐）。
   - DASHBOARD-MONEY-FIX-002（旧版接口治理：废弃 or 修复）。
   - DASHBOARD-MONEY-TEST-001（测试补齐：双轨隔离 + settle=0 + 对账）。
 

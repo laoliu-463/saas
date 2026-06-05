@@ -1,5 +1,31 @@
 # Harness Changelog
 
+## v0.6.7
+
+- 毛利纳入 V1 交付范围决策变更（2026-06-05）。
+- **决策来源**：用户明确要求毛利要做，撤销原“不做毛利”限制。
+- **修改文件**：
+  - `AGENTS.md`：撤销“不做毛利口径扩展”。
+  - `harness/FORBIDDEN_SCOPE.md`：撤销“不做毛利”和“禁止把毛利作为 P0 验收指标”。
+  - `harness/CURRENT_STATE.md`：P0-004 降级为前端补齐任务；毛利字段策略更新。
+  - `harness/state/p0-p1-register.md`：RISK-011 P0→P2，状态 REVOKED。
+  - `harness/state/KNOWN_ISSUES.md`：DASH-MONEY-P0-004 状态 revoked。
+  - `harness/doc/01-instructions/02-V1交付合同.md`：撤销“不做毛利口径扩展”。
+  - `harness/instructions/document-priority.md`：毛利字段策略更新。
+  - `harness/QUALITY_LEDGER.md`：P0-004 标记已撤销。
+  - `docs/02-V1不做清单.md`：Y-04 毛利撤销。
+  - `docs/01-V1领域裁剪表.md`：Y-04 毛利改为“做”，补充毛利公式。
+  - `docs/00-V1范围冻结说明.md`：毛利撤销。
+  - `docs/03-项目剩余事项与任务看板.md`：Y-04 毛利撤销。
+  - `docs/V1对齐-业绩域.md`：Y-04 改为“做”。
+  - `docs/V1领域对齐总表.md`：毛利裁剪和 Y-04 改为“做”。
+- **行为变化**：
+  - 毛利 = 服务费收益 - 招商提成 - 渠道提成，纳入 V1 交付与验收。
+  - 后端已计算并返回 grossProfit，无需后端改动。
+  - 前端毛利展示已补齐（GROSS-PROFIT-DISPLAY-001，2026-06-05 数据看板经营指标矩阵已补齐）。
+  - 原 DASH-MONEY-P0-004 降级为 P2 前端展示补齐任务。
+- **范围**：Scope=docs，未修改业务代码。
+
 ## v0.6.6
 
 - 远端部署 JAR 刷新门禁加固（2026-06-04 20:55）。
@@ -37,7 +63,7 @@
 - **前端补齐**：
   - 数据平台保留汇总模块，订单明细 Tab 展示订单级 16 列。
   - 商品信息展示商品图、商品名和商品ID；保留自定义表头和导出。
-  - V1 订单页默认不展示毛利；“媒介”文案统一为“渠道”。
+  - V1 订单明细页默认不展示毛利；数据看板经营指标矩阵展示毛利；“媒介提成”在看板文案中映射现有 `channelCommission` 字段。
 - **验证**：
   - 后端 targeted 99 tests PASS。
   - 前端 targeted 43 tests PASS。
