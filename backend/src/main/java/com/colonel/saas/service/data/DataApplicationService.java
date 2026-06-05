@@ -116,6 +116,12 @@ public class DataApplicationService extends BaseController {
     /** 指标缓存键前缀，格式：dashboard:metrics:{track}:{scope}:{id} */
     private static final String METRICS_CACHE_PREFIX = "dashboard:metrics:";
 
+    /** 订单汇总缓存 TTL：30 秒，与核心指标一致，避免重复实时聚合 */
+    private static final Duration ORDER_SUMMARY_CACHE_TTL = Duration.ofSeconds(30);
+
+    /** 订单汇总缓存键前缀，格式：dashboard:order-summary:{17 维} */
+    private static final String ORDER_SUMMARY_CACHE_PREFIX = "dashboard:order-summary:";
+
     /** 上游订单时间字符串常见格式。 */
     private static final DateTimeFormatter UPSTREAM_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -674,6 +680,29 @@ public class DataApplicationService extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        return ok(shortTtlCacheService.get(
+                orderSummaryCacheKey(timeField, startDate, endDate,
+                        orderId, status, talentId, merchantId,
+                        productId, productName, shopName,
+                        talentName, colonelName, channelName,
+                        colonelActivityId, recruitType,
+                        userId, deptId, dataScope),
+                ORDER_SUMMARY_CACHE_TTL,
+                () -> buildOrderSummary(orderId, status, talentId, merchantId,
+                        productId, productName, shopName,
+                        talentName, colonelName, channelName,
+                        colonelActivityId, recruitType,
+                        startDate, endDate, timeField,
+                        userId, deptId, dataScope)));
+    }
+
+    private OrderSummaryVO buildOrderSummary(
+            String orderId, String status, UUID talentId, String merchantId,
+            String productId, String productName, String shopName,
+            String talentName, String colonelName, String channelName,
+            String colonelActivityId, String recruitType,
+            LocalDate startDate, LocalDate endDate, String timeField,
+            UUID userId, UUID deptId, DataScope dataScope) {
         // 第一步：解析时间范围
         LocalDateTime start = startDate == null
                 ? LocalDate.now().minusDays(30).atStartOfDay()
@@ -781,7 +810,26 @@ public class DataApplicationService extends BaseController {
                     return toOrderSummaryRow(row, dailyCommission.get(date), date);
                 })
                 .toList());
-        return ok(vo);
+        return vo;
+    }
+
+    private String orderSummaryCacheKey(
+            String timeField,
+            LocalDate startDate, LocalDate endDate,
+            String orderId, String status, UUID talentId, String merchantId,
+            String productId, String productName, String shopName,
+            String talentName, String colonelName, String channelName,
+            String colonelActivityId, String recruitType,
+            UUID userId, UUID deptId, DataScope dataScope) {
+        String timeColumn = resolveTimeColumn(timeField);
+        return ORDER_SUMMARY_CACHE_PREFIX + cacheKey(
+                timeColumn,
+                startDate, endDate,
+                orderId, status, talentId, merchantId,
+                productId, productName, shopName,
+                talentName, colonelName, channelName,
+                colonelActivityId, recruitType,
+                userId, deptId, dataScope == null ? "NO_SCOPE" : dataScope);
     }
 
     @Operation(summary = "核心指标", description = "查询数据页首页核心指标与近 7 天趋势，支持双轨（结算/预估）并行返回。")
