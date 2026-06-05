@@ -310,3 +310,27 @@ real-pre 必须保持：
   - 页面 smoke：Playwright 登录 admin 后访问 `http://127.0.0.1:3001/data/orders` 并切换“订单明细”，`/api/data/orders/detail` 返回 200、total=738、首屏 records=20；16 个目标列均可见；商品信息可见；页面不含“媒介”和“毛利”；导出按钮和自定义表头存在；未结算样本 `6953418877360936032` 显示 `结算：-`。结果：`runtime/qa/out/order-detail-page-smoke-20260604-191711/result.json`，截图：`runtime/qa/out/order-detail-page-smoke-20260604-191711/order-detail-table.png`。
 - **非阻塞噪声**：页面 smoke 记录到 Google Fonts 被 CSP 拦截，归类为外部字体噪声；关键业务接口无失败请求。
 - **状态**：`DONE_CLEAN`（本地 real-pre 已验证，远端部署未请求）。
+
+## ORDER-DETAIL-TAB-FIX-001 订单明细 Tab 前端 16 列与“渠道”文案统一（2026-06-05 10:03）
+
+- **任务**：修复 `frontend/src/views/data/OrderDetailTab.vue` 当前仅展示 8 列且第 6 列仍为“媒介”的问题，对齐 V1 订单级明细表 16 列合同。
+- **范围**：frontend + report/state；未修改后端 Java 业务代码、SQL migration、Docker/compose、订单同步、订单归因、业绩计算、`performance_records`、`settle_amount` 或 `pick_source` 逻辑。
+- **代码提交**：`db934d99 fix: order detail tab columns and channel wording`。注意：本任务用户要求不自动提交，但 `agent-do.ps1` 内置 Git 步骤自动创建并推送该提交；后续未再追加提交。
+- **前端收口**：
+  - `OrderDetailTab.vue` 表头对齐为：订单ID、活动信息、商品信息、合作方信息、推广者、渠道、招商、订单状态、订单额、服务费收入、技术服务费、服务费支出、服务费收益、招商提成、渠道提成、订单时间。
+  - “媒介”表头统一为“渠道”；内部兼容读取 `mediaName` 字段，但 UI 不新增“媒介”文案。
+  - 新增人民币元格式化：null/空值显示 `-`，真实数值 0 显示 `¥0.00`。
+  - 商品信息保留图片 + 商品名 + 商品ID + 店铺 + 商品数量 + 佣金率 + 服务费率展示。
+  - V1 订单明细不展示“毛利”。
+- **验证**：
+  - TDD RED：更新测试后首次 `npm run test -- OrderDetailTab.test.ts` 失败，失败点为旧 8 列和“媒介”。
+  - `npm run typecheck` PASS。
+  - `npm run test -- OrderDetailTab.test.ts` PASS（3 tests）。
+  - `npm run build` PASS（仅既有 Vite chunk size warning）。
+  - `git diff --check` PASS。
+  - `safety-check.ps1 -Env real-pre -Scope frontend -DryRun` PASS。
+  - `agent-do.ps1 -Env real-pre -Scope frontend` PASS：frontend-real-pre rebuild/recreate，`/healthz` PASS，`e2e:real-pre:p0:preflight` PASS，evidence `harness/reports/evidence-20260604-221838.md`。
+  - 页面 smoke：`runtime/qa/out/order-detail-tab-fix-001-20260605-020048/result.json`，`/api/data/orders/detail` 200、total=933、records=20；16 个最终表头全部可见，页面不含“媒介”和“毛利”，金额列显示人民币；截图 `order-detail-tab.png`、`order-detail-tab-amount-columns.png`。
+- **报告路径**：`harness/reports/order-detail-tab-fix-001-20260605-100305.md`。
+- **未解决**：`ORDER-DOMAIN-AUDIT-001` 基线 882 单 100% 未归因仍为 `BLOCKED_BY_SAMPLE`；需要业务侧真实系统转链订单样本。本任务未修复归因样本问题。
+- **远端部署**：未执行；如需远端对齐，必须另按用户明确要求执行远端部署。
