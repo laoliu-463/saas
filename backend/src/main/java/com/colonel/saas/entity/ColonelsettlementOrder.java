@@ -126,6 +126,20 @@ public class ColonelsettlementOrder implements Serializable {
     private Long effectiveTechServiceFee;
 
     /**
+     * 预估服务费支出（单位：分）
+     * <p>对应数据库列：{@code estimate_service_fee_expense}，独立外部成本</p>
+     */
+    @TableField("estimate_service_fee_expense")
+    private Long estimateServiceFeeExpense;
+
+    /**
+     * 实际服务费支出（单位：分）
+     * <p>对应数据库列：{@code effective_service_fee_expense}，独立外部成本</p>
+     */
+    @TableField("effective_service_fee_expense")
+    private Long effectiveServiceFeeExpense;
+
+    /**
      * 团长百应 ID
      * <p>对应数据库列：{@code colonel_buyin_id}，第一团长的百应标识，
      * 用于关联团长活动和佣金结算</p>

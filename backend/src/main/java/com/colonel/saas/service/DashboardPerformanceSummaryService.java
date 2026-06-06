@@ -16,7 +16,7 @@ import java.time.LocalDate;
  * <p>聚合策略：
  * <ul>
  *   <li>仅处理新增插入事件（{@code newlyInserted=true}）且订单状态计入业绩的事件</li>
- *   <li>服务费净收益 = 服务费收入 - 技术服务费 - 达人佣金（下限为 0）</li>
+ *   <li>服务费净收益使用结算服务费收入；该收入已按结算订单额 × 服务费率 - 技术服务费形成</li>
  *   <li>使用 PostgreSQL {@code ON CONFLICT ... DO UPDATE} 实现按日期幂等累加</li>
  * </ul>
  *
@@ -42,7 +42,7 @@ public class DashboardPerformanceSummaryService {
      * <p>执行逻辑：
      * <ol>
      *   <li>过滤：非新增插入或不计入业绩的订单状态，直接跳过</li>
-     *   <li>计算服务费净收益：服务费收入 - 技术服务费 - 达人佣金（取下限 0）</li>
+     *   <li>读取结算服务费收入作为服务费净收益（取下限 0）</li>
      *   <li>确定统计日期：取订单创建日期，无创建时间时使用当天</li>
      *   <li>UPSERT 到 dashboard_performance_daily 表：已存在则累加，不存在则插入新行</li>
      * </ol>
@@ -56,11 +56,7 @@ public class DashboardPerformanceSummaryService {
                 || !OrderCommissionPolicy.countsTowardPerformance(event.orderStatus())) {
             return;
         }
-        long serviceFeeNet = Math.max(
-                event.settleColonelCommission()
-                        - event.settleColonelTechServiceFee()
-                        - event.settleSecondColonelCommission(),
-                0L);
+        long serviceFeeNet = Math.max(event.effectiveServiceFee(), 0L);
         LocalDate statDate = event.orderCreateTime() == null
                 ? LocalDate.now()
                 : event.orderCreateTime().toLocalDate();

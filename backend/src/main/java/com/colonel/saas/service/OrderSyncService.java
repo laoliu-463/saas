@@ -48,6 +48,8 @@ public class OrderSyncService {
     private static final String PAY_RECENT_LAST_SYNC_TIME_KEY = "order:sync:pay_recent_last_time";
     /** Redis key 存储 INSTITUTE_RECENT（6468 团长事实源）的上次同步截止时间。 */
     private static final String INSTITUTE_RECENT_LAST_SYNC_TIME_KEY = "order:sync:institute_recent_last_time";
+    /** Redis key 存储 INSTITUTE_HOT_RECENT（6468 近实时热同步）的上次成功截止时间。 */
+    private static final String INSTITUTE_HOT_LAST_SYNC_TIME_KEY = "order:sync:institute_hot_last_time";
     /** 分布式同步锁 TTL，防止同步任务长时间占用。 */
     private static final Duration SYNC_LOCK_TTL = Duration.ofMinutes(10);
     /** PAY_RECENT 近窗口补拉的回扫长度（秒），约 6 小时；用于兜底"刚付款订单 update 延迟"。 */
@@ -78,6 +80,8 @@ public class OrderSyncService {
     static final String SYNC_MODE_SPECIFIC = "SPECIFIC";
     /** 同步模式标签：团长事实源（6468 / buyin.instituteOrderColonel），只写事实/预估轨。 */
     static final String SYNC_MODE_INSTITUTE_RECENT = "INSTITUTE_RECENT";
+    /** 同步模式标签：6468 近实时热同步（小窗口、限页数，与补偿任务分锁）。 */
+    static final String SYNC_MODE_INSTITUTE_HOT_RECENT = "INSTITUTE_HOT_RECENT";
     private static final String API_INSTITUTE_ORDER_COLONEL = "buyin.instituteOrderColonel";
     private static final String API_COLONEL_MULTI_SETTLEMENT_ORDERS = "buyin.colonelMultiSettlementOrders";
 
@@ -119,8 +123,8 @@ public class OrderSyncService {
     private int maxOrders = DEFAULT_MAX_ORDERS;
 
     /** 相对当前时间的滞后（秒），避免查询未稳定的上游数据。 */
-    @Value("${order.sync.lag-seconds:30}")
-    private long lagSeconds = 30L;
+    @Value("${order.sync.lag-seconds:60}")
+    private long lagSeconds = 60L;
 
     /** 增量同步默认窗口长度（秒）。 */
     @Value("${order.sync.window-seconds:600}")
@@ -129,6 +133,27 @@ public class OrderSyncService {
     /** 增量窗口与前次水位重叠（秒），补偿边界订单。 */
     @Value("${order.sync.overlap-seconds:60}")
     private long overlapSeconds = 60L;
+
+    @Value("${order.sync.institute-hot.lag-seconds:30}")
+    private long instituteHotLagSeconds = 30L;
+
+    @Value("${order.sync.institute-hot.window-seconds:300}")
+    private long instituteHotWindowSeconds = 300L;
+
+    @Value("${order.sync.institute-hot.overlap-seconds:120}")
+    private long instituteHotOverlapSeconds = 120L;
+
+    @Value("${order.sync.institute-hot.page-size:100}")
+    private int instituteHotPageSize = DEFAULT_COUNT;
+
+    @Value("${order.sync.institute-hot.max-pages:10}")
+    private int instituteHotMaxPages = 10;
+
+    @Value("${order.sync.institute-hot.max-orders:1000}")
+    private int instituteHotMaxOrders = 1000;
+
+    @Value("${order.sync.institute-hot.lock-ttl-seconds:90}")
+    private long instituteHotLockTtlSeconds = 90L;
 
     public OrderSyncService(
             DouyinOrderGateway douyinOrderGateway,
@@ -208,6 +233,51 @@ public class OrderSyncService {
     }
 
     /**
+     * INSTITUTE_HOT_RECENT（6468）近实时热同步：每分钟小窗口追最新付款单，限页数防堆积。
+     * <p>
+     * 窗口：{@code max(lastHot - overlap, now - window)} ~ {@code now - hotLag}；
+     * 使用独立锁与 Redis 水位，失败不推进 checkpoint。
+     */
+    public SyncResult syncInstituteOrdersHotRecent() {
+        long snapshotAt = Instant.now().getEpochSecond();
+        long endTime = snapshotAt - instituteHotLagSeconds;
+        long startTime = resolveInstituteHotStartTime(endTime);
+        Long latestBefore = persistenceService.findLatestPayTimeEpochSeconds().orElse(null);
+        Duration lockTtl = Duration.ofSeconds(Math.max(30L, instituteHotLockTtlSeconds));
+        if (!jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT, lockTtl)) {
+            log.info("task={} snapshotAt={} startTime={} endTime={} reason=locked",
+                    SYNC_MODE_INSTITUTE_HOT_RECENT, snapshotAt, startTime, endTime);
+            return new SyncResult(startTime, endTime, 0, 0, 0, true);
+        }
+        try {
+            DouyinOrderGateway.OrderListResult firstPage = fetchInstitute(
+                    new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, instituteHotPageSize, "0"));
+            SyncResult result = syncItemsWithLimits(
+                    firstPage,
+                    startTime,
+                    endTime,
+                    true,
+                    instituteHotPageSize,
+                    SYNC_MODE_INSTITUTE_HOT_RECENT,
+                    SyncSource.INSTITUTE,
+                    cursor -> fetchInstitute(new DouyinOrderGateway.DouyinOrderQueryRequest(
+                            startTime, endTime, instituteHotPageSize, cursor)),
+                    instituteHotMaxPages,
+                    instituteHotMaxOrders);
+            persistInstituteHotLastSyncTime(endTime);
+            Long latestAfter = persistenceService.findLatestPayTimeEpochSeconds().orElse(null);
+            logInstituteHotFreshness(snapshotAt, startTime, endTime, result, latestBefore, latestAfter);
+            if (STOP_REASON_MAX_PAGES.equals(result.stopReason())) {
+                log.warn("task={} stopReason=MAX_PAGES window=[{}, {}] uniqueOrders={} — defer to INSTITUTE_RECENT compensation",
+                        SYNC_MODE_INSTITUTE_HOT_RECENT, startTime, endTime, result.uniqueOrders());
+            }
+            return result;
+        } finally {
+            jobLockService.release(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT);
+        }
+    }
+
+    /**
      * INSTITUTE_RECENT（6468）增量同步：按 institute 独立水位滚动近窗，避免每轮全量 24h 扫描。
      */
     public SyncResult syncInstituteOrdersRecentWindow() {
@@ -249,6 +319,42 @@ public class OrderSyncService {
         return startTime;
     }
 
+    /**
+     * 热同步起点：有 hot 水位时 {@code lastHot - overlap}，否则 {@code now - window}。
+     */
+    long resolveInstituteHotStartTime(long endTime) {
+        long windowStart = Math.max(0L, endTime - instituteHotWindowSeconds);
+        long lastHot = readInstituteHotLastSyncTime();
+        if (lastHot <= 0L) {
+            return windowStart;
+        }
+        return Math.max(windowStart, lastHot - instituteHotOverlapSeconds);
+    }
+
+    private void logInstituteHotFreshness(
+            long snapshotAt,
+            long startTime,
+            long endTime,
+            SyncResult result,
+            Long latestBefore,
+            Long latestAfter) {
+        Long freshnessLag = latestAfter == null ? null : Math.max(0L, snapshotAt - latestAfter);
+        log.info("task={} snapshotAt={} startTime={} endTime={} pagesFetched={} uniqueOrders={} inserted={} updated={} failed={} latestPayTimeBefore={} latestPayTimeAfter={} freshnessLagSeconds={} stopReason={}",
+                SYNC_MODE_INSTITUTE_HOT_RECENT,
+                snapshotAt,
+                startTime,
+                endTime,
+                result.pages(),
+                result.uniqueOrders(),
+                result.created(),
+                result.updated(),
+                result.failed(),
+                latestBefore,
+                latestAfter,
+                freshnessLag,
+                result.stopReason());
+    }
+
     private SyncResult syncInstituteRange(long startTime, long endTime, String mode) {
         if (!jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC_INSTITUTE, SYNC_LOCK_TTL)) {
             log.info("ORDER_SYNC_INSTITUTE api={} mode={} reason=locked",
@@ -258,10 +364,17 @@ public class OrderSyncService {
         try {
             DouyinOrderGateway.OrderListResult firstPage = fetchInstitute(
                     new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, DEFAULT_COUNT, "0"));
-            SyncResult result = syncItems(firstPage, startTime, endTime, true, DEFAULT_COUNT,
+            SyncResult result = syncItemsWithLimits(
+                    firstPage,
+                    startTime,
+                    endTime,
+                    true,
+                    DEFAULT_COUNT,
                     mode,
                     SyncSource.INSTITUTE,
-                    cursor -> fetchInstitute(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, DEFAULT_COUNT, cursor)));
+                    cursor -> fetchInstitute(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, DEFAULT_COUNT, cursor)),
+                    maxPages,
+                    maxOrders);
             persistInstituteLastSyncTime(endTime);
             return result;
         } finally {
@@ -295,6 +408,33 @@ public class OrderSyncService {
         } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
             if (testEnabled()) {
                 log.warn("Redis unavailable in test mode when persisting institute last sync time, skip: {}", ex.getMessage());
+                return;
+            }
+            throw ex;
+        }
+    }
+
+    /** 读取 INSTITUTE_HOT 独立 Redis key 的上次成功截止时间。 */
+    long readInstituteHotLastSyncTime() {
+        try {
+            Object raw = redisTemplate.opsForValue().get(INSTITUTE_HOT_LAST_SYNC_TIME_KEY);
+            return asLong(raw, 0L);
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled()) {
+                log.warn("Redis unavailable in test mode when reading institute hot last sync time, fallback to 0: {}", ex.getMessage());
+                return 0L;
+            }
+            throw ex;
+        }
+    }
+
+    /** 热同步成功完成后写入 INSTITUTE_HOT 水位；失败路径不得调用。 */
+    private void persistInstituteHotLastSyncTime(long endTime) {
+        try {
+            redisTemplate.opsForValue().set(INSTITUTE_HOT_LAST_SYNC_TIME_KEY, String.valueOf(endTime));
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled()) {
+                log.warn("Redis unavailable in test mode when persisting institute hot last sync time, skip: {}", ex.getMessage());
                 return;
             }
             throw ex;
@@ -432,7 +572,7 @@ public class OrderSyncService {
      * mode 取值：{@link #SYNC_MODE_INCREMENTAL} / {@link #SYNC_MODE_PAY_RECENT} / {@link #SYNC_MODE_SPECIFIC}。
      */
     private SyncResult syncRangeWithMode(long startTime, long endTime, int count, String mode) {
-        return syncItems(
+        return syncItemsWithLimits(
                 fetchSettlement(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, "0")),
                 startTime,
                 endTime,
@@ -440,14 +580,15 @@ public class OrderSyncService {
                 count,
                 mode,
                 SyncSource.SETTLEMENT,
-                cursor -> fetchSettlement(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, cursor))
-        );
+                cursor -> fetchSettlement(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, cursor)),
+                maxPages,
+                maxOrders);
     }
 
     /** 按订单号精确同步：调用网关精确查询接口，不翻页。 */
     private SyncResult syncSpecificOrders(List<String> orderIds) {
         long now = Instant.now().getEpochSecond();
-        return syncItems(
+        return syncItemsWithLimits(
                 fetchSettlementByOrderIds(orderIds),
                 now,
                 now,
@@ -455,8 +596,9 @@ public class OrderSyncService {
                 orderIds.size(),
                 SYNC_MODE_SPECIFIC,
                 SyncSource.SETTLEMENT,
-                cursor -> new DouyinOrderGateway.OrderListResult(List.of(), false, null, Map.of())
-        );
+                cursor -> new DouyinOrderGateway.OrderListResult(List.of(), false, null, Map.of()),
+                maxPages,
+                maxOrders);
     }
 
     /**
@@ -477,10 +619,25 @@ public class OrderSyncService {
             String mode,
             SyncSource source,
             Function<String, DouyinOrderGateway.OrderListResult> fetchNextPage) {
+        return syncItemsWithLimits(firstPage, startTime, endTime, continuePaging, count, mode, source, fetchNextPage,
+                maxPages, maxOrders);
+    }
+
+    private SyncResult syncItemsWithLimits(
+            DouyinOrderGateway.OrderListResult firstPage,
+            long startTime,
+            long endTime,
+            boolean continuePaging,
+            int count,
+            String mode,
+            SyncSource source,
+            Function<String, DouyinOrderGateway.OrderListResult> fetchNextPage,
+            int pageLimit,
+            int orderLimit) {
         String logName = source == SyncSource.INSTITUTE ? "ORDER_SYNC_INSTITUTE" : "ORDER_SYNC_SETTLEMENT";
         String api = source == SyncSource.INSTITUTE ? API_INSTITUTE_ORDER_COLONEL : API_COLONEL_MULTI_SETTLEMENT_ORDERS;
-        int maxPageLimit = Math.max(1, maxPages);
-        int maxOrderLimit = Math.max(1, maxOrders);
+        int maxPageLimit = Math.max(1, pageLimit);
+        int maxOrderLimit = Math.max(1, orderLimit);
         String cursor = "0";
         int totalFetched = 0;
         int created = 0;

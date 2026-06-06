@@ -581,19 +581,28 @@ public class DataApplicationService extends BaseController {
         }
 
         // 服务费收益：业绩记录里维护的最终服务利润（扣除招商/渠道提成前）
-        // 服务费支出 = 服务费收入 - 技术服务费 - 服务费收益
+        // 预估服务费支出 = 预估服务费收入 - 技术服务费 - 服务费收益
+        // 结算服务费支出 = 结算服务费收入 - 服务费收益
         // 服务费支出是平台侧实际服务费（非招商+渠道提成）
         if (perf != null) {
             vo.setEstimateServiceProfit(centToYuan(perf.getEstimateServiceProfit()));
             vo.setEffectiveServiceProfit(safeCentToYuan(perf.getEffectiveServiceProfit()));
-            long estimateServiceFeeCent = order.getEstimateServiceFee() == null ? 0L : order.getEstimateServiceFee();
-            long estimateTechFeeCent = order.getEstimateTechServiceFee() == null ? 0L : order.getEstimateTechServiceFee();
-            long estimateProfitCent = perf.getEstimateServiceProfit() == null ? 0L : perf.getEstimateServiceProfit();
-            long effectiveServiceFeeCent = order.getEffectiveServiceFee() == null ? 0L : order.getEffectiveServiceFee();
-            long effectiveTechFeeCent = order.getEffectiveTechServiceFee() == null ? 0L : order.getEffectiveTechServiceFee();
-            long effectiveProfitCent = perf.getEffectiveServiceProfit() == null ? 0L : perf.getEffectiveServiceProfit();
-            vo.setEstimateServiceFeeExpense(centToYuan(Math.max(estimateServiceFeeCent - estimateTechFeeCent - estimateProfitCent, 0L)));
-            vo.setEffectiveServiceFeeExpense(centToYuan(Math.max(effectiveServiceFeeCent - effectiveTechFeeCent - effectiveProfitCent, 0L)));
+            // 服务费支出：优先从业绩记录读取独立字段，回退到反推公式
+            long estExpense = perf.getEstimateServiceFeeExpense() != null ? perf.getEstimateServiceFeeExpense() : 0L;
+            long effExpense = perf.getEffectiveServiceFeeExpense() != null ? perf.getEffectiveServiceFeeExpense() : 0L;
+            if (estExpense <= 0) {
+                long estIncome = order.getEstimateServiceFee() == null ? 0L : order.getEstimateServiceFee();
+                long estTech = order.getEstimateTechServiceFee() == null ? 0L : order.getEstimateTechServiceFee();
+                long estProfit = perf.getEstimateServiceProfit() == null ? 0L : perf.getEstimateServiceProfit();
+                estExpense = Math.max(estIncome - estTech - estProfit, 0L);
+            }
+            if (effExpense <= 0) {
+                long effIncome = order.getEffectiveServiceFee() == null ? 0L : order.getEffectiveServiceFee();
+                long effProfit = perf.getEffectiveServiceProfit() == null ? 0L : perf.getEffectiveServiceProfit();
+                effExpense = Math.max(effIncome - effProfit, 0L);
+            }
+            vo.setEstimateServiceFeeExpense(centToYuan(estExpense));
+            vo.setEffectiveServiceFeeExpense(centToYuan(effExpense));
         } else {
             vo.setEstimateServiceProfit(null);
             vo.setEffectiveServiceProfit(null);
@@ -834,14 +843,15 @@ public class DataApplicationService extends BaseController {
                 ? "pr.effective_service_profit" : "pr.estimate_service_profit";
         Long totalServiceProfitCent = queryServiceProfitCent(profitCol, timeColumn, start, end);
         Map<String, Long> dailyServiceProfitCent = queryDailyServiceProfitCent(profitCol, timeColumn, start, end);
+        boolean estimateTrack = !"settle_time".equals(timeColumn);
 
         OrderSummaryVO vo = new OrderSummaryVO();
-        vo.setTotal(toOrderSummaryRow(firstRow(totalRows), totalCommission, null, totalServiceProfitCent));
+        vo.setTotal(toOrderSummaryRow(firstRow(totalRows), totalCommission, null, totalServiceProfitCent, estimateTrack));
         vo.setRecords(dailyRows.stream()
                 .map(row -> {
                     String date = asString(row, "stat_date");
                     long dayProfit = dailyServiceProfitCent.getOrDefault(date, 0L);
-                    return toOrderSummaryRow(row, dailyCommission.get(date), date, dayProfit);
+                    return toOrderSummaryRow(row, dailyCommission.get(date), date, dayProfit, estimateTrack);
                 })
                 .toList());
         return vo;
@@ -929,11 +939,18 @@ public class DataApplicationService extends BaseController {
             metrics.setServiceFeeIncome(centToYuan(aggregate.serviceFeeIncomeCent()));
             metrics.setTechServiceFee(centToYuan(aggregate.techServiceFeeCent()));
             metrics.setTalentCommission(centToYuan(aggregate.talentCommissionCent()));
-            // 服务费支出 = 服务费收入 - 技术服务费 - 服务费收益（平台侧实际服务费）
-            long serviceFeeExpenseCent = Math.max(
-                    aggregate.serviceFeeIncomeCent() - aggregate.techServiceFeeCent() - aggregate.serviceProfitCent(), 0L);
-            metrics.setServiceFeeExpense(centToYuan(serviceFeeExpenseCent));
+            // 服务费支出：优先用 DB 独立字段，为 0 时回退反推公式
+            long expenseCent = aggregate.serviceFeeExpenseCent();
+            if (expenseCent <= 0) {
+                expenseCent = serviceFeeExpenseCent(
+                        aggregate.serviceFeeIncomeCent(),
+                        aggregate.techServiceFeeCent(),
+                        aggregate.serviceProfitCent(),
+                        isEstimateTrack(timeField));
+            }
+            metrics.setServiceFeeExpense(centToYuan(expenseCent));
             metrics.setServiceFee(centToYuan(aggregate.serviceProfitCent()));
+            metrics.setServiceFeeProfit(centToYuan(aggregate.serviceProfitCent()));
             metrics.setBizCommission(centToYuan(aggregate.recruiterCommissionCent()));
             metrics.setChannelCommission(centToYuan(aggregate.channelCommissionCent()));
             metrics.setCommission(centToYuan(aggregate.recruiterCommissionCent() + aggregate.channelCommissionCent()));
@@ -963,14 +980,19 @@ public class DataApplicationService extends BaseController {
                 .ge(timeColumn, todayStart)
                 .lt(timeColumn, tomorrowStart)
                 .groupBy("colonel_activity_id");
+        List<Map<String, Object>> commissionRows = orderMapper.selectMaps(commissionWrapper);
+        long displayTechServiceFeeCent = commissionRows.stream()
+                .mapToLong(row -> asLong(row, "tech_service_fee"))
+                .sum();
+        boolean estimateTrack = isEstimateTrack(timeField);
         CommissionService.CommissionSummary commissionSummary = commissionService.calculateByActivityBuckets(
-                orderMapper.selectMaps(commissionWrapper).stream()
+                commissionRows.stream()
                         .map(row -> new CommissionService.ActivityCommissionBucket(
                                 asString(row, "activity_id"),
                                 null,
                                 null,
                                 asLong(row, "service_fee_income"),
-                                asLong(row, "tech_service_fee"),
+                                estimateTrack ? asLong(row, "tech_service_fee") : 0L,
                                 asLong(row, "talent_commission")
                         ))
                         .toList()
@@ -1006,9 +1028,10 @@ public class DataApplicationService extends BaseController {
         metrics.setTotalOrders(todayOrders);
         metrics.setTotalAmount(centToYuan(todayGmvCent));
         metrics.setServiceFeeIncome(centToYuan(commissionSummary.serviceFeeIncome()));
-        metrics.setTechServiceFee(centToYuan(commissionSummary.techServiceFee()));
+        metrics.setTechServiceFee(centToYuan(displayTechServiceFeeCent));
         metrics.setTalentCommission(centToYuan(commissionSummary.talentCommission()));
         metrics.setServiceFee(centToYuan(commissionSummary.serviceFeeNet()));
+        metrics.setServiceFeeProfit(centToYuan(commissionSummary.serviceFeeNet()));
         metrics.setBizCommission(centToYuan(commissionSummary.bizCommission()));
         metrics.setChannelCommission(centToYuan(commissionSummary.channelCommission()));
         metrics.setCommission(centToYuan(commissionSummary.bizCommission() + commissionSummary.channelCommission()));
@@ -1402,6 +1425,19 @@ public class DataApplicationService extends BaseController {
         };
     }
 
+    private boolean isEstimateTrack(String timeField) {
+        return "create_time".equals(resolveTimeColumn(timeField));
+    }
+
+    private long serviceFeeExpenseCent(
+            long serviceFeeIncome,
+            long techServiceFee,
+            long serviceProfit,
+            boolean estimateTrack) {
+        long techDeduction = estimateTrack ? techServiceFee : 0L;
+        return Math.max(serviceFeeIncome - techDeduction - serviceProfit, 0L);
+    }
+
     private String resolveAliasedOrderTimeColumn(String timeField) {
         return "co." + resolveTimeColumn(timeField);
     }
@@ -1639,6 +1675,7 @@ public class DataApplicationService extends BaseController {
         selects.add("COALESCE(SUM(actual_amount), 0) AS actual_amount_cent");
         selects.add("COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income_cent");
         selects.add("COALESCE(SUM(" + columns.techFeeColumn() + "), 0) AS tech_service_fee_cent");
+        selects.add("COALESCE(SUM(" + columns.expenseColumn() + "), 0) AS service_fee_expense_cent");
         selects.add("COALESCE(SUM(settle_second_colonel_commission), 0) AS talent_commission_cent");
         wrapper.select(selects.toArray(String[]::new));
         if (daily) {
@@ -1693,7 +1730,7 @@ public class DataApplicationService extends BaseController {
                 dataScope);
         List<CommissionService.ActivityCommissionBucket> buckets = rows.stream()
                 .filter(row -> !daily || date == null || date.equals(asString(row, "stat_date")))
-                .map(this::toActivityCommissionBucket)
+                .map(row -> toActivityCommissionBucket(row, isEstimateTrack(timeField)))
                 .toList();
         return calculateCommissionSummary(buckets);
     }
@@ -1743,7 +1780,7 @@ public class DataApplicationService extends BaseController {
         for (Map<String, Object> row : rows) {
             String date = asString(row, "stat_date");
             grouped.computeIfAbsent(date, ignored -> new ArrayList<>())
-                    .add(toActivityCommissionBucket(row));
+                    .add(toActivityCommissionBucket(row, isEstimateTrack(timeField)));
         }
         Map<String, CommissionService.CommissionSummary> result = new LinkedHashMap<>();
         grouped.forEach((key, buckets) -> result.put(key, calculateCommissionSummary(buckets)));
@@ -2018,20 +2055,23 @@ public class DataApplicationService extends BaseController {
                     timeColumn,
                     "settle_amount",
                     "effective_service_fee",
-                    "effective_tech_service_fee");
+                    "effective_tech_service_fee",
+                    "effective_service_fee_expense");
         }
         return new OrderTrackColumns(
                 timeColumn,
                 "order_amount",
                 "estimate_service_fee",
-                "estimate_tech_service_fee");
+                "estimate_tech_service_fee",
+                "estimate_service_fee_expense");
     }
 
     private OrderSummaryRowVO toOrderSummaryRow(
             Map<String, Object> row,
             CommissionService.CommissionSummary commissionSummary,
             String date,
-            long serviceProfitCent) {
+            long serviceProfitCent,
+            boolean estimateTrack) {
         CommissionService.CommissionSummary summary = commissionSummary == null
                 ? zeroCommissionSummary()
                 : commissionSummary;
@@ -2050,23 +2090,23 @@ public class DataApplicationService extends BaseController {
         vo.setOrderAverageServiceFeeRate(percent(serviceFeeIncome, orderAmount));
         vo.setServiceFeeIncome(centToYuan(serviceFeeIncome));
         vo.setTechServiceFee(centToYuan(techServiceFee));
-        // 正确公式：服务费支出 = 服务费收入 - 技术服务费 - 服务费收益
-        // 服务费支出是平台侧实际服务费（非招商+渠道提成）
-        long serviceFeeExpenseCent = Math.max(serviceFeeIncome - techServiceFee - serviceProfitCent, 0L);
+        // 服务费支出：优先用 DB 独立字段，为 0 时回退反推公式
+        long dbExpense = asLong(row, "service_fee_expense_cent");
+        long serviceFeeExpenseCent = dbExpense > 0 ? dbExpense : serviceFeeExpenseCent(serviceFeeIncome, techServiceFee, serviceProfitCent, estimateTrack);
         vo.setServiceFeeExpense(centToYuan(serviceFeeExpenseCent));
         vo.setServiceFeeProfit(centToYuan(serviceProfitCent));
         vo.setGrossProfit(centToYuan(Math.max(serviceProfitCent - summary.bizCommission() - summary.channelCommission(), 0L)));
         return vo;
     }
 
-    private CommissionService.ActivityCommissionBucket toActivityCommissionBucket(Map<String, Object> row) {
+    private CommissionService.ActivityCommissionBucket toActivityCommissionBucket(Map<String, Object> row, boolean estimateTrack) {
         String productId = asString(row, "product_id");
         return new CommissionService.ActivityCommissionBucket(
                 asString(row, "activity_id"),
                 StringUtils.hasText(productId) ? productId : null,
                 asUuid(row, "recruiter_user_id"),
                 asLong(row, "service_fee_income"),
-                asLong(row, "tech_service_fee"),
+                estimateTrack ? asLong(row, "tech_service_fee") : 0L,
                 asLong(row, "talent_commission"));
     }
 
@@ -2078,6 +2118,7 @@ public class DataApplicationService extends BaseController {
 
     private CommissionService.CommissionSummary zeroCommissionSummary() {
         return new CommissionService.CommissionSummary(
+                0L,
                 0L,
                 0L,
                 0L,
@@ -2281,7 +2322,8 @@ public class DataApplicationService extends BaseController {
             String timeColumn,
             String amountColumn,
             String serviceFeeColumn,
-            String techFeeColumn) {
+            String techFeeColumn,
+            String expenseColumn) {
     }
 
 }

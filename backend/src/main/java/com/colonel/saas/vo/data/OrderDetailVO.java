@@ -109,18 +109,18 @@ public class OrderDetailVO {
     /** 生效技术服务费（元） */
     private BigDecimal effectiveTechServiceFee;
 
-    // ── 金额：服务费支出 = 招商提成 + 渠道提成（元） ──────────────────────────────
+    // ── 金额：服务费支出（元） ──────────────────────────────
 
-    /** 预估服务费支出（元）= estimateRecruiterCommission + estimateChannelCommission */
+    /** 预估服务费支出（元）= estimateServiceFee - estimateTechServiceFee - estimateServiceProfit */
     private BigDecimal estimateServiceFeeExpense;
-    /** 生效服务费支出（元）= effectiveRecruiterCommission + effectiveChannelCommission */
+    /** 生效服务费支出（元）= effectiveServiceFee - effectiveServiceProfit */
     private BigDecimal effectiveServiceFeeExpense;
 
-    // ── 金额：服务费收益 = 服务费收入 - 技术服务费（元） ──────────────────────────────
+    // ── 金额：服务费收益（元） ──────────────────────────────
 
-    /** 预估服务费收益（元）= estimateServiceFee - estimateTechServiceFee */
+    /** 预估服务费收益（元） */
     private BigDecimal estimateServiceProfit;
-    /** 生效服务费收益（元）= effectiveServiceFee - effectiveTechServiceFee */
+    /** 生效服务费收益（元） */
     private BigDecimal effectiveServiceProfit;
 
     // ── 金额：招商提成（元） ──────────────────────────────

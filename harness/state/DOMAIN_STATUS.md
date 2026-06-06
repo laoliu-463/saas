@@ -69,18 +69,18 @@
 
 ## 业绩域
 
-- 当前状态：最终归属、提成、冲正和汇总主链路已具备；订单明细 BFF 已按 orderId 批量读取 `performance_records` 补全招商提成、渠道提成、服务费支出和服务费收益展示字段；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已验证新订单事件在提交后发布，业绩 Listener 正常走 `upsertFromOrder`，重复事件仍走 upsert 幂等路径。
+- 当前状态：最终归属、提成、冲正和汇总主链路已具备；订单明细 BFF 已按 orderId 批量读取 `performance_records` 补全招商提成、渠道提成、服务费支出和服务费收益展示字段；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已验证新订单事件在提交后发布，业绩 Listener 正常走 `upsertFromOrder`，重复事件仍走 upsert 幂等路径；SERVICE-FEE-INCOME-FORMULA-CODE-001 已按 2026-06-06 用户口径补齐服务费收入公式解析、结算轨不重复扣技术服务费和后端单元验证。
 - 已完成能力：`performance_records`、最终归属、提成、冲正、汇总刷新。
-- 待优化能力：输入追溯、重复消费幂等、冲正证据、权限数据范围和 dashboard 对账补齐；继续修复 DASH-MONEY-P0-001 结算轨污染问题，避免业绩表历史数据影响看板结算口径；执行 `ORDER-PERFORMANCE-BACKFILL-001` 将当前本地 15 条历史缺口补齐并重新 anti-join。
+- 待优化能力：输入追溯、重复消费幂等、冲正证据、权限数据范围和 dashboard 对账补齐；继续修复 DASH-MONEY-P0-001 结算轨污染问题，避免业绩表历史数据影响看板结算口径；执行 `ORDER-PERFORMANCE-BACKFILL-001` 将当前本地 15 条历史缺口补齐并重新 anti-join；补充 real-pre API / SQL / 页面级服务费收入与收益双轨验收。
 - DDD 优化下一步：先执行 `ORDER-PERFORMANCE-BACKFILL-001`；之后进入 Y-1 盘点业绩域代码、接口、表、任务和测试。
 - 标记：P0。
 
 ## 分析模块
 
-- 当前状态：dashboard、报表和只读汇总主链路已具备；数据平台订单页已保留汇总模块，并新增/收口订单明细 Tab 与 16 列订单级明细导出；ORDER-DETAIL-TAB-FIX-001 已补齐订单明细 Tab 前端 16 列展示、人民币金额格式与“渠道”文案统一。
+- 当前状态：dashboard、报表和只读汇总主链路已具备；数据平台订单页已保留汇总模块，并新增/收口订单明细 Tab 与 16 列订单级明细导出；ORDER-DETAIL-TAB-FIX-001 已补齐订单明细 Tab 前端 16 列展示、人民币金额格式与“渠道”文案统一；SERVICE-FEE-INCOME-FORMULA-CODE-001 已更新经营指标矩阵服务费收入 / 收益双轨公式口径与后端展示层单测。
 - 已完成能力：看板汇总、报表查询、导出能力。
-- 待优化能力：只读边界审查、dashboard API/SQL 对账、admin/group/self 差异验证；Dashboard summary 双轨聚合和历史结算轨污染仍需专项处理。
-- DDD 优化下一步：A-1 盘点分析模块代码、接口、表和测试。
+- 待优化能力：只读边界审查、dashboard API/SQL 对账、admin/group/self 差异验证；Dashboard summary 双轨聚合和历史结算轨污染仍需专项处理；补充 dashboard / 前端页面级服务费收入与收益双轨验收。
+- DDD 优化下一步：进入 A-1 盘点分析模块代码、接口、表和测试。
 - 标记：P0。
 
 ## 商品域

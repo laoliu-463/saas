@@ -31,6 +31,7 @@ public class PerformanceMetricsQueryService {
             long orderAmountCent,
             long serviceFeeIncomeCent,
             long techServiceFeeCent,
+            long serviceFeeExpenseCent,
             long talentCommissionCent,
             long serviceProfitCent,
             long recruiterCommissionCent,
@@ -100,6 +101,7 @@ public class PerformanceMetricsQueryService {
         String amountColumn = estimateTrack ? "pr.pay_amount" : "pr.settle_amount";
         String serviceFeeColumn = estimateTrack ? "pr.estimate_service_fee" : "pr.effective_service_fee";
         String techFeeColumn = estimateTrack ? "pr.estimate_tech_service_fee" : "pr.effective_tech_service_fee";
+        String expenseColumn = estimateTrack ? "pr.estimate_service_fee_expense" : "pr.effective_service_fee_expense";
         String profitColumn = estimateTrack ? "pr.estimate_service_profit" : "pr.effective_service_profit";
         String recruiterColumn = estimateTrack ? "pr.estimate_recruiter_commission" : "pr.effective_recruiter_commission";
         String channelColumn = estimateTrack ? "pr.estimate_channel_commission" : "pr.effective_channel_commission";
@@ -111,6 +113,7 @@ public class PerformanceMetricsQueryService {
                     COALESCE(SUM(%s), 0) AS order_amount_cent,
                     COALESCE(SUM(%s), 0) AS service_fee_income_cent,
                     COALESCE(SUM(%s), 0) AS tech_service_fee_cent,
+                    COALESCE(SUM(%s), 0) AS service_fee_expense_cent,
                     COALESCE(SUM(co.settle_second_colonel_commission), 0) AS talent_commission_cent,
                     COALESCE(SUM(%s), 0) AS service_profit_cent,
                     COALESCE(SUM(%s), 0) AS recruiter_commission_cent,
@@ -120,6 +123,7 @@ public class PerformanceMetricsQueryService {
                 amountColumn,
                 serviceFeeColumn,
                 techFeeColumn,
+                expenseColumn,
                 profitColumn,
                 recruiterColumn,
                 channelColumn,
@@ -131,6 +135,7 @@ public class PerformanceMetricsQueryService {
                 asLong(row.get("order_amount_cent")),
                 asLong(row.get("service_fee_income_cent")),
                 asLong(row.get("tech_service_fee_cent")),
+                asLong(row.get("service_fee_expense_cent")),
                 asLong(row.get("talent_commission_cent")),
                 asLong(row.get("service_profit_cent")),
                 asLong(row.get("recruiter_commission_cent")),

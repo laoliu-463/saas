@@ -31,6 +31,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.lang.reflect.Method;
@@ -43,6 +44,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -68,6 +70,8 @@ class DataControllerTest {
     private PerformanceRecordMapper performanceRecordMapper;
     @Mock
     private SysUserMapper sysUserMapper;
+    @Mock
+    private JdbcTemplate jdbcTemplate;
 
     private DataController dataController;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -87,12 +91,19 @@ class DataControllerTest {
                 new ShortTtlCacheService(),
                 performanceMetricsQueryService,
                 performanceRecordMapper,
-                sysUserMapper
+                sysUserMapper,
+                jdbcTemplate
         );
         org.mockito.Mockito.lenient().when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(false);
         org.mockito.Mockito.lenient()
                 .when(performanceMetricsQueryService.resolveAmountTrackLabel(org.mockito.ArgumentMatchers.any()))
                 .thenReturn("estimate");
+        org.mockito.Mockito.lenient()
+                .when(jdbcTemplate.queryForObject(any(String.class), eq(Long.class), any(Object[].class)))
+                .thenReturn(0L);
+        org.mockito.Mockito.lenient()
+                .when(jdbcTemplate.queryForList(any(String.class), any(Object[].class)))
+                .thenReturn(List.of());
     }
 
     @Test
@@ -203,7 +214,7 @@ class DataControllerTest {
         when(performanceMetricsQueryService.resolveAmountTrackLabel("createTime")).thenReturn("estimate");
         when(performanceMetricsQueryService.aggregateRange(any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PerformanceMetricsQueryService.PerformanceAggregate(
-                        3L, 9000L, 900L, 90L, 50L, 810L, 81L, 162L, 567L));
+                        3L, 9000L, 900L, 90L, 0L, 50L, 810L, 81L, 162L, 567L));
         when(performanceMetricsQueryService.trendByDay(any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(new PerformanceMetricsQueryService.TrendPoint(LocalDate.now().toString(), 3L, 9000L)));
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
@@ -249,7 +260,7 @@ class DataControllerTest {
                         "order_amount_cent", 3000L
                 )));
         CommissionService.CommissionSummary summary =
-                new CommissionService.CommissionSummary(100000L, 20000L, 30000L,
+                new CommissionService.CommissionSummary(100000L, 20000L, 0L, 30000L,
                         50000L, 25000L, 12500L, 12500L,
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25));
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(summary);
@@ -290,7 +301,7 @@ class DataControllerTest {
                 .thenReturn(List.of(Map.of("order_count", 0L)))
                 .thenReturn(List.of());
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
-                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.15), java.math.BigDecimal.valueOf(0.15)));
 
         var first = dataController.getMetrics(firstUser, UUID.randomUUID(), DataScope.ALL);
@@ -310,7 +321,7 @@ class DataControllerTest {
                 .thenReturn(List.of())
                 .thenReturn(List.of());
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
-                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
 
         var response = dataController.getMetrics(userId, UUID.randomUUID(), DataScope.PERSONAL);
@@ -327,7 +338,7 @@ class DataControllerTest {
                 .thenReturn(List.of())
                 .thenReturn(List.of());
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
-                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
 
         var response = dataController.getMetrics(userId, deptId, DataScope.DEPT);
@@ -360,7 +371,7 @@ class DataControllerTest {
                 .thenReturn(List.of())
                 .thenReturn(List.of());
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
-                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
                         java.math.BigDecimal.valueOf(0.15), java.math.BigDecimal.valueOf(0.15)));
 
         var response = dataController.getMetrics(UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
@@ -399,7 +410,7 @@ class DataControllerTest {
                         "ORDER_AMOUNT_CENT", 100L
                 )));
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
-                new CommissionService.CommissionSummary(0L, 100L, 200L, 300L, 150L, 75L, 75L,
+                new CommissionService.CommissionSummary(0L, 100L, 0L, 200L, 300L, 150L, 75L, 75L,
                         java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
 
         var response = dataController.getMetrics(UUID.randomUUID(), null, null);
@@ -692,8 +703,12 @@ class DataControllerTest {
                         "talent_commission", 0L
                 )));
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
-                new CommissionService.CommissionSummary(500L, 100L, 0L, 400L, 40L, 60L, 300L,
+                new CommissionService.CommissionSummary(500L, 100L, 0L, 0L, 400L, 40L, 60L, 300L,
                         java.math.BigDecimal.valueOf(0.1), java.math.BigDecimal.valueOf(0.15)));
+        when(jdbcTemplate.queryForObject(any(String.class), eq(Long.class), any(Object[].class))).thenReturn(400L);
+        when(jdbcTemplate.queryForList(any(String.class), any(Object[].class))).thenReturn(List.of(
+                Map.of("stat_date", java.sql.Date.valueOf("2026-05-25"), "profit", 400L)
+        ));
 
         var response = dataController.getOrderSummary(
                 "ORDER-1",
@@ -721,7 +736,7 @@ class DataControllerTest {
         assertThat(response.getData().getTotal().getOrderAmount()).isEqualByComparingTo("100.00");
         assertThat(response.getData().getTotal().getProductAverageServiceFeeRate()).isEqualByComparingTo("6.25");
         assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("5.00");
-        assertThat(response.getData().getTotal().getServiceFeeExpense()).isEqualByComparingTo("1.00");
+        assertThat(response.getData().getTotal().getServiceFeeExpense()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getTotal().getServiceFeeProfit()).isEqualByComparingTo("4.00");
         assertThat(response.getData().getTotal().getGrossProfit()).isEqualByComparingTo("3.00");
         assertThat(response.getData().getRecords()).hasSize(1);
@@ -836,7 +851,7 @@ class DataControllerTest {
                 )))
                 .thenReturn(List.of());
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
-                new CommissionService.CommissionSummary(450L, 50L, 0L, 400L, 40L, 40L, 320L,
+                new CommissionService.CommissionSummary(450L, 50L, 0L, 0L, 400L, 40L, 40L, 320L,
                         java.math.BigDecimal.valueOf(0.1), java.math.BigDecimal.valueOf(0.1)));
 
         var response = dataController.getOrderSummary(
@@ -1271,8 +1286,8 @@ class DataControllerTest {
         perf.setEffectiveRecruiterCommission(380L);
         perf.setEstimateChannelCommission(300L);
         perf.setEffectiveChannelCommission(285L);
-        perf.setEstimateServiceProfit(999L);
-        perf.setEffectiveServiceProfit(888L);
+        perf.setEstimateServiceProfit(500L);
+        perf.setEffectiveServiceProfit(470L);
         perf.setEstimateGrossProfit(520L);
         perf.setEffectiveGrossProfit(493L);
         when(performanceRecordMapper.findByOrderIds(List.of("ORD001"))).thenReturn(List.of(perf));
@@ -1310,11 +1325,11 @@ class DataControllerTest {
         assertThat(vo.getDeliveryTime()).isEqualTo(LocalDateTime.of(2026, 6, 5, 10, 0));
         assertThat(vo.getExpireTime()).isEqualTo(LocalDateTime.of(2026, 7, 4, 0, 0));
 
-        // 服务费支出 = 招商提成 + 渠道提成
+        // 预估服务费支出 = 预估收入 - 技术服务费 - 服务费收益；结算服务费支出 = 结算收入 - 服务费收益
         assertThat(vo.getEstimateServiceFeeExpense()).isNotNull();
-        assertThat(vo.getEstimateServiceFeeExpense().doubleValue()).isEqualTo(7.00); // 400+300 cents = 7 yuan
+        assertThat(vo.getEstimateServiceFeeExpense().doubleValue()).isEqualTo(0.00);
         assertThat(vo.getEffectiveServiceFeeExpense()).isNotNull();
-        assertThat(vo.getEffectiveServiceFeeExpense().doubleValue()).isEqualTo(6.65); // 380+285 cents
+        assertThat(vo.getEffectiveServiceFeeExpense().doubleValue()).isEqualTo(4.80);
         assertThat(vo.getEstimateServiceProfit()).isEqualByComparingTo("5.00");
         assertThat(vo.getEffectiveServiceProfit()).isEqualByComparingTo("4.70");
         assertThat(vo.getEstimateGrossProfit()).isEqualByComparingTo("5.20");
@@ -1363,9 +1378,9 @@ class DataControllerTest {
         assertThat(vo.getEffectiveServiceFee()).isNull();
         assertThat(vo.getEffectiveTechServiceFee()).isNull();
         assertThat(vo.getEffectiveServiceProfit()).isNull();
-        // 服务费收益 = 服务费收入 - 技术服务费 (when no perf record)
-        assertThat(vo.getEstimateServiceProfit()).isNotNull();
-        assertThat(vo.getEstimateServiceProfit().doubleValue()).isEqualTo(1.00); // 200-100 cents = 1 yuan
+        // 无业绩记录时不推导服务费收益/支出
+        assertThat(vo.getEstimateServiceProfit()).isNull();
+        assertThat(vo.getEstimateServiceFeeExpense()).isNull();
     }
 
     @Test
@@ -1393,7 +1408,7 @@ class DataControllerTest {
 
         assertThat(response.getContentType()).contains("text/csv");
         String content = response.getContentAsString();
-        assertThat(content).contains("订单ID,活动信息,商品信息,合作方信息,推广者,渠道,招商,订单状态,订单额,服务费收入,技术服务费,服务费支出,服务费收益,招商提成,渠道提成,订单时间");
+        assertThat(content).contains("订单ID,活动信息,商品信息,合作方信息,推广者,渠道,招商,订单状态,订单额,服务费收入,技术服务费,服务费支出,服务费收益,招商提成,渠道提成,毛利,订单时间");
         assertThat(content).contains("ORD_EXP");
         assertThat(content).contains("结算：-");
     }

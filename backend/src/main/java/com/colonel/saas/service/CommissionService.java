@@ -23,12 +23,12 @@ import java.util.UUID;
  * <p>职责：基于订单数据计算双轨提成（招商提成 + 渠道提成），支持按活动维度分桶聚合计算，
  * 并提供批量业绩补全和持久化能力。
  *
- * <p>计算公式（Y-03/Y-04 修正版）：
+ * <p>计算公式（调用方按轨道传入扣减额）：
  * <ul>
- *   <li>提成基数（serviceFeeNet）= 服务费收入 - 技术服务费（不含达人佣金）</li>
- *   <li>招商提成 = 提成基数 x 招商提成比例（按活动分桶计算后求和）</li>
- *   <li>渠道提成 = 提成基数 x 渠道提成比例（按活动分桶计算后求和）</li>
- *   <li>毛利 = 提成基数 - 招商提成 - 渠道提成</li>
+ *   <li>服务费收益（serviceFeeNet）= 服务费收入 - 调用方传入的技术服务费扣减额</li>
+ *   <li>招商提成 = 服务费收益 x 招商提成比例（按活动分桶计算后求和）</li>
+ *   <li>渠道提成 = 服务费收益 x 渠道提成比例（按活动分桶计算后求和）</li>
+ *   <li>毛利 = 服务费收益 - 招商提成 - 渠道提成</li>
  * </ul>
  *
  * <p>提成比例解析优先级链：规则库（{@link CommissionRuleService}）-> 配置表活动级覆盖 -> 配置表全局默认。
@@ -160,6 +160,31 @@ public class CommissionService {
             String productId,
             UUID recruiterUserId,
             LocalDateTime effectiveAt) {
+        return calculateTrack(serviceFeeIncome, techServiceFee, 0L, talentCommission, activityId, productId, recruiterUserId, effectiveAt);
+    }
+
+    /**
+     * 单轨提成计算（含服务费支出参数版本）。
+     *
+     * @param serviceFeeIncome   服务费收入（分）
+     * @param techServiceFee     技术服务费（分）
+     * @param serviceFeeExpense  服务费支出（分），独立外部成本
+     * @param talentCommission   达人佣金（分）
+     * @param activityId         活动ID
+     * @param productId          商品ID
+     * @param recruiterUserId    招商员用户ID
+     * @param effectiveAt        生效时间
+     * @return 提成计算结果
+     */
+    public CommissionSummary calculateTrack(
+            long serviceFeeIncome,
+            long techServiceFee,
+            long serviceFeeExpense,
+            long talentCommission,
+            String activityId,
+            String productId,
+            UUID recruiterUserId,
+            LocalDateTime effectiveAt) {
         String normalizedActivityId = normalizeActivityId(activityId);
         ActivityCommissionBucket bucket = new ActivityCommissionBucket(
                 normalizedActivityId,
@@ -167,6 +192,7 @@ public class CommissionService {
                 recruiterUserId,
                 Math.max(serviceFeeIncome, 0L),
                 Math.max(techServiceFee, 0L),
+                Math.max(serviceFeeExpense, 0L),
                 Math.max(talentCommission, 0L));
         return calculateByActivityBuckets(List.of(bucket), effectiveAt);
     }
@@ -191,7 +217,7 @@ public class CommissionService {
     private List<ActivityCommissionBucket> toActivityBuckets(List<ColonelsettlementOrder> orders) {
         Map<String, ActivityCommissionBucket> grouped = new LinkedHashMap<>();
         if (orders == null || orders.isEmpty()) {
-            grouped.put("", new ActivityCommissionBucket("", null, null, 0L, 0L, 0L));
+            grouped.put("", new ActivityCommissionBucket("", null, null, 0L, 0L, 0L, 0L));
             return List.copyOf(grouped.values());
         }
         for (ColonelsettlementOrder order : orders) {
@@ -200,6 +226,7 @@ public class CommissionService {
             long serviceFee = nvl(order.getSettleColonelCommission());
             long techFee = nvl(order.getSettleColonelTechServiceFee());
             long talentFee = nvl(order.getSettleSecondColonelCommission());
+            long expense = nvl(order.getEstimateServiceFeeExpense());
             if (existing == null) {
                 grouped.put(key, new ActivityCommissionBucket(
                         normalizeActivityId(order.getActivityId()),
@@ -207,6 +234,7 @@ public class CommissionService {
                         resolveRecruiterUserId(order),
                         serviceFee,
                         techFee,
+                        expense,
                         talentFee));
             } else {
                 grouped.put(key, new ActivityCommissionBucket(
@@ -215,6 +243,7 @@ public class CommissionService {
                         existing.recruiterUserId(),
                         existing.serviceFeeIncome() + serviceFee,
                         existing.techServiceFee() + techFee,
+                        existing.serviceFeeExpense() + expense,
                         existing.talentCommission() + talentFee));
             }
         }
@@ -231,7 +260,7 @@ public class CommissionService {
      * <p>计算流程：
      * <ol>
      *   <li>汇总所有桶的金额：服务费收入、技术服务费、达人佣金</li>
-     *   <li>计算提成基数 = 服务费收入 - 技术服务费（Y-03/Y-04 修正：不含达人佣金）</li>
+     *   <li>计算提成基数 = 服务费收入 - 调用方传入的技术服务费扣减额（即服务费收益）</li>
      *   <li>逐桶解析活动级提成比例（招商/渠道），计算各活动的提成金额</li>
      *   <li>毛利 = 提成基数 - 招商提成 - 渠道提成</li>
      * </ol>
@@ -243,11 +272,13 @@ public class CommissionService {
     public CommissionSummary calculateByActivityBuckets(List<ActivityCommissionBucket> buckets, LocalDateTime effectiveAt) {
         long serviceFeeIncome = sumBuckets(buckets, ActivityCommissionBucket::serviceFeeIncome);
         long techServiceFee = sumBuckets(buckets, ActivityCommissionBucket::techServiceFee);
+        long serviceFeeExpense = sumBuckets(buckets, ActivityCommissionBucket::serviceFeeExpense);
         long talentCommission = sumBuckets(buckets, ActivityCommissionBucket::talentCommission);
 
-        // Y-03/Y-04 fix: 提成基数（serviceFeeNet）= 服务费收入 − 技术服务费，不含达人佣金
+        // 服务费收益 = 服务费收入 − 服务费支出 − 技术服务费。
+        // 预估轨传入实际技术服务费和服务费支出；结算轨同理。
         // 达人佣金(talentCommission)来自抖店结算，不从团长毛利中再扣一次
-        long serviceFeeNet = Math.max(serviceFeeIncome - techServiceFee, 0L);
+        long serviceFeeNet = Math.max(serviceFeeIncome - serviceFeeExpense - techServiceFee, 0L);
         BigDecimal defaultBizRatio = loadRatio(KEY_BIZ_RATIO);
         BigDecimal defaultChannelRatio = loadRatio(KEY_CHANNEL_RATIO);
 
@@ -256,9 +287,9 @@ public class CommissionService {
         BigDecimal lastBizRatio = defaultBizRatio;
         BigDecimal lastChannelRatio = defaultChannelRatio;
         for (ActivityCommissionBucket bucket : normalizeBuckets(buckets)) {
-            // Y-04 fix: 活动级毛利基数 = 该活动收入 − 技术费（不含达人佣金），再减两笔提成
+            // 活动级服务费收益 = 该活动收入 − 该活动支出 − 本轨应扣技术费
             long activityServiceFeeNet = Math.max(
-                    bucket.serviceFeeIncome() - bucket.techServiceFee(),
+                    bucket.serviceFeeIncome() - bucket.serviceFeeExpense() - bucket.techServiceFee(),
                     0L);
             BigDecimal activityBizRatio = resolveBizRatio(bucket, defaultBizRatio, effectiveAt);
             BigDecimal activityChannelRatio = resolveChannelRatio(bucket, defaultChannelRatio, effectiveAt);
@@ -267,12 +298,13 @@ public class CommissionService {
             bizCommission += multiplyCent(activityServiceFeeNet, activityBizRatio);
             channelCommission += multiplyCent(activityServiceFeeNet, activityChannelRatio);
         }
-        // Y-04: 毛利 = 提成基数 − 两笔提成（服务费净收益 − 招商提成 − 渠道提成）
+        // 毛利 = 服务费收益 − 招商提成 − 渠道提成
         long grossProfit = Math.max(serviceFeeNet - bizCommission - channelCommission, 0L);
 
         return new CommissionSummary(
                 serviceFeeIncome,
                 techServiceFee,
+                serviceFeeExpense,
                 talentCommission,
                 serviceFeeNet,
                 bizCommission,
@@ -392,7 +424,7 @@ public class CommissionService {
 
     private List<ActivityCommissionBucket> normalizeBuckets(List<ActivityCommissionBucket> buckets) {
         if (buckets == null || buckets.isEmpty()) {
-            return List.of(new ActivityCommissionBucket("", null, null, 0L, 0L, 0L));
+            return List.of(new ActivityCommissionBucket("", null, null, 0L, 0L, 0L, 0L));
         }
         return buckets;
     }
@@ -421,6 +453,7 @@ public class CommissionService {
     public record CommissionSummary(
             long serviceFeeIncome,
             long techServiceFee,
+            long serviceFeeExpense,
             long talentCommission,
             long serviceFeeNet,
             long bizCommission,
@@ -436,7 +469,18 @@ public class CommissionService {
             UUID recruiterUserId,
             long serviceFeeIncome,
             long techServiceFee,
+            long serviceFeeExpense,
             long talentCommission) {
+        /** 向后兼容构造函数（无 expense） */
+        public ActivityCommissionBucket(
+                String activityId,
+                String productId,
+                UUID recruiterUserId,
+                long serviceFeeIncome,
+                long techServiceFee,
+                long talentCommission) {
+            this(activityId, productId, recruiterUserId, serviceFeeIncome, techServiceFee, 0L, talentCommission);
+        }
     }
 
     public record OrderCommissionItem(

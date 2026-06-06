@@ -291,4 +291,27 @@ describe('OrderDetailTab', () => {
     expect(wrapper.text()).not.toContain('媒介')
     expect(cellText('毛利')).toContain('预估:¥0.54')
   })
+
+  it('does not use legacy talentCommission as service fee expense fallback', async () => {
+    vi.mocked(getOrderDetailPage).mockResolvedValue({
+      data: {
+        records: [{
+          ...row,
+          estimateServiceFeeExpense: null,
+          serviceFeeExpense: null,
+          talentCommission: 3.33
+        }],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = mountTab()
+    await flushPromises()
+
+    const headers = wrapper.findAll('th').map((th) => th.text()).filter(Boolean)
+    const cells = wrapper.findAll('tbody td')
+    const expenseText = cells[headers.indexOf('服务费支出')].text()
+    expect(expenseText).toContain('预估:-')
+    expect(expenseText).not.toContain('¥3.33')
+  })
 })

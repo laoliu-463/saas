@@ -46,6 +46,8 @@ public final class JobLockKeys {
     public static final String ORDER_SYNC = "order:sync:lock";
     /** 订单事实源同步任务锁（6468 instituteOrderColonel）。与结算同步互不影响。 */
     public static final String ORDER_SYNC_INSTITUTE = "order:sync:institute:lock";
+    /** 6468 近实时热同步任务锁（小窗口、高频）。与 {@link #ORDER_SYNC_INSTITUTE} 独立，避免阻塞补偿任务。 */
+    public static final String ORDER_SYNC_INSTITUTE_HOT = "order:sync:institute:hot:lock";
     /** 订单同步近窗口（PAY_RECENT）补拉任务锁。与 {@link #ORDER_SYNC} 互不影响。 */
     public static final String ORDER_SYNC_PAY_RECENT = "order:sync:pay-recent:lock";
     /** 业绩记录补录任务锁 */

@@ -78,13 +78,43 @@ class PerformanceCalculationServiceTest {
 
         assertThat(saved).isNotNull();
         assertThat(record.getEstimateServiceProfit()).isEqualTo(900L);
-        assertThat(record.getEffectiveServiceProfit()).isEqualTo(810L);
+        assertThat(record.getEffectiveServiceProfit()).isEqualTo(900L);
         assertThat(record.getEstimateRecruiterCommission()).isEqualTo(90L);
-        assertThat(record.getEffectiveRecruiterCommission()).isEqualTo(81L);
+        assertThat(record.getEffectiveRecruiterCommission()).isEqualTo(90L);
         assertThat(record.getEstimateChannelCommission()).isEqualTo(180L);
-        assertThat(record.getEffectiveChannelCommission()).isEqualTo(162L);
+        assertThat(record.getEffectiveChannelCommission()).isEqualTo(180L);
         assertThat(record.getEstimateGrossProfit()).isEqualTo(630L);
-        assertThat(record.getEffectiveGrossProfit()).isEqualTo(567L);
+        assertThat(record.getEffectiveGrossProfit()).isEqualTo(630L);
+    }
+
+    @Test
+    void upsertFromOrder_shouldNotDeductTechServiceFeeAgainFromEffectiveIncome() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(UUID.randomUUID());
+        order.setOrderId("ORD-EFFECTIVE-NET");
+        order.setActivityId("ACT-1");
+        order.setOrderAmount(10000L);
+        order.setSettleAmount(8000L);
+        order.setEstimateServiceFee(1000L);
+        order.setEffectiveServiceFee(720L);
+        order.setEstimateTechServiceFee(100L);
+        order.setEffectiveTechServiceFee(80L);
+        order.setOrderStatus(1);
+
+        when(performanceRecordMapper.findByOrderId("ORD-EFFECTIVE-NET")).thenReturn(null);
+        when(performanceRecordMapper.upsert(any())).thenReturn(1);
+
+        service.upsertFromOrder(order);
+
+        ArgumentCaptor<PerformanceRecord> captor = ArgumentCaptor.forClass(PerformanceRecord.class);
+        verify(performanceRecordMapper).upsert(captor.capture());
+        PerformanceRecord record = captor.getValue();
+
+        assertThat(record.getEstimateServiceProfit()).isEqualTo(900L);
+        assertThat(record.getEffectiveServiceProfit()).isEqualTo(720L);
+        assertThat(record.getEffectiveRecruiterCommission()).isEqualTo(72L);
+        assertThat(record.getEffectiveChannelCommission()).isEqualTo(144L);
+        assertThat(record.getEffectiveGrossProfit()).isEqualTo(504L);
     }
 
     @Test

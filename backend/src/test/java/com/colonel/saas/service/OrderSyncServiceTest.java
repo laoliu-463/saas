@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -444,6 +445,127 @@ class OrderSyncServiceTest {
         when(persistenceService.persistOrder(any(ColonelsettlementOrder.class))).thenReturn(true);
 
         OrderSyncService.SyncResult result = service.syncInstituteOrdersRecentWindow();
+
+        assertThat(result.pages()).isEqualTo(2);
+        assertThat(result.stopReason()).isEqualTo("MAX_PAGES");
+        verify(douyinOrderGateway, times(2)).listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
+    }
+
+    @Test
+    void syncInstituteOrdersHotRecent_shouldUseIndependentHotLockKey() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class)))
+                .thenReturn(true);
+
+        service.syncInstituteOrdersHotRecent();
+
+        verify(jobLockService).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class));
+        verify(jobLockService, never()).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class));
+        verify(jobLockService).release(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT);
+    }
+
+    @Test
+    void syncInstituteOrdersHotRecent_shouldReturnLockedWithoutPersistingWhenBusy() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class)))
+                .thenReturn(false);
+
+        OrderSyncService.SyncResult result = service.syncInstituteOrdersHotRecent();
+
+        assertThat(result.locked()).isTrue();
+        verify(douyinOrderGateway, never()).listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
+        verify(valueOperations, never()).set(eq("order:sync:institute_hot_last_time"), any());
+    }
+
+    @Test
+    void syncInstituteOrdersHotRecent_shouldPersistHotWaterlineOnlyOnSuccess() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class)))
+                .thenReturn(true);
+
+        service.syncInstituteOrdersHotRecent();
+
+        verify(valueOperations).set(eq("order:sync:institute_hot_last_time"), any());
+        verify(valueOperations, never()).set(eq("order:sync:institute_recent_last_time"), any());
+    }
+
+    @Test
+    void syncInstituteOrdersHotRecent_shouldNotPersistWaterlineOnFailure() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class)))
+                .thenReturn(true);
+        when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+                .thenThrow(new RuntimeException("upstream failed"));
+
+        assertThatThrownBy(() -> service.syncInstituteOrdersHotRecent())
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("upstream failed");
+
+        verify(valueOperations, never()).set(eq("order:sync:institute_hot_last_time"), any());
+    }
+
+    @Test
+    void resolveInstituteHotStartTime_shouldUseWindowWhenNoWaterline() {
+        long endTime = java.time.Instant.now().getEpochSecond() - 30L;
+        when(valueOperations.get("order:sync:institute_hot_last_time")).thenReturn(null);
+
+        long startTime = service.resolveInstituteHotStartTime(endTime);
+
+        long windowSeconds = endTime - startTime;
+        assertThat(windowSeconds).isBetween(300L - 5L, 300L + 5L);
+    }
+
+    @Test
+    void resolveInstituteHotStartTime_shouldUseOverlapWhenWaterlineExists() {
+        long endTime = java.time.Instant.now().getEpochSecond() - 30L;
+        long lastHot = endTime - 60L;
+        when(valueOperations.get("order:sync:institute_hot_last_time"))
+                .thenReturn(String.valueOf(lastHot));
+
+        long startTime = service.resolveInstituteHotStartTime(endTime);
+
+        assertThat(startTime).isEqualTo(lastHot - 120L);
+    }
+
+    @Test
+    void syncInstituteOrdersHotRecent_shouldUseHotLagNotGlobalLag() {
+        ReflectionTestUtils.setField(service, "lagSeconds", 60L);
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class)))
+                .thenReturn(true);
+
+        service.syncInstituteOrdersHotRecent();
+
+        ArgumentCaptor<DouyinOrderGateway.DouyinOrderQueryRequest> captor =
+                ArgumentCaptor.forClass(DouyinOrderGateway.DouyinOrderQueryRequest.class);
+        verify(douyinOrderGateway).listInstituteOrders(captor.capture());
+        long now = java.time.Instant.now().getEpochSecond();
+        long endLag = now - captor.getValue().endTime();
+        assertThat(endLag).isBetween(25L, 35L);
+    }
+
+    @Test
+    void syncInstituteOrdersHotRecent_shouldStopWhenHotMaxPagesReached() {
+        ReflectionTestUtils.setField(service, "instituteHotMaxPages", 2);
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class)))
+                .thenReturn(true);
+        AtomicInteger counter = new AtomicInteger();
+        when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+                .thenAnswer(invocation -> {
+                    int pageNo = counter.incrementAndGet();
+                    return pageWithRawCursor(
+                            List.of(instituteOrderItem("HOT-ORDER-" + pageNo)),
+                            false,
+                            "cursor-" + (pageNo + 1),
+                            Map.of()
+                    );
+                });
+        when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null,
+                        null,
+                        "3859423",
+                        null,
+                        AttributionService.REASON_NO_PICK_SOURCE
+                ));
+        when(persistenceService.persistOrder(any(ColonelsettlementOrder.class))).thenReturn(true);
+
+        OrderSyncService.SyncResult result = service.syncInstituteOrdersHotRecent();
 
         assertThat(result.pages()).isEqualTo(2);
         assertThat(result.stopReason()).isEqualTo("MAX_PAGES");

@@ -29,6 +29,8 @@ public class MetricsVO {
     private BigDecimal totalAmount;
     /** 服务费总额，单位：元 */
     private BigDecimal serviceFee;
+    /** 服务费收益，单位：元；兼容经营指标矩阵统一字段名 */
+    private BigDecimal serviceFeeProfit;
     /** 佣金总额，单位：元 */
     private BigDecimal commission;
     /** 服务费收入（平台侧收取），单位：元 */

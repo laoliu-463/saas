@@ -167,6 +167,20 @@ public class PerformanceRecord {
     private Long effectiveTechServiceFee;
 
     /**
+     * 预估服务费支出（单位：分）
+     * <p>对应数据库列：{@code estimate_service_fee_expense}，独立外部成本字段</p>
+     */
+    @TableField("estimate_service_fee_expense")
+    private Long estimateServiceFeeExpense;
+
+    /**
+     * 实际服务费支出（单位：分）
+     * <p>对应数据库列：{@code effective_service_fee_expense}，独立外部成本字段</p>
+     */
+    @TableField("effective_service_fee_expense")
+    private Long effectiveServiceFeeExpense;
+
+    /**
      * 预估服务利润（单位：分）
      * <p>对应数据库列：{@code estimate_service_profit}，预估阶段计算的服务利润</p>
      */

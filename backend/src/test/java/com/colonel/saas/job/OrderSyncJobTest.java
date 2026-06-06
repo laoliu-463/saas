@@ -176,6 +176,52 @@ class OrderSyncJobTest {
     }
 
     @Test
+    void syncInstituteOrdersHot_shouldInvokeHotRecentMethod() {
+        com.colonel.saas.job.OrderSyncJob job = newJob();
+        when(orderSyncService.syncInstituteOrdersHotRecent()).thenReturn(
+                new OrderSyncService.SyncResult(1000L, 22600L, 1, 5, 2, 0, 3, 1, 0, false)
+        );
+
+        job.syncInstituteOrdersHot();
+
+        verify(orderSyncService).syncInstituteOrdersHotRecent();
+    }
+
+    @Test
+    void syncInstituteOrdersHot_shouldSkipWhenDisabled() {
+        com.colonel.saas.job.OrderSyncJob job = newJob();
+        ReflectionTestUtils.setField(job, "instituteHotEnabled", false);
+
+        job.syncInstituteOrdersHot();
+
+        verifyNoInteractions(orderSyncService);
+    }
+
+    @Test
+    void syncInstituteOrdersHot_shouldSkipWhenLocked() {
+        com.colonel.saas.job.OrderSyncJob job = newJob();
+        when(orderSyncService.syncInstituteOrdersHotRecent()).thenReturn(
+                new OrderSyncService.SyncResult(0, 0, 0, 0, 0, true)
+        );
+
+        job.syncInstituteOrdersHot();
+
+        verify(orderSyncService).syncInstituteOrdersHotRecent();
+    }
+
+    @Test
+    void syncInstituteOrdersHot_shouldRethrowException() {
+        com.colonel.saas.job.OrderSyncJob job = newJob();
+        when(orderSyncService.syncInstituteOrdersHotRecent()).thenThrow(new RuntimeException("hot failed"));
+
+        assertThatThrownBy(job::syncInstituteOrdersHot)
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("hot failed");
+
+        verify(orderSyncService).syncInstituteOrdersHotRecent();
+    }
+
+    @Test
     void syncInstituteFullBackfill_shouldSkipWhenDisabled() {
         com.colonel.saas.job.OrderSyncJob job = newJob();
         ReflectionTestUtils.setField(job, "instituteBackfillEnabled", false);

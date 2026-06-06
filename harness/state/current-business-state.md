@@ -57,8 +57,8 @@
 ## 业绩域
 
 - 已完成：最终归属、提成、冲正、双轨金额和汇总输出主链路。
-- 未完成：复杂财务结算、多账期治理和财务毛利不属于 V1；经营毛利已按 2026-06-05 用户决策纳入 V1 指标。
-- 当前风险：订单域或分析模块误算业绩归属。
+- 未完成：复杂财务结算、多账期治理和财务毛利不属于 V1；经营毛利已按 2026-06-05 用户决策纳入 V1 指标；2026-06-06 服务费收入 / 收益双轨公式已补后端单元验证，运行态和页面级验收仍需补证据。
+- 当前风险：订单域或分析模块误算业绩归属；real-pre 历史业绩表数据、前端页面或 dashboard API 仍需用真实样本验算服务费收入 / 收益双轨公式。
 - 验证方式：`performance_records` SQL、汇总表、计算日志。
 - 关联 eval：`harness/evals/v1-business-closure.evals.md`
 - 关联 skill：`harness/skills/performance-dashboard.skill.md`
@@ -67,7 +67,7 @@
 
 - 已完成：dashboard、报表、导出和只读汇总展示。
 - 未完成：高级 BI 和整体数据平台导出不属于 V1。
-- 当前风险：分析模块重算业绩归属。
+- 当前风险：分析模块重算业绩归属；经营指标矩阵服务费收入 / 收益展示仍需按新预估 / 结算公式做 API、SQL 和页面级验算。
 - 验证方式：dashboard API、汇总 SQL、E2E。
 - 关联 eval：`harness/evals/v1-business-closure.evals.md`
 - 关联 skill：`harness/skills/performance-dashboard.skill.md`

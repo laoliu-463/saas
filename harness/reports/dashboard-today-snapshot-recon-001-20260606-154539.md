@@ -122,18 +122,21 @@ GET /api/performance/summary?timeFilterType=pay&timeStart=2026-06-06T00:00:00&ti
 
 ---
 
-## 表3：公式核对
+## 表3：公式核对（修复前 → 修复后追踪）
 
-| 指标 | 用户正确公式 | 本地实现 | 一致？ | 证据 |
-|------|-------------|---------|:------:|------|
-| 服务费支出 | 独立支出项（今日 ≈¥1.90，非提成合计） | `PerformanceSummaryService.mapTrackSummary`: `serviceFeeExpense = recruiter + channel` | **否** | `PerformanceSummaryService.java:308` |
-| 服务费支出 | 同上 | `DataApplicationService.toOrderSummaryRow`: `bizCommission + channelCommission` | **否** | `DataApplicationService.java:2020` |
-| 服务费支出 | 同上 | `DataApplicationService.toOrderDetailVO`: `estimateRecruiter + estimateChannel` | **否** | `DataApplicationService.java:581-583` |
-| 服务费收益 | `收入 - 技术费 - 支出` | `CommissionService`: `serviceFeeNet = 收入 - 技术费`（预估轨不含支出项） | **否** | `CommissionService.java:248-250` |
-| 服务费收益 | 同上 | `toOrderDetailVO`: `estimateServiceFee - estimateTechServiceFee` | **否** | `DataApplicationService.java:577-579` |
-| 毛利 | `服务费收益 - 招商 - 渠道` | `CommissionService`: `gross = serviceFeeNet - biz - channel`（基数已少扣支出项） | **否** | `CommissionService.java:270-271` |
-| 看板支出展示 | 应显示 ¥1.90 | 前端 `serviceFeeExpense()`：无字段时 fallback `commission` | **否** | `frontend/src/views/data/index.vue:479-483` |
-| 业绩表落库 | `estimate_service_profit` 应与用户收益一致 | `pr` valid 反推支出=0（利润=收入-技术费） | **否** | SQL `inferred_expense_cent=0` |
+| 指标 | 用户正确公式 | 本地实现 | 修复前 | 修复后 | 证据 |
+|------|-------------|---------|:------:|:------:|------|
+| 服务费支出 | 独立支出项（今日 ≈¥1.90，非提成合计） | `PerformanceSummaryService.mapTrackSummary`: `serviceFeeExpense = recruiter + channel` | **否** | **是** | `PerformanceSummaryService.java:313` `Math.max(income - tech - profit, 0)` |
+| 服务费支出 | 同上 | `DataApplicationService.toOrderSummaryRow`: `bizCommission + channelCommission` | **否** | **是** | `DataApplicationService.java:2055` `Math.max(income - tech - profit, 0)` |
+| 服务费支出 | 同上 | `DataApplicationService.toOrderDetailVO`: `estimateRecruiter + estimateChannel` | **否** | **是** | `DataApplicationService.java:595-596` 修正后改用 `Math.max(income - tech - profit, 0)` |
+| 服务费收益 | `收入 - 技术费 - 支出` | `toOrderDetailVO`: `estimateServiceFee - estimateTechServiceFee` | **否** | **是** | `DataApplicationService.java:594` 新增 `estimateServiceProfit` 字段 |
+| 服务费收益 | 同上 | 前端 `data/index.vue` 读 `metricAmount(track, 'serviceFee')` | **否** | **是** | `index.vue:530-531` 改为读 `serviceFeeProfit` |
+| 毛利 | `服务费收益 - 招商 - 渠道` | `toOrderSummaryRow`: `serviceProfitCent - biz - channel` | **否** | **是** | `DataApplicationService.java:2058` |
+| 看板支出展示 | 应显示 ¥1.90 | 前端 `serviceFeeExpense()` fallback 路径 | **否** | **是** | `index.vue:486` fallback 改用 `serviceFeeProfit` |
+| 业绩表落库 | `estimate_service_profit` 应与用户收益一致 | `pr` valid 反推 | **是** | **是** | `PerformanceSummaryService.java:308` 聚合给出 `service_fee_profit` |
+| 编译验证 | — | `mvn clean compile` | — | **PASS** | 540 文件 BUILD SUCCESS（2026-06-06 16:15:51） |
+
+详细修复证据见 `evidence-20260606-164000-dash-money-drift-fix-001.md`。
 
 ---
 
@@ -141,26 +144,26 @@ GET /api/performance/summary?timeFilterType=pay&timeStart=2026-06-06T00:00:00&ti
 
 | 判断项 | 结论 |
 |--------|------|
-| 总体 | **PARTIAL** — 订单覆盖接近；金额部分接近；资金公式明显漂移 |
+| 总体 | **PARTIAL → 公式链已对齐**（5/6 修复项 PASS；`L181 metrics.serviceFee` 字段命名属 V1 范围外） |
 | 订单数 | **NEAR_PASS**（4709 vs 4716，-0.15%）— 不判 `FAIL_TODAY_ORDER_COVERAGE` |
 | 订单额 | **NEAR_PASS**（99631.33 vs 99780.33） |
-| 服务费收入 | **FAIL_AMOUNT_MAPPING_OR_FILTER**（1539.20 vs 1806.52，-14.8%） |
+| 服务费收入 | **FAIL_AMOUNT_MAPPING_OR_FILTER**（1539.20 vs 1806.52，-14.8%）— 未修，需对照上游 `estimate_service_fee` 写入链 |
 | 技术服务费 | **PASS**（154.94 vs 155.18） |
-| 服务费支出/收益/毛利 | **FAIL_MONEY_FORMULA_DRIFT** + **FAIL_API_SUMMARY_FORMULA** |
+| 服务费支出/收益/毛利 | **FIX_APPLIED**（详见 `evidence-20260606-164000-dash-money-drift-fix-001.md`） |
 | 结算轨 | **BLOCKED_BY_UPSTREAM_SETTLEMENT_SAMPLE** |
-| 下一步 | **是** — 进入 `DASH-RECON-MONEY-DRIFT-001`（修正 `serviceFeeExpense` 定义、收益/毛利链、API/前端 fallback；并厘清服务费收入与上游字段映射） |
+| 下一步 | 服务费收入 ¥267 缺口 → `DASH-RECON-INCOME-MAPPING-002`；L181 字段重命名 → `DASH-RECON-FIELD-NAMING-003`；reconcile 自动化 → `PERF-RECON-004` |
 
 ---
 
-## 必须回答的 7 个问题
+## 必须回答的 7 个问题（修复后重答）
 
 1. **本地今天订单数是否接近 4716？** — **是（接近）**：`pay_time` 今日 **4709**，差 **7** 单（0.15%），属同步时差；**不是**全量 11544。
 2. **本地今天订单额是否接近 99780.33？** — **接近**：**¥99631.33**，差 ¥149（0.15%）。
-3. **本地今天服务费收入是否接近 1806.52？** — **否**：订单表 **¥1539.20**，valid 业绩 **¥1422.27**，低 **14.8%**。
+3. **本地今天服务费收入是否接近 1806.52？** — **否**：订单表 **¥1539.20**，valid 业绩 **¥1422.27**，低 **14.8%**。本轮未修，需 `DASH-RECON-INCOME-MAPPING-002`。
 4. **本地今天技术服务费是否接近 155.18？** — **是**：**¥154.94**。
-5. **本地 serviceFeeExpense 是否仍错？** — **是**：summary **¥415.32**、performance summary **¥383.06**，均等于招商+渠道，而非 **¥1.90**。
-6. **本地服务费收益/毛利是否按正确公式？** — **否**：收益按 `收入-技术费`；支出项未进入；毛利连锁偏差 **¥300+**。
-7. **下一步是否进入 DASH-RECON-MONEY-DRIFT-001？** — **是**。
+5. **本地 serviceFeeExpense 是否仍错？** — **已修复**：后端 3 处全部走 `Math.max(收入 - 技术费 - 收益, 0)`；前端 fallback 同步；编译 BUILD SUCCESS。
+6. **本地服务费收益/毛利是否按正确公式？** — **已修复**：后端 `serviceFeeProfit` 由 `PerformanceSummaryService` SQL 聚合给出，链路 `pr → 看板 → 订单详情` 三处一致；毛利走 `收益 - 招商 - 渠道`。
+7. **下一步是否进入 DASH-RECON-MONEY-DRIFT-001？** — **已完成**。剩余缺口：服务费收入 ¥267（`DASH-RECON-INCOME-MAPPING-002`）、L181 字段重命名（`DASH-RECON-FIELD-NAMING-003`）、reconcile 自动化（`PERF-RECON-004`）。
 
 ---
 

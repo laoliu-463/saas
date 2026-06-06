@@ -9,8 +9,8 @@ import org.springframework.stereotype.Component;
 /**
  * 订单同步定时任务。
  * <p>
- * 默认每 3 分钟拉取 6468 增量事实订单和 2704 增量结算订单；6468 增量按 institute
- * 水位滚动近窗（不再每轮全扫 24h）；每 6 小时额外跑一轮 24h 全量回补。同时每 30 分钟
+ * 6468 拆为热同步（每分钟小窗口）与补偿同步（每 10 分钟水位滚动）；2704 增量按
+ * {@code order.sync.cron} 调度；每 6 小时额外跑一轮 24h 全量回补。同时每 30 分钟
  * 回扫近 6 小时窗口（PAY_RECENT），用于兜底"刚付款订单 update 事件延迟"导致的不可见。
  * </p>
  * <p>
@@ -22,7 +22,8 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>{@link #syncOrders()}：Cron {@code 0 0/3 * * * ?}，受
  *       {@code order.sync.enabled} 控制，默认启用。</li>
- *   <li>{@link #syncInstituteOrdersRecent()}：Cron {@code 0 0/3 * * * ?}，6468 增量近窗。</li>
+ *   <li>{@link #syncInstituteOrdersHot()}：Cron {@code 0 0/1 * * * ?}，6468 近实时热同步。</li>
+ *   <li>{@link #syncInstituteOrdersRecent()}：Cron {@code 0 0/10 * * * ?}，6468 补偿近窗。</li>
  *   <li>{@link #syncInstituteFullBackfill()}：Cron {@code 0 15 0/6 * * ?}，6468 24h 兜底。</li>
  *   <li>{@link #syncPayRecent()}：Cron {@code 0 0/30 * * * ?}，受
  *       {@code order.sync.pay-recent.enabled} 控制，默认启用；窗口由
@@ -51,6 +52,10 @@ public class OrderSyncJob {
     /** 是否启用 INSTITUTE_RECENT（6468）团长事实源同步，可通过 {@code order.sync.institute-recent.enabled=false} 关闭 */
     @Value("${order.sync.institute-recent.enabled:true}")
     private boolean instituteRecentEnabled = true;
+
+    /** 是否启用 INSTITUTE_HOT_RECENT（6468 近实时热同步） */
+    @Value("${order.sync.institute-hot.enabled:true}")
+    private boolean instituteHotEnabled = true;
 
     /** 是否启用 INSTITUTE 24h 全量回补，可通过 {@code order.sync.institute-backfill.enabled=false} 关闭 */
     @Value("${order.sync.institute-backfill.enabled:true}")
@@ -120,9 +125,33 @@ public class OrderSyncJob {
     }
 
     /**
+     * 执行 INSTITUTE_HOT_RECENT（6468）近实时热同步：小窗口、限页数，目标 freshness ≤ 2min。
+     */
+    @Scheduled(cron = "${order.sync.institute-hot.cron:0 */1 * * * ?}")
+    public void syncInstituteOrdersHot() {
+        if (!instituteHotEnabled) {
+            log.info("OrderSyncJob.syncInstituteOrdersHot skipped: order.sync.institute-hot.enabled=false");
+            return;
+        }
+        try {
+            OrderSyncService.SyncResult result = orderSyncService.syncInstituteOrdersHotRecent();
+            if (result.locked()) {
+                log.info("OrderSyncJob.syncInstituteOrdersHot skipped, another process is running");
+                return;
+            }
+            log.info("OrderSyncJob done, mode=INSTITUTE_HOT_RECENT, window=[{}, {}], pages={}, inserted={}, updated={}, failed={}, stopReason={}",
+                    result.startTime(), result.endTime(), result.pages(),
+                    result.created(), result.updated(), result.failed(), result.stopReason());
+        } catch (Exception e) {
+            log.error("OrderSyncJob.syncInstituteOrdersHot failed", e);
+            throw e;
+        }
+    }
+
+    /**
      * 执行 INSTITUTE_RECENT（6468）增量同步：按 institute 水位滚动近窗。
      */
-    @Scheduled(cron = "${order.sync.institute-recent.cron:0 */3 * * * ?}")
+    @Scheduled(cron = "${order.sync.institute-recent.cron:0 */10 * * * ?}")
     public void syncInstituteOrdersRecent() {
         if (!instituteRecentEnabled) {
             log.info("OrderSyncJob.syncInstituteOrdersRecent skipped: order.sync.institute-recent.enabled=false");

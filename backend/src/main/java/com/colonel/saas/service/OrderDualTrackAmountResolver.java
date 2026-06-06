@@ -2,6 +2,8 @@ package com.colonel.saas.service;
 
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Map;
 
 /**
@@ -56,9 +58,9 @@ public final class OrderDualTrackAmountResolver {
      *       若均无则使用 fallbackPayAmount 兜底</li>
      *   <li>第二步：匹配结算金额字段（settledGoodsAmount > settleAmount > actualAmount），
      *       若均无则回退到 payAmount</li>
-     *   <li>第三步：匹配预估服务费与结算服务费，优先从 colonelOrderInfo 嵌套层提取</li>
-     *   <li>第四步：执行服务费 fallback 链 —— 预估缺失时用结算值填充，结算缺失时用 fallbackServiceFee</li>
-     *   <li>第五步：匹配预估/结算技术服务费，逻辑同上</li>
+     *   <li>第三步：匹配预估/结算技术服务费，供结算收入口径扣减</li>
+     *   <li>第四步：匹配或按服务费率补算预估服务费收入与结算服务费收入</li>
+     *   <li>第五步：执行服务费 fallback 链 —— 预估缺失时用结算值填充，结算缺失时用 fallbackServiceFee</li>
      *   <li>第六步：组装 DualTrackAmounts 结果并返回</li>
      * </ol>
      *
@@ -82,7 +84,19 @@ public final class OrderDualTrackAmountResolver {
                         "settleGoodsAmount", "settle_amount", "settleAmount", "actual_amount", "actualAmount")),
                 payAmount);
 
-        // 第三步：解析预估服务费与结算服务费（优先从嵌套层 colonelOrderInfo 提取）
+        // 第三步：解析预估/结算技术服务费。
+        long estimateTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
+                "estimated_tech_service_fee", "estimatedTechServiceFee", "estimate_platform_service_fee",
+                "estimatePlatformServiceFee", "settle_colonel_tech_service_fee", "settleColonelTechServiceFee")));
+        long effectiveTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
+                "tech_service_fee", "techServiceFee", "settled_tech_service_fee", "settledTechServiceFee",
+                "platform_service_fee", "platformServiceFee", "settle_colonel_tech_service_fee",
+                "settleColonelTechServiceFee")));
+        if (estimateTechServiceFee <= 0) {
+            estimateTechServiceFee = effectiveTechServiceFee;
+        }
+
+        // 第四步：解析预估服务费收入与结算服务费收入（优先从嵌套层 colonelOrderInfo 提取）。
         long estimateServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
                 "estimated_commission", "estimatedCommission", "estimated_service_fee", "estimatedServiceFee",
                 "estimate_institution_commission", "estimateInstitutionCommission")));
@@ -90,8 +104,17 @@ public final class OrderDualTrackAmountResolver {
                 "settle_colonel_commission", "settleColonelCommission", "commission", "real_commission",
                 "realCommission", "settled_commission", "settledCommission", "institution_commission",
                 "institutionCommission", "colonel_commission", "colonelCommission", "service_fee", "serviceFee")));
+        BigDecimal serviceFeeRate = resolveServiceFeeRate(rawPayload);
+        if (estimateServiceFee <= 0 && serviceFeeRate != null) {
+            estimateServiceFee = calculateServiceFeeIncome(payAmount, serviceFeeRate, 0L);
+        }
+        boolean effectiveServiceFeeCalculatedFromRate = false;
+        if (effectiveServiceFee <= 0 && serviceFeeRate != null) {
+            effectiveServiceFee = calculateServiceFeeIncome(settleAmount, serviceFeeRate, effectiveTechServiceFee);
+            effectiveServiceFeeCalculatedFromRate = effectiveServiceFee > 0;
+        }
 
-        // 第四步：服务费 fallback 链 —— 预估缺失时用结算值填充
+        // 第五步：服务费 fallback 链 —— 预估缺失时用结算值填充。
         if (estimateServiceFee <= 0 && effectiveServiceFee > 0) {
             estimateServiceFee = effectiveServiceFee;
         }
@@ -105,18 +128,8 @@ public final class OrderDualTrackAmountResolver {
             // 结算轨缺失且有兜底值时，使用兜底值
             effectiveServiceFee = fallbackServiceFee;
         }
-
-        // 第五步：解析预估/结算技术服务费
-        long estimateTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
-                "estimated_tech_service_fee", "estimatedTechServiceFee", "estimate_platform_service_fee",
-                "estimatePlatformServiceFee", "settle_colonel_tech_service_fee", "settleColonelTechServiceFee")));
-        long effectiveTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
-                "tech_service_fee", "techServiceFee", "settled_tech_service_fee", "settledTechServiceFee",
-                "platform_service_fee", "platformServiceFee", "settle_colonel_tech_service_fee",
-                "settleColonelTechServiceFee")));
-        // 预估技术服务费缺失时，用结算值填充
-        if (estimateTechServiceFee <= 0) {
-            estimateTechServiceFee = effectiveTechServiceFee;
+        if (effectiveServiceFee > 0 && effectiveTechServiceFee > 0 && !effectiveServiceFeeCalculatedFromRate) {
+            effectiveServiceFee = Math.max(effectiveServiceFee - effectiveTechServiceFee, 0L);
         }
 
         // 第六步：组装结果
@@ -338,6 +351,37 @@ public final class OrderDualTrackAmountResolver {
         return null;
     }
 
+    private static long calculateServiceFeeIncome(long orderAmount, BigDecimal serviceFeeRate, long techServiceFee) {
+        if (orderAmount <= 0 || serviceFeeRate == null || serviceFeeRate.compareTo(BigDecimal.ZERO) <= 0) {
+            return 0L;
+        }
+        long grossIncome = BigDecimal.valueOf(orderAmount)
+                .multiply(serviceFeeRate)
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValue();
+        return Math.max(grossIncome - Math.max(techServiceFee, 0L), 0L);
+    }
+
+    private static BigDecimal resolveServiceFeeRate(Map<String, Object> rawPayload) {
+        return normalizeRate(asBigDecimal(pickNested(rawPayload,
+                "service_fee_rate", "serviceFeeRate", "service_rate", "serviceRate",
+                "ad_service_ratio", "adServiceRatio")));
+    }
+
+    private static BigDecimal normalizeRate(BigDecimal raw) {
+        if (raw == null || raw.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        BigDecimal abs = raw.abs();
+        if (abs.compareTo(BigDecimal.ONE) <= 0) {
+            return raw;
+        }
+        if (abs.compareTo(BigDecimal.valueOf(100)) <= 0) {
+            return raw.divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP);
+        }
+        return raw.divide(BigDecimal.valueOf(10000), 8, RoundingMode.HALF_UP);
+    }
+
     /**
      * 将任意对象安全转换为 Long，支持 Number 类型和字符串解析。
      *
@@ -357,6 +401,31 @@ public final class OrderDualTrackAmountResolver {
         }
         try {
             return Long.parseLong(text);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static BigDecimal asBigDecimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue());
+        }
+        String text = String.valueOf(value).trim()
+                .replace("%", "")
+                .replace("％", "")
+                .replace(",", "")
+                .replace(" ", "");
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        try {
+            return new BigDecimal(text);
         } catch (NumberFormatException ex) {
             return null;
         }

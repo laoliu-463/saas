@@ -1,5 +1,31 @@
 # Harness Changelog
 
+## v0.7.0
+
+- 服务费收入双轨公式后端代码对齐（2026-06-06）。
+- **决策来源**：用户明确给出：预估服务费收入 = 预估订单额 × 服务费率（未扣除技术服务费）；结算服务费收入 = 结算订单额 × 服务费率 - 技术服务费。
+- **行为变化**：
+  - `OrderDualTrackAmountResolver` 在上游未直接返回服务费金额但存在订单额 + 服务费率时，按预估 / 结算收入公式补算 `estimate_service_fee` / `effective_service_fee`。
+  - `PerformanceCalculationService` 视 `effective_service_fee` 为已扣技术服务费后的结算服务费收入，结算轨不再重复扣 `effective_tech_service_fee`。
+  - 数据页订单明细、dashboard metrics、订单汇总和业绩汇总 DTO 的服务费支出公式按预估 / 结算分轨。
+- **验证**：后端定向单测 `OrderDualTrackAmountResolverTest`、`PerformanceCalculationServiceTest`、`DataControllerTest`、`DataApplicationServiceOrderSummaryCacheTest`、`PerformanceSummaryServiceTest`、`PerformanceMetricsQueryServiceTest`、`CommissionServiceTest` 已通过；构建、容器重启、健康检查和 real-pre 业务验证待 evidence gate 继续执行。
+
+## v0.6.9
+
+- 服务费收益双轨公式口径更新（2026-06-06）。
+- **决策来源**：用户明确给出：预估服务费收益 = 预估服务费收入 - 预估服务费支出 - 技术服务费；结算服务费收益 = 结算服务费收入 - 结算服务费支出。
+- **修改文件**：
+  - `docs/领域/业绩域.md`、`docs/领域/分析模块.md`、`docs/流程/业绩计算链路.md`：补充服务费收益双轨公式和验收要求。
+  - `docs/05-API契约总表.md`、`docs/09-测试验收总览.md`、`docs/04-上线验收清单.md`：更新经营指标 API / 验收口径。
+  - `docs/01-V1领域裁剪表.md`、`docs/00-V1范围冻结说明.md`、`docs/V1领域对齐总表.md`、`docs/决策/ADR-002-V1范围优先级.md`：同步 V1 裁剪、范围冻结、对齐表和 ADR 冲突记录。
+  - `harness/CURRENT_STATE.md`、`harness/HARNESS_CHANGELOG.md`、`harness/instructions/document-priority.md`、`harness/instructions/performance-domain.md`、`harness/instructions/analytics-module.md`、`harness/skills/performance-dashboard.skill.md`、`harness/state/DECISIONS.md`、`harness/state/DOMAIN_STATUS.md`、`harness/state/current-business-state.md`、`harness/QUALITY_LEDGER.md`：同步 Harness 执行口径。
+- **行为变化**：
+  - 旧“服务费收益 = 服务费收入 - 技术服务费”不得继续作为双轨统一公式。
+  - 结算服务费收益不扣减技术服务费；技术服务费仍作为经营指标展示和预估服务费收益输入。
+  - 本次为 docs / harness 口径更新，不宣称后端、前端、SQL 或 real-pre 运行态已完成一致性修复。
+- **证据**：`harness/reports/evidence-20260606-180600.md`、`harness/reports/retro-20260606-180615.md`。
+- **范围**：Scope=docs；未修改业务代码、SQL、Docker、env，未重启容器，未部署远端。
+
 ## v0.6.8
 
 - 渠道提成文案收口（媒介 → 渠道，2026-06-06）。
@@ -76,7 +102,7 @@
 - **后端补齐**：
   - `/data/orders/detail` 与 `/orders/exports/detail` 增加 `activityName`、`partnerId`、`partnerName`、`recruiterName` 兼容参数。
   - 导出字段更新为 16 列订单明细口径。
-  - 未结算 effective/settle 字段不回退 estimate/pay；服务费收益 = 服务费收入 - 技术服务费；服务费支出 = 招商提成 + 渠道提成。
+  - **历史记录，已被 v0.6.9 supersede**：未结算 effective/settle 字段不回退 estimate/pay；当时服务费收益记录为“服务费收入 - 技术服务费”。当前服务费收益公式已更新为预估 / 结算两轨不同口径。
 - **前端补齐**：
   - 数据平台保留汇总模块，订单明细 Tab 展示订单级 16 列。
   - 商品信息展示商品图、商品名和商品ID；保留自定义表头和导出。

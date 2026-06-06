@@ -12,6 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -283,6 +284,100 @@ class DashboardServiceTest {
         assertThat(page.page()).isEqualTo(2L);
         assertThat(page.size()).isEqualTo(3L);
         assertThat(page.records()).containsExactly(activityProductItem);
+    }
+
+    @Test
+    void deriveSettlementReason_zeroTotal_returnsEmptyMessage() {
+        assertThat(invokeReason(0L, 0L)).isEqualTo("暂无订单数据");
+    }
+
+    @Test
+    void deriveSettlementReason_zeroSettledNonZeroTotal_returnsUpstreamPendingMessage() {
+        assertThat(invokeReason(0L, 100L))
+                .isEqualTo("上游尚未回传结算样本，当前仅展示下单/同步侧指标");
+    }
+
+    @Test
+    void deriveSettlementReason_partialSettled_returnsRatioMessage() {
+        assertThat(invokeReason(250L, 1000L)).isEqualTo("已结算订单 250 / 1000（25%）");
+    }
+
+    @Test
+    void deriveSettlementReason_fullySettled_returnsFullRatio() {
+        assertThat(invokeReason(5591L, 5591L)).isEqualTo("已结算订单 5591 / 5591（100%）");
+    }
+
+    @Test
+    void formatRange_bothNull_returnsUnboundedMessage() {
+        assertThat(invokeFormat(null, null)).isEqualTo("未指定时间范围");
+    }
+
+    @Test
+    void formatRange_onlyStart_returnsStartLabel() {
+        LocalDateTime start = LocalDateTime.of(2026, 6, 1, 0, 0, 0);
+        assertThat(invokeFormat(start, null)).isEqualTo("开始于 2026-06-01 00:00:00");
+    }
+
+    @Test
+    void formatRange_onlyEnd_returnsEndLabel() {
+        LocalDateTime end = LocalDateTime.of(2026, 6, 6, 23, 59, 59);
+        assertThat(invokeFormat(null, end)).isEqualTo("截至 2026-06-06 23:59:59");
+    }
+
+    @Test
+    void formatRange_bothPresent_returnsRange() {
+        LocalDateTime start = LocalDateTime.of(2026, 6, 1, 0, 0, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 6, 6, 23, 59, 59);
+        assertThat(invokeFormat(start, end))
+                .isEqualTo("2026-06-01 00:00:00 ~ 2026-06-06 23:59:59");
+    }
+
+    @Test
+    void summary_settlementFieldsRoundTrip() {
+        DashboardService.Summary summary = new DashboardService.Summary();
+        LocalDateTime now = LocalDateTime.of(2026, 6, 6, 12, 0, 0);
+
+        summary.setSettledOrderCount(250L);
+        summary.setSnapshotAt(now);
+        summary.setSettlementReason("已结算订单 250 / 1000（25%）");
+        summary.setSettleTimeRange("2026-06-01 00:00:00 ~ 2026-06-06 23:59:59");
+
+        assertThat(summary.getSettledOrderCount()).isEqualTo(250L);
+        assertThat(summary.getSnapshotAt()).isEqualTo(now);
+        assertThat(summary.getSettlementReason()).isEqualTo("已结算订单 250 / 1000（25%）");
+        assertThat(summary.getSettleTimeRange())
+                .isEqualTo("2026-06-01 00:00:00 ~ 2026-06-06 23:59:59");
+    }
+
+    @Test
+    void summary_settlementFieldsDefaultToNull() {
+        DashboardService.Summary summary = new DashboardService.Summary();
+        assertThat(summary.getSettledOrderCount()).isNull();
+        assertThat(summary.getSnapshotAt()).isNull();
+        assertThat(summary.getSettlementReason()).isNull();
+        assertThat(summary.getSettleTimeRange()).isNull();
+    }
+
+    private String invokeReason(long settled, long total) {
+        try {
+            Method m = DashboardService.class.getDeclaredMethod(
+                    "deriveSettlementReason", long.class, long.class);
+            m.setAccessible(true);
+            return (String) m.invoke(service, settled, total);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Failed to invoke deriveSettlementReason", ex);
+        }
+    }
+
+    private String invokeFormat(LocalDateTime start, LocalDateTime end) {
+        try {
+            Method m = DashboardService.class.getDeclaredMethod(
+                    "formatRange", LocalDateTime.class, LocalDateTime.class);
+            m.setAccessible(true);
+            return (String) m.invoke(service, start, end);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Failed to invoke formatRange", ex);
+        }
     }
 
     private void mockBaseOrderAggregates(long attributedCount, long unattributedCount) {

@@ -76,6 +76,6 @@ class DashboardPerformanceSummaryServiceTest {
                 anyString(),
                 eq(LocalDate.of(2026, 4, 17)),
                 eq(12800L),
-                eq(900L));
+                eq(1100L));
     }
 }

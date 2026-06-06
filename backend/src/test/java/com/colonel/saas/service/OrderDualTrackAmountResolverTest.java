@@ -24,9 +24,26 @@ class OrderDualTrackAmountResolverTest {
         assertThat(amounts.payAmount()).isEqualTo(5000L);
         assertThat(amounts.settleAmount()).isEqualTo(4800L);
         assertThat(amounts.estimateServiceFee()).isEqualTo(600L);
-        assertThat(amounts.effectiveServiceFee()).isEqualTo(550L);
+        assertThat(amounts.effectiveServiceFee()).isEqualTo(495L);
         assertThat(amounts.estimateTechServiceFee()).isEqualTo(60L);
         assertThat(amounts.effectiveTechServiceFee()).isEqualTo(55L);
+    }
+
+    @Test
+    void resolve_shouldCalculateServiceFeeIncomeFromAmountAndRateWhenFeeFieldsMissing() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 10000L);
+        raw.put("settled_goods_amount", 8000L);
+        raw.put("service_fee_rate", 10);
+        raw.put("estimated_tech_service_fee", 100L);
+        raw.put("tech_service_fee", 80L);
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
+
+        assertThat(amounts.estimateServiceFee()).isEqualTo(1000L);
+        assertThat(amounts.effectiveServiceFee()).isEqualTo(720L);
+        assertThat(amounts.estimateTechServiceFee()).isEqualTo(100L);
+        assertThat(amounts.effectiveTechServiceFee()).isEqualTo(80L);
     }
 
     @Test

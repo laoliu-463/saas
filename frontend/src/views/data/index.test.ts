@@ -180,10 +180,37 @@ describe('DataDashboard business metric matrix', () => {
     expect(text).toContain('结算：0')
     expect(text).toContain('成交：¥300.00')
     expect(text).toContain('预估：¥10.00')
-    expect(text).toContain('预估：¥3.00')
     expect(text).toContain('预估：¥9.00')
     expect(text).toContain('预估：¥1.00')
     expect(text).toContain('预估：¥2.00')
     expect(text).toContain('预估：¥6.00')
+  })
+
+  it('uses explicit zero service fee expense instead of deriving fallback money', async () => {
+    vi.mocked(getMetrics).mockResolvedValue({
+      ...metricsPayload,
+      data: {
+        ...metricsPayload.data,
+        estimate: {
+          ...metricsPayload.data.estimate,
+          serviceFeeExpense: '0.00',
+          serviceFeeIncome: '10.00',
+          techServiceFee: '1.00',
+          serviceFee: '8.00'
+        }
+      }
+    } as any)
+
+    const wrapper = mount(DataDashboard, {
+      global: {
+        plugins: [createPinia()],
+        stubs
+      }
+    })
+
+    await flushPromises()
+
+    const text = wrapper.find('[data-testid="dashboard-business-metrics"]').text()
+    expect(text).toContain('服务费支出预估：¥0.00')
   })
 })

@@ -5,10 +5,13 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import lombok.Data;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -48,6 +51,8 @@ import java.util.UUID;
  */
 @Service
 public class DashboardService {
+
+    private static final Logger log = LoggerFactory.getLogger(DashboardService.class);
 
     /** 诊断分类：机制命中但历史订单创建时间晚于映射时间，无法安全回填 */
     public static final String DIAGNOSIS_MECHANISM_HIT_HISTORY_UNSAFE = "MECHANISM_HIT_HISTORY_UNSAFE";
@@ -151,12 +156,14 @@ public class DashboardService {
         long orderCount;
         long orderAmount;
         long serviceFee;
+        long settledOrderCount = 0L;
+        PerformanceMetricsQueryService.DashboardPerformanceSummary performanceSummary = null;
         if (usePerformanceRecords) {
-            PerformanceMetricsQueryService.DashboardPerformanceSummary performanceSummary =
-                    performanceMetricsQueryService.aggregateDashboardSummary(startTime, endTime, userId, deptId, dataScope);
+            performanceSummary = performanceMetricsQueryService.aggregateDashboardSummary(startTime, endTime, userId, deptId, dataScope);
             orderCount = performanceSummary.orderCount();
             orderAmount = performanceSummary.orderAmountCent();
             serviceFee = performanceSummary.serviceFeeCent();
+            settledOrderCount = orderCount;
             channelPerformance = toPerformanceItems(performanceSummary.channelPerformance(), true);
             colonelPerformance = toPerformanceItems(performanceSummary.colonelPerformance(), false);
         } else {
@@ -233,6 +240,18 @@ public class DashboardService {
         summary.setNativeKeyMismatchCount(findDiagnosticCount(diagnostics, DIAGNOSIS_NATIVE_KEY_MISMATCH));
         summary.setAmbiguousMappingCount(findDiagnosticCount(diagnostics, DIAGNOSIS_AMBIGUOUS_MAPPING));
         summary.setActivityProductBreakdown(activityProductBreakdown);
+
+        summary.setSettledOrderCount(settledOrderCount);
+        summary.setSnapshotAt(LocalDateTime.now());
+        summary.setSettlementReason(deriveSettlementReason(settledOrderCount, orderCount));
+        summary.setSettleTimeRange(formatRange(startTime, endTime));
+
+        if (usePerformanceRecords && orderCount > 0 && settledOrderCount == 0L) {
+            log.warn(
+                    "Dashboard summary has zero settled orders in range: orderCount={}, settledOrderCount={}, range={}",
+                    orderCount, settledOrderCount, formatRange(startTime, endTime));
+        }
+
         return summary;
     }
 
@@ -963,6 +982,14 @@ public class DashboardService {
         private List<DiagnosticItem> diagnosticBreakdown;
         /** 活动-商品维度下钻列表 */
         private List<ActivityProductItem> activityProductBreakdown;
+        /** 已结算订单数（performance_records.settle_time IS NOT NULL 的订单数；空时为 0） */
+        private Long settledOrderCount;
+        /** 指标快照生成时间（服务端 LocalDateTime.now()） */
+        private LocalDateTime snapshotAt;
+        /** 结算原因说明（基于已结算订单数 / 总订单数 比例给出业务侧可读解释） */
+        private String settlementReason;
+        /** 结算时间范围（与传入 startTime/endTime 同步，用于前端展示口径） */
+        private String settleTimeRange;
     }
 
     /**
@@ -1067,5 +1094,45 @@ public class DashboardService {
             String unattributedReason,
             String dashboardDiagnosis,
             String timeField) {
+    }
+
+    private static final DateTimeFormatter RANGE_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    /**
+     * 构造面向业务侧可读的结算说明文案。
+     *
+     * <p>当 {@code total == 0} 时返回"暂无订单数据"；
+     * 当 {@code settled == 0} 但有订单时，说明上游尚未回传结算样本；
+     * 否则展示已结算订单数与占比，便于业务侧快速判断结算健康度。
+     */
+    private String deriveSettlementReason(long settled, long total) {
+        if (total <= 0L) {
+            return "暂无订单数据";
+        }
+        if (settled <= 0L) {
+            return "上游尚未回传结算样本，当前仅展示下单/同步侧指标";
+        }
+        long ratio = Math.round((double) settled * 10000L / (double) total) / 100L;
+        return "已结算订单 " + settled + " / " + total + "（" + ratio + "%）";
+    }
+
+    /**
+     * 将传入的起止时间格式化为统一的时间范围字符串，供前端展示口径。
+     *
+     * <p>任意一端为 null 时跳过对应侧；两端均为 null 时返回"未指定时间范围"。
+     * 该字符串只用于展示，不参与缓存键生成（缓存键由 controller 层计算）。
+     */
+    private String formatRange(LocalDateTime start, LocalDateTime end) {
+        if (start == null && end == null) {
+            return "未指定时间范围";
+        }
+        if (start == null) {
+            return "截至 " + RANGE_FORMATTER.format(end);
+        }
+        if (end == null) {
+            return "开始于 " + RANGE_FORMATTER.format(start);
+        }
+        return RANGE_FORMATTER.format(start) + " ~ " + RANGE_FORMATTER.format(end);
     }
 }

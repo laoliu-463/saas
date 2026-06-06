@@ -115,6 +115,8 @@ public class PerformanceCalculationService {
         long effectiveServiceFee = nvl(order.getEffectiveServiceFee());
         long estimateTechServiceFee = nvl(order.getEstimateTechServiceFee());
         long effectiveTechServiceFee = nvl(order.getEffectiveTechServiceFee());
+        long estimateServiceFeeExpense = nvl(order.getEstimateServiceFeeExpense());
+        long effectiveServiceFeeExpense = nvl(order.getEffectiveServiceFeeExpense());
         long talentCommission = nvl(order.getSettleSecondColonelCommission());
 
         record.setPayAmount(payAmount);
@@ -123,6 +125,8 @@ public class PerformanceCalculationService {
         record.setEffectiveServiceFee(effectiveServiceFee);
         record.setEstimateTechServiceFee(estimateTechServiceFee);
         record.setEffectiveTechServiceFee(effectiveTechServiceFee);
+        record.setEstimateServiceFeeExpense(estimateServiceFeeExpense);
+        record.setEffectiveServiceFeeExpense(effectiveServiceFeeExpense);
 
         // 第三步：判断是否已取消/失效
         boolean reversed = !OrderCommissionPolicy.countsTowardPerformance(order.getOrderStatus());
@@ -144,19 +148,24 @@ public class PerformanceCalculationService {
         }
 
         // 第四步：双轨提成计算
+        // 预估轨：传入技术服务费和服务费支出；结算轨同理。
+        // 提成基数 = 服务费收益 = 收入 - 支出 - 技术费
+        // 毛利 = 服务费收益 - 招商提成 - 渠道提成
         // 预估轨：talentCommission 参数为 0（预估轨不考虑达人佣金）
         CommissionService.CommissionSummary estimateTrack = commissionService.calculateTrack(
                 estimateServiceFee,
                 estimateTechServiceFee,
+                estimateServiceFeeExpense,
                 0L,
                 order.getActivityId(),
                 order.getProductId(),
                 recruiterUserId,
                 order.getSettleTime());
-        // 结算轨：使用实际达人佣金
+        // 结算轨：使用实际达人佣金，不重复扣 effectiveTechServiceFee。
         CommissionService.CommissionSummary effectiveTrack = commissionService.calculateTrack(
                 effectiveServiceFee,
-                effectiveTechServiceFee,
+                0L,
+                effectiveServiceFeeExpense,
                 talentCommission,
                 order.getActivityId(),
                 order.getProductId(),
@@ -183,6 +192,8 @@ public class PerformanceCalculationService {
     private void zeroCommissions(PerformanceRecord record) {
         record.setEstimateServiceProfit(0L);
         record.setEffectiveServiceProfit(0L);
+        record.setEstimateServiceFeeExpense(0L);
+        record.setEffectiveServiceFeeExpense(0L);
         record.setEstimateRecruiterCommission(0L);
         record.setEffectiveRecruiterCommission(0L);
         record.setEstimateChannelCommission(0L);

@@ -518,7 +518,7 @@ const summaryItems = computed(() => {
     {
       key: 'profit',
       title: '服务费收益',
-      tooltip: '<b>计算公式</b><br>服务费收益 = 服务费收入 − 技术服务费 − 服务费支出<br><b>数据来源</b>：performance_records 计算',
+      tooltip: '<b>计算公式</b><br>预估服务费收益 = 服务费收入 − 服务费支出 − 技术服务费<br>结算服务费收益 = 服务费收入 − 服务费支出<br><b>数据来源</b>：performance_records 计算',
       lines: [
         { label: '预估：', value: formatEstimateTrack(total.serviceFeeProfit) },
         { label: '结算：', value: formatSettleTrack(total.serviceFeeProfit) }

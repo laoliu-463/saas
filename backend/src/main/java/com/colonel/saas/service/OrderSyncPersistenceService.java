@@ -18,6 +18,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -74,6 +75,15 @@ public class OrderSyncPersistenceService {
     /** 根据用户 ID 查询系统用户，不存在时返回 null。 */
     public SysUser getUser(UUID id) {
         return sysUserMapper.selectById(id);
+    }
+
+    /** 返回库内最新 pay_time 的 epoch 秒，无样本时为空。 */
+    public Optional<Long> findLatestPayTimeEpochSeconds() {
+        Long epoch = orderMapper.selectMaxPayTimeEpochSeconds();
+        if (epoch == null || epoch <= 0L) {
+            return Optional.empty();
+        }
+        return Optional.of(epoch);
     }
 
     /**

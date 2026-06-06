@@ -35,6 +35,16 @@ public interface ColonelsettlementOrderMapper extends BaseMapper<Colonelsettleme
     ColonelsettlementOrder findByOrderId(@Param("orderId") String orderId);
 
     /**
+     * 查询未删除订单中最晚的 pay_time（epoch 秒，Asia/Shanghai 存库无时区）。
+     */
+    @Select("""
+            SELECT FLOOR(EXTRACT(EPOCH FROM (MAX(pay_time) AT TIME ZONE 'Asia/Shanghai')))::bigint
+            FROM colonelsettlement_order
+            WHERE deleted = 0 AND pay_time IS NOT NULL
+            """)
+    Long selectMaxPayTimeEpochSeconds();
+
+    /**
      * 幂等插入结算订单
      * <p>
      * 基于 order_id 做冲突忽略，如果订单已存在则跳过插入。

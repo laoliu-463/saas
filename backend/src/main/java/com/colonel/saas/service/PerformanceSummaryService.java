@@ -119,13 +119,14 @@ public class PerformanceSummaryService {
                     COALESCE(SUM(pr.pay_amount), 0) AS order_amount,
                     COALESCE(SUM(pr.estimate_service_fee), 0) AS service_fee_income,
                     COALESCE(SUM(pr.estimate_tech_service_fee), 0) AS tech_service_fee,
+                    COALESCE(SUM(pr.estimate_service_fee_expense), 0) AS service_fee_expense,
                     COALESCE(SUM(pr.estimate_service_profit), 0) AS service_fee_profit,
                     COALESCE(SUM(pr.estimate_recruiter_commission), 0) AS recruiter_commission,
                     COALESCE(SUM(pr.estimate_channel_commission), 0) AS channel_commission,
                     COALESCE(SUM(pr.estimate_gross_profit), 0) AS gross_profit
                 """ + BASE_FROM + where;
         // 第三步：执行查询并映射为 DTO
-        return mapTrackSummary(jdbcTemplate.queryForMap(sql, args.toArray()));
+        return mapTrackSummary(jdbcTemplate.queryForMap(sql, args.toArray()), true);
     }
 
     /**
@@ -154,13 +155,14 @@ public class PerformanceSummaryService {
                     COALESCE(SUM(pr.settle_amount), 0) AS order_amount,
                     COALESCE(SUM(pr.effective_service_fee), 0) AS service_fee_income,
                     COALESCE(SUM(pr.effective_tech_service_fee), 0) AS tech_service_fee,
+                    COALESCE(SUM(pr.effective_service_fee_expense), 0) AS service_fee_expense,
                     COALESCE(SUM(pr.effective_service_profit), 0) AS service_fee_profit,
                     COALESCE(SUM(pr.effective_recruiter_commission), 0) AS recruiter_commission,
                     COALESCE(SUM(pr.effective_channel_commission), 0) AS channel_commission,
                     COALESCE(SUM(pr.effective_gross_profit), 0) AS gross_profit
                 """ + BASE_FROM + where;
         // 第四步：执行查询并映射为 DTO
-        return mapTrackSummary(jdbcTemplate.queryForMap(sql, args.toArray()));
+        return mapTrackSummary(jdbcTemplate.queryForMap(sql, args.toArray()), false);
     }
 
     /**
@@ -287,30 +289,33 @@ public class PerformanceSummaryService {
      * 处理流程：
      * <ol>
      *   <li>从结果行提取各聚合字段（order_count、order_amount 等）</li>
-     *   <li>服务费支出 = 服务费收入 - 技术服务费 - 服务费收益（平台侧实际服务费）</li>
+     *   <li>按预估 / 结算轨分别反推服务费支出，结算轨不重复扣技术服务费</li>
      *   <li>封装为 DTO 返回</li>
      * </ol>
      *
      * @param row 数据库查询结果行（key-value 映射）
      * @return 轨道汇总指标 DTO
      */
-    private PerformanceTrackSummaryDTO mapTrackSummary(Map<String, Object> row) {
+    private PerformanceTrackSummaryDTO mapTrackSummary(Map<String, Object> row, boolean estimateTrack) {
         PerformanceTrackSummaryDTO track = new PerformanceTrackSummaryDTO();
         long serviceFeeIncome = asLong(row.get("service_fee_income"));
         long techServiceFee = asLong(row.get("tech_service_fee"));
         long serviceProfit = asLong(row.get("service_fee_profit"));
+        long serviceFeeExpense = asLong(row.get("service_fee_expense"));
+        if (serviceFeeExpense <= 0L) {
+            long techDeduction = estimateTrack ? techServiceFee : 0L;
+            serviceFeeExpense = Math.max(serviceFeeIncome - techDeduction - serviceProfit, 0L);
+        }
         long recruiter = asLong(row.get("recruiter_commission"));
         long channel = asLong(row.get("channel_commission"));
         track.setOrderCount(asLong(row.get("order_count")));
         track.setOrderAmount(asLong(row.get("order_amount")));
         track.setServiceFeeIncome(serviceFeeIncome);
         track.setTechServiceFee(techServiceFee);
+        track.setServiceFeeExpense(serviceFeeExpense);
         track.setServiceFeeProfit(serviceProfit);
         track.setRecruiterCommission(recruiter);
         track.setChannelCommission(channel);
-        // 正确公式：服务费支出 = 服务费收入 - 技术服务费 - 服务费收益
-        // 服务费支出是平台侧实际服务费（非招商+渠道提成）
-        track.setServiceFeeExpense(Math.max(serviceFeeIncome - techServiceFee - serviceProfit, 0L));
         track.setGrossProfit(asLong(row.get("gross_profit")));
         return track;
     }

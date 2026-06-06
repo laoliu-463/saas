@@ -19,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Duration;
 import java.util.UUID;
@@ -56,6 +57,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
     @Mock private PerformanceMetricsQueryService performanceMetricsQueryService;
     @Mock private PerformanceRecordMapper performanceRecordMapper;
     @Mock private SysUserMapper sysUserMapper;
+    @Mock private JdbcTemplate jdbcTemplate;
 
     /** 真实的短 TTL 缓存服务（无 Redis）。 */
     private ShortTtlCacheService realCache;
@@ -73,7 +75,8 @@ class DataApplicationServiceOrderSummaryCacheTest {
                 realCache,
                 performanceMetricsQueryService,
                 performanceRecordMapper,
-                sysUserMapper);
+                sysUserMapper,
+                jdbcTemplate);
     }
 
     @Test
@@ -149,7 +152,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
         DataApplicationService zeroService = new DataApplicationService(
                 orderMapper, commissionService, exclusiveTalentMapper,
                 exclusiveMerchantMapper, activityMapper, zeroTtlCache,
-                performanceMetricsQueryService, performanceRecordMapper, sysUserMapper);
+                performanceMetricsQueryService, performanceRecordMapper, sysUserMapper, jdbcTemplate);
 
         UUID userId = UUID.randomUUID();
         for (int i = 0; i < 5; i++) {

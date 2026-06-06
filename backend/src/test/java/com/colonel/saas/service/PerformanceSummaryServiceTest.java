@@ -64,7 +64,7 @@ class PerformanceSummaryServiceTest {
 
         assertThat(track.getOrderCount()).isEqualTo(3L);
         assertThat(track.getOrderAmount()).isEqualTo(9000L);
-        // 服务费支出 = 收入 - 技术费 - 服务费收益（600 - 60 - 540 = 0）
+        // 服务费支出 = 收入 - 技术服务费 - 服务费收益（两轨统一口径，600 - 60 - 540 = 0）
         assertThat(track.getServiceFeeExpense()).isEqualTo(0L);
         assertThat(track.getGrossProfit()).isEqualTo(459L);
     }
@@ -88,6 +88,18 @@ class PerformanceSummaryServiceTest {
 
         assertThat(track.getOrderCount()).isEqualTo(2L);
         assertThat(track.getServiceFeeIncome()).isEqualTo(400L);
+    }
+
+    @Test
+    void aggregateEffective_shouldInferExpenseWithoutDeductingTechFeeAgain() {
+        when(jdbcTemplate.queryForMap(contains("pr.effective_service_fee"), any(Object[].class)))
+                .thenReturn(summaryRow(2L, 5000L, 400L, 40L, 390L, 39L, 19L, 332L));
+
+        PerformanceTrackSummaryDTO track = service.aggregateEffective(
+                new PerformanceSummaryQuery(),
+                PerformanceAccessContext.of(null, null, DataScope.ALL, java.util.List.of("admin")));
+
+        assertThat(track.getServiceFeeExpense()).isEqualTo(10L);
     }
 
     @Test

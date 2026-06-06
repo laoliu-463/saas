@@ -225,7 +225,7 @@ const renderTechServiceFee = (row: any) => renderMoneyLines(row, [
 ])
 
 const renderServiceFeeExpense = (row: any) => renderMoneyLines(row, [
-  ['预估:', ['estimateServiceFeeExpense', 'estimate_service_fee_expense', 'serviceFeeCost', 'service_fee_cost', 'serviceFeeExpense', 'service_fee_expense', 'talentCommission', 'talent_commission']],
+  ['预估:', ['estimateServiceFeeExpense', 'estimate_service_fee_expense', 'serviceFeeCost', 'service_fee_cost', 'serviceFeeExpense', 'service_fee_expense']],
   ['结算:', ['effectiveServiceFeeExpense', 'effective_service_fee_expense', 'settleServiceFeeExpense', 'settle_service_fee_expense']]
 ])
 

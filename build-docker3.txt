@@ -1,0 +1,47 @@
+ Image colonel-saas/backend:real-pre Building
+#1 [internal] load local bake definitions
+#1 reading from stdin 556B 0.0s done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 181B 0.0s done
+#2 DONE 0.1s
+
+#3 [internal] load metadata for docker.io/library/eclipse-temurin:17-jre-alpine
+#3 DONE 0.1s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 333B 0.1s done
+#4 DONE 0.1s
+
+#5 [1/3] FROM docker.io/library/eclipse-temurin:17-jre-alpine@sha256:b0ae54a36f82e04dc6c45e40ca5c55762e20b9a0858ee457faf557d440a9b571
+#5 resolve docker.io/library/eclipse-temurin:17-jre-alpine@sha256:b0ae54a36f82e04dc6c45e40ca5c55762e20b9a0858ee457faf557d440a9b571 0.0s done
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 72.66MB 5.0s
+#6 transferring context: 80.02MB 5.7s done
+#6 DONE 5.7s
+
+#7 [2/3] WORKDIR /app
+#7 CACHED
+
+#8 [3/3] COPY target/*.jar app.jar
+#8 DONE 0.3s
+
+#9 exporting to image
+#9 exporting layers
+#9 exporting layers 2.4s done
+#9 exporting manifest sha256:48abd1823d46263c331df6869f8923f8fb57a90f479c1af72d7f51710b635abb 0.0s done
+#9 exporting config sha256:1f9893d7d75304c32ee7cb2e562214ffe18c750a9132375d59d00bc13b8b6cf1 0.0s done
+#9 exporting attestation manifest sha256:3ad12123ad220b8b3b96a7bb2834ab6781d2ec6944225e3fdd8cdbffdf68a81a 0.0s done
+#9 exporting manifest list sha256:31daa39010204ea79a9327eaf725606d63c7e6c7ec639c231663313502d59ac4
+#9 exporting manifest list sha256:31daa39010204ea79a9327eaf725606d63c7e6c7ec639c231663313502d59ac4 0.0s done
+#9 naming to docker.io/colonel-saas/backend:real-pre done
+#9 unpacking to docker.io/colonel-saas/backend:real-pre
+#9 unpacking to docker.io/colonel-saas/backend:real-pre 0.7s done
+#9 DONE 3.3s
+
+#10 resolving provenance for metadata file
+#10 DONE 0.1s
+ Image colonel-saas/backend:real-pre Built
