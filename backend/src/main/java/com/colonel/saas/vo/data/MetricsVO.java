@@ -35,6 +35,8 @@ public class MetricsVO {
     private BigDecimal serviceFeeIncome;
     /** 技术服务费，单位：元 */
     private BigDecimal techServiceFee;
+    /** 服务费支出（平台侧实际服务费），单位：元 */
+    private BigDecimal serviceFeeExpense;
     /** 达人佣金，单位：元 */
     private BigDecimal talentCommission;
     /** 业务佣金，单位：元 */

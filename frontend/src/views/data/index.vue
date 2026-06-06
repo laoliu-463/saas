@@ -477,9 +477,14 @@ const formatMoney = (value: number) => `¥${formatAmount(value)}`
 const metricAmount = (track: Record<string, any>, key: string) => formatMoney(toNumber(track?.[key]))
 
 const serviceFeeExpense = (track: Record<string, any>) => {
+  // 优先使用后端返回的 serviceFeeExpense（已修正为平台侧实际服务费）
   const explicit = toNumber(track?.serviceFeeExpense)
   if (explicit > 0) return formatMoney(explicit)
-  return formatMoney(toNumber(track?.commission) || toNumber(track?.bizCommission) + toNumber(track?.channelCommission))
+  // 回退计算：服务费支出 = 服务费收入 - 技术服务费 - 服务费收益
+  const income = toNumber(track?.serviceFeeIncome)
+  const techFee = toNumber(track?.techServiceFee)
+  const profit = toNumber(track?.serviceFeeProfit)
+  return formatMoney(Math.max(income - techFee - profit, 0))
 }
 
 const businessMetricRows = computed(() => {
@@ -522,8 +527,8 @@ const businessMetricRows = computed(() => {
     {
       label: '服务费收益',
       primaryLabel: '预估',
-      primaryValue: metricAmount(createTrack, 'serviceFee'),
-      settleValue: metricAmount(settleTrack, 'serviceFee')
+      primaryValue: metricAmount(createTrack, 'serviceFeeProfit'),
+      settleValue: metricAmount(settleTrack, 'serviceFeeProfit')
     },
     {
       label: '招商提成',

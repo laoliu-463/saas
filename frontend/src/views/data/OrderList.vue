@@ -509,7 +509,7 @@ const summaryItems = computed(() => {
     {
       key: 'expense',
       title: '服务费支出',
-      tooltip: '<b>计算公式</b><br>服务费支出 = 招商提成 + 渠道提成<br><b>数据来源</b>：CommissionService 按活动提成规则计算',
+      tooltip: '<b>计算公式</b><br>服务费支出 = 服务费收入 − 技术服务费 − 服务费收益<br><b>数据来源</b>：performance_records 平台侧实际服务费',
       lines: [
         { label: '预估：', value: formatEstimateTrack(total.serviceFeeExpense) },
         { label: '结算：', value: formatSettleTrack(total.serviceFeeExpense) }
@@ -518,7 +518,7 @@ const summaryItems = computed(() => {
     {
       key: 'profit',
       title: '服务费收益',
-      tooltip: '<b>计算公式</b><br>服务费收益 = 服务费收入 − 技术服务费<br><b>数据来源</b>：CommissionService 计算',
+      tooltip: '<b>计算公式</b><br>服务费收益 = 服务费收入 − 技术服务费 − 服务费支出<br><b>数据来源</b>：performance_records 计算',
       lines: [
         { label: '预估：', value: formatEstimateTrack(total.serviceFeeProfit) },
         { label: '结算：', value: formatSettleTrack(total.serviceFeeProfit) }

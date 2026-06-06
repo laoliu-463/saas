@@ -161,4 +161,27 @@ class OrderSyncJobTest {
 
         verify(orderSyncService).syncInstituteOrdersRecentWindow();
     }
+
+    @Test
+    void syncInstituteFullBackfill_shouldInvokeFullBackfillWindow() {
+        com.colonel.saas.job.OrderSyncJob job = newJob();
+        ReflectionTestUtils.setField(job, "instituteBackfillEnabled", true);
+        when(orderSyncService.syncInstituteFullBackfillWindow()).thenReturn(
+                new OrderSyncService.SyncResult(1000L, 22600L, 1, 5, 2, 0, 3, 1, 0, false)
+        );
+
+        job.syncInstituteFullBackfill();
+
+        verify(orderSyncService).syncInstituteFullBackfillWindow();
+    }
+
+    @Test
+    void syncInstituteFullBackfill_shouldSkipWhenDisabled() {
+        com.colonel.saas.job.OrderSyncJob job = newJob();
+        ReflectionTestUtils.setField(job, "instituteBackfillEnabled", false);
+
+        job.syncInstituteFullBackfill();
+
+        verifyNoInteractions(orderSyncService);
+    }
 }

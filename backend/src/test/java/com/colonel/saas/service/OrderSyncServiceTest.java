@@ -215,11 +215,45 @@ class OrderSyncServiceTest {
     }
 
     @Test
-    void syncInstituteOrdersRecentWindow_shouldUseTwentyFourHourWindow() {
+    void syncInstituteOrdersRecentWindow_shouldUseFullWindowWhenNoWaterline() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+                .thenReturn(true);
+        when(valueOperations.get("order:sync:institute_recent_last_time")).thenReturn(null);
+
+        service.syncInstituteOrdersRecentWindow();
+
+        ArgumentCaptor<DouyinOrderGateway.DouyinOrderQueryRequest> captor =
+                ArgumentCaptor.forClass(DouyinOrderGateway.DouyinOrderQueryRequest.class);
+        verify(douyinOrderGateway).listInstituteOrders(captor.capture());
+        DouyinOrderGateway.DouyinOrderQueryRequest request = captor.getValue();
+        long windowSeconds = request.endTime() - request.startTime();
+        assertThat(windowSeconds).isBetween(24L * 60L * 60L - 60L, 24L * 60L * 60L + 60L);
+    }
+
+    @Test
+    void syncInstituteOrdersRecentWindow_shouldUseIncrementalWindowWhenWaterlineExists() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+                .thenReturn(true);
+        long endTime = java.time.Instant.now().getEpochSecond() - 30L;
+        when(valueOperations.get("order:sync:institute_recent_last_time"))
+                .thenReturn(String.valueOf(endTime - 180L));
+
+        service.syncInstituteOrdersRecentWindow();
+
+        ArgumentCaptor<DouyinOrderGateway.DouyinOrderQueryRequest> captor =
+                ArgumentCaptor.forClass(DouyinOrderGateway.DouyinOrderQueryRequest.class);
+        verify(douyinOrderGateway).listInstituteOrders(captor.capture());
+        DouyinOrderGateway.DouyinOrderQueryRequest request = captor.getValue();
+        long windowSeconds = request.endTime() - request.startTime();
+        assertThat(windowSeconds).isLessThan(15L * 60L);
+    }
+
+    @Test
+    void syncInstituteFullBackfillWindow_shouldUseTwentyFourHourWindow() {
         when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
                 .thenReturn(true);
 
-        service.syncInstituteOrdersRecentWindow();
+        service.syncInstituteFullBackfillWindow();
 
         ArgumentCaptor<DouyinOrderGateway.DouyinOrderQueryRequest> captor =
                 ArgumentCaptor.forClass(DouyinOrderGateway.DouyinOrderQueryRequest.class);

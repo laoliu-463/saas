@@ -287,7 +287,7 @@ public class PerformanceSummaryService {
      * 处理流程：
      * <ol>
      *   <li>从结果行提取各聚合字段（order_count、order_amount 等）</li>
-     *   <li>将 recruiter_commission + channel_commission 合计为 service_fee_expense</li>
+     *   <li>服务费支出 = 服务费收入 - 技术服务费 - 服务费收益（平台侧实际服务费）</li>
      *   <li>封装为 DTO 返回</li>
      * </ol>
      *
@@ -296,16 +296,21 @@ public class PerformanceSummaryService {
      */
     private PerformanceTrackSummaryDTO mapTrackSummary(Map<String, Object> row) {
         PerformanceTrackSummaryDTO track = new PerformanceTrackSummaryDTO();
+        long serviceFeeIncome = asLong(row.get("service_fee_income"));
+        long techServiceFee = asLong(row.get("tech_service_fee"));
+        long serviceProfit = asLong(row.get("service_fee_profit"));
         long recruiter = asLong(row.get("recruiter_commission"));
         long channel = asLong(row.get("channel_commission"));
         track.setOrderCount(asLong(row.get("order_count")));
         track.setOrderAmount(asLong(row.get("order_amount")));
-        track.setServiceFeeIncome(asLong(row.get("service_fee_income")));
-        track.setTechServiceFee(asLong(row.get("tech_service_fee")));
-        track.setServiceFeeProfit(asLong(row.get("service_fee_profit")));
+        track.setServiceFeeIncome(serviceFeeIncome);
+        track.setTechServiceFee(techServiceFee);
+        track.setServiceFeeProfit(serviceProfit);
         track.setRecruiterCommission(recruiter);
         track.setChannelCommission(channel);
-        track.setServiceFeeExpense(recruiter + channel);
+        // 正确公式：服务费支出 = 服务费收入 - 技术服务费 - 服务费收益
+        // 服务费支出是平台侧实际服务费（非招商+渠道提成）
+        track.setServiceFeeExpense(Math.max(serviceFeeIncome - techServiceFee - serviceProfit, 0L));
         track.setGrossProfit(asLong(row.get("gross_profit")));
         return track;
     }

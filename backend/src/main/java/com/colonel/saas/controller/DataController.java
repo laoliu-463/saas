@@ -87,8 +87,9 @@ public class DataController extends DataApplicationService {
             ShortTtlCacheService shortTtlCacheService,
             PerformanceMetricsQueryService performanceMetricsQueryService,
             PerformanceRecordMapper performanceRecordMapper,
-            SysUserMapper sysUserMapper) {
-        super(orderMapper, commissionService, exclusiveTalentMapper, exclusiveMerchantMapper, activityMapper, shortTtlCacheService, performanceMetricsQueryService, performanceRecordMapper, sysUserMapper);
+            SysUserMapper sysUserMapper,
+            org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+        super(orderMapper, commissionService, exclusiveTalentMapper, exclusiveMerchantMapper, activityMapper, shortTtlCacheService, performanceMetricsQueryService, performanceRecordMapper, sysUserMapper, jdbcTemplate);
     }
 
     @GetMapping("/data/orders")

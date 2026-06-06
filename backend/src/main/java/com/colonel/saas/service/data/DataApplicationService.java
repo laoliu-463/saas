@@ -46,6 +46,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -149,6 +150,9 @@ public class DataApplicationService extends BaseController {
     /** 业绩记录 Mapper，负责按订单号批量查询业绩提成数据 */
     private final PerformanceRecordMapper performanceRecordMapper;
 
+    /** JDBC 模板，用于复杂聚合查询（如 service profit 联合查询） */
+    private final JdbcTemplate jdbcTemplate;
+
     /** 用户 Mapper，负责查询渠道/招商负责人姓名 */
     private final SysUserMapper sysUserMapper;
 
@@ -172,7 +176,8 @@ public class DataApplicationService extends BaseController {
             ShortTtlCacheService shortTtlCacheService,
             PerformanceMetricsQueryService performanceMetricsQueryService,
             PerformanceRecordMapper performanceRecordMapper,
-            SysUserMapper sysUserMapper) {
+            SysUserMapper sysUserMapper,
+            JdbcTemplate jdbcTemplate) {
         this.orderMapper = orderMapper;
         this.commissionService = commissionService;
         this.exclusiveTalentMapper = exclusiveTalentMapper;
@@ -182,6 +187,7 @@ public class DataApplicationService extends BaseController {
         this.performanceMetricsQueryService = performanceMetricsQueryService;
         this.performanceRecordMapper = performanceRecordMapper;
         this.sysUserMapper = sysUserMapper;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /**
@@ -574,13 +580,26 @@ public class DataApplicationService extends BaseController {
             vo.setEffectiveGrossProfit(null);
         }
 
-        // 服务费收益 = 服务费收入 - 技术服务费。这里按展示字段计算，不使用毛利或提成口径。
-        vo.setEstimateServiceProfit(safeSubtract(vo.getEstimateServiceFee(), vo.getEstimateTechServiceFee()));
-        vo.setEffectiveServiceProfit(safeSubtract(vo.getEffectiveServiceFee(), vo.getEffectiveTechServiceFee()));
-
-        // 服务费支出 = 招商提成 + 渠道提成
-        vo.setEstimateServiceFeeExpense(safeAdd(vo.getEstimateRecruiterCommission(), vo.getEstimateChannelCommission()));
-        vo.setEffectiveServiceFeeExpense(safeAdd(vo.getEffectiveRecruiterCommission(), vo.getEffectiveChannelCommission()));
+        // 服务费收益：业绩记录里维护的最终服务利润（扣除招商/渠道提成前）
+        // 服务费支出 = 服务费收入 - 技术服务费 - 服务费收益
+        // 服务费支出是平台侧实际服务费（非招商+渠道提成）
+        if (perf != null) {
+            vo.setEstimateServiceProfit(centToYuan(perf.getEstimateServiceProfit()));
+            vo.setEffectiveServiceProfit(safeCentToYuan(perf.getEffectiveServiceProfit()));
+            long estimateServiceFeeCent = order.getEstimateServiceFee() == null ? 0L : order.getEstimateServiceFee();
+            long estimateTechFeeCent = order.getEstimateTechServiceFee() == null ? 0L : order.getEstimateTechServiceFee();
+            long estimateProfitCent = perf.getEstimateServiceProfit() == null ? 0L : perf.getEstimateServiceProfit();
+            long effectiveServiceFeeCent = order.getEffectiveServiceFee() == null ? 0L : order.getEffectiveServiceFee();
+            long effectiveTechFeeCent = order.getEffectiveTechServiceFee() == null ? 0L : order.getEffectiveTechServiceFee();
+            long effectiveProfitCent = perf.getEffectiveServiceProfit() == null ? 0L : perf.getEffectiveServiceProfit();
+            vo.setEstimateServiceFeeExpense(centToYuan(Math.max(estimateServiceFeeCent - estimateTechFeeCent - estimateProfitCent, 0L)));
+            vo.setEffectiveServiceFeeExpense(centToYuan(Math.max(effectiveServiceFeeCent - effectiveTechFeeCent - effectiveProfitCent, 0L)));
+        } else {
+            vo.setEstimateServiceProfit(null);
+            vo.setEffectiveServiceProfit(null);
+            vo.setEstimateServiceFeeExpense(null);
+            vo.setEffectiveServiceFeeExpense(null);
+        }
 
         // 时间
         vo.setPayTime(order.getPayTime() != null ? order.getPayTime() : order.getOrderCreateTime());
@@ -809,12 +828,20 @@ public class DataApplicationService extends BaseController {
                 deptId,
                 dataScope);
 
+        // 第六步：从 performance_records 查询服务费收益，用于计算正确的服务费支出
+        String timeColumn = columns.timeColumn();
+        String profitCol = "settle_time".equals(timeColumn)
+                ? "pr.effective_service_profit" : "pr.estimate_service_profit";
+        Long totalServiceProfitCent = queryServiceProfitCent(profitCol, timeColumn, start, end);
+        Map<String, Long> dailyServiceProfitCent = queryDailyServiceProfitCent(profitCol, timeColumn, start, end);
+
         OrderSummaryVO vo = new OrderSummaryVO();
-        vo.setTotal(toOrderSummaryRow(firstRow(totalRows), totalCommission, null));
+        vo.setTotal(toOrderSummaryRow(firstRow(totalRows), totalCommission, null, totalServiceProfitCent));
         vo.setRecords(dailyRows.stream()
                 .map(row -> {
                     String date = asString(row, "stat_date");
-                    return toOrderSummaryRow(row, dailyCommission.get(date), date);
+                    long dayProfit = dailyServiceProfitCent.getOrDefault(date, 0L);
+                    return toOrderSummaryRow(row, dailyCommission.get(date), date, dayProfit);
                 })
                 .toList());
         return vo;
@@ -902,6 +929,10 @@ public class DataApplicationService extends BaseController {
             metrics.setServiceFeeIncome(centToYuan(aggregate.serviceFeeIncomeCent()));
             metrics.setTechServiceFee(centToYuan(aggregate.techServiceFeeCent()));
             metrics.setTalentCommission(centToYuan(aggregate.talentCommissionCent()));
+            // 服务费支出 = 服务费收入 - 技术服务费 - 服务费收益（平台侧实际服务费）
+            long serviceFeeExpenseCent = Math.max(
+                    aggregate.serviceFeeIncomeCent() - aggregate.techServiceFeeCent() - aggregate.serviceProfitCent(), 0L);
+            metrics.setServiceFeeExpense(centToYuan(serviceFeeExpenseCent));
             metrics.setServiceFee(centToYuan(aggregate.serviceProfitCent()));
             metrics.setBizCommission(centToYuan(aggregate.recruiterCommissionCent()));
             metrics.setChannelCommission(centToYuan(aggregate.channelCommissionCent()));
@@ -1999,13 +2030,15 @@ public class DataApplicationService extends BaseController {
     private OrderSummaryRowVO toOrderSummaryRow(
             Map<String, Object> row,
             CommissionService.CommissionSummary commissionSummary,
-            String date) {
+            String date,
+            long serviceProfitCent) {
         CommissionService.CommissionSummary summary = commissionSummary == null
                 ? zeroCommissionSummary()
                 : commissionSummary;
         long orderAmount = asLong(row, "order_amount_cent");
         long actualAmount = asLong(row, "actual_amount_cent");
         long serviceFeeIncome = asLong(row, "service_fee_income_cent");
+        long techServiceFee = asLong(row, "tech_service_fee_cent");
         OrderSummaryRowVO vo = new OrderSummaryRowVO();
         vo.setDate(date);
         vo.setTalentPromoterCount(asLong(row, "talent_promoter_count"));
@@ -2016,10 +2049,13 @@ public class DataApplicationService extends BaseController {
         vo.setProductAverageServiceFeeRate(percent(serviceFeeIncome, actualAmount));
         vo.setOrderAverageServiceFeeRate(percent(serviceFeeIncome, orderAmount));
         vo.setServiceFeeIncome(centToYuan(serviceFeeIncome));
-        vo.setTechServiceFee(centToYuan(asLong(row, "tech_service_fee_cent")));
-        vo.setServiceFeeExpense(centToYuan(summary.bizCommission() + summary.channelCommission()));
-        vo.setServiceFeeProfit(centToYuan(summary.serviceFeeNet()));
-        vo.setGrossProfit(centToYuan(summary.grossProfit()));
+        vo.setTechServiceFee(centToYuan(techServiceFee));
+        // 正确公式：服务费支出 = 服务费收入 - 技术服务费 - 服务费收益
+        // 服务费支出是平台侧实际服务费（非招商+渠道提成）
+        long serviceFeeExpenseCent = Math.max(serviceFeeIncome - techServiceFee - serviceProfitCent, 0L);
+        vo.setServiceFeeExpense(centToYuan(serviceFeeExpenseCent));
+        vo.setServiceFeeProfit(centToYuan(serviceProfitCent));
+        vo.setGrossProfit(centToYuan(Math.max(serviceProfitCent - summary.bizCommission() - summary.channelCommission(), 0L)));
         return vo;
     }
 
@@ -2058,6 +2094,46 @@ public class DataApplicationService extends BaseController {
             return Map.of();
         }
         return rows.get(0);
+    }
+
+    /**
+     * 从 performance_records 查询服务费收益总额（valid 记录）。
+     * 用于计算正确的服务费支出 = 收入 - 技术费 - 收益。
+     */
+    private Long queryServiceProfitCent(String profitCol, String timeColumn,
+                                         LocalDateTime start, LocalDateTime end) {
+        String sql = """
+                SELECT COALESCE(SUM(%s), 0)
+                FROM performance_records pr
+                JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
+                WHERE pr.is_valid = TRUE
+                  AND co.%s >= ? AND co.%s < ?
+                """.formatted(profitCol, timeColumn, timeColumn);
+        Long result = jdbcTemplate.queryForObject(sql, Long.class, start, end);
+        return result != null ? result : 0L;
+    }
+
+    /**
+     * 从 performance_records 按日分组查询服务费收益。
+     */
+    private Map<String, Long> queryDailyServiceProfitCent(String profitCol, String timeColumn,
+                                                           LocalDateTime start, LocalDateTime end) {
+        String sql = """
+                SELECT DATE(co.%s) AS stat_date, COALESCE(SUM(%s), 0) AS profit
+                FROM performance_records pr
+                JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
+                WHERE pr.is_valid = TRUE
+                  AND co.%s >= ? AND co.%s < ?
+                GROUP BY DATE(co.%s)
+                """.formatted(timeColumn, profitCol, timeColumn, timeColumn, timeColumn);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, start, end);
+        Map<String, Long> result = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            String date = String.valueOf(row.get("stat_date"));
+            long profit = ((Number) row.get("profit")).longValue();
+            result.put(date, profit);
+        }
+        return result;
     }
 
     private Long asLong(Map<String, Object> row, String key) {

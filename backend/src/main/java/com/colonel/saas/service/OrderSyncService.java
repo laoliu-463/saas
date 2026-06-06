@@ -50,16 +50,10 @@ public class OrderSyncService {
     private static final String INSTITUTE_RECENT_LAST_SYNC_TIME_KEY = "order:sync:institute_recent_last_time";
     /** 分布式同步锁 TTL，防止同步任务长时间占用。 */
     private static final Duration SYNC_LOCK_TTL = Duration.ofMinutes(10);
-    /** 默认同步时间窗口长度（秒），约 10 分钟。 */
-    private static final long WINDOW_SECONDS = 600L;
     /** PAY_RECENT 近窗口补拉的回扫长度（秒），约 6 小时；用于兜底"刚付款订单 update 延迟"。 */
     private static final long PAY_RECENT_WINDOW_SECONDS = 6L * 60L * 60L;
-    /** INSTITUTE_RECENT（6468）同步回扫窗口（秒），约 24 小时；用于批量补拉团长事实订单。 */
-    private static final long INSTITUTE_RECENT_WINDOW_SECONDS = 24L * 60L * 60L;
-    /** 时间窗口重叠（秒），用于补偿边界订单。 */
-    private static final long OVERLAP_SECONDS = 60L;
-    /** 相对当前时间的滞后（秒），避免查询未稳定的上游数据。 */
-    private static final long LAG_SECONDS = 60L;
+    /** INSTITUTE 全量回补窗口（秒），约 24 小时；仅首次或定时全量任务使用。 */
+    private static final long INSTITUTE_FULL_BACKFILL_WINDOW_SECONDS = 24L * 60L * 60L;
     /** 每页请求默认拉取数量。 */
     private static final int DEFAULT_COUNT = 100;
     /** 默认最大翻页次数，超过后强制停止，防止无限循环。 */
@@ -124,6 +118,18 @@ public class OrderSyncService {
     @Value("${order.sync.max-orders:50000}")
     private int maxOrders = DEFAULT_MAX_ORDERS;
 
+    /** 相对当前时间的滞后（秒），避免查询未稳定的上游数据。 */
+    @Value("${order.sync.lag-seconds:30}")
+    private long lagSeconds = 30L;
+
+    /** 增量同步默认窗口长度（秒）。 */
+    @Value("${order.sync.window-seconds:600}")
+    private long windowSeconds = 600L;
+
+    /** 增量窗口与前次水位重叠（秒），补偿边界订单。 */
+    @Value("${order.sync.overlap-seconds:60}")
+    private long overlapSeconds = 60L;
+
     public OrderSyncService(
             DouyinOrderGateway douyinOrderGateway,
             OrderSyncPersistenceService persistenceService,
@@ -152,12 +158,12 @@ public class OrderSyncService {
      */
     public SyncResult syncLatestWindow() {
         long now = Instant.now().getEpochSecond();
-        long endTime = now - LAG_SECONDS;
-        long defaultStart = endTime - WINDOW_SECONDS - OVERLAP_SECONDS;
+        long endTime = now - lagSeconds;
+        long defaultStart = endTime - windowSeconds - overlapSeconds;
         long startTime = defaultStart;
         long lastSyncTime = readLastSyncTime();
         if (lastSyncTime > 0L) {
-            startTime = Math.max(0L, lastSyncTime - OVERLAP_SECONDS);
+            startTime = Math.max(0L, lastSyncTime - overlapSeconds);
         }
         if (startTime >= endTime) {
             startTime = defaultStart;
@@ -185,7 +191,7 @@ public class OrderSyncService {
      */
     public SyncResult syncPayRecentWindow() {
         long now = Instant.now().getEpochSecond();
-        long endTime = now - LAG_SECONDS;
+        long endTime = now - lagSeconds;
         long startTime = Math.max(0L, endTime - PAY_RECENT_WINDOW_SECONDS);
         if (!jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC_PAY_RECENT, SYNC_LOCK_TTL)) {
             log.info("Order sync skipped, mode={}, timeType={}, reason=locked",
@@ -202,30 +208,58 @@ public class OrderSyncService {
     }
 
     /**
-     * INSTITUTE_RECENT（6468 / buyin.instituteOrderColonel）团长事实源同步。
-     * <p>
-     * 固定窗口 now-24h ~ now，使用 {@link JobLockKeys#ORDER_SYNC_INSTITUTE} 独立锁、
-     * {@link #INSTITUTE_RECENT_LAST_SYNC_TIME_KEY} 独立 Redis key，
-     * <strong>不覆盖</strong> {@link #LAST_SYNC_TIME_KEY} 和 {@link #PAY_RECENT_LAST_SYNC_TIME_KEY}。
-     * <p>
-     * 6468 为订单事实源，只写事实/预估轨，不填充或清零结算轨字段。
-     *
-     * @return 同步结果；锁冲突时返回 {@code locked=true}
+     * INSTITUTE_RECENT（6468）增量同步：按 institute 独立水位滚动近窗，避免每轮全量 24h 扫描。
      */
     public SyncResult syncInstituteOrdersRecentWindow() {
         long now = Instant.now().getEpochSecond();
-        long endTime = now - LAG_SECONDS;
-        long startTime = Math.max(0L, endTime - INSTITUTE_RECENT_WINDOW_SECONDS);
+        long endTime = now - lagSeconds;
+        long startTime = resolveInstituteStartTime(endTime, false);
+        return syncInstituteRange(startTime, endTime, SYNC_MODE_INSTITUTE_RECENT);
+    }
+
+    /**
+     * INSTITUTE 全量回补：固定 now-24h ~ now，用于首次或定时兜底，与增量任务共用 institute 锁。
+     */
+    public SyncResult syncInstituteFullBackfillWindow() {
+        long now = Instant.now().getEpochSecond();
+        long endTime = now - lagSeconds;
+        long startTime = resolveInstituteStartTime(endTime, true);
+        return syncInstituteRange(startTime, endTime, SYNC_MODE_INSTITUTE_RECENT + "_FULL");
+    }
+
+    /**
+     * 计算 6468 同步起点：增量模式跟 institute 水位；全量/首次回退 24h。
+     */
+    long resolveInstituteStartTime(long endTime, boolean fullBackfill) {
+        if (fullBackfill) {
+            return Math.max(0L, endTime - INSTITUTE_FULL_BACKFILL_WINDOW_SECONDS);
+        }
+        long lastSyncTime = readInstituteLastSyncTime();
+        if (lastSyncTime <= 0L) {
+            return Math.max(0L, endTime - INSTITUTE_FULL_BACKFILL_WINDOW_SECONDS);
+        }
+        long defaultStart = endTime - windowSeconds - overlapSeconds;
+        long startTime = Math.max(0L, lastSyncTime - overlapSeconds);
+        if (startTime >= endTime) {
+            startTime = defaultStart;
+        }
+        if (endTime - startTime > INSTITUTE_FULL_BACKFILL_WINDOW_SECONDS) {
+            startTime = endTime - INSTITUTE_FULL_BACKFILL_WINDOW_SECONDS;
+        }
+        return startTime;
+    }
+
+    private SyncResult syncInstituteRange(long startTime, long endTime, String mode) {
         if (!jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC_INSTITUTE, SYNC_LOCK_TTL)) {
             log.info("ORDER_SYNC_INSTITUTE api={} mode={} reason=locked",
-                    API_INSTITUTE_ORDER_COLONEL, SYNC_MODE_INSTITUTE_RECENT);
+                    API_INSTITUTE_ORDER_COLONEL, mode);
             return new SyncResult(startTime, endTime, 0, 0, 0, true);
         }
         try {
             DouyinOrderGateway.OrderListResult firstPage = fetchInstitute(
                     new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, DEFAULT_COUNT, "0"));
             SyncResult result = syncItems(firstPage, startTime, endTime, true, DEFAULT_COUNT,
-                    SYNC_MODE_INSTITUTE_RECENT,
+                    mode,
                     SyncSource.INSTITUTE,
                     cursor -> fetchInstitute(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, DEFAULT_COUNT, cursor)));
             persistInstituteLastSyncTime(endTime);

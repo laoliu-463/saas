@@ -173,13 +173,19 @@ douyin:
 order:
   sync:
     enabled: ${ORDER_SYNC_ENABLED:true}
-    cron: ${ORDER_SYNC_CRON:0 */10 * * * ?}
+    lag-seconds: ${ORDER_SYNC_LAG_SECONDS:30}
+    window-seconds: ${ORDER_SYNC_WINDOW_SECONDS:600}
+    overlap-seconds: ${ORDER_SYNC_OVERLAP_SECONDS:60}
+    cron: ${ORDER_SYNC_CRON:0 */3 * * * ?}
     pay-recent:
       enabled: ${ORDER_SYNC_PAY_RECENT_ENABLED:true}
       cron: ${ORDER_SYNC_PAY_RECENT_CRON:0 */30 * * * ?}
     institute-recent:
       enabled: ${ORDER_SYNC_INSTITUTE_RECENT_ENABLED:true}
-      cron: ${ORDER_SYNC_INSTITUTE_RECENT_CRON:0 */10 * * * ?}
+      cron: ${ORDER_SYNC_INSTITUTE_RECENT_CRON:0 */3 * * * ?}
+    institute-backfill:
+      enabled: ${ORDER_SYNC_INSTITUTE_BACKFILL_ENABLED:true}
+      cron: ${ORDER_SYNC_INSTITUTE_BACKFILL_CRON:0 15 0/6 * * ?}
     circuit-breaker:
       failure-threshold: ${ORDER_SYNC_CIRCUIT_FAILURE_THRESHOLD:3}
       open-duration: ${ORDER_SYNC_CIRCUIT_OPEN_DURATION:PT5M}
