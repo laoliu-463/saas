@@ -70,11 +70,27 @@
 
         <div class="filter-field">
           <span class="filter-label">招商部门</span>
-          <n-select placeholder="请选择" disabled />
+          <n-select
+            v-model:value="searchParams.recruiterDeptIds"
+            :options="recruiterDeptOptions"
+            multiple
+            filterable
+            clearable
+            max-tag-count="responsive"
+            placeholder="请选择"
+          />
         </div>
         <div class="filter-field">
           <span class="filter-label">渠道部门</span>
-          <n-select placeholder="请选择" disabled />
+          <n-select
+            v-model:value="searchParams.channelDeptIds"
+            :options="channelDeptOptions"
+            multiple
+            filterable
+            clearable
+            max-tag-count="responsive"
+            placeholder="请选择"
+          />
         </div>
         <div class="filter-field filter-field-wide">
           <span class="filter-label">时间筛选</span>
@@ -210,6 +226,7 @@ import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { NText, useMessage } from 'naive-ui'
 import { exportOrders, exportOrderDetail, getOrderSummary } from '../../api/data'
+import { getOrderFilterOptions } from '../../api/order'
 import { loadOrderRecruiterOptions, loadOrderChannelOptions } from '../orders/order-user-filter-options'
 import { useAuthStore } from '../../stores/auth'
 import { notifyApiFailure, notifyClientPermission } from '../../utils/requestError'
@@ -318,11 +335,15 @@ const searchParams = reactive({
   // v-model 到 searchParams.colonelName（行 30 与行 64），改其一即双向覆盖。
   // 现拆出独立字段 recruiterName 承载"招商"下拉（仅前端状态，不入后端 query），
   // 后端仍由 buildOrderExportParams 通过 colonelName 转发团长名称。
-  recruiterName: null as string | null
+  recruiterName: null as string | null,
+  recruiterDeptIds: null as string[] | null,
+  channelDeptIds: null as string[] | null
 })
 
 const channelOptions = ref<Array<{ label: string; value: string }>>([])
 const recruiterOptions = ref<Array<{ label: string; value: string }>>([])
+const recruiterDeptOptions = ref<Array<{ label: string; value: string }>>([])
+const channelDeptOptions = ref<Array<{ label: string; value: string }>>([])
 
 const emptySummary: SummaryRow = {
   talentPromoterCount: 0,
@@ -656,6 +677,8 @@ const resetFilters = () => {
   searchParams.channelName = ''
   searchParams.recruitType = null
   searchParams.recruiterName = null
+  searchParams.recruiterDeptIds = null
+  searchParams.channelDeptIds = null
   timeField.value = 'createTime'
   applyTimePreset('week')
 }
@@ -718,6 +741,19 @@ onMounted(async () => {
     channelOptions.value = channels
   } catch {
     // silent — filters stay empty if master data unavailable
+  }
+  try {
+    const res: any = await getOrderFilterOptions()
+    const payload = res?.data || {}
+    const map = (list: any): { label: string; value: string }[] => Array.isArray(list)
+      ? list
+          .filter((item: any) => item && item.value)
+          .map((item: any) => ({ label: String(item.label || item.value), value: String(item.value) }))
+      : []
+    recruiterDeptOptions.value = map(payload.recruiterDepartments)
+    channelDeptOptions.value = map(payload.channelDepartments)
+  } catch {
+    // silent — dept filters stay empty if unavailable
   }
 })
 </script>

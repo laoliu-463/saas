@@ -141,10 +141,12 @@ public class DataController extends DataApplicationService {
             @Parameter(description = "开始日期。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @Parameter(description = "时间字段。") @RequestParam(required = false) String timeField,
+            @Parameter(description = "招商部门 ID 列表（CSV）。") @RequestParam(required = false) String recruiterDeptIds,
+            @Parameter(description = "渠道部门 ID 列表（CSV）。") @RequestParam(required = false) String channelDeptIds,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        return super.getOrderDetailPage(page, size, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, activityName, partnerId, partnerName, recruiterName, recruitType, startDate, endDate, timeField, userId, deptId, dataScope);
+        return super.getOrderDetailPage(page, size, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, activityName, partnerId, partnerName, recruiterName, recruitType, startDate, endDate, timeField, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope);
     }
 
     @GetMapping("/data/orders/summary")
@@ -229,11 +231,13 @@ public class DataController extends DataApplicationService {
             @Parameter(description = "开始日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @Parameter(description = "时间字段") @RequestParam(required = false) String timeField,
+            @Parameter(description = "招商部门 ID 列表（CSV）。") @RequestParam(required = false) String recruiterDeptIds,
+            @Parameter(description = "渠道部门 ID 列表（CSV）。") @RequestParam(required = false) String channelDeptIds,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             HttpServletResponse response) throws IOException {
-        super.exportOrderDetail(orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, activityName, partnerId, partnerName, recruiterName, recruitType, startDate, endDate, timeField, userId, deptId, dataScope, response);
+        super.exportOrderDetail(orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, activityName, partnerId, partnerName, recruiterName, recruitType, startDate, endDate, timeField, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope, response);
     }
 
     @GetMapping("/operations/exclusive-talents")

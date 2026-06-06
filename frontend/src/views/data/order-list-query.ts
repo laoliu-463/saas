@@ -20,6 +20,8 @@ export interface OrderListFilters {
   channelName: string    // 渠道名称（模糊匹配）
   recruiterName?: string | null // 招商名称（模糊匹配）
   recruitType: string | null // 招募类型（null 表示全部）
+  recruiterDeptIds?: string[] | null // 招商部门 ID 列表
+  channelDeptIds?: string[] | null // 渠道部门 ID 列表
 }
 
 /**
@@ -98,6 +100,8 @@ export function buildOrderExportParams(input: BaseOrderQueryInput) {
     channelName: filters.channelName || undefined,
     recruiterName: filters.recruiterName || undefined,
     recruitType: filters.recruitType || undefined,
+    recruiterDeptIds: Array.isArray(filters.recruiterDeptIds) ? filters.recruiterDeptIds.join(',') : (filters.recruiterDeptIds || undefined),
+    channelDeptIds: Array.isArray(filters.channelDeptIds) ? filters.channelDeptIds.join(',') : (filters.channelDeptIds || undefined),
     timeField,
     ...resolveDateParams(dateRange)
   }

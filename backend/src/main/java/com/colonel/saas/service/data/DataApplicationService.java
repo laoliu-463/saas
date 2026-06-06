@@ -376,6 +376,8 @@ public class DataApplicationService extends BaseController {
             @Parameter(description = "开始日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @Parameter(description = "时间字段") @RequestParam(required = false) String timeField,
+            @Parameter(description = "招商部门 ID 列表") @RequestParam(required = false) String recruiterDeptIds,
+            @Parameter(description = "渠道部门 ID 列表") @RequestParam(required = false) String channelDeptIds,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
@@ -394,6 +396,7 @@ public class DataApplicationService extends BaseController {
                 productId, productName, shopName, talentName, null, null,
                 colonelActivityId, recruitType, userId, deptId, dataScope);
         applyOrderDetailExtraFilters(wrapper, true, activityName, effectivePartnerId, partnerName, channelName, effectiveRecruiterName);
+        applyDeptIdFilters(wrapper, true, parseUuidCsv(recruiterDeptIds), parseUuidCsv(channelDeptIds));
 
         IPage<ColonelsettlementOrder> orderPage = orderMapper.findPageWithScope(new Page<>(page, size), wrapper);
         List<ColonelsettlementOrder> orders = orderPage.getRecords();
@@ -1103,6 +1106,8 @@ public class DataApplicationService extends BaseController {
             @Parameter(description = "开始日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "结束日期") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @Parameter(description = "时间字段") @RequestParam(required = false) String timeField,
+            @Parameter(description = "招商部门 ID 列表") @RequestParam(required = false) String recruiterDeptIds,
+            @Parameter(description = "渠道部门 ID 列表") @RequestParam(required = false) String channelDeptIds,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
@@ -1122,6 +1127,7 @@ public class DataApplicationService extends BaseController {
                 productId, productName, shopName, talentName, null, null,
                 colonelActivityId, recruitType, userId, deptId, dataScope);
         applyOrderDetailExtraFilters(wrapper, true, activityName, effectivePartnerId, partnerName, channelName, effectiveRecruiterName);
+        applyDeptIdFilters(wrapper, true, parseUuidCsv(recruiterDeptIds), parseUuidCsv(channelDeptIds));
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"order-detail.csv\"");
@@ -1904,6 +1910,47 @@ public class DataApplicationService extends BaseController {
                             )
                             """.formatted(prefix), normalized));
         }
+    }
+
+    /**
+     * 追加招商部门 / 渠道部门 IN 筛选。
+     * <p>recruiterDeptIds 匹配 dept_id（招商负责人所属部门），
+     * channelDeptIds 匹配 channel_dept_id（渠道负责人所属部门）。</p>
+     */
+    private void applyDeptIdFilters(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            boolean aliased,
+            List<UUID> recruiterDeptIds,
+            List<UUID> channelDeptIds) {
+        if (recruiterDeptIds != null && !recruiterDeptIds.isEmpty()) {
+            wrapper.in(column(aliased, "dept_id"), recruiterDeptIds);
+        }
+        if (channelDeptIds != null && !channelDeptIds.isEmpty()) {
+            wrapper.in(column(aliased, "channel_dept_id"), channelDeptIds);
+        }
+    }
+
+    /**
+     * 将前端 CSV 形式的部门 ID（"uuid1,uuid2"）解析为 UUID 列表。
+     * 非法 UUID 直接忽略，不抛异常。
+     */
+    static List<UUID> parseUuidCsv(String csv) {
+        if (!StringUtils.hasText(csv)) {
+            return List.of();
+        }
+        List<UUID> result = new ArrayList<>();
+        for (String token : csv.split(",")) {
+            String trimmed = token.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            try {
+                result.add(UUID.fromString(trimmed));
+            } catch (IllegalArgumentException ignored) {
+                // 非法 UUID 跳过
+            }
+        }
+        return result;
     }
 
     private void applyOrderDataScope(
