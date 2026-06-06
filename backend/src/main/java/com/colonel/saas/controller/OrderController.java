@@ -20,6 +20,7 @@ import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
+import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderService;
 import com.colonel.saas.service.OrderSyncService;
@@ -144,6 +145,9 @@ public class OrderController extends BaseController {
     /** 部门 Mapper：用于加载部门下拉选项 */
     private final SysDeptMapper sysDeptMapper;
 
+    /** 6468 历史订单分页 dry-run 服务：只读拉取上游并聚合候选口径 */
+    private final Order6468PaginationDryRunService order6468PaginationDryRunService;
+
     /**
      * 订单域查询服务：封装筛选条件构造与分页 / 统计聚合（t2-orders 抽 service）。
      * <p>
@@ -165,6 +169,7 @@ public class OrderController extends BaseController {
             CommissionService commissionService,
             PerformanceBackfillService performanceBackfillService,
             SysDeptMapper sysDeptMapper,
+            Order6468PaginationDryRunService order6468PaginationDryRunService,
             OrderService orderService) {
         this.orderSyncService = orderSyncService;
         this.orderMapper = orderMapper;
@@ -175,6 +180,7 @@ public class OrderController extends BaseController {
         this.commissionService = commissionService;
         this.performanceBackfillService = performanceBackfillService;
         this.sysDeptMapper = sysDeptMapper;
+        this.order6468PaginationDryRunService = order6468PaginationDryRunService;
         this.orderService = orderService;
     }
 
@@ -228,6 +234,46 @@ public class OrderController extends BaseController {
                         result.failed()));
         evictOrderDerivedCaches();
         return ok(result);
+    }
+
+    /**
+     * 6468 历史订单分页 dry-run。
+     * <p>
+     * 只读调用 buyin.instituteOrderColonel，按 6468 data.cursor 继续翻页，
+     * 聚合不同候选口径并与 3739 基准对比。该接口不落库、不清缓存、不写操作日志。
+     * </p>
+     */
+    @Operation(summary = "6468 订单分页 dry-run", description = "只读拉全 6468 cursor 分页并聚合候选口径，不写订单表。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/6468-pagination-dry-run")
+    public ApiResult<Order6468PaginationDryRunService.DryRunResult> dryRun6468Pagination(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "6468 dry-run 请求。startTime/endTime 格式 yyyy-MM-dd HH:mm:ss。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"startTime\":\"2026-06-03 00:00:00\",\"endTime\":\"2026-06-06 13:30:00\",\"pageSize\":100,\"maxPages\":500,\"maxOrders\":50000}"))
+            )
+            @RequestBody Order6468PaginationDryRunRequest request) {
+        Order6468PaginationDryRunRequest safeRequest =
+                request == null ? new Order6468PaginationDryRunRequest() : request;
+        long start = parseDateTime(safeRequest.getStartTime());
+        long end = parseDateTime(safeRequest.getEndTime());
+        long filterStart = StringUtils.hasText(safeRequest.getFilterStartTime())
+                ? parseDateTime(safeRequest.getFilterStartTime())
+                : start;
+        long filterEnd = StringUtils.hasText(safeRequest.getFilterEndTime())
+                ? parseDateTime(safeRequest.getFilterEndTime())
+                : end;
+        Order6468PaginationDryRunService.DryRunRequest command =
+                new Order6468PaginationDryRunService.DryRunRequest(
+                        start,
+                        end,
+                        safeRequest.getPageSize() == null ? 0 : safeRequest.getPageSize(),
+                        safeRequest.getMaxPages() == null ? 0 : safeRequest.getMaxPages(),
+                        safeRequest.getMaxOrders() == null ? 0 : safeRequest.getMaxOrders(),
+                        filterStart,
+                        filterEnd
+                );
+        return ok(order6468PaginationDryRunService.dryRun(command));
     }
 
     /**
@@ -1267,6 +1313,36 @@ public class OrderController extends BaseController {
 
         @Schema(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-04-28 23:59:59")
         private String endTime;
+    }
+
+    @Data
+    public static class Order6468PaginationDryRunRequest {
+        @Schema(description = "上游查询开始时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-06-03 00:00:00")
+        private String startTime;
+
+        @Schema(description = "上游查询结束时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-06-06 13:30:00")
+        private String endTime;
+
+        @Schema(description = "候选时间口径过滤开始时间；为空时使用 startTime。")
+        private String filterStartTime;
+
+        @Schema(description = "候选时间口径过滤结束时间；为空时使用 endTime。")
+        private String filterEndTime;
+
+        @Min(1)
+        @Max(100)
+        @Schema(description = "每页条数，默认 100，最大 100。")
+        private Integer pageSize;
+
+        @Min(1)
+        @Max(500)
+        @Schema(description = "最大页数，默认 500，最大 500。")
+        private Integer maxPages;
+
+        @Min(1)
+        @Max(50000)
+        @Schema(description = "最大订单行数，默认 50000，最大 50000。")
+        private Integer maxOrders;
     }
 
     @Data

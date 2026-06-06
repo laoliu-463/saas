@@ -24,6 +24,7 @@ import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import org.junit.jupiter.api.Assertions;
@@ -51,6 +52,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -61,6 +63,8 @@ class OrderControllerTest {
 
     @Mock
     private OrderSyncService orderSyncService;
+    @Mock
+    private Order6468PaginationDryRunService order6468PaginationDryRunService;
     @Mock
     private ColonelsettlementOrderMapper orderMapper;
     @Mock
@@ -105,6 +109,7 @@ class OrderControllerTest {
                         commissionService,
                         performanceBackfillService,
                         sysDeptMapper,
+                        order6468PaginationDryRunService,
                         orderService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -193,6 +198,52 @@ class OrderControllerTest {
                 java.util.UUID.class);
         assertThat(syncOrders.getAnnotation(RequireRoles.class)).isNotNull();
         assertThat(syncOrders.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.ADMIN);
+    }
+
+    @Test
+    void dryRun6468Pagination_shouldForwardReadonlyRequestWithoutOperationLog() throws Exception {
+        Order6468PaginationDryRunService.DryRunResult result =
+                new Order6468PaginationDryRunService.DryRunResult(
+                        1780459200L,
+                        1780549200L,
+                        1780459200L,
+                        1780549200L,
+                        100,
+                        2,
+                        200,
+                        200,
+                        0,
+                        "NO_NEXT_CURSOR",
+                        "0",
+                        true,
+                        Order6468PaginationDryRunService.Baseline.defaultBaseline(),
+                        Map.of(),
+                        List.of());
+        when(order6468PaginationDryRunService.dryRun(any())).thenReturn(result);
+
+        mockMvc.perform(post("/orders/6468-pagination-dry-run")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "startTime": "2026-06-03 12:00:00",
+                                  "endTime": "2026-06-04 13:00:00",
+                                  "pageSize": 100,
+                                  "maxPages": 10,
+                                  "maxOrders": 50000
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.readOnly").value(true))
+                .andExpect(jsonPath("$.data.pagesFetched").value(2));
+
+        ArgumentCaptor<Order6468PaginationDryRunService.DryRunRequest> captor =
+                ArgumentCaptor.forClass(Order6468PaginationDryRunService.DryRunRequest.class);
+        verify(order6468PaginationDryRunService).dryRun(captor.capture());
+        assertThat(captor.getValue().startTime()).isEqualTo(1780459200L);
+        assertThat(captor.getValue().endTime()).isEqualTo(1780549200L);
+        assertThat(captor.getValue().pageSize()).isEqualTo(100);
+        verify(operationLogService, never()).recordSystemAction(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

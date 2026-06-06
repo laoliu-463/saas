@@ -8,6 +8,7 @@ import com.colonel.saas.mapper.SysDeptMapper;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
+import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderService;
@@ -34,6 +35,8 @@ class OrderSyncControllerTest {
 
     @Mock
     private OrderSyncService orderSyncService;
+    @Mock
+    private Order6468PaginationDryRunService order6468PaginationDryRunService;
     @Mock
     private ColonelsettlementOrderMapper orderMapper;
     @Mock
@@ -71,6 +74,7 @@ class OrderSyncControllerTest {
                         commissionService,
                         performanceBackfillService,
                         sysDeptMapper,
+                        order6468PaginationDryRunService,
                         orderService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
