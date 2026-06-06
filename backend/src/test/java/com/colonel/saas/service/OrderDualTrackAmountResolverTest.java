@@ -27,6 +27,66 @@ class OrderDualTrackAmountResolverTest {
         assertThat(amounts.effectiveServiceFee()).isEqualTo(495L);
         assertThat(amounts.estimateTechServiceFee()).isEqualTo(60L);
         assertThat(amounts.effectiveTechServiceFee()).isEqualTo(55L);
+        assertThat(amounts.estimateServiceFeeExpense()).isEqualTo(0L);
+        assertThat(amounts.effectiveServiceFeeExpense()).isEqualTo(0L);
+    }
+
+    @Test
+    void resolve_shouldPreferFirstInstitutionWhenBothEstimatedCommissionsExist() {
+        // 双机构订单场景：一级、二级都存在时，服务费收入不能重复累加
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("settled_goods_amount", 4800L);
+
+        Map<String, Object> coi = new LinkedHashMap<>();
+        coi.put("estimated_commission", 120L);
+        coi.put("tech_service_fee", 12L);
+        raw.put("colonel_order_info", coi);
+
+        Map<String, Object> coi2 = new LinkedHashMap<>();
+        coi2.put("estimated_commission", 95L);
+        raw.put("colonel_order_info_second", coi2);
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
+
+        // 服务费收入 = COI(120)，COI2(95) 不重复计入
+        assertThat(amounts.estimateServiceFee()).isEqualTo(120L);
+        assertThat(amounts.estimateTechServiceFee()).isEqualTo(12L);
+    }
+
+    @Test
+    void resolve_shouldFallbackToCoi2WhenCoiCommissionIsNull() {
+        // COI.estimated_commission 为 null，COI2 有值，应取 COI2
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 3368L);
+
+        Map<String, Object> coi = new LinkedHashMap<>();
+        coi.put("estimated_commission", null);
+        coi.put("tech_service_fee", null);
+        raw.put("colonel_order_info", coi);
+
+        Map<String, Object> coi2 = new LinkedHashMap<>();
+        coi2.put("estimated_commission", 89L);
+        raw.put("colonel_order_info_second", coi2);
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
+
+        // COI.ec=null 不贡献，COI2.ec=89，总收入=89
+        assertThat(amounts.estimateServiceFee()).isEqualTo(89L);
+        assertThat(amounts.estimateTechServiceFee()).isEqualTo(0L);
+    }
+
+    @Test
+    void resolve_serviceFeeExpenseShouldDefaultToZero() {
+        // 服务费支出当前无 raw payload 字段，应默认为 0
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("estimated_commission", 100L);
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
+
+        assertThat(amounts.estimateServiceFeeExpense()).isEqualTo(0L);
+        assertThat(amounts.effectiveServiceFeeExpense()).isEqualTo(0L);
     }
 
     @Test

@@ -489,15 +489,12 @@ const firstMetricNumber = (track: Record<string, any>, keys: string[]) => {
 const metricAmountAny = (track: Record<string, any>, keys: string[]) => formatMoney(firstMetricNumber(track, keys))
 
 const serviceFeeExpense = (track: Record<string, any>) => {
+  // 直接展示后端返回的服务费支出字段，不使用前端反推公式
   const explicit = track?.serviceFeeExpense
   if (explicit !== undefined && explicit !== null && explicit !== '') {
     return formatMoney(toNumber(explicit))
   }
-  const income = toNumber(track?.serviceFeeIncome)
-  const techFee = toNumber(track?.techServiceFee)
-  const profit = firstMetricNumber(track, ['serviceFeeProfit', 'serviceFee'])
-  const isEstimateTrack = track?.amountTrack === 'estimate' || track?.track === 'createTime'
-  return formatMoney(Math.max(income - (isEstimateTrack ? techFee : 0) - profit, 0))
+  return formatMoney(0)
 }
 
 const businessMetricRows = computed(() => {

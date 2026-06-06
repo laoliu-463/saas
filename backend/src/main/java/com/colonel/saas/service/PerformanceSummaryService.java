@@ -302,10 +302,8 @@ public class PerformanceSummaryService {
         long techServiceFee = asLong(row.get("tech_service_fee"));
         long serviceProfit = asLong(row.get("service_fee_profit"));
         long serviceFeeExpense = asLong(row.get("service_fee_expense"));
-        if (serviceFeeExpense <= 0L) {
-            long techDeduction = estimateTrack ? techServiceFee : 0L;
-            serviceFeeExpense = Math.max(serviceFeeIncome - techDeduction - serviceProfit, 0L);
-        }
+        // 不再使用反推公式：expense = income - tech - profit
+        // 服务费支出直接从 DB 取值（当前 raw payload 无对应字段，默认为 0）
         long recruiter = asLong(row.get("recruiter_commission"));
         long channel = asLong(row.get("channel_commission"));
         track.setOrderCount(asLong(row.get("order_count")));

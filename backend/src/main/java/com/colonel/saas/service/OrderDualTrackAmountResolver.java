@@ -32,14 +32,16 @@ public final class OrderDualTrackAmountResolver {
     }
 
     /**
-     * 双轨金额结果值对象，包含订单全部六个金额字段。
+     * 双轨金额结果值对象，包含订单全部金额字段（含服务费支出）。
      *
-     * @param payAmount              订单实付金额（分）
-     * @param settleAmount           结算金额（分）
-     * @param estimateServiceFee     预估服务费（分），订单创建时即确定
-     * @param effectiveServiceFee    结算服务费（分），订单结算后由抖店回填
-     * @param estimateTechServiceFee 预估技术服务费（分）
-     * @param effectiveTechServiceFee 结算技术服务费（分）
+     * @param payAmount                  订单实付金额（分）
+     * @param settleAmount               结算金额（分）
+     * @param estimateServiceFee         预估服务费收入（分），订单创建时即确定
+     * @param effectiveServiceFee        结算服务费收入（分），订单结算后由抖店回填
+     * @param estimateTechServiceFee     预估技术服务费（分）
+     * @param effectiveTechServiceFee    结算技术服务费（分）
+     * @param estimateServiceFeeExpense  预估服务费支出（分）
+     * @param effectiveServiceFeeExpense 结算服务费支出（分）
      */
     public record DualTrackAmounts(
             long payAmount,
@@ -47,7 +49,9 @@ public final class OrderDualTrackAmountResolver {
             long estimateServiceFee,
             long effectiveServiceFee,
             long estimateTechServiceFee,
-            long effectiveTechServiceFee) {
+            long effectiveTechServiceFee,
+            long estimateServiceFeeExpense,
+            long effectiveServiceFeeExpense) {
     }
 
     /**
@@ -96,14 +100,15 @@ public final class OrderDualTrackAmountResolver {
             estimateTechServiceFee = effectiveTechServiceFee;
         }
 
-        // 第四步：解析预估服务费收入与结算服务费收入（优先从嵌套层 colonelOrderInfo 提取）。
-        long estimateServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
+        // 第四步：解析预估服务费收入与结算服务费收入。
+        // 一级机构佣金优先；一级缺失时用二级机构佣金补充，避免双机构样本重复计入收入。
+        long estimateServiceFee = firstFromInstitutions(rawPayload,
                 "estimated_commission", "estimatedCommission", "estimated_service_fee", "estimatedServiceFee",
-                "estimate_institution_commission", "estimateInstitutionCommission")));
-        long effectiveServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
+                "estimate_institution_commission", "estimateInstitutionCommission");
+        long effectiveServiceFee = firstFromInstitutions(rawPayload,
                 "settle_colonel_commission", "settleColonelCommission", "commission", "real_commission",
                 "realCommission", "settled_commission", "settledCommission", "institution_commission",
-                "institutionCommission", "colonel_commission", "colonelCommission", "service_fee", "serviceFee")));
+                "institutionCommission", "colonel_commission", "colonelCommission", "service_fee", "serviceFee");
         BigDecimal serviceFeeRate = resolveServiceFeeRate(rawPayload);
         if (estimateServiceFee <= 0 && serviceFeeRate != null) {
             estimateServiceFee = calculateServiceFeeIncome(payAmount, serviceFeeRate, 0L);
@@ -132,14 +137,16 @@ public final class OrderDualTrackAmountResolver {
             effectiveServiceFee = Math.max(effectiveServiceFee - effectiveTechServiceFee, 0L);
         }
 
-        // 第六步：组装结果
+        // 第六步：组装结果（服务费支出当前无 raw payload 字段，默认为 0）
         return new DualTrackAmounts(
                 payAmount,
                 settleAmount,
                 estimateServiceFee,
                 effectiveServiceFee,
                 estimateTechServiceFee,
-                effectiveTechServiceFee);
+                effectiveTechServiceFee,
+                0L,
+                0L);
     }
 
     /**
@@ -215,6 +222,7 @@ public final class OrderDualTrackAmountResolver {
         order.setActualAmount(amounts.payAmount());
         order.setEstimateServiceFee(amounts.estimateServiceFee());
         order.setEstimateTechServiceFee(amounts.estimateTechServiceFee());
+        order.setEstimateServiceFeeExpense(amounts.estimateServiceFeeExpense());
     }
 
     /**
@@ -245,6 +253,9 @@ public final class OrderDualTrackAmountResolver {
         order.setEffectiveServiceFee(amounts.effectiveServiceFee());
         order.setEstimateTechServiceFee(amounts.estimateTechServiceFee());
         order.setEffectiveTechServiceFee(amounts.effectiveTechServiceFee());
+        // 第二步（续）：写入双轨服务费支出
+        order.setEstimateServiceFeeExpense(amounts.estimateServiceFeeExpense());
+        order.setEffectiveServiceFeeExpense(amounts.effectiveServiceFeeExpense());
         // 第三步：兼容旧字段 —— 结算轨优先，为 0 时回退预估轨
         order.setSettleColonelCommission(amounts.effectiveServiceFee() > 0
                 ? amounts.effectiveServiceFee()
@@ -349,6 +360,49 @@ public final class OrderDualTrackAmountResolver {
             return pick((Map<String, Object>) map, keys);
         }
         return null;
+    }
+
+    /**
+     * 从机构嵌套层读取金额：先查顶层，再查 colonel_order_info，最后查 colonel_order_info_second。
+     * 第一个正数即为当前订单服务费收入，避免一级、二级机构字段同时存在时重复计入。
+     *
+     * @param rawPayload 抖店订单原始载荷
+     * @param keys       候选 key 列表
+     * @return 第一个正数金额（分），均缺失时返回 0
+     */
+    @SuppressWarnings("unchecked")
+    private static long firstFromInstitutions(Map<String, Object> rawPayload, String... keys) {
+        // 第一步：顶层（一般不会在此层，但保留兼容）
+        Object direct = pick(rawPayload, keys);
+        if (direct != null) {
+            long value = firstNonNegative(asLong(direct));
+            if (value > 0L) {
+                return value;
+            }
+        }
+        // 第二步：colonel_order_info
+        Object nested1 = pick(rawPayload, "colonel_order_info", "colonelOrderInfo");
+        if (nested1 instanceof Map<?, ?> map1) {
+            Object val = pick((Map<String, Object>) map1, keys);
+            if (val != null) {
+                long value = firstNonNegative(asLong(val));
+                if (value > 0L) {
+                    return value;
+                }
+            }
+        }
+        // 第三步：colonel_order_info_second（二级机构补充）
+        Object nested2 = pick(rawPayload, "colonel_order_info_second", "colonelOrderInfoSecond");
+        if (nested2 instanceof Map<?, ?> map2) {
+            Object val = pick((Map<String, Object>) map2, keys);
+            if (val != null) {
+                long value = firstNonNegative(asLong(val));
+                if (value > 0L) {
+                    return value;
+                }
+            }
+        }
+        return 0L;
     }
 
     private static long calculateServiceFeeIncome(long orderAmount, BigDecimal serviceFeeRate, long techServiceFee) {

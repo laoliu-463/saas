@@ -939,15 +939,8 @@ public class DataApplicationService extends BaseController {
             metrics.setServiceFeeIncome(centToYuan(aggregate.serviceFeeIncomeCent()));
             metrics.setTechServiceFee(centToYuan(aggregate.techServiceFeeCent()));
             metrics.setTalentCommission(centToYuan(aggregate.talentCommissionCent()));
-            // 服务费支出：优先用 DB 独立字段，为 0 时回退反推公式
+            // 服务费支出：直接从 DB 取值，不再使用反推公式
             long expenseCent = aggregate.serviceFeeExpenseCent();
-            if (expenseCent <= 0) {
-                expenseCent = serviceFeeExpenseCent(
-                        aggregate.serviceFeeIncomeCent(),
-                        aggregate.techServiceFeeCent(),
-                        aggregate.serviceProfitCent(),
-                        isEstimateTrack(timeField));
-            }
             metrics.setServiceFeeExpense(centToYuan(expenseCent));
             metrics.setServiceFee(centToYuan(aggregate.serviceProfitCent()));
             metrics.setServiceFeeProfit(centToYuan(aggregate.serviceProfitCent()));
@@ -2090,9 +2083,9 @@ public class DataApplicationService extends BaseController {
         vo.setOrderAverageServiceFeeRate(percent(serviceFeeIncome, orderAmount));
         vo.setServiceFeeIncome(centToYuan(serviceFeeIncome));
         vo.setTechServiceFee(centToYuan(techServiceFee));
-        // 服务费支出：优先用 DB 独立字段，为 0 时回退反推公式
+        // 服务费支出：直接从 DB 取值，不再使用反推公式
         long dbExpense = asLong(row, "service_fee_expense_cent");
-        long serviceFeeExpenseCent = dbExpense > 0 ? dbExpense : serviceFeeExpenseCent(serviceFeeIncome, techServiceFee, serviceProfitCent, estimateTrack);
+        long serviceFeeExpenseCent = dbExpense;
         vo.setServiceFeeExpense(centToYuan(serviceFeeExpenseCent));
         vo.setServiceFeeProfit(centToYuan(serviceProfitCent));
         vo.setGrossProfit(centToYuan(Math.max(serviceProfitCent - summary.bizCommission() - summary.channelCommission(), 0L)));

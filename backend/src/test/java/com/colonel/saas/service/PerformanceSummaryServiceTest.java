@@ -91,15 +91,17 @@ class PerformanceSummaryServiceTest {
     }
 
     @Test
-    void aggregateEffective_shouldInferExpenseWithoutDeductingTechFeeAgain() {
+    void aggregateEffective_shouldUseExpenseDirectlyFromDB() {
+        // 服务费支出直接从 DB 取值，不使用反推公式
         when(jdbcTemplate.queryForMap(contains("pr.effective_service_fee"), any(Object[].class)))
-                .thenReturn(summaryRow(2L, 5000L, 400L, 40L, 390L, 39L, 19L, 332L));
+                .thenReturn(summaryRowWithExpense(2L, 5000L, 400L, 40L, 5L, 390L, 39L, 19L, 332L));
 
         PerformanceTrackSummaryDTO track = service.aggregateEffective(
                 new PerformanceSummaryQuery(),
                 PerformanceAccessContext.of(null, null, DataScope.ALL, java.util.List.of("admin")));
 
-        assertThat(track.getServiceFeeExpense()).isEqualTo(10L);
+        // DB 中 service_fee_expense = 5，直接返回
+        assertThat(track.getServiceFeeExpense()).isEqualTo(5L);
     }
 
     @Test
@@ -124,8 +126,8 @@ class PerformanceSummaryServiceTest {
         assertThat(summary.getEstimate().getOrderAmount()).isZero();
         assertThat(summary.getEstimate().getServiceFeeIncome()).isEqualTo(1200L);
         assertThat(summary.getEstimate().getServiceFeeProfit()).isZero();
-        // bad-profit 映射为 0；支出 = 1200 - 80 - 0 = 1120
-        assertThat(summary.getEstimate().getServiceFeeExpense()).isEqualTo(1120L);
+        // bad-profit 映射为 0；支出从 DB 取（summaryRow 无该字段时为 0），不再使用反推公式
+        assertThat(summary.getEstimate().getServiceFeeExpense()).isZero();
         assertThat(summary.getEffective().getGrossProfit()).isEqualTo(123L);
     }
 
@@ -242,6 +244,28 @@ class PerformanceSummaryServiceTest {
                 "order_amount", orderAmount,
                 "service_fee_income", serviceFeeIncome,
                 "tech_service_fee", techServiceFee,
+                "service_fee_profit", serviceFeeProfit,
+                "recruiter_commission", recruiterCommission,
+                "channel_commission", channelCommission,
+                "gross_profit", grossProfit);
+    }
+
+    private static Map<String, Object> summaryRowWithExpense(
+            long orderCount,
+            long orderAmount,
+            long serviceFeeIncome,
+            long techServiceFee,
+            long serviceFeeExpense,
+            long serviceFeeProfit,
+            long recruiterCommission,
+            long channelCommission,
+            long grossProfit) {
+        return Map.of(
+                "order_count", orderCount,
+                "order_amount", orderAmount,
+                "service_fee_income", serviceFeeIncome,
+                "tech_service_fee", techServiceFee,
+                "service_fee_expense", serviceFeeExpense,
                 "service_fee_profit", serviceFeeProfit,
                 "recruiter_commission", recruiterCommission,
                 "channel_commission", channelCommission,
