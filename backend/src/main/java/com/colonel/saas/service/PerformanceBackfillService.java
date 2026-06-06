@@ -64,6 +64,32 @@ public class PerformanceBackfillService {
      * @param onlyMissing 是否仅回填缺失的业绩记录
      * @return 回填结果，包含统计数字和错误列表
      */
+    /**
+     * 重算失效/退款订单上仍为有效业绩的记录。
+     * <p>
+     * 用于修复订单状态已变为 4/5，但 performance_records 仍为 is_valid=true 的过期数据。
+     * </p>
+     */
+    public BackfillResult reconcileInvalidatedPerformance(Integer limit) {
+        List<ColonelsettlementOrder> orders = loadInvalidatedWithStalePerformance(limit);
+        int upserted = 0;
+        int failed = 0;
+        List<String> errors = new ArrayList<>();
+        for (ColonelsettlementOrder order : orders) {
+            try {
+                if (performanceCalculationService.upsertFromOrder(order) != null) {
+                    upserted++;
+                }
+            } catch (Exception ex) {
+                failed++;
+                if (errors.size() < 20 && order != null && StringUtils.hasText(order.getOrderId())) {
+                    errors.add(order.getOrderId() + ": " + ex.getMessage());
+                }
+            }
+        }
+        return new BackfillResult(orders.size(), upserted, failed, false, errors);
+    }
+
     public BackfillResult backfill(
             List<String> orderIds,
             LocalDateTime startTime,
@@ -102,6 +128,24 @@ public class PerformanceBackfillService {
      *   <li>第三步：按创建时间倒序排列，限制返回数量</li>
      * </ol>
      */
+    private List<ColonelsettlementOrder> loadInvalidatedWithStalePerformance(Integer limit) {
+        int safeLimit = normalizeLimit(limit);
+        return orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
+                .eq(ColonelsettlementOrder::getDeleted, 0)
+                .in(ColonelsettlementOrder::getOrderStatus,
+                        OrderCommissionPolicy.STATUS_CANCELLED,
+                        OrderCommissionPolicy.STATUS_REFUNDED)
+                .apply("""
+                        EXISTS (
+                            SELECT 1 FROM performance_records pr
+                            WHERE pr.order_id = colonelsettlement_order.order_id
+                              AND pr.is_valid = TRUE
+                        )
+                        """)
+                .orderByDesc(ColonelsettlementOrder::getUpdateTime)
+                .last("LIMIT " + safeLimit));
+    }
+
     private List<ColonelsettlementOrder> loadOrders(
             List<String> orderIds,
             LocalDateTime startTime,

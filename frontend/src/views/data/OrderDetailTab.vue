@@ -12,7 +12,7 @@
       :data="rows"
       :loading="loading"
       :row-key="(row: any) => row.orderId || row.orderCreateTime"
-      :scroll-x="3000"
+      :scroll-x="3150"
       :pagination="pagination"
       remote
       @update:page="handlePageChange"
@@ -244,6 +244,11 @@ const renderChannelCommission = (row: any) => renderMoneyLines(row, [
   ['结算:', ['effectiveChannelCommission', 'effective_channel_commission', 'settleChannelCommission', 'settle_channel_commission']]
 ])
 
+const renderGrossProfit = (row: any) => renderMoneyLines(row, [
+  ['预估:', ['estimateGrossProfit', 'estimate_gross_profit', 'grossProfit', 'gross_profit']],
+  ['结算:', ['effectiveGrossProfit', 'effective_gross_profit', 'settleGrossProfit', 'settle_gross_profit']]
+])
+
 const renderOrderTime = (row: any) => {
   const lines = [
     ['付款:', formatDateTime(firstDisplayValue(row, ['payTime', 'pay_time', 'createTime', 'create_time', 'orderCreateTime', 'order_create_time']))],
@@ -275,6 +280,7 @@ const columns = computed(() => [
   { title: '服务费收益', key: 'serviceFeeProfit', width: 150, render: renderServiceFeeProfit },
   { title: '招商提成', key: 'recruiterCommission', width: 150, render: renderRecruiterCommission },
   { title: '渠道提成', key: 'channelCommission', width: 150, render: renderChannelCommission },
+  { title: '毛利', key: 'grossProfit', width: 150, render: renderGrossProfit },
   { title: '订单时间', key: 'orderTime', width: 250, render: renderOrderTime }
 ])
 

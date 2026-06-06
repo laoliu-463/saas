@@ -4,7 +4,7 @@ package com.colonel.saas.service;
  * 订单业绩/提成口径策略工具类（对应需求 Y-06：取消/失效订单不计入业绩）。
  *
  * <p>提供统一的订单状态判断方法，决定某笔订单是否应计入提成和业绩统计。
- * 当前规则：仅取消订单（status=4）不计入，其余状态均计入。</p>
+ * 当前规则：失效（status=4）与已退款（status=5）不计入，其余状态均计入。</p>
  *
  * <ul>
  *   <li>提供 {@link #countsTowardCommission} 判断是否计入提成</li>
@@ -19,8 +19,11 @@ package com.colonel.saas.service;
  */
 public final class OrderCommissionPolicy {
 
-    /** 订单状态常量：已取消（对应抖店订单状态 4） */
+    /** 订单状态常量：已失效（对应抖店订单状态 4） */
     public static final int STATUS_CANCELLED = 4;
+
+    /** 订单状态常量：已退款（对应抖店订单状态 5） */
+    public static final int STATUS_REFUNDED = 5;
 
     private OrderCommissionPolicy() {
     }
@@ -30,7 +33,7 @@ public final class OrderCommissionPolicy {
      *
      * <ol>
      *   <li>若订单状态为 {@code null}，默认视为有效订单（计入提成）</li>
-     *   <li>若订单状态为 {@link #STATUS_CANCELLED}（4），则不计入提成</li>
+     *   <li>若订单状态为 {@link #STATUS_CANCELLED}（4）或 {@link #STATUS_REFUNDED}（5），则不计入提成</li>
      *   <li>其余状态均计入提成</li>
      * </ol>
      *
@@ -42,8 +45,8 @@ public final class OrderCommissionPolicy {
         if (orderStatus == null) {
             return true;
         }
-        // 第二步：已取消订单不计入提成
-        return orderStatus != STATUS_CANCELLED;
+        // 第二步：失效/退款订单不计入提成
+        return orderStatus != STATUS_CANCELLED && orderStatus != STATUS_REFUNDED;
     }
 
     /**

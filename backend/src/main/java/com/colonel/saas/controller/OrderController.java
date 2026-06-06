@@ -391,6 +391,31 @@ public class OrderController extends BaseController {
     }
 
     /**
+     * 重算失效/退款订单上的过期有效业绩记录。
+     */
+    @Operation(summary = "重算失效订单过期业绩", description = "扫描 order_status=4/5 且 performance_records.is_valid=true 的订单并重算冲正。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/performance-reconcile-invalidated")
+    public ApiResult<PerformanceBackfillService.BackfillResult> reconcileInvalidatedPerformance(
+            @RequestBody(required = false) PerformanceReconcileRequest request,
+            @RequestAttribute("userId") UUID userId) {
+        PerformanceReconcileRequest safeRequest = request == null ? new PerformanceReconcileRequest() : request;
+        PerformanceBackfillService.BackfillResult result =
+                performanceBackfillService.reconcileInvalidatedPerformance(safeRequest.getLimit());
+        operationLogService.recordSystemAction(
+                userId,
+                "订单业绩",
+                "重算失效订单过期业绩",
+                "POST",
+                "performance_reconcile_invalidated",
+                null,
+                null,
+                String.format("scanned=%d, upserted=%d, failed=%d", result.scanned(), result.upserted(), result.failed()));
+        evictOrderDerivedCaches();
+        return ok(result);
+    }
+
+    /**
      * 批量补全订单业绩（双轨提成计算）。
      * <p>
      * 按订单号批量计算并持久化双轨提成到 performance_records（Y-08）；
@@ -1365,6 +1390,12 @@ public class OrderController extends BaseController {
 
         @Schema(description = "是否仅预演不落库。默认 false。")
         private Boolean dryRun;
+    }
+
+    @Data
+    public static class PerformanceReconcileRequest {
+        @Schema(description = "批量扫描上限，默认 200，最大 2000。")
+        private Integer limit;
     }
 
     @Data

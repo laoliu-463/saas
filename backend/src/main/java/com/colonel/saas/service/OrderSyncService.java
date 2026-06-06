@@ -73,6 +73,7 @@ public class OrderSyncService {
     private static final String STOP_REASON_MAX_PAGES = "MAX_PAGES";
     private static final String STOP_REASON_MAX_ORDERS = "MAX_ORDERS";
     private static final String STOP_REASON_SINGLE_PAGE = "SINGLE_PAGE";
+    private static final String STOP_REASON_FETCH_ERROR = "FETCH_ERROR";
     private static final String STOP_REASON_UNKNOWN = "UNKNOWN";
 
     /** 同步模式标签：默认 10 分钟增量窗口（依赖 last_time 滚动）。 */
@@ -462,154 +463,161 @@ public class OrderSyncService {
         seenCursors.add(cursor);
         DouyinOrderGateway.OrderListResult response = firstPage;
 
-        while (true) {
-            List<DouyinOrderGateway.DouyinOrderItem> items = response.orders();
-            if (items == null || items.isEmpty()) {
-                stopReason = STOP_REASON_EMPTY_PAGE;
-                break;
-            }
-            pages++;
-            totalFetched += items.size();
-
-            List<ColonelsettlementOrder> pageOrders = new ArrayList<>();
-            boolean maxOrdersReached = false;
-            int pageFailed = 0;
-            for (DouyinOrderGateway.DouyinOrderItem item : items) {
-                if (seenOrderIds.size() >= maxOrderLimit) {
-                    maxOrdersReached = true;
+        try {
+            while (true) {
+                List<DouyinOrderGateway.DouyinOrderItem> items = response.orders();
+                if (items == null || items.isEmpty()) {
+                    stopReason = STOP_REASON_EMPTY_PAGE;
                     break;
                 }
-                try {
-                    ColonelsettlementOrder order = mapOrder(item, source);
-                    if (!StringUtils.hasText(order.getOrderId())) {
-                        continue;
-                    }
-                    if (!seenOrderIds.add(order.getOrderId())) {
-                        continue;
-                    }
-                    AttributionService.AttributionResult attribution =
-                            attributionService.resolveAttribution(order, item.rawPayload());
-                    order.setChannelUserId(attribution.channelUserId());
-                    order.setChannelDeptId(attribution.deptId());
-                    order.setUserId(attribution.userId());
-                    order.setDeptId(attribution.deptId());
-                    order.setColonelUserId(attribution.colonelUserId());
-                    order.setTalentId(attribution.talentId());
-                    order.setActivityId(firstNonBlank(attribution.activityId(), order.getActivityId()));
-                    order.setAttributionStatus(attribution.attributionStatus());
-                    order.setAttributionRemark(attribution.attributionRemark());
-                    order.setProductTitle(order.getProductName());
-                    order.setTalentName(item.talentName());
-                    pageOrders.add(order);
-                } catch (BusinessException e) {
-                    failedCount++;
-                    pageFailed++;
-                    log.warn("Skip order during sync, reason={}, orderId={}", e.getMessage(), item.externalOrderId());
-                } catch (Exception e) {
-                    failedCount++;
-                    pageFailed++;
-                    log.error("Unexpected error processing order, orderId={}, type={}",
-                            item.externalOrderId(), e.getClass().getSimpleName(), e);
-                }
-            }
+                pages++;
+                totalFetched += items.size();
 
-            Set<UUID> userIds = new HashSet<>();
-            for (ColonelsettlementOrder order : pageOrders) {
-                if (order.getChannelUserId() != null) {
-                    userIds.add(order.getChannelUserId());
-                }
-                if (order.getColonelUserId() != null) {
-                    userIds.add(order.getColonelUserId());
-                }
-            }
-            Map<UUID, SysUser> usersById = persistenceService.loadUsersByIds(userIds);
-
-            int pageCreated = 0;
-            int pageUpdated = 0;
-            for (ColonelsettlementOrder order : pageOrders) {
-                try {
-                    SysUser channelUser = order.getChannelUserId() == null
-                            ? null
-                            : usersById.get(order.getChannelUserId());
-                    if (channelUser != null) {
-                        order.setChannelUserName(channelUser.getRealName());
+                List<ColonelsettlementOrder> pageOrders = new ArrayList<>();
+                boolean maxOrdersReached = false;
+                int pageFailed = 0;
+                for (DouyinOrderGateway.DouyinOrderItem item : items) {
+                    if (seenOrderIds.size() >= maxOrderLimit) {
+                        maxOrdersReached = true;
+                        break;
                     }
-                    SysUser colonelUser = order.getColonelUserId() == null
-                            ? null
-                            : usersById.get(order.getColonelUserId());
-                    if (colonelUser != null) {
-                        order.setColonelUserName(colonelUser.getRealName());
-                    }
-
-                    if ("ATTRIBUTED".equals(order.getAttributionStatus())) {
-                        attributedCount++;
-                    } else {
-                        unattributedCount++;
-                        String remark = order.getAttributionRemark();
-                        if (AttributionService.REASON_NO_PICK_SOURCE.equals(remark)) {
-                            noPickSourceCount++;
-                        } else if (AttributionService.REASON_MAPPING_NOT_FOUND.equals(remark)
-                                || AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND.equals(remark)) {
-                            noMappingCount++;
+                    try {
+                        ColonelsettlementOrder order = mapOrder(item, source);
+                        if (!StringUtils.hasText(order.getOrderId())) {
+                            continue;
                         }
+                        if (!seenOrderIds.add(order.getOrderId())) {
+                            continue;
+                        }
+                        AttributionService.AttributionResult attribution =
+                                attributionService.resolveAttribution(order, item.rawPayload());
+                        order.setChannelUserId(attribution.channelUserId());
+                        order.setChannelDeptId(attribution.deptId());
+                        order.setUserId(attribution.userId());
+                        order.setDeptId(attribution.deptId());
+                        order.setColonelUserId(attribution.colonelUserId());
+                        order.setTalentId(attribution.talentId());
+                        order.setActivityId(firstNonBlank(attribution.activityId(), order.getActivityId()));
+                        order.setAttributionStatus(attribution.attributionStatus());
+                        order.setAttributionRemark(attribution.attributionRemark());
+                        order.setProductTitle(order.getProductName());
+                        order.setTalentName(item.talentName());
+                        pageOrders.add(order);
+                    } catch (BusinessException e) {
+                        failedCount++;
+                        pageFailed++;
+                        log.warn("Skip order during sync, reason={}, orderId={}", e.getMessage(), item.externalOrderId());
+                    } catch (Exception e) {
+                        failedCount++;
+                        pageFailed++;
+                        log.error("Unexpected error processing order, orderId={}, type={}",
+                                item.externalOrderId(), e.getClass().getSimpleName(), e);
                     }
-
-                    boolean isNew = persistenceService.persistOrder(order);
-                    if (isNew) {
-                        created++;
-                        pageCreated++;
-                    } else {
-                        updated++;
-                        pageUpdated++;
-                    }
-                } catch (BusinessException e) {
-                    failedCount++;
-                    pageFailed++;
-                    log.warn("Skip order during sync, reason={}, orderId={}", e.getMessage(), order.getOrderId());
-                } catch (Exception e) {
-                    failedCount++;
-                    pageFailed++;
-                    log.error("Unexpected error persisting order, orderId={}, type={}",
-                            order.getOrderId(), e.getClass().getSimpleName(), e);
                 }
-            }
 
-            String nextCursor = resolveNextCursor(response);
-            log.info("{} api={} mode={} pageNo={} cursor={} nextCursor={} fetched={} inserted={} updated={} failed={}",
-                    logName, api, mode, pages, cursor, nextCursor, items.size(), pageCreated, pageUpdated, pageFailed);
-            if (maxOrdersReached || seenOrderIds.size() >= maxOrderLimit) {
-                stopReason = STOP_REASON_MAX_ORDERS;
-                break;
+                Set<UUID> userIds = new HashSet<>();
+                for (ColonelsettlementOrder order : pageOrders) {
+                    if (order.getChannelUserId() != null) {
+                        userIds.add(order.getChannelUserId());
+                    }
+                    if (order.getColonelUserId() != null) {
+                        userIds.add(order.getColonelUserId());
+                    }
+                }
+                Map<UUID, SysUser> usersById = persistenceService.loadUsersByIds(userIds);
+
+                int pageCreated = 0;
+                int pageUpdated = 0;
+                for (ColonelsettlementOrder order : pageOrders) {
+                    try {
+                        SysUser channelUser = order.getChannelUserId() == null
+                                ? null
+                                : usersById.get(order.getChannelUserId());
+                        if (channelUser != null) {
+                            order.setChannelUserName(channelUser.getRealName());
+                        }
+                        SysUser colonelUser = order.getColonelUserId() == null
+                                ? null
+                                : usersById.get(order.getColonelUserId());
+                        if (colonelUser != null) {
+                            order.setColonelUserName(colonelUser.getRealName());
+                        }
+
+                        if ("ATTRIBUTED".equals(order.getAttributionStatus())) {
+                            attributedCount++;
+                        } else {
+                            unattributedCount++;
+                            String remark = order.getAttributionRemark();
+                            if (AttributionService.REASON_NO_PICK_SOURCE.equals(remark)) {
+                                noPickSourceCount++;
+                            } else if (AttributionService.REASON_MAPPING_NOT_FOUND.equals(remark)
+                                    || AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND.equals(remark)) {
+                                noMappingCount++;
+                            }
+                        }
+
+                        boolean isNew = persistenceService.persistOrder(order);
+                        if (isNew) {
+                            created++;
+                            pageCreated++;
+                        } else {
+                            updated++;
+                            pageUpdated++;
+                        }
+                    } catch (BusinessException e) {
+                        failedCount++;
+                        pageFailed++;
+                        log.warn("Skip order during sync, reason={}, orderId={}", e.getMessage(), order.getOrderId());
+                    } catch (Exception e) {
+                        failedCount++;
+                        pageFailed++;
+                        log.error("Unexpected error persisting order, orderId={}, type={}",
+                                order.getOrderId(), e.getClass().getSimpleName(), e);
+                    }
+                }
+
+                String nextCursor = resolveNextCursor(response);
+                log.info("{} api={} mode={} pageNo={} cursor={} nextCursor={} fetched={} inserted={} updated={} failed={}",
+                        logName, api, mode, pages, cursor, nextCursor, items.size(), pageCreated, pageUpdated, pageFailed);
+                if (maxOrdersReached || seenOrderIds.size() >= maxOrderLimit) {
+                    stopReason = STOP_REASON_MAX_ORDERS;
+                    break;
+                }
+                if (!continuePaging) {
+                    stopReason = STOP_REASON_SINGLE_PAGE;
+                    break;
+                }
+                boolean hasNext = response.hasMore() || (isTraversableCursor(nextCursor) && !items.isEmpty());
+                if (!hasNext) {
+                    stopReason = STOP_REASON_NO_NEXT_CURSOR;
+                    break;
+                }
+                if (pages >= maxPageLimit) {
+                    stopReason = STOP_REASON_MAX_PAGES;
+                    break;
+                }
+                if (seenCursors.contains(nextCursor)) {
+                    stopReason = STOP_REASON_DUPLICATE_CURSOR;
+                    break;
+                }
+                seenCursors.add(nextCursor);
+                cursor = nextCursor;
+                response = fetchNextPage.apply(cursor);
             }
-            if (!continuePaging) {
-                stopReason = STOP_REASON_SINGLE_PAGE;
-                break;
+        } catch (RuntimeException e) {
+            if (STOP_REASON_UNKNOWN.equals(stopReason)) {
+                stopReason = STOP_REASON_FETCH_ERROR;
             }
-            boolean hasNext = response.hasMore() || (isTraversableCursor(nextCursor) && !items.isEmpty());
-            if (!hasNext) {
-                stopReason = STOP_REASON_NO_NEXT_CURSOR;
-                break;
-            }
-            if (pages >= maxPageLimit) {
-                stopReason = STOP_REASON_MAX_PAGES;
-                break;
-            }
-            if (seenCursors.contains(nextCursor)) {
-                stopReason = STOP_REASON_DUPLICATE_CURSOR;
-                break;
-            }
-            seenCursors.add(nextCursor);
-            cursor = nextCursor;
-            response = fetchNextPage.apply(cursor);
+            throw e;
+        } finally {
+            log.info("{} api={} mode={} timeType={} range=[{}, {}] pagesFetched={} uniqueOrders={} fetched={} inserted={} updated={} attributed={} unattributed={} noPickSource={} noMapping={} failed={} stopReason={}",
+                    logName,
+                    api,
+                    mode,
+                    GATEWAY_TIME_TYPE_UPDATE,
+                    startTime, endTime, pages, seenOrderIds.size(), totalFetched, created, updated,
+                    attributedCount, unattributedCount, noPickSourceCount, noMappingCount, failedCount, stopReason);
         }
-
-        log.info("{} api={} mode={} timeType={} range=[{}, {}] pagesFetched={} uniqueOrders={} fetched={} inserted={} updated={} attributed={} unattributed={} noPickSource={} noMapping={} failed={} stopReason={}",
-                logName,
-                api,
-                mode,
-                GATEWAY_TIME_TYPE_UPDATE,
-                startTime, endTime, pages, seenOrderIds.size(), totalFetched, created, updated,
-                attributedCount, unattributedCount, noPickSourceCount, noMappingCount, failedCount, stopReason);
 
         return new SyncResult(startTime, endTime, pages, totalFetched, created, updated,
                 attributedCount, unattributedCount, failedCount, false, seenOrderIds.size(), stopReason);

@@ -1273,6 +1273,8 @@ class DataControllerTest {
         perf.setEffectiveChannelCommission(285L);
         perf.setEstimateServiceProfit(999L);
         perf.setEffectiveServiceProfit(888L);
+        perf.setEstimateGrossProfit(520L);
+        perf.setEffectiveGrossProfit(493L);
         when(performanceRecordMapper.findByOrderIds(List.of("ORD001"))).thenReturn(List.of(perf));
 
         ColonelsettlementActivity activity = new ColonelsettlementActivity();
@@ -1315,6 +1317,8 @@ class DataControllerTest {
         assertThat(vo.getEffectiveServiceFeeExpense().doubleValue()).isEqualTo(6.65); // 380+285 cents
         assertThat(vo.getEstimateServiceProfit()).isEqualByComparingTo("5.00");
         assertThat(vo.getEffectiveServiceProfit()).isEqualByComparingTo("4.70");
+        assertThat(vo.getEstimateGrossProfit()).isEqualByComparingTo("5.20");
+        assertThat(vo.getEffectiveGrossProfit()).isEqualByComparingTo("4.93");
 
         // 双轨金额
         assertThat(vo.getPayAmount()).isNotNull();

@@ -137,6 +137,13 @@ public class OrderDetailVO {
     /** 生效渠道提成（元） */
     private BigDecimal effectiveChannelCommission;
 
+    // ── 金额：毛利 = 服务费收益 - 招商提成 - 渠道提成（元） ──────────────────────────────
+
+    /** 预估毛利（元）= estimateServiceProfit - estimateRecruiterCommission - estimateChannelCommission */
+    private BigDecimal estimateGrossProfit;
+    /** 生效毛利（元） */
+    private BigDecimal effectiveGrossProfit;
+
     // ── 时间 ──────────────────────────────
 
     /** 付款时间 */

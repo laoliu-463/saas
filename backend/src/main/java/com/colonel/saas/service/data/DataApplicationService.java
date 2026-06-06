@@ -557,17 +557,21 @@ public class DataApplicationService extends BaseController {
         vo.setEstimateTechServiceFee(centToYuan(order.getEstimateTechServiceFee()));
         vo.setEffectiveTechServiceFee(safeCentToYuan(order.getEffectiveTechServiceFee()));
 
-        // 提成字段从业绩记录获取
+        // 提成与毛利字段从业绩记录获取
         if (perf != null) {
             vo.setEstimateRecruiterCommission(centToYuan(perf.getEstimateRecruiterCommission()));
             vo.setEffectiveRecruiterCommission(safeCentToYuan(perf.getEffectiveRecruiterCommission()));
             vo.setEstimateChannelCommission(centToYuan(perf.getEstimateChannelCommission()));
             vo.setEffectiveChannelCommission(safeCentToYuan(perf.getEffectiveChannelCommission()));
+            vo.setEstimateGrossProfit(centToYuan(perf.getEstimateGrossProfit()));
+            vo.setEffectiveGrossProfit(safeCentToYuan(perf.getEffectiveGrossProfit()));
         } else {
             vo.setEstimateRecruiterCommission(null);
             vo.setEffectiveRecruiterCommission(null);
             vo.setEstimateChannelCommission(null);
             vo.setEffectiveChannelCommission(null);
+            vo.setEstimateGrossProfit(null);
+            vo.setEffectiveGrossProfit(null);
         }
 
         // 服务费收益 = 服务费收入 - 技术服务费。这里按展示字段计算，不使用毛利或提成口径。
@@ -1133,7 +1137,7 @@ public class DataApplicationService extends BaseController {
         response.setHeader("Content-Disposition", "attachment; filename=\"order-detail.csv\"");
         PrintWriter writer = response.getWriter();
         writer.write('\ufeff');
-        writer.println("订单ID,活动信息,商品信息,合作方信息,推广者,渠道,招商,订单状态,订单额,服务费收入,技术服务费,服务费支出,服务费收益,招商提成,渠道提成,订单时间");
+        writer.println("订单ID,活动信息,商品信息,合作方信息,推广者,渠道,招商,订单状态,订单额,服务费收入,技术服务费,服务费支出,服务费收益,招商提成,渠道提成,毛利,订单时间");
 
         long current = 1L;
         while (true) {
@@ -1154,7 +1158,7 @@ public class DataApplicationService extends BaseController {
             for (ColonelsettlementOrder order : orders) {
                 PerformanceRecord perf = perfMap.get(order.getOrderId());
                 OrderDetailVO vo = toOrderDetailVO(order, perf, activityNameMap, userNameMap);
-                writer.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
+                writer.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
                         csvEscape(vo.getOrderId()),
                         csvEscape(compactPair(valueOrDefault(vo.getActivityName(), "未归属活动"), vo.getActivityId())),
                         csvEscape(compactPair(vo.getProductName(), vo.getProductId())),
@@ -1170,6 +1174,7 @@ public class DataApplicationService extends BaseController {
                         csvEscape(compactTrack("预估", vo.getEstimateServiceProfit(), "结算", vo.getEffectiveServiceProfit())),
                         csvEscape(compactTrack("预估", vo.getEstimateRecruiterCommission(), "结算", vo.getEffectiveRecruiterCommission())),
                         csvEscape(compactTrack("预估", vo.getEstimateChannelCommission(), "结算", vo.getEffectiveChannelCommission())),
+                        csvEscape(compactTrack("预估", vo.getEstimateGrossProfit(), "结算", vo.getEffectiveGrossProfit())),
                         csvEscape(compactOrderTime(vo)));
             }
             if (current >= pageResult.getPages()) {

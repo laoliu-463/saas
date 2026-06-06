@@ -61,6 +61,8 @@ const row = {
   effectiveRecruiterCommission: null,
   estimateChannelCommission: 0,
   effectiveChannelCommission: null,
+  estimateGrossProfit: 0.54,
+  effectiveGrossProfit: null,
   payTime: '2026-06-04T13:57:32',
   deliveryTime: '2026-06-05T10:00:00',
   settleTime: null,
@@ -120,6 +122,7 @@ const finalHeaders = [
   '服务费收益',
   '招商提成',
   '渠道提成',
+  '毛利',
   '订单时间'
 ]
 
@@ -172,7 +175,7 @@ describe('OrderDetailTab', () => {
     vi.mocked(getOrderDetailPage).mockResolvedValue({ data: { records: [row], total: 1 } } as any)
   })
 
-  it('renders V1 order detail 16 columns, channel wording and upstream product image', async () => {
+  it('renders V1 order detail 17 columns, channel wording and upstream product image', async () => {
     const wrapper = mountTab()
     await flushPromises()
 
@@ -184,7 +187,8 @@ describe('OrderDetailTab', () => {
       expect(text).toContain(header)
     }
     expect(text).not.toContain('媒介')
-    expect(text).not.toContain('毛利')
+    expect(text).toContain('毛利')
+    expect(text).toContain('¥0.54')
 
     expect(wrapper.html()).toContain(row.productImage)
     expect(wrapper.find('.order-detail-product-image').attributes('src')).toBe(row.productImage)
@@ -285,6 +289,6 @@ describe('OrderDetailTab', () => {
     expect(cellText('服务费收入')).toContain('预估:-')
     expect(cellText('服务费收入')).not.toContain('¥0.00')
     expect(wrapper.text()).not.toContain('媒介')
-    expect(wrapper.text()).not.toContain('毛利')
+    expect(cellText('毛利')).toContain('预估:¥0.54')
   })
 })

@@ -52,6 +52,8 @@ export interface OrderDetailRecord {
   effectiveRecruiterCommission?: number | string | null;
   estimateChannelCommission?: number | string | null;
   effectiveChannelCommission?: number | string | null;
+  estimateGrossProfit?: number | string | null;
+  effectiveGrossProfit?: number | string | null;
   payTime?: string | null;
   deliveryTime?: string | null;
   settleTime?: string | null;

@@ -54,6 +54,21 @@ class PerformanceBackfillServiceTest {
     }
 
     @Test
+    void reconcileInvalidatedPerformance_shouldUpsertStaleInvalidatedOrders() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("stale-order");
+        order.setOrderStatus(OrderCommissionPolicy.STATUS_CANCELLED);
+        when(orderMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(order));
+        when(performanceCalculationService.upsertFromOrder(order)).thenReturn(new PerformanceRecord());
+
+        PerformanceBackfillService.BackfillResult result = service.reconcileInvalidatedPerformance(50);
+
+        assertThat(result.scanned()).isEqualTo(1);
+        assertThat(result.upserted()).isEqualTo(1);
+        verify(performanceCalculationService).upsertFromOrder(order);
+    }
+
+    @Test
     void backfill_shouldScanMissingOrdersWhenOrderIdsEmpty() {
         when(orderMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
 

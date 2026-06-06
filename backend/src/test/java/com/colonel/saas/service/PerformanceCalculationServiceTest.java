@@ -106,6 +106,25 @@ class PerformanceCalculationServiceTest {
     }
 
     @Test
+    void upsertFromOrder_shouldReverseRefundedOrders() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORD-REFUND");
+        order.setOrderStatus(OrderCommissionPolicy.STATUS_REFUNDED);
+        order.setEstimateServiceFee(800L);
+
+        when(performanceRecordMapper.findByOrderId("ORD-REFUND")).thenReturn(null);
+        when(performanceRecordMapper.upsert(any())).thenReturn(1);
+
+        PerformanceRecord saved = service.upsertFromOrder(order);
+
+        assertThat(saved.getReversed()).isTrue();
+        assertThat(saved.getValid()).isFalse();
+        assertThat(saved.getEstimateRecruiterCommission()).isZero();
+        assertThat(saved.getEstimateChannelCommission()).isZero();
+        assertThat(saved.getEstimateGrossProfit()).isZero();
+    }
+
+    @Test
     void upsertFromOrder_shouldPreserveExistingRecordAndKeepUnsettledAmountZero() {
         UUID existingId = UUID.randomUUID();
         UUID orderRowId = UUID.randomUUID();

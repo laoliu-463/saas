@@ -169,7 +169,15 @@
     <section v-if="activeTab === 'summary'" class="summary-panel app-panel" aria-label="订单汇总">
       <div class="summary-strip">
         <div v-for="item in summaryItems" :key="item.key" class="summary-item">
-          <div class="summary-title">{{ item.title }}</div>
+          <div class="summary-title">
+            {{ item.title }}
+            <n-tooltip v-if="item.tooltip" placement="top" :delay="100">
+              <template #trigger>
+                <span class="tooltip-trigger" aria-label="查看说明">?</span>
+              </template>
+              <div class="tooltip-content" v-html="item.tooltip" />
+            </n-tooltip>
+          </div>
           <div v-for="line in item.lines" :key="line.label" class="summary-line">
             <span>{{ line.label }}</span>
             <strong>{{ line.value }}</strong>
@@ -442,6 +450,7 @@ const summaryItems = computed(() => {
     {
       key: 'promoter',
       title: '出单推广者数',
+      tooltip: '<b>计算公式</b><br>达人：去重出单达人数<br>团长：去重出单团长数<br><b>数据来源</b>：performance_records',
       lines: [
         { label: '达人：', value: formatNumber(total.talentPromoterCount) },
         { label: '团长：', value: formatNumber(total.colonelPromoterCount) }
@@ -450,16 +459,19 @@ const summaryItems = computed(() => {
     {
       key: 'product',
       title: '出单商品数',
+      tooltip: '<b>计算公式</b><br>去重出单商品数<br><b>数据来源</b>：performance_records',
       lines: [{ label: '', value: formatNumber(total.productCount) }]
     },
     {
       key: 'orders',
       title: '订单数',
+      tooltip: '<b>计算公式</b><br>筛选范围内的订单总数<br><b>数据来源</b>：performance_records',
       lines: [{ label: '', value: formatNumber(total.orderCount) }]
     },
     {
       key: 'amount',
       title: '订单额',
+      tooltip: '<b>计算公式</b><br>支付：订单支付金额汇总<br>结算：实际结算金额汇总<br><b>数据来源</b>：performance_records',
       lines: [
         { label: '支付：', value: formatEstimateTrack(total.orderAmount) },
         { label: '结算：', value: formatSettleTrack(total.orderAmount) }
@@ -468,6 +480,7 @@ const summaryItems = computed(() => {
     {
       key: 'rate',
       title: '平均服务费率',
+      tooltip: '<b>计算公式</b><br>商品：服务费收入 ÷ 结算金额<br>订单：服务费收入 ÷ 订单额<br><b>数据来源</b>：performance_records',
       lines: [
         { label: '商品：', value: formatPercent(total.productAverageServiceFeeRate) },
         { label: '订单：', value: formatPercent(total.orderAverageServiceFeeRate) }
@@ -476,6 +489,7 @@ const summaryItems = computed(() => {
     {
       key: 'income',
       title: '服务费收入',
+      tooltip: '<b>计算公式</b><br>预估：各订单服务费收入汇总<br>结算：已结算订单服务费汇总<br><b>数据来源</b>：performance_records',
       lines: [
         { label: '预估：', value: formatEstimateTrack(total.serviceFeeIncome) },
         { label: '结算：', value: formatSettleTrack(total.serviceFeeIncome) }
@@ -484,6 +498,7 @@ const summaryItems = computed(() => {
     {
       key: 'tech',
       title: '技术服务费',
+      tooltip: '<b>计算公式</b><br>预估：各订单技术服务费汇总<br>结算：已结算订单技术费汇总<br><b>数据来源</b>：performance_records',
       lines: [
         { label: '预估：', value: formatEstimateTrack(total.techServiceFee, formatCompactMoney) },
         { label: '结算：', value: formatSettleTrack(total.techServiceFee, formatCompactMoney) }
@@ -492,6 +507,7 @@ const summaryItems = computed(() => {
     {
       key: 'expense',
       title: '服务费支出',
+      tooltip: '<b>计算公式</b><br>服务费支出 = 招商提成 + 渠道提成<br><b>数据来源</b>：CommissionService 按活动提成规则计算',
       lines: [
         { label: '预估：', value: formatEstimateTrack(total.serviceFeeExpense) },
         { label: '结算：', value: formatSettleTrack(total.serviceFeeExpense) }
@@ -500,6 +516,7 @@ const summaryItems = computed(() => {
     {
       key: 'profit',
       title: '服务费收益',
+      tooltip: '<b>计算公式</b><br>服务费收益 = 服务费收入 − 技术服务费<br><b>数据来源</b>：CommissionService 计算',
       lines: [
         { label: '预估：', value: formatEstimateTrack(total.serviceFeeProfit) },
         { label: '结算：', value: formatSettleTrack(total.serviceFeeProfit) }
@@ -964,10 +981,47 @@ onMounted(async () => {
 }
 
 .summary-title {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   margin-bottom: 12px;
   font-size: 15px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.tooltip-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid #9ca3af;
+  color: #9ca3af;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: help;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.tooltip-trigger:hover {
+  border-color: #6b7280;
+  color: #6b7280;
+  background: rgba(107, 114, 128, 0.08);
+}
+
+:deep(.tooltip-content) {
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 280px;
+}
+
+:deep(.tooltip-content b) {
+  font-weight: 600;
 }
 
 .summary-line {
