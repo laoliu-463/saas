@@ -10,6 +10,8 @@ import com.colonel.saas.mapper.SysUserMapper;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.util.Collection;
@@ -23,7 +25,7 @@ import java.util.stream.Collectors;
 /**
  * 订单同步持久化服务：负责将同步订单持久化到数据库，处理去重声明、乐观锁更新或幂等插入，
  * 并在持久化完成后依次执行归因后置步骤（补齐推广映射、沉淀商家、完成寄样作业），
- * 最终发布 {@link OrderSyncedEvent} 事件通知下游。
+ * 最终在订单事务提交后发布 {@link OrderSyncedEvent} 事件通知下游。
  */
 @Service
 public class OrderSyncPersistenceService {
@@ -156,7 +158,7 @@ public class OrderSyncPersistenceService {
         if (order == null || eventPublisher == null) {
             return;
         }
-        eventPublisher.publishEvent(new OrderSyncedEvent(
+        OrderSyncedEvent event = new OrderSyncedEvent(
                 order.getOrderId(),
                 order.getId(),
                 newlyInserted,
@@ -174,7 +176,21 @@ public class OrderSyncPersistenceService {
                 order.getOrderStatus(),
                 order.getCreateTime(),
                 resolveTalentUid(order.getExtraData()),
-                order.getExtraData()));
+                order.getExtraData());
+        publishAfterCommit(event);
+    }
+
+    private void publishAfterCommit(OrderSyncedEvent event) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            eventPublisher.publishEvent(event);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                eventPublisher.publishEvent(event);
+            }
+        });
     }
 
     /** 从 extraData 中按优先级尝试解析达人 UID，兼容多种上游字段命名。 */

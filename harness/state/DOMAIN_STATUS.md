@@ -52,7 +52,7 @@
 
 ## 订单域
 
-- 当前状态：订单事实、退款事实、同步日志和归因输入已具备；P0-ORDER-001 PAY_RECENT 6h 补拉与同步日志增强已完成（2026-06-03，代码 + 运行态）；ORDER-P0-DUAL-SOURCE-SYNC 已在本地 real-pre 接入 6468 事实订单源并验证入库；ORDER-P0-DUAL-SOURCE-REMOTE-VERIFY 已完成远端部署验证，远端 commit 对齐 `77b723b6`，6468 入库与管理员可见通过；订单明细表字段对齐已完成本地 real-pre 验证（2026-06-04，commit `abf3f9eb`）；ORDER-DETAIL-TAB-FIX-001 已完成前端 16 列扩展与“渠道”文案统一（2026-06-05，commit `db934d99`）。
+- 当前状态：订单事实、退款事实、同步日志和归因输入已具备；P0-ORDER-001 PAY_RECENT 6h 补拉与同步日志增强已完成（2026-06-03，代码 + 运行态）；ORDER-P0-DUAL-SOURCE-SYNC 已在本地 real-pre 接入 6468 事实订单源并验证入库；ORDER-P0-DUAL-SOURCE-REMOTE-VERIFY 已完成远端部署验证，远端 commit 对齐 `77b723b6`，6468 入库与管理员可见通过；订单明细表字段对齐已完成本地 real-pre 验证（2026-06-04，commit `abf3f9eb`）；ORDER-DETAIL-TAB-FIX-001 已完成前端 16 列扩展与“渠道”文案统一（2026-06-05，commit `db934d99`）；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已完成本地 real-pre 修复验证（2026-06-06），订单已同步事件改为事务提交后发布。
 - 已完成能力：订单同步（默认 2704 update 10min 增量 + PAY_RECENT update 6h 30min 兜底回扫 + 6468 INSTITUTE_RECENT 24h 事实订单源）、订单入库、退款事实、归因输入保存、双轨独立 Redis 水位 + 独立锁、同步日志含 `api/mode/timeType/inserted/updated/attributed/unattributed/noPickSource/noMapping/failed` 维度。
 - P0-ORDER-001 报告路径：`harness/reports/p0-order-001-real-order-visible-20260603-180450.md`、`harness/reports/p0-order-001-diagnosis-20260603-173500.md`、`harness/reports/p0-order-001-intake-20260603-172923.md`。
 - P0-ORDER-001 修改文件：`backend/src/main/java/com/colonel/saas/job/JobLockKeys.java`、`OrderSyncJob.java`、`backend/src/main/java/com/colonel/saas/service/OrderSyncService.java`、`backend/src/main/resources/application.yml`，新增/增强测试 3 个文件 13 用例。
@@ -61,17 +61,18 @@
 - ORDER-P0-DUAL-SOURCE-REMOTE-VERIFY 远端证据：`harness/reports/order-p0-dual-source-remote-verify-20260603-205719.md`；远端 `backend-real-pre` health=UP，6468 日志 `fetched=100 inserted=100 updated=0`，2704 日志 `fetched=0`，远端订单表 `count(*)=100`，管理员 `/api/orders total=100`、`/api/orders/unattributed total=100`。
 - ORDER-DETAIL-FIELD-ALIGN 本地 real-pre 证据：`harness/reports/evidence-20260604-191102.md`；页面 smoke `runtime/qa/out/order-detail-page-smoke-20260604-191711/result.json`。`/api/data/orders/detail` 200、total=738、records=20；订单明细页面 16 个目标列可见，商品信息可见，未结算样本 `6953418877360936032` 显示 `结算：-`，页面不含“媒介”和“毛利”。
 - ORDER-DETAIL-TAB-FIX-001 前端展示证据：`harness/reports/order-detail-tab-fix-001-20260605-100305.md`；`harness/reports/evidence-20260604-221838.md`；页面 smoke `runtime/qa/out/order-detail-tab-fix-001-20260605-020048/result.json`。`/api/data/orders/detail` 200、total=933、records=20；订单明细页面 16 个最终表头可见，页面不含“媒介”和“毛利”，金额列显示人民币，未结算 null 显示 `-`。
+- ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 证据：`harness/reports/order-performance-event-after-commit-fix-001-20260606-121000.md`；Harness evidence `harness/reports/evidence-20260606-120829.md`；real-pre preflight `runtime/qa/out/real-pre-preflight-20260606-120648/report.md`。本地后端全量测试 1730/0/0，`backend-real-pre` rebuild/recreate 后 healthy；SQL anti-join 显示历史缺口仍为 `missing_performance=15`。
 - 待优化能力：`pick_source` 返回样本与 mapping 命中后的渠道正向可见性验证；Dashboard summary 双轨聚合另开 `ANALYTICS-DUAL-TRACK-SUMMARY-FIX`；如需远端同步展示订单明细新表头，另起远端部署任务。
-- 当前风险：真实订单 PAY_RECENT 周期最坏 30 分钟可见延迟，如商务要求更短可调小 cron；抖音 update_time 上限延迟超 6h 时 PAY_RECENT 也会丢，6h 为当前观测经验值；本轮远端 6468 样本仍未返回 `pick_source`，100 单 `channel_user_id=0` 且全部 `COLONEL_MAPPING_NOT_FOUND`，渠道可见性正向样本仍 PENDING。
-- DDD 优化下一步：有 `pick_source` 样本后做渠道可见性验证；之后进入 P0-SAMPLE-001 寄样流转，Dashboard summary 双轨单独处理；远端订单明细展示按部署需求单独执行。
+- 当前风险：真实订单 PAY_RECENT 周期最坏 30 分钟可见延迟，如商务要求更短可调小 cron；抖音 update_time 上限延迟超 6h 时 PAY_RECENT 也会丢，6h 为当前观测经验值；本轮远端 6468 样本仍未返回 `pick_source`，100 单 `channel_user_id=0` 且全部 `COLONEL_MAPPING_NOT_FOUND`，渠道可见性正向样本仍 PENDING；订单事件时序根因已修复本地 real-pre，但历史 `performance_records` 缺口仍需 backfill，当前本地 anti-join 为 15。
+- DDD 优化下一步：先执行 `ORDER-PERFORMANCE-BACKFILL-001` 清理历史缺口；有 `pick_source` 样本后做渠道可见性验证；之后进入 P0-SAMPLE-001 寄样流转，Dashboard summary 双轨单独处理；远端订单明细展示按部署需求单独执行。
 - 标记：P0。
 
 ## 业绩域
 
-- 当前状态：最终归属、提成、冲正和汇总主链路已具备；订单明细 BFF 已按 orderId 批量读取 `performance_records` 补全招商提成、渠道提成、服务费支出和服务费收益展示字段。
+- 当前状态：最终归属、提成、冲正和汇总主链路已具备；订单明细 BFF 已按 orderId 批量读取 `performance_records` 补全招商提成、渠道提成、服务费支出和服务费收益展示字段；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已验证新订单事件在提交后发布，业绩 Listener 正常走 `upsertFromOrder`，重复事件仍走 upsert 幂等路径。
 - 已完成能力：`performance_records`、最终归属、提成、冲正、汇总刷新。
-- 待优化能力：输入追溯、重复消费幂等、冲正证据、权限数据范围和 dashboard 对账补齐；继续修复 DASH-MONEY-P0-001 结算轨污染问题，避免业绩表历史数据影响看板结算口径。
-- DDD 优化下一步：Y-1 盘点业绩域代码、接口、表、任务和测试。
+- 待优化能力：输入追溯、重复消费幂等、冲正证据、权限数据范围和 dashboard 对账补齐；继续修复 DASH-MONEY-P0-001 结算轨污染问题，避免业绩表历史数据影响看板结算口径；执行 `ORDER-PERFORMANCE-BACKFILL-001` 将当前本地 15 条历史缺口补齐并重新 anti-join。
+- DDD 优化下一步：先执行 `ORDER-PERFORMANCE-BACKFILL-001`；之后进入 Y-1 盘点业绩域代码、接口、表、任务和测试。
 - 标记：P0。
 
 ## 分析模块

@@ -12,8 +12,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -22,6 +25,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -136,6 +140,34 @@ class OrderSyncPersistenceServiceTest {
         assertThat(event.talentUid()).isEqualTo("AUTHOR-7788");
         assertThat(event.orderCreateTime()).isEqualTo(orderCreateTime);
         assertThat(event.extraData()).containsEntry("merchant_id", "MERCHANT-1");
+    }
+
+    @Test
+    void persistOrder_shouldDeferOrderSyncedEventUntilTransactionCommit() {
+        ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
+        when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null);
+        when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(1);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.persistOrder(order);
+
+            verifyNoInteractions(eventPublisher);
+            List<TransactionSynchronization> synchronizations =
+                    TransactionSynchronizationManager.getSynchronizations();
+            assertThat(synchronizations).hasSize(1);
+
+            synchronizations.forEach(TransactionSynchronization::afterCommit);
+
+            ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+            verify(eventPublisher).publishEvent(eventCaptor.capture());
+            assertThat(eventCaptor.getValue()).isInstanceOf(OrderSyncedEvent.class);
+            OrderSyncedEvent event = (OrderSyncedEvent) eventCaptor.getValue();
+            assertThat(event.orderId()).isEqualTo(order.getOrderId());
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test
