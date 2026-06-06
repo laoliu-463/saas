@@ -829,20 +829,21 @@ public class OrderController extends BaseController {
                 .toList());
 
         // 部门下拉：按 dept_type 拆成"招商部门 / 渠道部门"两组。
-        // 这里只列出 status=1 且未删除的业务组，order by sort_order, dept_name。
+        // 同时列出父级部门（department）和对应业务组（recruiter_group / channel_group），
+        // 兼容尚未创建子组的场景。order by sort_order, dept_name。
         // 元数据全量返回；订单维度的可见性由 applyDataScope 兜底，不会越权。
-        options.setRecruiterDepartments(loadDeptOptions(DeptType.RECRUITER_GROUP));
-        options.setChannelDepartments(loadDeptOptions(DeptType.CHANNEL_GROUP));
+        options.setRecruiterDepartments(loadDeptOptions(DeptType.DEPARTMENT, DeptType.RECRUITER_GROUP));
+        options.setChannelDepartments(loadDeptOptions(DeptType.DEPARTMENT, DeptType.CHANNEL_GROUP));
         return options;
         }));
     }
 
-    private List<OptionItem> loadDeptOptions(String deptType) {
+    private List<OptionItem> loadDeptOptions(String... deptTypes) {
         com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SysDept> wrapper =
                 new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SysDept>()
                         .eq("deleted", 0)
                         .eq("status", 1)
-                        .eq("dept_type", deptType)
+                        .in("dept_type", (Object[]) deptTypes)
                         .orderByAsc("sort_order")
                         .orderByAsc("dept_name");
         return sysDeptMapper.selectList(wrapper).stream()

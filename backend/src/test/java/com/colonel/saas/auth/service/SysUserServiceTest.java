@@ -121,7 +121,7 @@ class SysUserServiceTest {
         String sql = wrapper.getSqlSegment();
 
         // groupId 精确匹配
-        assertThat(sql).contains("dept_id = " + groupId);
+        assertThat(sql).contains("dept_id = " + uuidLiteral(groupId));
         // 不应包含 deptId 的 subquery
         assertThat(sql).doesNotContain("SELECT id FROM sys_dept");
     }
@@ -136,8 +136,8 @@ class SysUserServiceTest {
         String sql = wrapper.getSqlSegment();
 
         // deptId 同时支持"= deptId"和"IN (子部门)"两路
-        assertThat(sql).contains("dept_id = " + deptId);
-        assertThat(sql).contains("SELECT id FROM sys_dept WHERE deleted = 0 AND parent_id = " + deptId);
+        assertThat(sql).contains("dept_id = " + uuidLiteral(deptId));
+        assertThat(sql).contains("SELECT id FROM sys_dept WHERE deleted = 0 AND parent_id = " + uuidLiteral(deptId));
     }
 
     @Test
@@ -150,7 +150,7 @@ class SysUserServiceTest {
         String sql = wrapper.getSqlSegment();
 
         assertThat(sql).contains("EXISTS (SELECT 1 FROM sys_user_role sur");
-        assertThat(sql).contains("sur.role_id = " + roleId);
+        assertThat(sql).contains("sur.role_id = " + uuidLiteral(roleId));
     }
 
     @Test
@@ -184,7 +184,7 @@ class SysUserServiceTest {
         QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
         sysUserService.applyDataScopeFilter(wrapper, userId, null, DataScope.PERSONAL);
 
-        assertThat(wrapper.getSqlSegment()).contains("id = " + userId);
+        assertThat(wrapper.getSqlSegment()).contains("id = " + uuidLiteral(userId));
     }
 
     @Test
@@ -202,7 +202,7 @@ class SysUserServiceTest {
         QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
         sysUserService.applyDataScopeFilter(wrapper, UUID.randomUUID(), deptId, DataScope.DEPT);
 
-        assertThat(wrapper.getSqlSegment()).contains("dept_id = " + deptId);
+        assertThat(wrapper.getSqlSegment()).contains("dept_id = " + uuidLiteral(deptId));
     }
 
     @Test
@@ -240,9 +240,9 @@ class SysUserServiceTest {
         String sql = wrapper.getSqlSegment();
 
         // CLAUDE.md 不变量：用户域统一 self/group/all → PERSONAL → id = currentUserId
-        assertThat(sql).contains("id = " + currentUserId);
+        assertThat(sql).contains("id = " + uuidLiteral(currentUserId));
         // 不会注入其他用户
-        assertThat(sql).doesNotContain("id = " + targetUserId);
+        assertThat(sql).doesNotContain("id = " + uuidLiteral(targetUserId));
     }
 
     @Test
@@ -256,7 +256,7 @@ class SysUserServiceTest {
         String sql = wrapper.getSqlSegment();
 
         // DEPT → dept_id = currentDeptId
-        assertThat(sql).contains("dept_id = " + currentDeptId);
+        assertThat(sql).contains("dept_id = " + uuidLiteral(currentDeptId));
     }
 
     // ========================== findPage 端到端 ==========================
@@ -311,7 +311,7 @@ class SysUserServiceTest {
         ArgumentCaptor<QueryWrapper<SysUser>> captor = QueryCaptor();
         verify(sysUserMapper).findPage(any(Page.class), any(SysUserPageRequest.class), captor.capture());
         // PERSONAL 必须注入 id = currentUserId
-        assertThat(captor.getValue().getSqlSegment()).contains("id = " + currentUserId);
+        assertThat(captor.getValue().getSqlSegment()).contains("id = " + uuidLiteral(currentUserId));
     }
 
     @Test
@@ -331,7 +331,7 @@ class SysUserServiceTest {
         ArgumentCaptor<QueryWrapper<SysUser>> captor = QueryCaptor();
         verify(sysUserMapper).findPage(any(Page.class), any(SysUserPageRequest.class), captor.capture());
         // DEPT 必须注入 dept_id = currentDeptId
-        assertThat(captor.getValue().getSqlSegment()).contains("dept_id = " + currentDeptId);
+        assertThat(captor.getValue().getSqlSegment()).contains("dept_id = " + uuidLiteral(currentDeptId));
     }
 
     @Test
@@ -378,7 +378,7 @@ class SysUserServiceTest {
         // 没有 request：不应有 LIKE / status / roleCode 等
         assertThat(sql).doesNotContain("LIKE");
         // 但 dataScope 仍生效
-        assertThat(sql).contains("id = " + currentUserId);
+        assertThat(sql).contains("id = " + uuidLiteral(currentUserId));
     }
 
     // ========================== helpers ==========================
@@ -386,5 +386,9 @@ class SysUserServiceTest {
     @SuppressWarnings("unchecked")
     private static ArgumentCaptor<QueryWrapper<SysUser>> QueryCaptor() {
         return ArgumentCaptor.forClass(QueryWrapper.class);
+    }
+
+    private static String uuidLiteral(UUID value) {
+        return "'" + value + "'";
     }
 }
