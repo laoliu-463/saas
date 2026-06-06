@@ -334,3 +334,15 @@ real-pre 必须保持：
 - **报告路径**：`harness/reports/order-detail-tab-fix-001-20260605-100305.md`。
 - **未解决**：`ORDER-DOMAIN-AUDIT-001` 基线 882 单 100% 未归因仍为 `BLOCKED_BY_SAMPLE`；需要业务侧真实系统转链订单样本。本任务未修复归因样本问题。
 - **远端部署**：未执行；如需远端对齐，必须另按用户明确要求执行远端部署。
+
+## DOUYIN-UPSTREAM-RECONNECT-LOCAL-001 本地 real-pre 上游恢复验证（2026-06-06 12:51）
+
+- **任务**：用户要求远端服务器先不部署，仅验证本地 `real-pre`。
+- **范围**：只读验证；未修改 Java / Vue / SQL / Docker / env；未重启容器；未部署远端；未执行数据库写操作。
+- **证据路径**：`harness/reports/evidence-20260606-125134-douyin-upstream-reconnect-local-001.md`、`harness/reports/retro-20260606-125134-douyin-upstream-reconnect-local-001.md`。
+- **环境验证**：`safety-check -Env real-pre -Scope full -DryRun` PASS；本地 backend/frontend/postgres/redis 四容器 healthy；`/api/system/health=UP`；`/healthz=ok`；运行态 `APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`、`DOUYIN_REAL_UPSTREAM_MODE=live`、`ORDER_SYNC_ENABLED=true`。
+- **上游恢复证据**：近 30 分钟后端日志未见新的 `isv.signature-invalid`；`alliance.colonelActivityProduct` 成功；`buyin.colonelMultiSettlementOrders` 成功但 `fetched=0`；`buyin.instituteOrderColonel` 成功且 `pages=1 fetched=100 inserted=5 updated=95 failed=0`。
+- **preflight**：`npm run e2e:real-pre:p0:preflight` PASS，证据目录 `runtime/qa/out/real-pre-preflight-20260606-124246/`。
+- **SQL 对账**：`colonelsettlement_order` 本地 1381 单；`pick_source_nonzero=0`、`channel_nonzero=0`、`settle_nonzero=0`、`max_pay_time=2026-06-06 12:38:49`；`performance_records=1381` 且订单 anti-join 缺口为 0；`pick_source_mapping=13` 且均有非空 `pick_source`。
+- **P0 E2E**：`npm run e2e:real-pre:p0` 结果 `FAIL`，证据目录 `runtime/qa/out/real-pre-p0-20260606-124354/`。商品链 PASS；订单归因 PENDING（当前 30 分钟窗口上游无订单）；业绩看板 PENDING（无可读业绩样本）；抖店接入 08 FAIL（等待“活动商品已刷新”超时）；寄样链 33 FAIL（招商审核 HTTP 403）；RBAC 35 FAIL（`channel_leader` 可访问 `/api/samples/exports?page=1&size=1`）。
+- **阶段性结论**：本地抖音上游签名/连通已恢复到可调用状态，但本地 `real-pre` 全量 P0 仍失败，不能宣称 real-pre P0 通过。渠道归因仍需真实系统转链订单样本，结算轨仍需真实结算样本。
