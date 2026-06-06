@@ -144,7 +144,11 @@ const globalStubs = {
   },
   NDatePicker: stubControl('div'),
   NInput: stubControl('div'),
-  NPopover: { template: '<div><slot name="trigger" /><slot /></div>' },
+  NPopover: {
+    props: ['show'],
+    emits: ['update:show'],
+    template: '<div><slot name="trigger" /><div class="popover-content"><slot /></div></div>'
+  },
   NSelect: stubControl('div'),
   NText: { template: '<span><slot /></span>' },
   OrderDetailTab: {
@@ -348,5 +352,33 @@ describe('OrderList 订单汇总页面', () => {
 
     createObjectURL.mockRestore()
     revokeObjectURL.mockRestore()
+  })
+
+  it('shows recent-days popup options and applies selected range to summary query', async () => {
+    const wrapper = await mountOrderList()
+    const vm = wrapper.vm as any
+
+    expect(wrapper.find('[data-testid="data-orders-recent-days-trigger"]').text()).toBe('近N天')
+    expect(wrapper.find('[data-testid="data-orders-recent-days-today"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="data-orders-recent-days-yesterday"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="data-orders-recent-days-15d"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="data-orders-recent-days-30d"]').exists()).toBe(true)
+
+    vi.mocked(getOrderSummary).mockClear()
+    await vm.applyRecentDaysOption('30d')
+    await flushPromises()
+
+    expect(vm.timePreset).toBe('recent')
+    expect(vm.recentDaysOption).toBe('30d')
+    expect(vm.recentPresetLabel).toBe('30天')
+    expect(getOrderSummary).toHaveBeenCalledWith(expect.objectContaining({
+      startDate: expect.any(String),
+      endDate: expect.any(String)
+    }))
+    const params = vi.mocked(getOrderSummary).mock.calls[0]?.[0] as Record<string, string>
+    const start = new Date(`${params.startDate}T00:00:00`)
+    const end = new Date(`${params.endDate}T00:00:00`)
+    const daySpan = Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1
+    expect(daySpan).toBe(30)
   })
 })

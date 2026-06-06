@@ -102,8 +102,36 @@
               @update:value="handleTimeFieldChange"
             />
             <n-button-group class="time-presets">
+              <n-popover
+                v-model:show="recentDaysPopoverVisible"
+                trigger="click"
+                placement="bottom-start"
+              >
+                <template #trigger>
+                  <n-button
+                    :type="timePreset === 'recent' ? 'primary' : 'default'"
+                    :ghost="timePreset !== 'recent'"
+                    data-testid="data-orders-recent-days-trigger"
+                  >
+                    {{ recentPresetLabel }}
+                  </n-button>
+                </template>
+                <div class="recent-days-options">
+                  <n-button
+                    v-for="option in recentDaysOptions"
+                    :key="option.value"
+                    size="small"
+                    :type="timePreset === 'recent' && recentDaysOption === option.value ? 'primary' : 'default'"
+                    :ghost="!(timePreset === 'recent' && recentDaysOption === option.value)"
+                    :data-testid="`data-orders-recent-days-${option.value}`"
+                    @click="applyRecentDaysOption(option.value)"
+                  >
+                    {{ option.label }}
+                  </n-button>
+                </div>
+              </n-popover>
               <n-button
-                v-for="preset in timePresetOptions"
+                v-for="preset in fixedTimePresetOptions"
                 :key="preset.value"
                 :type="timePreset === preset.value ? 'primary' : 'default'"
                 :ghost="timePreset !== preset.value"
@@ -239,9 +267,16 @@ import { loadOrderRecruiterOptions, loadOrderChannelOptions } from '../orders/or
 import { useAuthStore } from '../../stores/auth'
 import { notifyApiFailure, notifyClientPermission } from '../../utils/requestError'
 import { buildOrderExportParams, type OrderTimeField } from './order-list-query'
+import {
+  buildMonthRange,
+  buildRecentRange,
+  buildWeekRange,
+  getRecentPresetLabel,
+  recentDaysOptions,
+  type RecentDaysOption,
+  type TimePreset
+} from './order-list-time-presets'
 import OrderDetailTab from './OrderDetailTab.vue'
-
-type TimePreset = 'recent' | 'week' | 'month' | 'custom'
 
 type SummaryRow = {
   date?: string | null
@@ -282,44 +317,10 @@ const handleDetailRowCount = (count: number) => {
   detailRowCount.value = count
 }
 
-const startOfDay = (date: Date) => {
-  const copy = new Date(date)
-  copy.setHours(0, 0, 0, 0)
-  return copy
-}
-
-const endOfDay = (date: Date) => {
-  const copy = new Date(date)
-  copy.setHours(23, 59, 59, 999)
-  return copy
-}
-
-const buildWeekRange = (): [number, number] => {
-  const now = new Date()
-  const day = now.getDay() || 7
-  const start = startOfDay(now)
-  start.setDate(now.getDate() - day + 1)
-  const end = endOfDay(start)
-  end.setDate(start.getDate() + 6)
-  return [start.getTime(), end.getTime()]
-}
-
-const buildRecentRange = (): [number, number] => {
-  const end = endOfDay(new Date())
-  const start = startOfDay(new Date())
-  start.setDate(end.getDate() - 6)
-  return [start.getTime(), end.getTime()]
-}
-
-const buildMonthRange = (): [number, number] => {
-  const now = new Date()
-  const start = new Date(now.getFullYear(), now.getMonth(), 1)
-  const end = endOfDay(new Date(now.getFullYear(), now.getMonth() + 1, 0))
-  return [start.getTime(), end.getTime()]
-}
-
 const dateRange = ref<[number, number] | null>(buildWeekRange())
 const timePreset = ref<TimePreset>('week')
+const recentDaysOption = ref<RecentDaysOption>('15d')
+const recentDaysPopoverVisible = ref(false)
 const timeField = ref<OrderTimeField>('createTime')
 const summaryDimension = ref('paymentDateDay')
 
@@ -389,12 +390,13 @@ const timeFieldOptions = [
   { label: '结算时间', value: 'settleTime' }
 ]
 
-const timePresetOptions: Array<{ label: string; value: TimePreset }> = [
-  { label: '近N天', value: 'recent' },
+const fixedTimePresetOptions: Array<{ label: string; value: Exclude<TimePreset, 'recent'> }> = [
   { label: '周', value: 'week' },
   { label: '月', value: 'month' },
   { label: '自定义', value: 'custom' }
 ]
+
+const recentPresetLabel = computed(() => getRecentPresetLabel(timePreset.value, recentDaysOption.value))
 
 const summaryDimensionOptions = computed(() => [
   { label: `${activeTimeTitle.value}按日`, value: 'paymentDateDay' }
@@ -636,16 +638,24 @@ const syncFiltersFromRoute = () => {
   searchParams.activityName = typeof route.query.activityName === 'string' ? route.query.activityName : ''
 }
 
-const applyTimePreset = (preset: TimePreset) => {
+const applyRecentDaysOption = (option: RecentDaysOption) => {
+  recentDaysOption.value = option
+  timePreset.value = 'recent'
+  dateRange.value = buildRecentRange(option)
+  recentDaysPopoverVisible.value = false
+  void fetchData()
+}
+
+const applyTimePreset = (preset: Exclude<TimePreset, 'recent'>) => {
   timePreset.value = preset
-  if (preset === 'recent') {
-    dateRange.value = buildRecentRange()
-  } else if (preset === 'week') {
+  if (preset === 'week') {
     dateRange.value = buildWeekRange()
   } else if (preset === 'month') {
     dateRange.value = buildMonthRange()
   }
-  void fetchData()
+  if (preset !== 'custom') {
+    void fetchData()
+  }
 }
 
 const handleDateRangeChange = () => {
@@ -888,6 +898,13 @@ onMounted(async () => {
 
 .time-presets {
   flex-shrink: 0;
+}
+
+.recent-days-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 220px;
 }
 
 .date-picker {
