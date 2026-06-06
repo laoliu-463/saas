@@ -532,7 +532,7 @@ const businessMetricRows = computed(() => {
       settleValue: metricAmount(settleTrack, 'bizCommission')
     },
     {
-      label: '媒介提成',
+      label: '渠道提成',
       primaryLabel: '预估',
       primaryValue: metricAmount(createTrack, 'channelCommission'),
       settleValue: metricAmount(settleTrack, 'channelCommission')

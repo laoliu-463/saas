@@ -1,5 +1,17 @@
 # Harness Changelog
 
+## v0.6.8
+
+- 渠道提成文案收口（媒介 → 渠道，2026-06-06）。
+- **任务 ID**：DASH-CHANNEL-COMMISSION-LABEL-001。
+- **证据**：`harness/reports/evidence-20260606-123500-channel-commission-label-rename-001.md`。
+- **修改文件**：
+  - `frontend/src/views/data/index.vue`：业务指标矩阵 label `媒介提成` → `渠道提成`。
+  - `frontend/src/views/data/index.test.ts`：断言同步覆盖 `渠道提成`。
+- **行为变化**：仅文案；`channelCommission` 字段口径、API 返回、双轨金额、范围过滤均未变化。
+- **验证**：`npx vitest run` 622 tests passed；`vue-tsc --noEmit` 0 错误。
+- **范围**：Scope=frontend label；未修改后端业务代码、领域合同、ADR。
+
 ## v0.6.7
 
 - 毛利纳入 V1 交付范围决策变更（2026-06-05）。
@@ -25,10 +37,10 @@
   - 前端毛利展示已补齐（GROSS-PROFIT-DISPLAY-001，2026-06-05 数据看板经营指标矩阵已补齐）。
   - 原 DASH-MONEY-P0-004 降级为 P2 前端展示补齐任务。
   - 全部 9 类指标（× 2 轨 = 18 个指标）确认纳入 V1。
-  - 数据看板展示“媒介提成”，底层映射现有 `channelCommission` / 渠道提成字段。
+  - 数据看板“媒介提成”统一为“渠道提成”（2026-06-05 用户确认媒介=渠道），`index.vue` + `index.test.ts` 已修正。
 - **代码修改**：
-  - `frontend/src/views/data/index.vue`：新增经营指标矩阵，补齐“媒介提成”和“毛利”等指标展示。
-  - `frontend/src/views/data/index.test.ts`：测试断言同步覆盖 9 类经营指标。
+  - `frontend/src/views/data/index.vue`：新增经营指标矩阵，补齐“渠道提成”和“毛利”等指标展示；“媒介提成”→“渠道提成”。
+  - `frontend/src/views/data/index.test.ts`：测试断言同步覆盖 9 类经营指标；“媒介提成”→“渠道提成”。
 - **范围**：Scope=frontend；未修改后端业务代码。
 
 ## v0.6.6

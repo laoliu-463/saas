@@ -170,7 +170,7 @@ describe('DataDashboard business metric matrix', () => {
       '服务费支出',
       '服务费收益',
       '招商提成',
-      '媒介提成',
+      '渠道提成',
       '毛利'
     ]) {
       expect(text).toContain(label)
