@@ -63,14 +63,21 @@ public class Order6468PaginationDryRunService {
         seenCursors.add(cursor);
 
         while (pagesFetched < normalized.maxPages()) {
-            DouyinOrderGateway.OrderListResult page = douyinOrderGateway.listInstituteOrders(
-                    new DouyinOrderGateway.DouyinOrderQueryRequest(
-                            normalized.startTime(),
-                            normalized.endTime(),
-                            normalized.pageSize(),
-                            cursor
-                    )
-            );
+            DouyinOrderGateway.OrderListResult page;
+            try {
+                page = douyinOrderGateway.listInstituteOrders(
+                        new DouyinOrderGateway.DouyinOrderQueryRequest(
+                                normalized.startTime(),
+                                normalized.endTime(),
+                                normalized.pageSize(),
+                                cursor
+                        )
+                );
+            } catch (RuntimeException ex) {
+                stopReason = "UPSTREAM_ERROR";
+                warnings.add("upstream error at cursor " + cursor + ": " + ex.getMessage());
+                break;
+            }
             pagesFetched++;
             List<DouyinOrderGateway.DouyinOrderItem> pageOrders =
                     page.orders() == null ? List.of() : page.orders();

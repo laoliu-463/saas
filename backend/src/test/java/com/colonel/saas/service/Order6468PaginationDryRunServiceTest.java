@@ -90,6 +90,22 @@ class Order6468PaginationDryRunServiceTest {
         assertThat(result.candidates().get("NEW_AFTER_LOCAL_DEDUP").orderAmountCent()).isEqualTo(1000L);
     }
 
+    @Test
+    void dryRun_shouldReturnPartialSummaryWhenUpstreamFailsAfterFirstPage() {
+        when(douyinOrderGateway.listInstituteOrders(any()))
+                .thenReturn(page(List.of(order("ORDER-1", "PAY_SUCC", 1000L, 20L, 2L, "2026-06-03 12:00:00")), false, "cursor-2"))
+                .thenThrow(new RuntimeException("upstream sleepy"));
+        when(orderMapper.selectList(any())).thenReturn(List.of());
+
+        Order6468PaginationDryRunService.DryRunResult result = service.dryRun(request());
+
+        assertThat(result.pagesFetched()).isEqualTo(1);
+        assertThat(result.rawOrderRows()).isEqualTo(1);
+        assertThat(result.stopReason()).isEqualTo("UPSTREAM_ERROR");
+        assertThat(result.warnings()).anyMatch(warning -> warning.contains("upstream sleepy"));
+        assertThat(result.candidates().get("ALL_RAW").orderCount()).isEqualTo(1);
+    }
+
     private Order6468PaginationDryRunService.DryRunRequest request() {
         return new Order6468PaginationDryRunService.DryRunRequest(
                 1780459200L,
