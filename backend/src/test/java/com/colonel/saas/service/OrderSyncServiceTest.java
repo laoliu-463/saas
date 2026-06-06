@@ -14,11 +14,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -294,9 +296,169 @@ class OrderSyncServiceTest {
         assertThat(order.getSyncSource()).isEqualTo(OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE);
     }
 
+    @Test
+    void syncInstituteOrdersRecentWindow_shouldContinueWhenDataCursorExistsDespiteHasMoreFalse() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+                .thenReturn(true);
+        when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+                .thenReturn(
+                        pageWithRawCursor(List.of(instituteOrderItem("ORDER-1")), false, null, Map.of("data", Map.of("cursor", "cursor-2"))),
+                        pageWithRawCursor(List.of(instituteOrderItem("ORDER-2")), false, null, Map.of("data", Map.of("cursor", "0")))
+                );
+        when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null,
+                        null,
+                        "3859423",
+                        null,
+                        AttributionService.REASON_NO_PICK_SOURCE
+                ));
+        when(persistenceService.persistOrder(any(ColonelsettlementOrder.class))).thenReturn(true);
+
+        OrderSyncService.SyncResult result = service.syncInstituteOrdersRecentWindow();
+
+        assertThat(result.pages()).isEqualTo(2);
+        assertThat(result.totalFetched()).isEqualTo(2);
+        assertThat(result.uniqueOrders()).isEqualTo(2);
+        assertThat(result.created()).isEqualTo(2);
+        assertThat(result.stopReason()).isEqualTo("NO_NEXT_CURSOR");
+
+        ArgumentCaptor<DouyinOrderGateway.DouyinOrderQueryRequest> requestCaptor =
+                ArgumentCaptor.forClass(DouyinOrderGateway.DouyinOrderQueryRequest.class);
+        verify(douyinOrderGateway, times(2)).listInstituteOrders(requestCaptor.capture());
+        assertThat(requestCaptor.getAllValues().get(0).cursor()).isEqualTo("0");
+        assertThat(requestCaptor.getAllValues().get(1).cursor()).isEqualTo("cursor-2");
+    }
+
+    @Test
+    void syncInstituteOrdersRecentWindow_shouldContinueWhenHasMoreFalseButNextCursorExists() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+                .thenReturn(true);
+        when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+                .thenReturn(
+                        pageWithRawCursor(List.of(instituteOrderItem("ORDER-1")), false, "cursor-2", Map.of()),
+                        pageWithRawCursor(List.of(instituteOrderItem("ORDER-2")), false, "0", Map.of())
+                );
+        when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null,
+                        null,
+                        "3859423",
+                        null,
+                        AttributionService.REASON_NO_PICK_SOURCE
+                ));
+        when(persistenceService.persistOrder(any(ColonelsettlementOrder.class))).thenReturn(true);
+
+        OrderSyncService.SyncResult result = service.syncInstituteOrdersRecentWindow();
+
+        assertThat(result.pages()).isEqualTo(2);
+        assertThat(result.totalFetched()).isEqualTo(2);
+        assertThat(result.created()).isEqualTo(2);
+        assertThat(result.stopReason()).isEqualTo("NO_NEXT_CURSOR");
+    }
+
+    @Test
+    void syncInstituteOrdersRecentWindow_shouldStopWhenCursorRepeats() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+                .thenReturn(true);
+        when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+                .thenReturn(
+                        pageWithRawCursor(List.of(instituteOrderItem("ORDER-1")), false, "cursor-2", Map.of()),
+                        pageWithRawCursor(List.of(instituteOrderItem("ORDER-2")), false, "cursor-2", Map.of())
+                );
+        when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null,
+                        null,
+                        "3859423",
+                        null,
+                        AttributionService.REASON_NO_PICK_SOURCE
+                ));
+        when(persistenceService.persistOrder(any(ColonelsettlementOrder.class))).thenReturn(true);
+
+        OrderSyncService.SyncResult result = service.syncInstituteOrdersRecentWindow();
+
+        assertThat(result.pages()).isEqualTo(2);
+        assertThat(result.stopReason()).isEqualTo("DUPLICATE_CURSOR");
+        verify(douyinOrderGateway, times(2)).listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
+    }
+
+    @Test
+    void syncInstituteOrdersRecentWindow_shouldStopWhenMaxPagesReached() {
+        ReflectionTestUtils.setField(service, "maxPages", 2);
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+                .thenReturn(true);
+        AtomicInteger counter = new AtomicInteger();
+        when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+                .thenAnswer(invocation -> {
+                    int pageNo = counter.incrementAndGet();
+                    return pageWithRawCursor(
+                            List.of(instituteOrderItem("ORDER-" + pageNo)),
+                            false,
+                            "cursor-" + (pageNo + 1),
+                            Map.of()
+                    );
+                });
+        when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null,
+                        null,
+                        "3859423",
+                        null,
+                        AttributionService.REASON_NO_PICK_SOURCE
+                ));
+        when(persistenceService.persistOrder(any(ColonelsettlementOrder.class))).thenReturn(true);
+
+        OrderSyncService.SyncResult result = service.syncInstituteOrdersRecentWindow();
+
+        assertThat(result.pages()).isEqualTo(2);
+        assertThat(result.stopReason()).isEqualTo("MAX_PAGES");
+        verify(douyinOrderGateway, times(2)).listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
+    }
+
+    @Test
+    void syncInstituteOrdersRecentWindow_shouldUpsertDuplicateOrderOnlyOnceAcrossPages() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+                .thenReturn(true);
+        when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+                .thenReturn(
+                        pageWithRawCursor(List.of(instituteOrderItem("ORDER-DUP")), false, "cursor-2", Map.of()),
+                        pageWithRawCursor(List.of(instituteOrderItem("ORDER-DUP")), false, "0", Map.of())
+                );
+        when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null,
+                        null,
+                        "3859423",
+                        null,
+                        AttributionService.REASON_NO_PICK_SOURCE
+                ));
+        when(persistenceService.persistOrder(any(ColonelsettlementOrder.class))).thenReturn(true);
+
+        OrderSyncService.SyncResult result = service.syncInstituteOrdersRecentWindow();
+
+        assertThat(result.pages()).isEqualTo(2);
+        assertThat(result.totalFetched()).isEqualTo(2);
+        assertThat(result.uniqueOrders()).isEqualTo(1);
+        assertThat(result.created()).isEqualTo(1);
+        verify(persistenceService, times(1)).persistOrder(any(ColonelsettlementOrder.class));
+    }
+
     private DouyinOrderGateway.DouyinOrderItem instituteOrderItem() {
+        return instituteOrderItem("6953395247297468025");
+    }
+
+    private DouyinOrderGateway.OrderListResult pageWithRawCursor(
+            List<DouyinOrderGateway.DouyinOrderItem> orders,
+            boolean hasMore,
+            String nextCursor,
+            Map<String, Object> rawResponse) {
+        return new DouyinOrderGateway.OrderListResult(orders, hasMore, nextCursor, rawResponse);
+    }
+
+    private DouyinOrderGateway.DouyinOrderItem instituteOrderItem(String orderId) {
         Map<String, Object> rawPayload = new LinkedHashMap<>();
-        rawPayload.put("order_id", "6953395247297468025");
+        rawPayload.put("order_id", orderId);
         rawPayload.put("product_id", "3810562766247428542");
         rawPayload.put("product_name", "天淇巧仁派对巧克力坚果冰淇淋");
         rawPayload.put("shop_id", "56591058");
@@ -314,7 +476,7 @@ class OrderSyncServiceTest {
                 "tech_service_fee", 7L
         ));
         return new DouyinOrderGateway.DouyinOrderItem(
-                "6953395247297468025",
+                orderId,
                 "3810562766247428542",
                 "3810562766247428542",
                 "56591058",

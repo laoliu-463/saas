@@ -62,8 +62,18 @@ public class OrderSyncService {
     private static final long LAG_SECONDS = 60L;
     /** 每页请求默认拉取数量。 */
     private static final int DEFAULT_COUNT = 100;
-    /** 最大翻页次数，超过后强制停止，防止无限循环。 */
-    private static final int MAX_PAGES = 200;
+    /** 默认最大翻页次数，超过后强制停止，防止无限循环。 */
+    private static final int DEFAULT_MAX_PAGES = 200;
+    /** 默认最大订单处理行数，防止一次同步过量拉取。 */
+    private static final int DEFAULT_MAX_ORDERS = 50_000;
+    private static final String STOP_REASON_LOCKED = "LOCKED";
+    private static final String STOP_REASON_EMPTY_PAGE = "EMPTY_PAGE";
+    private static final String STOP_REASON_NO_NEXT_CURSOR = "NO_NEXT_CURSOR";
+    private static final String STOP_REASON_DUPLICATE_CURSOR = "DUPLICATE_CURSOR";
+    private static final String STOP_REASON_MAX_PAGES = "MAX_PAGES";
+    private static final String STOP_REASON_MAX_ORDERS = "MAX_ORDERS";
+    private static final String STOP_REASON_SINGLE_PAGE = "SINGLE_PAGE";
+    private static final String STOP_REASON_UNKNOWN = "UNKNOWN";
 
     /** 同步模式标签：默认 10 分钟增量窗口（依赖 last_time 滚动）。 */
     static final String SYNC_MODE_INCREMENTAL = "INCREMENTAL";
@@ -106,6 +116,12 @@ public class OrderSyncService {
 
     @Value("${order.sync.circuit-breaker.open-duration:PT5M}")
     private Duration gatewayCircuitOpenDuration = Duration.ofMinutes(5);
+
+    @Value("${order.sync.max-pages:200}")
+    private int maxPages = DEFAULT_MAX_PAGES;
+
+    @Value("${order.sync.max-orders:50000}")
+    private int maxOrders = DEFAULT_MAX_ORDERS;
 
     public OrderSyncService(
             DouyinOrderGateway douyinOrderGateway,
@@ -426,8 +442,11 @@ public class OrderSyncService {
             String mode,
             SyncSource source,
             Function<String, DouyinOrderGateway.OrderListResult> fetchNextPage) {
+        String logName = source == SyncSource.INSTITUTE ? "ORDER_SYNC_INSTITUTE" : "ORDER_SYNC_SETTLEMENT";
+        String api = source == SyncSource.INSTITUTE ? API_INSTITUTE_ORDER_COLONEL : API_COLONEL_MULTI_SETTLEMENT_ORDERS;
+        int maxPageLimit = Math.max(1, maxPages);
+        int maxOrderLimit = Math.max(1, maxOrders);
         String cursor = "0";
-        boolean hasMore = true;
         int totalFetched = 0;
         int created = 0;
         int updated = 0;
@@ -437,21 +456,35 @@ public class OrderSyncService {
         int noPickSourceCount = 0;
         int noMappingCount = 0;
         int pages = 0;
+        String stopReason = STOP_REASON_UNKNOWN;
+        Set<String> seenCursors = new LinkedHashSet<>();
+        Set<String> seenOrderIds = new LinkedHashSet<>();
+        seenCursors.add(cursor);
         DouyinOrderGateway.OrderListResult response = firstPage;
 
-        while (hasMore) {
+        while (true) {
             List<DouyinOrderGateway.DouyinOrderItem> items = response.orders();
             if (items == null || items.isEmpty()) {
+                stopReason = STOP_REASON_EMPTY_PAGE;
                 break;
             }
             pages++;
             totalFetched += items.size();
 
             List<ColonelsettlementOrder> pageOrders = new ArrayList<>();
+            boolean maxOrdersReached = false;
+            int pageFailed = 0;
             for (DouyinOrderGateway.DouyinOrderItem item : items) {
+                if (seenOrderIds.size() >= maxOrderLimit) {
+                    maxOrdersReached = true;
+                    break;
+                }
                 try {
                     ColonelsettlementOrder order = mapOrder(item, source);
                     if (!StringUtils.hasText(order.getOrderId())) {
+                        continue;
+                    }
+                    if (!seenOrderIds.add(order.getOrderId())) {
                         continue;
                     }
                     AttributionService.AttributionResult attribution =
@@ -470,9 +503,11 @@ public class OrderSyncService {
                     pageOrders.add(order);
                 } catch (BusinessException e) {
                     failedCount++;
+                    pageFailed++;
                     log.warn("Skip order during sync, reason={}, orderId={}", e.getMessage(), item.externalOrderId());
                 } catch (Exception e) {
                     failedCount++;
+                    pageFailed++;
                     log.error("Unexpected error processing order, orderId={}, type={}",
                             item.externalOrderId(), e.getClass().getSimpleName(), e);
                 }
@@ -489,6 +524,8 @@ public class OrderSyncService {
             }
             Map<UUID, SysUser> usersById = persistenceService.loadUsersByIds(userIds);
 
+            int pageCreated = 0;
+            int pageUpdated = 0;
             for (ColonelsettlementOrder order : pageOrders) {
                 try {
                     SysUser channelUser = order.getChannelUserId() == null
@@ -520,37 +557,105 @@ public class OrderSyncService {
                     boolean isNew = persistenceService.persistOrder(order);
                     if (isNew) {
                         created++;
+                        pageCreated++;
                     } else {
                         updated++;
+                        pageUpdated++;
                     }
                 } catch (BusinessException e) {
                     failedCount++;
+                    pageFailed++;
                     log.warn("Skip order during sync, reason={}, orderId={}", e.getMessage(), order.getOrderId());
                 } catch (Exception e) {
                     failedCount++;
+                    pageFailed++;
                     log.error("Unexpected error persisting order, orderId={}, type={}",
                             order.getOrderId(), e.getClass().getSimpleName(), e);
                 }
             }
 
-            cursor = response.nextCursor();
-            hasMore = continuePaging && response.hasMore() && pages < MAX_PAGES;
-            if (hasMore) {
-                response = fetchNextPage.apply(cursor);
+            String nextCursor = resolveNextCursor(response);
+            log.info("{} api={} mode={} pageNo={} cursor={} nextCursor={} fetched={} inserted={} updated={} failed={}",
+                    logName, api, mode, pages, cursor, nextCursor, items.size(), pageCreated, pageUpdated, pageFailed);
+            if (maxOrdersReached || seenOrderIds.size() >= maxOrderLimit) {
+                stopReason = STOP_REASON_MAX_ORDERS;
+                break;
             }
+            if (!continuePaging) {
+                stopReason = STOP_REASON_SINGLE_PAGE;
+                break;
+            }
+            boolean hasNext = response.hasMore() || (isTraversableCursor(nextCursor) && !items.isEmpty());
+            if (!hasNext) {
+                stopReason = STOP_REASON_NO_NEXT_CURSOR;
+                break;
+            }
+            if (pages >= maxPageLimit) {
+                stopReason = STOP_REASON_MAX_PAGES;
+                break;
+            }
+            if (seenCursors.contains(nextCursor)) {
+                stopReason = STOP_REASON_DUPLICATE_CURSOR;
+                break;
+            }
+            seenCursors.add(nextCursor);
+            cursor = nextCursor;
+            response = fetchNextPage.apply(cursor);
         }
 
-        String logName = source == SyncSource.INSTITUTE ? "ORDER_SYNC_INSTITUTE" : "ORDER_SYNC_SETTLEMENT";
-        String api = source == SyncSource.INSTITUTE ? API_INSTITUTE_ORDER_COLONEL : API_COLONEL_MULTI_SETTLEMENT_ORDERS;
-        log.info("{} api={} mode={} timeType={} range=[{}, {}] pages={} fetched={} inserted={} updated={} attributed={} unattributed={} noPickSource={} noMapping={} failed={}",
+        log.info("{} api={} mode={} timeType={} range=[{}, {}] pagesFetched={} uniqueOrders={} fetched={} inserted={} updated={} attributed={} unattributed={} noPickSource={} noMapping={} failed={} stopReason={}",
                 logName,
                 api,
                 mode,
                 GATEWAY_TIME_TYPE_UPDATE,
-                startTime, endTime, pages, totalFetched, created, updated,
-                attributedCount, unattributedCount, noPickSourceCount, noMappingCount, failedCount);
+                startTime, endTime, pages, seenOrderIds.size(), totalFetched, created, updated,
+                attributedCount, unattributedCount, noPickSourceCount, noMappingCount, failedCount, stopReason);
 
-        return new SyncResult(startTime, endTime, pages, totalFetched, created, updated, attributedCount, unattributedCount, failedCount, false);
+        return new SyncResult(startTime, endTime, pages, totalFetched, created, updated,
+                attributedCount, unattributedCount, failedCount, false, seenOrderIds.size(), stopReason);
+    }
+
+    private String resolveNextCursor(DouyinOrderGateway.OrderListResult response) {
+        if (response == null) {
+            return "0";
+        }
+        Map<String, Object> rawResponse = response.rawResponse();
+        return normalizeCursor(firstNonBlank(
+                asString(rawPageValue(rawResponse, "cursor")),
+                asString(rawValue(rawResponse, "cursor")),
+                asString(rawPageValue(rawResponse, "next_cursor", "nextCursor")),
+                response.nextCursor()
+        ));
+    }
+
+    private boolean isTraversableCursor(String cursor) {
+        return StringUtils.hasText(cursor) && !"0".equals(cursor);
+    }
+
+    private String normalizeCursor(String cursor) {
+        return StringUtils.hasText(cursor) ? cursor.trim() : "0";
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object rawPageValue(Map<String, Object> rawResponse, String... keys) {
+        if (rawResponse == null || rawResponse.isEmpty()) {
+            return null;
+        }
+        Object data = rawValue(rawResponse, "data");
+        if (data instanceof Map<?, ?> dataMap) {
+            Object direct = rawValue((Map<String, Object>) dataMap, keys);
+            if (direct != null) {
+                return direct;
+            }
+            Object nested = rawValue((Map<String, Object>) dataMap, "data");
+            if (nested instanceof Map<?, ?> nestedMap) {
+                Object nestedValue = rawValue((Map<String, Object>) nestedMap, keys);
+                if (nestedValue != null) {
+                    return nestedValue;
+                }
+            }
+        }
+        return rawValue(rawResponse, keys);
     }
 
     /** 按时间范围调用抖音结算网关（受熔断器保护）。 */
@@ -816,10 +921,19 @@ public class OrderSyncService {
             int attributed,
             int unattributed,
             int failed,
-            boolean locked) {
+            boolean locked,
+            int uniqueOrders,
+            String stopReason) {
+
+        public SyncResult(long startTime, long endTime, int pages, int totalFetched, int created, int updated,
+                          int attributed, int unattributed, int failed, boolean locked) {
+            this(startTime, endTime, pages, totalFetched, created, updated, attributed, unattributed, failed, locked,
+                    totalFetched, locked ? STOP_REASON_LOCKED : STOP_REASON_UNKNOWN);
+        }
 
         public SyncResult(long startTime, long endTime, int pages, int inserted, int skipped, boolean locked) {
-            this(startTime, endTime, pages, inserted + skipped, inserted, 0, 0, skipped, 0, locked);
+            this(startTime, endTime, pages, inserted + skipped, inserted, 0, 0, skipped, 0, locked,
+                    inserted + skipped, locked ? STOP_REASON_LOCKED : STOP_REASON_UNKNOWN);
         }
 
         public int inserted() {

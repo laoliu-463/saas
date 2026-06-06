@@ -143,6 +143,22 @@ class OrderSyncPersistenceServiceTest {
     }
 
     @Test
+    void persistOrder_shouldPublishOrderSyncedEventImmediatelyWhenNoTransactionSynchronizationActive() {
+        assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
+        ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
+        when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null);
+        when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(1);
+
+        service.persistOrder(order);
+
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue()).isInstanceOf(OrderSyncedEvent.class);
+        assertThat(((OrderSyncedEvent) eventCaptor.getValue()).orderId()).isEqualTo(order.getOrderId());
+    }
+
+    @Test
     void persistOrder_shouldDeferOrderSyncedEventUntilTransactionCommit() {
         ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
         when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);

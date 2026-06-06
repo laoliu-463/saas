@@ -1201,7 +1201,7 @@ class DataControllerTest {
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null,
-                UUID.randomUUID(), null, DataScope.ALL);
+                null, null, UUID.randomUUID(), null, DataScope.ALL);
 
         assertThat(result).isNotNull();
         assertThat(result.getData().getRecords()).isEmpty();
@@ -1216,7 +1216,7 @@ class DataControllerTest {
                 1, 20, null, null, null, "legacy-partner-ignored",
                 null, null, null, null, "旧招商字段", "渠道甲", "ACT-1",
                 "活动甲", "PARTNER-1", "合作方甲", "招商甲",
-                null, null, null, "createTime",
+                null, null, null, "createTime", null, null,
                 UUID.randomUUID(), null, DataScope.ALL);
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
@@ -1291,7 +1291,7 @@ class DataControllerTest {
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null,
-                UUID.randomUUID(), null, DataScope.ALL);
+                null, null, UUID.randomUUID(), null, DataScope.ALL);
 
         assertThat(result).isNotNull();
         List<OrderDetailVO> records = result.getData().getRecords();
@@ -1344,7 +1344,7 @@ class DataControllerTest {
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null,
-                UUID.randomUUID(), null, DataScope.ALL);
+                null, null, UUID.randomUUID(), null, DataScope.ALL);
 
         List<OrderDetailVO> records = result.getData().getRecords();
         assertThat(records).hasSize(1);
@@ -1385,7 +1385,7 @@ class DataControllerTest {
         dataController.exportOrderDetail(
                 null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null,
-                UUID.randomUUID(), null, DataScope.ALL, response);
+                null, null, UUID.randomUUID(), null, DataScope.ALL, response);
 
         assertThat(response.getContentType()).contains("text/csv");
         String content = response.getContentAsString();
@@ -1403,6 +1403,7 @@ class DataControllerTest {
                 String.class, String.class, String.class, String.class,
                 String.class, String.class, String.class, String.class,
                 LocalDate.class, LocalDate.class, String.class,
+                String.class, String.class,
                 UUID.class, UUID.class, DataScope.class,
                 jakarta.servlet.http.HttpServletResponse.class
         );

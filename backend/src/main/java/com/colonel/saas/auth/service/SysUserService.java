@@ -260,19 +260,19 @@ public class SysUserService {
         if (request.status() != null) {
             wrapper.apply("status = " + request.status());
         }
-        // 业务组优先于部门（UUID 内联，无注入风险）
+        // 业务组优先于部门（UUID 内联，需加引号避免 PG 误解析）
         if (request.groupId() != null) {
-            wrapper.apply("dept_id = " + request.groupId());
+            wrapper.apply("dept_id = '" + request.groupId() + "'");
         } else if (request.deptId() != null) {
             UUID parentDeptId = request.deptId();
-            wrapper.and(q -> q.apply("dept_id = " + parentDeptId)
+            wrapper.and(q -> q.apply("dept_id = '" + parentDeptId + "'")
                     .or().inSql("dept_id",
-                            "SELECT id FROM sys_dept WHERE deleted = 0 AND parent_id = " + parentDeptId));
+                            "SELECT id FROM sys_dept WHERE deleted = 0 AND parent_id = '" + parentDeptId + "'"));
         }
         // 角色筛选（roleId / roleCode 二选一）
         if (request.roleId() != null) {
-            wrapper.exists("SELECT 1 FROM sys_user_role sur WHERE sur.user_id = su.id AND sur.role_id = "
-                    + request.roleId());
+            wrapper.exists("SELECT 1 FROM sys_user_role sur WHERE sur.user_id = su.id AND sur.role_id = '"
+                    + request.roleId() + "'");
         } else if (request.roleCode() != null && !request.roleCode().isBlank()) {
             String code = request.roleCode().trim();
             // roleCode 来自受控角色编码（白名单），安全内联
@@ -340,14 +340,14 @@ public class SysUserService {
                 return;
             }
             // UUID 是受控格式（仅 hex + dash），内联避免单测断言参数化占位符
-            wrapper.apply("id = " + currentUserId);
+            wrapper.apply("id = '" + currentUserId + "'");
             return;
         }
         if (dataScope == DataScope.DEPT) {
             if (currentDeptId == null) {
                 return;
             }
-            wrapper.apply("dept_id = " + currentDeptId);
+            wrapper.apply("dept_id = '" + currentDeptId + "'");
         }
     }
 
