@@ -142,8 +142,10 @@ services:
       LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB_CLIENT_RESTTEMPLATE: "INFO"
       LOGGING_LEVEL_COM_DOUDIAN_OPEN_CORE: "WARN"
       JAVA_OPTS: "-Dspring.devtools.restart.enabled=false -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
+    # SECURE-REMOTE-DEPLOY-001: 显式绑定 127.0.0.1, 避免 host 0.0.0.0 公网直连,
+    # 公网入口由 Nginx 反代承担 (Gate 7)。${BACKEND_HOST_PORT:-8081} 仍允许覆盖方便调试。
     ports:
-      - "${BACKEND_HOST_PORT:-8081}:8080"
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8081}:8080"
     depends_on:
       postgres-real-pre:
         condition: service_healthy
@@ -177,8 +179,10 @@ services:
       DOMAIN: ${FRONTEND_DOMAIN:-_}
       BACKEND_UPSTREAM: ${BACKEND_UPSTREAM:-backend-real-pre:8080}
       VITE_ENV_LABEL: ${VITE_ENV_LABEL:-REAL-PRE}
+    # SECURE-REMOTE-DEPLOY-001: 显式绑定 127.0.0.1, 避免 host 0.0.0.0 公网直连,
+    # 公网入口由 Nginx 反代承担 (Gate 7)。${FRONTEND_HOST_PORT:-3001} 仍允许覆盖方便调试。
     ports:
-      - "${FRONTEND_HOST_PORT:-3001}:80"
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-3001}:80"
     depends_on:
       backend-real-pre:
         condition: service_healthy
