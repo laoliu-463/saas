@@ -7,6 +7,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exportOrders, exportOrderDetail, getOrderSummary, getOrderDetailPage } from '../../api/data'
+import { getOrderFilterOptions } from '../../api/order'
+import { useAuthStore } from '../../stores/auth'
 import OrderList from './OrderList.vue'
 
 /** 模拟路由查询参数，用于测试路由驱动的筛选联动 */
@@ -28,6 +30,10 @@ vi.mock('../../api/data', () => ({
   exportOrderDetail: vi.fn(),
   getOrderSummary: vi.fn(),
   getOrderDetailPage: vi.fn()
+}))
+
+vi.mock('../../api/order', () => ({
+  getOrderFilterOptions: vi.fn()
 }))
 
 /** 模拟订单用户筛选选项加载函数（招商人/渠道） */
@@ -151,6 +157,7 @@ const globalStubs = {
   },
   NSelect: stubControl('div'),
   NText: { template: '<span><slot /></span>' },
+  NTooltip: { template: '<span><slot name="trigger" /><slot /></span>' },
   OrderDetailTab: {
     props: ['filters', 'timeField', 'dateRange'],
     emits: ['rowCount', 'export'],
@@ -167,14 +174,8 @@ const globalStubs = {
 const mountOrderList = async () => {
   const pinia = createPinia()
   setActivePinia(pinia)
-  localStorage.setItem('userInfo', JSON.stringify({ roleCodes: ['biz_leader'] }))
-  pinia.state.value.auth = {
-    token: '',
-    refreshToken: '',
-    refreshExpiresIn: null,
-    accessTokenExpiresIn: null,
-    userInfo: { roleCodes: ['biz_leader'] }
-  }
+  const authStore = useAuthStore(pinia)
+  authStore.login('unit-test-token', { roleCodes: ['biz_leader'] })
 
   const wrapper = mount(OrderList, {
     global: {
@@ -199,6 +200,7 @@ describe('OrderList 订单汇总页面', () => {
     vi.mocked(exportOrders).mockResolvedValue(new Blob(['订单号\nORDER-1']) as any)
     vi.mocked(exportOrderDetail).mockResolvedValue(new Blob(['订单号\nORDER-1']) as any)
     vi.mocked(getOrderDetailPage).mockResolvedValue({ data: { records: [], total: 0 } } as any)
+    vi.mocked(getOrderFilterOptions).mockResolvedValue({ data: { recruiterDepartments: [], channelDepartments: [] } } as any)
   })
 
   /** 验证页面加载时使用路由参数作为筛选条件请求汇总数据，并正确渲染聚合统计值 */
