@@ -64,8 +64,8 @@ class PerformanceSummaryServiceTest {
 
         assertThat(track.getOrderCount()).isEqualTo(3L);
         assertThat(track.getOrderAmount()).isEqualTo(9000L);
-        // 服务费支出 = 收入 - 技术服务费 - 服务费收益（两轨统一口径，600 - 60 - 540 = 0）
         assertThat(track.getServiceFeeExpense()).isEqualTo(0L);
+        assertThat(track.getServiceFeeProfit()).isEqualTo(540L);
         assertThat(track.getGrossProfit()).isEqualTo(459L);
     }
 
@@ -125,8 +125,7 @@ class PerformanceSummaryServiceTest {
         assertThat(summary.getEstimate().getOrderCount()).isZero();
         assertThat(summary.getEstimate().getOrderAmount()).isZero();
         assertThat(summary.getEstimate().getServiceFeeIncome()).isEqualTo(1200L);
-        assertThat(summary.getEstimate().getServiceFeeProfit()).isZero();
-        // bad-profit 映射为 0；支出从 DB 取（summaryRow 无该字段时为 0），不再使用反推公式
+        assertThat(summary.getEstimate().getServiceFeeProfit()).isEqualTo(1120L);
         assertThat(summary.getEstimate().getServiceFeeExpense()).isZero();
         assertThat(summary.getEffective().getGrossProfit()).isEqualTo(123L);
     }

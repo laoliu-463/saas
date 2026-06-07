@@ -837,21 +837,14 @@ public class DataApplicationService extends BaseController {
                 deptId,
                 dataScope);
 
-        // 第六步：从 performance_records 查询服务费收益，用于计算正确的服务费支出
-        String timeColumn = columns.timeColumn();
-        String profitCol = "settle_time".equals(timeColumn)
-                ? "pr.effective_service_profit" : "pr.estimate_service_profit";
-        Long totalServiceProfitCent = queryServiceProfitCent(profitCol, timeColumn, start, end);
-        Map<String, Long> dailyServiceProfitCent = queryDailyServiceProfitCent(profitCol, timeColumn, start, end);
-        boolean estimateTrack = !"settle_time".equals(timeColumn);
+        boolean estimateTrack = !"settle_time".equals(columns.timeColumn());
 
         OrderSummaryVO vo = new OrderSummaryVO();
-        vo.setTotal(toOrderSummaryRow(firstRow(totalRows), totalCommission, null, totalServiceProfitCent, estimateTrack));
+        vo.setTotal(toOrderSummaryRow(firstRow(totalRows), totalCommission, null, estimateTrack));
         vo.setRecords(dailyRows.stream()
                 .map(row -> {
                     String date = asString(row, "stat_date");
-                    long dayProfit = dailyServiceProfitCent.getOrDefault(date, 0L);
-                    return toOrderSummaryRow(row, dailyCommission.get(date), date, dayProfit, estimateTrack);
+                    return toOrderSummaryRow(row, dailyCommission.get(date), date, estimateTrack);
                 })
                 .toList());
         return vo;
@@ -939,11 +932,14 @@ public class DataApplicationService extends BaseController {
             metrics.setServiceFeeIncome(centToYuan(aggregate.serviceFeeIncomeCent()));
             metrics.setTechServiceFee(centToYuan(aggregate.techServiceFeeCent()));
             metrics.setTalentCommission(centToYuan(aggregate.talentCommissionCent()));
-            // 服务费支出：直接从 DB 取值，不再使用反推公式
             long expenseCent = aggregate.serviceFeeExpenseCent();
+            long profitCent = CommissionService.serviceFeeNetCent(
+                    aggregate.serviceFeeIncomeCent(),
+                    aggregate.techServiceFeeCent(),
+                    expenseCent);
             metrics.setServiceFeeExpense(centToYuan(expenseCent));
-            metrics.setServiceFee(centToYuan(aggregate.serviceProfitCent()));
-            metrics.setServiceFeeProfit(centToYuan(aggregate.serviceProfitCent()));
+            metrics.setServiceFee(centToYuan(profitCent));
+            metrics.setServiceFeeProfit(centToYuan(profitCent));
             metrics.setBizCommission(centToYuan(aggregate.recruiterCommissionCent()));
             metrics.setChannelCommission(centToYuan(aggregate.channelCommissionCent()));
             metrics.setCommission(centToYuan(aggregate.recruiterCommissionCent() + aggregate.channelCommissionCent()));
@@ -2063,7 +2059,6 @@ public class DataApplicationService extends BaseController {
             Map<String, Object> row,
             CommissionService.CommissionSummary commissionSummary,
             String date,
-            long serviceProfitCent,
             boolean estimateTrack) {
         CommissionService.CommissionSummary summary = commissionSummary == null
                 ? zeroCommissionSummary()
@@ -2083,9 +2078,11 @@ public class DataApplicationService extends BaseController {
         vo.setOrderAverageServiceFeeRate(percent(serviceFeeIncome, orderAmount));
         vo.setServiceFeeIncome(centToYuan(serviceFeeIncome));
         vo.setTechServiceFee(centToYuan(techServiceFee));
-        // 服务费支出：直接从 DB 取值，不再使用反推公式
-        long dbExpense = asLong(row, "service_fee_expense_cent");
-        long serviceFeeExpenseCent = dbExpense;
+        long serviceFeeExpenseCent = asLong(row, "service_fee_expense_cent");
+        long serviceProfitCent = CommissionService.serviceFeeNetCent(
+                serviceFeeIncome,
+                techServiceFee,
+                serviceFeeExpenseCent);
         vo.setServiceFeeExpense(centToYuan(serviceFeeExpenseCent));
         vo.setServiceFeeProfit(centToYuan(serviceProfitCent));
         vo.setGrossProfit(centToYuan(Math.max(serviceProfitCent - summary.bizCommission() - summary.channelCommission(), 0L)));
@@ -2128,46 +2125,6 @@ public class DataApplicationService extends BaseController {
             return Map.of();
         }
         return rows.get(0);
-    }
-
-    /**
-     * 从 performance_records 查询服务费收益总额（valid 记录）。
-     * 用于计算正确的服务费支出 = 收入 - 技术费 - 收益。
-     */
-    private Long queryServiceProfitCent(String profitCol, String timeColumn,
-                                         LocalDateTime start, LocalDateTime end) {
-        String sql = """
-                SELECT COALESCE(SUM(%s), 0)
-                FROM performance_records pr
-                JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
-                WHERE pr.is_valid = TRUE
-                  AND co.%s >= ? AND co.%s < ?
-                """.formatted(profitCol, timeColumn, timeColumn);
-        Long result = jdbcTemplate.queryForObject(sql, Long.class, start, end);
-        return result != null ? result : 0L;
-    }
-
-    /**
-     * 从 performance_records 按日分组查询服务费收益。
-     */
-    private Map<String, Long> queryDailyServiceProfitCent(String profitCol, String timeColumn,
-                                                           LocalDateTime start, LocalDateTime end) {
-        String sql = """
-                SELECT DATE(co.%s) AS stat_date, COALESCE(SUM(%s), 0) AS profit
-                FROM performance_records pr
-                JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
-                WHERE pr.is_valid = TRUE
-                  AND co.%s >= ? AND co.%s < ?
-                GROUP BY DATE(co.%s)
-                """.formatted(timeColumn, profitCol, timeColumn, timeColumn, timeColumn);
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, start, end);
-        Map<String, Long> result = new java.util.LinkedHashMap<>();
-        for (Map<String, Object> row : rows) {
-            String date = String.valueOf(row.get("stat_date"));
-            long profit = ((Number) row.get("profit")).longValue();
-            result.put(date, profit);
-        }
-        return result;
     }
 
     private Long asLong(Map<String, Object> row, String key) {

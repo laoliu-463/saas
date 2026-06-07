@@ -98,12 +98,6 @@ class DataControllerTest {
         org.mockito.Mockito.lenient()
                 .when(performanceMetricsQueryService.resolveAmountTrackLabel(org.mockito.ArgumentMatchers.any()))
                 .thenReturn("estimate");
-        org.mockito.Mockito.lenient()
-                .when(jdbcTemplate.queryForObject(any(String.class), eq(Long.class), any(Object[].class)))
-                .thenReturn(0L);
-        org.mockito.Mockito.lenient()
-                .when(jdbcTemplate.queryForList(any(String.class), any(Object[].class)))
-                .thenReturn(List.of());
     }
 
     @Test
@@ -705,10 +699,6 @@ class DataControllerTest {
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
                 new CommissionService.CommissionSummary(500L, 100L, 0L, 0L, 400L, 40L, 60L, 300L,
                         java.math.BigDecimal.valueOf(0.1), java.math.BigDecimal.valueOf(0.15)));
-        when(jdbcTemplate.queryForObject(any(String.class), eq(Long.class), any(Object[].class))).thenReturn(400L);
-        when(jdbcTemplate.queryForList(any(String.class), any(Object[].class))).thenReturn(List.of(
-                Map.of("stat_date", java.sql.Date.valueOf("2026-05-25"), "profit", 400L)
-        ));
 
         var response = dataController.getOrderSummary(
                 "ORDER-1",

@@ -32,8 +32,8 @@ class OrderDualTrackAmountResolverTest {
     }
 
     @Test
-    void resolve_shouldPreferFirstInstitutionWhenBothEstimatedCommissionsExist() {
-        // 双机构订单场景：一级、二级都存在时，服务费收入不能重复累加
+    void resolve_shouldUsePrimaryInstitutionWhenBothEstimatedCommissionsExist() {
+        // 双机构订单场景：一级、二级都有值时，服务费收入以一级机构为准，二级只作兜底，避免重复计入。
         Map<String, Object> raw = new LinkedHashMap<>();
         raw.put("pay_goods_amount", 5000L);
         raw.put("settled_goods_amount", 4800L);
@@ -49,7 +49,6 @@ class OrderDualTrackAmountResolverTest {
 
         OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
 
-        // 服务费收入 = COI(120)，COI2(95) 不重复计入
         assertThat(amounts.estimateServiceFee()).isEqualTo(120L);
         assertThat(amounts.estimateTechServiceFee()).isEqualTo(12L);
     }

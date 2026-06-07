@@ -176,6 +176,14 @@ public class CommissionService {
      * @param effectiveAt        生效时间
      * @return 提成计算结果
      */
+    /**
+     * 统一服务费收益公式（分）：收入 − 技术服务费 − 服务费支出。
+     * 看板 / 汇总 API 必须与卡片展示共用此公式，避免混用 DB profit 汇总与订单 income 汇总。
+     */
+    public static long serviceFeeNetCent(long serviceFeeIncome, long techServiceFee, long serviceFeeExpense) {
+        return Math.max(serviceFeeIncome - techServiceFee - serviceFeeExpense, 0L);
+    }
+
     public CommissionSummary calculateTrack(
             long serviceFeeIncome,
             long techServiceFee,
@@ -278,7 +286,7 @@ public class CommissionService {
         // 服务费收益 = 服务费收入 − 服务费支出 − 技术服务费。
         // 预估轨传入实际技术服务费和服务费支出；结算轨同理。
         // 达人佣金(talentCommission)来自抖店结算，不从团长毛利中再扣一次
-        long serviceFeeNet = Math.max(serviceFeeIncome - serviceFeeExpense - techServiceFee, 0L);
+        long serviceFeeNet = serviceFeeNetCent(serviceFeeIncome, techServiceFee, serviceFeeExpense);
         BigDecimal defaultBizRatio = loadRatio(KEY_BIZ_RATIO);
         BigDecimal defaultChannelRatio = loadRatio(KEY_CHANNEL_RATIO);
 
