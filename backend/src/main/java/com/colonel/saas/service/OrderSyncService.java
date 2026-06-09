@@ -46,6 +46,8 @@ public class OrderSyncService {
     private static final String LAST_SYNC_TIME_KEY = "order:sync:last_time";
     /** Redis key 存储 PAY_RECENT 近窗口补拉的上次同步截止时间（与 {@link #LAST_SYNC_TIME_KEY} 完全独立）。 */
     private static final String PAY_RECENT_LAST_SYNC_TIME_KEY = "order:sync:pay_recent_last_time";
+    /** Redis key 存储 SETTLE（2704 time_type=settle）的上次同步截止时间。 */
+    private static final String SETTLE_LAST_SYNC_TIME_KEY = "order:sync:settle_last_time";
     /** Redis key 存储 INSTITUTE_RECENT（6468 团长事实源）的上次同步截止时间。 */
     private static final String INSTITUTE_RECENT_LAST_SYNC_TIME_KEY = "order:sync:institute_recent_last_time";
     /** Redis key 存储 INSTITUTE_HOT_RECENT（6468 近实时热同步）的上次成功截止时间。 */
@@ -82,15 +84,18 @@ public class OrderSyncService {
     static final String SYNC_MODE_INSTITUTE_RECENT = "INSTITUTE_RECENT";
     /** 同步模式标签：6468 近实时热同步（小窗口、限页数，与补偿任务分锁）。 */
     static final String SYNC_MODE_INSTITUTE_HOT_RECENT = "INSTITUTE_HOT_RECENT";
+    /** 同步模式标签：2704 结算时间轨（time_type=settle）独立回扫。 */
+    static final String SYNC_MODE_SETTLE = "SETTLE";
     private static final String API_INSTITUTE_ORDER_COLONEL = "buyin.instituteOrderColonel";
     private static final String API_COLONEL_MULTI_SETTLEMENT_ORDERS = "buyin.colonelMultiSettlementOrders";
 
     /**
      * 抖音 colonelMultiSettlementOrders 的 time_type 取值，仅支持 settle / update。
-     * 当前所有内部同步链路统一使用 update，因为 update 必然在 PAY_SUCC 之后命中，
-     * 等价于"按付款时间"的语义；抖音不存在 time_type=pay。
+     * INCREMENTAL / PAY_RECENT 使用 update；独立 SETTLE 任务使用 settle。
+     * 抖音不存在 time_type=pay。
      */
     static final String GATEWAY_TIME_TYPE_UPDATE = "update";
+    static final String GATEWAY_TIME_TYPE_SETTLE = "settle";
 
     private static final DateTimeFormatter RAW_DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -154,6 +159,18 @@ public class OrderSyncService {
 
     @Value("${order.sync.institute-hot.lock-ttl-seconds:90}")
     private long instituteHotLockTtlSeconds = 90L;
+
+    @Value("${order.sync.settle.enabled:true}")
+    private boolean settleSyncEnabled = true;
+
+    @Value("${order.sync.settle.lag-seconds:60}")
+    private long settleLagSeconds = 60L;
+
+    @Value("${order.sync.settle.window-seconds:86400}")
+    private long settleWindowSeconds = 86400L;
+
+    @Value("${order.sync.settle.overlap-seconds:300}")
+    private long settleOverlapSeconds = 300L;
 
     public OrderSyncService(
             DouyinOrderGateway douyinOrderGateway,
@@ -224,12 +241,68 @@ public class OrderSyncService {
             return new SyncResult(startTime, endTime, 0, 0, 0, true);
         }
         try {
-            SyncResult result = syncRangeWithMode(startTime, endTime, DEFAULT_COUNT, SYNC_MODE_PAY_RECENT);
+            SyncResult result = syncRangeWithMode(
+                    startTime, endTime, DEFAULT_COUNT, SYNC_MODE_PAY_RECENT, GATEWAY_TIME_TYPE_UPDATE);
             persistPayRecentLastSyncTime(endTime);
             return result;
         } finally {
             jobLockService.release(JobLockKeys.ORDER_SYNC_PAY_RECENT);
         }
+    }
+
+    /**
+     * SETTLE 结算时间轨回扫（2704，{@code time_type=settle}）。
+     * <p>
+     * 使用独立锁 {@link JobLockKeys#ORDER_SYNC_SETTLE} 与 Redis 水位
+     * {@link #SETTLE_LAST_SYNC_TIME_KEY}。上游整窗空结果时不推进水位，并记录 {@code upstream_empty} 证据日志。
+     */
+    public SyncResult syncSettlementSettleWindow() {
+        long now = Instant.now().getEpochSecond();
+        long endTime = now - settleLagSeconds;
+        long startTime = resolveSettleStartTime(endTime);
+        if (!jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC_SETTLE, SYNC_LOCK_TTL)) {
+            log.info("Order sync skipped, mode={}, timeType={}, reason=locked",
+                    SYNC_MODE_SETTLE, GATEWAY_TIME_TYPE_SETTLE);
+            return new SyncResult(startTime, endTime, 0, 0, 0, true);
+        }
+        try {
+            SyncResult result = syncRangeWithMode(
+                    startTime, endTime, DEFAULT_COUNT, SYNC_MODE_SETTLE, GATEWAY_TIME_TYPE_SETTLE);
+            if (shouldAdvanceSettleCheckpoint(result)) {
+                persistSettleLastSyncTime(endTime);
+            } else {
+                log.warn("ORDER_SYNC_SETTLEMENT upstream_empty=true mode={} timeType={} range=[{}, {}] "
+                                + "pagesFetched={} fetched={} stopReason={} checkpoint=not_advanced",
+                        SYNC_MODE_SETTLE, GATEWAY_TIME_TYPE_SETTLE, startTime, endTime,
+                        result.pages(), result.totalFetched(), result.stopReason());
+            }
+            return result;
+        } finally {
+            jobLockService.release(JobLockKeys.ORDER_SYNC_SETTLE);
+        }
+    }
+
+    long resolveSettleStartTime(long endTime) {
+        long lastSyncTime = readSettleLastSyncTime();
+        if (lastSyncTime <= 0L) {
+            return Math.max(0L, endTime - settleWindowSeconds);
+        }
+        long startTime = Math.max(0L, lastSyncTime - settleOverlapSeconds);
+        if (startTime >= endTime) {
+            startTime = Math.max(0L, endTime - settleWindowSeconds);
+        }
+        long maxWindow = 90L * 24L * 60L * 60L;
+        if (endTime - startTime > maxWindow) {
+            startTime = endTime - maxWindow;
+        }
+        return startTime;
+    }
+
+    boolean shouldAdvanceSettleCheckpoint(SyncResult result) {
+        if (result == null || result.locked()) {
+            return false;
+        }
+        return result.totalFetched() > 0 || result.uniqueOrders() > 0;
     }
 
     /**
@@ -259,6 +332,7 @@ public class OrderSyncService {
                     true,
                     instituteHotPageSize,
                     SYNC_MODE_INSTITUTE_HOT_RECENT,
+                    API_INSTITUTE_ORDER_COLONEL,
                     SyncSource.INSTITUTE,
                     cursor -> fetchInstitute(new DouyinOrderGateway.DouyinOrderQueryRequest(
                             startTime, endTime, instituteHotPageSize, cursor)),
@@ -371,6 +445,7 @@ public class OrderSyncService {
                     true,
                     DEFAULT_COUNT,
                     mode,
+                    API_INSTITUTE_ORDER_COLONEL,
                     SyncSource.INSTITUTE,
                     cursor -> fetchInstitute(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, DEFAULT_COUNT, cursor)),
                     maxPages,
@@ -455,6 +530,35 @@ public class OrderSyncService {
         }
     }
 
+    /** 读取 SETTLE 独立 Redis key 的上次同步时间。 */
+    long readSettleLastSyncTime() {
+        try {
+            Object raw = redisTemplate.opsForValue().get(SETTLE_LAST_SYNC_TIME_KEY);
+            return asLong(raw, 0L);
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled()) {
+                log.warn("Redis unavailable in test mode when reading settle last sync time, fallback to 0: {}",
+                        ex.getMessage());
+                return 0L;
+            }
+            throw ex;
+        }
+    }
+
+    /** 写入 SETTLE 独立 Redis key 的上次同步时间。 */
+    private void persistSettleLastSyncTime(long endTime) {
+        try {
+            redisTemplate.opsForValue().set(SETTLE_LAST_SYNC_TIME_KEY, String.valueOf(endTime));
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled()) {
+                log.warn("Redis unavailable in test mode when persisting settle last sync time, skip: {}",
+                        ex.getMessage());
+                return;
+            }
+            throw ex;
+        }
+    }
+
     /** 写入 PAY_RECENT 独立 Redis key 的上次同步时间；test 模式下 Redis 不可用时静默跳过。 */
     private void persistPayRecentLastSyncTime(long endTime) {
         try {
@@ -521,7 +625,8 @@ public class OrderSyncService {
             return new SyncResult(startTime, endTime, 0, 0, 0, true);
         }
         try {
-            SyncResult result = syncRangeWithMode(startTime, endTime, DEFAULT_COUNT, SYNC_MODE_INCREMENTAL);
+            SyncResult result = syncRangeWithMode(
+                    startTime, endTime, DEFAULT_COUNT, SYNC_MODE_INCREMENTAL, GATEWAY_TIME_TYPE_UPDATE);
             persistLastSyncTime(endTime);
             return result;
         } finally {
@@ -571,16 +676,20 @@ public class OrderSyncService {
      * 按时间窗口同步，附带 {@code mode} 标签用于日志和监控。
      * mode 取值：{@link #SYNC_MODE_INCREMENTAL} / {@link #SYNC_MODE_PAY_RECENT} / {@link #SYNC_MODE_SPECIFIC}。
      */
-    private SyncResult syncRangeWithMode(long startTime, long endTime, int count, String mode) {
+    private SyncResult syncRangeWithMode(long startTime, long endTime, int count, String mode, String timeType) {
+        DouyinOrderGateway.DouyinOrderQueryRequest firstRequest =
+                new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, "0", timeType);
         return syncItemsWithLimits(
-                fetchSettlement(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, "0")),
+                fetchSettlement(firstRequest),
                 startTime,
                 endTime,
                 true,
                 count,
                 mode,
+                timeType,
                 SyncSource.SETTLEMENT,
-                cursor -> fetchSettlement(new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, cursor)),
+                cursor -> fetchSettlement(
+                        new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, cursor, timeType)),
                 maxPages,
                 maxOrders);
     }
@@ -595,6 +704,7 @@ public class OrderSyncService {
                 false,
                 orderIds.size(),
                 SYNC_MODE_SPECIFIC,
+                GATEWAY_TIME_TYPE_UPDATE,
                 SyncSource.SETTLEMENT,
                 cursor -> new DouyinOrderGateway.OrderListResult(List.of(), false, null, Map.of()),
                 maxPages,
@@ -617,10 +727,11 @@ public class OrderSyncService {
             boolean continuePaging,
             int count,
             String mode,
+            String timeType,
             SyncSource source,
             Function<String, DouyinOrderGateway.OrderListResult> fetchNextPage) {
-        return syncItemsWithLimits(firstPage, startTime, endTime, continuePaging, count, mode, source, fetchNextPage,
-                maxPages, maxOrders);
+        return syncItemsWithLimits(firstPage, startTime, endTime, continuePaging, count, mode, timeType, source,
+                fetchNextPage, maxPages, maxOrders);
     }
 
     private SyncResult syncItemsWithLimits(
@@ -630,6 +741,7 @@ public class OrderSyncService {
             boolean continuePaging,
             int count,
             String mode,
+            String timeType,
             SyncSource source,
             Function<String, DouyinOrderGateway.OrderListResult> fetchNextPage,
             int pageLimit,
@@ -647,8 +759,11 @@ public class OrderSyncService {
         int failedCount = 0;
         int noPickSourceCount = 0;
         int noMappingCount = 0;
+        int hasSettleTimeCount = 0;
+        int hasEffectiveFeeCount = 0;
         int pages = 0;
         String stopReason = STOP_REASON_UNKNOWN;
+        String lastLogId = null;
         Set<String> seenCursors = new LinkedHashSet<>();
         Set<String> seenOrderIds = new LinkedHashSet<>();
         seenCursors.add(cursor);
@@ -656,6 +771,7 @@ public class OrderSyncService {
 
         try {
             while (true) {
+                lastLogId = extractLogId(response == null ? null : response.rawResponse());
                 List<DouyinOrderGateway.DouyinOrderItem> items = response.orders();
                 if (items == null || items.isEmpty()) {
                     stopReason = STOP_REASON_EMPTY_PAGE;
@@ -693,6 +809,12 @@ public class OrderSyncService {
                         order.setAttributionRemark(attribution.attributionRemark());
                         order.setProductTitle(order.getProductName());
                         order.setTalentName(item.talentName());
+                        if (order.getSettleTime() != null) {
+                            hasSettleTimeCount++;
+                        }
+                        if (order.getEffectiveServiceFee() != null && order.getEffectiveServiceFee() > 0) {
+                            hasEffectiveFeeCount++;
+                        }
                         pageOrders.add(order);
                     } catch (BusinessException e) {
                         failedCount++;
@@ -768,8 +890,10 @@ public class OrderSyncService {
                 }
 
                 String nextCursor = resolveNextCursor(response);
-                log.info("{} api={} mode={} pageNo={} cursor={} nextCursor={} fetched={} inserted={} updated={} failed={}",
-                        logName, api, mode, pages, cursor, nextCursor, items.size(), pageCreated, pageUpdated, pageFailed);
+                log.info("{} api={} mode={} timeType={} pageNo={} cursor={} nextCursor={} logId={} fetched={} "
+                                + "inserted={} updated={} failed={}",
+                        logName, api, mode, timeType, pages, cursor, nextCursor, lastLogId, items.size(), pageCreated,
+                        pageUpdated, pageFailed);
                 if (maxOrdersReached || seenOrderIds.size() >= maxOrderLimit) {
                     stopReason = STOP_REASON_MAX_ORDERS;
                     break;
@@ -801,13 +925,19 @@ public class OrderSyncService {
             }
             throw e;
         } finally {
-            log.info("{} api={} mode={} timeType={} range=[{}, {}] pagesFetched={} uniqueOrders={} fetched={} inserted={} updated={} attributed={} unattributed={} noPickSource={} noMapping={} failed={} stopReason={}",
+            log.info("{} api={} mode={} timeType={} startTime={} endTime={} range=[{}, {}] pagesFetched={} "
+                            + "uniqueOrders={} fetched={} inserted={} updated={} attributed={} unattributed={} "
+                            + "noPickSource={} noMapping={} failed={} logId={} hasSettleCount={} "
+                            + "hasEffectiveFeeCount={} stopReason={}",
                     logName,
                     api,
                     mode,
-                    GATEWAY_TIME_TYPE_UPDATE,
+                    timeType,
+                    formatEpochLog(startTime),
+                    formatEpochLog(endTime),
                     startTime, endTime, pages, seenOrderIds.size(), totalFetched, created, updated,
-                    attributedCount, unattributedCount, noPickSourceCount, noMappingCount, failedCount, stopReason);
+                    attributedCount, unattributedCount, noPickSourceCount, noMappingCount, failedCount, lastLogId,
+                    hasSettleTimeCount, hasEffectiveFeeCount, stopReason);
         }
 
         return new SyncResult(startTime, endTime, pages, totalFetched, created, updated,
@@ -922,10 +1052,10 @@ public class OrderSyncService {
         order.setProductName(rawPayload != null ? asString(rawValue(rawPayload, "product_name", "productName")) : null);
         order.setShopId(parseMerchantId(item.merchantId()));
         order.setShopName(item.merchantName());
-        OrderDualTrackAmountResolver.DualTrackAmounts dualTrack = OrderDualTrackAmountResolver.resolve(
-                rawPayload,
-                item.orderAmount(),
-                item.serviceFee());
+        OrderDualTrackAmountResolver.DualTrackAmounts dualTrack = source == SyncSource.INSTITUTE
+                ? OrderDualTrackAmountResolver.resolve(rawPayload, item.orderAmount(), item.serviceFee())
+                : OrderDualTrackAmountResolver.resolveStrictSettlement(
+                        rawPayload, item.orderAmount(), item.serviceFee());
         if (source == SyncSource.INSTITUTE) {
             OrderDualTrackAmountResolver.applyInstituteFactToOrder(order, dualTrack);
             order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE);
@@ -947,8 +1077,14 @@ public class OrderSyncService {
         order.setOrderCreateTime(firstNonNullTime(orderCreateTime, itemCreateTime));
         order.setPayTime(payTime);
         order.setCreateTime(firstNonNullTime(payTime, orderCreateTime, itemCreateTime, LocalDateTime.now()));
-        if (source != SyncSource.INSTITUTE && item.settleTime() != null) {
-            order.setSettleTime(AppZone.fromEpochSecond(item.settleTime()));
+        if (source != SyncSource.INSTITUTE) {
+            LocalDateTime settleTime = rawDateTime(rawPayload, "settle_time", "settleTime");
+            if (settleTime == null && item.settleTime() != null) {
+                settleTime = AppZone.fromEpochSecond(item.settleTime());
+            }
+            if (settleTime != null) {
+                order.setSettleTime(settleTime);
+            }
         }
         order.setAttributionStatus("UNATTRIBUTED");
         order.setUpdateTime(LocalDateTime.now());
@@ -1092,6 +1228,21 @@ public class OrderSyncService {
             }
         }
         return List.copyOf(normalized);
+    }
+
+    private String extractLogId(Map<String, Object> rawResponse) {
+        if (rawResponse == null || rawResponse.isEmpty()) {
+            return null;
+        }
+        Object logId = rawValue(rawResponse, "log_id", "logId");
+        return logId == null ? null : String.valueOf(logId);
+    }
+
+    private String formatEpochLog(long epochSecond) {
+        if (epochSecond <= 0L) {
+            return null;
+        }
+        return RAW_DATE_TIME_FORMATTER.format(AppZone.fromEpochSecond(epochSecond));
     }
 
     /** 将任意对象解析为 long，null 或解析失败时返回 defaultValue。 */

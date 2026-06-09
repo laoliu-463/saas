@@ -148,6 +148,48 @@ class OrderDualTrackAmountResolverTest {
     }
 
     @Test
+    void resolveStrictSettlement_shouldNotFallbackSettleAmountToPayAmount() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("settled_goods_amount", 0L);
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts =
+                OrderDualTrackAmountResolver.resolveStrictSettlement(raw, 5000L, null);
+
+        assertThat(amounts.payAmount()).isEqualTo(5000L);
+        assertThat(amounts.settleAmount()).isZero();
+    }
+
+    @Test
+    void resolveStrictSettlement_shouldNotFallbackEffectiveFeeToEstimate() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        Map<String, Object> coi = new LinkedHashMap<>();
+        coi.put("estimated_commission", 600L);
+        raw.put("colonel_order_info", coi);
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts =
+                OrderDualTrackAmountResolver.resolveStrictSettlement(raw, null, null);
+
+        assertThat(amounts.estimateServiceFee()).isEqualTo(600L);
+        assertThat(amounts.effectiveServiceFee()).isZero();
+    }
+
+    @Test
+    void resolveStrictSettlement_shouldNotCalculateEffectiveFeeFromRateWithoutSettleAmount() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 10000L);
+        raw.put("settled_goods_amount", 0L);
+        raw.put("service_fee_rate", 10);
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts =
+                OrderDualTrackAmountResolver.resolveStrictSettlement(raw, null, null);
+
+        assertThat(amounts.settleAmount()).isZero();
+        assertThat(amounts.effectiveServiceFee()).isZero();
+    }
+
+    @Test
     void mergeSettlementSnapshot_shouldNotOverwriteWhenIncomingHasValue() {
         com.colonel.saas.entity.ColonelsettlementOrder existing = new com.colonel.saas.entity.ColonelsettlementOrder();
         existing.setSettleAmount(2480L);

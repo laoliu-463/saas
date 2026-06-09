@@ -101,7 +101,7 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
                 null,
                 request.count(),
                 normalizeCursor(request.cursor()),
-                "update",
+                request.resolvedTimeType(),
                 formatEpochSecond(request.startTime()),
                 formatEpochSecond(request.endTime()),
                 null
@@ -177,18 +177,19 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
      * @return 订单列表结果（订单去重后的合并结果）
      */
     @Override
-    public OrderListResult listSettlementByOrderIds(List<String> orderIds) {
+    public OrderListResult listSettlementByOrderIds(List<String> orderIds, String timeType) {
         logGateway();
         List<String> normalized = normalizeOrderIds(orderIds);
         if (normalized.isEmpty()) {
             return new OrderListResult(List.of(), false, "0", Map.of("order_ids", ""));
         }
+        String resolvedTimeType = normalizeTimeType(timeType);
         if (upstreamModeSupport.isContract()) {
             return toOrderListResult(contractFixtureProvider.buildOrderSettlementResponse(
                     null,
                     normalized.size(),
                     "0",
-                    "update",
+                    resolvedTimeType,
                     null,
                     null,
                     String.join(",", normalized)
@@ -198,7 +199,7 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
                 null,
                 normalized.size(),
                 "0",
-                "update",
+                resolvedTimeType,
                 null,
                 null,
                 String.join(",", normalized)
@@ -388,8 +389,8 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
                         asEpochSecond(pick(raw, "settle_time", "settleTime", "update_time", "updateTime")),
                         Instant.now().getEpochSecond()
                 ),
-                // 第十四步：解析结算时间（取 settle_time / updateTime，可能为 null）
-                asEpochSecond(pick(raw, "settle_time", "settleTime", "update_time", "updateTime")),
+                // 第十四步：解析结算时间（仅 settle_time，不回退 update_time）
+                asEpochSecond(pick(raw, "settle_time", "settleTime")),
                 // 第十五步：保留原始 Map 用于下游扩展字段透传
                 raw
         );
@@ -487,6 +488,17 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
      */
     private String normalizeCursor(String cursor) {
         return StringUtils.hasText(cursor) ? cursor.trim() : "0";
+    }
+
+    private String normalizeTimeType(String timeType) {
+        if (!StringUtils.hasText(timeType)) {
+            return "update";
+        }
+        String normalized = timeType.trim().toLowerCase();
+        if (!"settle".equals(normalized) && !"update".equals(normalized)) {
+            throw new IllegalArgumentException("timeType must be settle or update");
+        }
+        return normalized;
     }
 
     /**

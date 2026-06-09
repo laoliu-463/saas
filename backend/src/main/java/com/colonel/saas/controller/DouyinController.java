@@ -345,14 +345,16 @@ public class DouyinController extends BaseController {
                         .map(String::trim)
                         .filter(StringUtils::hasText)
                         .toList();
-                result.put("remoteResponse", douyinOrderGateway.listSettlementByOrderIds(orderIdList).rawResponse());
+                result.put("remoteResponse", douyinOrderGateway.listSettlementByOrderIds(orderIdList, timeType)
+                        .rawResponse());
             } else {
                 result.put("remoteResponse", douyinOrderGateway.listSettlement(
                         new DouyinOrderGateway.DouyinOrderQueryRequest(
                                 parseDateTimeToEpochSecond(startTime),
                                 parseDateTimeToEpochSecond(endTime),
                                 size == null ? 20 : size,
-                                cursor
+                                cursor,
+                                timeType
                         )
                 ).rawResponse());
             }

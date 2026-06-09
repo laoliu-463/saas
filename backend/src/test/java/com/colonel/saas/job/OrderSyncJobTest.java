@@ -230,4 +230,26 @@ class OrderSyncJobTest {
 
         verifyNoInteractions(orderSyncService);
     }
+
+    @Test
+    void syncSettlementSettle_shouldInvokeSettleWindow() {
+        com.colonel.saas.job.OrderSyncJob job = newJob();
+        when(orderSyncService.syncSettlementSettleWindow()).thenReturn(
+                new OrderSyncService.SyncResult(1000L, 2000L, 0, 0, 0, 0, 0, 0, 0, false, 0, "EMPTY_PAGE")
+        );
+
+        job.syncSettlementSettle();
+
+        verify(orderSyncService).syncSettlementSettleWindow();
+    }
+
+    @Test
+    void syncSettlementSettle_shouldSkipWhenDisabled() {
+        com.colonel.saas.job.OrderSyncJob job = newJob();
+        ReflectionTestUtils.setField(job, "settleSyncEnabled", false);
+
+        job.syncSettlementSettle();
+
+        verifyNoInteractions(orderSyncService);
+    }
 }

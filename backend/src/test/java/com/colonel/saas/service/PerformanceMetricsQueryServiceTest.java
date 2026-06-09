@@ -4,6 +4,7 @@ import com.colonel.saas.common.enums.DataScope;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -64,6 +65,39 @@ class PerformanceMetricsQueryServiceTest {
 
         assertThat(aggregate.orderCount()).isEqualTo(2L);
         assertThat(aggregate.grossProfitCent()).isEqualTo(378L);
+    }
+
+    @Test
+    void aggregateRange_shouldFilterInvalidRecordsAndKeepCreateTrackSeparateFromPayTrack() {
+        when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
+                .thenReturn(Map.of(
+                        "order_count", 1L,
+                        "order_amount_cent", 1000L,
+                        "service_fee_income_cent", 100L,
+                        "tech_service_fee_cent", 10L,
+                        "talent_commission_cent", 0L,
+                        "service_profit_cent", 90L,
+                        "recruiter_commission_cent", 9L,
+                        "channel_commission_cent", 18L,
+                        "gross_profit_cent", 63L));
+
+        LocalDate today = LocalDate.now();
+        service.aggregateRange(
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay(),
+                "createTime",
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL);
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), any(Object[].class));
+        String sql = sqlCaptor.getValue();
+
+        assertThat(sql).contains("pr.is_valid = TRUE");
+        assertThat(sql).contains("co.create_time >= ?");
+        assertThat(sql).contains("co.create_time < ?");
+        assertThat(sql).doesNotContain("co.pay_time");
     }
 
     @Test

@@ -31,6 +31,12 @@ public final class OrderDualTrackAmountResolver {
     private OrderDualTrackAmountResolver() {
     }
 
+    /** 金额解析轨道：INSTITUTE 允许预估轨兜底；SETTLEMENT_STRICT 禁止结算轨回退预估/实付。 */
+    public enum ResolveTrack {
+        INSTITUTE,
+        SETTLEMENT_STRICT
+    }
+
     /**
      * 双轨金额结果值对象，包含订单全部金额字段（含服务费支出）。
      *
@@ -77,16 +83,34 @@ public final class OrderDualTrackAmountResolver {
             Map<String, Object> rawPayload,
             Long fallbackPayAmount,
             Long fallbackServiceFee) {
+        return resolve(rawPayload, fallbackPayAmount, fallbackServiceFee, ResolveTrack.INSTITUTE);
+    }
+
+    /** 2704 结算事实源：结算轨字段缺失时不回退实付/预估。 */
+    public static DualTrackAmounts resolveStrictSettlement(
+            Map<String, Object> rawPayload,
+            Long fallbackPayAmount,
+            Long fallbackServiceFee) {
+        return resolve(rawPayload, fallbackPayAmount, fallbackServiceFee, ResolveTrack.SETTLEMENT_STRICT);
+    }
+
+    public static DualTrackAmounts resolve(
+            Map<String, Object> rawPayload,
+            Long fallbackPayAmount,
+            Long fallbackServiceFee,
+            ResolveTrack track) {
+        boolean settlementStrict = track == ResolveTrack.SETTLEMENT_STRICT;
         // 第一步：解析实付金额，按别名优先级依次尝试
         long payAmount = firstPositive(
                 asLong(pick(rawPayload, "pay_goods_amount", "payGoodsAmount", "order_amount", "orderAmount",
                         "total_pay_amount", "totalPayAmount", "pay_amount", "payAmount")),
                 fallbackPayAmount);
-        // 第二步：解析结算金额，缺失时回退到 payAmount
-        long settleAmount = firstPositive(
-                asLong(pick(rawPayload, "settled_goods_amount", "settledGoodsAmount", "settle_goods_amount",
-                        "settleGoodsAmount", "settle_amount", "settleAmount", "actual_amount", "actualAmount")),
-                payAmount);
+        // 第二步：解析结算金额；结算轨严格模式不回退 payAmount
+        Long settledRaw = asLong(pick(rawPayload, "settled_goods_amount", "settledGoodsAmount", "settle_goods_amount",
+                "settleGoodsAmount", "settle_amount", "settleAmount", "actual_amount", "actualAmount"));
+        long settleAmount = settlementStrict
+                ? firstNonNegative(settledRaw)
+                : firstPositive(settledRaw, payAmount);
 
         // 第三步：解析预估/结算技术服务费。
         long estimateTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
@@ -114,12 +138,15 @@ public final class OrderDualTrackAmountResolver {
             estimateServiceFee = calculateServiceFeeIncome(payAmount, serviceFeeRate, 0L);
         }
         boolean effectiveServiceFeeCalculatedFromRate = false;
-        if (effectiveServiceFee <= 0 && serviceFeeRate != null) {
+        if (!settlementStrict && effectiveServiceFee <= 0 && serviceFeeRate != null) {
+            effectiveServiceFee = calculateServiceFeeIncome(settleAmount, serviceFeeRate, effectiveTechServiceFee);
+            effectiveServiceFeeCalculatedFromRate = effectiveServiceFee > 0;
+        } else if (settlementStrict && effectiveServiceFee <= 0 && settleAmount > 0 && serviceFeeRate != null) {
             effectiveServiceFee = calculateServiceFeeIncome(settleAmount, serviceFeeRate, effectiveTechServiceFee);
             effectiveServiceFeeCalculatedFromRate = effectiveServiceFee > 0;
         }
 
-        // 第五步：服务费 fallback 链 —— 预估缺失时用结算值填充。
+        // 第五步：服务费 fallback 链 —— 预估缺失时用结算值填充；结算轨禁止 effective 回退 estimate。
         if (estimateServiceFee <= 0 && effectiveServiceFee > 0) {
             estimateServiceFee = effectiveServiceFee;
         }
@@ -127,11 +154,12 @@ public final class OrderDualTrackAmountResolver {
         if (estimateServiceFee <= 0 && fallbackServiceFee != null && fallbackServiceFee > 0) {
             estimateServiceFee = fallbackServiceFee;
         }
-        if (effectiveServiceFee <= 0 && estimateServiceFee > 0) {
-            // 待结算单：结算轨常为 0，保留预估值不覆盖
-        } else if (effectiveServiceFee <= 0 && fallbackServiceFee != null && fallbackServiceFee > 0) {
-            // 结算轨缺失且有兜底值时，使用兜底值
-            effectiveServiceFee = fallbackServiceFee;
+        if (!settlementStrict) {
+            if (effectiveServiceFee <= 0 && estimateServiceFee > 0) {
+                // 待结算单：结算轨常为 0，保留预估值不覆盖
+            } else if (effectiveServiceFee <= 0 && fallbackServiceFee != null && fallbackServiceFee > 0) {
+                effectiveServiceFee = fallbackServiceFee;
+            }
         }
         if (effectiveServiceFee > 0 && effectiveTechServiceFee > 0 && !effectiveServiceFeeCalculatedFromRate) {
             effectiveServiceFee = Math.max(effectiveServiceFee - effectiveTechServiceFee, 0L);

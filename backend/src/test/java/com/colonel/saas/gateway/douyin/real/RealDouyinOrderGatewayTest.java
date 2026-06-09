@@ -24,6 +24,25 @@ import static org.mockito.Mockito.when;
 class RealDouyinOrderGatewayTest {
 
     @Test
+    void listSettlement_shouldPassSettleTimeTypeToApi() {
+        OrderApi orderApi = mock(OrderApi.class);
+        DouyinUpstreamModeSupport upstreamModeSupport = mock(DouyinUpstreamModeSupport.class);
+        DouyinContractFixtureProvider contractFixtureProvider = mock(DouyinContractFixtureProvider.class);
+        RealDouyinOrderGateway gateway = new RealDouyinOrderGateway(
+                orderApi, upstreamModeSupport, contractFixtureProvider);
+        when(upstreamModeSupport.isContract()).thenReturn(false);
+        when(orderApi.listColonelMultiSettlementOrders(
+                isNull(), eq(20), eq("0"), eq("settle"), anyString(), anyString(), isNull()))
+                .thenReturn(Map.of("code", 10000, "data", Map.of("orders", List.of(), "cursor", "")));
+
+        gateway.listSettlement(new DouyinOrderGateway.DouyinOrderQueryRequest(
+                1711900800L, 1711987200L, 20, "0", "settle"));
+
+        verify(orderApi).listColonelMultiSettlementOrders(
+                isNull(), eq(20), eq("0"), eq("settle"), anyString(), anyString(), isNull());
+    }
+
+    @Test
     void listSettlement_usesColonelMultiSettlementOrdersForTimeRange() {
         OrderApi orderApi = mock(OrderApi.class);
         DouyinUpstreamModeSupport upstreamModeSupport = mock(DouyinUpstreamModeSupport.class);
@@ -316,6 +335,28 @@ class RealDouyinOrderGatewayTest {
         assertThat(result.orders()).hasSize(1);
         assertThat(result.orders().get(0).externalOrderId()).isEqualTo("ORDER_1");
         assertThat(result.orders().get(0).productId()).isEqualTo("PRODUCT_1");
+    }
+
+    @Test
+    void listSettlementByOrderIds_shouldPassSettleTimeTypeToApi() {
+        OrderApi orderApi = mock(OrderApi.class);
+        DouyinUpstreamModeSupport upstreamModeSupport = mock(DouyinUpstreamModeSupport.class);
+        DouyinContractFixtureProvider contractFixtureProvider = mock(DouyinContractFixtureProvider.class);
+        RealDouyinOrderGateway gateway = new RealDouyinOrderGateway(
+                orderApi,
+                upstreamModeSupport,
+                contractFixtureProvider
+        );
+        when(upstreamModeSupport.isContract()).thenReturn(false);
+        when(orderApi.listColonelMultiSettlementOrders(null, 1, "0", "settle", null, null, "ORDER_1"))
+                .thenReturn(Map.of(
+                        "code", 10000,
+                        "data", Map.of("orders", List.of(), "cursor", "0")
+                ));
+
+        gateway.listSettlementByOrderIds(List.of("ORDER_1"), "settle");
+
+        verify(orderApi).listColonelMultiSettlementOrders(null, 1, "0", "settle", null, null, "ORDER_1");
     }
 
 }

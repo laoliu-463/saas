@@ -50,6 +50,8 @@ public final class JobLockKeys {
     public static final String ORDER_SYNC_INSTITUTE_HOT = "order:sync:institute:hot:lock";
     /** 订单同步近窗口（PAY_RECENT）补拉任务锁。与 {@link #ORDER_SYNC} 互不影响。 */
     public static final String ORDER_SYNC_PAY_RECENT = "order:sync:pay-recent:lock";
+    /** 2704 结算时间轨（time_type=settle）独立同步任务锁。 */
+    public static final String ORDER_SYNC_SETTLE = "order:sync:settle:lock";
     /** 业绩记录补录任务锁 */
     public static final String PERFORMANCE_BACKFILL = "performance:backfill:job:lock";
     /** 业绩汇总缓存预热任务锁 */

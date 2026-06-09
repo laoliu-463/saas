@@ -61,6 +61,10 @@ public class OrderSyncJob {
     @Value("${order.sync.institute-backfill.enabled:true}")
     private boolean instituteBackfillEnabled = true;
 
+    /** 是否启用 2704 结算时间轨（time_type=settle）独立回扫 */
+    @Value("${order.sync.settle.enabled:true}")
+    private boolean settleSyncEnabled = true;
+
     public OrderSyncJob(OrderSyncService orderSyncService) {
         this.orderSyncService = orderSyncService;
     }
@@ -179,6 +183,34 @@ public class OrderSyncJob {
      * 与增量任务共用 institute 锁；增量任务已改为水位滚动，本任务用于定时兜底漏单。
      * </p>
      */
+    /**
+     * 执行 2704 结算时间轨回扫（{@code time_type=settle}）。
+     * <p>
+     * 与 INCREMENTAL（update）独立锁与 Redis 水位；上游空窗时不推进 settle 水位。
+     * </p>
+     */
+    @Scheduled(cron = "${order.sync.settle.cron:0 5 */6 * * ?}")
+    public void syncSettlementSettle() {
+        if (!settleSyncEnabled) {
+            log.info("OrderSyncJob.syncSettlementSettle skipped: order.sync.settle.enabled=false");
+            return;
+        }
+        try {
+            OrderSyncService.SyncResult result = orderSyncService.syncSettlementSettleWindow();
+            if (result.locked()) {
+                log.info("OrderSyncJob.syncSettlementSettle skipped, another process is running");
+                return;
+            }
+            log.info("OrderSyncJob.syncSettlementSettle done, mode=SETTLE, timeType=settle, window=[{}, {}], "
+                            + "pages={}, fetched={}, inserted={}, updated={}, failed={}, stopReason={}",
+                    result.startTime(), result.endTime(), result.pages(), result.totalFetched(),
+                    result.created(), result.updated(), result.failed(), result.stopReason());
+        } catch (Exception e) {
+            log.error("OrderSyncJob.syncSettlementSettle failed", e);
+            throw e;
+        }
+    }
+
     @Scheduled(cron = "${order.sync.institute-backfill.cron:0 15 0/6 * * ?}")
     public void syncInstituteFullBackfill() {
         if (!instituteBackfillEnabled) {

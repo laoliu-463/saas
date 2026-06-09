@@ -66,30 +66,52 @@ public interface DouyinOrderGateway {
     OrderListResult listSettlementWindow(String cursor, Integer count);
 
     /**
-     * 按指定订单号定向拉取订单。
-     * <p>
-     * 用于按订单号补查或定向获取特定订单的结算信息。
-     * </p>
+     * 按指定订单号定向拉取订单（默认 {@code time_type=update}）。
      *
      * @param orderIds 订单号列表
      * @return 订单列表结果
      */
-    OrderListResult listSettlementByOrderIds(List<String> orderIds);
+    default OrderListResult listSettlementByOrderIds(List<String> orderIds) {
+        return listSettlementByOrderIds(orderIds, "update");
+    }
+
+    /**
+     * 按指定订单号定向拉取订单。
+     *
+     * @param orderIds  订单号列表
+     * @param timeType  2704 时间类型：{@code settle} 或 {@code update}
+     * @return 订单列表结果
+     */
+    OrderListResult listSettlementByOrderIds(List<String> orderIds, String timeType);
 
     /**
      * 订单查询请求参数。
      *
-     * @param startTime 查询起始时间（Unix 时间戳，毫秒）
-     * @param endTime   查询结束时间（Unix 时间戳，毫秒）
+     * @param startTime 查询起始时间（Unix 时间戳，秒）
+     * @param endTime   查询结束时间（Unix 时间戳，秒）
      * @param count     每页条数
      * @param cursor    分页游标（首次查询留空，后续传上次返回的 nextCursor）
+     * @param timeType  2704 时间类型：{@code settle} 或 {@code update}，默认 {@code update}
      */
     record DouyinOrderQueryRequest(
             long startTime,
             long endTime,
             int count,
-            String cursor
-    ) {}
+            String cursor,
+            String timeType
+    ) {
+        public DouyinOrderQueryRequest(long startTime, long endTime, int count, String cursor) {
+            this(startTime, endTime, count, cursor, "update");
+        }
+
+        /** 归一化 time_type，空白时回退 {@code update}。 */
+        public String resolvedTimeType() {
+            if (timeType == null || timeType.isBlank()) {
+                return "update";
+            }
+            return timeType.trim().toLowerCase();
+        }
+    }
 
     /**
      * 单个订单条目。

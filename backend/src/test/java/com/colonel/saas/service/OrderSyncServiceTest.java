@@ -612,6 +612,96 @@ class OrderSyncServiceTest {
         return new DouyinOrderGateway.OrderListResult(orders, hasMore, nextCursor, rawResponse);
     }
 
+    @Test
+    void syncPayRecentWindow_shouldPassUpdateTimeType() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class)))
+                .thenReturn(true);
+
+        service.syncPayRecentWindow();
+
+        ArgumentCaptor<DouyinOrderGateway.DouyinOrderQueryRequest> captor =
+                ArgumentCaptor.forClass(DouyinOrderGateway.DouyinOrderQueryRequest.class);
+        verify(douyinOrderGateway).listSettlement(captor.capture());
+        assertThat(captor.getValue().resolvedTimeType()).isEqualTo("update");
+    }
+
+    @Test
+    void syncSettlementSettleWindow_shouldUseIndependentLockAndCheckpointKey() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+                .thenReturn(true);
+
+        service.syncSettlementSettleWindow();
+
+        verify(jobLockService).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class));
+        verify(jobLockService, never()).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class));
+        verify(valueOperations, never()).set(eq("order:sync:settle_last_time"), any());
+    }
+
+    @Test
+    void syncSettlementSettleWindow_shouldPassSettleTimeType() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+                .thenReturn(true);
+
+        service.syncSettlementSettleWindow();
+
+        ArgumentCaptor<DouyinOrderGateway.DouyinOrderQueryRequest> captor =
+                ArgumentCaptor.forClass(DouyinOrderGateway.DouyinOrderQueryRequest.class);
+        verify(douyinOrderGateway).listSettlement(captor.capture());
+        assertThat(captor.getValue().resolvedTimeType()).isEqualTo("settle");
+    }
+
+    @Test
+    void syncSettlementSettleWindow_shouldNotAdvanceCheckpointWhenUpstreamEmpty() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+                .thenReturn(true);
+
+        service.syncSettlementSettleWindow();
+
+        verify(valueOperations, never()).set(eq("order:sync:settle_last_time"), any());
+    }
+
+    @Test
+    void syncSettlementSettleWindow_shouldAdvanceCheckpointWhenOrdersFetched() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+                .thenReturn(true);
+        DouyinOrderGateway.DouyinOrderItem item = instituteOrderItem("SETTLE_ORDER_1");
+        when(douyinOrderGateway.listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(
+                        List.of(item), false, "0", Map.of("log_id", "log-settle-1")));
+        when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null, null, "3859423", null, AttributionService.REASON_NO_PICK_SOURCE));
+        when(persistenceService.persistOrder(any())).thenReturn(true);
+
+        service.syncSettlementSettleWindow();
+
+        verify(valueOperations).set(eq("order:sync:settle_last_time"), any());
+    }
+
+    @Test
+    void syncSettlementSettleWindow_shouldNotAdvanceCheckpointWhenGatewayFails() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+                .thenReturn(true);
+        when(douyinOrderGateway.listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+                .thenThrow(new RuntimeException("upstream down"));
+
+        assertThatThrownBy(() -> service.syncSettlementSettleWindow())
+                .isInstanceOf(RuntimeException.class);
+
+        verify(valueOperations, never()).set(eq("order:sync:settle_last_time"), any());
+    }
+
+    @Test
+    void shouldAdvanceSettleCheckpoint_requiresFetchedOrders() {
+        OrderSyncService.SyncResult empty = new OrderSyncService.SyncResult(
+                1L, 2L, 0, 0, 0, 0, 0, 0, 0, false, 0, "EMPTY_PAGE");
+        OrderSyncService.SyncResult withData = new OrderSyncService.SyncResult(
+                1L, 2L, 1, 1, 1, 0, 0, 0, 0, false, 1, "NO_NEXT_CURSOR");
+
+        assertThat(service.shouldAdvanceSettleCheckpoint(empty)).isFalse();
+        assertThat(service.shouldAdvanceSettleCheckpoint(withData)).isTrue();
+    }
+
     private DouyinOrderGateway.DouyinOrderItem instituteOrderItem(String orderId) {
         Map<String, Object> rawPayload = new LinkedHashMap<>();
         rawPayload.put("order_id", orderId);

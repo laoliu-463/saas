@@ -180,6 +180,12 @@ order:
     pay-recent:
       enabled: ${ORDER_SYNC_PAY_RECENT_ENABLED:true}
       cron: ${ORDER_SYNC_PAY_RECENT_CRON:0 */30 * * * ?}
+    settle:
+      enabled: ${ORDER_SYNC_SETTLE_ENABLED:true}
+      cron: ${ORDER_SYNC_SETTLE_CRON:0 5 */6 * * ?}
+      lag-seconds: ${ORDER_SYNC_SETTLE_LAG_SECONDS:60}
+      window-seconds: ${ORDER_SYNC_SETTLE_WINDOW_SECONDS:86400}
+      overlap-seconds: ${ORDER_SYNC_SETTLE_OVERLAP_SECONDS:300}
     institute-recent:
       enabled: ${ORDER_SYNC_INSTITUTE_RECENT_ENABLED:true}
       cron: ${ORDER_SYNC_INSTITUTE_RECENT_CRON:0 */10 * * * ?}

@@ -190,7 +190,7 @@ public class TestDouyinOrderGateway implements DouyinOrderGateway {
      * @return 包含与传入订单号一一对应的 Mock 订单列表结果
      */
     @Override
-    public OrderListResult listSettlementByOrderIds(List<String> orderIds) {
+    public OrderListResult listSettlementByOrderIds(List<String> orderIds, String timeType) {
         // 第一步：规范化订单号列表，去重去空
         List<String> normalized = normalizeOrderIds(orderIds);
         if (normalized.isEmpty()) {
