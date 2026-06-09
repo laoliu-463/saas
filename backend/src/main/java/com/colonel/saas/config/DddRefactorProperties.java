@@ -32,8 +32,12 @@ import org.springframework.stereotype.Component;
  *       enabled: false
  *     product-display:
  *       enabled: false
+ *     order-sync:
+ *       enabled: false
  *     sample-policy:
  *       enabled: false
+ *     analytics:
+ *       shadow: false
  * </pre>
  */
 @Data
@@ -49,6 +53,9 @@ public class DddRefactorProperties {
     /** 用户域 self / group / all 数据范围重构开关 */
     private UserScope userScope = new UserScope();
 
+    /** 订单同步应用层重构开关 */
+    private OrderSync orderSync = new OrderSync();
+
     /** 订单 / 业绩归属与冲正重构开关 */
     private OrderAttribution orderAttribution = new OrderAttribution();
 
@@ -61,9 +68,18 @@ public class DddRefactorProperties {
     /** 寄样域策略与状态机重构开关 */
     private SamplePolicy samplePolicy = new SamplePolicy();
 
+    /** 分析模块 shadow 对账开关（仅后台对比，不影响用户可见数据） */
+    private Analytics analytics = new Analytics();
+
     /** 用户域 self / group / all 数据范围子开关。 */
     @Data
     public static class UserScope {
+        private boolean enabled = false;
+    }
+
+    /** 订单同步应用层子开关。 */
+    @Data
+    public static class OrderSync {
         private boolean enabled = false;
     }
 
@@ -89,5 +105,11 @@ public class DddRefactorProperties {
     @Data
     public static class SamplePolicy {
         private boolean enabled = false;
+    }
+
+    /** 分析模块 shadow 对账子开关。 */
+    @Data
+    public static class Analytics {
+        private boolean shadow = false;
     }
 }

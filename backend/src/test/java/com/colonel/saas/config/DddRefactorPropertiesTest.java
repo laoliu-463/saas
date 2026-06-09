@@ -19,6 +19,8 @@ class DddRefactorPropertiesTest {
         assertThat(properties.isEnabled()).isFalse();
         assertThat(properties.getUserScope()).isNotNull();
         assertThat(properties.getUserScope().isEnabled()).isFalse();
+        assertThat(properties.getOrderSync()).isNotNull();
+        assertThat(properties.getOrderSync().isEnabled()).isFalse();
         assertThat(properties.getOrderAttribution()).isNotNull();
         assertThat(properties.getOrderAttribution().isEnabled()).isFalse();
         assertThat(properties.getPerformanceCalc()).isNotNull();
@@ -27,20 +29,27 @@ class DddRefactorPropertiesTest {
         assertThat(properties.getProductDisplay().isEnabled()).isFalse();
         assertThat(properties.getSamplePolicy()).isNotNull();
         assertThat(properties.getSamplePolicy().isEnabled()).isFalse();
+        assertThat(properties.getAnalytics()).isNotNull();
+        assertThat(properties.getAnalytics().isShadow()).isFalse();
     }
 
     @Test
     void nestedSubFlagsShouldDefaultToFalseAfterConstruct() {
         DddRefactorProperties.UserScope userScope = new DddRefactorProperties.UserScope();
+        DddRefactorProperties.OrderSync orderSync = new DddRefactorProperties.OrderSync();
         DddRefactorProperties.OrderAttribution orderAttribution = new DddRefactorProperties.OrderAttribution();
         DddRefactorProperties.PerformanceCalc performanceCalc = new DddRefactorProperties.PerformanceCalc();
         DddRefactorProperties.ProductDisplay productDisplay = new DddRefactorProperties.ProductDisplay();
         DddRefactorProperties.SamplePolicy samplePolicy = new DddRefactorProperties.SamplePolicy();
 
         assertThat(userScope.isEnabled()).isFalse();
+        assertThat(orderSync.isEnabled()).isFalse();
         assertThat(orderAttribution.isEnabled()).isFalse();
         assertThat(performanceCalc.isEnabled()).isFalse();
         assertThat(productDisplay.isEnabled()).isFalse();
         assertThat(samplePolicy.isEnabled()).isFalse();
+
+        DddRefactorProperties.Analytics analytics = new DddRefactorProperties.Analytics();
+        assertThat(analytics.isShadow()).isFalse();
     }
 }
