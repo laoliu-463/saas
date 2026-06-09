@@ -237,3 +237,17 @@ kdniao:
   sandbox: ${KDNIAO_SANDBOX:false}
   connect-timeout: ${KDNIAO_CONNECT_TIMEOUT:5s}
   read-timeout: ${KDNIAO_READ_TIMEOUT:10s}
+
+ddd:
+  refactor:
+    enabled: ${DDD_REFACTOR_ENABLED:false}
+    user-scope:
+      enabled: ${DDD_REFACTOR_USER_SCOPE_ENABLED:false}
+    order-attribution:
+      enabled: ${DDD_REFACTOR_ORDER_ATTRIBUTION_ENABLED:false}
+    performance-calc:
+      enabled: ${DDD_REFACTOR_PERFORMANCE_CALC_ENABLED:false}
+    product-display:
+      enabled: ${DDD_REFACTOR_PRODUCT_DISPLAY_ENABLED:false}
+    sample-policy:
+      enabled: ${DDD_REFACTOR_SAMPLE_POLICY_ENABLED:false}
