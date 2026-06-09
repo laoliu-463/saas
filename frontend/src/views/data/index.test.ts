@@ -213,4 +213,26 @@ describe('DataDashboard business metric matrix', () => {
     const text = wrapper.find('[data-testid="dashboard-business-metrics"]').text()
     expect(text).toContain('服务费支出预估：¥0.00')
   })
+
+  it('labels top cards as create-track estimate metrics instead of paid net metrics', async () => {
+    const wrapper = mount(DataDashboard, {
+      global: {
+        plugins: [createPinia()],
+        stubs
+      }
+    })
+
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('今日订单数（创建轨）')
+    expect(text).toContain('今日 GMV（创建轨）')
+    expect(text).toContain('今日服务费净收·预估金额')
+    expect(text).toContain('今日提成·预估金额')
+    expect(text).toContain('按订单创建时间统计，仅统计有效订单，不等于付款订单额 - 退款订单额')
+    expect(text).toContain('付费/退款为状态或付款退款口径，与创建轨卡片不可直接相减对账')
+    expect(text).toContain('¥9.00')
+    expect(text).toContain('¥3.00')
+    expect(text).not.toContain('今日付款净额')
+  })
 })

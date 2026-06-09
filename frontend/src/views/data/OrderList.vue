@@ -386,7 +386,7 @@ const recruitTypeOptions = [
 ]
 
 const timeFieldOptions = [
-  { label: '付款时间', value: 'createTime' },
+  { label: '创建时间', value: 'createTime' },
   { label: '结算时间', value: 'settleTime' }
 ]
 
@@ -404,7 +404,7 @@ const summaryDimensionOptions = computed(() => [
 
 const disabledDimensionOptions = ['活动ID', '合作方信息ID', '店铺ID', '商品ID', '推广者ID', '订单来源', '团长名称']
 
-const activeTimeTitle = computed(() => (timeField.value === 'settleTime' ? '结算时间' : '付款时间'))
+const activeTimeTitle = computed(() => (timeField.value === 'settleTime' ? '结算时间' : '创建时间'))
 
 const configurableColumns = [
   { title: '出单推广者数', key: 'promoterCount' },

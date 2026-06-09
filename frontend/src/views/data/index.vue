@@ -589,7 +589,7 @@ const metricScopeText = computed(() => {
 
 const timeScopeDescription = computed(() => (
   timeField.value === 'createTime'
-    ? '默认按订单创建时间统计，适合运营日报和 real-pre 回流复核'
+    ? '按订单创建时间统计，仅统计有效订单，不等于付款订单额 - 退款订单额；付费/退款为状态或付款退款口径，与创建轨卡片不可直接相减对账。'
     : '按结算时间统计，仅纳入已结算订单，适合收益复核'
 ))
 

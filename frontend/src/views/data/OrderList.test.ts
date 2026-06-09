@@ -310,6 +310,18 @@ describe('OrderList 订单汇总页面', () => {
     expect(vm.timeField).toBe('createTime')
   })
 
+  it('labels createTime as 创建时间 instead of 付款时间', async () => {
+    routeMock.query = {
+      timeField: 'createTime'
+    }
+    const wrapper = await mountOrderList()
+    const vm = wrapper.vm as any
+
+    expect(vm.timeFieldOptions.find((item: any) => item.value === 'createTime')?.label).toBe('创建时间')
+    expect(vm.activeTimeTitle).toBe('创建时间')
+    expect(vm.summaryDimensionOptions[0].label).toBe('创建时间按日')
+  })
+
   it('renders tab switcher with summary and detail tabs', async () => {
     const wrapper = await mountOrderList()
     const tabs = wrapper.findAll('.data-tab')
