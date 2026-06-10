@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
@@ -9,7 +10,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.UUID;
 import java.time.LocalDateTime;
@@ -27,7 +27,7 @@ class PerformanceCalculationServiceTest {
     @Mock
     private PerformanceRecordMapper performanceRecordMapper;
     @Mock
-    private JdbcTemplate jdbcTemplate;
+    private ConfigDomainFacade configDomainFacade;
     @Mock
     private CommissionRuleService commissionRuleService;
 
@@ -37,18 +37,18 @@ class PerformanceCalculationServiceTest {
     void setUp() {
         service = new PerformanceCalculationService(
                 performanceRecordMapper,
-                new CommissionService(jdbcTemplate, commissionRuleService, null));
+                new CommissionService(configDomainFacade, commissionRuleService, null));
         lenient().when(commissionRuleService.resolveRatio(any(), any(), any())).thenReturn(null);
-        lenient().when(jdbcTemplate.query(
-                        anyString(),
-                        org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.ResultSetExtractor<String>>any(),
-                        anyString()))
+        lenient().when(configDomainFacade.getConfig(anyString()))
                 .thenAnswer(invocation -> {
-                    String key = invocation.getArgument(2);
+                    String key = invocation.getArgument(0);
                     if (key != null && key.contains("business")) {
                         return "0.10";
                     }
-                    return "0.20";
+                    if (key != null && key.contains("channel")) {
+                        return "0.20";
+                    }
+                    return null;
                 });
     }
 

@@ -1,5 +1,7 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
+import com.colonel.saas.domain.config.facade.dto.ExclusiveRulesDTO;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +35,8 @@ import static org.mockito.Mockito.*;
 class ExclusiveMerchantServiceTest {
 
     @Mock
+    private ConfigDomainFacade configDomainFacade;
+    @Mock
     private JdbcTemplate jdbcTemplate;
     @Mock
     private ExclusiveMerchantMapper exclusiveMerchantMapper;
@@ -41,10 +45,8 @@ class ExclusiveMerchantServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ExclusiveMerchantService(jdbcTemplate, exclusiveMerchantMapper);
+        service = new ExclusiveMerchantService(configDomainFacade, jdbcTemplate, exclusiveMerchantMapper);
     }
-
-    private static final String KEY_RATIO = "merchant.exclusive.service_fee_ratio";
 
     @Test
     void findActiveOwnerByMerchantId_shouldReturnOwner() {
@@ -167,8 +169,7 @@ class ExclusiveMerchantServiceTest {
         LocalDateTime start = stats.atDay(1).atStartOfDay();
         LocalDateTime end = stats.plusMonths(1).atDay(1).atStartOfDay();
 
-        doThrow(new RuntimeException("db error")).when(jdbcTemplate)
-                .query(anyString(), any(ResultSetExtractor.class), eq(KEY_RATIO));
+        when(configDomainFacade.getExclusiveRules()).thenThrow(new RuntimeException("config offline"));
         stubUserTotalFeeEmpty(start, end);
         stubMerchantUserFeeEmpty(start, end);
 
@@ -196,8 +197,8 @@ class ExclusiveMerchantServiceTest {
     // ─── Helper stubs ──────────────────────────────────────────────────────
 
     private void stubConfig(String value) {
-        doReturn(value).when(jdbcTemplate)
-                .query(anyString(), any(ResultSetExtractor.class), eq(KEY_RATIO));
+        when(configDomainFacade.getExclusiveRules())
+                .thenReturn(new ExclusiveRulesDTO(new java.math.BigDecimal(value)));
     }
 
     private void stubUserTotalFeeEmpty(LocalDateTime start, LocalDateTime end) {

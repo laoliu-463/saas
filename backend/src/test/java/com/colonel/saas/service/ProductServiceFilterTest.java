@@ -56,7 +56,7 @@ class ProductServiceFilterTest {
     @Mock private ColonelsettlementActivityMapper colonelActivityMapper;
     @Mock private TalentFollowService talentFollowService;
     @Mock private DouyinActivityGateway douyinActivityGateway;
-    @Mock private BusinessRuleConfigService businessRuleConfigService;
+    @Mock private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     @Mock private ProductDisplayRuleService productDisplayRuleService;
     @Mock private ColonelPartnerSyncService colonelPartnerSyncService;
     @Mock private ProductDomainEventPublisher productDomainEventPublisher;
@@ -81,7 +81,7 @@ class ProductServiceFilterTest {
                 talentFollowService,
                 douyinActivityGateway,
                 new PromotionLinkIdempotencyService(new com.fasterxml.jackson.databind.ObjectMapper()),
-                businessRuleConfigService,
+                configDomainFacade,
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher

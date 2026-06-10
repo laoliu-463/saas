@@ -56,7 +56,7 @@ class ProductServiceShopScoreTest {
     @Mock private TalentFollowService talentFollowService;
     @Mock private com.colonel.saas.gateway.douyin.DouyinActivityGateway douyinActivityGateway;
     @Mock private PromotionLinkIdempotencyService promotionLinkIdempotencyService;
-    @Mock private BusinessRuleConfigService businessRuleConfigService;
+    @Mock private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     @Mock private ProductDisplayRuleService productDisplayRuleService;
     @Mock private ColonelPartnerSyncService colonelPartnerSyncService;
     @Mock private ProductDomainEventPublisher productDomainEventPublisher;
@@ -81,7 +81,7 @@ class ProductServiceShopScoreTest {
                 talentFollowService,
                 douyinActivityGateway,
                 promotionLinkIdempotencyService,
-                businessRuleConfigService,
+                configDomainFacade,
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher);

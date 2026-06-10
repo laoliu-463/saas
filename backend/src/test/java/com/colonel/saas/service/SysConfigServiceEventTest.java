@@ -1,6 +1,6 @@
 package com.colonel.saas.service;
 
-import com.colonel.saas.BaseIntegrationTest;
+import com.colonel.saas.testsupport.BaseIntegrationTest;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.domain.config.event.ConfigCacheRefresher;
 import com.colonel.saas.domain.config.event.ConfigDomainEventPublisher;

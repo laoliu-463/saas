@@ -1,5 +1,7 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
+import com.colonel.saas.domain.config.facade.dto.SampleDefaultStandardDTO;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,25 +26,25 @@ import java.util.Map;
  * </ul>
  *
  * <p><b>业务领域：</b>寄样域 — 资格评估</p>
- * <p><b>协作关系：</b>依赖 {@link BusinessRuleConfigService} 加载寄样默认标准配置；
+ * <p><b>协作关系：</b>依赖 {@link ConfigDomainFacade} 加载寄样默认标准配置（DDD-CONFIG-003）；
  * 依赖 {@link JdbcTemplate} 实时聚合近 30 天订单销售额</p>
  *
- * @see BusinessRuleConfigService
+ * @see ConfigDomainFacade
  * @see SampleLifecycleService
  */
 @Service
 public class SampleEligibilityService {
 
-    /** 业务规则配置服务，加载寄样默认标准 */
-    private final BusinessRuleConfigService businessRuleConfigService;
+    /** 配置域门面，加载寄样默认标准 */
+    private final ConfigDomainFacade configDomainFacade;
 
     /** JDBC 模板，用于实时聚合近 30 天订单销售额 */
     private final JdbcTemplate jdbcTemplate;
 
     public SampleEligibilityService(
-            BusinessRuleConfigService businessRuleConfigService,
+            ConfigDomainFacade configDomainFacade,
             JdbcTemplate jdbcTemplate) {
-        this.businessRuleConfigService = businessRuleConfigService;
+        this.configDomainFacade = configDomainFacade;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -61,7 +63,7 @@ public class SampleEligibilityService {
      * @return 资格评估结果，包含是否达标、不达标原因、标准快照和达人实际快照
      */
     public EligibilityResult evaluate(Talent talent, CrawlerTalentInfo talentInfo) {
-        BusinessRuleConfigService.SampleDefaultStandardConfig standard = businessRuleConfigService.getSampleDefaultStandard();
+        SampleDefaultStandardDTO standard = configDomainFacade.getSampleRules().defaultStandard();
         boolean salesUnsupported = isUnsupported(talent, "sales30d");
         boolean levelUnsupported = isUnsupported(talent, "talentLevel");
         Long monthlySales = resolveMonthlySales(talent, talentInfo, salesUnsupported);

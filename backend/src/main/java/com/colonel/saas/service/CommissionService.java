@@ -1,10 +1,10 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -35,7 +35,7 @@ import java.util.UUID;
  *
  * <p>依赖服务/仓储：
  * <ul>
- *   <li>{@link JdbcTemplate} —— 从 system_config 表读取提成比例配置</li>
+ *   <li>{@link ConfigDomainFacade} —— 全局默认提成比例（DDD-CONFIG-003）</li>
  *   <li>{@link CommissionRuleService} —— 提成规则优先级解析</li>
  *   <li>{@link PerformanceCalculationService} —— 业绩记录写入</li>
  *   <li>{@link OrderCommissionPolicy} —— 订单状态判定（是否计入提成）</li>
@@ -57,14 +57,14 @@ public class CommissionService {
     /** 配置键前缀：活动级渠道提成比例覆盖 */
     private static final String KEY_CHANNEL_ACTIVITY_RATIO_PREFIX = "commission.channel_activity_ratio.";
 
-    private final JdbcTemplate jdbcTemplate;
+    private final ConfigDomainFacade configDomainFacade;
     private final CommissionRuleService commissionRuleService;
     private final PerformanceCalculationService performanceCalculationService;
 
-    public CommissionService(JdbcTemplate jdbcTemplate,
+    public CommissionService(ConfigDomainFacade configDomainFacade,
                              CommissionRuleService commissionRuleService,
                              @Lazy PerformanceCalculationService performanceCalculationService) {
-        this.jdbcTemplate = jdbcTemplate;
+        this.configDomainFacade = configDomainFacade;
         this.commissionRuleService = commissionRuleService;
         this.performanceCalculationService = performanceCalculationService;
     }
@@ -402,9 +402,8 @@ public class CommissionService {
 
     private BigDecimal queryRatio(String key) {
         try {
-            String sql = "SELECT config_value FROM system_config WHERE config_key = ? AND deleted = 0 LIMIT 1";
-            String value = jdbcTemplate.query(sql, rs -> rs.next() ? rs.getString(1) : null, key);
-            if (value == null || value.isBlank()) {
+            String value = configDomainFacade.getConfig(key);
+            if (!StringUtils.hasText(value)) {
                 return null;
             }
             BigDecimal ratio = new BigDecimal(value.trim());

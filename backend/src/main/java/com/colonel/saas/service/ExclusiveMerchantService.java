@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,7 @@ import java.util.stream.Collectors;
  *
  * <p><b>业务领域：</b>配置域 — 独家商家评估</p>
  * <p><b>协作关系：</b>依赖 {@link ExclusiveMerchantMapper} 持久化独家商家记录；
+ * 依赖 {@link ConfigDomainFacade} 读取独家服务费比例阈值（DDD-CONFIG-003）；
  * 依赖 {@link JdbcTemplate} 执行原生 SQL 聚合查询</p>
  *
  * @see ExclusiveMerchantMapper
@@ -42,14 +44,11 @@ import java.util.stream.Collectors;
 @Service
 public class ExclusiveMerchantService {
 
-    /** 系统配置键：商家独家服务费比例阈值 */
-    private static final String KEY_RATIO_THRESHOLD = "merchant.exclusive.service_fee_ratio";
-
-    /** 默认服务费比例阈值：70% */
-    private static final BigDecimal DEFAULT_RATIO_THRESHOLD = new BigDecimal("70");
-
     /** 月份格式化器，用于格式化 "yyyy-MM" */
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
+
+    /** 配置域门面，读取独家商家服务费比例阈值 */
+    private final ConfigDomainFacade configDomainFacade;
 
     /** JDBC 模板，执行原生 SQL 聚合查询 */
     private final JdbcTemplate jdbcTemplate;
@@ -57,7 +56,10 @@ public class ExclusiveMerchantService {
     /** 独家商家 Mapper，操作 exclusive_merchants 表 */
     private final ExclusiveMerchantMapper exclusiveMerchantMapper;
 
-    public ExclusiveMerchantService(JdbcTemplate jdbcTemplate, ExclusiveMerchantMapper exclusiveMerchantMapper) {
+    public ExclusiveMerchantService(ConfigDomainFacade configDomainFacade,
+                                    JdbcTemplate jdbcTemplate,
+                                    ExclusiveMerchantMapper exclusiveMerchantMapper) {
+        this.configDomainFacade = configDomainFacade;
         this.jdbcTemplate = jdbcTemplate;
         this.exclusiveMerchantMapper = exclusiveMerchantMapper;
     }
@@ -229,17 +231,14 @@ public class ExclusiveMerchantService {
         ), month.atDay(1).atStartOfDay(), month.plusMonths(1).atDay(1).atStartOfDay());
     }
 
-    /**
-     * 从 system_config 表加载商家独家服务费比例阈值，读取失败则返回默认值 {@value DEFAULT_RATIO_THRESHOLD}。
-     */
+    /** 默认服务费比例阈值：70% */
+    private static final BigDecimal DEFAULT_RATIO_THRESHOLD = new BigDecimal("70");
+
+    /** 从配置域门面加载商家独家服务费比例阈值（DDD-CONFIG-003）。 */
     private BigDecimal loadRatioThreshold() {
         try {
-            String sql = "SELECT config_value FROM system_config WHERE config_key = ? AND deleted = 0 LIMIT 1";
-            String value = jdbcTemplate.query(sql, rs -> rs.next() ? rs.getString(1) : null, KEY_RATIO_THRESHOLD);
-            if (!StringUtils.hasText(value)) {
-                return DEFAULT_RATIO_THRESHOLD;
-            }
-            return new BigDecimal(value.trim());
+            BigDecimal threshold = configDomainFacade.getExclusiveRules().merchantServiceFeeRatio();
+            return threshold == null ? DEFAULT_RATIO_THRESHOLD : threshold;
         } catch (Exception ex) {
             return DEFAULT_RATIO_THRESHOLD;
         }

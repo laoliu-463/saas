@@ -47,7 +47,7 @@ class ProductServiceColonelBuyinIdTest {
     @Mock
     private com.colonel.saas.gateway.douyin.DouyinActivityGateway douyinActivityGateway;
     @Mock
-    private BusinessRuleConfigService businessRuleConfigService;
+    private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     @Mock
     private ProductDisplayRuleService productDisplayRuleService;
     @Mock
@@ -75,7 +75,7 @@ class ProductServiceColonelBuyinIdTest {
                 talentFollowService,
                 douyinActivityGateway,
                 new PromotionLinkIdempotencyService(new com.fasterxml.jackson.databind.ObjectMapper()),
-                businessRuleConfigService,
+                configDomainFacade,
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher

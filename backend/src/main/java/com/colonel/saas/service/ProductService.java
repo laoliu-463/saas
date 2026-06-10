@@ -144,8 +144,8 @@ public class ProductService {
     private final DouyinActivityGateway douyinActivityGateway;
     /** 推广链接幂等服务，防止重复生成推广链接 */
     private final PromotionLinkIdempotencyService promotionLinkIdempotencyService;
-    /** 业务规则配置服务，查询推广加码等规则 */
-    private final BusinessRuleConfigService businessRuleConfigService;
+    /** 配置域门面，读取推广模板与 pick_extra 规则（DDD-CONFIG-003） */
+    private final com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     /** 商品展示规则服务，管理商品的展示/隐藏规则和置顶逻辑 */
     private final ProductDisplayRuleService productDisplayRuleService;
     /** 团长合作伙伴同步服务，同步团长合作关系数据 */
@@ -177,7 +177,7 @@ public class ProductService {
             TalentFollowService talentFollowService,
             DouyinActivityGateway douyinActivityGateway,
             PromotionLinkIdempotencyService promotionLinkIdempotencyService,
-            BusinessRuleConfigService businessRuleConfigService,
+            com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
             ProductDisplayRuleService productDisplayRuleService,
             ColonelPartnerSyncService colonelPartnerSyncService,
             ProductDomainEventPublisher productDomainEventPublisher) {
@@ -196,7 +196,7 @@ public class ProductService {
         this.talentFollowService = talentFollowService;
         this.douyinActivityGateway = douyinActivityGateway;
         this.promotionLinkIdempotencyService = promotionLinkIdempotencyService;
-        this.businessRuleConfigService = businessRuleConfigService;
+        this.configDomainFacade = configDomainFacade;
         this.productDisplayRuleService = productDisplayRuleService;
         this.colonelPartnerSyncService = colonelPartnerSyncService;
         this.productDomainEventPublisher = productDomainEventPublisher;
@@ -2894,11 +2894,11 @@ public class ProductService {
         String channelCode = user != null && StringUtils.hasText(user.getChannelCode())
                 ? user.getChannelCode().trim().toLowerCase(Locale.ROOT)
                 : compactUserId;
-        BusinessRuleConfigService.PromotionPickExtraRuleConfig rule =
-                businessRuleConfigService == null ? null : businessRuleConfigService.getPromotionPickExtraRule();
-        String format = rule == null || !StringUtils.hasText(rule.format())
+        com.colonel.saas.domain.config.facade.dto.PromotionTemplateDTO template =
+                configDomainFacade == null ? null : configDomainFacade.getPromotionTemplate();
+        String format = template == null || !StringUtils.hasText(template.pickExtraFormat())
                 ? "channel_{channel_code}"
-                : rule.format().trim();
+                : template.pickExtraFormat().trim();
         String candidate = format
                 .replace("{channel_code}", channelCode)
                 .replace("{channelCode}", channelCode)
@@ -2913,7 +2913,7 @@ public class ProductService {
         if (!StringUtils.hasText(candidate)) {
             candidate = "channel_" + channelCode;
         }
-        return normalizePickExtraValue(encodePickExtra(candidate, rule == null ? "none" : rule.encode()));
+        return normalizePickExtraValue(encodePickExtra(candidate, template == null ? "none" : template.pickExtraEncode()));
     }
 
     private String safePickExtraToken(String value) {
@@ -4324,6 +4324,44 @@ public class ProductService {
     }
 
     private String buildProductBriefCopyText(ProductSnapshot snapshot, ProductOperationState state, String promotionLink) {
+        String template = configDomainFacade == null
+                ? null
+                : configDomainFacade.getPromotionTemplate().copyBriefTemplate();
+        if (StringUtils.hasText(template)) {
+            return renderCopyBriefTemplate(template, snapshot, state, promotionLink);
+        }
+        return buildHardcodedProductBriefCopyText(snapshot, state, promotionLink);
+    }
+
+    private String renderCopyBriefTemplate(
+            String template,
+            ProductSnapshot snapshot,
+            ProductOperationState state,
+            String promotionLink) {
+        Map<String, Object> auditSupplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
+        String productName = copyDisplayText(snapshot.getTitle());
+        String commissionRate = copyDisplayText(snapshot.getActivityCosRatioText());
+        String shortLink = copyDisplayText(firstText(promotionLink));
+        String serviceFeeRate = copyDisplayText(formatRate(resolveServiceFeeRate(snapshot)));
+        String customText = copyDisplayText(readString(auditSupplement, "exclusivePriceRemark"));
+        return template
+                .replace("{productName}", productName)
+                .replace("{product_name}", productName)
+                .replace("{productId}", copyDisplayText(snapshot.getProductId()))
+                .replace("{product_id}", copyDisplayText(snapshot.getProductId()))
+                .replace("{commissionRate}", commissionRate)
+                .replace("{commission_rate}", commissionRate)
+                .replace("{serviceFeeRate}", serviceFeeRate)
+                .replace("{service_fee_rate}", serviceFeeRate)
+                .replace("{shortLink}", shortLink)
+                .replace("{promotion_link}", shortLink)
+                .replace("{custom_text}", customText);
+    }
+
+    private String buildHardcodedProductBriefCopyText(
+            ProductSnapshot snapshot,
+            ProductOperationState state,
+            String promotionLink) {
         Map<String, Object> auditSupplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
         List<String> sellingPoints = readStringList(auditSupplement, "sellingPoints");
         String sellingPointText = sellingPoints.isEmpty() ? "-" : String.join("、", sellingPoints);
