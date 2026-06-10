@@ -133,6 +133,15 @@ public abstract class BaseIntegrationTest {
         jdbcTemplate.execute(
                 "ALTER TABLE colonelsettlement_order ADD COLUMN IF NOT EXISTS effective_service_fee_expense BIGINT DEFAULT 0");
         jdbcTemplate.execute("ALTER TABLE colonelsettlement_order ADD COLUMN IF NOT EXISTS product_pic VARCHAR(512)");
+        // DDD-CONFIG-004: SystemConfig entity added configVersion / enabled / visible_in_rule_center.
+        // Test container init script declares these only in the second (shadowed) CREATE TABLE
+        // statement, so add idempotent ALTERs to align the actual schema with the entity.
+        jdbcTemplate.execute(
+                "ALTER TABLE system_config ADD COLUMN IF NOT EXISTS config_version INT NOT NULL DEFAULT 1");
+        jdbcTemplate.execute(
+                "ALTER TABLE system_config ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE");
+        jdbcTemplate.execute(
+                "ALTER TABLE system_config ADD COLUMN IF NOT EXISTS visible_in_rule_center BOOLEAN NOT NULL DEFAULT TRUE");
         // dashboard_performance_daily is created in production via alter-v1-gaps-20260522.sql
         // (real-pre runs the migrate-all flow). The init schema used by the test container
         // does not include it, but DashboardPerformanceSummaryService writes here from
