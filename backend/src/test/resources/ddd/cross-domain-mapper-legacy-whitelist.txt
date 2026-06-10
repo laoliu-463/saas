@@ -21,9 +21,8 @@ com.colonel.saas.service.OrderService|ProductSnapshotMapper
 com.colonel.saas.service.PerformanceBackfillService|ColonelsettlementOrderMapper
 com.colonel.saas.service.PerformanceMonthRecalculationService|ColonelsettlementOrderMapper
 com.colonel.saas.service.PerformanceQueryService|ColonelsettlementOrderMapper
-com.colonel.saas.service.ProductQuickSampleService|SampleRequestMapper
-com.colonel.saas.service.ProductQuickSampleService|TalentClaimMapper
-com.colonel.saas.service.ProductQuickSampleService|TalentMapper
+com.colonel.saas.domain.sample.application.SampleApplicationPortImpl|TalentClaimMapper
+com.colonel.saas.domain.sample.application.SampleApplicationPortImpl|TalentMapper
 com.colonel.saas.service.ProductService|ColonelsettlementOrderMapper
 com.colonel.saas.service.ProductService|PromotionLinkMapper
 com.colonel.saas.service.ProductService|SysUserMapper
