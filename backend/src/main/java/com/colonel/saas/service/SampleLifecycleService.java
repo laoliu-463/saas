@@ -48,7 +48,6 @@ public class SampleLifecycleService {
     private final TalentClaimMapper talentClaimMapper;
     private final SampleStatusLogService sampleStatusLogService;
     private final ConfigDomainFacade configDomainFacade;
-    private final BusinessRuleConfigService businessRuleConfigService;
     private final SampleDomainEventPublisher sampleDomainEventPublisher;
 
     public SampleLifecycleService(
@@ -57,14 +56,12 @@ public class SampleLifecycleService {
             TalentClaimMapper talentClaimMapper,
             SampleStatusLogService sampleStatusLogService,
             ConfigDomainFacade configDomainFacade,
-            BusinessRuleConfigService businessRuleConfigService,
             SampleDomainEventPublisher sampleDomainEventPublisher) {
         this.jdbcTemplate = jdbcTemplate;
         this.sampleRequestMapper = sampleRequestMapper;
         this.talentClaimMapper = talentClaimMapper;
         this.sampleStatusLogService = sampleStatusLogService;
         this.configDomainFacade = configDomainFacade;
-        this.businessRuleConfigService = businessRuleConfigService;
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
     }
 
@@ -156,10 +153,10 @@ public class SampleLifecycleService {
         return autoCloseTimeoutPendingHomework(configDomainFacade.getSampleAutoCloseDays());
     }
 
-    /** 使用业务规则配置的超时天数关闭待发货寄样单。 */
+    /** 使用配置域门面聚合的超时天数关闭待发货寄样单。 */
     @Transactional(rollbackFor = Exception.class)
     public int autoCloseTimeoutPendingShip() {
-        return autoCloseTimeoutPendingShip(businessRuleConfigService.getSampleTimeoutPendingShipDays());
+        return autoCloseTimeoutPendingShip(configDomainFacade.getSampleRules().timeoutPendingShipDays());
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.config.facade.dto.SampleDefaultStandardDTO;
+import com.colonel.saas.domain.config.facade.dto.SampleRulesDTO;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.TalentClaim;
@@ -54,8 +56,6 @@ class SampleLifecycleServiceTest {
     @Mock
     private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     @Mock
-    private BusinessRuleConfigService businessRuleConfigService;
-    @Mock
     private TalentClaimMapper talentClaimMapper;
 
     private SampleLifecycleService service;
@@ -68,7 +68,6 @@ class SampleLifecycleServiceTest {
                 talentClaimMapper,
                 sampleStatusLogService,
                 configDomainFacade,
-                businessRuleConfigService,
                 org.mockito.Mockito.mock(com.colonel.saas.domain.sample.event.SampleDomainEventPublisher.class));
         lenient().when(jdbcTemplate.batchUpdate(
                 anyString(),
@@ -199,7 +198,7 @@ class SampleLifecycleServiceTest {
         assertThat(service.completePendingHomeworkByOrder(null)).isZero();
         assertThat(service.completePendingHomeworkByOrder(missingOwner)).isZero();
         assertThat(service.completePendingHomeworkByOrder(blankProduct)).isZero();
-        verifyNoInteractions(jdbcTemplate, sampleRequestMapper, talentClaimMapper, sampleStatusLogService, configDomainFacade, businessRuleConfigService);
+        verifyNoInteractions(jdbcTemplate, sampleRequestMapper, talentClaimMapper, sampleStatusLogService, configDomainFacade);
     }
 
     @Test
@@ -380,7 +379,8 @@ class SampleLifecycleServiceTest {
 
     @Test
     void autoCloseTimeoutPendingShip_shouldUseConfiguredTimeout() {
-        when(businessRuleConfigService.getSampleTimeoutPendingShipDays()).thenReturn(9);
+        when(configDomainFacade.getSampleRules())
+                .thenReturn(new SampleRulesDTO(7, true, 30, 9, new SampleDefaultStandardDTO(null, null, null)));
         when(jdbcTemplate.query(
                 anyString(),
                 org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<UUID>>any(),
@@ -390,7 +390,7 @@ class SampleLifecycleServiceTest {
         int closed = service.autoCloseTimeoutPendingShip();
 
         assertThat(closed).isZero();
-        verify(businessRuleConfigService).getSampleTimeoutPendingShipDays();
+        verify(configDomainFacade).getSampleRules();
     }
 
     @Test
