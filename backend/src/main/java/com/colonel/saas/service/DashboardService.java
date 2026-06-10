@@ -8,6 +8,7 @@ import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -86,6 +87,10 @@ public class DashboardService {
     private final JdbcTemplate jdbcTemplate;
     /** 业绩指标查询服务，用于判断是否可用汇总表以及从汇总表读取聚合数据 */
     private final PerformanceMetricsQueryService performanceMetricsQueryService;
+
+    /** 影子对账服务（可选），开关开启时在后台执行新路径对比并输出 diff 日志 */
+    @Autowired(required = false)
+    private DashboardShadowCompareService shadowCompareService;
 
     /**
      * 构造函数，通过依赖注入初始化服务。
@@ -250,6 +255,11 @@ public class DashboardService {
             log.warn(
                     "Dashboard summary has zero settled orders in range: orderCount={}, settledOrderCount={}, range={}",
                     orderCount, settledOrderCount, formatRange(startTime, endTime));
+        }
+
+        // DDD-ANALYTICS-002: shadow compare (不影响响应)
+        if (shadowCompareService != null && shadowCompareService.isEnabled()) {
+            shadowCompareService.compare(summary, startTime, endTime, userId, deptId, dataScope);
         }
 
         return summary;
