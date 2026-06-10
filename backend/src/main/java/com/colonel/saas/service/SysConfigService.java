@@ -75,10 +75,12 @@ public class SysConfigService {
     private final ConfigDefinitionRegistry configDefinitionRegistry;
     /** 配置变更事件构建工厂 */
     private final ConfigChangedEventFactory configChangedEventFactory;
-    /** 领域事件 outbox 服务（持久化事件到 outbox 表） */
+    /** 领域事件 outbox 服务（持久化事件到 outbox表） */
     private final DomainEventOutboxService domainEventOutboxService;
     /** Spring 事件发布器（发布应用内事件通知缓存刷新等） */
     private final ApplicationEventPublisher applicationEventPublisher;
+    /** 配置更新领域事件发布器（兼容层） */
+    private final com.colonel.saas.domain.config.event.ConfigDomainEventPublisher configDomainEventPublisher;
 
     public SysConfigService(
             SystemConfigMapper systemConfigMapper,
@@ -87,7 +89,8 @@ public class SysConfigService {
             ConfigDefinitionRegistry configDefinitionRegistry,
             ConfigChangedEventFactory configChangedEventFactory,
             DomainEventOutboxService domainEventOutboxService,
-            ApplicationEventPublisher applicationEventPublisher) {
+            ApplicationEventPublisher applicationEventPublisher,
+            com.colonel.saas.domain.config.event.ConfigDomainEventPublisher configDomainEventPublisher) {
         this.systemConfigMapper = systemConfigMapper;
         this.systemConfigChangeLogMapper = systemConfigChangeLogMapper;
         this.operationLogService = operationLogService;
@@ -95,6 +98,7 @@ public class SysConfigService {
         this.configChangedEventFactory = configChangedEventFactory;
         this.domainEventOutboxService = domainEventOutboxService;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.configDomainEventPublisher = configDomainEventPublisher;
     }
 
     /**
@@ -512,6 +516,20 @@ public class SysConfigService {
                 .map(ConfigChangedEventFactory.ConfigChangeContext::configKey)
                 .collect(Collectors.toSet());
         applicationEventPublisher.publishEvent(new ConfigChangedApplicationEvent(changedKeys));
+        // 发布兼容层领域事件
+        for (ConfigChangedEventFactory.ConfigChangeContext change : changes) {
+            SystemConfig config = systemConfigMapper.findByConfigKey(change.configKey()).orElse(null);
+            com.colonel.saas.domain.config.event.ConfigUpdatedEvent updatedEvent = com.colonel.saas.domain.config.event.ConfigUpdatedEvent.builder()
+                    .eventId(UUID.randomUUID())
+                    .configKey(change.configKey())
+                    .oldValue(change.oldValue())
+                    .newValue(change.newValue())
+                    .valueType(config != null && config.getConfigType() != null ? config.getConfigType() : "STRING")
+                    .operatorId(userId)
+                    .updatedAt(LocalDateTime.now())
+                    .build();
+            configDomainEventPublisher.publish(updatedEvent);
+        }
         // 第六步：构建返回结果（含可能的提成比例变更警告）
         return new BatchUpdateConfigResult(
                 eventId,
@@ -567,6 +585,17 @@ public class SysConfigService {
                     eventId,
                     source,
                     null);
+            // 发布兼容层领域事件
+            com.colonel.saas.domain.config.event.ConfigUpdatedEvent updatedEvent = com.colonel.saas.domain.config.event.ConfigUpdatedEvent.builder()
+                    .eventId(UUID.randomUUID())
+                    .configKey(change.configKey())
+                    .oldValue(change.oldValue())
+                    .newValue(change.newValue())
+                    .valueType(config != null && config.getConfigType() != null ? config.getConfigType() : "STRING")
+                    .operatorId(userId)
+                    .updatedAt(LocalDateTime.now())
+                    .build();
+            configDomainEventPublisher.publish(updatedEvent);
         }
         // 第二步：构建领域事件并持久化到 outbox
         ConfigChangedEventPayload payload = configChangedEventFactory.create(

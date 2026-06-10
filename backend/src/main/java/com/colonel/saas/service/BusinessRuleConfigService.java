@@ -288,7 +288,14 @@ public class BusinessRuleConfigService {
         return value == null ? "" : String.valueOf(value);
     }
 
-    private String getRawValue(String configKey) {
+    /**
+     * 读取配置原始值（带本地缓存），供 {@link com.colonel.saas.domain.config.facade.LegacyConfigDomainFacade}
+     * 通用读取入口委派使用。
+     *
+     * @param configKey 配置键
+     * @return 配置原始字符串值；配置不存在时返回 {@code null}
+     */
+    public String getRawValue(String configKey) {
         return shortTtlCacheService.get(
                 CONFIG_CACHE_PREFIX + configKey,
                 CONFIG_CACHE_TTL,
@@ -324,6 +331,73 @@ public class BusinessRuleConfigService {
 
     private String normalizeLevel(Object rawLevel) {
         return String.valueOf(rawLevel).trim().toUpperCase();
+    }
+
+    // ==================== ConfigDomainFacade bridge (DDD-CONFIG-001) ====================
+
+    public String getFacadeConfig(String key) {
+        String raw = getRawValue(key);
+        return StringUtils.hasText(raw) ? raw.trim() : null;
+    }
+
+    public String getFacadeString(String key, String defaultValue) {
+        String raw = getRawValue(key);
+        return StringUtils.hasText(raw) ? raw.trim() : defaultValue;
+    }
+
+    public Integer getFacadeInt(String key, Integer defaultValue) {
+        String raw = getRawValue(key);
+        if (!StringUtils.hasText(raw)) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException ex) {
+            return defaultValue;
+        }
+    }
+
+    public BigDecimal getFacadeDecimal(String key, BigDecimal defaultValue) {
+        return getDecimal(key, defaultValue);
+    }
+
+    public Boolean getFacadeBoolean(String key, Boolean defaultValue) {
+        String raw = getRawValue(key);
+        if (!StringUtils.hasText(raw)) {
+            return defaultValue;
+        }
+        String normalized = raw.trim().toLowerCase();
+        if ("true".equals(normalized) || "1".equals(normalized)) {
+            return true;
+        }
+        if ("false".equals(normalized) || "0".equals(normalized)) {
+            return false;
+        }
+        return defaultValue;
+    }
+
+    public <T> T getFacadeJson(String key, Class<T> type, T defaultValue) {
+        String raw = getRawValue(key);
+        if (!StringUtils.hasText(raw)) {
+            return defaultValue;
+        }
+        try {
+            return objectMapper.readValue(raw.trim(), type);
+        } catch (Exception ex) {
+            return defaultValue;
+        }
+    }
+
+    public BigDecimal getCommissionBusinessDefaultRatio() {
+        return getDecimal(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO, new BigDecimal("0.15"));
+    }
+
+    public BigDecimal getCommissionChannelDefaultRatio() {
+        return getDecimal(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO, new BigDecimal("0.15"));
+    }
+
+    public BigDecimal getMerchantExclusiveServiceFeeRatio() {
+        return getDecimal(SystemConfigKeys.MERCHANT_EXCLUSIVE_SERVICE_FEE_RATIO, new BigDecimal("70"));
     }
 
     /**
