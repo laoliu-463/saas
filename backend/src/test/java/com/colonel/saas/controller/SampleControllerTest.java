@@ -111,7 +111,7 @@ class SampleControllerTest {
     @Mock
     private CrawlerTalentInfoService crawlerTalentInfoService;
     @Mock
-    private BusinessRuleConfigService businessRuleConfigService;
+    private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     @Mock
     private ProductService productService;
     @Mock
@@ -140,7 +140,7 @@ class SampleControllerTest {
                 sampleStatusLogService,
                 sampleStatusLogMapper,
                 crawlerTalentInfoService,
-                businessRuleConfigService,
+                configDomainFacade,
                 productService,
                 sampleEligibilityService,
                 sampleLogisticsSyncService,
@@ -149,8 +149,8 @@ class SampleControllerTest {
                 sampleDomainEventPublisher,
                 new SampleWriteTransactionService()
         );
-        lenient().when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(true);
-        lenient().when(businessRuleConfigService.getSampleRestrictDays()).thenReturn(7);
+        lenient().when(configDomainFacade.isSampleLimitEnabled()).thenReturn(true);
+        lenient().when(configDomainFacade.getSampleLimitDays()).thenReturn(7);
         lenient().when(sampleEligibilityService.evaluate(any(), any()))
                 .thenReturn(new SampleEligibilityService.EligibilityResult(
                         true,
@@ -1074,7 +1074,7 @@ class SampleControllerTest {
         when(productMapper.selectById(productId)).thenReturn(product);
         when(crawlerTalentInfoService.findByTalentId("talent_disabled_001")).thenReturn(crawlerTalentInfo);
         when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
 
         sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
 
@@ -2607,7 +2607,7 @@ class SampleControllerTest {
                 List.of(RoleCodes.CHANNEL_STAFF)))
                 .isInstanceOf(ForbiddenException.class);
 
-        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
         ReflectionTestUtils.invokeMethod(sampleController, "checkSevenDaysLimit", userId, talentId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
         ReflectionTestUtils.invokeMethod(sampleController, "checkSevenDaysLimit", userId, talentId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_LEADER));
     }

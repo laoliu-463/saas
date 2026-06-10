@@ -42,7 +42,7 @@ import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.CrawlerTalentInfoService;
-import com.colonel.saas.service.BusinessRuleConfigService;
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.SampleStatusLogService;
 import com.colonel.saas.service.SampleEligibilityService;
@@ -197,8 +197,8 @@ public class SampleApplicationService extends BaseController {
     /** 爬虫达人信息查询服务，用于从爬虫达人库中搜索候选达人（含粉丝数、等级等数据） */
     private final CrawlerTalentInfoService crawlerTalentInfoService;
 
-    /** 业务规则配置服务，读取可配置的业务规则参数（如寄样资格阈值、重复申请天数等） */
-    private final BusinessRuleConfigService businessRuleConfigService;
+    /** 配置域门面，读取寄样限制等可配置业务规则（DDD-CONFIG-002） */
+    private final ConfigDomainFacade configDomainFacade;
 
     /** 商品业务服务，提供商品查询、商品关键词搜索等能力 */
     private final ProductService productService;
@@ -242,7 +242,7 @@ public class SampleApplicationService extends BaseController {
      * @param sampleStatusLogService              寄样状态日志业务服务
      * @param sampleStatusLogMapper               寄样状态日志数据访问层
      * @param crawlerTalentInfoService            爬虫达人信息查询服务
-     * @param businessRuleConfigService           业务规则配置服务
+     * @param configDomainFacade                  配置域门面
      * @param productService                      商品业务服务
      * @param sampleEligibilityService            寄样资格校验服务
      * @param sampleLogisticsSyncService          物流信息同步服务
@@ -262,7 +262,7 @@ public class SampleApplicationService extends BaseController {
             SampleStatusLogService sampleStatusLogService,
             SampleStatusLogMapper sampleStatusLogMapper,
             CrawlerTalentInfoService crawlerTalentInfoService,
-            BusinessRuleConfigService businessRuleConfigService,
+            ConfigDomainFacade configDomainFacade,
             ProductService productService,
             SampleEligibilityService sampleEligibilityService,
             SampleLogisticsSyncService sampleLogisticsSyncService,
@@ -280,7 +280,7 @@ public class SampleApplicationService extends BaseController {
         this.sampleStatusLogService = sampleStatusLogService;
         this.sampleStatusLogMapper = sampleStatusLogMapper;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
-        this.businessRuleConfigService = businessRuleConfigService;
+        this.configDomainFacade = configDomainFacade;
         this.productService = productService;
         this.sampleEligibilityService = sampleEligibilityService;
         this.sampleLogisticsSyncService = sampleLogisticsSyncService;
@@ -2458,10 +2458,10 @@ public class SampleApplicationService extends BaseController {
         if (isExemptFromSevenDaysLimit(roleCodes)) {
             return;
         }
-        if (!businessRuleConfigService.isSampleRestrictEnabled()) {
+        if (!configDomainFacade.isSampleLimitEnabled()) {
             return;
         }
-        int restrictDays = businessRuleConfigService.getSampleRestrictDays();
+        int restrictDays = configDomainFacade.getSampleLimitDays();
         LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(restrictDays);
         Long count = sampleRequestMapper.selectCount(new LambdaQueryWrapper<SampleRequest>()
                 .eq(SampleRequest::getChannelUserId, userId)

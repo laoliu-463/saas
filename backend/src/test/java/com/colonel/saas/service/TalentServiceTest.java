@@ -73,6 +73,8 @@ class TalentServiceTest {
     @Mock
     private TalentEnrichOrchestrator talentEnrichOrchestrator;
     @Mock
+    private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
+    @Mock
     private BusinessRuleConfigService businessRuleConfigService;
     @Mock
     private OperationLogService operationLogService;
@@ -95,13 +97,14 @@ class TalentServiceTest {
                 redisTemplate,
                 crawlerTalentInfoService,
                 true,
+                configDomainFacade,
                 businessRuleConfigService,
                 operationLogService,
                 sysUserMapper
         );
-        when(businessRuleConfigService.getTalentProtectionDays()).thenReturn(30);
-        when(businessRuleConfigService.getTalentExclusiveRatioThreshold()).thenReturn(new java.math.BigDecimal("70"));
-        when(businessRuleConfigService.getTalentExclusiveMonthlySamples()).thenReturn(10);
+        when(configDomainFacade.getTalentClaimProtectDays()).thenReturn(30);
+        when(configDomainFacade.getExclusiveTalentFeeRatio()).thenReturn(new java.math.BigDecimal("70"));
+        when(configDomainFacade.getExclusiveTalentMonthlySamples()).thenReturn(10);
         lenient().when(businessRuleConfigService.getPresetTalentTags()).thenReturn(List.of());
         lenient().when(talentMapper.updateById(any(Talent.class))).thenReturn(1);
         lenient().when(talentClaimMapper.updateById(any(TalentClaim.class))).thenReturn(1);
@@ -450,7 +453,7 @@ class TalentServiceTest {
         talent.setDouyinUid("dy_cfg");
         talent.setDeleted(0);
 
-        when(businessRuleConfigService.getTalentProtectionDays()).thenReturn(15);
+        when(configDomainFacade.getTalentClaimProtectDays()).thenReturn(15);
         when(valueOperations.setIfAbsent(any(String.class), any(String.class), anyLong(), eq(TimeUnit.SECONDS)))
                 .thenReturn(true);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
@@ -773,6 +776,7 @@ class TalentServiceTest {
                 redisTemplate,
                 crawlerTalentInfoService,
                 false,
+                configDomainFacade,
                 businessRuleConfigService,
                 operationLogService,
                 sysUserMapper

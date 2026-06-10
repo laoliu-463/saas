@@ -7,6 +7,7 @@ import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -46,6 +47,7 @@ public class SampleLifecycleService {
     private final SampleRequestMapper sampleRequestMapper;
     private final TalentClaimMapper talentClaimMapper;
     private final SampleStatusLogService sampleStatusLogService;
+    private final ConfigDomainFacade configDomainFacade;
     private final BusinessRuleConfigService businessRuleConfigService;
     private final SampleDomainEventPublisher sampleDomainEventPublisher;
 
@@ -54,12 +56,14 @@ public class SampleLifecycleService {
             SampleRequestMapper sampleRequestMapper,
             TalentClaimMapper talentClaimMapper,
             SampleStatusLogService sampleStatusLogService,
+            ConfigDomainFacade configDomainFacade,
             BusinessRuleConfigService businessRuleConfigService,
             SampleDomainEventPublisher sampleDomainEventPublisher) {
         this.jdbcTemplate = jdbcTemplate;
         this.sampleRequestMapper = sampleRequestMapper;
         this.talentClaimMapper = talentClaimMapper;
         this.sampleStatusLogService = sampleStatusLogService;
+        this.configDomainFacade = configDomainFacade;
         this.businessRuleConfigService = businessRuleConfigService;
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
     }
@@ -149,7 +153,7 @@ public class SampleLifecycleService {
     /** 使用业务规则配置的超时天数关闭待出单寄样单。 */
     @Transactional(rollbackFor = Exception.class)
     public int autoCloseTimeoutPendingHomework() {
-        return autoCloseTimeoutPendingHomework(businessRuleConfigService.getSampleTimeoutHomeworkDays());
+        return autoCloseTimeoutPendingHomework(configDomainFacade.getSampleAutoCloseDays());
     }
 
     /** 使用业务规则配置的超时天数关闭待发货寄样单。 */

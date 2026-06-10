@@ -1,14 +1,13 @@
 package com.colonel.saas.config;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.mock.env.MockEnvironment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * DDD-BASE-001 安全开关默认值回归测试。
- *
- * <p>本测试不依赖 Spring 上下文，直接对 {@link DddRefactorProperties} 的字段默认值做断言。
- * 一旦默认值在配置类或 YAML 中被改为 {@code true}，本测试必须报错，避免有人误开线上重构开关。</p>
+ * DDD-BASE-001 safety switch default value regression tests.
  */
 class DddRefactorPropertiesTest {
 
@@ -16,40 +15,70 @@ class DddRefactorPropertiesTest {
     void defaultFlagsShouldAllBeFalse() {
         DddRefactorProperties properties = new DddRefactorProperties();
 
-        assertThat(properties.isEnabled()).isFalse();
-        assertThat(properties.getUserScope()).isNotNull();
-        assertThat(properties.getUserScope().isEnabled()).isFalse();
-        assertThat(properties.getOrderSync()).isNotNull();
-        assertThat(properties.getOrderSync().isEnabled()).isFalse();
-        assertThat(properties.getOrderAttribution()).isNotNull();
-        assertThat(properties.getOrderAttribution().isEnabled()).isFalse();
-        assertThat(properties.getPerformanceCalc()).isNotNull();
-        assertThat(properties.getPerformanceCalc().isEnabled()).isFalse();
-        assertThat(properties.getProductDisplay()).isNotNull();
-        assertThat(properties.getProductDisplay().isEnabled()).isFalse();
-        assertThat(properties.getSamplePolicy()).isNotNull();
-        assertThat(properties.getSamplePolicy().isEnabled()).isFalse();
-        assertThat(properties.getAnalytics()).isNotNull();
-        assertThat(properties.getAnalytics().isShadow()).isFalse();
+        assertAllFlagsFalse(properties);
     }
 
     @Test
-    void nestedSubFlagsShouldDefaultToFalseAfterConstruct() {
-        DddRefactorProperties.UserScope userScope = new DddRefactorProperties.UserScope();
-        DddRefactorProperties.OrderSync orderSync = new DddRefactorProperties.OrderSync();
-        DddRefactorProperties.OrderAttribution orderAttribution = new DddRefactorProperties.OrderAttribution();
-        DddRefactorProperties.PerformanceCalc performanceCalc = new DddRefactorProperties.PerformanceCalc();
-        DddRefactorProperties.ProductDisplay productDisplay = new DddRefactorProperties.ProductDisplay();
-        DddRefactorProperties.SamplePolicy samplePolicy = new DddRefactorProperties.SamplePolicy();
+    void explicitTruePropertiesShouldBindToAllFlags() {
+        MockEnvironment environment = new MockEnvironment()
+                .withProperty("ddd.refactor.enabled", "true")
+                .withProperty("ddd.refactor.user-facade.enabled", "true")
+                .withProperty("ddd.refactor.config-facade.enabled", "true")
+                .withProperty("ddd.refactor.product-facade.enabled", "true")
+                .withProperty("ddd.refactor.talent-facade.enabled", "true")
+                .withProperty("ddd.refactor.sample-application.enabled", "true")
+                .withProperty("ddd.refactor.order-application.enabled", "true")
+                .withProperty("ddd.refactor.order-attribution.enabled", "true")
+                .withProperty("ddd.refactor.order-amount-policy.enabled", "true")
+                .withProperty("ddd.refactor.performance-calc.enabled", "true")
+                .withProperty("ddd.refactor.performance-query.enabled", "true")
+                .withProperty("ddd.refactor.analytics-shadow.enabled", "true")
+                .withProperty("ddd.refactor.outbox.enabled", "true");
 
-        assertThat(userScope.isEnabled()).isFalse();
-        assertThat(orderSync.isEnabled()).isFalse();
-        assertThat(orderAttribution.isEnabled()).isFalse();
-        assertThat(performanceCalc.isEnabled()).isFalse();
-        assertThat(productDisplay.isEnabled()).isFalse();
-        assertThat(samplePolicy.isEnabled()).isFalse();
+        DddRefactorProperties properties = Binder.get(environment)
+                .bind("ddd.refactor", DddRefactorProperties.class)
+                .get();
 
-        DddRefactorProperties.Analytics analytics = new DddRefactorProperties.Analytics();
-        assertThat(analytics.isShadow()).isFalse();
+        assertThat(properties.isEnabled()).isTrue();
+        assertThat(properties.getUserFacade().isEnabled()).isTrue();
+        assertThat(properties.getConfigFacade().isEnabled()).isTrue();
+        assertThat(properties.getProductFacade().isEnabled()).isTrue();
+        assertThat(properties.getTalentFacade().isEnabled()).isTrue();
+        assertThat(properties.getSampleApplication().isEnabled()).isTrue();
+        assertThat(properties.getOrderApplication().isEnabled()).isTrue();
+        assertThat(properties.getOrderAttribution().isEnabled()).isTrue();
+        assertThat(properties.getOrderAmountPolicy().isEnabled()).isTrue();
+        assertThat(properties.getPerformanceCalc().isEnabled()).isTrue();
+        assertThat(properties.getPerformanceQuery().isEnabled()).isTrue();
+        assertThat(properties.getAnalyticsShadow().isEnabled()).isTrue();
+        assertThat(properties.getOutbox().isEnabled()).isTrue();
+    }
+
+    static void assertAllFlagsFalse(DddRefactorProperties properties) {
+        assertThat(properties.isEnabled()).isFalse();
+        assertThat(properties.getUserFacade()).isNotNull();
+        assertThat(properties.getUserFacade().isEnabled()).isFalse();
+        assertThat(properties.getConfigFacade()).isNotNull();
+        assertThat(properties.getConfigFacade().isEnabled()).isFalse();
+        assertThat(properties.getProductFacade()).isNotNull();
+        assertThat(properties.getProductFacade().isEnabled()).isFalse();
+        assertThat(properties.getTalentFacade()).isNotNull();
+        assertThat(properties.getTalentFacade().isEnabled()).isFalse();
+        assertThat(properties.getSampleApplication()).isNotNull();
+        assertThat(properties.getSampleApplication().isEnabled()).isFalse();
+        assertThat(properties.getOrderApplication()).isNotNull();
+        assertThat(properties.getOrderApplication().isEnabled()).isFalse();
+        assertThat(properties.getOrderAttribution()).isNotNull();
+        assertThat(properties.getOrderAttribution().isEnabled()).isFalse();
+        assertThat(properties.getOrderAmountPolicy()).isNotNull();
+        assertThat(properties.getOrderAmountPolicy().isEnabled()).isFalse();
+        assertThat(properties.getPerformanceCalc()).isNotNull();
+        assertThat(properties.getPerformanceCalc().isEnabled()).isFalse();
+        assertThat(properties.getPerformanceQuery()).isNotNull();
+        assertThat(properties.getPerformanceQuery().isEnabled()).isFalse();
+        assertThat(properties.getAnalyticsShadow()).isNotNull();
+        assertThat(properties.getAnalyticsShadow().isEnabled()).isFalse();
+        assertThat(properties.getOutbox()).isNotNull();
+        assertThat(properties.getOutbox().isEnabled()).isFalse();
     }
 }

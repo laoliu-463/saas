@@ -47,7 +47,7 @@ class QuickSampleApplyTest {
     @Mock private TalentClaimMapper talentClaimMapper;
     @Mock private CrawlerTalentInfoService crawlerTalentInfoService;
     @Mock private SampleEligibilityService sampleEligibilityService;
-    @Mock private BusinessRuleConfigService businessRuleConfigService;
+    @Mock private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     @Mock private SampleStatusLogService sampleStatusLogService;
     @Mock private DouyinQuickSampleGateway douyinQuickSampleGateway;
     @Mock private com.colonel.saas.domain.sample.event.SampleDomainEventPublisher sampleDomainEventPublisher;
@@ -66,7 +66,7 @@ class QuickSampleApplyTest {
                 talentClaimMapper,
                 crawlerTalentInfoService,
                 sampleEligibilityService,
-                businessRuleConfigService,
+                configDomainFacade,
                 sampleStatusLogService,
                 douyinQuickSampleGateway,
                 sampleDomainEventPublisher,
@@ -162,8 +162,8 @@ class QuickSampleApplyTest {
         when(talentMapper.selectOne(any())).thenReturn(talent);
         when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
                 .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(true);
-        when(businessRuleConfigService.getSampleRestrictDays()).thenReturn(7);
+        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(true);
+        when(configDomainFacade.getSampleLimitDays()).thenReturn(7);
         when(sampleRequestMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
@@ -208,7 +208,7 @@ class QuickSampleApplyTest {
         when(talentMapper.selectOne(any())).thenReturn(talent);
         when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
                 .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
         when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
                 new SampleEligibilityService.EligibilityResult(false, List.of("粉丝数不足"), null, null));
 
@@ -255,7 +255,7 @@ class QuickSampleApplyTest {
         when(talentMapper.selectOne(any())).thenReturn(talent);
         when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
                 .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
         when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
                 new SampleEligibilityService.EligibilityResult(true, List.of(), null, null));
         when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
@@ -312,7 +312,7 @@ class QuickSampleApplyTest {
         when(talentMapper.selectOne(any())).thenReturn(talent);
         when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
                 .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
         when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
                 new SampleEligibilityService.EligibilityResult(true, List.of(), null, null));
         when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
@@ -371,7 +371,7 @@ class QuickSampleApplyTest {
         when(talentMapper.selectOne(any())).thenReturn(manualTalent);
         when(talentClaimMapper.findActiveByTalentAndUser(manualTalent.getId(), userId))
                 .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
         when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
                 new SampleEligibilityService.EligibilityResult(true, List.of(), null, null));
         when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
@@ -427,7 +427,7 @@ class QuickSampleApplyTest {
         when(talentMapper.selectOne(any())).thenReturn(talent);
         when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
                 .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
         when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
                 new SampleEligibilityService.EligibilityResult(true, List.of(), null, null));
         when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
@@ -443,7 +443,7 @@ class QuickSampleApplyTest {
                 talentClaimMapper,
                 crawlerTalentInfoService,
                 sampleEligibilityService,
-                businessRuleConfigService,
+                configDomainFacade,
                 sampleStatusLogService,
                 douyinQuickSampleGateway,
                 sampleDomainEventPublisher,
@@ -501,7 +501,7 @@ class QuickSampleApplyTest {
         when(talentMapper.selectOne(any())).thenReturn(talent, null);
         when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
                 .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
         when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
                 new SampleEligibilityService.EligibilityResult(false, List.of("粉丝数不足"), null, null));
         when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
@@ -555,7 +555,7 @@ class QuickSampleApplyTest {
         when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
         when(talentMapper.selectOne(any())).thenReturn(talent);
         when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId)).thenReturn(claim);
-        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
         when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
                 new SampleEligibilityService.EligibilityResult(true, null, null, null));
         when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
@@ -608,7 +608,7 @@ class QuickSampleApplyTest {
         when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
         when(talentMapper.selectOne(any())).thenReturn(talent);
         when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId)).thenReturn(claim);
-        when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
         when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
                 new SampleEligibilityService.EligibilityResult(true, null, null, null));
         when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
@@ -654,7 +654,7 @@ class QuickSampleApplyTest {
         when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
         when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
         when(talentMapper.selectOne(any())).thenReturn(talent);
-        org.mockito.Mockito.lenient().when(businessRuleConfigService.isSampleRestrictEnabled()).thenReturn(false);
+        org.mockito.Mockito.lenient().when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
         org.mockito.Mockito.lenient().when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
                 new SampleEligibilityService.EligibilityResult(true, null, null, null));
         when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);

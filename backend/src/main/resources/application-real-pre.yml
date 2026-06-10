@@ -83,17 +83,27 @@ debug: false
 ddd:
   refactor:
     enabled: ${DDD_REFACTOR_ENABLED:false}
-    user-scope:
-      enabled: ${DDD_REFACTOR_USER_SCOPE_ENABLED:false}
-    order-sync:
-      enabled: ${DDD_REFACTOR_ORDER_SYNC_ENABLED:false}
+    user-facade:
+      enabled: ${DDD_REFACTOR_USER_FACADE_ENABLED:false}
+    config-facade:
+      enabled: ${DDD_REFACTOR_CONFIG_FACADE_ENABLED:false}
+    product-facade:
+      enabled: ${DDD_REFACTOR_PRODUCT_FACADE_ENABLED:false}
+    talent-facade:
+      enabled: ${DDD_REFACTOR_TALENT_FACADE_ENABLED:false}
+    sample-application:
+      enabled: ${DDD_REFACTOR_SAMPLE_APPLICATION_ENABLED:false}
+    order-application:
+      enabled: ${DDD_REFACTOR_ORDER_APPLICATION_ENABLED:false}
     order-attribution:
       enabled: ${DDD_REFACTOR_ORDER_ATTRIBUTION_ENABLED:false}
+    order-amount-policy:
+      enabled: ${DDD_REFACTOR_ORDER_AMOUNT_POLICY_ENABLED:false}
     performance-calc:
       enabled: ${DDD_REFACTOR_PERFORMANCE_CALC_ENABLED:false}
-    product-display:
-      enabled: ${DDD_REFACTOR_PRODUCT_DISPLAY_ENABLED:false}
-    sample-policy:
-      enabled: ${DDD_REFACTOR_SAMPLE_POLICY_ENABLED:false}
-    analytics:
-      shadow: ${DDD_REFACTOR_ANALYTICS_SHADOW:false}
+    performance-query:
+      enabled: ${DDD_REFACTOR_PERFORMANCE_QUERY_ENABLED:false}
+    analytics-shadow:
+      enabled: ${DDD_REFACTOR_ANALYTICS_SHADOW_ENABLED:false}
+    outbox:
+      enabled: ${DDD_REFACTOR_OUTBOX_ENABLED:false}

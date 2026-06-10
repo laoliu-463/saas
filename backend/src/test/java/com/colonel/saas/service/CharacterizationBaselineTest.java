@@ -14,10 +14,18 @@ import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.testsupport.BaseIntegrationTest;
 import com.colonel.saas.testsupport.DockerAvailable;
 import com.colonel.saas.testsupport.TestDataService;
+import com.colonel.saas.controller.SampleController;
+import com.colonel.saas.controller.DataController;
+import com.colonel.saas.dto.sample.SampleBatchActionRequest;
+import com.colonel.saas.common.exception.ForbiddenException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.List;
 import java.util.Map;
@@ -62,10 +70,41 @@ class CharacterizationBaselineTest extends BaseIntegrationTest {
     private OrderQueryService orderQueryService;
 
     @Autowired
+    private SampleController sampleController;
+
+    @Autowired
+    private DataController dataController;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void seedUsersDeptsAndRoles() {
+        // 0. Ensure talent_follow_record table is present
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS talent_follow_record (
+                    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    product_id       VARCHAR(64) NOT NULL,
+                    activity_id      VARCHAR(64),
+                    talent_id        UUID,
+                    talent_name      VARCHAR(255),
+                    follow_status    VARCHAR(64),
+                    content          TEXT,
+                    next_follow_time TIMESTAMP,
+                    operator_id      UUID,
+                    operator_name    VARCHAR(255),
+                    user_id          UUID,
+                    follow_time      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    unfollow_time    TIMESTAMP,
+                    status           VARCHAR(16) DEFAULT 'ACTIVE',
+                    create_time      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_time      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    create_by        UUID,
+                    update_by        UUID,
+                    deleted          SMALLINT NOT NULL DEFAULT 0
+                )
+                """);
+
         // 1. Insert departments
         jdbcTemplate.update("INSERT INTO sys_dept (id, dept_code, dept_name, status, deleted) VALUES (?, ?, ?, 1, 0) ON CONFLICT (dept_code) DO NOTHING",
                 UUID.fromString("11111111-1111-1111-1111-111111111111"), "biz", "招商部");
@@ -75,6 +114,7 @@ class CharacterizationBaselineTest extends BaseIntegrationTest {
                 UUID.fromString("33333333-3333-3333-3333-333333333333"), "ops", "运营部");
 
         // 2. Insert roles
+        insertRole(UUID.fromString("88888888-8888-8888-8888-888888888800"), "admin", "管理员", 3);
         insertRole(UUID.fromString("88888888-8888-8888-8888-888888888801"), "channel_leader", "渠道组长", 2);
         insertRole(UUID.fromString("88888888-8888-8888-8888-888888888802"), "channel_staff", "渠道专员", 1);
         insertRole(UUID.fromString("88888888-8888-8888-8888-888888888803"), "biz_leader", "招商组长", 2);
@@ -82,12 +122,14 @@ class CharacterizationBaselineTest extends BaseIntegrationTest {
         insertRole(UUID.fromString("88888888-8888-8888-8888-888888888805"), "ops_staff", "运营", 1);
 
         // 3. Insert users
+        UUID adminId = UUID.nameUUIDFromBytes("admin".getBytes());
         UUID channelLeaderId = UUID.nameUUIDFromBytes("channel_leader".getBytes());
         UUID channelStaffId = UUID.nameUUIDFromBytes("channel_staff".getBytes());
         UUID bizLeaderId = UUID.nameUUIDFromBytes("biz_leader".getBytes());
         UUID bizStaffId = UUID.nameUUIDFromBytes("biz_staff".getBytes());
         UUID opsStaffId = UUID.nameUUIDFromBytes("ops_staff".getBytes());
 
+        insertUser(adminId, "admin", "管理员", "admin", null);
         insertUser(channelLeaderId, "channel_leader", "渠道组长", "ch_lead", UUID.fromString("22222222-2222-2222-2222-222222222222"));
         insertUser(channelStaffId, "channel_staff", "渠道组员", "ch_staff", UUID.fromString("22222222-2222-2222-2222-222222222222"));
         insertUser(bizLeaderId, "biz_leader", "招商组长", "biz_lead", UUID.fromString("11111111-1111-1111-1111-111111111111"));
@@ -95,6 +137,7 @@ class CharacterizationBaselineTest extends BaseIntegrationTest {
         insertUser(opsStaffId, "ops_staff", "运营组员", "ops_staff", UUID.fromString("33333333-3333-3333-3333-333333333333"));
 
         // 4. Map user roles
+        bindUserRole(adminId, "admin");
         bindUserRole(channelLeaderId, "channel_leader");
         bindUserRole(channelStaffId, "channel_staff");
         bindUserRole(bizLeaderId, "biz_leader");
@@ -489,5 +532,168 @@ class CharacterizationBaselineTest extends BaseIntegrationTest {
         // asymmetry check: estimate != effective in this case
         assertThat(effRecord.getEstimateServiceProfit())
                 .isNotEqualTo(effRecord.getEffectiveServiceProfit());
+    }
+
+    @Test
+    void test11_UserDataScopeResolutionCharacterizationBaseline() {
+        testDataService.seedAll(false);
+
+        // Retrieve seeded user IDs and department IDs
+        UUID adminId = UUID.nameUUIDFromBytes("admin".getBytes());
+        UUID channelLeaderId = UUID.nameUUIDFromBytes("channel_leader".getBytes());
+        UUID channelStaffId = UUID.nameUUIDFromBytes("channel_staff".getBytes());
+        UUID bizLeaderId = UUID.nameUUIDFromBytes("biz_leader".getBytes());
+        UUID bizStaffId = UUID.nameUUIDFromBytes("biz_staff".getBytes());
+        UUID opsStaffId = UUID.nameUUIDFromBytes("ops_staff".getBytes());
+
+        UUID channelDeptId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        UUID bizDeptId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        UUID opsDeptId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+
+        // 1. Admin (ALL scope, code=3)
+        CurrentUserResponse adminResp = userDomainService.getCurrentUser(
+                adminId, null, DataScope.ALL, List.of(RoleCodes.ADMIN));
+        assertThat(adminResp.dataScope()).isEqualTo(3);
+        assertThat(adminResp.dataScopeName()).isEqualTo("all");
+        var adminScope = userDomainService.getUserDataScope(adminId, null, DataScope.ALL);
+        assertThat(adminScope.scope()).isEqualTo("all");
+        assertThat(adminScope.userIds()).isEmpty();
+
+        // 2. Channel Leader (DEPT scope, code=2)
+        CurrentUserResponse chLeaderResp = userDomainService.getCurrentUser(
+                channelLeaderId, channelDeptId, DataScope.DEPT, List.of(RoleCodes.CHANNEL_LEADER));
+        assertThat(chLeaderResp.dataScope()).isEqualTo(2);
+        assertThat(chLeaderResp.dataScopeName()).isEqualTo("group");
+        var chLeaderScope = userDomainService.getUserDataScope(channelLeaderId, channelDeptId, DataScope.DEPT);
+        assertThat(chLeaderScope.scope()).isEqualTo("group");
+        assertThat(chLeaderScope.userIds()).contains(channelLeaderId, channelStaffId);
+
+        // 3. Channel Staff (PERSONAL scope, code=1)
+        CurrentUserResponse chStaffResp = userDomainService.getCurrentUser(
+                channelStaffId, channelDeptId, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
+        assertThat(chStaffResp.dataScope()).isEqualTo(1);
+        assertThat(chStaffResp.dataScopeName()).isEqualTo("self");
+        var chStaffScope = userDomainService.getUserDataScope(channelStaffId, channelDeptId, DataScope.PERSONAL);
+        assertThat(chStaffScope.scope()).isEqualTo("self");
+        assertThat(chStaffScope.userIds()).containsExactly(channelStaffId);
+
+        // 4. Biz Leader (DEPT scope, code=2)
+        CurrentUserResponse bizLeaderResp = userDomainService.getCurrentUser(
+                bizLeaderId, bizDeptId, DataScope.DEPT, List.of(RoleCodes.BIZ_LEADER));
+        assertThat(bizLeaderResp.dataScope()).isEqualTo(2);
+        assertThat(bizLeaderResp.dataScopeName()).isEqualTo("group");
+        var bizLeaderScope = userDomainService.getUserDataScope(bizLeaderId, bizDeptId, DataScope.DEPT);
+        assertThat(bizLeaderScope.scope()).isEqualTo("group");
+        assertThat(bizLeaderScope.userIds()).contains(bizLeaderId, bizStaffId);
+
+        // 5. Biz Staff (PERSONAL scope, code=1)
+        CurrentUserResponse bizStaffResp = userDomainService.getCurrentUser(
+                bizStaffId, bizDeptId, DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
+        assertThat(bizStaffResp.dataScope()).isEqualTo(1);
+        assertThat(bizStaffResp.dataScopeName()).isEqualTo("self");
+        var bizStaffScope = userDomainService.getUserDataScope(bizStaffId, bizDeptId, DataScope.PERSONAL);
+        assertThat(bizStaffScope.scope()).isEqualTo("self");
+        assertThat(bizStaffScope.userIds()).containsExactly(bizStaffId);
+
+        // 6. Ops Staff (ALL scope, code=3 - because ops_staff maps to ALL)
+        CurrentUserResponse opsStaffResp = userDomainService.getCurrentUser(
+                opsStaffId, opsDeptId, DataScope.PERSONAL, List.of(RoleCodes.OPS_STAFF));
+        assertThat(opsStaffResp.dataScope()).isEqualTo(3);
+        assertThat(opsStaffResp.dataScopeName()).isEqualTo("all");
+    }
+
+    @Test
+    void test12_ProductDetailsCharacterizationBaseline() {
+        testDataService.seedAll(false);
+
+        Map<String, Object> detail = productService.getActivityProductDetail("TEST_ACTIVITY_A", "10901825");
+        assertThat(detail).isNotNull();
+        assertThat(detail.get("productId")).isEqualTo("10901825");
+        assertThat(detail.get("activityId")).isEqualTo("TEST_ACTIVITY_A");
+        assertThat(detail.get("title")).isNotNull();
+        assertThat(detail.get("price")).isNotNull();
+        assertThat(detail.get("followRecords")).isNotNull();
+        assertThat(detail.get("auditSupplement")).isNotNull();
+        assertThat(detail.get("promotionLinks")).isNotNull();
+        assertThat(detail.get("promotionMaterialPack")).isNotNull();
+    }
+
+    @Test
+    void test13_SampleStatesRefinedCharacterizationBaseline() {
+        testDataService.seedAll(false);
+
+        UUID bizStaffId = UUID.nameUUIDFromBytes("biz_staff".getBytes());
+        UUID bizDeptId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+
+        // Bind mock HttpServletRequest for RoleGuardAspect
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setAttribute("roleCodes", List.of(RoleCodes.BIZ_STAFF));
+        request.setAttribute("userId", bizStaffId);
+        request.setAttribute("deptId", bizDeptId);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        try {
+            SampleBatchActionRequest batchReq = new SampleBatchActionRequest();
+            batchReq.setRequestNos(List.of("TEST-SAMPLE-PENDING-REVIEW-001"));
+            batchReq.setRemark("拒绝测试");
+
+            var result = sampleController.batchReject(batchReq, bizStaffId, bizDeptId, DataScope.ALL, List.of(RoleCodes.BIZ_STAFF));
+            assertThat(result).isNotNull();
+            assertThat(result.getData()).isNotNull();
+            assertThat(result.getData().get("success")).isEqualTo(1);
+            assertThat(result.getData().get("fail")).isEqualTo(0);
+
+            // Assert DB status changed to REJECTED (status code = 7)
+            Integer status = jdbcTemplate.queryForObject(
+                    "SELECT status FROM sample_request WHERE request_no = 'TEST-SAMPLE-PENDING-REVIEW-001'", Integer.class);
+            assertThat(status).isEqualTo(7); // 7 represents REJECTED status
+            String rejectReason = jdbcTemplate.queryForObject(
+                    "SELECT reject_reason FROM sample_request WHERE request_no = 'TEST-SAMPLE-PENDING-REVIEW-001'", String.class);
+            assertThat(rejectReason).isEqualTo("拒绝测试");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
+    void test14_DataExportPermissionsCharacterizationBaseline() {
+        testDataService.seedAll(false);
+
+        UUID channelLeaderId = UUID.nameUUIDFromBytes("channel_leader".getBytes());
+        UUID channelStaffId = UUID.nameUUIDFromBytes("channel_staff".getBytes());
+        UUID channelDeptId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+
+        // 1. Channel Staff: Should fail with ForbiddenException (无权限访问该接口)
+        MockHttpServletRequest requestStaff = new MockHttpServletRequest();
+        requestStaff.setAttribute("roleCodes", List.of(RoleCodes.CHANNEL_STAFF));
+        requestStaff.setAttribute("userId", channelStaffId);
+        requestStaff.setAttribute("deptId", channelDeptId);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(requestStaff));
+
+        try {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> {
+                dataController.exportOrders(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, channelStaffId, channelDeptId, DataScope.PERSONAL, response);
+            }).isInstanceOf(ForbiddenException.class);
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+
+        // 2. Channel Leader: Should pass role check and proceed (which might succeed or throw other DB-related errors, but not ForbiddenException)
+        MockHttpServletRequest requestLeader = new MockHttpServletRequest();
+        requestLeader.setAttribute("roleCodes", List.of(RoleCodes.CHANNEL_LEADER));
+        requestLeader.setAttribute("userId", channelLeaderId);
+        requestLeader.setAttribute("deptId", channelDeptId);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(requestLeader));
+
+        try {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            dataController.exportOrders(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, channelLeaderId, channelDeptId, DataScope.DEPT, response);
+            assertThat(response.getStatus()).isEqualTo(200);
+        } catch (Exception e) {
+            assertThat(e).isNotInstanceOf(ForbiddenException.class);
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
     }
 }

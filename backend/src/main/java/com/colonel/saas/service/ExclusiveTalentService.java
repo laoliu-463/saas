@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.entity.ExclusiveTalent;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
@@ -47,18 +48,6 @@ import java.util.UUID;
 @Service
 public class ExclusiveTalentService {
 
-    /** 系统配置键：达人独家服务费比例阈值 */
-    private static final String KEY_RATIO_THRESHOLD = "talent.exclusive.service_fee_ratio";
-
-    /** 系统配置键：达人独家月寄样数量阈值 */
-    private static final String KEY_SAMPLE_THRESHOLD = "talent.exclusive.monthly_samples";
-
-    /** 默认服务费比例阈值：70% */
-    private static final BigDecimal DEFAULT_RATIO_THRESHOLD = new BigDecimal("70");
-
-    /** 默认月寄样数量阈值：10 件 */
-    private static final int DEFAULT_SAMPLE_THRESHOLD = 10;
-
     /** 月份格式化器，用于格式化 "yyyy-MM" */
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
 
@@ -71,13 +60,18 @@ public class ExclusiveTalentService {
     /** 达人 Mapper，用于解析达人 UID 到 talentId */
     private final TalentMapper talentMapper;
 
+    /** 配置域门面，读取独家达人判定阈值（DDD-CONFIG-002） */
+    private final ConfigDomainFacade configDomainFacade;
+
     public ExclusiveTalentService(
             JdbcTemplate jdbcTemplate,
             ExclusiveTalentMapper exclusiveTalentMapper,
-            TalentMapper talentMapper) {
+            TalentMapper talentMapper,
+            ConfigDomainFacade configDomainFacade) {
         this.jdbcTemplate = jdbcTemplate;
         this.exclusiveTalentMapper = exclusiveTalentMapper;
         this.talentMapper = talentMapper;
+        this.configDomainFacade = configDomainFacade;
     }
 
     /**
@@ -114,8 +108,8 @@ public class ExclusiveTalentService {
         LocalDateTime end = statsMonth.plusMonths(1).atDay(1).atStartOfDay();
 
         // 第一步：加载双阈值配置
-        BigDecimal ratioThreshold = loadDecimalConfig(KEY_RATIO_THRESHOLD, DEFAULT_RATIO_THRESHOLD);
-        int sampleThreshold = loadIntConfig(KEY_SAMPLE_THRESHOLD, DEFAULT_SAMPLE_THRESHOLD);
+        BigDecimal ratioThreshold = configDomainFacade.getExclusiveTalentFeeRatio();
+        int sampleThreshold = configDomainFacade.getExclusiveTalentMonthlySamples();
         // 第二步：查询每位达人的总服务费收入
         Map<String, Long> totalFeeByTalent = loadTalentTotalServiceFee(start, end);
         // 第三步：查询每个渠道-达人组合的服务费收入
@@ -298,38 +292,6 @@ public class ExclusiveTalentService {
             }
         }, start, end);
         return result;
-    }
-
-    /**
-     * 从 system_config 表加载指定键的 BigDecimal 配置值，读取失败或为空时返回默认值。
-     */
-    private BigDecimal loadDecimalConfig(String key, BigDecimal defaultValue) {
-        try {
-            String sql = "SELECT config_value FROM system_config WHERE config_key = ? AND deleted = 0 LIMIT 1";
-            String value = jdbcTemplate.query(sql, rs -> rs.next() ? rs.getString(1) : null, key);
-            if (!StringUtils.hasText(value)) {
-                return defaultValue;
-            }
-            return new BigDecimal(value.trim());
-        } catch (Exception ex) {
-            return defaultValue;
-        }
-    }
-
-    /**
-     * 从 system_config 表加载指定键的 int 配置值，读取失败或为空时返回默认值。
-     */
-    private int loadIntConfig(String key, int defaultValue) {
-        try {
-            String sql = "SELECT config_value FROM system_config WHERE config_key = ? AND deleted = 0 LIMIT 1";
-            String value = jdbcTemplate.query(sql, rs -> rs.next() ? rs.getString(1) : null, key);
-            if (!StringUtils.hasText(value)) {
-                return defaultValue;
-            }
-            return Integer.parseInt(value.trim());
-        } catch (Exception ex) {
-            return defaultValue;
-        }
     }
 
     /**

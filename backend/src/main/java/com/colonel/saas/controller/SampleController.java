@@ -124,7 +124,7 @@ public class SampleController extends SampleApplicationService {
             SampleStatusLogService sampleStatusLogService,
             SampleStatusLogMapper sampleStatusLogMapper,
             CrawlerTalentInfoService crawlerTalentInfoService,
-            BusinessRuleConfigService businessRuleConfigService,
+            com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
             ProductService productService,
             SampleEligibilityService sampleEligibilityService,
             SampleLogisticsSyncService sampleLogisticsSyncService,
@@ -132,7 +132,7 @@ public class SampleController extends SampleApplicationService {
             SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService,
             SampleDomainEventPublisher sampleDomainEventPublisher,
             SampleWriteTransactionService sampleWriteTransactionService) {
-        super(sampleRequestMapper, productMapper, productOperationStateMapper, productSnapshotMapper, sysUserMapper, talentMapper, talentClaimMapper, sampleStatusLogService, sampleStatusLogMapper, crawlerTalentInfoService, businessRuleConfigService, productService, sampleEligibilityService, sampleLogisticsSyncService, sampleLogisticsImportService, sampleLogisticsSubscriptionService, sampleDomainEventPublisher, sampleWriteTransactionService);
+        super(sampleRequestMapper, productMapper, productOperationStateMapper, productSnapshotMapper, sysUserMapper, talentMapper, talentClaimMapper, sampleStatusLogService, sampleStatusLogMapper, crawlerTalentInfoService, configDomainFacade, productService, sampleEligibilityService, sampleLogisticsSyncService, sampleLogisticsImportService, sampleLogisticsSubscriptionService, sampleDomainEventPublisher, sampleWriteTransactionService);
     }
 
     @PostMapping

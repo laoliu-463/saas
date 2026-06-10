@@ -53,8 +53,8 @@ public class OrderSyncedEventListener {
     private final ShortTtlCacheService shortTtlCacheService;
     /** 达人认领 Mapper */
     private final TalentClaimMapper talentClaimMapper;
-    /** 业务规则配置服务，读取保护期天数 */
-    private final BusinessRuleConfigService businessRuleConfigService;
+    /** 配置域门面，读取达人保护期天数（DDD-CONFIG-002） */
+    private final com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
 
     /**
      * 构造函数，注入依赖。
@@ -62,17 +62,17 @@ public class OrderSyncedEventListener {
      * @param summaryService 仪表盘业绩汇总服务
      * @param shortTtlCacheService 短 TTL 缓存服务
      * @param talentClaimMapper 达人认领 Mapper
-     * @param businessRuleConfigService 业务规则配置服务
+     * @param configDomainFacade 配置域门面
      */
     public OrderSyncedEventListener(
             DashboardPerformanceSummaryService summaryService,
             ShortTtlCacheService shortTtlCacheService,
             TalentClaimMapper talentClaimMapper,
-            BusinessRuleConfigService businessRuleConfigService) {
+            com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade) {
         this.summaryService = summaryService;
         this.shortTtlCacheService = shortTtlCacheService;
         this.talentClaimMapper = talentClaimMapper;
-        this.businessRuleConfigService = businessRuleConfigService;
+        this.configDomainFacade = configDomainFacade;
     }
 
     /**
@@ -136,7 +136,7 @@ public class OrderSyncedEventListener {
             return;
         }
         // 读取配置的保护期天数，计算新的保护截止时间
-        int protectDays = businessRuleConfigService.getTalentProtectionDays();
+        int protectDays = configDomainFacade.getTalentClaimProtectDays();
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime newProtectedUntil = now.plusDays(protectDays);
 

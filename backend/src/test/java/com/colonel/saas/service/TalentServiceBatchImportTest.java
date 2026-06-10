@@ -45,6 +45,8 @@ class TalentServiceBatchImportTest {
     @Mock
     private CrawlerTalentInfoService crawlerTalentInfoService;
     @Mock
+    private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
+    @Mock
     private BusinessRuleConfigService businessRuleConfigService;
     @Mock
     private OperationLogService operationLogService;
@@ -65,6 +67,7 @@ class TalentServiceBatchImportTest {
                 redisTemplate,
                 crawlerTalentInfoService,
                 false,
+                configDomainFacade,
                 businessRuleConfigService,
                 operationLogService,
                 sysUserMapper);

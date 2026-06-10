@@ -104,8 +104,8 @@ public class ProductQuickSampleService {
     private final CrawlerTalentInfoService crawlerTalentInfoService;
     /** 达人资质评估服务，用于判断达人是否满足寄样标准 */
     private final SampleEligibilityService sampleEligibilityService;
-    /** 业务规则配置服务，用于获取去重天数等动态配置 */
-    private final BusinessRuleConfigService businessRuleConfigService;
+    /** 配置域门面，用于获取寄样去重等动态配置（DDD-CONFIG-002） */
+    private final com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     /** 寄样状态日志服务，用于记录状态变更 */
     private final SampleStatusLogService sampleStatusLogService;
     /** 抖店快速寄样网关，用于调用外部抖店寄样 API */
@@ -126,7 +126,7 @@ public class ProductQuickSampleService {
      * @param talentClaimMapper             达人认领 Mapper
      * @param crawlerTalentInfoService      爬虫达人信息服务
      * @param sampleEligibilityService      达人资质评估服务
-     * @param businessRuleConfigService     业务规则配置服务
+     * @param configDomainFacade            配置域门面
      * @param sampleStatusLogService        寄样状态日志服务
      * @param douyinQuickSampleGateway      抖店快速寄样网关
      * @param sampleDomainEventPublisher    寄样领域事件发布器
@@ -142,7 +142,7 @@ public class ProductQuickSampleService {
             TalentClaimMapper talentClaimMapper,
             CrawlerTalentInfoService crawlerTalentInfoService,
             SampleEligibilityService sampleEligibilityService,
-            BusinessRuleConfigService businessRuleConfigService,
+            com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
             SampleStatusLogService sampleStatusLogService,
             DouyinQuickSampleGateway douyinQuickSampleGateway,
             SampleDomainEventPublisher sampleDomainEventPublisher,
@@ -156,7 +156,7 @@ public class ProductQuickSampleService {
         this.talentClaimMapper = talentClaimMapper;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
         this.sampleEligibilityService = sampleEligibilityService;
-        this.businessRuleConfigService = businessRuleConfigService;
+        this.configDomainFacade = configDomainFacade;
         this.sampleStatusLogService = sampleStatusLogService;
         this.douyinQuickSampleGateway = douyinQuickSampleGateway;
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
@@ -539,10 +539,10 @@ public class ProductQuickSampleService {
             return;
         }
         /* 去重功能可通过配置关闭 */
-        if (!businessRuleConfigService.isSampleRestrictEnabled()) {
+        if (!configDomainFacade.isSampleLimitEnabled()) {
             return;
         }
-        int restrictDays = businessRuleConfigService.getSampleRestrictDays();
+        int restrictDays = configDomainFacade.getSampleLimitDays();
         LocalDateTime since = LocalDateTime.now().minusDays(restrictDays);
         Long count = sampleRequestMapper.selectCount(new LambdaQueryWrapper<SampleRequest>()
                 .eq(SampleRequest::getChannelUserId, userId)

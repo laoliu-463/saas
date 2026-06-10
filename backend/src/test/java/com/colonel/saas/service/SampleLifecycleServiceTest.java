@@ -52,6 +52,8 @@ class SampleLifecycleServiceTest {
     @Mock
     private SampleStatusLogService sampleStatusLogService;
     @Mock
+    private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
+    @Mock
     private BusinessRuleConfigService businessRuleConfigService;
     @Mock
     private TalentClaimMapper talentClaimMapper;
@@ -65,6 +67,7 @@ class SampleLifecycleServiceTest {
                 sampleRequestMapper,
                 talentClaimMapper,
                 sampleStatusLogService,
+                configDomainFacade,
                 businessRuleConfigService,
                 org.mockito.Mockito.mock(com.colonel.saas.domain.sample.event.SampleDomainEventPublisher.class));
         lenient().when(jdbcTemplate.batchUpdate(
@@ -196,7 +199,7 @@ class SampleLifecycleServiceTest {
         assertThat(service.completePendingHomeworkByOrder(null)).isZero();
         assertThat(service.completePendingHomeworkByOrder(missingOwner)).isZero();
         assertThat(service.completePendingHomeworkByOrder(blankProduct)).isZero();
-        verifyNoInteractions(jdbcTemplate, sampleRequestMapper, talentClaimMapper, sampleStatusLogService, businessRuleConfigService);
+        verifyNoInteractions(jdbcTemplate, sampleRequestMapper, talentClaimMapper, sampleStatusLogService, configDomainFacade, businessRuleConfigService);
     }
 
     @Test
@@ -362,7 +365,7 @@ class SampleLifecycleServiceTest {
 
     @Test
     void autoCloseTimeoutPendingHomework_shouldUseConfiguredTimeout() {
-        when(businessRuleConfigService.getSampleTimeoutHomeworkDays()).thenReturn(12);
+        when(configDomainFacade.getSampleAutoCloseDays()).thenReturn(12);
         when(jdbcTemplate.query(
                 anyString(),
                 org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<UUID>>any(),
@@ -372,7 +375,7 @@ class SampleLifecycleServiceTest {
         int closed = service.autoCloseTimeoutPendingHomework();
 
         assertThat(closed).isZero();
-        verify(businessRuleConfigService).getSampleTimeoutHomeworkDays();
+        verify(configDomainFacade).getSampleAutoCloseDays();
     }
 
     @Test

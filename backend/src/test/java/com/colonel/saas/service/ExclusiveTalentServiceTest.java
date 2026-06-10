@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.entity.ExclusiveTalent;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
@@ -17,6 +18,7 @@ import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
@@ -41,25 +43,22 @@ class ExclusiveTalentServiceTest {
     private ExclusiveTalentMapper exclusiveTalentMapper;
     @Mock
     private TalentMapper talentMapper;
+    @Mock
+    private ConfigDomainFacade configDomainFacade;
 
     private ExclusiveTalentService service;
 
     @BeforeEach
     void setUp() {
-        service = new ExclusiveTalentService(jdbcTemplate, exclusiveTalentMapper, talentMapper);
+        service = new ExclusiveTalentService(jdbcTemplate, exclusiveTalentMapper, talentMapper, configDomainFacade);
         Talent talent = new Talent();
         talent.setId(UUID.randomUUID());
         when(talentMapper.selectOne(any())).thenReturn(talent);
     }
 
-    private static final String KEY_RATIO = "talent.exclusive.service_fee_ratio";
-    private static final String KEY_SAMPLES = "talent.exclusive.monthly_samples";
-
     private void stubConfig(String ratioValue, String samplesValue) {
-        doReturn(ratioValue).when(jdbcTemplate)
-                .query(anyString(), any(ResultSetExtractor.class), eq(KEY_RATIO));
-        doReturn(samplesValue).when(jdbcTemplate)
-                .query(anyString(), any(ResultSetExtractor.class), eq(KEY_SAMPLES));
+        when(configDomainFacade.getExclusiveTalentFeeRatio()).thenReturn(new BigDecimal(ratioValue));
+        when(configDomainFacade.getExclusiveTalentMonthlySamples()).thenReturn(Integer.parseInt(samplesValue));
     }
 
     @Test
@@ -207,22 +206,21 @@ class ExclusiveTalentServiceTest {
     }
 
     @Test
-    void evaluateMonth_shouldUseDefaultThresholdsOnConfigError() {
+    void evaluateMonth_shouldUseFacadeThresholdsWhenConfigured() {
         YearMonth stats = YearMonth.of(2024, 6);
         YearMonth apply = YearMonth.of(2024, 7);
         LocalDateTime start = stats.atDay(1).atStartOfDay();
         LocalDateTime end = stats.plusMonths(1).atDay(1).atStartOfDay();
 
-        // Config throws → defaults used (ratio=70, samples=10)
-        doThrow(new RuntimeException("db error")).when(jdbcTemplate)
-                .query(anyString(), any(ResultSetExtractor.class), eq(KEY_RATIO));
-        doThrow(new RuntimeException("db error")).when(jdbcTemplate)
-                .query(anyString(), any(ResultSetExtractor.class), eq(KEY_SAMPLES));
+        when(configDomainFacade.getExclusiveTalentFeeRatio()).thenReturn(new BigDecimal("70"));
+        when(configDomainFacade.getExclusiveTalentMonthlySamples()).thenReturn(10);
         stubDataQuery(start, end);
 
         int result = service.evaluateMonth(stats, apply);
 
         assertThat(result).isZero();
+        verify(configDomainFacade).getExclusiveTalentFeeRatio();
+        verify(configDomainFacade).getExclusiveTalentMonthlySamples();
     }
 
     @Test

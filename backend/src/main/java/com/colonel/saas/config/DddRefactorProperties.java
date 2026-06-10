@@ -5,39 +5,43 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * DDD 渐进式重构安全开关（DDD-BASE-001）。
- * <p>
- * 本类用于将 {@code ddd.refactor.*} 配置项绑定为类型安全的 Spring Bean。
- * 所有开关在默认配置下全部为 {@code false}，意味着线上行为不会发生任何变化。
- * </p>
+ * DDD refactor safety switches (DDD-BASE-001).
  *
- * <p>使用原则：</p>
- * <ul>
- *   <li>开关未开启时，新旧实现路径保持完全一致；不允许出现"开启后行为偏差"</li>
- *   <li>每个子开关对应一个领域重构点：仅当该领域任务通过 ADR 评审后才允许打开</li>
- *   <li>任意一个子开关关闭时，对应领域的实现路径必须回退到重构前的旧实现</li>
- *   <li>本类不持有任何业务字段，只承载开关，禁止往里塞运行时数据</li>
- * </ul>
+ * <p>This bean only binds {@code ddd.refactor.*} configuration values. It does not
+ * select an implementation path by itself, so adding the bean must not change any
+ * current business behavior.</p>
  *
- * <p>配置示例（application.yml）：</p>
+ * <p>All switches default to {@code false}. Future DDD tasks may read these flags
+ * after their own protection tests are in place.</p>
+ *
  * <pre>
  * ddd:
  *   refactor:
  *     enabled: false
- *     user-scope:
+ *     user-facade:
+ *       enabled: false
+ *     config-facade:
+ *       enabled: false
+ *     product-facade:
+ *       enabled: false
+ *     talent-facade:
+ *       enabled: false
+ *     sample-application:
+ *       enabled: false
+ *     order-application:
  *       enabled: false
  *     order-attribution:
  *       enabled: false
+ *     order-amount-policy:
+ *       enabled: false
  *     performance-calc:
  *       enabled: false
- *     product-display:
+ *     performance-query:
  *       enabled: false
- *     order-sync:
+ *     analytics-shadow:
  *       enabled: false
- *     sample-policy:
+ *     outbox:
  *       enabled: false
- *     analytics:
- *       shadow: false
  * </pre>
  */
 @Data
@@ -46,70 +50,37 @@ import org.springframework.stereotype.Component;
 public class DddRefactorProperties {
 
     /**
-     * 重构总开关。关闭时所有子开关即使打开也不生效。
+     * Root refactor switch. It is intentionally passive in DDD-BASE-001.
      */
     private boolean enabled = false;
 
-    /** 用户域 self / group / all 数据范围重构开关 */
-    private UserScope userScope = new UserScope();
+    private Switch userFacade = new Switch();
 
-    /** 订单同步应用层重构开关 */
-    private OrderSync orderSync = new OrderSync();
+    private Switch configFacade = new Switch();
 
-    /** 订单 / 业绩归属与冲正重构开关 */
-    private OrderAttribution orderAttribution = new OrderAttribution();
+    private Switch productFacade = new Switch();
 
-    /** 业绩域提成与双轨金额计算重构开关 */
-    private PerformanceCalc performanceCalc = new PerformanceCalc();
+    private Switch talentFacade = new Switch();
 
-    /** 商品域转链与展示层重构开关 */
-    private ProductDisplay productDisplay = new ProductDisplay();
+    private Switch sampleApplication = new Switch();
 
-    /** 寄样域策略与状态机重构开关 */
-    private SamplePolicy samplePolicy = new SamplePolicy();
+    private Switch orderApplication = new Switch();
 
-    /** 分析模块 shadow 对账开关（仅后台对比，不影响用户可见数据） */
-    private Analytics analytics = new Analytics();
+    private Switch orderAttribution = new Switch();
 
-    /** 用户域 self / group / all 数据范围子开关。 */
+    private Switch orderAmountPolicy = new Switch();
+
+    private Switch performanceCalc = new Switch();
+
+    private Switch performanceQuery = new Switch();
+
+    private Switch analyticsShadow = new Switch();
+
+    private Switch outbox = new Switch();
+
+    /** A nested switch bound from keys such as {@code ddd.refactor.user-facade.enabled}. */
     @Data
-    public static class UserScope {
+    public static class Switch {
         private boolean enabled = false;
-    }
-
-    /** 订单同步应用层子开关。 */
-    @Data
-    public static class OrderSync {
-        private boolean enabled = false;
-    }
-
-    /** 订单 / 业绩归属子开关。 */
-    @Data
-    public static class OrderAttribution {
-        private boolean enabled = false;
-    }
-
-    /** 业绩域提成与双轨金额计算子开关。 */
-    @Data
-    public static class PerformanceCalc {
-        private boolean enabled = false;
-    }
-
-    /** 商品域转链与展示层子开关。 */
-    @Data
-    public static class ProductDisplay {
-        private boolean enabled = false;
-    }
-
-    /** 寄样域策略与状态机子开关。 */
-    @Data
-    public static class SamplePolicy {
-        private boolean enabled = false;
-    }
-
-    /** 分析模块 shadow 对账子开关。 */
-    @Data
-    public static class Analytics {
-        private boolean shadow = false;
     }
 }

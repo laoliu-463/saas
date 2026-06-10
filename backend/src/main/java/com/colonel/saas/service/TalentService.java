@@ -132,6 +132,7 @@ public class TalentService {
     /** 是否启用公开页面爬虫 */
     private final boolean publicPageCrawlEnabled;
     /** 业务规则配置服务（保护期、独家阈值、预设标签等） */
+    private final com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     private final BusinessRuleConfigService businessRuleConfigService;
     /** 操作日志服务（用于认领/释放/归属覆盖等操作审计） */
     private final OperationLogService operationLogService;
@@ -150,7 +151,8 @@ public class TalentService {
      * @param redisTemplate            Redis 模板（分布式锁）
      * @param crawlerTalentInfoService 爬虫达人信息服务
      * @param publicPageCrawlEnabled   是否启用公开页面爬虫（配置项 {@code talent.data.public-page-crawl-enabled}）
-     * @param businessRuleConfigService 业务规则配置服务
+     * @param configDomainFacade         配置域门面（DDD-CONFIG-002）
+     * @param businessRuleConfigService 业务规则配置服务（预设标签等非门面项）
      * @param operationLogService      操作日志服务
      * @param sysUserMapper            系统用户 Mapper
      */
@@ -164,6 +166,7 @@ public class TalentService {
             RedisTemplate<String, Object> redisTemplate,
             CrawlerTalentInfoService crawlerTalentInfoService,
             @Value("${talent.data.public-page-crawl-enabled:false}") boolean publicPageCrawlEnabled,
+            com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
             BusinessRuleConfigService businessRuleConfigService,
             OperationLogService operationLogService,
             SysUserMapper sysUserMapper) {
@@ -176,6 +179,7 @@ public class TalentService {
         this.redisTemplate = redisTemplate;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
         this.publicPageCrawlEnabled = publicPageCrawlEnabled;
+        this.configDomainFacade = configDomainFacade;
         this.businessRuleConfigService = businessRuleConfigService;
         this.operationLogService = operationLogService;
         this.sysUserMapper = sysUserMapper;
@@ -187,7 +191,7 @@ public class TalentService {
      * @return 保护期天数，由业务规则配置决定
      */
     private int getProtectDays() {
-        return businessRuleConfigService.getTalentProtectionDays();
+        return configDomainFacade.getTalentClaimProtectDays();
     }
 
     /**
@@ -1288,8 +1292,8 @@ public class TalentService {
                 .ge(com.colonel.saas.entity.SampleRequest::getCreateTime, start));
         long monthlySamples = sampleCount == null ? 0L : sampleCount;
 
-        boolean eligible = serviceRatio >= businessRuleConfigService.getTalentExclusiveRatioThreshold().longValue()
-                && monthlySamples >= businessRuleConfigService.getTalentExclusiveMonthlySamples();
+        boolean eligible = serviceRatio >= configDomainFacade.getExclusiveTalentFeeRatio().longValue()
+                && monthlySamples >= configDomainFacade.getExclusiveTalentMonthlySamples();
         return new ExclusiveCheckResult(eligible, serviceRatio, monthlySamples);
     }
 

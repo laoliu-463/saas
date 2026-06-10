@@ -1,40 +1,59 @@
 package com.colonel.saas.config;
 
-import com.colonel.saas.testsupport.BaseIntegrationTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.Configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * DDD-BASE-001 配置加载测试。
- * <p>
- * 验证 {@link DddRefactorProperties} 被 Spring Boot 成功加载并正确解析了配置文件（如 application.yml），
- * 且在没有任何额外配置的情况下，所有开关默认值为 false。
- * </p>
+ * DDD-BASE-001 Spring configuration binding test.
  */
-class DddRefactorPropertiesIntegrationTest extends BaseIntegrationTest {
+class DddRefactorPropertiesIntegrationTest {
 
-    @Autowired
-    private DddRefactorProperties properties;
+    private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
+            .withUserConfiguration(TestConfiguration.class);
 
     @Test
     void springContextShouldLoadPropertiesWithAllFalse() {
-        assertThat(properties).isNotNull();
+        contextRunner.run(context -> {
+            assertThat(context).hasSingleBean(DddRefactorProperties.class);
+            DddRefactorProperties properties = context.getBean(DddRefactorProperties.class);
+            assertAllFlagsFalse(properties);
+        });
+    }
+
+    private static void assertAllFlagsFalse(DddRefactorProperties properties) {
         assertThat(properties.isEnabled()).isFalse();
-        assertThat(properties.getUserScope()).isNotNull();
-        assertThat(properties.getUserScope().isEnabled()).isFalse();
-        assertThat(properties.getOrderSync()).isNotNull();
-        assertThat(properties.getOrderSync().isEnabled()).isFalse();
+        assertThat(properties.getUserFacade()).isNotNull();
+        assertThat(properties.getUserFacade().isEnabled()).isFalse();
+        assertThat(properties.getConfigFacade()).isNotNull();
+        assertThat(properties.getConfigFacade().isEnabled()).isFalse();
+        assertThat(properties.getProductFacade()).isNotNull();
+        assertThat(properties.getProductFacade().isEnabled()).isFalse();
+        assertThat(properties.getTalentFacade()).isNotNull();
+        assertThat(properties.getTalentFacade().isEnabled()).isFalse();
+        assertThat(properties.getSampleApplication()).isNotNull();
+        assertThat(properties.getSampleApplication().isEnabled()).isFalse();
+        assertThat(properties.getOrderApplication()).isNotNull();
+        assertThat(properties.getOrderApplication().isEnabled()).isFalse();
         assertThat(properties.getOrderAttribution()).isNotNull();
         assertThat(properties.getOrderAttribution().isEnabled()).isFalse();
+        assertThat(properties.getOrderAmountPolicy()).isNotNull();
+        assertThat(properties.getOrderAmountPolicy().isEnabled()).isFalse();
         assertThat(properties.getPerformanceCalc()).isNotNull();
         assertThat(properties.getPerformanceCalc().isEnabled()).isFalse();
-        assertThat(properties.getProductDisplay()).isNotNull();
-        assertThat(properties.getProductDisplay().isEnabled()).isFalse();
-        assertThat(properties.getSamplePolicy()).isNotNull();
-        assertThat(properties.getSamplePolicy().isEnabled()).isFalse();
-        assertThat(properties.getAnalytics()).isNotNull();
-        assertThat(properties.getAnalytics().isShadow()).isFalse();
+        assertThat(properties.getPerformanceQuery()).isNotNull();
+        assertThat(properties.getPerformanceQuery().isEnabled()).isFalse();
+        assertThat(properties.getAnalyticsShadow()).isNotNull();
+        assertThat(properties.getAnalyticsShadow().isEnabled()).isFalse();
+        assertThat(properties.getOutbox()).isNotNull();
+        assertThat(properties.getOutbox().isEnabled()).isFalse();
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties(DddRefactorProperties.class)
+    static class TestConfiguration {
     }
 }
