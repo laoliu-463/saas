@@ -1,12 +1,11 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.OptimisticLockSupport;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.OrderSyncDedupClaimMapper;
-import com.colonel.saas.mapper.SysUserMapper;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,11 +16,8 @@ import org.springframework.util.StringUtils;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * 订单同步持久化服务：负责将同步订单持久化到数据库，处理去重声明、乐观锁更新或幂等插入，
@@ -48,8 +44,8 @@ public class OrderSyncPersistenceService {
     private final SampleLifecycleService sampleLifecycleService;
     /** 操作日志服务，记录归因后置步骤的执行轨迹 */
     private final OperationLogService operationLogService;
-    /** 系统用户 Mapper，提供用户信息查询能力 */
-    private final SysUserMapper sysUserMapper;
+    /** 用户域门面，提供用户名称查询能力（DDD-USER-002 替代 SysUserMapper） */
+    private final UserDomainFacade userDomainFacade;
     /** Spring 事件发布器，用于发布 OrderSyncedEvent */
     private final ApplicationEventPublisher eventPublisher;
 
@@ -60,7 +56,7 @@ public class OrderSyncPersistenceService {
             MerchantService merchantService,
             SampleLifecycleService sampleLifecycleService,
             OperationLogService operationLogService,
-            SysUserMapper sysUserMapper,
+            UserDomainFacade userDomainFacade,
             ApplicationEventPublisher eventPublisher) {
         this.orderMapper = orderMapper;
         this.orderSyncDedupClaimMapper = orderSyncDedupClaimMapper;
@@ -68,13 +64,20 @@ public class OrderSyncPersistenceService {
         this.merchantService = merchantService;
         this.sampleLifecycleService = sampleLifecycleService;
         this.operationLogService = operationLogService;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
         this.eventPublisher = eventPublisher;
     }
 
-    /** 根据用户 ID 查询系统用户，不存在时返回 null。 */
-    public SysUser getUser(UUID id) {
-        return sysUserMapper.selectById(id);
+    /** 根据用户 ID 查询真实姓名，不存在时返回 null（DDD-USER-002 委派 UserDomainFacade）。 */
+    public String getUserName(UUID id) {
+        return userDomainFacade.getUserName(id);
+    }
+
+    /**
+     * 批量加载用户名称，返回 userId → realName 映射（DDD-USER-002 委派 UserDomainFacade）。
+     */
+    public Map<UUID, String> loadUserNamesByIds(Collection<UUID> ids) {
+        return userDomainFacade.loadUserNamesByIds(ids);
     }
 
     /** 返回库内最新 pay_time 的 epoch 秒，无样本时为空。 */
@@ -86,25 +89,7 @@ public class OrderSyncPersistenceService {
         return Optional.of(epoch);
     }
 
-    /**
-     * 批量加载用户信息，返回 userId → SysUser 映射。
-     * 自动过滤 null 和重复 ID，返回不可变 Map。
-     *
-     * @param ids 待查询的用户 ID 集合
-     * @return userId 到 SysUser 的映射，输入为空或无有效 ID 时返回空 Map
-     */
-    public Map<UUID, SysUser> loadUsersByIds(Collection<UUID> ids) {
-        if (ids == null || ids.isEmpty()) {
-            return Map.of();
-        }
-        List<UUID> distinct = ids.stream().filter(Objects::nonNull).distinct().toList();
-        if (distinct.isEmpty()) {
-            return Map.of();
-        }
-        return sysUserMapper.selectBatchIds(distinct).stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toMap(SysUser::getId, Function.identity(), (left, right) -> left));
-    }
+
 
     /**
      * 持久化同步订单：先尝试 claim 去重，若订单已存在则以乐观锁方式更新，

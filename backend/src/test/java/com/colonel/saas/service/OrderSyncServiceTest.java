@@ -2,7 +2,6 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.config.AppProperties;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.job.JobLockKeys;
 import org.junit.jupiter.api.BeforeEach;
@@ -75,7 +74,7 @@ class OrderSyncServiceTest {
                 .thenReturn(new DouyinOrderGateway.OrderListResult(List.of(), false, "0", Map.of()));
         lenient().when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(new DouyinOrderGateway.OrderListResult(List.of(), false, "0", Map.of()));
-        lenient().when(persistenceService.loadUsersByIds(any())).thenReturn(Map.<java.util.UUID, SysUser>of());
+        lenient().when(persistenceService.loadUserNamesByIds(any())).thenReturn(Map.<java.util.UUID, String>of());
 
         service = new OrderSyncService(
                 douyinOrderGateway,

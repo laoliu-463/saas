@@ -2,7 +2,6 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -70,14 +69,8 @@ class OrderAttributionReplayServiceTest {
                         AttributionService.REASON_COLONEL_ORDER_INFO
                 )
         );
-        SysUser channelUser = new SysUser();
-        channelUser.setId(userId);
-        channelUser.setRealName("渠道A");
-        SysUser colonelUser = new SysUser();
-        colonelUser.setId(colonelUserId);
-        colonelUser.setRealName("团长A");
-        when(persistenceService.getUser(userId)).thenReturn(channelUser);
-        when(persistenceService.getUser(colonelUserId)).thenReturn(colonelUser);
+        when(persistenceService.getUserName(userId)).thenReturn("渠道A");
+        when(persistenceService.getUserName(colonelUserId)).thenReturn("团长A");
 
         OrderAttributionReplayService.ReplayResult result =
                 service.replay(null, AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND, 20, false);

@@ -6,7 +6,6 @@ import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.SysUser;
 import io.lettuce.core.RedisCommandExecutionException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -837,23 +836,23 @@ public class OrderSyncService {
                         userIds.add(order.getColonelUserId());
                     }
                 }
-                Map<UUID, SysUser> usersById = persistenceService.loadUsersByIds(userIds);
+                Map<UUID, String> userNamesById = persistenceService.loadUserNamesByIds(userIds);
 
                 int pageCreated = 0;
                 int pageUpdated = 0;
                 for (ColonelsettlementOrder order : pageOrders) {
                     try {
-                        SysUser channelUser = order.getChannelUserId() == null
+                        String channelUserName = order.getChannelUserId() == null
                                 ? null
-                                : usersById.get(order.getChannelUserId());
-                        if (channelUser != null) {
-                            order.setChannelUserName(channelUser.getRealName());
+                                : userNamesById.get(order.getChannelUserId());
+                        if (channelUserName != null) {
+                            order.setChannelUserName(channelUserName);
                         }
-                        SysUser colonelUser = order.getColonelUserId() == null
+                        String colonelUserName = order.getColonelUserId() == null
                                 ? null
-                                : usersById.get(order.getColonelUserId());
-                        if (colonelUser != null) {
-                            order.setColonelUserName(colonelUser.getRealName());
+                                : userNamesById.get(order.getColonelUserId());
+                        if (colonelUserName != null) {
+                            order.setColonelUserName(colonelUserName);
                         }
 
                         if ("ATTRIBUTED".equals(order.getAttributionStatus())) {

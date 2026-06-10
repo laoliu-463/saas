@@ -1,10 +1,10 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.OrderSyncDedupClaimMapper;
-import com.colonel.saas.mapper.SysUserMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,7 +44,7 @@ class OrderSyncPersistenceServiceTest {
     @Mock
     private OperationLogService operationLogService;
     @Mock
-    private SysUserMapper sysUserMapper;
+    private UserDomainFacade userDomainFacade;
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
@@ -60,7 +60,7 @@ class OrderSyncPersistenceServiceTest {
                 merchantService,
                 sampleLifecycleService,
                 operationLogService,
-                sysUserMapper,
+                userDomainFacade,
                 eventPublisher
         );
     }

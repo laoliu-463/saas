@@ -2,7 +2,6 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -225,11 +224,7 @@ public class OrderAttributionReplayService {
      * 根据用户 ID 查询真实姓名，用于填充订单上的用户名字段。
      */
     private String resolveUserName(UUID userId) {
-        if (userId == null) {
-            return null;
-        }
-        SysUser user = persistenceService.getUser(userId);
-        return user == null ? null : user.getRealName();
+        return persistenceService.getUserName(userId);
     }
 
     /**

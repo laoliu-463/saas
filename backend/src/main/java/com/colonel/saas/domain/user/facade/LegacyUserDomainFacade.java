@@ -7,14 +7,21 @@ import com.colonel.saas.dto.user.CurrentUserResponse;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
 import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.SysDept;
+import com.colonel.saas.entity.SysUser;
+import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.service.SysDeptService;
 import com.colonel.saas.service.UserDomainService;
 import com.colonel.saas.service.UserMasterDataService;
 import org.springframework.stereotype.Service;
 
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * {@link UserDomainFacade} 遗留实现：委派现有用户域服务，零行为变更（DDD-USER-001）。
@@ -25,14 +32,17 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
     private final UserDomainService userDomainService;
     private final UserMasterDataService userMasterDataService;
     private final SysDeptService sysDeptService;
+    private final SysUserMapper sysUserMapper;
 
     public LegacyUserDomainFacade(
             UserDomainService userDomainService,
             UserMasterDataService userMasterDataService,
-            SysDeptService sysDeptService) {
+            SysDeptService sysDeptService,
+            SysUserMapper sysUserMapper) {
         this.userDomainService = userDomainService;
         this.userMasterDataService = userMasterDataService;
         this.sysDeptService = sysDeptService;
+        this.sysUserMapper = sysUserMapper;
     }
 
     @Override
@@ -88,5 +98,28 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
                 dept.getDeptName(),
                 dept.getDeptType()
         );
+    }
+
+    @Override
+    public String getUserName(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        SysUser user = sysUserMapper.selectById(userId);
+        return user == null ? null : user.getRealName();
+    }
+
+    @Override
+    public Map<UUID, String> loadUserNamesByIds(Collection<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> distinct = ids.stream().filter(Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        return sysUserMapper.selectBatchIds(distinct).stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toMap(SysUser::getId, SysUser::getRealName, (a, b) -> a));
     }
 }

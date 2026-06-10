@@ -4,7 +4,9 @@ import com.colonel.saas.domain.user.facade.dto.DepartmentOption;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
 import com.colonel.saas.dto.user.UserOptionResponse;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -48,4 +50,15 @@ public interface UserDomainFacade {
      * 检查用户是否拥有指定资源操作权限。
      */
     boolean hasPermission(UUID userId, String resource, String action);
+
+    /**
+     * 按用户 ID 查询真实姓名，不存在时返回 null（DDD-USER-002）。
+     */
+    String getUserName(UUID userId);
+
+    /**
+     * 批量加载用户真实姓名，返回 userId → realName 映射（DDD-USER-002）。
+     * 自动过滤 null 和重复 ID。
+     */
+    Map<UUID, String> loadUserNamesByIds(Collection<UUID> ids);
 }

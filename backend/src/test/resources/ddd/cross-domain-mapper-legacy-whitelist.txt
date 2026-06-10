@@ -1,6 +1,7 @@
 # DDD-BASE-003 frozen legacy cross-domain MyBatis Mapper injections.
 # Format: OwnerFqcn|MapperSimpleName
 # New entries are forbidden — use Domain Facade / Port instead.
+# DDD-USER-002: OrderSyncPersistenceService no longer injects SysUserMapper (replaced by UserDomainFacade)
 com.colonel.saas.controller.ColonelActivityController|SysUserMapper
 com.colonel.saas.controller.OrderController|SysDeptMapper
 com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider|PickSourceMappingMapper
@@ -17,7 +18,6 @@ com.colonel.saas.service.MerchantService|SysUserMapper
 com.colonel.saas.service.OperationLogService|SysUserMapper
 com.colonel.saas.service.OrderService|ProductMapper
 com.colonel.saas.service.OrderService|ProductSnapshotMapper
-com.colonel.saas.service.OrderSyncPersistenceService|SysUserMapper
 com.colonel.saas.service.PerformanceBackfillService|ColonelsettlementOrderMapper
 com.colonel.saas.service.PerformanceMonthRecalculationService|ColonelsettlementOrderMapper
 com.colonel.saas.service.PerformanceQueryService|ColonelsettlementOrderMapper
