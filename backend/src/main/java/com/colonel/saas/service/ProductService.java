@@ -7,6 +7,7 @@ import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.dto.product.ProductFilterOptionItem;
 import com.colonel.saas.dto.product.ProductFilterOptionsDTO;
 import com.colonel.saas.common.enums.TalentFollowStatus;
@@ -152,6 +153,8 @@ public class ProductService {
     private final ColonelPartnerSyncService colonelPartnerSyncService;
     /** 商品领域事件发布器，发布商品状态变更等事件 */
     private final ProductDomainEventPublisher productDomainEventPublisher;
+    /** 商品库展示优先级策略（DDD-PRODUCT-002，不含置顶） */
+    private final ProductDisplayPolicy productDisplayPolicy;
     @Value("${douyin.real.promotion-write-enabled:false}")
     private boolean realPromotionWriteEnabled;
     @Value("${douyin.real.allow-promotion-write:false}")
@@ -180,7 +183,8 @@ public class ProductService {
             com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
             ProductDisplayRuleService productDisplayRuleService,
             ColonelPartnerSyncService colonelPartnerSyncService,
-            ProductDomainEventPublisher productDomainEventPublisher) {
+            ProductDomainEventPublisher productDomainEventPublisher,
+            ProductDisplayPolicy productDisplayPolicy) {
         this.douyinPromotionGateway = douyinPromotionGateway;
         this.douyinProductGateway = douyinProductGateway;
         this.snapshotMapper = snapshotMapper;
@@ -200,6 +204,7 @@ public class ProductService {
         this.productDisplayRuleService = productDisplayRuleService;
         this.colonelPartnerSyncService = colonelPartnerSyncService;
         this.productDomainEventPublisher = productDomainEventPublisher;
+        this.productDisplayPolicy = productDisplayPolicy;
     }
 
     public IPage<Product> getPage(long page, long size, Integer status) {
@@ -416,21 +421,15 @@ public class ProductService {
      * 投流优先 > 高佣金优先 > 晚上架优先。
      */
     private int compareByPromotionCommissionTime(Product left, Product right) {
-        // 规则2：投流（有推广链接）优先
-        boolean leftPromoted = hasPromotionLink(left);
-        boolean rightPromoted = hasPromotionLink(right);
-        if (leftPromoted != rightPromoted) {
-            return leftPromoted ? -1 : 1;
-        }
-
-        // 规则3：高佣金优先（佣金率高在前）
-        int commissionCompare = compareCommission(left, right);
-        if (commissionCompare != 0) {
-            return commissionCompare;
-        }
-
-        // 规则4：晚上架优先
-        return compareSelectedTime(left, right);
+        return productDisplayPolicy.compareLibraryPresentation(
+                new ProductDisplayPolicy.LibraryPresentationKey(
+                        hasPromotionLink(left),
+                        left.getCosRatio(),
+                        left.getSelectedAt()),
+                new ProductDisplayPolicy.LibraryPresentationKey(
+                        hasPromotionLink(right),
+                        right.getCosRatio(),
+                        right.getSelectedAt()));
     }
 
     private boolean hasPromotionLink(Product p) {

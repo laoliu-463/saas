@@ -84,7 +84,8 @@ class ProductServiceFilterTest {
                 configDomainFacade,
                 productDisplayRuleService,
                 colonelPartnerSyncService,
-                productDomainEventPublisher
+                productDomainEventPublisher,
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy()
         );
         lenient().when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
     }

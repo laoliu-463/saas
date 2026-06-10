@@ -6,6 +6,7 @@ import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.service.display.ProductDisplayAuditService;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
@@ -66,7 +67,8 @@ class ProductDisplayRuleServiceTest {
                 productBizStatusService,
                 colonelActivityMapper,
                 productDomainEventPublisher,
-                productDisplayAuditService);
+                productDisplayAuditService,
+                new ProductDisplayPolicy());
         when(operationStateMapper.updateById(any(ProductOperationState.class))).thenReturn(1);
     }
 

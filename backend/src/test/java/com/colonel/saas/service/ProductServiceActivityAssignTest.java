@@ -66,7 +66,8 @@ class ProductServiceActivityAssignTest {
                 configDomainFacade,
                 productDisplayRuleService,
                 colonelPartnerSyncService,
-                productDomainEventPublisher);
+                productDomainEventPublisher,
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy());
     }
 
     @Test

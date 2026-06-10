@@ -183,6 +183,6 @@ class DddConfig003ConfigRoutingTest {
                 null, null, null, null, null,
                 new PromotionLinkIdempotencyService(new com.fasterxml.jackson.databind.ObjectMapper()),
                 configDomainFacade,
-                null, null, null);
+                null, null, null, new com.colonel.saas.domain.product.policy.ProductDisplayPolicy());
     }
 }

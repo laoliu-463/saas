@@ -84,7 +84,8 @@ class ProductServiceShopScoreTest {
                 configDomainFacade,
                 productDisplayRuleService,
                 colonelPartnerSyncService,
-                productDomainEventPublisher);
+                productDomainEventPublisher,
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy());
         when(productBizStatusService.readBizStatus(any())).thenReturn(null);
         when(talentFollowService.listByProduct(any(), any())).thenReturn(List.of());
     }
