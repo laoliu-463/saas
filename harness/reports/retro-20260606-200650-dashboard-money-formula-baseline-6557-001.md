@@ -1,4 +1,4 @@
-# Retro Summary â€” DASHBOARD-MONEY-FORMULA-BASELINE-6557-001 Push Follow-up
+# Retro Summary â€?DASHBOARD-MONEY-FORMULA-BASELINE-6557-001 Push Follow-up
 
 ## What Happened
 

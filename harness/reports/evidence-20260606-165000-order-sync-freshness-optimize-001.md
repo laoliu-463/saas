@@ -1,4 +1,4 @@
-# Evidence â€” order-sync-freshness-optimize-001
+# Evidence â€?order-sync-freshness-optimize-001
 
 - generatedAt: 2026-06-06T16:50:00+08:00
 - task: ORDER-SYNC-FRESHNESS-OPTIMIZE-001
@@ -126,13 +126,13 @@ The 40003 also fired for:
 - `alliance.colonelActivityProduct` (product sync)
 - **OAuth token refresh** (`DoudianTokenGateway: TokenRefreshResponse code=40003, subCode=isv.signature-invalid`)
 
-â†’ The signature rejection is **global to all Douyin endpoints**, not specific to order sync.
+â†?The signature rejection is **global to all Douyin endpoints**, not specific to order sync.
 
 ## E.9 Read-only SQL queries
 
 All queries are SELECT-only. No INSERT/UPDATE/DELETE/DDL.
 
-### E.9.1 Q1 â€” Freshness lag (CST-aware)
+### E.9.1 Q1 â€?Freshness lag (CST-aware)
 
 ```sql
 SELECT
@@ -153,7 +153,7 @@ WHERE pay_time IS NOT NULL;
 |---|---|---|---|---|
 | 2026-06-06 16:47:12 | 2026-06-06 16:40:19 | 413 | 2026-06-06 08:41:00.769406+00 | 29172 |
 
-### E.9.2 Q2 â€” Recent volume
+### E.9.2 Q2 â€?Recent volume
 
 ```sql
 SELECT
@@ -169,7 +169,7 @@ FROM colonelsettlement_order;
 |---|---|---|---|---|
 | 10511 | 10900 | 12080 | 471 | 10000 |
 
-### E.9.3 Q3 â€” Redis checkpoints (read via `docker exec` with `REDIS_PASSWORD` from `.env.real-pre`)
+### E.9.3 Q3 â€?Redis checkpoints (read via `docker exec` with `REDIS_PASSWORD` from `.env.real-pre`)
 
 ```bash
 REDIS_PASSWORD=realpre-redis-20260527-A9dF3kL7sQ2pV8mN
@@ -198,11 +198,11 @@ done
 | `order:sync:institute_hot_last_time` | `1780735229` | 2026-06-06 16:40:29 (530 s ago) |
 | `order:sync:institute_recent_last_time` | `1780735139` | 2026-06-06 16:38:59 (621 s ago) |
 | `order:sync:pay_recent_last_time` | `1780734569` | 2026-06-06 16:29:29 (1192 s ago) |
-| `order:sync:circuit_breaker:buyin_institute_order_colonel` | (nil) â€” closed | â€” |
-| `order:sync:circuit_breaker:buyin_colonel_multi_settlement_orders` | (nil) â€” closed | â€” |
-| `order:sync:institute_hot_lock` TTL | -2 (not held) | â€” |
-| `order:sync:institute_recent_lock` TTL | -2 (not held) | â€” |
-| `order:sync:pay_recent_lock` TTL | -2 (not held) | â€” |
+| `order:sync:circuit_breaker:buyin_institute_order_colonel` | (nil) â€?closed | â€?|
+| `order:sync:circuit_breaker:buyin_colonel_multi_settlement_orders` | (nil) â€?closed | â€?|
+| `order:sync:institute_hot_lock` TTL | -2 (not held) | â€?|
+| `order:sync:institute_recent_lock` TTL | -2 (not held) | â€?|
+| `order:sync:pay_recent_lock` TTL | -2 (not held) | â€?|
 
 Note: per circuit-breaker config (`consecutiveFailures=3, openDuration=5m`), the breaker should have opened after 3 consecutive errors (~3 min after the first 40003 at 08:42 UTC). The fact that the keys are empty suggests one of:
 - The breaker key is bound to the canonical endpoint name and may live under a slightly different key (e.g. include vendor prefix)
@@ -211,7 +211,7 @@ Note: per circuit-breaker config (`consecutiveFailures=3, openDuration=5m`), the
 
 This is informational; the decisive evidence is the 40003 in the log and the frozen checkpoint timestamps.
 
-### E.9.4 Q4 â€” `pay_time` 5-min histogram (last 2 h, CST)
+### E.9.4 Q4 â€?`pay_time` 5-min histogram (last 2 h, CST)
 
 ```sql
 WITH buckets AS (
@@ -257,7 +257,7 @@ SELECT bucket_cst, n FROM buckets ORDER BY 1;
 
 The 16:40 bucket (which contains 16:40:19) has 4 orders; 16:45 has 0. **The stream dried up at 16:40:19 CST, exactly the time of the upstream 40003 first error.**
 
-### E.9.5 Q5 â€” `update_time` lag distribution (last 200 rows in past 2 h)
+### E.9.5 Q5 â€?`update_time` lag distribution (last 200 rows in past 2 h)
 
 ```sql
 WITH recent AS (
@@ -284,7 +284,7 @@ FROM recent;
 |---|---|---|---|---|---|---|---|---|
 | 0 | 0 | 32 | 200 | 444 | 1666 | 1050.5 | 1599.05 | 1658.02 |
 
-SLA target is p95 â‰¤ 120 s. **Actual p95 = 1599 s â€” SLA is violated by ~13Ã—**, and 0/200 rows are within 120 s.
+SLA target is p95 â‰?120 s. **Actual p95 = 1599 s â€?SLA is violated by ~13Ã—**, and 0/200 rows are within 120 s.
 
 ## E.10 Implementation evidence
 
@@ -305,7 +305,7 @@ No changes to:
 - `OrderSyncedEvent` payload
 - Any DDL / migration
 - Frontend
-- `.env.real-pre` (`DOUYIN_CLIENT_SECRET` untouched â€” not a config rotation task)
+- `.env.real-pre` (`DOUYIN_CLIENT_SECRET` untouched â€?not a config rotation task)
 
 ## E.11 Container / process state at end of observation
 

@@ -1,4 +1,4 @@
-# order-sync-freshness-optimize-001 — Final Report
+# order-sync-freshness-optimize-001 �?Final Report
 
 - generatedAt: 2026-06-06T16:50:00+08:00
 - task: ORDER-SYNC-FRESHNESS-OPTIMIZE-001
@@ -13,9 +13,9 @@
 
 Hot-realtime sync infrastructure (code, tests, build, container, health) is **fully implemented and passing 1760/1760 unit tests + 47/47 targeted tests, BUILD SUCCESS**. The split is live in the running real-pre backend and the new `INSTITUTE_HOT_RECENT` chain is being scheduled every 1 minute.
 
-**However, freshness SLA cannot be validated at this time because the Douyin upstream is globally rejecting all calls with `code=40003 subCode=isv.signature-invalid`** — including order sync (`buyin.instituteOrderColonel`), settlement sync (`buyin.colonelMultiSettlementOrders`), institution info, activity list, and even the OAuth token refresh endpoint. The credential state in real-pre is no longer accepted by Douyin.
+**However, freshness SLA cannot be validated at this time because the Douyin upstream is globally rejecting all calls with `code=40003 subCode=isv.signature-invalid`** �?including order sync (`buyin.instituteOrderColonel`), settlement sync (`buyin.colonelMultiSettlementOrders`), institution info, activity list, and even the OAuth token refresh endpoint. The credential state in real-pre is no longer accepted by Douyin.
 
-Per project CLAUDE.md invariant: "real-pre 不允许用 mock 数据冒充真实闭环。缺 Token、缺授权、缺真实订单、缺 pick_source 样本时只能标记 BLOCKED 或 PENDING". This is a **credential/environment state blocker**, not a code defect. No mock data has been used to fake the SLA.
+Per project CLAUDE.md invariant: "real-pre 不允许用 mock 数据冒充真实闭环。缺 Token、缺授权、缺真实订单、缺 pick_source 样本时只能标�?BLOCKED �?PENDING". This is a **credential/environment state blocker**, not a code defect. No mock data has been used to fake the SLA.
 
 The hot sync design, implementation, and test gate are GREEN. The runtime gate is BLOCKED pending credential refresh on the Douyin developer portal side (the project must regenerate `DOUYIN_CLIENT_SECRET` and re-authorize the app; or possibly the existing secret has been rotated upstream by 抖店 without notice).
 
@@ -29,7 +29,7 @@ The hot sync design, implementation, and test gate are GREEN. The runtime gate i
 | `INSTITUTE_RECENT` (kept) | every 10 min | `buyin.instituteOrderColonel` | existing large window | original | `order:sync:institute_recent_lock` | `order:sync:institute_recent_last_time` |
 | `PAY_RECENT` (kept) | every 10 min | `buyin.colonelMultiSettlementOrders` | unchanged | unchanged | `order:sync:pay_recent_lock` | `order:sync:pay_recent_last_time` |
 
-The 1-min cadence applies only to HOT. The 10-min cadence of the large paging task is preserved — the original 6468 task is **not** running every 1 minute, as required by the design plan.
+The 1-min cadence applies only to HOT. The 10-min cadence of the large paging task is preserved �?the original 6468 task is **not** running every 1 minute, as required by the design plan.
 
 ---
 
@@ -49,7 +49,7 @@ freshnessLagSeconds=...  stopReason=...
 
 ---
 
-## 4. Validation Pipeline — Results
+## 4. Validation Pipeline �?Results
 
 | # | Step | Result |
 |---|---|---|
@@ -59,8 +59,8 @@ freshnessLagSeconds=...  stopReason=...
 | 4 | `harness/safety-check.ps1` | **PASS** (no forbidden scope drift) |
 | 5 | `restart-compose.ps1 -Env real-pre -Scope backend` | container `saas-active-backend-real-pre-1` rebuilt, `colonel-saas/backend:real-pre` on port 8081 |
 | 6 | `GET /api/system/health` | **200 `{"status":"UP"}`** |
-| 7 | `npm run e2e:real-pre:p0:preflight` | **PASS** — 8/8 checks PASS, `canRunBusinessFlows: true`. Douyin token readiness reports `reauthorizeRequired:false` (token itself is present), but runtime calls still 40003 |
-| 8 | Observe 10-15 min hot task logs (5+ rounds) | **BLOCKED** — every call returns 40003, no `freshnessLagSeconds` line fires. See §5 |
+| 7 | `npm run e2e:real-pre:p0:preflight` | **PASS** �?8/8 checks PASS, `canRunBusinessFlows: true`. Douyin token readiness reports `reauthorizeRequired:false` (token itself is present), but runtime calls still 40003 |
+| 8 | Observe 10-15 min hot task logs (5+ rounds) | **BLOCKED** �?every call returns 40003, no `freshnessLagSeconds` line fires. See §5 |
 | 9 | 5 read-only SQL queries | Executed; results in §6 |
 | 10 | 3 report files | This file + `evidence-20260606-165000-...md` + `retro-20260606-165000-...md` |
 | 11 | 7 final questions | §7 |
@@ -94,7 +94,7 @@ The error is **not isolated to the new hot task**. It hits every Douyin call: or
 Until upstream auth is restored, **no syncs of any kind** can fetch new orders from the 抖店 API. The hot chain cannot be observed in steady state because:
 
 - Hot metric log line (`freshnessLagSeconds / latestPayTimeAfter / stopReason`) is only emitted on the success path (after a successful upstream call). On upstream throw, the code never reaches that line.
-- Checkpoint keys stop advancing: `institute_hot_last_time` froze at `16:40:29`, `institute_recent_last_time` at `16:38:59`, `pay_recent_last_time` at `16:29:29` — all `>8 min` stale at observation time `16:49`.
+- Checkpoint keys stop advancing: `institute_hot_last_time` froze at `16:40:29`, `institute_recent_last_time` at `16:38:59`, `pay_recent_last_time` at `16:29:29` �?all `>8 min` stale at observation time `16:49`.
 
 This is consistent with an upstream credential break, not a hot-sync code regression. The pre-existing `pay_lag_sec=413` (most recent order write in DB) shows that historical fresh data is in the DB, but the live sync is currently failing.
 
@@ -112,7 +112,7 @@ Per project rules, I did **not**:
 
 ## 6. Read-only SQL Evidence (5 queries)
 
-### Q1 — Freshness lag (CST-aware, since `pay_time` is `timestamp without time zone` stored as China local time)
+### Q1 �?Freshness lag (CST-aware, since `pay_time` is `timestamp without time zone` stored as China local time)
 
 | Metric | Value |
 |---|---|
@@ -120,35 +120,35 @@ Per project rules, I did **not**:
 | `MAX(pay_time)` | `2026-06-06 16:40:19` |
 | `pay_lag_sec` (CST diff) | **413 s** (~6.9 min) |
 | `MAX(update_time)` | `2026-06-06 08:41:00.769406+00` |
-| `update_lag_sec` (CST diff) | **29 172 s** (~8.1 h — long-standing historical row) |
+| `update_lag_sec` (CST diff) | **29 172 s** (~8.1 h �?long-standing historical row) |
 
-The `pay_lag_sec = 413` is the time since the last `pay_time` was recorded for any order — i.e. **the database is roughly 6.9 min behind the wall clock in terms of what `pay_time` values exist**. Note: this lag cannot be closed by the hot sync itself until upstream auth is restored, because the hot task is the path that brings new pay_time rows in.
+The `pay_lag_sec = 413` is the time since the last `pay_time` was recorded for any order �?i.e. **the database is roughly 6.9 min behind the wall clock in terms of what `pay_time` values exist**. Note: this lag cannot be closed by the hot sync itself until upstream auth is restored, because the hot task is the path that brings new pay_time rows in.
 
-### Q2 — Volume of recent orders
+### Q2 �?Volume of recent orders
 
 | Window | Orders (by `update_time`) | Orders (by `pay_time`) |
 |---|---|---|
 | Last 1 h | 10 511 | 471 |
 | Last 24 h | 10 900 | 10 000 |
-| All time | 12 080 | — |
+| All time | 12 080 | �?|
 
 The 10 511/1 h vs 471/1 h discrepancy is because `update_time` reflects local DB writes (including any sync activity), while `pay_time` reflects when the customer actually paid (UTC+8 China local). The 471 orders in the last hour with `pay_time >= 16:00 CST` matches the histogram in Q4.
 
-### Q3 — Redis checkpoints and circuit breaker
+### Q3 �?Redis checkpoints and circuit breaker
 
 | Key | Value | Decoded (CST) | Age |
 |---|---|---|---|
 | `order:sync:institute_hot_last_time` | `1780735229` | 2026-06-06 16:40:29 | **530 s** |
 | `order:sync:institute_recent_last_time` | `1780735139` | 2026-06-06 16:38:59 | **621 s** |
 | `order:sync:pay_recent_last_time` | `1780734569` | 2026-06-06 16:29:29 | **1192 s** |
-| `order:sync:circuit_breaker:buyin_institute_order_colonel` | empty (closed) | — | — |
-| `order:sync:circuit_breaker:buyin_colonel_multi_settlement_orders` | empty (closed) | — | — |
-| `order:sync:institute_hot_lock` (TTL) | `-2` (not held) | — | — |
-| `order:sync:pay_recent_lock` (TTL) | `-2` (not held) | — | — |
+| `order:sync:circuit_breaker:buyin_institute_order_colonel` | empty (closed) | �?| �?|
+| `order:sync:circuit_breaker:buyin_colonel_multi_settlement_orders` | empty (closed) | �?| �?|
+| `order:sync:institute_hot_lock` (TTL) | `-2` (not held) | �?| �?|
+| `order:sync:pay_recent_lock` (TTL) | `-2` (not held) | �?| �?|
 
-All three checkpoint keys are stale (no advancement for 8-20 min), and no lock is currently held. This is consistent with "every attempt errors out at the very first upstream call, so no round ever completes" — the lock is acquired and immediately released after the error path runs.
+All three checkpoint keys are stale (no advancement for 8-20 min), and no lock is currently held. This is consistent with "every attempt errors out at the very first upstream call, so no round ever completes" �?the lock is acquired and immediately released after the error path runs.
 
-### Q4 — `pay_time` 5-min histogram (last 2 h, CST)
+### Q4 �?`pay_time` 5-min histogram (last 2 h, CST)
 
 ```
 14:45 14    14:50 32    14:55 28    15:00 43
@@ -159,9 +159,9 @@ All three checkpoint keys are stale (no advancement for 8-20 min), and no lock i
 16:25 50    16:30 47    16:35 51    16:40 4
 ```
 
-The `16:40` bucket has only 4 orders — this is the **last bucket that has any data**, and the count drops to zero for any later bucket. This visually confirms that no new `pay_time` values are arriving after `16:40:19` (the last `pay_time` we saw in Q1).
+The `16:40` bucket has only 4 orders �?this is the **last bucket that has any data**, and the count drops to zero for any later bucket. This visually confirms that no new `pay_time` values are arriving after `16:40:19` (the last `pay_time` we saw in Q1).
 
-### Q5 — Lag distribution of last 200 `update_time` rows in past 2 h
+### Q5 �?Lag distribution of last 200 `update_time` rows in past 2 h
 
 | Bucket | Count |
 |---|---|
@@ -172,15 +172,15 @@ The `16:40` bucket has only 4 orders — this is the **last bucket that has any 
 | min / max age (s) | 444 / 1666 |
 | p50 / p95 / p99 (s) | 1050.5 / 1599.05 / 1658.02 |
 
-**Zero orders within the 120 s P95 target. Zero orders within the 300 s P99 target.** This is the SLA readout — and it is **violated** by the current upstream-auth state. With the hot chain fixed, healthy upstream auth should drop p50 to ≤ 60-90 s and p95 to ≤ 120 s. We cannot demonstrate this until auth is restored.
+**Zero orders within the 120 s P95 target. Zero orders within the 300 s P99 target.** This is the SLA readout �?and it is **violated** by the current upstream-auth state. With the hot chain fixed, healthy upstream auth should drop p50 to �?60-90 s and p95 to �?120 s. We cannot demonstrate this until auth is restored.
 
 ---
 
 ## 7. Answers to the 7 Final Questions
 
-### Q1. Has `pay_time` lag (P95) dropped from the pre-change baseline to ≤ 120 s?
+### Q1. Has `pay_time` lag (P95) dropped from the pre-change baseline to �?120 s?
 
-**Cannot be validated — BLOCKED.** The 5 SQL queries show that the last `pay_time` is `16:40:19` (CST), and zero of the last 200 `update_time` rows are within 120 s of the wall clock. The hot sync chain is live and scheduled every 1 min, but every call returns `code=40003 subCode=isv.signature-invalid` from Douyin, so no new orders flow in. **This is an upstream credential state issue, not a hot-sync code regression.**
+**Cannot be validated �?BLOCKED.** The 5 SQL queries show that the last `pay_time` is `16:40:19` (CST), and zero of the last 200 `update_time` rows are within 120 s of the wall clock. The hot sync chain is live and scheduled every 1 min, but every call returns `code=40003 subCode=isv.signature-invalid` from Douyin, so no new orders flow in. **This is an upstream credential state issue, not a hot-sync code regression.**
 
 ### Q2. Is the 6468 large paging task still running every 10 min (not every 1 min)?
 
@@ -192,11 +192,11 @@ The `16:40` bucket has only 4 orders — this is the **last bucket that has any 
 
 ### Q4. Does the hot task emit `freshnessLagSeconds` / `latestPayTimeAfter` / `stopReason`?
 
-**Yes — but only on the success path.** The metric log line is implemented at `OrderSyncService.java:341-355` and was exercised by tests. During the observation window it never fired because every round errored out at upstream auth. To exercise it in real-pre, the 40003 must be resolved.
+**Yes �?but only on the success path.** The metric log line is implemented at `OrderSyncService.java:341-355` and was exercised by tests. During the observation window it never fired because every round errored out at upstream auth. To exercise it in real-pre, the 40003 must be resolved.
 
 ### Q5. What is the stop reason distribution over the observation window?
 
-**None observed.** All rounds returned `FETCH_ERROR` (inferred — the throw at `OrderSyncJob.java:137` matches the `FETCH_ERROR` path) before reaching the metric emission. No `EMPTY_PAGE / MAX_ORDERS / SINGLE_PAGE / NO_NEXT_CURSOR / MAX_PAGES / DUPLICATE_CURSOR` success-path reasons were recorded.
+**None observed.** All rounds returned `FETCH_ERROR` (inferred �?the throw at `OrderSyncJob.java:137` matches the `FETCH_ERROR` path) before reaching the metric emission. No `EMPTY_PAGE / MAX_ORDERS / SINGLE_PAGE / NO_NEXT_CURSOR / MAX_PAGES / DUPLICATE_CURSOR` success-path reasons were recorded.
 
 ### Q6. Did `serviceFeeExpense` (DASH-RECON-MONEY-DRIFT-001) get disturbed by this change?
 
@@ -204,12 +204,12 @@ The `16:40` bucket has only 4 orders — this is the **last bucket that has any 
 
 ### Q7. What is needed to unblock this and validate the SLA?
 
-A credential refresh on the Douyin developer portal side. The local `DOUYIN_CLIENT_SECRET` (currently `7bc053a4-f905-484a-913f-c1c7714c1484` in `.env.real-pre`) is being rejected by 抖店 upstream on every call — including the OAuth token refresh endpoint. Action items:
+A credential refresh on the Douyin developer portal side. The local `DOUYIN_CLIENT_SECRET` (currently `7bc053a4-f905-484a-913f-c1c7714c1484` in `.env.real-pre`) is being rejected by 抖店 upstream on every call �?including the OAuth token refresh endpoint. Action items:
 1. Open the 抖店 open platform console for appId `7623665273727387199`.
 2. Verify whether the app's client_secret has been rotated or revoked.
 3. If rotated, regenerate, update `.env.real-pre` (`DOUYIN_CLIENT_SECRET`), restart the backend, and re-run preflight.
 4. If the app is still authorized, check whether the account's `access_token` / `refresh_token` have been revoked, and re-run the OAuth authorize flow.
-5. After credential restoration, restart the observation: hot task should emit metric log lines within 1 min, and `institute_hot_last_time` should advance every 60 s. Then re-run Q1/Q4/Q5 — expected p50 ≈ 30-60 s, p95 ≤ 120 s, p99 ≤ 300 s.
+5. After credential restoration, restart the observation: hot task should emit metric log lines within 1 min, and `institute_hot_last_time` should advance every 60 s. Then re-run Q1/Q4/Q5 �?expected p50 �?30-60 s, p95 �?120 s, p99 �?300 s.
 
 ---
 
@@ -222,4 +222,4 @@ A credential refresh on the Douyin developer portal side. The local `DOUYIN_CLIE
 - SLA evidence: cannot be collected without functioning upstream
 - Recommended next action: unblock credentials per §7, then re-run the 10-15 min observation and re-evaluate Q1/Q4/Q5.
 
-Per project CLAUDE.md: this is exactly the "缺 Token、缺授权 / 缺真实订单" BLOCKED scenario, and no mock data has been used to fake a pass.
+Per project CLAUDE.md: this is exactly the "�?Token、缺授权 / 缺真实订�? BLOCKED scenario, and no mock data has been used to fake a pass.

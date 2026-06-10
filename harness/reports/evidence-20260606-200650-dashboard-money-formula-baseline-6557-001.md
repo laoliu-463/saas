@@ -1,4 +1,4 @@
-# Evidence Report â€” DASHBOARD-MONEY-FORMULA-BASELINE-6557-001 Push Follow-up
+# Evidence Report â€?DASHBOARD-MONEY-FORMULA-BASELINE-6557-001 Push Follow-up
 
 ## Metadata
 
