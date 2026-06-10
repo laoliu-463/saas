@@ -4,6 +4,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.config.ConfigChangedEventFactory;
 import com.colonel.saas.config.ConfigDefinitionRegistry;
 import com.colonel.saas.config.RuleCenterSchemaRegistry;
+import com.colonel.saas.domain.config.event.ConfigDomainEventPublisher;
 import com.colonel.saas.domain.event.DomainEventOutboxService;
 import com.colonel.saas.entity.SystemConfig;
 import com.colonel.saas.entity.SystemConfigChangeLog;
@@ -42,6 +43,8 @@ class SysConfigServiceTest {
     private ApplicationEventPublisher applicationEventPublisher;
     @Mock
     private DomainEventOutboxService domainEventOutboxService;
+    @Mock
+    private ConfigDomainEventPublisher configDomainEventPublisher;
 
     private SysConfigService sysConfigService;
     private OperationLogService operationLogService;
@@ -60,7 +63,8 @@ class SysConfigServiceTest {
                 configDefinitionRegistry,
                 configChangedEventFactory,
                 domainEventOutboxService,
-                applicationEventPublisher
+                applicationEventPublisher,
+                configDomainEventPublisher
         );
     }
 

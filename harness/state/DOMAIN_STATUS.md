@@ -85,7 +85,7 @@
 
 ## 商品域
 
-- 当前状态：商品库、活动商品同步、转链和映射主链路已具备。FUNC-001 卡片改造已完成。P-FIX-001C 分页弱化已完成。P-DIAG-002 商品库数量不足排查已完成。P-FIX-002A 同步任务 5 分钟周期配置已完成。P-FIX-002 代码与配置准备已完成。P-FIX-002D 本地运行态验证已完成。P-FIX-002D-REMOTE 远端部署验证已完成（2026-06-03），远端 commit=dea06e4c，同步参数生效，两个周期零冲突。GIT-BATCH-2 frontend-product-ui 已于 2026-06-03 14:08 提交并部署（commit=5fe6ba23）。
+- 当前状态：商品库、活动商品同步、转链和映射主链路已具备。FUNC-001 卡片改造已完成。P-FIX-001C 分页弱化已完成。P-DIAG-002 商品库数量不足排查已完成。P-FIX-002A 同步任务 5 分钟周期配置已完成。P-FIX-002 代码与配置准备已完成。P-FIX-002D 本地运行态验证已完成。P-FIX-002D-REMOTE 远端部署验证已完成（2026-06-03），远端 commit=dea06e4c，同步参数生效，两个周期零冲突。GIT-BATCH-2 frontend-product-ui 已于 2026-06-03 14:08 提交并部署（commit=5fe6ba23）。DDD-PRODUCT-001 已新增 `ProductDomainFacade` / `LegacyProductDomainFacade` 只读门面，当前只委派旧 ProductService/Mapper，不迁移消费者、不改变商品库展示/同步/快速寄样接口。
 - 已完成能力：商品库、活动商品、转链、`pick_source_mapping`；FUNC-001 卡片 UI；P-FIX-001C 分页优化；P-FIX-002A 同步周期配置；P-FIX-002B 唯一索引冲突修复（两遍处理）。
 - P-FIX-002 修复结论：`applyNormalDisplayDedup` 改为三阶段持久化（先降级旧 DISPLAYING→HIDDEN，再处理其他非 DISPLAYING，最后升级新 winner→DISPLAYING），避免 `uk_pos_one_displaying_per_product` partial unique index 冲突。新增/补齐 4 个相关测试覆盖严格调用顺序、切换顺序、幂等性和多候选场景。
 - P-FIX-002 报告路径：`harness/reports/p-fix-002-product-sync-display-5min-20260603-121257.md`。
@@ -100,9 +100,10 @@
 - P-FIX-001C 报告路径：`harness/reports/p-fix-001c-product-library-pagination-20260603-113616.md`。
 - FUNC-001 报告路径：`harness/reports/func-001-product-card-hover-ui-20260603-111451.md`。
 - GIT-BATCH-2 报告路径：`harness/reports/git-batch-2-frontend-product-ui-20260603-140800.md`。
+- DDD-PRODUCT-001 报告路径：`harness/reports/ddd-product-001-product-domain-facade.md`。
 - 当前风险：1) 本地 PENDING 总量 371，远端 PENDING 总量 2128，均需后续区分过期活动、未选中和待重算来源；2) 远端 env 手工补齐了 `PRODUCT_ACTIVITY_SYNC_ENABLED` 和 `PRODUCT_ACTIVITY_SYNC_CRON`，需纳入部署文档；3) Gitee 双 remote 同步流程需确保每次推送同时 push 到 gitee。
-- 待优化能力：活动商品状态断链 repair、远端部署对齐、推广中商品自动入库。
-- DDD 优化下一步：建议执行 P-VERIFY-002 复核远端商品库数量（1-2 小时后），然后 P-FIX-002E repair 剩余 PENDING 商品（本地 + 远端）。
+- 待优化能力：活动商品状态断链 repair、远端部署对齐、推广中商品自动入库；后续将寄样/订单/业绩/BFF 的商品只读访问逐步迁移到 `ProductDomainFacade`。
+- DDD 优化下一步：DDD-SAMPLE-002 使用 `ProductDomainFacade` 替换寄样读侧 Product Mapper 访问；建议仍保留 P-VERIFY-002 / P-FIX-002E 作为商品库运行态专项。
 - 标记：P0。
 
 ## 达人域

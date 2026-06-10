@@ -1,15 +1,23 @@
 package com.colonel.saas.domain.config.facade;
 
 import com.colonel.saas.config.SystemConfigKeys;
+import com.colonel.saas.config.ConfigChangedEventFactory;
+import com.colonel.saas.config.ConfigDefinitionRegistry;
+import com.colonel.saas.config.RuleCenterSchemaRegistry;
+import com.colonel.saas.domain.config.event.ConfigDomainEventPublisher;
+import com.colonel.saas.domain.event.DomainEventOutboxService;
 import com.colonel.saas.domain.config.facade.dto.CommissionRatesDTO;
 import com.colonel.saas.domain.config.facade.dto.ExclusiveRulesDTO;
 import com.colonel.saas.domain.config.facade.dto.PromotionTemplateDTO;
 import com.colonel.saas.domain.config.facade.dto.SampleRulesDTO;
 import com.colonel.saas.domain.config.facade.dto.TalentRulesDTO;
 import com.colonel.saas.entity.SystemConfig;
+import com.colonel.saas.mapper.SystemConfigChangeLogMapper;
 import com.colonel.saas.mapper.SystemConfigMapper;
 import com.colonel.saas.service.BusinessRuleConfigService;
+import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.ShortTtlCacheService;
+import com.colonel.saas.service.SysConfigService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -18,12 +26,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
@@ -43,9 +53,22 @@ class LegacyConfigDomainFacadeTest {
 
     @BeforeEach
     void setUp() {
+        ObjectMapper objectMapper = new ObjectMapper();
         BusinessRuleConfigService businessRuleConfigService =
-                new BusinessRuleConfigService(systemConfigMapper, new ObjectMapper(), new ShortTtlCacheService());
-        facade = new LegacyConfigDomainFacade(businessRuleConfigService, new ObjectMapper());
+                new BusinessRuleConfigService(systemConfigMapper, objectMapper, new ShortTtlCacheService());
+        ConfigDefinitionRegistry configDefinitionRegistry = new ConfigDefinitionRegistry(objectMapper);
+        RuleCenterSchemaRegistry ruleCenterSchemaRegistry = new RuleCenterSchemaRegistry(configDefinitionRegistry);
+        SysConfigService sysConfigService = new SysConfigService(
+                systemConfigMapper,
+                mock(SystemConfigChangeLogMapper.class),
+                mock(OperationLogService.class),
+                configDefinitionRegistry,
+                new ConfigChangedEventFactory(ruleCenterSchemaRegistry),
+                mock(DomainEventOutboxService.class),
+                mock(ApplicationEventPublisher.class),
+                mock(ConfigDomainEventPublisher.class)
+        );
+        facade = new LegacyConfigDomainFacade(businessRuleConfigService, sysConfigService, objectMapper);
     }
 
     // ==================== DDD-CONFIG-002：寄样/达人核心阈值 ====================
@@ -312,7 +335,7 @@ class LegacyConfigDomainFacadeTest {
                     .thenReturn(Optional.of(config("11")));
             when(systemConfigMapper.findByConfigKey(SystemConfigKeys.SAMPLE_DEFAULT_STANDARD))
                     .thenReturn(Optional.of(config(
-                            "{\"min30DaySales\":5000,\"minLevel\":\"L3\",\"raw\":{\"foo\":\"bar\"}}")));
+                            "{\"min_30day_sales\":5000,\"min_level\":\"L3\",\"foo\":\"bar\"}")));
 
             SampleRulesDTO rules = facade.getSampleRules();
 
@@ -359,14 +382,14 @@ class LegacyConfigDomainFacadeTest {
         }
 
         @Test
-        @DisplayName("getExclusiveRules: 商家规则聚合（缺失回退默认 0.70）")
+        @DisplayName("getExclusiveRules: 商家规则聚合（缺失回退默认 0.20）")
         void exclusiveRules() {
             when(systemConfigMapper.findByConfigKey(SystemConfigKeys.MERCHANT_EXCLUSIVE_SERVICE_FEE_RATIO))
                     .thenReturn(Optional.empty());
 
             ExclusiveRulesDTO rules = facade.getExclusiveRules();
 
-            assertThat(rules.merchantServiceFeeRatio()).isEqualByComparingTo("0.70");
+            assertThat(rules.merchantServiceFeeRatio()).isEqualByComparingTo("0.20");
         }
     }
 

@@ -164,6 +164,20 @@ User domain legal holders: `auth.*`, `UserDomainService`, `UserMasterDataService
 
 ## 10. Next Steps
 
+## 10. Migration Entry (DDD-PRODUCT-001 Landed)
+
+| Component | Path | Notes |
+| --- | --- | --- |
+| `ProductDomainFacade` | `domain/product/facade/ProductDomainFacade.java` | Single read-only facade for product/activity/partner/display context |
+| `LegacyProductDomainFacade` | `domain/product/facade/LegacyProductDomainFacade.java` | Delegates to existing `ProductService` + product-domain mappers; no consumer migration in this task |
+| Facade DTOs | `domain/product/facade/dto/*` | Product, activity, partner, sample snapshot, owner and display projections |
+| Regression test | `LegacyProductDomainFacadeTest` | relationId sample snapshot, owner fallback, partner list and visibility compatibility |
+
+**Consumer migration order**: Sample domain quick sample/read checks (DDD-SAMPLE-002) -> Order list/detail enrichment -> Performance query projections -> BFF read adapters -> `DDD-CLEAN-001`.
+
+## 11. Next Steps
+
 1. DDD-USER-002: Order domain data scope via `UserDomainFacade`.
-2. DDD-CONFIG-001 / DDD-PRODUCT-001 / DDD-TALENT-001: Parallel read-only Facades.
-3. After Facade migration, remove corresponding cross-domain edges from whitelist.
+2. DDD-TALENT-001: Add read-only TalentDomainFacade.
+3. DDD-SAMPLE-002: Migrate sample read-side product access to `ProductDomainFacade`.
+4. After Facade migration, remove corresponding legacy cross-domain edges from whitelist.
