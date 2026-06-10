@@ -51,6 +51,7 @@ import com.colonel.saas.service.SampleLogisticsSubscriptionService;
 import com.colonel.saas.service.SampleLogisticsSyncService;
 import com.colonel.saas.service.SampleWriteTransactionService;
 import com.colonel.saas.service.sample.SampleApplicationService;
+import com.colonel.saas.service.sample.SampleQueryService;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.LogisticsTraceVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
@@ -131,9 +132,13 @@ public class SampleController extends SampleApplicationService {
             SampleLogisticsImportService sampleLogisticsImportService,
             SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService,
             SampleDomainEventPublisher sampleDomainEventPublisher,
-            SampleWriteTransactionService sampleWriteTransactionService) {
+            SampleWriteTransactionService sampleWriteTransactionService,
+            SampleQueryService sampleQueryService) {
         super(sampleRequestMapper, productMapper, productOperationStateMapper, productSnapshotMapper, sysUserMapper, talentMapper, talentClaimMapper, sampleStatusLogService, sampleStatusLogMapper, crawlerTalentInfoService, configDomainFacade, productService, sampleEligibilityService, sampleLogisticsSyncService, sampleLogisticsImportService, sampleLogisticsSubscriptionService, sampleDomainEventPublisher, sampleWriteTransactionService);
+        this.sampleQueryService = sampleQueryService;
     }
+
+    private final SampleQueryService sampleQueryService;
 
     @PostMapping
     @Override
@@ -185,7 +190,7 @@ public class SampleController extends SampleApplicationService {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) com.colonel.saas.common.enums.DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return super.getSamplePage(page, size, keyword, status, channelUserIds, recruiterUserId, productKeyword, shopKeyword, trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany, userId, deptId, dataScope, roleCodes);
+        return ok(sampleQueryService.getSamplePage(page, size, keyword, status, channelUserIds, recruiterUserId, productKeyword, shopKeyword, trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany, userId, deptId, dataScope, roleCodes));
     }
 
     @GetMapping("/talent-candidates")
@@ -211,7 +216,7 @@ public class SampleController extends SampleApplicationService {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return super.getSampleBoard(userId, deptId, dataScope, roleCodes);
+        return ok(sampleQueryService.getSampleBoard(userId, deptId, dataScope, roleCodes));
     }
 
     @GetMapping("/status-transitions")
@@ -228,7 +233,7 @@ public class SampleController extends SampleApplicationService {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return super.getSampleById(id, userId, deptId, dataScope, roleCodes);
+        return ok(sampleQueryService.getSampleById(id, userId, deptId, dataScope, roleCodes));
     }
 
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/status-logs")
@@ -302,7 +307,7 @@ public class SampleController extends SampleApplicationService {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return super.getSampleLogistics(id, userId, deptId, dataScope, roleCodes);
+        return ok(sampleQueryService.getSampleLogistics(id, userId, deptId, dataScope, roleCodes));
     }
 
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
@@ -395,6 +400,6 @@ public class SampleController extends SampleApplicationService {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes,
             HttpServletResponse response) throws IOException {
-        super.exportSamples(status, keyword, channelUserIds, recruiterUserId, productKeyword, shopKeyword, trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany, userId, deptId, dataScope, roleCodes, response);
+        sampleQueryService.exportSamples(status, keyword, channelUserIds, recruiterUserId, productKeyword, shopKeyword, trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany, userId, deptId, dataScope, roleCodes, response);
     }
 }

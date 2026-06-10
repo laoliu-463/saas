@@ -49,6 +49,7 @@ import com.colonel.saas.service.SampleEligibilityService;
 import com.colonel.saas.service.SampleStatusLogService;
 import com.colonel.saas.service.SampleWriteTransactionService;
 import com.colonel.saas.service.sample.SampleApplicationService;
+import com.colonel.saas.service.sample.SampleQueryService;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
 import com.colonel.saas.vo.sample.SampleEligibilityCheckVO;
@@ -124,6 +125,8 @@ class SampleControllerTest {
     private SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService;
     @Mock
     private SampleDomainEventPublisher sampleDomainEventPublisher;
+    @Mock
+    private SampleQueryService sampleQueryService;
 
     private SampleController sampleController;
 
@@ -147,7 +150,8 @@ class SampleControllerTest {
                 sampleLogisticsImportService,
                 sampleLogisticsSubscriptionService,
                 sampleDomainEventPublisher,
-                new SampleWriteTransactionService()
+                new SampleWriteTransactionService(),
+                sampleQueryService
         );
         lenient().when(configDomainFacade.isSampleLimitEnabled()).thenReturn(true);
         lenient().when(configDomainFacade.getSampleLimitDays()).thenReturn(7);
@@ -2799,5 +2803,284 @@ class SampleControllerTest {
         ReflectionTestUtils.invokeMethod(sampleController, "publishActionDomainEvent", "UNKNOWN", sample, userId, now, null);
         verify(sampleDomainEventPublisher).publishSampleCompleted(sample, null, now);
         verify(sampleDomainEventPublisher).publishSampleClosed(sample, "超时关闭", now);
+    }
+
+    @Test
+    void getSamplePage_shouldReturnAllExpectedListFields() {
+        UUID productId = UUID.randomUUID();
+        UUID sampleId = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setProductId("10901825");
+        product.setName("列表测试商品");
+        product.setCover("https://example.test/cover.png");
+        product.setPrice(9900L);
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(productId);
+        snapshot.setProductId("3650575210828268564");
+        snapshot.setCover("https://example.test/snapshot-cover.png");
+        snapshot.setPriceText("¥99.0");
+        snapshot.setShopId(123456L);
+        snapshot.setShopName("测试店铺");
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setProductId(productId);
+        sample.setUserId(UUID.randomUUID());
+        sample.setChannelUserId(UUID.randomUUID());
+        sample.setTalentNickname("列表达人");
+        sample.setTalentUid("talent_list_001");
+        sample.setTalentFansCount(50000L);
+        sample.setTalentCreditScore(new BigDecimal("4.75"));
+        sample.setTalentMainCategory("美妆");
+        sample.setRequestNo("SR-LIST-001");
+        sample.setTrackingNo("SF-LIST-123");
+        sample.setShipperCode("SF");
+        sample.setRecipientName("李四");
+        sample.setRecipientPhone("13900139000");
+        sample.setRecipientAddress("北京市朝阳区测试路 2 号");
+        sample.setStatus(1);
+        sample.setCreateTime(LocalDateTime.of(2026, 6, 1, 10, 0));
+        sample.setUpdateTime(LocalDateTime.of(2026, 6, 1, 11, 0));
+        sample.setExtraData(Map.of(
+                "applySource", "MANUAL",
+                "cooperationType", "FREE_SAMPLE",
+                "sampleOwnerType", "MERCHANT",
+                "homeworkType", "HAS_ORDER",
+                "applyReason", "测试申请理由"
+        ));
+
+        IPage<SampleRequest> page = new Page<>(1, 10);
+        page.setRecords(List.of(sample));
+        page.setTotal(1);
+
+        when(productMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(product));
+        when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
+        when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
+
+        var response = sampleController.getSamplePage(
+                1, 10, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                UUID.randomUUID(), null, DataScope.ALL, List.of(RoleCodes.ADMIN));
+
+        assertThat(response.getData().getRecords()).hasSize(1);
+        var vo = response.getData().getRecords().get(0);
+
+        assertThat(vo.getId()).isEqualTo(sampleId);
+        assertThat(vo.getRequestNo()).isEqualTo("SR-LIST-001");
+        assertThat(vo.getTalentUid()).isEqualTo("talent_list_001");
+        assertThat(vo.getTalentName()).isEqualTo("列表达人");
+        assertThat(vo.getTalentFansCount()).isEqualTo(50000L);
+        assertThat(vo.getTalentCreditScore()).isEqualTo("4.75");
+        assertThat(vo.getTalentMainCategory()).isEqualTo("美妆");
+        assertThat(vo.getProductId()).isEqualTo(productId);
+        assertThat(vo.getProductExternalId()).isEqualTo("10901825");
+        assertThat(vo.getProductName()).isEqualTo("列表测试商品");
+        assertThat(vo.getProductCover()).isEqualTo("https://example.test/cover.png");
+        assertThat(vo.getProductPriceText()).isEqualTo("¥99.0");
+        assertThat(vo.getShopId()).isEqualTo("123456");
+        assertThat(vo.getShopName()).isEqualTo("测试店铺");
+        assertThat(vo.getQuantity()).isEqualTo(1);
+        assertThat(vo.getApplicantUserId()).isNotNull();
+        assertThat(vo.getChannelUserId()).isNotNull();
+        assertThat(vo.getTrackingNo()).isEqualTo("SF-LIST-123");
+        assertThat(vo.getLogisticsCompany()).isEqualTo("SF");
+        assertThat(vo.getRecipientName()).isEqualTo("李四");
+        assertThat(vo.getRecipientPhone()).isEqualTo("13900139000");
+        assertThat(vo.getRecipientAddress()).isEqualTo("北京市朝阳区测试路 2 号");
+        assertThat(vo.getStatus()).isEqualTo("PENDING_AUDIT");
+        assertThat(vo.getCreateTime()).isEqualTo(LocalDateTime.of(2026, 6, 1, 10, 0));
+        assertThat(vo.getUpdateTime()).isEqualTo(LocalDateTime.of(2026, 6, 1, 11, 0));
+        assertThat(vo.getApplyReason()).isEqualTo("测试申请理由");
+        assertThat(vo.getApplySource()).isEqualTo("MANUAL");
+        assertThat(vo.getApplySourceLabel()).isEqualTo("手动申请");
+        assertThat(vo.getCooperationType()).isEqualTo("FREE_SAMPLE");
+        assertThat(vo.getCooperationTypeLabel()).isEqualTo("免费寄样");
+        assertThat(vo.getSampleOwnerType()).isEqualTo("MERCHANT");
+        assertThat(vo.getSampleOwnerTypeLabel()).isEqualTo("商家");
+        assertThat(vo.getHomeworkType()).isEqualTo("HAS_ORDER");
+        assertThat(vo.getHomeworkTypeLabel()).isEqualTo("有订单");
+    }
+
+    @Test
+    void getSampleById_shouldReturnAllExpectedDetailFields() {
+        UUID sampleId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setProductId("DETAIL-PRODUCT-001");
+        product.setName("详情测试商品");
+        product.setCover("https://example.test/detail-cover.png");
+        product.setPrice(19900L);
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(productId);
+        snapshot.setProductId("DETAIL-SNAPSHOT-001");
+        snapshot.setCover("https://example.test/detail-snapshot-cover.png");
+        snapshot.setPriceText("¥199.0");
+        snapshot.setShopId(789012L);
+        snapshot.setShopName("详情测试店铺");
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setProductId(productId);
+        sample.setChannelUserId(ownerId);
+        sample.setDeptId(deptId);
+        sample.setTalentId(UUID.randomUUID());
+        sample.setTalentUid("talent_detail_001");
+        sample.setTalentNickname("详情达人");
+        sample.setTalentFansCount(150000L);
+        sample.setTalentCreditScore(new BigDecimal("4.92"));
+        sample.setTalentMainCategory("服饰");
+        sample.setRequestNo("SR-DETAIL-001");
+        sample.setTrackingNo("SF-DETAIL-456");
+        sample.setShipperCode("SF");
+        sample.setRecipientName("王五");
+        sample.setRecipientPhone("13700137000");
+        sample.setRecipientAddress("深圳市南山区测试路 3 号");
+        sample.setStatus(3);
+        sample.setCreateTime(LocalDateTime.of(2026, 5, 15, 9, 0));
+        sample.setUpdateTime(LocalDateTime.of(2026, 5, 20, 14, 30));
+        sample.setShipTime(LocalDateTime.of(2026, 5, 16, 10, 0));
+        sample.setDeliverTime(LocalDateTime.of(2026, 5, 18, 15, 0));
+        sample.setRejectReason(null);
+        sample.setCloseReason(null);
+        sample.setRemark("详情测试备注");
+        sample.setExtraData(Map.of(
+                "applySource", "INTERNAL_QUICK_SAMPLE",
+                "cooperationType", "PAID_SAMPLE",
+                "sampleOwnerType", "COLONEL",
+                "homeworkType", "VIDEO",
+                "applyReason", "详情测试申请理由",
+                "eligibilityCheck", Map.of("passed", true, "failedRules", List.of()),
+                "requirementSnapshot", Map.of("minLevel", "LV1", "actualLevel", "LV2")
+        ));
+
+        SysUser owner = new SysUser();
+        owner.setId(ownerId);
+        owner.setRealName("负责人");
+        owner.setUsername("owner_user");
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
+        when(sysUserMapper.selectById(ownerId)).thenReturn(owner);
+
+        var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL);
+        var vo = response.getData();
+
+        assertThat(vo.getId()).isEqualTo(sampleId);
+        assertThat(vo.getRequestNo()).isEqualTo("SR-DETAIL-001");
+        assertThat(vo.getTalentId()).isNotNull();
+        assertThat(vo.getTalentUid()).isEqualTo("talent_detail_001");
+        assertThat(vo.getTalentName()).isEqualTo("详情达人");
+        assertThat(vo.getTalentFansCount()).isEqualTo(150000L);
+        assertThat(vo.getTalentCreditScore()).isEqualTo("4.92");
+        assertThat(vo.getTalentMainCategory()).isEqualTo("服饰");
+        assertThat(vo.getProductId()).isEqualTo(productId);
+        assertThat(vo.getProductExternalId()).isEqualTo("DETAIL-PRODUCT-001");
+        assertThat(vo.getProductName()).isEqualTo("详情测试商品");
+        assertThat(vo.getProductCover()).isEqualTo("https://example.test/detail-cover.png");
+        assertThat(vo.getProductPriceText()).isEqualTo("¥199.0");
+        assertThat(vo.getShopId()).isEqualTo("789012");
+        assertThat(vo.getShopName()).isEqualTo("详情测试店铺");
+        assertThat(vo.getQuantity()).isEqualTo(1);
+        assertThat(vo.getApplicantUserId()).isNotNull();
+        assertThat(vo.getChannelUserId()).isEqualTo(ownerId);
+        assertThat(vo.getChannelUserName()).isEqualTo("负责人 (owner_user)");
+        assertThat(vo.getTrackingNo()).isEqualTo("SF-DETAIL-456");
+        assertThat(vo.getLogisticsCompany()).isEqualTo("SF");
+        assertThat(vo.getRecipientName()).isEqualTo("王五");
+        assertThat(vo.getRecipientPhone()).isEqualTo("13700137000");
+        assertThat(vo.getRecipientAddress()).isEqualTo("深圳市南山区测试路 3 号");
+        assertThat(vo.getStatus()).isEqualTo("SHIPPED");
+        assertThat(vo.getCreateTime()).isEqualTo(LocalDateTime.of(2026, 5, 15, 9, 0));
+        assertThat(vo.getUpdateTime()).isEqualTo(LocalDateTime.of(2026, 5, 20, 14, 30));
+        assertThat(vo.getShipTime()).isEqualTo(LocalDateTime.of(2026, 5, 16, 10, 0));
+        assertThat(vo.getDeliverTime()).isEqualTo(LocalDateTime.of(2026, 5, 18, 15, 0));
+        assertThat(vo.getRejectReason()).isNull();
+        assertThat(vo.getCloseReason()).isNull();
+        assertThat(vo.getRemark()).isEqualTo("详情测试备注");
+        assertThat(vo.getApplyReason()).isEqualTo("详情测试申请理由");
+        assertThat(vo.getApplySource()).isEqualTo("INTERNAL_QUICK_SAMPLE");
+        assertThat(vo.getApplySourceLabel()).isEqualTo("内部寄样");
+        assertThat(vo.getCooperationType()).isEqualTo("PAID_SAMPLE");
+        assertThat(vo.getCooperationTypeLabel()).isEqualTo("付费寄样");
+        assertThat(vo.getSampleOwnerType()).isEqualTo("COLONEL");
+        assertThat(vo.getSampleOwnerTypeLabel()).isEqualTo("团长");
+        assertThat(vo.getHomeworkType()).isEqualTo("VIDEO");
+        assertThat(vo.getHomeworkTypeLabel()).isEqualTo("发视频");
+        assertThat(vo.getEligibilityCheck()).containsEntry("passed", true);
+        assertThat(vo.getRequirementSnapshot()).containsEntry("actualLevel", "LV2");
+    }
+
+    @Test
+    void exportSamples_shouldMaintainColumnOrder() throws Exception {
+        UUID productId = UUID.randomUUID();
+        UUID channelUserId = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("导出测试商品");
+
+        SysUser channelUser = new SysUser();
+        channelUser.setId(channelUserId);
+        channelUser.setRealName("导出负责人");
+        channelUser.setUsername("export_user");
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(UUID.randomUUID());
+        sample.setRequestNo("SR-EXPORT-001");
+        sample.setTalentNickname("导出达人");
+        sample.setProductId(productId);
+        sample.setStatus(5);
+        sample.setChannelUserId(channelUserId);
+        sample.setRecipientName("赵六");
+        sample.setRecipientPhone("13600136000");
+        sample.setRecipientAddress("广州市天河区测试路 4 号");
+        sample.setTrackingNo("SF-EXPORT-789");
+        sample.setRejectReason("导出驳回原因");
+        sample.setRemark("导出备注");
+        sample.setCreateTime(LocalDateTime.of(2026, 6, 5, 10, 0));
+
+        Page<SampleRequest> exportPage = new Page<>(1, 500, 1);
+        exportPage.setRecords(List.of(sample));
+
+        when(productMapper.selectList(any())).thenReturn(List.of(product));
+        when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
+        when(sysUserMapper.selectById(channelUserId)).thenReturn(channelUser);
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any())).thenReturn(exportPage);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        sampleController.exportSamples(
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                UUID.randomUUID(), null, DataScope.ALL, List.of(RoleCodes.ADMIN), response);
+
+        String content = response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        String[] lines = content.split("\n");
+        assertThat(lines.length).isEqualTo(2);
+
+        String header = lines[0].replace("\ufeff", "").trim();
+        assertThat(header).isEqualTo("寄样单号,达人昵称,商品名称,状态,招商负责人,收件人,收件电话,收件地址,物流单号,驳回原因,备注,创建时间");
+
+        String dataLine = lines[1].trim();
+        assertThat(dataLine).contains("SR-EXPORT-001");
+        assertThat(dataLine).contains("导出达人");
+        assertThat(dataLine).contains("导出测试商品");
+        assertThat(dataLine).contains("PENDING_TASK");
+        assertThat(dataLine).contains("导出负责人 (export_user)");
+        assertThat(dataLine).contains("赵六");
+        assertThat(dataLine).contains("13600136000");
+        assertThat(dataLine).contains("广州市天河区测试路 4 号");
+        assertThat(dataLine).contains("SF-EXPORT-789");
+        assertThat(dataLine).contains("导出驳回原因");
+        assertThat(dataLine).contains("导出备注");
+        assertThat(dataLine).contains("2026-06-05");
     }
 }
