@@ -1,5 +1,9 @@
 package com.colonel.saas.job;
 
+import com.colonel.saas.domain.order.application.OrderSyncApplicationService;
+import com.colonel.saas.domain.order.application.OrderSyncCommand;
+import com.colonel.saas.domain.order.application.OrderSyncExecutionContext;
+import com.colonel.saas.domain.order.application.OrderSyncResult;
 import com.colonel.saas.service.OrderSyncService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,6 +47,8 @@ public class OrderSyncJob {
 
     /** 订单同步服务，负责与抖音 API 交互并持久化订单 */
     private final OrderSyncService orderSyncService;
+    /** 订单同步应用层入口（DDD-ORDER-001，受 refactor 开关控制） */
+    private final OrderSyncApplicationService orderSyncApplicationService;
     /** 是否启用订单同步任务，可通过 {@code order.sync.enabled=false} 关闭 */
     @Value("${order.sync.enabled:true}")
     private boolean enabled = true;
@@ -65,8 +71,11 @@ public class OrderSyncJob {
     @Value("${order.sync.settle.enabled:true}")
     private boolean settleSyncEnabled = true;
 
-    public OrderSyncJob(OrderSyncService orderSyncService) {
+    public OrderSyncJob(
+            OrderSyncService orderSyncService,
+            OrderSyncApplicationService orderSyncApplicationService) {
         this.orderSyncService = orderSyncService;
+        this.orderSyncApplicationService = orderSyncApplicationService;
     }
 
     /**
@@ -83,7 +92,10 @@ public class OrderSyncJob {
             return;
         }
         try {
-            OrderSyncService.SyncResult result = orderSyncService.syncLatestWindow();
+            OrderSyncService.SyncResult result = runScheduled(
+                    OrderSyncCommand.scheduledIncremental(),
+                    OrderSyncExecutionContext.scheduled(OrderSyncExecutionContext.TASK_INCREMENTAL),
+                    orderSyncService::syncLatestWindow);
             if (result.locked()) {
                 log.info("OrderSyncJob skipped, another process is running");
                 return;
@@ -113,7 +125,10 @@ public class OrderSyncJob {
             return;
         }
         try {
-            OrderSyncService.SyncResult result = orderSyncService.syncPayRecentWindow();
+            OrderSyncService.SyncResult result = runScheduled(
+                    OrderSyncCommand.scheduledPayRecent(),
+                    OrderSyncExecutionContext.scheduled(OrderSyncExecutionContext.TASK_PAY_RECENT),
+                    orderSyncService::syncPayRecentWindow);
             if (result.locked()) {
                 log.info("OrderSyncJob.syncPayRecent skipped, another process is running");
                 return;
@@ -138,7 +153,10 @@ public class OrderSyncJob {
             return;
         }
         try {
-            OrderSyncService.SyncResult result = orderSyncService.syncInstituteOrdersHotRecent();
+            OrderSyncService.SyncResult result = runScheduled(
+                    OrderSyncCommand.scheduledIncremental(),
+                    OrderSyncExecutionContext.scheduled(OrderSyncExecutionContext.TASK_INSTITUTE_HOT),
+                    orderSyncService::syncInstituteOrdersHotRecent);
             if (result.locked()) {
                 log.info("OrderSyncJob.syncInstituteOrdersHot skipped, another process is running");
                 return;
@@ -162,7 +180,10 @@ public class OrderSyncJob {
             return;
         }
         try {
-            OrderSyncService.SyncResult result = orderSyncService.syncInstituteOrdersRecentWindow();
+            OrderSyncService.SyncResult result = runScheduled(
+                    OrderSyncCommand.scheduledIncremental(),
+                    OrderSyncExecutionContext.scheduled(OrderSyncExecutionContext.TASK_INSTITUTE_RECENT),
+                    orderSyncService::syncInstituteOrdersRecentWindow);
             if (result.locked()) {
                 log.info("OrderSyncJob.syncInstituteOrdersRecent skipped, another process is running");
                 return;
@@ -196,7 +217,10 @@ public class OrderSyncJob {
             return;
         }
         try {
-            OrderSyncService.SyncResult result = orderSyncService.syncSettlementSettleWindow();
+            OrderSyncService.SyncResult result = runScheduled(
+                    OrderSyncCommand.scheduledSettle(),
+                    OrderSyncExecutionContext.scheduled(OrderSyncExecutionContext.TASK_SETTLE),
+                    orderSyncService::syncSettlementSettleWindow);
             if (result.locked()) {
                 log.info("OrderSyncJob.syncSettlementSettle skipped, another process is running");
                 return;
@@ -218,7 +242,10 @@ public class OrderSyncJob {
             return;
         }
         try {
-            OrderSyncService.SyncResult result = orderSyncService.syncInstituteFullBackfillWindow();
+            OrderSyncService.SyncResult result = runScheduled(
+                    OrderSyncCommand.scheduledIncremental(),
+                    OrderSyncExecutionContext.scheduled(OrderSyncExecutionContext.TASK_INSTITUTE_BACKFILL),
+                    orderSyncService::syncInstituteFullBackfillWindow);
             if (result.locked()) {
                 log.info("OrderSyncJob.syncInstituteFullBackfill skipped, another process is running");
                 return;
@@ -231,5 +258,19 @@ public class OrderSyncJob {
             log.error("OrderSyncJob.syncInstituteFullBackfill failed", e);
             throw e;
         }
+    }
+
+    /**
+     * 默认定时任务走旧 {@link OrderSyncService}；开启 {@code ddd.refactor.order-application.enabled} 时走应用层。
+     */
+    private OrderSyncService.SyncResult runScheduled(
+            OrderSyncCommand command,
+            OrderSyncExecutionContext context,
+            java.util.function.Supplier<OrderSyncService.SyncResult> legacyFallback) {
+        if (orderSyncApplicationService.isRoutingEnabled()) {
+            OrderSyncResult applicationResult = orderSyncApplicationService.execute(command, context);
+            return applicationResult.toLegacySyncResult();
+        }
+        return legacyFallback.get();
     }
 }
