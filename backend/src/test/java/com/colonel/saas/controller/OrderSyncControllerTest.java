@@ -8,6 +8,7 @@ import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
+import com.colonel.saas.service.Order1603SettlementDryRunService;
 import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.CommissionService;
@@ -52,6 +53,8 @@ class OrderSyncControllerTest {
     @Mock
     private UserDomainFacade userDomainFacade;
     @Mock
+    private Order1603SettlementDryRunService order1603SettlementDryRunService;
+    @Mock
     private ProductSnapshotMapper productSnapshotMapper;
     @Mock
     private ProductMapper productMapper;
@@ -73,9 +76,9 @@ class OrderSyncControllerTest {
                         new ShortTtlCacheService(),
                         commissionService,
                         performanceBackfillService,
-                        org.mockito.Mockito.mock(com.colonel.saas.domain.user.facade.UserDomainFacade.class),
+                        userDomainFacade,
                         order6468PaginationDryRunService,
-                        org.mockito.Mockito.mock(com.colonel.saas.service.Order1603SettlementDryRunService.class),
+                        order1603SettlementDryRunService,
                         orderService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

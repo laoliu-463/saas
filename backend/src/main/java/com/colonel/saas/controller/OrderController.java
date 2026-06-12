@@ -14,12 +14,14 @@ import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.SysDept;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.SysDeptMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.facade.dto.DepartmentOption;
 import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
+import com.colonel.saas.service.Order1603SettlementDryRunService;
 import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderService;
@@ -142,11 +144,14 @@ public class OrderController extends BaseController {
     /** 业绩回填服务：批量写入缺失的 performance_records */
     private final PerformanceBackfillService performanceBackfillService;
 
-    /** 部门 Mapper：用于加载部门下拉选项 */
-    private final SysDeptMapper sysDeptMapper;
+    /** 用户域 Facade：用于加载部门下拉选项 */
+    private final UserDomainFacade userDomainFacade;
 
     /** 6468 历史订单分页 dry-run 服务：只读拉取上游并聚合候选口径 */
     private final Order6468PaginationDryRunService order6468PaginationDryRunService;
+
+    /** 1603 结算口径 dry-run 服务：只读拉取上游并模拟双轨字段映射 */
+    private final Order1603SettlementDryRunService order1603SettlementDryRunService;
 
     /**
      * 订单域查询服务：封装筛选条件构造与分页 / 统计聚合（t2-orders 抽 service）。
@@ -168,8 +173,9 @@ public class OrderController extends BaseController {
             ShortTtlCacheService shortTtlCacheService,
             CommissionService commissionService,
             PerformanceBackfillService performanceBackfillService,
-            SysDeptMapper sysDeptMapper,
+            UserDomainFacade userDomainFacade,
             Order6468PaginationDryRunService order6468PaginationDryRunService,
+            Order1603SettlementDryRunService order1603SettlementDryRunService,
             OrderService orderService) {
         this.orderSyncService = orderSyncService;
         this.orderMapper = orderMapper;
@@ -179,8 +185,9 @@ public class OrderController extends BaseController {
         this.shortTtlCacheService = shortTtlCacheService;
         this.commissionService = commissionService;
         this.performanceBackfillService = performanceBackfillService;
-        this.sysDeptMapper = sysDeptMapper;
+        this.userDomainFacade = userDomainFacade;
         this.order6468PaginationDryRunService = order6468PaginationDryRunService;
+        this.order1603SettlementDryRunService = order1603SettlementDryRunService;
         this.orderService = orderService;
     }
 
@@ -274,6 +281,39 @@ public class OrderController extends BaseController {
                         filterEnd
                 );
         return ok(order6468PaginationDryRunService.dryRun(command));
+    }
+
+    /**
+     * 1603 结算口径 dry-run。
+     * <p>
+     * 只读调用 buyin.instituteOrderColonel，模拟结算字段映射并输出 warnings / confidence。
+     * 该接口不落库、不触发归因、不发布订单事件、不清缓存、不写操作日志。
+     * </p>
+     */
+    @Operation(summary = "1603 查询团长订单（结算口径）dry-run", description = "只读调用 1603 结算口径并模拟双轨字段映射，不写订单表。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/1603-settlement-dry-run")
+    public ApiResult<Order1603SettlementDryRunService.DryRunResult> dryRun1603Settlement(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "1603 结算口径 dry-run 请求。startTime/endTime 格式 yyyy-MM-dd HH:mm:ss。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"startTime\":\"2026-06-03 00:00:00\",\"endTime\":\"2026-06-06 13:30:00\",\"timeType\":\"settle\",\"pageSize\":20,\"maxPages\":3,\"maxOrders\":100}"))
+            )
+            @RequestBody Order1603SettlementDryRunRequest request) {
+        Order1603SettlementDryRunRequest safeRequest =
+                request == null ? new Order1603SettlementDryRunRequest() : request;
+        Order1603SettlementDryRunService.DryRunRequest command =
+                new Order1603SettlementDryRunService.DryRunRequest(
+                        safeRequest.getStartTime(),
+                        safeRequest.getEndTime(),
+                        safeRequest.getTimeType(),
+                        safeRequest.getPageSize(),
+                        safeRequest.getCursor(),
+                        safeRequest.getMaxPages(),
+                        safeRequest.getMaxOrders(),
+                        safeRequest.getOrderIds()
+                );
+        return ok(order1603SettlementDryRunService.dryRun(command));
     }
 
     /**
@@ -864,17 +904,10 @@ public class OrderController extends BaseController {
     }
 
     private List<OptionItem> loadDeptOptions(String... deptTypes) {
-        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SysDept> wrapper =
-                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SysDept>()
-                        .eq("deleted", 0)
-                        .eq("status", 1)
-                        .in("dept_type", (Object[]) deptTypes)
-                        .orderByAsc("sort_order")
-                        .orderByAsc("dept_name");
-        return sysDeptMapper.selectList(wrapper).stream()
+        return userDomainFacade.listDepartments(java.util.Arrays.asList(deptTypes)).stream()
                 .map(dept -> new OptionItem(
-                        dept.getId() == null ? "" : dept.getId().toString(),
-                        StringUtils.hasText(dept.getDeptName()) ? dept.getDeptName() : dept.getDeptCode()))
+                        dept.id() == null ? "" : dept.id().toString(),
+                        StringUtils.hasText(dept.deptName()) ? dept.deptName() : dept.deptCode()))
                 .filter(item -> StringUtils.hasText(item.value()))
                 .toList();
     }
@@ -1369,6 +1402,39 @@ public class OrderController extends BaseController {
         @Max(50000)
         @Schema(description = "最大订单行数，默认 50000，最大 50000。")
         private Integer maxOrders;
+    }
+
+    @Data
+    public static class Order1603SettlementDryRunRequest {
+        @Schema(description = "1603 查询开始时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-06-03 00:00:00")
+        private String startTime;
+
+        @Schema(description = "1603 查询结束时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-06-06 13:30:00")
+        private String endTime;
+
+        @Schema(description = "时间类型，默认 settle。")
+        private String timeType;
+
+        @Min(1)
+        @Max(100)
+        @Schema(description = "每页条数，默认 20，最大 100。")
+        private Integer pageSize;
+
+        @Schema(description = "游标，默认 0。")
+        private String cursor;
+
+        @Min(1)
+        @Max(10)
+        @Schema(description = "最大页数，默认 3，最大 10。")
+        private Integer maxPages;
+
+        @Min(1)
+        @Max(500)
+        @Schema(description = "最大订单行数，默认 100，最大 500。")
+        private Integer maxOrders;
+
+        @Schema(description = "订单号列表；1603 默认不强传给上游，仅用于 dry-run 请求回显为 warning。")
+        private List<String> orderIds;
     }
 
     @Data

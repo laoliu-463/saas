@@ -18,15 +18,14 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.service.Order1603SettlementDryRunService;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderSyncService;
-import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.Order1603SettlementDryRunService;
+import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import org.junit.jupiter.api.Assertions;
@@ -82,11 +81,11 @@ class OrderControllerTest {
     @Mock
     private UserDomainFacade userDomainFacade;
     @Mock
+    private Order1603SettlementDryRunService order1603SettlementDryRunService;
+    @Mock
     private ProductSnapshotMapper productSnapshotMapper;
     @Mock
     private ProductMapper productMapper;
-    @Mock
-    private Order1603SettlementDryRunService order1603SettlementDryRunService;
     /**
      * t2-orders 抽 service：OrderController 委托 {@link com.colonel.saas.service.OrderService}
      * 做 wrapper 拼装。测试用真实 OrderService 实例 + mock mapper，wrapper 行为与生产一致。
