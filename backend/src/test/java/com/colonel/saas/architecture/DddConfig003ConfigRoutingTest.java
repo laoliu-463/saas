@@ -179,7 +179,8 @@ class DddConfig003ConfigRoutingTest {
 
     private ProductService minimalProductService() {
         return new ProductService(
-                null, null, null, null, null, null, null, null, null,
+                (com.colonel.saas.gateway.douyin.DouyinPromotionGateway) null,
+                null, null, null, null, null, null, null, null,
                 null, null, null, null, null,
                 new PromotionLinkIdempotencyService(new com.fasterxml.jackson.databind.ObjectMapper()),
                 configDomainFacade,

@@ -2,12 +2,12 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`。
 
-更新时间：2026-06-12 16:12
-分支：`feature/ddd/DDD-SAMPLE-002-eligibility-policy`
-HEAD：`1b30259e`（DDD-SAMPLE-002 已提交并推送）
+更新时间：2026-06-12 16:30
+分支：`feature/ddd/DDD-PRODUCT-004-copy-promotion-port`
+HEAD：待本轮提交
 
 > 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`
-> 当前进度：**36/53 = 68%**（DDD-SAMPLE-002 已落地；下一步 DDD-PRODUCT-004）
+> 当前进度：**37/53 = 70%**（DDD-PRODUCT-004 已落地；下一步 DDD-PERF-003 / DDD-VERIFY-001）
 
 ## 图例
 
@@ -63,6 +63,7 @@ HEAD：`1b30259e`（DDD-SAMPLE-002 已提交并推送）
 | DDD-TALENT-003 | Talent | DONE | `69e8d106` Controller -> ApplicationService -> Facade |
 | DDD-SAMPLE-007 | Sample | DONE | `5cea498a` Controller -> ApplicationService -> Facade |
 | DDD-PRODUCT-003 | Product | DONE | `19c7da8b` QuickSample 切 Facade |
+| DDD-PRODUCT-004 | Product | DONE | `CopyPromotionApplicationService` + `DouyinConvertPort` |
 | DDD-PERF-003 | Performance | DONE | `dd892ea0` QueryController 切 Facade |
 | DDD-ORDER-003 | Order | DONE | Controller 切 Facade（勿碰 OrderSyncService） |
 | P-FIX-002E | Product | DONE | `aca79f74` ProductDisplayRuleService + dry-run SQL 报告 |
@@ -91,9 +92,8 @@ HEAD：`1b30259e`（DDD-SAMPLE-002 已提交并推送）
 
 ## 下一步优先
 
-1. **P0** `DDD-PRODUCT-004` - CopyPromotion + DouyinConvertPort。
-2. **P0** `DDD-PERF-003` - PerformanceAttributionPolicy。
-3. **P0** `DDD-VERIFY-001` - E2E P0 终验。
+1. **P0** `DDD-PERF-003` - PerformanceAttributionPolicy。
+2. **P0** `DDD-VERIFY-001` - E2E P0 终验。
 
 ## real-pre 状态
 
