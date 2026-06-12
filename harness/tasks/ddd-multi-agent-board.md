@@ -2,12 +2,12 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`。
 
-更新时间：2026-06-12 16:05
-分支：`feature/ddd/DDD-EVENT-003-dispatcher-dryrun`
-HEAD：`fcaf664a`（DDD-EVENT-003 dry-run 已提交并推送）
+更新时间：2026-06-12 16:12
+分支：`feature/ddd/DDD-SAMPLE-002-eligibility-policy`
+HEAD：`1b30259e`（DDD-SAMPLE-002 已提交并推送）
 
 > 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`
-> 当前进度：**35/53 = 66%**（DDD-EVENT-003 已落地；下一步进入 DDD-VERIFY-001）
+> 当前进度：**36/53 = 68%**（DDD-SAMPLE-002 已落地；下一步 DDD-PRODUCT-004）
 
 ## 图例
 
@@ -54,6 +54,7 @@ HEAD：`fcaf664a`（DDD-EVENT-003 dry-run 已提交并推送）
 | DDD-PERF-002 | Performance | DONE | `59d3a085` `PerformanceMoneyPolicy` |
 | DDD-SAMPLE-006 | Sample | DONE | `98299d1e` `SampleStateMachine` |
 | DDD-TALENT-002 | Talent | DONE | `d41c4d58` `TalentClaimPolicy` |
+| DDD-SAMPLE-002 | Sample | DONE | `1b30259e` `SampleEligibilityPolicy` |
 
 ## Batch 3 - 跨域替换
 
@@ -90,13 +91,12 @@ HEAD：`fcaf664a`（DDD-EVENT-003 dry-run 已提交并推送）
 
 ## 下一步优先
 
-1. **P0** `DDD-VERIFY-001` - E2E P0 终验。
-2. **P0** `DDD-SAMPLE-002` - Sample EligibilityPolicy。
-3. **P0** `DDD-PRODUCT-004` - CopyPromotion + DouyinConvertPort。
-4. **P0** `DDD-PERF-003` - PerformanceAttributionPolicy。
+1. **P0** `DDD-PRODUCT-004` - CopyPromotion + DouyinConvertPort。
+2. **P0** `DDD-PERF-003` - PerformanceAttributionPolicy。
+3. **P0** `DDD-VERIFY-001` - E2E P0 终验。
 
 ## real-pre 状态
 
-- backend-real-pre：healthy（`agent-do` 15:47 PASS，health 200 UP）
+- backend-real-pre：healthy（`agent-do` 16:01 PASS，health 200 UP）
 - frontend / postgres / redis：healthy
 - test 环境：healthy
