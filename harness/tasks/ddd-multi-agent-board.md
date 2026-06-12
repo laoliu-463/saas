@@ -2,9 +2,14 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`
 
-更新时间：2026-06-12 14:10
-分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`
-HEAD：`6682bf3a`（SAMPLE-004 + agent-do PASS）
+更新时间：2026-06-12 15:45  
+分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`  
+HEAD：`6c577ae8`（SLIM-ORDER-002 + agent-do PASS）
+
+> 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`  
+> 当前进度：**34/53 = 64%**（SLIM-ORDER-002 已落地；EVENT-003 在 in-progress 修复 SLIM-ORDER-002 编译错）
+
+> **⚠️ 工作区并发活动**：parallel agent 正在修复 SLIM-ORDER-002 落地后 HEAD 编译错（`AttributionService` 调用不存在的 router 方法）。请勿 revert 任何 backend 改动，等待 agent-do 完成。
 
 ## 图例
 
@@ -100,12 +105,23 @@ HEAD：`6682bf3a`（SAMPLE-004 + agent-do PASS）
 
 | task_id | owner | 状态 | 说明 |
 |---------|-------|------|------|
-| DDD-SLIM-ORDER-001 | Order | DONE | `aca79f74` OrderSyncService 彻底瘦身金额映射并移除 Policy/Resolver 直接依赖 |
+| DDD-SLIM-ORDER-001 | Order | DONE | `8c912953` `mapAndApplyToOrder` 收口 mapOrder 金额映射 |
+| DDD-SLIM-ORDER-002 | Order | DONE | `6c577ae8` `OrderAttributionRouter` + `OrderDefaultAttributionPolicy` 抽离（HEAD 编译错 in-progress 修复中） |
 
-## 下一步优先
+## 下一步优先（参考 100% 计划 Sprint 1）
 
-1. **P2** `DDD-EVENT-003` — Dispatcher Dry Run
-2. **P0** `DDD-VERIFY-001` — E2E P0 终验
+1. **WIP** `DDD-EVENT-003` — Outbox Dispatcher Dry Run（parallel agent in-progress）
+2. **P0** `DDD-SAMPLE-002` — Sample EligibilityPolicy（Sprint 1 候选）
+3. **P0** `DDD-PRODUCT-004` — CopyPromotion + DouyinConvertPort（Sprint 1 候选）
+4. **P0** `DDD-PERF-003` — PerformanceAttributionPolicy（Sprint 1 候选）
+5. **P0** `DDD-VERIFY-001` — E2E P0 终验（最后一道）
 
-可并行：**User-003** + **Product-001** + **Talent-001**（无共享文件）  
-不可并行：**Order-002** 与任何改 `OrderSyncService` 的主链任务
+可并行：**Sample-002** + **Product-004** + **PERF-003** + **EVENT-003**（无文件冲突）  
+不可并行：**Order 域** 内所有改 `OrderSyncService` 的任务串行  
+强约束：**CLEAN-001~004** 必须在所有 SLIM-* 和 Phase 3-9 收尾后执行；**VERIFY-001** 最后
+
+## 真实环境（real-pre）状态
+
+- backend-real-pre：**CRASH LOOP**（jar corruption，parallel agent 修复中）
+- frontend / postgres / redis：healthy
+- test 环境：healthy
