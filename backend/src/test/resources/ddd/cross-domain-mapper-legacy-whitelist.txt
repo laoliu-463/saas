@@ -5,7 +5,7 @@
 # DDD-USER-003: OperationLogService / ExclusiveMerchantQueryService / SampleFilterOptionsService migrated to UserDomainFacade
 # DDD-USER-003: ColonelActivityController migrated to UserDomainFacade
 # DDD-USER-003: OrderController dept options pending (mixed with 1603 dry-run — keep whitelisted)
-com.colonel.saas.controller.OrderController|SysDeptMapper
+
 com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider|PickSourceMappingMapper
 com.colonel.saas.gateway.douyin.test.TestDouyinOrderGateway|PickSourceMappingMapper
 com.colonel.saas.job.LogisticsTrackJob|SampleRequestMapper

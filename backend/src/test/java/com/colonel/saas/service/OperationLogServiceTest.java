@@ -103,7 +103,7 @@ class OperationLogServiceTest {
         UUID operatorId = UUID.randomUUID();
         SysUser user = new SysUser();
         user.setUsername("admin");
-        when(sysUserMapper.selectById(operatorId)).thenReturn(user);
+        when(userDomainFacade.getUserById(operatorId)).thenReturn(user == null ? null : new com.colonel.saas.dto.user.UserOptionResponse(user.getId(), user.getUsername(), user.getRealName(), user.getDeptId(), null));
         ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
 
         service.recordSystemAction(
@@ -117,7 +117,7 @@ class OperationLogServiceTest {
                 "更新配置项"
         );
 
-        verify(userDomainFacade).selectById(operatorId);
+        verify(userDomainFacade).getUserById(operatorId);
         verify(jdbcTemplate).update(anyString(), argsCaptor.capture());
         Object[] args = argsCaptor.getValue();
         assertThat(args[1]).isEqualTo(operatorId);

@@ -15,7 +15,7 @@ import com.colonel.saas.mapper.ProductOperationLogMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.PromotionLinkMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,7 +50,7 @@ class ProductServiceFilterTest {
     @Mock private PromotionLinkMapper promotionLinkMapper;
     @Mock private ColonelsettlementOrderMapper orderMapper;
     @Mock private MerchantMapper merchantMapper;
-    @Mock private SysUserMapper sysUserMapper;
+    @Mock private UserDomainFacade userDomainFacade;
     @Mock private PickSourceMappingService pickSourceMappingService;
     @Mock private ProductBizStatusService productBizStatusService;
     @Mock private ColonelsettlementActivityMapper colonelActivityMapper;
@@ -74,7 +74,7 @@ class ProductServiceFilterTest {
                 promotionLinkMapper,
                 orderMapper,
                 merchantMapper,
-                sysUserMapper,
+                userDomainFacade,
                 pickSourceMappingService,
                 productBizStatusService,
                 colonelActivityMapper,

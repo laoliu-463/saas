@@ -9,7 +9,7 @@ import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.service.activity.ActivityAccessService;
 import com.colonel.saas.service.ColonelsettlementActivityService;
 import com.colonel.saas.service.ProductActivityManualSyncService;
@@ -65,7 +65,7 @@ class ColonelActivityControllerTest {
     @Mock
     private ProductActivityManualSyncService productActivityManualSyncService;
     @Mock
-    private SysUserMapper sysUserMapper;
+    private UserDomainFacade userDomainFacade;
     @Mock
     private ColonelsettlementActivityMapper colonelActivityMapper;
 
@@ -84,7 +84,7 @@ class ColonelActivityControllerTest {
                 sysUserService,
                 colonelActivityService,
                 productActivityManualSyncService,
-                sysUserMapper,
+                userDomainFacade,
                 activityAccessService
         );
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
@@ -130,7 +130,7 @@ class ColonelActivityControllerTest {
                 sysUserService,
                 colonelActivityService,
                 productActivityManualSyncService,
-                sysUserMapper,
+                userDomainFacade,
                 activityAccessService);
         MockMvc localMvc = MockMvcBuilders.standaloneSetup(localController)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -522,7 +522,7 @@ class ColonelActivityControllerTest {
                     sysUserService,
                     colonelActivityService,
                     productActivityManualSyncService,
-                    sysUserMapper,
+                    userDomainFacade,
                     activityAccessService);
 
             // refresh=true：触发 syncActivitySummaryFromUpstream + refreshActivitySnapshots

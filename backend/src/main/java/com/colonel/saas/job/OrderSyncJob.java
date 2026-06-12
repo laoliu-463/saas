@@ -13,8 +13,8 @@ import org.springframework.stereotype.Component;
 /**
  * 订单同步定时任务。
  * <p>
- * 6468 拆为热同步（每分钟小窗口）与补偿同步（每 10 分钟水位滚动）；2704 增量按
- * {@code order.sync.cron} 调度；每 6 小时额外跑一轮 24h 全量回补。同时每 30 分钟
+ * 1603 拆为热同步（每分钟小窗口）、补偿同步（每 10 分钟水位滚动）与结算口径同步；
+ * 增量按 {@code order.sync.cron} 调度；每 6 小时额外跑一轮 24h 全量回补。同时每 30 分钟
  * 回扫近 6 小时窗口（PAY_RECENT），用于兜底"刚付款订单 update 事件延迟"导致的不可见。
  * </p>
  * <p>
@@ -26,9 +26,9 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>{@link #syncOrders()}：Cron {@code 0 0/3 * * * ?}，受
  *       {@code order.sync.enabled} 控制，默认启用。</li>
- *   <li>{@link #syncInstituteOrdersHot()}：Cron {@code 0 0/1 * * * ?}，6468 近实时热同步。</li>
- *   <li>{@link #syncInstituteOrdersRecent()}：Cron {@code 0 0/10 * * * ?}，6468 补偿近窗。</li>
- *   <li>{@link #syncInstituteFullBackfill()}：Cron {@code 0 15 0/6 * * ?}，6468 24h 兜底。</li>
+ *   <li>{@link #syncInstituteOrdersHot()}：Cron {@code 0 0/1 * * * ?}，1603 近实时热同步。</li>
+ *   <li>{@link #syncInstituteOrdersRecent()}：Cron {@code 0 0/10 * * * ?}，1603 补偿近窗。</li>
+ *   <li>{@link #syncInstituteFullBackfill()}：Cron {@code 0 15 0/6 * * ?}，1603 24h 兜底。</li>
  *   <li>{@link #syncPayRecent()}：Cron {@code 0 0/30 * * * ?}，受
  *       {@code order.sync.pay-recent.enabled} 控制，默认启用；窗口由
  *       {@link OrderSyncService#syncPayRecentWindow()} 固定为 6 小时。</li>
@@ -55,11 +55,11 @@ public class OrderSyncJob {
     /** 是否启用 PAY_RECENT 近窗口补拉，可通过 {@code order.sync.pay-recent.enabled=false} 关闭 */
     @Value("${order.sync.pay-recent.enabled:true}")
     private boolean payRecentEnabled = true;
-    /** 是否启用 INSTITUTE_RECENT（6468）团长事实源同步，可通过 {@code order.sync.institute-recent.enabled=false} 关闭 */
+    /** 是否启用 INSTITUTE_RECENT（1603）团长事实源同步，可通过 {@code order.sync.institute-recent.enabled=false} 关闭 */
     @Value("${order.sync.institute-recent.enabled:true}")
     private boolean instituteRecentEnabled = true;
 
-    /** 是否启用 INSTITUTE_HOT_RECENT（6468 近实时热同步） */
+    /** 是否启用 INSTITUTE_HOT_RECENT（1603 近实时热同步） */
     @Value("${order.sync.institute-hot.enabled:true}")
     private boolean instituteHotEnabled = true;
 
@@ -67,7 +67,7 @@ public class OrderSyncJob {
     @Value("${order.sync.institute-backfill.enabled:true}")
     private boolean instituteBackfillEnabled = true;
 
-    /** 是否启用 2704 结算时间轨（time_type=settle）独立回扫 */
+    /** 是否启用 1603 结算时间轨（time_type=settle）独立回扫 */
     @Value("${order.sync.settle.enabled:true}")
     private boolean settleSyncEnabled = true;
 
@@ -144,7 +144,7 @@ public class OrderSyncJob {
     }
 
     /**
-     * 执行 INSTITUTE_HOT_RECENT（6468）近实时热同步：小窗口、限页数，目标 freshness ≤ 2min。
+     * 执行 INSTITUTE_HOT_RECENT（1603）近实时热同步：小窗口、限页数，目标 freshness ≤ 2min。
      */
     @Scheduled(cron = "${order.sync.institute-hot.cron:0 */1 * * * ?}")
     public void syncInstituteOrdersHot() {
@@ -171,7 +171,7 @@ public class OrderSyncJob {
     }
 
     /**
-     * 执行 INSTITUTE_RECENT（6468）增量同步：按 institute 水位滚动近窗。
+     * 执行 INSTITUTE_RECENT（1603）增量同步：按 institute 水位滚动近窗。
      */
     @Scheduled(cron = "${order.sync.institute-recent.cron:0 */10 * * * ?}")
     public void syncInstituteOrdersRecent() {
@@ -199,13 +199,13 @@ public class OrderSyncJob {
     }
 
     /**
-     * 执行 INSTITUTE 24h 全量回补（6468）。
+     * 执行 INSTITUTE 24h 全量回补（1603）。
      * <p>
      * 与增量任务共用 institute 锁；增量任务已改为水位滚动，本任务用于定时兜底漏单。
      * </p>
      */
     /**
-     * 执行 2704 结算时间轨回扫（{@code time_type=settle}）。
+     * 执行 1603 结算时间轨回扫（{@code time_type=settle}）。
      * <p>
      * 与 INCREMENTAL（update）独立锁与 Redis 水位；上游空窗时不推进 settle 水位。
      * </p>

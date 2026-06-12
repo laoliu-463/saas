@@ -16,9 +16,9 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.PerformanceRecord;
-import com.colonel.saas.entity.SysUser;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.vo.data.OrderDetailVO;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
@@ -69,7 +69,7 @@ class DataControllerTest {
     @Mock
     private PerformanceRecordMapper performanceRecordMapper;
     @Mock
-    private SysUserMapper sysUserMapper;
+    private UserDomainFacade userDomainFacade;
     @Mock
     private JdbcTemplate jdbcTemplate;
 
@@ -91,7 +91,7 @@ class DataControllerTest {
                 new ShortTtlCacheService(),
                 performanceMetricsQueryService,
                 performanceRecordMapper,
-                sysUserMapper,
+                userDomainFacade,
                 jdbcTemplate
         );
         org.mockito.Mockito.lenient().when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(false);
@@ -1287,13 +1287,9 @@ class DataControllerTest {
         activity.setName("Test Activity");
         when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of(activity));
 
-        SysUser channelUser = new SysUser();
-        channelUser.setId(channelUserId);
-        channelUser.setRealName("ChannelZhang");
-        SysUser recruiterUser = new SysUser();
-        recruiterUser.setId(recruiterUserId);
-        recruiterUser.setRealName("RecruiterLi");
-        when(sysUserMapper.selectList(any())).thenReturn(List.of(channelUser, recruiterUser));
+        UserOptionResponse channelUser = new UserOptionResponse(channelUserId, null, "ChannelZhang", null, List.of());
+        UserOptionResponse recruiterUser = new UserOptionResponse(recruiterUserId, null, "RecruiterLi", null, List.of());
+        when(userDomainFacade.getUsersByIds(any())).thenReturn(List.of(channelUser, recruiterUser));
 
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,

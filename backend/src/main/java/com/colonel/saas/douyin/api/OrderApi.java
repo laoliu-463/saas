@@ -5,6 +5,10 @@ import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
 import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -37,11 +41,16 @@ import java.util.Map;
  * @see DouyinUpstreamModeSupport
  * @see DouyinContractFixtureProvider
  */
+@Slf4j
 @Service
 public class OrderApi {
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
+
     /** 订单列表查询接口方法名 */
-    private static final String ORDER_LIST_METHOD = "buyin.instituteOrderColonel";
+    private static final String INSTITUTE_ORDER_COLONEL_METHOD = "buyin.instituteOrderColonel";
     private static final String COLONEL_MULTI_SETTLEMENT_METHOD = "buyin.colonelMultiSettlementOrders";
     private static final int DEFAULT_COUNT = 100;
     private static final int MAX_COUNT = 100;
@@ -79,15 +88,57 @@ public class OrderApi {
      * @return 订单列表响应，包含 order_list、has_more、next_cursor 字段
      */
     public Map<String, Object> listSettlement(long startTime, long endTime, int count, String cursor) {
-        if (upstreamModeSupport.isContract()) {
-            return contractFixtureProvider.buildOrderSettlementResponse(null, count, cursor, "update", null, null, null);
+        JsonNode response = listInstituteOrderColonelForSettlement(
+                formatEpochSecond(startTime),
+                formatEpochSecond(endTime),
+                "update",
+                count,
+                cursor,
+                List.of());
+        return OBJECT_MAPPER.convertValue(response, MAP_TYPE);
+    }
+
+    /**
+     * 1603 团长订单结算口径查询。
+     * <p>
+     * 该方法是结算写库主链路的 1603 专用入口。官方 1603 对 {@code order_ids}
+     * 支持尚未确认，因此当前只接收该参数用于调用方语义表达，不强传给上游。
+     */
+    public JsonNode listInstituteOrderColonelForSettlement(
+            String startTime,
+            String endTime,
+            String timeType,
+            Integer size,
+            String cursor,
+            List<String> orderIds) {
+        if (orderIds != null && !orderIds.isEmpty()) {
+            log.warn("api_method={} order_ids_ignored=true reason=1603_not_confirmed_support_order_ids count={}",
+                    INSTITUTE_ORDER_COLONEL_METHOD, orderIds.size());
         }
-        Map<String, Object> params = new HashMap<>();
-        params.put("start_time", formatEpochSecond(startTime));
-        params.put("end_time", formatEpochSecond(endTime));
-        params.put("size", normalizeCount(count));
+        if (upstreamModeSupport.isContract()) {
+            Map<String, Object> response = contractFixtureProvider.buildOrderSettlementResponse(
+                    null,
+                    size,
+                    cursor,
+                    hasText(timeType) ? timeType : "settle",
+                    startTime,
+                    endTime,
+                    null);
+            return OBJECT_MAPPER.valueToTree(response);
+        }
+        Map<String, Object> params = new LinkedHashMap<>();
+        if (hasText(startTime)) {
+            params.put("start_time", startTime.trim());
+        }
+        if (hasText(endTime)) {
+            params.put("end_time", endTime.trim());
+        }
+        params.put("size", normalizeCount(size == null ? DEFAULT_COUNT : size));
         params.put("cursor", hasText(cursor) ? cursor.trim() : "0");
-        return douyinApiClient.post(ORDER_LIST_METHOD, params);
+        if (hasText(timeType)) {
+            params.put("time_type", normalizeTimeType(timeType));
+        }
+        return OBJECT_MAPPER.valueToTree(douyinApiClient.post(INSTITUTE_ORDER_COLONEL_METHOD, params));
     }
 
     /**
@@ -108,6 +159,8 @@ public class OrderApi {
 
     /**
      * 批量查询多订单结算详情。
+     * <p>
+     * 仅作为 fallback/probe/对照，不再作为默认结算写库主链路。
      * <p>
      * 支持两种查询模式：按时间范围查询或按订单 ID 列表查询，两者至少提供其一。
      * 在 contract 模式下返回契约桩数据，否则调用真实上游 API。

@@ -32,4 +32,7 @@ public record UserOptionResponse(
         @Schema(description = "渠道短码")
         String channelCode
 ) {
+    public UserOptionResponse(UUID id, String username, String realName, UUID deptId, List<String> roleCodes) {
+        this(id, username, realName, deptId, roleCodes, null);
+    }
 }

@@ -12,6 +12,7 @@ import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipItem;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
@@ -22,7 +23,6 @@ import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleLogisticsTrace;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.SampleStatusLog;
-import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.gateway.logistics.query.LogisticsQueryResult;
@@ -32,7 +32,7 @@ import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SampleStatusLogMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
@@ -101,7 +101,7 @@ class SampleControllerTest {
     @Mock
     private ProductSnapshotMapper productSnapshotMapper;
     @Mock
-    private SysUserMapper sysUserMapper;
+    private UserDomainFacade userDomainFacade;
     @Mock
     private TalentMapper talentMapper;
     @Mock
@@ -137,7 +137,7 @@ class SampleControllerTest {
                 productMapper,
                 productOperationStateMapper,
                 productSnapshotMapper,
-                sysUserMapper,
+                userDomainFacade,
                 talentMapper,
                 talentClaimMapper,
                 sampleStatusLogService,
@@ -568,13 +568,11 @@ class SampleControllerTest {
         sample.setDeptId(storedDeptId);
         sample.setStatus(1);
 
-        SysUser owner = new SysUser();
-        owner.setId(ownerId);
-        owner.setDeptId(movedDeptId);
+        UserOptionResponse owner = new UserOptionResponse(ownerId, null, null, movedDeptId, List.of(), null);
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(productMapper.selectById(null)).thenReturn(null);
-        when(sysUserMapper.selectById(ownerId)).thenReturn(owner);
+        when(userDomainFacade.getUserById(ownerId)).thenReturn(owner);
 
         var response = sampleController.getSampleById(sampleId, viewerId, storedDeptId, DataScope.DEPT, null);
 
@@ -601,7 +599,8 @@ class SampleControllerTest {
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(productMapper.selectById(null)).thenReturn(null);
-        when(sysUserMapper.selectById(ownerId)).thenReturn(new SysUser());
+        when(userDomainFacade.getUserById(ownerId))
+                .thenReturn(new UserOptionResponse(ownerId, null, null, deptId, List.of(), null));
 
         var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL, null);
 
@@ -728,9 +727,7 @@ class SampleControllerTest {
         talent.setDouyinUid("talent_001");
         talent.setNickname("test talent");
 
-        SysUser operator = new SysUser();
-        operator.setId(userId);
-        operator.setDeptId(deptId);
+        UserOptionResponse operator = new UserOptionResponse(userId, null, null, deptId, List.of(), null);
 
         SampleApplyRequest request = new SampleApplyRequest();
         request.setProductId(productId);
@@ -741,7 +738,7 @@ class SampleControllerTest {
         when(crawlerTalentInfoService.findByTalentId("talent_001")).thenReturn(crawlerTalentInfo);
         when(talentMapper.selectOne(any())).thenReturn(talent);
         when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
-        when(sysUserMapper.selectById(userId)).thenReturn(operator);
+        when(userDomainFacade.getUserById(userId)).thenReturn(operator);
 
         sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
 
@@ -1826,14 +1823,11 @@ class SampleControllerTest {
         log.setToStatus(5);
         log.setOperatorId(operatorId);
 
-        SysUser operator = new SysUser();
-        operator.setId(operatorId);
-        operator.setRealName("运营测试");
-        operator.setUsername("ops_staff");
+        UserOptionResponse operator = new UserOptionResponse(operatorId, "ops_staff", "运营测试", null, List.of(), null);
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(sampleStatusLogMapper.selectList(any())).thenReturn(List.of(log));
-        when(sysUserMapper.selectById(operatorId)).thenReturn(operator);
+        when(userDomainFacade.getUserById(operatorId)).thenReturn(operator);
 
         var response = sampleController.getStatusLogs(
                 sampleId,
@@ -2075,10 +2069,7 @@ class SampleControllerTest {
         product.setId(productId);
         product.setName("商品\n一");
 
-        SysUser channelUser = new SysUser();
-        channelUser.setId(channelUserId);
-        channelUser.setRealName("张三");
-        channelUser.setUsername("zhangsan");
+        UserOptionResponse channelUser = new UserOptionResponse(channelUserId, "zhangsan", "张三", null, List.of(), null);
 
         SampleRequest first = new SampleRequest();
         first.setId(UUID.randomUUID());
@@ -2108,7 +2099,7 @@ class SampleControllerTest {
         secondPage.setRecords(List.of(second));
         when(productMapper.selectList(any())).thenReturn(List.of(product));
         when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
-        when(sysUserMapper.selectById(channelUserId)).thenReturn(channelUser);
+        when(userDomainFacade.getUserById(channelUserId)).thenReturn(channelUser);
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any()))
                 .thenReturn(firstPage)
                 .thenReturn(secondPage);
@@ -2758,17 +2749,12 @@ class SampleControllerTest {
         UUID realNameOnlyId = UUID.randomUUID();
         UUID usernameOnlyId = UUID.randomUUID();
         UUID blankUserId = UUID.randomUUID();
-        SysUser realNameOnly = new SysUser();
-        realNameOnly.setId(realNameOnlyId);
-        realNameOnly.setRealName("张三");
-        SysUser usernameOnly = new SysUser();
-        usernameOnly.setId(usernameOnlyId);
-        usernameOnly.setUsername("zhangsan");
-        SysUser blankUser = new SysUser();
-        blankUser.setId(blankUserId);
-        when(sysUserMapper.selectById(realNameOnlyId)).thenReturn(realNameOnly);
-        when(sysUserMapper.selectById(usernameOnlyId)).thenReturn(usernameOnly);
-        when(sysUserMapper.selectById(blankUserId)).thenReturn(blankUser);
+        UserOptionResponse realNameOnly = new UserOptionResponse(realNameOnlyId, null, "张三", null, List.of(), null);
+        UserOptionResponse usernameOnly = new UserOptionResponse(usernameOnlyId, "zhangsan", null, null, List.of(), null);
+        UserOptionResponse blankUser = new UserOptionResponse(blankUserId, null, null, null, List.of(), null);
+        when(userDomainFacade.getUserById(realNameOnlyId)).thenReturn(realNameOnly);
+        when(userDomainFacade.getUserById(usernameOnlyId)).thenReturn(usernameOnly);
+        when(userDomainFacade.getUserById(blankUserId)).thenReturn(blankUser);
 
         assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveUserDisplayName", (UUID) null)).isNull();
         assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveUserDisplayName", realNameOnlyId)).isEqualTo("张三");
@@ -2964,15 +2950,12 @@ class SampleControllerTest {
                 "requirementSnapshot", Map.of("minLevel", "LV1", "actualLevel", "LV2")
         ));
 
-        SysUser owner = new SysUser();
-        owner.setId(ownerId);
-        owner.setRealName("负责人");
-        owner.setUsername("owner_user");
+        UserOptionResponse owner = new UserOptionResponse(ownerId, "owner_user", "负责人", null, List.of(), null);
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(productMapper.selectById(productId)).thenReturn(product);
         when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
-        when(sysUserMapper.selectById(ownerId)).thenReturn(owner);
+        when(userDomainFacade.getUserById(ownerId)).thenReturn(owner);
 
         var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL, null);
         var vo = response.getData();
@@ -3031,10 +3014,7 @@ class SampleControllerTest {
         product.setId(productId);
         product.setName("导出测试商品");
 
-        SysUser channelUser = new SysUser();
-        channelUser.setId(channelUserId);
-        channelUser.setRealName("导出负责人");
-        channelUser.setUsername("export_user");
+        UserOptionResponse channelUser = new UserOptionResponse(channelUserId, "export_user", "导出负责人", null, List.of(), null);
 
         SampleRequest sample = new SampleRequest();
         sample.setId(UUID.randomUUID());
@@ -3055,7 +3035,7 @@ class SampleControllerTest {
         exportPage.setRecords(List.of(sample));
 
         when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
-        when(sysUserMapper.selectById(channelUserId)).thenReturn(channelUser);
+        when(userDomainFacade.getUserById(channelUserId)).thenReturn(channelUser);
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any())).thenReturn(exportPage);
 
         MockHttpServletResponse response = new MockHttpServletResponse();

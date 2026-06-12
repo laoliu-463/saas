@@ -214,7 +214,8 @@ public class UserMasterDataService {
                         user.getUsername(),
                         user.getRealName(),
                         user.getDeptId(),
-                        roleCodesByUser.getOrDefault(user.getId(), Collections.emptyList())
+                        roleCodesByUser.getOrDefault(user.getId(), Collections.emptyList()),
+                        user.getChannelCode()
                 ))
                 .filter(option -> allowed.isEmpty() || option.roleCodes().stream().anyMatch(allowed::contains))
                 .filter(option -> matchesKeyword(option, normalizedKeyword))

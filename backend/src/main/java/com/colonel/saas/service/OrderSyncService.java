@@ -1,14 +1,24 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.config.AppProperties;
+import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.order.policy.OrderAmountMapperPolicy;
 import com.colonel.saas.job.JobLockKeys;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.service.settlement.InstituteOrderColonelSettlementGateway;
+import com.colonel.saas.service.settlement.MultiSettlementOrderFallbackGateway;
+import com.colonel.saas.service.settlement.SettlementOrderGateway;
+import com.colonel.saas.service.settlement.SettlementOrderPage;
+import com.colonel.saas.service.settlement.SettlementOrderQuery;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.lettuce.core.RedisCommandExecutionException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -99,18 +109,25 @@ public class OrderSyncService {
 
     private static final DateTimeFormatter RAW_DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
 
     private enum SyncSource {
         INSTITUTE,
+        INSTITUTE_SETTLEMENT,
         SETTLEMENT
     }
 
     private final DouyinOrderGateway douyinOrderGateway;
+    private final SettlementOrderGateway instituteSettlementGateway;
+    private final SettlementOrderGateway multiSettlementFallbackGateway;
     private final OrderSyncPersistenceService persistenceService;
     private final AttributionService attributionService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final DistributedJobLockService jobLockService;
     private final AppProperties appProperties;
+    private final OrderAmountMappingRouter orderAmountMappingRouter;
     private volatile long localLastSyncTime;
     private final AtomicInteger consecutiveGatewayFailures = new AtomicInteger();
     private volatile Instant gatewayCircuitOpenedAt;
@@ -172,19 +189,40 @@ public class OrderSyncService {
     @Value("${order.sync.settle.overlap-seconds:300}")
     private long settleOverlapSeconds = 300L;
 
+    @Value("${douyin.order.settlement-source:instituteOrderColonel}")
+    private String settlementSource = "instituteOrderColonel";
+
+    @Value("${douyin.order.institute-settlement-time-type:settle}")
+    private String instituteSettlementTimeType = GATEWAY_TIME_TYPE_SETTLE;
+
+    @Value("${douyin.order.settlement-fallback-enabled:false}")
+    private boolean settlementFallbackEnabled = false;
+
+    @Value("${douyin.order.settlement-dual-read-no-write-enabled:false}")
+    private boolean settlementDualReadNoWriteEnabled = false;
+
+    @Value("${douyin.order.allow-estimate-as-effective-fallback:false}")
+    private boolean allowEstimateAsEffectiveFallback = false;
+
     public OrderSyncService(
             DouyinOrderGateway douyinOrderGateway,
+            @Qualifier("instituteOrderColonelSettlementGateway") SettlementOrderGateway instituteSettlementGateway,
+            @Qualifier("multiSettlementOrderFallbackGateway") SettlementOrderGateway multiSettlementFallbackGateway,
             OrderSyncPersistenceService persistenceService,
             AttributionService attributionService,
             RedisTemplate<String, Object> redisTemplate,
             DistributedJobLockService jobLockService,
-            AppProperties appProperties) {
+            AppProperties appProperties,
+            OrderAmountMappingRouter orderAmountMappingRouter) {
         this.douyinOrderGateway = douyinOrderGateway;
+        this.instituteSettlementGateway = instituteSettlementGateway;
+        this.multiSettlementFallbackGateway = multiSettlementFallbackGateway;
         this.persistenceService = persistenceService;
         this.attributionService = attributionService;
         this.redisTemplate = redisTemplate;
         this.jobLockService = jobLockService;
         this.appProperties = appProperties;
+        this.orderAmountMappingRouter = orderAmountMappingRouter;
     }
 
     /** 判断当前是否处于 test 模式（影响 Redis 不可用时的降级策略）。 */
@@ -679,8 +717,9 @@ public class OrderSyncService {
      * mode 取值：{@link #SYNC_MODE_INCREMENTAL} / {@link #SYNC_MODE_PAY_RECENT} / {@link #SYNC_MODE_SPECIFIC}。
      */
     private SyncResult syncRangeWithMode(long startTime, long endTime, int count, String mode, String timeType) {
+        String resolvedTimeType = resolveSettlementTimeType(timeType);
         DouyinOrderGateway.DouyinOrderQueryRequest firstRequest =
-                new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, "0", timeType);
+                new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, "0", resolvedTimeType);
         return syncItemsWithLimits(
                 fetchSettlement(firstRequest),
                 startTime,
@@ -688,10 +727,10 @@ public class OrderSyncService {
                 true,
                 count,
                 mode,
-                timeType,
-                SyncSource.SETTLEMENT,
+                resolvedTimeType,
+                activeSettlementSyncSource(),
                 cursor -> fetchSettlement(
-                        new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, cursor, timeType)),
+                        new DouyinOrderGateway.DouyinOrderQueryRequest(startTime, endTime, count, cursor, resolvedTimeType)),
                 maxPages,
                 maxOrders);
     }
@@ -706,8 +745,8 @@ public class OrderSyncService {
                 false,
                 orderIds.size(),
                 SYNC_MODE_SPECIFIC,
-                GATEWAY_TIME_TYPE_UPDATE,
-                SyncSource.SETTLEMENT,
+                resolveSettlementTimeType(GATEWAY_TIME_TYPE_SETTLE),
+                activeSettlementSyncSource(),
                 cursor -> new DouyinOrderGateway.OrderListResult(List.of(), false, null, Map.of()),
                 maxPages,
                 maxOrders);
@@ -748,8 +787,12 @@ public class OrderSyncService {
             Function<String, DouyinOrderGateway.OrderListResult> fetchNextPage,
             int pageLimit,
             int orderLimit) {
-        String logName = source == SyncSource.INSTITUTE ? "ORDER_SYNC_INSTITUTE" : "ORDER_SYNC_SETTLEMENT";
-        String api = source == SyncSource.INSTITUTE ? API_INSTITUTE_ORDER_COLONEL : API_COLONEL_MULTI_SETTLEMENT_ORDERS;
+        String logName = switch (source) {
+            case INSTITUTE -> "ORDER_SYNC_INSTITUTE";
+            case INSTITUTE_SETTLEMENT -> "ORDER_SYNC_INSTITUTE_SETTLEMENT";
+            case SETTLEMENT -> "ORDER_SYNC_SETTLEMENT";
+        };
+        String api = source == SyncSource.SETTLEMENT ? API_COLONEL_MULTI_SETTLEMENT_ORDERS : API_INSTITUTE_ORDER_COLONEL;
         int maxPageLimit = Math.max(1, pageLimit);
         int maxOrderLimit = Math.max(1, orderLimit);
         String cursor = "0";
@@ -991,12 +1034,108 @@ public class OrderSyncService {
 
     /** 按时间范围调用抖音结算网关（受熔断器保护）。 */
     private DouyinOrderGateway.OrderListResult fetchSettlement(DouyinOrderGateway.DouyinOrderQueryRequest request) {
-        return executeGatewayCall(() -> douyinOrderGateway.listSettlement(request));
+        return executeGatewayCall(() -> toOrderListResult(activeSettlementGateway().fetch(new SettlementOrderQuery(
+                formatEpochLog(request.startTime()),
+                formatEpochLog(request.endTime()),
+                request.resolvedTimeType(),
+                request.count(),
+                normalizeCursor(request.cursor()),
+                List.of(),
+                maxPages,
+                maxOrders,
+                !settlementDualReadNoWriteEnabled))));
     }
 
     /** 按订单号精确查询抖音结算数据（受熔断器保护）。 */
     private DouyinOrderGateway.OrderListResult fetchSettlementByOrderIds(List<String> orderIds) {
-        return executeGatewayCall(() -> douyinOrderGateway.listSettlementByOrderIds(orderIds));
+        return executeGatewayCall(() -> toOrderListResult(activeSettlementGateway().fetch(new SettlementOrderQuery(
+                null,
+                null,
+                resolveSettlementTimeType(GATEWAY_TIME_TYPE_SETTLE),
+                orderIds == null ? DEFAULT_COUNT : Math.min(Math.max(orderIds.size(), 1), DEFAULT_COUNT),
+                "0",
+                normalizeOrderIds(orderIds),
+                1,
+                orderIds == null ? DEFAULT_COUNT : Math.min(Math.max(orderIds.size(), 1), DEFAULT_COUNT),
+                !settlementDualReadNoWriteEnabled))));
+    }
+
+    private SettlementOrderGateway activeSettlementGateway() {
+        String source = settlementSource == null ? "" : settlementSource.trim();
+        if ("colonelMultiSettlementOrders".equalsIgnoreCase(source)) {
+            return multiSettlementFallbackGateway;
+        }
+        if ("dualReadNoWrite".equalsIgnoreCase(source)) {
+            return instituteSettlementGateway;
+        }
+        return instituteSettlementGateway;
+    }
+
+    private SyncSource activeSettlementSyncSource() {
+        String source = settlementSource == null ? "" : settlementSource.trim();
+        if ("colonelMultiSettlementOrders".equalsIgnoreCase(source)) {
+            return SyncSource.SETTLEMENT;
+        }
+        return SyncSource.INSTITUTE_SETTLEMENT;
+    }
+
+    private String resolveSettlementTimeType(String requestedTimeType) {
+        if (StringUtils.hasText(instituteSettlementTimeType)
+                && activeSettlementSyncSource() == SyncSource.INSTITUTE_SETTLEMENT) {
+            return instituteSettlementTimeType.trim().toLowerCase();
+        }
+        return StringUtils.hasText(requestedTimeType) ? requestedTimeType.trim().toLowerCase() : GATEWAY_TIME_TYPE_SETTLE;
+    }
+
+    private DouyinOrderGateway.OrderListResult toOrderListResult(SettlementOrderPage page) {
+        if (page == null) {
+            return new DouyinOrderGateway.OrderListResult(List.of(), false, "0", Map.of());
+        }
+        List<DouyinOrderGateway.DouyinOrderItem> orders = page.orders() == null
+                ? List.of()
+                : page.orders().stream()
+                        .map(this::toSettlementOrderItem)
+                        .filter(item -> StringUtils.hasText(item.externalOrderId()))
+                        .toList();
+        Map<String, Object> rawResponse = page.rawResponse() == null || page.rawResponse().isMissingNode()
+                ? new java.util.LinkedHashMap<>()
+                : OBJECT_MAPPER.convertValue(page.rawResponse(), MAP_TYPE);
+        rawResponse.put("apiMethod", page.apiMethod());
+        rawResponse.put("source", page.source());
+        return new DouyinOrderGateway.OrderListResult(
+                orders,
+                page.hasMore(),
+                StringUtils.hasText(page.nextCursor()) ? page.nextCursor() : "0",
+                rawResponse);
+    }
+
+    private DouyinOrderGateway.DouyinOrderItem toSettlementOrderItem(JsonNode node) {
+        Map<String, Object> raw = node == null || node.isMissingNode() || node.isNull()
+                ? new java.util.LinkedHashMap<>()
+                : OBJECT_MAPPER.convertValue(node, MAP_TYPE);
+        raw = AttributionSourceNormalizer.normalize(raw);
+        return new DouyinOrderGateway.DouyinOrderItem(
+                asString(rawValue(raw, "order_id", "orderId", "order_id_str", "orderIdStr")),
+                asString(rawValue(raw, "external_product_id", "externalProductId", "product_id", "productId")),
+                asString(rawValue(raw, "product_id", "productId")),
+                asString(rawValue(raw, "merchant_id", "merchantId", "shop_id", "shopId")),
+                asString(rawValue(raw, "merchant_name", "merchantName", "shop_name", "shopName")),
+                asString(rawValue(raw, "talent_id", "talentId", "talent_uid", "talentUid",
+                        "author_id", "authorId", "author_buyin_id", "authorBuyinId")),
+                asString(rawValue(raw, "talent_name", "talentName", "author_name", "authorName",
+                        "author_account", "authorAccount")),
+                asString(rawValue(raw, "pick_source", "pickSource")),
+                asNullableLong(rawValue(raw, "order_amount", "orderAmount", "total_amount", "totalAmount",
+                        "pay_amount", "payAmount", "total_pay_amount", "totalPayAmount",
+                        "pay_goods_amount", "payGoodsAmount")),
+                asNullableLong(rawOrderInfoValue(raw, "real_commission", "realCommission", "settled_commission",
+                        "settledCommission", "commission", "institution_commission", "institutionCommission",
+                        "colonel_commission", "colonelCommission", "service_fee", "serviceFee")),
+                asNullableInteger(rawValue(raw, "order_status", "orderStatus", "status")),
+                asEpochSecond(rawValue(raw, "create_time", "createTime", "order_create_time", "orderCreateTime",
+                        "pay_success_time", "paySuccessTime", "pay_time", "payTime")),
+                asEpochSecond(rawValue(raw, "settle_time", "settleTime", "settled_time", "settledTime")),
+                raw);
     }
 
     /** 执行网关调用，成功重置失败计数，失败累加并可能触发熔断。 */
@@ -1054,12 +1193,18 @@ public class OrderSyncService {
         order.setProductName(rawPayload != null ? asString(rawValue(rawPayload, "product_name", "productName")) : null);
         order.setShopId(parseMerchantId(item.merchantId()));
         order.setShopName(item.merchantName());
-        OrderDualTrackAmountResolver.DualTrackAmounts dualTrack = source == SyncSource.INSTITUTE
-                ? OrderDualTrackAmountResolver.resolve(rawPayload, item.orderAmount(), item.serviceFee())
-                : OrderDualTrackAmountResolver.resolveStrictSettlement(
-                        rawPayload, item.orderAmount(), item.serviceFee());
+        OrderDualTrackAmountResolver.DualTrackAmounts dualTrack = orderAmountMappingRouter.resolveAmounts(
+                switch (source) {
+                    case INSTITUTE -> OrderAmountMappingRouter.SyncSource.INSTITUTE;
+                    case INSTITUTE_SETTLEMENT -> OrderAmountMappingRouter.SyncSource.INSTITUTE_SETTLEMENT;
+                    case SETTLEMENT -> OrderAmountMappingRouter.SyncSource.SETTLEMENT;
+                },
+                rawPayload,
+                item.orderAmount(),
+                item.serviceFee());
         if (source == SyncSource.INSTITUTE) {
-            OrderDualTrackAmountResolver.applyInstituteFactToOrder(order, dualTrack, rawPayload);
+            orderAmountMappingRouter.applyAmounts(
+                    OrderAmountMappingRouter.SyncSource.INSTITUTE, order, dualTrack, rawPayload);
             order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE);
             if (rawPayload != null && OrderAmountMapperPolicy.hasInstituteSettlementSignal(rawPayload)) {
                 LocalDateTime settleTime = rawDateTime(rawPayload, "settle_time", "settleTime", "settled_time", "settledTime");
@@ -1068,8 +1213,13 @@ public class OrderSyncService {
                 }
                 OrderAmountMapperPolicy.applyInstituteSettleTime(order, settleTime);
             }
+        } else if (source == SyncSource.INSTITUTE_SETTLEMENT) {
+            orderAmountMappingRouter.applyAmounts(
+                    OrderAmountMappingRouter.SyncSource.INSTITUTE_SETTLEMENT, order, dualTrack, rawPayload);
+            order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE_SETTLEMENT);
         } else {
-            OrderDualTrackAmountResolver.applyToOrder(order, dualTrack);
+            orderAmountMappingRouter.applyAmounts(
+                    OrderAmountMappingRouter.SyncSource.SETTLEMENT, order, dualTrack, rawPayload);
             order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_SETTLEMENT);
         }
         order.setColonelBuyinId(asNullableLong(rawOrderInfoValue(rawPayload, "colonel_buyin_id", "colonelBuyinId")));
@@ -1077,6 +1227,7 @@ public class OrderSyncService {
         order.setSecondActivityId(asString(rawOrderInfoValue(rawPayload, "second_colonel_activity_id", "secondColonelActivityId")));
         order.setPhaseId(asString(rawValue(rawPayload, "phase_id", "phaseId")));
         order.setOrderStatus(item.orderStatus());
+        order.setFlowPoint(asString(rawValue(rawPayload, "flow_point", "flowPoint")));
         order.setOrderType(asNullableInteger(rawValue(rawPayload, "order_type", "orderType")));
         order.setPickSource(item.pickSource());
         order.setCursor(asString(rawValue(rawPayload, "cursor")));
@@ -1148,6 +1299,11 @@ public class OrderSyncService {
     /** 从 rawPayload 中按候选键解析时间，兼容 epoch 秒、epoch 毫秒和 yyyy-MM-dd HH:mm:ss 字符串。 */
     private LocalDateTime rawDateTime(Map<String, Object> rawPayload, String... keys) {
         return asDateTime(rawValue(rawPayload, keys));
+    }
+
+    private Long asEpochSecond(Object value) {
+        LocalDateTime dateTime = asDateTime(value);
+        return dateTime == null ? null : AppZone.toEpochSecond(dateTime);
     }
 
     /** 将上游时间值转换为应用时区 LocalDateTime。 */

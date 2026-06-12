@@ -23,16 +23,16 @@ import java.util.Map;
  *
  * <h3>设计决策</h3>
  * <p>
- * {@link #listInstituteOrders} 为默认方法，直接委托给 {@link #listSettlement}，
- * 保留向后兼容性（旧团长订单接口已被官方分次结算接口替代）。
+ * 新结算主链路通过 {@code SettlementOrderGateway} 调用 {@code buyin.instituteOrderColonel / 1603}。
+ * 本接口中的 {@link #listSettlement} 保留给 legacy、fallback、probe 和测试适配。
  * </p>
  */
 public interface DouyinOrderGateway {
 
     /**
-     * 按时间范围拉取官方分次结算订单列表。
+     * 按时间范围拉取 legacy/fallback 分次结算订单列表。
      * <p>
-     * 调用 buyin.colonelMultiSettlementOrders 获取指定时间范围内的结算订单。
+     * 默认实现可调用 buyin.colonelMultiSettlementOrders；不得作为 1603 结算默认写库主链路。
      * </p>
      *
      * @param request 查询请求（含起止时间、分页参数）
@@ -41,9 +41,9 @@ public interface DouyinOrderGateway {
     OrderListResult listSettlement(DouyinOrderQueryRequest request);
 
     /**
-     * 按时间范围拉取旧团长订单接口。
+     * 按时间范围拉取团长订单接口。
      * <p>
-     * 仅供联调 RAW 探针兼容，默认委托给 {@link #listSettlement}。
+     * 真实实现覆盖为 1603；默认委托仅用于旧测试/模拟实现兼容。
      * </p>
      *
      * @param request 查询请求
@@ -79,7 +79,7 @@ public interface DouyinOrderGateway {
      * 按指定订单号定向拉取订单。
      *
      * @param orderIds  订单号列表
-     * @param timeType  2704 时间类型：{@code settle} 或 {@code update}
+     * @param timeType  fallback/probe 时间类型：{@code settle} 或 {@code update}
      * @return 订单列表结果
      */
     OrderListResult listSettlementByOrderIds(List<String> orderIds, String timeType);
@@ -91,7 +91,7 @@ public interface DouyinOrderGateway {
      * @param endTime   查询结束时间（Unix 时间戳，秒）
      * @param count     每页条数
      * @param cursor    分页游标（首次查询留空，后续传上次返回的 nextCursor）
-     * @param timeType  2704 时间类型：{@code settle} 或 {@code update}，默认 {@code update}
+     * @param timeType  时间类型：{@code settle} 或 {@code update}，默认 {@code update}
      */
     record DouyinOrderQueryRequest(
             long startTime,

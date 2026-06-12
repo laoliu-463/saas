@@ -51,7 +51,7 @@ class ProductServiceActivityStatusIndependenceTest {
     @Mock private com.colonel.saas.mapper.PromotionLinkMapper promotionLinkMapper;
     @Mock private com.colonel.saas.mapper.ColonelsettlementOrderMapper orderMapper;
     @Mock private com.colonel.saas.mapper.MerchantMapper merchantMapper;
-    @Mock private com.colonel.saas.mapper.SysUserMapper sysUserMapper;
+    @Mock private com.colonel.saas.domain.user.facade.UserDomainFacade userDomainFacade;
     @Mock private PickSourceMappingService pickSourceMappingService;
     @Mock private ProductBizStatusService productBizStatusService;
     @Mock private ColonelsettlementActivityMapper colonelActivityMapper;
@@ -76,7 +76,7 @@ class ProductServiceActivityStatusIndependenceTest {
                 promotionLinkMapper,
                 orderMapper,
                 merchantMapper,
-                sysUserMapper,
+                userDomainFacade,
                 pickSourceMappingService,
                 productBizStatusService,
                 colonelActivityMapper,

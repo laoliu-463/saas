@@ -7,7 +7,7 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -56,7 +56,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
     @Mock private ColonelsettlementActivityMapper activityMapper;
     @Mock private PerformanceMetricsQueryService performanceMetricsQueryService;
     @Mock private PerformanceRecordMapper performanceRecordMapper;
-    @Mock private SysUserMapper sysUserMapper;
+    @Mock private UserDomainFacade userDomainFacade;
     @Mock private JdbcTemplate jdbcTemplate;
 
     /** 真实的短 TTL 缓存服务（无 Redis）。 */
@@ -75,7 +75,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
                 realCache,
                 performanceMetricsQueryService,
                 performanceRecordMapper,
-                sysUserMapper,
+                userDomainFacade,
                 jdbcTemplate);
     }
 
@@ -152,7 +152,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
         DataApplicationService zeroService = new DataApplicationService(
                 orderMapper, commissionService, exclusiveTalentMapper,
                 exclusiveMerchantMapper, activityMapper, zeroTtlCache,
-                performanceMetricsQueryService, performanceRecordMapper, sysUserMapper, jdbcTemplate);
+                performanceMetricsQueryService, performanceRecordMapper, userDomainFacade, jdbcTemplate);
 
         UUID userId = UUID.randomUUID();
         for (int i = 0; i < 5; i++) {

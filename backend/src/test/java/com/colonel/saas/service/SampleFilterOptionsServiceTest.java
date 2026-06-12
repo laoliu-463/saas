@@ -5,11 +5,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
-import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
@@ -102,12 +102,8 @@ class SampleFilterOptionsServiceTest {
         ProductOperationState state = new ProductOperationState();
         state.setAssigneeId(recruiterUserId);
 
-        SysUser channel = new SysUser();
-        channel.setId(channelUserId);
-        channel.setRealName("渠道A");
-        SysUser recruiter = new SysUser();
-        recruiter.setId(recruiterUserId);
-        recruiter.setRealName("招商A");
+        UserOptionResponse channel = new UserOptionResponse(channelUserId, null, "渠道A", null, List.of(), null);
+        UserOptionResponse recruiter = new UserOptionResponse(recruiterUserId, null, "招商A", null, List.of(), null);
 
         Page<SampleRequest> page = new Page<>(1, 200, 1);
         page.setRecords(List.of(sample));
@@ -115,8 +111,8 @@ class SampleFilterOptionsServiceTest {
         when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
         when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
         when(productOperationStateMapper.selectOne(any())).thenReturn(state);
-        when(sysUserMapper.selectBatchIds(any())).thenReturn(List.of(channel));
-        when(sysUserMapper.selectById(recruiterUserId)).thenReturn(recruiter);
+        when(userDomainFacade.getUsersByIds(any())).thenReturn(List.of(channel));
+        when(userDomainFacade.getUserById(recruiterUserId)).thenReturn(recruiter);
 
         SampleFilterOptionsDTO options = service.buildOptions(
                 UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL, List.of(RoleCodes.ADMIN));

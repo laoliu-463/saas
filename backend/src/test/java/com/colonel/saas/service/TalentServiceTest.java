@@ -7,7 +7,7 @@ import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
-import com.colonel.saas.entity.SysUser;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -15,7 +15,7 @@ import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.mapper.TalentMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
 import com.colonel.saas.service.OperationLogService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -79,7 +79,7 @@ class TalentServiceTest {
     @Mock
     private OperationLogService operationLogService;
     @Mock
-    private SysUserMapper sysUserMapper;
+    private UserDomainFacade userDomainFacade;
     @Mock
     private ValueOperations<String, Object> valueOperations;
 
@@ -100,7 +100,7 @@ class TalentServiceTest {
                 configDomainFacade,
                 businessRuleConfigService,
                 operationLogService,
-                sysUserMapper
+                userDomainFacade
         );
         when(configDomainFacade.getTalentClaimProtectDays()).thenReturn(30);
         when(configDomainFacade.getExclusiveTalentFeeRatio()).thenReturn(new java.math.BigDecimal("70"));
@@ -779,7 +779,7 @@ class TalentServiceTest {
                 configDomainFacade,
                 businessRuleConfigService,
                 operationLogService,
-                sysUserMapper
+                userDomainFacade
         );
 
         UUID talentId = UUID.randomUUID();
@@ -1116,7 +1116,7 @@ class TalentServiceTest {
     @Test
     void overrideTalentAssignment_shouldThrowWhenUserNotFound() {
         UUID userId = UUID.randomUUID();
-        when(sysUserMapper.selectById(userId)).thenReturn(null);
+        when(userDomainFacade.getUserById(userId)).thenReturn(null);
 
         assertThatThrownBy(
                 () -> talentService.overrideTalentAssignment(UUID.randomUUID(), userId, "reason", UUID.randomUUID()))
@@ -1127,9 +1127,7 @@ class TalentServiceTest {
     @Test
     void overrideTalentAssignment_shouldThrowWhenUserDeleted() {
         UUID userId = UUID.randomUUID();
-        SysUser deletedUser = new SysUser();
-        deletedUser.setDeleted(1);
-        when(sysUserMapper.selectById(userId)).thenReturn(deletedUser);
+        when(userDomainFacade.getUserById(userId)).thenReturn(null);
 
         assertThatThrownBy(
                 () -> talentService.overrideTalentAssignment(UUID.randomUUID(), userId, "reason", UUID.randomUUID()))
@@ -1143,10 +1141,8 @@ class TalentServiceTest {
         UUID newUserId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
 
-        SysUser user = new SysUser();
-        user.setDeleted(0);
-        user.setDeptId(UUID.randomUUID());
-        when(sysUserMapper.selectById(newUserId)).thenReturn(user);
+        UserOptionResponse user = new UserOptionResponse(newUserId, "owner", "负责人", UUID.randomUUID(), List.of(), null);
+        when(userDomainFacade.getUserById(newUserId)).thenReturn(user);
 
         Talent talent = new Talent();
         talent.setId(talentId);

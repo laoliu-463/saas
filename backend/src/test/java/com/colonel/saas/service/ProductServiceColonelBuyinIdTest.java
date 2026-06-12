@@ -35,7 +35,7 @@ class ProductServiceColonelBuyinIdTest {
     @Mock
     private com.colonel.saas.mapper.MerchantMapper merchantMapper;
     @Mock
-    private com.colonel.saas.mapper.SysUserMapper sysUserMapper;
+    private com.colonel.saas.domain.user.facade.UserDomainFacade userDomainFacade;
     @Mock
     private PickSourceMappingService pickSourceMappingService;
     @Mock
@@ -68,7 +68,7 @@ class ProductServiceColonelBuyinIdTest {
                 promotionLinkMapper,
                 orderMapper,
                 merchantMapper,
-                sysUserMapper,
+                userDomainFacade,
                 pickSourceMappingService,
                 productBizStatusService,
                 colonelActivityMapper,

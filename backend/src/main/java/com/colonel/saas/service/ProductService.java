@@ -25,7 +25,6 @@ import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.TalentFollowRecord;
 import com.colonel.saas.entity.PromotionLink;
-import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;

@@ -24,8 +24,8 @@ import java.util.Map;
 /**
  * 抖音订单网关的生产环境实现。
  *
- * <p>功能描述：通过 {@link OrderApi} 调用抖音精选联盟的真实订单结算 API，
- * 提供多结算订单查询、机构订单查询、按时间窗口查询、按订单 ID 查询等功能。
+ * <p>功能描述：通过 {@link OrderApi} 调用抖音精选联盟的真实订单 API，
+ * 提供 1603 团长订单查询，以及 2704 fallback/probe 查询等功能。
  * 当 {@link DouyinUpstreamModeSupport} 判定为 contract 模式时，委托给
  * {@link DouyinContractFixtureProvider} 返回契约夹具数据。</p>
  *
@@ -79,7 +79,9 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
     }
 
     /**
-     * 查询多结算订单列表（buyin.colonelMultiSettlementOrders 接口）。
+     * 查询 2704 多结算订单列表（buyin.colonelMultiSettlementOrders 接口）。
+     *
+     * <p>该方法仅供 fallback / probe / 对照，不再作为默认结算写库主链路。</p>
      *
      * <p>处理流程：
      * <ol>
@@ -110,7 +112,7 @@ public class RealDouyinOrderGateway implements DouyinOrderGateway {
     }
 
     /**
-     * 查询机构结算订单列表（buyin.settlementOrders 接口）。
+     * 查询 1603 团长订单列表（buyin.instituteOrderColonel 接口）。
      *
      * <p>处理流程：
      * <ol>
