@@ -4,7 +4,7 @@
 
 更新时间：2026-06-12  
 分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`  
-HEAD：`f3846415`（Step1 四件套 `876a447d`→`834ca16e` + test fix `5bee53ef`；另有混合 commit `f3846415` 待拆分）
+HEAD：`59d3a085`（+ PERF-002 PerformanceMoneyPolicy）
 
 ## 图例
 
@@ -32,6 +32,8 @@ HEAD：`f3846415`（Step1 四件套 `876a447d`→`834ca16e` + test fix `5bee53ef
 |---------|-------|------|------|
 | DDD-USER-001 | User | DONE | `UserDomainFacade` |
 | DDD-USER-002 | User | DONE | 订单域读用户 |
+| DDD-USER-003 | User | DONE | `834ca16e` 跨域 SysUserMapper→UserDomainFacade |
+| DDD-USER-004 | User | DONE | `f3846415` DataScope 迁移至 domain/user |
 | DDD-CONFIG-001~004 | Config | DONE | Facade + Event；CONFIG-003 路由单测已绿 |
 | DDD-PRODUCT-001 | Product | DONE | `42843d09` |
 | DDD-TALENT-001 | Talent | DONE | `60b9d062` |
@@ -44,10 +46,12 @@ HEAD：`f3846415`（Step1 四件套 `876a447d`→`834ca16e` + test fix `5bee53ef
 |---------|-------|------|------|
 | DDD-PRODUCT-002 | Product | DONE | `ProductDisplayPolicy` |
 | DDD-ORDER-001 | Order | DONE | `OrderSyncApplicationService` |
-| DDD-ORDER-002 | Order | PARTIAL | `876a447d` Persistence Router 已合入；`OrderSyncService` mapOrder 在 `f3846415` 与 1603 混提，待拆分 |
-| DDD-PERF-002 | Performance | TODO | `PerformanceMoneyPolicy` |
-| DDD-SAMPLE-006 | Sample | TODO | `SampleStateMachine` 抽取 |
-| DDD-TALENT-002 | Talent | TODO | `TalentClaimPolicy` |
+| DDD-ORDER-002 | Order | DONE | `876a447d` Router + `f3846415` SettlementGateway |
+| DDD-ORDER-003 | Order | DONE | `f3846415` SettlementOrderGateway + OrderSyncService 重构 |
+| DDD-SAMPLE-005 | Sample | DONE | `f3846415` SampleController query/command 拆分 |
+| DDD-PERF-002 | Performance | DONE | `59d3a085` `PerformanceMoneyPolicy` |
+| DDD-SAMPLE-006 | Sample | WIP | `SampleStateMachine` 已委派 |
+| DDD-TALENT-002 | Talent | WIP | `TalentClaimPolicy` 已委派 |
 
 ## Batch 3 — 跨域替换
 
@@ -65,13 +69,22 @@ HEAD：`f3846415`（Step1 四件套 `876a447d`→`834ca16e` + test fix `5bee53ef
 
 | 优先级 | task_id | owner | 原因 |
 |--------|---------|-------|------|
-| P0 | DDD-SAMPLE-005-FIX | Sample | **DONE** (`eb191ac2`)；单测已跑通 |
-| P1 | DDD-ORDER-002 | Order | **PARTIAL** `876a447d` — Persistence Router 已 commit；Sync mapOrder 待 1603 拆分 |
+| P0 | DDD-SAMPLE-005-FIX | Sample | **DONE** (`eb191ac2`) |
+| P1 | DDD-ORDER-002+003 | Order | **DONE** `f3846415` |
 | P1 | DDD-PRODUCT-001 | Product | **DONE** `42843d09` |
-| P1 | DDD-USER-003 | User | **DONE** `834ca16e`（OrderController 仍待 1603 拆分） |
+| P1 | DDD-USER-003+004 | User | **DONE** `f3846415` |
 | P2 | DDD-TALENT-001 | Talent | **DONE** `60b9d062` |
+| P2 | DDD-PERF-002 | Performance | **DONE** `59d3a085` |
+| P2 | DDD-TALENT-002 / SAMPLE-006 | Batch2 Policy | **TODO** — 下一步 |
 
-## 并行许可（P0 修复后）
+## 下一步优先
 
+- commit Batch2 Policy 剩余项（TALENT-002 / SAMPLE-006）
+- 重跑 `agent-do -Scope backend` 补证据
+- **Step 4**：USER-004 跨域替换 / CLEAN-*（Facade 已进主干）
+- **Step 5**：BASE-002 Characterization 全绿
+
+可并行：**User-003** + **Product-001** + **Talent-001**（无共享文件）
+不可并行：**Order-002** 与任何改 `OrderSyncService` 的任务
 可并行：**User-003** + **Product-001** + **Talent-001**（无共享文件）
 不可并行：**Order-002** 与任何改 `OrderSyncService` 的任务
