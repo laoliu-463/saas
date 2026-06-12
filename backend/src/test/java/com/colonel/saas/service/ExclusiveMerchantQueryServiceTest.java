@@ -69,7 +69,7 @@ class ExclusiveMerchantQueryServiceTest {
         recruiter.setId(recruiterId);
         recruiter.setUsername("biz-user");
         when(exclusiveMerchantMapper.selectOne(any())).thenReturn(merchant);
-        when(sysUserMapper.selectById(recruiterId)).thenReturn(recruiter);
+        when(userDomainFacade.getUserById(recruiterId)).thenReturn(recruiter == null ? null : new com.colonel.saas.dto.user.UserOptionResponse(recruiter.getId(), recruiter.getUsername(), recruiter.getRealName(), recruiter.getDeptId(), null));
 
         ExclusiveMerchantDetailDTO dto = service.getByPartnerId("P100");
 
@@ -97,7 +97,7 @@ class ExclusiveMerchantQueryServiceTest {
         ExclusiveMerchant active = merchant("P100", "A 店", recruiterId, currentMonth(), 1);
         ExclusiveMerchant inactive = merchant("P200", "B 店", null, "bad-month", 0);
         when(exclusiveMerchantMapper.selectList(any())).thenReturn(List.of(active, inactive));
-        when(sysUserMapper.selectById(recruiterId)).thenReturn(null);
+        when(userDomainFacade.getUserById(recruiterId)).thenReturn(null == null ? null : new com.colonel.saas.dto.user.UserOptionResponse(null.getId(), null.getUsername(), null.getRealName(), null.getDeptId(), null));
 
         List<ExclusiveMerchantDetailDTO> result = service.listMyExclusiveMerchants(recruiterId);
 
