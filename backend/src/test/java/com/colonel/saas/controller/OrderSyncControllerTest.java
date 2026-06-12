@@ -4,6 +4,8 @@ import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.facade.OrderDomainFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
@@ -58,6 +60,10 @@ class OrderSyncControllerTest {
     private ProductSnapshotMapper productSnapshotMapper;
     @Mock
     private ProductMapper productMapper;
+    @Mock
+    private DddRefactorProperties dddRefactorProperties;
+    @Mock
+    private OrderDomainFacade orderDomainFacade;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -79,7 +85,9 @@ class OrderSyncControllerTest {
                         userDomainFacade,
                         order6468PaginationDryRunService,
                         order1603SettlementDryRunService,
-                        orderService))
+                        orderService,
+                        dddRefactorProperties,
+                        orderDomainFacade))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

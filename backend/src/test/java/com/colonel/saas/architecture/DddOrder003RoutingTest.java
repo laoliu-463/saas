@@ -21,6 +21,10 @@ import com.colonel.saas.service.OrderSyncService;
 import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.colonel.saas.common.handler.UUIDTypeHandler;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -61,6 +65,7 @@ class DddOrder003RoutingTest {
 
     @BeforeEach
     void setUp() {
+        initTableInfo(ColonelsettlementOrder.class);
         controller = new OrderController(
                 orderSyncService,
                 orderMapper,
@@ -77,6 +82,15 @@ class DddOrder003RoutingTest {
                 dddRefactorProperties,
                 orderDomainFacade
         );
+    }
+
+    private static void initTableInfo(Class<?> entityClass) {
+        if (TableInfoHelper.getTableInfo(entityClass) == null) {
+            MybatisConfiguration configuration = new MybatisConfiguration();
+            configuration.getTypeHandlerRegistry().register(java.util.UUID.class, UUIDTypeHandler.class);
+            MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
+            TableInfoHelper.initTableInfo(assistant, entityClass);
+        }
     }
 
     private void enableFacadeSwitch() {

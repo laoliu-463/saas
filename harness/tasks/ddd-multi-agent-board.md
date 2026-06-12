@@ -4,7 +4,7 @@
 
 更新时间：2026-06-12  
 分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`  
-HEAD：`pending`（Batch3：PERF-003 Facade 路由）
+HEAD：`17053f20`（Batch3：PERF-003 Facade 路由）
 
 ## 图例
 
@@ -84,7 +84,7 @@ HEAD：`pending`（Batch3：PERF-003 Facade 路由）
 | P2 | DDD-TALENT-001 | Talent | **DONE** `60b9d062` |
 | P2 | DDD-PERF-002 | Performance | **DONE** `59d3a085` |
 | P2 | DDD-TALENT-002 / SAMPLE-006 | Batch2 Policy | **DONE** `d41c4d58` / `98299d1e` |
-| P2 | Batch3 Replace | Integration | **WIP** — TALENT-003 + SAMPLE-007 + PRODUCT-003 + PERF-003 DONE，下一域 ORDER-003 |
+| P2 | Batch3 Replace | Integration | **WIP** — 全域除 ORDER-003 外 DONE，ORDER-003 待 commit |
 
 ## 下一步优先
 
