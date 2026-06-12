@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.performance.policy.PerformanceAttributionPolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
@@ -92,15 +93,14 @@ public class PerformanceCalculationService {
         record.setOrderId(order.getOrderId());
         record.setOrderRowId(order.getId());
 
-        // 第一步（续）：归因信息 — 渠道和招商
-        UUID channelUserId = order.getChannelUserId();
-        UUID recruiterUserId = order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();
-        record.setDefaultChannelUserId(channelUserId);
-        record.setDefaultRecruiterUserId(recruiterUserId);
-        record.setFinalChannelUserId(channelUserId);
-        record.setFinalRecruiterUserId(recruiterUserId);
-        record.setChannelAttribution(channelUserId != null ? "pick_source" : "unattributed");
-        record.setRecruiterAttribution(recruiterUserId != null ? "activity_owner" : "unattributed");
+        // 第一步（续）：归因信息 — 渠道和招商（DDD-PERF-003 委派给 PerformanceAttributionPolicy）
+        PerformanceAttributionPolicy.Resolution attr = PerformanceAttributionPolicy.resolve(order);
+        record.setDefaultChannelUserId(attr.defaultChannelUserId());
+        record.setDefaultRecruiterUserId(attr.defaultRecruiterUserId());
+        record.setFinalChannelUserId(attr.finalChannelUserId());
+        record.setFinalRecruiterUserId(attr.finalRecruiterUserId());
+        record.setChannelAttribution(attr.channelAttributionType());
+        record.setRecruiterAttribution(attr.recruiterAttributionType());
 
         // 第一步（续）：关联实体
         record.setTalentId(order.getTalentId());
@@ -159,7 +159,7 @@ public class PerformanceCalculationService {
                 0L,
                 order.getActivityId(),
                 order.getProductId(),
-                recruiterUserId,
+                attr.finalRecruiterUserId(),
                 order.getSettleTime());
         // 结算轨：使用实际达人佣金，不重复扣 effectiveTechServiceFee。
         CommissionService.CommissionSummary effectiveTrack = commissionService.calculateTrack(
@@ -169,7 +169,7 @@ public class PerformanceCalculationService {
                 talentCommission,
                 order.getActivityId(),
                 order.getProductId(),
-                recruiterUserId,
+                attr.finalRecruiterUserId(),
                 order.getSettleTime());
 
         // 将计算结果映射到记录字段
