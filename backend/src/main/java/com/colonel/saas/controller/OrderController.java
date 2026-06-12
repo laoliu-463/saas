@@ -16,6 +16,8 @@ import com.colonel.saas.entity.SysDept;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.DepartmentOption;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.facade.OrderDomainFacade;
 import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.DashboardService;
@@ -164,6 +166,9 @@ public class OrderController extends BaseController {
      */
     private final OrderService orderService;
 
+    private final DddRefactorProperties dddRefactorProperties;
+    private final OrderDomainFacade orderDomainFacade;
+
     public OrderController(
             OrderSyncService orderSyncService,
             ColonelsettlementOrderMapper orderMapper,
@@ -176,7 +181,9 @@ public class OrderController extends BaseController {
             UserDomainFacade userDomainFacade,
             Order6468PaginationDryRunService order6468PaginationDryRunService,
             Order1603SettlementDryRunService order1603SettlementDryRunService,
-            OrderService orderService) {
+            OrderService orderService,
+            DddRefactorProperties dddRefactorProperties,
+            OrderDomainFacade orderDomainFacade) {
         this.orderSyncService = orderSyncService;
         this.orderMapper = orderMapper;
         this.orderQueryService = orderQueryService;
@@ -189,6 +196,8 @@ public class OrderController extends BaseController {
         this.order6468PaginationDryRunService = order6468PaginationDryRunService;
         this.order1603SettlementDryRunService = order1603SettlementDryRunService;
         this.orderService = orderService;
+        this.dddRefactorProperties = dddRefactorProperties;
+        this.orderDomainFacade = orderDomainFacade;
     }
 
     /**
@@ -584,6 +593,14 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
+            IPage<ColonelsettlementOrder> dddResult = orderDomainFacade.getOrders(
+                    page, size, orderId, attributionStatus, unattributedReason, activityId, productId,
+                    channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+            );
+            return ok(dddResult);
+        }
         Page<ColonelsettlementOrder> query = new Page<>(page, size);
         LambdaQueryWrapper<ColonelsettlementOrder> wrapper = buildWrapper(
                 orderId,
@@ -664,6 +681,14 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
+            IPage<ColonelsettlementOrder> dddResult = orderDomainFacade.getOrders(
+                    page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, activityId, productId,
+                    channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+            );
+            return ok(dddResult);
+        }
         return getOrders(page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, activityId, productId, channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField, dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope);
     }
 
@@ -692,6 +717,9 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
+            return ok(orderDomainFacade.getOrderDetail(orderId, userId, deptId, dataScope));
+        }
         return ok(orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope));
     }
 
@@ -715,6 +743,13 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
+            return ok(orderDomainFacade.getStats(
+                    orderId, attributionStatus, unattributedReason, activityId, productId,
+                    channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+            ));
+        }
         List<UUID> parsedRecruiterDeptIds = parseUuidCsv(recruiterDeptIds);
         List<UUID> parsedChannelDeptIds = parseUuidCsv(channelDeptIds);
         QueryWrapper<ColonelsettlementOrder> statusWrapper = buildStatsWrapper(

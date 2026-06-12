@@ -61,7 +61,7 @@ HEAD：`pending`（Batch3：PERF-003 Facade 路由）
 | DDD-SAMPLE-007 | Sample | DONE | `5cea498a` Controller → ApplicationService → Facade |
 | DDD-PRODUCT-003 | Product | DONE | `19c7da8b` QuickSample 切 Facade |
 | DDD-PERF-003 | Performance | DONE | `dd892ea0` QueryController 切 Facade |
-| DDD-ORDER-003 | Order | TODO | Controller 切 Facade（勿碰 OrderSyncService） |
+| DDD-ORDER-003 | Order | DONE | Controller 切 Facade（勿碰 OrderSyncService） |
 
 串行，由 Integration Agent 控制。见 `ddd-task-dependency-graph.md`。
 
