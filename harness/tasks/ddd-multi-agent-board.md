@@ -4,7 +4,7 @@
 
 更新时间：2026-06-12  
 分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`  
-HEAD：`59d3a085`（+ PERF-002 PerformanceMoneyPolicy）
+HEAD：`a2802dad`（Batch2 Policy 收尾：TALENT-002 / SAMPLE-006 / OrderController USER-003）
 
 ## 图例
 
@@ -50,8 +50,8 @@ HEAD：`59d3a085`（+ PERF-002 PerformanceMoneyPolicy）
 | DDD-ORDER-003 | Order | DONE | `f3846415` SettlementOrderGateway + OrderSyncService 重构 |
 | DDD-SAMPLE-005 | Sample | DONE | `f3846415` SampleController query/command 拆分 |
 | DDD-PERF-002 | Performance | DONE | `59d3a085` `PerformanceMoneyPolicy` |
-| DDD-SAMPLE-006 | Sample | WIP | `SampleStateMachine` 已委派 |
-| DDD-TALENT-002 | Talent | WIP | `TalentClaimPolicy` 已委派 |
+| DDD-SAMPLE-006 | Sample | DONE | `98299d1e` `SampleStateMachine` |
+| DDD-TALENT-002 | Talent | DONE | `d41c4d58` `TalentClaimPolicy` |
 
 ## Batch 3 — 跨域替换
 
@@ -75,16 +75,14 @@ HEAD：`59d3a085`（+ PERF-002 PerformanceMoneyPolicy）
 | P1 | DDD-USER-003+004 | User | **DONE** `f3846415` |
 | P2 | DDD-TALENT-001 | Talent | **DONE** `60b9d062` |
 | P2 | DDD-PERF-002 | Performance | **DONE** `59d3a085` |
-| P2 | DDD-TALENT-002 / SAMPLE-006 | Batch2 Policy | **TODO** — 下一步 |
+| P2 | DDD-TALENT-002 / SAMPLE-006 | Batch2 Policy | **DONE** `d41c4d58` / `98299d1e` |
+| P2 | Batch3 Replace | Integration | **WIP** — 串行启动 |
 
 ## 下一步优先
 
-- commit Batch2 Policy 剩余项（TALENT-002 / SAMPLE-006）
-- 重跑 `agent-do -Scope backend` 补证据
-- **Step 4**：USER-004 跨域替换 / CLEAN-*（Facade 已进主干）
+- Batch3 调用替换（Talent → Sample → Product → Performance → Order）
+- `agent-do -Scope backend` 补证据
 - **Step 5**：BASE-002 Characterization 全绿
 
-可并行：**User-003** + **Product-001** + **Talent-001**（无共享文件）
-不可并行：**Order-002** 与任何改 `OrderSyncService` 的任务
-可并行：**User-003** + **Product-001** + **Talent-001**（无共享文件）
+可并行：**User-003** + **Product-001** + **Talent-001**（无共享文件）  
 不可并行：**Order-002** 与任何改 `OrderSyncService` 的任务
