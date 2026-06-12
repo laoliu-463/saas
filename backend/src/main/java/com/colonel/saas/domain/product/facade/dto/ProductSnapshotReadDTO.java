@@ -12,5 +12,8 @@ public record ProductSnapshotReadDTO(
         String title,
         String cover,
         Long shopId,
-        String shopName) {
+        String shopName,
+        Long price,
+        Integer status,
+        String detailUrl) {
 }

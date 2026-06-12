@@ -9,6 +9,8 @@ import com.colonel.saas.domain.sample.api.ApplySampleFromProductResult;
 import com.colonel.saas.domain.sample.api.SampleApplicationPort;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
@@ -48,6 +50,8 @@ class QuickSampleApplyTest {
     @Mock private ProductOperationStateMapper productOperationStateMapper;
     @Mock private DouyinQuickSampleGateway douyinQuickSampleGateway;
     @Mock private SampleApplicationPort sampleApplicationPort;
+    @Mock private DddRefactorProperties dddRefactorProperties;
+    @Mock private ProductDomainFacade productDomainFacade;
 
     private ProductQuickSampleService service;
 
@@ -60,8 +64,11 @@ class QuickSampleApplyTest {
                 productOperationStateMapper,
                 douyinQuickSampleGateway,
                 sampleApplicationPort,
-                false
+                false,
+                dddRefactorProperties,
+                productDomainFacade
         );
+        org.mockito.Mockito.lenient().when(dddRefactorProperties.isEnabled()).thenReturn(false);
         org.mockito.Mockito.lenient().when(douyinQuickSampleGateway.isSupported()).thenReturn(false);
         org.mockito.Mockito.lenient().when(douyinQuickSampleGateway.supportStatus())
                 .thenReturn(DouyinQuickSampleGateway.SupportStatus.UNSUPPORTED_BY_SDK);

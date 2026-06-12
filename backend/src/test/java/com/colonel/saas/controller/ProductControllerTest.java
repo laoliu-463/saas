@@ -9,7 +9,7 @@ import com.colonel.saas.dto.product.ProductFilterOptionsDTO;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ColonelPartnerSyncService;
-import com.colonel.saas.service.ProductQuickSampleService;
+import com.colonel.saas.domain.product.application.ProductQuickSampleApplicationService;
 import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,7 +39,8 @@ class ProductControllerTest {
 
     @Mock
     private ProductService productService;
-    private ProductQuickSampleService productQuickSampleService;
+    @Mock
+    private ProductQuickSampleApplicationService productQuickSampleApplicationService;
     @Mock
     private ColonelPartnerSyncService colonelPartnerSyncService;
 
@@ -47,7 +48,7 @@ class ProductControllerTest {
 
     @BeforeEach
     void setUp() {
-        productController = new ProductController(productService, productQuickSampleService, colonelPartnerSyncService);
+        productController = new ProductController(productService, productQuickSampleApplicationService, colonelPartnerSyncService);
     }
 
     @Test

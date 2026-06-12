@@ -14,7 +14,7 @@ import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.dto.product.QuickSampleApplyResponse;
 import com.colonel.saas.entity.ColonelPartner;
 import com.colonel.saas.service.ColonelPartnerSyncService;
-import com.colonel.saas.service.ProductQuickSampleService;
+import com.colonel.saas.domain.product.application.ProductQuickSampleApplicationService;
 import com.colonel.saas.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -64,7 +64,7 @@ import java.util.UUID;
  * </ul>
  *
  * <p><b>架构角色：</b>REST 控制器层，接收前端商品库页面请求，委托 {@link ProductService}、
- * {@link ProductQuickSampleService}、{@link ColonelPartnerSyncService} 完成业务逻辑。
+ * {@link ProductQuickSampleApplicationService}、{@link ColonelPartnerSyncService} 完成业务逻辑。
  *
  * <p><b>访问控制：</b>需要 {@link RequireRoles} 注解限定业务角色（BIZ_LEADER / BIZ_STAFF /
  * CHANNEL_LEADER / CHANNEL_STAFF），部分操作进一步限制为特定角色。
@@ -74,7 +74,7 @@ import java.util.UUID;
  * 各废弃接口均标注了对应的迁移目标路径。
  *
  * @see ProductService 商品核心业务服务
- * @see ProductQuickSampleService 快速寄样业务服务
+ * @see ProductQuickSampleApplicationService 快速寄样应用层
  * @see ColonelPartnerSyncService 团长合作方同步服务
  * @see BaseController 控制器基类，提供 ok()、okPage() 等统一响应封装
  */
@@ -89,18 +89,18 @@ public class ProductController extends BaseController {
     /** 商品核心业务服务，提供分页查询、筛选、详情、审核、转链、跟进等全部商品操作。 */
     private final ProductService productService;
 
-    /** 快速寄样业务服务，处理商品库弹窗式快速寄样申请的创建与校验。 */
-    private final ProductQuickSampleService productQuickSampleService;
+    /** 快速寄样应用层，处理商品库弹窗式快速寄样申请的创建与校验。 */
+    private final ProductQuickSampleApplicationService productQuickSampleApplicationService;
 
     /** 团长合作方同步服务，提供团长合作方列表查询（已废弃的筛选项接口使用）。 */
     private final ColonelPartnerSyncService colonelPartnerSyncService;
 
     public ProductController(
             ProductService productService,
-            ProductQuickSampleService productQuickSampleService,
+            ProductQuickSampleApplicationService productQuickSampleApplicationService,
             ColonelPartnerSyncService colonelPartnerSyncService) {
         this.productService = productService;
-        this.productQuickSampleService = productQuickSampleService;
+        this.productQuickSampleApplicationService = productQuickSampleApplicationService;
         this.colonelPartnerSyncService = colonelPartnerSyncService;
     }
 
@@ -267,7 +267,7 @@ public class ProductController extends BaseController {
      *
      * <ol>
      *   <li>校验商品关联主键是否存在</li>
-     *   <li>委托 {@link ProductQuickSampleService#applyQuickSample} 创建寄样申请</li>
+     *   <li>委托 {@link ProductQuickSampleApplicationService#applyQuickSample} 创建寄样申请</li>
      *   <li>返回创建结果，包含各达人对应的寄样单 ID</li>
      * </ol>
      *
@@ -287,7 +287,7 @@ public class ProductController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
-        return ok(productQuickSampleService.applyQuickSample(relationId, request, userId, deptId, roleCodes));
+        return ok(productQuickSampleApplicationService.applyQuickSample(relationId, request, userId, deptId, roleCodes));
     }
 
     /**

@@ -113,6 +113,9 @@ public class LegacyProductDomainFacade implements ProductDomainFacade {
                 snapshot.getTitle(),
                 snapshot.getCover(),
                 snapshot.getShopId(),
-                snapshot.getShopName());
+                snapshot.getShopName(),
+                snapshot.getPrice(),
+                snapshot.getStatus(),
+                snapshot.getDetailUrl());
     }
 }

@@ -17,6 +17,8 @@ import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway;
 import com.colonel.saas.mapper.ProductMapper;
+import com.colonel.saas.domain.product.facade.ProductDomainFacade;
+import com.colonel.saas.config.DddRefactorProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.beans.factory.annotation.Value;
@@ -71,17 +73,13 @@ public class ProductQuickSampleService {
     private final SampleApplicationPort sampleApplicationPort;
     /** 是否启用抖店外部快速寄样 */
     private final boolean douyinQuickSampleEnabled;
+    /** DDD 重构安全开关 */
+    private final DddRefactorProperties dddRefactorProperties;
+    /** 商品只读门面 */
+    private final ProductDomainFacade productDomainFacade;
 
     /**
      * 构造注入。
-     *
-     * @param productService               商品服务
-     * @param productMapper                商品主表 Mapper
-     * @param productSnapshotMapper        商品快照 Mapper
-     * @param productOperationStateMapper  商品运营状态 Mapper
-     * @param douyinQuickSampleGateway     抖店快速寄样网关
-     * @param sampleApplicationPort        寄样域应用端口
-     * @param douyinQuickSampleEnabled     是否启用外部快速寄样
      */
     public ProductQuickSampleService(
             ProductService productService,
@@ -90,7 +88,9 @@ public class ProductQuickSampleService {
             ProductOperationStateMapper productOperationStateMapper,
             DouyinQuickSampleGateway douyinQuickSampleGateway,
             SampleApplicationPort sampleApplicationPort,
-            @Value("${app.douyin.quick-sample.enabled:false}") boolean douyinQuickSampleEnabled) {
+            @Value("${app.douyin.quick-sample.enabled:false}") boolean douyinQuickSampleEnabled,
+            DddRefactorProperties dddRefactorProperties,
+            ProductDomainFacade productDomainFacade) {
         this.productService = productService;
         this.productMapper = productMapper;
         this.productSnapshotMapper = productSnapshotMapper;
@@ -98,6 +98,8 @@ public class ProductQuickSampleService {
         this.douyinQuickSampleGateway = douyinQuickSampleGateway;
         this.sampleApplicationPort = sampleApplicationPort;
         this.douyinQuickSampleEnabled = douyinQuickSampleEnabled;
+        this.dddRefactorProperties = dddRefactorProperties;
+        this.productDomainFacade = productDomainFacade;
     }
 
     /**
@@ -200,7 +202,26 @@ public class ProductQuickSampleService {
         if (legacyProduct == null) {
             throw BusinessException.notFound("商品不存在或已不在商品库，请刷新商品后重试");
         }
-        ProductSnapshot snapshot = productSnapshotMapper.selectById(legacyProduct.getId());
+        ProductSnapshot snapshot;
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getProductFacade().isEnabled()) {
+            var snapshotDTO = productDomainFacade.findSnapshotById(legacyProduct.getId());
+            if (snapshotDTO == null) {
+                throw BusinessException.notFound("商品快照不存在或商品 ID 缺失，请刷新商品后重试");
+            }
+            snapshot = new ProductSnapshot();
+            snapshot.setId(snapshotDTO.id());
+            snapshot.setActivityId(snapshotDTO.activityId());
+            snapshot.setProductId(snapshotDTO.productId());
+            snapshot.setTitle(snapshotDTO.title());
+            snapshot.setCover(snapshotDTO.cover());
+            snapshot.setShopId(snapshotDTO.shopId());
+            snapshot.setShopName(snapshotDTO.shopName());
+            snapshot.setPrice(snapshotDTO.price());
+            snapshot.setStatus(snapshotDTO.status());
+            snapshot.setDetailUrl(snapshotDTO.detailUrl());
+        } else {
+            snapshot = productSnapshotMapper.selectById(legacyProduct.getId());
+        }
         if (snapshot == null || !StringUtils.hasText(snapshot.getProductId())) {
             throw BusinessException.notFound("商品快照不存在或商品 ID 缺失，请刷新商品后重试");
         }
@@ -230,9 +251,24 @@ public class ProductQuickSampleService {
         if (!StringUtils.hasText(productId)) {
             return null;
         }
-        return productMapper.selectOne(new LambdaQueryWrapper<Product>()
-                .eq(Product::getProductId, productId)
-                .last("LIMIT 1"));
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getProductFacade().isEnabled()) {
+            var productDTO = productDomainFacade.findProductByExternalId(productId);
+            if (productDTO == null) {
+                return null;
+            }
+            Product product = new Product();
+            product.setId(productDTO.id());
+            product.setProductId(productDTO.productId());
+            product.setOuterProductId(productDTO.outerProductId());
+            product.setName(productDTO.name());
+            product.setCover(productDTO.cover());
+            product.setPrice(productDTO.price());
+            return product;
+        } else {
+            return productMapper.selectOne(new LambdaQueryWrapper<Product>()
+                    .eq(Product::getProductId, productId)
+                    .last("LIMIT 1"));
+        }
     }
 
     private Product materializeProductFromSnapshot(ProductSnapshot snapshot) {
