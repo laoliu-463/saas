@@ -23,7 +23,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ProductServiceActivityAssignTest {
 
-    @Mock private com.colonel.saas.gateway.douyin.DouyinPromotionGateway douyinPromotionGateway;
+    @Mock private com.colonel.saas.domain.product.application.port.DouyinConvertPort douyinConvertPort;
     @Mock private com.colonel.saas.gateway.douyin.DouyinProductGateway douyinProductGateway;
     @Mock private com.colonel.saas.mapper.ProductSnapshotMapper snapshotMapper;
     @Mock private ProductOperationStateMapper operationStateMapper;
@@ -48,7 +48,7 @@ class ProductServiceActivityAssignTest {
     @BeforeEach
     void setUp() {
         productService = new ProductService(
-                douyinPromotionGateway,
+                douyinConvertPort,
                 douyinProductGateway,
                 snapshotMapper,
                 operationStateMapper,

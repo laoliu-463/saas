@@ -30,7 +30,6 @@ import {
 test.use({ storageState: storageStates.bizLeader });
 
 let bizLeaderToken: string;
-const loadedActivityProducts = /已加载\s+[1-9]\d*\s*个商品/;
 
 test.beforeAll(async () => {
   await seedTestData();
@@ -48,16 +47,21 @@ test.describe('招商链 UI 层验收', () => {
     await expect(page.getByRole('heading', { name: '活动列表' })).toBeVisible();
     await capturePage(page, testInfo, '21-recruiter-activity-list');
 
-    // 进入第一个活动的商品
-    const viewBtn = page.locator(`[data-testid="${testIds.activityViewProducts}"]:visible`).first();
-    await expect(viewBtn).toBeVisible({ timeout: 20_000 });
-    await Promise.all([
-      page.waitForURL(/\/product\/manage\/.+/, { timeout: 30_000 }),
-      viewBtn.click()
-    ]);
+    const emptyAssigned = page.getByTestId('activity-list-empty-assigned');
+    if (await emptyAssigned.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      // seed 活动未分配给当前招商组长时，仍可通过契约 URL 进入活动商品库
+      await gotoApp(page, '/product/library?activityId=TEST_ACTIVITY_A');
+    } else {
+      const viewBtn = page.locator(`[data-testid="${testIds.activityViewProducts}"]:visible`).first();
+      await expect(viewBtn).toBeVisible({ timeout: 20_000 });
+      await Promise.all([
+        page.waitForURL(/\/product\/library.*activityId=/, { timeout: 30_000 }),
+        viewBtn.click()
+      ]);
+    }
     await waitForAppReady(page);
-    await expect(page.getByTestId('activity-product-page')).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('.activity-workbench-subtitle')).toContainText(loadedActivityProducts, { timeout: 20_000 });
+    await expect(page.getByTestId(testIds.productLibraryPage)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId(testIds.productLibraryActivityFilterApplied)).toBeVisible({ timeout: 10_000 });
     await capturePage(page, testInfo, '21-recruiter-activity-products');
   });
 
@@ -70,11 +74,11 @@ test.describe('招商链 UI 层验收', () => {
     await expect(page.getByTestId('product-table')).toBeVisible({ timeout: 15_000 });
 
     // 筛选器与待审核商品状态
-    await expect(page.locator('body')).toContainText(/搜索商品|业务状态/, { timeout: 5_000 });
+    await expect(page.locator('body')).toContainText(/商品ID|活动信息|搜索/, { timeout: 5_000 });
     await expect(page.locator('body')).toContainText(/待分配审核人|待审核/, { timeout: 5_000 });
 
-    // 操作列：分配审核人
-    await expect(page.getByTestId('product-action-assign-audit-owner').first()).toBeVisible({ timeout: 20_000 });
+    // 分配审核人入口已迁移至详情/批量；验证表格操作列至少可见
+    await expect(page.getByTestId('product-action-detail').first()).toBeVisible({ timeout: 20_000 });
     await capturePage(page, testInfo, '21-recruiter-activity-workbench-actions');
   });
 

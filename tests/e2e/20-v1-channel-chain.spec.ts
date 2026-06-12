@@ -57,7 +57,7 @@ test.describe('渠道链 UI 层验收', () => {
 
     // 等待任意反馈 toast（成功或降级均可，关键是有反馈）
     await expect(page.locator('body')).toContainText(
-      /推广链接已复制|已复制|归因到当前渠道|推广链接生成失败|pick_source/,
+      /推广链接已复制|已复制|复制成功|已生成推广链接|归因到当前渠道|推广链接生成失败|pick_source/,
       { timeout: 10_000 }
     );
     await capturePage(page, testInfo, '20-channel-promotion-link-feedback', { visual: false });
@@ -68,7 +68,8 @@ test.describe('渠道链 UI 层验收', () => {
   // ──────────────────────────────────────────────
   test('渠道组长可查看商品详情推广资料包', async ({ page }, testInfo) => {
     await gotoApp(page, '/product');
-    await waitForProductCard(page);
+    const firstCard = await waitForProductCard(page);
+    await firstCard.hover();
 
     await page.getByTestId(testIds.productDetailButton).first().click();
     await expect(page.locator('body')).toContainText(
