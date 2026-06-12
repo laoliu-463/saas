@@ -7,6 +7,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
+import com.colonel.saas.dto.performance.OrderPerformanceBatchResponse;
+import com.colonel.saas.dto.performance.OrderPerformanceDTO;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ExclusiveMerchant;
@@ -15,9 +18,7 @@ import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
-import com.colonel.saas.mapper.PerformanceRecordMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.vo.data.OrderDetailVO;
 import com.colonel.saas.service.CommissionService;
@@ -67,7 +68,7 @@ class DataControllerTest {
     @Mock
     private PerformanceMetricsQueryService performanceMetricsQueryService;
     @Mock
-    private PerformanceRecordMapper performanceRecordMapper;
+    private OrderPerformanceQueryFacade orderPerformanceQueryFacade;
     @Mock
     private UserDomainFacade userDomainFacade;
     @Mock
@@ -90,7 +91,7 @@ class DataControllerTest {
                 activityMapper,
                 new ShortTtlCacheService(),
                 performanceMetricsQueryService,
-                performanceRecordMapper,
+                orderPerformanceQueryFacade,
                 userDomainFacade,
                 jdbcTemplate
         );
@@ -1266,12 +1267,12 @@ class DataControllerTest {
         orderPage.setTotal(1);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
 
-        PerformanceRecord perf = new PerformanceRecord();
+        OrderPerformanceDTO perf = new OrderPerformanceDTO();
         perf.setOrderId("ORD001");
         UUID channelUserId = UUID.randomUUID();
         UUID recruiterUserId = UUID.randomUUID();
-        perf.setFinalChannelUserId(channelUserId);
-        perf.setFinalRecruiterUserId(recruiterUserId);
+        perf.setFinalChannelId(channelUserId.toString());
+        perf.setFinalRecruiterId(recruiterUserId.toString());
         perf.setEstimateRecruiterCommission(400L);
         perf.setEffectiveRecruiterCommission(380L);
         perf.setEstimateChannelCommission(300L);
@@ -1280,7 +1281,10 @@ class DataControllerTest {
         perf.setEffectiveServiceProfit(470L);
         perf.setEstimateGrossProfit(520L);
         perf.setEffectiveGrossProfit(493L);
-        when(performanceRecordMapper.findByOrderIds(List.of("ORD001"))).thenReturn(List.of(perf));
+        perf.setIsValid(Boolean.TRUE);
+        OrderPerformanceBatchResponse perfResponse = new OrderPerformanceBatchResponse();
+        perfResponse.setItems(List.of(perf));
+        when(orderPerformanceQueryFacade.batchGetOrderPerformance(eq(List.of("ORD001")), any())).thenReturn(perfResponse);
 
         ColonelsettlementActivity activity = new ColonelsettlementActivity();
         activity.setActivityId("ACT001");
@@ -1343,7 +1347,9 @@ class DataControllerTest {
         orderPage.setRecords(List.of(order));
         orderPage.setTotal(1);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
-        when(performanceRecordMapper.findByOrderIds(List.of("ORD002"))).thenReturn(List.of());
+        OrderPerformanceBatchResponse emptyPerfResponse = new OrderPerformanceBatchResponse();
+        emptyPerfResponse.setItems(List.of());
+        when(orderPerformanceQueryFacade.batchGetOrderPerformance(eq(List.of("ORD002")), any())).thenReturn(emptyPerfResponse);
         org.mockito.Mockito.lenient().when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of());
 
         var result = dataController.getOrderDetailPage(
@@ -1383,7 +1389,9 @@ class DataControllerTest {
         orderPage.setTotal(1);
         orderPage.setPages(1);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
-        when(performanceRecordMapper.findByOrderIds(any())).thenReturn(List.of());
+        OrderPerformanceBatchResponse emptyPerfResponse = new OrderPerformanceBatchResponse();
+        emptyPerfResponse.setItems(List.of());
+        when(orderPerformanceQueryFacade.batchGetOrderPerformance(any(), any())).thenReturn(emptyPerfResponse);
         org.mockito.Mockito.lenient().when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of());
 
         MockHttpServletResponse response = new MockHttpServletResponse();
