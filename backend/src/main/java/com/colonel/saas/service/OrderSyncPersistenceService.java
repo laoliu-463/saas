@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.OptimisticLockSupport;
+import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
@@ -29,6 +30,8 @@ public class OrderSyncPersistenceService {
 
     /** 同步来源：6468 instituteOrderColonel，主订单事实 + 预估轨 + 已结算普通单结算轨。 */
     public static final String SYNC_SOURCE_INSTITUTE = "INSTITUTE";
+    /** 同步来源：1603 instituteOrderColonel 结算口径，默认结算写库主链路。 */
+    public static final String SYNC_SOURCE_INSTITUTE_SETTLEMENT = "INSTITUTE_SETTLEMENT";
     /** 同步来源：2704 colonelMultiSettlementOrders，分次结算补充源（非主入库、非结算轨唯一来源）。 */
     public static final String SYNC_SOURCE_SETTLEMENT = "SETTLEMENT";
 
@@ -48,6 +51,8 @@ public class OrderSyncPersistenceService {
     private final UserDomainFacade userDomainFacade;
     /** Spring 事件发布器，用于发布 OrderSyncedEvent */
     private final ApplicationEventPublisher eventPublisher;
+    /** 订单金额映射路由（DDD-ORDER-002） */
+    private final OrderAmountMappingRouter orderAmountMappingRouter;
 
     public OrderSyncPersistenceService(
             ColonelsettlementOrderMapper orderMapper,
@@ -57,7 +62,8 @@ public class OrderSyncPersistenceService {
             SampleLifecycleService sampleLifecycleService,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            OrderAmountMappingRouter orderAmountMappingRouter) {
         this.orderMapper = orderMapper;
         this.orderSyncDedupClaimMapper = orderSyncDedupClaimMapper;
         this.pickSourceMappingService = pickSourceMappingService;
@@ -66,6 +72,7 @@ public class OrderSyncPersistenceService {
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
         this.eventPublisher = eventPublisher;
+        this.orderAmountMappingRouter = orderAmountMappingRouter;
     }
 
     /** 根据用户 ID 查询真实姓名，不存在时返回 null（DDD-USER-002 委派 UserDomainFacade）。 */
@@ -145,10 +152,16 @@ public class OrderSyncPersistenceService {
      */
     private void mergeBySource(ColonelsettlementOrder existing, ColonelsettlementOrder incoming) {
         if (SYNC_SOURCE_INSTITUTE.equals(incoming.getSyncSource())) {
-            OrderDualTrackAmountResolver.mergeSettlementSnapshot(existing, incoming);
+            orderAmountMappingRouter.mergeSettlementSnapshot(existing, incoming);
             return;
         }
-        OrderDualTrackAmountResolver.mergeEstimateSnapshot(existing, incoming);
+        if (SYNC_SOURCE_INSTITUTE_SETTLEMENT.equals(incoming.getSyncSource())) {
+            orderAmountMappingRouter.mergeEstimateSnapshot(existing, incoming);
+            orderAmountMappingRouter.mergeSettlementSnapshot(existing, incoming);
+            return;
+        }
+        orderAmountMappingRouter.mergeEstimateSnapshot(existing, incoming);
+        orderAmountMappingRouter.mergeSettlementSnapshot(existing, incoming);
     }
 
     /** 发布订单同步完成事件，将订单的金额快照和归因信息通知下游消费者。 */

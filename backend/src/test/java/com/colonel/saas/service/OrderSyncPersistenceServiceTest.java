@@ -1,5 +1,7 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
@@ -48,11 +50,13 @@ class OrderSyncPersistenceServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    private OrderAmountMappingRouter orderAmountMappingRouter;
     private OrderSyncPersistenceService service;
 
     @BeforeEach
     void setUp() {
         lenient().when(orderMapper.updateSyncedById(any(ColonelsettlementOrder.class))).thenReturn(1);
+        orderAmountMappingRouter = new OrderAmountMappingRouter(new DddRefactorProperties());
         service = new OrderSyncPersistenceService(
                 orderMapper,
                 orderSyncDedupClaimMapper,
@@ -61,7 +65,8 @@ class OrderSyncPersistenceServiceTest {
                 sampleLifecycleService,
                 operationLogService,
                 userDomainFacade,
-                eventPublisher
+                eventPublisher,
+                orderAmountMappingRouter
         );
     }
 
