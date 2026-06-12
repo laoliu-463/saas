@@ -4,7 +4,7 @@
 
 更新时间：2026-06-12  
 分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`  
-HEAD：`0337d07f`（Batch3 WIP：TALENT-003 Facade 路由）
+HEAD：`69e8d106`（Batch3：TALENT-003 Facade 路由）
 
 ## 图例
 
@@ -57,7 +57,7 @@ HEAD：`0337d07f`（Batch3 WIP：TALENT-003 Facade 路由）
 
 | task_id | owner | 状态 | 说明 |
 |---------|-------|------|------|
-| DDD-TALENT-003 | Talent | WIP | TalentController → TalentQueryApplicationService → Facade |
+| DDD-TALENT-003 | Talent | DONE | `69e8d106` Controller → ApplicationService → Facade |
 | DDD-SAMPLE-007 | Sample | TODO | SampleController 切 Facade |
 | DDD-PRODUCT-003 | Product | TODO | QuickSample 切 Facade |
 | DDD-PERF-003 | Performance | TODO | QueryController 切 Facade |
