@@ -114,7 +114,7 @@ class DddConfig003ConfigRoutingTest {
 
         SampleEligibilityService service = new SampleEligibilityService(configDomainFacade, jdbcTemplate);
         Talent talent = new Talent();
-        talent.setSales30d(10000L);
+        talent.setSales30d(40000L);
         talent.setTalentLevel("LV3");
         talent.setUnsupportedFields(List.of());
 
@@ -169,7 +169,7 @@ class DddConfig003ConfigRoutingTest {
                 "buildPickExtra",
                 UUID.fromString("11111111-1111-1111-1111-111111111111"),
                 user,
-                "PID-9",
+                "9",
                 "ACT-1");
 
         verify(configDomainFacade).getPromotionTemplate();

@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.order.policy.OrderAmountMapperPolicy;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
@@ -200,8 +201,8 @@ public final class OrderDualTrackAmountResolver {
     /**
      * 事实源再次同步时保留已有结算轨快照。
      * <p>
-     * 6468 只负责事实/预估轨；当该来源更新已存在订单时，不能清空 2704 已补充的
-     * settle/effective 字段。
+     * 6468 在已结算场景可写入普通订单结算轨；当该来源再次同步且未返回有效结算字段时，
+     * 不能清空 2704 或历史 6468 已补充的 settle/effective 字段。
      * </p>
      */
     public static void mergeSettlementSnapshot(
@@ -235,14 +236,24 @@ public final class OrderDualTrackAmountResolver {
 
     /**
      * 将 6468 事实源金额写入订单实体。
-     * <p>
-     * 6468 只负责事实/预估轨：写入实付金额、actualAmount 兼容字段和预估费用；
-     * 不写 settle/effective/settleColonel* 字段，避免污染 2704 结算轨。
-     * </p>
      */
     public static void applyInstituteFactToOrder(
             com.colonel.saas.entity.ColonelsettlementOrder order,
             DualTrackAmounts amounts) {
+        applyInstituteFactToOrder(order, amounts, null);
+    }
+
+    /**
+     * 将 6468 事实源金额写入订单实体。
+     * <p>
+     * 6468 是主订单事实源：写入实付与预估轨；当 raw 明确表示已结算时，
+     * 委托 {@link OrderAmountMapperPolicy} 保守写入普通订单结算轨。
+     * </p>
+     */
+    public static void applyInstituteFactToOrder(
+            com.colonel.saas.entity.ColonelsettlementOrder order,
+            DualTrackAmounts amounts,
+            Map<String, Object> rawPayload) {
         if (order == null || amounts == null) {
             return;
         }
@@ -251,10 +262,14 @@ public final class OrderDualTrackAmountResolver {
         order.setEstimateServiceFee(amounts.estimateServiceFee());
         order.setEstimateTechServiceFee(amounts.estimateTechServiceFee());
         order.setEstimateServiceFeeExpense(amounts.estimateServiceFeeExpense());
+        if (rawPayload != null && OrderAmountMapperPolicy.hasInstituteSettlementSignal(rawPayload)) {
+            OrderAmountMapperPolicy.applyInstituteSettlementFromRaw(order, rawPayload);
+        }
     }
 
     /**
      * 将解析后的双轨金额写入订单实体，同时兼容旧字段映射。
+     * <p>2704 为分次结算补充源，补全结算轨与分次结算明细，非普通订单主入库源。</p>
      *
      * <ol>
      *   <li>第一步：写入基础金额字段（订单实付、结算金额）</li>

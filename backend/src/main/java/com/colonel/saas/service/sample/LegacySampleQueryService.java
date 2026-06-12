@@ -6,6 +6,7 @@ import com.colonel.saas.vo.sample.SampleVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
 import com.colonel.saas.vo.sample.SampleLogisticsVO;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -17,7 +18,9 @@ import java.util.UUID;
 /**
  * 寄样查询服务实现：委托给 {@link SampleApplicationService} 执行实际查询。
  *
- * <p>当前实现采用委托模式，将所有查询操作委托给现有的 {@link SampleApplicationService}。
+ * <p>当前实现采用委托模式，将所有查询操作委托给独立的
+ * {@code sampleQueryApplicationDelegate} Bean（见 {@link SampleQueryConfiguration}），
+ * 避免委托回 {@link com.colonel.saas.controller.SampleController} 覆盖的查询方法而形成运行时循环。
  * 后续可逐步将查询逻辑从 SampleApplicationService 迁移到本服务中，实现真正的逻辑分离。
  *
  * <p>设计原则：
@@ -35,7 +38,8 @@ public class LegacySampleQueryService implements SampleQueryService {
 
     private final SampleApplicationService sampleApplicationService;
 
-    public LegacySampleQueryService(SampleApplicationService sampleApplicationService) {
+    public LegacySampleQueryService(
+            @Qualifier("sampleQueryApplicationDelegate") SampleApplicationService sampleApplicationService) {
         this.sampleApplicationService = sampleApplicationService;
     }
 

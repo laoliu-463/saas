@@ -48,8 +48,9 @@ import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.SampleEligibilityService;
 import com.colonel.saas.service.SampleStatusLogService;
 import com.colonel.saas.service.SampleWriteTransactionService;
+import com.colonel.saas.service.sample.LegacySampleCommandService;
+import com.colonel.saas.service.sample.LegacySampleQueryService;
 import com.colonel.saas.service.sample.SampleApplicationService;
-import com.colonel.saas.service.sample.SampleQueryService;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
 import com.colonel.saas.vo.sample.SampleEligibilityCheckVO;
@@ -125,14 +126,13 @@ class SampleControllerTest {
     private SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService;
     @Mock
     private SampleDomainEventPublisher sampleDomainEventPublisher;
-    @Mock
-    private SampleQueryService sampleQueryService;
 
     private SampleController sampleController;
+    private SampleApplicationService applicationDelegate;
 
     @BeforeEach
     void setUp() {
-        sampleController = new SampleController(
+        applicationDelegate = new SampleApplicationService(
                 sampleRequestMapper,
                 productMapper,
                 productOperationStateMapper,
@@ -150,9 +150,10 @@ class SampleControllerTest {
                 sampleLogisticsImportService,
                 sampleLogisticsSubscriptionService,
                 sampleDomainEventPublisher,
-                new SampleWriteTransactionService(),
-                sampleQueryService
-        );
+                new SampleWriteTransactionService());
+        sampleController = new SampleController(
+                new LegacySampleQueryService(applicationDelegate),
+                new LegacySampleCommandService(applicationDelegate));
         lenient().when(configDomainFacade.isSampleLimitEnabled()).thenReturn(true);
         lenient().when(configDomainFacade.getSampleLimitDays()).thenReturn(7);
         lenient().when(sampleEligibilityService.evaluate(any(), any()))
@@ -548,7 +549,7 @@ class SampleControllerTest {
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
 
-        assertThatThrownBy(() -> sampleController.getSampleById(sampleId, viewerId, null, DataScope.PERSONAL))
+        assertThatThrownBy(() -> sampleController.getSampleById(sampleId, viewerId, null, DataScope.PERSONAL, null))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("无权访问");
     }
@@ -575,7 +576,7 @@ class SampleControllerTest {
         when(productMapper.selectById(null)).thenReturn(null);
         when(sysUserMapper.selectById(ownerId)).thenReturn(owner);
 
-        var response = sampleController.getSampleById(sampleId, viewerId, storedDeptId, DataScope.DEPT);
+        var response = sampleController.getSampleById(sampleId, viewerId, storedDeptId, DataScope.DEPT, null);
 
         assertThat(response.getData().getId()).isEqualTo(sampleId);
     }
@@ -602,7 +603,7 @@ class SampleControllerTest {
         when(productMapper.selectById(null)).thenReturn(null);
         when(sysUserMapper.selectById(ownerId)).thenReturn(new SysUser());
 
-        var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL);
+        var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL, null);
 
         assertThat(response.getData().getApplyReason()).isEqualTo("潜力达人，申请破格寄样");
         assertThat(response.getData().getEligibilityCheck()).containsEntry("passed", false);
@@ -800,7 +801,7 @@ class SampleControllerTest {
 
     @Test
     void getSamplePage_shouldRejectOpsStaffPendingAuditStatus() {
-        assertThatThrownBy(() -> sampleController.getSamplePage(
+        assertThatThrownBy(() -> getSamplePageBasic(
                 1,
                 10,
                 null,
@@ -834,7 +835,7 @@ class SampleControllerTest {
 
     @Test
     void exportSamples_shouldRejectChannelStaff() {
-        assertThatThrownBy(() -> sampleController.exportSamples(
+        assertThatThrownBy(() -> exportSamplesBasic(
                 null,
                 null,
                 UUID.randomUUID(),
@@ -854,7 +855,7 @@ class SampleControllerTest {
 
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        sampleController.exportSamples(
+        exportSamplesBasic(
                 null,
                 null,
                 UUID.randomUUID(),
@@ -874,7 +875,7 @@ class SampleControllerTest {
 
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        sampleController.exportSamples(
+        exportSamplesBasic(
                 null,
                 null,
                 UUID.randomUUID(),
@@ -1289,7 +1290,7 @@ class SampleControllerTest {
         when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
 
-        var response = sampleController.getSamplePage(
+        var response = getSamplePageBasic(
                 1,
                 10,
                 "映射缺失",
@@ -1341,8 +1342,9 @@ class SampleControllerTest {
                 10,
                 null,
                 "PENDING_SHIP",
-                channelUserId,
+                List.of(channelUserId),
                 recruiterUserId,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
                 UUID.randomUUID(),
                 null,
                 DataScope.ALL,
@@ -1365,7 +1367,7 @@ class SampleControllerTest {
         when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class)))
                 .thenReturn(emptyPage);
 
-        var response = sampleController.getSamplePage(
+        var response = getSamplePageBasic(
                 1,
                 10,
                 null,
@@ -1397,6 +1399,7 @@ class SampleControllerTest {
                 "PENDING_AUDIT",
                 null,
                 recruiterUserId,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
                 userId,
                 null,
                 DataScope.PERSONAL,
@@ -1651,7 +1654,7 @@ class SampleControllerTest {
                 .thenReturn(secondPage);
         when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
 
-        var response = sampleController.getSampleBoard(UUID.randomUUID(), null, DataScope.ALL);
+        var response = sampleController.getSampleBoard(UUID.randomUUID(), null, DataScope.ALL, null);
 
         assertThat(response.getData().get("PENDING_AUDIT")).hasSize(1);
         assertThat(response.getData().get("PENDING_SHIP")).hasSize(1);
@@ -2112,7 +2115,7 @@ class SampleControllerTest {
 
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        sampleController.exportSamples(
+        exportSamplesBasic(
                 "SHIPPED",
                 "商品",
                 UUID.randomUUID(),
@@ -2448,38 +2451,38 @@ class SampleControllerTest {
 
     @Test
     void privateRoleAndStatusHelpers_shouldNormalizeAliasesAndPermissions() {
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isExemptFromSevenDaysLimit", (Object) null))
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isExemptFromSevenDaysLimit", (Object) null))
                 .isFalse();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isExemptFromSevenDaysLimit", List.of(RoleCodes.ADMIN)))
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isExemptFromSevenDaysLimit", List.of(RoleCodes.ADMIN)))
                 .isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isExemptFromSevenDaysLimit", "[" + RoleCodes.CHANNEL_LEADER + "]"))
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isExemptFromSevenDaysLimit", "[" + RoleCodes.CHANNEL_LEADER + "]"))
                 .isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isExemptFromSevenDaysLimit", " "))
-                .isFalse();
-
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "hasAnyRole", null, (Object) new String[]{RoleCodes.ADMIN}))
-                .isFalse();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "hasAnyRole", List.of(RoleCodes.OPS_STAFF), (Object) new String[]{RoleCodes.OPS_STAFF}))
-                .isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "hasAnyRole", "[" + RoleCodes.BIZ_STAFF + "]", (Object) new String[]{RoleCodes.BIZ_STAFF}))
-                .isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isOpsStaffOnly", List.of(RoleCodes.OPS_STAFF)))
-                .isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isOpsStaffOnly", List.of(RoleCodes.OPS_STAFF, RoleCodes.ADMIN)))
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isExemptFromSevenDaysLimit", " "))
                 .isFalse();
 
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "normalizeAction", "APPROVED")).isEqualTo("PENDING_SHIP");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "normalizeAction", "SHIPPED")).isEqualTo("SHIPPING");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "normalizeAction", "SIGNED")).isEqualTo("PENDING_HOMEWORK");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "normalizeAction", "PENDING_TASK")).isEqualTo("PENDING_HOMEWORK");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "normalizeAction", "FINISHED")).isEqualTo("COMPLETED");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "normalizeAction", " closed ")).isEqualTo("CLOSED");
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isOpsVisibleStatusCode", (Integer) null)).isFalse();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isOpsVisibleStatusCode", 2)).isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isOpsVisibleStatusCode", 1)).isFalse();
-        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(sampleController, "ensureOpsVisibleStatus", "PENDING_AUDIT"))
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "hasAnyRole", null, (Object) new String[]{RoleCodes.ADMIN}))
+                .isFalse();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "hasAnyRole", List.of(RoleCodes.OPS_STAFF), (Object) new String[]{RoleCodes.OPS_STAFF}))
+                .isTrue();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "hasAnyRole", "[" + RoleCodes.BIZ_STAFF + "]", (Object) new String[]{RoleCodes.BIZ_STAFF}))
+                .isTrue();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsStaffOnly", List.of(RoleCodes.OPS_STAFF)))
+                .isTrue();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsStaffOnly", List.of(RoleCodes.OPS_STAFF, RoleCodes.ADMIN)))
+                .isFalse();
+
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "normalizeAction", "APPROVED")).isEqualTo("PENDING_SHIP");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "normalizeAction", "SHIPPED")).isEqualTo("SHIPPING");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "normalizeAction", "SIGNED")).isEqualTo("PENDING_HOMEWORK");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "normalizeAction", "PENDING_TASK")).isEqualTo("PENDING_HOMEWORK");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "normalizeAction", "FINISHED")).isEqualTo("COMPLETED");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "normalizeAction", " closed ")).isEqualTo("CLOSED");
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsVisibleStatusCode", (Integer) null)).isFalse();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsVisibleStatusCode", 2)).isTrue();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsVisibleStatusCode", 1)).isFalse();
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(applicationDelegate, "ensureOpsVisibleStatus", "PENDING_AUDIT"))
                 .isInstanceOf(ForbiddenException.class);
-        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "missing"))
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(applicationDelegate, "parseStatus", "missing"))
                 .hasMessageContaining("Invalid status");
     }
 
@@ -2525,7 +2528,7 @@ class SampleControllerTest {
         SampleApplyRequest request = new SampleApplyRequest();
         request.setRemark(" 破格申请 ");
 
-        Map<String, Object> extra = ReflectionTestUtils.invokeMethod(sampleController, "buildSampleExtraData", request, ineligible);
+        Map<String, Object> extra = ReflectionTestUtils.invokeMethod(applicationDelegate, "buildSampleExtraData", request, ineligible);
         assertThat(extra).containsEntry("applyReason", "破格申请").containsEntry("addressSource", "manual");
         assertThat((Map<String, Object>) extra.get("requirementSnapshot"))
                 .containsEntry("min30DaySales", 30000L)
@@ -2537,7 +2540,7 @@ class SampleControllerTest {
                 .asList()
                 .containsExactly("min30DaySales", "minLevel", "custom");
 
-        SampleEligibilityCheckVO vo = ReflectionTestUtils.invokeMethod(sampleController, "toEligibilityVO", ineligible);
+        SampleEligibilityCheckVO vo = ReflectionTestUtils.invokeMethod(applicationDelegate, "toEligibilityVO", ineligible);
         assertThat(vo.isEligible()).isFalse();
         assertThat(vo.isNeedReason()).isTrue();
         assertThat(vo.getReasons()).hasSize(3);
@@ -2545,7 +2548,7 @@ class SampleControllerTest {
         when(sampleEligibilityService.evaluate(any(), any())).thenReturn(ineligible);
         SampleApplyRequest noReason = new SampleApplyRequest();
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
-                sampleController,
+                applicationDelegate,
                 "ensureEligibilityReasonIfNeeded",
                 noReason,
                 new Talent(),
@@ -2553,7 +2556,7 @@ class SampleControllerTest {
                 .hasMessageContaining("请先填写申请原因");
 
         assertThat(ReflectionTestUtils.<Object>invokeMethod(
-                sampleController,
+                applicationDelegate,
                 "ensureEligibilityReasonIfNeeded",
                 request,
                 new Talent(),
@@ -2570,7 +2573,7 @@ class SampleControllerTest {
         manualTalent.setIpLocation("杭州");
 
         CrawlerTalentInfo snapshot = ReflectionTestUtils.invokeMethod(
-                sampleController,
+                applicationDelegate,
                 "buildCrawlerSnapshotFromTalent",
                 manualTalent,
                 "selected-id");
@@ -2586,14 +2589,14 @@ class SampleControllerTest {
         existing.setDouyinUid("talent-new");
         when(talentMapper.selectOne(any())).thenReturn(existing).thenReturn(null);
 
-        assertThat(ReflectionTestUtils.<Talent>invokeMethod(sampleController, "findOrCreateTalentFromCrawler", info))
+        assertThat(ReflectionTestUtils.<Talent>invokeMethod(applicationDelegate, "findOrCreateTalentFromCrawler", info))
                 .isSameAs(existing);
-        Talent created = ReflectionTestUtils.invokeMethod(sampleController, "findOrCreateTalentFromCrawler", info);
+        Talent created = ReflectionTestUtils.invokeMethod(applicationDelegate, "findOrCreateTalentFromCrawler", info);
         assertThat(created.getDouyinUid()).isEqualTo("talent-new");
         verify(talentMapper).insert(created);
 
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
-                sampleController,
+                applicationDelegate,
                 "ensureChannelTalentClaim",
                 null,
                 UUID.randomUUID(),
@@ -2604,7 +2607,7 @@ class SampleControllerTest {
         UUID talentId = UUID.randomUUID();
         when(talentClaimMapper.findActiveByTalentAndUser(talentId, userId)).thenReturn(null);
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
-                sampleController,
+                applicationDelegate,
                 "ensureChannelTalentClaim",
                 userId,
                 talentId,
@@ -2612,17 +2615,17 @@ class SampleControllerTest {
                 .isInstanceOf(ForbiddenException.class);
 
         when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
-        ReflectionTestUtils.invokeMethod(sampleController, "checkSevenDaysLimit", userId, talentId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
-        ReflectionTestUtils.invokeMethod(sampleController, "checkSevenDaysLimit", userId, talentId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_LEADER));
+        ReflectionTestUtils.invokeMethod(applicationDelegate, "checkSevenDaysLimit", userId, talentId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+        ReflectionTestUtils.invokeMethod(applicationDelegate, "checkSevenDaysLimit", userId, talentId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_LEADER));
     }
 
     @Test
     void privateLoadAndBoardHelpers_shouldHandleEmptyAndMappedValues() {
-        assertThat(ReflectionTestUtils.<Map<UUID, Product>>invokeMethod(sampleController, "loadProducts", (Object) null)).isEmpty();
-        assertThat(ReflectionTestUtils.<Set<UUID>>invokeMethod(sampleController, "loadMatchedProductIds", " ")).isEmpty();
-        assertThat(ReflectionTestUtils.<Long>invokeMethod(sampleController, "parseLongOrNull", " 12345 ")).isEqualTo(12345L);
-        assertThat(ReflectionTestUtils.<Long>invokeMethod(sampleController, "parseLongOrNull", "not-number")).isNull();
-        assertThat(ReflectionTestUtils.<Long>invokeMethod(sampleController, "parseLongOrNull", " ")).isNull();
+        assertThat(ReflectionTestUtils.<Map<UUID, Product>>invokeMethod(applicationDelegate, "loadProducts", (Object) null)).isEmpty();
+        assertThat(ReflectionTestUtils.<Set<UUID>>invokeMethod(applicationDelegate, "loadMatchedProductIds", " ")).isEmpty();
+        assertThat(ReflectionTestUtils.<Long>invokeMethod(applicationDelegate, "parseLongOrNull", " 12345 ")).isEqualTo(12345L);
+        assertThat(ReflectionTestUtils.<Long>invokeMethod(applicationDelegate, "parseLongOrNull", "not-number")).isNull();
+        assertThat(ReflectionTestUtils.<Long>invokeMethod(applicationDelegate, "parseLongOrNull", " ")).isNull();
 
         UUID productId = UUID.randomUUID();
         Product product = new Product();
@@ -2632,9 +2635,9 @@ class SampleControllerTest {
         when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
         when(productMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(product));
 
-        assertThat(ReflectionTestUtils.<Map<UUID, Product>>invokeMethod(sampleController, "loadProducts", Set.of(productId)))
+        assertThat(ReflectionTestUtils.<Map<UUID, Product>>invokeMethod(applicationDelegate, "loadProducts", Set.of(productId)))
                 .containsEntry(productId, product);
-        assertThat(ReflectionTestUtils.<Set<UUID>>invokeMethod(sampleController, "loadMatchedProductIds", "商品"))
+        assertThat(ReflectionTestUtils.<Set<UUID>>invokeMethod(applicationDelegate, "loadMatchedProductIds", "商品"))
                 .containsExactly(productId);
 
         UUID snapshotId = UUID.randomUUID();
@@ -2647,7 +2650,7 @@ class SampleControllerTest {
         when(productSnapshotMapper.selectById(snapshotId)).thenReturn(snapshot);
         when(productMapper.selectOne(any())).thenReturn(null);
 
-        Product materialized = ReflectionTestUtils.invokeMethod(sampleController, "requireProduct", snapshotId);
+        Product materialized = ReflectionTestUtils.invokeMethod(applicationDelegate, "requireProduct", snapshotId);
 
         assertThat(materialized.getName()).isEqualTo("SNAP-1");
         assertThat(materialized.getStatus()).isEqualTo(1);
@@ -2657,7 +2660,7 @@ class SampleControllerTest {
         noAssigneeProduct.setProductId("P-NO-ASSIGNEE");
         noAssigneeProduct.setActivityId(UUID.randomUUID());
         when(productOperationStateMapper.selectOne(any())).thenReturn(null);
-        assertThat(ReflectionTestUtils.<UUID>invokeMethod(sampleController, "resolveColonelUserId", noAssigneeProduct)).isNull();
+        assertThat(ReflectionTestUtils.<UUID>invokeMethod(applicationDelegate, "resolveColonelUserId", noAssigneeProduct)).isNull();
 
         SampleRequest sample = new SampleRequest();
         sample.setId(UUID.randomUUID());
@@ -2672,56 +2675,56 @@ class SampleControllerTest {
         sample.setDeliverTime(LocalDateTime.of(2026, 5, 1, 13, 0));
         sample.setCompleteTime(LocalDateTime.of(2026, 5, 1, 14, 0));
         sample.setCloseTime(LocalDateTime.of(2026, 5, 1, 15, 0));
-        Object pendingShip = ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "PENDING_SHIP");
-        SampleBoardCard card = ReflectionTestUtils.invokeMethod(sampleController, "toBoardCard", sample, product, pendingShip);
+        Object pendingShip = ReflectionTestUtils.invokeMethod(applicationDelegate, "parseStatus", "PENDING_SHIP");
+        SampleBoardCard card = ReflectionTestUtils.invokeMethod(applicationDelegate, "toBoardCard", sample, product, pendingShip);
         assertThat(card.getProductName()).isEqualTo("商品");
         assertThat(card.getQuantity()).isEqualTo(1);
         assertThat(card.getStatus()).isEqualTo("PENDING_SHIP");
         assertThat(card.getStateEnterTime()).isEqualTo(sample.getAuditTime());
 
-        Object pendingHomework = ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "PENDING_HOMEWORK");
-        Object completed = ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "COMPLETED");
-        Object closed = ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "CLOSED");
+        Object pendingHomework = ReflectionTestUtils.invokeMethod(applicationDelegate, "parseStatus", "PENDING_HOMEWORK");
+        Object completed = ReflectionTestUtils.invokeMethod(applicationDelegate, "parseStatus", "COMPLETED");
+        Object closed = ReflectionTestUtils.invokeMethod(applicationDelegate, "parseStatus", "CLOSED");
         try {
         java.lang.reflect.Method toLegacyStatus = SampleApplicationService.class.getDeclaredMethod("toLegacyStatus", pendingHomework.getClass());
             toLegacyStatus.setAccessible(true);
-            assertThat((String) toLegacyStatus.invoke(sampleController, pendingHomework)).isEqualTo("PENDING_TASK");
-            assertThat((String) toLegacyStatus.invoke(sampleController, completed)).isEqualTo("FINISHED");
+            assertThat((String) toLegacyStatus.invoke(applicationDelegate, pendingHomework)).isEqualTo("PENDING_TASK");
+            assertThat((String) toLegacyStatus.invoke(applicationDelegate, completed)).isEqualTo("FINISHED");
             java.lang.reflect.Method resolveStateEnterTime =
         SampleApplicationService.class.getDeclaredMethod("resolveStateEnterTime", SampleRequest.class, closed.getClass());
             resolveStateEnterTime.setAccessible(true);
-            assertThat((LocalDateTime) resolveStateEnterTime.invoke(sampleController, sample, closed)).isEqualTo(sample.getCloseTime());
+            assertThat((LocalDateTime) resolveStateEnterTime.invoke(applicationDelegate, sample, closed)).isEqualTo(sample.getCloseTime());
         } catch (ReflectiveOperationException e) {
             throw new AssertionError(e);
         }
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "generateRequestNo")).startsWith("SM");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "generateRequestNo")).startsWith("SM");
     }
 
     @Test
     void privatePresentationAndEventHelpers_shouldCoverFallbackBranches() {
         Product priceProduct = new Product();
         priceProduct.setPrice(2190L);
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveProductPriceText", priceProduct, null))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveProductPriceText", priceProduct, null))
                 .isEqualTo("¥21.9");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveProductPriceText", null, null))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveProductPriceText", null, null))
                 .isNull();
 
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveApplySourceLabel", "INTERNAL_QUICK_SAMPLE"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveApplySourceLabel", "INTERNAL_QUICK_SAMPLE"))
                 .isEqualTo("内部寄样");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveApplySourceLabel", "MANUAL"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveApplySourceLabel", "MANUAL"))
                 .isEqualTo("手动申请");
 
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", null, "默认"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveOptionLabel", null, "默认"))
                 .isEqualTo("默认");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "PAID_SAMPLE", "默认"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveOptionLabel", "PAID_SAMPLE", "默认"))
                 .isEqualTo("付费寄样");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "EXCHANGE_SAMPLE", "默认"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveOptionLabel", "EXCHANGE_SAMPLE", "默认"))
                 .isEqualTo("置换寄样");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "COLONEL", "默认"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveOptionLabel", "COLONEL", "默认"))
                 .isEqualTo("团长");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "OTHER", "默认"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveOptionLabel", "OTHER", "默认"))
                 .isEqualTo("其他");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "CUSTOM", "默认"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveOptionLabel", "CUSTOM", "默认"))
                 .isEqualTo("CUSTOM");
 
         SampleRequest completed = new SampleRequest();
@@ -2730,26 +2733,26 @@ class SampleControllerTest {
         pendingHomework.setStatus(5);
         SampleRequest pendingShip = new SampleRequest();
         pendingShip.setStatus(2);
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", "NO_ORDER", pendingShip))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveHomeworkTypeLabel", "NO_ORDER", pendingShip))
                 .isEqualTo("无订单");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", "PARTIAL", pendingShip))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveHomeworkTypeLabel", "PARTIAL", pendingShip))
                 .isEqualTo("部分完成");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", "CUSTOM", pendingShip))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveHomeworkTypeLabel", "CUSTOM", pendingShip))
                 .isEqualTo("CUSTOM");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", null, completed))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveHomeworkTypeLabel", null, completed))
                 .isEqualTo("有订单");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", null, pendingHomework))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveHomeworkTypeLabel", null, pendingHomework))
                 .isEqualTo("待交作业");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", null, pendingShip))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveHomeworkTypeLabel", null, pendingShip))
                 .isNull();
 
-        assertThat(ReflectionTestUtils.<Map<String, Object>>invokeMethod(sampleController, "readExtraMap", (Map<String, Object>) null, "x"))
+        assertThat(ReflectionTestUtils.<Map<String, Object>>invokeMethod(applicationDelegate, "readExtraMap", (Map<String, Object>) null, "x"))
                 .isEmpty();
-        assertThat(ReflectionTestUtils.<Map<String, Object>>invokeMethod(sampleController, "readExtraMap", Map.of("x", "not-map"), "x"))
+        assertThat(ReflectionTestUtils.<Map<String, Object>>invokeMethod(applicationDelegate, "readExtraMap", Map.of("x", "not-map"), "x"))
                 .isEmpty();
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "readExtraText", (Map<String, Object>) null, "x"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "readExtraText", (Map<String, Object>) null, "x"))
                 .isNull();
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "readExtraText", Map.of("x", 123), "x"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "readExtraText", Map.of("x", 123), "x"))
                 .isEqualTo("123");
 
         UUID realNameOnlyId = UUID.randomUUID();
@@ -2767,10 +2770,10 @@ class SampleControllerTest {
         when(sysUserMapper.selectById(usernameOnlyId)).thenReturn(usernameOnly);
         when(sysUserMapper.selectById(blankUserId)).thenReturn(blankUser);
 
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveUserDisplayName", (UUID) null)).isNull();
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveUserDisplayName", realNameOnlyId)).isEqualTo("张三");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveUserDisplayName", usernameOnlyId)).isEqualTo("zhangsan");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveUserDisplayName", blankUserId)).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveUserDisplayName", (UUID) null)).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveUserDisplayName", realNameOnlyId)).isEqualTo("张三");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveUserDisplayName", usernameOnlyId)).isEqualTo("zhangsan");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveUserDisplayName", blankUserId)).isNull();
 
         UUID assigneeId = UUID.randomUUID();
         Product assignedProduct = new Product();
@@ -2779,16 +2782,16 @@ class SampleControllerTest {
         ProductOperationState state = new ProductOperationState();
         state.setAssigneeId(assigneeId);
         when(productOperationStateMapper.selectOne(any())).thenReturn(state);
-        assertThat(ReflectionTestUtils.<UUID>invokeMethod(sampleController, "resolveColonelUserId", assignedProduct))
+        assertThat(ReflectionTestUtils.<UUID>invokeMethod(applicationDelegate, "resolveColonelUserId", assignedProduct))
                 .isEqualTo(assigneeId);
 
         CrawlerTalentInfo crawlerTalentInfo = new CrawlerTalentInfo();
         crawlerTalentInfo.setTalentId("talent-ok");
         when(crawlerTalentInfoService.findByTalentId("talent-ok")).thenReturn(crawlerTalentInfo);
         when(crawlerTalentInfoService.findByTalentId("talent-missing")).thenReturn(null);
-        assertThat(ReflectionTestUtils.<CrawlerTalentInfo>invokeMethod(sampleController, "requireCrawlerTalent", "talent-ok"))
+        assertThat(ReflectionTestUtils.<CrawlerTalentInfo>invokeMethod(applicationDelegate, "requireCrawlerTalent", "talent-ok"))
                 .isSameAs(crawlerTalentInfo);
-        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(sampleController, "requireCrawlerTalent", "talent-missing"))
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(applicationDelegate, "requireCrawlerTalent", "talent-missing"))
                 .hasMessageContaining("Selected talent does not exist");
 
         UUID productId = UUID.randomUUID();
@@ -2798,9 +2801,9 @@ class SampleControllerTest {
         sample.setId(UUID.randomUUID());
         sample.setProductId(productId);
         when(productMapper.selectById(productId)).thenReturn(null);
-        ReflectionTestUtils.invokeMethod(sampleController, "publishActionDomainEvent", "COMPLETED", sample, userId, now, null);
-        ReflectionTestUtils.invokeMethod(sampleController, "publishActionDomainEvent", "CLOSED", sample, userId, now, "超时关闭");
-        ReflectionTestUtils.invokeMethod(sampleController, "publishActionDomainEvent", "UNKNOWN", sample, userId, now, null);
+        ReflectionTestUtils.invokeMethod(applicationDelegate, "publishActionDomainEvent", "COMPLETED", sample, userId, now, null);
+        ReflectionTestUtils.invokeMethod(applicationDelegate, "publishActionDomainEvent", "CLOSED", sample, userId, now, "超时关闭");
+        ReflectionTestUtils.invokeMethod(applicationDelegate, "publishActionDomainEvent", "UNKNOWN", sample, userId, now, null);
         verify(sampleDomainEventPublisher).publishSampleCompleted(sample, null, now);
         verify(sampleDomainEventPublisher).publishSampleClosed(sample, "超时关闭", now);
     }
@@ -2856,7 +2859,6 @@ class SampleControllerTest {
         page.setRecords(List.of(sample));
         page.setTotal(1);
 
-        when(productMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(product));
         when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
         when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
@@ -2929,6 +2931,7 @@ class SampleControllerTest {
         SampleRequest sample = new SampleRequest();
         sample.setId(sampleId);
         sample.setProductId(productId);
+        sample.setUserId(ownerId);
         sample.setChannelUserId(ownerId);
         sample.setDeptId(deptId);
         sample.setTalentId(UUID.randomUUID());
@@ -2971,7 +2974,7 @@ class SampleControllerTest {
         when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
         when(sysUserMapper.selectById(ownerId)).thenReturn(owner);
 
-        var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL);
+        var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL, null);
         var vo = response.getData();
 
         assertThat(vo.getId()).isEqualTo(sampleId);
@@ -3014,7 +3017,7 @@ class SampleControllerTest {
         assertThat(vo.getSampleOwnerType()).isEqualTo("COLONEL");
         assertThat(vo.getSampleOwnerTypeLabel()).isEqualTo("团长");
         assertThat(vo.getHomeworkType()).isEqualTo("VIDEO");
-        assertThat(vo.getHomeworkTypeLabel()).isEqualTo("发视频");
+        assertThat(vo.getHomeworkTypeLabel()).isEqualTo("VIDEO");
         assertThat(vo.getEligibilityCheck()).containsEntry("passed", true);
         assertThat(vo.getRequirementSnapshot()).containsEntry("actualLevel", "LV2");
     }
@@ -3051,7 +3054,6 @@ class SampleControllerTest {
         Page<SampleRequest> exportPage = new Page<>(1, 500, 1);
         exportPage.setRecords(List.of(sample));
 
-        when(productMapper.selectList(any())).thenReturn(List.of(product));
         when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
         when(sysUserMapper.selectById(channelUserId)).thenReturn(channelUser);
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any())).thenReturn(exportPage);
@@ -3073,7 +3075,7 @@ class SampleControllerTest {
         assertThat(dataLine).contains("SR-EXPORT-001");
         assertThat(dataLine).contains("导出达人");
         assertThat(dataLine).contains("导出测试商品");
-        assertThat(dataLine).contains("PENDING_TASK");
+        assertThat(dataLine).contains("PENDING_HOMEWORK");
         assertThat(dataLine).contains("导出负责人 (export_user)");
         assertThat(dataLine).contains("赵六");
         assertThat(dataLine).contains("13600136000");
@@ -3082,5 +3084,36 @@ class SampleControllerTest {
         assertThat(dataLine).contains("导出驳回原因");
         assertThat(dataLine).contains("导出备注");
         assertThat(dataLine).contains("2026-06-05");
+    }
+
+    private com.colonel.saas.common.result.ApiResult<com.colonel.saas.common.result.PageResult<com.colonel.saas.vo.sample.SampleVO>> getSamplePageBasic(
+            long page,
+            long size,
+            String keyword,
+            String status,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        return sampleController.getSamplePage(
+                page, size, keyword, status,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null,
+                userId, deptId, dataScope, roleCodes);
+    }
+
+    private void exportSamplesBasic(
+            String status,
+            String keyword,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes,
+            MockHttpServletResponse response) throws Exception {
+        sampleController.exportSamples(
+                status, keyword,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null,
+                userId, deptId, dataScope, roleCodes, response);
     }
 }

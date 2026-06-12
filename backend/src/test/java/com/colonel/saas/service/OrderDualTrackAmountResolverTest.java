@@ -190,6 +190,41 @@ class OrderDualTrackAmountResolverTest {
     }
 
     @Test
+    void applyInstituteFactToOrder_shouldWriteSettlementWhen6468Settled() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("flow_point", "SETTLE");
+        raw.put("settled_goods_amount", 1680L);
+        raw.put("colonel_order_info", Map.of("real_commission", 30L, "settled_tech_service_fee", 2L));
+
+        com.colonel.saas.entity.ColonelsettlementOrder order = new com.colonel.saas.entity.ColonelsettlementOrder();
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = new OrderDualTrackAmountResolver.DualTrackAmounts(
+                1680L, 1680L, 34L, 30L, 3L, 2L, 0L, 0L);
+
+        OrderDualTrackAmountResolver.applyInstituteFactToOrder(order, amounts, raw);
+
+        assertThat(order.getSettleAmount()).isEqualTo(1680L);
+        assertThat(order.getEffectiveServiceFee()).isEqualTo(30L);
+        assertThat(order.getEffectiveTechServiceFee()).isEqualTo(2L);
+    }
+
+    @Test
+    void applyInstituteFactToOrder_shouldNotWriteSettlementForPaySucc() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("flow_point", "PAY_SUCC");
+        raw.put("settled_goods_amount", 0L);
+        raw.put("colonel_order_info", Map.of("real_commission", 0L, "tech_service_fee", 3L));
+
+        com.colonel.saas.entity.ColonelsettlementOrder order = new com.colonel.saas.entity.ColonelsettlementOrder();
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = new OrderDualTrackAmountResolver.DualTrackAmounts(
+                1680L, 1680L, 34L, 0L, 3L, 0L, 0L, 0L);
+
+        OrderDualTrackAmountResolver.applyInstituteFactToOrder(order, amounts, raw);
+
+        assertThat(order.getSettleAmount()).isNull();
+        assertThat(order.getEffectiveServiceFee()).isNull();
+    }
+
+    @Test
     void mergeSettlementSnapshot_shouldNotOverwriteWhenIncomingHasValue() {
         com.colonel.saas.entity.ColonelsettlementOrder existing = new com.colonel.saas.entity.ColonelsettlementOrder();
         existing.setSettleAmount(2480L);

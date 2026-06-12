@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.config.AppProperties;
+import com.colonel.saas.domain.order.policy.OrderAmountMapperPolicy;
 import com.colonel.saas.job.JobLockKeys;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.common.exception.BusinessException;
@@ -79,11 +80,11 @@ public class OrderSyncService {
     static final String SYNC_MODE_PAY_RECENT = "PAY_RECENT";
     /** 同步模式标签：手动按订单号精确同步。 */
     static final String SYNC_MODE_SPECIFIC = "SPECIFIC";
-    /** 同步模式标签：团长事实源（6468 / buyin.instituteOrderColonel），只写事实/预估轨。 */
+    /** 同步模式标签：团长事实源（6468 / buyin.instituteOrderColonel），主订单事实 + 预估轨 + 已结算普通单结算轨。 */
     static final String SYNC_MODE_INSTITUTE_RECENT = "INSTITUTE_RECENT";
     /** 同步模式标签：6468 近实时热同步（小窗口、限页数，与补偿任务分锁）。 */
     static final String SYNC_MODE_INSTITUTE_HOT_RECENT = "INSTITUTE_HOT_RECENT";
-    /** 同步模式标签：2704 结算时间轨（time_type=settle）独立回扫。 */
+    /** 同步模式标签：2704 分次结算补充源（time_type=settle）独立回扫；fetched=0 不代表无订单。 */
     static final String SYNC_MODE_SETTLE = "SETTLE";
     private static final String API_INSTITUTE_ORDER_COLONEL = "buyin.instituteOrderColonel";
     private static final String API_COLONEL_MULTI_SETTLEMENT_ORDERS = "buyin.colonelMultiSettlementOrders";
@@ -250,10 +251,12 @@ public class OrderSyncService {
     }
 
     /**
-     * SETTLE 结算时间轨回扫（2704，{@code time_type=settle}）。
+     * 2704 分次结算补充回扫（{@code buyin.colonelMultiSettlementOrders}，{@code time_type=settle}）。
      * <p>
+     * 2704 补充分次结算明细与普通订单结算轨，不是主订单入库源，也不是结算轨唯一来源。
      * 使用独立锁 {@link JobLockKeys#ORDER_SYNC_SETTLE} 与 Redis 水位
-     * {@link #SETTLE_LAST_SYNC_TIME_KEY}。上游整窗空结果时不推进水位，并记录 {@code upstream_empty} 证据日志。
+     * {@link #SETTLE_LAST_SYNC_TIME_KEY}。上游整窗空结果（fetched=0）时不推进水位、不冲正订单，
+     * 并记录 {@code upstream_empty} 证据日志。
      */
     public SyncResult syncSettlementSettleWindow() {
         long now = Instant.now().getEpochSecond();
@@ -1056,8 +1059,15 @@ public class OrderSyncService {
                 : OrderDualTrackAmountResolver.resolveStrictSettlement(
                         rawPayload, item.orderAmount(), item.serviceFee());
         if (source == SyncSource.INSTITUTE) {
-            OrderDualTrackAmountResolver.applyInstituteFactToOrder(order, dualTrack);
+            OrderDualTrackAmountResolver.applyInstituteFactToOrder(order, dualTrack, rawPayload);
             order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE);
+            if (rawPayload != null && OrderAmountMapperPolicy.hasInstituteSettlementSignal(rawPayload)) {
+                LocalDateTime settleTime = rawDateTime(rawPayload, "settle_time", "settleTime", "settled_time", "settledTime");
+                if (settleTime == null && item.settleTime() != null) {
+                    settleTime = AppZone.fromEpochSecond(item.settleTime());
+                }
+                OrderAmountMapperPolicy.applyInstituteSettleTime(order, settleTime);
+            }
         } else {
             OrderDualTrackAmountResolver.applyToOrder(order, dualTrack);
             order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_SETTLEMENT);

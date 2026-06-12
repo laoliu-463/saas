@@ -27,9 +27,9 @@ import java.util.UUID;
 @Service
 public class OrderSyncPersistenceService {
 
-    /** 同步来源：6468 instituteOrderColonel，负责事实/预估轨。 */
+    /** 同步来源：6468 instituteOrderColonel，主订单事实 + 预估轨 + 已结算普通单结算轨。 */
     public static final String SYNC_SOURCE_INSTITUTE = "INSTITUTE";
-    /** 同步来源：2704 colonelMultiSettlementOrders，负责结算/有效轨。 */
+    /** 同步来源：2704 colonelMultiSettlementOrders，分次结算补充源（非主入库、非结算轨唯一来源）。 */
     public static final String SYNC_SOURCE_SETTLEMENT = "SETTLEMENT";
 
     /** 订单表 Mapper，提供按 orderId 查询、乐观锁更新和幂等插入能力 */
@@ -139,7 +139,10 @@ public class OrderSyncPersistenceService {
         return true;
     }
 
-    /** 根据同步来源保护对方轨道，避免 6468/2704 互相覆盖不属于自己的字段。 */
+    /**
+     * 根据同步来源保护对方轨道：6468 空结算字段不覆盖已有结算轨；2704 不覆盖预估轨。
+     * 2704 fetched=0 或 orders=[] 时不触发本合并。
+     */
     private void mergeBySource(ColonelsettlementOrder existing, ColonelsettlementOrder incoming) {
         if (SYNC_SOURCE_INSTITUTE.equals(incoming.getSyncSource())) {
             OrderDualTrackAmountResolver.mergeSettlementSnapshot(existing, incoming);
