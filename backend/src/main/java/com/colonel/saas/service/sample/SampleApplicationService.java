@@ -21,6 +21,8 @@ import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipItem;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
+import com.colonel.saas.domain.sample.policy.SampleStateMachine;
+import com.colonel.saas.domain.sample.policy.SampleStateMachine;
 import com.colonel.saas.gateway.logistics.query.LogisticsQueryResult;
 import com.colonel.saas.entity.SampleLogisticsTrace;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
@@ -960,7 +962,7 @@ public class SampleApplicationService extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         return sampleWriteTransactionService.execute(() -> {
-        String action = normalizeAction(request.getAction());
+        String action = SampleStateMachine.normalizeAction(request.getAction());
         ensureActionRolePermission(action, roleCodes);
         SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
         LocalDateTime now = LocalDateTime.now();
@@ -968,11 +970,11 @@ public class SampleApplicationService extends BaseController {
         SampleStatus current = SampleStatus.fromCode(fromStatus);
 
         if ("PENDING_SHIP".equals(action)) {
-            ensureTransition(current, SampleStatus.PENDING_AUDIT);
+            SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_AUDIT);
             sample.setStatus(SampleStatus.PENDING_SHIP.getCode());
             sample.setAuditTime(now);
         } else if ("REJECTED".equals(action)) {
-            ensureTransition(current, SampleStatus.PENDING_AUDIT);
+            SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_AUDIT);
             if (!StringUtils.hasText(request.getReason())) {
                 throw BusinessException.param("reason is required when reject sample request");
             }
@@ -980,7 +982,7 @@ public class SampleApplicationService extends BaseController {
             sample.setRejectReason(request.getReason());
             sample.setAuditTime(now);
         } else if ("SHIPPING".equals(action)) {
-            ensureTransition(current, SampleStatus.PENDING_SHIP);
+            SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_SHIP);
             if (!StringUtils.hasText(request.getTrackingNo())) {
                 throw BusinessException.param("trackingNo is required when shipping");
             }
@@ -990,23 +992,23 @@ public class SampleApplicationService extends BaseController {
             putExtraValue(sample, "logisticsSource", "MANUAL");
             sample.setShipTime(now);
         } else if ("DELIVERED".equals(action)) {
-            ensureTransition(current, SampleStatus.SHIPPING);
+            SampleStateMachine.ensureTransition(current, SampleStatus.SHIPPING);
             sample.setStatus(SampleStatus.DELIVERED.getCode());
             sample.setDeliverTime(now);
         } else if ("PENDING_HOMEWORK".equals(action)) {
             if (current == SampleStatus.SHIPPING) {
                 sample.setDeliverTime(now);
             } else {
-                ensureTransition(current, SampleStatus.DELIVERED);
+                SampleStateMachine.ensurePendingHomeworkTransition(current);
             }
             putExtraValueIfMissing(sample, "logisticsSource", "MANUAL");
             sample.setStatus(SampleStatus.PENDING_HOMEWORK.getCode());
         } else if ("COMPLETED".equals(action)) {
-            ensureTransition(current, SampleStatus.PENDING_HOMEWORK);
+            SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_HOMEWORK);
             sample.setStatus(SampleStatus.COMPLETED.getCode());
             sample.setCompleteTime(now);
         } else if ("CLOSED".equals(action)) {
-            ensureTransition(current, SampleStatus.PENDING_HOMEWORK);
+            SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_HOMEWORK);
             sample.setStatus(SampleStatus.CLOSED.getCode());
             sample.setCloseTime(now);
             sample.setCloseReason(request.getReason());
@@ -1063,9 +1065,7 @@ public class SampleApplicationService extends BaseController {
         ensureSampleDeletePermission(roleCodes);
         SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
         SampleStatus status = SampleStatus.fromCode(sample.getStatus());
-        if (status != SampleStatus.PENDING_AUDIT && status != SampleStatus.REJECTED) {
-            throw BusinessException.stateInvalid("Only pending/rejected sample can be deleted");
-        }
+        SampleStateMachine.ensureDeletable(status);
         sampleRequestMapper.deleteById(id);
         return ok();
     }
@@ -1323,7 +1323,7 @@ public class SampleApplicationService extends BaseController {
             try {
                 SampleRequest sample = requireSampleByRequestNo(requestNo, userId, deptId, dataScope, roleCodes);
                 SampleStatus current = SampleStatus.fromCode(sample.getStatus());
-                ensureTransition(current, SampleStatus.PENDING_AUDIT);
+                SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_AUDIT);
                 int fromStatus = sample.getStatus();
                 sample.setStatus(SampleStatus.PENDING_SHIP.getCode());
                 sample.setAuditTime(now);
@@ -1390,7 +1390,7 @@ public class SampleApplicationService extends BaseController {
             try {
                 SampleRequest sample = requireSampleByRequestNo(requestNo, userId, deptId, dataScope, roleCodes);
                 SampleStatus current = SampleStatus.fromCode(sample.getStatus());
-                ensureTransition(current, SampleStatus.PENDING_AUDIT);
+                SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_AUDIT);
                 int fromStatus = sample.getStatus();
                 sample.setStatus(SampleStatus.REJECTED.getCode());
                 sample.setRejectReason(request.getRemark());
@@ -1456,7 +1456,7 @@ public class SampleApplicationService extends BaseController {
             try {
                 SampleRequest sample = requireSampleByRequestNo(item.getRequestNo(), userId, deptId, dataScope, roleCodes);
                 SampleStatus current = SampleStatus.fromCode(sample.getStatus());
-                ensureTransition(current, SampleStatus.PENDING_SHIP);
+                SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_SHIP);
                 int fromStatus = sample.getStatus();
                 sample.setStatus(SampleStatus.SHIPPING.getCode());
                 sample.setTrackingNo(item.getTrackingNo());
@@ -1754,12 +1754,6 @@ public class SampleApplicationService extends BaseController {
      * @param expected 操作要求的预期状态
      * @throws BusinessException 当前状态与预期不匹配时抛出
      */
-    private void ensureTransition(SampleStatus current, SampleStatus expected) {
-        if (current != expected) {
-            throw BusinessException.stateInvalid("Current status does not allow this action: expected "
-                    + expected.getApiStatus() + " but was " + current.getApiStatus());
-        }
-    }
 
     /**
      * 根据 ID 查询寄样单并校验当前用户的访问权限。
@@ -3498,17 +3492,6 @@ public class SampleApplicationService extends BaseController {
      * @param action 前端操作名（如 "approved"、"SHIPPED"、"APPROVED"）
      * @return 标准化后的内部操作码
      */
-    private String normalizeAction(String action) {
-        String normalized = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
-        return switch (normalized) {
-            case "APPROVED" -> "PENDING_SHIP";
-            case "SHIPPED" -> "SHIPPING";
-            case "SIGNED" -> "PENDING_HOMEWORK";
-            case "PENDING_TASK" -> "PENDING_HOMEWORK";
-            case "FINISHED" -> "COMPLETED";
-            default -> normalized;
-        };
-    }
 
     /**
      * 校验指定状态是否对运营角色可见。
