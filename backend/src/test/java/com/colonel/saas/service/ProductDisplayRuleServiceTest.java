@@ -837,6 +837,139 @@ class ProductDisplayRuleServiceTest {
                 .findFirst().get().getId()).isEqualTo(s3.getId());
     }
 
+    // ---------------- P-FIX-002E: 批量修复 PENDING 状态 ----------------
+
+    @Test
+    void repairLibraryStateForPendingProducts_dryRunShouldReportExpectedChangesWithoutWriting() {
+        // 场景: 1 个非推广中(status=0) + 1 个推广中(status=1) 混合 PENDING
+        ProductOperationState notPromoting = pendingState("A100", "P-1");
+        ProductOperationState promoting = pendingState("A101", "P-2");
+
+        // 第 1 次: PENDING 全表查询(返回 pending 状态集)
+        // 第 2 次: loadSnapshots 内部按 activityIds+productIds 联合查询
+        when(operationStateMapper.selectList(any()))
+                .thenReturn(List.of(notPromoting, promoting));
+        when(snapshotMapper.selectList(any()))
+                .thenReturn(List.of(
+                        snapshot("A100", "P-1", 1000L, 0),
+                        snapshot("A101", "P-2", 2000L, 1)
+                ));
+
+        ProductDisplayRuleService.LibraryRepairResult result =
+                service.repairLibraryStateForPendingProducts(true, 100);
+
+        assertThat(result.dryRun()).isTrue();
+        assertThat(result.scanned()).isEqualTo(2);
+        assertThat(result.promoting()).isEqualTo(1);
+        assertThat(result.willSelectToLibrary()).isEqualTo(1);
+        assertThat(result.willDisplay()).isEqualTo(1);
+        assertThat(result.willHideByUpstream()).isEqualTo(1);
+        assertThat(result.unchanged()).isEqualTo(0);
+        assertThat(result.items()).hasSize(2);
+
+        // dryRun 必须不写入
+        verify(operationStateMapper, never()).updateById(any(ProductOperationState.class));
+    }
+
+    @Test
+    void repairLibraryStateForPendingProducts_writeShouldHideNonPromotingAndSelectPromoting() {
+        ProductOperationState notPromoting = pendingState("A100", "P-1");
+        ProductOperationState promoting = pendingState("A101", "P-2");
+
+        when(operationStateMapper.selectList(any()))
+                .thenReturn(List.of(notPromoting, promoting));
+        when(snapshotMapper.selectList(any()))
+                .thenReturn(List.of(
+                        snapshot("A100", "P-1", 1000L, 0),
+                        snapshot("A101", "P-2", 2000L, 1)
+                ));
+
+        ProductDisplayRuleService.LibraryRepairResult result =
+                service.repairLibraryStateForPendingProducts(false, 100);
+
+        assertThat(result.dryRun()).isFalse();
+        assertThat(result.scanned()).isEqualTo(2);
+
+        // 非推广中 -> HIDDEN + UPSTREAM_NOT_PROMOTING
+        assertThat(notPromoting.getDisplayStatus()).isEqualTo(ProductDisplayStatus.HIDDEN.name());
+        assertThat(notPromoting.getHiddenReason()).isEqualTo(
+                ProductDisplayRuleService.HIDDEN_REASON_UPSTREAM_NOT_PROMOTING);
+
+        // 推广中 -> 选入商品库 + 保持 PENDING(展示去重决策交给 applyForProductId)
+        assertThat(promoting.getSelectedToLibrary()).isTrue();
+        assertThat(promoting.getAuditStatus()).isEqualTo(2);
+        assertThat(promoting.getBizStatus()).isEqualTo(ProductBizStatus.APPROVED.name());
+        assertThat(promoting.getDisplayStatus()).isEqualTo(ProductDisplayStatus.PENDING.name());
+        assertThat(promoting.getHiddenReason()).isNull();
+
+        // 两条记录都应当被写入
+        ArgumentCaptor<ProductOperationState> captor = ArgumentCaptor.forClass(ProductOperationState.class);
+        verify(operationStateMapper, times(2)).updateById(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(ProductOperationState::getId)
+                .containsExactlyInAnyOrder(notPromoting.getId(), promoting.getId());
+    }
+
+    @Test
+    void repairLibraryStateForPendingProducts_writeShouldBeIdempotentOnAlreadyRepaired() {
+        // 已修复 -> HIDDEN + UPSTREAM_NOT_PROMOTING 的记录不再变化
+        ProductOperationState alreadyHidden = pendingState("A100", "P-1");
+        alreadyHidden.setDisplayStatus(ProductDisplayStatus.HIDDEN.name());
+        alreadyHidden.setHiddenReason(ProductDisplayRuleService.HIDDEN_REASON_UPSTREAM_NOT_PROMOTING);
+        alreadyHidden.setSelectedToLibrary(false);
+        alreadyHidden.setAuditStatus(1);
+        alreadyHidden.setBizStatus(ProductBizStatus.PENDING_AUDIT.name());
+
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(alreadyHidden));
+        when(snapshotMapper.selectList(any()))
+                .thenReturn(List.of(snapshot("A100", "P-1", 1000L, 0)));
+
+        ProductDisplayRuleService.LibraryRepairResult result =
+                service.repairLibraryStateForPendingProducts(false, 100);
+
+        // 幂等核心: 该记录已被识别为"未变化"，所以不进入 update 路径
+        assertThat(result.unchanged()).isEqualTo(1);
+        assertThat(result.scanned()).isEqualTo(1);
+        // items 中不应包含 unchanged 记录(unchanged 不会进入 items)
+        assertThat(result.items()).isEmpty();
+        // 幂等: 已修复的不再 updateById
+        verify(operationStateMapper, never()).updateById(any(ProductOperationState.class));
+    }
+
+    @Test
+    void repairLibraryStateForPendingProducts_emptyListShouldReturnEmptyResult() {
+        when(operationStateMapper.selectList(any())).thenReturn(List.of());
+
+        ProductDisplayRuleService.LibraryRepairResult result =
+                service.repairLibraryStateForPendingProducts(true, 100);
+
+        assertThat(result.scanned()).isEqualTo(0);
+        assertThat(result.items()).isEmpty();
+        verify(snapshotMapper, never()).selectList(any());
+        verify(operationStateMapper, never()).updateById(any(ProductOperationState.class));
+    }
+
+    @Test
+    void repairLibraryStateForPendingProducts_writeShouldHideManualDisabledEvenIfSnapshotPromoting() {
+        // manual_disabled=true + 上游 status=1 -> 进入商品库但保持 HIDDEN + LOCAL_PAUSED
+        ProductOperationState paused = pendingState("A200", "P-9");
+        paused.setManualDisabled(true);
+
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(paused));
+        when(snapshotMapper.selectList(any()))
+                .thenReturn(List.of(snapshot("A200", "P-9", 1500L, 1)));
+
+        ProductDisplayRuleService.LibraryRepairResult result =
+                service.repairLibraryStateForPendingProducts(false, 100);
+
+        assertThat(result.willHideByLocalPaused()).isEqualTo(1);
+        assertThat(paused.getDisplayStatus()).isEqualTo(ProductDisplayStatus.HIDDEN.name());
+        assertThat(paused.getHiddenReason()).isEqualTo(
+                ProductDisplayRuleService.HIDDEN_REASON_LOCAL_PAUSED);
+        assertThat(paused.getSelectedToLibrary()).isTrue();
+        verify(operationStateMapper, times(1)).updateById(paused);
+    }
+
     private ProductOperationState libraryState(
             String activityId,
             String productId,

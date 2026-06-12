@@ -111,4 +111,57 @@ class ProductLibraryRepairControllerTest {
         assertThat(requireRoles).isNotNull();
         assertThat(requireRoles.value()).containsExactly(RoleCodes.ADMIN);
     }
+
+    @Test
+    void repairPendingLibraryState_shouldCallServiceWithDryRunAndLimit() throws Exception {
+        when(productDisplayRuleService.repairLibraryStateForPendingProducts(true, 1000))
+                .thenReturn(new ProductDisplayRuleService.LibraryRepairResult(
+                        null,
+                        true,
+                        2,
+                        1,
+                        1,
+                        1,
+                        1,
+                        0,
+                        0,
+                        0,
+                        List.of(
+                                new ProductDisplayRuleService.LibraryRepairItem(
+                                        "A100", "P-1", false, false, "PENDING", "HIDDEN",
+                                        null, ProductDisplayRuleService.HIDDEN_REASON_UPSTREAM_NOT_PROMOTING,
+                                        1, 1, "PENDING_AUDIT", "PENDING_AUDIT",
+                                        ProductDisplayRuleService.REPAIR_REASON_UPSTREAM_NOT_PROMOTING),
+                                new ProductDisplayRuleService.LibraryRepairItem(
+                                        "A101", "P-2", false, true, "PENDING", "PENDING",
+                                        null, null, 1, 2, "PENDING_AUDIT", "APPROVED",
+                                        ProductDisplayRuleService.REPAIR_REASON_UPSTREAM_PROMOTING_AUTO_LIBRARY))));
+
+        mockMvc.perform(post("/colonel/products/library/repair-pending")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"dryRun\":true,\"limit\":1000}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.dryRun").value(true))
+                .andExpect(jsonPath("$.data.scanned").value(2))
+                .andExpect(jsonPath("$.data.willSelectToLibrary").value(1))
+                .andExpect(jsonPath("$.data.willHideByUpstream").value(1))
+                .andExpect(jsonPath("$.data.items.length()").value(2));
+
+        verify(productDisplayRuleService).repairLibraryStateForPendingProducts(true, 1000);
+    }
+
+    @Test
+    void repairPendingLibraryState_shouldDefaultToDryRunWhenBodyMissing() throws Exception {
+        when(productDisplayRuleService.repairLibraryStateForPendingProducts(true, 1000))
+                .thenReturn(new ProductDisplayRuleService.LibraryRepairResult(
+                        null, true, 0, 0, 0, 0, 0, 0, 0, 0, List.of()));
+
+        mockMvc.perform(post("/colonel/products/library/repair-pending"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.dryRun").value(true));
+
+        verify(productDisplayRuleService).repairLibraryStateForPendingProducts(true, 1000);
+    }
 }

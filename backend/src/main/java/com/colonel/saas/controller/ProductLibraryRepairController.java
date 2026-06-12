@@ -42,6 +42,17 @@ public class ProductLibraryRepairController extends BaseController {
                 safeRequest.limit() == null ? 1000 : safeRequest.limit()));
     }
 
+    @Operation(summary = "批量修复停留在 PENDING 的商品库运营记录",
+            description = "P-FIX-002E：dryRun=true 时仅返回差异；false 时按 buildRepairDecision 决定的状态逐条 updateById。")
+    @PostMapping("/products/library/repair-pending")
+    public ApiResult<ProductDisplayRuleService.LibraryRepairResult> repairPendingLibraryState(
+            @RequestBody(required = false) LibraryRepairRequest request) {
+        LibraryRepairRequest safeRequest = request == null ? new LibraryRepairRequest(true, 1000) : request;
+        return ok(productDisplayRuleService.repairLibraryStateForPendingProducts(
+                safeRequest.dryRun() == null || safeRequest.dryRun(),
+                safeRequest.limit() == null ? 1000 : safeRequest.limit()));
+    }
+
     @Operation(summary = "商品库展示状态巡检", description = "只读输出商品库状态断链指标。")
     @GetMapping("/products/library/health")
     public ApiResult<ProductDisplayRuleService.LibraryHealthResult> libraryHealth() {
