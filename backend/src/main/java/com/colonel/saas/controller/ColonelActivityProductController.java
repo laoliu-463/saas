@@ -370,7 +370,7 @@ public class ColonelActivityProductController extends BaseController {
     @Operation(summary = "活动商品转链", description = "为活动商品生成推广链接。")
     @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @PostMapping("/{productId}/promotion-links")
-    public ApiResult<ProductService.PromotionLinkCopyResult> generatePromotionLink(
+    public ApiResult<com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult> generatePromotionLink(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
             @Parameter(description = "商品 ID。") @PathVariable String productId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -384,8 +384,13 @@ public class ColonelActivityProductController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId) {
         // Step 1: 处理空请求体，使用默认场景参数
         PromotionLinkRequest safeRequest = request == null ? new PromotionLinkRequest() : request;
+<<<<<<< HEAD
         // Step 2: 委托应用层调用抖店转链 API 生成推广链接
         ProductService.PromotionLinkCopyResult result = copyPromotionApplicationService.generatePromotionLinkCopy(
+=======
+        // Step 2: 委托 ProductService 调用抖店转链 API 生成推广链接
+        com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult result = productService.generatePromotionLinkCopy(
+>>>>>>> fef02b1d (feat(product): DDD-PRODUCT-004 CopyPromotionApplicationService + DouyinConvertPort)
                 activityId,
                 productId,
                 userId,

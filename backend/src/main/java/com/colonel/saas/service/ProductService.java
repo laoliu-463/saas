@@ -7,6 +7,7 @@ import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.dto.product.ProductFilterOptionItem;
 import com.colonel.saas.dto.product.ProductFilterOptionsDTO;
@@ -146,6 +147,8 @@ public class ProductService {
     private final DouyinActivityGateway douyinActivityGateway;
     /** 推广链接幂等服务，防止重复生成推广链接 */
     private final PromotionLinkIdempotencyService promotionLinkIdempotencyService;
+    /** 复制推广简介应用层（DDD-PRODUCT-004 委派目标） */
+    private final com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
     /** 配置域门面，读取推广模板与 pick_extra 规则（DDD-CONFIG-003） */
     private final com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     /** 商品展示规则服务，管理商品的展示/隐藏规则和置顶逻辑 */
@@ -185,8 +188,14 @@ public class ProductService {
             ProductDisplayRuleService productDisplayRuleService,
             ColonelPartnerSyncService colonelPartnerSyncService,
             ProductDomainEventPublisher productDomainEventPublisher,
+<<<<<<< HEAD
             ProductDisplayPolicy productDisplayPolicy) {
         this.douyinConvertPort = douyinConvertPort;
+=======
+            ProductDisplayPolicy productDisplayPolicy,
+            com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService) {
+        this.douyinPromotionGateway = douyinPromotionGateway;
+>>>>>>> fef02b1d (feat(product): DDD-PRODUCT-004 CopyPromotionApplicationService + DouyinConvertPort)
         this.douyinProductGateway = douyinProductGateway;
         this.snapshotMapper = snapshotMapper;
         this.operationStateMapper = operationStateMapper;
@@ -206,6 +215,7 @@ public class ProductService {
         this.colonelPartnerSyncService = colonelPartnerSyncService;
         this.productDomainEventPublisher = productDomainEventPublisher;
         this.productDisplayPolicy = productDisplayPolicy;
+        this.copyPromotionApplicationService = copyPromotionApplicationService;
     }
 
     public IPage<Product> getPage(long page, long size, Integer status) {
@@ -2612,18 +2622,8 @@ public class ProductService {
         }
     }
 
-    public record PromotionLinkCopyResult(
-            String copyText,
-            boolean promotionLinkGenerated,
-            String promotionLink,
-            String pickSource,
-            String fallbackReason,
-            boolean realPromotionWriteEnabled,
-            boolean allowRealPromotionWrite) {
-    }
-
     @Transactional(rollbackFor = Exception.class)
-    public PromotionLinkCopyResult generatePromotionLinkCopy(
+    public com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult generatePromotionLinkCopy(
             String activityId,
             String productId,
             UUID userId,
@@ -2634,9 +2634,42 @@ public class ProductService {
             String scene,
             String talentId,
             String idempotencyKey) {
+        return copyPromotionApplicationService.copyPromotion(
+                activityId,
+                productId,
+                userId,
+                deptId,
+                externalUniqueId,
+                promotionScene,
+                needShortLink,
+                scene,
+                talentId,
+                idempotencyKey,
+                realPromotionWriteEnabled,
+                allowRealPromotionWrite
+        );
+    }
+
+    /**
+     * 装配"复制推广简介"上下文（DDD-PRODUCT-004）。
+     *
+     * <p>负责：
+     * <ol>
+     *   <li>保证 snapshot 存在（缺失则抛错）</li>
+     *   <li>加载或初始化商品操作状态</li>
+     *   <li>校验商品已加入商品库（未加入则抛错）</li>
+     *   <li>校验业务状态：APPROVED / ASSIGNED / LINKED 三种之一放行</li>
+     * </ol>
+     *
+     * <p>校验失败的异常原样抛出，调用方无需额外处理（与原 {@code generatePromotionLinkCopy} 行为一致）。</p>
+     */
+    public CopyPromotionApplicationService.Context prepareCopyPromotionContext(
+            String activityId,
+            String productId,
+            String actionLabel) {
         ProductSnapshot snapshot = ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
-        requireSelectedToLibrary(state, "复制推广简介");
+        requireSelectedToLibrary(state, actionLabel);
         ProductBizStatus beforeStatus = productBizStatusService.readBizStatus(state);
         if (beforeStatus == null) {
             beforeStatus = ProductBizStatus.fromCode(state.getBizStatus());
@@ -2647,43 +2680,10 @@ public class ProductService {
                 && !relinkExistingProduct) {
             throw BusinessException.stateInvalid("当前状态不允许执行PROMOTION_LINK，当前状态：" + beforeStatus.name());
         }
-
-        if (!isRealPromotionWriteAllowed()) {
-            return new PromotionLinkCopyResult(
-                    buildProductBriefCopyText(snapshot, state, null),
-                    false,
-                    null,
-                    null,
-                    FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED,
-                    realPromotionWriteEnabled,
-                    allowRealPromotionWrite
-            );
-        }
-
-        DouyinPromotionGateway.PromotionLinkResult result = generatePromotionLink(
-                activityId,
-                productId,
-                userId,
-                deptId,
-                externalUniqueId,
-                promotionScene,
-                needShortLink,
-                scene,
-                talentId,
-                idempotencyKey);
-        String promotionLink = firstText(result.shortLink(), result.promoteLink());
-        return new PromotionLinkCopyResult(
-                buildProductBriefCopyText(snapshot, state, promotionLink),
-                true,
-                promotionLink,
-                result.pickSource(),
-                null,
-                realPromotionWriteEnabled,
-                allowRealPromotionWrite
-        );
+        return new CopyPromotionApplicationService.Context(snapshot, state);
     }
 
-    private DouyinPromotionGateway.PromotionLinkResult generatePromotionLinkInternal(
+    public DouyinPromotionGateway.PromotionLinkResult generatePromotionLinkInternal(
             String activityId,
             String productId,
             UUID userId,
