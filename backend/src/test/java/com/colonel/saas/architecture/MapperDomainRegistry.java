@@ -47,6 +47,18 @@ final class MapperDomainRegistry {
 
     static Domain ownerDomain(String ownerFqcn) {
         String lower = ownerFqcn.toLowerCase(Locale.ROOT);
+        if (lower.contains(".domain.user.")) {
+            return Domain.USER;
+        }
+        if (lower.contains(".domain.talent.")) {
+            return Domain.TALENT;
+        }
+        if (lower.contains(".domain.product.")) {
+            return Domain.PRODUCT;
+        }
+        if (lower.contains(".domain.order.")) {
+            return Domain.ORDER;
+        }
         if (lower.contains(".auth.") || lower.contains(".domain.user.")
                 || lower.endsWith("userdomainservice")
                 || lower.endsWith("usermasterdataservice")
