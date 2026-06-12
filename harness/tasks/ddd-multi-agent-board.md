@@ -4,7 +4,7 @@
 
 更新时间：2026-06-12 16:30
 分支：`feature/ddd/DDD-PRODUCT-004-copy-promotion-port`
-HEAD：待本轮提交
+任务提交：`13d5aa2b`（DDD-PRODUCT-004 已提交并推送）
 
 > 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`
 > 当前进度：**37/53 = 70%**（DDD-PRODUCT-004 已落地；下一步 DDD-PERF-003 / DDD-VERIFY-001）
