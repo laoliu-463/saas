@@ -371,6 +371,97 @@ public class ProductDisplayRuleService {
         return repairSnapshots(null, snapshots, dryRun);
     }
 
+    /**
+     * 修复停留在 {@code PENDING} 状态的商品库运营记录（P-FIX-002E）。
+     * <p>
+     * 适用场景：当一条 {@code product_operation_state} 记录的展示状态因历史断链、
+     * 同步失败或状态机漂移等原因停留在 {@code PENDING} 时，本方法按下列规则逐条
+     * 重新判定：
+     * </p>
+     * <ul>
+     *   <li>如果对应的 {@code product_snapshot} 上游推广中（{@code status=1}）且未
+     *       本地暂停、推广期未结束：补齐 {@code selected_to_library=true}、
+     *       {@code audit_status=2}、{@code biz_status=APPROVED}；展示状态保持
+     *       {@code PENDING}，由后续 {@link #applyForProductId} 走展示去重决策
+     *       选为 {@code DISPLAYING} 或降级。</li>
+     *   <li>如果上游不再推广中（{@code status!=1}）或活动已结束：展示状态切换为
+     *       {@code HIDDEN}，并写入对应的隐藏原因（{@code UPSTREAM_NOT_PROMOTING}
+     *       或 {@code ACTIVITY_EXPIRED}）。</li>
+     *   <li>如果本地已 {@code manual_disabled=true}：展示状态切换为
+     *       {@code HIDDEN}，隐藏原因 {@code LOCAL_PAUSED}。</li>
+     * </ul>
+     * <p>
+     * 本方法在 {@code dryRun=true} 时仅返回差异，不会写入任何数据；在
+     * {@code dryRun=false} 时按 {@link #applyRepairDecision} 的结果逐条
+     * {@code updateById}。由于每次写入前都会比较新旧状态，重复执行本方法对已修复
+     * 的记录是幂等的。
+     * </p>
+     * <p>
+     * 性能说明：仅查询 {@code display_status='PENDING'} 的运营状态（按活动 ID +
+     * 商品 ID 升序以保证 deterministic），不依赖全表扫描。{@code limit} 上限为
+     * {@value #MAX_REPAIR_LIMIT}。
+     * </p>
+     *
+     * @param dryRun 是否仅返回预期差异而不写入
+     * @param limit  本次处理的最大 PENDING 记录数（≤0 使用默认
+     *               {@value #DEFAULT_REPAIR_LIMIT}，超过上限时截断）
+     * @return repair 差异结果（包含 {@code willSelectToLibrary} / {@code willDisplay}
+     *         / {@code willHideByUpstream} / {@code unchanged} 等统计字段）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public LibraryRepairResult repairLibraryStateForPendingProducts(boolean dryRun, int limit) {
+        int normalizedLimit = normalizeRepairLimit(limit);
+        List<ProductOperationState> pendingStates = operationStateMapper.selectList(
+                new LambdaQueryWrapper<ProductOperationState>()
+                        .eq(ProductOperationState::getDisplayStatus, ProductDisplayStatus.PENDING.name())
+                        .eq(ProductOperationState::getDeleted, 0)
+                        .orderByAsc(ProductOperationState::getActivityId)
+                        .orderByAsc(ProductOperationState::getProductId)
+                        .last("LIMIT " + normalizedLimit));
+        if (pendingStates.isEmpty()) {
+            return LibraryRepairResult.empty(null, dryRun);
+        }
+        Map<String, ProductSnapshot> snapshotMap = loadSnapshotsForStates(pendingStates);
+        LocalDateTime now = LocalDateTime.now();
+        LibraryRepairAccumulator accumulator = new LibraryRepairAccumulator(null, dryRun);
+
+        for (ProductOperationState state : pendingStates) {
+            ProductSnapshot snapshot = snapshotMap.get(snapshotKey(state.getActivityId(), state.getProductId()));
+            LibraryRepairDecision decision = buildRepairDecision(snapshot, state, now);
+            accumulator.accept(snapshot, state, decision);
+            if (!dryRun && decision.changed()) {
+                applyRepairDecision(state, decision, now);
+                OptimisticLockSupport.requireUpdated(operationStateMapper.updateById(state));
+            }
+        }
+
+        LibraryRepairResult result = accumulator.toResult();
+        log.info("Product library pending repair completed, dryRun={}, scanned={}, willSelectToLibrary={}, willDisplay={}, willHideByUpstream={}, willHideByLocalPaused={}, willHideByLocalRejected={}, unchanged={}",
+                dryRun,
+                result.scanned(),
+                result.willSelectToLibrary(),
+                result.willDisplay(),
+                result.willHideByUpstream(),
+                result.willHideByLocalPaused(),
+                result.willHideByLocalRejected(),
+                result.unchanged());
+        return result;
+    }
+
+    /**
+     * 根据一组运营状态加载对应的商品快照（按 activityId+productId 联合查询）。
+     * <p>
+     * 该方法对 {@link #loadSnapshots(List)}（按 candidate 列表）做了相同语义的封装，
+     * 专供 {@link #repairLibraryStateForPendingProducts} 之类的入口复用。
+     * </p>
+     */
+    private Map<String, ProductSnapshot> loadSnapshotsForStates(List<ProductOperationState> states) {
+        if (states == null || states.isEmpty()) {
+            return Map.of();
+        }
+        return loadSnapshots(states);
+    }
+
     @Transactional(readOnly = true)
     public LibraryHealthResult inspectLibraryHealth() {
         List<ProductSnapshot> snapshots = snapshotMapper.selectList(new LambdaQueryWrapper<ProductSnapshot>()
