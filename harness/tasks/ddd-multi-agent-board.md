@@ -1,8 +1,10 @@
 # DDD Multi-Agent Board
 
-更新时间：2026-06-10  
-分支：`feature/auth-system`  
-HEAD：`a60a045a`（含 DDD-ANALYTICS-002）
+> 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`
+
+更新时间：2026-06-12  
+分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`  
+HEAD：`f3846415`（Step1 四件套 `876a447d`→`834ca16e` + test fix `5bee53ef`；另有混合 commit `f3846415` 待拆分）
 
 ## 图例
 
@@ -21,7 +23,7 @@ HEAD：`a60a045a`（含 DDD-ANALYTICS-002）
 | DDD-BASE-001 | Infra | DONE | `8f1244a6` | `harness/reports/ddd-base-001-refactor-switches.md` |
 | DDD-BASE-003 | Architecture Guard | DONE | `86b16922` | `harness/reports/ddd-dependency-map.md` |
 | DDD-BASE-004 | Infra | DONE | `1ab9cd92` | `harness/reports/ddd-base-004-package-structure.md` |
-| DDD-BASE-002 | Test | PARTIAL | — | `harness/reports/ddd-base-002-characterization.md`；`CharacterizationBaselineTest` 受 Sample 循环依赖阻塞 |
+| DDD-BASE-002 | Test | PARTIAL | — | Sample 循环依赖已解除；Characterization 仍 PARTIAL |
 | Coordinator 看板 | Coordinator | **本文件** | — | — |
 
 ## Batch 1 — Facade（只新增，少替换）
@@ -30,9 +32,9 @@ HEAD：`a60a045a`（含 DDD-ANALYTICS-002）
 |---------|-------|------|------|
 | DDD-USER-001 | User | DONE | `UserDomainFacade` |
 | DDD-USER-002 | User | DONE | 订单域读用户 |
-| DDD-CONFIG-001~004 | Config | DONE/PARTIAL | Facade + Event；CONFIG-003 测试 2 fail |
-| DDD-PRODUCT-001 | Product | TODO | `ProductDomainFacade` |
-| DDD-TALENT-001 | Talent | TODO | `TalentDomainFacade` |
+| DDD-CONFIG-001~004 | Config | DONE | Facade + Event；CONFIG-003 路由单测已绿 |
+| DDD-PRODUCT-001 | Product | DONE | `42843d09` |
+| DDD-TALENT-001 | Talent | DONE | `60b9d062` |
 | DDD-PERF-001 | Performance | TODO | `PerformanceQueryFacade` |
 | DDD-PRODUCT-005 | Product | DONE | `SampleApplicationPort` |
 
@@ -42,7 +44,7 @@ HEAD：`a60a045a`（含 DDD-ANALYTICS-002）
 |---------|-------|------|------|
 | DDD-PRODUCT-002 | Product | DONE | `ProductDisplayPolicy` |
 | DDD-ORDER-001 | Order | DONE | `OrderSyncApplicationService` |
-| DDD-ORDER-002 | Order | WIP | `OrderAmountMapperPolicy` 未提交 |
+| DDD-ORDER-002 | Order | PARTIAL | `876a447d` Persistence Router 已合入；`OrderSyncService` mapOrder 在 `f3846415` 与 1603 混提，待拆分 |
 | DDD-PERF-002 | Performance | TODO | `PerformanceMoneyPolicy` |
 | DDD-SAMPLE-006 | Sample | TODO | `SampleStateMachine` 抽取 |
 | DDD-TALENT-002 | Talent | TODO | `TalentClaimPolicy` |
@@ -63,13 +65,13 @@ HEAD：`a60a045a`（含 DDD-ANALYTICS-002）
 
 | 优先级 | task_id | owner | 原因 |
 |--------|---------|-------|------|
-| P0 | DDD-SAMPLE-005-FIX | Sample | 循环依赖；全量测试基线 |
-| P0 | DDD-CONFIG-003-FIX | Config | `DddConfig003ConfigRoutingTest` 2 failures |
-| P1 | DDD-ORDER-002 | Order | 提交 Amount Policy + 开关委派 |
-| P1 | DDD-USER-003 | User | 扩展 Facade 消费、减 whitelist |
-| P2 | DDD-PRODUCT-001 | Product | ProductDomainFacade |
+| P0 | DDD-SAMPLE-005-FIX | Sample | **DONE** (`eb191ac2`)；单测已跑通 |
+| P1 | DDD-ORDER-002 | Order | **PARTIAL** `876a447d` — Persistence Router 已 commit；Sync mapOrder 待 1603 拆分 |
+| P1 | DDD-PRODUCT-001 | Product | **DONE** `42843d09` |
+| P1 | DDD-USER-003 | User | **DONE** `834ca16e`（OrderController 仍待 1603 拆分） |
+| P2 | DDD-TALENT-001 | Talent | **DONE** `60b9d062` |
 
 ## 并行许可（P0 修复后）
 
-可并行：**User-003** + **Product-001** + **Talent-001**（无共享文件）  
+可并行：**User-003** + **Product-001** + **Talent-001**（无共享文件）
 不可并行：**Order-002** 与任何改 `OrderSyncService` 的任务
