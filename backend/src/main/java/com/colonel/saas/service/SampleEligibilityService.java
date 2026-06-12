@@ -2,34 +2,36 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.config.facade.dto.SampleDefaultStandardDTO;
+import com.colonel.saas.domain.sample.policy.SampleEligibilityPolicy;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 /**
  * 寄样资格评估服务，判断达人是否满足寄样申请的默认标准（近 30 天销售额 + 达人等级）。
  *
- * <p>核心逻辑：从业务规则配置加载寄样默认标准（最低 30 天销售额、最低达人等级），
- * 结合达人实体和爬虫数据解析实际值，逐项比较后输出是否达标及不达标原因列表。</p>
+ * <p>核心逻辑由 {@link SampleEligibilityPolicy} 负责（DDD-SAMPLE-002 抽离的纯业务规则），
+ * 本服务仅承担 IO 装配：加载默认标准、读取达人实体、必要时通过 JDBC 聚合近 30 天销售额。</p>
  *
  * <ul>
  *   <li>提供 {@link #evaluate} 对达人进行寄样资格评估，返回达标状态和详细原因</li>
- *   <li>支持字段标记为 unsupproted（未同步）时的降级处理，不达标但提示"请填写申请原因"</li>
+ *   <li>支持字段标记为 unsupported（未同步）时的降级处理，不达标但提示"请填写申请原因"</li>
  *   <li>近 30 天销售额优先从 Talent.sales30d 读取，无值时回退到 colonelsettlement_order 实时聚合</li>
- *   <li>达人等级支持 LV 格式和 A/S/B 字母格式，统一归一化后按 LV0 < LV1 < LV2 排序比较</li>
+ *   <li>达人等级支持 LV 格式和 A/S/B 字母格式，统一归一化后按 LV0 &lt; LV1 &lt; LV2 排序比较</li>
  * </ul>
  *
  * <p><b>业务领域：</b>寄样域 — 资格评估</p>
  * <p><b>协作关系：</b>依赖 {@link ConfigDomainFacade} 加载寄样默认标准配置（DDD-CONFIG-003）；
- * 依赖 {@link JdbcTemplate} 实时聚合近 30 天订单销售额</p>
+ * 依赖 {@link JdbcTemplate} 实时聚合近 30 天订单销售额；
+ * 规则判断委派给 {@link SampleEligibilityPolicy}。</p>
  *
  * @see ConfigDomainFacade
+ * @see SampleEligibilityPolicy
  * @see SampleLifecycleService
  */
 @Service
@@ -55,7 +57,7 @@ public class SampleEligibilityService {
      *   <li>第一步：加载寄样默认标准配置（最低 30 天销售额、最低达人等级）</li>
      *   <li>第二步：检查各字段是否标记为 unsupported（未同步）</li>
      *   <li>第三步：解析实际销售额和达人等级</li>
-     *   <li>第四步：逐项比较，不达标则收集原因；unsupported 字段提示"请填写申请原因"</li>
+     *   <li>第四步：委派 {@link SampleEligibilityPolicy} 评估，逐项比较，不达标则收集原因</li>
      * </ol>
      *
      * @param talent     达人实体，可能为 null
@@ -64,30 +66,17 @@ public class SampleEligibilityService {
      */
     public EligibilityResult evaluate(Talent talent, CrawlerTalentInfo talentInfo) {
         SampleDefaultStandardDTO standard = configDomainFacade.getSampleRules().defaultStandard();
-        boolean salesUnsupported = isUnsupported(talent, "sales30d");
-        boolean levelUnsupported = isUnsupported(talent, "talentLevel");
+        boolean salesUnsupported = SampleEligibilityPolicy.isUnsupported(talent, "sales30d");
+        boolean levelUnsupported = SampleEligibilityPolicy.isUnsupported(talent, "talentLevel");
         Long monthlySales = resolveMonthlySales(talent, talentInfo, salesUnsupported);
         String level = resolveLevel(talent, talentInfo, levelUnsupported);
 
-        List<String> reasons = new ArrayList<>();
-        if (standard.min30DaySales() != null) {
-            if (salesUnsupported) {
-                reasons.add("近30天销售额未同步，请填写申请原因");
-            } else if (monthlySales != null && monthlySales < standard.min30DaySales()) {
-                reasons.add("近30天销售额未达到 " + standard.min30DaySales());
-            }
-        }
-        if (StringUtils.hasText(standard.minLevel())) {
-            if (levelUnsupported) {
-                reasons.add("达人等级未同步，请填写申请原因");
-            } else if (compareLevel(level, standard.minLevel()) < 0) {
-                reasons.add("达人等级未达到 " + standard.minLevel());
-            }
-        }
+        SampleEligibilityPolicy.Outcome outcome = SampleEligibilityPolicy.evaluate(
+                standard, talent, talentInfo, monthlySales, level);
 
         return new EligibilityResult(
-                reasons.isEmpty(),
-                reasons,
+                outcome.eligible(),
+                outcome.reasons(),
                 new SampleDefaultStandard(standard.min30DaySales(), standard.minLevel(), standard.raw()),
                 new TalentSnapshot(monthlySales, level)
         );
@@ -129,73 +118,13 @@ public class SampleEligibilityService {
             return null;
         }
         if (talent != null && StringUtils.hasText(talent.getTalentLevel())) {
-            return normalizeLevel(talent.getTalentLevel());
+            return SampleEligibilityPolicy.normalizeLevel(talent.getTalentLevel());
         }
         String raw = talent == null ? null : talent.getLevel();
         if (StringUtils.hasText(raw)) {
-            return normalizeLevel(raw);
+            return SampleEligibilityPolicy.normalizeLevel(raw);
         }
         return null;
-    }
-
-    /**
-     * 判断指定字段是否被标记为 unsupported（未同步），通过 Talent.unsupportedFields 列表匹配。
-     * Talent 为 null 或 unsupportedFields 为空时，sales30d 和 talentLevel 默认视为 unsupported。
-     */
-    private boolean isUnsupported(Talent talent, String field) {
-        if (talent == null) {
-            return "talentLevel".equals(field) || "sales30d".equals(field);
-        }
-        if (talent.getUnsupportedFields() == null) {
-            return "talentLevel".equals(field) || "sales30d".equals(field);
-        }
-        if (talent.getUnsupportedFields().isEmpty()) {
-            return false;
-        }
-        return talent.getUnsupportedFields().stream()
-                .filter(StringUtils::hasText)
-                .map(value -> value.trim())
-                .anyMatch(field::equalsIgnoreCase);
-    }
-
-    /**
-     * 归一化达人等级字符串：已是 LV 格式直接返回，A/S 映射为 LV2，B 映射为 LV1，其他映射为 LV0。
-     */
-    private String normalizeLevel(String raw) {
-        String level = raw.trim().toUpperCase();
-        if (level.startsWith("LV")) {
-            return level;
-        }
-        return switch (level) {
-            case "A", "S" -> "LV2";
-            case "B" -> "LV1";
-            default -> "LV0";
-        };
-    }
-
-    /**
-     * 比较两个达人等级的大小：actual >= expected 返回 >= 0，actual < expected 返回 < 0。
-     */
-    private int compareLevel(String actual, String expected) {
-        return Integer.compare(levelRank(actual), levelRank(expected));
-    }
-
-    /**
-     * 将达人等级转换为可比较的数值：LV0→0, LV1→1, LV2→2，无效格式返回 0。
-     */
-    private int levelRank(String level) {
-        if (!StringUtils.hasText(level)) {
-            return 0;
-        }
-        String normalized = normalizeLevel(level);
-        if (!normalized.startsWith("LV")) {
-            return 0;
-        }
-        try {
-            return Integer.parseInt(normalized.substring(2));
-        } catch (NumberFormatException ex) {
-            return 0;
-        }
     }
 
     /** 寄样默认标准快照 */
