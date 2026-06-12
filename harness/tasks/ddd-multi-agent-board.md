@@ -2,12 +2,12 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`
 
-更新时间：2026-06-12 16:50  
+更新时间：2026-06-12 16:58  
 分支：`feature/ddd/SPRINT-1-P0`（基于 SAMPLE-005-FIX 拉新分支，专做 100% 计划 Sprint 1 P0 任务）  
-HEAD：`3dee9458`（ORDER-006 OrderQueryApplicationService scaffold，agent-do PASS）
+HEAD：`e8bf6646`（TALENT-003 TalentTagPolicy + TalentAddressPolicy，agent-do PASS）
 
 > 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`  
-> 当前进度：**38/53 = 72%**（SAMPLE-002 + PRODUCT-004 + PERF-003 + ORDER-006 落地）
+> 当前进度：**39/53 = 74%**（SAMPLE-002 + PRODUCT-004 + PERF-003 + ORDER-006 + TALENT-003 落地）
 
 ## 图例
 
