@@ -2,12 +2,12 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`
 
-更新时间：2026-06-12 16:45  
+更新时间：2026-06-12 16:50  
 分支：`feature/ddd/SPRINT-1-P0`（基于 SAMPLE-005-FIX 拉新分支，专做 100% 计划 Sprint 1 P0 任务）  
-HEAD：`89d5e7f1`（PERF-003 PerformanceAttributionPolicy，agent-do PASS）
+HEAD：`3dee9458`（ORDER-006 OrderQueryApplicationService scaffold，agent-do PASS）
 
 > 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`  
-> 当前进度：**37/53 = 70%**（SAMPLE-002 + PRODUCT-004 + PERF-003 落地）
+> 当前进度：**38/53 = 72%**（SAMPLE-002 + PRODUCT-004 + PERF-003 + ORDER-006 落地）
 
 ## 图例
 
@@ -65,6 +65,7 @@ HEAD：`89d5e7f1`（PERF-003 PerformanceAttributionPolicy，agent-do PASS）
 | DDD-PRODUCT-003 | Product | DONE | `19c7da8b` QuickSample 切 Facade |
 | DDD-PERF-003 | Performance | DONE | `dd892ea0` QueryController 切 Facade |
 | DDD-ORDER-003 | Order | DONE | Controller 切 Facade（勿碰 OrderSyncService） |
+| DDD-ORDER-006 | Order | **DONE** | `3dee9458` OrderQueryApplicationService scaffold（query/sync 入口解耦） |
 | P-FIX-002E | Product | DONE | `aca79f74` ProductDisplayRuleService + 4 dry-run SQL 报告 |
 
 串行，由 Integration Agent 控制。见 `ddd-task-dependency-graph.md`。
