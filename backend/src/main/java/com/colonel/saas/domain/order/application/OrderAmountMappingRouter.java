@@ -9,6 +9,7 @@ import com.colonel.saas.service.OrderDualTrackAmountResolver;
 import com.colonel.saas.service.OrderDualTrackAmountResolver.DualTrackAmounts;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
@@ -93,6 +94,27 @@ public class OrderAmountMappingRouter {
             OrderAmountMapperPolicy.mergeSettlementSnapshot(existing, incoming);
         } else {
             OrderDualTrackAmountResolver.mergeSettlementSnapshot(existing, incoming);
+        }
+    }
+
+    /**
+     * 订单同步 mapOrder 金额映射入口（DDD-SLIM-ORDER-001）：解析 + 写入 + 6468 结算时间。
+     */
+    public void mapAndApplyToOrder(
+            SyncSource source,
+            ColonelsettlementOrder order,
+            Map<String, Object> rawPayload,
+            Long fallbackPayAmount,
+            Long fallbackServiceFee,
+            LocalDateTime fallbackSettleTime) {
+        if (order == null) {
+            return;
+        }
+        DualTrackAmounts dualTrack = resolveAmounts(source, rawPayload, fallbackPayAmount, fallbackServiceFee);
+        applyAmounts(source, order, dualTrack, rawPayload);
+        if (source == SyncSource.INSTITUTE) {
+            LocalDateTime settleTime = OrderAmountMapperPolicy.resolveInstituteSettleTime(rawPayload, fallbackSettleTime);
+            OrderAmountMapperPolicy.applyInstituteSettleTime(order, settleTime);
         }
     }
 

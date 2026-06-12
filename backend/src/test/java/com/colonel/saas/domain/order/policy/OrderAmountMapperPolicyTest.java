@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -564,6 +565,43 @@ class OrderAmountMapperPolicyTest {
             assertThat(MappedAmounts.class.getRecordComponents()).hasSize(10);
             // serviceFeeRate 归一化
             assertThat(result.serviceFeeRate()).isEqualByComparingTo(new BigDecimal("0.10"));
+        }
+    }
+
+    @Nested
+    @DisplayName("resolveInstituteSettleTime")
+    class ResolveInstituteSettleTimeTests {
+
+        @Test
+        void shouldParseRawSettleTimeWhenSettlementSignalPresent() {
+            Map<String, Object> raw = new LinkedHashMap<>();
+            raw.put("flow_point", "SETTLE");
+            raw.put("settle_time", "2026-06-12 10:00:00");
+
+            LocalDateTime result = OrderAmountMapperPolicy.resolveInstituteSettleTime(raw, null);
+
+            assertThat(result).isEqualTo(LocalDateTime.parse("2026-06-12 10:00:00",
+                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        }
+
+        @Test
+        void shouldUseFallbackWhenRawMissingSettleTime() {
+            Map<String, Object> raw = new LinkedHashMap<>();
+            raw.put("flow_point", "SETTLE");
+            LocalDateTime fallback = LocalDateTime.of(2026, 6, 12, 8, 0);
+
+            LocalDateTime result = OrderAmountMapperPolicy.resolveInstituteSettleTime(raw, fallback);
+
+            assertThat(result).isEqualTo(fallback);
+        }
+
+        @Test
+        void shouldReturnNullWhenNoSettlementSignal() {
+            LocalDateTime fallback = LocalDateTime.of(2026, 6, 12, 8, 0);
+
+            LocalDateTime result = OrderAmountMapperPolicy.resolveInstituteSettleTime(Map.of(), fallback);
+
+            assertThat(result).isNull();
         }
     }
 }

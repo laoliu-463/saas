@@ -77,4 +77,26 @@ class OrderAmountMappingRouterTest {
 
         assertThat(incoming.getEstimateServiceFee()).isEqualTo(500L);
     }
+
+    @Test
+    void mapAndApplyToOrder_shouldWriteInstituteSettleTimeWhenSignalPresent() {
+        when(dddRefactorProperties.isEnabled()).thenReturn(false);
+
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("flow_point", "SETTLE");
+        raw.put("settle_time", "2026-06-12 10:00:00");
+        raw.put("pay_goods_amount", 1000L);
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        router.mapAndApplyToOrder(
+                OrderAmountMappingRouter.SyncSource.INSTITUTE,
+                order,
+                raw,
+                null,
+                null,
+                null);
+
+        assertThat(order.getSettleTime()).isNotNull();
+        assertThat(order.getOrderAmount()).isEqualTo(1000L);
+    }
 }

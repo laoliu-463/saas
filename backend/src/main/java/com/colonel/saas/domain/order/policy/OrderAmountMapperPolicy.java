@@ -1,11 +1,14 @@
 package com.colonel.saas.domain.order.policy;
 
+import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -23,6 +26,9 @@ import java.util.function.LongConsumer;
  * <p>迁移自 {@code com.colonel.saas.service.OrderDualTrackAmountResolver}。</p>
  */
 public final class OrderAmountMapperPolicy {
+
+    private static final DateTimeFormatter RAW_DATE_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private OrderAmountMapperPolicy() {
     }
@@ -388,6 +394,20 @@ public final class OrderAmountMapperPolicy {
     }
 
     /**
+     * 从 6468 raw 解析结算时间；缺失时使用网关 item 提供的 fallback。
+     */
+    public static LocalDateTime resolveInstituteSettleTime(
+            Map<String, Object> rawPayload,
+            LocalDateTime fallback) {
+        if (rawPayload == null || rawPayload.isEmpty() || !hasInstituteSettlementSignal(rawPayload)) {
+            return null;
+        }
+        LocalDateTime parsed = parseRawDateTime(rawPayload,
+                "settle_time", "settleTime", "settled_time", "settledTime");
+        return parsed != null ? parsed : fallback;
+    }
+
+    /**
      * 把映射结果写入订单实体（2704 分次结算补充源）。
      * <p>
      * 2704 补充分次结算与普通订单结算轨；非普通订单主入库源，也不是结算轨唯一来源。
@@ -642,6 +662,36 @@ public final class OrderAmountMapperPolicy {
 
     private static String asString(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private static LocalDateTime parseRawDateTime(Map<String, Object> rawPayload, String... keys) {
+        Object value = pick(rawPayload, keys);
+        return asDateTime(value);
+    }
+
+    private static LocalDateTime asDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            long raw = number.longValue();
+            return raw > 9_999_999_999L ? AppZone.fromEpochMilli(raw) : AppZone.fromEpochSecond(raw);
+        }
+        String text = String.valueOf(value).trim();
+        if (!StringUtils.hasText(text) || "null".equalsIgnoreCase(text)) {
+            return null;
+        }
+        try {
+            long raw = Long.parseLong(text);
+            return raw > 9_999_999_999L ? AppZone.fromEpochMilli(raw) : AppZone.fromEpochSecond(raw);
+        } catch (NumberFormatException ignore) {
+            // Fall through to formatted date parsing.
+        }
+        try {
+            return LocalDateTime.parse(text, RAW_DATE_TIME_FORMATTER);
+        } catch (DateTimeParseException ignore) {
+            return null;
+        }
     }
 
     private static Long asLong(Object value) {

@@ -2,9 +2,9 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`
 
-更新时间：2026-06-12 13:55  
-分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`  
-HEAD：`aca79f74`（merge: P-FIX-002E 落地 + OUTBOX-001 verify）
+更新时间：2026-06-12 14:10
+分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`
+HEAD：`6682bf3a`（SAMPLE-004 + agent-do PASS）
 
 ## 图例
 
@@ -93,15 +93,19 @@ HEAD：`aca79f74`（merge: P-FIX-002E 落地 + OUTBOX-001 verify）
 
 | task_id | 状态 | 说明 |
 |---------|------|------|
-| DDD-SAMPLE-004 | WIP | `sample-homework-event` 开关 + 监听器（待 agent-do） |
+| DDD-SAMPLE-004 | DONE | `6682bf3a` `sample-homework-event` + Bridge/Listener |
 | DDD-EVENT-003 | TODO | Outbox Dispatcher Dry Run |
+
+## Batch 6 — 瘦身与清理 (SLIM & CLEAN)
+
+| task_id | owner | 状态 | 说明 |
+|---------|-------|------|------|
+| DDD-SLIM-ORDER-001 | Order | DONE | `aca79f74` OrderSyncService 彻底瘦身金额映射并移除 Policy/Resolver 直接依赖 |
 
 ## 下一步优先
 
-1. **WIP** `DDD-SAMPLE-004` — 本 session 代码待 `agent-do` 验证
-2. **P0** `DDD-SLIM-ORDER-001` — 金额映射瘦身
-3. **P2** `DDD-EVENT-003` — Dispatcher Dry Run
-4. **P0** `DDD-VERIFY-001` — E2E P0 终验
+1. **P2** `DDD-EVENT-003` — Dispatcher Dry Run
+2. **P0** `DDD-VERIFY-001` — E2E P0 终验
 
 可并行：**User-003** + **Product-001** + **Talent-001**（无共享文件）  
 不可并行：**Order-002** 与任何改 `OrderSyncService` 的主链任务

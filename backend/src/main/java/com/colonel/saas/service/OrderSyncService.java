@@ -2,7 +2,6 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.config.AppProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
-import com.colonel.saas.domain.order.policy.OrderAmountMapperPolicy;
 import com.colonel.saas.job.JobLockKeys;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.common.exception.BusinessException;
@@ -1193,33 +1192,23 @@ public class OrderSyncService {
         order.setProductName(rawPayload != null ? asString(rawValue(rawPayload, "product_name", "productName")) : null);
         order.setShopId(parseMerchantId(item.merchantId()));
         order.setShopName(item.merchantName());
-        OrderDualTrackAmountResolver.DualTrackAmounts dualTrack = orderAmountMappingRouter.resolveAmounts(
+        LocalDateTime itemSettleTime = item.settleTime() == null ? null : AppZone.fromEpochSecond(item.settleTime());
+        orderAmountMappingRouter.mapAndApplyToOrder(
                 switch (source) {
                     case INSTITUTE -> OrderAmountMappingRouter.SyncSource.INSTITUTE;
                     case INSTITUTE_SETTLEMENT -> OrderAmountMappingRouter.SyncSource.INSTITUTE_SETTLEMENT;
                     case SETTLEMENT -> OrderAmountMappingRouter.SyncSource.SETTLEMENT;
                 },
+                order,
                 rawPayload,
                 item.orderAmount(),
-                item.serviceFee());
+                item.serviceFee(),
+                itemSettleTime);
         if (source == SyncSource.INSTITUTE) {
-            orderAmountMappingRouter.applyAmounts(
-                    OrderAmountMappingRouter.SyncSource.INSTITUTE, order, dualTrack, rawPayload);
             order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE);
-            if (rawPayload != null && OrderAmountMapperPolicy.hasInstituteSettlementSignal(rawPayload)) {
-                LocalDateTime settleTime = rawDateTime(rawPayload, "settle_time", "settleTime", "settled_time", "settledTime");
-                if (settleTime == null && item.settleTime() != null) {
-                    settleTime = AppZone.fromEpochSecond(item.settleTime());
-                }
-                OrderAmountMapperPolicy.applyInstituteSettleTime(order, settleTime);
-            }
         } else if (source == SyncSource.INSTITUTE_SETTLEMENT) {
-            orderAmountMappingRouter.applyAmounts(
-                    OrderAmountMappingRouter.SyncSource.INSTITUTE_SETTLEMENT, order, dualTrack, rawPayload);
             order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE_SETTLEMENT);
         } else {
-            orderAmountMappingRouter.applyAmounts(
-                    OrderAmountMappingRouter.SyncSource.SETTLEMENT, order, dualTrack, rawPayload);
             order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_SETTLEMENT);
         }
         order.setColonelBuyinId(asNullableLong(rawOrderInfoValue(rawPayload, "colonel_buyin_id", "colonelBuyinId")));
