@@ -71,7 +71,7 @@ HEAD：`87fa5af5`（Batch3：ORDER-003 完成）
 |---------|-------|------|
 | DDD-ANALYTICS-001 | Analytics | DONE |
 | DDD-ANALYTICS-002 | Analytics | DONE（shadow compare） |
-| DDD-OUTBOX-001 | Infra + 各领域 | WIP | OrderSyncedEvent Outbox 路由 |
+| DDD-OUTBOX-001 | Infra + 各领域 | DONE | OrderSyncedEvent Outbox 路由 |
 
 ## 当前 Sprint（Coordinator 裁定）
 
