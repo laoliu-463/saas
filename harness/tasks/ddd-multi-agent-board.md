@@ -2,12 +2,12 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`
 
-更新时间：2026-06-12 16:20  
+更新时间：2026-06-12 16:45  
 分支：`feature/ddd/SPRINT-1-P0`（基于 SAMPLE-005-FIX 拉新分支，专做 100% 计划 Sprint 1 P0 任务）  
-HEAD：`fef02b1d`（PRODUCT-004 CopyPromotion + DouyinConvertPort，agent-do PASS）
+HEAD：`89d5e7f1`（PERF-003 PerformanceAttributionPolicy，agent-do PASS）
 
 > 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`  
-> 当前进度：**36/53 = 68%**（SAMPLE-002 + PRODUCT-004 落地）
+> 当前进度：**37/53 = 70%**（SAMPLE-002 + PRODUCT-004 + PERF-003 落地）
 
 ## 图例
 
@@ -112,16 +112,16 @@ HEAD：`fef02b1d`（PRODUCT-004 CopyPromotion + DouyinConvertPort，agent-do PAS
 |---------|-------|------|--------|------|
 | DDD-SAMPLE-002 | Sample | **DONE** | `f2aa5943` | `harness/reports/evidence-20260612-155838.md` |
 | DDD-PRODUCT-004 | Product | **DONE** | `fef02b1d` | `harness/reports/evidence-20260612-161843.md` |
-| DDD-PERF-003 | Performance | TODO | — | PerformanceAttributionPolicy |
+| DDD-PERF-003 | Performance | **DONE** | `89d5e7f1` | `harness/reports/evidence-20260612-164500.md` |
 | DDD-EVENT-003 | Infra | TODO | — | Dispatcher Dry Run（parallel agent） |
 
 > ORDER-004 = SLIM-ORDER-002（已落地）。
 
 ## 下一步优先
 
-1. **P0** `DDD-PERF-003` — PerformanceAttributionPolicy（Sprint 1 第 3 项）
-2. **P2** `DDD-EVENT-003` — Dispatcher Dry Run（parallel agent）
-3. **P0** `DDD-VERIFY-001` — E2E P0 终验（最后一道）
+1. **P2** `DDD-EVENT-003` — Dispatcher Dry Run（parallel agent）
+2. **P0** `DDD-VERIFY-001` — E2E P0 终验（最后一道）
+3. → Sprint 2: ORDER-006 → TALENT-003 → PERF-005 → ORDER-005
 
 可并行：**Sample-002** + **Product-004** + **PERF-003** + **EVENT-003**（无文件冲突）  
 不可并行：**Order 域** 内所有改 `OrderSyncService` 的任务串行  
