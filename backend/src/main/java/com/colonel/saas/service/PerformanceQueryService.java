@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.dto.performance.OrderPerformanceDTO;
 import com.colonel.saas.dto.performance.PerformanceBatchItemDTO;
 import com.colonel.saas.dto.performance.PerformanceBatchResponse;
 import com.colonel.saas.dto.performance.PerformanceDetailDTO;
@@ -170,6 +171,50 @@ public class PerformanceQueryService {
     }
 
     /**
+     * 订单列表/详情 BFF 批量补全业绩数据。
+     * <p>
+     * 该方法使用 {@link PerformanceRecordMapper#findByOrderIds(List)} 一次性读取有效业绩记录，
+     * 避免订单列表/导出按订单逐条查询业绩。
+     *
+     * @param orderIds 订单 ID 列表，空列表返回空列表
+     * @param context  当前用户数据访问上下文
+     * @return 与输入顺序一致的业绩补全 DTO；未命中或无权限时返回 isValid=false 的空 DTO
+     */
+    public List<OrderPerformanceDTO> batchGetOrderPerformance(List<String> orderIds, PerformanceAccessContext context) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> normalized = orderIds.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (normalized.size() > BATCH_MAX) {
+            throw BusinessException.param("单次最多查询 " + BATCH_MAX + " 个订单");
+        }
+        if (normalized.isEmpty()) {
+            return List.of();
+        }
+        List<PerformanceRecord> records = performanceRecordMapper.findByOrderIds(normalized);
+        Map<String, PerformanceRecord> recordMap = new LinkedHashMap<>();
+        for (PerformanceRecord record : records) {
+            if (record.getOrderId() != null) {
+                recordMap.put(record.getOrderId(), record);
+            }
+        }
+        List<OrderPerformanceDTO> result = new ArrayList<>();
+        for (String orderId : orderIds.stream().filter(StringUtils::hasText).map(String::trim).toList()) {
+            PerformanceRecord record = recordMap.get(orderId);
+            if (!hasCurrentPerformance(record) || !canAccessBatchRecord(orderId, record, context)) {
+                result.add(emptyOrderPerformance(orderId));
+            } else {
+                result.add(toOrderPerformance(record));
+            }
+        }
+        return result;
+    }
+
+    /**
      * 分页查询业绩列表。
      * <p>
      * 支持按订单/商品/合作方/达人/渠道/招达人/活动等多维筛选，
@@ -267,6 +312,36 @@ public class PerformanceQueryService {
         }
         List<String> orderIds = items.stream().map(PerformanceListItemDTO::getOrderId).toList();
         return orderIds.stream().map(this::loadDetailByOrderId).toList();
+    }
+
+    private OrderPerformanceDTO toOrderPerformance(PerformanceRecord record) {
+        OrderPerformanceDTO dto = new OrderPerformanceDTO();
+        dto.setOrderId(record.getOrderId());
+        dto.setFinalChannelId(record.getFinalChannelUserId() == null ? null : record.getFinalChannelUserId().toString());
+        dto.setFinalRecruiterId(record.getFinalRecruiterUserId() == null ? null : record.getFinalRecruiterUserId().toString());
+        dto.setChannelAttributionType(record.getChannelAttribution());
+        dto.setRecruiterAttributionType(record.getRecruiterAttribution());
+        dto.setEstimateServiceProfit(record.getEstimateServiceProfit());
+        dto.setEffectiveServiceProfit(record.getEffectiveServiceProfit());
+        dto.setEstimateServiceFeeExpense(record.getEstimateServiceFeeExpense());
+        dto.setEffectiveServiceFeeExpense(record.getEffectiveServiceFeeExpense());
+        dto.setEstimateRecruiterCommission(record.getEstimateRecruiterCommission());
+        dto.setEffectiveRecruiterCommission(record.getEffectiveRecruiterCommission());
+        dto.setEstimateChannelCommission(record.getEstimateChannelCommission());
+        dto.setEffectiveChannelCommission(record.getEffectiveChannelCommission());
+        dto.setEstimateGrossProfit(record.getEstimateGrossProfit());
+        dto.setEffectiveGrossProfit(record.getEffectiveGrossProfit());
+        dto.setIsValid(record.getValid());
+        dto.setIsReversed(record.getReversed());
+        return dto;
+    }
+
+    private OrderPerformanceDTO emptyOrderPerformance(String orderId) {
+        OrderPerformanceDTO dto = new OrderPerformanceDTO();
+        dto.setOrderId(orderId);
+        dto.setIsValid(Boolean.FALSE);
+        dto.setIsReversed(Boolean.FALSE);
+        return dto;
     }
 
     private PerformanceBatchResponse emptyBatchResponse(List<PerformanceBatchItemDTO> items) {
@@ -406,6 +481,8 @@ public class PerformanceQueryService {
                        co.channel_user_name AS final_channel_name,
                        pr.final_recruiter_user_id::text AS final_recruiter_id,
                        co.colonel_user_name AS final_recruiter_name,
+                       pr.channel_attribution,
+                       pr.recruiter_attribution,
                        pr.pay_amount,
                        pr.settle_amount,
                        pr.estimate_service_profit,
@@ -419,7 +496,9 @@ public class PerformanceQueryService {
                        pr.order_status,
                        COALESCE(pr.order_create_time, co.create_time) AS pay_time,
                        pr.settle_time,
-                       pr.calculated_at
+                       pr.calculated_at,
+                       pr.is_valid,
+                       pr.is_reversed
                 """;
     }
 
@@ -437,6 +516,8 @@ public class PerformanceQueryService {
         item.setFinalChannelName(rs.getString("final_channel_name"));
         item.setFinalRecruiterId(rs.getString("final_recruiter_id"));
         item.setFinalRecruiterName(rs.getString("final_recruiter_name"));
+        item.setChannelAttributionType(rs.getString("channel_attribution"));
+        item.setRecruiterAttributionType(rs.getString("recruiter_attribution"));
         item.setPayAmount(rs.getLong("pay_amount"));
         item.setSettleAmount(rs.getLong("settle_amount"));
         item.setEstimateServiceProfit(rs.getLong("estimate_service_profit"));
@@ -451,6 +532,8 @@ public class PerformanceQueryService {
         item.setPayTime(readDateTime(rs, "pay_time"));
         item.setSettleTime(readDateTime(rs, "settle_time"));
         item.setCalculatedAt(readDateTime(rs, "calculated_at"));
+        item.setValid(rs.getBoolean("is_valid"));
+        item.setReversed(rs.getBoolean("is_reversed"));
         return item;
     }
 
@@ -579,6 +662,8 @@ public class PerformanceQueryService {
             dto.setEffectiveTechServiceFee(rs.getLong("effective_tech_service_fee"));
             dto.setEstimateServiceProfit(rs.getLong("estimate_service_profit"));
             dto.setEffectiveServiceProfit(rs.getLong("effective_service_profit"));
+            dto.setEstimateServiceFeeExpense(rs.getLong("estimate_service_fee_expense"));
+            dto.setEffectiveServiceFeeExpense(rs.getLong("effective_service_fee_expense"));
             dto.setEstimateRecruiterCommission(rs.getLong("estimate_recruiter_commission"));
             dto.setEffectiveRecruiterCommission(rs.getLong("effective_recruiter_commission"));
             dto.setEstimateChannelCommission(rs.getLong("estimate_channel_commission"));

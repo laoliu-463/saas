@@ -35,6 +35,10 @@ public class PerformanceListItemDTO {
     private String finalRecruiterId;
     /** 最终归属招募人姓名 */
     private String finalRecruiterName;
+    /** 渠道归属类型（如 default、override） */
+    private String channelAttributionType;
+    /** 招募人归属类型（如 default、override） */
+    private String recruiterAttributionType;
     /** 支付金额（单位：分） */
     private Long payAmount;
     /** 结算金额（单位：分） */
@@ -63,4 +67,8 @@ public class PerformanceListItemDTO {
     private LocalDateTime settleTime;
     /** 业绩计算时间 */
     private LocalDateTime calculatedAt;
+    /** 该条业绩记录是否有效 */
+    private Boolean valid;
+    /** 该条业绩记录是否已被冲正 */
+    private Boolean reversed;
 }

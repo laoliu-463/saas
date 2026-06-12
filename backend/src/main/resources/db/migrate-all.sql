@@ -1103,6 +1103,14 @@ SET settle_amount = COALESCE(NULLIF(actual_amount, 0), order_amount, 0),
 WHERE estimate_service_fee = 0
   AND effective_service_fee = 0;
 
+ALTER TABLE colonelsettlement_order
+    ADD COLUMN IF NOT EXISTS estimate_service_fee_expense BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS effective_service_fee_expense BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE performance_records
+    ADD COLUMN IF NOT EXISTS estimate_service_fee_expense BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS effective_service_fee_expense BIGINT NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS performance_records (
     id                              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id                        VARCHAR(50) NOT NULL,

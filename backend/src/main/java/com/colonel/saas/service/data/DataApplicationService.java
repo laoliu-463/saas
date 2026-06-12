@@ -12,23 +12,25 @@ import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
+import com.colonel.saas.dto.performance.OrderPerformanceBatchResponse;
+import com.colonel.saas.dto.performance.OrderPerformanceDTO;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import com.colonel.saas.entity.ExclusiveTalent;
-import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.vo.data.OrderDetailVO;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
-import com.colonel.saas.mapper.PerformanceRecordMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
+import com.colonel.saas.service.performance.PerformanceAccessContext;
 import com.colonel.saas.vo.ExclusiveMerchantStatusVO;
 import com.colonel.saas.vo.ExclusiveTalentStatusVO;
 import com.colonel.saas.vo.data.DualTrackMetricsVO;
@@ -148,8 +150,8 @@ public class DataApplicationService extends BaseController {
     /** 业绩指标聚合查询服务，负责从 performance_records 表聚合核心指标与趋势数据 */
     private final PerformanceMetricsQueryService performanceMetricsQueryService;
 
-    /** 业绩记录 Mapper，负责按订单号批量查询业绩提成数据 */
-    private final PerformanceRecordMapper performanceRecordMapper;
+    /** 订单业绩查询门面，负责订单列表/详情的业绩补全 */
+    private final OrderPerformanceQueryFacade orderPerformanceQueryFacade;
 
     /** JDBC 模板，用于复杂聚合查询（如 service profit 联合查询） */
     private final JdbcTemplate jdbcTemplate;
@@ -176,7 +178,7 @@ public class DataApplicationService extends BaseController {
             ColonelsettlementActivityMapper activityMapper,
             ShortTtlCacheService shortTtlCacheService,
             PerformanceMetricsQueryService performanceMetricsQueryService,
-            PerformanceRecordMapper performanceRecordMapper,
+            OrderPerformanceQueryFacade orderPerformanceQueryFacade,
             UserDomainFacade userDomainFacade,
             JdbcTemplate jdbcTemplate) {
         this.orderMapper = orderMapper;
@@ -186,7 +188,7 @@ public class DataApplicationService extends BaseController {
         this.activityMapper = activityMapper;
         this.shortTtlCacheService = shortTtlCacheService;
         this.performanceMetricsQueryService = performanceMetricsQueryService;
-        this.performanceRecordMapper = performanceRecordMapper;
+        this.orderPerformanceQueryFacade = orderPerformanceQueryFacade;
         this.userDomainFacade = userDomainFacade;
         this.jdbcTemplate = jdbcTemplate;
     }
@@ -419,7 +421,9 @@ public class DataApplicationService extends BaseController {
                 .map(ColonelsettlementOrder::getOrderId)
                 .filter(StringUtils::hasText)
                 .toList();
-        Map<String, PerformanceRecord> perfMap = loadPerformanceMap(orderIds);
+        Map<String, OrderPerformanceDTO> perfMap = loadPerformanceMap(
+                orderIds,
+                PerformanceAccessContext.of(userId, deptId, dataScope, List.of()));
 
         // 批量查询活动名称
         Map<String, String> activityNameMap = loadActivityNameMap(orders);
@@ -430,23 +434,28 @@ public class DataApplicationService extends BaseController {
         // 组装 VO
         Page<OrderDetailVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
         voPage.setRecords(orders.stream().map(order -> {
-            PerformanceRecord perf = perfMap.get(order.getOrderId());
+            OrderPerformanceDTO perf = perfMap.get(order.getOrderId());
             return toOrderDetailVO(order, perf, activityNameMap, userNameMap);
         }).toList());
         return okPage(voPage);
     }
 
     /**
-     * 批量加载业绩记录，构建 orderId → PerformanceRecord 映射。
+     * 批量加载订单业绩，构建 orderId → OrderPerformanceDTO 映射。
      */
-    private Map<String, PerformanceRecord> loadPerformanceMap(List<String> orderIds) {
+    private Map<String, OrderPerformanceDTO> loadPerformanceMap(
+            List<String> orderIds,
+            PerformanceAccessContext context) {
         if (orderIds == null || orderIds.isEmpty()) {
             return Map.of();
         }
-        List<PerformanceRecord> records = performanceRecordMapper.findByOrderIds(orderIds);
-        Map<String, PerformanceRecord> map = new LinkedHashMap<>();
-        for (PerformanceRecord r : records) {
-            if (r.getOrderId() != null) {
+        OrderPerformanceBatchResponse response = orderPerformanceQueryFacade.batchGetOrderPerformance(orderIds, context);
+        List<OrderPerformanceDTO> records = response == null || response.getItems() == null
+                ? List.of()
+                : response.getItems();
+        Map<String, OrderPerformanceDTO> map = new LinkedHashMap<>();
+        for (OrderPerformanceDTO r : records) {
+            if (r.getOrderId() != null && Boolean.TRUE.equals(r.getIsValid())) {
                 map.put(r.getOrderId(), r);
             }
         }
@@ -478,11 +487,13 @@ public class DataApplicationService extends BaseController {
     /**
      * 批量加载用户姓名映射 userId → realName。
      */
-    private Map<UUID, String> loadUserNameMap(Collection<PerformanceRecord> records) {
+    private Map<UUID, String> loadUserNameMap(Collection<OrderPerformanceDTO> records) {
         Set<UUID> userIds = new HashSet<>();
-        for (PerformanceRecord r : records) {
-            if (r.getFinalChannelUserId() != null) userIds.add(r.getFinalChannelUserId());
-            if (r.getFinalRecruiterUserId() != null) userIds.add(r.getFinalRecruiterUserId());
+        for (OrderPerformanceDTO r : records) {
+            UUID finalChannelId = parseUuid(r.getFinalChannelId());
+            UUID finalRecruiterId = parseUuid(r.getFinalRecruiterId());
+            if (finalChannelId != null) userIds.add(finalChannelId);
+            if (finalRecruiterId != null) userIds.add(finalRecruiterId);
         }
         if (userIds.isEmpty()) {
             return Map.of();
@@ -497,12 +508,23 @@ public class DataApplicationService extends BaseController {
         return map;
     }
 
+    private UUID parseUuid(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
     /**
      * 将订单实体 + 业绩记录合并为 OrderDetailVO。
      */
     private OrderDetailVO toOrderDetailVO(
             ColonelsettlementOrder order,
-            PerformanceRecord perf,
+            OrderPerformanceDTO perf,
             Map<String, String> activityNameMap,
             Map<UUID, String> userNameMap) {
         OrderDetailVO vo = new OrderDetailVO();
@@ -542,10 +564,16 @@ public class DataApplicationService extends BaseController {
 
         // 渠道/招商：优先从业绩记录获取最终归属
         if (perf != null) {
-            vo.setChannelId(perf.getFinalChannelUserId() != null ? perf.getFinalChannelUserId().toString() : null);
-            vo.setChannelName(perf.getFinalChannelUserId() != null ? userNameMap.getOrDefault(perf.getFinalChannelUserId(), null) : null);
-            vo.setRecruiterId(perf.getFinalRecruiterUserId() != null ? perf.getFinalRecruiterUserId().toString() : null);
-            vo.setRecruiterName(perf.getFinalRecruiterUserId() != null ? userNameMap.getOrDefault(perf.getFinalRecruiterUserId(), null) : null);
+            UUID finalChannelId = parseUuid(perf.getFinalChannelId());
+            UUID finalRecruiterId = parseUuid(perf.getFinalRecruiterId());
+            vo.setChannelId(perf.getFinalChannelId());
+            vo.setChannelName(finalChannelId != null
+                    ? userNameMap.getOrDefault(finalChannelId, perf.getFinalChannelName())
+                    : perf.getFinalChannelName());
+            vo.setRecruiterId(perf.getFinalRecruiterId());
+            vo.setRecruiterName(finalRecruiterId != null
+                    ? userNameMap.getOrDefault(finalRecruiterId, perf.getFinalRecruiterName())
+                    : perf.getFinalRecruiterName());
         } else {
             // 无业绩记录时回退到订单事实字段
             vo.setChannelId(order.getChannelUserId() != null ? order.getChannelUserId().toString() : null);
@@ -1193,12 +1221,14 @@ public class DataApplicationService extends BaseController {
                     .map(ColonelsettlementOrder::getOrderId)
                     .filter(StringUtils::hasText)
                     .toList();
-            Map<String, PerformanceRecord> perfMap = loadPerformanceMap(orderIds);
+            Map<String, OrderPerformanceDTO> perfMap = loadPerformanceMap(
+                    orderIds,
+                    PerformanceAccessContext.of(userId, deptId, dataScope, List.of()));
             Map<String, String> activityNameMap = loadActivityNameMap(orders);
             Map<UUID, String> userNameMap = loadUserNameMap(perfMap.values());
 
             for (ColonelsettlementOrder order : orders) {
-                PerformanceRecord perf = perfMap.get(order.getOrderId());
+                OrderPerformanceDTO perf = perfMap.get(order.getOrderId());
                 OrderDetailVO vo = toOrderDetailVO(order, perf, activityNameMap, userNameMap);
                 writer.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
                         csvEscape(vo.getOrderId()),
