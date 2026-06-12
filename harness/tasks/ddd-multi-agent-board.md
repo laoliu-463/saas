@@ -2,9 +2,9 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`
 
-更新时间：2026-06-12  
+更新时间：2026-06-12 13:55  
 分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`  
-HEAD：`87fa5af5`（Batch3：ORDER-003 完成）
+HEAD：`aca79f74`（merge: P-FIX-002E 落地 + OUTBOX-001 verify）
 
 ## 图例
 
@@ -62,6 +62,7 @@ HEAD：`87fa5af5`（Batch3：ORDER-003 完成）
 | DDD-PRODUCT-003 | Product | DONE | `19c7da8b` QuickSample 切 Facade |
 | DDD-PERF-003 | Performance | DONE | `dd892ea0` QueryController 切 Facade |
 | DDD-ORDER-003 | Order | DONE | Controller 切 Facade（勿碰 OrderSyncService） |
+| P-FIX-002E | Product | DONE | `aca79f74` ProductDisplayRuleService + 4 dry-run SQL 报告 |
 
 串行，由 Integration Agent 控制。见 `ddd-task-dependency-graph.md`。
 
@@ -85,7 +86,8 @@ HEAD：`87fa5af5`（Batch3：ORDER-003 完成）
 | P2 | DDD-PERF-002 | Performance | **DONE** `59d3a085` |
 | P2 | DDD-TALENT-002 / SAMPLE-006 | Batch2 Policy | **DONE** `d41c4d58` / `98299d1e` |
 | P2 | Batch3 Replace | Integration | **DONE** — 五域 Facade 替换已完成 |
-| P2 | Batch4 Outbox | Infra | **WIP** — OUTBOX-001 OrderSynced 路由 |
+| P2 | Batch4 Outbox | Infra | **DONE** — OUTBOX-001 OrderSynced 路由（`27d15ae6`） |
+| P2 | P-FIX-002E | Product | **DONE** — 商品 PENDING repair（`aca79f74`） |
 
 ## 下一步优先
 
