@@ -2,9 +2,12 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`
 
-更新时间：2026-06-12 14:10
-分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`
-HEAD：`6682bf3a`（SAMPLE-004 + agent-do PASS）
+更新时间：2026-06-12 15:59  
+分支：`feature/ddd/SPRINT-1-P0`（基于 SAMPLE-005-FIX 拉新分支，专做 100% 计划 Sprint 1 P0 任务）  
+HEAD：`f2aa5943`（SAMPLE-002 extract SampleEligibilityPolicy，agent-do PASS）
+
+> 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`  
+> 当前进度：**35/53 = 66%**（SAMPLE-002 落地）
 
 ## 图例
 
@@ -101,11 +104,32 @@ HEAD：`6682bf3a`（SAMPLE-004 + agent-do PASS）
 | task_id | owner | 状态 | 说明 |
 |---------|-------|------|------|
 | DDD-SLIM-ORDER-001 | Order | DONE | `aca79f74` OrderSyncService 彻底瘦身金额映射并移除 Policy/Resolver 直接依赖 |
+| DDD-SLIM-ORDER-002 | Order | DONE | `6c577ae8` `OrderAttributionRouter` + `OrderDefaultAttributionPolicy` 抽离（待 EVENT-003 分支 merge） |
+
+## Sprint 1（100% 计划，P0 集中）
+
+| task_id | owner | 状态 | commit | 报告 |
+|---------|-------|------|--------|------|
+| DDD-SAMPLE-002 | Sample | **DONE** | `f2aa5943` | `harness/reports/evidence-20260612-155838.md` |
+| DDD-PRODUCT-004 | Product | TODO | — | CopyPromotion + DouyinConvertPort |
+| DDD-PERF-003 | Performance | TODO | — | PerformanceAttributionPolicy |
+| DDD-EVENT-003 | Infra | TODO | — | Dispatcher Dry Run（parallel agent 在做） |
+
+> ORDER-004 = SLIM-ORDER-002（已落地）。
 
 ## 下一步优先
 
-1. **P2** `DDD-EVENT-003` — Dispatcher Dry Run
-2. **P0** `DDD-VERIFY-001` — E2E P0 终验
+1. **P0** `DDD-PRODUCT-004` — CopyPromotion 重构（Sprint 1 第 2 项）
+2. **P0** `DDD-PERF-003` — PerformanceAttributionPolicy（Sprint 1 第 3 项）
+3. **P2** `DDD-EVENT-003` — Dispatcher Dry Run（parallel agent）
+4. **P0** `DDD-VERIFY-001` — E2E P0 终验（最后一道）
 
-可并行：**User-003** + **Product-001** + **Talent-001**（无共享文件）  
-不可并行：**Order-002** 与任何改 `OrderSyncService` 的主链任务
+可并行：**Sample-002** + **Product-004** + **PERF-003** + **EVENT-003**（无文件冲突）  
+不可并行：**Order 域** 内所有改 `OrderSyncService` 的任务串行  
+强约束：**CLEAN-001~004** 必须在所有 SLIM-* 和 Phase 3-9 收尾后执行；**VERIFY-001** 最后
+
+## 真实环境（real-pre）状态
+
+- backend-real-pre：**healthy**（agent-do 重启后恢复）
+- frontend / postgres / redis：healthy
+- test 环境：healthy
