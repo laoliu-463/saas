@@ -36,7 +36,8 @@ import com.colonel.saas.mapper.ProductOperationLogMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.PromotionLinkMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -131,8 +132,8 @@ public class ProductService {
     private final ColonelsettlementOrderMapper orderMapper;
     /** 商户持久层，用于查询商家名称等信息 */
     private final MerchantMapper merchantMapper;
-    /** 系统用户持久层，用于查询操作人姓名（分配人、审核人等） */
-    private final SysUserMapper sysUserMapper;
+    /** 系统用户门面，用于查询操作人姓名（分配人、审核人等） */
+    private final UserDomainFacade userDomainFacade;
     /** 货源映射服务，管理 pick_source 与推广链接的映射关系 */
     private final PickSourceMappingService pickSourceMappingService;
     /** 商品业务状态计算服务，根据多维度状态计算商品当前业务阶段 */
@@ -173,7 +174,7 @@ public class ProductService {
             PromotionLinkMapper promotionLinkMapper,
             ColonelsettlementOrderMapper orderMapper,
             MerchantMapper merchantMapper,
-            SysUserMapper sysUserMapper,
+            UserDomainFacade userDomainFacade,
             PickSourceMappingService pickSourceMappingService,
             ProductBizStatusService productBizStatusService,
             ColonelsettlementActivityMapper colonelActivityMapper,
@@ -193,7 +194,7 @@ public class ProductService {
         this.promotionLinkMapper = promotionLinkMapper;
         this.orderMapper = orderMapper;
         this.merchantMapper = merchantMapper;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
         this.pickSourceMappingService = pickSourceMappingService;
         this.productBizStatusService = productBizStatusService;
         this.colonelActivityMapper = colonelActivityMapper;
@@ -575,10 +576,10 @@ public class ProductService {
         if (userIds == null || userIds.isEmpty()) {
             return Map.of();
         }
-        return sysUserMapper.selectBatchIds(userIds).stream()
+        return userDomainFacade.getUsersByIds(userIds).stream()
                 .filter(java.util.Objects::nonNull)
                 .collect(Collectors.toMap(
-                        SysUser::getId,
+                        UserOptionResponse::id,
                         this::formatUserDisplayName,
                         (left, right) -> left,
                         LinkedHashMap::new
@@ -1619,14 +1620,14 @@ public class ProductService {
 
         // 非清除分配时，校验目标用户
         if (assigneeId != null) {
-            SysUser assignee = sysUserMapper.selectById(assigneeId);
+            UserOptionResponse assignee = userDomainFacade.getUserById(assigneeId);
             if (assignee == null) {
                 throw BusinessException.notFound("目标用户不存在");
             }
             recruiterUserId = assigneeId;
-            recruiterDeptId = assignee.getDeptId();
+            recruiterDeptId = assignee.deptId();
             recruiterUserName = resolveUserDisplayName(assigneeId);
-            recruiterDeptName = resolveDeptName(assignee.getDeptId());
+            recruiterDeptName = resolveDeptName(assignee.deptId());
         }
 
         ColonelsettlementActivity existing = colonelActivityMapper.selectByActivityId(normalizedActivityId);
@@ -2709,7 +2710,7 @@ public class ProductService {
                 && !relinkExistingProduct) {
             throw BusinessException.stateInvalid("当前状态不允许执行PROMOTION_LINK，当前状态：" + beforeStatus.name());
         }
-        SysUser user = sysUserMapper.selectById(userId);
+        UserOptionResponse user = userDomainFacade.getUserById(userId);
         String desiredPickExtra = buildPickExtra(userId, user, snapshot.getProductId(), snapshot.getActivityId());
         String attemptedPickSource = null;
 
@@ -2741,7 +2742,7 @@ public class ProductService {
             link.setActivityId(snapshot.getActivityId());
             link.setTalentId(talentId);
             link.setChannelUserId(userId);
-            link.setChannelUserName(user != null ? user.getRealName() : "unknown");
+            link.setChannelUserName(user != null ? user.realName() : "unknown");
             link.setOriginalProductUrl(snapshot.getDetailUrl());
             link.setPromotionUrl(result.promoteLink());
             link.setShortUrl(result.shortLink());
@@ -2749,7 +2750,7 @@ public class ProductService {
             link.setPickExtra(result.pickExtra());
             link.setLinkStatus("ACTIVE");
             link.setOperatorId(userId);
-            link.setOperatorName(user != null ? user.getRealName() : "system");
+            link.setOperatorName(user != null ? user.realName() : "system");
             link.setCreatedAt(LocalDateTime.now());
             link.setUpdatedAt(LocalDateTime.now());
             promotionLinkMapper.insert(link);
@@ -2763,7 +2764,7 @@ public class ProductService {
                         nativeColonelBuyin.source());
                 pickSourceMappingService.saveOrUpdate(
                         userId,
-                        user != null ? user.getRealName() : "unknown",
+                        user != null ? user.realName() : "unknown",
                         deptId,
                         talentId,
                         null,
@@ -2787,7 +2788,7 @@ public class ProductService {
                         nativeColonelBuyin.source());
                 pickSourceMappingService.saveOrUpdate(
                         userId,
-                        user != null ? user.getRealName() : "unknown",
+                        user != null ? user.realName() : "unknown",
                         deptId,
                         talentId,
                         null,
@@ -2885,13 +2886,13 @@ public class ProductService {
         }
     }
 
-    private String buildPickExtra(UUID userId, SysUser user, String productId, String activityId) {
+    private String buildPickExtra(UUID userId, UserOptionResponse user, String productId, String activityId) {
         if (userId == null) {
             return null;
         }
         String compactUserId = userId.toString().replace("-", "");
-        String channelCode = user != null && StringUtils.hasText(user.getChannelCode())
-                ? user.getChannelCode().trim().toLowerCase(Locale.ROOT)
+        String channelCode = user != null && StringUtils.hasText(user.channelCode())
+                ? user.channelCode().trim().toLowerCase(Locale.ROOT)
                 : compactUserId;
         com.colonel.saas.domain.config.facade.dto.PromotionTemplateDTO template =
                 configDomainFacade == null ? null : configDomainFacade.getPromotionTemplate();
@@ -3794,19 +3795,19 @@ public class ProductService {
         if (userDisplayNames != null) {
             return userDisplayNames.get(userId);
         }
-        SysUser user = sysUserMapper.selectById(userId);
+        UserOptionResponse user = userDomainFacade.getUserById(userId);
         if (user == null) {
             return null;
         }
         return formatUserDisplayName(user);
     }
 
-    private String formatUserDisplayName(SysUser user) {
+    private String formatUserDisplayName(UserOptionResponse user) {
         if (user == null) {
             return null;
         }
-        String realName = normalizeDisplayText(user.getRealName());
-        String username = normalizeDisplayText(user.getUsername());
+        String realName = normalizeDisplayText(user.realName());
+        String username = normalizeDisplayText(user.username());
         if (StringUtils.hasText(realName) && StringUtils.hasText(username)) {
             return realName + " (" + username + ")";
         }
@@ -4434,8 +4435,8 @@ public class ProductService {
         if (scopedUserId == null) {
             return;
         }
-        SysUser scopedUser = sysUserMapper.selectById(scopedUserId);
-        UUID scopedDeptId = scopedUser == null ? null : scopedUser.getDeptId();
+        UserOptionResponse scopedUser = userDomainFacade.getUserById(scopedUserId);
+        UUID scopedDeptId = scopedUser == null ? null : scopedUser.deptId();
         if (scopedDeptId == null) {
             return;
         }

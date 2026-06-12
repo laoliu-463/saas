@@ -10,12 +10,12 @@ import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
-import com.colonel.saas.entity.SysUser;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
-import com.colonel.saas.mapper.SysUserMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -49,19 +49,19 @@ public class SampleFilterOptionsService {
     private final ProductMapper productMapper;
     private final ProductSnapshotMapper productSnapshotMapper;
     private final ProductOperationStateMapper productOperationStateMapper;
-    private final SysUserMapper sysUserMapper;
+    private final UserDomainFacade userDomainFacade;
 
     public SampleFilterOptionsService(
             SampleRequestMapper sampleRequestMapper,
             ProductMapper productMapper,
             ProductSnapshotMapper productSnapshotMapper,
             ProductOperationStateMapper productOperationStateMapper,
-            SysUserMapper sysUserMapper) {
+            UserDomainFacade userDomainFacade) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productMapper = productMapper;
         this.productSnapshotMapper = productSnapshotMapper;
         this.productOperationStateMapper = productOperationStateMapper;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
     }
 
     /**
@@ -212,7 +212,7 @@ public class SampleFilterOptionsService {
             if (map.containsKey(value)) {
                 continue;
             }
-            SysUser user = sysUserMapper.selectById(recruiterId);
+            UserOptionResponse user = userDomainFacade.getUserById(recruiterId);
             String label = formatUserLabel(user, value);
             map.put(value, item(label, value));
         }
@@ -341,9 +341,12 @@ public class SampleFilterOptionsService {
         if (userIds.isEmpty()) {
             return Map.of();
         }
-        return sysUserMapper.selectBatchIds(userIds).stream()
-                .filter(u -> u != null && u.getId() != null)
-                .collect(Collectors.toMap(SysUser::getId, u -> formatUserLabel(u, u.getId().toString()), (a, b) -> a));
+        return userDomainFacade.getUsersByIds(userIds).stream()
+                .filter(u -> u != null && u.id() != null)
+                .collect(Collectors.toMap(
+                        UserOptionResponse::id,
+                        u -> formatUserLabel(u, u.id().toString()),
+                        (a, b) -> a));
     }
 
     /**
@@ -367,12 +370,12 @@ public class SampleFilterOptionsService {
     /**
      * 格式化用户显示名称：优先"真实姓名 (用户名)"，其次真实姓名，再其次用户名，均无则使用 fallback。
      */
-    private static String formatUserLabel(SysUser user, String fallback) {
+    private static String formatUserLabel(UserOptionResponse user, String fallback) {
         if (user == null) {
             return fallback;
         }
-        String realName = user.getRealName() == null ? "" : user.getRealName().trim();
-        String username = user.getUsername() == null ? "" : user.getUsername().trim();
+        String realName = user.realName() == null ? "" : user.realName().trim();
+        String username = user.username() == null ? "" : user.username().trim();
         if (StringUtils.hasText(realName) && StringUtils.hasText(username)) {
             return realName + " (" + username + ")";
         }

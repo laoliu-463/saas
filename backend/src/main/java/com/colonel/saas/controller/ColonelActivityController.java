@@ -13,7 +13,8 @@ import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.service.activity.ActivityAccessService;
 import com.colonel.saas.service.ColonelsettlementActivityService;
 import com.colonel.saas.service.ProductActivityManualSyncService;
@@ -65,7 +66,7 @@ public class ColonelActivityController extends BaseController {
     private final SysUserService sysUserService;
     private final ColonelsettlementActivityService colonelActivityService;
     private final ProductActivityManualSyncService productActivityManualSyncService;
-    private final SysUserMapper sysUserMapper;
+    private final UserDomainFacade userDomainFacade;
     private final ActivityAccessService activityAccessService;
 
     public ColonelActivityController(
@@ -76,7 +77,7 @@ public class ColonelActivityController extends BaseController {
             SysUserService sysUserService,
             ColonelsettlementActivityService colonelActivityService,
             ProductActivityManualSyncService productActivityManualSyncService,
-            SysUserMapper sysUserMapper,
+            UserDomainFacade userDomainFacade,
             ActivityAccessService activityAccessService) {
         this.douyinActivityGateway = douyinActivityGateway;
         this.douyinProductGateway = douyinProductGateway;
@@ -85,7 +86,7 @@ public class ColonelActivityController extends BaseController {
         this.sysUserService = sysUserService;
         this.colonelActivityService = colonelActivityService;
         this.productActivityManualSyncService = productActivityManualSyncService;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
         this.activityAccessService = activityAccessService;
     }
 
@@ -311,14 +312,14 @@ public class ColonelActivityController extends BaseController {
         if (userId == null) {
             return "";
         }
-        SysUser user = sysUserMapper.selectById(userId);
+        UserOptionResponse user = userDomainFacade.getUserById(userId);
         if (user == null) {
             return "";
         }
-        if (user.getRealName() != null && !user.getRealName().isBlank()) {
-            return user.getRealName().trim();
+        if (user.realName() != null && !user.realName().isBlank()) {
+            return user.realName().trim();
         }
-        return user.getUsername() == null ? "" : user.getUsername();
+        return user.username() == null ? "" : user.username();
     }
 
     private BusinessException mapActivityError(DouyinApiException e) {

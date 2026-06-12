@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.OperationLogMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +37,7 @@ class OperationLogServiceTest {
     @Mock
     private OperationLogMapper operationLogMapper;
     @Mock
-    private SysUserMapper sysUserMapper;
+    private UserDomainFacade userDomainFacade;
     @Mock
     private JdbcTemplate jdbcTemplate;
 
@@ -45,14 +45,14 @@ class OperationLogServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new OperationLogService(operationLogMapper, sysUserMapper, jdbcTemplate, new ObjectMapper());
+        service = new OperationLogService(operationLogMapper, userDomainFacade, jdbcTemplate, new ObjectMapper());
     }
 
     @Test
     void record_shouldReturnWithoutDatabaseWorkWhenLogIsNull() {
         service.record(null);
 
-        verifyNoInteractions(operationLogMapper, sysUserMapper, jdbcTemplate);
+        verifyNoInteractions(operationLogMapper, userDomainFacade, jdbcTemplate);
     }
 
     @Test
@@ -117,7 +117,7 @@ class OperationLogServiceTest {
                 "更新配置项"
         );
 
-        verify(sysUserMapper).selectById(operatorId);
+        verify(userDomainFacade).selectById(operatorId);
         verify(jdbcTemplate).update(anyString(), argsCaptor.capture());
         Object[] args = argsCaptor.getValue();
         assertThat(args[1]).isEqualTo(operatorId);

@@ -24,7 +24,8 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -153,8 +154,8 @@ public class DataApplicationService extends BaseController {
     /** JDBC 模板，用于复杂聚合查询（如 service profit 联合查询） */
     private final JdbcTemplate jdbcTemplate;
 
-    /** 用户 Mapper，负责查询渠道/招商负责人姓名 */
-    private final SysUserMapper sysUserMapper;
+    /** 用户门面，负责查询渠道/招商负责人姓名 */
+    private final UserDomainFacade userDomainFacade;
 
     /**
      * 构造注入所有依赖服务与 Mapper。
@@ -176,7 +177,7 @@ public class DataApplicationService extends BaseController {
             ShortTtlCacheService shortTtlCacheService,
             PerformanceMetricsQueryService performanceMetricsQueryService,
             PerformanceRecordMapper performanceRecordMapper,
-            SysUserMapper sysUserMapper,
+            UserDomainFacade userDomainFacade,
             JdbcTemplate jdbcTemplate) {
         this.orderMapper = orderMapper;
         this.commissionService = commissionService;
@@ -186,7 +187,7 @@ public class DataApplicationService extends BaseController {
         this.shortTtlCacheService = shortTtlCacheService;
         this.performanceMetricsQueryService = performanceMetricsQueryService;
         this.performanceRecordMapper = performanceRecordMapper;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -486,13 +487,11 @@ public class DataApplicationService extends BaseController {
         if (userIds.isEmpty()) {
             return Map.of();
         }
-        LambdaQueryWrapper<SysUser> uw = new LambdaQueryWrapper<>();
-        uw.in(SysUser::getId, userIds);
-        List<SysUser> users = sysUserMapper.selectList(uw);
+        List<UserOptionResponse> users = userDomainFacade.getUsersByIds(new java.util.ArrayList<>(userIds));
         Map<UUID, String> map = new LinkedHashMap<>();
-        for (SysUser u : users) {
-            if (u.getId() != null) {
-                map.put(u.getId(), StringUtils.hasText(u.getRealName()) ? u.getRealName() : u.getUsername());
+        for (UserOptionResponse u : users) {
+            if (u.id() != null) {
+                map.put(u.id(), StringUtils.hasText(u.realName()) ? u.realName() : u.username());
             }
         }
         return map;

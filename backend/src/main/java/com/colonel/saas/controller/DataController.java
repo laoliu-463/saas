@@ -20,7 +20,7 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -87,9 +87,9 @@ public class DataController extends DataApplicationService {
             ShortTtlCacheService shortTtlCacheService,
             PerformanceMetricsQueryService performanceMetricsQueryService,
             PerformanceRecordMapper performanceRecordMapper,
-            SysUserMapper sysUserMapper,
+            UserDomainFacade userDomainFacade,
             org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
-        super(orderMapper, commissionService, exclusiveTalentMapper, exclusiveMerchantMapper, activityMapper, shortTtlCacheService, performanceMetricsQueryService, performanceRecordMapper, sysUserMapper, jdbcTemplate);
+        super(orderMapper, commissionService, exclusiveTalentMapper, exclusiveMerchantMapper, activityMapper, shortTtlCacheService, performanceMetricsQueryService, performanceRecordMapper, userDomainFacade, jdbcTemplate);
     }
 
     @GetMapping("/data/orders")

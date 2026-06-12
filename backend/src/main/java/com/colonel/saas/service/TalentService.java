@@ -17,7 +17,8 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
 import com.colonel.saas.service.talent.TalentInputParseResult;
@@ -137,7 +138,7 @@ public class TalentService {
     /** 操作日志服务（用于认领/释放/归属覆盖等操作审计） */
     private final OperationLogService operationLogService;
     /** 系统用户 Mapper（用于归属覆盖时校验目标负责人） */
-    private final SysUserMapper sysUserMapper;
+    private final UserDomainFacade userDomainFacade;
 
     /**
      * 构造函数，通过依赖注入初始化所有必需的服务和仓储。
@@ -169,7 +170,7 @@ public class TalentService {
             com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
             BusinessRuleConfigService businessRuleConfigService,
             OperationLogService operationLogService,
-            SysUserMapper sysUserMapper) {
+            UserDomainFacade userDomainFacade) {
         this.talentMapper = talentMapper;
         this.talentClaimMapper = talentClaimMapper;
         this.talentEnrichTaskMapper = talentEnrichTaskMapper;
@@ -182,7 +183,7 @@ public class TalentService {
         this.configDomainFacade = configDomainFacade;
         this.businessRuleConfigService = businessRuleConfigService;
         this.operationLogService = operationLogService;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
     }
 
     /**
@@ -943,8 +944,8 @@ public class TalentService {
         if (newUserId == null) {
             throw BusinessException.param("新负责人ID不能为空");
         }
-        SysUser targetUser = sysUserMapper.selectById(newUserId);
-        if (targetUser == null || targetUser.getDeleted() == 1) {
+        UserOptionResponse targetUser = userDomainFacade.getUserById(newUserId);
+        if (targetUser == null) {
             throw BusinessException.notFound("目标负责人不存在");
         }
         Talent talent = getById(talentId);

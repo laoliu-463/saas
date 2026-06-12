@@ -57,8 +57,23 @@ public interface UserDomainFacade {
     String getUserName(UUID userId);
 
     /**
+     * 按用户 ID 查询用户基础信息（DDD-USER-002）。
+     */
+    UserOptionResponse getUserById(UUID userId);
+
+    /**
+     * 批量加载用户基础信息（DDD-USER-002）。
+     */
+    List<UserOptionResponse> getUsersByIds(Collection<UUID> ids);
+
+    /**
      * 批量加载用户真实姓名，返回 userId → realName 映射（DDD-USER-002）。
      * 自动过滤 null 和重复 ID。
      */
     Map<UUID, String> loadUserNamesByIds(Collection<UUID> ids);
+
+    /**
+     * 按类型过滤加载部门/组织单元列表。
+     */
+    List<DepartmentOption> listDepartments(Collection<String> deptTypes);
 }

@@ -14,7 +14,7 @@ import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,7 +36,7 @@ class SampleFilterOptionsServiceTest {
     @Mock private ProductMapper productMapper;
     @Mock private ProductSnapshotMapper productSnapshotMapper;
     @Mock private ProductOperationStateMapper productOperationStateMapper;
-    @Mock private SysUserMapper sysUserMapper;
+    @Mock private UserDomainFacade userDomainFacade;
 
     private SampleFilterOptionsService service;
 
@@ -47,7 +47,7 @@ class SampleFilterOptionsServiceTest {
                 productMapper,
                 productSnapshotMapper,
                 productOperationStateMapper,
-                sysUserMapper);
+                userDomainFacade);
     }
 
     @Test

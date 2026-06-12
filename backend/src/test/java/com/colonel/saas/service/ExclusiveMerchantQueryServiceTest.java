@@ -4,7 +4,7 @@ import com.colonel.saas.dto.performance.ExclusiveMerchantDetailDTO;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,13 +30,13 @@ class ExclusiveMerchantQueryServiceTest {
     @Mock
     private ExclusiveMerchantMapper exclusiveMerchantMapper;
     @Mock
-    private SysUserMapper sysUserMapper;
+    private UserDomainFacade userDomainFacade;
 
     private ExclusiveMerchantQueryService service;
 
     @BeforeEach
     void setUp() {
-        service = new ExclusiveMerchantQueryService(exclusiveMerchantMapper, sysUserMapper);
+        service = new ExclusiveMerchantQueryService(exclusiveMerchantMapper, userDomainFacade);
     }
 
     @Test
@@ -46,7 +46,7 @@ class ExclusiveMerchantQueryServiceTest {
         assertThat(dto.getPartnerId()).isEqualTo(" ");
         assertThat(dto.isExclusive()).isFalse();
         verify(exclusiveMerchantMapper, never()).selectOne(any());
-        verify(sysUserMapper, never()).selectById(any());
+        verify(userDomainFacade, never()).selectById(any());
     }
 
     @Test
@@ -58,7 +58,7 @@ class ExclusiveMerchantQueryServiceTest {
         assertThat(dto.getPartnerId()).isEqualTo(" P100 ");
         assertThat(dto.isExclusive()).isFalse();
         assertThat(dto.getRecruiterName()).isNull();
-        verify(sysUserMapper, never()).selectById(any());
+        verify(userDomainFacade, never()).selectById(any());
     }
 
     @Test

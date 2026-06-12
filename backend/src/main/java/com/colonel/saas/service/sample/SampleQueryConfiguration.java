@@ -6,7 +6,7 @@ import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SampleStatusLogMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
@@ -36,7 +36,7 @@ public class SampleQueryConfiguration {
             ProductMapper productMapper,
             ProductOperationStateMapper productOperationStateMapper,
             ProductSnapshotMapper productSnapshotMapper,
-            SysUserMapper sysUserMapper,
+            UserDomainFacade userDomainFacade,
             TalentMapper talentMapper,
             TalentClaimMapper talentClaimMapper,
             SampleStatusLogService sampleStatusLogService,
@@ -55,7 +55,7 @@ public class SampleQueryConfiguration {
                 productMapper,
                 productOperationStateMapper,
                 productSnapshotMapper,
-                sysUserMapper,
+                userDomainFacade,
                 talentMapper,
                 talentClaimMapper,
                 sampleStatusLogService,

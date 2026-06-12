@@ -27,6 +27,9 @@ public record UserOptionResponse(
         UUID deptId,
 
         @Schema(description = "角色编码列表")
-        List<String> roleCodes
+        List<String> roleCodes,
+
+        @Schema(description = "渠道短码")
+        String channelCode
 ) {
 }

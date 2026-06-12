@@ -38,7 +38,8 @@ import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SampleStatusLogMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.CrawlerTalentInfoService;
@@ -179,8 +180,8 @@ public class SampleApplicationService extends BaseController {
     /** 商品快照数据访问层，用于在创建寄样时保存商品当前信息快照 */
     private final ProductSnapshotMapper productSnapshotMapper;
 
-    /** 系统用户数据访问层，用于查询用户信息（创建人姓名、归属部门等） */
-    private final SysUserMapper sysUserMapper;
+    /** 系统用户门面，用于查询用户信息（创建人姓名、归属部门等） */
+    private final UserDomainFacade userDomainFacade;
 
     /** 达人数据访问层，用于查询和关联达人信息 */
     private final TalentMapper talentMapper;
@@ -236,7 +237,7 @@ public class SampleApplicationService extends BaseController {
      * @param productMapper                      商品数据访问层
      * @param productOperationStateMapper         商品运营状态数据访问层
      * @param productSnapshotMapper               商品快照数据访问层
-     * @param sysUserMapper                       系统用户数据访问层
+     * @param userDomainFacade                      系统用户门面
      * @param talentMapper                        达人数据访问层
      * @param talentClaimMapper                   达人认领关系数据访问层
      * @param sampleStatusLogService              寄样状态日志业务服务
@@ -256,7 +257,7 @@ public class SampleApplicationService extends BaseController {
             ProductMapper productMapper,
             ProductOperationStateMapper productOperationStateMapper,
             ProductSnapshotMapper productSnapshotMapper,
-            SysUserMapper sysUserMapper,
+            UserDomainFacade userDomainFacade,
             TalentMapper talentMapper,
             TalentClaimMapper talentClaimMapper,
             SampleStatusLogService sampleStatusLogService,
@@ -274,7 +275,7 @@ public class SampleApplicationService extends BaseController {
         this.productMapper = productMapper;
         this.productOperationStateMapper = productOperationStateMapper;
         this.productSnapshotMapper = productSnapshotMapper;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
         this.talentMapper = talentMapper;
         this.talentClaimMapper = talentClaimMapper;
         this.sampleStatusLogService = sampleStatusLogService;
@@ -1887,8 +1888,8 @@ public class SampleApplicationService extends BaseController {
         if (userId == null) {
             return null;
         }
-        SysUser user = sysUserMapper.selectById(userId);
-        return user == null ? null : user.getDeptId();
+        UserOptionResponse user = userDomainFacade.getUserById(userId);
+        return user == null ? null : user.deptId();
     }
 
     /**
@@ -3412,12 +3413,12 @@ public class SampleApplicationService extends BaseController {
         if (userId == null) {
             return null;
         }
-        SysUser user = sysUserMapper.selectById(userId);
+        UserOptionResponse user = userDomainFacade.getUserById(userId);
         if (user == null) {
             return null;
         }
-        String realName = normalizeDisplayText(user.getRealName());
-        String username = normalizeDisplayText(user.getUsername());
+        String realName = normalizeDisplayText(user.realName());
+        String username = normalizeDisplayText(user.username());
         if (StringUtils.hasText(realName) && StringUtils.hasText(username)) {
             return realName + " (" + username + ")";
         }

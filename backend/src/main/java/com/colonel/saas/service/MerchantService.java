@@ -7,9 +7,9 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Merchant;
-import com.colonel.saas.entity.SysUser;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.mapper.MerchantMapper;
-import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.vo.PartnerDetailVO;
 import com.colonel.saas.vo.PartnerProductVO;
 import com.colonel.saas.vo.PartnerVO;
@@ -40,7 +40,7 @@ import java.util.UUID;
  *   <li>处理商家归属覆盖（overrideMerchantAssignment）并记录操作日志</li>
  * </ul>
  *
- * <p>架构角色：Service 层，聚合 MerchantMapper（商家持久化）、SysUserMapper（用户查询）、
+ * <p>架构角色：Service 层，聚合 MerchantMapper（商家持久化）、UserDomainFacade（用户查询）、
  * OperationLogService（操作审计）和 JdbcTemplate（复杂 CTE 联合查询）。
  *
  * <p>业务领域：商家域 / 合作方管理。
@@ -50,7 +50,7 @@ import java.util.UUID;
  * <p>依赖关系：
  * <ul>
  *   <li>{@link MerchantMapper} — 商家实体 CRUD</li>
- *   <li>{@link SysUserMapper} — 系统用户查询，用于归属覆盖时校验负责人</li>
+ *   <li>{@link UserDomainFacade} — 系统用户查询，用于归属覆盖时校验负责人</li>
  *   <li>{@link OperationLogService} — 操作日志审计</li>
  *   <li>{@link JdbcTemplate} — 执行原生 SQL（CTE 多表联合查询）</li>
  * </ul>
@@ -189,8 +189,8 @@ public class MerchantService {
     private final MerchantMapper merchantMapper;
     /** 操作日志服务，记录商家归属覆盖等审计事件 */
     private final OperationLogService operationLogService;
-    /** 系统用户 Mapper，用于查询负责人信息 */
-    private final SysUserMapper sysUserMapper;
+    /** 用户门面，用于查询负责人信息 */
+    private final UserDomainFacade userDomainFacade;
     /** Spring JDBC 模板，用于执行复杂原生 SQL（CTE 联合查询） */
     private final JdbcTemplate jdbcTemplate;
 
@@ -199,18 +199,18 @@ public class MerchantService {
      *
      * @param merchantMapper     商家 Mapper
      * @param operationLogService 操作日志服务
-     * @param sysUserMapper      系统用户 Mapper
+     * @param userDomainFacade      用户门面
      * @param jdbcTemplate       JDBC 模板（CTE 查询必需）
      */
     @Autowired
     public MerchantService(
             MerchantMapper merchantMapper,
             OperationLogService operationLogService,
-            SysUserMapper sysUserMapper,
+            UserDomainFacade userDomainFacade,
             JdbcTemplate jdbcTemplate) {
         this.merchantMapper = merchantMapper;
         this.operationLogService = operationLogService;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -219,10 +219,10 @@ public class MerchantService {
      *
      * @param merchantMapper     商家 Mapper
      * @param operationLogService 操作日志服务
-     * @param sysUserMapper      系统用户 Mapper
+     * @param userDomainFacade      用户门面
      */
-    public MerchantService(MerchantMapper merchantMapper, OperationLogService operationLogService, SysUserMapper sysUserMapper) {
-        this(merchantMapper, operationLogService, sysUserMapper, null);
+    public MerchantService(MerchantMapper merchantMapper, OperationLogService operationLogService, UserDomainFacade userDomainFacade) {
+        this(merchantMapper, operationLogService, userDomainFacade, null);
     }
 
     /**
@@ -689,8 +689,8 @@ public class MerchantService {
         if (newUserId == null) {
             throw BusinessException.param("新负责人ID不能为空");
         }
-        SysUser targetUser = sysUserMapper.selectById(newUserId);
-        if (targetUser == null || targetUser.getDeleted() == 1) {
+        UserOptionResponse targetUser = userDomainFacade.getUserById(newUserId);
+        if (targetUser == null) {
             throw BusinessException.notFound("目标负责人不存在");
         }
         Merchant merchant = merchantMapper.selectOne(new LambdaQueryWrapper<Merchant>()
@@ -700,7 +700,7 @@ public class MerchantService {
             throw BusinessException.notFound("商家不存在");
         }
         merchant.setOwnerId(newUserId);
-        merchant.setOwnerDeptId(targetUser.getDeptId());
+        merchant.setOwnerDeptId(targetUser.deptId());
         OptimisticLockSupport.requireUpdated(merchantMapper.updateById(merchant));
 
         operationLogService.recordSystemAction(

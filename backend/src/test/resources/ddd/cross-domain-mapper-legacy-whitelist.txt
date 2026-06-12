@@ -2,7 +2,9 @@
 # Format: OwnerFqcn|MapperSimpleName
 # New entries are forbidden — use Domain Facade / Port instead.
 # DDD-USER-002: OrderSyncPersistenceService no longer injects SysUserMapper (replaced by UserDomainFacade)
-com.colonel.saas.controller.ColonelActivityController|SysUserMapper
+# DDD-USER-003: OperationLogService / ExclusiveMerchantQueryService / SampleFilterOptionsService migrated to UserDomainFacade
+# DDD-USER-003: ColonelActivityController migrated to UserDomainFacade
+# DDD-USER-003: OrderController dept options pending (mixed with 1603 dry-run — keep whitelisted)
 com.colonel.saas.controller.OrderController|SysDeptMapper
 com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider|PickSourceMappingMapper
 com.colonel.saas.gateway.douyin.test.TestDouyinOrderGateway|PickSourceMappingMapper
@@ -13,9 +15,6 @@ com.colonel.saas.service.AttributionService|PickSourceMappingMapper
 com.colonel.saas.service.AttributionService|TalentClaimMapper
 com.colonel.saas.service.AttributionService|TalentMapper
 com.colonel.saas.service.DashboardService|ColonelsettlementOrderMapper
-com.colonel.saas.service.ExclusiveMerchantQueryService|SysUserMapper
-com.colonel.saas.service.MerchantService|SysUserMapper
-com.colonel.saas.service.OperationLogService|SysUserMapper
 com.colonel.saas.service.OrderService|ProductMapper
 com.colonel.saas.service.OrderService|ProductSnapshotMapper
 com.colonel.saas.service.PerformanceBackfillService|ColonelsettlementOrderMapper
@@ -25,27 +24,21 @@ com.colonel.saas.domain.sample.application.SampleApplicationPortImpl|TalentClaim
 com.colonel.saas.domain.sample.application.SampleApplicationPortImpl|TalentMapper
 com.colonel.saas.service.ProductService|ColonelsettlementOrderMapper
 com.colonel.saas.service.ProductService|PromotionLinkMapper
-com.colonel.saas.service.ProductService|SysUserMapper
 com.colonel.saas.service.SampleFilterOptionsService|ProductMapper
 com.colonel.saas.service.SampleFilterOptionsService|ProductOperationStateMapper
 com.colonel.saas.service.SampleFilterOptionsService|ProductSnapshotMapper
-com.colonel.saas.service.SampleFilterOptionsService|SysUserMapper
 com.colonel.saas.service.SampleLifecycleService|TalentClaimMapper
 com.colonel.saas.service.TalentPresetTagsBootstrap|SystemConfigMapper
 com.colonel.saas.service.TalentQueryService|SampleRequestMapper
-com.colonel.saas.service.TalentQueryService|SysUserMapper
 com.colonel.saas.service.TalentService|ColonelsettlementOrderMapper
 com.colonel.saas.service.TalentService|SampleRequestMapper
-com.colonel.saas.service.TalentService|SysUserMapper
 com.colonel.saas.service.data.DataApplicationService|ColonelsettlementActivityMapper
 com.colonel.saas.service.data.DataApplicationService|ColonelsettlementOrderMapper
 com.colonel.saas.service.data.DataApplicationService|ExclusiveMerchantMapper
 com.colonel.saas.service.data.DataApplicationService|ExclusiveTalentMapper
 com.colonel.saas.service.data.DataApplicationService|PerformanceRecordMapper
-com.colonel.saas.service.data.DataApplicationService|SysUserMapper
 com.colonel.saas.service.sample.SampleApplicationService|ProductMapper
 com.colonel.saas.service.sample.SampleApplicationService|ProductOperationStateMapper
 com.colonel.saas.service.sample.SampleApplicationService|ProductSnapshotMapper
-com.colonel.saas.service.sample.SampleApplicationService|SysUserMapper
 com.colonel.saas.service.sample.SampleApplicationService|TalentClaimMapper
 com.colonel.saas.service.sample.SampleApplicationService|TalentMapper

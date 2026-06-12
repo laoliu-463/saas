@@ -122,4 +122,53 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toMap(SysUser::getId, SysUser::getRealName, (a, b) -> a));
     }
+    @Override
+    public UserOptionResponse getUserById(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        SysUser user = sysUserMapper.selectById(userId);
+        return toUserOptionResponse(user);
+    }
+
+    @Override
+    public List<UserOptionResponse> getUsersByIds(Collection<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> distinct = ids.stream().filter(Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) {
+            return List.of();
+        }
+        return sysUserMapper.selectBatchIds(distinct).stream()
+                .filter(Objects::nonNull)
+                .map(this::toUserOptionResponse)
+                .toList();
+    }
+
+    private UserOptionResponse toUserOptionResponse(SysUser user) {
+        if (user == null) {
+            return null;
+        }
+        return new UserOptionResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getRealName(),
+                user.getDeptId(),
+                List.of(), // Roles omitted for cross-domain basic usages
+                user.getChannelCode()
+        );
+    }
+
+    @Override
+    public List<DepartmentOption> listDepartments(Collection<String> deptTypes) {
+        if (deptTypes == null || deptTypes.isEmpty()) {
+            return listDepartments();
+        }
+        return sysDeptService.listActive().stream()
+                .filter(dept -> deptTypes.contains(dept.getDeptType()))
+                .map(this::toDepartmentOption)
+                .sorted(Comparator.comparing(DepartmentOption::deptName, Comparator.nullsLast(String::compareTo)))
+                .toList();
+    }
 }

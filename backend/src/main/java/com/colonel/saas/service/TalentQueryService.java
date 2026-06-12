@@ -11,9 +11,9 @@ import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
-import com.colonel.saas.entity.SysUser;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.mapper.SampleRequestMapper;
-import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -52,7 +52,7 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>{@link TalentService} — 委托分页查询与单条查询</li>
  *   <li>{@link TalentClaimMapper} — 读取认领记录</li>
- *   <li>{@link SysUserMapper} — 批量查询认领人用户信息</li>
+ *   <li>{@link UserDomainFacade} ：查询用户信息</li>
  *   <li>{@link SampleRequestMapper} — 寄样请求数据访问</li>
  *   <li>{@link org.springframework.jdbc.core.JdbcTemplate} — 原生 SQL 聚合寄样/订单统计</li>
  * </ul>
@@ -76,8 +76,7 @@ public class TalentQueryService {
     private final TalentService talentService;
     /** 达人认领 Mapper，查询认领归属关系 */
     private final TalentClaimMapper talentClaimMapper;
-    /** 系统用户 Mapper，批量查询认领人姓名 */
-    private final SysUserMapper sysUserMapper;
+    private final UserDomainFacade userDomainFacade;
     /** 寄样请求 Mapper，提供寄样数据访问 */
     private final SampleRequestMapper sampleRequestMapper;
     /** Spring JdbcTemplate，用于原生 SQL 聚合查询（寄样统计、订单统计） */
@@ -88,19 +87,19 @@ public class TalentQueryService {
      *
      * @param talentService        达人服务（基础 CRUD 和分页查询）
      * @param talentClaimMapper    达人认领记录 Mapper
-     * @param sysUserMapper        系统用户 Mapper（解析认领人姓名）
+     * @param userDomainFacade       用户领域门面（查询用户信息）解析认领人姓名）
      * @param sampleRequestMapper  寄样请求 Mapper（统计寄样次数）
      * @param jdbcTemplate         JDBC 模板（原生 SQL 聚合查询）
      */
     public TalentQueryService(
             TalentService talentService,
             TalentClaimMapper talentClaimMapper,
-            SysUserMapper sysUserMapper,
+            UserDomainFacade userDomainFacade,
             SampleRequestMapper sampleRequestMapper,
             JdbcTemplate jdbcTemplate) {
         this.talentService = talentService;
         this.talentClaimMapper = talentClaimMapper;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
         this.sampleRequestMapper = sampleRequestMapper;
         this.jdbcTemplate = jdbcTemplate;
     }
@@ -440,7 +439,7 @@ public class TalentQueryService {
         // 第一步：批量加载关联数据
         Set<UUID> talentIds = talents.stream().map(Talent::getId).filter(Objects::nonNull).collect(Collectors.toSet());
         ClaimMaps claimMaps = preloadedClaimMaps == null ? loadClaimMaps(talentIds) : preloadedClaimMaps;
-        Map<UUID, SysUser> ownerMap = loadOwnerMap(claimMaps.allClaims());
+        Map<UUID, UserOptionResponse> ownerMap = loadOwnerMap(claimMaps.allClaims());
         Map<UUID, Long> sampleCountMap = loadSampleCounts(
                 talentIds
         );
@@ -544,7 +543,7 @@ public class TalentQueryService {
      * @param claims 认领记录列表
      * @return 用户 ID 到用户实体的映射
      */
-    private Map<UUID, SysUser> loadOwnerMap(Collection<TalentClaim> claims) {
+    private Map<UUID, UserOptionResponse> loadOwnerMap(Collection<TalentClaim> claims) {
         if (claims == null || claims.isEmpty()) {
             return Collections.emptyMap();
         }
@@ -555,9 +554,9 @@ public class TalentQueryService {
         if (userIds.isEmpty()) {
             return Collections.emptyMap();
         }
-        return sysUserMapper.selectBatchIds(userIds).stream()
+        return userDomainFacade.getUsersByIds(userIds).stream()
                 .filter(Objects::nonNull)
-                .collect(Collectors.toMap(SysUser::getId, Function.identity(), (a, b) -> a));
+                .collect(Collectors.toMap(UserOptionResponse::id, Function.identity(), (a, b) -> a));
     }
 
     /**
@@ -881,8 +880,8 @@ public class TalentQueryService {
      * @param user 用户实体
      * @return 显示名称
      */
-    private String displayName(SysUser user) {
-        return firstNonBlank(user.getRealName(), user.getUsername(), user.getId() == null ? null : user.getId().toString());
+    private String displayName(UserOptionResponse user) {
+        return firstNonBlank(user.realName(), user.username(), user.id() == null ? null : user.id().toString());
     }
 
     /**
@@ -902,7 +901,7 @@ public class TalentQueryService {
     private void applyPublicClaimHint(Talent talent,
                                       List<TalentClaim> activeClaims,
                                       TalentClaim latestClaim,
-                                      Map<UUID, SysUser> ownerMap) {
+                                      Map<UUID, UserOptionResponse> ownerMap) {
         if (activeClaims != null && !activeClaims.isEmpty()) {
             // 有生效认领：展示认领人摘要，保护期取所有认领中的最晚值
             talent.setOwnerName(buildClaimSummary(activeClaims, ownerMap, null));
@@ -926,7 +925,7 @@ public class TalentQueryService {
         talent.setClaimedAt(latestClaim.getClaimedAt());
         talent.setProtectedUntil(latestClaim.getProtectedUntil());
         if (latestClaim.getStatus() != null && latestClaim.getStatus() == CLAIM_STATUS_EXPIRED) {
-            SysUser owner = ownerMap.get(latestClaim.getUserId());
+            UserOptionResponse owner = ownerMap.get(latestClaim.getUserId());
             String ownerName = owner == null ? null : displayName(owner);
             talent.setOwnerName(StringUtils.hasText(ownerName) ? "已过期释放 · 原归属 " + ownerName : "已过期释放");
             return;
@@ -943,7 +942,7 @@ public class TalentQueryService {
      * @param currentUserId 当前操作用户 ID（可为 null）
      * @return 认领人摘要文本
      */
-    private String buildClaimSummary(List<TalentClaim> claims, Map<UUID, SysUser> ownerMap, UUID currentUserId) {
+    private String buildClaimSummary(List<TalentClaim> claims, Map<UUID, UserOptionResponse> ownerMap, UUID currentUserId) {
         if (claims == null || claims.isEmpty()) {
             return null;
         }
@@ -1003,12 +1002,12 @@ public class TalentQueryService {
         if (activeClaims == null || activeClaims.isEmpty()) {
             return List.of();
         }
-        Map<UUID, SysUser> ownerMap = loadOwnerMap(activeClaims);
+        Map<UUID, UserOptionResponse> ownerMap = loadOwnerMap(activeClaims);
         return activeClaims.stream()
                 .map(claim -> {
                     TalentDetailResponse.ClaimOwnerItem item = new TalentDetailResponse.ClaimOwnerItem();
                     item.setUserId(claim.getUserId() == null ? null : claim.getUserId().toString());
-                    SysUser owner = claim.getUserId() == null ? null : ownerMap.get(claim.getUserId());
+                    UserOptionResponse owner = claim.getUserId() == null ? null : ownerMap.get(claim.getUserId());
                     String ownerName = owner == null ? null : displayName(owner);
                     if (currentUserId != null && currentUserId.equals(claim.getUserId()) && StringUtils.hasText(ownerName)) {
                         ownerName = ownerName + "（我）";
