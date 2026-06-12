@@ -53,7 +53,9 @@ class AttributionServiceTest {
                 talentMapper,
                 talentClaimMapper,
                 exclusiveTalentService,
-                exclusiveMerchantService
+                exclusiveMerchantService,
+                false,
+                null
         );
         Talent talent = new Talent();
         talent.setId(UUID.randomUUID());
@@ -68,7 +70,8 @@ class AttributionServiceTest {
                 talentClaimMapper,
                 exclusiveTalentService,
                 exclusiveMerchantService,
-                exclusiveEnabled
+                exclusiveEnabled,
+                null
         );
     }
 

@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.config.AppProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
+import com.colonel.saas.domain.order.application.OrderAttributionRouter;
 import com.colonel.saas.job.JobLockKeys;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.common.exception.BusinessException;
@@ -45,7 +46,7 @@ import java.util.function.Supplier;
  * <p>
  * 支持按时间窗口自动同步、手动触发、按订单号精确同步三种模式；
  * 内置分布式锁（Redis）防并发，熔断器保护上游网关；同步过程中
- * 通过 {@link AttributionService} 完成订单归属解析。
+ * 通过 {@link OrderAttributionRouter} 完成订单归属解析与字段写入。
  */
 @Slf4j
 @Service
@@ -122,7 +123,7 @@ public class OrderSyncService {
     private final SettlementOrderGateway instituteSettlementGateway;
     private final SettlementOrderGateway multiSettlementFallbackGateway;
     private final OrderSyncPersistenceService persistenceService;
-    private final AttributionService attributionService;
+    private final OrderAttributionRouter orderAttributionRouter;
     private final RedisTemplate<String, Object> redisTemplate;
     private final DistributedJobLockService jobLockService;
     private final AppProperties appProperties;
@@ -208,7 +209,7 @@ public class OrderSyncService {
             @Qualifier("instituteOrderColonelSettlementGateway") SettlementOrderGateway instituteSettlementGateway,
             @Qualifier("multiSettlementOrderFallbackGateway") SettlementOrderGateway multiSettlementFallbackGateway,
             OrderSyncPersistenceService persistenceService,
-            AttributionService attributionService,
+            OrderAttributionRouter orderAttributionRouter,
             RedisTemplate<String, Object> redisTemplate,
             DistributedJobLockService jobLockService,
             AppProperties appProperties,
@@ -217,7 +218,7 @@ public class OrderSyncService {
         this.instituteSettlementGateway = instituteSettlementGateway;
         this.multiSettlementFallbackGateway = multiSettlementFallbackGateway;
         this.persistenceService = persistenceService;
-        this.attributionService = attributionService;
+        this.orderAttributionRouter = orderAttributionRouter;
         this.redisTemplate = redisTemplate;
         this.jobLockService = jobLockService;
         this.appProperties = appProperties;
@@ -840,19 +841,7 @@ public class OrderSyncService {
                         if (!seenOrderIds.add(order.getOrderId())) {
                             continue;
                         }
-                        AttributionService.AttributionResult attribution =
-                                attributionService.resolveAttribution(order, item.rawPayload());
-                        order.setChannelUserId(attribution.channelUserId());
-                        order.setChannelDeptId(attribution.deptId());
-                        order.setUserId(attribution.userId());
-                        order.setDeptId(attribution.deptId());
-                        order.setColonelUserId(attribution.colonelUserId());
-                        order.setTalentId(attribution.talentId());
-                        order.setActivityId(firstNonBlank(attribution.activityId(), order.getActivityId()));
-                        order.setAttributionStatus(attribution.attributionStatus());
-                        order.setAttributionRemark(attribution.attributionRemark());
-                        order.setProductTitle(order.getProductName());
-                        order.setTalentName(item.talentName());
+                        orderAttributionRouter.resolveAndApply(order, item.rawPayload(), item.talentName());
                         if (order.getSettleTime() != null) {
                             hasSettleTimeCount++;
                         }
@@ -900,16 +889,15 @@ public class OrderSyncService {
                             order.setColonelUserName(colonelUserName);
                         }
 
-                        if ("ATTRIBUTED".equals(order.getAttributionStatus())) {
+                        if (orderAttributionRouter.isAttributed(order.getAttributionStatus())) {
                             attributedCount++;
                         } else {
                             unattributedCount++;
-                            String remark = order.getAttributionRemark();
-                            if (AttributionService.REASON_NO_PICK_SOURCE.equals(remark)) {
-                                noPickSourceCount++;
-                            } else if (AttributionService.REASON_MAPPING_NOT_FOUND.equals(remark)
-                                    || AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND.equals(remark)) {
-                                noMappingCount++;
+                            switch (orderAttributionRouter.classifyUnattributedRemark(order.getAttributionRemark())) {
+                                case NO_PICK_SOURCE -> noPickSourceCount++;
+                                case NO_MAPPING -> noMappingCount++;
+                                default -> {
+                                }
                             }
                         }
 
@@ -1235,7 +1223,7 @@ public class OrderSyncService {
                 order.setSettleTime(settleTime);
             }
         }
-        order.setAttributionStatus("UNATTRIBUTED");
+        orderAttributionRouter.applyInitialUnattributedStatus(order);
         order.setUpdateTime(LocalDateTime.now());
         order.setDeleted(0);
         order.setExtraData(rawPayload);

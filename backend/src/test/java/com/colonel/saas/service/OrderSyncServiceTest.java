@@ -4,6 +4,7 @@ import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.config.AppProperties;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
+import com.colonel.saas.domain.order.application.OrderAttributionRouter;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.job.JobLockKeys;
@@ -79,13 +80,16 @@ class OrderSyncServiceTest {
 
     private AppProperties appProperties;
     private OrderAmountMappingRouter orderAmountMappingRouter;
+    private OrderAttributionRouter orderAttributionRouter;
     private OrderSyncService service;
 
     @BeforeEach
     void setUp() {
         appProperties = new AppProperties();
         appProperties.getTest().setEnabled(false);
-        orderAmountMappingRouter = new OrderAmountMappingRouter(new DddRefactorProperties());
+        DddRefactorProperties dddRefactorProperties = new DddRefactorProperties();
+        orderAmountMappingRouter = new OrderAmountMappingRouter(dddRefactorProperties);
+        orderAttributionRouter = new OrderAttributionRouter(dddRefactorProperties, attributionService);
 
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         // Default: empty gateway response so syncItems exits immediately.
@@ -108,7 +112,7 @@ class OrderSyncServiceTest {
                 instituteSettlementGateway,
                 multiSettlementFallbackGateway,
                 persistenceService,
-                attributionService,
+                orderAttributionRouter,
                 redisTemplate,
                 jobLockService,
                 appProperties,
