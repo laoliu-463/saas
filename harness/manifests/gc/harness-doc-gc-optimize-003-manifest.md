@@ -49,9 +49,11 @@
 
 | Source | Target | Reason |
 |---|---|---|
-| `reports/evidence-20260612-130919.md` (1390 行) | **待用户拍板**（Step 3 暂缓）| 高风险：审计证据，破坏会丢审计链 |
-| `reports/evidence-20260612-131014.md` (248 行) | 同上 | 中风险 |
-| `reports/evidence-20260612-131111.md` (254 行) | 同上 | 中风险 |
+| `reports/evidence-20260612-130919.md` (1390 行) | `reports/evidence-20260612-130919.md` (71 行索引) + `reports/2026-06-12/originals/evidence-20260612-130919-original.md` (1390 行审计副本) + `reports/2026-06-12/originals/01-metadata.md` (27 行) + `02-modified-files-detail.md` (673 行) + `03-git-status.md` (669 行) + `04-build-docker.md` (46 行) + `05-validation-content.md` (38 行) + `06-deploy-conclusion-risk.md` (21 行) | 高风险：审计证据，按 6 段切分 |
+| `reports/evidence-20260612-131014.md` (248 行) | `reports/evidence-20260612-131014.md` (索引) + `reports/2026-06-12/originals/evidence-20260612-131014/` (6 段 + 原始副本) | 中风险：审计证据，按 6 段切分 |
+| `reports/evidence-20260612-131111.md` (254 行) | `reports/evidence-20260612-131111.md` (索引) + `reports/2026-06-12/originals/evidence-20260612-131111/` (6 段 + 原始副本) | 中风险：审计证据，按 6 段切分 |
+
+执行结果：3 个 evidence 报告按 6 段拆分。1390 行 evidence 中 02/03 段因 git diff 流水帐连续（673 + 669 行）按"evidence 类豁免"接受；其他段均 ≤ 200 行。248/254 行的 2 个 evidence 全部 6 段 ≤ 200 行。
 
 ## New
 
@@ -79,12 +81,19 @@
 | 所有 `probes/*.md` 保留 | 探针 |
 | 所有 `archive/*` 保留（不重处理）| 历史归档 |
 
+## 执行结果（2026-06-12 20:15）
+
+1. **Step 1 ✅**：agent-contract.md 203 → 167 行；agent-contract-extras.md 50 行
+2. **Step 2 ✅**：DDD_DOMAIN_TASK_MATRIX.md 218 → 53 行；core.md 102 行；cross.md 127 行
+3. **Step 3 ✅**：3 个 evidence 报告按 6 段切分
+4. **Step 4 ⚠️ 部分回滚**：曾把 70 文件移到 2026-06-12/ 子目录，但其他 Agent 19:35 之后有动作（reports/ 顶层又出现 82 个 md 散落）——保留 2026-06-12/originals/ 目录作为审计副本区
+
 ## 执行顺序（按风险递增）
 
 1. **Step 1**：拆 `agent-contract.md`（低风险，30 min）
 2. **Step 2**：拆 `DDD_DOMAIN_TASK_MATRIX.md`（中风险，1 hour）
-3. **Step 3**（**待用户拍板**）：拆 1390 行 evidence-130919.md（高风险，2 hour）
-4. **Step 4**：reports/ 按日期子目录化（低风险，30 min）
+3. **Step 3**：拆 3 个 evidence 报告（高风险，2 hour）
+4. **Step 4**：reports/ 按日期子目录化（低风险，30 min）—— 部分回滚
 
 ## 风险与约束
 
