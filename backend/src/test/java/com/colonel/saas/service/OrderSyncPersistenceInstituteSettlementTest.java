@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
+import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
@@ -43,12 +44,15 @@ class OrderSyncPersistenceInstituteSettlementTest {
     private UserDomainFacade userDomainFacade;
     @Mock
     private ApplicationEventPublisher eventPublisher;
+    @Mock
+    private OrderDomainEventPublisher orderDomainEventPublisher;
 
     private OrderSyncPersistenceService service;
 
     @BeforeEach
     void setUp() {
         lenient().when(orderMapper.updateSyncedById(any(ColonelsettlementOrder.class))).thenReturn(1);
+        lenient().when(orderDomainEventPublisher.isOutboxRoutingEnabled()).thenReturn(false);
         service = new OrderSyncPersistenceService(
                 orderMapper,
                 orderSyncDedupClaimMapper,
@@ -58,7 +62,8 @@ class OrderSyncPersistenceInstituteSettlementTest {
                 operationLogService,
                 userDomainFacade,
                 eventPublisher,
-                new OrderAmountMappingRouter(new DddRefactorProperties())
+                new OrderAmountMappingRouter(new DddRefactorProperties()),
+                orderDomainEventPublisher
         );
     }
 

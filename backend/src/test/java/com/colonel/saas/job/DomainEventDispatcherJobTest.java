@@ -5,6 +5,7 @@ import com.colonel.saas.domain.event.ConfigChangedEventRouter;
 import com.colonel.saas.domain.event.DomainEventOutbox;
 import com.colonel.saas.domain.event.DomainEventOutboxService;
 import com.colonel.saas.domain.event.ProductDomainEventOutboxRouter;
+import com.colonel.saas.domain.order.event.OrderDomainEventOutboxRouter;
 import com.colonel.saas.domain.sample.event.SampleDomainEventOutboxRouter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +40,8 @@ class DomainEventDispatcherJobTest {
     private ProductDomainEventOutboxRouter productDomainEventOutboxRouter;
     @Mock
     private SampleDomainEventOutboxRouter sampleDomainEventOutboxRouter;
+    @Mock
+    private OrderDomainEventOutboxRouter orderDomainEventOutboxRouter;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private DomainEventDispatcherJob job;
@@ -50,6 +53,7 @@ class DomainEventDispatcherJobTest {
                 configChangedEventRouter,
                 productDomainEventOutboxRouter,
                 sampleDomainEventOutboxRouter,
+                orderDomainEventOutboxRouter,
                 objectMapper);
     }
 
@@ -104,6 +108,22 @@ class DomainEventDispatcherJobTest {
         job.dispatchPendingEvents();
 
         verify(sampleDomainEventOutboxRouter).dispatch(event);
+        verify(domainEventOutboxService).markPublished(event.getEventId(), 0);
+    }
+
+    @Test
+    @DisplayName("Order 事件路由到 OrderDomainEventOutboxRouter")
+    void dispatchPendingEvents_orderEvent_routesToOrderRouter() throws Exception {
+        DomainEventOutbox event = buildOutbox("OrderSynced", "{\"orderId\":\"ORD-1\"}");
+
+        when(domainEventOutboxService.lockPendingEvents(anyInt(), anyInt())).thenReturn(List.of(event));
+        when(productDomainEventOutboxRouter.supports("OrderSynced")).thenReturn(false);
+        when(sampleDomainEventOutboxRouter.supports("OrderSynced")).thenReturn(false);
+        when(orderDomainEventOutboxRouter.supports("OrderSynced")).thenReturn(true);
+
+        job.dispatchPendingEvents();
+
+        verify(orderDomainEventOutboxRouter).dispatch(event);
         verify(domainEventOutboxService).markPublished(event.getEventId(), 0);
     }
 
@@ -173,5 +193,6 @@ class DomainEventDispatcherJobTest {
         verify(configChangedEventRouter, never()).dispatch(any());
         verify(productDomainEventOutboxRouter, never()).dispatch(any());
         verify(sampleDomainEventOutboxRouter, never()).dispatch(any());
+        verify(orderDomainEventOutboxRouter, never()).dispatch(any());
     }
 }

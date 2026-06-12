@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
+import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
@@ -49,6 +50,8 @@ class OrderSyncPersistenceServiceTest {
     private UserDomainFacade userDomainFacade;
     @Mock
     private ApplicationEventPublisher eventPublisher;
+    @Mock
+    private OrderDomainEventPublisher orderDomainEventPublisher;
 
     private OrderAmountMappingRouter orderAmountMappingRouter;
     private OrderSyncPersistenceService service;
@@ -57,6 +60,7 @@ class OrderSyncPersistenceServiceTest {
     void setUp() {
         lenient().when(orderMapper.updateSyncedById(any(ColonelsettlementOrder.class))).thenReturn(1);
         orderAmountMappingRouter = new OrderAmountMappingRouter(new DddRefactorProperties());
+        lenient().when(orderDomainEventPublisher.isOutboxRoutingEnabled()).thenReturn(false);
         service = new OrderSyncPersistenceService(
                 orderMapper,
                 orderSyncDedupClaimMapper,
@@ -66,7 +70,8 @@ class OrderSyncPersistenceServiceTest {
                 operationLogService,
                 userDomainFacade,
                 eventPublisher,
-                orderAmountMappingRouter
+                orderAmountMappingRouter,
+                orderDomainEventPublisher
         );
     }
 
@@ -278,6 +283,20 @@ class OrderSyncPersistenceServiceTest {
 
         assertThat(result).isTrue();
         verify(merchantService).ensureMerchantFromOrder(order);
+    }
+
+    @Test
+    void persistOrder_shouldAppendOutboxInsteadOfSpringEventWhenRoutingEnabled() {
+        when(orderDomainEventPublisher.isOutboxRoutingEnabled()).thenReturn(true);
+        ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
+        when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null);
+        when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(1);
+
+        service.persistOrder(order);
+
+        verify(orderDomainEventPublisher).appendOrderSyncedInTransaction(any(), any(OrderSyncedEvent.class));
+        verifyNoInteractions(eventPublisher);
     }
 
     private ColonelsettlementOrder makeOrder(UUID channelUserId) {

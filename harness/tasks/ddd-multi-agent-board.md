@@ -4,7 +4,7 @@
 
 更新时间：2026-06-12  
 分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`  
-HEAD：`17053f20`（Batch3：PERF-003 Facade 路由）
+HEAD：`87fa5af5`（Batch3：ORDER-003 完成）
 
 ## 图例
 
@@ -71,7 +71,7 @@ HEAD：`17053f20`（Batch3：PERF-003 Facade 路由）
 |---------|-------|------|
 | DDD-ANALYTICS-001 | Analytics | DONE |
 | DDD-ANALYTICS-002 | Analytics | DONE（shadow compare） |
-| DDD-OUTBOX-001 | Infra + 各领域 | TODO |
+| DDD-OUTBOX-001 | Infra + 各领域 | WIP | OrderSyncedEvent Outbox 路由 |
 
 ## 当前 Sprint（Coordinator 裁定）
 
@@ -84,11 +84,13 @@ HEAD：`17053f20`（Batch3：PERF-003 Facade 路由）
 | P2 | DDD-TALENT-001 | Talent | **DONE** `60b9d062` |
 | P2 | DDD-PERF-002 | Performance | **DONE** `59d3a085` |
 | P2 | DDD-TALENT-002 / SAMPLE-006 | Batch2 Policy | **DONE** `d41c4d58` / `98299d1e` |
-| P2 | Batch3 Replace | Integration | **WIP** — 全域除 ORDER-003 外 DONE，ORDER-003 待 commit |
+| P2 | Batch3 Replace | Integration | **DONE** — 五域 Facade 替换已完成 |
+| P2 | Batch4 Outbox | Infra | **WIP** — OUTBOX-001 OrderSynced 路由 |
 
 ## 下一步优先
 
-- Batch3 下一域：**ORDER-003**（OrderController 切 Facade，注意：勿碰 OrderSyncService）
+- Batch4 当前：**OUTBOX-001**（OrderSyncedEvent Outbox 路由，待 commit + agent-do）
+- Batch3：**DONE**（`01f7d3da` ORDER-003）
 - `agent-do -Scope backend` 补证据
 - **Step 5**：BASE-002 Characterization 全绿 (已完成)
 

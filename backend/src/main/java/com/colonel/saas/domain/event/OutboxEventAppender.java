@@ -36,6 +36,9 @@ public class OutboxEventAppender {
     /** 聚合根类型常量：寄样域。 */
     public static final String AGGREGATE_SAMPLE = "SAMPLE";
 
+    /** 聚合根类型常量：订单域。 */
+    public static final String AGGREGATE_ORDER = "ORDER";
+
     private final DomainEventOutboxMapper domainEventOutboxMapper;
     private final ObjectMapper objectMapper;
 

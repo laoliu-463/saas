@@ -5,6 +5,7 @@ import com.colonel.saas.domain.event.ConfigChangedEventRouter;
 import com.colonel.saas.domain.event.DomainEventOutbox;
 import com.colonel.saas.domain.event.DomainEventOutboxService;
 import com.colonel.saas.domain.event.ProductDomainEventOutboxRouter;
+import com.colonel.saas.domain.order.event.OrderDomainEventOutboxRouter;
 import com.colonel.saas.domain.sample.event.SampleDomainEventOutboxRouter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,7 @@ import java.util.List;
  *   <li><b>配置变更事件</b> → {@link ConfigChangedEventRouter}</li>
  *   <li><b>商品域事件</b> → {@link ProductDomainEventOutboxRouter}</li>
  *   <li><b>寄样域事件</b> → {@link SampleDomainEventOutboxRouter}</li>
+ *   <li><b>订单域事件</b> → {@link OrderDomainEventOutboxRouter}</li>
  * </ul>
  * </p>
  * <p>
@@ -65,6 +67,8 @@ public class DomainEventDispatcherJob {
     private final ProductDomainEventOutboxRouter productDomainEventOutboxRouter;
     /** 寄样域事件路由器 */
     private final SampleDomainEventOutboxRouter sampleDomainEventOutboxRouter;
+    /** 订单域事件路由器 */
+    private final OrderDomainEventOutboxRouter orderDomainEventOutboxRouter;
     /** JSON 序列化器，用于反序列化事件 payload */
     private final ObjectMapper objectMapper;
 
@@ -73,11 +77,13 @@ public class DomainEventDispatcherJob {
             ConfigChangedEventRouter configChangedEventRouter,
             ProductDomainEventOutboxRouter productDomainEventOutboxRouter,
             SampleDomainEventOutboxRouter sampleDomainEventOutboxRouter,
+            OrderDomainEventOutboxRouter orderDomainEventOutboxRouter,
             ObjectMapper objectMapper) {
         this.domainEventOutboxService = domainEventOutboxService;
         this.configChangedEventRouter = configChangedEventRouter;
         this.productDomainEventOutboxRouter = productDomainEventOutboxRouter;
         this.sampleDomainEventOutboxRouter = sampleDomainEventOutboxRouter;
+        this.orderDomainEventOutboxRouter = orderDomainEventOutboxRouter;
         this.objectMapper = objectMapper;
     }
 
@@ -122,6 +128,8 @@ public class DomainEventDispatcherJob {
                 productDomainEventOutboxRouter.dispatch(event);
             } else if (sampleDomainEventOutboxRouter.supports(event.getEventType())) {
                 sampleDomainEventOutboxRouter.dispatch(event);
+            } else if (orderDomainEventOutboxRouter.supports(event.getEventType())) {
+                orderDomainEventOutboxRouter.dispatch(event);
             }
             // 分发成功，标记为已发布
             domainEventOutboxService.markPublished(event.getEventId(), event.getRetryCount() == null ? 0 : event.getRetryCount());

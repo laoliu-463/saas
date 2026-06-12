@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
+import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
@@ -53,6 +54,8 @@ public class OrderSyncPersistenceService {
     private final ApplicationEventPublisher eventPublisher;
     /** 订单金额映射路由（DDD-ORDER-002） */
     private final OrderAmountMappingRouter orderAmountMappingRouter;
+    /** 订单域事件发布器（DDD-OUTBOX-001） */
+    private final OrderDomainEventPublisher orderDomainEventPublisher;
 
     public OrderSyncPersistenceService(
             ColonelsettlementOrderMapper orderMapper,
@@ -63,7 +66,8 @@ public class OrderSyncPersistenceService {
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
             ApplicationEventPublisher eventPublisher,
-            OrderAmountMappingRouter orderAmountMappingRouter) {
+            OrderAmountMappingRouter orderAmountMappingRouter,
+            OrderDomainEventPublisher orderDomainEventPublisher) {
         this.orderMapper = orderMapper;
         this.orderSyncDedupClaimMapper = orderSyncDedupClaimMapper;
         this.pickSourceMappingService = pickSourceMappingService;
@@ -73,6 +77,7 @@ public class OrderSyncPersistenceService {
         this.userDomainFacade = userDomainFacade;
         this.eventPublisher = eventPublisher;
         this.orderAmountMappingRouter = orderAmountMappingRouter;
+        this.orderDomainEventPublisher = orderDomainEventPublisher;
     }
 
     /** 根据用户 ID 查询真实姓名，不存在时返回 null（DDD-USER-002 委派 UserDomainFacade）。 */
@@ -188,6 +193,11 @@ public class OrderSyncPersistenceService {
                 order.getCreateTime(),
                 resolveTalentUid(order.getExtraData()),
                 order.getExtraData());
+        if (orderDomainEventPublisher.isOutboxRoutingEnabled()) {
+            String eventKey = "OrderSynced:" + order.getOrderId() + ":" + order.getId();
+            orderDomainEventPublisher.appendOrderSyncedInTransaction(eventKey, event);
+            return;
+        }
         publishAfterCommit(event);
     }
 
