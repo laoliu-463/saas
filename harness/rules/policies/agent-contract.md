@@ -158,46 +158,10 @@ Session Exit Gate 证明"仓库是否处于可交接状态"。
 
 详细规则、命令模板、报告模板见 `harness/skills/git-change-control.md` 和 `harness/skills/git-batch-submit.md`。
 
-## 状态结论口径
+## 状态结论口径 / 证据优先级 / 旧内容维护 / 与现有内容的关系
 
-| 状态 | 含义 |
-| --- | --- |
-| `PASS` | 验证已执行且证据完整 |
-| `PARTIAL` | 部分验证通过，但仍有明确未验证项或阻塞项 |
-| `BLOCKED` | 外部 Token、权限包、真实样本、远端权限等阻塞 |
-| `PENDING` | 未执行或样本不足，不能写成通过 |
-| `FAIL` | 已复现失败，需要继续修复或回滚 |
+详见 `agent-contract-extras.md`（拆分自本文件 GC-OPTIMIZE-003 Step 1）。
 
-## 证据优先级
+## 关联
 
-1. 自动化测试报告
-2. API 响应
-3. SQL 查询结果
-4. 容器日志 / 后端日志
-5. 页面截图 / 浏览器 Network
-6. 人工描述
-
-不得用人工描述替代可运行脚本、SQL/API 或日志证据。
-
-## 旧内容维护
-
-每次任务完成前必须判断是否产生旧内容、重复内容、临时产物或过时文档。默认通过以下命令生成候选报告：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\retire-content.ps1 -Action Plan
-```
-
-归档或删除必须使用 manifest，不允许凭自然语言直接删除：
-
-- `Plan`：只生成候选报告，不移动、不删除。
-- `Archive`：按 manifest 移动到 `harness/archive/retired-content/<timestamp>/`。
-- `Delete`：按 manifest 删除；目录删除必须在 manifest 中写 `allowRecursive=true`。
-
-源码、脚本、Docker 配置、数据库 migration、env、密钥和 Agent 入口文档默认受保护。确需处理源码类路径，必须显式传 `-AllowSourceCode` 并完成对应构建、重启、健康检查和业务验证。
-
-## 与现有内容的关系
-
-- `docs/`：事实主源，保留。
-- `.claude/`：Claude 工作台和历史 Agent 工作流，保留。
-- `scripts/`：已有启动、QA 和部署辅助脚本，保留。
-- `harness/`：新增统一执行系统，负责把规则沉淀为脚本、清单、模板和报告入口。
+- `agent-contract-extras.md`：补充规范（状态口径 / 证据 / 维护 / 关系）
