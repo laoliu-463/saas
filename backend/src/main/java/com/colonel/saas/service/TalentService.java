@@ -17,6 +17,7 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
+import com.colonel.saas.domain.talent.policy.TalentClaimPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.mapper.TalentMapper;
@@ -797,9 +798,7 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent claim(UUID talentId, UUID userId, UUID deptId) {
-        if (userId == null) {
-            throw BusinessException.param("缺少登录用户");
-        }
+        TalentClaimPolicy.requireClaimUser(userId);
         String lockKey = "talent:claim:lock:" + talentId;
         String lockValue = userId.toString();
         Boolean locked = redisTemplate.opsForValue().setIfAbsent(
@@ -814,10 +813,8 @@ public class TalentService {
             Talent talent = getById(talentId);
             int protectDays = getProtectDays();
 
-            TalentClaim selfActiveClaim = talentClaimMapper.findActiveByTalentAndUser(talentId, userId);
-            if (selfActiveClaim != null) {
-                throw BusinessException.duplicate("你已认领该达人，无需重复认领");
-            }
+            TalentClaimPolicy.assertNotDuplicateActiveClaim(
+                    talentClaimMapper.findActiveByTalentAndUser(talentId, userId));
 
             LocalDateTime now = LocalDateTime.now();
             TalentClaim claim = findLatestClaimByTalentAndUser(talentId, userId);
@@ -832,7 +829,7 @@ public class TalentService {
             claim.setDeptId(deptId);
             claim.setClaimType(CLAIM_TYPE_MANUAL);
             claim.setClaimedAt(now);
-            claim.setProtectedUntil(now.plusDays(protectDays));
+            claim.setProtectedUntil(TalentClaimPolicy.protectedUntil(now, protectDays));
             claim.setStatus(CLAIM_STATUS_ACTIVE);
             if (newClaim) {
                 talentClaimMapper.insert(claim);
@@ -881,23 +878,12 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent release(UUID talentId, UUID userId, UUID deptId, Collection<?> roleCodes) {
-        if (userId == null) {
-            throw BusinessException.param("缺少登录用户");
-        }
+        TalentClaimPolicy.requireClaimUser(userId);
         getById(talentId);
 
         List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
-        if (activeClaims.isEmpty()) {
-            throw BusinessException.stateInvalid("达人当前无有效认领记录");
-        }
-
         boolean isAdmin = hasRole(roleCodes, "admin");
-        TalentClaim releaseTarget = activeClaims.stream()
-                .sorted(Comparator.comparing((TalentClaim claim) -> !userId.equals(claim.getUserId()))
-                        .thenComparing(TalentClaim::getClaimedAt, Comparator.nullsLast(Comparator.reverseOrder())))
-                .filter(claim -> canRelease(claim, userId, deptId, isAdmin))
-                .findFirst()
-                .orElseThrow(() -> new ForbiddenException("仅认领人或管理员可以释放达人"));
+        TalentClaim releaseTarget = TalentClaimPolicy.selectReleaseTarget(activeClaims, userId, isAdmin);
 
         releaseTarget.setStatus(CLAIM_STATUS_RELEASED);
         releaseTarget.setProtectedUntil(LocalDateTime.now());
@@ -1453,16 +1439,6 @@ public class TalentService {
      * @param isAdmin  是否管理员
      * @return 有权返回 true
      */
-    private boolean canRelease(TalentClaim claim, UUID userId, UUID deptId, boolean isAdmin) {
-        if (isAdmin) {
-            return true;
-        }
-        if (userId.equals(claim.getUserId())) {
-            return true;
-        }
-        return false;
-    }
-
     /**
      * 释放认领后重新计算达人所属人快照。
      * <p>
