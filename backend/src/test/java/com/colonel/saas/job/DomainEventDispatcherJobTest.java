@@ -54,7 +54,8 @@ class DomainEventDispatcherJobTest {
                 productDomainEventOutboxRouter,
                 sampleDomainEventOutboxRouter,
                 orderDomainEventOutboxRouter,
-                objectMapper);
+                objectMapper,
+                false);
     }
 
     @Test
@@ -194,5 +195,30 @@ class DomainEventDispatcherJobTest {
         verify(productDomainEventOutboxRouter, never()).dispatch(any());
         verify(sampleDomainEventOutboxRouter, never()).dispatch(any());
         verify(orderDomainEventOutboxRouter, never()).dispatch(any());
+    }
+
+    @Test
+    @DisplayName("启用 dryRun 时不执行路由投递也不修改 Outbox 状态")
+    void dispatchPendingEvents_dryRunEnabled_doesNotDispatchOrUpdateStatus() throws Exception {
+        // 重新构造一个 dryRun=true 的 Job 实例
+        DomainEventDispatcherJob dryRunJob = new DomainEventDispatcherJob(
+                domainEventOutboxService,
+                configChangedEventRouter,
+                productDomainEventOutboxRouter,
+                sampleDomainEventOutboxRouter,
+                orderDomainEventOutboxRouter,
+                objectMapper,
+                true);
+
+        DomainEventOutbox event = buildOutbox("ProductCreated", "{\"productId\":\"xyz\"}");
+        when(domainEventOutboxService.lockPendingEvents(anyInt(), anyInt())).thenReturn(List.of(event));
+
+        dryRunJob.dispatchPendingEvents();
+
+        // Dry Run 模式下：不应调用任何路由器
+        verifyNoInteractionsWithRouters();
+        // 不应修改 Outbox 记录状态
+        verify(domainEventOutboxService, never()).markPublished(any(), anyInt());
+        verify(domainEventOutboxService, never()).markFailed(any(), anyInt(), anyString(), anyInt());
     }
 }

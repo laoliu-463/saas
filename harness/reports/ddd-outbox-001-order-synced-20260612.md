@@ -1,26 +1,24 @@
-# DDD-OUTBOX-001 订单同步事件 Outbox 路由报告
+﻿# DDD-OUTBOX-001 璁㈠崟鍚屾浜嬩欢 Outbox 璺敱鎶ュ憡
 
-时间：2026-06-12
-任务：Batch4 — OrderSyncedEvent 接入 Outbox 开关路径
+鏃堕棿锛?026-06-12
+浠诲姟锛欱atch4 鈥?OrderSyncedEvent 鎺ュ叆 Outbox 寮€鍏宠矾寰?
+## 鍙樻洿鎽樿
 
-## 变更摘要
-
-| 原调用点 | 新调用点 | 开关 | 回退 |
+| 鍘熻皟鐢ㄧ偣 | 鏂拌皟鐢ㄧ偣 | 寮€鍏?| 鍥為€€ |
 |---------|---------|------|------|
-| `OrderSyncPersistenceService` 事务后直发 Spring 事件 | Outbox 写入 + `DomainEventDispatcherJob` 重发布 | `ddd.refactor.outbox.enabled` | 关闭开关保持 afterCommit 直发 |
+| `OrderSyncPersistenceService` 浜嬪姟鍚庣洿鍙?Spring 浜嬩欢 | Outbox 鍐欏叆 + `DomainEventDispatcherJob` 閲嶅彂甯?| `ddd.refactor.outbox.enabled` | 鍏抽棴寮€鍏充繚鎸?afterCommit 鐩村彂 |
 
-## 新增/修改
+## 鏂板/淇敼
 
 - `OrderDomainEventTypes` / `OrderDomainEventPublisher` / `OrderDomainEventOutboxRouter`
 - `OutboxEventAppender.AGGREGATE_ORDER`
-- `DomainEventDispatcherJob` 增加订单路由
-- `OrderSyncPersistenceService` 开关分流（**未改** `OrderSyncService`）
+- `DomainEventDispatcherJob` 澧炲姞璁㈠崟璺敱
+- `OrderSyncPersistenceService` 寮€鍏冲垎娴侊紙**鏈敼** `OrderSyncService`锛?
+## 楠岃瘉
 
-## 验证
+- 瀹氬悜鍗曟祴锛歅ASS锛?2 椤癸級
+- 寰?agent-do 瀹氱
 
-- 定向单测：PASS（22 项）
-- 待 agent-do 定稿
+## 缁撹
 
-## 结论
-
-阶段性 **PASS**
+闃舵鎬?**PASS**

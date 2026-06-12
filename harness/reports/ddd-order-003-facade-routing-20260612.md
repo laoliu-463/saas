@@ -1,30 +1,29 @@
-# DDD-ORDER-003 Facade 路由报告
+﻿# DDD-ORDER-003 Facade 璺敱鎶ュ憡
 
-时间：2026-06-12
-任务：Batch3 Replace — OrderController 查询切 Facade
+鏃堕棿锛?026-06-12
+浠诲姟锛欱atch3 Replace 鈥?OrderController 鏌ヨ鍒?Facade
 
-## 变更摘要
+## 鍙樻洿鎽樿
 
-| 原调用点 | 新调用点 | 开关 | 回退 |
+| 鍘熻皟鐢ㄧ偣 | 鏂拌皟鐢ㄧ偣 | 寮€鍏?| 鍥為€€ |
 |---------|---------|------|------|
-| `getOrders` / `getUnattributedOrders` | `OrderDomainFacade#getOrders` | `ddd.refactor.order-application.enabled` | 关闭时走 Controller 内 legacy wrapper |
-| `getOrderDetail` | `OrderDomainFacade#getOrderDetail` | 同上 | 委派 `OrderQueryService` |
-| `getStats` | `OrderDomainFacade#getStats` | 同上 | Controller 内 legacy 统计 SQL |
+| `getOrders` / `getUnattributedOrders` | `OrderDomainFacade#getOrders` | `ddd.refactor.order-application.enabled` | 鍏抽棴鏃惰蛋 Controller 鍐?legacy wrapper |
+| `getOrderDetail` | `OrderDomainFacade#getOrderDetail` | 鍚屼笂 | 濮旀淳 `OrderQueryService` |
+| `getStats` | `OrderDomainFacade#getStats` | 鍚屼笂 | Controller 鍐?legacy 缁熻 SQL |
 
-## 新增
+## 鏂板
 
 - `OrderDomainFacade` / `LegacyOrderDomainFacade`
 - `DddOrder003RoutingTest`
 
-## 约束
+## 绾︽潫
 
-- **未修改** `OrderSyncService` 同步主链
+- **鏈慨鏀?* `OrderSyncService` 鍚屾涓婚摼
 
-## 验证
+## 楠岃瘉
 
-- 定向单测：PASS（DddOrder003 + OrderController + OrderSyncController）
-- 待 agent-do 定稿
+- 瀹氬悜鍗曟祴锛歅ASS锛圖ddOrder003 + OrderController + OrderSyncController锛?- 寰?agent-do 瀹氱
 
-## 结论
+## 缁撹
 
-阶段性 **PASS**
+闃舵鎬?**PASS**

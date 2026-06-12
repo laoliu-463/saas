@@ -79,7 +79,6 @@ public class AttributionService {
     private final ExclusiveTalentService exclusiveTalentService;
     private final ExclusiveMerchantService exclusiveMerchantService;
     private final boolean exclusiveEnabled;
-    private final com.colonel.saas.domain.order.application.OrderAttributionRouter orderAttributionRouter;
 
     @Autowired
     public AttributionService(
@@ -89,8 +88,7 @@ public class AttributionService {
             TalentClaimMapper talentClaimMapper,
             ExclusiveTalentService exclusiveTalentService,
             ExclusiveMerchantService exclusiveMerchantService,
-            @Value("${exclusive.enabled:false}") boolean exclusiveEnabled,
-            com.colonel.saas.domain.order.application.OrderAttributionRouter orderAttributionRouter) {
+            @Value("${exclusive.enabled:false}") boolean exclusiveEnabled) {
         this.pickSourceMappingMapper = pickSourceMappingMapper;
         this.operationStateMapper = operationStateMapper;
         this.talentMapper = talentMapper;
@@ -98,7 +96,6 @@ public class AttributionService {
         this.exclusiveTalentService = exclusiveTalentService;
         this.exclusiveMerchantService = exclusiveMerchantService;
         this.exclusiveEnabled = exclusiveEnabled;
-        this.orderAttributionRouter = orderAttributionRouter;
     }
 
     public AttributionService(
@@ -115,8 +112,7 @@ public class AttributionService {
                 talentClaimMapper,
                 exclusiveTalentService,
                 exclusiveMerchantService,
-                false,
-                null
+                false
         );
     }
 
@@ -126,9 +122,6 @@ public class AttributionService {
      * <p>按优先级依次尝试：独家商家 -> 独家达人 -> 原生团长映射 -> pick_source/pick_extra 映射。</p>
      */
     public AttributionResult resolveAttribution(ColonelsettlementOrder order, java.util.Map<String, Object> source) {
-        if (orderAttributionRouter != null) {
-            return orderAttributionRouter.resolveAttribution(order, source, this::resolveLegacyAttribution);
-        }
         return resolveLegacyAttribution(order, source);
     }
 

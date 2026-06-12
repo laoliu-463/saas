@@ -1,4 +1,4 @@
-# Evidence Report - 1603 结算口径切换
+﻿# Evidence Report - 1603 缁撶畻鍙ｅ緞鍒囨崲
 
 ## Metadata
 
@@ -13,11 +13,7 @@
 
 ## Scope
 
-- 将订单结算主读取口径切换为 `buyin.instituteOrderColonel`。
-- 将 `buyin.colonelMultiSettlementOrders` 降级为 fallback / probe / contrast。
-- 不修改归因规则、前端业务规则、业绩公式。
-- 不做 pay -> settle 或 estimate -> effective 的硬兜底。
-
+- 灏嗚鍗曠粨绠椾富璇诲彇鍙ｅ緞鍒囨崲涓?`buyin.instituteOrderColonel`銆?- 灏?`buyin.colonelMultiSettlementOrders` 闄嶇骇涓?fallback / probe / contrast銆?- 涓嶄慨鏀瑰綊鍥犺鍒欍€佸墠绔笟鍔¤鍒欍€佷笟缁╁叕寮忋€?- 涓嶅仛 pay -> settle 鎴?estimate -> effective 鐨勭‖鍏滃簳銆?
 ## Build And Test
 
 - PASS: `mvn '-Dtest=*1603*,*Settlement*,*PerformanceCalculationEffectiveTrack*' test`
@@ -53,12 +49,7 @@
 
 ## Residual Risk
 
-- 当前只能证明代码路径、映射策略和构建/目标测试通过，不能证明真实抖音 1603 上游字段完整。
-- Docker 未启动导致容器重启、健康检查和业务联调未完成。
-- real-pre 小窗口写入验证必须在 Docker engine 可用后补跑。
-- npm audit 报告 2 个 critical 依赖风险，本轮未处理。
-
+- 褰撳墠鍙兘璇佹槑浠ｇ爜璺緞銆佹槧灏勭瓥鐣ュ拰鏋勫缓/鐩爣娴嬭瘯閫氳繃锛屼笉鑳借瘉鏄庣湡瀹炴姈闊?1603 涓婃父瀛楁瀹屾暣銆?- Docker 鏈惎鍔ㄥ鑷村鍣ㄩ噸鍚€佸仴搴锋鏌ュ拰涓氬姟鑱旇皟鏈畬鎴愩€?- real-pre 灏忕獥鍙ｅ啓鍏ラ獙璇佸繀椤诲湪 Docker engine 鍙敤鍚庤ˉ璺戙€?- npm audit 鎶ュ憡 2 涓?critical 渚濊禆椋庨櫓锛屾湰杞湭澶勭悊銆?
 ## Retro
 
-- 本次无需 Harness 规则升级。
-- 运行阻塞来自本机 Docker engine 不可用，不是 Harness 流程缺项。
+- 鏈鏃犻渶 Harness 瑙勫垯鍗囩骇銆?- 杩愯闃诲鏉ヨ嚜鏈満 Docker engine 涓嶅彲鐢紝涓嶆槸 Harness 娴佺▼缂洪」銆?

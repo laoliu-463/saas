@@ -1,24 +1,24 @@
-# DDD-SAMPLE-007 Facade 路由报告
+﻿# DDD-SAMPLE-007 Facade 璺敱鎶ュ憡
 
-时间：2026-06-12  
-任务：Batch3 Replace — SampleController 切 Facade/Port
+鏃堕棿锛?026-06-12
+浠诲姟锛欱atch3 Replace 鈥?SampleController 鍒?Facade/Port
 
-## 变更摘要
+## 鍙樻洿鎽樿
 
-| 原调用点 | 新调用点 | 开关 | 回退 |
+| 鍘熻皟鐢ㄧ偣 | 鏂拌皟鐢ㄧ偣 | 寮€鍏?| 鍥為€€ |
 |---------|---------|------|------|
-| `SampleController` → Query/Command Service | → `SampleQueryApplicationService` / `SampleCommandApplicationService` | `ddd.refactor.sample-application.enabled` | 子开关 false 时 1:1 委派 |
-| 按 ID 读/写 | 开关开启时先 `SampleDomainFacade.existsById` | 同上 | 关闭开关跳过 Facade |
+| `SampleController` 鈫?Query/Command Service | 鈫?`SampleQueryApplicationService` / `SampleCommandApplicationService` | `ddd.refactor.sample-application.enabled` | 瀛愬紑鍏?false 鏃?1:1 濮旀淳 |
+| 鎸?ID 璇?鍐?| 寮€鍏冲紑鍚椂鍏?`SampleDomainFacade.existsById` | 鍚屼笂 | 鍏抽棴寮€鍏宠烦杩?Facade |
 
-## 新增
+## 鏂板
 
 - `SampleDomainFacade` + `LegacySampleDomainFacade`
 - `SampleQueryApplicationService` / `SampleCommandApplicationService`
 
-## 验证
+## 楠岃瘉
 
 - `DddSample007SampleRoutingTest` / `LegacySampleDomainFacadeTest` / `SampleControllerTest`
 
-## 结论
+## 缁撹
 
-阶段性 **PASS**（待 agent-do 定稿）
+闃舵鎬?**PASS**锛堝緟 agent-do 瀹氱锛?
