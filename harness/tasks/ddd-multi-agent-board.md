@@ -4,7 +4,7 @@
 
 更新时间：2026-06-12  
 分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`  
-HEAD：`5cea498a`（Batch3：SAMPLE-007 Facade 路由）
+HEAD：`pending`（Batch3：PERF-003 Facade 路由）
 
 ## 图例
 
@@ -37,7 +37,7 @@ HEAD：`5cea498a`（Batch3：SAMPLE-007 Facade 路由）
 | DDD-CONFIG-001~004 | Config | DONE | Facade + Event；CONFIG-003 路由单测已绿 |
 | DDD-PRODUCT-001 | Product | DONE | `42843d09` |
 | DDD-TALENT-001 | Talent | DONE | `60b9d062` |
-| DDD-PERF-001 | Performance | TODO | `PerformanceQueryFacade` |
+| DDD-PERF-001 | Performance | DONE | `PerformanceQueryFacade` |
 | DDD-PRODUCT-005 | Product | DONE | `SampleApplicationPort` |
 
 ## Batch 2 — Policy
@@ -58,9 +58,9 @@ HEAD：`5cea498a`（Batch3：SAMPLE-007 Facade 路由）
 | task_id | owner | 状态 | 说明 |
 |---------|-------|------|------|
 | DDD-TALENT-003 | Talent | DONE | `69e8d106` Controller → ApplicationService → Facade |
-| DDD-SAMPLE-007 | Sample | DONE | `pending` Controller → ApplicationService → Facade |
+| DDD-SAMPLE-007 | Sample | DONE | `5cea498a` Controller → ApplicationService → Facade |
 | DDD-PRODUCT-003 | Product | DONE | `19c7da8b` QuickSample 切 Facade |
-| DDD-PERF-003 | Performance | TODO | QueryController 切 Facade |
+| DDD-PERF-003 | Performance | WIP | QueryController 切 Facade |
 | DDD-ORDER-003 | Order | TODO | Controller 切 Facade（勿碰 OrderSyncService） |
 
 串行，由 Integration Agent 控制。见 `ddd-task-dependency-graph.md`。
@@ -84,11 +84,11 @@ HEAD：`5cea498a`（Batch3：SAMPLE-007 Facade 路由）
 | P2 | DDD-TALENT-001 | Talent | **DONE** `60b9d062` |
 | P2 | DDD-PERF-002 | Performance | **DONE** `59d3a085` |
 | P2 | DDD-TALENT-002 / SAMPLE-006 | Batch2 Policy | **DONE** `d41c4d58` / `98299d1e` |
-| P2 | Batch3 Replace | Integration | **WIP** — TALENT-003 + SAMPLE-007 + PRODUCT-003 DONE，下一域 PERF-003 |
+| P2 | Batch3 Replace | Integration | **WIP** — TALENT/SAMPLE/PRODUCT DONE，PERF-003 进行中 |
 
 ## 下一步优先
 
-- Batch3 下一域：**PERF-003**（QueryController 切 Facade）
+- Batch3 当前：**PERF-003** 待 commit；下一域 **ORDER-003**
 - `agent-do -Scope backend` 补证据
 - **Step 5**：BASE-002 Characterization 全绿 (已完成)
 

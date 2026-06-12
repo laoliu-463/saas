@@ -1,0 +1,217 @@
+version: 1
+plan:
+  name: 'DDD Batch3 收尾 + 商品 PENDING repair（多 agent 并行）'
+  max_concurrency: 3
+  max_consecutive_failures: 2
+  max_cycles: 6
+  auto_reject_retries: 1
+  verifier_config:
+    default_verifiers: [verifier]
+    audit_sample_rate: 0.0
+tasks:
+  - id: DDD-PERF-003
+    title: 'DDD-PERF-003 PerformanceQueryController 切 Facade'
+    prompt: |
+      # 任务
+      在 Batch3 Replace 框架下，把 PerformanceQueryController 切到 PerformanceQueryApplicationService + PerformanceQueryFacade。
+
+      ## 前置：git worktree 隔离
+      当前分支 feature/ddd/DDD-SAMPLE-005-FIX-sample-agent，HEAD 65d4ee0c。
+      ```
+      cd D:\Projects\SAAS
+      git worktree add ../worktrees/ddd-perf-003 -b feat/ddd-perf-003 HEAD
+      cd ../worktrees/ddd-perf-003
+      ```
+      注意：windows 下路径用 D:\Projects\SAAS-worktrees\ddd-perf-003（避免符号链接问题）。
+
+      ## 工作内容
+      目标：PerformanceQueryController 的查询调用走 Facade/ApplicationService，保留对外接口签名。
+
+      参考已有 Batch3 模式（commit / 报告）：
+      - TALENT-003：commit 69e8d106 → harness/reports/ddd-talent-003-facade-routing-20260612.md
+      - SAMPLE-007：commit 5cea498a → harness/reports/ddd-sample-007-facade-routing-20260612.md
+      - PRODUCT-003：commit 19c7da8b → harness/reports/ddd-product-003-facade-routing-20260612.md
+      - board：harness/tasks/ddd-multi-agent-board.md Batch3 表
+
+      具体动作：
+      1. 新增 PerformanceQueryApplicationService（包：domain/performance/application/）
+      2. 新增或复用 PerformanceQueryFacade（包：domain/performance/facade/，如已存在则扩展）
+      3. 修改 PerformanceQueryController 让它委派到 ApplicationService（保留接口签名）
+      4. 子开关 ddd.refactor.perf-query-facade.enabled（默认 true，false 时 1:1 委派）
+      5. 新增架构护栏测试 DddPerf003PerformanceRoutingTest，验证开关 on/off 三分支
+
+      ## 强约束（来自 ddd-task-dependency-graph.md）
+      - 绝对不能修改 CommissionService.java（按文件冲突矩阵只能 Config + Performance 串行）
+      - 不能修改 performance_records 表结构
+      - 必须按 git-change-control 强约束逐文件 `git add -- <file>`，不允许 `git add .` 或 `git add backend/`
+      - 不 push 到 main；保留在独立分支 feat/ddd-perf-003
+      - 不修改 frontend/ 代码
+
+      ## 验证
+      - mvn -f backend/pom.xml -Dtest=*PerformanceQuery*,*DddPerf003* test 全绿
+      - mvn -f backend/pom.xml -DskipTests package 全绿
+      - docker compose restart backend-real-pre → health check PASS
+      - 不要求真实抖音样本（real-pre 接受 PENDING 状态）
+
+      ## 提交与报告
+      - commit message：`feat(perf): DDD-PERF-003 route PerformanceQueryController via ApplicationService`
+      - 报告：harness/reports/ddd-perf-003-facade-routing-20260612.md（含变更摘要 + 验证命令输出 + commit hash）
+      - 更新 harness/rules/state/snapshots/DOMAIN_STATUS.md 业绩域条目（标记 PERF-003 DONE）
+      - 更新 harness/tasks/ddd-multi-agent-board.md（Batch3 表 PERF-003 行标 DONE，HEAD 更新到本 commit）
+
+      ## 退出条件
+      - 上述三个文件（commit + report + board + domain_status）齐全
+      - mvn test 全绿
+      - docker health PASS
+      - deliverable.md 含 commit hash + 报告路径 + 测试输出关键片段
+    assigned_to: developer
+    verified_by: verifier
+    verify_prompt: |
+      独立验证（cd 到 ../worktrees/ddd-perf-003 或 D:\Projects\SAAS-worktrees\ddd-perf-003）：
+      1. git log -1 --format='%H %s' 看 commit message 格式（必须含 DDD-PERF-003 关键字）
+      2. mvn -f backend/pom.xml -Dtest=*PerformanceQuery*,*DddPerf003* test → 必须全绿
+      3. git show --stat HEAD | grep -E "CommissionService\.java|performance_records" → 不能改这两个
+      4. 检查 harness/reports/ddd-perf-003-facade-routing-20260612.md 是否存在
+      5. docker compose ps → backend-real-pre 必须 healthy
+      6. PASS/FAIL + 详细证据路径
+    max_retries: 2
+
+  - id: DDD-ORDER-003-CONTROLLER
+    title: 'DDD-ORDER-003 OrderController 切 Facade（不碰 OrderSyncService）'
+    prompt: |
+      # 任务
+      在 Batch3 Replace 框架下，把 OrderController 切到 OrderQueryApplicationService + OrderDomainFacade。
+      **绝对不能碰 OrderSyncService.java**（按 ddd-task-dependency-graph.md 文件冲突矩阵）。
+
+      ## 前置：git worktree 隔离
+      当前分支 feature/ddd/DDD-SAMPLE-005-FIX-sample-agent，HEAD 65d4ee0c。
+      ```
+      cd D:\Projects\SAAS
+      git worktree add ../worktrees/ddd-order-003 -b feat/ddd-order-003 HEAD
+      cd ../worktrees/ddd-order-003
+      ```
+
+      ## 工作内容
+      目标：OrderController 的查询调用走 Facade/ApplicationService，保留对外接口签名。
+
+      参考已有 Batch3 模式：
+      - TALENT-003 / SAMPLE-007 / PRODUCT-003（参考上面 PERF-003 任务描述）
+
+      具体动作：
+      1. 新增 OrderQueryApplicationService（包：domain/order/application/）
+      2. 新增或复用 OrderDomainFacade（包：domain/order/facade/）
+      3. 修改 OrderController 让它委派到 ApplicationService
+      4. 子开关 ddd.refactor.order-controller-facade.enabled（默认 true，false 时 1:1 委派）
+      5. 新增 DddOrder003ControllerRoutingTest
+
+      ## 强约束
+      - **绝对不能修改 OrderSyncService.java**（文件冲突矩阵 Order Agent only；Order-002 已 DONE）
+      - 不能修改 order 表结构
+      - 不能动 1603 同步逻辑（已 commit 的 f3846415 settlement gateway）
+      - 不修改 frontend/
+      - 不 push 到 main；保留在独立分支 feat/ddd-order-003
+      - 逐文件 add，遵守 git-change-control
+
+      ## 验证
+      - mvn -f backend/pom.xml -Dtest=*OrderController*,*DddOrder003* test 全绿
+      - mvn -f backend/pom.xml -DskipTests package 全绿
+      - docker compose restart backend-real-pre → health PASS
+      - 不能验证 1603 真实样本（real-pre 接受 PENDING）；但要确认同步日志 API /api/orders/sync-logs 仍正常返回
+
+      ## 提交与报告
+      - commit message：`feat(order): DDD-ORDER-003 route OrderController via OrderQueryApplicationService`
+      - 报告：harness/reports/ddd-order-003-controller-facade-routing-20260612.md
+      - 更新 harness/rules/state/snapshots/DOMAIN_STATUS.md 订单域条目
+      - 更新 harness/tasks/ddd-multi-agent-board.md
+
+      ## 退出条件
+      - commit + report + board + domain_status 齐全
+      - mvn test 全绿
+      - docker health PASS
+      - deliverable.md 含 commit hash + 报告路径 + 测试输出关键片段
+    assigned_to: developer
+    verified_by: verifier
+    verify_prompt: |
+      独立验证：
+      1. git log -1 --format='%H %s' 看 commit message
+      2. mvn -f backend/pom.xml -Dtest=*OrderController*,*DddOrder003* test 全绿
+      3. git show --stat HEAD | grep "OrderSyncService" → 必须不出现（绝对不能改）
+      4. 检查 harness/reports/ddd-order-003-controller-facade-routing-20260612.md 是否存在
+      5. docker compose ps → backend-real-pre healthy
+      6. PASS/FAIL + 详细证据路径
+    max_retries: 2
+
+  - id: P-FIX-002E
+    title: 'P-FIX-002E 商品 PENDING repair（本地 + 远端）'
+    prompt: |
+      # 任务
+      修复推广中商品的 PENDING 状态：本地 PENDING=371，远端 PENDING=2128，需 repair。
+
+      ## 前置：git worktree 隔离
+      当前分支 feature/ddd/DDD-SAMPLE-005-FIX-sample-agent，HEAD 65d4ee0c。
+      ```
+      cd D:\Projects\SAAS
+      git worktree add ../worktrees/p-fix-002e -b fix/p-fix-002e HEAD
+      cd ../worktrees/p-fix-002e
+      ```
+
+      ## 工作内容
+      背景（参考）：
+      - harness/reports/p-fix-002-product-sync-display-5min-20260603-121257.md
+      - harness/reports/p-fix-002d-real-pre-runtime-verify-20260603-123411.md
+      - harness/reports/p-fix-002d-remote-deploy-verify-20260603-132805.md
+
+      具体动作：
+      1. 先 dry-run：编写 SQL 或脚本区分 PENDING 来源
+         - 过期活动（活动已结束但商品状态未回退）
+         - 未选中（display_rule 未选中）
+         - 待重算（数据漂移需要重新同步）
+      2. 编写 repair 入口（dry-run 模式先跑一次）
+      3. 对每种来源分类 repair，输出预期修复数
+      4. 实际执行 repair（小批量先验证，再大批量）
+      5. 验证：
+         - 本地 repair 后 PENDING 数量显著下降
+         - 同一 SQL 查询确认不再有非法 PENDING
+         - 推广中但未展示（716 数量）单独统计
+
+      ## 强约束
+      - 必须先 dry-run，输出预期影响
+      - 不能直接 delete 数据
+      - 必须按 git-change-control 逐文件 add
+      - 不修改 frontend/
+      - 不 push 到 main；保留在独立分支 fix/p-fix-002e
+      - SQL 脚本要带幂等保护
+
+      ## 验证
+      - 本地修复前后 PENDING 对比 SQL 输出（before/after）
+      - docker compose exec postgres psql 验证
+      - mvn -f backend/pom.xml -Dtest=*ProductSync*,*ProductDisplay* test 全绿
+      - 不需要真实抖音样本，但需要 dry-run 报告明确预期
+
+      ## 提交与报告
+      - commit message：`fix(product): P-FIX-002E repair PENDING product display status`
+      - 报告：harness/reports/p-fix-002e-pending-repair-20260612.md
+      - 必须含：
+        * dry-run 输出（区分三类 PENDING 数量）
+        * 实际执行输出（每类修复数）
+        * 修复前后 PENDING 对比
+        * 推广中但未展示（716）来源分析
+      - 更新 harness/rules/state/snapshots/DOMAIN_STATUS.md 商品域条目
+
+      ## 退出条件
+      - commit + report + domain_status 齐全
+      - 本地 PENDING 数量显著下降（目标：< 50）
+      - 推广中但未展示单独统计已记录
+      - mvn test 全绿
+      - deliverable.md 含 commit hash + 报告路径 + before/after 对比 SQL 输出
+    assigned_to: developer
+    verified_by: verifier
+    verify_prompt: |
+      独立验证：
+      1. git log -1 --format='%H %s' 看 commit message（含 P-FIX-002E）
+      2. 检查 harness/reports/p-fix-002e-pending-repair-20260612.md 必须含 before/after 对比
+      3. 检查报告是否含 dry-run 分类（过期活动 / 未选中 / 待重算）
+      4. mvn -f backend/pom.xml -Dtest=*ProductSync*,*ProductDisplay* test 全绿
+      5. 重新跑 dry-run 脚本，验证输出与报告一致（幂等）
+      6. PASS/FAIL + 详细证据路径
+    max_retries: 2

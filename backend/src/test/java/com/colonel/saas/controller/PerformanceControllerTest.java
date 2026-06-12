@@ -14,6 +14,8 @@ import com.colonel.saas.service.PerformanceExportService;
 import com.colonel.saas.service.PerformanceMonthRecalculationService;
 import com.colonel.saas.service.PerformanceQueryService;
 import com.colonel.saas.service.PerformanceSummaryService;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.performance.facade.PerformanceQueryFacade;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,6 +44,10 @@ class PerformanceControllerTest {
     private PerformanceMonthRecalculationService monthRecalculationService;
     @Mock
     private OperationLogService operationLogService;
+    @Mock
+    private DddRefactorProperties dddRefactorProperties;
+    @Mock
+    private PerformanceQueryFacade performanceQueryFacade;
 
     private PerformanceController controller;
     private final UUID userId = UUID.randomUUID();
@@ -54,7 +60,10 @@ class PerformanceControllerTest {
                 performanceSummaryService,
                 performanceExportService,
                 monthRecalculationService,
-                operationLogService);
+                operationLogService,
+                dddRefactorProperties,
+                performanceQueryFacade);
+        org.mockito.Mockito.lenient().when(dddRefactorProperties.isEnabled()).thenReturn(false);
     }
 
     @Test
