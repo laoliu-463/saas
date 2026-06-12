@@ -36,7 +36,6 @@ com.colonel.saas.service.data.DataApplicationService|ColonelsettlementActivityMa
 com.colonel.saas.service.data.DataApplicationService|ColonelsettlementOrderMapper
 com.colonel.saas.service.data.DataApplicationService|ExclusiveMerchantMapper
 com.colonel.saas.service.data.DataApplicationService|ExclusiveTalentMapper
-com.colonel.saas.service.data.DataApplicationService|PerformanceRecordMapper
 com.colonel.saas.service.sample.SampleApplicationService|ProductMapper
 com.colonel.saas.service.sample.SampleApplicationService|ProductOperationStateMapper
 com.colonel.saas.service.sample.SampleApplicationService|ProductSnapshotMapper
