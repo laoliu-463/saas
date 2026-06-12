@@ -61,7 +61,7 @@ public class OperationLogService {
 
     public OperationLogService(
             OperationLogMapper operationLogMapper,
-            UserDomainFacade userDomainFacade,
+            @org.springframework.context.annotation.Lazy UserDomainFacade userDomainFacade,
             JdbcTemplate jdbcTemplate,
             ObjectMapper objectMapper) {
         this.operationLogMapper = operationLogMapper;

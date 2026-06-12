@@ -1,54 +1,21 @@
-# Harness - 团长 SaaS 工程化协作系统
+# Harness 执行引擎
 
-Harness 是抖音团长 SaaS 项目的统一任务执行系统，负责固定入口、脚本、技能、评估、运行手册和报告。
+本目录（`harness/`）是抖音团长内部 SaaS V1 工程的核心自动化执行与监控基座。
+主要用于标准化 Agent 的执行流程、状态流转、质量验证及报告输出。
 
-## 如何开始一个任务
+## 目录结构说明
+- `rules/`：长期规则、执行规范、质量门禁。
+- `tasks/`：当前可执行任务卡，按领域或主题拆分。
+- `probes/`：只读探针说明、接口核验模板、验证方法。
+- `reports/`：当前仍有效的最新报告，旧报告已归档或清理。
+- `scripts/`：PowerShell / Bash / Python 等自动化执行脚本。
+- `manifests/`：清理、归档、删除操作的证据清单。
+- `archive/`：历史归档，保留核心结果索引。
+- `templates/`：任务模板、报告模板、审计模板。
 
-1. 读取必读文档：[TASK_ROUTING.md](TASK_ROUTING.md) 确定任务 Scope 和必读清单
-2. 执行 Git Intake Gate：[skills/git-change-control.md](skills/git-change-control.md)
-3. 选择 Completion Gate：[COMPLETION_GATES.md](COMPLETION_GATES.md)
-4. 执行任务入口脚本：
+## 新增文件守则
+1. **禁止越权**：任何目录子级不得超过 10 个子目录/10 个文件。
+2. **禁止超长**：非脚本文档不得超过 200 行。
+3. **禁止堆积**：临时产生的流水日志阅后即焚，有效结论写入 `reports/`。
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明"
-```
-
-## 如何结束一个任务
-
-1. 生成 evidence report
-2. 更新状态文件（CURRENT_STATE / DOMAIN_STATUS / HARNESS_CHANGELOG）
-3. 执行 Session Exit Gate：[SESSION_EXIT_GATE.md](SESSION_EXIT_GATE.md)
-4. Git commit + push
-
-## 如何查找当前有效文档
-
-- 总索引：[INDEX.md](INDEX.md)
-- 核心规则：`harness/*.md`
-- 技能文件：`harness/skills/`
-- 领域指令：`harness/instructions/`
-- 状态文件：`harness/state/`
-- 当前报告：`harness/reports/current/`
-
-## 如何归档过期内容
-
-1. 确认文件无当前引用
-2. 生成 GC Manifest 到 `harness/manifests/gc/`
-3. 移动到 `harness/reports/archive/YYYYMMDD/` 或 `harness/archive/retired-content/`
-4. 更新引用
-5. 详见 [core/04-doc-style-guide.md](core/04-doc-style-guide.md)
-
-## 五大子系统
-
-| 子系统 | 目录 | 说明 |
-|---|---|---|
-| Instructions | instructions/, AGENT_CONTRACT | 执行规范 |
-| Tools | commands/, tools/ | 脚本工具 |
-| Environment | environment/ | 环境配置 |
-| State | state/, CURRENT_STATE | 状态追踪 |
-| Feedback | feedback/, evals/, reports/ | 反馈与评估 |
-
-## 文档规范
-
-- 所有当前文档不超过 200 行
-- 每个文档只解决一个问题
-- 详见 [core/04-doc-style-guide.md](core/04-doc-style-guide.md)
+> 详情请查阅 `rules/harness-structure-policy.md` 和 `INDEX.md`。

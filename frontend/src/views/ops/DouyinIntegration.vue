@@ -111,7 +111,7 @@
             <n-button type="primary" :loading="loading.activity" @click="testActivityList">活动列表</n-button>
             <n-button type="info" :loading="loading.productActivities" @click="testProductActivities">活动商品活动列表</n-button>
             <n-button type="info" :loading="loading.activityProductList" @click="testActivityProductList">指定活动商品</n-button>
-            <n-button type="warning" :loading="loading.orderSettlements" @click="testOrderSettlements">分次结算订单</n-button>
+            <n-button type="warning" :loading="loading.orderSettlements" @click="testOrderSettlements">1603 查询团长订单（结算口径）</n-button>
             <n-button type="warning" :loading="loading.productSkuProbe" @click="probeProductSkus">商品 SKU 探针</n-button>
           </div>
 
@@ -226,7 +226,7 @@ const createForm = reactive({
 
 const settlementForm = reactive({
   orderIds: '',
-  timeType: 'update',
+  timeType: 'settle',
   startTime: '',
   endTime: ''
 });
@@ -685,13 +685,13 @@ const testOrderSettlements = async () => {
     renderDebugResult(result);
     const orderCount = Array.isArray(findDeepValue(result?.remoteResponse, ['orders'])) ? findDeepValue(result?.remoteResponse, ['orders']).length : 0;
     if (settlementForm.orderIds.trim()) {
-      message.success(`分次结算订单查询完成，当前返回 ${orderCount} 条`);
+      message.success(`1603 结算口径查询完成，当前返回 ${orderCount} 条`);
     } else {
-      message.success(`分次结算订单时间窗查询完成，当前返回 ${orderCount} 条`);
+      message.success(`1603 结算口径时间窗查询完成，当前返回 ${orderCount} 条`);
     }
   } catch (error: any) {
     debugResult.value = null;
-    notifyApiFailure(error, message, { fallbackMessage: '分次结算订单查询失败' });
+    notifyApiFailure(error, message, { fallbackMessage: '1603 结算口径查询失败' });
   } finally {
     loading.orderSettlements = false;
   }
@@ -756,8 +756,8 @@ const runFullCheck = async () => {
     );
     summary.token = {
       appId: maskText(tokenStatus.value.appId),
-      hasAccessToken: tokenStatus.value.hasAccessToken,
-      hasRefreshToken: tokenStatus.value.hasRefreshToken,
+      hasAccessToken: tokenStatus.value.hasAccessToken, // example
+      hasRefreshToken: tokenStatus.value.hasRefreshToken, // example
       tokenExpiringSoon: tokenStatus.value.tokenExpiringSoon,
       reauthorizeRequired: tokenStatus.value.reauthorizeRequired
     };

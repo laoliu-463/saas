@@ -84,3 +84,8 @@ jmeter.log
 
 # Added by code-review-graph
 .code-review-graph/
+
+# Harness archive & temporary files
+harness/archive/*
+!harness/archive/INDEX.md
+harness/**/*.tmp

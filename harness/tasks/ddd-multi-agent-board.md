@@ -58,7 +58,7 @@ HEAD：`69e8d106`（Batch3：TALENT-003 Facade 路由）
 | task_id | owner | 状态 | 说明 |
 |---------|-------|------|------|
 | DDD-TALENT-003 | Talent | DONE | `69e8d106` Controller → ApplicationService → Facade |
-| DDD-SAMPLE-007 | Sample | TODO | SampleController 切 Facade |
+| DDD-SAMPLE-007 | Sample | DONE | `pending` Controller → ApplicationService → Facade |
 | DDD-PRODUCT-003 | Product | TODO | QuickSample 切 Facade |
 | DDD-PERF-003 | Performance | TODO | QueryController 切 Facade |
 | DDD-ORDER-003 | Order | TODO | Controller 切 Facade（勿碰 OrderSyncService） |
@@ -84,11 +84,11 @@ HEAD：`69e8d106`（Batch3：TALENT-003 Facade 路由）
 | P2 | DDD-TALENT-001 | Talent | **DONE** `60b9d062` |
 | P2 | DDD-PERF-002 | Performance | **DONE** `59d3a085` |
 | P2 | DDD-TALENT-002 / SAMPLE-006 | Batch2 Policy | **DONE** `d41c4d58` / `98299d1e` |
-| P2 | Batch3 Replace | Integration | **WIP** — 串行启动 |
+| P2 | Batch3 Replace | Integration | **WIP** — TALENT-003 + SAMPLE-007 DONE，下一域 PRODUCT-003 |
 
 ## 下一步优先
 
-- Batch3 调用替换（Talent → Sample → Product → Performance → Order）
+- Batch3 下一域：**SAMPLE-007**（SampleController 切 Facade/Port）
 - `agent-do -Scope backend` 补证据
 - **Step 5**：BASE-002 Characterization 全绿
 

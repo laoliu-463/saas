@@ -48,6 +48,11 @@ import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.SampleEligibilityService;
 import com.colonel.saas.service.SampleStatusLogService;
 import com.colonel.saas.service.SampleWriteTransactionService;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.sample.application.SampleCommandApplicationService;
+import com.colonel.saas.domain.sample.application.SampleQueryApplicationService;
+import com.colonel.saas.domain.sample.facade.LegacySampleDomainFacade;
+import com.colonel.saas.domain.sample.policy.SampleStateMachine;
 import com.colonel.saas.service.sample.LegacySampleCommandService;
 import com.colonel.saas.service.sample.LegacySampleQueryService;
 import com.colonel.saas.service.sample.SampleApplicationService;
@@ -151,9 +156,13 @@ class SampleControllerTest {
                 sampleLogisticsSubscriptionService,
                 sampleDomainEventPublisher,
                 new SampleWriteTransactionService());
+        LegacySampleQueryService legacyQuery = new LegacySampleQueryService(applicationDelegate);
+        LegacySampleCommandService legacyCommand = new LegacySampleCommandService(applicationDelegate);
+        DddRefactorProperties dddProps = new DddRefactorProperties();
+        LegacySampleDomainFacade sampleDomainFacade = new LegacySampleDomainFacade(sampleRequestMapper);
         sampleController = new SampleController(
-                new LegacySampleQueryService(applicationDelegate),
-                new LegacySampleCommandService(applicationDelegate));
+                new SampleQueryApplicationService(legacyQuery, sampleDomainFacade, dddProps),
+                new SampleCommandApplicationService(legacyCommand, sampleDomainFacade, dddProps));
         lenient().when(configDomainFacade.isSampleLimitEnabled()).thenReturn(true);
         lenient().when(configDomainFacade.getSampleLimitDays()).thenReturn(7);
         lenient().when(sampleEligibilityService.evaluate(any(), any()))
@@ -2462,12 +2471,12 @@ class SampleControllerTest {
         assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsStaffOnly", List.of(RoleCodes.OPS_STAFF, RoleCodes.ADMIN)))
                 .isFalse();
 
-        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "normalizeAction", "APPROVED")).isEqualTo("PENDING_SHIP");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "normalizeAction", "SHIPPED")).isEqualTo("SHIPPING");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "normalizeAction", "SIGNED")).isEqualTo("PENDING_HOMEWORK");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "normalizeAction", "PENDING_TASK")).isEqualTo("PENDING_HOMEWORK");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "normalizeAction", "FINISHED")).isEqualTo("COMPLETED");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "normalizeAction", " closed ")).isEqualTo("CLOSED");
+        assertThat(SampleStateMachine.normalizeAction("APPROVED")).isEqualTo("PENDING_SHIP");
+        assertThat(SampleStateMachine.normalizeAction("SHIPPED")).isEqualTo("SHIPPING");
+        assertThat(SampleStateMachine.normalizeAction("SIGNED")).isEqualTo("PENDING_HOMEWORK");
+        assertThat(SampleStateMachine.normalizeAction("PENDING_TASK")).isEqualTo("PENDING_HOMEWORK");
+        assertThat(SampleStateMachine.normalizeAction("FINISHED")).isEqualTo("COMPLETED");
+        assertThat(SampleStateMachine.normalizeAction(" closed ")).isEqualTo("CLOSED");
         assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsVisibleStatusCode", (Integer) null)).isFalse();
         assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsVisibleStatusCode", 2)).isTrue();
         assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsVisibleStatusCode", 1)).isFalse();

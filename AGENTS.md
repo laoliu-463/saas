@@ -23,7 +23,7 @@ V1 核心闭环以三条主链为准：
 - 招商链：同步活动 -> 活动商品入库 -> 商品上架 -> 审核寄样 -> 订单同步 -> 招商业绩。
 - 管理链：用户角色 -> 数据范围 -> 规则配置 -> 各领域读取配置 -> 权限生效。
 
-详细状态见 `harness/CURRENT_STATE.md`，领域职责见 `harness/DOMAIN_MAP.md` 和 `docs/领域/*.md`。
+详细状态与执行入口见 `harness/INDEX.md`，领域职责见 `docs/领域/*.md`。
 
 ## 2. 最高优先级规则
 
@@ -49,8 +49,8 @@ V1 核心闭环以三条主链为准：
 
 1. `CLAUDE.md`
 2. `docs/README.md`
-3. `harness/CURRENT_STATE.md`
-4. `harness/TASK_ROUTING.md`
+3. `harness/README.md` 与 `harness/INDEX.md`
+4. `harness/rules/` 下的核心约束与规范
 5. 当前任务对应的领域、流程、接口、数据、权限、验收和部署文档
 
 涉及 real-pre 必须补读：
@@ -58,9 +58,8 @@ V1 核心闭环以三条主链为准：
 - `docs/08-第三方对接总览.md`
 - `docs/10-部署运行总览.md`
 - `docs/验收/real-pre联调手册.md`
-- `harness/skills/real-pre-debug.skill.md`
 
-涉及订单归因、寄样、商品库、业绩或看板，必须读取 `harness/skills/` 下对应 skill。
+涉及订单归因、寄样、商品库、业绩或看板，必须检索并读取相关领域文档及 `harness/rules/` 中的对应内容。
 
 ## 4. code-review-graph 先行
 
@@ -79,21 +78,21 @@ V1 核心闭环以三条主链为准：
 默认执行入口：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明本次修改"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明本次修改"
 ```
 
 文档 / Harness 变更：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope docs -Message "docs: update harness"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope docs -Message "docs: update harness"
 ```
 
-其他任务的 Scope 与必读文档见 `harness/TASK_ROUTING.md`，后续 Agent 不允许临时发明构建、重启、部署流程。若确需绕过，必须说明原因和风险。
+其他任务的 Scope 与必读文档见 `harness/INDEX.md`，后续 Agent 不允许临时发明构建、重启、部署流程。若确需绕过，必须说明原因和风险。
 
 用户明确要求远端部署时才允许增加：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
 ```
 
 ## 6. 禁止事项
@@ -110,18 +109,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 - 禁止关闭真实抖音 API 开关后仍声明真实闭环通过。
 - 禁止用 mock 数据证明 real-pre 业务闭环。
 
-### V1 禁止
-
-- 不做独家达人。
-- 不做独家商家。
-- ~~不做毛利口径扩展。~~ **已撤销**（2026-06-05 用户决策：毛利要做，纳入 V1 交付与验收）
-- 不做个别品负责人覆盖。
-- 不做商品负责人变更历史重算。
-- 不做差异化提成。
-- 不做 Cookie 池 / 代理池。
-- 不做物流 API 自动跟踪作为 V1 必需能力。
-- 不做外部抖店快速寄样作为 V1 必需能力。
-- 不做数据平台整体导出。
 
 ### 模块边界禁止
 
@@ -160,8 +147,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 证据报告统一生成到：
 
 ```text
-harness/reports/evidence-YYYYMMDD-HHMMSS.md
+harness/reports/latest-evidence-YYYYMMDD.md
 ```
+(注意：必须遵循每目录不超过 10 个文件的限制，及时合并或归档旧报告至 `harness/archive/`)
 
 报告必须包含：
 
@@ -186,17 +174,17 @@ harness/reports/evidence-YYYYMMDD-HHMMSS.md
 - `CLAUDE.md`：仓库地图。
 - `docs/`：事实主源、领域合同、流程、接口、数据、验收、部署和 ADR。
 - `.claude/`：保留为 Claude 工作台和历史 Agent 工作流文档。
-- `scripts/`：保留现有启动、QA 和部署辅助脚本。
-- `harness/`：新增统一执行系统，负责固定入口、脚本、skills、evals、runbooks、prompts 和 reports。
+- `harness/`：统一执行系统与工程化基座，负责门禁规则、任务卡、报告、自动化脚本和资产清理清单。
 
-## 10. Harness 五子系统
+## 10. Harness 核心约束与结构 (10/10/200 规则)
 
-- Instructions：`harness/instructions/`、`AGENT_CONTRACT.md`、`FORBIDDEN_SCOPE.md`、`TASK_ROUTING.md`。
-- Tools：`harness/commands/`、`harness/tools/README.md`。
-- Environment：`harness/environment/`。
-- State：`harness/CURRENT_STATE.md`、`harness/state/`、`HARNESS_CHANGELOG.md`。
-- Feedback：`harness/feedback/`、`harness/evals/`、`harness/reports/`。
+所有 Agent 介入本工程时，对 `harness/` 目录进行任何文件创建与修改，**必须绝对服从以下硬性约束**，并在任务结束时通过合规自检：
 
-DDD 优化任务的总规则、顺序和执行口径见 `harness/AGENT_CONTRACT.md`、`harness/TASK_ROUTING.md`、`harness/plans/DDD_OPTIMIZATION_ROADMAP.md` 和 `harness/plans/DDD_DOMAIN_TASK_MATRIX.md`；本文件只保留跳转说明，不重复维护第二套 DDD 规则。
+1. **结构限制**：`harness/` 仅允许存在 8 个一级目录：`rules/`、`tasks/`、`probes/`、`reports/`、`scripts/`、`manifests/`、`archive/`、`templates/`。
+2. **数量限制**：任何一级目录或子目录，其**文件数量不得超过 10 个**，其**子目录数量不得超过 10 个**。
+3. **行数限制**：除脚本文件（.ps1, .sh, .py, .js, .ts 等）外，所有文本文件（如 .md, .txt, .json）**内容不得超过 200 行**。
+4. **清理职责**：超限时必须主动合并、提炼摘要或归档至 `archive/`（打包旧数据）。禁止在 `reports/` 等日常目录内堆积历史报告。
+5. **合规自检**：在声明修改完成前，推荐执行以下脚本进行检验：
+   `powershell -ExecutionPolicy Bypass -File harness/scripts/check-harness-limits.ps1`
 
-发现旧文档与当前事实冲突时，不得自行拍板，写入 `docs/决策/ADR-002-V1范围优先级.md`。
+如果发现旧文档与当前事实冲突，不要自行拍板，写入 `docs/决策/ADR-002-V1范围优先级.md`。
