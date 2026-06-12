@@ -114,7 +114,7 @@ public class ProductService {
                     + "|[?&](?:origin_colonel_buyin_id|originColonelBuyinId|colonel_buyin_id|colonelBuyinId)=)"
                     + "([0-9]{10,30})(?![0-9])",
             Pattern.CASE_INSENSITIVE);
-    public static final String FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED = "REAL_PROMOTION_WRITE_DISABLED";
+    public static final String FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED = "REAL_PROMOTION_WRITE_DISABLED"; // 保留向后兼容 — 实际定义在 CopyPromotionApplicationService
 
     /** 抖音推广网关，用于生成推广链接、查询推广数据 */
     private final DouyinPromotionGateway douyinPromotionGateway;
@@ -4315,93 +4315,6 @@ public class ProductService {
 
     private boolean isRealPromotionWriteAllowed() {
         return realPromotionWriteEnabled && allowRealPromotionWrite;
-    }
-
-    private String buildProductBriefCopyText(ProductSnapshot snapshot, ProductOperationState state, String promotionLink) {
-        String template = configDomainFacade == null
-                ? null
-                : configDomainFacade.getPromotionTemplate().copyBriefTemplate();
-        if (StringUtils.hasText(template)) {
-            return renderCopyBriefTemplate(template, snapshot, state, promotionLink);
-        }
-        return buildHardcodedProductBriefCopyText(snapshot, state, promotionLink);
-    }
-
-    private String renderCopyBriefTemplate(
-            String template,
-            ProductSnapshot snapshot,
-            ProductOperationState state,
-            String promotionLink) {
-        Map<String, Object> auditSupplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
-        String productName = copyDisplayText(snapshot.getTitle());
-        String commissionRate = copyDisplayText(snapshot.getActivityCosRatioText());
-        String shortLink = copyDisplayText(firstText(promotionLink));
-        String serviceFeeRate = copyDisplayText(formatRate(resolveServiceFeeRate(snapshot)));
-        String customText = copyDisplayText(readString(auditSupplement, "exclusivePriceRemark"));
-        return template
-                .replace("{productName}", productName)
-                .replace("{product_name}", productName)
-                .replace("{productId}", copyDisplayText(snapshot.getProductId()))
-                .replace("{product_id}", copyDisplayText(snapshot.getProductId()))
-                .replace("{commissionRate}", commissionRate)
-                .replace("{commission_rate}", commissionRate)
-                .replace("{serviceFeeRate}", serviceFeeRate)
-                .replace("{service_fee_rate}", serviceFeeRate)
-                .replace("{shortLink}", shortLink)
-                .replace("{promotion_link}", shortLink)
-                .replace("{custom_text}", customText);
-    }
-
-    private String buildHardcodedProductBriefCopyText(
-            ProductSnapshot snapshot,
-            ProductOperationState state,
-            String promotionLink) {
-        Map<String, Object> auditSupplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
-        List<String> sellingPoints = readStringList(auditSupplement, "sellingPoints");
-        String sellingPointText = sellingPoints.isEmpty() ? "-" : String.join("、", sellingPoints);
-        String promotionScript = readString(auditSupplement, "promotionScript");
-        String copyPromotionLink = firstText(promotionLink);
-        List<String> lines = new ArrayList<>();
-        lines.add("【商品】" + copyDisplayText(snapshot.getTitle()) + "（" + copyDisplayText(snapshot.getShopName()) + "）");
-        lines.add("【售价】" + copyDisplayText(snapshot.getPriceText())
-                + "  【佣金率】" + copyDisplayText(snapshot.getActivityCosRatioText())
-                + "  【近30天】" + copyDisplayText(snapshot.getSales()));
-        lines.add("【卖点】" + sellingPointText);
-        lines.add("【话术】" + copyDisplayText(promotionScript));
-        lines.add("【寄样门槛】销售额≥" + copyDisplayText(readString(auditSupplement, "sampleThresholdSales"))
-                + " / 等级≥LV" + copyDisplayText(readString(auditSupplement, "sampleThresholdLevel")));
-        lines.add("【专属价说明】" + copyDisplayText(readString(auditSupplement, "exclusivePriceRemark")));
-        if (StringUtils.hasText(copyPromotionLink)) {
-            lines.add("【链接】" + copyPromotionLink);
-        } else {
-            lines.add("【推广链接】未生成");
-        }
-        return String.join("\n", lines);
-    }
-
-    private String copyDisplayText(Object value) {
-        if (value == null) {
-            return "-";
-        }
-        String text = String.valueOf(value).trim();
-        if (!StringUtils.hasText(text)
-                || "null".equalsIgnoreCase(text)
-                || "undefined".equalsIgnoreCase(text)) {
-            return "-";
-        }
-        return text;
-    }
-
-    private String firstText(String... candidates) {
-        if (candidates == null) {
-            return null;
-        }
-        for (String candidate : candidates) {
-            if (StringUtils.hasText(candidate)) {
-                return candidate.trim();
-            }
-        }
-        return null;
     }
 
     private void requireUpstreamPromotingForLibraryEntry(ProductSnapshot snapshot) {

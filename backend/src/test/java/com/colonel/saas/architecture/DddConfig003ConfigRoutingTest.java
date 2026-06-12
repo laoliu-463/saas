@@ -128,9 +128,8 @@ class DddConfig003ConfigRoutingTest {
     }
 
     @Test
-    @DisplayName("商品复制模板从 ConfigDomainFacade 读取")
+    @DisplayName("商品复制模板从 ConfigDomainFacade 读取（DDD-PRODUCT-004 改走 CopyTextPolicy）")
     void productCopyTemplate_shouldReadFromFacade() {
-        ProductService productService = minimalProductService();
         when(configDomainFacade.getPromotionTemplate()).thenReturn(new PromotionTemplateDTO(
                 "【{productName}】佣金{commissionRate} 链接{shortLink}",
                 "channel_{channel_code}",
@@ -141,12 +140,8 @@ class DddConfig003ConfigRoutingTest {
         snapshot.setProductId("P-001");
         snapshot.setActivityCosRatioText("20%");
 
-        String text = ReflectionTestUtils.invokeMethod(
-                productService,
-                "buildProductBriefCopyText",
-                snapshot,
-                null,
-                "https://short.example/abc");
+        String text = com.colonel.saas.domain.product.policy.CopyTextPolicy.render(
+                configDomainFacade, snapshot, null, "https://short.example/abc");
 
         verify(configDomainFacade).getPromotionTemplate();
         assertThat(text).contains("测试商品");
