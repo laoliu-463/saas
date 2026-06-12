@@ -4,7 +4,7 @@
 
 更新时间：2026-06-12  
 分支：`feature/ddd/DDD-SAMPLE-005-FIX-sample-agent`  
-HEAD：`a2802dad`（Batch2 Policy 收尾：TALENT-002 / SAMPLE-006 / OrderController USER-003）
+HEAD：`0337d07f`（Batch3 WIP：TALENT-003 Facade 路由）
 
 ## 图例
 
@@ -54,6 +54,14 @@ HEAD：`a2802dad`（Batch2 Policy 收尾：TALENT-002 / SAMPLE-006 / OrderContro
 | DDD-TALENT-002 | Talent | DONE | `d41c4d58` `TalentClaimPolicy` |
 
 ## Batch 3 — 跨域替换
+
+| task_id | owner | 状态 | 说明 |
+|---------|-------|------|------|
+| DDD-TALENT-003 | Talent | WIP | TalentController → TalentQueryApplicationService → Facade |
+| DDD-SAMPLE-007 | Sample | TODO | SampleController 切 Facade |
+| DDD-PRODUCT-003 | Product | TODO | QuickSample 切 Facade |
+| DDD-PERF-003 | Performance | TODO | QueryController 切 Facade |
+| DDD-ORDER-003 | Order | TODO | Controller 切 Facade（勿碰 OrderSyncService） |
 
 串行，由 Integration Agent 控制。见 `ddd-task-dependency-graph.md`。
 

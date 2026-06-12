@@ -16,8 +16,8 @@ import com.colonel.saas.dto.talent.TalentOperateRequest;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.dto.talent.TalentUpdateRequest;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.domain.talent.application.TalentQueryApplicationService;
 import com.colonel.saas.job.TalentWeeklyRefreshJob;
-import com.colonel.saas.service.TalentQueryService;
 import com.colonel.saas.service.TalentService;
 import com.colonel.saas.vo.TalentEnrichTaskVO;
 import com.colonel.saas.vo.TalentVO;
@@ -62,7 +62,7 @@ import java.util.UUID;
  * <p>访问权限：渠道组长和渠道专员（{@link com.colonel.saas.constant.RoleCodes#CHANNEL_LEADER}、{@link com.colonel.saas.constant.RoleCodes#CHANNEL_STAFF}），部分接口覆盖为管理员或仅组长
  *
  * @see com.colonel.saas.service.TalentService
- * @see com.colonel.saas.service.TalentQueryService
+ * @see com.colonel.saas.domain.talent.application.TalentQueryApplicationService
  */
 @Validated
 @Tag(name = "达人CRM", description = "达人池、公海私海、认领释放与达人信息补全相关接口。")
@@ -74,25 +74,25 @@ public class TalentController extends BaseController {
     /** 达人服务，负责达人增删改查、标签管理、收货地址维护、认领释放与黑名单等操作 */
     private final TalentService talentService;
 
-    /** 达人查询服务，负责达人分页查询、详情查询和操作权限校验 */
-    private final TalentQueryService talentQueryService;
+    /** 达人查询应用层，Batch3 读路径入口（可开关路由至 TalentDomainFacade） */
+    private final TalentQueryApplicationService talentQueryApplicationService;
 
     /** 达人每周刷新定时任务，用于手动触发每周批量刷新 */
     private final TalentWeeklyRefreshJob talentWeeklyRefreshJob;
 
     /**
-     * 构造注入达人服务、达人查询服务和每周刷新任务。
+     * 构造注入达人服务、达人查询应用层和每周刷新任务。
      *
-     * @param talentService         达人服务实例
-     * @param talentQueryService    达人查询服务实例
-     * @param talentWeeklyRefreshJob 达人每周刷新定时任务实例
+     * @param talentService                  达人服务实例
+     * @param talentQueryApplicationService  达人查询应用层实例
+     * @param talentWeeklyRefreshJob         达人每周刷新定时任务实例
      */
     public TalentController(
             TalentService talentService,
-            TalentQueryService talentQueryService,
+            TalentQueryApplicationService talentQueryApplicationService,
             TalentWeeklyRefreshJob talentWeeklyRefreshJob) {
         this.talentService = talentService;
-        this.talentQueryService = talentQueryService;
+        this.talentQueryApplicationService = talentQueryApplicationService;
         this.talentWeeklyRefreshJob = talentWeeklyRefreshJob;
     }
 
@@ -126,7 +126,7 @@ public class TalentController extends BaseController {
         query.setDeptId(deptId);
         query.setDataScope(dataScope);
         // 第二步：执行分页查询
-        IPage<Talent> result = talentQueryService.page(query);
+        IPage<Talent> result = talentQueryApplicationService.page(query);
         // 第三步：转换为视图对象并返回
         return okPage(result.convert(TalentVO::from));
     }
@@ -157,7 +157,7 @@ public class TalentController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        return ok(talentQueryService.detail(id, userId, deptId, dataScope));
+        return ok(talentQueryApplicationService.detail(id, userId, deptId, dataScope));
     }
 
     /**
@@ -243,7 +243,7 @@ public class TalentController extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
         // 第一步：校验操作权限
-        talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        talentQueryApplicationService.assertCanOperate(id, userId, deptId, roleCodes);
         // 第二步：更新达人资料
         return ok(TalentVO.from(talentService.update(id, request.toUpdateTalent())));
     }
@@ -279,7 +279,7 @@ public class TalentController extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
         // 第一步：校验操作权限
-        talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        talentQueryApplicationService.assertCanOperate(id, userId, deptId, roleCodes);
         // 第二步：提取标签列表并更新
         List<String> tags = body == null ? List.of() : body.get("tags");
         return ok(talentService.updateTags(id, tags, userId));
@@ -314,7 +314,7 @@ public class TalentController extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
         // 第一步：校验操作权限
-        talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        talentQueryApplicationService.assertCanOperate(id, userId, deptId, roleCodes);
         // 第二步：查询达人收货地址
         Talent talent = talentService.getShippingAddress(id, userId);
         // 第三步：组装收货地址响应
@@ -355,7 +355,7 @@ public class TalentController extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
         // 第一步：校验操作权限
-        talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        talentQueryApplicationService.assertCanOperate(id, userId, deptId, roleCodes);
         // 第二步：更新收货地址
         return ok(TalentVO.from(talentService.updateShippingAddress(
                 id,
@@ -449,7 +449,7 @@ public class TalentController extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
         // 第一步：校验操作权限
-        talentQueryService.assertCanOperate(id, userId, deptId, roleCodes);
+        talentQueryApplicationService.assertCanOperate(id, userId, deptId, roleCodes);
         // 第二步：删除达人
         talentService.delete(id);
         return ok();
@@ -615,7 +615,7 @@ public class TalentController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
-        talentQueryService.assertCanOperate(talentId, userId, deptId, roleCodes);
+        talentQueryApplicationService.assertCanOperate(talentId, userId, deptId, roleCodes);
         return ok(TalentVO.from(talentService.refresh(talentId)));
     }
 
@@ -640,7 +640,7 @@ public class TalentController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
-        talentQueryService.assertCanOperate(talentId, userId, deptId, roleCodes);
+        talentQueryApplicationService.assertCanOperate(talentId, userId, deptId, roleCodes);
         return ok(TalentVO.from(talentService.manualFill(talentId, request.toManualFillTalent())));
     }
 

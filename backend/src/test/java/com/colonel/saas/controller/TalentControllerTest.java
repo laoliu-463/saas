@@ -5,8 +5,8 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.domain.talent.application.TalentQueryApplicationService;
 import com.colonel.saas.job.TalentWeeklyRefreshJob;
-import com.colonel.saas.service.TalentQueryService;
 import com.colonel.saas.service.TalentService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 达人域主 {@link TalentController} 端点单测。
  * <p>[V1 必做] 验证主列表端点 {@code GET /talents} 把请求参数正确绑定到 {@link TalentPageQuery}、
- * 把 {@code dataScope / userId / deptId} 注入到查询对象、再委托给 {@link TalentQueryService#page}。
+ * 把 {@code dataScope / userId / deptId} 注入到查询对象、再委托给 {@link TalentQueryApplicationService#page}。
  * 指标筛选（minFans/maxFans）、文本筛选（nickname/douyinNo/region）和视图筛选（view）都应被透传。</p>
  */
 @ExtendWith(MockitoExtension.class)
@@ -41,7 +41,7 @@ class TalentControllerTest {
     @Mock
     private TalentService talentService;
     @Mock
-    private TalentQueryService talentQueryService;
+    private TalentQueryApplicationService talentQueryApplicationService;
     @Mock
     private TalentWeeklyRefreshJob talentWeeklyRefreshJob;
 
@@ -55,7 +55,7 @@ class TalentControllerTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         TalentController controller = new TalentController(
-                talentService, talentQueryService, talentWeeklyRefreshJob);
+                talentService, talentQueryApplicationService, talentWeeklyRefreshJob);
         mockMvc = MockMvcBuilders
                 .standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -65,7 +65,7 @@ class TalentControllerTest {
     @Test
     void page_shouldBindTalentPageQueryAndInjectDataScope() throws Exception {
         IPage<Talent> emptyPage = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 10, 0);
-        when(talentQueryService.page(any(TalentPageQuery.class))).thenReturn(emptyPage);
+        when(talentQueryApplicationService.page(any(TalentPageQuery.class))).thenReturn(emptyPage);
 
         mockMvc.perform(get("/talents")
                         .param("page", "1")
@@ -90,7 +90,7 @@ class TalentControllerTest {
                 .andExpect(jsonPath("$.data.total").value(0));
 
         ArgumentCaptor<TalentPageQuery> captor = ArgumentCaptor.forClass(TalentPageQuery.class);
-        verify(talentQueryService).page(captor.capture());
+        verify(talentQueryApplicationService).page(captor.capture());
         TalentPageQuery query = captor.getValue();
 
         // 验证 query 字段绑定正确
@@ -115,7 +115,7 @@ class TalentControllerTest {
     @Test
     void page_shouldDefaultDataScopeWhenAttributeMissing() throws Exception {
         IPage<Talent> emptyPage = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 10, 0);
-        when(talentQueryService.page(any(TalentPageQuery.class))).thenReturn(emptyPage);
+        when(talentQueryApplicationService.page(any(TalentPageQuery.class))).thenReturn(emptyPage);
 
         // 不传 dataScope / deptId 时，controller 不强制要求；userId 是 required
         mockMvc.perform(get("/talents")
@@ -124,7 +124,7 @@ class TalentControllerTest {
                 .andExpect(status().isOk());
 
         ArgumentCaptor<TalentPageQuery> captor = ArgumentCaptor.forClass(TalentPageQuery.class);
-        verify(talentQueryService).page(captor.capture());
+        verify(talentQueryApplicationService).page(captor.capture());
         TalentPageQuery query = captor.getValue();
 
         assertThat(query.getView()).isEqualTo("MY_TALENTS");
@@ -137,7 +137,7 @@ class TalentControllerTest {
     @Test
     void page_shouldIgnoreUnknownQueryParamsInsteadOfFailing() throws Exception {
         IPage<Talent> emptyPage = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 10, 0);
-        when(talentQueryService.page(any(TalentPageQuery.class))).thenReturn(emptyPage);
+        when(talentQueryApplicationService.page(any(TalentPageQuery.class))).thenReturn(emptyPage);
 
         // 包含一些非法参数值（minFans 非数字应被忽略或返回 400，看具体行为）
         // 这里只验证不会因为无关参数导致 500
@@ -156,7 +156,7 @@ class TalentControllerTest {
                 .andExpect(status().isOk());
 
         ArgumentCaptor<TalentPageQuery> captor = ArgumentCaptor.forClass(TalentPageQuery.class);
-        verify(talentQueryService).page(captor.capture());
+        verify(talentQueryApplicationService).page(captor.capture());
         TalentPageQuery query = captor.getValue();
         assertThat(query.getPoolStatus()).isEqualTo("PRIVATE");
         assertThat(query.getOwnerKeyword()).isEqualTo("张三");
@@ -174,7 +174,7 @@ class TalentControllerTest {
         IPage<Talent> page = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 10, 1);
         page.setRecords(List.of(talent));
 
-        when(talentQueryService.page(any(TalentPageQuery.class))).thenReturn(page);
+        when(talentQueryApplicationService.page(any(TalentPageQuery.class))).thenReturn(page);
 
         mockMvc.perform(get("/talents")
                         .param("view", "TEAM_PUBLIC")
