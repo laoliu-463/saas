@@ -5,6 +5,7 @@ import com.colonel.saas.config.AppProperties;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.order.application.OrderAttributionRouter;
+import com.colonel.saas.domain.order.application.OrderDefaultAttributionResolver;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.job.JobLockKeys;
@@ -70,6 +71,8 @@ class OrderSyncServiceTest {
     @Mock
     private AttributionService attributionService;
     @Mock
+    private OrderDefaultAttributionResolver defaultAttributionResolver;
+    @Mock
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
     private ValueOperations<String, Object> valueOperations;
@@ -89,7 +92,8 @@ class OrderSyncServiceTest {
         appProperties.getTest().setEnabled(false);
         DddRefactorProperties dddRefactorProperties = new DddRefactorProperties();
         orderAmountMappingRouter = new OrderAmountMappingRouter(dddRefactorProperties);
-        orderAttributionRouter = new OrderAttributionRouter(dddRefactorProperties, attributionService);
+        orderAttributionRouter = new OrderAttributionRouter(
+                dddRefactorProperties, attributionService, defaultAttributionResolver);
 
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         // Default: empty gateway response so syncItems exits immediately.

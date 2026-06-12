@@ -34,4 +34,10 @@ public interface ProductDomainFacade {
      * 自动过滤 null 和重复 ID；缺失记录不包含在结果中。
      */
     Map<UUID, String> loadProductNamesByIds(Collection<UUID> ids);
+
+    /** 活动+商品维度的实际招商负责人（product_operation_state.assignee_id）。 */
+    UUID findProductAssigneeId(String activityId, String externalProductId);
+
+    /** 活动默认招商负责人（colonelsettlement_activity.recruiter_user_id）。 */
+    UUID findActivityDefaultRecruiterId(String activityId);
 }

@@ -4,7 +4,9 @@ import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductSnapshot;
+import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ProductMapper;
+import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,12 +29,20 @@ class LegacyProductDomainFacadeTest {
     private ProductMapper productMapper;
     @Mock
     private ProductSnapshotMapper productSnapshotMapper;
+    @Mock
+    private ProductOperationStateMapper productOperationStateMapper;
+    @Mock
+    private ColonelsettlementActivityMapper colonelsettlementActivityMapper;
 
     private ProductDomainFacade facade;
 
     @BeforeEach
     void setUp() {
-        facade = new LegacyProductDomainFacade(productMapper, productSnapshotMapper);
+        facade = new LegacyProductDomainFacade(
+                productMapper,
+                productSnapshotMapper,
+                productOperationStateMapper,
+                colonelsettlementActivityMapper);
     }
 
     @Test

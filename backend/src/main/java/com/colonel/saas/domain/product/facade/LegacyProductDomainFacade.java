@@ -3,9 +3,13 @@ package com.colonel.saas.domain.product.facade;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
+import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.Product;
+import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
+import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ProductMapper;
+import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -26,10 +30,18 @@ public class LegacyProductDomainFacade implements ProductDomainFacade {
 
     private final ProductMapper productMapper;
     private final ProductSnapshotMapper productSnapshotMapper;
+    private final ProductOperationStateMapper productOperationStateMapper;
+    private final ColonelsettlementActivityMapper colonelsettlementActivityMapper;
 
-    public LegacyProductDomainFacade(ProductMapper productMapper, ProductSnapshotMapper productSnapshotMapper) {
+    public LegacyProductDomainFacade(
+            ProductMapper productMapper,
+            ProductSnapshotMapper productSnapshotMapper,
+            ProductOperationStateMapper productOperationStateMapper,
+            ColonelsettlementActivityMapper colonelsettlementActivityMapper) {
         this.productMapper = productMapper;
         this.productSnapshotMapper = productSnapshotMapper;
+        this.productOperationStateMapper = productOperationStateMapper;
+        this.colonelsettlementActivityMapper = colonelsettlementActivityMapper;
     }
 
     @Override
@@ -100,6 +112,27 @@ public class LegacyProductDomainFacade implements ProductDomainFacade {
                 product.getName(),
                 product.getCover(),
                 product.getPrice());
+    }
+
+    @Override
+    public UUID findProductAssigneeId(String activityId, String externalProductId) {
+        if (!StringUtils.hasText(activityId) || !StringUtils.hasText(externalProductId)) {
+            return null;
+        }
+        ProductOperationState state = productOperationStateMapper.selectOne(new LambdaQueryWrapper<ProductOperationState>()
+                .eq(ProductOperationState::getActivityId, activityId.trim())
+                .eq(ProductOperationState::getProductId, externalProductId.trim())
+                .last("LIMIT 1"));
+        return state == null ? null : state.getAssigneeId();
+    }
+
+    @Override
+    public UUID findActivityDefaultRecruiterId(String activityId) {
+        if (!StringUtils.hasText(activityId)) {
+            return null;
+        }
+        ColonelsettlementActivity activity = colonelsettlementActivityMapper.selectByActivityId(activityId.trim());
+        return activity == null ? null : activity.getRecruiterUserId();
     }
 
     private static ProductSnapshotReadDTO toSnapshotRead(ProductSnapshot snapshot) {

@@ -3,6 +3,7 @@ package com.colonel.saas.domain.order.application;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.service.AttributionService;
+import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
 import com.colonel.saas.service.AttributionService.AttributionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,8 @@ class OrderAttributionRouterTest {
 
     @Mock
     private AttributionService attributionService;
+    @Mock
+    private OrderDefaultAttributionResolver defaultAttributionResolver;
 
     private DddRefactorProperties dddRefactorProperties;
     private OrderAttributionRouter router;
@@ -30,7 +33,7 @@ class OrderAttributionRouterTest {
     @BeforeEach
     void setUp() {
         dddRefactorProperties = new DddRefactorProperties();
-        router = new OrderAttributionRouter(dddRefactorProperties, attributionService);
+        router = new OrderAttributionRouter(dddRefactorProperties, attributionService, defaultAttributionResolver);
     }
 
     @Test
@@ -67,5 +70,29 @@ class OrderAttributionRouterTest {
 
         dddRefactorProperties.getOrderAttribution().setEnabled(true);
         assertThat(router.isPolicyEnabled()).isTrue();
+    }
+
+    @Test
+    void resolveAndApply_whenPolicyEnabled_shouldUseDefaultAttributionResolver() {
+        dddRefactorProperties.setEnabled(true);
+        dddRefactorProperties.getOrderAttribution().setEnabled(true);
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        UUID channelUserId = UUID.randomUUID();
+        OrderDefaultAttributionResult result = OrderDefaultAttributionResult.attributedChannel(
+                channelUserId,
+                channelUserId,
+                null,
+                null,
+                "act-1",
+                null,
+                AttributionService.REASON_ATTRIBUTED);
+        when(defaultAttributionResolver.resolve(any(), any())).thenReturn(result);
+
+        AttributionResult applied = router.resolveAndApply(order, Map.of(), "达人A");
+
+        verify(defaultAttributionResolver).resolve(order, Map.of());
+        assertThat(applied.channelUserId()).isEqualTo(channelUserId);
+        assertThat(order.getChannelUserId()).isEqualTo(channelUserId);
     }
 }

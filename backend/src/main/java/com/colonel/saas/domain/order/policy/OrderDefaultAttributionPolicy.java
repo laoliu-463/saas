@@ -1,15 +1,17 @@
 package com.colonel.saas.domain.order.policy;
 
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.service.AttributionService;
-import com.colonel.saas.service.AttributionService.AttributionResult;
 import org.springframework.util.StringUtils;
 
+import java.util.UUID;
+
 /**
- * 订单默认归因 Policy（DDD-ORDER-004 / SLIM-ORDER-002）。
+ * 订单默认归因 Policy（DDD-ORDER-004）。
  *
- * <p>只负责把 {@link AttributionResult} 写入订单实体及同步统计分类，
- * 不执行跨域 Mapper 查询（仍由 {@link AttributionService} 承担）。</p>
+ * <p>只计算默认渠道（pick_source → mapping → channel）与默认招商（商品负责人 / 活动默认负责人）。
+ * 不应用独家达人/独家商家，不计算最终归属、提成或毛利。</p>
  */
 public final class OrderDefaultAttributionPolicy {
 
@@ -19,19 +21,98 @@ public final class OrderDefaultAttributionPolicy {
         NO_MAPPING
     }
 
+    public record RecruiterLookup(
+            UUID productAssigneeId,
+            UUID activityDefaultRecruiterId,
+            boolean lookupFailed) {
+    }
+
     private OrderDefaultAttributionPolicy() {
     }
 
-    public static void applyInitialUnattributedStatus(ColonelsettlementOrder order) {
-        if (order == null) {
-            return;
+    public static OrderDefaultAttributionResult resolve(
+            OrderAttributionInput input,
+            PickSourceMapping channelMapping,
+            RecruiterLookup recruiterLookup) {
+        if (input == null) {
+            return OrderDefaultAttributionResult.unattributed(
+                    null, null, null, null, AttributionService.REASON_SYNC_FAILED);
         }
-        order.setAttributionStatus(AttributionService.STATUS_UNATTRIBUTED);
+        if (!StringUtils.hasText(input.productId())) {
+            return OrderDefaultAttributionResult.unattributed(
+                    input.talentId(),
+                    input.talentUid(),
+                    input.activityId(),
+                    resolveDefaultRecruiter(recruiterLookup),
+                    AttributionService.REASON_PRODUCT_NOT_FOUND);
+        }
+
+        UUID defaultRecruiterId = resolveDefaultRecruiter(recruiterLookup);
+
+        if (!StringUtils.hasText(input.pickSource()) && !StringUtils.hasText(input.pickExtra())) {
+            return OrderDefaultAttributionResult.unattributed(
+                    input.talentId(),
+                    input.talentUid(),
+                    input.activityId(),
+                    defaultRecruiterId,
+                    AttributionService.REASON_NO_PICK_SOURCE);
+        }
+
+        if (channelMapping == null) {
+            return OrderDefaultAttributionResult.unattributed(
+                    input.talentId(),
+                    input.talentUid(),
+                    input.activityId(),
+                    defaultRecruiterId,
+                    AttributionService.REASON_MAPPING_NOT_FOUND);
+        }
+        if (channelMapping.getUserId() == null) {
+            return OrderDefaultAttributionResult.unattributed(
+                    input.talentId(),
+                    input.talentUid(),
+                    input.activityId(),
+                    defaultRecruiterId,
+                    AttributionService.REASON_CHANNEL_NOT_FOUND);
+        }
+
+        String resolvedActivityId = firstNonBlank(
+                channelMapping.getActivityId(),
+                input.activityId());
+        return OrderDefaultAttributionResult.attributedChannel(
+                channelMapping.getUserId(),
+                channelMapping.getDeptId(),
+                input.talentId(),
+                input.talentUid(),
+                resolvedActivityId,
+                defaultRecruiterId,
+                AttributionService.REASON_ATTRIBUTED);
     }
 
+    public static void applyToOrder(
+            ColonelsettlementOrder order,
+            OrderDefaultAttributionResult result,
+            String talentName) {
+        if (order == null || result == null) {
+            return;
+        }
+        order.setChannelUserId(result.defaultChannelUserId());
+        order.setChannelDeptId(result.channelDeptId());
+        order.setUserId(result.defaultChannelUserId());
+        order.setDeptId(result.channelDeptId());
+        order.setColonelUserId(result.defaultRecruiterId());
+        order.setTalentId(result.talentId());
+        order.setActivityId(firstNonBlank(result.activityId(), order.getActivityId()));
+        order.setAttributionStatus(result.attributionStatus());
+        order.setAttributionRemark(result.attributionRemark());
+        order.setProductTitle(order.getProductName());
+        order.setTalentName(talentName);
+    }
+
+    /** @deprecated SLIM-ORDER-002 legacy bridge; prefer {@link #applyToOrder(ColonelsettlementOrder, OrderDefaultAttributionResult, String)}. */
+    @Deprecated
     public static void applyAttributionResult(
             ColonelsettlementOrder order,
-            AttributionResult result,
+            AttributionService.AttributionResult result,
             String fallbackActivityId,
             String talentName) {
         if (order == null || result == null) {
@@ -50,6 +131,13 @@ public final class OrderDefaultAttributionPolicy {
         order.setTalentName(talentName);
     }
 
+    public static void applyInitialUnattributedStatus(ColonelsettlementOrder order) {
+        if (order == null) {
+            return;
+        }
+        order.setAttributionStatus(AttributionService.STATUS_UNATTRIBUTED);
+    }
+
     public static boolean isAttributed(String attributionStatus) {
         return AttributionService.STATUS_ATTRIBUTED.equals(attributionStatus);
     }
@@ -63,6 +151,42 @@ public final class OrderDefaultAttributionPolicy {
             return UnattributedBucket.NO_MAPPING;
         }
         return UnattributedBucket.NONE;
+    }
+
+    public static AttributionService.AttributionResult toLegacyResult(OrderDefaultAttributionResult result) {
+        if (result == null) {
+            return AttributionService.AttributionResult.unattributed(
+                    null, null, null, null, AttributionService.REASON_SYNC_FAILED, AttributionService.NativeMappingTrace.none());
+        }
+        if (isAttributed(result.attributionStatus())) {
+            return AttributionService.AttributionResult.attributed(
+                    result.defaultChannelUserId(),
+                    result.channelDeptId(),
+                    result.defaultChannelUserId(),
+                    result.talentId(),
+                    result.talentUid(),
+                    result.activityId(),
+                    result.defaultRecruiterId(),
+                    result.attributionRemark(),
+                    AttributionService.NativeMappingTrace.none());
+        }
+        return AttributionService.AttributionResult.unattributed(
+                result.talentId(),
+                result.talentUid(),
+                result.activityId(),
+                result.defaultRecruiterId(),
+                result.attributionRemark(),
+                AttributionService.NativeMappingTrace.none());
+    }
+
+    private static UUID resolveDefaultRecruiter(RecruiterLookup recruiterLookup) {
+        if (recruiterLookup == null || recruiterLookup.lookupFailed()) {
+            return null;
+        }
+        if (recruiterLookup.productAssigneeId() != null) {
+            return recruiterLookup.productAssigneeId();
+        }
+        return recruiterLookup.activityDefaultRecruiterId();
     }
 
     private static String firstNonBlank(String... values) {
