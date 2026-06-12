@@ -63,7 +63,8 @@ class OrderSyncPersistenceInstituteSettlementTest {
                 userDomainFacade,
                 eventPublisher,
                 new OrderAmountMappingRouter(new DddRefactorProperties()),
-                orderDomainEventPublisher
+                orderDomainEventPublisher,
+                new DddRefactorProperties()
         );
     }
 

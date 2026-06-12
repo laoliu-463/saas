@@ -59,6 +59,15 @@ final class MapperDomainRegistry {
         if (lower.contains(".domain.order.")) {
             return Domain.ORDER;
         }
+        if (lower.contains(".domain.sample.")) {
+            return Domain.SAMPLE;
+        }
+        if (lower.contains(".domain.config.")) {
+            return Domain.CONFIG;
+        }
+        if (lower.contains(".domain.performance.")) {
+            return Domain.PERFORMANCE;
+        }
         if (lower.contains(".auth.") || lower.contains(".domain.user.")
                 || lower.endsWith("userdomainservice")
                 || lower.endsWith("usermasterdataservice")

@@ -53,13 +53,15 @@ class OrderSyncPersistenceServiceTest {
     @Mock
     private OrderDomainEventPublisher orderDomainEventPublisher;
 
+    private DddRefactorProperties dddRefactorProperties;
     private OrderAmountMappingRouter orderAmountMappingRouter;
     private OrderSyncPersistenceService service;
 
     @BeforeEach
     void setUp() {
         lenient().when(orderMapper.updateSyncedById(any(ColonelsettlementOrder.class))).thenReturn(1);
-        orderAmountMappingRouter = new OrderAmountMappingRouter(new DddRefactorProperties());
+        dddRefactorProperties = new DddRefactorProperties();
+        orderAmountMappingRouter = new OrderAmountMappingRouter(dddRefactorProperties);
         lenient().when(orderDomainEventPublisher.isOutboxRoutingEnabled()).thenReturn(false);
         service = new OrderSyncPersistenceService(
                 orderMapper,
@@ -71,7 +73,8 @@ class OrderSyncPersistenceServiceTest {
                 userDomainFacade,
                 eventPublisher,
                 orderAmountMappingRouter,
-                orderDomainEventPublisher
+                orderDomainEventPublisher,
+                dddRefactorProperties
         );
     }
 
@@ -297,6 +300,23 @@ class OrderSyncPersistenceServiceTest {
 
         verify(orderDomainEventPublisher).appendOrderSyncedInTransaction(any(), any(OrderSyncedEvent.class));
         verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void persistOrder_whenSampleHomeworkEventDrivenEnabled_shouldNotTriggerSampleHomeworkSynchronously() {
+        dddRefactorProperties.setEnabled(true);
+        dddRefactorProperties.getSampleHomeworkEvent().setEnabled(true);
+
+        ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
+        when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null);
+        when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(1);
+
+        service.persistOrder(order);
+
+        verify(pickSourceMappingService).ensureFromOrder(order);
+        verify(merchantService).ensureMerchantFromOrder(order);
+        verify(sampleLifecycleService, never()).completePendingHomeworkByOrder(order);
     }
 
     private ColonelsettlementOrder makeOrder(UUID channelUserId) {

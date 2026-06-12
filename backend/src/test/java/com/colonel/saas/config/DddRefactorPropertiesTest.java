@@ -33,7 +33,8 @@ class DddRefactorPropertiesTest {
                 .withProperty("ddd.refactor.performance-calc.enabled", "true")
                 .withProperty("ddd.refactor.performance-query.enabled", "true")
                 .withProperty("ddd.refactor.analytics-shadow.enabled", "true")
-                .withProperty("ddd.refactor.outbox.enabled", "true");
+                .withProperty("ddd.refactor.outbox.enabled", "true")
+                .withProperty("ddd.refactor.sample-homework-event.enabled", "true");
 
         DddRefactorProperties properties = Binder.get(environment)
                 .bind("ddd.refactor", DddRefactorProperties.class)
@@ -52,6 +53,7 @@ class DddRefactorPropertiesTest {
         assertThat(properties.getPerformanceQuery().isEnabled()).isTrue();
         assertThat(properties.getAnalyticsShadow().isEnabled()).isTrue();
         assertThat(properties.getOutbox().isEnabled()).isTrue();
+        assertThat(properties.getSampleHomeworkEvent().isEnabled()).isTrue();
     }
 
     static void assertAllFlagsFalse(DddRefactorProperties properties) {
@@ -80,5 +82,7 @@ class DddRefactorPropertiesTest {
         assertThat(properties.getAnalyticsShadow().isEnabled()).isFalse();
         assertThat(properties.getOutbox()).isNotNull();
         assertThat(properties.getOutbox().isEnabled()).isFalse();
+        assertThat(properties.getSampleHomeworkEvent()).isNotNull();
+        assertThat(properties.getSampleHomeworkEvent().isEnabled()).isFalse();
     }
 }

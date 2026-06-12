@@ -277,3 +277,5 @@ ddd:
       enabled: ${DDD_REFACTOR_ANALYTICS_SHADOW_ENABLED:false}
     outbox:
       enabled: ${DDD_REFACTOR_OUTBOX_ENABLED:false}
+    sample-homework-event:
+      enabled: ${DDD_REFACTOR_SAMPLE_HOMEWORK_EVENT_ENABLED:false}

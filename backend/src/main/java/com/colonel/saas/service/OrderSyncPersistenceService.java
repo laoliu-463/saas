@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.OptimisticLockSupport;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
@@ -56,6 +57,8 @@ public class OrderSyncPersistenceService {
     private final OrderAmountMappingRouter orderAmountMappingRouter;
     /** 订单域事件发布器（DDD-OUTBOX-001） */
     private final OrderDomainEventPublisher orderDomainEventPublisher;
+    /** DDD 重构安全开关（DDD-SAMPLE-004 寄样交作业事件驱动） */
+    private final DddRefactorProperties dddRefactorProperties;
 
     public OrderSyncPersistenceService(
             ColonelsettlementOrderMapper orderMapper,
@@ -67,7 +70,8 @@ public class OrderSyncPersistenceService {
             UserDomainFacade userDomainFacade,
             ApplicationEventPublisher eventPublisher,
             OrderAmountMappingRouter orderAmountMappingRouter,
-            OrderDomainEventPublisher orderDomainEventPublisher) {
+            OrderDomainEventPublisher orderDomainEventPublisher,
+            DddRefactorProperties dddRefactorProperties) {
         this.orderMapper = orderMapper;
         this.orderSyncDedupClaimMapper = orderSyncDedupClaimMapper;
         this.pickSourceMappingService = pickSourceMappingService;
@@ -78,6 +82,7 @@ public class OrderSyncPersistenceService {
         this.eventPublisher = eventPublisher;
         this.orderAmountMappingRouter = orderAmountMappingRouter;
         this.orderDomainEventPublisher = orderDomainEventPublisher;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     /** 根据用户 ID 查询真实姓名，不存在时返回 null（DDD-USER-002 委派 UserDomainFacade）。 */
@@ -236,8 +241,16 @@ public class OrderSyncPersistenceService {
         merchantService.ensureMerchantFromOrder(order);
         recordAttributionFollowUp(order, "沉淀商家", "ensureMerchantFromOrder");
 
-        sampleLifecycleService.completePendingHomeworkByOrder(order);
-        recordAttributionFollowUp(order, "完成寄样作业", "completePendingHomeworkByOrder");
+        if (!isSampleHomeworkEventDriven()) {
+            sampleLifecycleService.completePendingHomeworkByOrder(order);
+            recordAttributionFollowUp(order, "完成寄样作业", "completePendingHomeworkByOrder");
+        }
+    }
+
+    /** DDD-SAMPLE-004：寄样交作业改由 {@link OrderSyncedEvent} 异步驱动。 */
+    private boolean isSampleHomeworkEventDriven() {
+        return dddRefactorProperties.isEnabled()
+                && dddRefactorProperties.getSampleHomeworkEvent().isEnabled();
     }
 
     /** 记录单次归因后置步骤的操作日志，便于问题排查和执行轨迹追踪。 */

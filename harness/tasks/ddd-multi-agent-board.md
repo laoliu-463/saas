@@ -89,12 +89,19 @@ HEAD：`aca79f74`（merge: P-FIX-002E 落地 + OUTBOX-001 verify）
 | P2 | Batch4 Outbox | Infra | **DONE** — OUTBOX-001 OrderSynced 路由（`27d15ae6`） |
 | P2 | P-FIX-002E | Product | **DONE** — 商品 PENDING repair（`aca79f74`） |
 
+## Batch 5 — 事件 / Outbox 余项
+
+| task_id | 状态 | 说明 |
+|---------|------|------|
+| DDD-SAMPLE-004 | WIP | `sample-homework-event` 开关 + 监听器（待 agent-do） |
+| DDD-EVENT-003 | TODO | Outbox Dispatcher Dry Run |
+
 ## 下一步优先
 
-- Batch4 当前：**OUTBOX-001**（OrderSyncedEvent Outbox 路由，待 commit + agent-do）
-- Batch3：**DONE**（`01f7d3da` ORDER-003）
-- `agent-do -Scope backend` 补证据
-- **Step 5**：BASE-002 Characterization 全绿 (已完成)
+1. **WIP** `DDD-SAMPLE-004` — 本 session 代码待 `agent-do` 验证
+2. **P0** `DDD-SLIM-ORDER-001` — 金额映射瘦身
+3. **P2** `DDD-EVENT-003` — Dispatcher Dry Run
+4. **P0** `DDD-VERIFY-001` — E2E P0 终验
 
 可并行：**User-003** + **Product-001** + **Talent-001**（无共享文件）  
-不可并行：**Order-002** 与任何改 `OrderSyncService` 的任务
+不可并行：**Order-002** 与任何改 `OrderSyncService` 的主链任务

@@ -42,6 +42,8 @@ import org.springframework.stereotype.Component;
  *       enabled: false
  *     outbox:
  *       enabled: false
+ *     sample-homework-event:
+ *       enabled: false
  * </pre>
  */
 @Data
@@ -77,6 +79,9 @@ public class DddRefactorProperties {
     private Switch analyticsShadow = new Switch();
 
     private Switch outbox = new Switch();
+
+    /** 寄样交作业改由 {@link OrderSyncedEvent} 驱动（DDD-SAMPLE-004）。 */
+    private Switch sampleHomeworkEvent = new Switch();
 
     /** A nested switch bound from keys such as {@code ddd.refactor.user-facade.enabled}. */
     @Data
