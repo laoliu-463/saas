@@ -17,7 +17,9 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
+import com.colonel.saas.domain.talent.policy.TalentAddressPolicy;
 import com.colonel.saas.domain.talent.policy.TalentClaimPolicy;
+import com.colonel.saas.domain.talent.policy.TalentTagPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.mapper.TalentMapper;
@@ -510,7 +512,7 @@ public class TalentService {
     @Transactional(rollbackFor = Exception.class)
     public List<String> updateTags(UUID id, List<String> tags, UUID operatorId) {
         Talent talent = getById(id);
-        List<String> normalized = normalizeTalentTags(tags);
+        List<String> normalized = TalentTagPolicy.normalize(tags, businessRuleConfigService.getPresetTalentTags());
         talent.setTags(normalized);
         talent.setTagUpdatedBy(operatorId);
         persistTalent(talent);
@@ -537,9 +539,11 @@ public class TalentService {
             String recipientPhone,
             String recipientAddress) {
         Talent talent = getById(id);
-        talent.setShippingRecipientName(trimToNull(recipientName));
-        talent.setShippingRecipientPhone(trimToNull(recipientPhone));
-        talent.setShippingRecipientAddress(trimToNull(recipientAddress));
+        TalentAddressPolicy.NormalizedAddress addr = TalentAddressPolicy.normalize(
+                recipientName, recipientPhone, recipientAddress);
+        talent.setShippingRecipientName(addr.recipientName());
+        talent.setShippingRecipientPhone(addr.recipientPhone());
+        talent.setShippingRecipientAddress(addr.recipientAddress());
         persistTalent(talent);
         return talent;
     }
@@ -576,16 +580,15 @@ public class TalentService {
             throw new ForbiddenException("仅当前认领人可以维护达人收货地址");
         }
         // T-04 fix: 地址仅存于 claim 层，不写入 talent 主表，避免非认领人通过达人详情查见
-        String normalizedName = trimToNull(recipientName);
-        String normalizedPhone = trimToNull(recipientPhone);
-        String normalizedAddress = trimToNull(recipientAddress);
-        claim.setRecipientName(normalizedName);
-        claim.setRecipientPhone(normalizedPhone);
-        claim.setRecipientAddress(normalizedAddress);
+        TalentAddressPolicy.NormalizedAddress addr = TalentAddressPolicy.normalize(
+                recipientName, recipientPhone, recipientAddress);
+        claim.setRecipientName(addr.recipientName());
+        claim.setRecipientPhone(addr.recipientPhone());
+        claim.setRecipientAddress(addr.recipientAddress());
         persistTalentClaim(claim);
-        talent.setShippingRecipientName(normalizedName);
-        talent.setShippingRecipientPhone(normalizedPhone);
-        talent.setShippingRecipientAddress(normalizedAddress);
+        talent.setShippingRecipientName(addr.recipientName());
+        talent.setShippingRecipientPhone(addr.recipientPhone());
+        talent.setShippingRecipientAddress(addr.recipientAddress());
         return talent;
     }
 
