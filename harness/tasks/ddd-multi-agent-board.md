@@ -23,7 +23,7 @@ HEAD：`5cea498a`（Batch3：SAMPLE-007 Facade 路由）
 | DDD-BASE-001 | Infra | DONE | `8f1244a6` | `harness/reports/ddd-base-001-refactor-switches.md` |
 | DDD-BASE-003 | Architecture Guard | DONE | `86b16922` | `harness/reports/ddd-dependency-map.md` |
 | DDD-BASE-004 | Infra | DONE | `1ab9cd92` | `harness/reports/ddd-base-004-package-structure.md` |
-| DDD-BASE-002 | Test | PARTIAL | — | Sample 循环依赖已解除；Characterization 仍 PARTIAL |
+| DDD-BASE-002 | Test | DONE | — | Characterization Baseline Tests 全绿 |
 | Coordinator 看板 | Coordinator | **本文件** | — | — |
 
 ## Batch 1 — Facade（只新增，少替换）
@@ -58,8 +58,8 @@ HEAD：`5cea498a`（Batch3：SAMPLE-007 Facade 路由）
 | task_id | owner | 状态 | 说明 |
 |---------|-------|------|------|
 | DDD-TALENT-003 | Talent | DONE | `69e8d106` Controller → ApplicationService → Facade |
-| DDD-SAMPLE-007 | Sample | DONE | `5cea498a` Controller → ApplicationService → Facade |
-| DDD-PRODUCT-003 | Product | TODO | QuickSample 切 Facade |
+| DDD-SAMPLE-007 | Sample | DONE | `pending` Controller → ApplicationService → Facade |
+| DDD-PRODUCT-003 | Product | DONE | `19c7da8b` QuickSample 切 Facade |
 | DDD-PERF-003 | Performance | TODO | QueryController 切 Facade |
 | DDD-ORDER-003 | Order | TODO | Controller 切 Facade（勿碰 OrderSyncService） |
 
@@ -84,13 +84,13 @@ HEAD：`5cea498a`（Batch3：SAMPLE-007 Facade 路由）
 | P2 | DDD-TALENT-001 | Talent | **DONE** `60b9d062` |
 | P2 | DDD-PERF-002 | Performance | **DONE** `59d3a085` |
 | P2 | DDD-TALENT-002 / SAMPLE-006 | Batch2 Policy | **DONE** `d41c4d58` / `98299d1e` |
-| P2 | Batch3 Replace | Integration | **WIP** — TALENT-003 + SAMPLE-007 DONE，下一域 PRODUCT-003 |
+| P2 | Batch3 Replace | Integration | **WIP** — TALENT-003 + SAMPLE-007 + PRODUCT-003 DONE，下一域 PERF-003 |
 
 ## 下一步优先
 
-- Batch3 下一域：**PRODUCT-003**（QuickSample / ProductDomainFacade）
+- Batch3 下一域：**PERF-003**（QueryController 切 Facade）
 - `agent-do -Scope backend` 补证据
-- **Step 5**：BASE-002 Characterization 全绿
+- **Step 5**：BASE-002 Characterization 全绿 (已完成)
 
 可并行：**User-003** + **Product-001** + **Talent-001**（无共享文件）  
 不可并行：**Order-002** 与任何改 `OrderSyncService` 的任务
