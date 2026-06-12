@@ -121,20 +121,33 @@ try {
         return
     }
 
+    $filesToAdd = [System.Collections.Generic.List[string]]::new()
+    $filesToRemove = [System.Collections.Generic.List[string]]::new()
+
     foreach ($file in $changedFiles) {
         if (Test-Path -LiteralPath $file) {
-            git add -f -- $file
-            if ($LASTEXITCODE -ne 0) {
-                throw "git staging failed for $file."
-            }
+            $filesToAdd.Add($file)
         } else {
-            $prevErrorActionPreference = $ErrorActionPreference
-            $ErrorActionPreference = "Continue"
-            try {
-                & git rm --cached -f -- $file 2>$null
-            } catch {}
-            $ErrorActionPreference = $prevErrorActionPreference
+            $filesToRemove.Add($file)
         }
+    }
+
+    if ($filesToAdd.Count -gt 0) {
+        Write-Host "Batch adding $($filesToAdd.Count) files..."
+        git add -f -- $filesToAdd
+        if ($LASTEXITCODE -ne 0) {
+            throw "git staging failed for batch add."
+        }
+    }
+
+    if ($filesToRemove.Count -gt 0) {
+        Write-Host "Batch removing $($filesToRemove.Count) files from cache..."
+        $prevErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            git rm --cached -f -- $filesToRemove 2>$null
+        } catch {}
+        $ErrorActionPreference = $prevErrorActionPreference
     }
 
     $stagedFiles = & git -c core.quotepath=false diff --cached --name-only

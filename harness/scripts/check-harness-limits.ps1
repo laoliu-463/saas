@@ -46,15 +46,15 @@ foreach ($file in $allNonScripts) {
 $isPass = ($violations.Count -eq 0)
 
 $content = "# Harness Limits Check`n`n"
-$content += "## 结论`n"
+$content += "## Conclusion`n"
 if ($isPass) {
     $content += "PASS`n`n"
 } else {
     $content += "FAIL`n`n"
 }
 
-$content += "## 违规项`n"
-$content += "| 路径 | 问题 | 建议 |`n"
+$content += "## Violations`n"
+$content += "| Path | Issue | Suggestion |`n"
 $content += "| --- | --- | --- |`n"
 
 if ($violations.Count -gt 0) {
@@ -65,8 +65,8 @@ if ($violations.Count -gt 0) {
     $content += "| None | None | None |`n"
 }
 
-$content += "`n## 下一步`n"
-$content += "请根据上述结果进行维护。"
+$content += "`n## Next Steps`n"
+$content += "Please maintain the harness folders according to the check results."
 
 $content | Set-Content -Path $reportPath -Encoding UTF8 -Force
 

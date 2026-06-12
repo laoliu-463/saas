@@ -88,7 +88,7 @@ HEAD：`69e8d106`（Batch3：TALENT-003 Facade 路由）
 
 ## 下一步优先
 
-- Batch3 下一域：**SAMPLE-007**（SampleController 切 Facade/Port）
+- Batch3 下一域：**PRODUCT-003**（QuickSample / ProductDomainFacade）
 - `agent-do -Scope backend` 补证据
 - **Step 5**：BASE-002 Characterization 全绿
 
