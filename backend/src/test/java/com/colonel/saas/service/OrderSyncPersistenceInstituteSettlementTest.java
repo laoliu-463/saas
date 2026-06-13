@@ -58,12 +58,9 @@ class OrderSyncPersistenceInstituteSettlementTest {
     void setUp() {
         lenient().when(orderMapper.updateSyncedById(any(ColonelsettlementOrder.class))).thenReturn(1);
         DddRefactorProperties properties = new DddRefactorProperties();
-        InProcessOrderDomainEventPublisher inProcessPublisher =
-                new InProcessOrderDomainEventPublisher(eventPublisher);
-        orderDomainEventPublisher = new OrderDomainEventPublisher(
+        orderDomainEventPublisher = new InProcessOrderDomainEventPublisher(
                 outboxEventAppender,
                 eventPublisher,
-                inProcessPublisher,
                 new ObjectMapper().registerModule(new JavaTimeModule()),
                 properties);
         service = new OrderSyncPersistenceService(

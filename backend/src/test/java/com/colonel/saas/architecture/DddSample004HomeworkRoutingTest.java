@@ -14,10 +14,6 @@ import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderSyncPersistenceService;
 import com.colonel.saas.service.PickSourceMappingService;
 import com.colonel.saas.service.SampleLifecycleService;
-import com.colonel.saas.service.MerchantService;
-import com.colonel.saas.service.OperationLogService;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.OrderSyncDedupClaimMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -64,12 +60,9 @@ class DddSample004HomeworkRoutingTest {
     @BeforeEach
     void setUp() {
         dddRefactorProperties = new DddRefactorProperties();
-        InProcessOrderDomainEventPublisher inProcessPublisher =
-                new InProcessOrderDomainEventPublisher(eventPublisher);
-        orderDomainEventPublisher = new OrderDomainEventPublisher(
+        orderDomainEventPublisher = new InProcessOrderDomainEventPublisher(
                 outboxEventAppender,
                 eventPublisher,
-                inProcessPublisher,
                 new com.fasterxml.jackson.databind.ObjectMapper()
                         .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule()),
                 dddRefactorProperties);

@@ -29,6 +29,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -67,12 +68,9 @@ class OrderSyncPersistenceServiceTest {
         lenient().when(orderMapper.updateSyncedById(any(ColonelsettlementOrder.class))).thenReturn(1);
         dddRefactorProperties = new DddRefactorProperties();
         orderAmountMappingRouter = new OrderAmountMappingRouter(dddRefactorProperties);
-        InProcessOrderDomainEventPublisher inProcessPublisher =
-                new InProcessOrderDomainEventPublisher(eventPublisher);
-        orderDomainEventPublisher = new OrderDomainEventPublisher(
+        orderDomainEventPublisher = new InProcessOrderDomainEventPublisher(
                 outboxEventAppender,
                 eventPublisher,
-                inProcessPublisher,
                 new ObjectMapper().registerModule(new JavaTimeModule()),
                 dddRefactorProperties);
         service = new OrderSyncPersistenceService(
@@ -316,7 +314,7 @@ class OrderSyncPersistenceServiceTest {
                 any(),
                 any(),
                 any(),
-                any(),
+                anyInt(),
                 any(OrderSyncedEvent.class),
                 any(),
                 any());

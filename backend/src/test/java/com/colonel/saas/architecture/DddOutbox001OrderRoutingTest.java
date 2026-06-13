@@ -40,12 +40,9 @@ class DddOutbox001OrderRoutingTest {
 
     @BeforeEach
     void setUp() {
-        InProcessOrderDomainEventPublisher inProcessPublisher =
-                new InProcessOrderDomainEventPublisher(applicationEventPublisher);
-        publisher = new OrderDomainEventPublisher(
+        publisher = new InProcessOrderDomainEventPublisher(
                 outboxEventAppender,
                 applicationEventPublisher,
-                inProcessPublisher,
                 objectMapper,
                 dddRefactorProperties);
     }

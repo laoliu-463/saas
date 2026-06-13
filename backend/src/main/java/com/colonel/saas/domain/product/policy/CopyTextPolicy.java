@@ -29,9 +29,8 @@ public final class CopyTextPolicy {
             ProductSnapshot snapshot,
             ProductOperationState state,
             String promotionLink) {
-        String template = configDomainFacade == null
-                ? null
-                : configDomainFacade.getPromotionTemplate().copyBriefTemplate();
+        var templateConfig = configDomainFacade == null ? null : configDomainFacade.getPromotionTemplate();
+        String template = templateConfig == null ? null : templateConfig.copyBriefTemplate();
         if (StringUtils.hasText(template)) {
             return renderTemplate(template, snapshot, state, promotionLink);
         }

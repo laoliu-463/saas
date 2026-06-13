@@ -1,28 +1,83 @@
 package com.colonel.saas.domain.order.event;
 
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.constant.OrderDomainEventTypes;
+import com.colonel.saas.domain.event.OutboxEventAppender;
 import com.colonel.saas.event.OrderSyncedEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.util.StringUtils;
 
 /**
- * 进程内订单事件发布器（DDD-ORDER-005）。
+ * 进程内订单事件发布具体实现类（DDD-ORDER-005）。
  */
 @Component
-public class InProcessOrderDomainEventPublisher {
+public class InProcessOrderDomainEventPublisher implements OrderDomainEventPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(InProcessOrderDomainEventPublisher.class);
+    private static final int EVENT_VERSION = 1;
 
+    private final OutboxEventAppender outboxEventAppender;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final ObjectMapper objectMapper;
+    private final DddRefactorProperties dddRefactorProperties;
 
-    public InProcessOrderDomainEventPublisher(ApplicationEventPublisher applicationEventPublisher) {
+    public InProcessOrderDomainEventPublisher(
+            OutboxEventAppender outboxEventAppender,
+            ApplicationEventPublisher applicationEventPublisher,
+            ObjectMapper objectMapper,
+            DddRefactorProperties dddRefactorProperties) {
+        this.outboxEventAppender = outboxEventAppender;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.objectMapper = objectMapper;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
-    public void publishAfterCommit(OrderSyncedEvent event) {
+    @Override
+    public boolean isOutboxRoutingEnabled() {
+        return dddRefactorProperties.isEnabled() && dddRefactorProperties.getOutbox().isEnabled();
+    }
+
+    @Override
+    public void appendOrderSyncedInTransaction(String eventKey, OrderSyncedEvent event) {
+        if (event == null || !StringUtils.hasText(event.orderId())) {
+            return;
+        }
+        try {
+            outboxEventAppender.appendIfAbsent(
+                    eventKey,
+                    OrderDomainEventTypes.ORDER_SYNCED,
+                    OutboxEventAppender.AGGREGATE_ORDER,
+                    event.orderId(),
+                    EVENT_VERSION,
+                    event,
+                    null,
+                    null);
+        } catch (Exception ex) {
+            log.warn("Outbox append failed: eventType={}, orderId={}", OrderDomainEventTypes.ORDER_SYNCED, event.orderId(), ex);
+        }
+    }
+
+    @Override
+    public void publishOrderSynced(OrderSyncedEvent event) {
+        if (event == null || !StringUtils.hasText(event.orderId())) {
+            return;
+        }
+        if (isOutboxRoutingEnabled()) {
+            String eventKey = "OrderSynced:" + event.orderId() + ":" + event.orderRowId();
+            appendOrderSyncedInTransaction(eventKey, event);
+            return;
+        }
+        publishOrderSyncedDirect(event);
+    }
+
+    @Override
+    public void publishOrderSyncedDirect(OrderSyncedEvent event) {
         if (event == null) {
             return;
         }
@@ -38,7 +93,8 @@ public class InProcessOrderDomainEventPublisher {
         });
     }
 
-    public void publishStatusChangedAfterCommit(OrderStatusChangedEvent event) {
+    @Override
+    public void publishOrderStatusChangedDirect(OrderStatusChangedEvent event) {
         if (event == null) {
             return;
         }
@@ -59,5 +115,18 @@ public class InProcessOrderDomainEventPublisher {
                 publish.run();
             }
         });
+    }
+
+    @Override
+    public void republishSpringEvent(String eventType, String payloadJson) {
+        if (!OrderDomainEventTypes.ORDER_SYNCED.equals(eventType)) {
+            return;
+        }
+        try {
+            OrderSyncedEvent event = objectMapper.readValue(payloadJson, OrderSyncedEvent.class);
+            applicationEventPublisher.publishEvent(event);
+        } catch (Exception ex) {
+            log.warn("Spring republish failed for eventType={}", eventType, ex);
+        }
     }
 }
