@@ -2,12 +2,12 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`。
 
-更新时间：2026-06-13 16:58
-分支：`feature/ddd/DDD-SLIM-SAMPLE-001`（owner 集成分支，已合 Sprint1 P0 + 第二批 + SAMPLE-001 + SLIM-PRODUCT/SAMPLE-001）
-HEAD：`63ff05bf`（slim sample retro）
+更新时间：2026-06-13 17:05
+分支：`feature/ddd/DDD-CLEAN-001`（owner 集成分支，已合 Sprint1 P0 + 第二批 + SAMPLE-001 + SLIM-PRODUCT/SAMPLE-001 + CLEAN-001）
+HEAD：`WIP`（DDD-CLEAN-001）
 
 > 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`
-> 当前进度：**strict DONE 45/53 = 85%**（含 PARTIAL 46/53 = 87%）
+> 当前进度：**strict DONE 46/53 = 87%**（含 PARTIAL 47/53 = 89%）
 
 ## 图例
 
@@ -90,6 +90,7 @@ HEAD：`63ff05bf`（slim sample retro）
 | DDD-SLIM-PERF-001 | Performance | DONE | `c419c350` delegate CommissionService money formula to PerformanceMoneyPolicy |
 | DDD-SLIM-PRODUCT-001 | Product | DONE | `6452425f` + `c21387b2` slim ProductService display rules to ProductDisplayPolicy（`DddSlimProduct001DisplayPolicyRoutingTest` 落地） |
 | DDD-SLIM-SAMPLE-001 | Sample | DONE | `c436f1f0` + `f90ea9d1` slim SampleService eligibility checks（delegated to SampleEligibilityPolicy failure rules） |
+| DDD-CLEAN-001 | Order + User | DONE | `WIP` order code no longer injects SysUserMapper/SysUserService; guard `DddClean001OrderUserDependencyGuardTest` added |
 
 ## Batch 7 - Sprint 1 P0（owner 集成分支）
 
@@ -123,7 +124,6 @@ HEAD：`63ff05bf`（slim sample retro）
 
 | task_id | 优先级 | 说明 |
 | --- | --- | --- |
-| DDD-CLEAN-001 | P1 | 订单域移除 SysUserMapper 直接注入（除 USER-002 已做部分） |
 | DDD-CLEAN-002 | P1 | 寄样域移除商品/达人/用户/配置跨域 Mapper |
 | DDD-CLEAN-003 | P1 | 业绩域移除订单/商品/达人/配置/用户跨域 Mapper |
 | DDD-CLEAN-004 | P1 | 商品域移除寄样域直接依赖 |
@@ -134,9 +134,9 @@ HEAD：`63ff05bf`（slim sample retro）
 
 ## 下一步优先（按推荐顺序）
 
-1. **P0** `DDD-VERIFY-001` - 全链路验证 owner 集成分支 DDD-SLIM-SAMPLE-001 是否整体绿（先跑 mvn 测试，验证 45 DONE + 1 PARTIAL 不引入回归）。
-2. **P1** `DDD-CLEAN-001~004` - 跨域 mapper 清理（按 phase 11 顺序串行）。
-3. **P1** `DDD-FRONT-001` - 前端字段标注。
+1. **P1** `DDD-CLEAN-002~004` - 跨域 mapper 清理（按 phase 11 顺序串行）。
+2. **P1** `DDD-FRONT-001` - 前端字段标注。
+3. **P0** `DDD-VERIFY-001` - CLEAN + FRONT 完成后做阶段验收。
 4. **P1** 修正 `DDD-PERF-001` PARTIAL 缺口（补 PerformanceCalculationApplicationService）。
 
 ## real-pre 状态
@@ -166,3 +166,4 @@ HEAD：`63ff05bf`（slim sample retro）
 - **2026-06-13 16:09** - DDD-SLIM-PRODUCT-001 收尾（6452425f ProductService 瘦身）
 - **2026-06-13 16:51** - DDD-SLIM-SAMPLE-001 收尾（f90ea9d1 SampleService 瘦身）
 - **2026-06-13 16:58** - 第二次 board 同步（strict 45/53 = 85%, 含 PARTIAL 46/53 = 87%）
+- **2026-06-13 17:05** - DDD-CLEAN-001 收尾（订单域 SysUserMapper/SysUserService 直接依赖护栏）
