@@ -1,7 +1,6 @@
 package com.colonel.saas.controller;
 
 import com.colonel.saas.auth.service.SysUserService;
-import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
 import com.colonel.saas.service.ProductPinService;
 import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,8 +25,6 @@ class ColonelActivityProductControllerCopyPromotionTest {
     private ProductPinService productPinService;
     @Mock
     private SysUserService sysUserService;
-    @Mock
-    private CopyPromotionApplicationService copyPromotionApplicationService;
 
     private ColonelActivityProductController controller;
 
@@ -36,15 +33,15 @@ class ColonelActivityProductControllerCopyPromotionTest {
         controller = new ColonelActivityProductController(
                 productService,
                 productPinService,
-                sysUserService,
-                copyPromotionApplicationService);
+                sysUserService);
     }
 
     @Test
-    void generatePromotionLink_shouldDelegateCopyPromotionApplicationService() {
+    void generatePromotionLink_shouldDelegateProductService() {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
-        ProductService.PromotionLinkCopyResult expected = new ProductService.PromotionLinkCopyResult(
+        com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult expected =
+                new com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult(
                 "copy text",
                 true,
                 "https://s.link",
@@ -52,7 +49,7 @@ class ColonelActivityProductControllerCopyPromotionTest {
                 null,
                 true,
                 true);
-        when(copyPromotionApplicationService.generatePromotionLinkCopy(
+        when(productService.generatePromotionLinkCopy(
                 "ACT-1",
                 "P-1",
                 userId,
@@ -81,7 +78,7 @@ class ColonelActivityProductControllerCopyPromotionTest {
                 deptId);
 
         assertThat(response.getData()).isSameAs(expected);
-        verify(copyPromotionApplicationService).generatePromotionLinkCopy(
+        verify(productService).generatePromotionLinkCopy(
                 "ACT-1",
                 "P-1",
                 userId,
@@ -92,6 +89,5 @@ class ColonelActivityProductControllerCopyPromotionTest {
                 "PRODUCT_LIBRARY",
                 "talent-1",
                 "idem-1");
-        verifyNoInteractions(productService);
     }
 }

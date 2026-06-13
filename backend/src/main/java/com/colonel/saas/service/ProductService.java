@@ -188,14 +188,9 @@ public class ProductService {
             ProductDisplayRuleService productDisplayRuleService,
             ColonelPartnerSyncService colonelPartnerSyncService,
             ProductDomainEventPublisher productDomainEventPublisher,
-<<<<<<< HEAD
-            ProductDisplayPolicy productDisplayPolicy) {
-        this.douyinConvertPort = douyinConvertPort;
-=======
             ProductDisplayPolicy productDisplayPolicy,
             com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService) {
-        this.douyinPromotionGateway = douyinPromotionGateway;
->>>>>>> fef02b1d (feat(product): DDD-PRODUCT-004 CopyPromotionApplicationService + DouyinConvertPort)
+        this.douyinConvertPort = douyinConvertPort;
         this.douyinProductGateway = douyinProductGateway;
         this.snapshotMapper = snapshotMapper;
         this.operationStateMapper = operationStateMapper;

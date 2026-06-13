@@ -2,7 +2,9 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
+import com.colonel.saas.domain.order.event.InProcessOrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
+import com.colonel.saas.domain.order.event.OrderEventPayloadMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
@@ -15,6 +17,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -45,14 +49,23 @@ class OrderSyncPersistenceInstituteSettlementTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
     @Mock
-    private OrderDomainEventPublisher orderDomainEventPublisher;
+    private com.colonel.saas.domain.event.OutboxEventAppender outboxEventAppender;
 
+    private OrderDomainEventPublisher orderDomainEventPublisher;
     private OrderSyncPersistenceService service;
 
     @BeforeEach
     void setUp() {
         lenient().when(orderMapper.updateSyncedById(any(ColonelsettlementOrder.class))).thenReturn(1);
-        lenient().when(orderDomainEventPublisher.isOutboxRoutingEnabled()).thenReturn(false);
+        DddRefactorProperties properties = new DddRefactorProperties();
+        InProcessOrderDomainEventPublisher inProcessPublisher =
+                new InProcessOrderDomainEventPublisher(eventPublisher);
+        orderDomainEventPublisher = new OrderDomainEventPublisher(
+                outboxEventAppender,
+                eventPublisher,
+                inProcessPublisher,
+                new ObjectMapper().registerModule(new JavaTimeModule()),
+                properties);
         service = new OrderSyncPersistenceService(
                 orderMapper,
                 orderSyncDedupClaimMapper,
@@ -61,10 +74,10 @@ class OrderSyncPersistenceInstituteSettlementTest {
                 sampleLifecycleService,
                 operationLogService,
                 userDomainFacade,
-                eventPublisher,
-                new OrderAmountMappingRouter(new DddRefactorProperties()),
+                new OrderAmountMappingRouter(properties),
                 orderDomainEventPublisher,
-                new DddRefactorProperties()
+                new OrderEventPayloadMapper(),
+                properties
         );
     }
 

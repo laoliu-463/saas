@@ -2,12 +2,16 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
+import com.colonel.saas.domain.order.event.InProcessOrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
+import com.colonel.saas.domain.order.event.OrderEventPayloadMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.OrderSyncDedupClaimMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,10 +55,11 @@ class OrderSyncPersistenceServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
     @Mock
-    private OrderDomainEventPublisher orderDomainEventPublisher;
+    private com.colonel.saas.domain.event.OutboxEventAppender outboxEventAppender;
 
     private DddRefactorProperties dddRefactorProperties;
     private OrderAmountMappingRouter orderAmountMappingRouter;
+    private OrderDomainEventPublisher orderDomainEventPublisher;
     private OrderSyncPersistenceService service;
 
     @BeforeEach
@@ -62,7 +67,14 @@ class OrderSyncPersistenceServiceTest {
         lenient().when(orderMapper.updateSyncedById(any(ColonelsettlementOrder.class))).thenReturn(1);
         dddRefactorProperties = new DddRefactorProperties();
         orderAmountMappingRouter = new OrderAmountMappingRouter(dddRefactorProperties);
-        lenient().when(orderDomainEventPublisher.isOutboxRoutingEnabled()).thenReturn(false);
+        InProcessOrderDomainEventPublisher inProcessPublisher =
+                new InProcessOrderDomainEventPublisher(eventPublisher);
+        orderDomainEventPublisher = new OrderDomainEventPublisher(
+                outboxEventAppender,
+                eventPublisher,
+                inProcessPublisher,
+                new ObjectMapper().registerModule(new JavaTimeModule()),
+                dddRefactorProperties);
         service = new OrderSyncPersistenceService(
                 orderMapper,
                 orderSyncDedupClaimMapper,
@@ -71,9 +83,9 @@ class OrderSyncPersistenceServiceTest {
                 sampleLifecycleService,
                 operationLogService,
                 userDomainFacade,
-                eventPublisher,
                 orderAmountMappingRouter,
                 orderDomainEventPublisher,
+                new OrderEventPayloadMapper(),
                 dddRefactorProperties
         );
     }
@@ -290,7 +302,8 @@ class OrderSyncPersistenceServiceTest {
 
     @Test
     void persistOrder_shouldAppendOutboxInsteadOfSpringEventWhenRoutingEnabled() {
-        when(orderDomainEventPublisher.isOutboxRoutingEnabled()).thenReturn(true);
+        dddRefactorProperties.setEnabled(true);
+        dddRefactorProperties.getOutbox().setEnabled(true);
         ColonelsettlementOrder order = makeOrder(UUID.randomUUID());
         when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
         when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null);
@@ -298,8 +311,16 @@ class OrderSyncPersistenceServiceTest {
 
         service.persistOrder(order);
 
-        verify(orderDomainEventPublisher).appendOrderSyncedInTransaction(any(), any(OrderSyncedEvent.class));
-        verifyNoInteractions(eventPublisher);
+        verify(outboxEventAppender).appendIfAbsent(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(OrderSyncedEvent.class),
+                any(),
+                any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test

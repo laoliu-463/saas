@@ -1,8 +1,5 @@
 package com.colonel.saas.domain.product.application;
 
-<<<<<<< HEAD
-import com.colonel.saas.service.ProductService;
-=======
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult;
 import com.colonel.saas.domain.product.policy.CopyTextPolicy;
@@ -13,18 +10,11 @@ import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
->>>>>>> fef02b1d (feat(product): DDD-PRODUCT-004 CopyPromotionApplicationService + DouyinConvertPort)
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
 
 /**
-<<<<<<< HEAD
- * 复制讲解 / 转链应用层（DDD-PRODUCT-004）。
- *
- * <p>Controller 写路径统一经本服务委派 {@link ProductService#generatePromotionLinkCopy}，
- * 不改变现有 API 契约与业务行为。</p>
-=======
  * 复制推广简介应用层（DDD-PRODUCT-004）。
  *
  * <p>把 {@code ProductService.generatePromotionLinkCopy} 的业务编排抽到本服务：
@@ -32,20 +22,10 @@ import java.util.UUID;
  *
  * <p>纯文本渲染由 {@link CopyTextPolicy} 完成；上游 SDK 由 {@link DouyinConvertPort} 抽象。
  * 实际快照/状态读取和转链执行仍由 {@link ProductService} 负责（避免重复实现和循环依赖）。</p>
->>>>>>> fef02b1d (feat(product): DDD-PRODUCT-004 CopyPromotionApplicationService + DouyinConvertPort)
  */
 @Service
 public class CopyPromotionApplicationService {
 
-<<<<<<< HEAD
-    private final ProductService productService;
-
-    public CopyPromotionApplicationService(ProductService productService) {
-        this.productService = productService;
-    }
-
-    public ProductService.PromotionLinkCopyResult generatePromotionLinkCopy(
-=======
     public static final String FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED = "REAL_PROMOTION_WRITE_DISABLED";
 
     private final ProductService productService;
@@ -73,7 +53,6 @@ public class CopyPromotionApplicationService {
      * </ol>
      */
     public PromotionLinkCopyResult copyPromotion(
->>>>>>> fef02b1d (feat(product): DDD-PRODUCT-004 CopyPromotionApplicationService + DouyinConvertPort)
             String activityId,
             String productId,
             UUID userId,
@@ -83,10 +62,6 @@ public class CopyPromotionApplicationService {
             boolean needShortLink,
             String scene,
             String talentId,
-<<<<<<< HEAD
-            String idempotencyKey) {
-        return productService.generatePromotionLinkCopy(
-=======
             String idempotencyKey,
             boolean realPromotionWriteEnabled,
             boolean allowRealPromotionWrite) {
@@ -108,7 +83,6 @@ public class CopyPromotionApplicationService {
         }
 
         DouyinPromotionGateway.PromotionLinkResult result = productService.generatePromotionLinkInternal(
->>>>>>> fef02b1d (feat(product): DDD-PRODUCT-004 CopyPromotionApplicationService + DouyinConvertPort)
                 activityId,
                 productId,
                 userId,
@@ -117,10 +91,6 @@ public class CopyPromotionApplicationService {
                 promotionScene,
                 needShortLink,
                 scene,
-<<<<<<< HEAD
-                talentId,
-                idempotencyKey);
-=======
                 talentId);
         String promotionLink = CopyTextPolicy.firstText(result.shortLink(), result.promoteLink());
         String text = CopyTextPolicy.render(
@@ -144,6 +114,5 @@ public class CopyPromotionApplicationService {
      * 复制推广上下文（由 ProductService 在 prepareCopyPromotionContext 中装配）。
      */
     public record Context(ProductSnapshot snapshot, ProductOperationState state) {
->>>>>>> fef02b1d (feat(product): DDD-PRODUCT-004 CopyPromotionApplicationService + DouyinConvertPort)
     }
 }

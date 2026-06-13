@@ -67,6 +67,7 @@ class ProductServiceLibraryViewTest {
     @Mock private ProductDisplayRuleService productDisplayRuleService;
     @Mock private ColonelPartnerSyncService colonelPartnerSyncService;
     @Mock private ProductDomainEventPublisher productDomainEventPublisher;
+    @Mock private com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
 
     private ProductService productService;
 
@@ -92,7 +93,8 @@ class ProductServiceLibraryViewTest {
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher,
-                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy());
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
+                copyPromotionApplicationService);
         when(productBizStatusService.readBizStatus(any())).thenReturn(null);
         when(talentFollowService.listByProduct(any(), any())).thenReturn(List.of());
         when(colonelActivityMapper.selectByActivityId(any())).thenReturn(null);

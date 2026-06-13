@@ -4,16 +4,15 @@ import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
+import com.colonel.saas.domain.order.event.OrderEventPayloadMapper;
+import com.colonel.saas.domain.order.event.OrderStatusChangedEvent;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.OrderSyncDedupClaimMapper;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.util.Collection;
@@ -51,12 +50,12 @@ public class OrderSyncPersistenceService {
     private final OperationLogService operationLogService;
     /** 用户域门面，提供用户名称查询能力（DDD-USER-002 替代 SysUserMapper） */
     private final UserDomainFacade userDomainFacade;
-    /** Spring 事件发布器，用于发布 OrderSyncedEvent */
-    private final ApplicationEventPublisher eventPublisher;
     /** 订单金额映射路由（DDD-ORDER-002） */
     private final OrderAmountMappingRouter orderAmountMappingRouter;
-    /** 订单域事件发布器（DDD-OUTBOX-001） */
+    /** 订单域事件发布器（DDD-ORDER-005 / OUTBOX-001） */
     private final OrderDomainEventPublisher orderDomainEventPublisher;
+    /** 订单事件载荷映射（DDD-ORDER-005） */
+    private final OrderEventPayloadMapper orderEventPayloadMapper;
     /** DDD 重构安全开关（DDD-SAMPLE-004 寄样交作业事件驱动） */
     private final DddRefactorProperties dddRefactorProperties;
 
@@ -68,9 +67,9 @@ public class OrderSyncPersistenceService {
             SampleLifecycleService sampleLifecycleService,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
-            ApplicationEventPublisher eventPublisher,
             OrderAmountMappingRouter orderAmountMappingRouter,
             OrderDomainEventPublisher orderDomainEventPublisher,
+            OrderEventPayloadMapper orderEventPayloadMapper,
             DddRefactorProperties dddRefactorProperties) {
         this.orderMapper = orderMapper;
         this.orderSyncDedupClaimMapper = orderSyncDedupClaimMapper;
@@ -79,9 +78,9 @@ public class OrderSyncPersistenceService {
         this.sampleLifecycleService = sampleLifecycleService;
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
-        this.eventPublisher = eventPublisher;
         this.orderAmountMappingRouter = orderAmountMappingRouter;
         this.orderDomainEventPublisher = orderDomainEventPublisher;
+        this.orderEventPayloadMapper = orderEventPayloadMapper;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -123,13 +122,14 @@ public class OrderSyncPersistenceService {
         ColonelsettlementOrder existing = orderMapper.findByOrderId(order.getOrderId());
         if (existing != null) {
             orderSyncDedupClaimMapper.bindOrderRow(order.getOrderId(), existing.getId());
+            Integer previousStatus = existing.getOrderStatus();
             mergeBySource(existing, order);
             order.setId(existing.getId());
             order.setCreateTime(existing.getCreateTime());
             order.setVersion(existing.getVersion());
             OptimisticLockSupport.requireUpdated(orderMapper.updateSyncedById(order));
             runAttributionFollowUps(order);
-            publishOrderSynced(order, false);
+            publishOrderSynced(order, false, previousStatus);
             return false;
         }
         if (claimEffect <= 0) {
@@ -142,17 +142,18 @@ public class OrderSyncPersistenceService {
                 return false;
             }
             orderSyncDedupClaimMapper.bindOrderRow(order.getOrderId(), existing.getId());
+            Integer previousStatus = existing.getOrderStatus();
             mergeBySource(existing, order);
             order.setId(existing.getId());
             order.setCreateTime(existing.getCreateTime());
             order.setVersion(existing.getVersion());
             OptimisticLockSupport.requireUpdated(orderMapper.updateSyncedById(order));
             runAttributionFollowUps(order);
-            publishOrderSynced(order, false);
+            publishOrderSynced(order, false, previousStatus);
             return false;
         }
         runAttributionFollowUps(order);
-        publishOrderSynced(order, true);
+        publishOrderSynced(order, true, null);
         return true;
     }
 
@@ -175,62 +176,17 @@ public class OrderSyncPersistenceService {
     }
 
     /** 发布订单同步完成事件，将订单的金额快照和归因信息通知下游消费者。 */
-    private void publishOrderSynced(ColonelsettlementOrder order, boolean newlyInserted) {
-        if (order == null || eventPublisher == null) {
+    private void publishOrderSynced(ColonelsettlementOrder order, boolean newlyInserted, Integer previousStatus) {
+        if (order == null || orderDomainEventPublisher == null) {
             return;
         }
-        OrderSyncedEvent event = new OrderSyncedEvent(
-                order.getOrderId(),
-                order.getId(),
-                newlyInserted,
-                order.getAttributionStatus(),
-                order.getOrderAmount() == null ? 0L : order.getOrderAmount(),
-                order.getOrderAmount() == null ? 0L : order.getOrderAmount(),
-                order.getSettleAmount() == null ? 0L : order.getSettleAmount(),
-                order.getEstimateServiceFee() == null ? 0L : order.getEstimateServiceFee(),
-                order.getEffectiveServiceFee() == null ? 0L : order.getEffectiveServiceFee(),
-                order.getEstimateTechServiceFee() == null ? 0L : order.getEstimateTechServiceFee(),
-                order.getEffectiveTechServiceFee() == null ? 0L : order.getEffectiveTechServiceFee(),
-                order.getSettleColonelCommission() == null ? 0L : order.getSettleColonelCommission(),
-                order.getSettleColonelTechServiceFee() == null ? 0L : order.getSettleColonelTechServiceFee(),
-                order.getSettleSecondColonelCommission() == null ? 0L : order.getSettleSecondColonelCommission(),
-                order.getOrderStatus(),
-                order.getCreateTime(),
-                resolveTalentUid(order.getExtraData()),
-                order.getExtraData());
-        if (orderDomainEventPublisher.isOutboxRoutingEnabled()) {
-            String eventKey = "OrderSynced:" + order.getOrderId() + ":" + order.getId();
-            orderDomainEventPublisher.appendOrderSyncedInTransaction(eventKey, event);
-            return;
+        OrderSyncedEvent event = orderEventPayloadMapper.toOrderSyncedEvent(order, newlyInserted);
+        orderDomainEventPublisher.publishOrderSynced(event);
+        if (!newlyInserted && previousStatus != null && !previousStatus.equals(order.getOrderStatus())) {
+            OrderStatusChangedEvent statusEvent = orderEventPayloadMapper.toOrderStatusChangedEvent(
+                    order, previousStatus, newlyInserted);
+            orderDomainEventPublisher.publishOrderStatusChangedDirect(statusEvent);
         }
-        publishAfterCommit(event);
-    }
-
-    private void publishAfterCommit(OrderSyncedEvent event) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            eventPublisher.publishEvent(event);
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                eventPublisher.publishEvent(event);
-            }
-        });
-    }
-
-    /** 从 extraData 中按优先级尝试解析达人 UID，兼容多种上游字段命名。 */
-    private String resolveTalentUid(Map<String, Object> extraData) {
-        if (extraData == null || extraData.isEmpty()) {
-            return null;
-        }
-        for (String key : List.of("author_id", "talent_uid", "talentUid", "authorId", "talent_id")) {
-            Object value = extraData.get(key);
-            if (value != null && StringUtils.hasText(value.toString())) {
-                return value.toString().trim();
-            }
-        }
-        return null;
     }
 
     /** 依次执行归因后置步骤：补齐推广映射、沉淀商家、完成寄样作业，每步记录操作日志。 */

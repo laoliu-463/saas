@@ -2,7 +2,9 @@ package com.colonel.saas.architecture;
 
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
+import com.colonel.saas.domain.order.event.InProcessOrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
+import com.colonel.saas.domain.order.event.OrderEventPayloadMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -53,14 +55,24 @@ class DddSample004HomeworkRoutingTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
     @Mock
-    private OrderDomainEventPublisher orderDomainEventPublisher;
+    private com.colonel.saas.domain.event.OutboxEventAppender outboxEventAppender;
 
     private DddRefactorProperties dddRefactorProperties;
+    private OrderDomainEventPublisher orderDomainEventPublisher;
     private OrderSyncPersistenceService persistenceService;
 
     @BeforeEach
     void setUp() {
         dddRefactorProperties = new DddRefactorProperties();
+        InProcessOrderDomainEventPublisher inProcessPublisher =
+                new InProcessOrderDomainEventPublisher(eventPublisher);
+        orderDomainEventPublisher = new OrderDomainEventPublisher(
+                outboxEventAppender,
+                eventPublisher,
+                inProcessPublisher,
+                new com.fasterxml.jackson.databind.ObjectMapper()
+                        .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule()),
+                dddRefactorProperties);
         persistenceService = new OrderSyncPersistenceService(
                 orderMapper,
                 orderSyncDedupClaimMapper,
@@ -69,9 +81,9 @@ class DddSample004HomeworkRoutingTest {
                 sampleLifecycleService,
                 operationLogService,
                 userDomainFacade,
-                eventPublisher,
                 new OrderAmountMappingRouter(dddRefactorProperties),
                 orderDomainEventPublisher,
+                new OrderEventPayloadMapper(),
                 dddRefactorProperties);
     }
 

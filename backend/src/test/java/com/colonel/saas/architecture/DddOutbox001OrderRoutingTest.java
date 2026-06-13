@@ -3,6 +3,7 @@ package com.colonel.saas.architecture;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.OrderDomainEventTypes;
 import com.colonel.saas.domain.event.OutboxEventAppender;
+import com.colonel.saas.domain.order.event.InProcessOrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,8 +40,14 @@ class DddOutbox001OrderRoutingTest {
 
     @BeforeEach
     void setUp() {
+        InProcessOrderDomainEventPublisher inProcessPublisher =
+                new InProcessOrderDomainEventPublisher(applicationEventPublisher);
         publisher = new OrderDomainEventPublisher(
-                outboxEventAppender, applicationEventPublisher, objectMapper, dddRefactorProperties);
+                outboxEventAppender,
+                applicationEventPublisher,
+                inProcessPublisher,
+                objectMapper,
+                dddRefactorProperties);
     }
 
     @Test

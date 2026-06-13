@@ -26,16 +26,19 @@ public class OrderDomainEventPublisher {
 
     private final OutboxEventAppender outboxEventAppender;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final InProcessOrderDomainEventPublisher inProcessOrderDomainEventPublisher;
     private final ObjectMapper objectMapper;
     private final DddRefactorProperties dddRefactorProperties;
 
     public OrderDomainEventPublisher(
             OutboxEventAppender outboxEventAppender,
             ApplicationEventPublisher applicationEventPublisher,
+            InProcessOrderDomainEventPublisher inProcessOrderDomainEventPublisher,
             ObjectMapper objectMapper,
             DddRefactorProperties dddRefactorProperties) {
         this.outboxEventAppender = outboxEventAppender;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.inProcessOrderDomainEventPublisher = inProcessOrderDomainEventPublisher;
         this.objectMapper = objectMapper;
         this.dddRefactorProperties = dddRefactorProperties;
     }
@@ -64,16 +67,33 @@ public class OrderDomainEventPublisher {
         }
     }
 
+    /** 统一发布订单同步事件：Outbox 或进程内 afterCommit。 */
+    public void publishOrderSynced(OrderSyncedEvent event) {
+        if (event == null || !StringUtils.hasText(event.orderId())) {
+            return;
+        }
+        if (isOutboxRoutingEnabled()) {
+            String eventKey = "OrderSynced:" + event.orderId() + ":" + event.orderRowId();
+            appendOrderSyncedInTransaction(eventKey, event);
+            return;
+        }
+        publishOrderSyncedDirect(event);
+    }
+
     /** 事务提交后直接发布 Spring 本地事件（legacy 路径）。 */
     public void publishOrderSyncedDirect(OrderSyncedEvent event) {
         if (event == null) {
             return;
         }
         try {
-            applicationEventPublisher.publishEvent(event);
+            inProcessOrderDomainEventPublisher.publishAfterCommit(event);
         } catch (Exception ex) {
             log.warn("Spring local OrderSyncedEvent publish failed: orderId={}", event.orderId(), ex);
         }
+    }
+
+    public void publishOrderStatusChangedDirect(OrderStatusChangedEvent event) {
+        inProcessOrderDomainEventPublisher.publishStatusChangedAfterCommit(event);
     }
 
     /** Outbox 路由器回调：将 JSON 载荷还原为 {@link OrderSyncedEvent} 并发布。 */

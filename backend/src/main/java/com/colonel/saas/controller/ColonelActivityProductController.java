@@ -7,7 +7,6 @@ import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.auth.service.SysUserService;
-import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
 import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ProductPinService;
@@ -89,8 +88,6 @@ public class ColonelActivityProductController extends BaseController {
 
     /** 用户服务，负责校验分配目标用户的合法性 */
     private final SysUserService sysUserService;
-    /** 复制讲解 / 转链应用层（DDD-PRODUCT-004） */
-    private final CopyPromotionApplicationService copyPromotionApplicationService;
 
     /**
      * 构造注入所有依赖。
@@ -99,17 +96,14 @@ public class ColonelActivityProductController extends BaseController {
      * @param productPinService          商品置顶服务
 
      * @param sysUserService             用户服务
-     * @param copyPromotionApplicationService 转链应用层
      */
     public ColonelActivityProductController(
             ProductService productService,
             ProductPinService productPinService,
-            SysUserService sysUserService,
-            CopyPromotionApplicationService copyPromotionApplicationService) {
+            SysUserService sysUserService) {
         this.productService = productService;
         this.productPinService = productPinService;
         this.sysUserService = sysUserService;
-        this.copyPromotionApplicationService = copyPromotionApplicationService;
     }
 
     /**
@@ -384,13 +378,8 @@ public class ColonelActivityProductController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId) {
         // Step 1: 处理空请求体，使用默认场景参数
         PromotionLinkRequest safeRequest = request == null ? new PromotionLinkRequest() : request;
-<<<<<<< HEAD
-        // Step 2: 委托应用层调用抖店转链 API 生成推广链接
-        ProductService.PromotionLinkCopyResult result = copyPromotionApplicationService.generatePromotionLinkCopy(
-=======
         // Step 2: 委托 ProductService 调用抖店转链 API 生成推广链接
         com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult result = productService.generatePromotionLinkCopy(
->>>>>>> fef02b1d (feat(product): DDD-PRODUCT-004 CopyPromotionApplicationService + DouyinConvertPort)
                 activityId,
                 productId,
                 userId,
