@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -182,7 +181,7 @@ public class CommissionService {
      * 看板 / 汇总 API 必须与卡片展示共用此公式，避免混用 DB profit 汇总与订单 income 汇总。
      */
     public static long serviceFeeNetCent(long serviceFeeIncome, long techServiceFee, long serviceFeeExpense) {
-        return Math.max(serviceFeeIncome - techServiceFee - serviceFeeExpense, 0L);
+        return PerformanceMoneyPolicy.serviceFeeNetCent(serviceFeeIncome, techServiceFee, serviceFeeExpense);
     }
 
     public CommissionSummary calculateTrack(
@@ -279,48 +278,34 @@ public class CommissionService {
      * @return 提成计算汇总
      */
     public CommissionSummary calculateByActivityBuckets(List<ActivityCommissionBucket> buckets, LocalDateTime effectiveAt) {
-        long serviceFeeIncome = sumBuckets(buckets, ActivityCommissionBucket::serviceFeeIncome);
-        long techServiceFee = sumBuckets(buckets, ActivityCommissionBucket::techServiceFee);
-        long serviceFeeExpense = sumBuckets(buckets, ActivityCommissionBucket::serviceFeeExpense);
-        long talentCommission = sumBuckets(buckets, ActivityCommissionBucket::talentCommission);
-
-        // 服务费收益 = 服务费收入 − 服务费支出 − 技术服务费。
-        // 预估轨传入实际技术服务费和服务费支出；结算轨同理。
-        // 达人佣金(talentCommission)来自抖店结算，不从团长毛利中再扣一次
-        long serviceFeeNet = serviceFeeNetCent(serviceFeeIncome, techServiceFee, serviceFeeExpense);
         BigDecimal defaultBizRatio = loadRatio(KEY_BIZ_RATIO);
         BigDecimal defaultChannelRatio = loadRatio(KEY_CHANNEL_RATIO);
 
-        long bizCommission = 0L;
-        long channelCommission = 0L;
-        BigDecimal lastBizRatio = defaultBizRatio;
-        BigDecimal lastChannelRatio = defaultChannelRatio;
+        List<PerformanceMoneyPolicy.BucketInput> inputs = new ArrayList<>();
         for (ActivityCommissionBucket bucket : normalizeBuckets(buckets)) {
-            // 活动级服务费收益 = 该活动收入 − 该活动支出 − 本轨应扣技术费
-            long activityServiceFeeNet = Math.max(
-                    bucket.serviceFeeIncome() - bucket.serviceFeeExpense() - bucket.techServiceFee(),
-                    0L);
             BigDecimal activityBizRatio = resolveBizRatio(bucket, defaultBizRatio, effectiveAt);
             BigDecimal activityChannelRatio = resolveChannelRatio(bucket, defaultChannelRatio, effectiveAt);
-            lastBizRatio = activityBizRatio;
-            lastChannelRatio = activityChannelRatio;
-            bizCommission += multiplyCent(activityServiceFeeNet, activityBizRatio);
-            channelCommission += multiplyCent(activityServiceFeeNet, activityChannelRatio);
+            inputs.add(new PerformanceMoneyPolicy.BucketInput(
+                    bucket.serviceFeeIncome(),
+                    bucket.techServiceFee(),
+                    bucket.serviceFeeExpense(),
+                    bucket.talentCommission(),
+                    activityBizRatio,
+                    activityChannelRatio));
         }
-        // 毛利 = 服务费收益 − 招商提成 − 渠道提成
-        long grossProfit = Math.max(serviceFeeNet - bizCommission - channelCommission, 0L);
 
+        PerformanceMoneyPolicy.MoneyResult result = PerformanceMoneyPolicy.calculate(inputs);
         return new CommissionSummary(
-                serviceFeeIncome,
-                techServiceFee,
-                serviceFeeExpense,
-                talentCommission,
-                serviceFeeNet,
-                bizCommission,
-                channelCommission,
-                grossProfit,
-                lastBizRatio,
-                lastChannelRatio);
+                result.serviceFeeIncome(),
+                result.techServiceFee(),
+                result.serviceFeeExpense(),
+                result.talentCommission(),
+                result.serviceFeeNet(),
+                result.bizCommission(),
+                result.channelCommission(),
+                result.grossProfit(),
+                result.lastBizRatio(),
+                result.lastChannelRatio());
     }
 
     private BigDecimal resolveBizRatio(
@@ -435,27 +420,6 @@ public class CommissionService {
             return List.of(new ActivityCommissionBucket("", null, null, 0L, 0L, 0L, 0L));
         }
         return buckets;
-    }
-
-    private long sumBuckets(List<ActivityCommissionBucket> buckets, java.util.function.ToLongFunction<ActivityCommissionBucket> getter) {
-        if (buckets == null || buckets.isEmpty()) {
-            return 0L;
-        }
-        long result = 0L;
-        for (ActivityCommissionBucket bucket : buckets) {
-            result += getter.applyAsLong(bucket);
-        }
-        return result;
-    }
-
-    private long multiplyCent(long amount, BigDecimal ratio) {
-        if (amount <= 0L) {
-            return 0L;
-        }
-        return BigDecimal.valueOf(amount)
-                .multiply(ratio)
-                .setScale(0, RoundingMode.HALF_UP)
-                .longValue();
     }
 
     public record CommissionSummary(
