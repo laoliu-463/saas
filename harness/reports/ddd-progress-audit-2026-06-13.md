@@ -10,14 +10,14 @@
 
 ## Executive summary
 
-Evidence-based strict completion: **50/53 (94%)**。CLEAN-002~003 已落地；继续 **CLEAN-004**；FRONT/VERIFY/PERF 缺口不得写成 DONE。
+Evidence-based strict completion: **52/53 (98%)**。CLEAN-002~004 已落地；剩余 **VERIFY-001 FINAL**；FRONT/PERF 缺口不得写成 DONE。
 
 | Metric | Value |
 | --- | --- |
 | Board (stale 2026-06-12) | 36/53 |
-| This audit (strict) | **50/53** |
+| This audit (strict) | **52/53** |
 | PARTIAL (active remaining table) | 3 |
-| TODO | 1 |
+| TODO | 0 |
 
 ## Batch 2 completion (this session)
 
@@ -39,7 +39,8 @@ Evidence-based strict completion: **50/53 (94%)**。CLEAN-002~003 已落地；�
 | DDD-CLEAN-001 | DONE | 5d90d355 | Order user dependency guard + no SysUserMapper/SysUserService direct dependency |
 | DDD-FRONT-001 | PARTIAL | 5d90d355 | OrderDetailModal section field-source hints + vitest；订单详情浏览器/E2E 待补 |
 | DDD-CLEAN-002 | DONE | 879b6b4b | sample cross-domain mapper guard + facade migration + full harness PASS |
-| DDD-CLEAN-003 | DONE | 34e2f105 | performance OrderReadFacade migration + guard + backend harness PASS; full harness pending |
+| DDD-CLEAN-003 | DONE | 34e2f105 | performance OrderReadFacade migration + guard + backend harness PASS |
+| DDD-CLEAN-004 | DONE | a437d524 | ProductSampleApplicationPort ACL + guard + backend harness PASS |
 
 ## Targeted test evidence
 
@@ -51,26 +52,26 @@ Evidence-based strict completion: **50/53 (94%)**。CLEAN-002~003 已落地；�
 - SLIM-PERF-001 bundle: 70/70 PASS (Commission/Data/Performance money formula)
 - VERIFY-001 stage: Ddd* 68/68, frontend 635/635, e2e channel-chain 15/15
 - CLEAN-002 bundle: 124 run / 0 fail / 1 skipped; full harness PASS
-- CLEAN-003 bundle: targeted Ddd* + performance tests PASS; backend harness PASS; full harness pending
+- CLEAN-003 bundle: targeted Ddd* + performance tests PASS; backend harness PASS
+- CLEAN-004 bundle: guard + QuickSample tests PASS; backend harness PASS (`evidence-20260613-201858.md`)
 - Sprint1 + PERF-005: 37/37 PASS
 
 Full `mvn clean test` baseline debt unchanged (~17 failures / ~114 errors); not blocking task-level DONE.
 
-## Remaining TODO (1 strict slot + 2 partial)
+## Remaining PARTIAL (3 slots)
 
 | task_id | status | reason |
 | --- | --- | --- |
-| DDD-CLEAN-004 | TODO | product domain remove sample direct dependency |
 | DDD-PERF-001 | PARTIAL | board spec alignment |
 | DDD-FRONT-001 | PARTIAL | order-detail browser/E2E evidence pending |
-| DDD-VERIFY-001 | PARTIAL | stage acceptance done; full p0 + mvn clean test pending |
+| DDD-VERIFY-001 | PARTIAL | stage acceptance done; CLEAN done; full p0 + mvn clean test pending |
 
 ## Gate decisions
 
 - **Continue补任务:** YES
-- **Continue CLEAN:** YES, next is DDD-CLEAN-004
-- **Enter VERIFY-001 final:** NO until CLEAN-004 + `e2e:real-pre:p0` + baseline policy agreed
+- **Continue CLEAN:** NO — Phase 11 四项已全部 DONE
+- **Enter VERIFY-001 final:** YES（CLEAN 完成；仍缺 FRONT E2E + full p0 + baseline 策略）
 
 ## Conclusion
 
-**PARTIAL_PASS** — CLEAN-002 full harness PASS，CLEAN-003 backend harness PASS；剩余 CLEAN-004 与 VERIFY final 仍未完成。
+**PARTIAL_PASS** — CLEAN-002~004 harness PASS；VERIFY final 与 FRONT E2E 仍未完成。
