@@ -2,12 +2,12 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`。
 
-更新时间：2026-06-13 17:05
-分支：`feature/ddd/DDD-CLEAN-001`（owner 集成分支，已合 Sprint1 P0 + 第二批 + SAMPLE-001 + SLIM-PRODUCT/SAMPLE-001 + CLEAN-001）
-HEAD：`WIP`（DDD-CLEAN-001）
+更新时间：2026-06-13 17:14
+分支：`feature/ddd/DDD-FRONT-001`（owner 集成分支，含 CLEAN-001 护栏与 FRONT-001 partial evidence）
+HEAD：`f0f95a31`（DDD-FRONT-001 + VERIFY prep backend）
 
 > 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`
-> 当前进度：**strict DONE 46/53 = 87%**（含 PARTIAL 47/53 = 89%）
+> 当前进度：**strict DONE 48/53 = 91%**（含 PARTIAL 50/53 = 94%）
 
 ## 图例
 
@@ -90,7 +90,7 @@ HEAD：`WIP`（DDD-CLEAN-001）
 | DDD-SLIM-PERF-001 | Performance | DONE | `c419c350` delegate CommissionService money formula to PerformanceMoneyPolicy |
 | DDD-SLIM-PRODUCT-001 | Product | DONE | `6452425f` + `c21387b2` slim ProductService display rules to ProductDisplayPolicy（`DddSlimProduct001DisplayPolicyRoutingTest` 落地） |
 | DDD-SLIM-SAMPLE-001 | Sample | DONE | `c436f1f0` + `f90ea9d1` slim SampleService eligibility checks（delegated to SampleEligibilityPolicy failure rules） |
-| DDD-CLEAN-001 | Order + User | DONE | `WIP` order code no longer injects SysUserMapper/SysUserService; guard `DddClean001OrderUserDependencyGuardTest` added |
+| DDD-CLEAN-001 | Order + User | DONE | `5d90d355` order code no longer injects SysUserMapper/SysUserService; guard `DddClean001OrderUserDependencyGuardTest` added |
 
 ## Batch 7 - Sprint 1 P0（owner 集成分支）
 
@@ -119,6 +119,7 @@ HEAD：`WIP`（DDD-CLEAN-001）
 | task_id | 缺口 |
 | --- | --- |
 | DDD-PERF-001 | 缺 `PerformanceCalculationApplicationService`（task-pool 期望 calculation 层，仅 facade 已做） |
+| DDD-FRONT-001 | 订单详情字段来源标注 unit/build/full harness PASS；浏览器/E2E 详情页复核未完成 |
 
 ### TODO（下一批执行）
 
@@ -127,7 +128,6 @@ HEAD：`WIP`（DDD-CLEAN-001）
 | DDD-CLEAN-002 | P1 | 寄样域移除商品/达人/用户/配置跨域 Mapper |
 | DDD-CLEAN-003 | P1 | 业绩域移除订单/商品/达人/配置/用户跨域 Mapper |
 | DDD-CLEAN-004 | P1 | 商品域移除寄样域直接依赖 |
-| DDD-FRONT-001 | P1 | 订单明细字段来源标注 + 前端回归 |
 | DDD-VERIFY-001 | P0 | DDD 重构阶段性全链路验收（CLEAN 完才进入） |
 
 > 注：进入 CLEAN 阶段必须等 DDD-TALENT-004 / DDD-PERF-005 / DDD-ORDER-006 全绿且 backend 全量测试 0 fail。
@@ -135,7 +135,7 @@ HEAD：`WIP`（DDD-CLEAN-001）
 ## 下一步优先（按推荐顺序）
 
 1. **P1** `DDD-CLEAN-002~004` - 跨域 mapper 清理（按 phase 11 顺序串行）。
-2. **P1** `DDD-FRONT-001` - 前端字段标注。
+2. **P1** `DDD-FRONT-001` - 补订单详情浏览器/E2E 证据后收口。
 3. **P0** `DDD-VERIFY-001` - CLEAN + FRONT 完成后做阶段验收。
 4. **P1** 修正 `DDD-PERF-001` PARTIAL 缺口（补 PerformanceCalculationApplicationService）。
 
