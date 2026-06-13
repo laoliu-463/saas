@@ -145,6 +145,17 @@ HEAD：`f0f95a31`（DDD-FRONT-001 + VERIFY prep backend）
 - frontend / postgres / redis：healthy
 - test 环境：healthy（131 baseline fail/error 需后续清理）
 
+## DDD-VERIFY-001 准备（2026-06-13 18:37）
+
+- `mvn -f backend/pom.xml '-Dtest=Ddd*Test' '-Dspring.profiles.active=test' test`
+- 70 测试：**68 PASS / 2 FAIL / 1 SKIP**（13.9s）
+- 21 套件全跑：所有 DONE 任务对应的护栏测试全 PASS
+- 2 FAIL 均来自 `DddClean002SampleCrossDomainMapperGuardTest`——正好对应 board 上唯一剩下的 DDD-CLEAN-002 TODO
+- 1 SKIP 来自 `DddCrossDomainMapperGuardTest` 的 legacy whitelist 基线
+- 详细 evidence：`harness/reports/ddd-verify-prep-2026-06-13.md`
+- 结论：DDD-VERIFY-001 可在 DDD-CLEAN-002/003/004 + DDD-FRONT-001 E2E 完成后启动
+- Stash 清理：drop 3 个过时 stash（TALENT-004 WIP / SLIM-SAMPLE-001 WIP / main-pre-merge-modified）
+
 ## 关联 handover
 
 - `harness/tasks/DDD-SPRINT1-P0-handover.md`（Sprint 1 P0 第一批 5 个任务 stage 验收）
@@ -167,3 +178,4 @@ HEAD：`f0f95a31`（DDD-FRONT-001 + VERIFY prep backend）
 - **2026-06-13 16:51** - DDD-SLIM-SAMPLE-001 收尾（f90ea9d1 SampleService 瘦身）
 - **2026-06-13 16:58** - 第二次 board 同步（strict 45/53 = 85%, 含 PARTIAL 46/53 = 87%）
 - **2026-06-13 17:05** - DDD-CLEAN-001 收尾（订单域 SysUserMapper/SysUserService 直接依赖护栏）
+- **2026-06-13 18:37** - VERIFY-001 准备（DDD 架构护栏 70 测：68 PASS / 2 FAIL / 1 SKIP；2 FAIL 是 DDD-CLEAN-002 预期 violation；3 过时 stash 清理）
