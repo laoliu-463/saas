@@ -2,9 +2,9 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`。
 
-更新时间：2026-06-13 19:05
-分支：`feature/ddd/DDD-CLEAN-002`（CLEAN-002 WIP evidence）
-HEAD：WIP（CLEAN-002 targeted PASS，待 full harness）
+更新时间：2026-06-13 20:03
+分支：`feature/ddd/DDD-CLEAN-002`（CLEAN-002 full harness PASS）
+HEAD：`879b6b4b`（CLEAN-002 sample cross-domain mapper cleanup）
 
 > 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`
 > 当前进度：**strict DONE 49/53 = 92%**（含 PARTIAL 52/53 = 98%）
@@ -91,7 +91,7 @@ HEAD：WIP（CLEAN-002 targeted PASS，待 full harness）
 | DDD-SLIM-PRODUCT-001 | Product | DONE | `6452425f` + `c21387b2` slim ProductService display rules to ProductDisplayPolicy（`DddSlimProduct001DisplayPolicyRoutingTest` 落地） |
 | DDD-SLIM-SAMPLE-001 | Sample | DONE | `c436f1f0` + `f90ea9d1` slim SampleService eligibility checks（delegated to SampleEligibilityPolicy failure rules） |
 | DDD-CLEAN-001 | Order + User | DONE | `5d90d355` order code no longer injects SysUserMapper/SysUserService; guard `DddClean001OrderUserDependencyGuardTest` added |
-| DDD-CLEAN-002 | Sample | DONE | WIP 寄样域移除 Product/Talent/User/Config 跨域 Mapper；targeted 124 run / 0 fail / 1 skipped |
+| DDD-CLEAN-002 | Sample | DONE | `879b6b4b` 寄样域移除 Product/Talent 跨域 Mapper；targeted 124 run / 0 fail / 1 skipped；full harness PASS |
 
 ## Batch 7 - Sprint 1 P0（owner 集成分支）
 
@@ -149,7 +149,7 @@ HEAD：WIP（CLEAN-002 targeted PASS，待 full harness）
 
 - `mvn -f backend/pom.xml '-Dtest=Ddd*Test' '-Dspring.profiles.active=test' test`
 - 70 测试：**68 PASS / 2 FAIL / 1 SKIP**（13.9s，CLEAN-002 前置 RED）
-- CLEAN-002 本轮已补护栏并修复：targeted 124 run / 0 fail / 1 skipped
+- CLEAN-002 本轮已补护栏并修复：targeted 124 run / 0 fail / 1 skipped；full harness PASS
 - 21 套件全跑：CLEAN-002 前所有 DONE 任务对应的护栏测试全 PASS
 - 1 SKIP 来自 `DddCrossDomainMapperGuardTest` 的 legacy whitelist 基线
 - 详细 evidence：`harness/reports/ddd-clean-002-2026-06-13.md`
@@ -180,3 +180,4 @@ HEAD：WIP（CLEAN-002 targeted PASS，待 full harness）
 - **2026-06-13 17:05** - DDD-CLEAN-001 收尾（订单域 SysUserMapper/SysUserService 直接依赖护栏）
 - **2026-06-13 18:37** - VERIFY-001 准备（DDD 架构护栏 70 测：68 PASS / 2 FAIL / 1 SKIP；2 FAIL 是 DDD-CLEAN-002 预期 violation；3 过时 stash 清理）
 - **2026-06-13 19:44** - 重跑 DDD 架构护栏测试（owner CLEAN-002 working tree 修复后）：**70 测 / 0 FAIL / 1 SKIP / BUILD SUCCESS**，20.9s。CLEAN-002 actual DONE。
+- **2026-06-13 20:01** - DDD-CLEAN-002 full harness 收口：backend/frontend build PASS，real-pre backend/frontend restart + health PASS，`e2e:real-pre:p0:preflight` PASS，提交/推送 `879b6b4b`。

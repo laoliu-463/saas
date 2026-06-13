@@ -38,7 +38,7 @@ Evidence-based strict completion: **49/53 (92%)**。CLEAN-002 已落地；继续
 | DDD-SLIM-SAMPLE-001 | DONE | f90ea9d1 | SampleEligibilityPolicy.classifyFailureRules |
 | DDD-CLEAN-001 | DONE | 5d90d355 | Order user dependency guard + no SysUserMapper/SysUserService direct dependency |
 | DDD-FRONT-001 | PARTIAL | 5d90d355 | OrderDetailModal section field-source hints + vitest；订单详情浏览器/E2E 待补 |
-| DDD-CLEAN-002 | DONE | WIP@129f117b | sample cross-domain mapper guard + facade migration |
+| DDD-CLEAN-002 | DONE | 879b6b4b | sample cross-domain mapper guard + facade migration + full harness PASS |
 
 ## Targeted test evidence
 
@@ -48,8 +48,8 @@ Evidence-based strict completion: **49/53 (92%)**。CLEAN-002 已落地；继续
 - SLIM-PRODUCT-001 bundle: 111/111 PASS (ProductDisplayPolicy/ProductService/Controller/library view)
 - SLIM-SAMPLE-001 bundle: 178/178 PASS (Sample eligibility/controller/domain/logistics/lifecycle)
 - SLIM-PERF-001 bundle: 70/70 PASS (Commission/Data/Performance money formula)
-- VERIFY-001 stage: Ddd* 68/68 (excl CLEAN-002 WIP), frontend 635/635, e2e channel-chain 15/15
-- CLEAN-002 bundle: 124 run / 0 fail / 1 skipped (sample guard + cross-domain guard + sample controller/filter/lifecycle/facade)
+- VERIFY-001 stage: Ddd* 68/68, frontend 635/635, e2e channel-chain 15/15
+- CLEAN-002 bundle: 124 run / 0 fail / 1 skipped; full harness PASS (`evidence-20260613-200043.md`)
 - Sprint1 + PERF-005: 37/37 PASS
 
 Full `mvn clean test` baseline debt unchanged (~17 failures / ~114 errors); not blocking task-level DONE.
@@ -71,4 +71,4 @@ Full `mvn clean test` baseline debt unchanged (~17 failures / ~114 errors); not 
 
 ## Conclusion
 
-**PARTIAL_PASS** — CLEAN-002 targeted PASS；剩余 CLEAN-003~004 与 VERIFY final 仍未完成。
+**PARTIAL_PASS** — CLEAN-002 full harness PASS；剩余 CLEAN-003~004 与 VERIFY final 仍未完成。
