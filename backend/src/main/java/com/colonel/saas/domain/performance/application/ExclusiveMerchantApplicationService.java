@@ -1,9 +1,10 @@
 package com.colonel.saas.domain.performance.application;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.performance.domain.ExclusiveMerchantRepository;
 import com.colonel.saas.domain.performance.policy.ExclusiveMerchantPolicy;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +19,7 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -34,14 +36,17 @@ public class ExclusiveMerchantApplicationService {
     private final ConfigDomainFacade configDomainFacade;
     private final JdbcTemplate jdbcTemplate;
     private final ExclusiveMerchantRepository repository;
+    private final UserDomainFacade userDomainFacade;
 
     public ExclusiveMerchantApplicationService(
             ConfigDomainFacade configDomainFacade,
             JdbcTemplate jdbcTemplate,
-            ExclusiveMerchantRepository repository) {
+            ExclusiveMerchantRepository repository,
+            UserDomainFacade userDomainFacade) {
         this.configDomainFacade = configDomainFacade;
         this.jdbcTemplate = jdbcTemplate;
         this.repository = repository;
+        this.userDomainFacade = userDomainFacade;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -58,6 +63,7 @@ public class ExclusiveMerchantApplicationService {
                 .collect(Collectors.toMap(UserTotalFeeRow::userId, UserTotalFeeRow::totalFee));
 
         List<MerchantUserFeeRow> merchantRows = loadMerchantUserFee(statsMonth);
+        Map<UUID, UUID> deptByUser = loadRecruiterDeptMap(merchantRows);
         int upserted = 0;
         for (MerchantUserFeeRow row : merchantRows) {
             if (!StringUtils.hasText(row.merchantId()) || row.userId() == null) {
@@ -71,7 +77,7 @@ public class ExclusiveMerchantApplicationService {
                     .multiply(BigDecimal.valueOf(100))
                     .divide(BigDecimal.valueOf(totalFee), 2, RoundingMode.HALF_UP);
             if (ExclusiveMerchantPolicy.meets(ratio, threshold)) {
-                upsertExclusive(row, totalFee, ratio, applyMonth);
+                upsertExclusive(row, deptByUser.get(row.userId()), totalFee, ratio, applyMonth);
                 upserted++;
             }
         }
@@ -80,7 +86,12 @@ public class ExclusiveMerchantApplicationService {
         return upserted;
     }
 
-    private void upsertExclusive(MerchantUserFeeRow row, long totalFee, BigDecimal ratio, YearMonth applyMonth) {
+    private void upsertExclusive(
+            MerchantUserFeeRow row,
+            UUID recruiterDeptId,
+            long totalFee,
+            BigDecimal ratio,
+            YearMonth applyMonth) {
         String effectiveMonth = applyMonth.format(MONTH_FORMATTER);
         ExclusiveMerchant existing = repository.findByMerchantIdAndMonth(row.merchantId(), effectiveMonth)
                 .orElse(null);
@@ -89,7 +100,7 @@ public class ExclusiveMerchantApplicationService {
         target.setMerchantName(row.merchantName());
         target.setShopId(row.shopId());
         target.setUserId(row.userId());
-        target.setDeptId(row.deptId());
+        target.setDeptId(recruiterDeptId);
         target.setEffectiveMonth(effectiveMonth);
         target.setServiceFee(row.merchantFee());
         target.setBusinessTotalFee(totalFee);
@@ -110,13 +121,15 @@ public class ExclusiveMerchantApplicationService {
 
     private List<UserTotalFeeRow> loadUserTotalFee(YearMonth month) {
         String sql = """
-                SELECT user_id, SUM(COALESCE(settle_colonel_commission, 0)) AS total_fee
-                FROM colonelsettlement_order
-                WHERE deleted = 0
+                SELECT default_recruiter_user_id AS user_id,
+                       SUM(COALESCE(effective_service_fee, 0)) AS total_fee
+                FROM performance_records
+                WHERE COALESCE(is_valid, true) = true
+                  AND COALESCE(is_reversed, false) = false
                   AND settle_time >= ?
                   AND settle_time < ?
-                  AND user_id IS NOT NULL
-                GROUP BY user_id
+                  AND default_recruiter_user_id IS NOT NULL
+                GROUP BY default_recruiter_user_id
                 """;
         return jdbcTemplate.query(sql, (rs, rowNum) -> new UserTotalFeeRow(
                 parseUuid(rs.getString("user_id")),
@@ -126,28 +139,50 @@ public class ExclusiveMerchantApplicationService {
 
     private List<MerchantUserFeeRow> loadMerchantUserFee(YearMonth month) {
         String sql = """
-                SELECT COALESCE(extra_data->>'merchant_id', CAST(shop_id AS TEXT)) AS merchant_id,
-                       shop_id,
-                       shop_name,
-                       user_id,
-                       dept_id,
-                       SUM(COALESCE(settle_colonel_commission, 0)) AS merchant_fee
-                FROM colonelsettlement_order
-                WHERE deleted = 0
+                SELECT CAST(partner_id AS TEXT) AS merchant_id,
+                       partner_id AS shop_id,
+                       CAST(partner_id AS TEXT) AS shop_name,
+                       default_recruiter_user_id AS user_id,
+                       SUM(COALESCE(effective_service_fee, 0)) AS merchant_fee
+                FROM performance_records
+                WHERE COALESCE(is_valid, true) = true
+                  AND COALESCE(is_reversed, false) = false
                   AND settle_time >= ?
                   AND settle_time < ?
-                  AND user_id IS NOT NULL
-                  AND COALESCE(extra_data->>'merchant_id', CAST(shop_id AS TEXT)) IS NOT NULL
-                GROUP BY COALESCE(extra_data->>'merchant_id', CAST(shop_id AS TEXT)), shop_id, shop_name, user_id, dept_id
+                  AND default_recruiter_user_id IS NOT NULL
+                  AND partner_id IS NOT NULL
+                GROUP BY partner_id, default_recruiter_user_id
                 """;
         return jdbcTemplate.query(sql, (rs, rowNum) -> new MerchantUserFeeRow(
                 rs.getString("merchant_id"),
                 asLongObject(rs.getObject("shop_id")),
                 rs.getString("shop_name"),
                 parseUuid(rs.getString("user_id")),
-                parseUuid(rs.getString("dept_id")),
                 rs.getLong("merchant_fee")
         ), month.atDay(1).atStartOfDay(), month.plusMonths(1).atDay(1).atStartOfDay());
+    }
+
+    private Map<UUID, UUID> loadRecruiterDeptMap(List<MerchantUserFeeRow> rows) {
+        List<UUID> userIds = rows.stream()
+                .map(MerchantUserFeeRow::userId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+        List<UserOptionResponse> users = userDomainFacade.getUsersByIds(userIds);
+        if (users == null || users.isEmpty()) {
+            return Map.of();
+        }
+        return users.stream()
+                .filter(Objects::nonNull)
+                .filter(user -> user.id() != null && user.deptId() != null)
+                .collect(Collectors.toMap(
+                        UserOptionResponse::id,
+                        UserOptionResponse::deptId,
+                        (left, right) -> left
+                ));
     }
 
     private BigDecimal loadRatioThreshold() {
@@ -191,7 +226,6 @@ public class ExclusiveMerchantApplicationService {
             Long shopId,
             String merchantName,
             UUID userId,
-            UUID deptId,
             long merchantFee
     ) {}
 }

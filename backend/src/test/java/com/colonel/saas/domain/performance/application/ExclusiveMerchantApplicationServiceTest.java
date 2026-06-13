@@ -3,6 +3,8 @@ package com.colonel.saas.domain.performance.application;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.config.facade.dto.ExclusiveRulesDTO;
 import com.colonel.saas.domain.performance.domain.ExclusiveMerchantRepository;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,12 +40,14 @@ class ExclusiveMerchantApplicationServiceTest {
     private JdbcTemplate jdbcTemplate;
     @Mock
     private ExclusiveMerchantRepository repository;
+    @Mock
+    private UserDomainFacade userDomainFacade;
 
     private ExclusiveMerchantApplicationService service;
 
     @BeforeEach
     void setUp() {
-        service = new ExclusiveMerchantApplicationService(configDomainFacade, jdbcTemplate, repository);
+        service = new ExclusiveMerchantApplicationService(configDomainFacade, jdbcTemplate, repository, userDomainFacade);
     }
 
     @Test
@@ -62,6 +66,29 @@ class ExclusiveMerchantApplicationServiceTest {
         assertThat(result).isZero();
         verify(repository, never()).save(any());
         verify(repository, never()).update(any());
+    }
+
+    @Test
+    void evaluateMonth_shouldUsePerformanceRecordsDefaultRecruiterStatistics() {
+        YearMonth stats = YearMonth.of(2024, 6);
+        YearMonth apply = YearMonth.of(2024, 7);
+        LocalDateTime start = stats.atDay(1).atStartOfDay();
+        LocalDateTime end = stats.plusMonths(1).atDay(1).atStartOfDay();
+
+        stubConfig("70");
+        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq(start), eq(end)))
+                .thenReturn(List.of());
+
+        service.evaluateMonth(stats, apply);
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate, times(2)).query(sqlCaptor.capture(), any(RowMapper.class), eq(start), eq(end));
+        String combinedSql = String.join("\n", sqlCaptor.getAllValues()).toLowerCase();
+        assertThat(combinedSql).contains("performance_records");
+        assertThat(combinedSql).contains("default_recruiter_user_id");
+        assertThat(combinedSql).contains("partner_id");
+        assertThat(combinedSql).contains("effective_service_fee");
+        assertThat(combinedSql).contains("settle_time");
     }
 
     @Test
@@ -85,6 +112,7 @@ class ExclusiveMerchantApplicationServiceTest {
         ArgumentCaptor<ExclusiveMerchant> captor = ArgumentCaptor.forClass(ExclusiveMerchant.class);
         verify(repository).save(captor.capture());
         assertThat(captor.getValue().getMerchantId()).isEqualTo(merchantId);
+        assertThat(captor.getValue().getDeptId()).isEqualTo(deptId);
         verify(repository, never()).update(any());
     }
 
@@ -133,7 +161,7 @@ class ExclusiveMerchantApplicationServiceTest {
         when(rs.getString("user_id")).thenReturn(userId.toString());
         when(rs.getLong("total_fee")).thenReturn(totalFee);
 
-        when(jdbcTemplate.query(contains("GROUP BY user_id"), any(RowMapper.class), eq(start), eq(end)))
+        when(jdbcTemplate.query(contains("GROUP BY default_recruiter_user_id"), any(RowMapper.class), eq(start), eq(end)))
                 .thenAnswer(inv -> {
                     RowMapper<?> mapper = inv.getArgument(1);
                     return List.of(mapper.mapRow(rs, 1));
@@ -152,10 +180,12 @@ class ExclusiveMerchantApplicationServiceTest {
         when(rs.getString("shop_name")).thenReturn("Test Shop");
         when(rs.getObject("shop_id")).thenReturn(1L);
 
-        when(jdbcTemplate.query(contains("merchant_id"), any(RowMapper.class), eq(start), eq(end)))
+        when(jdbcTemplate.query(contains("partner_id"), any(RowMapper.class), eq(start), eq(end)))
                 .thenAnswer(inv -> {
                     RowMapper<?> mapper = inv.getArgument(1);
                     return List.of(mapper.mapRow(rs, 1));
                 });
+        when(userDomainFacade.getUsersByIds(any()))
+                .thenReturn(List.of(new UserOptionResponse(userId, "recruiter", "招商", deptId, List.of())));
     }
 }

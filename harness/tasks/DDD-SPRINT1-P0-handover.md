@@ -19,6 +19,8 @@
 
 - PRODUCT-004 完整 Port 编排见 `feature/ddd/SPRINT-1-P0`
 - DDD-TALENT-004 在 stash：`WIP DDD-TALENT-004 before sprint1 integration`
+- DDD-PERF-005 已在 `feature/ddd/DDD-PERF-005` 落地：
+  `70b2e287` + 后续 performance_records 结算轨口径修正。
 - 全量测试 131 fail/error（基线）
 
 ## 验证命令
@@ -30,4 +32,4 @@ mvn -Dtest=OrderDefaultAttributionPolicyTest,OrderDefaultAttributionResolverTest
 
 ## 下一 Agent
 
-继续 DDD-TALENT-004 → DDD-PERF-005，勿进入 CLEAN。
+继续 DDD-TALENT-004 与下一批 VERIFY；勿进入 CLEAN。
