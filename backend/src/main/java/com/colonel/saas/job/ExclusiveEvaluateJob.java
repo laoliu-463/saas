@@ -1,8 +1,8 @@
 package com.colonel.saas.job;
 
+import com.colonel.saas.domain.talent.application.ExclusiveTalentApplicationService;
 import com.colonel.saas.service.DistributedJobLockService;
 import com.colonel.saas.service.ExclusiveMerchantService;
-import com.colonel.saas.service.ExclusiveTalentService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,7 +34,7 @@ import java.time.Duration;
  * </ul>
  * </p>
  *
- * @see ExclusiveTalentService#evaluatePreviousMonthAndApplyCurrentMonth()
+ * @see ExclusiveTalentApplicationService#evaluatePreviousMonthAndApplyCurrentMonth()
  * @see ExclusiveMerchantService#evaluatePreviousMonthAndApplyCurrentMonth()
  * @see JobLockKeys#EXCLUSIVE_TALENT_EVALUATE
  * @see JobLockKeys#EXCLUSIVE_MERCHANT_EVALUATE
@@ -47,7 +47,7 @@ public class ExclusiveEvaluateJob {
     private static final Duration LOCK_TTL = Duration.ofHours(1);
 
     /** 独家达人服务 */
-    private final ExclusiveTalentService exclusiveTalentService;
+    private final ExclusiveTalentApplicationService exclusiveTalentApplicationService;
     /** 独家商家服务 */
     private final ExclusiveMerchantService exclusiveMerchantService;
     /** 分布式锁服务 */
@@ -58,18 +58,18 @@ public class ExclusiveEvaluateJob {
     /**
      * Spring 注入构造函数。
      *
-     * @param exclusiveTalentService 独家达人服务
+     * @param exclusiveTalentApplicationService 独家达人应用服务
      * @param exclusiveMerchantService 独家商家服务
      * @param jobLockService 分布式锁服务
      * @param exclusiveEnabled 是否启用独家评估，默认 false
      */
     @Autowired
     public ExclusiveEvaluateJob(
-            ExclusiveTalentService exclusiveTalentService,
+            ExclusiveTalentApplicationService exclusiveTalentApplicationService,
             ExclusiveMerchantService exclusiveMerchantService,
             DistributedJobLockService jobLockService,
             @Value("${exclusive.enabled:false}") boolean exclusiveEnabled) {
-        this.exclusiveTalentService = exclusiveTalentService;
+        this.exclusiveTalentApplicationService = exclusiveTalentApplicationService;
         this.exclusiveMerchantService = exclusiveMerchantService;
         this.jobLockService = jobLockService;
         this.exclusiveEnabled = exclusiveEnabled;
@@ -79,10 +79,10 @@ public class ExclusiveEvaluateJob {
      * 便捷构造函数，默认禁用独家评估，便于单元测试使用。
      */
     public ExclusiveEvaluateJob(
-            ExclusiveTalentService exclusiveTalentService,
+            ExclusiveTalentApplicationService exclusiveTalentApplicationService,
             ExclusiveMerchantService exclusiveMerchantService,
             DistributedJobLockService jobLockService) {
-        this(exclusiveTalentService, exclusiveMerchantService, jobLockService, false);
+        this(exclusiveTalentApplicationService, exclusiveMerchantService, jobLockService, false);
     }
 
     /**
@@ -103,7 +103,7 @@ public class ExclusiveEvaluateJob {
             return;
         }
         try {
-            int upserted = exclusiveTalentService.evaluatePreviousMonthAndApplyCurrentMonth();
+            int upserted = exclusiveTalentApplicationService.evaluatePreviousMonthAndApplyCurrentMonth();
             log.info("Exclusive talent evaluate completed, upserted={}", upserted);
         } catch (Exception ex) {
             log.error("Exclusive talent evaluate failed", ex);
