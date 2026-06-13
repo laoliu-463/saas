@@ -2,12 +2,12 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`。
 
-更新时间：2026-06-13 15:33
-分支：`feature/ddd/DDD-SLIM-PERF-001`（owner 集成分支，已合 Sprint1 P0 + 第二批）
-HEAD：`c419c350`（DDD-SLIM-PERF-001）
+更新时间：2026-06-13 16:58
+分支：`feature/ddd/DDD-SLIM-SAMPLE-001`（owner 集成分支，已合 Sprint1 P0 + 第二批 + SAMPLE-001 + SLIM-PRODUCT/SAMPLE-001）
+HEAD：`63ff05bf`（slim sample retro）
 
 > 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`
-> 当前进度：**strict DONE 42/53 = 79%**（含 PARTIAL 44/53 = 83%）
+> 当前进度：**strict DONE 45/53 = 85%**（含 PARTIAL 46/53 = 87%）
 
 ## 图例
 
@@ -88,6 +88,8 @@ HEAD：`c419c350`（DDD-SLIM-PERF-001）
 | DDD-SLIM-ORDER-001 | Order | DONE | `8c912953` `mapAndApplyToOrder` 收口 mapOrder 金额映射 |
 | DDD-SLIM-ORDER-002 | Order | DONE | `6c577ae8` + `fcaf664a` 修复 `AttributionService` -> `OrderAttributionRouter` 循环依赖 |
 | DDD-SLIM-PERF-001 | Performance | DONE | `c419c350` delegate CommissionService money formula to PerformanceMoneyPolicy |
+| DDD-SLIM-PRODUCT-001 | Product | DONE | `6452425f` + `c21387b2` slim ProductService display rules to ProductDisplayPolicy（`DddSlimProduct001DisplayPolicyRoutingTest` 落地） |
+| DDD-SLIM-SAMPLE-001 | Sample | DONE | `c436f1f0` + `f90ea9d1` slim SampleService eligibility checks（delegated to SampleEligibilityPolicy failure rules） |
 
 ## Batch 7 - Sprint 1 P0（owner 集成分支）
 
@@ -100,6 +102,7 @@ HEAD：`c419c350`（DDD-SLIM-PERF-001）
 | DDD-VERIFY-SPRINT1-P0 | Integration | DONE | `34c8ae57` | `harness/reports/ddd-sprint1-p0-stage-acceptance-2026-06-13.md` (PARTIAL_PASS 35/53) |
 | DDD-PERF-005 | Performance | DONE | `70b2e287` + `46675e9d` | `harness/reports/ddd-perf-005-2026-06-13.md` ExclusiveMerchant service + PerformanceAttributionPolicy |
 | DDD-TALENT-004 | Talent | DONE | `d9a33028` + `b399701f` + `679223a6` | `harness/reports/ddd-talent-004-2026-06-13.md` ExclusiveTalent service |
+| DDD-SAMPLE-001 | Sample | DONE | `7efee009` | `harness/reports/ddd-sample-001-2026-06-13.md` 统一 SampleApplicationService（合并 Query/Command 两个 service） |
 
 ## Batch 8 - 订单域 query/sync 解耦（owner 集成分支）
 
@@ -115,14 +118,11 @@ HEAD：`c419c350`（DDD-SLIM-PERF-001）
 | task_id | 缺口 |
 | --- | --- |
 | DDD-PERF-001 | 缺 `PerformanceCalculationApplicationService`（task-pool 期望 calculation 层，仅 facade 已做） |
-| DDD-SAMPLE-001 | 缺 `domain/sample/application/SampleApplicationService`（已有 `SampleCommandApplicationService` + `SampleQueryApplicationService` + `SampleApplicationPortImpl`，可能等价实现但路径未对齐） |
 
 ### TODO（下一批执行）
 
 | task_id | 优先级 | 说明 |
 | --- | --- | --- |
-| DDD-SLIM-PRODUCT-001 | P1 | `ProductService` 仍含非委派的展示规则 |
-| DDD-SLIM-SAMPLE-001 | P1 | SampleService 申请校验瘦身（如果 god service 仍存在） |
 | DDD-CLEAN-001 | P1 | 订单域移除 SysUserMapper 直接注入（除 USER-002 已做部分） |
 | DDD-CLEAN-002 | P1 | 寄样域移除商品/达人/用户/配置跨域 Mapper |
 | DDD-CLEAN-003 | P1 | 业绩域移除订单/商品/达人/配置/用户跨域 Mapper |
@@ -134,12 +134,10 @@ HEAD：`c419c350`（DDD-SLIM-PERF-001）
 
 ## 下一步优先（按推荐顺序）
 
-1. **P0** `DDD-VERIFY-001` - 全链路验证 owner 集成分支 DDD-SLIM-PERF-001 是否整体绿（先跑 mvn 测试，验证 41 DONE + 2 PARTIAL 不引入回归）。
-2. **P1** `DDD-SLIM-PRODUCT-001` - ProductService 瘦身。
-3. **P1** `DDD-SLIM-SAMPLE-001` - SampleService 瘦身（如果 god service 仍存在）。
-4. **P1** `DDD-CLEAN-001~004` - 跨域 mapper 清理（按 phase 11 顺序串行）。
-5. **P1** `DDD-FRONT-001` - 前端字段标注。
-6. **P1** 修正 `DDD-PERF-001` 与 `DDD-SAMPLE-001` PARTIAL 缺口。
+1. **P0** `DDD-VERIFY-001` - 全链路验证 owner 集成分支 DDD-SLIM-SAMPLE-001 是否整体绿（先跑 mvn 测试，验证 45 DONE + 1 PARTIAL 不引入回归）。
+2. **P1** `DDD-CLEAN-001~004` - 跨域 mapper 清理（按 phase 11 顺序串行）。
+3. **P1** `DDD-FRONT-001` - 前端字段标注。
+4. **P1** 修正 `DDD-PERF-001` PARTIAL 缺口（补 PerformanceCalculationApplicationService）。
 
 ## real-pre 状态
 
@@ -162,4 +160,9 @@ HEAD：`c419c350`（DDD-SLIM-PERF-001）
 - **2026-06-13 13:23** - DDD-TALENT-004 收尾（d9a33028）
 - **2026-06-13 13:26** - DDD-PERF-005 收尾（70b2e287 + 46675e9d）
 - **2026-06-13 14:25** - DDD-ORDER-006 收尾（0f6dd1d4）
-- **2026-06-13 15:33** - 本次 board 同步（strict 42/53 = 79%, 含 PARTIAL 44/53 = 83%）
+- **2026-06-13 15:33** - 第一次 board 同步（strict 42/53 = 79%, 含 PARTIAL 44/53 = 83%）
+- **2026-06-13 15:40** - 修复 board commit UTF-8 编码并 amend（e3bbaf5b）
+- **2026-06-13 15:47** - DDD-SAMPLE-001 收尾（7efee009 统一 SampleApplicationService）
+- **2026-06-13 16:09** - DDD-SLIM-PRODUCT-001 收尾（6452425f ProductService 瘦身）
+- **2026-06-13 16:51** - DDD-SLIM-SAMPLE-001 收尾（f90ea9d1 SampleService 瘦身）
+- **2026-06-13 16:58** - 第二次 board 同步（strict 45/53 = 85%, 含 PARTIAL 46/53 = 87%）
