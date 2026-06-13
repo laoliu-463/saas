@@ -68,4 +68,13 @@ class SampleEligibilityServiceTest {
         assertThat(result.eligible()).isFalse();
         assertThat(result.reasons()).anyMatch(reason -> reason.contains("10000"));
     }
+
+    @Test
+    void classifyFailureRules_shouldDelegateToPolicy() {
+        assertThat(service.classifyFailureRules(List.of(
+                "近30天销售额未达到 10000",
+                "达人等级未达到 LV2",
+                "人工规则")))
+                .containsExactly("min30DaySales", "minLevel", "custom");
+    }
 }

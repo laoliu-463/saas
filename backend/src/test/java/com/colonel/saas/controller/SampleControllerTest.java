@@ -177,6 +177,9 @@ class SampleControllerTest {
                         new SampleEligibilityService.SampleDefaultStandard(30000L, "LV1", java.util.Map.of()),
                         new SampleEligibilityService.TalentSnapshot(50000L, "LV2")
                 ));
+        lenient().when(sampleEligibilityService.classifyFailureRules(any()))
+                .thenAnswer(invocation -> new com.colonel.saas.domain.sample.policy.SampleEligibilityPolicy()
+                        .classifyFailureRules(invocation.getArgument(0)));
         lenient().when(talentClaimMapper.findActiveByTalentAndUser(any(), any()))
                 .thenReturn(mock(TalentClaim.class));
         lenient().when(sampleRequestMapper.updateById(any(SampleRequest.class))).thenReturn(1);
