@@ -18,6 +18,10 @@ import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.DepartmentOption;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.facade.OrderDomainFacade;
+import com.colonel.saas.domain.order.query.OrderDetailView;
+import com.colonel.saas.domain.order.query.OrderQueryView;
+import com.colonel.saas.domain.order.query.OrderListAssembler;
+import com.colonel.saas.domain.order.query.OrderDetailAssembler;
 import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.DashboardService;
@@ -573,7 +577,7 @@ public class OrderController extends BaseController {
      */
     @Operation(summary = "获取订单列表", description = "分页查询订单归因列表，用于订单主页面。")
     @GetMapping
-    public ApiResult<IPage<ColonelsettlementOrder>> getOrders(
+    public ApiResult<IPage<OrderQueryView>> getOrders(
             @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(name = "page", defaultValue = "1") @Min(1) @Max(1000) long page,
             @Parameter(description = "每页条数，最大 200。") @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(200) long size,
             @Parameter(description = "订单 ID。") @RequestParam(name = "orderId", required = false) String orderId,
@@ -594,7 +598,7 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
         if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
-            IPage<ColonelsettlementOrder> dddResult = orderDomainFacade.getOrders(
+            IPage<OrderQueryView> dddResult = orderDomainFacade.getOrders(
                     page, size, orderId, attributionStatus, unattributedReason, activityId, productId,
                     channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
                     dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
@@ -625,7 +629,7 @@ public class OrderController extends BaseController {
         IPage<ColonelsettlementOrder> result = orderMapper.selectPage(query, wrapper);
         result.getRecords().forEach(orderService::normalizeOrderRow);
         orderService.enrichOrderList(result.getRecords());
-        return ok(result);
+        return ok(result.convert(OrderListAssembler::toView));
     }
 
     /**
@@ -662,7 +666,7 @@ public class OrderController extends BaseController {
      */
     @Operation(summary = "获取未归因订单", description = "分页查询未归因订单列表，用于未归因排查。其余筛选条件与订单列表保持一致。")
     @GetMapping("/unattributed")
-    public ApiResult<IPage<ColonelsettlementOrder>> getUnattributedOrders(
+    public ApiResult<IPage<OrderQueryView>> getUnattributedOrders(
             @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(name = "page", defaultValue = "1") @Min(1) @Max(1000) long page,
             @Parameter(description = "每页条数，最大 200。") @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(200) long size,
             @Parameter(description = "订单 ID。") @RequestParam(name = "orderId", required = false) String orderId,
@@ -682,7 +686,7 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
         if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
-            IPage<ColonelsettlementOrder> dddResult = orderDomainFacade.getOrders(
+            IPage<OrderQueryView> dddResult = orderDomainFacade.getOrders(
                     page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, activityId, productId,
                     channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
                     dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
@@ -712,7 +716,7 @@ public class OrderController extends BaseController {
      */
     @Operation(summary = "获取订单详情", description = "查询单个订单详情，返回订单基础信息、归因结果、推广映射、达人与寄样关联信息。")
     @GetMapping("/{orderId}")
-    public ApiResult<OrderDetailResponse> getOrderDetail(
+    public ApiResult<OrderDetailView> getOrderDetail(
             @Parameter(description = "订单 ID。") @PathVariable("orderId") String orderId,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
@@ -720,7 +724,8 @@ public class OrderController extends BaseController {
         if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
             return ok(orderDomainFacade.getOrderDetail(orderId, userId, deptId, dataScope));
         }
-        return ok(orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope));
+        OrderDetailResponse response = orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope);
+        return ok(OrderDetailAssembler.toView(response));
     }
 
     @Operation(summary = "获取订单统计", description = "按当前筛选条件统计订单总量、已归因数、未归因数与未归因原因分布。")

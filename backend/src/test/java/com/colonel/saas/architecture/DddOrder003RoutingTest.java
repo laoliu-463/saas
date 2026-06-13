@@ -6,6 +6,8 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.controller.OrderController;
 import com.colonel.saas.domain.order.facade.OrderDomainFacade;
+import com.colonel.saas.domain.order.query.OrderDetailView;
+import com.colonel.saas.domain.order.query.OrderQueryView;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -108,7 +110,8 @@ class DddOrder003RoutingTest {
 
         var response = controller.getOrders(1, 20, "ORD-1", "ATTRIBUTED", null, null, null, null, null, null, null, null, null, null, null, null, userId, deptId, DataScope.ALL);
 
-        assertThat(response.getData()).isSameAs(expected);
+        assertThat(response.getData()).isNotNull();
+        assertThat(response.getData().getRecords()).isEmpty();
         verify(orderDomainFacade, never()).getOrders(anyLong(), anyLong(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -116,7 +119,7 @@ class DddOrder003RoutingTest {
     @DisplayName("开关开启时，getOrders路由至OrderDomainFacade")
     void shouldRouteGetOrdersToFacadeWhenSwitchOn() {
         enableFacadeSwitch();
-        IPage<ColonelsettlementOrder> expected = new Page<>();
+        IPage<OrderQueryView> expected = new Page<>();
         when(orderDomainFacade.getOrders(anyLong(), anyLong(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(expected);
 
         var response = controller.getOrders(1, 20, "ORD-1", "ATTRIBUTED", null, null, null, null, null, null, null, null, null, null, null, null, userId, deptId, DataScope.ALL);
@@ -135,7 +138,8 @@ class DddOrder003RoutingTest {
 
         var response = controller.getUnattributedOrders(1, 20, "ORD-1", null, null, null, null, null, null, null, null, null, null, null, null, userId, deptId, DataScope.ALL);
 
-        assertThat(response.getData()).isSameAs(expected);
+        assertThat(response.getData()).isNotNull();
+        assertThat(response.getData().getRecords()).isEmpty();
         verify(orderDomainFacade, never()).getOrders(anyLong(), anyLong(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -143,7 +147,7 @@ class DddOrder003RoutingTest {
     @DisplayName("开关开启时，getUnattributedOrders路由至OrderDomainFacade，强制传参UNATTRIBUTED")
     void shouldRouteGetUnattributedOrdersToFacadeWhenSwitchOn() {
         enableFacadeSwitch();
-        IPage<ColonelsettlementOrder> expected = new Page<>();
+        IPage<OrderQueryView> expected = new Page<>();
         when(orderDomainFacade.getOrders(anyLong(), anyLong(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(expected);
 
         var response = controller.getUnattributedOrders(1, 20, "ORD-1", null, null, null, null, null, null, null, null, null, null, null, null, userId, deptId, DataScope.ALL);
@@ -161,7 +165,7 @@ class DddOrder003RoutingTest {
 
         var response = controller.getOrderDetail("ORD-1", userId, deptId, DataScope.ALL);
 
-        assertThat(response.getData()).isSameAs(expected);
+        assertThat(response.getData()).isInstanceOf(OrderDetailView.class);
         verify(orderDomainFacade, never()).getOrderDetail(any(), any(), any(), any());
     }
 
@@ -169,7 +173,7 @@ class DddOrder003RoutingTest {
     @DisplayName("开关开启时，getOrderDetail路由至OrderDomainFacade")
     void shouldRouteGetOrderDetailToFacadeWhenSwitchOn() {
         enableFacadeSwitch();
-        OrderDetailResponse expected = new OrderDetailResponse();
+        OrderDetailView expected = new OrderDetailView();
         when(orderDomainFacade.getOrderDetail(any(), any(), any(), any())).thenReturn(expected);
 
         var response = controller.getOrderDetail("ORD-1", userId, deptId, DataScope.ALL);

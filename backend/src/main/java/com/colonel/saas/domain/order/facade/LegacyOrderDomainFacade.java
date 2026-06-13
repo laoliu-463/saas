@@ -8,6 +8,10 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.controller.OrderController;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.domain.order.query.OrderDetailView;
+import com.colonel.saas.domain.order.query.OrderQueryView;
+import com.colonel.saas.domain.order.query.OrderListAssembler;
+import com.colonel.saas.domain.order.query.OrderDetailAssembler;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.service.DashboardService;
@@ -50,7 +54,7 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
     }
 
     @Override
-    public IPage<ColonelsettlementOrder> getOrders(
+    public IPage<OrderQueryView> getOrders(
             long page,
             long size,
             String orderId,
@@ -95,13 +99,15 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
         IPage<ColonelsettlementOrder> result = orderMapper.selectPage(query, wrapper);
         result.getRecords().forEach(orderService::normalizeOrderRow);
         orderService.enrichOrderList(result.getRecords());
-        return result;
+        return result.convert(OrderListAssembler::toView);
     }
 
     @Override
-    public OrderDetailResponse getOrderDetail(String orderId, UUID userId, UUID deptId, DataScope dataScope) {
-        return orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope);
+    public OrderDetailView getOrderDetail(String orderId, UUID userId, UUID deptId, DataScope dataScope) {
+        OrderDetailResponse response = orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope);
+        return OrderDetailAssembler.toView(response);
     }
+
 
     @Override
     public OrderController.OrderStats getStats(

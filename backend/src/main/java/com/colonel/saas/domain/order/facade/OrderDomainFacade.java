@@ -3,8 +3,8 @@ package com.colonel.saas.domain.order.facade;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.controller.OrderController;
-import com.colonel.saas.dto.order.OrderDetailResponse;
-import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.domain.order.query.OrderDetailView;
+import com.colonel.saas.domain.order.query.OrderQueryView;
 
 import java.util.UUID;
 
@@ -19,7 +19,7 @@ public interface OrderDomainFacade {
     /**
      * 分页查询订单列表。
      */
-    IPage<ColonelsettlementOrder> getOrders(
+    IPage<OrderQueryView> getOrders(
             long page,
             long size,
             String orderId,
@@ -44,7 +44,7 @@ public interface OrderDomainFacade {
     /**
      * 获取订单详情。
      */
-    OrderDetailResponse getOrderDetail(String orderId, UUID userId, UUID deptId, DataScope dataScope);
+    OrderDetailView getOrderDetail(String orderId, UUID userId, UUID deptId, DataScope dataScope);
 
     /**
      * 获取订单汇总统计。
