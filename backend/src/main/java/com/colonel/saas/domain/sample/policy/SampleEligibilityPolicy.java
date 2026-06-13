@@ -69,6 +69,31 @@ public class SampleEligibilityPolicy {
     }
 
     /**
+     * 将不达标原因文本映射为规则编码（min30DaySales / minLevel / custom）。
+     */
+    public List<String> classifyFailureRules(List<String> reasons) {
+        if (reasons == null || reasons.isEmpty()) {
+            return List.of();
+        }
+        List<String> failedRules = new ArrayList<>();
+        for (String reason : reasons) {
+            if (!StringUtils.hasText(reason)) {
+                continue;
+            }
+            if (reason.contains("销售额")) {
+                failedRules.add("min30DaySales");
+                continue;
+            }
+            if (reason.contains("等级")) {
+                failedRules.add("minLevel");
+                continue;
+            }
+            failedRules.add("custom");
+        }
+        return failedRules;
+    }
+
+    /**
      * 归一化达人等级字符串：已是 LV 格式直接返回，A/S 映射为 LV2，B 映射为 LV1，其他映射为 LV0。
      *
      * @param raw 原始等级字符串

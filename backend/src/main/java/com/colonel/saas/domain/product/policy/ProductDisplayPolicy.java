@@ -1,5 +1,6 @@
 package com.colonel.saas.domain.product.policy;
 
+import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import org.springframework.stereotype.Component;
 
@@ -150,6 +151,93 @@ public class ProductDisplayPolicy {
             BigDecimal commissionRate,
             LocalDateTime listedAt
     ) {
+    }
+
+    public record DisplayPresentation(
+            ProductDisplayStatus displayStatus,
+            String displayMark,
+            String displayMarkLabel,
+            String hiddenReason,
+            LocalDateTime firstDisplayedAt,
+            LocalDateTime lastDisplayedAt,
+            boolean libraryVisible
+    ) {
+    }
+
+    public record ActivityProductStatusPresentation(
+            String officialStatus,
+            String reviewStatus,
+            String publishStatus,
+            boolean manualDisabled,
+            boolean selectedToLibrary,
+            ProductDisplayStatus displayStatus,
+            String displayMark,
+            String displayMarkLabel,
+            String hiddenReason
+    ) {
+    }
+
+    public DisplayPresentation resolveDisplayPresentation(
+            boolean hasState,
+            boolean selectedToLibrary,
+            String displayStatusCode,
+            String hiddenReason,
+            LocalDateTime firstDisplayedAt,
+            LocalDateTime lastDisplayedAt) {
+        ProductDisplayStatus displayStatus;
+        if (!hasState) {
+            displayStatus = ProductDisplayStatus.PENDING;
+        } else if (ProductDisplayStatus.HIDDEN == ProductDisplayStatus.fromCode(displayStatusCode)) {
+            displayStatus = ProductDisplayStatus.HIDDEN;
+        } else if (!selectedToLibrary) {
+            displayStatus = ProductDisplayStatus.PENDING;
+        } else {
+            displayStatus = ProductDisplayStatus.fromCode(displayStatusCode);
+        }
+        return new DisplayPresentation(
+                displayStatus,
+                legacyDisplayMark(displayStatus),
+                displayStatus.getLabel(),
+                hasState ? hiddenReason : null,
+                hasState ? firstDisplayedAt : null,
+                hasState ? lastDisplayedAt : null,
+                displayStatus == ProductDisplayStatus.DISPLAYING);
+    }
+
+    public ActivityProductStatusPresentation resolveActivityProductStatusPresentation(
+            Integer upstreamStatus,
+            String statusText,
+            Integer auditStatus,
+            String bizStatusCode,
+            boolean manualDisabled,
+            boolean selectedToLibrary,
+            boolean hasPromoteLink,
+            boolean hasShortLink,
+            String displayStatusCode,
+            String hiddenReason) {
+        String officialStatus = resolveOfficialStatus(upstreamStatus, statusText);
+        String reviewStatus = resolveReviewStatus(officialStatus, auditStatus, bizStatusCode);
+        String publishStatus = resolvePublishStatus(
+                manualDisabled, selectedToLibrary, hasPromoteLink, hasShortLink);
+        ProductDisplayStatus displayStatus = ProductDisplayStatus.fromCode(displayStatusCode);
+        return new ActivityProductStatusPresentation(
+                officialStatus,
+                reviewStatus,
+                publishStatus,
+                manualDisabled,
+                selectedToLibrary,
+                displayStatus,
+                legacyDisplayMark(displayStatus),
+                displayStatus.getLabel(),
+                hiddenReason);
+    }
+
+    public String legacyDisplayMark(ProductDisplayStatus displayStatus) {
+        return switch (displayStatus) {
+            case DISPLAYING -> "SHOWING";
+            case HIDDEN -> "HIDDEN";
+            case PENDING -> "PENDING";
+        };
     }
 
     public boolean isEligibleForDisplay(ProductDisplayRelationInput relation, LocalDateTime now) {
@@ -371,5 +459,86 @@ public class ProductDisplayPolicy {
             return -1;
         }
         return right.compareTo(left);
+    }
+
+    private String resolveOfficialStatus(Integer upstreamStatus, String statusText) {
+        if (upstreamStatus != null) {
+            switch (upstreamStatus) {
+                case 0:
+                    return "PENDING_REVIEW";
+                case 1:
+                    return "PROMOTING";
+                case 2:
+                    return "REJECTED";
+                case 3:
+                    return "TERMINATED";
+                case 6:
+                    return "EXPIRED";
+                default:
+                    break;
+            }
+        }
+        String text = statusText == null ? "" : statusText.trim();
+        if (text.contains("待审核") || text.contains("审核中")) {
+            return "PENDING_REVIEW";
+        }
+        if (text.contains("未通过") || text.contains("拒绝")) {
+            return "REJECTED";
+        }
+        if (text.contains("终止")) {
+            return "TERMINATED";
+        }
+        if (text.contains("到期") || text.contains("过期")) {
+            return "EXPIRED";
+        }
+        if (text.contains("推广")) {
+            return "PROMOTING";
+        }
+        return "PENDING_REVIEW";
+    }
+
+    private String resolveReviewStatus(String officialStatus, Integer auditStatus, String bizStatusCode) {
+        if ("PROMOTING".equals(officialStatus)) {
+            return "APPROVED";
+        }
+        if (Integer.valueOf(1).equals(auditStatus)) {
+            return "PENDING";
+        }
+        if (Integer.valueOf(2).equals(auditStatus)) {
+            return "APPROVED";
+        }
+        if (Integer.valueOf(3).equals(auditStatus)) {
+            return "REJECTED";
+        }
+        if ("PENDING_REVIEW".equals(officialStatus)) {
+            return "PENDING";
+        }
+        if ("REJECTED".equals(officialStatus)) {
+            return "REJECTED";
+        }
+        ProductBizStatus status = readBizStatus(bizStatusCode);
+        return status == ProductBizStatus.REJECTED ? "REJECTED" : "APPROVED";
+    }
+
+    private String resolvePublishStatus(
+            boolean manualDisabled,
+            boolean selectedToLibrary,
+            boolean hasPromoteLink,
+            boolean hasShortLink) {
+        if (manualDisabled) {
+            return "PAUSED";
+        }
+        if (selectedToLibrary || hasPromoteLink || hasShortLink) {
+            return "PUBLISHED";
+        }
+        return "UNPUBLISHED";
+    }
+
+    private ProductBizStatus readBizStatus(String code) {
+        try {
+            return ProductBizStatus.fromCode(code);
+        } catch (IllegalArgumentException ex) {
+            return ProductBizStatus.PENDING_AUDIT;
+        }
     }
 }

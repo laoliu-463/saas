@@ -441,35 +441,6 @@ public class ProductService {
         return StringUtils.hasText(p.getPromoteLink()) || StringUtils.hasText(p.getShortLink());
     }
 
-    private int compareCommission(Product left, Product right) {
-        java.math.BigDecimal leftRatio = left.getCosRatio();
-        java.math.BigDecimal rightRatio = right.getCosRatio();
-        if (leftRatio == null && rightRatio == null) {
-            return 0;
-        }
-        if (leftRatio == null) {
-            return 1;
-        }
-        if (rightRatio == null) {
-            return -1;
-        }
-        // 高佣金在前（降序）
-        return rightRatio.compareTo(leftRatio);
-    }
-
-    private int compareSelectedTime(Product left, Product right) {
-        if (left.getSelectedAt() == null && right.getSelectedAt() == null) {
-            return 0;
-        }
-        if (left.getSelectedAt() == null) {
-            return 1;
-        }
-        if (right.getSelectedAt() == null) {
-            return -1;
-        }
-        return right.getSelectedAt().compareTo(left.getSelectedAt());
-    }
-
     public PageResult<Map<String, Object>> getPromotionLinkHistory(String productId, long page, long size) {
         long currentPage = Math.max(page, 1);
         long pageSize = Math.max(size, 1);
@@ -3571,10 +3542,16 @@ public class ProductService {
             product.setBizStatusLabel(bizStatus.getLabel());
             product.setPinned(ProductPinPolicy.isPinned(state, java.time.LocalDateTime.now()));
             product.setPinnedUntil(state.getPinnedUntil());
-            ProductDisplayStatus displayStatus = ProductDisplayStatus.fromCode(state.getDisplayStatus());
-            product.setDisplayStatus(displayStatus.name());
-            product.setDisplayStatusLabel(displayStatus.getLabel());
-            product.setHiddenReason(state.getHiddenReason());
+            var displayPresentation = productDisplayPolicy.resolveDisplayPresentation(
+                    true,
+                    Boolean.TRUE.equals(state.getSelectedToLibrary()),
+                    state.getDisplayStatus(),
+                    state.getHiddenReason(),
+                    state.getFirstDisplayedAt(),
+                    state.getLastDisplayedAt());
+            product.setDisplayStatus(displayPresentation.displayStatus().name());
+            product.setDisplayStatusLabel(displayPresentation.displayMarkLabel());
+            product.setHiddenReason(displayPresentation.hiddenReason());
         }
         return product;
     }
@@ -4588,24 +4565,21 @@ public class ProductService {
     }
 
     private void applyDisplayMark(Map<String, Object> view, ProductOperationState state) {
-        ProductDisplayStatus displayStatus;
-        if (state == null) {
-            displayStatus = ProductDisplayStatus.PENDING;
-        } else if (ProductDisplayStatus.HIDDEN == ProductDisplayStatus.fromCode(state.getDisplayStatus())) {
-            displayStatus = ProductDisplayStatus.HIDDEN;
-        } else if (!Boolean.TRUE.equals(state.getSelectedToLibrary())) {
-            displayStatus = ProductDisplayStatus.PENDING;
-        } else {
-            displayStatus = ProductDisplayStatus.fromCode(state.getDisplayStatus());
-        }
-        view.put("displayStatus", displayStatus.name());
-        view.put("displayMark", toLegacyDisplayMark(displayStatus));
-        view.put("displayMarkLabel", displayStatus.getLabel());
+        var presentation = productDisplayPolicy.resolveDisplayPresentation(
+                state != null,
+                state != null && Boolean.TRUE.equals(state.getSelectedToLibrary()),
+                state == null ? null : state.getDisplayStatus(),
+                state == null ? null : state.getHiddenReason(),
+                state == null ? null : state.getFirstDisplayedAt(),
+                state == null ? null : state.getLastDisplayedAt());
+        view.put("displayStatus", presentation.displayStatus().name());
+        view.put("displayMark", presentation.displayMark());
+        view.put("displayMarkLabel", presentation.displayMarkLabel());
         if (state != null) {
-            view.put("hiddenReason", state.getHiddenReason());
-            view.put("firstDisplayedAt", state.getFirstDisplayedAt());
-            view.put("lastDisplayedAt", state.getLastDisplayedAt());
-            view.put("libraryVisible", displayStatus == ProductDisplayStatus.DISPLAYING);
+            view.put("hiddenReason", presentation.hiddenReason());
+            view.put("firstDisplayedAt", presentation.firstDisplayedAt());
+            view.put("lastDisplayedAt", presentation.lastDisplayedAt());
+            view.put("libraryVisible", presentation.libraryVisible());
         }
     }
 
@@ -4613,99 +4587,26 @@ public class ProductService {
             Map<String, Object> view,
             Integer upstreamStatus,
             ProductOperationState state) {
-        String officialStatus = resolveOfficialStatus(upstreamStatus, readString(view, "statusText"));
-        view.put("officialStatus", officialStatus);
-        view.put("reviewStatus", resolveReviewStatus(officialStatus, state));
-        view.put("publishStatus", resolvePublishStatus(state));
-        view.put("manualDisabled", state != null && Boolean.TRUE.equals(state.getManualDisabled()));
-        view.put("selectedToLibrary", state != null && Boolean.TRUE.equals(state.getSelectedToLibrary()));
-        ProductDisplayStatus displayStatus = state == null
-                ? ProductDisplayStatus.PENDING
-                : ProductDisplayStatus.fromCode(state.getDisplayStatus());
-        view.put("displayStatus", displayStatus.name());
-        view.put("displayMark", toLegacyDisplayMark(displayStatus));
-        view.put("displayMarkLabel", displayStatus.getLabel());
-        view.put("hiddenReason", state == null ? null : state.getHiddenReason());
-    }
-
-    private String resolveOfficialStatus(Integer upstreamStatus, String statusText) {
-        if (upstreamStatus != null) {
-            switch (upstreamStatus) {
-                case 0:
-                    return "PENDING_REVIEW";
-                case 1:
-                    return "PROMOTING";
-                case 2:
-                    return "REJECTED";
-                case 3:
-                    return "TERMINATED";
-                case 6:
-                    return "EXPIRED";
-                default:
-                    break;
-            }
-        }
-        String text = statusText == null ? "" : statusText.trim();
-        if (text.contains("待审核") || text.contains("审核中")) {
-            return "PENDING_REVIEW";
-        }
-        if (text.contains("未通过") || text.contains("拒绝")) {
-            return "REJECTED";
-        }
-        if (text.contains("终止")) {
-            return "TERMINATED";
-        }
-        if (text.contains("到期") || text.contains("过期")) {
-            return "EXPIRED";
-        }
-        if (text.contains("推广")) {
-            return "PROMOTING";
-        }
-        return "PENDING_REVIEW";
-    }
-
-    private String resolveReviewStatus(String officialStatus, ProductOperationState state) {
-        if ("PROMOTING".equals(officialStatus)) {
-            return "APPROVED";
-        }
-        Integer auditStatus = state == null ? null : state.getAuditStatus();
-        if (Integer.valueOf(1).equals(auditStatus)) {
-            return "PENDING";
-        }
-        if (Integer.valueOf(2).equals(auditStatus)) {
-            return "APPROVED";
-        }
-        if (Integer.valueOf(3).equals(auditStatus)) {
-            return "REJECTED";
-        }
-        if ("PENDING_REVIEW".equals(officialStatus)) {
-            return "PENDING";
-        }
-        if ("REJECTED".equals(officialStatus)) {
-            return "REJECTED";
-        }
-        ProductBizStatus status = readStateBizStatus(state);
-        return status == ProductBizStatus.REJECTED ? "REJECTED" : "APPROVED";
-    }
-
-    private String resolvePublishStatus(ProductOperationState state) {
-        if (state != null && Boolean.TRUE.equals(state.getManualDisabled())) {
-            return "PAUSED";
-        }
-        if (state != null && (Boolean.TRUE.equals(state.getSelectedToLibrary())
-                || StringUtils.hasText(state.getPromoteLink())
-                || StringUtils.hasText(state.getShortLink()))) {
-            return "PUBLISHED";
-        }
-        return "UNPUBLISHED";
-    }
-
-    private String toLegacyDisplayMark(ProductDisplayStatus displayStatus) {
-        return switch (displayStatus) {
-            case DISPLAYING -> "SHOWING";
-            case HIDDEN -> "HIDDEN";
-            case PENDING -> "PENDING";
-        };
+        var presentation = productDisplayPolicy.resolveActivityProductStatusPresentation(
+                upstreamStatus,
+                readString(view, "statusText"),
+                state == null ? null : state.getAuditStatus(),
+                state == null ? null : state.getBizStatus(),
+                state != null && Boolean.TRUE.equals(state.getManualDisabled()),
+                state != null && Boolean.TRUE.equals(state.getSelectedToLibrary()),
+                state != null && StringUtils.hasText(state.getPromoteLink()),
+                state != null && StringUtils.hasText(state.getShortLink()),
+                state == null ? null : state.getDisplayStatus(),
+                state == null ? null : state.getHiddenReason());
+        view.put("officialStatus", presentation.officialStatus());
+        view.put("reviewStatus", presentation.reviewStatus());
+        view.put("publishStatus", presentation.publishStatus());
+        view.put("manualDisabled", presentation.manualDisabled());
+        view.put("selectedToLibrary", presentation.selectedToLibrary());
+        view.put("displayStatus", presentation.displayStatus().name());
+        view.put("displayMark", presentation.displayMark());
+        view.put("displayMarkLabel", presentation.displayMarkLabel());
+        view.put("hiddenReason", presentation.hiddenReason());
     }
 
     private Map<String, Object> buildAuditSupplementSummary(Map<String, Object> auditSupplement) {
