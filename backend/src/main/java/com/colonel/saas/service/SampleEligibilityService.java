@@ -87,6 +87,11 @@ public class SampleEligibilityService {
         );
     }
 
+    /** 将不达标原因映射为规则编码，供 extra.eligibilityCheck.failedRules 使用。 */
+    public java.util.List<String> classifyFailureRules(java.util.List<String> reasons) {
+        return eligibilityPolicy.classifyFailureRules(reasons);
+    }
+
     /**
      * 解析达人近 30 天销售额：优先读取 Talent.sales30d，无值时通过 JdbcTemplate 实时聚合 colonelsettlement_order。
      * 字段标记为 unsupported 时返回 null。

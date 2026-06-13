@@ -4,8 +4,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -167,5 +169,16 @@ class SampleEligibilityPolicyTest {
         assertEquals("LV1", result.standard().minLevel());
         assertEquals(50000L, result.actual().monthlySales());
         assertEquals("LV2", result.actual().level());
+    }
+
+    @Test
+    @DisplayName("classifyFailureRules 映射不达标原因编码")
+    void classifyFailureRules_shouldMapReasonKeywords() {
+        assertThat(policy.classifyFailureRules(List.of("近30天销售额未达到 1000")))
+                .containsExactly("min30DaySales");
+        assertThat(policy.classifyFailureRules(List.of("达人等级未达到 LV2")))
+                .containsExactly("minLevel");
+        assertThat(policy.classifyFailureRules(List.of("其他原因")))
+                .containsExactly("custom");
     }
 }

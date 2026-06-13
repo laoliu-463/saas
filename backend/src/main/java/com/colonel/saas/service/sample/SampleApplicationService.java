@@ -2623,7 +2623,7 @@ public class SampleApplicationService extends BaseController {
         Map<String, Object> extra = new LinkedHashMap<>();
         Map<String, Object> eligibilityCheck = new LinkedHashMap<>();
         eligibilityCheck.put("passed", eligibility.eligible());
-        eligibilityCheck.put("failedRules", classifyEligibilityFailures(eligibility.reasons()));
+        eligibilityCheck.put("failedRules", sampleEligibilityService.classifyFailureRules(eligibility.reasons()));
         eligibilityCheck.put("reasons", eligibility.reasons());
         String applySource = normalizeApplySource(request.getApplySource());
         extra.put("eligibilityCheck", eligibilityCheck);
@@ -2686,42 +2686,6 @@ public class SampleApplicationService extends BaseController {
             snapshot.put("rawStandard", eligibility.standard().raw());
         }
         return snapshot;
-    }
-
-    /**
-     * 将资质评估的不达标原因文本分类为规则编码。
-     * <p>
-     * 遍历所有不达标原因文本，根据关键词匹配归类为以下规则编码：
-     * <ol>
-     *     <li>包含"销售额"→ {@code min30DaySales}（30 天销售额未达标）</li>
-     *     <li>包含"等级"→ {@code minLevel}（达人等级未达标）</li>
-     *     <li>其他情况→ {@code custom}（自定义规则未达标）</li>
-     * </ol>
-     * 空白原因会被跳过。返回的规则编码列表用于存入 extra.eligibilityCheck.failedRules 字段。
-     *
-     * @param reasons 资质评估返回的不达标原因文本列表
-     * @return 规则编码列表（min30DaySales / minLevel / custom），空列表表示无不达标原因
-     */
-    private List<String> classifyEligibilityFailures(List<String> reasons) {
-        if (reasons == null || reasons.isEmpty()) {
-            return List.of();
-        }
-        List<String> failedRules = new ArrayList<>();
-        for (String reason : reasons) {
-            if (!StringUtils.hasText(reason)) {
-                continue;
-            }
-            if (reason.contains("销售额")) {
-                failedRules.add("min30DaySales");
-                continue;
-            }
-            if (reason.contains("等级")) {
-                failedRules.add("minLevel");
-                continue;
-            }
-            failedRules.add("custom");
-        }
-        return failedRules;
     }
 
     /**
