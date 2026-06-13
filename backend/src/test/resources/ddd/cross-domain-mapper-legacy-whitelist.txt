@@ -31,4 +31,3 @@ com.colonel.saas.service.data.DataApplicationService|ColonelsettlementActivityMa
 com.colonel.saas.service.data.DataApplicationService|ColonelsettlementOrderMapper
 com.colonel.saas.service.data.DataApplicationService|ExclusiveMerchantMapper
 com.colonel.saas.service.data.DataApplicationService|ExclusiveTalentMapper
-

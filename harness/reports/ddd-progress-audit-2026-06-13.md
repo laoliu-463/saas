@@ -10,14 +10,14 @@
 
 ## Executive summary
 
-Evidence-based strict completion: **49/53 (92%)**。SLIM + CLEAN-001 + FRONT 已落地；**DDD-VERIFY-001 阶段性 PARTIAL_PASS**；继续 **CLEAN-002~004**。
+Evidence-based strict completion: **49/53 (92%)**。CLEAN-002 已落地；继续 **CLEAN-003~004**；FRONT/VERIFY/PERF 缺口不得写成 DONE。
 
 | Metric | Value |
 | --- | --- |
 | Board (stale 2026-06-12) | 36/53 |
 | This audit (strict) | **49/53** |
-| PARTIAL (active remaining table) | 2 |
-| TODO | 3 |
+| PARTIAL (active remaining table) | 3 |
+| TODO | 2 |
 
 ## Batch 2 completion (this session)
 
@@ -37,7 +37,8 @@ Evidence-based strict completion: **49/53 (92%)**。SLIM + CLEAN-001 + FRONT 已
 | DDD-SLIM-PRODUCT-001 | DONE | WIP | ProductService display presentation delegates to ProductDisplayPolicy |
 | DDD-SLIM-SAMPLE-001 | DONE | f90ea9d1 | SampleEligibilityPolicy.classifyFailureRules |
 | DDD-CLEAN-001 | DONE | 5d90d355 | Order user dependency guard + no SysUserMapper/SysUserService direct dependency |
-| DDD-FRONT-001 | DONE | 5d90d355 | OrderDetailModal section field-source hints + vitest |
+| DDD-FRONT-001 | PARTIAL | 5d90d355 | OrderDetailModal section field-source hints + vitest；订单详情浏览器/E2E 待补 |
+| DDD-CLEAN-002 | DONE | WIP@129f117b | sample cross-domain mapper guard + facade migration |
 
 ## Targeted test evidence
 
@@ -48,25 +49,26 @@ Evidence-based strict completion: **49/53 (92%)**。SLIM + CLEAN-001 + FRONT 已
 - SLIM-SAMPLE-001 bundle: 178/178 PASS (Sample eligibility/controller/domain/logistics/lifecycle)
 - SLIM-PERF-001 bundle: 70/70 PASS (Commission/Data/Performance money formula)
 - VERIFY-001 stage: Ddd* 68/68 (excl CLEAN-002 WIP), frontend 635/635, e2e channel-chain 15/15
-- CLEAN-001 bundle: 48/48 PASS (order guard + cross-domain guard + order permission/sync tests)
+- CLEAN-002 bundle: 124 run / 0 fail / 1 skipped (sample guard + cross-domain guard + sample controller/filter/lifecycle/facade)
 - Sprint1 + PERF-005: 37/37 PASS
 
 Full `mvn clean test` baseline debt unchanged (~17 failures / ~114 errors); not blocking task-level DONE.
 
-## Remaining TODO (3 strict slots + 1 partial)
+## Remaining TODO (2 strict slots + 2 partial)
 
 | task_id | status | reason |
 | --- | --- | --- |
-| DDD-CLEAN-002~004 | TODO | cross-domain mapper cleanup |
+| DDD-CLEAN-003~004 | TODO | cross-domain mapper cleanup |
 | DDD-PERF-001 | PARTIAL | board spec alignment |
+| DDD-FRONT-001 | PARTIAL | order-detail browser/E2E evidence pending |
 | DDD-VERIFY-001 | PARTIAL | stage acceptance done; full p0 + mvn clean test pending |
 
 ## Gate decisions
 
 - **Continue补任务:** YES
-- **Continue CLEAN:** YES, next is DDD-CLEAN-002
-- **Enter VERIFY-001 final:** NO until CLEAN-002~004 + `e2e:real-pre:p0` + baseline policy agreed
+- **Continue CLEAN:** YES, next is DDD-CLEAN-003
+- **Enter VERIFY-001 final:** NO until CLEAN-003~004 + `e2e:real-pre:p0` + baseline policy agreed
 
 ## Conclusion
 
-**PARTIAL_PASS** — CLEAN-001 and full-scope Harness passed; remaining CLEAN tasks and FRONT browser/E2E evidence still pending.
+**PARTIAL_PASS** — CLEAN-002 targeted PASS；剩余 CLEAN-003~004 与 VERIFY final 仍未完成。
