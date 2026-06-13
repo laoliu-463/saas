@@ -10,14 +10,14 @@
 
 ## Executive summary
 
-Evidence-based strict completion: **42/53 (79%)**. Sprint 1 P0 + Batch 2 P1 核心项已落地；**不可进入 CLEAN**；**可继续 SLIM / FRONT / VERIFY**。
+Evidence-based strict completion: **44/53 (83%)**. Sprint 1 P0 + Batch 2 P1 核心项已落地；**不可进入 CLEAN**；**可继续 SLIM / FRONT / VERIFY**。
 
 | Metric | Value |
 | --- | --- |
 | Board (stale 2026-06-12) | 36/53 |
-| This audit (strict) | **41/53** |
-| PARTIAL (counted half) | 2 |
-| TODO | 10 |
+| This audit (strict) | **44/53** |
+| PARTIAL (active remaining table) | 0 |
+| TODO | 9 |
 
 ## Batch 2 completion (this session)
 
@@ -28,31 +28,32 @@ Evidence-based strict completion: **42/53 (79%)**. Sprint 1 P0 + Batch 2 P1 核�
 | DDD-ORDER-006 | DONE | eb3be708+WIP | query views + assemblers + facade/controller |
 | DDD-PERF-004 | DONE | aa711769 | OrderPerformanceQueryFacade |
 | DDD-PERF-005 | DONE | 46675e9d | ExclusiveMerchantApplicationService |
+| DDD-PRODUCT-003 | DONE | 2f0c1077 | ProductPinPolicy |
 | DDD-PRODUCT-004 | DONE | f1391eee | CopyPromotion + DouyinConvertPort + CopyTextPolicy |
 | DDD-TALENT-003 | DONE | 39613fd5 | TalentTagPolicy + TalentAddressPolicy |
 | DDD-TALENT-004 | DONE | b399701f | ExclusiveTalentApplicationService |
+| DDD-SLIM-PERF-001 | DONE | c419c350 | CommissionService delegates money formula to PerformanceMoneyPolicy |
 
 ## Targeted test evidence
 
 - ORDER-005 suite: 18/18 PASS
 - Batch2 bundle: 44/44 PASS (TALENT/PERF/PRODUCT)
+- PRODUCT-003 bundle: 41/41 PASS (ProductPinPolicy/ProductPinService/ProductDisplay/ProductService)
+- SLIM-PERF-001 bundle: 70/70 PASS (Commission/Data/Performance money formula)
 - Sprint1 + PERF-005: 37/37 PASS
 
 Full `mvn clean test` baseline debt unchanged (~17 failures / ~114 errors); not blocking task-level DONE.
 
-## Remaining TODO (12 strict slots)
+## Remaining TODO (9 strict slots)
 
-| task_id | reason |
-| --- | --- |
-| DDD-PRODUCT-003 | ProductPinPolicy not found |
-| DDD-ORDER-006 | read model not migrated off OrderQueryService |
-| DDD-SAMPLE-001 | SampleApplicationService not in domain/application |
-| DDD-SLIM-PRODUCT-001 | open |
-| DDD-SLIM-PERF-001 | open |
-| DDD-SLIM-SAMPLE-001 | open |
-| DDD-CLEAN-001~004 | blocked until SLIM stable |
-| DDD-FRONT-001 | not started |
-| DDD-VERIFY-001 | not started |
+| task_id | status | reason |
+| --- | --- | --- |
+| DDD-SAMPLE-001 | TODO | SampleApplicationService not in domain/application |
+| DDD-SLIM-PRODUCT-001 | TODO | open |
+| DDD-SLIM-SAMPLE-001 | TODO | open |
+| DDD-CLEAN-001~004 | BLOCKED | blocked until SLIM stable |
+| DDD-FRONT-001 | TODO | not started |
+| DDD-VERIFY-001 | TODO | not started |
 
 ## Gate decisions
 
