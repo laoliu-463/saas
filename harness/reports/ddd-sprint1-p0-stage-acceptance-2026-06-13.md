@@ -2,28 +2,65 @@
 
 | Field | Value |
 | --- | --- |
-| period | 2026-06-13 13:13 → 2026-06-13 13:17 |
-| base_branch | feature/ddd/DDD-PERF-004 |
-| operator | Antigravity Agent |
-| scope | PROGRESS-AUDIT / ORDER-004 / PERF-004 / PRODUCT-004 / PRODUCT-005 |
+| period | 2026-06-13 |
+| branch | feature/ddd/DDD-PERF-004 |
+| HEAD | c3ecdd25 |
+| scope | DDD-PROGRESS-AUDIT / ORDER-004 / PERF-004 / PRODUCT-004 / PRODUCT-005 |
+| conclusion | **PARTIAL_PASS** |
 
-## 1. 验证结论
-**PASS**：第一批 5 个任务在当前 HEAD 分支下验证完全通过。
-- **目标测试**：针对 5 个重构任务的 68 个 targeted 单元与集成测试全部通过 (0 Failures)。
-- **架构一致性**：确认订单默认归因零 exclusive / 零提成依赖；业绩 Facade 已正常用于 Data BFF 的数据补全；复制讲解和快速寄样已通过 Port / ApplicationService 彻底解耦。
+## 1. 任务与 commit
 
-## 2. 测试执行明细
-| 模块 | 测试套件 | 测试数 | 结果 |
-| --- | --- | --- | --- |
-| ORDER-004 | OrderAttributionRouterTest, OrderDefaultAttributionPolicyTest, OrderDefaultAttributionResolverTest | 17 | PASS |
-| PRODUCT-004| CopyPromotionApplicationServiceTest | 1 | PASS |
-| PRODUCT-005| QuickSampleApplyTest | 13 | PASS |
-| PERF-004 | LegacyOrderPerformanceQueryFacadeTest, DataApplicationServiceOrderSummaryCacheTest, PerformanceQueryServiceTest | 37 | PASS |
-| **合计** | | **68** | **PASS** |
+| task_id | commit | report |
+| --- | --- | --- |
+| DDD-PROGRESS-AUDIT | 712df1ed | harness/reports/ddd-progress-audit-2026-06-13.md |
+| DDD-ORDER-004 | 95020743 | harness/reports/ddd-order-004-2026-06-12.md |
+| DDD-PERF-004 | a9522ac8 (+ e5db1041 test fix) | harness/reports/ddd-perf-004-2026-06-12.md |
+| DDD-PRODUCT-004 | fce4b2fb | harness/reports/ddd-product-004-copy-promotion.md |
+| DDD-PRODUCT-005 | 0498b08e | （基线 commit，无独立 report） |
 
-## 3. 风险与阻断
-- **全量测试已知债务**：后端全量测试中仍存在部分与本次修改无关的 legacy 失败（如 `PendingActivationAccessPolicyTest` ），但不构成对第一批重构功能的阻断。
-- **CLEAN 阶段阻断**：当前虽然第一批任务稳定，但在独家链路（TALENT-004 / PERF-005）补齐前，禁止进入 CLEAN 阶段。
+## 2. Targeted tests — PASS
 
-## 4. 下一步计划
-- 继续执行第二批独家判定服务独立化任务：`DDD-TALENT-004` (独家达人) 与 `DDD-PERF-005` (独家商家)。
+```powershell
+cd backend
+mvn -Dtest=OrderDefaultAttributionPolicyTest,OrderDefaultAttributionResolverTest,OrderAttributionRouterTest,LegacyOrderPerformanceQueryFacadeTest,DataApplicationServiceOrderSummaryCacheTest,PerformanceQueryServiceTest,CopyPromotionApplicationServiceTest,DouyinPromotionGatewayConvertAdapterTest,QuickSampleApplyTest test
+```
+
+结果：exit 0，Sprint 1 相关套件全绿。
+
+## 3. 全量测试 — FAIL（基线债务）
+
+```powershell
+mvn clean test
+```
+
+结果：Tests run: 2090, Failures: 17, Errors: 114, Skipped: 1  
+与本次 Sprint 1 diff 无直接因果的 legacy 失败（如 TalentEnrichTaskVO NoClassDefFoundError）。
+
+## 4. 业务验证要点
+
+| 项 | 结果 |
+| --- | --- |
+| 订单默认归因无 exclusive | PASS（Policy/Resolver 路径） |
+| 业绩 BFF 批量补全 | PASS（OrderPerformanceQueryFacade） |
+| 商品快速寄样 Port 化 | PASS（SampleApplicationPort） |
+| 复制讲解 ApplicationService | PARTIAL（薄委派，非 SPRINT-1-P0 完整 Port） |
+| real-pre 开关 | 新路径默认 `enabled: false`，需显式开启 |
+
+## 5. 是否进入 CLEAN
+
+**否。** 前置：TALENT-004、PERF-005、ORDER-005/006、全量测试基线、PRODUCT-004 完整版。
+
+## 6. 下一步
+
+1. 恢复 stash `WIP DDD-TALENT-004` 并完成 DDD-TALENT-004  
+2. DDD-PERF-005 独家商家独立化  
+3. 考虑 cherry-pick `feature/ddd/SPRINT-1-P0` 中 PRODUCT-004 完整实现  
+4. 第二批完成后跑 DDD-VERIFY-001
+
+## 7. 回滚
+
+```powershell
+git checkout d317d895
+```
+
+不影响 DB migration；开关关闭即回退 legacy 路径。
