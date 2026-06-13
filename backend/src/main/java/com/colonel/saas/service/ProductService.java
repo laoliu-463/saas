@@ -9,6 +9,7 @@ import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
+import com.colonel.saas.domain.product.policy.ProductPinPolicy;
 import com.colonel.saas.dto.product.ProductFilterOptionItem;
 import com.colonel.saas.dto.product.ProductFilterOptionsDTO;
 import com.colonel.saas.common.enums.TalentFollowStatus;
@@ -414,13 +415,10 @@ public class ProductService {
     }
 
     private boolean isPinnedAndNotExpired(Product p) {
-        if (!Boolean.TRUE.equals(p.getPinned())) {
-            return false;
-        }
-        if (p.getPinnedUntil() == null) {
-            return true; // 无过期时间，视为有效
-        }
-        return LocalDateTime.now().isBefore(p.getPinnedUntil());
+        return ProductPinPolicy.isPinnedForPresentation(
+                Boolean.TRUE.equals(p.getPinned()),
+                p.getPinnedUntil(),
+                LocalDateTime.now());
     }
 
     /**
@@ -3571,7 +3569,7 @@ public class ProductService {
             }
             product.setBizStatus(bizStatus.name());
             product.setBizStatusLabel(bizStatus.getLabel());
-            product.setPinned(ProductPinService.isPinned(state, java.time.LocalDateTime.now()));
+            product.setPinned(ProductPinPolicy.isPinned(state, java.time.LocalDateTime.now()));
             product.setPinnedUntil(state.getPinnedUntil());
             ProductDisplayStatus displayStatus = ProductDisplayStatus.fromCode(state.getDisplayStatus());
             product.setDisplayStatus(displayStatus.name());
@@ -3666,7 +3664,7 @@ public class ProductService {
             view.put("selectedToLibrary", Boolean.TRUE.equals(state.getSelectedToLibrary()));
             view.put("libraryVisible", Boolean.TRUE.equals(state.getSelectedToLibrary()));
             view.put("selectedAt", state.getSelectedAt());
-            view.put("pinned", ProductPinService.isPinned(state, LocalDateTime.now()));
+            view.put("pinned", ProductPinPolicy.isPinned(state, LocalDateTime.now()));
             view.put("pinnedUntil", state.getPinnedUntil());
             Map<String, Object> auditSupplement = parseAuditPayload(state.getAuditPayload());
             view.put("auditSupplementSummary", buildAuditSupplementSummary(auditSupplement));
