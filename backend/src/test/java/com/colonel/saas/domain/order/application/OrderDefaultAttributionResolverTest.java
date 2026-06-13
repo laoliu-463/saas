@@ -95,7 +95,7 @@ class OrderDefaultAttributionResolverTest {
     void resolve_shouldResolveTalentIdFromUid() {
         ColonelsettlementOrder order = baseOrder();
         UUID talentId = UUID.randomUUID();
-        TalentReadDTO talent = new TalentReadDTO(talentId, "uid-1", null, "达人A", null, 1);
+        TalentReadDTO talent = new TalentReadDTO(talentId, "uid-1", null, "达人A", null, 1, null, null, null, null);
 
         when(pickSourceMappingAdapter.findByPickSourceOrExtra("ps-1", null)).thenReturn(null);
         when(productDomainFacade.findProductAssigneeId(any(), any())).thenReturn(null);

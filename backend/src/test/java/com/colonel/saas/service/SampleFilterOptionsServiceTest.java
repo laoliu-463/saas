@@ -4,15 +4,12 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.product.facade.ProductDomainFacade;
+import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
+import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
 import com.colonel.saas.dto.user.UserOptionResponse;
-import com.colonel.saas.entity.Product;
-import com.colonel.saas.entity.ProductOperationState;
-import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
-import com.colonel.saas.mapper.ProductMapper;
-import com.colonel.saas.mapper.ProductOperationStateMapper;
-import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,9 +31,7 @@ import static org.mockito.Mockito.when;
 class SampleFilterOptionsServiceTest {
 
     @Mock private SampleRequestMapper sampleRequestMapper;
-    @Mock private ProductMapper productMapper;
-    @Mock private ProductSnapshotMapper productSnapshotMapper;
-    @Mock private ProductOperationStateMapper productOperationStateMapper;
+    @Mock private ProductDomainFacade productDomainFacade;
     @Mock private UserDomainFacade userDomainFacade;
 
     private SampleFilterOptionsService service;
@@ -44,9 +40,7 @@ class SampleFilterOptionsServiceTest {
     void setUp() {
         service = new SampleFilterOptionsService(
                 sampleRequestMapper,
-                productMapper,
-                productSnapshotMapper,
-                productOperationStateMapper,
+                productDomainFacade,
                 userDomainFacade);
     }
 
@@ -88,19 +82,10 @@ class SampleFilterOptionsServiceTest {
         sample.setChannelUserId(channelUserId);
         sample.setShipperCode("SF");
 
-        Product product = new Product();
-        product.setId(productId);
-        product.setName("合作单商品");
-
-        ProductSnapshot snapshot = new ProductSnapshot();
-        snapshot.setId(productId);
-        snapshot.setActivityId("ACT-001");
-        snapshot.setProductId("10901825");
-        snapshot.setShopId(123456L);
-        snapshot.setShopName("合作单店铺");
-
-        ProductOperationState state = new ProductOperationState();
-        state.setAssigneeId(recruiterUserId);
+        ProductReadDTO product = new ProductReadDTO(
+                productId, "10901825", null, "合作单商品", null, null, null, null, null, null);
+        ProductSnapshotReadDTO snapshot = new ProductSnapshotReadDTO(
+                productId, "ACT-001", "10901825", null, null, 123456L, "合作单店铺", null, null, null, null);
 
         UserOptionResponse channel = new UserOptionResponse(channelUserId, null, "渠道A", null, List.of(), null);
         UserOptionResponse recruiter = new UserOptionResponse(recruiterUserId, null, "招商A", null, List.of(), null);
@@ -108,9 +93,9 @@ class SampleFilterOptionsServiceTest {
         Page<SampleRequest> page = new Page<>(1, 200, 1);
         page.setRecords(List.of(sample));
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any())).thenReturn(page);
-        when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
-        when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
-        when(productOperationStateMapper.selectOne(any())).thenReturn(state);
+        when(productDomainFacade.loadProductsByIds(any())).thenReturn(Map.of(productId, product));
+        when(productDomainFacade.findSnapshotById(productId)).thenReturn(snapshot);
+        when(productDomainFacade.findProductSnapshotAssigneeId(productId)).thenReturn(recruiterUserId);
         when(userDomainFacade.getUsersByIds(any())).thenReturn(List.of(channel));
         when(userDomainFacade.getUserById(recruiterUserId)).thenReturn(recruiter);
 

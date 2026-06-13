@@ -1,14 +1,11 @@
 package com.colonel.saas.service.sample;
 
+import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
-import com.colonel.saas.mapper.ProductMapper;
-import com.colonel.saas.mapper.ProductOperationStateMapper;
-import com.colonel.saas.mapper.ProductSnapshotMapper;
+import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SampleStatusLogMapper;
-import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.mapper.TalentClaimMapper;
-import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.service.ProductService;
@@ -33,12 +30,9 @@ public class SampleQueryConfiguration {
     @Bean(name = "sampleQueryApplicationDelegate")
     SampleApplicationService sampleQueryApplicationDelegate(
             SampleRequestMapper sampleRequestMapper,
-            ProductMapper productMapper,
-            ProductOperationStateMapper productOperationStateMapper,
-            ProductSnapshotMapper productSnapshotMapper,
+            ProductDomainFacade productDomainFacade,
             UserDomainFacade userDomainFacade,
-            TalentMapper talentMapper,
-            TalentClaimMapper talentClaimMapper,
+            TalentDomainFacade talentDomainFacade,
             SampleStatusLogService sampleStatusLogService,
             SampleStatusLogMapper sampleStatusLogMapper,
             CrawlerTalentInfoService crawlerTalentInfoService,
@@ -52,12 +46,9 @@ public class SampleQueryConfiguration {
             SampleWriteTransactionService sampleWriteTransactionService) {
         return new SampleApplicationService(
                 sampleRequestMapper,
-                productMapper,
-                productOperationStateMapper,
-                productSnapshotMapper,
+                productDomainFacade,
                 userDomainFacade,
-                talentMapper,
-                talentClaimMapper,
+                talentDomainFacade,
                 sampleStatusLogService,
                 sampleStatusLogMapper,
                 crawlerTalentInfoService,

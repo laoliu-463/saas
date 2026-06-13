@@ -22,28 +22,25 @@ import com.colonel.saas.dto.sample.SampleBatchShipItem;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.domain.sample.policy.SampleStateMachine;
-import com.colonel.saas.domain.sample.policy.SampleStateMachine;
 import com.colonel.saas.gateway.logistics.query.LogisticsQueryResult;
 import com.colonel.saas.entity.SampleLogisticsTrace;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Product;
-import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.SampleStatusLog;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
-import com.colonel.saas.entity.TalentClaim;
-import com.colonel.saas.mapper.ProductMapper;
-import com.colonel.saas.mapper.ProductOperationStateMapper;
-import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SampleStatusLogMapper;
+import com.colonel.saas.domain.product.facade.ProductDomainFacade;
+import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
+import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
+import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
+import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.dto.user.UserOptionResponse;
-import com.colonel.saas.mapper.TalentClaimMapper;
-import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.service.ProductService;
@@ -173,23 +170,12 @@ public class SampleApplicationService extends BaseController {
     /** 寄样申请单数据访问层，负责寄样申请单的 CRUD 操作及分页查询 */
     private final SampleRequestMapper sampleRequestMapper;
 
-    /** 商品数据访问层，用于查询商品信息（寄样申请关联商品、商品搜索等） */
-    private final ProductMapper productMapper;
-
-    /** 商品运营状态数据访问层，用于查询商品的运营状态（如是否已上架等） */
-    private final ProductOperationStateMapper productOperationStateMapper;
-
-    /** 商品快照数据访问层，用于在创建寄样时保存商品当前信息快照 */
-    private final ProductSnapshotMapper productSnapshotMapper;
+    private final ProductDomainFacade productDomainFacade;
 
     /** 系统用户门面，用于查询用户信息（创建人姓名、归属部门等） */
     private final UserDomainFacade userDomainFacade;
 
-    /** 达人数据访问层，用于查询和关联达人信息 */
-    private final TalentMapper talentMapper;
-
-    /** 达人认领关系数据访问层，用于校验渠道人员是否已认领指定达人 */
-    private final TalentClaimMapper talentClaimMapper;
+    private final TalentDomainFacade talentDomainFacade;
 
     /** 寄样状态日志业务服务，负责状态流转日志的记录和查询 */
     private final SampleStatusLogService sampleStatusLogService;
@@ -236,12 +222,9 @@ public class SampleApplicationService extends BaseController {
      * </ol>
      *
      * @param sampleRequestMapper                寄样申请单数据访问层
-     * @param productMapper                      商品数据访问层
-     * @param productOperationStateMapper         商品运营状态数据访问层
-     * @param productSnapshotMapper               商品快照数据访问层
-     * @param userDomainFacade                      系统用户门面
-     * @param talentMapper                        达人数据访问层
-     * @param talentClaimMapper                   达人认领关系数据访问层
+     * @param productDomainFacade                商品域门面
+     * @param userDomainFacade                   用户域门面
+     * @param talentDomainFacade                 达人域门面
      * @param sampleStatusLogService              寄样状态日志业务服务
      * @param sampleStatusLogMapper               寄样状态日志数据访问层
      * @param crawlerTalentInfoService            爬虫达人信息查询服务
@@ -256,12 +239,9 @@ public class SampleApplicationService extends BaseController {
      */
     public SampleApplicationService(
             SampleRequestMapper sampleRequestMapper,
-            ProductMapper productMapper,
-            ProductOperationStateMapper productOperationStateMapper,
-            ProductSnapshotMapper productSnapshotMapper,
+            ProductDomainFacade productDomainFacade,
             UserDomainFacade userDomainFacade,
-            TalentMapper talentMapper,
-            TalentClaimMapper talentClaimMapper,
+            TalentDomainFacade talentDomainFacade,
             SampleStatusLogService sampleStatusLogService,
             SampleStatusLogMapper sampleStatusLogMapper,
             CrawlerTalentInfoService crawlerTalentInfoService,
@@ -274,12 +254,9 @@ public class SampleApplicationService extends BaseController {
             SampleDomainEventPublisher sampleDomainEventPublisher,
             SampleWriteTransactionService sampleWriteTransactionService) {
         this.sampleRequestMapper = sampleRequestMapper;
-        this.productMapper = productMapper;
-        this.productOperationStateMapper = productOperationStateMapper;
-        this.productSnapshotMapper = productSnapshotMapper;
+        this.productDomainFacade = productDomainFacade;
         this.userDomainFacade = userDomainFacade;
-        this.talentMapper = talentMapper;
-        this.talentClaimMapper = talentClaimMapper;
+        this.talentDomainFacade = talentDomainFacade;
         this.sampleStatusLogService = sampleStatusLogService;
         this.sampleStatusLogMapper = sampleStatusLogMapper;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
@@ -330,17 +307,8 @@ public class SampleApplicationService extends BaseController {
         return sampleWriteTransactionService.execute(() -> {
         ensureSampleApplyPermission(roleCodes);
         Product product = requireProduct(request.getProductId());
-        // 寄样前必须先加入商品库
-        ProductSnapshot snapshot = productSnapshotMapper.selectById(product.getId());
-        if (snapshot != null) {
-            ProductOperationState state = productOperationStateMapper.selectOne(
-                    new LambdaQueryWrapper<ProductOperationState>()
-                            .eq(ProductOperationState::getActivityId, snapshot.getActivityId())
-                            .eq(ProductOperationState::getProductId, snapshot.getProductId())
-                            .last("LIMIT 1"));
-            if (state == null || !Boolean.TRUE.equals(state.getSelectedToLibrary())) {
-                throw BusinessException.stateInvalid("该商品尚未加入商品库，请先审核并加入商品库后再进行寄样操作");
-            }
+        if (!productDomainFacade.isSelectedToLibraryForSample(product.getId())) {
+            throw BusinessException.stateInvalid("该商品尚未加入商品库，请先审核并加入商品库后再进行寄样操作");
         }
         CrawlerTalentInfo talentInfo = resolveSampleTalentInfo(request.getTalentId());
         Talent talent = findOrCreateTalentFromCrawler(talentInfo);
@@ -837,7 +805,7 @@ public class SampleApplicationService extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
-        Product product = productMapper.selectById(sample.getProductId());
+        Product product = toProduct(productDomainFacade.findProductById(sample.getProductId()));
         return ok(toVO(
                 sample,
                 product,
@@ -1022,7 +990,7 @@ public class SampleApplicationService extends BaseController {
         if ("SHIPPING".equals(action)) {
             sampleLogisticsSubscriptionService.subscribeAfterShipment(sample);
         }
-        Product product = productMapper.selectById(sample.getProductId());
+        Product product = toProduct(productDomainFacade.findProductById(sample.getProductId()));
         return ok(toVO(
                 sample,
                 product,
@@ -1151,7 +1119,7 @@ public class SampleApplicationService extends BaseController {
         SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
         sampleLogisticsSyncService.syncOne(sample.getId());
         sample = sampleRequestMapper.selectById(id);
-        Product product = productMapper.selectById(sample.getProductId());
+        Product product = toProduct(productDomainFacade.findProductById(sample.getProductId()));
         return ok(toVO(
                 sample,
                 product,
@@ -1330,7 +1298,7 @@ public class SampleApplicationService extends BaseController {
                 persistSample(sample);
                 sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, request.getRemark());
                 sampleDomainEventPublisher.publishSampleApproved(
-                        sample, resolveColonelUserId(productMapper.selectById(sample.getProductId())), userId, now);
+                        sample, resolveColonelUserId(toProduct(productDomainFacade.findProductById(sample.getProductId()))), userId, now);
                 success++;
             } catch (BusinessException | ForbiddenException e) {
                 log.warn("Batch approve failed for requestNo={}: {}", requestNo, e.getMessage());
@@ -1842,13 +1810,7 @@ public class SampleApplicationService extends BaseController {
         if (sample == null || sample.getProductId() == null || userId == null) {
             return false;
         }
-        String sourceProductId = resolveSampleSourceProductId(sample.getProductId());
-        if (!StringUtils.hasText(sourceProductId)) {
-            return false;
-        }
-        return productOperationStateMapper.selectCount(new LambdaQueryWrapper<ProductOperationState>()
-                .eq(ProductOperationState::getProductId, sourceProductId)
-                .eq(ProductOperationState::getAssigneeId, userId)) > 0;
+        return productDomainFacade.isSampleProductAssignedToUser(sample.getProductId(), userId);
     }
 
     /**
@@ -1861,15 +1823,7 @@ public class SampleApplicationService extends BaseController {
      * @return 抖音侧源商品 ID，未找到时返回 null
      */
     private String resolveSampleSourceProductId(UUID productPrimaryId) {
-        Product product = productMapper.selectById(productPrimaryId);
-        if (product != null && StringUtils.hasText(product.getProductId())) {
-            return product.getProductId();
-        }
-        ProductSnapshot snapshot = productSnapshotMapper.selectById(productPrimaryId);
-        if (snapshot != null && StringUtils.hasText(snapshot.getProductId())) {
-            return snapshot.getProductId();
-        }
-        return null;
+        return productDomainFacade.resolveSampleSourceProductId(productPrimaryId);
     }
 
     /**
@@ -2242,47 +2196,10 @@ public class SampleApplicationService extends BaseController {
      * @see #materializeProductFromSnapshot(ProductSnapshot)
      */
     private Product requireProduct(UUID productId) {
-        Product product = productMapper.selectById(productId);
-        if (product != null) {
-            return product;
-        }
-
-        ProductSnapshot snapshot = productSnapshotMapper.selectById(productId);
-        if (snapshot != null && StringUtils.hasText(snapshot.getProductId())) {
-            product = productMapper.selectOne(new LambdaQueryWrapper<Product>()
-                    .eq(Product::getProductId, snapshot.getProductId())
-                    .last("LIMIT 1"));
-            if (product == null) {
-                product = materializeProductFromSnapshot(snapshot);
-                productMapper.insert(product);
-            }
-        }
+        Product product = toProduct(productDomainFacade.findOrMaterializeSampleProduct(productId));
         if (product == null) {
             throw new ValidateException("Selected product does not exist");
         }
-        return product;
-    }
-
-    /**
-     * 从商品快照物化出一条 Product 记录。
-     * <p>
-     * 将快照中保存的商品基本信息（ID、业务ID、标题、价格、封面、详情链接等）
-     * 映射为正式的 Product 实体。标题优先使用快照的 title 字段，
-     * 若为空则退化为 productId。商品状态默认为 1（上架），审核状态默认为 2（已通过）。
-     *
-     * @param snapshot 商品快照实体，来源于爬虫或上游同步
-     * @return 新创建的 Product 实体（未落库，由调用方决定是否 insert）
-     */
-    private Product materializeProductFromSnapshot(ProductSnapshot snapshot) {
-        Product product = new Product();
-        product.setId(snapshot.getId());
-        product.setProductId(snapshot.getProductId());
-        product.setName(StringUtils.hasText(snapshot.getTitle()) ? snapshot.getTitle() : snapshot.getProductId());
-        product.setPrice(snapshot.getPrice());
-        product.setCover(snapshot.getCover());
-        product.setDetailUrl(snapshot.getDetailUrl());
-        product.setStatus(snapshot.getStatus() == null ? 1 : snapshot.getStatus());
-        product.setCheckStatus(2);
         return product;
     }
 
@@ -2329,9 +2246,8 @@ public class SampleApplicationService extends BaseController {
         if (talentInfo != null) {
             return talentInfo;
         }
-        Talent manualTalent = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
-                .eq(Talent::getDouyinUid, talentId)
-                .last("limit 1"));
+        TalentReadDTO manualTalentDto = talentDomainFacade.findByDouyinUid(talentId);
+        Talent manualTalent = toTalent(manualTalentDto);
         if (manualTalent == null) {
             throw new ValidateException("Selected talent does not exist");
         }
@@ -2383,19 +2299,8 @@ public class SampleApplicationService extends BaseController {
      * @return Talent 实体（已有记录或新创建的记录）
      */
     private Talent findOrCreateTalentFromCrawler(CrawlerTalentInfo info) {
-        Talent existing = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
-                .eq(Talent::getDouyinUid, info.getTalentId())
-                .last("limit 1"));
-        if (existing != null) {
-            return existing;
-        }
-        Talent talent = new Talent();
-        talent.setDouyinUid(info.getTalentId());
-        talent.setNickname(info.getNickname());
-        talent.setFans(info.getFansCount());
-        talent.setStatus(1);
-        talentMapper.insert(talent);
-        return talent;
+        return toTalent(talentDomainFacade.findOrCreateSampleTalent(
+                info.getTalentId(), info.getNickname(), info.getFansCount()));
     }
 
     /**
@@ -2425,7 +2330,7 @@ public class SampleApplicationService extends BaseController {
         if (userId == null || talentId == null) {
             throw new ValidateException("该达人信息不完整，请重新选择");
         }
-        if (talentClaimMapper.findActiveByTalentAndUser(talentId, userId) == null) {
+        if (!talentDomainFacade.hasActiveClaim(talentId, userId)) {
             throw new ForbiddenException("该达人未在你的私海中，请先认领后再申请寄样");
         }
     }
@@ -2742,10 +2647,9 @@ public class SampleApplicationService extends BaseController {
         if (ids == null || ids.isEmpty()) {
             return Map.of();
         }
-        List<Product> products = productMapper.selectBatchIds(ids);
         Map<UUID, Product> map = new HashMap<>();
-        for (Product product : products) {
-            map.put(product.getId(), product);
+        for (var entry : productDomainFacade.loadProductsByIds(ids).entrySet()) {
+            map.put(entry.getKey(), toProduct(entry.getValue()));
         }
         return map;
     }
@@ -2764,14 +2668,7 @@ public class SampleApplicationService extends BaseController {
         if (!StringUtils.hasText(keyword)) {
             return Set.of();
         }
-        QueryWrapper<Product> wrapper = new QueryWrapper<Product>()
-                .select("id")
-                .and(query -> query.like("name", keyword).or().like("product_id", keyword))
-                .last("LIMIT " + PRODUCT_KEYWORD_BATCH_SIZE);
-        return productMapper.selectList(wrapper).stream()
-                .map(Product::getId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        return productDomainFacade.findProductIdsByKeyword(keyword, PRODUCT_KEYWORD_BATCH_SIZE);
     }
 
     /**
@@ -2949,37 +2846,7 @@ public class SampleApplicationService extends BaseController {
      * @return 匹配到的商品快照 ID 集合
      */
     private Set<UUID> loadMatchedProductIdsByShop(String keyword) {
-        QueryWrapper<ProductSnapshot> wrapper = new QueryWrapper<ProductSnapshot>()
-                .select("id")
-                .and(query -> {
-                    query.like("shop_name", keyword);
-                    Long shopId = parseLongOrNull(keyword);
-                    if (shopId != null) {
-                        query.or().eq("shop_id", shopId);
-                    }
-                })
-                .last("LIMIT " + PRODUCT_KEYWORD_BATCH_SIZE);
-        return productSnapshotMapper.selectList(wrapper).stream()
-                .map(ProductSnapshot::getId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-    }
-
-    /**
-     * 安全地将字符串解析为 Long 类型。
-     * <p>
-     * 输入为空白、null 或无法解析为数字时返回 null，不抛异常。
-     * 用于店铺 ID 等字段的可选数值解析场景。
-     *
-     * @param value 待解析的字符串
-     * @return 解析后的 Long 值，解析失败返回 null
-     */
-    private Long parseLongOrNull(String value) {
-        try {
-            return StringUtils.hasText(value) ? Long.parseLong(value.trim()) : null;
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
+        return productDomainFacade.findProductSnapshotIdsByShopKeyword(keyword, PRODUCT_KEYWORD_BATCH_SIZE);
     }
 
     /**
@@ -3005,11 +2872,11 @@ public class SampleApplicationService extends BaseController {
     private SampleVO toVO(SampleRequest sample, Product product, String productName, String talentName) {
         Product resolvedProduct = product;
         if (resolvedProduct == null && sample.getProductId() != null) {
-            resolvedProduct = productMapper.selectById(sample.getProductId());
+            resolvedProduct = toProduct(productDomainFacade.findProductById(sample.getProductId()));
         }
         ProductSnapshot snapshot = resolvedProduct == null || resolvedProduct.getId() == null
                 ? null
-                : productSnapshotMapper.selectById(resolvedProduct.getId());
+                : toSnapshot(productDomainFacade.findSnapshotById(resolvedProduct.getId()));
         UUID colonelUserId = resolveColonelUserId(resolvedProduct);
         SampleVO vo = new SampleVO();
         vo.setId(sample.getId());
@@ -3022,7 +2889,9 @@ public class SampleApplicationService extends BaseController {
         vo.setTalentName(StringUtils.hasText(talentName) ? talentName : sample.getTalentNickname());
         vo.setProductId(sample.getProductId());
         vo.setProductExternalId(resolveProductExternalId(resolvedProduct, snapshot));
-        vo.setProductName(productName);
+        vo.setProductName(StringUtils.hasText(productName)
+                ? productName
+                : (resolvedProduct == null ? null : resolvedProduct.getName()));
         vo.setProductCover(resolveProductCover(resolvedProduct, snapshot));
         vo.setProductPriceText(resolveProductPriceText(resolvedProduct, snapshot));
         vo.setShopId(snapshot == null || snapshot.getShopId() == null ? null : String.valueOf(snapshot.getShopId()));
@@ -3313,7 +3182,7 @@ public class SampleApplicationService extends BaseController {
             UUID userId,
             LocalDateTime now,
             String reason) {
-        Product product = productMapper.selectById(sample.getProductId());
+        Product product = toProduct(productDomainFacade.findProductById(sample.getProductId()));
         UUID recruiterId = resolveColonelUserId(product);
         switch (action) {
             case "PENDING_SHIP" -> sampleDomainEventPublisher.publishSampleApproved(sample, recruiterId, userId, now);
@@ -3342,14 +3211,21 @@ public class SampleApplicationService extends BaseController {
      * @return 团长用户 ID，无法解析时返回 null
      */
     private UUID resolveColonelUserId(Product product) {
-        if (product == null || !StringUtils.hasText(product.getProductId()) || product.getActivityId() == null) {
+        if (product == null) {
             return null;
         }
-        ProductOperationState state = productOperationStateMapper.selectOne(new LambdaQueryWrapper<ProductOperationState>()
-                .eq(ProductOperationState::getActivityId, String.valueOf(product.getActivityId()))
-                .eq(ProductOperationState::getProductId, product.getProductId())
-                .last("limit 1"));
-        return state == null ? null : state.getAssigneeId();
+        if (StringUtils.hasText(product.getProductId()) && product.getActivityId() != null) {
+            UUID assigneeId = productDomainFacade.findProductAssigneeId(
+                    String.valueOf(product.getActivityId()),
+                    product.getProductId());
+            if (assigneeId != null) {
+                return assigneeId;
+            }
+        }
+        if (product.getId() == null) {
+            return null;
+        }
+        return productDomainFacade.findProductSnapshotAssigneeId(product.getId());
     }
 
     /**
@@ -3622,22 +3498,67 @@ public class SampleApplicationService extends BaseController {
      * @param sample        本次创建的寄样申请
      */
     private void writeBackClaimAddress(UUID channelUserId, UUID talentId, SampleRequest sample) {
-        if (channelUserId == null || talentId == null) {
-            return;
-        }
-        String name = sample.getRecipientName();
-        String phone = sample.getRecipientPhone();
-        String address = sample.getRecipientAddress();
-        if (!StringUtils.hasText(name) && !StringUtils.hasText(phone) && !StringUtils.hasText(address)) {
-            return;
-        }
-        TalentClaim claim = talentClaimMapper.findActiveByTalentAndUser(talentId, channelUserId);
-        if (claim != null) {
-            claim.setRecipientName(name);
-            claim.setRecipientPhone(phone);
-            claim.setRecipientAddress(address);
-            talentClaimMapper.updateById(claim);
-            log.debug("T-ADDR: writeback claim address for talent={}, channel={}", talentId, channelUserId);
-        }
+        talentDomainFacade.writeBackClaimAddress(
+                channelUserId,
+                talentId,
+                sample.getRecipientName(),
+                sample.getRecipientPhone(),
+                sample.getRecipientAddress());
     }
+
+    private static Product toProduct(ProductReadDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+        Product product = new Product();
+        product.setId(dto.id());
+        product.setProductId(dto.productId());
+        product.setOuterProductId(dto.outerProductId());
+        product.setName(dto.name());
+        product.setCover(dto.cover());
+        product.setPrice(dto.price());
+        product.setActivityId(dto.activityId());
+        product.setDetailUrl(dto.detailUrl());
+        product.setStatus(dto.status());
+        product.setCheckStatus(dto.checkStatus());
+        return product;
+    }
+
+    private static ProductSnapshot toSnapshot(ProductSnapshotReadDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(dto.id());
+        snapshot.setActivityId(dto.activityId());
+        snapshot.setProductId(dto.productId());
+        snapshot.setTitle(dto.title());
+        snapshot.setCover(dto.cover());
+        snapshot.setShopId(dto.shopId());
+        snapshot.setShopName(dto.shopName());
+        snapshot.setPrice(dto.price());
+        snapshot.setPriceText(dto.priceText());
+        snapshot.setStatus(dto.status());
+        snapshot.setDetailUrl(dto.detailUrl());
+        return snapshot;
+    }
+
+    private static Talent toTalent(TalentReadDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+        Talent talent = new Talent();
+        talent.setId(dto.id());
+        talent.setDouyinUid(dto.douyinUid());
+        talent.setDouyinNo(dto.douyinNo());
+        talent.setNickname(dto.nickname());
+        talent.setFans(dto.fansCount());
+        talent.setStatus(dto.status());
+        talent.setAvatarUrl(dto.avatarUrl());
+        talent.setMainCategory(dto.mainCategory());
+        talent.setCategories(dto.categories());
+        talent.setIpLocation(dto.ipLocation());
+        return talent;
+    }
+
 }

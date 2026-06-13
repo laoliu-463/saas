@@ -3,6 +3,7 @@ package com.colonel.saas.domain.talent.facade;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,12 +24,14 @@ class LegacyTalentDomainFacadeTest {
 
     @Mock
     private TalentMapper talentMapper;
+    @Mock
+    private TalentClaimMapper talentClaimMapper;
 
     private TalentDomainFacade facade;
 
     @BeforeEach
     void setUp() {
-        facade = new LegacyTalentDomainFacade(talentMapper);
+        facade = new LegacyTalentDomainFacade(talentMapper, talentClaimMapper);
     }
 
     @Test

@@ -20,14 +20,9 @@ com.colonel.saas.service.OrderService|ProductSnapshotMapper
 com.colonel.saas.service.PerformanceBackfillService|ColonelsettlementOrderMapper
 com.colonel.saas.service.PerformanceMonthRecalculationService|ColonelsettlementOrderMapper
 com.colonel.saas.service.PerformanceQueryService|ColonelsettlementOrderMapper
-com.colonel.saas.domain.sample.application.SampleApplicationPortImpl|TalentClaimMapper
-com.colonel.saas.domain.sample.application.SampleApplicationPortImpl|TalentMapper
+# DDD-CLEAN-002: sample domain migrated to ProductDomainFacade / TalentDomainFacade
 com.colonel.saas.service.ProductService|ColonelsettlementOrderMapper
 com.colonel.saas.service.ProductService|PromotionLinkMapper
-com.colonel.saas.service.SampleFilterOptionsService|ProductMapper
-com.colonel.saas.service.SampleFilterOptionsService|ProductOperationStateMapper
-com.colonel.saas.service.SampleFilterOptionsService|ProductSnapshotMapper
-com.colonel.saas.service.SampleLifecycleService|TalentClaimMapper
 com.colonel.saas.service.TalentPresetTagsBootstrap|SystemConfigMapper
 com.colonel.saas.service.TalentQueryService|SampleRequestMapper
 com.colonel.saas.service.TalentService|ColonelsettlementOrderMapper
@@ -36,8 +31,4 @@ com.colonel.saas.service.data.DataApplicationService|ColonelsettlementActivityMa
 com.colonel.saas.service.data.DataApplicationService|ColonelsettlementOrderMapper
 com.colonel.saas.service.data.DataApplicationService|ExclusiveMerchantMapper
 com.colonel.saas.service.data.DataApplicationService|ExclusiveTalentMapper
-com.colonel.saas.service.sample.SampleApplicationService|ProductMapper
-com.colonel.saas.service.sample.SampleApplicationService|ProductOperationStateMapper
-com.colonel.saas.service.sample.SampleApplicationService|ProductSnapshotMapper
-com.colonel.saas.service.sample.SampleApplicationService|TalentClaimMapper
-com.colonel.saas.service.sample.SampleApplicationService|TalentMapper
+

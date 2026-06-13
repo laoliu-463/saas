@@ -101,7 +101,7 @@ class DddProduct003ProductRoutingTest {
         when(productService.getById(relationId)).thenReturn(product);
 
         ProductSnapshotReadDTO snapshotRead = new ProductSnapshotReadDTO(
-                relationId, "10001", "9001", "测试商品", "cover", 123L, "shop", 9900L, 1, "url"
+                relationId, "10001", "9001", "测试商品", "cover", 123L, "shop", 9900L, null, 1, "url"
         );
         when(productDomainFacade.findSnapshotById(relationId)).thenReturn(snapshotRead);
 
@@ -111,7 +111,7 @@ class DddProduct003ProductRoutingTest {
         when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
 
         // findPersistedProduct
-        ProductReadDTO productRead = new ProductReadDTO(relationId, "9001", "outer", "测试商品", "cover", 9900L);
+        ProductReadDTO productRead = new ProductReadDTO(relationId, "9001", "outer", "测试商品", "cover", 9900L, null, null, null, null);
         when(productDomainFacade.findProductByExternalId("9001")).thenReturn(productRead);
 
         ApplySampleFromProductResult result = new ApplySampleFromProductResult();

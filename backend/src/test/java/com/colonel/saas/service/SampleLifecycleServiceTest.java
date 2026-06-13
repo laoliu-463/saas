@@ -2,11 +2,10 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.domain.config.facade.dto.SampleDefaultStandardDTO;
 import com.colonel.saas.domain.config.facade.dto.SampleRulesDTO;
+import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.SampleRequest;
-import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.SampleRequestMapper;
-import com.colonel.saas.mapper.TalentClaimMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,7 +55,7 @@ class SampleLifecycleServiceTest {
     @Mock
     private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     @Mock
-    private TalentClaimMapper talentClaimMapper;
+    private TalentDomainFacade talentDomainFacade;
 
     private SampleLifecycleService service;
 
@@ -65,7 +64,7 @@ class SampleLifecycleServiceTest {
         service = new SampleLifecycleService(
                 jdbcTemplate,
                 sampleRequestMapper,
-                talentClaimMapper,
+                talentDomainFacade,
                 sampleStatusLogService,
                 configDomainFacade,
                 org.mockito.Mockito.mock(com.colonel.saas.domain.sample.event.SampleDomainEventPublisher.class));
@@ -198,7 +197,7 @@ class SampleLifecycleServiceTest {
         assertThat(service.completePendingHomeworkByOrder(null)).isZero();
         assertThat(service.completePendingHomeworkByOrder(missingOwner)).isZero();
         assertThat(service.completePendingHomeworkByOrder(blankProduct)).isZero();
-        verifyNoInteractions(jdbcTemplate, sampleRequestMapper, talentClaimMapper, sampleStatusLogService, configDomainFacade);
+        verifyNoInteractions(jdbcTemplate, sampleRequestMapper, talentDomainFacade, sampleStatusLogService, configDomainFacade);
     }
 
     @Test
@@ -216,12 +215,8 @@ class SampleLifecycleServiceTest {
         order.setTalentId(talentId);
         order.setExtraData(Map.of("talent_uid", "talent-claim"));
 
-        TalentClaim claim = new TalentClaim();
-        claim.setTalentId(talentId);
-        claim.setUserId(claimOwnerId);
-        claim.setStatus(1);
-        claim.setClaimedAt(LocalDateTime.now().minusDays(1));
-        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(claim));
+        when(talentDomainFacade.resolveSampleOwnerForOrderCompletion(attributedUserId, talentId))
+                .thenReturn(claimOwnerId);
 
         when(jdbcTemplate.query(
                 anyString(),
@@ -239,7 +234,7 @@ class SampleLifecycleServiceTest {
         int completed = service.completePendingHomeworkByOrder(order);
 
         assertThat(completed).isEqualTo(1);
-        verify(talentClaimMapper).findActiveByTalentId(talentId);
+        verify(talentDomainFacade).resolveSampleOwnerForOrderCompletion(attributedUserId, talentId);
     }
 
     @Test

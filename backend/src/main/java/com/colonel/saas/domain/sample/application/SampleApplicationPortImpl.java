@@ -10,14 +10,13 @@ import com.colonel.saas.domain.sample.api.ApplySampleFromProductCommand;
 import com.colonel.saas.domain.sample.api.ApplySampleFromProductResult;
 import com.colonel.saas.domain.sample.api.SampleApplicationPort;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
+import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
+import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.Talent;
-import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway;
 import com.colonel.saas.mapper.SampleRequestMapper;
-import com.colonel.saas.mapper.TalentClaimMapper;
-import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.service.SampleEligibilityService;
 import com.colonel.saas.service.SampleStatusLogService;
@@ -67,8 +66,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
     private static final DateTimeFormatter REQUEST_NO_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final CrawlerTalentInfoService crawlerTalentInfoService;
-    private final TalentMapper talentMapper;
-    private final TalentClaimMapper talentClaimMapper;
+    private final TalentDomainFacade talentDomainFacade;
     private final SampleRequestMapper sampleRequestMapper;
     private final ConfigDomainFacade configDomainFacade;
     private final SampleEligibilityService sampleEligibilityService;
@@ -78,8 +76,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
 
     public SampleApplicationPortImpl(
             CrawlerTalentInfoService crawlerTalentInfoService,
-            TalentMapper talentMapper,
-            TalentClaimMapper talentClaimMapper,
+            TalentDomainFacade talentDomainFacade,
             SampleRequestMapper sampleRequestMapper,
             ConfigDomainFacade configDomainFacade,
             SampleEligibilityService sampleEligibilityService,
@@ -87,8 +84,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
             DouyinQuickSampleGateway douyinQuickSampleGateway,
             SampleDomainEventPublisher sampleDomainEventPublisher) {
         this.crawlerTalentInfoService = crawlerTalentInfoService;
-        this.talentMapper = talentMapper;
-        this.talentClaimMapper = talentClaimMapper;
+        this.talentDomainFacade = talentDomainFacade;
         this.sampleRequestMapper = sampleRequestMapper;
         this.configDomainFacade = configDomainFacade;
         this.sampleEligibilityService = sampleEligibilityService;
@@ -133,7 +129,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         /* 解析达人外部信息 */
         CrawlerTalentInfo talentInfo = resolveSampleTalentInfo(talentExternalId);
         /* 查找已有达人记录，不存在则自动创建 */
-        Talent talent = findOrCreateTalent(talentInfo);
+        Talent talent = toTalentEntity(findOrCreateTalent(talentInfo));
         /* 校验达人是否在指定渠道人员私海中（管理员跳过） */
         ensureChannelTalentClaim(cmd.channelUserId(), talent.getId(), cmd.roleCodes());
         /* 去重校验（管理员和主管跳过） */
@@ -242,39 +238,46 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         if (info != null) {
             return info;
         }
-        Talent manualTalent = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
-                .eq(Talent::getDouyinUid, normalizedTalentId)
-                .last("LIMIT 1"));
+        TalentReadDTO manualTalent = talentDomainFacade.findByDouyinUid(normalizedTalentId);
         if (manualTalent == null) {
             throw BusinessException.notFound("达人不存在");
         }
         return buildCrawlerSnapshotFromTalent(manualTalent, normalizedTalentId);
     }
 
-    private CrawlerTalentInfo buildCrawlerSnapshotFromTalent(Talent talent, String selectedTalentId) {
+    private CrawlerTalentInfo buildCrawlerSnapshotFromTalent(TalentReadDTO talent, String selectedTalentId) {
         CrawlerTalentInfo info = new CrawlerTalentInfo();
-        info.setTalentId(StringUtils.hasText(talent.getDouyinUid()) ? talent.getDouyinUid() : selectedTalentId);
-        info.setNickname(talent.getNickname());
-        info.setAvatarUrl(talent.getAvatarUrl());
-        info.setFansCount(talent.getFans());
-        info.setMainCategory(StringUtils.hasText(talent.getMainCategory()) ? talent.getMainCategory() : talent.getCategories());
-        info.setRegion(talent.getIpLocation());
+        info.setTalentId(StringUtils.hasText(talent.douyinUid()) ? talent.douyinUid() : selectedTalentId);
+        info.setNickname(talent.nickname());
+        info.setAvatarUrl(talent.avatarUrl());
+        info.setFansCount(talent.fansCount());
+        info.setMainCategory(StringUtils.hasText(talent.mainCategory()) ? talent.mainCategory() : talent.categories());
+        info.setRegion(talent.ipLocation());
         return info;
     }
 
-    private Talent findOrCreateTalent(CrawlerTalentInfo talentInfo) {
-        Talent existing = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
-                .eq(Talent::getDouyinUid, talentInfo.getTalentId())
-                .last("LIMIT 1"));
-        if (existing != null) {
-            return existing;
+    private TalentReadDTO findOrCreateTalent(CrawlerTalentInfo talentInfo) {
+        return talentDomainFacade.findOrCreateSampleTalent(
+                talentInfo.getTalentId(),
+                talentInfo.getNickname(),
+                talentInfo.getFansCount());
+    }
+
+    private static Talent toTalentEntity(TalentReadDTO dto) {
+        if (dto == null) {
+            return null;
         }
         Talent talent = new Talent();
-        talent.setId(UUID.randomUUID());
-        talent.setDouyinUid(talentInfo.getTalentId());
-        talent.setNickname(talentInfo.getNickname());
-        talent.setStatus(1);
-        talentMapper.insert(talent);
+        talent.setId(dto.id());
+        talent.setDouyinUid(dto.douyinUid());
+        talent.setDouyinNo(dto.douyinNo());
+        talent.setNickname(dto.nickname());
+        talent.setFans(dto.fansCount());
+        talent.setStatus(dto.status());
+        talent.setAvatarUrl(dto.avatarUrl());
+        talent.setMainCategory(dto.mainCategory());
+        talent.setCategories(dto.categories());
+        talent.setIpLocation(dto.ipLocation());
         return talent;
     }
 
@@ -285,7 +288,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         if (userId == null || talentId == null) {
             throw new ValidateException("达人信息不完整");
         }
-        if (talentClaimMapper.findActiveByTalentAndUser(talentId, userId) == null) {
+        if (!talentDomainFacade.hasActiveClaim(talentId, userId)) {
             throw new ForbiddenException("该达人未在你的私海中，请先认领后再申请寄样");
         }
     }
@@ -352,14 +355,13 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         if (!StringUtils.hasText(name) && !StringUtils.hasText(phone) && !StringUtils.hasText(address)) {
             return;
         }
-        TalentClaim claim = talentClaimMapper.findActiveByTalentAndUser(talentId, channelUserId);
-        if (claim != null) {
-            claim.setRecipientName(name);
-            claim.setRecipientPhone(phone);
-            claim.setRecipientAddress(address);
-            talentClaimMapper.updateById(claim);
-            log.debug("T-ADDR: writeback claim address for talent={}, channel={}", talentId, channelUserId);
-        }
+        talentDomainFacade.writeBackClaimAddress(
+                channelUserId,
+                talentId,
+                sample.getRecipientName(),
+                sample.getRecipientPhone(),
+                sample.getRecipientAddress());
+        log.debug("T-ADDR: writeback claim address for talent={}, channel={}", talentId, channelUserId);
     }
 
     private String generateRequestNo() {

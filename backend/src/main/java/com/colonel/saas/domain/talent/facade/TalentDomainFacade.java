@@ -25,6 +25,18 @@ public interface TalentDomainFacade {
     /** 达人是否存在（按内部主键）。 */
     boolean existsById(UUID talentId);
 
+    /** 按爬虫/外部达人信息查找或创建业务达人。 */
+    TalentReadDTO findOrCreateSampleTalent(String douyinUid, String nickname, Long fansCount);
+
+    /** 渠道用户是否已有效认领指定达人。 */
+    boolean hasActiveClaim(UUID talentId, UUID userId);
+
+    /** 寄样创建成功后回写收件地址到有效认领记录。 */
+    void writeBackClaimAddress(UUID channelUserId, UUID talentId, String recipientName, String recipientPhone, String recipientAddress);
+
+    /** 订单完成寄样时，根据有效认领关系修正样本负责人。 */
+    UUID resolveSampleOwnerForOrderCompletion(UUID attributedOwner, UUID talentId);
+
     /**
      * 批量加载达人昵称，返回 talentId → nickname 映射。
      * 自动过滤 null 和重复 ID；缺失记录不包含在结果中。

@@ -3,11 +3,14 @@ package com.colonel.saas.domain.talent.facade;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.entity.TalentClaim;
+import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,9 +25,11 @@ import java.util.stream.Collectors;
 public class LegacyTalentDomainFacade implements TalentDomainFacade {
 
     private final TalentMapper talentMapper;
+    private final TalentClaimMapper talentClaimMapper;
 
-    public LegacyTalentDomainFacade(TalentMapper talentMapper) {
+    public LegacyTalentDomainFacade(TalentMapper talentMapper, TalentClaimMapper talentClaimMapper) {
         this.talentMapper = talentMapper;
+        this.talentClaimMapper = talentClaimMapper;
     }
 
     @Override
@@ -77,6 +82,86 @@ public class LegacyTalentDomainFacade implements TalentDomainFacade {
                         LinkedHashMap::new));
     }
 
+    @Override
+    public TalentReadDTO findOrCreateSampleTalent(String douyinUid, String nickname, Long fansCount) {
+        if (!StringUtils.hasText(douyinUid)) {
+            return null;
+        }
+        Talent existing = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
+                .eq(Talent::getDouyinUid, douyinUid.trim())
+                .last("LIMIT 1"));
+        if (existing != null) {
+            return toTalentRead(existing);
+        }
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        talent.setDouyinUid(douyinUid.trim());
+        talent.setNickname(nickname);
+        talent.setFans(fansCount);
+        talent.setStatus(1);
+        talentMapper.insert(talent);
+        return toTalentRead(talent);
+    }
+
+    @Override
+    public boolean hasActiveClaim(UUID talentId, UUID userId) {
+        if (talentId == null || userId == null) {
+            return false;
+        }
+        return talentClaimMapper.findActiveByTalentAndUser(talentId, userId) != null;
+    }
+
+    @Override
+    public void writeBackClaimAddress(
+            UUID channelUserId,
+            UUID talentId,
+            String recipientName,
+            String recipientPhone,
+            String recipientAddress) {
+        if (channelUserId == null || talentId == null) {
+            return;
+        }
+        if (!StringUtils.hasText(recipientName)
+                && !StringUtils.hasText(recipientPhone)
+                && !StringUtils.hasText(recipientAddress)) {
+            return;
+        }
+        TalentClaim claim = talentClaimMapper.findActiveByTalentAndUser(talentId, channelUserId);
+        if (claim == null) {
+            return;
+        }
+        claim.setRecipientName(recipientName);
+        claim.setRecipientPhone(recipientPhone);
+        claim.setRecipientAddress(recipientAddress);
+        talentClaimMapper.updateById(claim);
+    }
+
+    @Override
+    public UUID resolveSampleOwnerForOrderCompletion(UUID attributedOwner, UUID talentId) {
+        if (attributedOwner == null) {
+            return null;
+        }
+        if (talentId == null) {
+            return attributedOwner;
+        }
+        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
+        if (activeClaims == null || activeClaims.isEmpty()) {
+            return attributedOwner;
+        }
+        boolean matchesClaimOwner = activeClaims.stream()
+                .anyMatch(claim -> attributedOwner.equals(claim.getUserId()));
+        if (matchesClaimOwner) {
+            return attributedOwner;
+        }
+        return activeClaims.stream()
+                .filter(claim -> claim.getUserId() != null)
+                .max(Comparator.comparing(
+                        TalentClaim::getClaimedAt,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(TalentClaim::getUserId)
+                .orElse(attributedOwner);
+    }
+
     private static TalentReadDTO toTalentRead(Talent talent) {
         if (talent == null) {
             return null;
@@ -87,6 +172,10 @@ public class LegacyTalentDomainFacade implements TalentDomainFacade {
                 talent.getDouyinNo(),
                 talent.getNickname(),
                 talent.getFans(),
-                talent.getStatus());
+                talent.getStatus(),
+                talent.getAvatarUrl(),
+                talent.getMainCategory(),
+                talent.getCategories(),
+                talent.getIpLocation());
     }
 }
