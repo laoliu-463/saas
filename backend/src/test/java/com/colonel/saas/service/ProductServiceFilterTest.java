@@ -7,7 +7,7 @@ import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
-import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
+import com.colonel.saas.domain.product.application.port.DouyinConvertPort;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.MerchantMapper;
@@ -42,7 +42,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ProductServiceFilterTest {
 
-    @Mock private DouyinPromotionGateway douyinPromotionGateway;
+    @Mock private DouyinConvertPort douyinConvertPort;
     @Mock private DouyinProductGateway douyinProductGateway;
     @Mock private ProductSnapshotMapper snapshotMapper;
     @Mock private ProductOperationStateMapper operationStateMapper;
@@ -66,7 +66,7 @@ class ProductServiceFilterTest {
     @BeforeEach
     void setUp() {
         service = new ProductService(
-                douyinPromotionGateway,
+                douyinConvertPort,
                 douyinProductGateway,
                 snapshotMapper,
                 operationStateMapper,

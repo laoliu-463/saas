@@ -43,7 +43,7 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ProductServiceActivityStatusIndependenceTest {
 
-    @Mock private com.colonel.saas.gateway.douyin.DouyinPromotionGateway douyinPromotionGateway;
+    @Mock private com.colonel.saas.domain.product.application.port.DouyinConvertPort douyinConvertPort;
     @Mock private DouyinProductGateway douyinProductGateway;
     @Mock private ProductSnapshotMapper snapshotMapper;
     @Mock private ProductOperationStateMapper operationStateMapper;
@@ -68,7 +68,7 @@ class ProductServiceActivityStatusIndependenceTest {
     @BeforeEach
     void setUp() {
         productService = new ProductService(
-                douyinPromotionGateway,
+                douyinConvertPort,
                 douyinProductGateway,
                 snapshotMapper,
                 operationStateMapper,

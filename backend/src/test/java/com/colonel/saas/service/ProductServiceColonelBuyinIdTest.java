@@ -19,7 +19,7 @@ class ProductServiceColonelBuyinIdTest {
     private static final String LONG_BUYIN_ID = "46128341673481000";
 
     @Mock
-    private com.colonel.saas.gateway.douyin.DouyinPromotionGateway douyinPromotionGateway;
+    private com.colonel.saas.domain.product.application.port.DouyinConvertPort douyinConvertPort;
     @Mock
     private com.colonel.saas.gateway.douyin.DouyinProductGateway douyinProductGateway;
     @Mock
@@ -60,7 +60,7 @@ class ProductServiceColonelBuyinIdTest {
     @BeforeEach
     void setUp() {
         productService = new ProductService(
-                douyinPromotionGateway,
+                douyinConvertPort,
                 douyinProductGateway,
                 snapshotMapper,
                 operationStateMapper,

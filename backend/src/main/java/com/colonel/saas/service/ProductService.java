@@ -27,6 +27,7 @@ import com.colonel.saas.entity.TalentFollowRecord;
 import com.colonel.saas.entity.PromotionLink;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.domain.product.application.port.DouyinConvertPort;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -115,8 +116,8 @@ public class ProductService {
             Pattern.CASE_INSENSITIVE);
     public static final String FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED = "REAL_PROMOTION_WRITE_DISABLED";
 
-    /** 抖音推广网关，用于生成推广链接、查询推广数据 */
-    private final DouyinPromotionGateway douyinPromotionGateway;
+    /** 商品域转链端口，隔离 legacy 抖音推广网关（DDD-PRODUCT-004） */
+    private final DouyinConvertPort douyinConvertPort;
     /** 抖音商品网关，用于查询商品详情、SKU 信息 */
     private final DouyinProductGateway douyinProductGateway;
     /** 商品快照持久层，存储从抖音同步的商品基础数据 */
@@ -165,7 +166,7 @@ public class ProductService {
     private int productActivitySyncMaxRetries;
 
     public ProductService(
-            DouyinPromotionGateway douyinPromotionGateway,
+            DouyinConvertPort douyinConvertPort,
             DouyinProductGateway douyinProductGateway,
             ProductSnapshotMapper snapshotMapper,
             ProductOperationStateMapper operationStateMapper,
@@ -185,7 +186,7 @@ public class ProductService {
             ColonelPartnerSyncService colonelPartnerSyncService,
             ProductDomainEventPublisher productDomainEventPublisher,
             ProductDisplayPolicy productDisplayPolicy) {
-        this.douyinPromotionGateway = douyinPromotionGateway;
+        this.douyinConvertPort = douyinConvertPort;
         this.douyinProductGateway = douyinProductGateway;
         this.snapshotMapper = snapshotMapper;
         this.operationStateMapper = operationStateMapper;
@@ -2714,13 +2715,13 @@ public class ProductService {
         String attemptedPickSource = null;
 
         try {
-            DouyinPromotionGateway.PromotionLinkResult result = douyinPromotionGateway.generateLink(
-                    new DouyinPromotionGateway.PromotionLinkCommand(
+            DouyinConvertPort.ConvertResult portResult = douyinConvertPort.convert(
+                    new DouyinConvertPort.ConvertCommand(
                             finalExternalId,
                             finalPromotionScene,
                             List.of(snapshot.getProductId()),
                             needShortLink,
-                            new DouyinPromotionGateway.PromotionContext(
+                            new DouyinConvertPort.ConvertContext(
                                     userId,
                                     deptId,
                                     snapshot.getProductId(),
@@ -2728,10 +2729,14 @@ public class ProductService {
                                     snapshot.getDetailUrl(),
                                     finalScene,
                                     talentId,
-                                    desiredPickExtra
-                            )
-                    )
-            );
+                                    desiredPickExtra)));
+            DouyinPromotionGateway.PromotionLinkResult result = new DouyinPromotionGateway.PromotionLinkResult(
+                    portResult.pickSource(),
+                    portResult.pickExtra(),
+                    portResult.shortId(),
+                    portResult.shortLink(),
+                    portResult.promoteLink(),
+                    portResult.uuidSeed());
             attemptedPickSource = result.pickSource();
 
             // 1. 保存 PromotionLink
