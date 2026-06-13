@@ -3,9 +3,6 @@ package com.colonel.saas.domain.performance.facade;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.dto.performance.OrderPerformanceBatchResponse;
 import com.colonel.saas.dto.performance.OrderPerformanceDTO;
-import com.colonel.saas.dto.performance.PerformanceBatchItemDTO;
-import com.colonel.saas.dto.performance.PerformanceBatchRequest;
-import com.colonel.saas.dto.performance.PerformanceBatchResponse;
 import com.colonel.saas.dto.performance.PerformanceDetailDTO;
 import com.colonel.saas.dto.performance.PerformanceSummaryQuery;
 import com.colonel.saas.dto.performance.PerformanceSummaryResponse;
@@ -111,31 +108,18 @@ class LegacyOrderPerformanceQueryFacadeTest {
 
     @Test
     void batchGetOrderPerformance_collectsItemsByOrderId() {
-        PerformanceDetailDTO d1 = new PerformanceDetailDTO();
+        OrderPerformanceDTO d1 = new OrderPerformanceDTO();
         d1.setOrderId("order-1");
         d1.setFinalChannelId("c1");
-        d1.setValid(true);
-        PerformanceDetailDTO d2 = new PerformanceDetailDTO();
+        d1.setIsValid(true);
+        OrderPerformanceDTO d2 = new OrderPerformanceDTO();
         d2.setOrderId("order-2");
         d2.setFinalChannelId("c2");
-        d2.setValid(true);
+        d2.setIsValid(true);
 
-        PerformanceBatchItemDTO item1 = new PerformanceBatchItemDTO();
-        item1.setOrderId("order-1");
-        item1.setFound(true);
-        item1.setAuthorized(true);
-        item1.setPerformance(d1);
-        PerformanceBatchItemDTO item2 = new PerformanceBatchItemDTO();
-        item2.setOrderId("order-2");
-        item2.setFound(true);
-        item2.setAuthorized(true);
-        item2.setPerformance(d2);
-
-        PerformanceBatchResponse batch = new PerformanceBatchResponse();
-        batch.setItems(Arrays.asList(item1, item2));
-
-        when(performanceQueryService.batchGetPerformance(any(PerformanceBatchRequest.class), any()))
-                .thenReturn(batch);
+        when(performanceQueryService.batchGetOrderPerformance(
+                eq(Arrays.asList("order-1", "order-2")), any(PerformanceAccessContext.class)))
+                .thenReturn(Arrays.asList(d1, d2));
 
         OrderPerformanceBatchResponse response = facade.batchGetOrderPerformance(
                 Arrays.asList("order-1", "order-2"), ctx());
@@ -159,7 +143,7 @@ class LegacyOrderPerformanceQueryFacadeTest {
 
     @Test
     void batchGetOrderPerformance_returnsEmptyWhenServiceThrows() {
-        when(performanceQueryService.batchGetPerformance(any(), any()))
+        when(performanceQueryService.batchGetOrderPerformance(any(), any()))
                 .thenThrow(new RuntimeException("boom"));
         OrderPerformanceBatchResponse response = facade.batchGetOrderPerformance(
                 Arrays.asList("order-1"), ctx());
