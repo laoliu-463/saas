@@ -160,9 +160,14 @@ class SampleControllerTest {
         LegacySampleCommandService legacyCommand = new LegacySampleCommandService(applicationDelegate);
         DddRefactorProperties dddProps = new DddRefactorProperties();
         LegacySampleDomainFacade sampleDomainFacade = new LegacySampleDomainFacade(sampleRequestMapper);
+        com.colonel.saas.domain.sample.application.SampleQueryApplicationService queryApplicationService =
+                new SampleQueryApplicationService(legacyQuery, sampleDomainFacade, dddProps);
+        com.colonel.saas.domain.sample.application.SampleCommandApplicationService commandApplicationService =
+                new SampleCommandApplicationService(legacyCommand, sampleDomainFacade, dddProps);
         sampleController = new SampleController(
-                new SampleQueryApplicationService(legacyQuery, sampleDomainFacade, dddProps),
-                new SampleCommandApplicationService(legacyCommand, sampleDomainFacade, dddProps));
+                new com.colonel.saas.domain.sample.application.SampleApplicationService(
+                        queryApplicationService,
+                        commandApplicationService));
         lenient().when(configDomainFacade.isSampleLimitEnabled()).thenReturn(true);
         lenient().when(configDomainFacade.getSampleLimitDays()).thenReturn(7);
         lenient().when(sampleEligibilityService.evaluate(any(), any()))

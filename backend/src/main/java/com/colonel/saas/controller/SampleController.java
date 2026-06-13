@@ -51,8 +51,7 @@ import com.colonel.saas.service.SampleLogisticsImportService;
 import com.colonel.saas.service.SampleLogisticsSubscriptionService;
 import com.colonel.saas.service.SampleLogisticsSyncService;
 import com.colonel.saas.service.SampleWriteTransactionService;
-import com.colonel.saas.domain.sample.application.SampleCommandApplicationService;
-import com.colonel.saas.domain.sample.application.SampleQueryApplicationService;
+import com.colonel.saas.domain.sample.application.SampleApplicationService;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.LogisticsTraceVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
@@ -107,7 +106,7 @@ import java.util.stream.Collectors;
 
 /**
  * 寄样 HTTP 入口。
- * <p>查询操作委派给 {@link SampleQueryApplicationService}，状态变更委派给 {@link SampleCommandApplicationService}。
+ * <p>所有寄样用例统一委派给寄样应用服务。
  */
 @Validated
 @Tag(name = "寄样管理", description = "寄样申请、寄样列表、达人候选搜索、状态流转与删除接口。")
@@ -116,14 +115,10 @@ import java.util.stream.Collectors;
 @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
 public class SampleController {
 
-    private final SampleQueryApplicationService sampleQueryApplicationService;
-    private final SampleCommandApplicationService sampleCommandApplicationService;
+    private final SampleApplicationService sampleApplicationService;
 
-    public SampleController(
-            SampleQueryApplicationService sampleQueryApplicationService,
-            SampleCommandApplicationService sampleCommandApplicationService) {
-        this.sampleQueryApplicationService = sampleQueryApplicationService;
-        this.sampleCommandApplicationService = sampleCommandApplicationService;
+    public SampleController(SampleApplicationService sampleApplicationService) {
+        this.sampleApplicationService = sampleApplicationService;
     }
 
     @PostMapping
@@ -136,14 +131,14 @@ public class SampleController {
             @Valid @RequestBody SampleApplyRequest request,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.createSample(request, userId, roleCodes);
+        return sampleApplicationService.createSample(request, userId, roleCodes);
     }
 
     @PostMapping("/eligibility-check")
     public ApiResult<SampleEligibilityCheckVO> checkEligibility(
             @Valid @RequestBody SampleApplyRequest request,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.checkEligibility(request, roleCodes);
+        return sampleApplicationService.checkEligibility(request, roleCodes);
     }
 
     @GetMapping
@@ -173,12 +168,12 @@ public class SampleController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) com.colonel.saas.common.enums.DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return ApiResult.ok(sampleQueryApplicationService.getSamplePage(page, size, keyword, status, channelUserIds, recruiterUserId, productKeyword, shopKeyword, trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany, userId, deptId, dataScope, roleCodes));
+        return ApiResult.ok(sampleApplicationService.getSamplePage(page, size, keyword, status, channelUserIds, recruiterUserId, productKeyword, shopKeyword, trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany, userId, deptId, dataScope, roleCodes));
     }
 
     @GetMapping("/talent-candidates")
     public ApiResult<PageResult<SampleTalentVO>> searchTalents(@Valid SampleTalentQueryRequest request) {
-        return sampleCommandApplicationService.searchTalents(request);
+        return sampleApplicationService.searchTalents(request);
     }
 
     @GetMapping("/product-candidates")
@@ -187,7 +182,7 @@ public class SampleController {
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") @Min(1) @Max(100) long size,
             @Parameter(description = "商品名称或商品 ID。") @RequestParam(required = false) String keyword,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.searchProducts(page, size, keyword, roleCodes);
+        return sampleApplicationService.searchProducts(page, size, keyword, roleCodes);
     }
 
     @GetMapping("/board")
@@ -196,12 +191,12 @@ public class SampleController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return ApiResult.ok(sampleQueryApplicationService.getSampleBoard(userId, deptId, dataScope, roleCodes));
+        return ApiResult.ok(sampleApplicationService.getSampleBoard(userId, deptId, dataScope, roleCodes));
     }
 
     @GetMapping("/status-transitions")
     public ApiResult<List<SampleStatusTransitionVO>> getStatusTransitions() {
-        return sampleCommandApplicationService.getStatusTransitions();
+        return sampleApplicationService.getStatusTransitions();
     }
 
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}")
@@ -211,7 +206,7 @@ public class SampleController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return ApiResult.ok(sampleQueryApplicationService.getSampleById(id, userId, deptId, dataScope, roleCodes));
+        return ApiResult.ok(sampleApplicationService.getSampleById(id, userId, deptId, dataScope, roleCodes));
     }
 
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/status-logs")
@@ -221,7 +216,7 @@ public class SampleController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.getStatusLogs(id, userId, deptId, dataScope, roleCodes);
+        return sampleApplicationService.getStatusLogs(id, userId, deptId, dataScope, roleCodes);
     }
 
     @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/status")
@@ -237,7 +232,7 @@ public class SampleController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.actionSample(id, request, userId, deptId, dataScope, roleCodes);
+        return sampleApplicationService.actionSample(id, request, userId, deptId, dataScope, roleCodes);
     }
 
     @DeleteMapping("/{id:[0-9a-fA-F\\-]{36}}")
@@ -247,7 +242,7 @@ public class SampleController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.deleteSample(id, userId, deptId, dataScope, roleCodes);
+        return sampleApplicationService.deleteSample(id, userId, deptId, dataScope, roleCodes);
     }
 
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
@@ -258,7 +253,7 @@ public class SampleController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.syncLogistics(id, userId, deptId, dataScope, roleCodes);
+        return sampleApplicationService.syncLogistics(id, userId, deptId, dataScope, roleCodes);
     }
 
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
@@ -269,7 +264,7 @@ public class SampleController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.refreshLogistics(id, userId, deptId, dataScope, roleCodes);
+        return sampleApplicationService.refreshLogistics(id, userId, deptId, dataScope, roleCodes);
     }
 
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics")
@@ -279,20 +274,20 @@ public class SampleController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return ApiResult.ok(sampleQueryApplicationService.getSampleLogistics(id, userId, deptId, dataScope, roleCodes));
+        return ApiResult.ok(sampleApplicationService.getSampleLogistics(id, userId, deptId, dataScope, roleCodes));
     }
 
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
     @PostMapping("/logistics/sync-all")
     public ApiResult<Map<String, Integer>> syncAllLogistics(
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.syncAllLogistics(roleCodes);
+        return sampleApplicationService.syncAllLogistics(roleCodes);
     }
 
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
     @GetMapping("/logistics/import-template")
     public void downloadLogisticsImportTemplate(HttpServletResponse response) throws IOException {
-        sampleCommandApplicationService.downloadLogisticsImportTemplate(response);
+        sampleApplicationService.downloadLogisticsImportTemplate(response);
     }
 
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
@@ -302,7 +297,7 @@ public class SampleController {
             @RequestParam(defaultValue = "false") boolean allowOverwrite,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.importLogisticsTracking(file, allowOverwrite, userId, roleCodes);
+        return sampleApplicationService.importLogisticsTracking(file, allowOverwrite, userId, roleCodes);
     }
 
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_STAFF})
@@ -313,7 +308,7 @@ public class SampleController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.batchApprove(request, userId, deptId, dataScope, roleCodes);
+        return sampleApplicationService.batchApprove(request, userId, deptId, dataScope, roleCodes);
     }
 
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_STAFF})
@@ -324,7 +319,7 @@ public class SampleController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.batchReject(request, userId, deptId, dataScope, roleCodes);
+        return sampleApplicationService.batchReject(request, userId, deptId, dataScope, roleCodes);
     }
 
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
@@ -335,7 +330,7 @@ public class SampleController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        return sampleCommandApplicationService.batchShip(request, userId, deptId, dataScope, roleCodes);
+        return sampleApplicationService.batchShip(request, userId, deptId, dataScope, roleCodes);
     }
 
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF, RoleCodes.CHANNEL_LEADER})
@@ -365,6 +360,6 @@ public class SampleController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes,
             HttpServletResponse response) throws IOException {
-        sampleQueryApplicationService.exportSamples(status, keyword, channelUserIds, recruiterUserId, productKeyword, shopKeyword, trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany, userId, deptId, dataScope, roleCodes, response);
+        sampleApplicationService.exportSamples(status, keyword, channelUserIds, recruiterUserId, productKeyword, shopKeyword, trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany, userId, deptId, dataScope, roleCodes, response);
     }
 }
