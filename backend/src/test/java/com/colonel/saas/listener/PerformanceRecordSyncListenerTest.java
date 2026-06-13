@@ -1,10 +1,10 @@
 package com.colonel.saas.listener;
 
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.event.PerformanceCalculatedEvent;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.PerformanceCalculationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,7 +29,7 @@ import static org.mockito.Mockito.when;
 class PerformanceRecordSyncListenerTest {
 
     @Mock
-    private ColonelsettlementOrderMapper orderMapper;
+    private OrderReadFacade orderReadFacade;
     @Mock
     private PerformanceCalculationService performanceCalculationService;
     @Mock
@@ -40,7 +40,7 @@ class PerformanceRecordSyncListenerTest {
     @BeforeEach
     void setUp() {
         listener = new PerformanceRecordSyncListener(
-                orderMapper,
+                orderReadFacade,
                 performanceCalculationService,
                 eventPublisher);
     }
@@ -50,7 +50,7 @@ class PerformanceRecordSyncListenerTest {
         OrderSyncedEvent event = orderSynced("ORD-LISTENER-1");
         ColonelsettlementOrder order = order("ORD-LISTENER-1");
         PerformanceRecord record = performanceRecord("ORD-LISTENER-1", 123L, 45L, false);
-        when(orderMapper.findByOrderId("ORD-LISTENER-1")).thenReturn(order);
+        when(orderReadFacade.findByOrderId("ORD-LISTENER-1")).thenReturn(order);
         when(performanceCalculationService.upsertFromOrder(order)).thenReturn(record);
 
         listener.onOrderSynced(event);
@@ -71,13 +71,13 @@ class PerformanceRecordSyncListenerTest {
         OrderSyncedEvent event = orderSynced("ORD-LISTENER-DUP");
         ColonelsettlementOrder order = order("ORD-LISTENER-DUP");
         PerformanceRecord record = performanceRecord("ORD-LISTENER-DUP", 100L, 80L, false);
-        when(orderMapper.findByOrderId("ORD-LISTENER-DUP")).thenReturn(order);
+        when(orderReadFacade.findByOrderId("ORD-LISTENER-DUP")).thenReturn(order);
         when(performanceCalculationService.upsertFromOrder(order)).thenReturn(record);
 
         listener.onOrderSynced(event);
         listener.onOrderSynced(event);
 
-        verify(orderMapper, times(2)).findByOrderId("ORD-LISTENER-DUP");
+        verify(orderReadFacade, times(2)).findByOrderId("ORD-LISTENER-DUP");
         verify(performanceCalculationService, times(2)).upsertFromOrder(order);
         verify(eventPublisher, times(2)).publishEvent(any(Object.class));
     }
@@ -85,7 +85,7 @@ class PerformanceRecordSyncListenerTest {
     @Test
     void onOrderSynced_shouldNotCalculatePerformanceWhenOrderIsStillMissing() {
         OrderSyncedEvent event = orderSynced("ORD-LISTENER-MISSING");
-        when(orderMapper.findByOrderId("ORD-LISTENER-MISSING")).thenReturn(null);
+        when(orderReadFacade.findByOrderId("ORD-LISTENER-MISSING")).thenReturn(null);
 
         listener.onOrderSynced(event);
 

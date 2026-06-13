@@ -6,7 +6,7 @@ import com.colonel.saas.dto.performance.PerformanceBatchRequest;
 import com.colonel.saas.dto.performance.PerformanceListQuery;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
 import com.colonel.saas.service.performance.PerformanceAccessContext;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +40,7 @@ class PerformanceQueryServiceTest {
     @Mock
     private PerformanceRecordMapper performanceRecordMapper;
     @Mock
-    private ColonelsettlementOrderMapper orderMapper;
+    private OrderReadFacade orderReadFacade;
     @Mock
     private JdbcTemplate jdbcTemplate;
     @Mock
@@ -50,7 +50,7 @@ class PerformanceQueryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PerformanceQueryService(performanceRecordMapper, orderMapper, jdbcTemplate);
+        service = new PerformanceQueryService(performanceRecordMapper, orderReadFacade, jdbcTemplate);
     }
 
     @Test
@@ -87,9 +87,7 @@ class PerformanceQueryServiceTest {
     @Test
     void getPerformance_shouldReturnNotCalculatedWhenOrderExistsButPerformanceMissing() {
         when(performanceRecordMapper.findByOrderId("ORDER-MISSING")).thenReturn(null);
-        ColonelsettlementOrder order = new ColonelsettlementOrder();
-        order.setOrderId("ORDER-MISSING");
-        when(orderMapper.selectOne(any())).thenReturn(order);
+        when(orderReadFacade.existsActiveByOrderId("ORDER-MISSING")).thenReturn(true);
 
         assertThatThrownBy(() -> service.getPerformance("ORDER-MISSING", admin()))
                 .isInstanceOf(BusinessException.class)
@@ -103,9 +101,7 @@ class PerformanceQueryServiceTest {
         PerformanceRecord invalid = record("ORDER-REVERSED", UUID.randomUUID(), UUID.randomUUID());
         invalid.setValid(false);
         when(performanceRecordMapper.findByOrderId("ORDER-REVERSED")).thenReturn(invalid);
-        ColonelsettlementOrder order = new ColonelsettlementOrder();
-        order.setOrderId("ORDER-REVERSED");
-        when(orderMapper.selectOne(any())).thenReturn(order);
+        when(orderReadFacade.existsActiveByOrderId("ORDER-REVERSED")).thenReturn(true);
 
         assertThatThrownBy(() -> service.getPerformance("ORDER-REVERSED", admin()))
                 .isInstanceOf(BusinessException.class)

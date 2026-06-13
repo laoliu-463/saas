@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.dto.performance.OrderPerformanceDTO;
 import com.colonel.saas.dto.performance.PerformanceBatchItemDTO;
 import com.colonel.saas.dto.performance.PerformanceBatchResponse;
@@ -8,13 +9,10 @@ import com.colonel.saas.dto.performance.PerformanceDetailDTO;
 import com.colonel.saas.dto.performance.PerformanceListItemDTO;
 import com.colonel.saas.dto.performance.PerformanceListQuery;
 import com.colonel.saas.dto.performance.PerformancePageResponse;
-import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
 import com.colonel.saas.service.performance.PerformanceAccessContext;
 import com.colonel.saas.service.performance.PerformanceAccessScope;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -57,15 +55,15 @@ public class PerformanceQueryService {
             """;
 
     private final PerformanceRecordMapper performanceRecordMapper;
-    private final ColonelsettlementOrderMapper orderMapper;
+    private final OrderReadFacade orderReadFacade;
     private final JdbcTemplate jdbcTemplate;
 
     public PerformanceQueryService(
             PerformanceRecordMapper performanceRecordMapper,
-            ColonelsettlementOrderMapper orderMapper,
+            OrderReadFacade orderReadFacade,
             JdbcTemplate jdbcTemplate) {
         this.performanceRecordMapper = performanceRecordMapper;
-        this.orderMapper = orderMapper;
+        this.orderReadFacade = orderReadFacade;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -593,11 +591,7 @@ public class PerformanceQueryService {
      * 先检查订单是否存在：不存在 → NOT_FOUND，存在但业绩未计算 → STATE_INVALID。
      */
     private void throwPerformanceUnavailable(String orderId) {
-        ColonelsettlementOrder order = orderMapper.selectOne(new LambdaQueryWrapper<ColonelsettlementOrder>()
-                .eq(ColonelsettlementOrder::getOrderId, orderId)
-                .eq(ColonelsettlementOrder::getDeleted, 0)
-                .last("LIMIT 1"));
-        if (order == null) {
+        if (!orderReadFacade.existsActiveByOrderId(orderId)) {
             throw BusinessException.notFound("订单不存在: " + orderId);
         }
         throw BusinessException.stateInvalid("PERFORMANCE_NOT_CALCULATED");

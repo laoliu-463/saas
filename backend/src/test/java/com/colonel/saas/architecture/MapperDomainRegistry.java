@@ -117,6 +117,9 @@ final class MapperDomainRegistry {
                 || lower.contains("domainevent")) {
             return Domain.INFRA;
         }
+        if (lower.contains("performancerecordsynclistener")) {
+            return Domain.PERFORMANCE;
+        }
         if (lower.contains("listener") || lower.contains(".job.")) {
             return Domain.EVENT;
         }
