@@ -2,12 +2,12 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`。
 
-更新时间：2026-06-13 20:03
-分支：`feature/ddd/DDD-CLEAN-002`（CLEAN-002 full harness PASS）
-HEAD：`879b6b4b`（CLEAN-002 sample cross-domain mapper cleanup）
+更新时间：2026-06-13 20:14
+分支：`feature/ddd/DDD-CLEAN-003`（CLEAN-003 backend harness PASS，full harness 待执行）
+HEAD：`34e2f105`（DDD-CLEAN-003 performance domain OrderReadFacade migration）
 
 > 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`
-> 当前进度：**strict DONE 49/53 = 92%**（含 PARTIAL 52/53 = 98%）
+> 当前进度：**strict DONE 50/53 = 94%**（含 PARTIAL 52/53 = 98%）
 
 ## 图例
 
@@ -92,6 +92,7 @@ HEAD：`879b6b4b`（CLEAN-002 sample cross-domain mapper cleanup）
 | DDD-SLIM-SAMPLE-001 | Sample | DONE | `c436f1f0` + `f90ea9d1` slim SampleService eligibility checks（delegated to SampleEligibilityPolicy failure rules） |
 | DDD-CLEAN-001 | Order + User | DONE | `5d90d355` order code no longer injects SysUserMapper/SysUserService; guard `DddClean001OrderUserDependencyGuardTest` added |
 | DDD-CLEAN-002 | Sample | DONE | `879b6b4b` 寄样域移除 Product/Talent 跨域 Mapper；targeted 124 run / 0 fail / 1 skipped；full harness PASS |
+| DDD-CLEAN-003 | Performance | DONE | `34e2f105` 业绩域移除订单跨域 Mapper，改走 `OrderReadFacade`；targeted 26 run / 0 fail / 1 skipped；backend harness PASS |
 
 ## Batch 7 - Sprint 1 P0（owner 集成分支）
 
@@ -121,20 +122,19 @@ HEAD：`879b6b4b`（CLEAN-002 sample cross-domain mapper cleanup）
 | --- | --- |
 | DDD-PERF-001 | 缺 `PerformanceCalculationApplicationService`（task-pool 期望 calculation 层，仅 facade 已做） |
 | DDD-FRONT-001 | 订单详情字段来源标注 unit/build/full harness PASS；浏览器/E2E 详情页复核未完成 |
-| DDD-VERIFY-001 | 阶段性 PARTIAL_PASS；等待 CLEAN-003~004、FRONT 详情页证据和 final P0 验收 |
+| DDD-VERIFY-001 | 阶段性 PARTIAL_PASS；等待 CLEAN-004、FRONT 详情页证据和 final P0 验收 |
 
 ### TODO（下一批执行）
 
 | task_id | 优先级 | 说明 |
 | --- | --- | --- |
-| DDD-CLEAN-003 | P1 | 业绩域移除订单/商品/达人/配置/用户跨域 Mapper |
 | DDD-CLEAN-004 | P1 | 商品域移除寄样域直接依赖 |
 
 > 注：进入 CLEAN 阶段必须等 DDD-TALENT-004 / DDD-PERF-005 / DDD-ORDER-006 全绿且 backend 全量测试 0 fail。
 
 ## 下一步优先（按推荐顺序）
 
-1. **P1** `DDD-CLEAN-003~004` - 跨域 mapper 清理（按 phase 11 顺序串行）。
+1. **P1** `DDD-CLEAN-004` - 跨域 mapper 清理（按 phase 11 顺序串行）。
 2. **P1** `DDD-FRONT-001` - 补订单详情浏览器/E2E 证据后收口。
 3. **P0** `DDD-VERIFY-001` - CLEAN + FRONT 完成后做阶段验收。
 4. **P1** 修正 `DDD-PERF-001` PARTIAL 缺口（补 PerformanceCalculationApplicationService）。
@@ -153,7 +153,7 @@ HEAD：`879b6b4b`（CLEAN-002 sample cross-domain mapper cleanup）
 - 21 套件全跑：CLEAN-002 前所有 DONE 任务对应的护栏测试全 PASS
 - 1 SKIP 来自 `DddCrossDomainMapperGuardTest` 的 legacy whitelist 基线
 - 详细 evidence：`harness/reports/ddd-clean-002-2026-06-13.md`
-- 结论：DDD-VERIFY-001 final 可在 DDD-CLEAN-003/004 + DDD-FRONT-001 E2E 完成后启动
+- 结论：DDD-VERIFY-001 final 可在 DDD-CLEAN-004 + DDD-FRONT-001 E2E 完成后启动
 - Stash 清理：drop 3 个过时 stash（TALENT-004 WIP / SLIM-SAMPLE-001 WIP / main-pre-merge-modified）
 
 ## 关联 handover
@@ -181,3 +181,4 @@ HEAD：`879b6b4b`（CLEAN-002 sample cross-domain mapper cleanup）
 - **2026-06-13 18:37** - VERIFY-001 准备（DDD 架构护栏 70 测：68 PASS / 2 FAIL / 1 SKIP；2 FAIL 是 DDD-CLEAN-002 预期 violation；3 过时 stash 清理）
 - **2026-06-13 19:44** - 重跑 DDD 架构护栏测试（owner CLEAN-002 working tree 修复后）：**70 测 / 0 FAIL / 1 SKIP / BUILD SUCCESS**，20.9s。CLEAN-002 actual DONE。
 - **2026-06-13 20:01** - DDD-CLEAN-002 full harness 收口：backend/frontend build PASS，real-pre backend/frontend restart + health PASS，`e2e:real-pre:p0:preflight` PASS，提交/推送 `879b6b4b`。
+- **2026-06-13 20:11** - DDD-CLEAN-003 backend harness 收口：业绩域改走 `OrderReadFacade`，targeted 26 run / 0 fail / 1 skipped，backend build/restart/health/preflight PASS，提交/推送 `34e2f105`。

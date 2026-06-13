@@ -6,8 +6,8 @@ import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
-import com.colonel.saas.domain.sample.api.ApplySampleFromProductResult;
-import com.colonel.saas.domain.sample.api.SampleApplicationPort;
+import com.colonel.saas.domain.product.port.ProductSampleApplicationPort;
+import com.colonel.saas.domain.product.port.QuickSampleApplyPortResult;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationState;
@@ -42,7 +42,7 @@ class DddProduct003ProductRoutingTest {
     @Mock private ProductSnapshotMapper productSnapshotMapper;
     @Mock private ProductOperationStateMapper productOperationStateMapper;
     @Mock private DouyinQuickSampleGateway douyinQuickSampleGateway;
-    @Mock private SampleApplicationPort sampleApplicationPort;
+    @Mock private ProductSampleApplicationPort productSampleApplicationPort;
     @Mock private DddRefactorProperties dddRefactorProperties;
     @Mock private DddRefactorProperties.Switch productFacadeSwitch;
     @Mock private ProductDomainFacade productDomainFacade;
@@ -58,7 +58,7 @@ class DddProduct003ProductRoutingTest {
                 productSnapshotMapper,
                 productOperationStateMapper,
                 douyinQuickSampleGateway,
-                sampleApplicationPort,
+                productSampleApplicationPort,
                 false,
                 dddRefactorProperties,
                 productDomainFacade
@@ -114,10 +114,10 @@ class DddProduct003ProductRoutingTest {
         ProductReadDTO productRead = new ProductReadDTO(relationId, "9001", "outer", "测试商品", "cover", 9900L, null, null, null, null);
         when(productDomainFacade.findProductByExternalId("9001")).thenReturn(productRead);
 
-        ApplySampleFromProductResult result = new ApplySampleFromProductResult();
+        QuickSampleApplyPortResult result = new QuickSampleApplyPortResult();
         result.setSuccess(true);
         result.setSuccessCount(1);
-        when(sampleApplicationPort.applyFromProduct(any())).thenReturn(result);
+        when(productSampleApplicationPort.applyQuickSample(any())).thenReturn(result);
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
         request.setTalentIds(List.of("talent_1"));

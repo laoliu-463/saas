@@ -5,9 +5,9 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.domain.sample.api.ApplySampleFromProductCommand;
-import com.colonel.saas.domain.sample.api.ApplySampleFromProductResult;
-import com.colonel.saas.domain.sample.api.SampleApplicationPort;
+import com.colonel.saas.domain.product.port.ProductSampleApplicationPort;
+import com.colonel.saas.domain.product.port.QuickSampleApplyCommand;
+import com.colonel.saas.domain.product.port.QuickSampleApplyPortResult;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.dto.product.QuickSampleApplyResponse;
 import com.colonel.saas.entity.Product;
@@ -36,10 +36,10 @@ import java.util.UUID;
  * <p>
  * 商品域只负责：角色校验 → 商品上下文解析 → 构建寄样命令 → 委托寄样域端口 → 映射响应。
  * 寄样创建（达人解析、私海校验、去重、资质评估、外部网关调用、寄样单落库、状态机、领域事件）
- * 全部由 {@link SampleApplicationPort} 在寄样域内完成。
+ * 全部由 {@link ProductSampleApplicationPort} 在寄样域适配层完成。
  * </p>
  *
- * @see SampleApplicationPort
+ * @see ProductSampleApplicationPort
  * @see DouyinQuickSampleGateway
  */
 @Slf4j
@@ -69,8 +69,8 @@ public class ProductQuickSampleService {
     private final ProductOperationStateMapper productOperationStateMapper;
     /** 抖店快速寄样网关，用于检查网关状态 */
     private final DouyinQuickSampleGateway douyinQuickSampleGateway;
-    /** 寄样域应用端口 — 实际寄样创建由此完成（DDD-PRODUCT-005） */
-    private final SampleApplicationPort sampleApplicationPort;
+    /** 商品域寄样委派端口 — 实际寄样创建经适配器委托寄样域 */
+    private final ProductSampleApplicationPort productSampleApplicationPort;
     /** 是否启用抖店外部快速寄样 */
     private final boolean douyinQuickSampleEnabled;
     /** DDD 重构安全开关 */
@@ -87,7 +87,7 @@ public class ProductQuickSampleService {
             ProductSnapshotMapper productSnapshotMapper,
             ProductOperationStateMapper productOperationStateMapper,
             DouyinQuickSampleGateway douyinQuickSampleGateway,
-            SampleApplicationPort sampleApplicationPort,
+            ProductSampleApplicationPort productSampleApplicationPort,
             @Value("${app.douyin.quick-sample.enabled:false}") boolean douyinQuickSampleEnabled,
             DddRefactorProperties dddRefactorProperties,
             ProductDomainFacade productDomainFacade) {
@@ -96,7 +96,7 @@ public class ProductQuickSampleService {
         this.productSnapshotMapper = productSnapshotMapper;
         this.productOperationStateMapper = productOperationStateMapper;
         this.douyinQuickSampleGateway = douyinQuickSampleGateway;
-        this.sampleApplicationPort = sampleApplicationPort;
+        this.productSampleApplicationPort = productSampleApplicationPort;
         this.douyinQuickSampleEnabled = douyinQuickSampleEnabled;
         this.dddRefactorProperties = dddRefactorProperties;
         this.productDomainFacade = productDomainFacade;
@@ -106,7 +106,7 @@ public class ProductQuickSampleService {
      * 批量发起快速寄样申请。
      * <p>
      * 商品域只负责角色校验、商品上下文解析和命令构建，
-     * 实际的寄样创建委托给 {@link SampleApplicationPort}。
+     * 实际的寄样创建委托给 {@link ProductSampleApplicationPort}。
      * </p>
      *
      * @param relationId 商品 relationId（Product 主键）
@@ -139,7 +139,7 @@ public class ProductQuickSampleService {
         DouyinQuickSampleGateway.SupportStatus supportStatus = douyinQuickSampleGateway.supportStatus();
 
         /* 构建命令，委托给寄样域 */
-        ApplySampleFromProductCommand command = new ApplySampleFromProductCommand(
+        QuickSampleApplyCommand command = new QuickSampleApplyCommand(
                 relationId,
                 productContext.snapshot().getProductId(),
                 deptId,
@@ -164,7 +164,7 @@ public class ProductQuickSampleService {
         );
 
         /* 委托寄样域执行 */
-        ApplySampleFromProductResult portResult = sampleApplicationPort.applyFromProduct(command);
+        QuickSampleApplyPortResult portResult = productSampleApplicationPort.applyQuickSample(command);
 
         /* 映射端口结果到前端响应 DTO */
         QuickSampleApplyResponse response = new QuickSampleApplyResponse();
@@ -177,7 +177,7 @@ public class ProductQuickSampleService {
         response.setFailureCount(portResult.getFailureCount());
         response.setSuccess(portResult.isSuccess());
 
-        for (ApplySampleFromProductResult.TalentResult tr : portResult.getItems()) {
+        for (QuickSampleApplyPortResult.TalentResult tr : portResult.getItems()) {
             QuickSampleApplyResponse.QuickSampleApplyItemResult item =
                     new QuickSampleApplyResponse.QuickSampleApplyItemResult();
             item.setTalentId(tr.getTalentId());

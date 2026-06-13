@@ -4,9 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.domain.sample.api.ApplySampleFromProductCommand;
-import com.colonel.saas.domain.sample.api.ApplySampleFromProductResult;
-import com.colonel.saas.domain.sample.api.SampleApplicationPort;
+import com.colonel.saas.domain.product.port.ProductSampleApplicationPort;
+import com.colonel.saas.domain.product.port.QuickSampleApplyCommand;
+import com.colonel.saas.domain.product.port.QuickSampleApplyPortResult;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway;
 import com.colonel.saas.config.DddRefactorProperties;
@@ -38,7 +38,7 @@ import static org.mockito.Mockito.when;
  * 商品快速寄样服务测试（DDD-PRODUCT-005 重构后）。
  * <p>
  * 商品域只负责角色校验和商品上下文解析，
- * 寄样创建委托 {@link SampleApplicationPort}。
+ * 寄样创建委托 {@link ProductSampleApplicationPort}。
  * </p>
  */
 @ExtendWith(MockitoExtension.class)
@@ -49,7 +49,7 @@ class QuickSampleApplyTest {
     @Mock private ProductSnapshotMapper productSnapshotMapper;
     @Mock private ProductOperationStateMapper productOperationStateMapper;
     @Mock private DouyinQuickSampleGateway douyinQuickSampleGateway;
-    @Mock private SampleApplicationPort sampleApplicationPort;
+    @Mock private ProductSampleApplicationPort productSampleApplicationPort;
     @Mock private DddRefactorProperties dddRefactorProperties;
     @Mock private ProductDomainFacade productDomainFacade;
 
@@ -63,7 +63,7 @@ class QuickSampleApplyTest {
                 productSnapshotMapper,
                 productOperationStateMapper,
                 douyinQuickSampleGateway,
-                sampleApplicationPort,
+                productSampleApplicationPort,
                 false,
                 dddRefactorProperties,
                 productDomainFacade
@@ -96,13 +96,13 @@ class QuickSampleApplyTest {
         when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
     }
 
-    private ApplySampleFromProductResult buildSuccessResult(String talentId, UUID sampleId) {
-        ApplySampleFromProductResult result = new ApplySampleFromProductResult();
+    private QuickSampleApplyPortResult buildSuccessResult(String talentId, UUID sampleId) {
+        QuickSampleApplyPortResult result = new QuickSampleApplyPortResult();
         result.setSuccess(true);
         result.setSuccessCount(1);
         result.setFailureCount(0);
 
-        ApplySampleFromProductResult.TalentResult item = new ApplySampleFromProductResult.TalentResult();
+        QuickSampleApplyPortResult.TalentResult item = new QuickSampleApplyPortResult.TalentResult();
         item.setTalentId(talentId);
         item.setSuccess(true);
         item.setSampleRequestId(sampleId);
@@ -114,13 +114,13 @@ class QuickSampleApplyTest {
         return result;
     }
 
-    private ApplySampleFromProductResult buildFailureResult(String talentId, String message) {
-        ApplySampleFromProductResult result = new ApplySampleFromProductResult();
+    private QuickSampleApplyPortResult buildFailureResult(String talentId, String message) {
+        QuickSampleApplyPortResult result = new QuickSampleApplyPortResult();
         result.setSuccess(false);
         result.setSuccessCount(0);
         result.setFailureCount(1);
 
-        ApplySampleFromProductResult.TalentResult item = new ApplySampleFromProductResult.TalentResult();
+        QuickSampleApplyPortResult.TalentResult item = new QuickSampleApplyPortResult.TalentResult();
         item.setTalentId(talentId);
         item.setSuccess(false);
         item.setMessage(message);
@@ -128,20 +128,20 @@ class QuickSampleApplyTest {
         return result;
     }
 
-    private ApplySampleFromProductResult buildPartialResult(String t1, String t2) {
-        ApplySampleFromProductResult result = new ApplySampleFromProductResult();
+    private QuickSampleApplyPortResult buildPartialResult(String t1, String t2) {
+        QuickSampleApplyPortResult result = new QuickSampleApplyPortResult();
         result.setSuccess(false);
         result.setSuccessCount(1);
         result.setFailureCount(1);
 
-        ApplySampleFromProductResult.TalentResult ok = new ApplySampleFromProductResult.TalentResult();
+        QuickSampleApplyPortResult.TalentResult ok = new QuickSampleApplyPortResult.TalentResult();
         ok.setTalentId(t1);
         ok.setSuccess(true);
         ok.setSampleRequestId(UUID.randomUUID());
         ok.setMessage("系统内寄样申请已提交");
         result.getItems().add(ok);
 
-        ApplySampleFromProductResult.TalentResult fail = new ApplySampleFromProductResult.TalentResult();
+        QuickSampleApplyPortResult.TalentResult fail = new QuickSampleApplyPortResult.TalentResult();
         fail.setTalentId(t2);
         fail.setSuccess(false);
         fail.setMessage("达人不存在");
@@ -212,7 +212,7 @@ class QuickSampleApplyTest {
         UUID relationId = UUID.randomUUID();
         UUID sampleId = UUID.randomUUID();
         setupValidProductContext(relationId);
-        when(sampleApplicationPort.applyFromProduct(any()))
+        when(productSampleApplicationPort.applyQuickSample(any()))
                 .thenReturn(buildSuccessResult("douyin_talent_001", sampleId));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
@@ -222,7 +222,7 @@ class QuickSampleApplyTest {
                 relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
 
         // 验证：商品域委托端口，不直接操作 sample mapper
-        verify(sampleApplicationPort).applyFromProduct(any(ApplySampleFromProductCommand.class));
+        verify(productSampleApplicationPort).applyQuickSample(any(QuickSampleApplyCommand.class));
         assertThat(response.getSuccessCount()).isEqualTo(1);
     }
 
@@ -234,7 +234,7 @@ class QuickSampleApplyTest {
         UUID userId = UUID.randomUUID();
         UUID sampleId = UUID.randomUUID();
         setupValidProductContext(relationId);
-        when(sampleApplicationPort.applyFromProduct(any()))
+        when(productSampleApplicationPort.applyQuickSample(any()))
                 .thenReturn(buildSuccessResult("douyin_talent_001", sampleId));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
@@ -256,10 +256,10 @@ class QuickSampleApplyTest {
                 });
 
         // 验证命令字段正确传递
-        ArgumentCaptor<ApplySampleFromProductCommand> captor =
-                ArgumentCaptor.forClass(ApplySampleFromProductCommand.class);
-        verify(sampleApplicationPort).applyFromProduct(captor.capture());
-        ApplySampleFromProductCommand cmd = captor.getValue();
+        ArgumentCaptor<QuickSampleApplyCommand> captor =
+                ArgumentCaptor.forClass(QuickSampleApplyCommand.class);
+        verify(productSampleApplicationPort).applyQuickSample(captor.capture());
+        QuickSampleApplyCommand cmd = captor.getValue();
         assertThat(cmd.relationId()).isEqualTo(relationId);
         assertThat(cmd.talentIds()).containsExactly("douyin_talent_001");
         assertThat(cmd.quantity()).isEqualTo(2);
@@ -275,7 +275,7 @@ class QuickSampleApplyTest {
     void applyQuickSample_multiTalentPartialFailure() {
         UUID relationId = UUID.randomUUID();
         setupValidProductContext(relationId);
-        when(sampleApplicationPort.applyFromProduct(any()))
+        when(productSampleApplicationPort.applyQuickSample(any()))
                 .thenReturn(buildPartialResult("douyin_talent_001", "invalid_talent"));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
@@ -295,7 +295,7 @@ class QuickSampleApplyTest {
     void applyQuickSample_validationFailureReturnsErrorDetail() {
         UUID relationId = UUID.randomUUID();
         setupValidProductContext(relationId);
-        when(sampleApplicationPort.applyFromProduct(any()))
+        when(productSampleApplicationPort.applyQuickSample(any()))
                 .thenReturn(buildFailureResult("douyin_talent_001", "达人未满足默认寄样标准，请填写备注说明申请原因"));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
@@ -312,7 +312,7 @@ class QuickSampleApplyTest {
     void applyQuickSample_sevenDaysDuplicateReturnsErrorDetail() {
         UUID relationId = UUID.randomUUID();
         setupValidProductContext(relationId);
-        when(sampleApplicationPort.applyFromProduct(any()))
+        when(productSampleApplicationPort.applyQuickSample(any()))
                 .thenReturn(buildFailureResult("douyin_talent_001",
                         "Duplicate sample request is blocked within 7 days"));
 
@@ -385,7 +385,7 @@ class QuickSampleApplyTest {
         when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
         when(productMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
         when(productMapper.insert(any(Product.class))).thenReturn(1);
-        when(sampleApplicationPort.applyFromProduct(any()))
+        when(productSampleApplicationPort.applyQuickSample(any()))
                 .thenReturn(buildSuccessResult("douyin_talent_001", sampleId));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
@@ -408,7 +408,7 @@ class QuickSampleApplyTest {
     void applyQuickSample_gatewayStatusPassedToResponse() {
         UUID relationId = UUID.randomUUID();
         setupValidProductContext(relationId);
-        when(sampleApplicationPort.applyFromProduct(any()))
+        when(productSampleApplicationPort.applyQuickSample(any()))
                 .thenReturn(buildSuccessResult("douyin_talent_001", UUID.randomUUID()));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
@@ -429,7 +429,7 @@ class QuickSampleApplyTest {
     void applyQuickSample_adminRoleCanApply() {
         UUID relationId = UUID.randomUUID();
         setupValidProductContext(relationId);
-        when(sampleApplicationPort.applyFromProduct(any()))
+        when(productSampleApplicationPort.applyQuickSample(any()))
                 .thenReturn(buildSuccessResult("douyin_talent_001", UUID.randomUUID()));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
@@ -457,6 +457,6 @@ class QuickSampleApplyTest {
         } catch (Exception ignored) {
         }
 
-        verify(sampleApplicationPort, never()).applyFromProduct(any());
+        verify(productSampleApplicationPort, never()).applyQuickSample(any());
     }
 }
