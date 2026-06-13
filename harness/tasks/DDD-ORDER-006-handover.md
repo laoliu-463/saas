@@ -10,6 +10,10 @@
 
 - `mvn clean "-Dtest=DddOrder003RoutingTest,OrderControllerTest" test`
 - Result: 30 tests, 0 failures, 0 errors.
+- `mvn "-Dtest=DddOrder003RoutingTest,OrderQueryViewTest" test`
+- Result: 10 tests, 0 failures, 0 errors.
+- `agent-do.ps1 -Env real-pre -Scope full`
+- Result: backend build PASS, frontend build PASS, Docker restart PASS, local health PASS, real-pre preflight PASS.
 
 ## Watch Points
 
@@ -19,4 +23,4 @@
 
 ## Next Step
 
-- 跑 `agent-do.ps1 -Env real-pre -Scope full` 获取完整 build/restart/health/business evidence。
+- 进入 SLIM / FRONT / VERIFY 前补 JSON response snapshot，确认前端字段兼容。

@@ -4,7 +4,7 @@
 
 - Branch: feature/ddd/DDD-ORDER-006
 - Owner: Codex
-- Status: in_progress
+- Status: completed
 
 ## Allowed Area
 
