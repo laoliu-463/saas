@@ -33,6 +33,7 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -122,6 +123,30 @@ class OrderSyncControllerTest {
 
         verify(orderSyncService).syncInstituteOrdersHotRecent();
         verify(orderSyncService, never()).syncByTimeRange(anyLong(), anyLong());
+    }
+
+    @Test
+    void syncOrdersByRange_shouldCallExplicitTimeRangeSync() throws Exception {
+        when(orderSyncService.syncByTimeRange(1781193600L, 1781280000L))
+                .thenReturn(new OrderSyncService.SyncResult(
+                        1781193600L, 1781280000L, 10, 9201, 190, 9011, 0, 9201, 0, false));
+
+        mockMvc.perform(post("/orders/sync-range")
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "startTime": "2026-06-12 00:00:00",
+                                  "endTime": "2026-06-13 00:00:00"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.created").value(190))
+                .andExpect(jsonPath("$.data.updated").value(9011));
+
+        verify(orderSyncService, never()).syncInstituteOrdersHotRecent();
+        verify(orderSyncService).syncByTimeRange(eq(1781193600L), eq(1781280000L));
     }
 
     @Test

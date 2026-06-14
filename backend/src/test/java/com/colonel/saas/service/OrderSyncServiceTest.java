@@ -671,7 +671,7 @@ class OrderSyncServiceTest {
     }
 
     @Test
-    void syncPayRecentWindow_shouldPassConfiguredInstituteSettlementTimeType() {
+    void syncPayRecentWindow_shouldKeepUpdateTimeTypeForInstituteSettlementSource() {
         when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class)))
                 .thenReturn(true);
 
@@ -680,7 +680,20 @@ class OrderSyncServiceTest {
         ArgumentCaptor<SettlementOrderQuery> captor = ArgumentCaptor.forClass(SettlementOrderQuery.class);
         verify(instituteSettlementGateway).fetch(captor.capture());
         verify(douyinOrderGateway, never()).listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
-        assertThat(captor.getValue().timeType()).isEqualTo("settle");
+        assertThat(captor.getValue().timeType()).isEqualTo("update");
+    }
+
+    @Test
+    void syncByTimeRange_shouldKeepUpdateTimeTypeForInstituteSettlementSource() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class)))
+                .thenReturn(true);
+
+        long now = java.time.Instant.now().getEpochSecond();
+        service.syncByTimeRange(now - 600, now);
+
+        ArgumentCaptor<SettlementOrderQuery> captor = ArgumentCaptor.forClass(SettlementOrderQuery.class);
+        verify(instituteSettlementGateway).fetch(captor.capture());
+        assertThat(captor.getValue().timeType()).isEqualTo("update");
     }
 
     @Test
@@ -696,7 +709,7 @@ class OrderSyncServiceTest {
     }
 
     @Test
-    void syncSettlementSettleWindow_shouldPassSettleTimeType() {
+    void syncSettlementSettleWindow_shouldUseConfiguredInstituteSettlementTimeType() {
         when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
                 .thenReturn(true);
 
@@ -706,7 +719,7 @@ class OrderSyncServiceTest {
         verify(instituteSettlementGateway).fetch(captor.capture());
         verify(multiSettlementFallbackGateway, never()).fetch(any());
         verify(douyinOrderGateway, never()).listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
-        assertThat(captor.getValue().timeType()).isEqualTo("settle");
+        assertThat(captor.getValue().timeType()).isEqualTo("update");
     }
 
     @Test
@@ -833,7 +846,7 @@ class OrderSyncServiceTest {
         verify(multiSettlementFallbackGateway, never()).fetch(any());
         verify(douyinOrderGateway, never()).listSettlementByOrderIds(any());
         assertThat(captor.getValue().orderIds()).containsExactly("ORDER-1603-1");
-        assertThat(captor.getValue().timeType()).isEqualTo("settle");
+        assertThat(captor.getValue().timeType()).isEqualTo("update");
     }
 
     @Test

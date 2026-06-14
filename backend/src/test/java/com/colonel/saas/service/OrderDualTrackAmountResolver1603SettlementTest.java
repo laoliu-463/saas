@@ -46,4 +46,53 @@ class OrderDualTrackAmountResolver1603SettlementTest {
         assertThat(amounts.effectiveServiceFee()).isZero();
         assertThat(amounts.effectiveTechServiceFee()).isZero();
     }
+
+    @Test
+    void resolveInstituteSettlement_shouldPreferSettledTechServiceFee() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("settled_goods_amount", 4800L);
+        raw.put("colonel_order_info", Map.of(
+                "real_commission", 550L,
+                "tech_service_fee", 56L,
+                "settled_tech_service_fee", 55L
+        ));
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts =
+                OrderDualTrackAmountResolver.resolveInstituteSettlement(raw);
+
+        assertThat(amounts.effectiveTechServiceFee()).isEqualTo(55L);
+    }
+
+    @Test
+    void resolveInstituteSettlement_shouldTreatSecondColonelOverlapAsServiceFeeExpense() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("settled_goods_amount", 4800L);
+        raw.put("colonel_order_info", Map.of("real_commission", 120L));
+        raw.put("colonel_order_info_second", Map.of("real_commission", 8L));
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts =
+                OrderDualTrackAmountResolver.resolveInstituteSettlement(raw);
+
+        assertThat(amounts.effectiveServiceFee()).isEqualTo(120L);
+        assertThat(amounts.effectiveServiceFeeExpense()).isEqualTo(8L);
+        assertThat(amounts.estimateServiceFeeExpense()).isEqualTo(8L);
+    }
+
+    @Test
+    void resolveInstituteSettlement_shouldNotTreatSecondColonelFallbackAsExpense() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("settled_goods_amount", 4800L);
+        raw.put("colonel_order_info", Map.of("real_commission", 0L));
+        raw.put("colonel_order_info_second", Map.of("real_commission", 80L));
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts =
+                OrderDualTrackAmountResolver.resolveInstituteSettlement(raw);
+
+        assertThat(amounts.effectiveServiceFee()).isEqualTo(80L);
+        assertThat(amounts.effectiveServiceFeeExpense()).isZero();
+        assertThat(amounts.estimateServiceFeeExpense()).isZero();
+    }
 }

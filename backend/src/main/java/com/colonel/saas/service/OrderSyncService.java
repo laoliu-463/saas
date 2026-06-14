@@ -192,8 +192,8 @@ public class OrderSyncService {
     @Value("${douyin.order.settlement-source:instituteOrderColonel}")
     private String settlementSource = "instituteOrderColonel";
 
-    @Value("${douyin.order.institute-settlement-time-type:settle}")
-    private String instituteSettlementTimeType = GATEWAY_TIME_TYPE_SETTLE;
+    @Value("${douyin.order.institute-settlement-time-type:update}")
+    private String instituteSettlementTimeType = GATEWAY_TIME_TYPE_UPDATE;
 
     @Value("${douyin.order.settlement-fallback-enabled:false}")
     private boolean settlementFallbackEnabled = false;
@@ -1067,11 +1067,17 @@ public class OrderSyncService {
     }
 
     private String resolveSettlementTimeType(String requestedTimeType) {
+        String requested = StringUtils.hasText(requestedTimeType)
+                ? requestedTimeType.trim().toLowerCase()
+                : GATEWAY_TIME_TYPE_SETTLE;
+        if (!GATEWAY_TIME_TYPE_SETTLE.equals(requested)) {
+            return requested;
+        }
         if (StringUtils.hasText(instituteSettlementTimeType)
                 && activeSettlementSyncSource() == SyncSource.INSTITUTE_SETTLEMENT) {
             return instituteSettlementTimeType.trim().toLowerCase();
         }
-        return StringUtils.hasText(requestedTimeType) ? requestedTimeType.trim().toLowerCase() : GATEWAY_TIME_TYPE_SETTLE;
+        return requested;
     }
 
     private DouyinOrderGateway.OrderListResult toOrderListResult(SettlementOrderPage page) {

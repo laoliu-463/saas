@@ -260,6 +260,52 @@ public class OrderController extends BaseController {
     }
 
     /**
+     * 按明确时间范围同步订单。
+     * <p>
+     * 用于历史窗口补偿和真实上游差异回灌。与 {@link #syncOrders(SyncRequest, UUID)} 不同，
+     * 本入口会实际使用请求中的 startTime / endTime 调用同步服务。
+     * </p>
+     */
+    @Operation(summary = "按时间范围同步订单", description = "按明确 startTime/endTime 调用真实上游同步，用于历史窗口补偿。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/sync-range")
+    public ApiResult<OrderSyncService.SyncResult> syncOrdersByRange(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "订单同步时间范围，格式 yyyy-MM-dd HH:mm:ss。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"startTime\":\"2026-06-12 00:00:00\",\"endTime\":\"2026-06-13 00:00:00\"}"))
+            )
+            @RequestBody SyncRequest request,
+            @RequestAttribute("userId") UUID userId) {
+        if (request == null || !StringUtils.hasText(request.getStartTime()) || !StringUtils.hasText(request.getEndTime())) {
+            throw new IllegalArgumentException("startTime and endTime are required");
+        }
+        long start = parseDateTime(request.getStartTime());
+        long end = parseDateTime(request.getEndTime());
+        if (start <= 0L || end <= 0L || start >= end) {
+            throw new IllegalArgumentException("Invalid sync time range");
+        }
+        OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(start, end);
+        operationLogService.recordSystemAction(
+                userId,
+                "订单归因",
+                "按时间范围同步订单",
+                "POST",
+                "order_sync_range",
+                null,
+                request.getStartTime() + " ~ " + request.getEndTime(),
+                String.format(
+                        "created=%d, updated=%d, attributed=%d, unattributed=%d, failed=%d",
+                        result.created(),
+                        result.updated(),
+                        result.attributed(),
+                        result.unattributed(),
+                        result.failed()));
+        evictOrderDerivedCaches();
+        return ok(result);
+    }
+
+    /**
      * 6468 历史订单分页 dry-run。
      * <p>
      * 只读调用 buyin.instituteOrderColonel，按 6468 data.cursor 继续翻页，

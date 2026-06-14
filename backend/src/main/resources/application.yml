@@ -171,7 +171,7 @@ douyin:
       cron: ${DOUYIN_TOKEN_AUTO_REFRESH_CRON:0 */10 * * * ?}
   order:
     settlement-source: ${DOUYIN_ORDER_SETTLEMENT_SOURCE:instituteOrderColonel}
-    institute-settlement-time-type: ${DOUYIN_ORDER_INSTITUTE_SETTLEMENT_TIME_TYPE:settle}
+    institute-settlement-time-type: ${DOUYIN_ORDER_INSTITUTE_SETTLEMENT_TIME_TYPE:update}
     settlement-fallback-enabled: ${DOUYIN_ORDER_SETTLEMENT_FALLBACK_ENABLED:false}
     settlement-dual-read-no-write-enabled: ${DOUYIN_ORDER_SETTLEMENT_DUAL_READ_NO_WRITE_ENABLED:false}
     allow-estimate-as-effective-fallback: ${DOUYIN_ORDER_ALLOW_ESTIMATE_AS_EFFECTIVE_FALLBACK:false}

@@ -114,11 +114,22 @@ public final class OrderDualTrackAmountResolver {
                 "real_commission", "realCommission", "settled_commission", "settledCommission",
                 "commission", "institution_commission", "institutionCommission",
                 "colonel_commission", "colonelCommission", "service_fee", "serviceFee");
+        long primaryEffectiveServiceFee = firstFromPrimaryInstitution(rawPayload,
+                "real_commission", "realCommission", "settled_commission", "settledCommission",
+                "commission", "institution_commission", "institutionCommission",
+                "colonel_commission", "colonelCommission", "service_fee", "serviceFee");
+        long secondEffectiveServiceFee = fromSecondInstitution(rawPayload,
+                "real_commission", "realCommission", "settled_commission", "settledCommission",
+                "commission", "institution_commission", "institutionCommission",
+                "colonel_commission", "colonelCommission", "service_fee", "serviceFee");
+        long effectiveServiceFeeExpense = primaryEffectiveServiceFee > 0L && secondEffectiveServiceFee > 0L
+                ? secondEffectiveServiceFee
+                : 0L;
         long estimateTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
                 "estimated_tech_service_fee", "estimatedTechServiceFee",
                 "estimate_platform_service_fee", "estimatePlatformServiceFee")));
         long effectiveTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
-                "tech_service_fee", "techServiceFee", "settled_tech_service_fee", "settledTechServiceFee",
+                "settled_tech_service_fee", "settledTechServiceFee", "tech_service_fee", "techServiceFee",
                 "platform_service_fee", "platformServiceFee", "real_tech_service_fee", "realTechServiceFee")));
         return new DualTrackAmounts(
                 payAmount,
@@ -127,8 +138,8 @@ public final class OrderDualTrackAmountResolver {
                 effectiveServiceFee,
                 estimateTechServiceFee,
                 effectiveTechServiceFee,
-                0L,
-                0L);
+                effectiveServiceFeeExpense,
+                effectiveServiceFeeExpense);
     }
 
     public static DualTrackAmounts resolve(
@@ -496,6 +507,40 @@ public final class OrderDualTrackAmountResolver {
                 if (value > 0L) {
                     return value;
                 }
+            }
+        }
+        return 0L;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static long firstFromPrimaryInstitution(Map<String, Object> rawPayload, String... keys) {
+        Object direct = pick(rawPayload, keys);
+        if (direct != null) {
+            long value = firstNonNegative(asLong(direct));
+            if (value > 0L) {
+                return value;
+            }
+        }
+        Object nested1 = pick(rawPayload, "colonel_order_info", "colonelOrderInfo");
+        if (nested1 instanceof Map<?, ?> map1) {
+            Object val = pick((Map<String, Object>) map1, keys);
+            if (val != null) {
+                long value = firstNonNegative(asLong(val));
+                if (value > 0L) {
+                    return value;
+                }
+            }
+        }
+        return 0L;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static long fromSecondInstitution(Map<String, Object> rawPayload, String... keys) {
+        Object nested2 = pick(rawPayload, "colonel_order_info_second", "colonelOrderInfoSecond");
+        if (nested2 instanceof Map<?, ?> map2) {
+            Object val = pick((Map<String, Object>) map2, keys);
+            if (val != null) {
+                return firstNonNegative(asLong(val));
             }
         }
         return 0L;
