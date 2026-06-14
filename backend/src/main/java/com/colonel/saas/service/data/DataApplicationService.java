@@ -1692,8 +1692,8 @@ public class DataApplicationService extends BaseController {
             selects.add(dayExpr + " AS stat_date");
         }
         selects.add("COUNT(1) AS order_count");
-        selects.add("COUNT(DISTINCT talent_id) AS talent_promoter_count");
-        selects.add("COUNT(DISTINCT COALESCE(colonel_buyin_id, second_colonel_buyin_id)) AS colonel_promoter_count");
+        selects.add("COUNT(DISTINCT COALESCE(extra_data->>'author_short_id', talent_name)) AS talent_promoter_count");
+        selects.add("COUNT(DISTINCT CASE WHEN extra_data->>'colonel_type' = '2' THEN second_colonel_buyin_id END) AS colonel_promoter_count");
         selects.add("COUNT(DISTINCT product_id) AS product_count");
         selects.add("COALESCE(SUM(" + columns.amountColumn() + "), 0) AS order_amount_cent");
         selects.add("COALESCE(SUM(actual_amount), 0) AS actual_amount_cent");
@@ -2110,16 +2110,18 @@ public class DataApplicationService extends BaseController {
         vo.setProductCount(asLong(row, "product_count"));
         vo.setOrderCount(asLong(row, "order_count"));
         vo.setOrderAmount(centToYuan(orderAmount));
-        vo.setProductAverageServiceFeeRate(percent(serviceFeeIncome, actualAmount));
-        vo.setOrderAverageServiceFeeRate(percent(serviceFeeIncome, orderAmount));
-        vo.setServiceFeeIncome(centToYuan(serviceFeeIncome));
-        vo.setTechServiceFee(centToYuan(techServiceFee));
+
         long serviceFeeExpenseCent = asLong(row, "service_fee_expense_cent");
         long serviceProfitCent = CommissionService.serviceFeeNetCent(
                 serviceFeeIncome,
                 techServiceFee,
                 serviceFeeExpenseCent,
                 estimateTrack);
+
+        vo.setProductAverageServiceFeeRate(percent(serviceFeeIncome, actualAmount));
+        vo.setOrderAverageServiceFeeRate(percent(serviceProfitCent, orderAmount));
+        vo.setServiceFeeIncome(centToYuan(serviceFeeIncome));
+        vo.setTechServiceFee(centToYuan(techServiceFee));
         vo.setServiceFeeExpense(centToYuan(serviceFeeExpenseCent));
         vo.setServiceFeeProfit(centToYuan(serviceProfitCent));
         vo.setGrossProfit(centToYuan(Math.max(serviceProfitCent - summary.bizCommission() - summary.channelCommission(), 0L)));

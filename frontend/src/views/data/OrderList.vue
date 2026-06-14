@@ -365,7 +365,8 @@ const emptySummary: SummaryRow = {
   serviceFeeIncome: '0.00',
   techServiceFee: '0.00',
   serviceFeeExpense: '0.00',
-  serviceFeeProfit: '0.00'
+  serviceFeeProfit: '0.00',
+  grossProfit: '0.00'
 }
 
 const totalSummary = ref<SummaryRow>({ ...emptySummary })
@@ -415,7 +416,8 @@ const configurableColumns = [
   { title: '服务费收入', key: 'serviceFeeIncome' },
   { title: '技术服务费', key: 'techServiceFee' },
   { title: '服务费支出', key: 'serviceFeeExpense' },
-  { title: '服务费收益', key: 'serviceFeeProfit' }
+  { title: '服务费收益', key: 'serviceFeeProfit' },
+  { title: '毛利', key: 'grossProfit' }
 ]
 
 const visibleColumnKeys = ref(configurableColumns.map((item) => item.key))
@@ -443,8 +445,19 @@ const formatPercent = (value: unknown) => {
 const formatEstimateTrack = (value: unknown, formatter = formatMoney) =>
   timeField.value === 'settleTime' ? '-' : formatter(value)
 
-const formatSettleTrack = (value: unknown, formatter = formatMoney) =>
-  timeField.value === 'settleTime' ? formatter(value) : '-'
+const formatSettleTrack = (value: unknown, formatter = formatMoney) => {
+  if (timeField.value === 'settleTime') {
+    return formatter(value)
+  }
+  if (value === null || value === undefined) {
+    return '-'
+  }
+  const numeric = Number(value)
+  if (isNaN(numeric)) {
+    return '-'
+  }
+  return formatter === formatCompactMoney ? '¥0' : '¥0.00'
+}
 
 const summaryItems = computed(() => {
   const total = totalSummary.value || emptySummary
@@ -522,6 +535,15 @@ const summaryItems = computed(() => {
       lines: [
         { label: '预估：', value: formatEstimateTrack(total.serviceFeeProfit) },
         { label: '结算：', value: formatSettleTrack(total.serviceFeeProfit) }
+      ]
+    },
+    {
+      key: 'grossProfit',
+      title: '毛利',
+      tooltip: '<b>计算公式</b><br>毛利 = 服务费收益 − 招商提成 − 渠道提成<br><b>数据来源</b>：performance_records 计算',
+      lines: [
+        { label: '预估：', value: formatEstimateTrack(total.grossProfit) },
+        { label: '结算：', value: formatSettleTrack(total.grossProfit) }
       ]
     }
   ]
@@ -621,6 +643,17 @@ const columns = computed(() => {
       render: (row: SummaryRow) => h('div', { class: 'table-multi-line' }, [
         h('div', `预估：${formatEstimateTrack(row.serviceFeeProfit)}`),
         h(NText, { depth: 3 }, { default: () => `结算：${formatSettleTrack(row.serviceFeeProfit)}` })
+      ])
+    })
+  }
+  if (hasVisibleColumn('grossProfit')) {
+    cols.push({
+      title: '毛利',
+      key: 'grossProfit',
+      width: 160,
+      render: (row: SummaryRow) => h('div', { class: 'table-multi-line' }, [
+        h('div', `预估：${formatEstimateTrack(row.grossProfit)}`),
+        h(NText, { depth: 3 }, { default: () => `结算：${formatSettleTrack(row.grossProfit)}` })
       ])
     })
   }

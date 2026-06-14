@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -116,6 +117,42 @@ class OrderSyncPersistenceInstituteSettlementTest {
         verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue()).isInstanceOf(OrderSyncedEvent.class);
         assertThat(((OrderSyncedEvent) eventCaptor.getValue()).orderId()).isEqualTo("ORDER-1603-PERSIST");
+    }
+
+    @Test
+    void persistOrder_shouldClearStaleTechFeeWhen1603ReturnsExplicitZeroSettlementTechFee() {
+        ColonelsettlementOrder incoming = makeOrder("ORDER-1603-ZERO-TECH");
+        incoming.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE_SETTLEMENT);
+        incoming.setSettleAmount(240L);
+        incoming.setEffectiveServiceFee(2L);
+        incoming.setEffectiveTechServiceFee(0L);
+        incoming.setSettleColonelTechServiceFee(null);
+        incoming.setExtraData(Map.of(
+                "colonel_order_info", Map.of(
+                        "real_commission", 2L,
+                        "tech_service_fee", 2L,
+                        "settled_tech_service_fee", 0L
+                )
+        ));
+
+        ColonelsettlementOrder existing = makeOrder("ORDER-1603-ZERO-TECH");
+        existing.setId(UUID.randomUUID());
+        existing.setCreateTime(LocalDateTime.of(2026, 6, 1, 10, 0));
+        existing.setSettleAmount(240L);
+        existing.setEffectiveServiceFee(2L);
+        existing.setEffectiveTechServiceFee(2L);
+        existing.setSettleColonelTechServiceFee(2L);
+
+        when(orderSyncDedupClaimMapper.claim(incoming.getOrderId(), incoming.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(incoming.getOrderId())).thenReturn(existing);
+
+        service.persistOrder(incoming);
+
+        ArgumentCaptor<ColonelsettlementOrder> orderCaptor = ArgumentCaptor.forClass(ColonelsettlementOrder.class);
+        verify(orderMapper).updateSyncedById(orderCaptor.capture());
+        ColonelsettlementOrder updated = orderCaptor.getValue();
+        assertThat(updated.getEffectiveTechServiceFee()).isZero();
+        assertThat(updated.getSettleColonelTechServiceFee()).isNull();
     }
 
     private ColonelsettlementOrder makeOrder(String orderId) {
