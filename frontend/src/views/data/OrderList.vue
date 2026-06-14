@@ -495,7 +495,7 @@ const summaryItems = computed(() => {
     {
       key: 'rate',
       title: '平均服务费率',
-      tooltip: '<b>计算公式</b><br>商品：服务费收入 ÷ 结算金额<br>订单：服务费收入 ÷ 订单额<br><b>数据来源</b>：performance_records',
+      tooltip: '<b>计算公式</b><br>商品：服务费收入 ÷ 订单额<br>订单：服务费收益 ÷ 订单额<br><b>数据来源</b>：performance_records',
       lines: [
         { label: '商品：', value: formatPercent(total.productAverageServiceFeeRate) },
         { label: '订单：', value: formatPercent(total.orderAverageServiceFeeRate) }

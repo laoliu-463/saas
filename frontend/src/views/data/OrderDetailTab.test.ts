@@ -292,6 +292,42 @@ describe('OrderDetailTab', () => {
     expect(cellText('毛利')).toContain('预估:¥0.54')
   })
 
+  it('renders explicit zero settlement money instead of dash', async () => {
+    vi.mocked(getOrderDetailPage).mockResolvedValue({
+      data: {
+        records: [{
+          ...row,
+          settleAmount: 0,
+          effectiveServiceFee: 0,
+          effectiveTechServiceFee: 0,
+          effectiveServiceFeeExpense: 0,
+          effectiveServiceProfit: 0,
+          effectiveRecruiterCommission: 0,
+          effectiveChannelCommission: 0,
+          effectiveGrossProfit: 0
+        }],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = mountTab()
+    await flushPromises()
+
+    const headers = wrapper.findAll('th').map((th) => th.text()).filter(Boolean)
+    const cells = wrapper.findAll('tbody td')
+    const cellText = (header: string) => cells[headers.indexOf(header)].text()
+
+    expect(cellText('订单额')).toContain('结算:¥0.00')
+    expect(cellText('服务费收入')).toContain('结算:¥0.00')
+    expect(cellText('技术服务费')).toContain('结算:¥0.00')
+    expect(cellText('服务费支出')).toContain('结算:¥0.00')
+    expect(cellText('服务费收益')).toContain('结算:¥0.00')
+    expect(cellText('招商提成')).toContain('结算:¥0.00')
+    expect(cellText('渠道提成')).toContain('结算:¥0.00')
+    expect(cellText('毛利')).toContain('结算:¥0.00')
+    expect(cellText('订单额')).not.toContain('结算:-')
+  })
+
   it('does not use legacy talentCommission as service fee expense fallback', async () => {
     vi.mocked(getOrderDetailPage).mockResolvedValue({
       data: {
