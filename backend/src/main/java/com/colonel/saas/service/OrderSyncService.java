@@ -71,7 +71,7 @@ public class OrderSyncService {
     /** 每页请求默认拉取数量。 */
     private static final int DEFAULT_COUNT = 100;
     /** 默认最大翻页次数，超过后强制停止，防止无限循环。 */
-    private static final int DEFAULT_MAX_PAGES = 200;
+    private static final int DEFAULT_MAX_PAGES = 500;
     /** 默认最大订单处理行数，防止一次同步过量拉取。 */
     private static final int DEFAULT_MAX_ORDERS = 50_000;
     private static final String STOP_REASON_LOCKED = "LOCKED";
@@ -138,7 +138,7 @@ public class OrderSyncService {
     @Value("${order.sync.circuit-breaker.open-duration:PT5M}")
     private Duration gatewayCircuitOpenDuration = Duration.ofMinutes(5);
 
-    @Value("${order.sync.max-pages:200}")
+    @Value("${order.sync.max-pages:500}")
     private int maxPages = DEFAULT_MAX_PAGES;
 
     @Value("${order.sync.max-orders:50000}")

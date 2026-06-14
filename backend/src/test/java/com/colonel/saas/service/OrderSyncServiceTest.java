@@ -197,6 +197,34 @@ class OrderSyncServiceTest {
     }
 
     @Test
+    void syncByTimeRange_shouldAllowOfficialSettlementWindowBeyondTwoHundredPagesByDefault() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class)))
+                .thenReturn(true);
+        AtomicInteger pageCounter = new AtomicInteger();
+        when(instituteSettlementGateway.fetch(any(SettlementOrderQuery.class)))
+                .thenAnswer(invocation -> {
+                    int pageNo = pageCounter.incrementAndGet();
+                    String nextCursor = pageNo < 275 ? "cursor-" + (pageNo + 1) : "0";
+                    return settlementPage(
+                            List.of(settlementOrderItemWithPhase("SETTLE_PAGE_" + pageNo, "phase-" + pageNo)),
+                            nextCursor,
+                            Map.of("log_id", "log-page-" + pageNo)
+                    );
+                });
+        when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null, null, "3859423", null, AttributionService.REASON_NO_PICK_SOURCE));
+        when(persistenceService.persistOrder(any())).thenReturn(true);
+
+        OrderSyncService.SyncResult result = service.syncByTimeRange(1781193600L, 1781280000L);
+
+        assertThat(result.pages()).isEqualTo(275);
+        assertThat(result.totalFetched()).isEqualTo(275);
+        assertThat(result.stopReason()).isEqualTo("NO_NEXT_CURSOR");
+        verify(instituteSettlementGateway, times(275)).fetch(any(SettlementOrderQuery.class));
+    }
+
+    @Test
     void syncPayRecentAndIncremental_shouldNotShareWaterline() {
         // PAY_RECENT runs first
         when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class)))

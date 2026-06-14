@@ -179,6 +179,8 @@ douyin:
 order:
   sync:
     enabled: ${ORDER_SYNC_ENABLED:true}
+    max-pages: ${ORDER_SYNC_MAX_PAGES:500}
+    max-orders: ${ORDER_SYNC_MAX_ORDERS:50000}
     lag-seconds: ${ORDER_SYNC_LAG_SECONDS:60}
     window-seconds: ${ORDER_SYNC_WINDOW_SECONDS:600}
     overlap-seconds: ${ORDER_SYNC_OVERLAP_SECONDS:60}
