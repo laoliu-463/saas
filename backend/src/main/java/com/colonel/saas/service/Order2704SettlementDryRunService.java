@@ -205,7 +205,7 @@ public class Order2704SettlementDryRunService {
         long serviceFeeExpense = 0L;
         for (Map<String, Object> raw : orders) {
             OrderDualTrackAmountResolver.DualTrackAmounts amounts =
-                    OrderDualTrackAmountResolver.resolveInstituteSettlement(raw);
+                    OrderDualTrackAmountResolver.resolveStrictSettlement(raw, null, null);
             settleAmount += amounts.settleAmount();
             serviceFeeIncome += amounts.effectiveServiceFee();
             techServiceFee += amounts.effectiveTechServiceFee();

@@ -132,6 +132,10 @@ public abstract class BaseIntegrationTest {
                 "ALTER TABLE colonelsettlement_order ADD COLUMN IF NOT EXISTS estimate_service_fee_expense BIGINT DEFAULT 0");
         jdbcTemplate.execute(
                 "ALTER TABLE colonelsettlement_order ADD COLUMN IF NOT EXISTS effective_service_fee_expense BIGINT DEFAULT 0");
+        jdbcTemplate.execute(
+                "ALTER TABLE performance_records ADD COLUMN IF NOT EXISTS estimate_service_fee_expense BIGINT DEFAULT 0");
+        jdbcTemplate.execute(
+                "ALTER TABLE performance_records ADD COLUMN IF NOT EXISTS effective_service_fee_expense BIGINT DEFAULT 0");
         jdbcTemplate.execute("ALTER TABLE colonelsettlement_order ADD COLUMN IF NOT EXISTS product_pic VARCHAR(512)");
         // DDD-CONFIG-004: SystemConfig entity added configVersion / enabled / visible_in_rule_center.
         // Test container init script declares these only in the second (shadowed) CREATE TABLE

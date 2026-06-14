@@ -16,6 +16,8 @@
         <result property="effectiveServiceFee" column="effective_service_fee"/>
         <result property="estimateTechServiceFee" column="estimate_tech_service_fee"/>
         <result property="effectiveTechServiceFee" column="effective_tech_service_fee"/>
+        <result property="estimateServiceFeeExpense" column="estimate_service_fee_expense"/>
+        <result property="effectiveServiceFeeExpense" column="effective_service_fee_expense"/>
         <result property="colonelBuyinId" column="colonel_buyin_id"/>
         <result property="settleColonelCommission" column="settle_colonel_commission"/>
         <result property="settleColonelTechServiceFee" column="settle_colonel_tech_service_fee"/>
@@ -72,6 +74,7 @@
             order_amount, actual_amount, settle_amount,
             estimate_service_fee, effective_service_fee,
             estimate_tech_service_fee, effective_tech_service_fee,
+            estimate_service_fee_expense, effective_service_fee_expense,
             colonel_buyin_id, settle_colonel_commission, settle_colonel_tech_service_fee,
             second_colonel_buyin_id, second_colonel_activity_id, settle_second_colonel_commission, flow_point, phase_id,
             order_status, order_type, pick_source, cursor,
@@ -86,6 +89,7 @@
             #{orderAmount}, #{actualAmount}, #{settleAmount},
             #{estimateServiceFee}, #{effectiveServiceFee},
             #{estimateTechServiceFee}, #{effectiveTechServiceFee},
+            #{estimateServiceFeeExpense}, #{effectiveServiceFeeExpense},
             #{colonelBuyinId}, #{settleColonelCommission}, #{settleColonelTechServiceFee},
             #{secondColonelBuyinId}, #{secondActivityId}, #{settleSecondColonelCommission}, #{flowPoint}, #{phaseId},
             #{orderStatus}, #{orderType}, #{pickSource}, #{cursor},
@@ -118,6 +122,8 @@
             effective_service_fee = #{effectiveServiceFee},
             estimate_tech_service_fee = #{estimateTechServiceFee},
             effective_tech_service_fee = #{effectiveTechServiceFee},
+            estimate_service_fee_expense = #{estimateServiceFeeExpense},
+            effective_service_fee_expense = #{effectiveServiceFeeExpense},
             colonel_buyin_id = #{colonelBuyinId},
             settle_colonel_commission = #{settleColonelCommission},
             settle_colonel_tech_service_fee = #{settleColonelTechServiceFee},
@@ -170,6 +176,8 @@
             co.effective_service_fee,
             co.estimate_tech_service_fee,
             co.effective_tech_service_fee,
+            co.estimate_service_fee_expense,
+            co.effective_service_fee_expense,
             co.colonel_buyin_id,
             co.colonel_activity_id,
             co.settle_colonel_commission,

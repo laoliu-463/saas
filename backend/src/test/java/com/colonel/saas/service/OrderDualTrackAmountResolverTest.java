@@ -76,8 +76,8 @@ class OrderDualTrackAmountResolverTest {
     }
 
     @Test
-    void resolve_serviceFeeExpenseShouldDefaultToZero() {
-        // 服务费支出当前无 raw payload 字段，应默认为 0
+    void resolve_serviceFeeExpenseShouldDefaultToZeroWhenNoSecondInstitution() {
+        // 单机构或无 colonel_order_info_second 嵌套对象时，服务费支出应为 0
         Map<String, Object> raw = new LinkedHashMap<>();
         raw.put("pay_goods_amount", 5000L);
         raw.put("estimated_commission", 100L);
@@ -86,6 +86,57 @@ class OrderDualTrackAmountResolverTest {
 
         assertThat(amounts.estimateServiceFeeExpense()).isEqualTo(0L);
         assertThat(amounts.effectiveServiceFeeExpense()).isEqualTo(0L);
+    }
+
+    @Test
+    void resolve_shouldTreatSecondColonelOverlapAsServiceFeeExpense() {
+        // 双机构同时正向：二级 real_commission 计入支出（一级 = 收入，二级 = 支出）
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("settled_goods_amount", 4800L);
+        raw.put("colonel_order_info", Map.of("real_commission", 120L));
+        raw.put("colonel_order_info_second", Map.of("real_commission", 8L));
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
+
+        assertThat(amounts.effectiveServiceFee()).isEqualTo(120L);
+        assertThat(amounts.estimateServiceFeeExpense()).isEqualTo(8L);
+        assertThat(amounts.effectiveServiceFeeExpense()).isEqualTo(8L);
+    }
+
+    @Test
+    void resolve_shouldNotTreatSecondColonelFallbackAsExpense() {
+        // 一级机构为 0（缺失或被清零），二级机构有值 → 不算支出，二级作为有效收入补充
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("settled_goods_amount", 4800L);
+        raw.put("colonel_order_info", Map.of("real_commission", 0L));
+        raw.put("colonel_order_info_second", Map.of("real_commission", 80L));
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
+
+        assertThat(amounts.effectiveServiceFee()).isEqualTo(80L);
+        assertThat(amounts.estimateServiceFeeExpense()).isZero();
+        assertThat(amounts.effectiveServiceFeeExpense()).isZero();
+    }
+
+    @Test
+    void resolve_shouldNotTreatPrimaryNullSecondPositiveAsExpense() {
+        // 一级机构 real_commission 为 null（很多真实订单的 SETTLE 样本），
+        // 二级机构有值 → 不算支出（避免把独立结算轨误算为支出）。
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("settled_goods_amount", 4800L);
+        Map<String, Object> coi = new LinkedHashMap<>();
+        coi.put("real_commission", null);
+        coi.put("estimated_commission", 100L);
+        raw.put("colonel_order_info", coi);
+        raw.put("colonel_order_info_second", Map.of("real_commission", 21L));
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
+
+        assertThat(amounts.estimateServiceFeeExpense()).isZero();
+        assertThat(amounts.effectiveServiceFeeExpense()).isZero();
     }
 
     @Test

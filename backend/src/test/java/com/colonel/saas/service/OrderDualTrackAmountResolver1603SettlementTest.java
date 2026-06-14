@@ -17,7 +17,7 @@ class OrderDualTrackAmountResolver1603SettlementTest {
         raw.put("estimated_commission", 600L);
         raw.put("real_commission", 550L);
         raw.put("estimated_tech_service_fee", 60L);
-        raw.put("tech_service_fee", 55L);
+        raw.put("settled_tech_service_fee", 55L);
 
         OrderDualTrackAmountResolver.DualTrackAmounts amounts =
                 OrderDualTrackAmountResolver.resolveInstituteSettlement(raw);

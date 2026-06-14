@@ -69,7 +69,7 @@ public final class OrderDualTrackAmountResolver {
      *       若均无则使用 fallbackPayAmount 兜底</li>
      *   <li>第二步：匹配结算金额字段（settledGoodsAmount > settleAmount > actualAmount），
      *       若均无则回退到 payAmount</li>
-     *   <li>第三步：匹配预估/结算技术服务费，供结算收入口径扣减</li>
+ *   <li>第三步：匹配预估/结算技术服务费，供展示和预估服务费收益扣减</li>
      *   <li>第四步：匹配或按服务费率补算预估服务费收入与结算服务费收入</li>
      *   <li>第五步：执行服务费 fallback 链 —— 预估缺失时用结算值填充，结算缺失时用 fallbackServiceFee</li>
      *   <li>第六步：组装 DualTrackAmounts 结果并返回</li>
@@ -114,23 +114,13 @@ public final class OrderDualTrackAmountResolver {
                 "real_commission", "realCommission", "settled_commission", "settledCommission",
                 "commission", "institution_commission", "institutionCommission",
                 "colonel_commission", "colonelCommission", "service_fee", "serviceFee");
-        long primaryEffectiveServiceFee = firstFromPrimaryInstitution(rawPayload,
-                "real_commission", "realCommission", "settled_commission", "settledCommission",
-                "commission", "institution_commission", "institutionCommission",
-                "colonel_commission", "colonelCommission", "service_fee", "serviceFee");
-        long secondEffectiveServiceFee = fromSecondInstitution(rawPayload,
-                "real_commission", "realCommission", "settled_commission", "settledCommission",
-                "commission", "institution_commission", "institutionCommission",
-                "colonel_commission", "colonelCommission", "service_fee", "serviceFee");
-        long effectiveServiceFeeExpense = primaryEffectiveServiceFee > 0L && secondEffectiveServiceFee > 0L
-                ? secondEffectiveServiceFee
-                : 0L;
+        long effectiveServiceFeeExpense = computeServiceFeeExpense(rawPayload);
         long estimateTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
                 "estimated_tech_service_fee", "estimatedTechServiceFee",
                 "estimate_platform_service_fee", "estimatePlatformServiceFee")));
         long effectiveTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
                 "settled_tech_service_fee", "settledTechServiceFee", "tech_service_fee", "techServiceFee",
-                "platform_service_fee", "platformServiceFee", "real_tech_service_fee", "realTechServiceFee")));
+                "real_tech_service_fee", "realTechServiceFee")));
         return new DualTrackAmounts(
                 payAmount,
                 settleAmount,
@@ -140,6 +130,31 @@ public final class OrderDualTrackAmountResolver {
                 effectiveTechServiceFee,
                 effectiveServiceFeeExpense,
                 effectiveServiceFeeExpense);
+    }
+
+    /**
+     * 计算服务费支出（结算轨与预估轨通用）：
+     * <p>
+     * 当且仅当一级机构与二级机构同时存在正向服务费时，二级机构的服务费计入支出。
+     * 一级缺失 / 二级缺失 / 任意一方为 0 时不计入，避免把独立结算轨误算为支出。
+     * </p>
+     * <p>
+     * 双轨均共用此公式，因为预估轨与结算轨都可能存在 colonel_order_info / colonel_order_info_second
+     * 嵌套对象。
+     * </p>
+     */
+    static long computeServiceFeeExpense(Map<String, Object> rawPayload) {
+        if (rawPayload == null || rawPayload.isEmpty()) {
+            return 0L;
+        }
+        String[] feeKeys = {
+                "real_commission", "realCommission", "settled_commission", "settledCommission",
+                "commission", "institution_commission", "institutionCommission",
+                "colonel_commission", "colonelCommission", "service_fee", "serviceFee"
+        };
+        long primaryFee = firstFromPrimaryInstitution(rawPayload, feeKeys);
+        long secondFee = fromSecondInstitution(rawPayload, feeKeys);
+        return primaryFee > 0L && secondFee > 0L ? secondFee : 0L;
     }
 
     public static DualTrackAmounts resolve(
@@ -212,7 +227,9 @@ public final class OrderDualTrackAmountResolver {
                 effectiveServiceFee = fallbackServiceFee;
             }
         }
-        // 第六步：组装结果（服务费支出当前无 raw payload 字段，默认为 0）
+        // 第六步：组装结果。服务费支出采用与 1603 结算口径一致的二级机构重叠规则：
+        // 一级、二级机构服务费同时为正数时，二级机构的服务费作为支出。
+        long serviceFeeExpense = computeServiceFeeExpense(rawPayload);
         return new DualTrackAmounts(
                 payAmount,
                 settleAmount,
@@ -220,8 +237,8 @@ public final class OrderDualTrackAmountResolver {
                 effectiveServiceFee,
                 estimateTechServiceFee,
                 effectiveTechServiceFee,
-                0L,
-                0L);
+                serviceFeeExpense,
+                serviceFeeExpense);
     }
 
     /**

@@ -22,6 +22,8 @@
         <result property="effectiveServiceFee" column="effective_service_fee"/>
         <result property="estimateTechServiceFee" column="estimate_tech_service_fee"/>
         <result property="effectiveTechServiceFee" column="effective_tech_service_fee"/>
+        <result property="estimateServiceFeeExpense" column="estimate_service_fee_expense"/>
+        <result property="effectiveServiceFeeExpense" column="effective_service_fee_expense"/>
         <result property="estimateServiceProfit" column="estimate_service_profit"/>
         <result property="effectiveServiceProfit" column="effective_service_profit"/>
         <result property="estimateRecruiterCommission" column="estimate_recruiter_commission"/>
@@ -75,6 +77,7 @@
             pay_amount, settle_amount,
             estimate_service_fee, effective_service_fee,
             estimate_tech_service_fee, effective_tech_service_fee,
+            estimate_service_fee_expense, effective_service_fee_expense,
             estimate_service_profit, effective_service_profit,
             estimate_recruiter_commission, effective_recruiter_commission,
             estimate_channel_commission, effective_channel_commission,
@@ -92,6 +95,7 @@
             #{payAmount}, #{settleAmount},
             #{estimateServiceFee}, #{effectiveServiceFee},
             #{estimateTechServiceFee}, #{effectiveTechServiceFee},
+            #{estimateServiceFeeExpense}, #{effectiveServiceFeeExpense},
             #{estimateServiceProfit}, #{effectiveServiceProfit},
             #{estimateRecruiterCommission}, #{effectiveRecruiterCommission},
             #{estimateChannelCommission}, #{effectiveChannelCommission},
@@ -119,6 +123,8 @@
             effective_service_fee = EXCLUDED.effective_service_fee,
             estimate_tech_service_fee = EXCLUDED.estimate_tech_service_fee,
             effective_tech_service_fee = EXCLUDED.effective_tech_service_fee,
+            estimate_service_fee_expense = EXCLUDED.estimate_service_fee_expense,
+            effective_service_fee_expense = EXCLUDED.effective_service_fee_expense,
             estimate_service_profit = EXCLUDED.estimate_service_profit,
             effective_service_profit = EXCLUDED.effective_service_profit,
             estimate_recruiter_commission = EXCLUDED.estimate_recruiter_commission,

@@ -33,14 +33,14 @@
 - [V1 必做] `GET /api/dashboard/metrics` 返回 `estimate` 与 `settle` 双轨对象，数据页经营指标矩阵必须展示：
   - 总订单数：`estimate.totalOrders/todayOrderCount` 展示为“成交”，`settle.totalOrders/todayOrderCount` 展示为“结算”。
   - 订单额：`estimate.totalAmount/todayGmv` 展示为“成交”，`settle.totalAmount/todayGmv` 展示为“结算”。
-  - 服务费收入：`serviceFeeIncome`，展示“预估 / 结算”；预估服务费收入 = 预估订单额 × 服务费率（未扣除技术服务费），结算服务费收入 = 结算订单额 × 服务费率 - 技术服务费。
+  - 服务费收入：`serviceFeeIncome`，展示“预估 / 结算”；预估服务费收入 = 预估订单额 × 服务费率（未扣除技术服务费），结算服务费收入以官方结算服务费字段为准，不用订单额重算且不扣技术服务费。
   - 技术服务费：`techServiceFee`，展示“预估 / 结算”。
   - 服务费支出：优先读取 `serviceFeeExpense`，缺失时按 `bizCommission + channelCommission` 或 `commission` 派生，展示“预估 / 结算”。
   - 服务费收益：`serviceFee` / `serviceFeeProfit`，展示“预估 / 结算”；业务公式必须区分两轨：预估服务费收益 = 预估服务费收入 - 预估服务费支出 - 技术服务费；结算服务费收益 = 结算服务费收入 - 结算服务费支出。
   - 招商提成：`bizCommission`，展示“预估 / 结算”。
   - 媒介提成：当前代码字段为 `channelCommission`，页面可按业务文案展示为“媒介提成”，展示“预估 / 结算”。
   - 毛利：`grossProfit`，公式为 `服务费收益 - 招商提成 - 媒介/渠道提成`，展示“预估 / 结算”。
-- [V1 必做] `techServiceFee` 仍作为经营指标展示和预估服务费收益输入；结算服务费收益公式不扣减技术服务费，后端 / 前端不得用同一“收入 - 技术服务费”公式套两轨。
+- [V1 必做] `techServiceFee` 仍作为经营指标展示和预估服务费收益输入；结算轨只展示技术服务费，结算服务费收入和收益公式均不扣减技术服务费，后端 / 前端不得用同一“收入 - 技术服务费”公式套两轨。
 - [V1 必做] 以上字段属于经营指标，不代表财务结算、商家结算或多账期治理；后者仍为 V2 预留。
 
 ## 活动 API 补充事实（2026-05-29 / 2026-06-01）
