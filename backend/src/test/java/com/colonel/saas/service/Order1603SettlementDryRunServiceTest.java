@@ -50,7 +50,7 @@ class Order1603SettlementDryRunServiceTest {
                         "estimated_commission", 55L,
                         "real_commission", 50L,
                         "estimated_tech_service_fee", 7L,
-                        "tech_service_fee", 6L
+                        "settled_tech_service_fee", 6L
                 )
         )));
 
@@ -111,6 +111,10 @@ class Order1603SettlementDryRunServiceTest {
         assertThat(result.orders().get(0).effectiveServiceFee()).isZero();
         assertThat(result.orders().get(0).mappingWarnings())
                 .contains("missing_settle_amount", "missing_effective_service_fee", "missing_settle_time");
+
+        ArgumentCaptor<SettlementOrderQuery> captor = ArgumentCaptor.forClass(SettlementOrderQuery.class);
+        verify(instituteSettlementGateway).fetch(captor.capture());
+        assertThat(captor.getValue().timeType()).isEqualTo("update");
     }
 
     @Test

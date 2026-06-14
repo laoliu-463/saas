@@ -119,7 +119,7 @@ public final class OrderDualTrackAmountResolver {
                 "estimated_tech_service_fee", "estimatedTechServiceFee",
                 "estimate_platform_service_fee", "estimatePlatformServiceFee")));
         long effectiveTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
-                "settled_tech_service_fee", "settledTechServiceFee", "tech_service_fee", "techServiceFee",
+                "settled_tech_service_fee", "settledTechServiceFee",
                 "real_tech_service_fee", "realTechServiceFee")));
         return new DualTrackAmounts(
                 payAmount,

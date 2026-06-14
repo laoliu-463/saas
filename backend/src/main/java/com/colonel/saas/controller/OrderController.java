@@ -359,7 +359,7 @@ public class OrderController extends BaseController {
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "1603 结算口径 dry-run 请求。startTime/endTime 格式 yyyy-MM-dd HH:mm:ss。",
                     required = true,
-                    content = @Content(examples = @ExampleObject(value = "{\"startTime\":\"2026-06-03 00:00:00\",\"endTime\":\"2026-06-06 13:30:00\",\"timeType\":\"settle\",\"pageSize\":20,\"maxPages\":3,\"maxOrders\":100}"))
+                    content = @Content(examples = @ExampleObject(value = "{\"startTime\":\"2026-06-03 00:00:00\",\"endTime\":\"2026-06-06 13:30:00\",\"timeType\":\"update\",\"pageSize\":20,\"maxPages\":3,\"maxOrders\":100}"))
             )
             @RequestBody Order1603SettlementDryRunRequest request) {
         Order1603SettlementDryRunRequest safeRequest =
@@ -1535,7 +1535,7 @@ public class OrderController extends BaseController {
         @Schema(description = "1603 查询结束时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-06-06 13:30:00")
         private String endTime;
 
-        @Schema(description = "时间类型，默认 settle。")
+        @Schema(description = "时间类型，默认 update。")
         private String timeType;
 
         @Min(1)

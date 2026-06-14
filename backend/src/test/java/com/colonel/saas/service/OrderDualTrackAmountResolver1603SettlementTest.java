@@ -65,6 +65,39 @@ class OrderDualTrackAmountResolver1603SettlementTest {
     }
 
     @Test
+    void resolveInstituteSettlement_shouldNotFallbackEffectiveTechWhenSettledTechIsZero() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 240L);
+        raw.put("settled_goods_amount", 240L);
+        raw.put("colonel_order_info", Map.of(
+                "real_commission", 2L,
+                "tech_service_fee", 2L,
+                "settled_tech_service_fee", 0L
+        ));
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts =
+                OrderDualTrackAmountResolver.resolveInstituteSettlement(raw);
+
+        assertThat(amounts.effectiveTechServiceFee()).isZero();
+    }
+
+    @Test
+    void resolveInstituteSettlement_shouldNotFallbackEffectiveTechToRawTechServiceFee() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 240L);
+        raw.put("settled_goods_amount", 240L);
+        raw.put("colonel_order_info", Map.of(
+                "real_commission", 2L,
+                "tech_service_fee", 2L
+        ));
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts =
+                OrderDualTrackAmountResolver.resolveInstituteSettlement(raw);
+
+        assertThat(amounts.effectiveTechServiceFee()).isZero();
+    }
+
+    @Test
     void resolveInstituteSettlement_shouldTreatSecondColonelOverlapAsServiceFeeExpense() {
         Map<String, Object> raw = new LinkedHashMap<>();
         raw.put("pay_goods_amount", 5000L);

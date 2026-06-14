@@ -325,7 +325,7 @@ public class DouyinController extends BaseController {
             @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId,
             @Parameter(description = "每次拉取条数，最大 100。") @RequestParam(name = "size", required = false, defaultValue = "20") @Min(1) @Max(100) Integer size,
             @Parameter(description = "游标，继续翻页时使用。") @RequestParam(name = "cursor", required = false, defaultValue = "0") String cursor,
-            @Parameter(description = "时间类型，默认 settle。") @RequestParam(name = "timeType", required = false, defaultValue = "settle") String timeType,
+            @Parameter(description = "时间类型，默认 update。") @RequestParam(name = "timeType", required = false, defaultValue = "update") String timeType,
             @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "startTime", required = false) String startTime,
             @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "endTime", required = false) String endTime,
             @Parameter(description = "订单号列表，逗号分隔，最多 100 个；与时间范围二选一，优先使用 camelCase 入参。") @RequestParam(name = "orderIds", required = false) String orderIds,

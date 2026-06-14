@@ -29,7 +29,7 @@ public class Order1603SettlementDryRunService {
     private static final int MAX_ALLOWED_PAGES = 10;
     private static final int DEFAULT_MAX_ORDERS = 100;
     private static final int MAX_ALLOWED_ORDERS = 500;
-    private static final String DEFAULT_TIME_TYPE = "settle";
+    private static final String DEFAULT_TIME_TYPE = "update";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
