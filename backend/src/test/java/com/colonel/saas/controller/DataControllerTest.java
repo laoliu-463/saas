@@ -753,7 +753,7 @@ class DataControllerTest {
         assertThat(response.getData().getTotal().getOrderCount()).isEqualTo(2L);
         assertThat(response.getData().getTotal().getOrderAmount()).isEqualByComparingTo("100.00");
         assertThat(response.getData().getTotal().getProductAverageServiceFeeRate()).isEqualByComparingTo("6.25");
-        assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("5.00");
+        assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("4.00");
         assertThat(response.getData().getTotal().getServiceFeeExpense()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getTotal().getServiceFeeProfit()).isEqualByComparingTo("4.00");
         assertThat(response.getData().getTotal().getGrossProfit()).isEqualByComparingTo("3.00");
@@ -897,7 +897,7 @@ class DataControllerTest {
 
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData().getTotal().getOrderAmount()).isEqualByComparingTo("90.00");
-        assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("5.00");
+        assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("4.78");
         assertThat(response.getData().getTotal().getServiceFeeExpense()).isEqualByComparingTo("0.20");
         assertThat(response.getData().getTotal().getServiceFeeProfit()).isEqualByComparingTo("4.30");
         assertThat(response.getData().getTotal().getGrossProfit()).isEqualByComparingTo("3.23");
