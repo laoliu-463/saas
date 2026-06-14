@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -167,12 +168,66 @@ public class OrderSyncPersistenceService {
             return;
         }
         if (SYNC_SOURCE_INSTITUTE_SETTLEMENT.equals(incoming.getSyncSource())) {
+            boolean explicitSettlementTechFee = hasExplicitSettlementTechFee(incoming);
+            Long incomingEffectiveTechFee = incoming.getEffectiveTechServiceFee();
             orderAmountMappingRouter.mergeEstimateSnapshot(existing, incoming);
             orderAmountMappingRouter.mergeSettlementSnapshot(existing, incoming);
+            if (explicitSettlementTechFee) {
+                long effectiveTechFee = incomingEffectiveTechFee == null ? 0L : Math.max(incomingEffectiveTechFee, 0L);
+                incoming.setEffectiveTechServiceFee(effectiveTechFee);
+                incoming.setSettleColonelTechServiceFee(effectiveTechFee > 0L ? effectiveTechFee : null);
+            }
             return;
         }
         orderAmountMappingRouter.mergeEstimateSnapshot(existing, incoming);
         orderAmountMappingRouter.mergeSettlementSnapshot(existing, incoming);
+    }
+
+    private static boolean hasExplicitSettlementTechFee(ColonelsettlementOrder incoming) {
+        if (incoming == null) {
+            return false;
+        }
+        Map<String, Object> raw = incoming.getExtraData();
+        return containsAny(raw, Set.of(
+                "settled_tech_service_fee",
+                "settledTechServiceFee",
+                "real_tech_service_fee",
+                "realTechServiceFee"))
+                || containsAny(asObjectMap(raw == null ? null : raw.get("colonel_order_info")), Set.of(
+                "settled_tech_service_fee",
+                "settledTechServiceFee",
+                "real_tech_service_fee",
+                "realTechServiceFee"))
+                || containsAny(asObjectMap(raw == null ? null : raw.get("colonelOrderInfo")), Set.of(
+                "settled_tech_service_fee",
+                "settledTechServiceFee",
+                "real_tech_service_fee",
+                "realTechServiceFee"));
+    }
+
+    private static boolean containsAny(Map<String, Object> source, Set<String> keys) {
+        if (source == null || keys == null) {
+            return false;
+        }
+        for (String key : keys) {
+            if (source.containsKey(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Map<String, Object> asObjectMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() instanceof String key) {
+                result.put(key, entry.getValue());
+            }
+        }
+        return result;
     }
 
     /** 发布订单同步完成事件，将订单的金额快照和归因信息通知下游消费者。 */

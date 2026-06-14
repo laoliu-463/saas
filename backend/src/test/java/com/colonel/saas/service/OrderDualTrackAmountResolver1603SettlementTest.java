@@ -102,8 +102,14 @@ class OrderDualTrackAmountResolver1603SettlementTest {
         Map<String, Object> raw = new LinkedHashMap<>();
         raw.put("pay_goods_amount", 5000L);
         raw.put("settled_goods_amount", 4800L);
-        raw.put("colonel_order_info", Map.of("real_commission", 120L));
-        raw.put("colonel_order_info_second", Map.of("real_commission", 8L));
+        raw.put("colonel_order_info", Map.of(
+                "real_commission", 120L,
+                "estimated_commission", 130L
+        ));
+        raw.put("colonel_order_info_second", Map.of(
+                "real_commission", 8L,
+                "estimated_commission", 8L
+        ));
 
         OrderDualTrackAmountResolver.DualTrackAmounts amounts =
                 OrderDualTrackAmountResolver.resolveInstituteSettlement(raw);
