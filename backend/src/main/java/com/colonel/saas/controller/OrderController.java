@@ -28,6 +28,7 @@ import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.Order1603SettlementDryRunService;
+import com.colonel.saas.service.Order2704SettlementDryRunService;
 import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderService;
@@ -159,6 +160,9 @@ public class OrderController extends BaseController {
     /** 1603 结算口径 dry-run 服务：只读拉取上游并模拟双轨字段映射 */
     private final Order1603SettlementDryRunService order1603SettlementDryRunService;
 
+    /** 2704 多结算订单 dry-run 服务：只读拉取上游并输出官方口径对照证据 */
+    private final Order2704SettlementDryRunService order2704SettlementDryRunService;
+
     /**
      * 订单域查询服务：封装筛选条件构造与分页 / 统计聚合（t2-orders 抽 service）。
      * <p>
@@ -185,6 +189,7 @@ public class OrderController extends BaseController {
             UserDomainFacade userDomainFacade,
             Order6468PaginationDryRunService order6468PaginationDryRunService,
             Order1603SettlementDryRunService order1603SettlementDryRunService,
+            Order2704SettlementDryRunService order2704SettlementDryRunService,
             OrderService orderService,
             DddRefactorProperties dddRefactorProperties,
             OrderDomainFacade orderDomainFacade) {
@@ -199,6 +204,7 @@ public class OrderController extends BaseController {
         this.userDomainFacade = userDomainFacade;
         this.order6468PaginationDryRunService = order6468PaginationDryRunService;
         this.order1603SettlementDryRunService = order1603SettlementDryRunService;
+        this.order2704SettlementDryRunService = order2704SettlementDryRunService;
         this.orderService = orderService;
         this.dddRefactorProperties = dddRefactorProperties;
         this.orderDomainFacade = orderDomainFacade;
@@ -324,6 +330,40 @@ public class OrderController extends BaseController {
                         safeRequest.getOrderIds()
                 );
         return ok(order1603SettlementDryRunService.dryRun(command));
+    }
+
+    /**
+     * 2704 多结算订单 dry-run。
+     * <p>
+     * 只读调用 buyin.colonelMultiSettlementOrders，聚合字段求和并与本地结算日订单做差异对照。
+     * 该接口不落库、不触发归因、不发布订单事件、不清缓存、不写操作日志。
+     * </p>
+     */
+    @Operation(summary = "2704 多结算订单 dry-run", description = "只读调用 2704 多结算订单接口，输出聚合、字段求和和 upstream/local 差异清单。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/2704-settlement-dry-run")
+    public ApiResult<Order2704SettlementDryRunService.DryRunResult> dryRun2704Settlement(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "2704 结算口径 dry-run 请求。startTime/endTime 格式 yyyy-MM-dd HH:mm:ss。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"startTime\":\"2026-06-12 00:00:00\",\"endTime\":\"2026-06-13 00:00:00\",\"timeType\":\"settle\",\"pageSize\":100,\"maxPages\":500,\"maxOrders\":50000,\"maxDiffOrderIds\":500}"))
+            )
+            @RequestBody Order2704SettlementDryRunRequest request) {
+        Order2704SettlementDryRunRequest safeRequest =
+                request == null ? new Order2704SettlementDryRunRequest() : request;
+        Order2704SettlementDryRunService.DryRunRequest command =
+                new Order2704SettlementDryRunService.DryRunRequest(
+                        safeRequest.getStartTime(),
+                        safeRequest.getEndTime(),
+                        safeRequest.getTimeType(),
+                        safeRequest.getPageSize(),
+                        safeRequest.getCursor(),
+                        safeRequest.getMaxPages(),
+                        safeRequest.getMaxOrders(),
+                        safeRequest.getMaxDiffOrderIds(),
+                        safeRequest.getOrderIds()
+                );
+        return ok(order2704SettlementDryRunService.dryRun(command));
     }
 
     /**
@@ -1471,6 +1511,44 @@ public class OrderController extends BaseController {
         private Integer maxOrders;
 
         @Schema(description = "订单号列表；1603 默认不强传给上游，仅用于 dry-run 请求回显为 warning。")
+        private List<String> orderIds;
+    }
+
+    @Data
+    public static class Order2704SettlementDryRunRequest {
+        @Schema(description = "2704 查询开始时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-06-12 00:00:00")
+        private String startTime;
+
+        @Schema(description = "2704 查询结束时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-06-13 00:00:00")
+        private String endTime;
+
+        @Schema(description = "时间类型，默认 settle。")
+        private String timeType;
+
+        @Min(1)
+        @Max(100)
+        @Schema(description = "每页条数，默认 100，最大 100。")
+        private Integer pageSize;
+
+        @Schema(description = "游标，默认 0。")
+        private String cursor;
+
+        @Min(1)
+        @Max(500)
+        @Schema(description = "最大页数，默认 500，最大 500。")
+        private Integer maxPages;
+
+        @Min(1)
+        @Max(50000)
+        @Schema(description = "最大订单行数，默认 50000，最大 50000。")
+        private Integer maxOrders;
+
+        @Min(0)
+        @Max(5000)
+        @Schema(description = "返回差异订单号清单的最大数量，默认 500，最大 5000。")
+        private Integer maxDiffOrderIds;
+
+        @Schema(description = "订单号列表；为空时按时间范围查询。")
         private List<String> orderIds;
     }
 

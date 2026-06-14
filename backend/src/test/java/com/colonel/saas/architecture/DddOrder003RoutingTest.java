@@ -15,6 +15,7 @@ import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.Order1603SettlementDryRunService;
+import com.colonel.saas.service.Order2704SettlementDryRunService;
 import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
@@ -56,6 +57,7 @@ class DddOrder003RoutingTest {
     @Mock private UserDomainFacade userDomainFacade;
     @Mock private Order6468PaginationDryRunService order6468PaginationDryRunService;
     @Mock private Order1603SettlementDryRunService order1603SettlementDryRunService;
+    @Mock private Order2704SettlementDryRunService order2704SettlementDryRunService;
     @Mock private OrderService orderService;
     @Mock private DddRefactorProperties dddRefactorProperties;
     @Mock private DddRefactorProperties.Switch orderApplicationSwitch;
@@ -80,6 +82,7 @@ class DddOrder003RoutingTest {
                 userDomainFacade,
                 order6468PaginationDryRunService,
                 order1603SettlementDryRunService,
+                order2704SettlementDryRunService,
                 orderService,
                 dddRefactorProperties,
                 orderDomainFacade

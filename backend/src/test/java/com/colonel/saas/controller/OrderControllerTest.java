@@ -27,6 +27,7 @@ import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderSyncService;
 import com.colonel.saas.service.Order1603SettlementDryRunService;
+import com.colonel.saas.service.Order2704SettlementDryRunService;
 import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -85,6 +86,8 @@ class OrderControllerTest {
     @Mock
     private Order1603SettlementDryRunService order1603SettlementDryRunService;
     @Mock
+    private Order2704SettlementDryRunService order2704SettlementDryRunService;
+    @Mock
     private ProductSnapshotMapper productSnapshotMapper;
     @Mock
     private ProductMapper productMapper;
@@ -120,6 +123,7 @@ class OrderControllerTest {
                         userDomainFacade,
                         order6468PaginationDryRunService,
                         order1603SettlementDryRunService,
+                        order2704SettlementDryRunService,
                         orderService,
                         dddRefactorProperties,
                         orderDomainFacade))

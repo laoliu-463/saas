@@ -11,6 +11,7 @@ import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.Order1603SettlementDryRunService;
+import com.colonel.saas.service.Order2704SettlementDryRunService;
 import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.CommissionService;
@@ -27,6 +28,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.List;
+import java.util.Map;
+
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -59,6 +64,8 @@ class OrderSyncControllerTest {
     @Mock
     private Order1603SettlementDryRunService order1603SettlementDryRunService;
     @Mock
+    private Order2704SettlementDryRunService order2704SettlementDryRunService;
+    @Mock
     private ProductSnapshotMapper productSnapshotMapper;
     @Mock
     private ProductMapper productMapper;
@@ -87,6 +94,7 @@ class OrderSyncControllerTest {
                         userDomainFacade,
                         order6468PaginationDryRunService,
                         order1603SettlementDryRunService,
+                        order2704SettlementDryRunService,
                         orderService,
                         dddRefactorProperties,
                         orderDomainFacade))
@@ -114,5 +122,60 @@ class OrderSyncControllerTest {
 
         verify(orderSyncService).syncInstituteOrdersHotRecent();
         verify(orderSyncService, never()).syncByTimeRange(anyLong(), anyLong());
+    }
+
+    @Test
+    void dryRun2704Settlement_shouldReturnReadonlyProbeResult() throws Exception {
+        when(order2704SettlementDryRunService.dryRun(any()))
+                .thenReturn(new Order2704SettlementDryRunService.DryRunResult(
+                        Order2704SettlementDryRunService.SOURCE,
+                        Order2704SettlementDryRunService.API_METHOD,
+                        "settle",
+                        "2026-06-12 00:00:00",
+                        "2026-06-13 00:00:00",
+                        100,
+                        2,
+                        2,
+                        2,
+                        0,
+                        "NO_NEXT_CURSOR",
+                        "0",
+                        true,
+                        new Order2704SettlementDryRunService.AmountSummary(3000L, 60L, 6L, 9L),
+                        Map.of("service_fee_expense", 9L),
+                        new Order2704SettlementDryRunService.DiffSummary(
+                                1L,
+                                1L,
+                                0L,
+                                List.of("ORDER-2"),
+                                List.of()),
+                        List.of("order_id", "service_fee_expense"),
+                        List.of()));
+
+        mockMvc.perform(post("/orders/2704-settlement-dry-run")
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "startTime": "2026-06-12 00:00:00",
+                                  "endTime": "2026-06-13 00:00:00",
+                                  "timeType": "settle",
+                                  "pageSize": 100,
+                                  "maxPages": 500,
+                                  "maxOrders": 50000,
+                                  "maxDiffOrderIds": 500
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.readOnly").value(true))
+                .andExpect(jsonPath("$.data.apiMethod").value("buyin.colonelMultiSettlementOrders"))
+                .andExpect(jsonPath("$.data.summary.serviceFeeExpenseCent").value(9))
+                .andExpect(jsonPath("$.data.diff.onlyInUpstream").value(1))
+                .andExpect(jsonPath("$.data.diff.onlyInUpstreamOrderIds[0]").value("ORDER-2"));
+
+        verify(order2704SettlementDryRunService)
+                .dryRun(any(Order2704SettlementDryRunService.DryRunRequest.class));
+        verify(orderMapper, never()).insert(any());
     }
 }
