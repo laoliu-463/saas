@@ -1,9 +1,19 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import DouyinIntegration from './DouyinIntegration.vue';
-import { getDouyinAuthorizeUrl, getDouyinTokenStatus } from '../../api/douyin';
+import { getActivityProducts } from '../../api/activityProduct';
+import { getMetrics } from '../../api/data';
+import { getOrders, syncOrders } from '../../api/order';
+import {
+  getDouyinActivityProductList,
+  getDouyinActivityTest,
+  getDouyinAuthorizeUrl,
+  getDouyinInstitutionInfo,
+  getDouyinTokenStatus,
+  postDouyinRawProbe
+} from '../../api/douyin';
 
 const source = readFileSync(resolve(__dirname, 'DouyinIntegration.vue'), 'utf8');
 const messageApi = vi.hoisted(() => ({
@@ -131,5 +141,69 @@ describe('DouyinIntegration oauth entry', () => {
 
     expect(getDouyinAuthorizeUrl).toHaveBeenCalledWith(undefined);
     expect(window.location.href).toBe('https://buyin.jinritemai.com/dashboard/institution/power-manage');
+  });
+
+  it('uses read-only compact business product probe during one-click real-pre check', async () => {
+    vi.mocked(getDouyinTokenStatus).mockResolvedValue({
+      appId: 'default-app',
+      hasAccessToken: true,
+      maskedAccessToken: 'ak',
+      hasRefreshToken: true,
+      maskedRefreshToken: 'rk',
+      tokenExpireAtEpochSeconds: 1781744102,
+      tokenExpiringSoon: false,
+      reauthorizeRequired: false
+    });
+    vi.mocked(getDouyinInstitutionInfo).mockResolvedValue({
+      status: 'success',
+      endpoint: 'buyin.institutionInfo',
+      code: 10000
+    });
+    vi.mocked(getDouyinActivityTest).mockResolvedValue({
+      status: 'success',
+      remoteResponse: { data: [{ activityId: 'ACT-1' }] }
+    });
+    vi.mocked(getDouyinActivityProductList).mockResolvedValue({
+      status: 'success',
+      remoteResponse: { data: [{ productId: 'PROD-1' }] }
+    });
+    vi.mocked(getActivityProducts).mockResolvedValue({
+      data: { items: [{ productId: 'PROD-1' }], total: 1 }
+    });
+    vi.mocked(postDouyinRawProbe).mockResolvedValue({
+      status: 'success',
+      remoteResponse: { code: 10000, data: { skus: [{ skuId: 'SKU-1' }] } }
+    });
+    vi.mocked(syncOrders).mockResolvedValue({
+      data: { failed: 0, fetched: 0, created: 0, updated: 0 }
+    });
+    vi.mocked(getOrders).mockResolvedValue({ data: { total: 1 } });
+    vi.mocked(getMetrics).mockResolvedValue({
+      data: { todayOrderCount: 1, todayGmv: '1.00' }
+    });
+
+    const wrapper = mount(DouyinIntegration, {
+      global: {
+        stubs: naiveStubs
+      }
+    });
+
+    const fullCheckButton = wrapper.findAll('button').find((button) => button.text().includes('一键刷新联调状态'));
+    expect(fullCheckButton).toBeTruthy();
+
+    await fullCheckButton!.trigger('click');
+    await flushPromises();
+    await flushPromises();
+
+    expect(getActivityProducts).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ count: 5 }),
+      expect.any(Object)
+    );
+    expect(getActivityProducts).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ refresh: true }),
+      expect.any(Object)
+    );
   });
 });

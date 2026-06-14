@@ -17,6 +17,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -112,12 +113,68 @@ class Order1603SettlementDryRunServiceTest {
                 .contains("missing_settle_amount", "missing_effective_service_fee", "missing_settle_time");
     }
 
+    @Test
+    void dryRun_shouldContinueWhenHasMoreFalseButNextCursorExists() {
+        when(instituteSettlementGateway.fetch(any()))
+                .thenReturn(
+                        page(Map.of("order_id", "ORDER-PAGE-1", "pay_goods_amount", 1000L), "cursor-2", false),
+                        page(Map.of("order_id", "ORDER-PAGE-2", "pay_goods_amount", 2000L), "0", false)
+                );
+
+        Order1603SettlementDryRunService.DryRunResult result = service.dryRun(
+                new Order1603SettlementDryRunService.DryRunRequest(
+                        "2026-06-13 00:00:00",
+                        "2026-06-13 23:59:59",
+                        "settle",
+                        20,
+                        "0",
+                        3,
+                        100,
+                        List.of()
+                ));
+
+        assertThat(result.fetched()).isEqualTo(2);
+        assertThat(result.pagesFetched()).isEqualTo(2);
+        assertThat(result.stopReason()).isEqualTo("NO_NEXT_CURSOR");
+        verify(instituteSettlementGateway, times(2)).fetch(any());
+    }
+
+    @Test
+    void dryRun_shouldStopWhenNextCursorRepeats() {
+        when(instituteSettlementGateway.fetch(any()))
+                .thenReturn(
+                        page(Map.of("order_id", "ORDER-PAGE-1", "pay_goods_amount", 1000L), "cursor-2", false),
+                        page(Map.of("order_id", "ORDER-PAGE-2", "pay_goods_amount", 2000L), "cursor-2", false)
+                );
+
+        Order1603SettlementDryRunService.DryRunResult result = service.dryRun(
+                new Order1603SettlementDryRunService.DryRunRequest(
+                        "2026-06-13 00:00:00",
+                        "2026-06-13 23:59:59",
+                        "settle",
+                        20,
+                        "0",
+                        3,
+                        100,
+                        List.of()
+                ));
+
+        assertThat(result.fetched()).isEqualTo(2);
+        assertThat(result.pagesFetched()).isEqualTo(2);
+        assertThat(result.stopReason()).isEqualTo("DUPLICATE_CURSOR");
+        verify(instituteSettlementGateway, times(2)).fetch(any());
+    }
+
     private SettlementOrderPage page(Map<String, Object> rawOrder) {
+        return page(rawOrder, "0", false);
+    }
+
+    private SettlementOrderPage page(Map<String, Object> rawOrder, String nextCursor, boolean hasMore) {
         JsonNode node = OBJECT_MAPPER.valueToTree(rawOrder);
         return new SettlementOrderPage(
                 List.of(node),
-                "0",
-                false,
+                nextCursor,
+                hasMore,
                 OBJECT_MAPPER.valueToTree(Map.of("log_id", "log-1603")),
                 "buyin.instituteOrderColonel",
                 OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE_SETTLEMENT);

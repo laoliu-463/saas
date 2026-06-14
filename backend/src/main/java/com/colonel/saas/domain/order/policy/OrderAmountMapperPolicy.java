@@ -156,15 +156,25 @@ public final class OrderAmountMapperPolicy {
             }
         }
 
-        // 第三步：解析预估/结算技术服务费
-        long estimateTechServiceFee = firstNonNegative(pickNestedLong(safe,
+        // 第三步：解析预估/结算技术服务费。tech_service_fee 在部分待结算样本中是预估字段，
+        // 非 strict 轨道不写入 effective；结算轨只使用明确结算别名。
+        Long estimateTechRaw = pickNestedLong(safe,
                 "estimated_tech_service_fee", "estimatedTechServiceFee", "estimate_platform_service_fee",
-                "estimatePlatformServiceFee", "settle_colonel_tech_service_fee",
-                "settleColonelTechServiceFee"));
-        long effectiveTechServiceFee = firstNonNegative(pickNestedLong(safe,
-                "tech_service_fee", "techServiceFee", "settled_tech_service_fee", "settledTechServiceFee",
-                "platform_service_fee", "platformServiceFee", "settle_colonel_tech_service_fee",
-                "settleColonelTechServiceFee"));
+                "estimatePlatformServiceFee");
+        Long effectiveTechRaw = pickNestedLong(safe,
+                "effective_tech_service_fee", "effectiveTechServiceFee", "settled_tech_service_fee",
+                "settledTechServiceFee", "real_tech_service_fee", "realTechServiceFee",
+                "settle_colonel_tech_service_fee", "settleColonelTechServiceFee");
+        Long ambiguousTechRaw = pickNestedLong(safe,
+                "tech_service_fee", "techServiceFee", "platform_service_fee", "platformServiceFee");
+        long estimateTechServiceFee = firstNonNegative(estimateTechRaw);
+        long effectiveTechServiceFee = firstNonNegative(effectiveTechRaw);
+        if (effectiveTechServiceFee <= 0 && settlementStrict) {
+            effectiveTechServiceFee = firstNonNegative(ambiguousTechRaw);
+        }
+        if (estimateTechServiceFee <= 0 && !settlementStrict) {
+            estimateTechServiceFee = firstNonNegative(ambiguousTechRaw);
+        }
         if (estimateTechServiceFee <= 0) {
             estimateTechServiceFee = effectiveTechServiceFee;
         }
@@ -174,10 +184,9 @@ public final class OrderAmountMapperPolicy {
                 "estimated_commission", "estimatedCommission", "estimated_service_fee",
                 "estimatedServiceFee", "estimate_institution_commission", "estimateInstitutionCommission");
         long effectiveServiceFee = firstFromInstitutions(safe,
-                "settle_colonel_commission", "settleColonelCommission", "commission", "real_commission",
-                "realCommission", "settled_commission", "settledCommission", "institution_commission",
-                "institutionCommission", "colonel_commission", "colonelCommission",
-                "service_fee", "serviceFee");
+                "effective_service_fee", "effectiveServiceFee", "settle_colonel_commission",
+                "settleColonelCommission", "real_commission", "realCommission",
+                "settled_commission", "settledCommission");
 
         BigDecimal serviceFeeRate = resolveServiceFeeRate(safe);
         if (serviceFeeRate != null) {
@@ -187,14 +196,6 @@ public final class OrderAmountMapperPolicy {
         }
         if (estimateServiceFee <= 0 && serviceFeeRate != null) {
             estimateServiceFee = calculateServiceFeeIncome(payAmount, serviceFeeRate, 0L);
-        }
-        boolean effectiveCalculatedFromRate = false;
-        if (!settlementStrict && effectiveServiceFee <= 0 && serviceFeeRate != null) {
-            effectiveServiceFee = calculateServiceFeeIncome(settleAmount, serviceFeeRate, effectiveTechServiceFee);
-            effectiveCalculatedFromRate = effectiveServiceFee > 0;
-        } else if (settlementStrict && effectiveServiceFee <= 0 && settleAmount > 0 && serviceFeeRate != null) {
-            effectiveServiceFee = calculateServiceFeeIncome(settleAmount, serviceFeeRate, effectiveTechServiceFee);
-            effectiveCalculatedFromRate = effectiveServiceFee > 0;
         }
 
         // 第五步：服务费 fallback 链
@@ -425,12 +426,8 @@ public final class OrderAmountMapperPolicy {
         order.setEffectiveServiceFee(amounts.effectiveServiceFee());
         order.setEstimateTechServiceFee(amounts.estimateTechServiceFee());
         order.setEffectiveTechServiceFee(amounts.effectiveTechServiceFee());
-        order.setSettleColonelCommission(amounts.effectiveServiceFee() > 0
-                ? amounts.effectiveServiceFee()
-                : amounts.estimateServiceFee());
-        order.setSettleColonelTechServiceFee(amounts.effectiveTechServiceFee() > 0
-                ? amounts.effectiveTechServiceFee()
-                : amounts.estimateTechServiceFee());
+        order.setSettleColonelCommission(amounts.effectiveServiceFee() > 0 ? amounts.effectiveServiceFee() : null);
+        order.setSettleColonelTechServiceFee(amounts.effectiveTechServiceFee() > 0 ? amounts.effectiveTechServiceFee() : null);
     }
 
     // ============ 内部辅助方法（private static） ============

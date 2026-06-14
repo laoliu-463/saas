@@ -27,7 +27,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -94,7 +96,7 @@ class OrderSyncControllerTest {
 
     @Test
     void syncOrders_shouldReturnManualSyncResult() throws Exception {
-        when(orderSyncService.syncByTimeRange(eq(1714492800L), eq(1714496400L)))
+        when(orderSyncService.syncInstituteOrdersHotRecent())
                 .thenReturn(new OrderSyncService.SyncResult(1714492800L, 1714496400L, 1, 2, 0, false));
 
         mockMvc.perform(post("/orders/sync")
@@ -109,5 +111,8 @@ class OrderSyncControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.created").value(2));
+
+        verify(orderSyncService).syncInstituteOrdersHotRecent();
+        verify(orderSyncService, never()).syncByTimeRange(anyLong(), anyLong());
     }
 }

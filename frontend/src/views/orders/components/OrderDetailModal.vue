@@ -332,14 +332,17 @@ async function loadDetail() {
 }
 
 watch(
-  () => props.show,
-  (show) => {
-    if (show) {
-      loadDetail()
+  () => [props.show, props.orderId] as const,
+  ([show, orderId]) => {
+    if (show && orderId) {
+      void loadDetail()
       return
     }
-    detail.value = null
-  }
+    if (!show) {
+      detail.value = null
+    }
+  },
+  { immediate: true }
 )
 </script>
 

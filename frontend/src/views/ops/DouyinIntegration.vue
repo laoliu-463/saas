@@ -790,7 +790,7 @@ const runFullCheck = async () => {
     };
 
     activeCheckKey = 'products';
-    setCheck('products', 'running', '活动商品刷新中', `正在刷新活动 ${initialActivityId || '自动探测'} 的商品快照。`);
+    setCheck('products', 'running', '活动商品读取中', `正在读取活动 ${initialActivityId || '自动探测'} 的商品快照。`);
     const activityResult = await getDouyinActivityTest(appId.value || undefined);
     const detectedActivityId = findActivityId(activityResult);
     const selectedActivityId = initialActivityId || detectedActivityId || '3916506';
@@ -803,8 +803,9 @@ const runFullCheck = async () => {
     const rawProductCount = findProductArray(productResult?.remoteResponse).length;
     const businessProductResponse = await getActivityProducts(selectedActivityId, {
       appId: appId.value || undefined,
-      count: 20,
-      refresh: true
+      page: 1,
+      size: 5,
+      count: 5
     }, {
       timeout: REAL_PRE_REQUEST_TIMEOUT_MS
     });

@@ -207,22 +207,21 @@ public class OrderController extends BaseController {
     /**
      * 手动同步订单。
      * <p>
-     * 按时间范围触发订单同步，用于补拉历史订单或联调真实网关回流数据。仅管理员可执行。
+     * 触发近实时订单同步，用于联调真实网关回流数据。仅管理员可执行。
      * </p>
      *
      * <ol>
-     *   <li>第一步：校验并补全请求参数，未传入时默认最近 30 天</li>
-     *   <li>第二步：将时间字符串解析为秒级时间戳</li>
-     *   <li>第三步：委托 {@link OrderSyncService#syncByTimeRange} 执行同步</li>
+     *   <li>第一步：补全请求参数，未传入时默认最近 30 天，仅用于审计记录</li>
+     *   <li>第二步：委托 {@link OrderSyncService#syncInstituteOrdersHotRecent()} 执行 6468 近实时同步</li>
      *   <li>第四步：记录操作审计日志</li>
      *   <li>第五步：清除所有订单衍生缓存（筛选项、Dashboard 汇总与指标）</li>
      * </ol>
      *
-     * @param request 同步时间范围请求体，可选；为空时默认最近 30 天
+     * @param request 同步时间范围请求体，可选；为空时默认最近 30 天，当前仅用于审计记录
      * @param userId  当前登录用户 ID（由拦截器注入）
      * @return 同步结果，包含 created/updated/attributed/unattributed/failed 计数
      */
-    @Operation(summary = "手动同步订单", description = "按时间范围触发订单同步，用于补拉订单或联调真实网关回流数据。")
+    @Operation(summary = "手动同步订单", description = "触发 6468 近实时订单同步，用于联调真实网关回流数据。")
     @RequireRoles({RoleCodes.ADMIN})
     @PostMapping("/sync")
     public ApiResult<OrderSyncService.SyncResult> syncOrders(
@@ -234,9 +233,7 @@ public class OrderController extends BaseController {
             @RequestBody(required = false) SyncRequest request,
             @RequestAttribute("userId") UUID userId) {
         SyncRequest safeRequest = request == null ? defaultSyncRequest() : request;
-        long start = parseDateTime(safeRequest.getStartTime());
-        long end = parseDateTime(safeRequest.getEndTime());
-        OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(start, end);
+        OrderSyncService.SyncResult result = orderSyncService.syncInstituteOrdersHotRecent();
         operationLogService.recordSystemAction(
                 userId,
                 "订单归因",

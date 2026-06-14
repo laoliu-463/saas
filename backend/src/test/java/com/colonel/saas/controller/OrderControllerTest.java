@@ -160,9 +160,9 @@ class OrderControllerTest {
     }
 
     @Test
-    void syncOrders_shouldUseProvidedTimeRange() throws Exception {
-        OrderSyncService.SyncResult result = new OrderSyncService.SyncResult(0L, 0L, 1, 1, 0, false);
-        when(orderSyncService.syncByTimeRange(anyLong(), anyLong())).thenReturn(result);
+    void syncOrders_shouldUseInstituteHotRecentForManualRealPreProbe() throws Exception {
+        OrderSyncService.SyncResult result = new OrderSyncService.SyncResult(1774972800L, 1777391999L, 1, 1, 0, false);
+        when(orderSyncService.syncInstituteOrdersHotRecent()).thenReturn(result);
 
         java.util.UUID userId = java.util.UUID.randomUUID();
         mockMvc.perform(post("/orders/sync")
@@ -174,7 +174,8 @@ class OrderControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(orderSyncService).syncByTimeRange(1774972800L, 1777391999L);
+        verify(orderSyncService).syncInstituteOrdersHotRecent();
+        verify(orderSyncService, never()).syncByTimeRange(anyLong(), anyLong());
         verify(operationLogService).recordSystemAction(
                 org.mockito.ArgumentMatchers.eq(userId),
                 org.mockito.ArgumentMatchers.eq("订单归因"),
@@ -187,19 +188,17 @@ class OrderControllerTest {
     }
 
     @Test
-    void syncOrders_shouldFallbackToDefaultWindowWhenBodyMissing() throws Exception {
+    void syncOrders_shouldUseInstituteHotRecentWhenBodyMissing() throws Exception {
         OrderSyncService.SyncResult result = new OrderSyncService.SyncResult(0L, 0L, 0, 0, 0, false);
-        when(orderSyncService.syncByTimeRange(anyLong(), anyLong())).thenReturn(result);
+        when(orderSyncService.syncInstituteOrdersHotRecent()).thenReturn(result);
 
         mockMvc.perform(post("/orders/sync")
                         .requestAttr("userId", java.util.UUID.randomUUID()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        ArgumentCaptor<Long> startCaptor = ArgumentCaptor.forClass(Long.class);
-        ArgumentCaptor<Long> endCaptor = ArgumentCaptor.forClass(Long.class);
-        verify(orderSyncService).syncByTimeRange(startCaptor.capture(), endCaptor.capture());
-        Assertions.assertTrue(endCaptor.getValue() >= startCaptor.getValue());
+        verify(orderSyncService).syncInstituteOrdersHotRecent();
+        verify(orderSyncService, never()).syncByTimeRange(anyLong(), anyLong());
     }
 
     @Test

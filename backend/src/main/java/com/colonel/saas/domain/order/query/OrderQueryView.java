@@ -20,6 +20,7 @@ public class OrderQueryView {
     private Long shopId;
     private String shopName;
     private Long orderAmount;
+    private Long payAmount;
     private Long actualAmount;
     private Long settleAmount;
     private Long estimateServiceFee;

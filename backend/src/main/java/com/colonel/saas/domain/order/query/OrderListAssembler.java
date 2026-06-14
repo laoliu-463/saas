@@ -14,6 +14,20 @@ public class OrderListAssembler {
         }
         OrderQueryView view = new OrderQueryView();
         BeanUtils.copyProperties(order, view);
+        view.setOrderAmount(zeroIfNull(view.getOrderAmount()));
+        view.setPayAmount(view.getOrderAmount());
+        view.setActualAmount(zeroIfNull(view.getActualAmount()));
+        view.setSettleAmount(zeroIfNull(view.getSettleAmount()));
+        view.setEstimateServiceFee(zeroIfNull(view.getEstimateServiceFee()));
+        view.setEffectiveServiceFee(zeroIfNull(view.getEffectiveServiceFee()));
+        view.setEstimateTechServiceFee(zeroIfNull(view.getEstimateTechServiceFee()));
+        view.setEffectiveTechServiceFee(zeroIfNull(view.getEffectiveTechServiceFee()));
+        view.setEstimateServiceFeeExpense(zeroIfNull(view.getEstimateServiceFeeExpense()));
+        view.setEffectiveServiceFeeExpense(zeroIfNull(view.getEffectiveServiceFeeExpense()));
         return view;
+    }
+
+    private static Long zeroIfNull(Long value) {
+        return value == null ? 0L : value;
     }
 }

@@ -149,14 +149,25 @@ public final class OrderDualTrackAmountResolver {
                 ? firstNonNegative(settledRaw)
                 : firstPositive(settledRaw, payAmount);
 
-        // 第三步：解析预估/结算技术服务费。
-        long estimateTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
+        // 第三步：解析预估/结算技术服务费。tech_service_fee 在待结算样本中可能是预估字段，
+        // 非 strict 轨道不写入 effective；结算轨只使用明确结算别名。
+        Long estimateTechRaw = asLong(pickNested(rawPayload,
                 "estimated_tech_service_fee", "estimatedTechServiceFee", "estimate_platform_service_fee",
-                "estimatePlatformServiceFee", "settle_colonel_tech_service_fee", "settleColonelTechServiceFee")));
-        long effectiveTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
-                "tech_service_fee", "techServiceFee", "settled_tech_service_fee", "settledTechServiceFee",
-                "platform_service_fee", "platformServiceFee", "settle_colonel_tech_service_fee",
-                "settleColonelTechServiceFee")));
+                "estimatePlatformServiceFee"));
+        Long effectiveTechRaw = asLong(pickNested(rawPayload,
+                "effective_tech_service_fee", "effectiveTechServiceFee", "settled_tech_service_fee",
+                "settledTechServiceFee", "real_tech_service_fee", "realTechServiceFee",
+                "settle_colonel_tech_service_fee", "settleColonelTechServiceFee"));
+        Long ambiguousTechRaw = asLong(pickNested(rawPayload,
+                "tech_service_fee", "techServiceFee", "platform_service_fee", "platformServiceFee"));
+        long estimateTechServiceFee = firstNonNegative(estimateTechRaw);
+        long effectiveTechServiceFee = firstNonNegative(effectiveTechRaw);
+        if (effectiveTechServiceFee <= 0 && settlementStrict) {
+            effectiveTechServiceFee = firstNonNegative(ambiguousTechRaw);
+        }
+        if (estimateTechServiceFee <= 0 && !settlementStrict) {
+            estimateTechServiceFee = firstNonNegative(ambiguousTechRaw);
+        }
         if (estimateTechServiceFee <= 0) {
             estimateTechServiceFee = effectiveTechServiceFee;
         }
@@ -167,20 +178,12 @@ public final class OrderDualTrackAmountResolver {
                 "estimated_commission", "estimatedCommission", "estimated_service_fee", "estimatedServiceFee",
                 "estimate_institution_commission", "estimateInstitutionCommission");
         long effectiveServiceFee = firstFromInstitutions(rawPayload,
-                "settle_colonel_commission", "settleColonelCommission", "commission", "real_commission",
-                "realCommission", "settled_commission", "settledCommission", "institution_commission",
-                "institutionCommission", "colonel_commission", "colonelCommission", "service_fee", "serviceFee");
+                "effective_service_fee", "effectiveServiceFee", "settle_colonel_commission",
+                "settleColonelCommission", "real_commission", "realCommission",
+                "settled_commission", "settledCommission");
         BigDecimal serviceFeeRate = resolveServiceFeeRate(rawPayload);
         if (estimateServiceFee <= 0 && serviceFeeRate != null) {
             estimateServiceFee = calculateServiceFeeIncome(payAmount, serviceFeeRate, 0L);
-        }
-        boolean effectiveServiceFeeCalculatedFromRate = false;
-        if (!settlementStrict && effectiveServiceFee <= 0 && serviceFeeRate != null) {
-            effectiveServiceFee = calculateServiceFeeIncome(settleAmount, serviceFeeRate, effectiveTechServiceFee);
-            effectiveServiceFeeCalculatedFromRate = effectiveServiceFee > 0;
-        } else if (settlementStrict && effectiveServiceFee <= 0 && settleAmount > 0 && serviceFeeRate != null) {
-            effectiveServiceFee = calculateServiceFeeIncome(settleAmount, serviceFeeRate, effectiveTechServiceFee);
-            effectiveServiceFeeCalculatedFromRate = effectiveServiceFee > 0;
         }
 
         // 第五步：服务费 fallback 链 —— 预估缺失时用结算值填充；结算轨禁止 effective 回退 estimate。
@@ -198,10 +201,6 @@ public final class OrderDualTrackAmountResolver {
                 effectiveServiceFee = fallbackServiceFee;
             }
         }
-        if (effectiveServiceFee > 0 && effectiveTechServiceFee > 0 && !effectiveServiceFeeCalculatedFromRate) {
-            effectiveServiceFee = Math.max(effectiveServiceFee - effectiveTechServiceFee, 0L);
-        }
-
         // 第六步：组装结果（服务费支出当前无 raw payload 字段，默认为 0）
         return new DualTrackAmounts(
                 payAmount,
@@ -336,12 +335,8 @@ public final class OrderDualTrackAmountResolver {
         order.setEstimateServiceFeeExpense(amounts.estimateServiceFeeExpense());
         order.setEffectiveServiceFeeExpense(amounts.effectiveServiceFeeExpense());
         // 第三步：兼容旧字段 —— 结算轨优先，为 0 时回退预估轨
-        order.setSettleColonelCommission(amounts.effectiveServiceFee() > 0
-                ? amounts.effectiveServiceFee()
-                : amounts.estimateServiceFee());
-        order.setSettleColonelTechServiceFee(amounts.effectiveTechServiceFee() > 0
-                ? amounts.effectiveTechServiceFee()
-                : amounts.estimateTechServiceFee());
+        order.setSettleColonelCommission(amounts.effectiveServiceFee() > 0 ? amounts.effectiveServiceFee() : null);
+        order.setSettleColonelTechServiceFee(amounts.effectiveTechServiceFee() > 0 ? amounts.effectiveTechServiceFee() : null);
     }
 
     /**

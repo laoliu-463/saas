@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>覆盖：pending-settlement（estimate>0, effective=0）、settled（effective>0）、
  * 字段缺失、fen 精度、decimal 精度、字段别名、COI/COI2 优先、SETTLEMENT_STRICT 模式、
- * 服务费率 fallback（INSTITUTE only），以及 merge/apply 行为。</p>
+ * 预估服务费率回填，以及 merge/apply 行为。</p>
  */
 class OrderAmountMapperPolicyTest {
 
@@ -56,8 +56,8 @@ class OrderAmountMapperPolicyTest {
         }
 
         @Test
-        @DisplayName("raw 给出 serviceFeeRate 但未给 commission 时，用费率回填 estimateServiceFee")
-        void shouldBackfillEstimateFromRate() {
+        @DisplayName("raw 给出 serviceFeeRate 但未给结算字段时，只回填 estimateServiceFee")
+        void shouldBackfillOnlyEstimateFromRate() {
             Map<String, Object> raw = new LinkedHashMap<>();
             raw.put("order_id", "OID-002");
             raw.put("pay_goods_amount", 20_000L);
@@ -68,8 +68,23 @@ class OrderAmountMapperPolicyTest {
             assertThat(result.serviceFeeRate()).isEqualByComparingTo(new BigDecimal("0.10"));
             // 20000 * 0.10 = 2000, techServiceFee 缺失视为 0
             assertThat(result.estimateServiceFee()).isEqualTo(2_000L);
-            assertThat(result.effectiveServiceFee()).isEqualTo(2_000L); // INSTITUTE 模式下回填
+            assertThat(result.effectiveServiceFee()).isZero();
             assertThat(result.rawFieldUsedMap()).containsEntry(OutputField.SERVICE_FEE_RATE, "service_fee_rate");
+        }
+
+        @Test
+        @DisplayName("raw 只有 tech_service_fee 且无结算信号时，不写 effectiveTechServiceFee")
+        void shouldNotTreatPendingTechServiceFeeAsEffective() {
+            Map<String, Object> raw = new LinkedHashMap<>();
+            raw.put("order_id", "OID-003");
+            raw.put("pay_goods_amount", 20_000L);
+            raw.put("estimated_commission", 2_000L);
+            raw.put("tech_service_fee", 88L);
+
+            MappedAmounts result = OrderAmountMapperPolicy.map(raw, null, null, Track.INSTITUTE);
+
+            assertThat(result.estimateTechServiceFee()).isEqualTo(88L);
+            assertThat(result.effectiveTechServiceFee()).isZero();
         }
     }
 
@@ -97,8 +112,8 @@ class OrderAmountMapperPolicyTest {
         }
 
         @Test
-        @DisplayName("raw 未给 effective 时，INSTITUTE 模式用 serviceFeeRate 兜底")
-        void shouldFallbackEffectiveFromRateWhenMissing() {
+        @DisplayName("raw 未给 effective 时，不用 serviceFeeRate 推导结算轨")
+        void shouldNotFallbackEffectiveFromRateWhenMissing() {
             Map<String, Object> raw = new LinkedHashMap<>();
             raw.put("order_id", "OID-101");
             raw.put("pay_goods_amount", 50_000L);
@@ -108,8 +123,7 @@ class OrderAmountMapperPolicyTest {
             MappedAmounts result = OrderAmountMapperPolicy.map(raw, null, null, Track.INSTITUTE);
 
             assertThat(result.serviceFeeRate()).isEqualByComparingTo(new BigDecimal("0.10"));
-            // INSTITUTE: 45000 * 0.10 = 4500, - 0 = 4500
-            assertThat(result.effectiveServiceFee()).isEqualTo(4_500L);
+            assertThat(result.effectiveServiceFee()).isZero();
         }
 
         @Test
@@ -510,6 +524,24 @@ class OrderAmountMapperPolicyTest {
             assertThat(order.getEffectiveTechServiceFee()).isEqualTo(40L);
             assertThat(order.getSettleColonelCommission()).isEqualTo(950L);
             assertThat(order.getSettleColonelTechServiceFee()).isEqualTo(40L);
+        }
+
+        @Test
+        @DisplayName("applyToOrder：结算轨为空时旧 settlement 字段也不回退预估轨")
+        void applyToOrderShouldNotFallbackLegacySettlementFieldsToEstimate() {
+            ColonelsettlementOrder order = new ColonelsettlementOrder();
+
+            MappedAmounts amounts = new MappedAmounts(
+                    10_000L, 0L, 1_000L, 0L, 50L, 0L,
+                    new BigDecimal("0.10"), null,
+                    List.of(), Map.of());
+
+            OrderAmountMapperPolicy.applyToOrder(order, amounts);
+
+            assertThat(order.getEffectiveServiceFee()).isZero();
+            assertThat(order.getEffectiveTechServiceFee()).isZero();
+            assertThat(order.getSettleColonelCommission()).isNull();
+            assertThat(order.getSettleColonelTechServiceFee()).isNull();
         }
     }
 

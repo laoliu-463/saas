@@ -53,6 +53,8 @@ public class Order1603SettlementDryRunService {
         String cursor = normalized.cursor();
         int pagesFetched = 0;
         String stopReason = "UNKNOWN";
+        Set<String> seenCursors = new LinkedHashSet<>();
+        seenCursors.add(cursor);
         while (pagesFetched < normalized.maxPages() && orders.size() < normalized.maxOrders()) {
             SettlementOrderPage page = instituteSettlementGateway.fetch(new SettlementOrderQuery(
                     normalized.startTime(),
@@ -86,11 +88,17 @@ public class Order1603SettlementDryRunService {
                 break;
             }
             cursor = normalizeCursor(page == null ? null : page.nextCursor());
-            boolean hasMore = page != null && page.hasMore() && StringUtils.hasText(cursor) && !"0".equals(cursor);
-            if (!hasMore) {
+            boolean hasNext = page != null
+                    && (page.hasMore() || (isTraversableCursor(cursor) && !rawOrders.isEmpty()));
+            if (!hasNext) {
                 stopReason = "NO_NEXT_CURSOR";
                 break;
             }
+            if (seenCursors.contains(cursor)) {
+                stopReason = "DUPLICATE_CURSOR";
+                break;
+            }
+            seenCursors.add(cursor);
         }
         if ("UNKNOWN".equals(stopReason)) {
             stopReason = "MAX_PAGES";
@@ -143,6 +151,10 @@ public class Order1603SettlementDryRunService {
 
     private String normalizeCursor(String cursor) {
         return StringUtils.hasText(cursor) ? cursor.trim() : "0";
+    }
+
+    private boolean isTraversableCursor(String cursor) {
+        return StringUtils.hasText(cursor) && !"0".equals(cursor);
     }
 
     private OrderMapping mapOrder(Map<String, Object> raw) {

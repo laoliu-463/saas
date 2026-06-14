@@ -31,6 +31,23 @@ class OrderQueryViewTest {
     }
 
     @Test
+    @DisplayName("订单列表视图暴露 payAmount 别名并补齐空金额字段")
+    void orderListViewShouldExposeStableAmountFields() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORD-AMOUNT");
+        order.setOrderAmount(1234L);
+        order.setEstimateServiceFee(56L);
+
+        OrderQueryView view = OrderListAssembler.toView(order);
+
+        assertThat(view.getOrderAmount()).isEqualTo(1234L);
+        assertThat(view.getPayAmount()).isEqualTo(1234L);
+        assertThat(view.getSettleAmount()).isZero();
+        assertThat(view.getEstimateServiceFee()).isEqualTo(56L);
+        assertThat(view.getEffectiveServiceFee()).isZero();
+    }
+
+    @Test
     @DisplayName("测试OrderDetailAssembler将响应转换为视图")
     void testOrderDetailAssembler() {
         OrderDetailResponse response = new OrderDetailResponse();
