@@ -86,7 +86,11 @@ commission_config rows            = 0
 
 ## 推荐规则优先级
 
-建议优先级：订单级导入快照 > 商品 > 活动 > 用户 > 全局。当前代码仅支持 product > activity > user > global，缺订单级导入层。若业务确认优先级不同，以业务书面确认为准。
+**当前代码优先级**（`CommissionRuleService`）：product > activity > user > global；未命中后回退 `system_config` 活动键与全局键。
+
+**V1.5 建议优先级**：订单级导入快照 > 商品 > 活动 > 用户 > 全局。
+
+需求文档仅说明 V2.0 支持按活动/商品单独配置，**未裁决**商品、活动、用户同时命中时的最终顺序。该优先级属于设计建议；进入 `COMMISSION-RULE-IMPLEMENT-001` 前需业务侧书面确认。
 
 ## 业务侧所需数据
 
@@ -107,7 +111,7 @@ commission_config rows            = 0
 - `harness/reports/commission-rule-source-20260614.md`
 - `harness/scripts/probes/commission-rule-source-probe.sql`
 - `harness/scripts/probes/commission-rule-source-verify.ps1`
-- `backend/src/test/java/com/colonel/saas/service/CommissionRuleSourceAlignmentTest.java`，`@Disabled`，仅记录后续实现验收目标。
+- `backend/src/test/java/com/colonel/saas/service/CommissionRuleSourceAlignmentTest.java`，`@Disabled` 占位；`mvn test` BUILD SUCCESS 仅表示测试工程可编译/可发现，**不代表毛利业务已对齐 PASS**。
 
 ## 测试与检查
 
@@ -121,4 +125,26 @@ commission_config rows            = 0
 
 ## 最终状态
 
-当前仍为 PARTIAL / BLOCKED_BY_COMMISSION_RULE_SOURCE。缺少正确规则来源前，不修改 `CommissionService`、`DataApplicationService`、`PerformanceSummaryService`，不改迁移，不执行历史重算。
+当前仍为 **PARTIAL / BLOCKED_BY_COMMISSION_RULE_SOURCE**。缺少正确规则来源前，不修改 `CommissionService`、`DataApplicationService`、`PerformanceSummaryService`，不改迁移，不执行历史重算。
+
+## 任务看板定性
+
+```text
+COMMISSION-RULE-SOURCE-001：DONE_AUDIT / PARTIAL_BLOCKED
+
+已完成：
+- 清理工作区；
+- 确认毛利链路；
+- 确认当前全局配置 15% + 15%；
+- 确认 commissions / commission_config 无有效差异化规则；
+- 确认用户正确基准不是单一全局比例；
+- 交付业务侧规则来源清单、SQL 探针、一键校验脚本和设计报告。
+
+未完成：
+- 毛利业务对齐 PASS。
+
+阻塞：
+- 缺少可追溯的 activity/product/user/order 维度提成规则源；
+- 缺少招商/渠道提成拆分；
+- 不允许硬编码日期、结果或固定比例。
+```
