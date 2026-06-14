@@ -38,7 +38,7 @@ echo "Preparing postgres-real-pre before schema guard ..."
 compose up -d postgres-real-pre
 ready=false
 for i in `$(seq 1 60); do
-  if compose exec -T postgres-real-pre sh -lc 'pg_isready -U "`$POSTGRES_USER" -d "`$POSTGRES_DB"' >/dev/null 2>&1; then
+  if compose exec -T postgres-real-pre sh -lc 'pg_isready -U "`$POSTGRES_USER" -d "`$POSTGRES_DB"' </dev/null >/dev/null 2>&1; then
     ready=true
     break
   fi
@@ -61,8 +61,8 @@ if [ -z "`$pg_container" ]; then
 fi
 echo "Applying required activity schema migration ..."
 docker cp "`$activity_migration" "`$pg_container:/tmp/V20260529_001__alter-colonel-activity-add-recruiter-fields.sql"
-compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/V20260529_001__alter-colonel-activity-add-recruiter-fields.sql'
-schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -c "\d public.colonel_activity"' | grep -E '^[[:space:]]*(recruiter_user_id|recruiter_dept_id|assigned_at|assigned_by|activity_status_code|activity_status_text)[[:space:]]' | wc -l | tr -d '[:space:]')"
+compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/V20260529_001__alter-colonel-activity-add-recruiter-fields.sql' </dev/null
+schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -c "\d public.colonel_activity"' </dev/null | grep -E '^[[:space:]]*(recruiter_user_id|recruiter_dept_id|assigned_at|assigned_by|activity_status_code|activity_status_text)[[:space:]]' | wc -l | tr -d '[:space:]')"
 if [ "`$schema_count" != "6" ]; then
   echo "colonel_activity schema guard failed: expected 6 required columns, got `$schema_count"
   exit 1
