@@ -19,6 +19,7 @@ import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderService;
 import com.colonel.saas.service.OrderSyncService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -53,6 +54,7 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
         this.orderSyncService = orderSyncService;
     }
 
+    @Transactional(readOnly = true, timeout = 15)
     @Override
     public IPage<OrderQueryView> getOrders(
             long page,
@@ -102,6 +104,7 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
         return result.convert(OrderListAssembler::toView);
     }
 
+    @Transactional(readOnly = true, timeout = 15)
     @Override
     public OrderDetailView getOrderDetail(String orderId, UUID userId, UUID deptId, DataScope dataScope) {
         OrderDetailResponse response = orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope);
@@ -109,6 +112,7 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
     }
 
 
+    @Transactional(readOnly = true, timeout = 15)
     @Override
     public OrderController.OrderStats getStats(
             String orderId,

@@ -15,6 +15,9 @@
  */
 import request from '../utils/request';
 
+/** 订单查询接口独立超时：30 秒。订单查询涉及分区表扫描、JSONB 投影和多表关联，需要比全局 10s 更宽松的超时。 */
+const ORDER_QUERY_TIMEOUT_MS = 30_000;
+
 /**
  * 订单详情完整数据结构
  *
@@ -108,7 +111,7 @@ export function syncOrders(startTime: string, endTime: string, config: any = {})
  * @returns 订单分页列表
  */
 export function getOrders(params: any, config: any = {}) {
-  return request.get('/orders', { params, ...config });
+  return request.get('/orders', { params, timeout: ORDER_QUERY_TIMEOUT_MS, ...config });
 }
 
 /**
@@ -132,7 +135,7 @@ export function getUnattributedOrders(params: any) {
  * @returns 订单统计摘要
  */
 export function getOrderStats(params?: any) {
-  return request.get('/orders/stats', { params });
+  return request.get('/orders/stats', { params, timeout: ORDER_QUERY_TIMEOUT_MS });
 }
 
 /**
@@ -145,7 +148,7 @@ export function getOrderStats(params?: any) {
  * @returns 筛选选项数据
  */
 export function getOrderFilterOptions(params?: any) {
-  return request.get('/orders/filter-options', { params });
+  return request.get('/orders/filter-options', { params, timeout: ORDER_QUERY_TIMEOUT_MS });
 }
 
 /**
@@ -158,7 +161,7 @@ export function getOrderFilterOptions(params?: any) {
  * @returns 订单详情数据
  */
 export function getOrderDetail(orderId: string): Promise<OrderDetail> {
-  return request.get(`/orders/${orderId}`).then((res: any) => res.data as OrderDetail)
+  return request.get(`/orders/${orderId}`, { timeout: ORDER_QUERY_TIMEOUT_MS }).then((res: any) => res.data as OrderDetail)
 }
 
 /** @deprecated use syncOrders instead */
