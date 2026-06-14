@@ -2162,16 +2162,15 @@ public class SampleApplicationService extends BaseController {
      *     <li>BIZ_LEADER（招商主管）—— 管理团队寄样数据</li>
      *     <li>BIZ_STAFF（招商专员）—— 导出本人经手的寄样数据</li>
      *     <li>OPS_STAFF（运营专员）—— 导出运营相关寄样物流数据</li>
-     *     <li>CHANNEL_LEADER（渠道组长）—— 导出本组数据范围内寄样数据</li>
      * </ul>
-     * 渠道专员（CHANNEL_STAFF）无导出权限。
+     * 渠道角色（CHANNEL_LEADER、CHANNEL_STAFF）无导出权限，避免渠道侧导出跨域寄样数据。
      *
      * @param roleCodes 当前用户的角色编码集合
      * @throws ForbiddenException 角色不在允许列表时抛出
      */
     private void ensureSampleExportPermission(Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF, RoleCodes.CHANNEL_LEADER)) {
-            throw new ForbiddenException("仅管理员、招商、运营或渠道组长可导出寄样数据");
+        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF)) {
+            throw new ForbiddenException("仅管理员、招商或运营可导出寄样数据");
         }
     }
 

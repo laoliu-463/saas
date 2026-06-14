@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,13 +25,13 @@ class PerformanceBackfillServiceTest {
     @Mock
     private OrderReadFacade orderReadFacade;
     @Mock
-    private PerformanceCalculationService performanceCalculationService;
+    private PerformanceCalculationApplicationService performanceCalculationApplicationService;
 
     private PerformanceBackfillService service;
 
     @BeforeEach
     void setUp() {
-        service = new PerformanceBackfillService(orderReadFacade, performanceCalculationService);
+        service = new PerformanceBackfillService(orderReadFacade, performanceCalculationApplicationService);
     }
 
     @Test
@@ -38,7 +39,7 @@ class PerformanceBackfillServiceTest {
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setOrderId("order-1");
         when(orderReadFacade.findByOrderIds(List.of("order-1"))).thenReturn(List.of(order));
-        when(performanceCalculationService.upsertFromOrder(order)).thenReturn(new PerformanceRecord());
+        when(performanceCalculationApplicationService.upsertFromOrder(order)).thenReturn(new PerformanceRecord());
 
         PerformanceBackfillService.BackfillResult result = service.backfill(
                 List.of("order-1"),
@@ -50,7 +51,7 @@ class PerformanceBackfillServiceTest {
         assertThat(result.scanned()).isEqualTo(1);
         assertThat(result.upserted()).isEqualTo(1);
         assertThat(result.failed()).isZero();
-        verify(performanceCalculationService).upsertFromOrder(order);
+        verify(performanceCalculationApplicationService).upsertFromOrder(order);
     }
 
     @Test
@@ -59,13 +60,13 @@ class PerformanceBackfillServiceTest {
         order.setOrderId("stale-order");
         order.setOrderStatus(OrderCommissionPolicy.STATUS_CANCELLED);
         when(orderReadFacade.findInvalidatedOrdersWithStalePerformance(50)).thenReturn(List.of(order));
-        when(performanceCalculationService.upsertFromOrder(order)).thenReturn(new PerformanceRecord());
+        when(performanceCalculationApplicationService.upsertFromOrder(order)).thenReturn(new PerformanceRecord());
 
         PerformanceBackfillService.BackfillResult result = service.reconcileInvalidatedPerformance(50);
 
         assertThat(result.scanned()).isEqualTo(1);
         assertThat(result.upserted()).isEqualTo(1);
-        verify(performanceCalculationService).upsertFromOrder(order);
+        verify(performanceCalculationApplicationService).upsertFromOrder(order);
     }
 
     @Test
@@ -81,6 +82,6 @@ class PerformanceBackfillServiceTest {
 
         assertThat(result.scanned()).isZero();
         verify(orderReadFacade).findOrdersForBackfill(null, null, true, 100);
-        verify(performanceCalculationService, never()).upsertFromOrder(any());
+        verify(performanceCalculationApplicationService, never()).upsertFromOrder(any());
     }
 }

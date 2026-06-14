@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -19,10 +20,10 @@ import java.util.List;
  * </ul>
  *
  * <p><b>业务领域：</b>业绩域 — 数据回填</p>
- * <p><b>协作关系：</b>依赖 {@link PerformanceCalculationService} 执行单笔业绩计算；
+ * <p><b>协作关系：</b>依赖 {@link PerformanceCalculationApplicationService} 执行单笔业绩计算；
  * 依赖 {@link OrderReadFacade} 查询待回填订单</p>
  *
- * @see PerformanceCalculationService
+ * @see PerformanceCalculationApplicationService
  * @see PerformanceMonthRecalculationService
  */
 @Service
@@ -36,14 +37,14 @@ public class PerformanceBackfillService {
 
     private final OrderReadFacade orderReadFacade;
 
-    /** 业绩计算服务，执行单笔订单的业绩 upsert */
-    private final PerformanceCalculationService performanceCalculationService;
+    /** 业绩计算应用服务，执行单笔订单的业绩 upsert */
+    private final PerformanceCalculationApplicationService performanceCalculationApplicationService;
 
     public PerformanceBackfillService(
             OrderReadFacade orderReadFacade,
-            PerformanceCalculationService performanceCalculationService) {
+            PerformanceCalculationApplicationService performanceCalculationApplicationService) {
         this.orderReadFacade = orderReadFacade;
-        this.performanceCalculationService = performanceCalculationService;
+        this.performanceCalculationApplicationService = performanceCalculationApplicationService;
     }
 
     /**
@@ -60,7 +61,7 @@ public class PerformanceBackfillService {
         List<String> errors = new ArrayList<>();
         for (ColonelsettlementOrder order : orders) {
             try {
-                if (performanceCalculationService.upsertFromOrder(order) != null) {
+                if (performanceCalculationApplicationService.upsertFromOrder(order) != null) {
                     upserted++;
                 }
             } catch (Exception ex) {
@@ -85,7 +86,7 @@ public class PerformanceBackfillService {
         List<String> errors = new ArrayList<>();
         for (ColonelsettlementOrder order : orders) {
             try {
-                if (performanceCalculationService.upsertFromOrder(order) != null) {
+                if (performanceCalculationApplicationService.upsertFromOrder(order) != null) {
                     upserted++;
                 }
             } catch (Exception ex) {

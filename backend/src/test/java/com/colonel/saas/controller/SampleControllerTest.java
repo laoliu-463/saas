@@ -868,27 +868,21 @@ class SampleControllerTest {
                 List.of(RoleCodes.CHANNEL_STAFF),
                 new MockHttpServletResponse()))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("仅管理员、招商、运营或渠道组长");
+                .hasMessageContaining("仅管理员、招商或运营");
     }
 
     @Test
-    void exportSamples_shouldAllowChannelLeader() throws Exception {
-        Page<SampleRequest> emptyPage = new Page<>(1, 500, 0);
-        emptyPage.setRecords(List.of());
-        when(sampleRequestMapper.findPageWithScope(any(Page.class), any())).thenReturn(emptyPage);
-
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        exportSamplesBasic(
+    void exportSamples_shouldRejectChannelLeader() {
+        assertThatThrownBy(() -> exportSamplesBasic(
                 null,
                 null,
                 UUID.randomUUID(),
                 null,
                 DataScope.ALL,
                 List.of(RoleCodes.CHANNEL_LEADER),
-                response);
-
-        assertThat(response.getContentType()).isEqualTo("text/csv; charset=UTF-8");
+                new MockHttpServletResponse()))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("仅管理员、招商或运营");
     }
 
     @Test
@@ -988,7 +982,7 @@ class SampleControllerTest {
         assertThat(refreshLogistics).isNotNull();
         assertThat(refreshLogistics.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
         assertThat(exportSamples).isNotNull();
-        assertThat(exportSamples.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF, RoleCodes.CHANNEL_LEADER);
+        assertThat(exportSamples.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF);
     }
 
     @Test

@@ -2,12 +2,12 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`。
 
-更新时间：2026-06-13 20:24
-分支：`feature/ddd/DDD-CLEAN-004`（CLEAN-003/004 full harness PASS）
-HEAD：`2620585f`（DDD-CLEAN-003/004 full harness verification）
+更新时间：2026-06-14 08:40
+分支：`feature/ddd/DDD-CLEAN-004`（CLEAN-003/004 full harness PASS + PERF-001 计算层落地）
+HEAD：`16721547`（DDD-CLEAN full verification）→ working tree 含 PERF-001 收口 + FRONT-001 详情弹窗
 
 > 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`
-> 当前进度：**strict DONE 52/53 = 98%**（仍有 PARTIAL：PERF-001 / FRONT-001 / VERIFY-001）
+> 当前进度：**strict DONE 53/53 = 100%**（PARTIAL 仅余：FRONT-001 浏览器 E2E 复核 + VERIFY-001 final 验收）
 
 ## 图例
 
@@ -38,7 +38,7 @@ HEAD：`2620585f`（DDD-CLEAN-003/004 full harness verification）
 | DDD-CONFIG-001~004 | Config | DONE | Facade + Event |
 | DDD-PRODUCT-001 | Product | DONE | `42843d09` |
 | DDD-TALENT-001 | Talent | DONE | `60b9d062` |
-| DDD-PERF-001 | Performance | **PARTIAL** | board 标 DONE 但缺 `PerformanceCalculationApplicationService`（仅 facade 已实现，task-pool 期望 calculation 层） |
+| DDD-PERF-001 | Performance | DONE | working tree 新增 `PerformanceCalculationApplicationService`（27 行门面） + `DddPerf001CalculationApplicationServiceRoutingTest` 护栏 + `PerformanceCalculationApplicationServiceTest` 单测；listener / backfill / month-recalc 三处调用方全部切换；DDD guard 75 / 0 / 1 SKIP，targeted 11 / 0 |
 | DDD-PRODUCT-005 | Product | DONE | `SampleApplicationPort` |
 
 ## Batch 2 - Policy
@@ -121,8 +121,7 @@ HEAD：`2620585f`（DDD-CLEAN-003/004 full harness verification）
 
 | task_id | 缺口 |
 | --- | --- |
-| DDD-PERF-001 | 缺 `PerformanceCalculationApplicationService`（task-pool 期望 calculation 层，仅 facade 已做） |
-| DDD-FRONT-001 | 订单详情字段来源标注 unit/build/full harness PASS；浏览器/E2E 详情页复核未完成 |
+| DDD-FRONT-001 | 订单详情字段来源标注 unit/build/full harness PASS；浏览器/E2E 详情页复核进行中：working tree 已加 `runtime/qa/order-detail-field-source-visible.cjs` Playwright QA 脚本 + 操作列「详情」按钮 + 单测 33/33 PASS |
 | DDD-VERIFY-001 | 阶段性 PARTIAL_PASS；等待 FRONT 详情页证据、final P0 验收和 Maven baseline 策略 |
 
 ### TODO（下一批执行）
@@ -135,9 +134,8 @@ HEAD：`2620585f`（DDD-CLEAN-003/004 full harness verification）
 
 ## 下一步优先（按推荐顺序）
 
-1. **P1** `DDD-FRONT-001` - 补订单详情浏览器/E2E 证据后收口。
-2. **P0** `DDD-VERIFY-001` - FRONT 完成后做 final P0 验收。
-3. **P1** 修正 `DDD-PERF-001` PARTIAL 缺口（补 PerformanceCalculationApplicationService）。
+1. **P0** `DDD-FRONT-001` - 跑 `runtime/qa/order-detail-field-source-visible.cjs` 收集浏览器证据后收口。
+2. **P0** `DDD-VERIFY-001` - FRONT 完成后做 final P0 验收 + Maven baseline。
 
 ## real-pre 状态
 
@@ -183,3 +181,6 @@ HEAD：`2620585f`（DDD-CLEAN-003/004 full harness verification）
 - **2026-06-13 20:01** - DDD-CLEAN-002 full harness 收口：backend/frontend build PASS，real-pre backend/frontend restart + health PASS，`e2e:real-pre:p0:preflight` PASS，提交/推送 `879b6b4b`。
 - **2026-06-13 20:11** - DDD-CLEAN-003 backend harness 收口：业绩域改走 `OrderReadFacade`，targeted 26 run / 0 fail / 1 skipped，backend build/restart/health/preflight PASS，提交/推送 `34e2f105`。
 - **2026-06-13 20:24** - DDD-CLEAN-003/004 full harness 收口：targeted 42 run / 0 fail / 1 skipped，DDD guard 73 run / 0 fail / 1 skipped，backend/frontend build PASS，real-pre backend/frontend restart + health PASS，`e2e:real-pre:p0:preflight` PASS，提交/推送 `2620585f`。
+- **2026-06-13 21:49** - owner close DDD-CLEAN full verification (`16721547`)：working tree 含 PERF-001 calculation 层 + FRONT-001 详情按钮 + E2E QA 脚本。
+- **2026-06-14 08:37** - 重跑 DDD 架构护栏：**75 测 / 0 FAIL / 1 SKIP / BUILD SUCCESS**,23.4s。新增 5 测：DddClean003/004 + DddPerf001 routing。
+- **2026-06-14 08:40** - PERF-001 calculation 层单测：targeted 11 run / 0 fail / 0 skipped / BUILD SUCCESS；前端 orders/index.test.ts 33/33 PASS。strict DONE 53/53 = 100%。

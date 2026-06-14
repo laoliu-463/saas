@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.dto.performance.PerformanceRecalculateMonthResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import org.springframework.stereotype.Service;
@@ -18,7 +19,7 @@ import java.util.UUID;
  * 业绩月度重算服务，针对未结算订单重新计算业绩记录。
  *
  * <p>每月定时或手动触发，扫描指定月份内未结算的订单，
- * 逐笔调用 {@link PerformanceCalculationService#upsertFromOrder} 重新计算业绩。</p>
+ * 逐笔调用 {@link PerformanceCalculationApplicationService#upsertFromOrder} 重新计算业绩。</p>
  */
 @Service
 public class PerformanceMonthRecalculationService {
@@ -29,13 +30,13 @@ public class PerformanceMonthRecalculationService {
 
     private final OrderReadFacade orderReadFacade;
 
-    private final PerformanceCalculationService performanceCalculationService;
+    private final PerformanceCalculationApplicationService performanceCalculationApplicationService;
 
     public PerformanceMonthRecalculationService(
             OrderReadFacade orderReadFacade,
-            PerformanceCalculationService performanceCalculationService) {
+            PerformanceCalculationApplicationService performanceCalculationApplicationService) {
         this.orderReadFacade = orderReadFacade;
-        this.performanceCalculationService = performanceCalculationService;
+        this.performanceCalculationApplicationService = performanceCalculationApplicationService;
     }
 
     public PerformanceRecalculateMonthResponse recalculateMonth(String month, String reason) {
@@ -65,7 +66,7 @@ public class PerformanceMonthRecalculationService {
                 continue;
             }
             try {
-                if (performanceCalculationService.upsertFromOrder(order) != null) {
+                if (performanceCalculationApplicationService.upsertFromOrder(order) != null) {
                     upserted++;
                 }
             } catch (Exception ignored) {

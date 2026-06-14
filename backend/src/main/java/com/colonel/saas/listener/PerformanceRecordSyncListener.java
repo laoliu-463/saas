@@ -1,11 +1,11 @@
 package com.colonel.saas.listener;
 
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.event.PerformanceCalculatedEvent;
-import com.colonel.saas.service.PerformanceCalculationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
@@ -25,15 +25,15 @@ import org.springframework.stereotype.Component;
 public class PerformanceRecordSyncListener {
 
     private final OrderReadFacade orderReadFacade;
-    private final PerformanceCalculationService performanceCalculationService;
+    private final PerformanceCalculationApplicationService performanceCalculationApplicationService;
     private final ApplicationEventPublisher eventPublisher;
 
     public PerformanceRecordSyncListener(
             OrderReadFacade orderReadFacade,
-            PerformanceCalculationService performanceCalculationService,
+            PerformanceCalculationApplicationService performanceCalculationApplicationService,
             ApplicationEventPublisher eventPublisher) {
         this.orderReadFacade = orderReadFacade;
-        this.performanceCalculationService = performanceCalculationService;
+        this.performanceCalculationApplicationService = performanceCalculationApplicationService;
         this.eventPublisher = eventPublisher;
     }
 
@@ -49,7 +49,7 @@ public class PerformanceRecordSyncListener {
                 log.warn("Performance calculation skipped, order not found: {}", event.orderId());
                 return;
             }
-            PerformanceRecord record = performanceCalculationService.upsertFromOrder(order);
+            PerformanceRecord record = performanceCalculationApplicationService.upsertFromOrder(order);
             if (record == null) {
                 return;
             }

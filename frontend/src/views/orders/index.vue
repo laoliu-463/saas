@@ -91,7 +91,7 @@
         :data="data"
         :loading="tableLoading"
         :pagination="pagination"
-        :scroll-x="2200"
+        :scroll-x="2320"
         :row-key="(row: any) => row.orderId"
         :row-selection="{ type: 'selection' }"
         @update:page="handlePageChange"
@@ -390,6 +390,16 @@ function renderOrderId(row: any) {
   return h('div', { class: 'order-id-cell' }, nodes)
 }
 
+function openDetail(row: any) {
+  const orderId = firstDisplayValue(row, ['orderId', 'order_id'])
+  if (!orderId) {
+    message.warning('订单 ID 缺失，无法打开详情')
+    return
+  }
+  activeOrderId.value = String(orderId)
+  showDetail.value = true
+}
+
 const columns = [
   {
     title: '订单ID',
@@ -440,6 +450,22 @@ const columns = [
     key: 'orderTime',
     width: 260,
     render: (row: any) => renderOrderTime(row)
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 120,
+    fixed: 'right' as const,
+    render: (row: any) => h(
+      NButton,
+      {
+        size: 'small',
+        secondary: true,
+        'data-testid': 'order-detail-button',
+        onClick: () => openDetail(row)
+      },
+      { default: () => '详情' }
+    )
   }
 ]
 

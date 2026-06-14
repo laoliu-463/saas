@@ -1,11 +1,11 @@
 package com.colonel.saas.listener;
 
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.event.PerformanceCalculatedEvent;
-import com.colonel.saas.service.PerformanceCalculationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,7 +31,7 @@ class PerformanceRecordSyncListenerTest {
     @Mock
     private OrderReadFacade orderReadFacade;
     @Mock
-    private PerformanceCalculationService performanceCalculationService;
+    private PerformanceCalculationApplicationService performanceCalculationApplicationService;
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
@@ -41,7 +41,7 @@ class PerformanceRecordSyncListenerTest {
     void setUp() {
         listener = new PerformanceRecordSyncListener(
                 orderReadFacade,
-                performanceCalculationService,
+                performanceCalculationApplicationService,
                 eventPublisher);
     }
 
@@ -51,11 +51,11 @@ class PerformanceRecordSyncListenerTest {
         ColonelsettlementOrder order = order("ORD-LISTENER-1");
         PerformanceRecord record = performanceRecord("ORD-LISTENER-1", 123L, 45L, false);
         when(orderReadFacade.findByOrderId("ORD-LISTENER-1")).thenReturn(order);
-        when(performanceCalculationService.upsertFromOrder(order)).thenReturn(record);
+        when(performanceCalculationApplicationService.upsertFromOrder(order)).thenReturn(record);
 
         listener.onOrderSynced(event);
 
-        verify(performanceCalculationService).upsertFromOrder(order);
+        verify(performanceCalculationApplicationService).upsertFromOrder(order);
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue()).isInstanceOf(PerformanceCalculatedEvent.class);
@@ -72,13 +72,13 @@ class PerformanceRecordSyncListenerTest {
         ColonelsettlementOrder order = order("ORD-LISTENER-DUP");
         PerformanceRecord record = performanceRecord("ORD-LISTENER-DUP", 100L, 80L, false);
         when(orderReadFacade.findByOrderId("ORD-LISTENER-DUP")).thenReturn(order);
-        when(performanceCalculationService.upsertFromOrder(order)).thenReturn(record);
+        when(performanceCalculationApplicationService.upsertFromOrder(order)).thenReturn(record);
 
         listener.onOrderSynced(event);
         listener.onOrderSynced(event);
 
         verify(orderReadFacade, times(2)).findByOrderId("ORD-LISTENER-DUP");
-        verify(performanceCalculationService, times(2)).upsertFromOrder(order);
+        verify(performanceCalculationApplicationService, times(2)).upsertFromOrder(order);
         verify(eventPublisher, times(2)).publishEvent(any(Object.class));
     }
 
@@ -89,7 +89,7 @@ class PerformanceRecordSyncListenerTest {
 
         listener.onOrderSynced(event);
 
-        verify(performanceCalculationService, never()).upsertFromOrder(any());
+        verify(performanceCalculationApplicationService, never()).upsertFromOrder(any());
         verifyNoInteractions(eventPublisher);
     }
 
