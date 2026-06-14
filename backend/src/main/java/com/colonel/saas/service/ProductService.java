@@ -168,6 +168,12 @@ public class ProductService {
     private long productActivitySyncPageIntervalMs;
     @Value("${product.activity.sync.max-retries:3}")
     private int productActivitySyncMaxRetries;
+    @Value("${product.sync.activityProduct.pageSize:20}")
+    private int productSyncActivityProductPageSize;
+    @Value("${product.sync.activityProduct.maxPagesPerActivity:300}")
+    private int productSyncActivityProductMaxPagesPerActivity;
+    @Value("${product.sync.activityProduct.maxRowsPerActivity:20000}")
+    private int productSyncActivityProductMaxRowsPerActivity;
 
     public ProductService(
             DouyinConvertPort douyinConvertPort,
@@ -1668,7 +1674,25 @@ public class ProductService {
             int libraryEntryCount,
             int createdCount,
             int updatedCount,
-            int skippedCount) {
+            int skippedCount,
+            int pagesFetched,
+            int fetchedRows,
+            int distinctProductIds,
+            int duplicateProductIds,
+            String stoppedReason,
+            boolean stillHasNextWhenStopped,
+            boolean complete) {
+
+        public ActivityProductRefreshResult(
+                int syncedProductCount,
+                int libraryEntryCount,
+                int createdCount,
+                int updatedCount,
+                int skippedCount) {
+            this(syncedProductCount, libraryEntryCount, createdCount, updatedCount, skippedCount,
+                    0, syncedProductCount, syncedProductCount, 0,
+                    ActivityProductPaginationRunner.StopReason.DONE_NO_MORE.name(), false, true);
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -1676,57 +1700,30 @@ public class ProductService {
         if (request == null || !StringUtils.hasText(request.activityId())) {
             return new ActivityProductRefreshResult(0, 0, 0, 0, 0);
         }
-        int pageSize = Math.min(Math.max(request.count() == null ? 20 : request.count(), 1), 20);
-        String cursor = request.cursor();
-        Set<String> seenProductKeys = new LinkedHashSet<>();
-        int maxPages = 100;
-        int createdCount = 0;
-        int updatedCount = 0;
-        int skippedCount = 0;
-        int libraryEntryCount = 0;
+        int pageSize = Math.min(Math.max(request.count() == null ? productSyncActivityProductPageSize : request.count(), 1), 20);
+        java.util.concurrent.atomic.AtomicInteger pageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        ActivityProductPaginationRunner.Result pageResult = ActivityProductPaginationRunner.run(
+                request,
+                new ActivityProductPaginationRunner.Options(
+                        pageSize,
+                        productSyncActivityProductMaxPagesPerActivity,
+                        productSyncActivityProductMaxRowsPerActivity,
+                        true),
+                pageRequest -> queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement()),
+                page -> {
+                    ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), page.items());
+                    return new ActivityProductPaginationRunner.PageWriteStats(
+                            stats.createdCount(),
+                            stats.updatedCount(),
+                            stats.skippedCount(),
+                            stats.libraryEntryCount());
+                },
+                pageNo -> sleepBeforeNextActivityProductPage(request.activityId(), pageNo - 1));
+        int createdCount = pageResult.createdCount();
+        int updatedCount = pageResult.updatedCount();
+        int skippedCount = pageResult.skippedCount();
+        int libraryEntryCount = pageResult.libraryEntryCount();
 
-        for (int pageNo = 0; pageNo < maxPages; pageNo++) {
-            DouyinProductGateway.ActivityProductQueryRequest pageRequest =
-                    new DouyinProductGateway.ActivityProductQueryRequest(
-                    request.appId(),
-                    request.activityId(),
-                    request.searchType(),
-                    request.sortType(),
-                    pageSize,
-                    request.cooperationInfo(),
-                    request.cooperationType(),
-                    request.productInfo(),
-                    request.status(),
-                    1L,
-                    cursor,
-                    null
-            );
-            DouyinProductGateway.ActivityProductListResult result = queryActivityProductsWithRetry(pageRequest, pageNo);
-            List<DouyinProductGateway.ActivityProductItem> items = result.items();
-            if (items == null || items.isEmpty()) {
-                break;
-            }
-            ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), items);
-            createdCount += stats.createdCount();
-            updatedCount += stats.updatedCount();
-            skippedCount += stats.skippedCount();
-            libraryEntryCount += stats.libraryEntryCount();
-
-            for (DouyinProductGateway.ActivityProductItem item : items) {
-                String productId = String.valueOf(item.productId());
-                if (StringUtils.hasText(productId)) {
-                    seenProductKeys.add(request.activityId() + "::" + productId);
-                }
-            }
-
-            String nextCursor = StringUtils.hasText(result.nextCursor()) ? result.nextCursor().trim() : "";
-            boolean hasMoreCursor = StringUtils.hasText(nextCursor) && !nextCursor.equals(cursor);
-            if (!hasMoreCursor || items.size() < pageSize) {
-                break;
-            }
-            cursor = nextCursor;
-            sleepBeforeNextActivityProductPage(request.activityId(), pageNo);
-        }
         ProductDisplayRuleService.LibraryRepairResult repairResult =
                 productDisplayRuleService.repairLibraryStateForActivity(request.activityId(), false, 10000);
         log.info("Activity product library state repair after refresh, activityId={}, scanned={}, promoting={}, willSelectToLibrary={}, willDisplay={}, unchanged={}",
@@ -1738,6 +1735,7 @@ public class ProductService {
                 repairResult.unchanged());
         productDisplayRuleService.applyForActivityId(request.activityId());
         ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(request.activityId());
+        String syncStatus = pageResult.complete() ? "SUCCESS" : syncStatusForStopReason(pageResult.stopReason());
         productDomainEventPublisher.publishActivitySyncCompleted(
                 request.activityId(),
                 activity == null ? null : activity.getName(),
@@ -1745,14 +1743,50 @@ public class ProductService {
                 createdCount,
                 updatedCount,
                 skippedCount,
-                "SUCCESS",
+                syncStatus,
                 null);
+        log.info("Activity product sync summary, activityId={}, pagesFetched={}, fetchedRows={}, distinctProductIds={}, duplicateProductIds={}, created={}, updated={}, skipped={}, libraryEntryCount={}, stoppedReason={}, stillHasNextWhenStopped={}, complete={}",
+                request.activityId(),
+                pageResult.pagesFetched(),
+                pageResult.fetchedRows(),
+                pageResult.distinctProductIds(),
+                pageResult.duplicateProductIds(),
+                createdCount,
+                updatedCount,
+                skippedCount,
+                libraryEntryCount,
+                pageResult.stopReason(),
+                pageResult.stillHasNextWhenStopped(),
+                pageResult.complete());
         return new ActivityProductRefreshResult(
-                seenProductKeys.size(),
+                pageResult.distinctProductIds(),
                 libraryEntryCount,
                 createdCount,
                 updatedCount,
-                skippedCount);
+                skippedCount,
+                pageResult.pagesFetched(),
+                pageResult.fetchedRows(),
+                pageResult.distinctProductIds(),
+                pageResult.duplicateProductIds(),
+                pageResult.stopReason().name(),
+                pageResult.stillHasNextWhenStopped(),
+                pageResult.complete());
+    }
+
+    private String syncStatusForStopReason(ActivityProductPaginationRunner.StopReason stopReason) {
+        if (stopReason == ActivityProductPaginationRunner.StopReason.API_ERROR
+                || stopReason == ActivityProductPaginationRunner.StopReason.INVALID_RESPONSE) {
+            return "FAILED";
+        }
+        if (stopReason == ActivityProductPaginationRunner.StopReason.MAX_PAGES_REACHED) {
+            return "INCOMPLETE_MAX_PAGES";
+        }
+        if (stopReason == ActivityProductPaginationRunner.StopReason.REPEATED_CURSOR
+                || stopReason == ActivityProductPaginationRunner.StopReason.EMPTY_CURSOR_WITH_HAS_NEXT
+                || stopReason == ActivityProductPaginationRunner.StopReason.EMPTY_PAGE_WITH_HAS_NEXT) {
+            return "INCOMPLETE_CURSOR_ERROR";
+        }
+        return "PARTIAL";
     }
 
     private DouyinProductGateway.ActivityProductListResult queryActivityProductsWithRetry(

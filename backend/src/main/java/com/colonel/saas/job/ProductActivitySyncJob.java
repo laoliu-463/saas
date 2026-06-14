@@ -28,7 +28,8 @@ public class ProductActivitySyncJob {
     private static final Duration LOCK_TTL = Duration.ofMinutes(30);
     private static final int QPS_GUARD_SLEEP_MS = 2000;
     private static final int MIN_BATCH_SIZE = 1;
-    private static final int MAX_BATCH_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 20;
+    private static final int MAX_ACTIVITIES_PER_RUN = 200;
 
     private final ProductService productService;
     private final DistributedJobLockService jobLockService;
@@ -43,6 +44,10 @@ public class ProductActivitySyncJob {
     private int batchSize;
     @Value("${product.activity.sync.whitelist-activities:}")
     private String whitelistActivities;
+    @Value("${product.sync.activityProduct.pageSize:20}")
+    private int pageSize;
+    @Value("${product.sync.activityProduct.maxActivitiesPerRun:${product.activity.sync.batch-size:20}}")
+    private int maxActivitiesPerRun;
 
     @Autowired
     public ProductActivitySyncJob(
@@ -91,15 +96,24 @@ public class ProductActivitySyncJob {
                 try {
                     ProductService.ActivityProductRefreshResult result =
                             productService.refreshActivitySnapshots(buildQueryRequest(activityId));
-                    activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
-                    ok++;
-                    log.info("ProductActivitySyncJob activity synced, activityId={}, syncedProductCount={}, libraryEntryCount={}, createdCount={}, updatedCount={}, skippedCount={}",
+                    if (result.complete()) {
+                        activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
+                        ok++;
+                    } else {
+                        fail++;
+                    }
+                    log.info("ProductActivitySyncJob activity synced, activityId={}, syncedProductCount={}, libraryEntryCount={}, createdCount={}, updatedCount={}, skippedCount={}, pagesFetched={}, fetchedRows={}, stoppedReason={}, stillHasNextWhenStopped={}, complete={}",
                             activityId,
                             result.syncedProductCount(),
                             result.libraryEntryCount(),
                             result.createdCount(),
                             result.updatedCount(),
-                            result.skippedCount());
+                            result.skippedCount(),
+                            result.pagesFetched(),
+                            result.fetchedRows(),
+                            result.stoppedReason(),
+                            result.stillHasNextWhenStopped(),
+                            result.complete());
                 } catch (Exception ex) {
                     fail++;
                     log.warn("ProductActivitySyncJob activity sync failed, activityId={}", activityId, ex);
@@ -123,7 +137,7 @@ public class ProductActivitySyncJob {
                     .toList();
         }
         return activityMapper.selectActiveActivityIds(
-                normalizedBatchSize(),
+                normalizedMaxActivitiesPerRun(),
                 LocalDateTime.now().minusMinutes(30));
     }
 
@@ -133,7 +147,7 @@ public class ProductActivitySyncJob {
                 activityId,
                 4L,
                 1L,
-                normalizedBatchSize(),
+                normalizedPageSize(),
                 null,
                 null,
                 null,
@@ -143,8 +157,18 @@ public class ProductActivitySyncJob {
                 null);
     }
 
+    private int normalizedMaxActivitiesPerRun() {
+        int fallback = batchSize > 0 ? batchSize : 20;
+        int configured = maxActivitiesPerRun > 0 ? maxActivitiesPerRun : fallback;
+        return Math.min(Math.max(configured, MIN_BATCH_SIZE), MAX_ACTIVITIES_PER_RUN);
+    }
+
+    private int normalizedPageSize() {
+        return Math.min(Math.max(pageSize, MIN_BATCH_SIZE), MAX_PAGE_SIZE);
+    }
+
     private int normalizedBatchSize() {
-        return Math.min(Math.max(batchSize, MIN_BATCH_SIZE), MAX_BATCH_SIZE);
+        return Math.min(Math.max(batchSize, MIN_BATCH_SIZE), MAX_ACTIVITIES_PER_RUN);
     }
 
     private boolean sleepBeforeNextActivity() {

@@ -90,6 +90,12 @@ product:
       cron: "${PRODUCT_ACTIVITY_SYNC_CRON:0 */5 * * * ?}"
       batch-size: ${PRODUCT_ACTIVITY_SYNC_BATCH_SIZE:20}
       whitelist-activities: "${PRODUCT_ACTIVITY_SYNC_WHITELIST_ACTIVITIES:}"
+  sync:
+    activityProduct:
+      pageSize: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_PAGE_SIZE:20}
+      maxPagesPerActivity: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_MAX_PAGES_PER_ACTIVITY:300}
+      maxRowsPerActivity: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_MAX_ROWS_PER_ACTIVITY:20000}
+      maxActivitiesPerRun: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_MAX_ACTIVITIES_PER_RUN:100}
 
 app:
   performance:

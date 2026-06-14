@@ -17,6 +17,7 @@ import java.util.concurrent.Executor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -78,5 +79,33 @@ class ProductActivityManualSyncServiceTest {
         ProductActivityManualSyncService.SyncTriggerResult third = service.trigger("ACT-1", null);
         assertThat(third.syncStatus()).isEqualTo("ACCEPTED");
         assertThat(queuedTasks).hasSize(2);
+    }
+
+    @Test
+    void trigger_shouldNotTouchLastSyncAtWhenRefreshIsIncomplete() {
+        when(productService.refreshActivitySnapshots(any()))
+                .thenReturn(new ProductService.ActivityProductRefreshResult(
+                        2_000,
+                        1,
+                        100,
+                        1_900,
+                        0,
+                        100,
+                        2_000,
+                        2_000,
+                        0,
+                        "MAX_PAGES_REACHED",
+                        true,
+                        false));
+        ProductActivityManualSyncService service = new ProductActivityManualSyncService(
+                productService,
+                colonelActivityService,
+                activityMapper,
+                Runnable::run);
+
+        ProductActivityManualSyncService.SyncTriggerResult result = service.trigger("ACT-1", null);
+
+        assertThat(result.syncStatus()).isEqualTo("ACCEPTED");
+        verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
     }
 }

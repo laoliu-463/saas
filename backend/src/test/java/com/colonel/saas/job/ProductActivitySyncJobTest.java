@@ -95,6 +95,30 @@ class ProductActivitySyncJobTest {
     }
 
     @Test
+    void syncAll_shouldNotTouchLastSyncAtWhenActivityIncomplete() {
+        ProductActivitySyncJob job = job(true, "ACT-1");
+        when(productService.refreshActivitySnapshots(any()))
+                .thenReturn(new ProductService.ActivityProductRefreshResult(
+                        2_000,
+                        1,
+                        100,
+                        1_900,
+                        0,
+                        100,
+                        2_000,
+                        2_000,
+                        0,
+                        "MAX_PAGES_REACHED",
+                        true,
+                        false));
+
+        job.syncAll();
+
+        verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
+        verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+    }
+
+    @Test
     void syncAll_shouldLoadActivitiesRefreshAndTouchLastSyncAt() {
         ProductActivitySyncJob job = job(true, "");
         when(activityMapper.selectActiveActivityIds(eq(20), any(LocalDateTime.class)))
@@ -120,6 +144,8 @@ class ProductActivitySyncJobTest {
         ProductActivitySyncJob job = new ProductActivitySyncJob(productService, jobLockService, activityMapper, 0);
         ReflectionTestUtils.setField(job, "enabled", enabled);
         ReflectionTestUtils.setField(job, "batchSize", 20);
+        ReflectionTestUtils.setField(job, "pageSize", 20);
+        ReflectionTestUtils.setField(job, "maxActivitiesPerRun", 20);
         ReflectionTestUtils.setField(job, "whitelistActivities", whitelistActivities);
         return job;
     }
