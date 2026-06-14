@@ -225,6 +225,33 @@ class DataControllerTest {
     }
 
     @Test
+    void getMetrics_withPerformanceRecords_shouldUseTrackSpecificProfitFormula() {
+        when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(true);
+        when(performanceMetricsQueryService.aggregateRange(any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    String timeField = invocation.getArgument(2);
+                    if ("settleTime".equals(timeField)) {
+                        return new PerformanceMetricsQueryService.PerformanceAggregate(
+                                1L, 10000L, 1000L, 100L, 10L, 0L, 990L, 100L, 150L, 740L);
+                    }
+                    return new PerformanceMetricsQueryService.PerformanceAggregate(
+                            1L, 10000L, 1000L, 100L, 10L, 0L, 890L, 100L, 150L, 640L);
+                });
+        when(performanceMetricsQueryService.trendByDay(any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(new PerformanceMetricsQueryService.TrendPoint(LocalDate.now().toString(), 1L, 10000L)));
+        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of(Map.of("order_count", 0L)));
+
+        var response = dataController.getMetrics(UUID.randomUUID(), null, DataScope.ALL);
+
+        assertThat(response.getData().getSettle().getServiceFeeProfit()).isEqualByComparingTo("9.90");
+        assertThat(response.getData().getSettle().getGrossProfit()).isEqualByComparingTo("7.40");
+        assertThat(response.getData().getEstimate().getServiceFeeProfit()).isEqualByComparingTo("8.90");
+        assertThat(response.getData().getEstimate().getGrossProfit()).isEqualByComparingTo("6.40");
+        verify(commissionService, never()).calculateByActivityBuckets(any());
+    }
+
+    @Test
     void getMetrics_returnsMetricsWithTrendData() {
         UUID userId = UUID.randomUUID();
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
@@ -830,6 +857,7 @@ class DataControllerTest {
                         "actual_amount_cent", 10000L,
                         "service_fee_income_cent", 450L,
                         "tech_service_fee_cent", 50L,
+                        "service_fee_expense_cent", 20L,
                         "talent_commission_cent", 0L
                 )))
                 .thenReturn(List.of())
@@ -838,11 +866,12 @@ class DataControllerTest {
                         "product_id", "P-1",
                         "service_fee_income", 450L,
                         "tech_service_fee", 50L,
+                        "service_fee_expense", 20L,
                         "talent_commission", 0L
                 )))
                 .thenReturn(List.of());
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
-                new CommissionService.CommissionSummary(450L, 50L, 0L, 0L, 400L, 40L, 40L, 320L,
+                new CommissionService.CommissionSummary(450L, 0L, 20L, 0L, 430L, 43L, 64L, 323L,
                         java.math.BigDecimal.valueOf(0.1), java.math.BigDecimal.valueOf(0.1)));
 
         var response = dataController.getOrderSummary(
@@ -869,6 +898,9 @@ class DataControllerTest {
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData().getTotal().getOrderAmount()).isEqualByComparingTo("90.00");
         assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("5.00");
+        assertThat(response.getData().getTotal().getServiceFeeExpense()).isEqualByComparingTo("0.20");
+        assertThat(response.getData().getTotal().getServiceFeeProfit()).isEqualByComparingTo("4.30");
+        assertThat(response.getData().getTotal().getGrossProfit()).isEqualByComparingTo("3.23");
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
         verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
@@ -877,6 +909,14 @@ class DataControllerTest {
         assertThat(aggregateWrapper.getSqlSelect()).contains("settle_amount");
         assertThat(aggregateWrapper.getSqlSelect()).contains("effective_service_fee");
         assertThat(aggregateWrapper.getSqlSelect()).contains("effective_tech_service_fee");
+        assertThat(aggregateWrapper.getSqlSelect()).contains("effective_service_fee_expense");
+
+        ArgumentCaptor<List<CommissionService.ActivityCommissionBucket>> bucketCaptor = ArgumentCaptor.forClass(List.class);
+        verify(commissionService).calculateByActivityBuckets(bucketCaptor.capture());
+        assertThat(bucketCaptor.getAllValues().get(0)).singleElement().satisfies(bucket -> {
+            assertThat(bucket.techServiceFee()).isZero();
+            assertThat(bucket.serviceFeeExpense()).isEqualTo(20L);
+        });
     }
 
     @Test

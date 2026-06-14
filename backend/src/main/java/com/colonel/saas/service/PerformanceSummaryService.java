@@ -304,7 +304,8 @@ public class PerformanceSummaryService {
         long serviceProfit = CommissionService.serviceFeeNetCent(
                 serviceFeeIncome,
                 techServiceFee,
-                serviceFeeExpense);
+                serviceFeeExpense,
+                estimateTrack);
         long recruiter = asLong(row.get("recruiter_commission"));
         long channel = asLong(row.get("channel_commission"));
         track.setOrderCount(asLong(row.get("order_count")));
@@ -315,7 +316,7 @@ public class PerformanceSummaryService {
         track.setServiceFeeProfit(serviceProfit);
         track.setRecruiterCommission(recruiter);
         track.setChannelCommission(channel);
-        track.setGrossProfit(asLong(row.get("gross_profit")));
+        track.setGrossProfit(Math.max(serviceProfit - recruiter - channel, 0L));
         return track;
     }
 

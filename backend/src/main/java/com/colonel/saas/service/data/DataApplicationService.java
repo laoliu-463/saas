@@ -935,6 +935,7 @@ public class DataApplicationService extends BaseController {
         metrics.setPendingShipCount(pendingShipCount);
         metrics.setAmountTrack(performanceMetricsQueryService.resolveAmountTrackLabel(timeField));
         metrics.setTrack(timeField);
+        boolean estimateTrack = isEstimateTrack(timeField);
 
         if (performanceMetricsQueryService.hasPerformanceRecords()) {
             PerformanceMetricsQueryService.PerformanceAggregate aggregate =
@@ -963,14 +964,17 @@ public class DataApplicationService extends BaseController {
             long profitCent = CommissionService.serviceFeeNetCent(
                     aggregate.serviceFeeIncomeCent(),
                     aggregate.techServiceFeeCent(),
-                    expenseCent);
+                    expenseCent,
+                    estimateTrack);
             metrics.setServiceFeeExpense(centToYuan(expenseCent));
             metrics.setServiceFee(centToYuan(profitCent));
             metrics.setServiceFeeProfit(centToYuan(profitCent));
             metrics.setBizCommission(centToYuan(aggregate.recruiterCommissionCent()));
             metrics.setChannelCommission(centToYuan(aggregate.channelCommissionCent()));
             metrics.setCommission(centToYuan(aggregate.recruiterCommissionCent() + aggregate.channelCommissionCent()));
-            metrics.setGrossProfit(centToYuan(aggregate.grossProfitCent()));
+            metrics.setGrossProfit(centToYuan(Math.max(
+                    profitCent - aggregate.recruiterCommissionCent() - aggregate.channelCommissionCent(),
+                    0L)));
             return metrics;
         }
 
@@ -991,6 +995,7 @@ public class DataApplicationService extends BaseController {
                         "COALESCE(colonel_activity_id, '') AS activity_id",
                         "COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income",
                         "COALESCE(SUM(" + columns.techFeeColumn() + "), 0) AS tech_service_fee",
+                        "COALESCE(SUM(" + columns.expenseColumn() + "), 0) AS service_fee_expense",
                         "COALESCE(SUM(settle_second_colonel_commission), 0) AS talent_commission"
                 )
                 .ge(timeColumn, todayStart)
@@ -1000,7 +1005,6 @@ public class DataApplicationService extends BaseController {
         long displayTechServiceFeeCent = commissionRows.stream()
                 .mapToLong(row -> asLong(row, "tech_service_fee"))
                 .sum();
-        boolean estimateTrack = isEstimateTrack(timeField);
         CommissionService.CommissionSummary commissionSummary = commissionService.calculateByActivityBuckets(
                 commissionRows.stream()
                         .map(row -> new CommissionService.ActivityCommissionBucket(
@@ -1009,6 +1013,7 @@ public class DataApplicationService extends BaseController {
                                 null,
                                 asLong(row, "service_fee_income"),
                                 estimateTrack ? asLong(row, "tech_service_fee") : 0L,
+                                asLong(row, "service_fee_expense"),
                                 asLong(row, "talent_commission")
                         ))
                         .toList()
@@ -1046,6 +1051,7 @@ public class DataApplicationService extends BaseController {
         metrics.setServiceFeeIncome(centToYuan(commissionSummary.serviceFeeIncome()));
         metrics.setTechServiceFee(centToYuan(displayTechServiceFeeCent));
         metrics.setTalentCommission(centToYuan(commissionSummary.talentCommission()));
+        metrics.setServiceFeeExpense(centToYuan(commissionSummary.serviceFeeExpense()));
         metrics.setServiceFee(centToYuan(commissionSummary.serviceFeeNet()));
         metrics.setServiceFeeProfit(centToYuan(commissionSummary.serviceFeeNet()));
         metrics.setBizCommission(centToYuan(commissionSummary.bizCommission()));
@@ -1857,6 +1863,7 @@ public class DataApplicationService extends BaseController {
         selects.add(recruiterExpr + " AS recruiter_user_id");
         selects.add("COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income");
         selects.add("COALESCE(SUM(" + columns.techFeeColumn() + "), 0) AS tech_service_fee");
+        selects.add("COALESCE(SUM(" + columns.expenseColumn() + "), 0) AS service_fee_expense");
         selects.add("COALESCE(SUM(settle_second_colonel_commission), 0) AS talent_commission");
         wrapper.select(selects.toArray(String[]::new));
         if (daily) {
@@ -2111,7 +2118,8 @@ public class DataApplicationService extends BaseController {
         long serviceProfitCent = CommissionService.serviceFeeNetCent(
                 serviceFeeIncome,
                 techServiceFee,
-                serviceFeeExpenseCent);
+                serviceFeeExpenseCent,
+                estimateTrack);
         vo.setServiceFeeExpense(centToYuan(serviceFeeExpenseCent));
         vo.setServiceFeeProfit(centToYuan(serviceProfitCent));
         vo.setGrossProfit(centToYuan(Math.max(serviceProfitCent - summary.bizCommission() - summary.channelCommission(), 0L)));
@@ -2126,6 +2134,7 @@ public class DataApplicationService extends BaseController {
                 asUuid(row, "recruiter_user_id"),
                 asLong(row, "service_fee_income"),
                 estimateTrack ? asLong(row, "tech_service_fee") : 0L,
+                asLong(row, "service_fee_expense"),
                 asLong(row, "talent_commission"));
     }
 

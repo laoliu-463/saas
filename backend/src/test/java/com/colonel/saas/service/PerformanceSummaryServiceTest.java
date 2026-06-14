@@ -105,6 +105,19 @@ class PerformanceSummaryServiceTest {
     }
 
     @Test
+    void aggregateEffective_shouldNotDeductTechServiceFeeFromSettlementProfit() {
+        when(jdbcTemplate.queryForMap(contains("pr.effective_service_fee"), any(Object[].class)))
+                .thenReturn(summaryRowWithExpense(2L, 5000L, 400L, 40L, 5L, 390L, 39L, 19L, 332L));
+
+        PerformanceTrackSummaryDTO track = service.aggregateEffective(
+                new PerformanceSummaryQuery(),
+                PerformanceAccessContext.of(null, null, DataScope.ALL, java.util.List.of("admin")));
+
+        assertThat(track.getServiceFeeProfit()).isEqualTo(395L);
+        assertThat(track.getGrossProfit()).isEqualTo(337L);
+    }
+
+    @Test
     void getSummary_shouldUseSafeEmptyQueryAndMapInvalidNumbers() {
         when(jdbcTemplate.queryForMap(contains("pr.estimate_service_fee"), any(Object[].class)))
                 .thenReturn(Map.of(
@@ -127,7 +140,7 @@ class PerformanceSummaryServiceTest {
         assertThat(summary.getEstimate().getServiceFeeIncome()).isEqualTo(1200L);
         assertThat(summary.getEstimate().getServiceFeeProfit()).isEqualTo(1120L);
         assertThat(summary.getEstimate().getServiceFeeExpense()).isZero();
-        assertThat(summary.getEffective().getGrossProfit()).isEqualTo(123L);
+        assertThat(summary.getEffective().getGrossProfit()).isEqualTo(139L);
     }
 
     @Test

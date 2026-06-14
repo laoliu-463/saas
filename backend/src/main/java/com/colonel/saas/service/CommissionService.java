@@ -25,7 +25,8 @@ import java.util.UUID;
  *
  * <p>计算公式（调用方按轨道传入扣减额）：
  * <ul>
- *   <li>服务费收益（serviceFeeNet）= 服务费收入 - 调用方传入的技术服务费扣减额</li>
+ *   <li>预估服务费收益 = 服务费收入 - 技术服务费 - 服务费支出</li>
+ *   <li>结算服务费收益 = 服务费收入 - 服务费支出</li>
  *   <li>招商提成 = 服务费收益 x 招商提成比例（按活动分桶计算后求和）</li>
  *   <li>渠道提成 = 服务费收益 x 渠道提成比例（按活动分桶计算后求和）</li>
  *   <li>毛利 = 服务费收益 - 招商提成 - 渠道提成</li>
@@ -182,6 +183,21 @@ public class CommissionService {
      */
     public static long serviceFeeNetCent(long serviceFeeIncome, long techServiceFee, long serviceFeeExpense) {
         return PerformanceMoneyPolicy.serviceFeeNetCent(serviceFeeIncome, techServiceFee, serviceFeeExpense);
+    }
+
+    /**
+     * 轨道感知服务费收益公式（分）。
+     * 预估轨扣技术服务费，结算轨只扣服务费支出，技术服务费仅展示。
+     */
+    public static long serviceFeeNetCent(
+            long serviceFeeIncome,
+            long techServiceFee,
+            long serviceFeeExpense,
+            boolean deductTechServiceFee) {
+        return PerformanceMoneyPolicy.serviceFeeNetCent(
+                serviceFeeIncome,
+                deductTechServiceFee ? techServiceFee : 0L,
+                serviceFeeExpense);
     }
 
     public CommissionSummary calculateTrack(

@@ -509,7 +509,7 @@ const summaryItems = computed(() => {
     {
       key: 'expense',
       title: '服务费支出',
-      tooltip: '<b>计算公式</b><br>服务费支出 = 服务费收入 − 技术服务费 − 服务费收益<br><b>数据来源</b>：performance_records 平台侧实际服务费',
+      tooltip: '<b>计算公式</b><br>服务费支出为平台侧实际支出字段<br>预估收益扣技术服务费；结算收益不扣技术服务费<br><b>数据来源</b>：performance_records',
       lines: [
         { label: '预估：', value: formatEstimateTrack(total.serviceFeeExpense) },
         { label: '结算：', value: formatSettleTrack(total.serviceFeeExpense) }
