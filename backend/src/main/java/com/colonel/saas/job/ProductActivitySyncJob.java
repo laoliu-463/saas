@@ -38,6 +38,8 @@ public class ProductActivitySyncJob {
 
     @Value("${product.activity.sync.enabled:false}")
     private boolean enabled;
+    @Value("${product.sync.activityProduct.incrementalEnabled:${product.activity.sync.enabled:false}}")
+    private boolean incrementalEnabled = true;
     @Value("${product.activity.sync.cron:0 */5 * * * ?}")
     private String cronExpression;
     @Value("${product.activity.sync.batch-size:20}")
@@ -79,7 +81,7 @@ public class ProductActivitySyncJob {
 
     @Scheduled(cron = "${product.activity.sync.cron:0 */5 * * * ?}")
     public void syncAll() {
-        if (!enabled) {
+        if (!enabled || !incrementalEnabled) {
             log.debug("ProductActivitySyncJob skipped (disabled by config)");
             return;
         }

@@ -304,6 +304,13 @@ public class ProductController extends BaseController {
         return ok(productService.listLibraryCategories());
     }
 
+    @Operation(summary = "商品库管理统计", description = "按 snapshot / relation / DISPLAYING 等口径返回只读统计，不改变商品库分页展示语义。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @GetMapping("/admin/counts")
+    public ApiResult<ProductService.AdminProductCounts> adminCounts() {
+        return ok(productService.getAdminCounts());
+    }
+
     /**
      * 商品库动态筛选项查询。
      *

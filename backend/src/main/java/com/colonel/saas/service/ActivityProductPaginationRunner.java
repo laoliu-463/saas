@@ -30,14 +30,15 @@ public final class ActivityProductPaginationRunner {
         EMPTY_PAGE_WITH_HAS_NEXT,
         API_ERROR,
         INVALID_RESPONSE,
-        MANUAL_LIMIT
+        MANUAL_LIMIT,
+        UNKNOWN
     }
 
     public record Options(int pageSize, int maxPages, int maxRows, boolean stopOnRepeatedCursor) {
         Options normalized() {
             int normalizedPageSize = Math.min(Math.max(pageSize <= 0 ? 20 : pageSize, 1), 20);
-            int normalizedMaxPages = Math.max(maxPages <= 0 ? 300 : maxPages, 1);
-            int normalizedMaxRows = Math.max(maxRows <= 0 ? 20_000 : maxRows, 1);
+            int normalizedMaxPages = Math.max(maxPages <= 0 ? 1000 : maxPages, 1);
+            int normalizedMaxRows = Math.max(maxRows <= 0 ? 50_000 : maxRows, 1);
             return new Options(normalizedPageSize, normalizedMaxPages, normalizedMaxRows, stopOnRepeatedCursor);
         }
     }
@@ -98,7 +99,7 @@ public final class ActivityProductPaginationRunner {
         if (baseRequest == null || !StringUtils.hasText(baseRequest.activityId())) {
             return empty(StopReason.INVALID_RESPONSE, "activityId is required");
         }
-        Options normalized = options == null ? new Options(20, 300, 20_000, true).normalized() : options.normalized();
+        Options normalized = options == null ? new Options(20, 1000, 50_000, true).normalized() : options.normalized();
         PageHandler handler = pageHandler == null ? page -> PageWriteStats.ZERO : pageHandler;
         IntConsumer continueHook = beforeNextPage == null ? page -> { } : beforeNextPage;
 
@@ -176,7 +177,7 @@ public final class ActivityProductPaginationRunner {
             }
             lastCursor = nextCursor;
 
-            if (maxRowsReached || fetchedRows >= normalized.maxRows()) {
+            if (maxRowsReached) {
                 return result(pagesFetched, fetchedRows, productIds, duplicateProductIds, createdCount, updatedCount,
                         skippedCount, libraryEntryCount, StopReason.MAX_ROWS_REACHED, hasNext, false, lastCursor, pageSamples, warnings);
             }
@@ -190,6 +191,10 @@ public final class ActivityProductPaginationRunner {
                 StopReason reason = totalIndicatesMore ? StopReason.EMPTY_CURSOR_WITH_HAS_NEXT : StopReason.DONE_NO_MORE;
                 return result(pagesFetched, fetchedRows, productIds, duplicateProductIds, createdCount, updatedCount,
                         skippedCount, libraryEntryCount, reason, totalIndicatesMore, reason == StopReason.DONE_NO_MORE, lastCursor, pageSamples, warnings);
+            }
+            if (fetchedRows >= normalized.maxRows()) {
+                return result(pagesFetched, fetchedRows, productIds, duplicateProductIds, createdCount, updatedCount,
+                        skippedCount, libraryEntryCount, StopReason.MAX_ROWS_REACHED, true, false, lastCursor, pageSamples, warnings);
             }
             if (pagesFetched >= normalized.maxPages()) {
                 return result(pagesFetched, fetchedRows, productIds, duplicateProductIds, createdCount, updatedCount,

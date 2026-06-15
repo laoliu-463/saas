@@ -93,6 +93,28 @@ public interface ProductSnapshotMapper extends BaseMapper<ProductSnapshot> {
             """)
     List<Map<String, Object>> listDisplayingLibraryCategoryOptions();
 
+    @Select("SELECT COUNT(1) FROM product_snapshot WHERE deleted = 0")
+    long countActiveRows();
+
+    @Select("SELECT COUNT(DISTINCT product_id) FROM product_snapshot WHERE deleted = 0")
+    long countDistinctProducts();
+
+    @Select("SELECT COUNT(DISTINCT activity_id) FROM product_snapshot WHERE deleted = 0")
+    long countDistinctActivities();
+
+    @Select("""
+            <script>
+            SELECT COUNT(1)
+            FROM product_snapshot
+            WHERE deleted = 0
+              AND activity_id IN
+              <foreach collection="activityIds" item="activityId" open="(" separator="," close=")">
+                  #{activityId}
+              </foreach>
+            </script>
+            """)
+    long countActiveRowsByActivityIds(@Param("activityIds") List<String> activityIds);
+
     /**
      * SQL 级别排序 + 分页查询活动商品快照。
      * <p>

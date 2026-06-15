@@ -1,0 +1,16 @@
+{
+  "action": "archive_reports",
+  "date": "2026-06-15",
+  "reason": "Prepare harness/reports for PRODUCT-LIBRARY-FULL-BACKFILL-FIX-001 evidence and retro reports while preserving 10-file limit.",
+  "target": "harness/archive/reports-20260614-product-library-late",
+  "files": [
+    "final-global-check-before-remote-deploy-20260614.md",
+    "evidence-20260614-151555.md",
+    "remote-deploy-20260614.md",
+    "retro-final-global-check-20260614.md",
+    "product-library-count-audit-20260614-2031.md",
+    "product-library-count-phase2-dryrun-pagination-20260614-2107.md",
+    "evidence-20260614-211102.md",
+    "retro-20260614-211137.md"
+  ]
+}

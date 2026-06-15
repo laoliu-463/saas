@@ -17,6 +17,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -98,6 +99,35 @@ class ProductSyncDryRunProbeServiceTest {
         assertThat(result.activityResults())
                 .extracting(ProductSyncDryRunProbeService.ActivityDryRunResult::activityId)
                 .containsExactly("ACT-1", "ACT-2");
+        verify(snapshotMapper, never()).upsert(any());
+        verify(operationStateMapper, never()).insert(any());
+        verify(operationStateMapper, never()).updateById(any());
+    }
+
+    @Test
+    void fullDryRun_shouldAcceptCustomActivityIdsAliasAndMaxRowsLimit() {
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenReturn(page("20", products(1, 20)))
+                .thenReturn(page("40", products(21, 20)));
+        when(snapshotMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+
+        ProductSyncDryRunProbeService.FullDryRunResult result = service.fullDryRun(
+                new ProductSyncDryRunProbeService.FullDryRunRequest(
+                        "CUSTOM_ACTIVITY_IDS",
+                        List.of("3859423"),
+                        50,
+                        20,
+                        1000,
+                        35,
+                        true));
+
+        assertThat(result.dryRun()).isTrue();
+        assertThat(result.activitiesScanned()).isEqualTo(1);
+        assertThat(result.apiFetchedRows()).isEqualTo(35);
+        assertThat(result.activitiesIncomplete()).isEqualTo(1);
+        assertThat(result.stopReasonStats())
+                .containsEntry(ActivityProductPaginationRunner.StopReason.MAX_ROWS_REACHED.name(), 1L);
+        verify(activityMapper, never()).selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any());
         verify(snapshotMapper, never()).upsert(any());
         verify(operationStateMapper, never()).insert(any());
         verify(operationStateMapper, never()).updateById(any());

@@ -6,14 +6,17 @@ import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -23,10 +26,10 @@ import java.util.Set;
 public class ProductSyncDryRunProbeService {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int DEFAULT_MAX_PAGES = 300;
+    private static final int DEFAULT_MAX_PAGES = 1000;
     private static final int DEFAULT_MAX_ACTIVITIES = 50;
     private static final int MAX_ALLOWED_ACTIVITIES = 200;
-    private static final int MAX_ROWS_PER_ACTIVITY = 20_000;
+    private static final int DEFAULT_MAX_ROWS_PER_ACTIVITY = 50_000;
 
     private final DouyinProductGateway douyinProductGateway;
     private final ProductSnapshotMapper snapshotMapper;
@@ -48,7 +51,7 @@ public class ProductSyncDryRunProbeService {
     public ActivityDryRunResult deepDryRun(ActivityDeepDryRunRequest request) {
         ActivityDeepDryRunRequest normalized = normalizeDeepRequest(request);
         ComputedActivityDryRun computed = runActivity(normalized.activityId(), normalized.pageSize(),
-                normalized.maxPages(), normalized.stopOnRepeatedCursor(), normalized.dryRun());
+                normalized.maxPages(), DEFAULT_MAX_ROWS_PER_ACTIVITY, normalized.stopOnRepeatedCursor(), normalized.dryRun());
         return computed.result();
     }
 
@@ -64,12 +67,17 @@ public class ProductSyncDryRunProbeService {
         int activitiesWithProducts = 0;
         int reachedMaxPages = 0;
         int stillHasNextAfterMaxPages = 0;
+        int activitiesSuccess = 0;
+        int activitiesIncomplete = 0;
+        int activitiesFailed = 0;
+        Map<String, Long> stopReasonStats = new LinkedHashMap<>();
 
         for (String activityId : activityIds) {
             ComputedActivityDryRun computed = runActivity(
                     activityId,
                     normalized.pageSize(),
                     normalized.maxPagesPerActivity(),
+                    normalized.maxRowsPerActivity(),
                     true,
                     normalized.dryRun());
             ActivityDryRunResult result = computed.result();
@@ -78,8 +86,17 @@ public class ProductSyncDryRunProbeService {
             apiFetchedRows += result.totalFetchedRows();
             dbRows += result.currentDbRowsForActivity();
             estimatedGapRows += result.estimatedGapRows();
+            stopReasonStats.merge(result.stoppedReason(), 1L, Long::sum);
             if (result.totalFetchedRows() > 0) {
                 activitiesWithProducts++;
+            }
+            if (ActivityProductPaginationRunner.StopReason.DONE_NO_MORE.name().equals(result.stoppedReason())) {
+                activitiesSuccess++;
+            } else if (ActivityProductPaginationRunner.StopReason.API_ERROR.name().equals(result.stoppedReason())
+                    || ActivityProductPaginationRunner.StopReason.INVALID_RESPONSE.name().equals(result.stoppedReason())) {
+                activitiesFailed++;
+            } else {
+                activitiesIncomplete++;
             }
             if (ActivityProductPaginationRunner.StopReason.MAX_PAGES_REACHED.name().equals(result.stoppedReason())) {
                 reachedMaxPages++;
@@ -111,6 +128,10 @@ public class ProductSyncDryRunProbeService {
                 globalProductIds.size(),
                 dbRows,
                 estimatedGapRows,
+                activitiesSuccess,
+                activitiesIncomplete,
+                activitiesFailed,
+                stopReasonStats,
                 topGapActivities,
                 topLargeActivities,
                 apiErrors,
@@ -121,6 +142,7 @@ public class ProductSyncDryRunProbeService {
             String activityId,
             int pageSize,
             int maxPages,
+            int maxRows,
             boolean stopOnRepeatedCursor,
             boolean dryRun) {
         DouyinProductGateway.ActivityProductQueryRequest baseRequest =
@@ -128,7 +150,7 @@ public class ProductSyncDryRunProbeService {
                         null, activityId, 4L, 1L, pageSize, null, null, null, null, 1L, null, null);
         ActivityProductPaginationRunner.Result pageResult = ActivityProductPaginationRunner.run(
                 baseRequest,
-                new ActivityProductPaginationRunner.Options(pageSize, maxPages, MAX_ROWS_PER_ACTIVITY, stopOnRepeatedCursor),
+                new ActivityProductPaginationRunner.Options(pageSize, maxPages, maxRows, stopOnRepeatedCursor),
                 douyinProductGateway::queryActivityProducts,
                 page -> ActivityProductPaginationRunner.PageWriteStats.ZERO,
                 page -> {
@@ -163,7 +185,7 @@ public class ProductSyncDryRunProbeService {
     }
 
     private List<String> resolveActivityIds(FullDryRunRequest request) {
-        if ("CUSTOM".equalsIgnoreCase(request.activityScope())) {
+        if (isCustomScope(request.activityScope())) {
             return normalizeActivityIds(request.activityIds()).stream()
                     .limit(request.maxActivities())
                     .toList();
@@ -203,16 +225,21 @@ public class ProductSyncDryRunProbeService {
             throw new IllegalArgumentException("dryRun must be true");
         }
         String scope = StringUtils.hasText(request.activityScope())
-                ? request.activityScope().trim().toUpperCase()
+                ? normalizeScope(request.activityScope())
                 : "ACTIVE_ONLY";
+        List<String> activityIds = normalizeActivityIds(request.activityIds());
+        if (isCustomScope(scope) && activityIds.isEmpty()) {
+            throw new IllegalArgumentException("activityIds is required for CUSTOM_ACTIVITY_IDS");
+        }
         int maxActivities = Math.min(Math.max(request.maxActivities() <= 0 ? DEFAULT_MAX_ACTIVITIES : request.maxActivities(), 1),
                 MAX_ALLOWED_ACTIVITIES);
         return new FullDryRunRequest(
                 scope,
-                normalizeActivityIds(request.activityIds()),
+                activityIds,
                 maxActivities,
                 normalizePageSize(request.pageSize()),
                 normalizeMaxPages(request.maxPagesPerActivity()),
+                normalizeMaxRows(request.maxRowsPerActivity()),
                 true);
     }
 
@@ -222,6 +249,21 @@ public class ProductSyncDryRunProbeService {
 
     private int normalizeMaxPages(int value) {
         return Math.max(value <= 0 ? DEFAULT_MAX_PAGES : value, 1);
+    }
+
+    private int normalizeMaxRows(int value) {
+        return Math.max(value <= 0 ? DEFAULT_MAX_ROWS_PER_ACTIVITY : value, 1);
+    }
+
+    private String normalizeScope(String scope) {
+        if (!StringUtils.hasText(scope)) {
+            return "ACTIVE_ONLY";
+        }
+        return scope.trim().toUpperCase();
+    }
+
+    private boolean isCustomScope(String scope) {
+        return "CUSTOM".equalsIgnoreCase(scope) || "CUSTOM_ACTIVITY_IDS".equalsIgnoreCase(scope);
     }
 
     private List<String> normalizeActivityIds(List<String> ids) {
@@ -247,12 +289,23 @@ public class ProductSyncDryRunProbeService {
     }
 
     public record FullDryRunRequest(
+            @JsonAlias("scope")
             String activityScope,
             List<String> activityIds,
             int maxActivities,
             int pageSize,
             int maxPagesPerActivity,
+            int maxRowsPerActivity,
             Boolean dryRun) {
+        public FullDryRunRequest(
+                String activityScope,
+                List<String> activityIds,
+                int maxActivities,
+                int pageSize,
+                int maxPagesPerActivity,
+                Boolean dryRun) {
+            this(activityScope, activityIds, maxActivities, pageSize, maxPagesPerActivity, 0, dryRun);
+        }
     }
 
     public record ActivityDryRunResult(
@@ -284,6 +337,10 @@ public class ProductSyncDryRunProbeService {
             long apiDistinctProductIds,
             long dbRowsForScannedActivities,
             long estimatedGapRows,
+            int activitiesSuccess,
+            int activitiesIncomplete,
+            int activitiesFailed,
+            Map<String, Long> stopReasonStats,
             List<ActivityDryRunResult> topGapActivities,
             List<ActivityDryRunResult> topLargeActivities,
             List<ApiError> apiErrors,

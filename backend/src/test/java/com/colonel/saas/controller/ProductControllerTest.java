@@ -421,6 +421,31 @@ class ProductControllerTest {
     }
 
     @Test
+    void adminCounts_shouldReturnSeparatedSnapshotRelationAndDisplayingCounts() throws NoSuchMethodException {
+        ProductService.AdminProductCounts counts = new ProductService.AdminProductCounts(
+                7_979,
+                7_979,
+                7_020,
+                2_974,
+                196,
+                4_809,
+                24);
+        when(productService.getAdminCounts()).thenReturn(counts);
+
+        var response = productController.adminCounts();
+
+        assertThat(response.getData().snapshotTotal()).isEqualTo(7_979);
+        assertThat(response.getData().relationTotal()).isEqualTo(7_979);
+        assertThat(response.getData().displayingTotal()).isEqualTo(2_974);
+        verify(productService).getAdminCounts();
+        Method method = ProductController.class.getMethod("adminCounts");
+        assertThat(method.getAnnotation(org.springframework.web.bind.annotation.GetMapping.class).value())
+                .containsExactly("/admin/counts");
+        assertThat(method.getAnnotation(RequireRoles.class).value())
+                .containsExactly(RoleCodes.ADMIN);
+    }
+
+    @Test
     void libraryCategories_shouldReturnDistinctCategoryNames() {
         when(productService.listLibraryCategories()).thenReturn(List.of("食品饮料", "美妆护肤"));
 

@@ -115,6 +115,52 @@ class ActivityProductPaginationRunnerTest {
         assertThat(result.warnings()).anyMatch(warning -> warning.contains("upstream failed"));
     }
 
+    @Test
+    void run_shouldStopAtMaxRowsWhenUpstreamStillHasNext() {
+        ActivityProductPaginationRunner.Result result = ActivityProductPaginationRunner.run(
+                request("ACT-1", 20, null),
+                new ActivityProductPaginationRunner.Options(20, 300, 35, true),
+                pageRequest -> {
+                    int cursor = pageRequest.cursor() == null || pageRequest.cursor().isBlank()
+                            ? 0
+                            : Integer.parseInt(pageRequest.cursor());
+                    int page = (cursor / 20) + 1;
+                    return page(page, true);
+                },
+                page -> ActivityProductPaginationRunner.PageWriteStats.ZERO,
+                page -> {
+                });
+
+        assertThat(result.pagesFetched()).isEqualTo(2);
+        assertThat(result.fetchedRows()).isEqualTo(35);
+        assertThat(result.stopReason()).isEqualTo(ActivityProductPaginationRunner.StopReason.MAX_ROWS_REACHED);
+        assertThat(result.stillHasNextWhenStopped()).isTrue();
+        assertThat(result.complete()).isFalse();
+    }
+
+    @Test
+    void run_shouldCompleteWhenMaxRowsExactlyMatchesFinalPage() {
+        ActivityProductPaginationRunner.Result result = ActivityProductPaginationRunner.run(
+                request("ACT-1", 20, null),
+                new ActivityProductPaginationRunner.Options(20, 300, 40, true),
+                pageRequest -> {
+                    int cursor = pageRequest.cursor() == null || pageRequest.cursor().isBlank()
+                            ? 0
+                            : Integer.parseInt(pageRequest.cursor());
+                    int page = (cursor / 20) + 1;
+                    return page(page, page < 2);
+                },
+                page -> ActivityProductPaginationRunner.PageWriteStats.ZERO,
+                page -> {
+                });
+
+        assertThat(result.pagesFetched()).isEqualTo(2);
+        assertThat(result.fetchedRows()).isEqualTo(40);
+        assertThat(result.stopReason()).isEqualTo(ActivityProductPaginationRunner.StopReason.DONE_NO_MORE);
+        assertThat(result.stillHasNextWhenStopped()).isFalse();
+        assertThat(result.complete()).isTrue();
+    }
+
     private DouyinProductGateway.ActivityProductQueryRequest request(String activityId, int count, String cursor) {
         return new DouyinProductGateway.ActivityProductQueryRequest(
                 null, activityId, 4L, 1L, count, null, null, null, null, 1L, cursor, null);

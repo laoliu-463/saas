@@ -170,9 +170,9 @@ public class ProductService {
     private int productActivitySyncMaxRetries;
     @Value("${product.sync.activityProduct.pageSize:20}")
     private int productSyncActivityProductPageSize;
-    @Value("${product.sync.activityProduct.maxPagesPerActivity:300}")
+    @Value("${product.sync.activityProduct.maxPagesPerActivity:1000}")
     private int productSyncActivityProductMaxPagesPerActivity;
-    @Value("${product.sync.activityProduct.maxRowsPerActivity:20000}")
+    @Value("${product.sync.activityProduct.maxRowsPerActivity:50000}")
     private int productSyncActivityProductMaxRowsPerActivity;
 
     public ProductService(
@@ -1221,6 +1221,27 @@ public class ProductService {
                 .toList();
     }
 
+    public AdminProductCounts getAdminCounts() {
+        return new AdminProductCounts(
+                snapshotMapper.countActiveRows(),
+                operationStateMapper.countActiveRows(),
+                snapshotMapper.countDistinctProducts(),
+                operationStateMapper.countDisplayingRows(),
+                operationStateMapper.countPendingRows(),
+                operationStateMapper.countHiddenRows(),
+                snapshotMapper.countDistinctActivities());
+    }
+
+    public record AdminProductCounts(
+            long snapshotTotal,
+            long relationTotal,
+            long distinctProductTotal,
+            long displayingTotal,
+            long pendingTotal,
+            long hiddenTotal,
+            long activityTotal) {
+    }
+
     private Page<Product> emptySelectedLibraryPage(long currentPage, long pageSize) {
         Page<Product> result = new Page<>(currentPage, pageSize, 0L);
         result.setRecords(List.of());
@@ -1697,17 +1718,30 @@ public class ProductService {
 
     @Transactional(rollbackFor = Exception.class)
     public ActivityProductRefreshResult refreshActivitySnapshots(DouyinProductGateway.ActivityProductQueryRequest request) {
+        return refreshActivitySnapshots(
+                request,
+                productSyncActivityProductMaxPagesPerActivity,
+                productSyncActivityProductMaxRowsPerActivity);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ActivityProductRefreshResult refreshActivitySnapshots(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            int maxPagesPerActivity,
+            int maxRowsPerActivity) {
         if (request == null || !StringUtils.hasText(request.activityId())) {
             return new ActivityProductRefreshResult(0, 0, 0, 0, 0);
         }
         int pageSize = Math.min(Math.max(request.count() == null ? productSyncActivityProductPageSize : request.count(), 1), 20);
+        int normalizedMaxPages = Math.max(maxPagesPerActivity <= 0 ? productSyncActivityProductMaxPagesPerActivity : maxPagesPerActivity, 1);
+        int normalizedMaxRows = Math.max(maxRowsPerActivity <= 0 ? productSyncActivityProductMaxRowsPerActivity : maxRowsPerActivity, 1);
         java.util.concurrent.atomic.AtomicInteger pageCounter = new java.util.concurrent.atomic.AtomicInteger();
         ActivityProductPaginationRunner.Result pageResult = ActivityProductPaginationRunner.run(
                 request,
                 new ActivityProductPaginationRunner.Options(
                         pageSize,
-                        productSyncActivityProductMaxPagesPerActivity,
-                        productSyncActivityProductMaxRowsPerActivity,
+                        normalizedMaxPages,
+                        normalizedMaxRows,
                         true),
                 pageRequest -> queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement()),
                 page -> {
