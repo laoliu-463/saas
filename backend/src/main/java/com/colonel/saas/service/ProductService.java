@@ -1475,18 +1475,38 @@ public class ProductService {
         upsertSnapshotsWithStats(activityId, items);
     }
 
+    /**
+     * backfill 专用批写入口：传入 items 必须已按 product_id 升序排序；
+     * 调用方负责把 items 拆成 batch，并用 {@code TransactionTemplate} 包成独立小事务。
+     *
+     * <p>Phase 4-1.5 deadlock 修复关键点：</p>
+     * <ul>
+     *   <li>batch 内 items 顺序由调用方控制，避免不同事务按不同 product_id 顺序加锁。</li>
+     *   <li>本方法不直接开事务（外层不传 {@code Propagation.REQUIRES_NEW}），
+     *       由 {@link com.colonel.saas.service.ProductActivityBackfillService} 编程式事务决定边界。</li>
+     * </ul>
+     */
+    public void upsertSnapshotsPreSorted(String activityId, List<DouyinProductGateway.ActivityProductItem> items) {
+        upsertSnapshotsWithStats(activityId, items);
+    }
+
     @Transactional(rollbackFor = Exception.class)
-    ActivitySnapshotUpsertStats upsertSnapshotsWithStats(String activityId, List<DouyinProductGateway.ActivityProductItem> items) {
+    public ActivitySnapshotUpsertStats upsertSnapshotsWithStats(String activityId, List<DouyinProductGateway.ActivityProductItem> items) {
         if (!StringUtils.hasText(activityId) || items == null || items.isEmpty()) {
-            return new ActivitySnapshotUpsertStats(0, 0, items == null ? 0 : items.size(), 0);
+            return new ActivitySnapshotUpsertStats(0, 0, items == null ? 0 : items.size(), 0, 0);
         }
+        // Phase 4-1.5 deadlock 修复：固定 batch 内的 product_id 升序，避免不同事务按不同顺序加锁。
+        // backfill 路径在调用方已按 product_id 排过序；这里再排一次保证幂等。
+        List<DouyinProductGateway.ActivityProductItem> sortedItems = new ArrayList<>(items);
+        sortedItems.sort(Comparator.comparingLong(DouyinProductGateway.ActivityProductItem::productId));
         ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(activityId);
         UUID activityRecruiterId = activity == null ? null : activity.getRecruiterUserId();
         int created = 0;
         int updated = 0;
         int skipped = 0;
         int libraryEntryCount = 0;
-        for (DouyinProductGateway.ActivityProductItem item : items) {
+        int unchanged = 0;
+        for (DouyinProductGateway.ActivityProductItem item : sortedItems) {
             String productId = String.valueOf(item.productId());
             if (!StringUtils.hasText(productId)) {
                 skipped++;
@@ -1494,17 +1514,26 @@ public class ProductService {
             }
             UUID snapshotId = buildSnapshotId(activityId, productId);
             ProductSnapshot snapshot = snapshotMapper.selectById(snapshotId);
-            if (snapshot == null) {
+            boolean snapshotExisted = snapshot != null;
+            if (!snapshotExisted) {
                 snapshot = new ProductSnapshot();
                 snapshot.setId(snapshotId);
                 snapshot.setActivityId(activityId);
                 snapshot.setProductId(productId);
                 created++;
-            } else {
-                updated++;
             }
+            // 备份一份旧 snapshot 用于后续判断是否真的需要写入。
+            ProductSnapshot beforeFill = snapshotExisted ? cloneSnapshotForCompare(snapshot) : null;
             fillSnapshot(snapshot, item);
-            snapshotMapper.upsert(snapshot);
+            // Phase 4-1.5 no-op 优化：snapshot 字段未变时跳过 mapper.upsert，避免 ON CONFLICT 走全字段更新造成行锁。
+            if (snapshotExisted && beforeFill != null && snapshotFieldsEqual(beforeFill, snapshot)) {
+                unchanged++;
+            } else {
+                snapshotMapper.upsert(snapshot);
+                if (snapshotExisted) {
+                    updated++;
+                }
+            }
             ProductOperationState existingState = getOperationState(activityId, productId);
             ProductOperationState state = productBizStatusService.initStateIfAbsent(existingState, activityId, productId, null, null, "活动商品同步");
             boolean stateChanged = false;
@@ -1521,7 +1550,7 @@ public class ProductService {
                 operationStateMapper.updateById(state);
             }
         }
-        return new ActivitySnapshotUpsertStats(created, updated, skipped, libraryEntryCount);
+        return new ActivitySnapshotUpsertStats(created, updated, skipped, libraryEntryCount, unchanged);
     }
 
     private UpstreamProductLibraryDecision applyUpstreamProductLibraryDecision(
@@ -1913,7 +1942,16 @@ public class ProductService {
         return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
     }
 
-    record ActivitySnapshotUpsertStats(int createdCount, int updatedCount, int skippedCount, int libraryEntryCount) {
+    record ActivitySnapshotUpsertStats(
+            int createdCount,
+            int updatedCount,
+            int skippedCount,
+            int libraryEntryCount,
+            int unchangedCount) {
+
+        ActivitySnapshotUpsertStats(int createdCount, int updatedCount, int skippedCount, int libraryEntryCount) {
+            this(createdCount, updatedCount, skippedCount, libraryEntryCount, 0);
+        }
     }
 
     public Map<String, Object> buildActivityProductListView(
@@ -3513,6 +3551,73 @@ public class ProductService {
         snapshot.setHasDouinGoodsTag(item.hasDouinGoodsTag());
         snapshot.setRawPayload(writeSnapshotPayload(item));
         snapshot.setSyncTime(java.time.LocalDateTime.now());
+    }
+
+    /**
+     * Phase 4-1.5 no-op 优化辅助方法：浅拷贝一个 snapshot 用于比较。
+     * 浅拷贝即可，因为后续 fillSnapshot 只覆盖基本类型/字符串字段，引用类型不会被替换。
+     */
+    private ProductSnapshot cloneSnapshotForCompare(ProductSnapshot source) {
+        if (source == null) {
+            return null;
+        }
+        ProductSnapshot copy = new ProductSnapshot();
+        copy.setId(source.getId());
+        copy.setActivityId(source.getActivityId());
+        copy.setProductId(source.getProductId());
+        copy.setTitle(source.getTitle());
+        copy.setCover(source.getCover());
+        copy.setPrice(source.getPrice());
+        copy.setPriceText(source.getPriceText());
+        copy.setShopId(source.getShopId());
+        copy.setShopName(source.getShopName());
+        copy.setStatus(source.getStatus());
+        copy.setStatusText(source.getStatusText());
+        copy.setCategoryName(source.getCategoryName());
+        copy.setProductStock(source.getProductStock());
+        copy.setSales(source.getSales());
+        copy.setDetailUrl(source.getDetailUrl());
+        copy.setPromotionStartTime(source.getPromotionStartTime());
+        copy.setPromotionEndTime(source.getPromotionEndTime());
+        copy.setActivityCosRatio(source.getActivityCosRatio());
+        copy.setActivityCosRatioText(source.getActivityCosRatioText());
+        copy.setCosType(source.getCosType());
+        copy.setCosTypeText(source.getCosTypeText());
+        copy.setAdServiceRatio(source.getAdServiceRatio());
+        copy.setActivityAdCosRatio(source.getActivityAdCosRatio());
+        copy.setHasDouinGoodsTag(source.getHasDouinGoodsTag());
+        copy.setSyncTime(source.getSyncTime());
+        return copy;
+    }
+
+    private boolean snapshotFieldsEqual(ProductSnapshot a, ProductSnapshot b) {
+        if (a == b) {
+            return true;
+        }
+        if (a == null || b == null) {
+            return false;
+        }
+        return java.util.Objects.equals(a.getTitle(), b.getTitle())
+                && java.util.Objects.equals(a.getCover(), b.getCover())
+                && java.util.Objects.equals(a.getPrice(), b.getPrice())
+                && java.util.Objects.equals(a.getPriceText(), b.getPriceText())
+                && java.util.Objects.equals(a.getShopId(), b.getShopId())
+                && java.util.Objects.equals(a.getShopName(), b.getShopName())
+                && java.util.Objects.equals(a.getStatus(), b.getStatus())
+                && java.util.Objects.equals(a.getStatusText(), b.getStatusText())
+                && java.util.Objects.equals(a.getCategoryName(), b.getCategoryName())
+                && java.util.Objects.equals(a.getProductStock(), b.getProductStock())
+                && java.util.Objects.equals(a.getSales(), b.getSales())
+                && java.util.Objects.equals(a.getDetailUrl(), b.getDetailUrl())
+                && java.util.Objects.equals(a.getPromotionStartTime(), b.getPromotionStartTime())
+                && java.util.Objects.equals(a.getPromotionEndTime(), b.getPromotionEndTime())
+                && java.util.Objects.equals(a.getActivityCosRatio(), b.getActivityCosRatio())
+                && java.util.Objects.equals(a.getActivityCosRatioText(), b.getActivityCosRatioText())
+                && java.util.Objects.equals(a.getCosType(), b.getCosType())
+                && java.util.Objects.equals(a.getCosTypeText(), b.getCosTypeText())
+                && java.util.Objects.equals(a.getAdServiceRatio(), b.getAdServiceRatio())
+                && java.util.Objects.equals(a.getActivityAdCosRatio(), b.getActivityAdCosRatio())
+                && java.util.Objects.equals(a.getHasDouinGoodsTag(), b.getHasDouinGoodsTag());
     }
 
     private String writeSnapshotPayload(DouyinProductGateway.ActivityProductItem item) {

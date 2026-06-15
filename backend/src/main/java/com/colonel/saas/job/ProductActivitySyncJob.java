@@ -85,8 +85,14 @@ public class ProductActivitySyncJob {
             log.debug("ProductActivitySyncJob skipped (disabled by config)");
             return;
         }
+        // Phase 4-1.5 deadlock 修复：定时同步先抢全局 backfill 锁，避免与 backfill 任务并发写入 product_operation_state。
+        if (!jobLockService.tryAcquire(JobLockKeys.PRODUCT_BACKFILL_GLOBAL, LOCK_TTL)) {
+            log.info("ProductActivitySyncJob skipped, backfill global lock held (likely a backfill job in progress)");
+            return;
+        }
         if (!jobLockService.tryAcquire(JobLockKeys.PRODUCT_ACTIVITY_SYNC, LOCK_TTL)) {
-            log.info("ProductActivitySyncJob skipped, lock held by another node");
+            log.info("ProductActivitySyncJob skipped, activity sync lock held by another node");
+            jobLockService.release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
             return;
         }
         try {
@@ -95,6 +101,13 @@ public class ProductActivitySyncJob {
             int fail = 0;
             for (int i = 0; i < activityIds.size(); i++) {
                 String activityId = activityIds.get(i);
+                // 单活动级别也抢同一把 backfill activity 锁，与可能的 backfill 写库互斥。
+                String activityLockKey = JobLockKeys.productBackfillActivityLock(activityId);
+                boolean acquiredActivityLock = jobLockService.tryAcquire(activityLockKey, LOCK_TTL);
+                if (!acquiredActivityLock) {
+                    log.info("ProductActivitySyncJob skip activity, backfill activity lock held, activityId={}", activityId);
+                    continue;
+                }
                 try {
                     ProductService.ActivityProductRefreshResult result =
                             productService.refreshActivitySnapshots(buildQueryRequest(activityId));
@@ -119,6 +132,8 @@ public class ProductActivitySyncJob {
                 } catch (Exception ex) {
                     fail++;
                     log.warn("ProductActivitySyncJob activity sync failed, activityId={}", activityId, ex);
+                } finally {
+                    jobLockService.release(activityLockKey);
                 }
                 if (i < activityIds.size() - 1 && !sleepBeforeNextActivity()) {
                     break;
@@ -127,6 +142,7 @@ public class ProductActivitySyncJob {
             log.info("ProductActivitySyncJob finished, ok={}, fail={}", ok, fail);
         } finally {
             jobLockService.release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+            jobLockService.release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
         }
     }
 

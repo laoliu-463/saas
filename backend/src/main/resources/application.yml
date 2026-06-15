@@ -101,6 +101,16 @@ product:
       apiSleepMs: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_API_SLEEP_MS:300}
       errorThreshold: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_ERROR_THRESHOLD:5}
       cursorRepeatLimit: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_CURSOR_REPEAT_LIMIT:1}
+    # Phase 4-1.5 deadlock 修复：商品全量回补的并发/事务/重试配置。
+    backfill:
+      writeBatchSize: ${PRODUCT_SYNC_BACKFILL_WRITE_BATCH_SIZE:100}
+      deadlockRetryMax: ${PRODUCT_SYNC_BACKFILL_DEADLOCK_RETRY_MAX:3}
+      lockWaitSeconds: ${PRODUCT_SYNC_BACKFILL_LOCK_WAIT_SECONDS:10}
+      runningTimeoutMinutes: ${PRODUCT_SYNC_BACKFILL_RUNNING_TIMEOUT_MINUTES:30}
+      displayRefreshMode: ${PRODUCT_SYNC_BACKFILL_DISPLAY_REFRESH_MODE:DEFERRED}
+      skipDisplayRefreshForExpiredActivity: ${PRODUCT_SYNC_BACKFILL_SKIP_DISPLAY_REFRESH_FOR_EXPIRED:true}
+      apiSleepMs: ${PRODUCT_SYNC_BACKFILL_API_SLEEP_MS:100}
+      staleReconcileCron: ${PRODUCT_SYNC_BACKFILL_STALE_RECONCILE_CRON:0 */15 * * * ?}
 
 app:
   performance:

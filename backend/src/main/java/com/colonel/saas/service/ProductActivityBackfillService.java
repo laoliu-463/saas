@@ -1,28 +1,58 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ProductActivitySyncState;
 import com.colonel.saas.entity.ProductSyncJobLog;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.job.JobLockKeys;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ProductActivitySyncStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.ProductSyncJobLogMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 活动商品全量回补服务。
+ *
+ * <p>Phase 4-1.5 deadlock 修复要点：</p>
+ * <ul>
+ *   <li>每次写库前先获取 {@link JobLockKeys#PRODUCT_BACKFILL_GLOBAL} 与
+ *       {@code PRODUCT_BACKFILL_ACTIVITY:{activityId}} 两把 Redis 锁；与 {@code ProductActivitySyncJob}
+ *       和 {@code ProductDisplayRuleJob} 的写库动作互斥。</li>
+ *   <li>backfill 默认只补事实层，{@code displayRefreshMode=DEFERRED} 表示写完事实层后单独再排
+ *       {@code PRODUCT_DISPLAY_REFRESH} 锁触发展示规则刷新，避免与 backfill 写事实层共用同一大事务。</li>
+ *   <li>每个 activity 的 page 列表在写入前按 {@code product_id} 排序；每个 page 单独走独立子事务，
+ *       子事务内单 batch（{@code writeBatchSize} 控制）独立提交。</li>
+ *   <li>子事务遇到 PostgreSQL {@code 40P01 deadlock_detected} 或 {@code 55P03 lock_not_available}
+ *       时按 {@code deadlockRetryMax} 配置做指数退避重试，避免一次死锁直接放弃。</li>
+ *   <li>job log 写入、updateById 全部包在 {@code try/finally}，确保任何异常路径下都能
+ *       写入 {@code finished_at}；同时新增 stale RUNNING 清理任务
+ *       （见 {@code StaleProductSyncJobReconcileJob}）。</li>
+ * </ul>
  */
+@Slf4j
 @Service
 public class ProductActivityBackfillService {
 
@@ -32,6 +62,18 @@ public class ProductActivityBackfillService {
     private static final int DEFAULT_MAX_ROWS = 50_000;
     private static final int MAX_ACTIVITIES = 200;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    /** PostgreSQL deadlock_detected SQLState。 */
+    private static final String SQLSTATE_DEADLOCK = "40P01";
+    /** PostgreSQL lock_not_available SQLState。 */
+    private static final String SQLSTATE_LOCK_NOT_AVAILABLE = "55P03";
+    /** 子事务默认 batch 大小。 */
+    private static final int DEFAULT_WRITE_BATCH_SIZE = 100;
+    /** 死锁重试默认次数。 */
+    private static final int DEFAULT_DEADLOCK_RETRY_MAX = 3;
+    /** 写锁 TTL（与最坏单 activity 写满时间匹配）。 */
+    private static final Duration BACKFILL_LOCK_TTL = Duration.ofMinutes(30);
+    private static final String STOP_REASON_FAILED_LOCKED = "FAILED_LOCKED";
+    private static final String STOP_REASON_DEADLOCK_RETRY_EXHAUSTED = "DEADLOCK_RETRY_EXHAUSTED";
 
     private final ProductSyncDryRunProbeService dryRunProbeService;
     private final ProductService productService;
@@ -39,8 +81,24 @@ public class ProductActivityBackfillService {
     private final ProductSnapshotMapper snapshotMapper;
     private final ProductSyncJobLogMapper jobLogMapper;
     private final ProductActivitySyncStateMapper syncStateMapper;
+    private final DistributedJobLockService jobLockService;
+    private final ProductDisplayRuleService productDisplayRuleService;
+    private final DouyinProductGateway douyinProductGateway;
+    private final TransactionTemplate batchTransactionTemplate;
     @Value("${product.sync.activityProduct.fullBackfillEnabled:true}")
     private boolean fullBackfillEnabled = true;
+    @Value("${product.sync.backfill.writeBatchSize:100}")
+    private int writeBatchSize = DEFAULT_WRITE_BATCH_SIZE;
+    @Value("${product.sync.backfill.deadlockRetryMax:3}")
+    private int deadlockRetryMax = DEFAULT_DEADLOCK_RETRY_MAX;
+    @Value("${product.sync.backfill.lockWaitSeconds:10}")
+    private int lockWaitSeconds = 10;
+    @Value("${product.sync.backfill.displayRefreshMode:DEFERRED}")
+    private String defaultDisplayRefreshMode = "DEFERRED";
+    @Value("${product.sync.backfill.skipDisplayRefreshForExpiredActivity:true}")
+    private boolean skipDisplayRefreshForExpiredActivity = true;
+    @Value("${product.sync.backfill.apiSleepMs:100}")
+    private long backfillApiSleepMs = 100L;
 
     public ProductActivityBackfillService(
             ProductSyncDryRunProbeService dryRunProbeService,
@@ -48,13 +106,24 @@ public class ProductActivityBackfillService {
             ColonelsettlementActivityMapper activityMapper,
             ProductSnapshotMapper snapshotMapper,
             ProductSyncJobLogMapper jobLogMapper,
-            ProductActivitySyncStateMapper syncStateMapper) {
+            ProductActivitySyncStateMapper syncStateMapper,
+            DistributedJobLockService jobLockService,
+            ProductDisplayRuleService productDisplayRuleService,
+            DouyinProductGateway douyinProductGateway,
+            PlatformTransactionManager transactionManager) {
         this.dryRunProbeService = dryRunProbeService;
         this.productService = productService;
         this.activityMapper = activityMapper;
         this.snapshotMapper = snapshotMapper;
         this.jobLogMapper = jobLogMapper;
         this.syncStateMapper = syncStateMapper;
+        this.jobLockService = jobLockService;
+        this.productDisplayRuleService = productDisplayRuleService;
+        this.douyinProductGateway = douyinProductGateway;
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        template.setName("product-backfill-batch");
+        this.batchTransactionTemplate = template;
     }
 
     public BackfillResult backfill(BackfillRequest request, UUID requestedBy) {
@@ -68,18 +137,25 @@ public class ProductActivityBackfillService {
         String jobId = "product-backfill-" + UUID.randomUUID();
         ProductSyncJobLog jobLog = startJob(jobId, normalized, requestedBy);
         try {
-            BackfillResult result = normalized.dryRun()
-                    ? runDryRun(jobId, normalized)
-                    : runRealBackfill(jobId, normalized);
-            finishJob(jobLog, result, statusFromCounts(
-                    result.activitiesScanned(),
-                    result.activitiesSuccess(),
-                    result.activitiesIncomplete(),
-                    result.activitiesFailed()), null);
-            return result;
+            if (normalized.dryRun()) {
+                BackfillResult dryRunResult = runDryRun(jobId, normalized);
+                finishJob(jobLog, dryRunResult,
+                        statusFromCounts(dryRunResult.activitiesScanned(),
+                                dryRunResult.activitiesSuccess(),
+                                dryRunResult.activitiesIncomplete(),
+                                dryRunResult.activitiesFailed()),
+                        null, 0, 0);
+                return dryRunResult;
+            }
+            return runRealBackfillWithLocks(jobId, normalized, jobLog);
         } catch (RuntimeException ex) {
-            finishJob(jobLog, failedResult(jobId, normalized), "FAILED", ex.getMessage());
+            log.error("ProductActivityBackfillService job failed, jobId={}, message={}", jobId, ex.getMessage(), ex);
+            finishJob(jobLog, failedResult(jobId, normalized), "FAILED", ex.getMessage(), 0, 0);
             throw ex;
+        } catch (Throwable ex) {
+            log.error("ProductActivityBackfillService job fatal, jobId={}, message={}", jobId, ex.getMessage(), ex);
+            finishJob(jobLog, failedResult(jobId, normalized), "FAILED", ex.getMessage(), 0, 0);
+            throw new RuntimeException(ex);
         }
     }
 
@@ -110,67 +186,377 @@ public class ProductActivityBackfillService {
                 0,
                 dryRun.activitiesFailed(),
                 dryRun.stopReasonStats(),
-                dryRun.topGapActivities());
+                dryRun.topGapActivities(),
+                0L,
+                0L,
+                0);
     }
 
-    private BackfillResult runRealBackfill(String jobId, NormalizedRequest request) {
-        List<String> activityIds = resolveActivityIds(request);
-        long dbRowsBefore = activityIds.isEmpty() ? 0L : snapshotMapper.countActiveRowsByActivityIds(activityIds);
-        int success = 0;
-        int incomplete = 0;
-        int failed = 0;
-        int inserted = 0;
-        int updated = 0;
-        int skipped = 0;
-        long fetchedRows = 0L;
-        long distinctProductIds = 0L;
-        Map<String, Long> stopReasonStats = new LinkedHashMap<>();
+    private BackfillResult runRealBackfillWithLocks(String jobId, NormalizedRequest request, ProductSyncJobLog jobLog) {
+        // 真实写库必须先拿 PRODUCT_BACKFILL_GLOBAL 锁，与 ProductActivitySyncJob 互斥。
+        String globalLockKey = JobLockKeys.PRODUCT_BACKFILL_GLOBAL;
+        if (!jobLockService.tryAcquire(globalLockKey, BACKFILL_LOCK_TTL)) {
+            log.warn("ProductActivityBackfillService skipped, global backfill lock held, jobId={}", jobId);
+            BackfillResult locked = buildLockedResult(jobId, request);
+            finishJob(jobLog, locked, "FAILED_LOCKED", "global backfill lock held", 0, 0);
+            return locked;
+        }
+        long totalLockWaitCount = 0L;
+        long totalDeadlockRetryCount = 0L;
+        try {
+            List<String> activityIds = resolveActivityIds(request);
+            long dbRowsBefore = activityIds.isEmpty() ? 0L : snapshotMapper.countActiveRowsByActivityIds(activityIds);
+            int success = 0;
+            int incomplete = 0;
+            int failed = 0;
+            int inserted = 0;
+            int updated = 0;
+            int skipped = 0;
+            int unchanged = 0;
+            long fetchedRows = 0L;
+            long distinctProductIds = 0L;
+            Map<String, Long> stopReasonStats = new LinkedHashMap<>();
 
+            // 活动列表按 activityId 升序，固定跨活动的锁顺序。
+            List<String> sortedActivityIds = new ArrayList<>(activityIds);
+            sortedActivityIds.sort(Comparator.naturalOrder());
+
+            for (String activityId : sortedActivityIds) {
+                String activityLockKey = JobLockKeys.productBackfillActivityLock(activityId);
+                if (!jobLockService.tryAcquire(activityLockKey, BACKFILL_LOCK_TTL)) {
+                    totalLockWaitCount++;
+                    log.warn("ProductActivityBackfillService activity lock held, skip activityId={}, jobId={}", activityId, jobId);
+                    failed++;
+                    stopReasonStats.merge(STOP_REASON_FAILED_LOCKED, 1L, Long::sum);
+                    upsertFailedActivityState(activityId, request.scope(), STOP_REASON_FAILED_LOCKED, "activity backfill lock held");
+                    continue;
+                }
+                long activityLockWait = 0L;
+                long activityRetry = 0L;
+                try {
+                    ActivityBackfillStats stats = runActivityBackfill(request, activityId);
+                    fetchedRows += stats.fetchedRows;
+                    distinctProductIds += stats.distinctProductIds;
+                    inserted += stats.inserted;
+                    updated += stats.updated;
+                    skipped += stats.skipped;
+                    unchanged += stats.unchanged;
+                    activityLockWait = stats.lockWaitCount;
+                    activityRetry = stats.deadlockRetryCount;
+                    totalLockWaitCount += activityLockWait;
+                    totalDeadlockRetryCount += activityRetry;
+                    stopReasonStats.merge(stats.stoppedReason, 1L, Long::sum);
+                    if (stats.complete) {
+                        success++;
+                    } else if (isFailedStopReason(stats.stoppedReason)) {
+                        failed++;
+                    } else {
+                        incomplete++;
+                    }
+                    upsertActivityState(activityId, request.scope(), stats, null);
+                } catch (RuntimeException ex) {
+                    failed++;
+                    String stopReason = stopReasonForException(ex);
+                    if (ex instanceof BackfillBatchWriteException batchEx) {
+                        totalDeadlockRetryCount += batchEx.retryCount();
+                    }
+                    stopReasonStats.merge(stopReason, 1L, Long::sum);
+                    log.error("ProductActivityBackfillService activity failed, activityId={}, jobId={}", activityId, jobId, ex);
+                    upsertFailedActivityState(activityId, request.scope(), stopReason, ex.getMessage());
+                } finally {
+                    jobLockService.release(activityLockKey);
+                }
+            }
+
+            // 事实层写完后，按 displayRefreshMode 决定是否触发展示规则刷新。
+            // 触发时也加 PRODUCT_DISPLAY_REFRESH 锁，避免与 ProductDisplayRuleJob 撞车。
+            String displayRefreshMode = request.displayRefreshMode() != null
+                    ? request.displayRefreshMode()
+                    : defaultDisplayRefreshMode;
+            if (!"NONE".equalsIgnoreCase(displayRefreshMode) && !"SKIPPED".equalsIgnoreCase(displayRefreshMode)) {
+                boolean skipExpired = skipDisplayRefreshForExpiredActivity
+                        && hasAnyExpiredActivity(sortedActivityIds);
+                if (!skipExpired) {
+                    triggerDeferredDisplayRefresh(sortedActivityIds);
+                } else {
+                    log.info("ProductActivityBackfillService skip display refresh for expired activity, jobId={}", jobId);
+                }
+            }
+
+            BackfillResult result = new BackfillResult(
+                    jobId,
+                    false,
+                    request.scope(),
+                    activityIds.size(),
+                    success,
+                    incomplete,
+                    failed,
+                    fetchedRows,
+                    distinctProductIds,
+                    dbRowsBefore,
+                    0,
+                    inserted,
+                    updated,
+                    skipped,
+                    failed,
+                    stopReasonStats,
+                    List.of(),
+                    totalLockWaitCount,
+                    totalDeadlockRetryCount,
+                    unchanged);
+            String status = statusFromCounts(result.activitiesScanned(),
+                    result.activitiesSuccess(),
+                    result.activitiesIncomplete(),
+                    result.activitiesFailed());
+            finishJob(jobLog, result, status, null, totalLockWaitCount, totalDeadlockRetryCount);
+            return result;
+        } finally {
+            jobLockService.release(globalLockKey);
+        }
+    }
+
+    private void triggerDeferredDisplayRefresh(List<String> activityIds) {
+        String lockKey = JobLockKeys.PRODUCT_DISPLAY_REFRESH;
+        if (!jobLockService.tryAcquire(lockKey, BACKFILL_LOCK_TTL)) {
+            log.warn("ProductActivityBackfillService skip display refresh, lock held");
+            return;
+        }
+        try {
+            for (String activityId : activityIds) {
+                try {
+                    productDisplayRuleService.repairLibraryStateForActivity(activityId, false, 10000);
+                    productDisplayRuleService.applyForActivityId(activityId);
+                } catch (RuntimeException ex) {
+                    log.warn("ProductActivityBackfillService deferred display refresh failed, activityId={}, message={}",
+                            activityId, ex.getMessage());
+                }
+            }
+        } finally {
+            jobLockService.release(lockKey);
+        }
+    }
+
+    private boolean hasAnyExpiredActivity(List<String> activityIds) {
         for (String activityId : activityIds) {
             try {
-                ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshots(
-                        buildQueryRequest(activityId, request.pageSize()),
-                        request.maxPagesPerActivity(),
-                        request.maxRowsPerActivity());
-                fetchedRows += result.fetchedRows();
-                distinctProductIds += result.distinctProductIds();
-                inserted += result.createdCount();
-                updated += result.updatedCount();
-                skipped += result.skippedCount();
-                stopReasonStats.merge(result.stoppedReason(), 1L, Long::sum);
-                if (result.complete()) {
-                    success++;
-                } else if (isFailedStopReason(result.stoppedReason())) {
-                    failed++;
-                } else {
-                    incomplete++;
+                ColonelsettlementActivity activity = activityMapper.selectByActivityId(activityId);
+                if (activity != null && activity.getEndTime() != null
+                        && activity.getEndTime().isBefore(LocalDateTime.now())) {
+                    return true;
                 }
-                upsertActivityState(activityId, request.scope(), result, null);
-            } catch (RuntimeException ex) {
-                failed++;
-                stopReasonStats.merge(ActivityProductPaginationRunner.StopReason.API_ERROR.name(), 1L, Long::sum);
-                upsertFailedActivityState(activityId, request.scope(), ex.getMessage());
+            } catch (RuntimeException ignored) {
+                // 取不到时不强失败，宁可放过去让展示规则刷新。
             }
         }
+        return false;
+    }
 
-        return new BackfillResult(
-                jobId,
-                false,
-                request.scope(),
-                activityIds.size(),
-                success,
-                incomplete,
-                failed,
-                fetchedRows,
-                distinctProductIds,
-                dbRowsBefore,
-                0,
-                inserted,
-                updated,
-                skipped,
-                failed,
-                stopReasonStats,
-                List.of());
+    private ActivityBackfillStats runActivityBackfill(
+            NormalizedRequest request,
+            String activityId) {
+        BatchedBackfillResult batched = runActivityBackfillBatched(request, activityId);
+        ProductService.ActivityProductRefreshResult result = batched.result();
+        return new ActivityBackfillStats(
+                result.complete(),
+                result.fetchedRows(),
+                result.distinctProductIds(),
+                result.createdCount(),
+                result.updatedCount(),
+                result.skippedCount(),
+                batched.unchanged(),
+                result.stoppedReason(),
+                0L,
+                batched.deadlockRetryCount());
+    }
+
+    /**
+     * 单 activity backfill 的核心实现。
+     *
+     * <p>绕开 {@link ProductService#refreshActivitySnapshots} 的大事务，自己分 page 拉取 + 拆 batch +
+     * 每 batch 一个 {@link TransactionTemplate} 独立小事务，避免长事务持锁触发 PostgreSQL deadlock。
+     * 同时按 {@code product_id} 升序排序后写入，固定事务内的锁顺序。</p>
+     */
+    private BatchedBackfillResult runActivityBackfillBatched(
+            NormalizedRequest request,
+            String activityId) {
+        int pageSize = Math.min(Math.max(request.pageSize(), 1), 20);
+        int normalizedMaxPages = Math.max(request.maxPagesPerActivity(), 1);
+        int normalizedMaxRows = Math.max(request.maxRowsPerActivity(), 1);
+        java.util.concurrent.atomic.AtomicInteger pageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        final int[] inserted = {0};
+        final int[] updated = {0};
+        final int[] skipped = {0};
+        final int[] unchanged = {0};
+        final int[] libraryEntryCount = {0};
+        final long[] deadlockRetryCount = {0L};
+        ActivityProductPaginationRunner.Result pageResult = ActivityProductPaginationRunner.run(
+                buildQueryRequest(activityId, pageSize),
+                new ActivityProductPaginationRunner.Options(
+                        pageSize,
+                        normalizedMaxPages,
+                        normalizedMaxRows,
+                        true),
+                pageRequest -> queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement()),
+                page -> {
+                    // 1. 锁顺序：按 product_id 升序，避免事务间死锁。
+                    List<DouyinProductGateway.ActivityProductItem> sortedItems = new ArrayList<>(page.items());
+                    sortedItems.sort(Comparator.comparingLong(DouyinProductGateway.ActivityProductItem::productId));
+                    // 2. 拆小事务：每 writeBatchSize 一个独立子事务。
+                    int batchSize = Math.max(1, writeBatchSize);
+                    int pageInserted = 0;
+                    int pageUpdated = 0;
+                    int pageSkipped = 0;
+                    int pageLibraryEntryCount = 0;
+                    for (int i = 0; i < sortedItems.size(); i += batchSize) {
+                        int end = Math.min(sortedItems.size(), i + batchSize);
+                        List<DouyinProductGateway.ActivityProductItem> batch = sortedItems.subList(i, end);
+                        // 用独立小事务包住 snapshot upsert + operation state update。
+                        BatchWriteResult batchResult = executeBatchWithDeadlockRetry(activityId, batch);
+                        ProductService.ActivitySnapshotUpsertStats stats = batchResult.stats();
+                        deadlockRetryCount[0] += batchResult.deadlockRetryCount();
+                        if (stats != null) {
+                            inserted[0] += stats.createdCount();
+                            updated[0] += stats.updatedCount();
+                            skipped[0] += stats.skippedCount();
+                            unchanged[0] += stats.unchangedCount();
+                            libraryEntryCount[0] += stats.libraryEntryCount();
+                            pageInserted += stats.createdCount();
+                            pageUpdated += stats.updatedCount();
+                            pageSkipped += stats.skippedCount();
+                            pageLibraryEntryCount += stats.libraryEntryCount();
+                        }
+                    }
+                    return new ActivityProductPaginationRunner.PageWriteStats(
+                            pageInserted,
+                            pageUpdated,
+                            pageSkipped,
+                            pageLibraryEntryCount);
+                },
+                pageNo -> {
+                    // backfill 写库路径不复用 ProductService 的长事务翻页 sleep，但保留上游 API 节流。
+                    sleepBeforeNextBackfillPage(activityId, pageNo - 1);
+                });
+        // 触发展示规则刷新（如果 displayRefreshMode = IMMEDIATE 才在事实层写完后立即刷）。
+        // 默认是 DEFERRED，由 backfill 任务尾部统一处理（见 runRealBackfillWithLocks.triggerDeferredDisplayRefresh）。
+        if ("IMMEDIATE".equalsIgnoreCase(request.displayRefreshMode() == null
+                ? defaultDisplayRefreshMode : request.displayRefreshMode())) {
+            try {
+                productDisplayRuleService.repairLibraryStateForActivity(activityId, false, 10000);
+                productDisplayRuleService.applyForActivityId(activityId);
+            } catch (RuntimeException ex) {
+                log.warn("ProductActivityBackfillService immediate display refresh failed, activityId={}, message={}",
+                        activityId, ex.getMessage());
+            }
+        }
+        ProductService.ActivityProductRefreshResult refreshResult =
+                new ProductService.ActivityProductRefreshResult(
+                        pageResult.distinctProductIds(),
+                        libraryEntryCount[0],
+                        inserted[0],
+                        updated[0],
+                        skipped[0],
+                        pageResult.pagesFetched(),
+                        pageResult.fetchedRows(),
+                        pageResult.distinctProductIds(),
+                        pageResult.duplicateProductIds(),
+                        pageResult.stopReason().name(),
+                        pageResult.stillHasNextWhenStopped(),
+                        pageResult.complete());
+        return new BatchedBackfillResult(refreshResult, deadlockRetryCount[0], unchanged[0]);
+    }
+
+    private BatchWriteResult executeBatchWithDeadlockRetry(
+            String activityId,
+            List<DouyinProductGateway.ActivityProductItem> batch) {
+        int maxAttempts = Math.max(1, deadlockRetryMax + 1);
+        long retryCount = 0L;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                ProductService.ActivitySnapshotUpsertStats stats = batchTransactionTemplate.execute(
+                        status -> productService.upsertSnapshotsWithStats(activityId, batch));
+                return new BatchWriteResult(stats, retryCount);
+            } catch (DataAccessException ex) {
+                if (isDeadlockLike(ex) && attempt < maxAttempts) {
+                    retryCount++;
+                    log.warn("ProductActivityBackfillService batch deadlock-like, activityId={}, attempt={}/{}, message={}",
+                            activityId, attempt, maxAttempts, ex.getMessage());
+                    sleepBackoff(attempt);
+                    continue;
+                }
+                if (isDeadlockLike(ex)) {
+                    throw new BackfillBatchWriteException(STOP_REASON_DEADLOCK_RETRY_EXHAUSTED, retryCount, ex);
+                }
+                throw ex;
+            }
+        }
+        throw BusinessException.stateInvalid("backfill batch 重试耗尽但无明确错误");
+    }
+
+    private String stopReasonForException(RuntimeException ex) {
+        if (ex instanceof BackfillBatchWriteException batchEx && StringUtils.hasText(batchEx.stopReason())) {
+            return batchEx.stopReason();
+        }
+        if (isDeadlockLike(ex)) {
+            return STOP_REASON_DEADLOCK_RETRY_EXHAUSTED;
+        }
+        return ActivityProductPaginationRunner.StopReason.API_ERROR.name();
+    }
+
+    private DouyinProductGateway.ActivityProductListResult queryActivityProductsWithRetry(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            int pageNo) {
+        // backfill 路径直接调一次 gateway；DB deadlock retry 在 batch 写库事务内处理，不重新拉取本页。
+        return douyinProductGateway.queryActivityProducts(request);
+    }
+
+    private void sleepBackoff(int attempt) {
+        long base = 200L * (1L << Math.min(attempt - 1, 3)); // 200 / 400 / 800 / 1600
+        long jitter = ThreadLocalRandom.current().nextLong(0, 100L);
+        try {
+            Thread.sleep(base + jitter);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw BusinessException.stateInvalid("backfill retry 被中断");
+        }
+    }
+
+    private void sleepBeforeNextBackfillPage(String activityId, int pageNo) {
+        long millis = Math.max(0L, Math.min(1000L, backfillApiSleepMs));
+        if (millis <= 0L) {
+            return;
+        }
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            log.warn("ProductActivityBackfillService interrupted before next page, activityId={}, page={}",
+                    activityId, pageNo + 1);
+            throw BusinessException.stateInvalid("backfill page sleep 被中断");
+        }
+    }
+
+    private boolean isDeadlockLike(Throwable ex) {
+        Throwable cur = ex;
+        while (cur != null) {
+            if (cur instanceof DeadlockLoserDataAccessException) {
+                return true;
+            }
+            if (cur instanceof CannotAcquireLockException) {
+                return true;
+            }
+            String msg = cur.getMessage();
+            if (msg != null) {
+                String upper = msg.toUpperCase();
+                if (upper.contains(SQLSTATE_DEADLOCK) || upper.contains("DEADLOCK DETECTED")) {
+                    return true;
+                }
+                if (upper.contains(SQLSTATE_LOCK_NOT_AVAILABLE) || upper.contains("LOCK NOT AVAILABLE")) {
+                    return true;
+                }
+            }
+            cur = cur.getCause();
+        }
+        return false;
     }
 
     private List<String> resolveActivityIds(NormalizedRequest request) {
@@ -197,7 +583,7 @@ public class ProductActivityBackfillService {
     private void upsertActivityState(
             String activityId,
             String scope,
-            ProductService.ActivityProductRefreshResult result,
+            ActivityBackfillStats stats,
             String errorMessage) {
         ProductActivitySyncState state = new ProductActivitySyncState();
         LocalDateTime now = LocalDateTime.now();
@@ -205,17 +591,17 @@ public class ProductActivityBackfillService {
         state.setActivityId(activityId);
         state.setScope(scope);
         state.setLastAttemptAt(now);
-        state.setLastSuccessAt(result.complete() ? now : null);
-        state.setLastStatus(statusForStopReason(result.stoppedReason(), result.complete()));
-        state.setLastStopReason(result.stoppedReason());
-        state.setLastPage(result.pagesFetched());
-        state.setLastFetchedRows((long) result.fetchedRows());
-        state.setLastDistinctProductIds((long) result.distinctProductIds());
-        state.setLastInserted(result.createdCount());
-        state.setLastUpdated(result.updatedCount());
-        state.setLastSkipped(result.skippedCount());
-        state.setLastFailed(isFailedStopReason(result.stoppedReason()) ? 1 : 0);
-        state.setConsecutiveFailures(result.complete() ? 0 : 1);
+        state.setLastSuccessAt(stats.complete ? now : null);
+        state.setLastStatus(statusForStopReason(stats.stoppedReason, stats.complete));
+        state.setLastStopReason(stats.stoppedReason);
+        state.setLastPage(0);
+        state.setLastFetchedRows(stats.fetchedRows);
+        state.setLastDistinctProductIds(stats.distinctProductIds);
+        state.setLastInserted(stats.inserted);
+        state.setLastUpdated(stats.updated);
+        state.setLastSkipped(stats.skipped);
+        state.setLastFailed(isFailedStopReason(stats.stoppedReason) ? 1 : 0);
+        state.setConsecutiveFailures(stats.complete ? 0 : 1);
         state.setLastErrorMessage(errorMessage);
         state.setCreateTime(now);
         state.setUpdateTime(now);
@@ -223,19 +609,14 @@ public class ProductActivityBackfillService {
     }
 
     private void upsertFailedActivityState(String activityId, String scope, String errorMessage) {
-        ProductService.ActivityProductRefreshResult failed = new ProductService.ActivityProductRefreshResult(
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                ActivityProductPaginationRunner.StopReason.API_ERROR.name(),
-                true,
-                false);
+        upsertFailedActivityState(activityId, scope, ActivityProductPaginationRunner.StopReason.API_ERROR.name(), errorMessage);
+    }
+
+    private void upsertFailedActivityState(String activityId, String scope, String stopReason, String errorMessage) {
+        ActivityBackfillStats failed = new ActivityBackfillStats(
+                false, 0L, 0L, 0, 0, 0, 0,
+                stopReason,
+                0L, 0L);
         upsertActivityState(activityId, scope, failed, errorMessage);
     }
 
@@ -257,7 +638,8 @@ public class ProductActivityBackfillService {
         return log;
     }
 
-    private void finishJob(ProductSyncJobLog log, BackfillResult result, String status, String errorMessage) {
+    private void finishJob(ProductSyncJobLog log, BackfillResult result, String status, String errorMessage,
+                           long lockWaitCount, long deadlockRetryCount) {
         log.setStatus(status);
         log.setFinishedAt(LocalDateTime.now());
         log.setActivitiesScanned(result.activitiesScanned());
@@ -273,7 +655,50 @@ public class ProductActivityBackfillService {
         log.setStopReasonStatsJson(toJson(result.stopReasonStats()));
         log.setErrorMessage(errorMessage);
         log.setUpdateTime(LocalDateTime.now());
+        // 把 lockWaitCount / deadlockRetryCount 写入 requestParamsJson 的 metadata 子段，
+        // 现有 schema 不新增列，避免破坏既有 reader。
+        log.setRequestParamsJson(appendMeta(log.getRequestParamsJson(), lockWaitCount, deadlockRetryCount));
         jobLogMapper.updateById(log);
+    }
+
+    private String appendMeta(String original, long lockWaitCount, long deadlockRetryCount) {
+        if (original == null || original.isBlank()) {
+            original = "{}";
+        }
+        try {
+            Map<String, Object> map = OBJECT_MAPPER.readValue(original, Map.class);
+            map.put("lockWaitCount", lockWaitCount);
+            map.put("deadlockRetryCount", deadlockRetryCount);
+            return OBJECT_MAPPER.writeValueAsString(map);
+        } catch (JsonProcessingException ex) {
+            return original;
+        }
+    }
+
+    private BackfillResult buildLockedResult(String jobId, NormalizedRequest request) {
+        Map<String, Long> stopReasonStats = new LinkedHashMap<>();
+        stopReasonStats.put("FAILED_LOCKED", 1L);
+        return new BackfillResult(
+                jobId,
+                false,
+                request.scope(),
+                0,
+                0,
+                0,
+                1,
+                0L,
+                0L,
+                0L,
+                0L,
+                0,
+                0,
+                0,
+                1,
+                stopReasonStats,
+                List.of(),
+                0L,
+                0L,
+                0);
     }
 
     private BackfillResult failedResult(String jobId, NormalizedRequest request) {
@@ -285,16 +710,19 @@ public class ProductActivityBackfillService {
                 0,
                 0,
                 1,
-                0,
-                0,
-                0,
-                0,
+                0L,
+                0L,
+                0L,
+                0L,
                 0,
                 0,
                 0,
                 1,
                 Map.of(ActivityProductPaginationRunner.StopReason.UNKNOWN.name(), 1L),
-                List.of());
+                List.of(),
+                0L,
+                0L,
+                0);
     }
 
     private String statusFromCounts(int scanned, int success, int incomplete, int failed) {
@@ -321,17 +749,23 @@ public class ProductActivityBackfillService {
                 || ActivityProductPaginationRunner.StopReason.INVALID_RESPONSE.name().equals(stopReason)) {
             return "FAILED";
         }
+        if (STOP_REASON_FAILED_LOCKED.equals(stopReason)
+                || STOP_REASON_DEADLOCK_RETRY_EXHAUSTED.equals(stopReason)) {
+            return "FAILED";
+        }
         return "INCOMPLETE_CURSOR_ERROR";
     }
 
     private boolean isFailedStopReason(String stopReason) {
         return ActivityProductPaginationRunner.StopReason.API_ERROR.name().equals(stopReason)
-                || ActivityProductPaginationRunner.StopReason.INVALID_RESPONSE.name().equals(stopReason);
+                || ActivityProductPaginationRunner.StopReason.INVALID_RESPONSE.name().equals(stopReason)
+                || STOP_REASON_FAILED_LOCKED.equals(stopReason)
+                || STOP_REASON_DEADLOCK_RETRY_EXHAUSTED.equals(stopReason);
     }
 
     private NormalizedRequest normalize(BackfillRequest request) {
         BackfillRequest safe = request == null
-                ? new BackfillRequest(null, List.of(), null, null, null, null, true, false)
+                ? new BackfillRequest(null, List.of(), null, null, null, null, true, false, null)
                 : request;
         String scope = normalizeScope(safe.scope());
         List<String> activityIds = safe.activityIds() == null
@@ -352,7 +786,8 @@ public class ProductActivityBackfillService {
                 normalizePositive(safe.maxPagesPerActivity(), DEFAULT_MAX_PAGES, Integer.MAX_VALUE),
                 normalizePositive(safe.maxRowsPerActivity(), DEFAULT_MAX_ROWS, Integer.MAX_VALUE),
                 safe.dryRun() == null || safe.dryRun(),
-                Boolean.TRUE.equals(safe.confirm()));
+                Boolean.TRUE.equals(safe.confirm()),
+                safe.displayRefreshMode());
     }
 
     private String normalizeScope(String scope) {
@@ -383,6 +818,49 @@ public class ProductActivityBackfillService {
         }
     }
 
+    private record ActivityBackfillStats(
+            boolean complete,
+            long fetchedRows,
+            long distinctProductIds,
+            int inserted,
+            int updated,
+            int skipped,
+            int unchanged,
+            String stoppedReason,
+            long lockWaitCount,
+            long deadlockRetryCount) {
+    }
+
+    private record BatchedBackfillResult(
+            ProductService.ActivityProductRefreshResult result,
+            long deadlockRetryCount,
+            int unchanged) {
+    }
+
+    private record BatchWriteResult(
+            ProductService.ActivitySnapshotUpsertStats stats,
+            long deadlockRetryCount) {
+    }
+
+    private static final class BackfillBatchWriteException extends RuntimeException {
+        private final String stopReason;
+        private final long retryCount;
+
+        private BackfillBatchWriteException(String stopReason, long retryCount, Throwable cause) {
+            super(cause == null ? stopReason : cause.getMessage(), cause);
+            this.stopReason = stopReason;
+            this.retryCount = retryCount;
+        }
+
+        private String stopReason() {
+            return stopReason;
+        }
+
+        private long retryCount() {
+            return retryCount;
+        }
+    }
+
     public record BackfillRequest(
             String scope,
             List<String> activityIds,
@@ -391,7 +869,8 @@ public class ProductActivityBackfillService {
             Integer maxPagesPerActivity,
             Integer maxRowsPerActivity,
             Boolean dryRun,
-            Boolean confirm) {
+            Boolean confirm,
+            String displayRefreshMode) {
     }
 
     public record BackfillResult(
@@ -411,7 +890,10 @@ public class ProductActivityBackfillService {
             int skipped,
             int failed,
             Map<String, Long> stopReasonStats,
-            List<ProductSyncDryRunProbeService.ActivityDryRunResult> topGapActivities) {
+            List<ProductSyncDryRunProbeService.ActivityDryRunResult> topGapActivities,
+            long lockWaitCount,
+            long deadlockRetryCount,
+            int unchanged) {
     }
 
     private record NormalizedRequest(
@@ -422,6 +904,7 @@ public class ProductActivityBackfillService {
             int maxPagesPerActivity,
             int maxRowsPerActivity,
             boolean dryRun,
-            boolean confirm) {
+            boolean confirm,
+            String displayRefreshMode) {
     }
 }

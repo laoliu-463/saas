@@ -64,8 +64,24 @@ public final class JobLockKeys {
     public static final String PRODUCT_PIN_EXPIRE = "product:pin:expire:job:lock";
     /** 活动商品快照定时同步任务锁 */
     public static final String PRODUCT_ACTIVITY_SYNC = "product:activity:sync:job:lock";
+    /** 商品全量回补全局写锁（与定时同步、backfill 互斥）。 */
+    public static final String PRODUCT_BACKFILL_GLOBAL = "product:backfill:global:job:lock";
+    /** 单活动 backfill 写锁，key 模板：{@code product:backfill:activity:{activityId}:lock}。 */
+    public static final String PRODUCT_BACKFILL_ACTIVITY_PREFIX = "product:backfill:activity:";
+    /** 商品展示状态规则对账（{@code ProductDisplayRuleJob}）写锁，backfill 写完事实层后再触发它。 */
+    public static final String PRODUCT_DISPLAY_REFRESH = "product:display:refresh:job:lock";
     /** 上校合作伙伴数据同步任务锁 */
     public static final String COLONEL_PARTNER_SYNC = "colonel:partner:sync:job:lock";
+
+    /**
+     * 单活动 backfill 写锁 key 生成。
+     *
+     * @param activityId 活动 ID
+     * @return 完整 Redis 锁 key
+     */
+    public static String productBackfillActivityLock(String activityId) {
+        return PRODUCT_BACKFILL_ACTIVITY_PREFIX + activityId + ":job:lock";
+    }
     /** 分区自动维护任务锁 */
     public static final String PARTITION_MAINTENANCE = "partition:maintenance:job:lock";
 
