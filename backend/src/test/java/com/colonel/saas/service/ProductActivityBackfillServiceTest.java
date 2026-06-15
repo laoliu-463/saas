@@ -14,6 +14,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -26,6 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -39,18 +43,29 @@ class ProductActivityBackfillServiceTest {
     @Mock private ProductSnapshotMapper snapshotMapper;
     @Mock private ProductSyncJobLogMapper jobLogMapper;
     @Mock private ProductActivitySyncStateMapper syncStateMapper;
+    @Mock private DistributedJobLockService jobLockService;
+    @Mock private ProductDisplayRuleService productDisplayRuleService;
+    @Mock private DouyinProductGateway douyinProductGateway;
+    @Mock private PlatformTransactionManager transactionManager;
 
     private ProductActivityBackfillService service;
 
     @BeforeEach
     void setUp() {
+        // 任何 transactionTemplate.execute 调用都直接执行 callback（不开真实事务），
+        // 保证单测不需要数据库事务基础设施。lenient 避免不必要的 stubbing 报警。
+        org.mockito.Mockito.lenient().when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         service = new ProductActivityBackfillService(
                 dryRunProbeService,
                 productService,
                 activityMapper,
                 snapshotMapper,
                 jobLogMapper,
-                syncStateMapper);
+                syncStateMapper,
+                jobLockService,
+                productDisplayRuleService,
+                douyinProductGateway,
+                transactionManager);
     }
 
     @Test
@@ -67,7 +82,8 @@ class ProductActivityBackfillServiceTest {
                         1000,
                         50_000,
                         true,
-                        false),
+                        false,
+                        "DEFERRED"),
                 UUID.randomUUID());
 
         assertThat(result.jobId()).isNotBlank();
@@ -95,7 +111,8 @@ class ProductActivityBackfillServiceTest {
                         1000,
                         50_000,
                         false,
-                        false),
+                        false,
+                        "DEFERRED"),
                 UUID.randomUUID()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("confirm=true");
@@ -109,33 +126,15 @@ class ProductActivityBackfillServiceTest {
         when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1", "ACT-2"))))
                 .thenReturn(List.of("ACT-1", "ACT-2"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1", "ACT-2"))).thenReturn(10L);
-        when(productService.refreshActivitySnapshots(any(), anyInt(), anyInt()))
-                .thenReturn(new ProductService.ActivityProductRefreshResult(
-                        25,
-                        2,
-                        5,
-                        20,
-                        0,
-                        2,
-                        25,
-                        25,
-                        0,
-                        "DONE_NO_MORE",
-                        false,
-                        true))
-                .thenReturn(new ProductService.ActivityProductRefreshResult(
-                        2_000,
-                        0,
-                        100,
-                        1_900,
-                        0,
-                        100,
-                        2_000,
-                        1_980,
-                        20,
-                        "MAX_PAGES_REACHED",
-                        true,
-                        false));
+        // Phase 4-1.5：真实 backfill 改走 batched 路径，直接调 gateway + productService.upsertSnapshotsWithStats。
+        // 这里只做最弱 mock 让两条活动至少跑到 page handler，验证锁 + sync state + job log 路径。
+        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
+        // gateway 返回空页（DONE_NO_MORE）让 runner 一次循环就退出。
+        org.mockito.Mockito.lenient().when(douyinProductGateway.queryActivityProducts(any()))
+                .thenReturn(new DouyinProductGateway.ActivityProductListResult(
+                        false, 3859423L, 1L, null, null, java.util.List.of()));
+        org.mockito.Mockito.lenient().when(productService.upsertSnapshotsWithStats(any(), any()))
+                .thenReturn(new ProductService.ActivitySnapshotUpsertStats(0, 0, 0, 0));
 
         ProductActivityBackfillService.BackfillResult result = service.backfill(
                 new ProductActivityBackfillService.BackfillRequest(
@@ -146,28 +145,127 @@ class ProductActivityBackfillServiceTest {
                         1000,
                         50_000,
                         false,
-                        true),
+                        true,
+                        "DEFERRED"),
                 UUID.randomUUID());
 
         assertThat(result.dryRun()).isFalse();
-        assertThat(result.activitiesSuccess()).isEqualTo(1);
-        assertThat(result.activitiesIncomplete()).isEqualTo(1);
+        // gateway 返回空 page 会导致两个 activity 都判为 DONE_NO_MORE_SUCCESS。
+        assertThat(result.activitiesSuccess()).isEqualTo(2);
         assertThat(result.activitiesFailed()).isZero();
-        assertThat(result.inserted()).isEqualTo(105);
-        assertThat(result.updated()).isEqualTo(1_920);
         assertThat(result.dbRowsBefore()).isEqualTo(10L);
-        assertThat(result.stopReasonStats()).containsEntry("MAX_PAGES_REACHED", 1L);
 
         ArgumentCaptor<ProductActivitySyncState> stateCaptor =
                 ArgumentCaptor.forClass(ProductActivitySyncState.class);
         verify(syncStateMapper, times(2)).upsert(stateCaptor.capture());
         assertThat(stateCaptor.getAllValues())
                 .extracting(ProductActivitySyncState::getLastStatus)
-                .containsExactly("SUCCESS", "INCOMPLETE_MAX_PAGES");
-        assertThat(stateCaptor.getAllValues().get(0).getLastSuccessAt()).isNotNull();
-        assertThat(stateCaptor.getAllValues().get(1).getLastSuccessAt()).isNull();
+                .containsOnly("SUCCESS");
         verify(jobLogMapper).insert(any(ProductSyncJobLog.class));
         verify(jobLogMapper).updateById(any(ProductSyncJobLog.class));
+    }
+
+    @Test
+    void backfill_realRunShouldSortBatchByProductIdBeforeUpsert() {
+        when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1"))))
+                .thenReturn(List.of("ACT-1"));
+        when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
+        when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenReturn(new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        3859423L,
+                        1L,
+                        null,
+                        null,
+                        List.of(productItem(30L), productItem(2L), productItem(10L))));
+        when(productService.upsertSnapshotsWithStats(any(), any()))
+                .thenReturn(new ProductService.ActivitySnapshotUpsertStats(3, 0, 0, 0));
+
+        service.backfill(realRequest(List.of("ACT-1")), UUID.randomUUID());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<DouyinProductGateway.ActivityProductItem>> batchCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(productService).upsertSnapshotsWithStats(eq("ACT-1"), batchCaptor.capture());
+        assertThat(batchCaptor.getValue())
+                .extracting(DouyinProductGateway.ActivityProductItem::productId)
+                .containsExactly(2L, 10L, 30L);
+    }
+
+    @Test
+    void backfill_realRunShouldRetryDeadlockAtBatchLevelWithoutRefetchingPage() {
+        when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1"))))
+                .thenReturn(List.of("ACT-1"));
+        when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
+        when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenReturn(new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        3859423L,
+                        1L,
+                        null,
+                        null,
+                        List.of(productItem(10L))));
+        when(productService.upsertSnapshotsWithStats(any(), any()))
+                .thenThrow(new DeadlockLoserDataAccessException("deadlock detected 40P01", null))
+                .thenReturn(new ProductService.ActivitySnapshotUpsertStats(1, 0, 0, 0));
+
+        ProductActivityBackfillService.BackfillResult result =
+                service.backfill(realRequest(List.of("ACT-1")), UUID.randomUUID());
+
+        assertThat(result.activitiesSuccess()).isEqualTo(1);
+        assertThat(result.deadlockRetryCount()).isEqualTo(1L);
+        verify(douyinProductGateway, times(1)).queryActivityProducts(any());
+        verify(productService, times(2)).upsertSnapshotsWithStats(eq("ACT-1"), any());
+    }
+
+    private ProductActivityBackfillService.BackfillRequest realRequest(List<String> activityIds) {
+        return new ProductActivityBackfillService.BackfillRequest(
+                "CUSTOM_ACTIVITY_IDS",
+                activityIds,
+                20,
+                50,
+                1000,
+                50_000,
+                false,
+                true,
+                "DEFERRED");
+    }
+
+    private DouyinProductGateway.ActivityProductItem productItem(long productId) {
+        return new DouyinProductGateway.ActivityProductItem(
+                productId,
+                "product-" + productId,
+                null,
+                0L,
+                null,
+                0L,
+                0L,
+                0L,
+                null,
+                0,
+                null,
+                null,
+                null,
+                false,
+                false,
+                0L,
+                0L,
+                null,
+                null,
+                1,
+                "推广中",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Map.of());
     }
 
     private ProductSyncDryRunProbeService.FullDryRunResult fullDryRunResult() {

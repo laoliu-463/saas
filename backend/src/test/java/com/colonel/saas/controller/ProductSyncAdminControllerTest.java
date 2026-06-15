@@ -56,7 +56,10 @@ class ProductSyncAdminControllerTest {
                         0,
                         0,
                         Map.of("DONE_NO_MORE", 1L),
-                        List.of());
+                        List.of(),
+                        0L,
+                        0L,
+                        0);
         when(backfillService.backfill(any(), eq(userId))).thenReturn(result);
 
         ProductActivityBackfillService.BackfillRequest request =
@@ -68,7 +71,8 @@ class ProductSyncAdminControllerTest {
                         1000,
                         50_000,
                         true,
-                        false);
+                        false,
+                        "DEFERRED");
 
         var response = controller.backfillActivityProducts(request, userId);
 
