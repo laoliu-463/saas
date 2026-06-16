@@ -125,6 +125,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 - 禁止提交 `*.pem`、`*.key`、凭证、私钥、证书。
 - 禁止输出或提交密钥、Token、密码、OAuth code。
 
+### 商品 backfill / dry-run 禁止
+
+- 禁止用同步 HTTP 长请求（`POST /api/product-sync/admin/backfill-activity-products`
+  直接 `Invoke-WebRequest`）跑 `RECENT_30D maxActivities>=10` 任务。
+  任务绑死在 HTTP 连接上，客户端超时或断连 → `ClientAbortException` →
+  `product_sync_job_log` 标 `ABANDONED`（但实际任务仍在跑），
+  出现"ABANDONED 状态但实际 SUCCESS 落库"的不一致（成功时间晚 14-26 分钟）。
+- 商品 backfill / dry-run 必须走异步 job 模式：
+  1. `POST /api/product-sync/admin/backfill-activity-products/async`
+     立即返回 `jobId`（不阻塞 HTTP）。
+  2. 后端 `TaskExecutor` / MQ 异步执行原 backfill service。
+  3. `GET /api/product-sync/admin/backfill-jobs/{jobId}` 查进度。
+  4. job_log 每个 activity / page / batch flush 一次进度。
+  5. 保留现有 lock owner / deadlock retry / stale reconcile / dryRun 边界。
+  6. `confirm=true` 才走真实写库；`dryRun=true` 永不写业务表。
+- 轻量探针（只读）用 `POST /api/product-sync-probes/full-products-dry-run`，
+  参数 `scope=RECENT_30D activityIds=[] pageSize=20 maxActivities=20
+  maxPagesPerActivity=1000 maxRowsPerActivity=50000 dryRun=true`。
+  即使是探针，单次同步请求仍不应超过 5-10 分钟；超过则必须分批或异步。
+- 杀 RUNNING 之前必须先 `SELECT job_id, dry_run FROM product_sync_job_log
+  WHERE status='RUNNING'` 确认是 dry-run（`dry_run=t`），防止误杀实跑。
+- 杀完后必须 `redis-cli KEYS '*backfill*'` 确认业务锁释放。
+
 ## 7. Definition of Done
 
 一个任务只有同时满足以下条件，才允许声明完成：

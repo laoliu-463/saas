@@ -65,6 +65,7 @@ class ProductBackfillConcurrencyAndDeadlockTest {
                 jobLockService,
                 productDisplayRuleService,
                 douyinProductGateway,
+                Runnable::run,
                 transactionManager);
     }
 

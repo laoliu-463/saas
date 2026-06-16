@@ -12,7 +12,9 @@ import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.ProductSyncJobLogMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataAccessException;
@@ -31,6 +33,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -89,6 +93,7 @@ public class ProductActivityBackfillService {
     private final DistributedJobLockService jobLockService;
     private final ProductDisplayRuleService productDisplayRuleService;
     private final DouyinProductGateway douyinProductGateway;
+    private final Executor backfillExecutor;
     private final TransactionTemplate batchTransactionTemplate;
     @Value("${product.sync.activityProduct.fullBackfillEnabled:true}")
     private boolean fullBackfillEnabled = true;
@@ -105,6 +110,7 @@ public class ProductActivityBackfillService {
     @Value("${product.sync.backfill.apiSleepMs:100}")
     private long backfillApiSleepMs = 100L;
 
+    @Autowired
     public ProductActivityBackfillService(
             ProductSyncDryRunProbeService dryRunProbeService,
             ProductService productService,
@@ -115,6 +121,7 @@ public class ProductActivityBackfillService {
             DistributedJobLockService jobLockService,
             ProductDisplayRuleService productDisplayRuleService,
             DouyinProductGateway douyinProductGateway,
+            @Qualifier("applicationTaskExecutor") Executor backfillExecutor,
             PlatformTransactionManager transactionManager) {
         this.dryRunProbeService = dryRunProbeService;
         this.productService = productService;
@@ -125,6 +132,7 @@ public class ProductActivityBackfillService {
         this.jobLockService = jobLockService;
         this.productDisplayRuleService = productDisplayRuleService;
         this.douyinProductGateway = douyinProductGateway;
+        this.backfillExecutor = backfillExecutor;
         TransactionTemplate template = new TransactionTemplate(transactionManager);
         template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         template.setName("product-backfill-batch");
@@ -132,15 +140,76 @@ public class ProductActivityBackfillService {
     }
 
     public BackfillResult backfill(BackfillRequest request, UUID requestedBy) {
-        NormalizedRequest normalized = normalize(request);
-        if (!normalized.dryRun() && !fullBackfillEnabled) {
-            throw BusinessException.stateInvalid("活动商品 full backfill 已被配置关闭");
-        }
-        if (!normalized.dryRun() && !normalized.confirm()) {
-            throw BusinessException.param("真实 backfill 必须显式 confirm=true");
-        }
+        NormalizedRequest normalized = normalizeAndValidate(request);
         String jobId = "product-backfill-" + UUID.randomUUID();
         ProductSyncJobLog jobLog = startJob(jobId, normalized, requestedBy);
+        return executeBackfillWorkflow(jobId, normalized, jobLog);
+    }
+
+    public BackfillAsyncResponse backfillAsync(BackfillRequest request, UUID requestedBy) {
+        NormalizedRequest normalized = normalizeAndValidate(request);
+        String jobId = "product-backfill-" + UUID.randomUUID();
+        ProductSyncJobLog jobLog = startJob(jobId, normalized, requestedBy);
+        try {
+            CompletableFuture.runAsync(() -> executeBackfillWorkflow(jobId, normalized, jobLog),
+                    backfillExecutor);
+        } catch (RuntimeException ex) {
+            String stopReason = stopReasonForException(ex);
+            String errorMessage = buildFailureErrorMessage(
+                    jobId,
+                    null,
+                    null,
+                    stopReason,
+                    ex,
+                    null);
+            finishJob(jobLog, failedResult(jobId, normalized, stopReason), "FAILED", errorMessage, 0, 0);
+            throw ex;
+        }
+        return new BackfillAsyncResponse(jobId, "RUNNING");
+    }
+
+    public BackfillJobStatus getJobStatus(String jobId) {
+        if (!StringUtils.hasText(jobId)) {
+            throw BusinessException.param("jobId 不能为空");
+        }
+        ProductSyncJobLog job = jobLogMapper.selectLatestByJobId(jobId.trim());
+        if (job == null) {
+            throw BusinessException.notFound("未找到对应的 backfill job");
+        }
+        Map<String, Object> requestMeta = readRequestMetadata(job.getRequestParamsJson());
+        return new BackfillJobStatus(
+                job.getJobId(),
+                job.getStatus(),
+                Boolean.TRUE.equals(job.getDryRun()),
+                job.getScope(),
+                valueOrZero(job.getActivitiesScanned()),
+                valueOrZero(job.getActivitiesSuccess()),
+                valueOrZero(job.getActivitiesIncomplete()),
+                valueOrZero(job.getActivitiesFailed()),
+                valueOrZero(job.getApiFetchedRows()),
+                valueOrZero(job.getApiDistinctProductIds()),
+                readMetadataLong(requestMeta, "dbRowsBefore"),
+                readMetadataLong(requestMeta, "estimatedGapRows"),
+                valueOrZero(job.getInserted()),
+                valueOrZero(job.getUpdated()),
+                valueOrZero(job.getSkipped()),
+                valueOrZero(job.getFailed()),
+                readStopReasonStats(job.getStopReasonStatsJson()),
+                requestMeta.get("currentActivityId") == null || !StringUtils.hasText(requestMeta.get("currentActivityId").toString())
+                        ? null
+                        : String.valueOf(requestMeta.get("currentActivityId")),
+                requestMeta.get("lastProgressAt") == null ? null : requestMeta.get("lastProgressAt").toString(),
+                readMetadataLong(requestMeta, "lockWaitCount"),
+                readMetadataLong(requestMeta, "deadlockRetryCount"),
+                0,
+                job.getStartedAt() == null ? null : job.getStartedAt().toString(),
+                job.getFinishedAt() == null ? null : job.getFinishedAt().toString());
+    }
+
+    private BackfillResult executeBackfillWorkflow(
+            String jobId,
+            NormalizedRequest normalized,
+            ProductSyncJobLog jobLog) {
         try {
             if (normalized.dryRun()) {
                 BackfillResult dryRunResult = runDryRun(jobId, normalized);
@@ -195,6 +264,17 @@ public class ProductActivityBackfillService {
         }
     }
 
+    private NormalizedRequest normalizeAndValidate(BackfillRequest request) {
+        NormalizedRequest normalized = normalize(request);
+        if (!normalized.dryRun() && !fullBackfillEnabled) {
+            throw BusinessException.stateInvalid("活动商品 full backfill 已被配置关闭");
+        }
+        if (!normalized.dryRun() && !normalized.confirm()) {
+            throw BusinessException.param("真实 backfill 必须显式 confirm=true");
+        }
+        return normalized;
+    }
+
     private BackfillResult runDryRun(String jobId, NormalizedRequest request) {
         ProductSyncDryRunProbeService.FullDryRunResult dryRun = dryRunProbeService.fullDryRun(
                 new ProductSyncDryRunProbeService.FullDryRunRequest(
@@ -231,10 +311,8 @@ public class ProductActivityBackfillService {
     private BackfillResult runRealBackfillWithLocks(String jobId, NormalizedRequest request, ProductSyncJobLog jobLog) {
         // 真实写库必须先拿 PRODUCT_BACKFILL_GLOBAL 锁，与 ProductActivitySyncJob 互斥。
         String globalLockKey = JobLockKeys.PRODUCT_BACKFILL_GLOBAL;
-        String globalLockValue = lockValueForJob(jobId, request.scope(), request.activityIds());
-        if (!jobLockService.tryAcquire(globalLockKey, BACKFILL_LOCK_TTL, globalLockValue)) {
-            JobLockSnapshot ownerSnapshot = lockSnapshot(globalLockKey);
-            String errorMessage = buildFailedLockErrorMessage(jobId, null, "GLOBAL", globalLockKey, ownerSnapshot);
+        if (!jobLockService.tryAcquire(globalLockKey, BACKFILL_LOCK_TTL)) {
+            String errorMessage = buildFailedLockErrorMessage(jobId, null, "GLOBAL", globalLockKey, "全局回填锁被占用");
             log.warn("ProductActivityBackfillService skipped, global backfill lock held, jobId={}, error={}", jobId, errorMessage);
             BackfillResult locked = buildLockedResult(jobId, request);
             finishJob(jobLog, locked, "FAILED_LOCKED", errorMessage, 0, 0);
@@ -262,12 +340,16 @@ public class ProductActivityBackfillService {
             sortedActivityIds.sort(Comparator.naturalOrder());
 
             for (String activityId : sortedActivityIds) {
+                jobLog = updateProgressMetadata(jobLog, activityId);
                 String activityLockKey = JobLockKeys.productBackfillActivityLock(activityId);
-                String activityLockValue = lockValueForJob(jobId, "ACTIVITY", List.of(activityId));
-                if (!jobLockService.tryAcquire(activityLockKey, BACKFILL_LOCK_TTL, activityLockValue)) {
+                if (!jobLockService.tryAcquire(activityLockKey, BACKFILL_LOCK_TTL)) {
                     totalLockWaitCount++;
-                    JobLockSnapshot ownerSnapshot = lockSnapshot(activityLockKey);
-                    String errorMessage = buildFailedLockErrorMessage(jobId, activityId, "ACTIVITY", activityLockKey, ownerSnapshot);
+                    String errorMessage = buildFailedLockErrorMessage(
+                            jobId,
+                            activityId,
+                            "ACTIVITY",
+                            activityLockKey,
+                            "活动回填锁被占用");
                     log.warn("ProductActivityBackfillService activity lock held, skip activityId={}, jobId={}, error={}",
                             activityId, jobId, errorMessage);
                     failed++;
@@ -328,7 +410,6 @@ public class ProductActivityBackfillService {
                             request.scope(),
                             stopReason,
                             ex,
-                            ownerLockSnapshot(activityLockKey),
                             null,
                             null);
                     failureMessages.add(failureMessage);
@@ -336,7 +417,7 @@ public class ProductActivityBackfillService {
                             activityId, jobId, stopReason, failureMessage, ex);
                     upsertFailedActivityState(activityId, request.scope(), stopReason, failureMessage);
                 } finally {
-                    jobLockService.releaseWithOwner(activityLockKey, activityLockValue);
+                    jobLockService.release(activityLockKey);
                 }
             }
 
@@ -384,7 +465,7 @@ public class ProductActivityBackfillService {
             finishJob(jobLog, result, status, finalErrorMessage, totalLockWaitCount, totalDeadlockRetryCount);
             return result;
         } finally {
-            jobLockService.releaseWithOwner(globalLockKey, globalLockValue);
+            jobLockService.release(globalLockKey);
         }
     }
 
@@ -627,8 +708,16 @@ public class ProductActivityBackfillService {
             String scope,
             String stopReason,
             Throwable ex,
-            JobLockSnapshot lockSnapshot) {
-        return buildFailureErrorMessage(jobId, activityId, scope, stopReason, ex, lockSnapshot, null, null);
+            String lockInfo) {
+        return buildFailureErrorMessage(
+                jobId,
+                activityId,
+                scope,
+                stopReason,
+                ex,
+                lockInfo,
+                null,
+                null);
     }
 
     private String buildFailureErrorMessage(
@@ -637,7 +726,7 @@ public class ProductActivityBackfillService {
             String scope,
             String stopReason,
             Throwable ex,
-            JobLockSnapshot lockSnapshot,
+            String lockInfo,
             String explicitRawCause,
             String explicitMessage) {
         String rawCause = StringUtils.hasText(explicitRawCause)
@@ -647,7 +736,7 @@ public class ProductActivityBackfillService {
         String exceptionClass = ex == null ? "N/A" : ex.getClass().getName();
         String rootCauseClass = ex == null ? "" : rootCauseClass(ex);
         return String.format(
-                "type=%s; rawCause=%s; exceptionClass=%s; rootCauseClass=%s; jobId=%s; activityId=%s; scope=%s; stopReason=%s; rootCause=%s; sqlState=%s; ownerJobId=%s; ownerScope=%s; lockKey=%s; lockValue=%s; httpStatus=%s; sdkCode=%s; message=%s",
+                "type=%s; rawCause=%s; exceptionClass=%s; rootCauseClass=%s; jobId=%s; activityId=%s; scope=%s; stopReason=%s; rootCause=%s; sqlState=%s; lockInfo=%s; httpStatus=%s; sdkCode=%s; message=%s",
                 "FAILED",
                 rawCause,
                 exceptionClass,
@@ -658,13 +747,47 @@ public class ProductActivityBackfillService {
                 stopReason,
                 rootCauseMessage(ex),
                 ex == null ? "" : sqlStateFromThrowable(ex),
-                lockSnapshot == null ? "" : lockSnapshot.ownerJobId(),
-                lockSnapshot == null ? "" : lockSnapshot.scope(),
-                lockSnapshot == null ? "" : lockSnapshot.lockKey(),
-                lockSnapshot == null ? "" : lockSnapshot.lockValue(),
+                lockInfo == null ? "" : lockInfo,
                 ex == null ? "" : httpStatusFromThrowable(ex),
                 ex == null ? "" : sdkCodeFromThrowable(ex),
                 message);
+    }
+
+    private String buildFailureErrorMessage(
+            String jobId,
+            String activityId,
+            String scope,
+            String stopReason,
+            Throwable ex,
+            String explicitRawCause,
+            String explicitMessage) {
+        return buildFailureErrorMessage(
+                jobId,
+                activityId,
+                scope,
+                stopReason,
+                ex,
+                null,
+                explicitRawCause,
+                explicitMessage);
+    }
+
+    private String buildFailedLockErrorMessage(String jobId, String activityId, String lockScope, String lockKey,
+                                              String extraMessage) {
+        JobLockSnapshot ownerSnapshot = lockSnapshot(lockKey);
+        return String.format(
+                "type=FAILED_LOCKED; jobId=%s; activityId=%s; scope=%s; lockKey=%s; ownerJobId=%s; ownerActivityId=%s; ownerScope=%s; lockValue=%s; ttlSeconds=%d; acquiredAt=%s; message=%s",
+                jobId,
+                activityId == null ? "" : activityId,
+                lockScope,
+                lockKey,
+                ownerSnapshot == null ? "" : ownerSnapshot.ownerJobId(),
+                ownerSnapshot == null ? "" : ownerSnapshot.ownerActivityId(),
+                ownerSnapshot == null ? "" : ownerSnapshot.scope(),
+                ownerSnapshot == null ? "" : ownerSnapshot.lockValue(),
+                ownerSnapshot == null ? -1L : ownerSnapshot.ttlSeconds(),
+                ownerSnapshot == null ? "" : ownerSnapshot.acquiredAt(),
+                extraMessage);
     }
 
     private JobLockSnapshot lockSnapshot(String lockKey) {
@@ -708,47 +831,6 @@ public class ProductActivityBackfillService {
             }
         }
         return "";
-    }
-
-    private String buildFailedLockErrorMessage(String jobId, String activityId, String lockScope, String lockKey,
-                                              JobLockSnapshot ownerSnapshot) {
-        return String.format(
-                "type=FAILED_LOCKED; jobId=%s; activityId=%s; scope=%s; lockKey=%s; ownerJobId=%s; ownerActivityId=%s; ownerScope=%s; lockValue=%s; ttlSeconds=%d; acquiredAt=%s; message=global/activity lock held",
-                jobId,
-                activityId == null ? "" : activityId,
-                lockScope,
-                lockKey,
-                ownerSnapshot == null ? "" : ownerSnapshot.ownerJobId(),
-                ownerSnapshot == null ? "" : ownerSnapshot.ownerActivityId(),
-                ownerSnapshot == null ? "" : ownerSnapshot.scope(),
-                ownerSnapshot == null ? "" : ownerSnapshot.lockValue(),
-                ownerSnapshot == null ? -1L : ownerSnapshot.ttlSeconds(),
-                ownerSnapshot == null ? "" : ownerSnapshot.acquiredAt());
-    }
-
-    private String lockValueForJob(String jobId, String scope, List<String> activityIds) {
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("ownerJobId", jobId);
-        metadata.put("ownerActivityId", activityIds == null || activityIds.isEmpty() ? null : activityIds.get(0));
-        metadata.put("scope", scope);
-        metadata.put("activityIds", activityIds);
-        metadata.put("lockKey", activityIds == null || activityIds.isEmpty()
-                ? JobLockKeys.PRODUCT_BACKFILL_GLOBAL
-                : JobLockKeys.productBackfillActivityLock(activityIds.get(0)));
-        metadata.put("ttlSeconds", BACKFILL_LOCK_TTL.getSeconds());
-        metadata.put("acquiredAt", java.time.LocalDateTime.now().toString());
-        metadata.put("releasedAt", null);
-        try {
-            return OBJECT_MAPPER.writeValueAsString(metadata);
-        } catch (JsonProcessingException ex) {
-            return String.format(
-                    "{\"ownerJobId\":\"%s\",\"ownerActivityId\":\"%s\",\"scope\":\"%s\",\"ttlSeconds\":%d,\"acquiredAt\":\"%s\"}",
-                    jobId,
-                    activityIds == null || activityIds.isEmpty() ? "" : activityIds.get(0),
-                    scope,
-                    BACKFILL_LOCK_TTL.getSeconds(),
-                    java.time.LocalDateTime.now());
-        }
     }
 
     private String rawCauseForException(Throwable ex) {
@@ -1025,7 +1107,19 @@ public class ProductActivityBackfillService {
         log.setDryRun(request.dryRun());
         log.setStatus("RUNNING");
         log.setRequestedBy(requestedBy);
-        log.setRequestParamsJson(toJson(request));
+        log.setRequestParamsJson(appendMeta(toJson(request), Map.of(
+                "currentActivityId",
+                "",
+                "lastProgressAt",
+                now.toString(),
+                "lockWaitCount",
+                0L,
+                "deadlockRetryCount",
+                0L,
+                "dbRowsBefore",
+                0L,
+                "estimatedGapRows",
+                0L)));
         log.setStartedAt(now);
         log.setCreateTime(now);
         log.setUpdateTime(now);
@@ -1052,22 +1146,93 @@ public class ProductActivityBackfillService {
         log.setUpdateTime(LocalDateTime.now());
         // 把 lockWaitCount / deadlockRetryCount 写入 requestParamsJson 的 metadata 子段，
         // 现有 schema 不新增列，避免破坏既有 reader。
-        log.setRequestParamsJson(appendMeta(log.getRequestParamsJson(), lockWaitCount, deadlockRetryCount));
+        log.setRequestParamsJson(appendMeta(log.getRequestParamsJson(),
+                Map.of(
+                        "lockWaitCount", lockWaitCount,
+                        "deadlockRetryCount", deadlockRetryCount,
+                        "dbRowsBefore", result.dbRowsBefore(),
+                        "estimatedGapRows", result.estimatedGapRows(),
+                        "currentActivityId", "",
+                        "lastProgressAt", LocalDateTime.now().toString())));
         jobLogMapper.updateById(log);
     }
 
-    private String appendMeta(String original, long lockWaitCount, long deadlockRetryCount) {
+    private String appendMeta(String original, Map<String, Object> updates) {
         if (original == null || original.isBlank()) {
             original = "{}";
         }
         try {
             Map<String, Object> map = OBJECT_MAPPER.readValue(original, Map.class);
-            map.put("lockWaitCount", lockWaitCount);
-            map.put("deadlockRetryCount", deadlockRetryCount);
+            map.putAll(updates);
             return OBJECT_MAPPER.writeValueAsString(map);
         } catch (JsonProcessingException ex) {
             return original;
         }
+    }
+
+    private ProductSyncJobLog updateProgressMetadata(ProductSyncJobLog log, String currentActivityId) {
+        log.setRequestParamsJson(appendMeta(log.getRequestParamsJson(), Map.of(
+                "currentActivityId", currentActivityId == null ? "" : currentActivityId,
+                "lastProgressAt", LocalDateTime.now().toString())));
+        log.setUpdateTime(LocalDateTime.now());
+        jobLogMapper.updateById(log);
+        return log;
+    }
+
+    private Map<String, Object> readRequestMetadata(String requestParamsJson) {
+        if (!StringUtils.hasText(requestParamsJson)) {
+            return Map.of();
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = OBJECT_MAPPER.readValue(requestParamsJson, Map.class);
+            return map == null ? Map.of() : map;
+        } catch (JsonProcessingException ex) {
+            return Map.of();
+        }
+    }
+
+    private Map<String, Long> readStopReasonStats(String stopReasonStatsJson) {
+        if (!StringUtils.hasText(stopReasonStatsJson)) {
+            return Map.of();
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Number> raw = OBJECT_MAPPER.readValue(stopReasonStatsJson, Map.class);
+            Map<String, Long> converted = new LinkedHashMap<>();
+            for (Map.Entry<String, Number> entry : raw.entrySet()) {
+                if (entry.getKey() == null || entry.getValue() == null) {
+                    continue;
+                }
+                converted.put(entry.getKey(), entry.getValue().longValue());
+            }
+            return converted;
+        } catch (JsonProcessingException ex) {
+            return Map.of();
+        }
+    }
+
+    private long readMetadataLong(Map<String, Object> metadata, String key) {
+        if (metadata == null || !metadata.containsKey(key) || metadata.get(key) == null) {
+            return 0L;
+        }
+        Object raw = metadata.get(key);
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(raw.toString());
+        } catch (NumberFormatException ex) {
+            return 0L;
+        }
+    }
+
+    private int valueOrZero(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private long valueOrZero(Long value) {
+        return value == null ? 0L : value;
     }
 
     private BackfillResult buildLockedResult(String jobId, NormalizedRequest request) {
@@ -1321,6 +1486,38 @@ public class ProductActivityBackfillService {
             long lockWaitCount,
             long deadlockRetryCount,
             int unchanged) {
+    }
+
+    public record BackfillAsyncResponse(
+            String jobId,
+            String status) {
+    }
+
+    public record BackfillJobStatus(
+            String jobId,
+            String status,
+            boolean dryRun,
+            String scope,
+            int activitiesScanned,
+            int activitiesSuccess,
+            int activitiesIncomplete,
+            int activitiesFailed,
+            long apiFetchedRows,
+            long apiDistinctProductIds,
+            long dbRowsBefore,
+            long estimatedGapRows,
+            int inserted,
+            int updated,
+            int skipped,
+            int failed,
+            Map<String, Long> stopReasonStats,
+            String currentActivityId,
+            String lastProgressAt,
+            long lockWaitCount,
+            long deadlockRetryCount,
+            int unchanged,
+            String startedAt,
+            String finishedAt) {
     }
 
     private record NormalizedRequest(

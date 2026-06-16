@@ -43,4 +43,16 @@ public interface ProductSyncJobLogMapper extends BaseMapper<ProductSyncJobLog> {
             """)
     int abandonStaleRunningJob(@Param("id") java.util.UUID id,
                                 @Param("finishedAt") LocalDateTime finishedAt);
+
+    /**
+     * 按 jobId 查询最新一条任务记录（同类 jobId 应只会有一条有效记录）。
+     */
+    @Select("""
+            SELECT * FROM product_sync_job_log
+            WHERE deleted = 0
+              AND job_id = #{jobId}
+            ORDER BY create_time DESC
+            LIMIT 1
+            """)
+    ProductSyncJobLog selectLatestByJobId(@Param("jobId") String jobId);
 }

@@ -65,6 +65,7 @@ class ProductActivityBackfillServiceTest {
                 jobLockService,
                 productDisplayRuleService,
                 douyinProductGateway,
+                Runnable::run,
                 transactionManager);
     }
 

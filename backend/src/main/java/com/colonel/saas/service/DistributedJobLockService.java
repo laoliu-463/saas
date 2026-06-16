@@ -122,6 +122,23 @@ public class DistributedJobLockService {
     }
 
     /**
+     * 兼容历史调用：旧实现允许传入任意锁值并在 Redis 中存储。
+     *
+     * <p>当前业务不依赖锁值语义，统一改为只按 key/ttl 判断锁状态。
+     * 该重载保留给单测和历史调用，忽略 value 入参。</p>
+     *
+     * @param lockKey 锁键名，不可为空
+     * @param ttl     锁过期时间，必须为正数
+     * @param ignored 锁值占位参数（兼容旧签名，当前忽略）
+     * @return {@code true} 表示获取成功
+     * @deprecated 请使用 {@link #tryAcquire(String, Duration)}。
+     */
+    @Deprecated
+    public boolean tryAcquire(String lockKey, Duration ttl, Object ignored) {
+        return tryAcquire(lockKey, ttl);
+    }
+
+    /**
      * 释放分布式锁，同时清理 Redis 锁和本地回退锁。
      *
      * <ol>
@@ -152,5 +169,34 @@ public class DistributedJobLockService {
             }
             throw ex;
         }
+    }
+
+    /**
+     * 兼容历史调用：旧实现会携带锁 owner 标识并按 owner 释放。
+     *
+     * <p>当前锁服务使用固定 key 语义，owner 无法参与核验，因此本方法仅做兼容，
+     * 等价于 {@link #release(String)}。</p>
+     *
+     * @param lockKey 锁键名
+     * @param ignored 锁值占位参数（当前忽略）
+     * @deprecated 请使用 {@link #release(String)}。
+     */
+    @Deprecated
+    public void releaseWithOwner(String lockKey, Object ignored) {
+        release(lockKey);
+    }
+
+    /**
+     * 兼容历史实现：返回锁持有方信息，当前实现不持久化 owner，因此返回 {@code null}。
+     */
+    public String currentLockValue(String lockKey) {
+        return null;
+    }
+
+    /**
+     * 兼容历史实现：返回锁 TTL 秒数，当前实现不在应用侧可观测。
+     */
+    public long currentLockTtlSeconds(String lockKey) {
+        return 0L;
     }
 }

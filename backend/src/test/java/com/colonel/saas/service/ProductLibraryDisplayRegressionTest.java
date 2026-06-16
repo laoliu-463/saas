@@ -59,6 +59,7 @@ class ProductLibraryDisplayRegressionTest {
                 jobLockService,
                 productDisplayRuleService,
                 douyinProductGateway,
+                Runnable::run,
                 transactionManager);
     }
 
