@@ -71,7 +71,10 @@ class ProductBackfillConcurrencyAndDeadlockTest {
     @Test
     void backfill_lockNotAcquired_shouldReturnFailedLockedAndNotWriteBusiness() {
         // 全局锁被占，backfill 必须立刻放弃、不进入真实写库、status=FAILED_LOCKED。
-        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class))).thenReturn(false);
+        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class), any())).thenReturn(false);
+        when(jobLockService.currentLockValue(JobLockKeys.PRODUCT_BACKFILL_GLOBAL))
+                .thenReturn("{\"ownerJobId\":\"owner-global-1\",\"ownerActivityId\":\"ACT-1\",\"scope\":\"CUSTOM_ACTIVITY_IDS\",\"acquiredAt\":\"2026-06-15T19:00:00\"}");
+        when(jobLockService.currentLockTtlSeconds(JobLockKeys.PRODUCT_BACKFILL_GLOBAL)).thenReturn(1200L);
 
         ProductActivityBackfillService.BackfillResult result = service.backfill(
                 new ProductActivityBackfillService.BackfillRequest(
@@ -92,16 +95,23 @@ class ProductBackfillConcurrencyAndDeadlockTest {
         verify(productService, never()).upsertSnapshotsWithStats(any(), any());
         verify(syncStateMapper, never()).upsert(any());
         // job log 一定写了 status = FAILED_LOCKED。
+        ArgumentCaptor<ProductSyncJobLog> jobLogCaptor = ArgumentCaptor.forClass(ProductSyncJobLog.class);
+        verify(jobLogMapper, times(1)).updateById(jobLogCaptor.capture());
         verify(jobLogMapper, times(1)).insert(any());
-        verify(jobLogMapper, times(1)).updateById(any());
+        assertThat(jobLogCaptor.getValue().getErrorMessage())
+                .contains("ownerJobId=owner-global-1");
+        assertThat(jobLogCaptor.getValue().getErrorMessage()).contains("lockKey=product:backfill:global:job:lock");
     }
 
     @Test
     void backfill_activityLockHeld_shouldSkipActivityAndContinueOthers() {
         // 全局锁能拿，activity 锁一个能拿一个不能拿。
-        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class))).thenReturn(true);
-        when(jobLockService.tryAcquire(eq(JobLockKeys.productBackfillActivityLock("ACT-1")), any(Duration.class))).thenReturn(false);
-        when(jobLockService.tryAcquire(eq(JobLockKeys.productBackfillActivityLock("ACT-2")), any(Duration.class))).thenReturn(true);
+        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class), any())).thenReturn(true);
+        when(jobLockService.tryAcquire(eq(JobLockKeys.productBackfillActivityLock("ACT-1")), any(Duration.class), any())).thenReturn(false);
+        when(jobLockService.tryAcquire(eq(JobLockKeys.productBackfillActivityLock("ACT-2")), any(Duration.class), any())).thenReturn(true);
+        when(jobLockService.currentLockValue(JobLockKeys.productBackfillActivityLock("ACT-1")))
+                .thenReturn("{\"ownerJobId\":\"owner-activity-1\",\"ownerActivityId\":\"ACT-1\",\"scope\":\"CUSTOM_ACTIVITY_IDS\",\"acquiredAt\":\"2026-06-15T19:10:00\"}");
+        when(jobLockService.currentLockTtlSeconds(JobLockKeys.productBackfillActivityLock("ACT-1"))).thenReturn(600L);
         when(activityMapper.selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any()))
                 .thenReturn(List.of("ACT-1", "ACT-2"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1", "ACT-2"))).thenReturn(0L);
@@ -137,13 +147,14 @@ class ProductBackfillConcurrencyAndDeadlockTest {
                 .satisfies(state -> {
                     assertThat(state.getLastStatus()).isEqualTo("FAILED");
                     assertThat(state.getLastStopReason()).isEqualTo("FAILED_LOCKED");
+                    assertThat(state.getLastErrorMessage()).contains("ownerJobId=owner-activity-1");
                 });
     }
 
     @Test
     void backfill_deadlockRetry_shouldRetryUpToMaxThenSucceed() {
         DouyinProductGateway.ActivityProductItem item = newItem(3859423L);
-        when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
+        when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         when(activityMapper.selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any()))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
@@ -178,7 +189,7 @@ class ProductBackfillConcurrencyAndDeadlockTest {
     @Test
     void backfill_lockNotAvailableSqlState_shouldAlsoRetry() {
         DouyinProductGateway.ActivityProductItem item = newItem(3859423L);
-        when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
+        when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         when(activityMapper.selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any()))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
@@ -202,7 +213,7 @@ class ProductBackfillConcurrencyAndDeadlockTest {
     void backfill_deadlockRetryExhausted_shouldFailWithoutRefetchingPage() {
         ReflectionTestUtils.setField(service, "deadlockRetryMax", 1);
         DouyinProductGateway.ActivityProductItem item = newItem(3859423L);
-        when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
+        when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         when(activityMapper.selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any()))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
@@ -235,6 +246,7 @@ class ProductBackfillConcurrencyAndDeadlockTest {
         verify(syncStateMapper).upsert(stateCaptor.capture());
         assertThat(stateCaptor.getValue().getLastStatus()).isEqualTo("FAILED");
         assertThat(stateCaptor.getValue().getLastStopReason()).isEqualTo("DEADLOCK_RETRY_EXHAUSTED");
+        assertThat(stateCaptor.getValue().getLastErrorMessage()).contains("rawCause=DB_ERROR");
     }
 
     private ProductActivityBackfillService.BackfillRequest realRequest(String activityId, String displayRefreshMode) {

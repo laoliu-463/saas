@@ -72,6 +72,7 @@ class ProductActivityBackfillServiceTest {
     void backfill_dryRunShouldDelegateProbeAndWriteJobLogWithoutBusinessWrites() {
         when(dryRunProbeService.fullDryRun(any()))
                 .thenReturn(fullDryRunResult());
+        ArgumentCaptor<ProductSyncJobLog> jobLogCaptor = ArgumentCaptor.forClass(ProductSyncJobLog.class);
 
         ProductActivityBackfillService.BackfillResult result = service.backfill(
                 new ProductActivityBackfillService.BackfillRequest(
@@ -98,6 +99,63 @@ class ProductActivityBackfillServiceTest {
         verify(snapshotMapper, never()).upsert(any());
         verify(jobLogMapper).insert(any(ProductSyncJobLog.class));
         verify(jobLogMapper).updateById(any(ProductSyncJobLog.class));
+        verify(jobLogMapper).updateById(jobLogCaptor.capture());
+        assertThat(jobLogCaptor.getValue().getErrorMessage()).isNullOrEmpty();
+    }
+
+    @Test
+    void backfill_dryRunFailedShouldPersistErrorMessage() {
+        when(dryRunProbeService.fullDryRun(any()))
+                .thenReturn(failedDryRunResult());
+        ArgumentCaptor<ProductSyncJobLog> jobLogCaptor = ArgumentCaptor.forClass(ProductSyncJobLog.class);
+
+        ProductActivityBackfillService.BackfillResult result = service.backfill(
+                new ProductActivityBackfillService.BackfillRequest(
+                        "CUSTOM_ACTIVITY_IDS",
+                        List.of("3859423"),
+                        20,
+                        1,
+                        1000,
+                        50_000,
+                        true,
+                        false,
+                        "DEFERRED"),
+                UUID.randomUUID());
+
+        assertThat(result.dryRun()).isTrue();
+        assertThat(result.activitiesFailed()).isEqualTo(1);
+        assertThat(result.stopReasonStats()).containsEntry("API_ERROR", 1L);
+        verify(jobLogMapper).insert(any(ProductSyncJobLog.class));
+        verify(jobLogMapper).updateById(jobLogCaptor.capture());
+        assertThat(jobLogCaptor.getValue().getErrorMessage()).isNotBlank();
+    }
+
+    @Test
+    void backfill_realRunFetchPageThrowsShouldPersistRawCauseAndFailureMessage() {
+        when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1"))))
+                .thenReturn(List.of("ACT-1"));
+        when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
+        when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
+        when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenThrow(new RuntimeException("upstream 500"));
+
+        ArgumentCaptor<ProductActivitySyncState> stateCaptor =
+                ArgumentCaptor.forClass(ProductActivitySyncState.class);
+        ArgumentCaptor<ProductSyncJobLog> jobLogCaptor = ArgumentCaptor.forClass(ProductSyncJobLog.class);
+
+        ProductActivityBackfillService.BackfillResult result = service.backfill(
+                realRequest(List.of("ACT-1")),
+                UUID.randomUUID());
+
+        assertThat(result.activitiesFailed()).isEqualTo(1);
+        verify(syncStateMapper).upsert(stateCaptor.capture());
+        ProductActivitySyncState state = stateCaptor.getValue();
+        assertThat(state.getLastStatus()).isEqualTo("FAILED");
+        assertThat(state.getLastErrorMessage()).isNotBlank();
+        assertThat(state.getLastErrorMessage()).contains("rawCause=UPSTREAM_API_ERROR");
+        verify(jobLogMapper).updateById(jobLogCaptor.capture());
+        assertThat(jobLogCaptor.getValue().getErrorMessage()).isNotBlank();
     }
 
     @Test
@@ -128,6 +186,7 @@ class ProductActivityBackfillServiceTest {
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1", "ACT-2"))).thenReturn(10L);
         // Phase 4-1.5：真实 backfill 改走 batched 路径，直接调 gateway + productService.upsertSnapshotsWithStats。
         // 这里只做最弱 mock 让两条活动至少跑到 page handler，验证锁 + sync state + job log 路径。
+        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
         // gateway 返回空页（DONE_NO_MORE）让 runner 一次循环就退出。
         org.mockito.Mockito.lenient().when(douyinProductGateway.queryActivityProducts(any()))
@@ -170,6 +229,7 @@ class ProductActivityBackfillServiceTest {
         when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1"))))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
+        when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
         when(douyinProductGateway.queryActivityProducts(any()))
                 .thenReturn(new DouyinProductGateway.ActivityProductListResult(
@@ -198,6 +258,7 @@ class ProductActivityBackfillServiceTest {
         when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1"))))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
+        when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
         when(douyinProductGateway.queryActivityProducts(any()))
                 .thenReturn(new DouyinProductGateway.ActivityProductListResult(
@@ -284,7 +345,7 @@ class ProductActivityBackfillServiceTest {
                         0,
                         "DONE_NO_MORE",
                         false,
-                        List.of(),
+                        List.<ActivityProductPaginationRunner.PageSummary>of(),
                         List.of());
         return new ProductSyncDryRunProbeService.FullDryRunResult(
                 true,
@@ -304,6 +365,45 @@ class ProductActivityBackfillServiceTest {
                 List.of(activity),
                 List.of(activity),
                 List.of(),
+                List.of(activity));
+    }
+
+    private ProductSyncDryRunProbeService.FullDryRunResult failedDryRunResult() {
+        ProductSyncDryRunProbeService.ActivityDryRunResult activity =
+                new ProductSyncDryRunProbeService.ActivityDryRunResult(
+                        "3859423",
+                        true,
+                        20,
+                        1000,
+                        1,
+                        0,
+                        0,
+                        0,
+                        1,
+                        0,
+                        20,
+                        "API_ERROR",
+                        true,
+                        List.<ActivityProductPaginationRunner.PageSummary>of(),
+                        List.of("gateway timeout"));
+        return new ProductSyncDryRunProbeService.FullDryRunResult(
+                true,
+                "CUSTOM_ACTIVITY_IDS",
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                20,
+                0,
+                0,
+                1,
+                Map.of("API_ERROR", 1L),
+                List.of(),
+                List.of(),
+                List.of(new ProductSyncDryRunProbeService.ApiError("3859423", "API_ERROR", "gateway timeout")),
                 List.of(activity));
     }
 }

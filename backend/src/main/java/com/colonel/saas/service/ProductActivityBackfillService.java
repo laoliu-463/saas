@@ -74,6 +74,11 @@ public class ProductActivityBackfillService {
     private static final Duration BACKFILL_LOCK_TTL = Duration.ofMinutes(30);
     private static final String STOP_REASON_FAILED_LOCKED = "FAILED_LOCKED";
     private static final String STOP_REASON_DEADLOCK_RETRY_EXHAUSTED = "DEADLOCK_RETRY_EXHAUSTED";
+    private static final String STOP_REASON_UPSTREAM_API_ERROR = "UPSTREAM_API_ERROR";
+    private static final String STOP_REASON_DB_ERROR = "DB_ERROR";
+    private static final String STOP_REASON_LOCK_ERROR = "LOCK_ERROR";
+    private static final String STOP_REASON_TIMEOUT_ERROR = "TIMEOUT_ERROR";
+    private static final String STOP_REASON_UNKNOWN_ERROR = "UNKNOWN_ERROR";
 
     private final ProductSyncDryRunProbeService dryRunProbeService;
     private final ProductService productService;
@@ -139,22 +144,53 @@ public class ProductActivityBackfillService {
         try {
             if (normalized.dryRun()) {
                 BackfillResult dryRunResult = runDryRun(jobId, normalized);
-                finishJob(jobLog, dryRunResult,
-                        statusFromCounts(dryRunResult.activitiesScanned(),
-                                dryRunResult.activitiesSuccess(),
-                                dryRunResult.activitiesIncomplete(),
-                                dryRunResult.activitiesFailed()),
-                        null, 0, 0);
+                String status = statusFromCounts(dryRunResult.activitiesScanned(),
+                        dryRunResult.activitiesSuccess(),
+                        dryRunResult.activitiesIncomplete(),
+                        dryRunResult.activitiesFailed());
+                String dryRunErrorMessage = null;
+                if (!"SUCCESS".equals(status)) {
+                    String stopReason = dominantStopReason(dryRunResult.stopReasonStats());
+                    String rawCause = StringUtils.hasText(stopReason)
+                            ? normalizeRawCause(stopReason)
+                            : STOP_REASON_UNKNOWN_ERROR;
+                    dryRunErrorMessage = buildFailureErrorMessage(
+                            jobId,
+                            null,
+                            normalized.scope(),
+                            stopReason,
+                            null,
+                            null,
+                            rawCause,
+                            "dry run failed");
+                }
+                finishJob(jobLog, dryRunResult, status, dryRunErrorMessage, 0, 0);
                 return dryRunResult;
             }
             return runRealBackfillWithLocks(jobId, normalized, jobLog);
         } catch (RuntimeException ex) {
             log.error("ProductActivityBackfillService job failed, jobId={}, message={}", jobId, ex.getMessage(), ex);
-            finishJob(jobLog, failedResult(jobId, normalized), "FAILED", ex.getMessage(), 0, 0);
+            String stopReason = stopReasonForException(ex);
+            String errorMessage = buildFailureErrorMessage(
+                    jobId,
+                    null,
+                    null,
+                    stopReason,
+                    ex,
+                    null);
+            finishJob(jobLog, failedResult(jobId, normalized, stopReason), "FAILED", errorMessage, 0, 0);
             throw ex;
         } catch (Throwable ex) {
             log.error("ProductActivityBackfillService job fatal, jobId={}, message={}", jobId, ex.getMessage(), ex);
-            finishJob(jobLog, failedResult(jobId, normalized), "FAILED", ex.getMessage(), 0, 0);
+            String stopReason = stopReasonForException(ex);
+            String errorMessage = buildFailureErrorMessage(
+                    jobId,
+                    null,
+                    null,
+                    stopReason,
+                    ex,
+                    null);
+            finishJob(jobLog, failedResult(jobId, normalized, stopReason), "FAILED", errorMessage, 0, 0);
             throw new RuntimeException(ex);
         }
     }
@@ -195,14 +231,18 @@ public class ProductActivityBackfillService {
     private BackfillResult runRealBackfillWithLocks(String jobId, NormalizedRequest request, ProductSyncJobLog jobLog) {
         // 真实写库必须先拿 PRODUCT_BACKFILL_GLOBAL 锁，与 ProductActivitySyncJob 互斥。
         String globalLockKey = JobLockKeys.PRODUCT_BACKFILL_GLOBAL;
-        if (!jobLockService.tryAcquire(globalLockKey, BACKFILL_LOCK_TTL)) {
-            log.warn("ProductActivityBackfillService skipped, global backfill lock held, jobId={}", jobId);
+        String globalLockValue = lockValueForJob(jobId, request.scope(), request.activityIds());
+        if (!jobLockService.tryAcquire(globalLockKey, BACKFILL_LOCK_TTL, globalLockValue)) {
+            JobLockSnapshot ownerSnapshot = lockSnapshot(globalLockKey);
+            String errorMessage = buildFailedLockErrorMessage(jobId, null, "GLOBAL", globalLockKey, ownerSnapshot);
+            log.warn("ProductActivityBackfillService skipped, global backfill lock held, jobId={}, error={}", jobId, errorMessage);
             BackfillResult locked = buildLockedResult(jobId, request);
-            finishJob(jobLog, locked, "FAILED_LOCKED", "global backfill lock held", 0, 0);
+            finishJob(jobLog, locked, "FAILED_LOCKED", errorMessage, 0, 0);
             return locked;
         }
         long totalLockWaitCount = 0L;
         long totalDeadlockRetryCount = 0L;
+        List<String> failureMessages = new java.util.ArrayList<>();
         try {
             List<String> activityIds = resolveActivityIds(request);
             long dbRowsBefore = activityIds.isEmpty() ? 0L : snapshotMapper.countActiveRowsByActivityIds(activityIds);
@@ -223,12 +263,17 @@ public class ProductActivityBackfillService {
 
             for (String activityId : sortedActivityIds) {
                 String activityLockKey = JobLockKeys.productBackfillActivityLock(activityId);
-                if (!jobLockService.tryAcquire(activityLockKey, BACKFILL_LOCK_TTL)) {
+                String activityLockValue = lockValueForJob(jobId, "ACTIVITY", List.of(activityId));
+                if (!jobLockService.tryAcquire(activityLockKey, BACKFILL_LOCK_TTL, activityLockValue)) {
                     totalLockWaitCount++;
-                    log.warn("ProductActivityBackfillService activity lock held, skip activityId={}, jobId={}", activityId, jobId);
+                    JobLockSnapshot ownerSnapshot = lockSnapshot(activityLockKey);
+                    String errorMessage = buildFailedLockErrorMessage(jobId, activityId, "ACTIVITY", activityLockKey, ownerSnapshot);
+                    log.warn("ProductActivityBackfillService activity lock held, skip activityId={}, jobId={}, error={}",
+                            activityId, jobId, errorMessage);
                     failed++;
                     stopReasonStats.merge(STOP_REASON_FAILED_LOCKED, 1L, Long::sum);
-                    upsertFailedActivityState(activityId, request.scope(), STOP_REASON_FAILED_LOCKED, "activity backfill lock held");
+                    upsertFailedActivityState(activityId, request.scope(), STOP_REASON_FAILED_LOCKED, errorMessage);
+                    failureMessages.add(errorMessage);
                     continue;
                 }
                 long activityLockWait = 0L;
@@ -246,6 +291,22 @@ public class ProductActivityBackfillService {
                     totalLockWaitCount += activityLockWait;
                     totalDeadlockRetryCount += activityRetry;
                     stopReasonStats.merge(stats.stoppedReason, 1L, Long::sum);
+                    String activityErrorMessage = null;
+                    if (isFailedStopReason(stats.stoppedReason)) {
+                        String rawCause = StringUtils.hasText(stats.rawCause())
+                                ? stats.rawCause()
+                                : normalizeRawCause(stats.stoppedReason());
+                        activityErrorMessage = buildFailureErrorMessage(
+                                jobId,
+                                activityId,
+                                request.scope(),
+                                stats.stoppedReason(),
+                                null,
+                                null,
+                                rawCause,
+                                String.format("activity backfill failed: %s", rawCause));
+                        failureMessages.add(activityErrorMessage);
+                    }
                     if (stats.complete) {
                         success++;
                     } else if (isFailedStopReason(stats.stoppedReason)) {
@@ -253,7 +314,7 @@ public class ProductActivityBackfillService {
                     } else {
                         incomplete++;
                     }
-                    upsertActivityState(activityId, request.scope(), stats, null);
+                    upsertActivityState(activityId, request.scope(), stats, activityErrorMessage);
                 } catch (RuntimeException ex) {
                     failed++;
                     String stopReason = stopReasonForException(ex);
@@ -261,10 +322,21 @@ public class ProductActivityBackfillService {
                         totalDeadlockRetryCount += batchEx.retryCount();
                     }
                     stopReasonStats.merge(stopReason, 1L, Long::sum);
-                    log.error("ProductActivityBackfillService activity failed, activityId={}, jobId={}", activityId, jobId, ex);
-                    upsertFailedActivityState(activityId, request.scope(), stopReason, ex.getMessage());
+                    String failureMessage = buildFailureErrorMessage(
+                            jobId,
+                            activityId,
+                            request.scope(),
+                            stopReason,
+                            ex,
+                            ownerLockSnapshot(activityLockKey),
+                            null,
+                            null);
+                    failureMessages.add(failureMessage);
+                    log.error("ProductActivityBackfillService activity failed, activityId={}, jobId={}, stopReason={}, error={}",
+                            activityId, jobId, stopReason, failureMessage, ex);
+                    upsertFailedActivityState(activityId, request.scope(), stopReason, failureMessage);
                 } finally {
-                    jobLockService.release(activityLockKey);
+                    jobLockService.releaseWithOwner(activityLockKey, activityLockValue);
                 }
             }
 
@@ -308,10 +380,11 @@ public class ProductActivityBackfillService {
                     result.activitiesSuccess(),
                     result.activitiesIncomplete(),
                     result.activitiesFailed());
-            finishJob(jobLog, result, status, null, totalLockWaitCount, totalDeadlockRetryCount);
+            String finalErrorMessage = "SUCCESS".equals(status) ? null : String.join(" | ", failureMessages);
+            finishJob(jobLog, result, status, finalErrorMessage, totalLockWaitCount, totalDeadlockRetryCount);
             return result;
         } finally {
-            jobLockService.release(globalLockKey);
+            jobLockService.releaseWithOwner(globalLockKey, globalLockValue);
         }
     }
 
@@ -365,6 +438,7 @@ public class ProductActivityBackfillService {
                 result.skippedCount(),
                 batched.unchanged(),
                 result.stoppedReason(),
+                batched.rawCause(),
                 0L,
                 batched.deadlockRetryCount());
     }
@@ -462,7 +536,16 @@ public class ProductActivityBackfillService {
                         pageResult.stopReason().name(),
                         pageResult.stillHasNextWhenStopped(),
                         pageResult.complete());
-        return new BatchedBackfillResult(refreshResult, deadlockRetryCount[0], unchanged[0]);
+        String rawCause = null;
+        if (ActivityProductPaginationRunner.StopReason.API_ERROR.equals(pageResult.stopReason())
+                || ActivityProductPaginationRunner.StopReason.INVALID_RESPONSE.equals(pageResult.stopReason())) {
+            String warningsText = String.join(" | ", pageResult.warnings());
+            rawCause = normalizeRawCause(pageResult.stopReason().name());
+            if (!StringUtils.hasText(rawCause) && StringUtils.hasText(warningsText)) {
+                rawCause = warningsText;
+            }
+        }
+        return new BatchedBackfillResult(refreshResult, deadlockRetryCount[0], unchanged[0], rawCause);
     }
 
     private BatchWriteResult executeBatchWithDeadlockRetry(
@@ -492,7 +575,7 @@ public class ProductActivityBackfillService {
         throw BusinessException.stateInvalid("backfill batch 重试耗尽但无明确错误");
     }
 
-    private String stopReasonForException(RuntimeException ex) {
+    private String stopReasonForException(Throwable ex) {
         if (ex instanceof BackfillBatchWriteException batchEx && StringUtils.hasText(batchEx.stopReason())) {
             return batchEx.stopReason();
         }
@@ -500,6 +583,316 @@ public class ProductActivityBackfillService {
             return STOP_REASON_DEADLOCK_RETRY_EXHAUSTED;
         }
         return ActivityProductPaginationRunner.StopReason.API_ERROR.name();
+    }
+
+    private String dominantStopReason(Map<String, Long> stopReasonStats) {
+        if (stopReasonStats == null || stopReasonStats.isEmpty()) {
+            return "";
+        }
+        for (Map.Entry<String, Long> entry : stopReasonStats.entrySet()) {
+            String reason = entry.getKey();
+            if (StringUtils.hasText(reason) && !"DONE_NO_MORE".equals(reason)) {
+                return reason;
+            }
+        }
+        return "";
+    }
+
+    private String normalizeRawCause(String stopReason) {
+        if (!StringUtils.hasText(stopReason)) {
+            return STOP_REASON_UNKNOWN_ERROR;
+        }
+        if (STOP_REASON_UPSTREAM_API_ERROR.equals(stopReason)
+                || STOP_REASON_DB_ERROR.equals(stopReason)
+                || STOP_REASON_LOCK_ERROR.equals(stopReason)
+                || STOP_REASON_TIMEOUT_ERROR.equals(stopReason)
+                || STOP_REASON_UNKNOWN_ERROR.equals(stopReason)) {
+            return stopReason;
+        }
+        if (STOP_REASON_FAILED_LOCKED.equals(stopReason)) {
+            return STOP_REASON_LOCK_ERROR;
+        }
+        if (STOP_REASON_DEADLOCK_RETRY_EXHAUSTED.equals(stopReason)) {
+            return STOP_REASON_DB_ERROR;
+        }
+        return switch (stopReason) {
+            case "INVALID_RESPONSE", "API_ERROR" -> STOP_REASON_UPSTREAM_API_ERROR;
+            default -> STOP_REASON_UNKNOWN_ERROR;
+        };
+    }
+
+    private String buildFailureErrorMessage(
+            String jobId,
+            String activityId,
+            String scope,
+            String stopReason,
+            Throwable ex,
+            JobLockSnapshot lockSnapshot) {
+        return buildFailureErrorMessage(jobId, activityId, scope, stopReason, ex, lockSnapshot, null, null);
+    }
+
+    private String buildFailureErrorMessage(
+            String jobId,
+            String activityId,
+            String scope,
+            String stopReason,
+            Throwable ex,
+            JobLockSnapshot lockSnapshot,
+            String explicitRawCause,
+            String explicitMessage) {
+        String rawCause = StringUtils.hasText(explicitRawCause)
+                ? explicitRawCause
+                : normalizeRawCause(stopReason);
+        String message = StringUtils.hasText(explicitMessage) ? explicitMessage : (ex == null ? "" : ex.getMessage());
+        String exceptionClass = ex == null ? "N/A" : ex.getClass().getName();
+        String rootCauseClass = ex == null ? "" : rootCauseClass(ex);
+        return String.format(
+                "type=%s; rawCause=%s; exceptionClass=%s; rootCauseClass=%s; jobId=%s; activityId=%s; scope=%s; stopReason=%s; rootCause=%s; sqlState=%s; ownerJobId=%s; ownerScope=%s; lockKey=%s; lockValue=%s; httpStatus=%s; sdkCode=%s; message=%s",
+                "FAILED",
+                rawCause,
+                exceptionClass,
+                rootCauseClass,
+                jobId,
+                activityId == null ? "" : activityId,
+                scope == null ? "" : scope,
+                stopReason,
+                rootCauseMessage(ex),
+                ex == null ? "" : sqlStateFromThrowable(ex),
+                lockSnapshot == null ? "" : lockSnapshot.ownerJobId(),
+                lockSnapshot == null ? "" : lockSnapshot.scope(),
+                lockSnapshot == null ? "" : lockSnapshot.lockKey(),
+                lockSnapshot == null ? "" : lockSnapshot.lockValue(),
+                ex == null ? "" : httpStatusFromThrowable(ex),
+                ex == null ? "" : sdkCodeFromThrowable(ex),
+                message);
+    }
+
+    private JobLockSnapshot lockSnapshot(String lockKey) {
+        String value = jobLockService.currentLockValue(lockKey);
+        long ttl = jobLockService.currentLockTtlSeconds(lockKey);
+        return parseLockSnapshot(lockKey, value, ttl);
+    }
+
+    private JobLockSnapshot ownerLockSnapshot(String lockKey) {
+        return lockSnapshot(lockKey);
+    }
+
+    private JobLockSnapshot parseLockSnapshot(String lockKey, String value, long ttl) {
+        if (!StringUtils.hasText(value)) {
+            return new JobLockSnapshot(lockKey, null, null, null, null, null, ttl, null);
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = OBJECT_MAPPER.readValue(value, Map.class);
+            return new JobLockSnapshot(
+                    lockKey,
+                    asText(map.get("ownerJobId")),
+                    firstNonBlank(asText(map.get("ownerActivityId")), asText(map.get("activityId"))),
+                    firstNonBlank(asText(map.get("scope")), "UNKNOWN"),
+                    firstNonBlank(asText(map.get("lockKey")), lockKey),
+                    value,
+                    ttl,
+                    asText(map.get("acquiredAt")));
+        } catch (JsonProcessingException ex) {
+            return new JobLockSnapshot(lockKey, null, null, null, null, value, ttl, null);
+        }
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private String buildFailedLockErrorMessage(String jobId, String activityId, String lockScope, String lockKey,
+                                              JobLockSnapshot ownerSnapshot) {
+        return String.format(
+                "type=FAILED_LOCKED; jobId=%s; activityId=%s; scope=%s; lockKey=%s; ownerJobId=%s; ownerActivityId=%s; ownerScope=%s; lockValue=%s; ttlSeconds=%d; acquiredAt=%s; message=global/activity lock held",
+                jobId,
+                activityId == null ? "" : activityId,
+                lockScope,
+                lockKey,
+                ownerSnapshot == null ? "" : ownerSnapshot.ownerJobId(),
+                ownerSnapshot == null ? "" : ownerSnapshot.ownerActivityId(),
+                ownerSnapshot == null ? "" : ownerSnapshot.scope(),
+                ownerSnapshot == null ? "" : ownerSnapshot.lockValue(),
+                ownerSnapshot == null ? -1L : ownerSnapshot.ttlSeconds(),
+                ownerSnapshot == null ? "" : ownerSnapshot.acquiredAt());
+    }
+
+    private String lockValueForJob(String jobId, String scope, List<String> activityIds) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("ownerJobId", jobId);
+        metadata.put("ownerActivityId", activityIds == null || activityIds.isEmpty() ? null : activityIds.get(0));
+        metadata.put("scope", scope);
+        metadata.put("activityIds", activityIds);
+        metadata.put("lockKey", activityIds == null || activityIds.isEmpty()
+                ? JobLockKeys.PRODUCT_BACKFILL_GLOBAL
+                : JobLockKeys.productBackfillActivityLock(activityIds.get(0)));
+        metadata.put("ttlSeconds", BACKFILL_LOCK_TTL.getSeconds());
+        metadata.put("acquiredAt", java.time.LocalDateTime.now().toString());
+        metadata.put("releasedAt", null);
+        try {
+            return OBJECT_MAPPER.writeValueAsString(metadata);
+        } catch (JsonProcessingException ex) {
+            return String.format(
+                    "{\"ownerJobId\":\"%s\",\"ownerActivityId\":\"%s\",\"scope\":\"%s\",\"ttlSeconds\":%d,\"acquiredAt\":\"%s\"}",
+                    jobId,
+                    activityIds == null || activityIds.isEmpty() ? "" : activityIds.get(0),
+                    scope,
+                    BACKFILL_LOCK_TTL.getSeconds(),
+                    java.time.LocalDateTime.now());
+        }
+    }
+
+    private String rawCauseForException(Throwable ex) {
+        if (isDeadlockLike(ex)) {
+            return STOP_REASON_DEADLOCK_RETRY_EXHAUSTED;
+        }
+        if (isLockError(ex)) {
+            return STOP_REASON_LOCK_ERROR;
+        }
+        if (isTimeoutError(ex)) {
+            return STOP_REASON_TIMEOUT_ERROR;
+        }
+        if (isDbException(ex)) {
+            return STOP_REASON_DB_ERROR;
+        }
+        return STOP_REASON_UPSTREAM_API_ERROR;
+    }
+
+    private boolean isLockError(Throwable ex) {
+        if (ex == null) {
+            return false;
+        }
+        Throwable cur = ex;
+        while (cur != null) {
+            if (cur instanceof CannotAcquireLockException) {
+                return true;
+            }
+            String msg = cur.getMessage();
+            if (msg != null && msg.toUpperCase().contains(SQLSTATE_LOCK_NOT_AVAILABLE)) {
+                return true;
+            }
+            cur = cur.getCause();
+        }
+        return false;
+    }
+
+    private boolean isDbException(Throwable ex) {
+        if (ex == null) {
+            return false;
+        }
+        Throwable cur = ex;
+        while (cur != null) {
+            if (cur instanceof DataAccessException) {
+                return true;
+            }
+            cur = cur.getCause();
+        }
+        return false;
+    }
+
+    private boolean isTimeoutError(Throwable ex) {
+        if (ex == null) {
+            return false;
+        }
+        Throwable cur = ex;
+        while (cur != null) {
+            String msg = cur.getMessage();
+            if (msg != null && (msg.contains("timeout") || msg.contains("Timeout") || msg.contains("TIMEOUT"))) {
+                return true;
+            }
+            cur = cur.getCause();
+        }
+        return false;
+    }
+
+    private String rootCauseMessage(Throwable ex) {
+        if (ex == null) {
+            return "";
+        }
+        Throwable cur = ex;
+        while (cur.getCause() != null) {
+            cur = cur.getCause();
+        }
+        return cur == null || cur.getMessage() == null ? "" : cur.getMessage();
+    }
+
+    private String rootCauseClass(Throwable ex) {
+        if (ex == null) {
+            return "";
+        }
+        Throwable cur = ex;
+        while (cur.getCause() != null) {
+            cur = cur.getCause();
+        }
+        return cur == null ? "" : cur.getClass().getName();
+    }
+
+    private String sqlStateFromThrowable(Throwable ex) {
+        Throwable cur = ex;
+        while (cur != null) {
+            String msg = cur.getMessage();
+            if (msg != null) {
+                String upper = msg.toUpperCase();
+                if (upper.contains(SQLSTATE_DEADLOCK) || upper.contains(SQLSTATE_LOCK_NOT_AVAILABLE)) {
+                    return upper.contains(SQLSTATE_DEADLOCK) ? SQLSTATE_DEADLOCK : SQLSTATE_LOCK_NOT_AVAILABLE;
+                }
+            }
+            cur = cur.getCause();
+        }
+        return "";
+    }
+
+    private String httpStatusFromThrowable(Throwable ex) {
+        Throwable cur = ex;
+        while (cur != null) {
+            String msg = cur.getMessage();
+            if (msg != null) {
+                int status = parseHttpStatus(msg);
+                if (status > 0) {
+                    return String.valueOf(status);
+                }
+            }
+            cur = cur.getCause();
+        }
+        return "";
+    }
+
+    private String sdkCodeFromThrowable(Throwable ex) {
+        Throwable cur = ex;
+        while (cur != null) {
+            String name = cur.getClass().getName();
+            if (name.contains("Sdk") || name.contains("SDK") || name.contains("Douyin")) {
+                return cur.getClass().getSimpleName();
+            }
+            cur = cur.getCause();
+        }
+        return "";
+    }
+
+    private int parseHttpStatus(String message) {
+        int idx = message.indexOf("HTTP ");
+        if (idx >= 0 && message.length() >= idx + 8) {
+            String digits = message.substring(idx + 5).replaceAll("[^0-9].*", "");
+            try {
+                return Integer.parseInt(digits);
+            } catch (NumberFormatException ignore) {
+                // ignore
+            }
+        }
+        return -1;
+    }
+
+    private String asText(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 
     private DouyinProductGateway.ActivityProductListResult queryActivityProductsWithRetry(
@@ -616,7 +1009,9 @@ public class ProductActivityBackfillService {
         ActivityBackfillStats failed = new ActivityBackfillStats(
                 false, 0L, 0L, 0, 0, 0, 0,
                 stopReason,
-                0L, 0L);
+                normalizeRawCause(stopReason),
+                0L,
+                0L);
         upsertActivityState(activityId, scope, failed, errorMessage);
     }
 
@@ -702,6 +1097,13 @@ public class ProductActivityBackfillService {
     }
 
     private BackfillResult failedResult(String jobId, NormalizedRequest request) {
+        return failedResult(jobId, request, ActivityProductPaginationRunner.StopReason.UNKNOWN.name());
+    }
+
+    private BackfillResult failedResult(String jobId, NormalizedRequest request, String stopReason) {
+        String normalizedStopReason = StringUtils.hasText(stopReason)
+                ? stopReason
+                : ActivityProductPaginationRunner.StopReason.UNKNOWN.name();
         return new BackfillResult(
                 jobId,
                 request.dryRun(),
@@ -718,7 +1120,7 @@ public class ProductActivityBackfillService {
                 0,
                 0,
                 1,
-                Map.of(ActivityProductPaginationRunner.StopReason.UNKNOWN.name(), 1L),
+                Map.of(normalizedStopReason, 1L),
                 List.of(),
                 0L,
                 0L,
@@ -749,6 +1151,13 @@ public class ProductActivityBackfillService {
                 || ActivityProductPaginationRunner.StopReason.INVALID_RESPONSE.name().equals(stopReason)) {
             return "FAILED";
         }
+        if (STOP_REASON_UPSTREAM_API_ERROR.equals(stopReason)
+                || STOP_REASON_DB_ERROR.equals(stopReason)
+                || STOP_REASON_LOCK_ERROR.equals(stopReason)
+                || STOP_REASON_TIMEOUT_ERROR.equals(stopReason)
+                || STOP_REASON_UNKNOWN_ERROR.equals(stopReason)) {
+            return "FAILED";
+        }
         if (STOP_REASON_FAILED_LOCKED.equals(stopReason)
                 || STOP_REASON_DEADLOCK_RETRY_EXHAUSTED.equals(stopReason)) {
             return "FAILED";
@@ -759,6 +1168,11 @@ public class ProductActivityBackfillService {
     private boolean isFailedStopReason(String stopReason) {
         return ActivityProductPaginationRunner.StopReason.API_ERROR.name().equals(stopReason)
                 || ActivityProductPaginationRunner.StopReason.INVALID_RESPONSE.name().equals(stopReason)
+                || STOP_REASON_UPSTREAM_API_ERROR.equals(stopReason)
+                || STOP_REASON_DB_ERROR.equals(stopReason)
+                || STOP_REASON_LOCK_ERROR.equals(stopReason)
+                || STOP_REASON_TIMEOUT_ERROR.equals(stopReason)
+                || STOP_REASON_UNKNOWN_ERROR.equals(stopReason)
                 || STOP_REASON_FAILED_LOCKED.equals(stopReason)
                 || STOP_REASON_DEADLOCK_RETRY_EXHAUSTED.equals(stopReason);
     }
@@ -827,6 +1241,7 @@ public class ProductActivityBackfillService {
             int skipped,
             int unchanged,
             String stoppedReason,
+            String rawCause,
             long lockWaitCount,
             long deadlockRetryCount) {
     }
@@ -834,12 +1249,24 @@ public class ProductActivityBackfillService {
     private record BatchedBackfillResult(
             ProductService.ActivityProductRefreshResult result,
             long deadlockRetryCount,
-            int unchanged) {
+            int unchanged,
+            String rawCause) {
     }
 
     private record BatchWriteResult(
             ProductService.ActivitySnapshotUpsertStats stats,
             long deadlockRetryCount) {
+    }
+
+    private static final record JobLockSnapshot(
+            String lockKey,
+            String ownerJobId,
+            String ownerActivityId,
+            String scope,
+            String ownerLockKey,
+            String lockValue,
+            long ttlSeconds,
+            String acquiredAt) {
     }
 
     private static final class BackfillBatchWriteException extends RuntimeException {
