@@ -85,7 +85,7 @@
 
 ## 商品域
 
-- 当前状态：商品库、活动商品同步、转链和映射主链路已具备。FUNC-001 卡片改造已完成。P-FIX-001C 分页弱化已完成。P-DIAG-002 商品库数量不足排查已完成。P-FIX-002A 同步任务 5 分钟周期配置已完成。P-FIX-002 代码与配置准备已完成。P-FIX-002D 本地运行态验证已完成。P-FIX-002D-REMOTE 远端部署验证已完成（2026-06-03），远端 commit=dea06e4c，同步参数生效，两个周期零冲突。GIT-BATCH-2 frontend-product-ui 已于 2026-06-03 14:08 提交并部署（commit=5fe6ba23）。PRODUCT-LIBRARY-FULL-BACKFILL-FIX-001 已完成代码修复并上线 real-pre：dry-run 安全门禁、表结构、构建健康和商品库 DISPLAYING 展示口径保护均通过；真实历史商品补数未执行，待显式 confirm 后分阶段执行。
+- 当前状态：商品库、活动商品同步、转链和映射主链路已具备。FUNC-001 卡片改造已完成。P-FIX-001C 分页弱化已完成。P-DIAG-002 商品库数量不足排查已完成。P-FIX-002A 同步任务 5 分钟周期配置已完成。P-FIX-002 代码与配置准备已完成。P-FIX-002D 本地运行态验证已完成。P-FIX-002D-REMOTE 远端部署验证已完成（2026-06-03），远端 commit=dea06e4c，同步参数生效，两个周期零冲突。GIT-BATCH-2 frontend-product-ui 已于 2026-06-03 14:08 提交并部署（commit=5fe6ba23）。PRODUCT-LIBRARY-FULL-BACKFILL-FIX-001：Phase 4-1.5B PASS。单活动 3859423 真实 backfill 与幂等复跑已验证通过；允许进入 RECENT_30D maxActivities=20 小批量回补。当前工作区历史未提交改动已在 Phase 4-2 前置门禁中复查，Git 视角仅发现两个无效临时 dry-run 文件并已清理。
 - 已完成能力：商品库、活动商品、转链、`pick_source_mapping`；FUNC-001 卡片 UI；P-FIX-001C 分页优化；P-FIX-002A 同步周期配置；P-FIX-002B 唯一索引冲突修复（两遍处理）。
 - P-FIX-002 修复结论：`applyNormalDisplayDedup` 改为三阶段持久化（先降级旧 DISPLAYING→HIDDEN，再处理其他非 DISPLAYING，最后升级新 winner→DISPLAYING），避免 `uk_pos_one_displaying_per_product` partial unique index 冲突。新增/补齐 4 个相关测试覆盖严格调用顺序、切换顺序、幂等性和多候选场景。
 - P-FIX-002 报告路径：`harness/reports/p-fix-002-product-sync-display-5min-20260603-121257.md`。
@@ -100,10 +100,10 @@
 - P-FIX-001C 报告路径：`harness/reports/p-fix-001c-product-library-pagination-20260603-113616.md`。
 - FUNC-001 报告路径：`harness/reports/func-001-product-card-hover-ui-20260603-111451.md`。
 - GIT-BATCH-2 报告路径：`harness/reports/git-batch-2-frontend-product-ui-20260603-140800.md`。
-- PRODUCT-LIBRARY-FULL-BACKFILL-FIX-001 报告路径：`harness/reports/evidence-20260615-114620.md`；`harness/reports/product-library-full-backfill-evidence-20260615.md`。
-- 当前风险：1) 本地 PENDING 总量 371，远端 PENDING 总量 2128，均需后续区分过期活动、未选中和待重算来源；2) 远端 env 手工补齐了 `PRODUCT_ACTIVITY_SYNC_ENABLED` 和 `PRODUCT_ACTIVITY_SYNC_CRON`，需纳入部署文档；3) Gitee 双 remote 同步流程需确保每次推送同时 push 到 gitee；4) 商品库历史真实补数尚未执行，当前只能声明“同步系统修复完成”，不能声明“商品库数量已补齐”。
+- PRODUCT-LIBRARY-FULL-BACKFILL-FIX-001 报告路径：`harness/reports/evidence-20260615-114620.md`；`harness/reports/product-library-full-backfill-evidence-20260615.md`；`harness/reports/product-library-backfill-observability-fix-final-20260616-0832.md`。
+- 当前风险：1) 本地 PENDING 总量 371，远端 PENDING 总量 2128，均需后续区分过期活动、未选中和待重算来源；2) 远端 env 手工补齐了 `PRODUCT_ACTIVITY_SYNC_ENABLED` 和 `PRODUCT_ACTIVITY_SYNC_CRON`，需纳入部署文档；3) Gitee 双 remote 同步流程需确保每次推送同时 push 到 gitee；4) Phase 4-2 仍未全量补齐，成功标准是 20 个活动小批量补数稳定：无死锁、无重复、无锁残留、展示口径不乱、失败可定位。
 - 待优化能力：活动商品状态断链 repair、远端部署对齐、推广中商品自动入库。
-- DDD 优化下一步：PRODUCT-LIBRARY-BACKFILL-PHASE-4-1 单活动真实 backfill（activityId=3859423，dryRun=false，confirm=true，先验收幂等和 DISPLAYING 口径）；通过后再进入 RECENT_30D 小批量 20 / 50 / 100 分阶段回补。
+- DDD 优化下一步：Phase 4-2 先执行 RECENT_30D、maxActivities=20、dryRun=true 预评估；dry-run PASS 后再执行 RECENT_30D、maxActivities=20、dryRun=false、confirm=true 受控真实回补，并验证 job log 无 RUNNING、Redis lock 无残留、duplicate=0、DISPLAYING total 与 `/api/products` total 稳定、`/api/products/admin/counts` 全量口径增长合理、backend health=UP。
 - 标记：P0。
 
 ## 达人域
