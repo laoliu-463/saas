@@ -36,6 +36,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 活动商品全量回补服务。
@@ -152,7 +153,12 @@ public class ProductActivityBackfillService {
         ProductSyncJobLog jobLog = startJob(jobId, normalized, requestedBy);
         try {
             CompletableFuture.runAsync(() -> executeBackfillWorkflow(jobId, normalized, jobLog),
-                    backfillExecutor);
+                    backfillExecutor)
+                    .exceptionally(ex -> {
+                        // executeBackfillWorkflow 内部已 finishJob()，此处仅消费 Future 异常避免 unhandled 警告。
+                        log.warn("backfillAsync job completed with error, jobId={}, message={}", jobId, ex.getMessage());
+                        return null;
+                    });
         } catch (RuntimeException ex) {
             String stopReason = stopReasonForException(ex);
             String errorMessage = buildFailureErrorMessage(
@@ -212,7 +218,7 @@ public class ProductActivityBackfillService {
             ProductSyncJobLog jobLog) {
         try {
             if (normalized.dryRun()) {
-                BackfillResult dryRunResult = runDryRun(jobId, normalized);
+                BackfillResult dryRunResult = runDryRun(jobId, normalized, jobLog);
                 String status = statusFromCounts(dryRunResult.activitiesScanned(),
                         dryRunResult.activitiesSuccess(),
                         dryRunResult.activitiesIncomplete(),
@@ -275,7 +281,8 @@ public class ProductActivityBackfillService {
         return normalized;
     }
 
-    private BackfillResult runDryRun(String jobId, NormalizedRequest request) {
+    private BackfillResult runDryRun(String jobId, NormalizedRequest request, ProductSyncJobLog jobLog) {
+        AtomicReference<ProductSyncJobLog> jobLogRef = new AtomicReference<>(jobLog);
         ProductSyncDryRunProbeService.FullDryRunResult dryRun = dryRunProbeService.fullDryRun(
                 new ProductSyncDryRunProbeService.FullDryRunRequest(
                         request.scope(),
@@ -284,7 +291,13 @@ public class ProductActivityBackfillService {
                         request.pageSize(),
                         request.maxPagesPerActivity(),
                         request.maxRowsPerActivity(),
-                        true));
+                        true),
+                (activityIndex, activityResult) -> {
+                    ProductSyncJobLog current = jobLogRef.get();
+                    if (current != null) {
+                        jobLogRef.set(updateProgressMetadata(current, activityResult.activityId()));
+                    }
+                });
         return new BackfillResult(
                 jobId,
                 true,
@@ -361,7 +374,7 @@ public class ProductActivityBackfillService {
                 long activityLockWait = 0L;
                 long activityRetry = 0L;
                 try {
-                    ActivityBackfillStats stats = runActivityBackfill(request, activityId);
+                    ActivityBackfillStats stats = runActivityBackfill(request, activityId, jobLog);
                     fetchedRows += stats.fetchedRows;
                     distinctProductIds += stats.distinctProductIds;
                     inserted += stats.inserted;
@@ -507,8 +520,9 @@ public class ProductActivityBackfillService {
 
     private ActivityBackfillStats runActivityBackfill(
             NormalizedRequest request,
-            String activityId) {
-        BatchedBackfillResult batched = runActivityBackfillBatched(request, activityId);
+            String activityId,
+            ProductSyncJobLog jobLog) {
+        BatchedBackfillResult batched = runActivityBackfillBatched(request, activityId, jobLog);
         ProductService.ActivityProductRefreshResult result = batched.result();
         return new ActivityBackfillStats(
                 result.complete(),
@@ -533,11 +547,13 @@ public class ProductActivityBackfillService {
      */
     private BatchedBackfillResult runActivityBackfillBatched(
             NormalizedRequest request,
-            String activityId) {
+            String activityId,
+            ProductSyncJobLog jobLog) {
         int pageSize = Math.min(Math.max(request.pageSize(), 1), 20);
         int normalizedMaxPages = Math.max(request.maxPagesPerActivity(), 1);
         int normalizedMaxRows = Math.max(request.maxRowsPerActivity(), 1);
         java.util.concurrent.atomic.AtomicInteger pageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        AtomicReference<ProductSyncJobLog> jobLogRef = new AtomicReference<>(jobLog);
         final int[] inserted = {0};
         final int[] updated = {0};
         final int[] skipped = {0};
@@ -588,6 +604,12 @@ public class ProductActivityBackfillService {
                             pageLibraryEntryCount);
                 },
                 pageNo -> {
+                    if (pageNo == 1 || pageNo % 3 == 0) {
+                        ProductSyncJobLog current = jobLogRef.get();
+                        if (current != null) {
+                            jobLogRef.set(updateProgressMetadata(current, activityId));
+                        }
+                    }
                     // backfill 写库路径不复用 ProductService 的长事务翻页 sleep，但保留上游 API 节流。
                     sleepBeforeNextBackfillPage(activityId, pageNo - 1);
                 });

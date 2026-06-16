@@ -23,7 +23,7 @@ public interface ProductSyncJobLogMapper extends BaseMapper<ProductSyncJobLog> {
             SELECT * FROM product_sync_job_log
             WHERE status = 'RUNNING'
               AND deleted = 0
-              AND started_at < #{threshold}
+              AND COALESCE(update_time, started_at) < #{threshold}
             ORDER BY started_at ASC
             """)
     List<ProductSyncJobLog> selectStaleRunningJobs(@Param("threshold") LocalDateTime threshold);

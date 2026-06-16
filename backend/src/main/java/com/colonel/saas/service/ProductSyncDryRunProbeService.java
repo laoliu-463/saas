@@ -18,6 +18,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 
 /**
  * 商品同步只读 dry-run 探针服务。
@@ -56,6 +57,10 @@ public class ProductSyncDryRunProbeService {
     }
 
     public FullDryRunResult fullDryRun(FullDryRunRequest request) {
+        return fullDryRun(request, null);
+    }
+
+    public FullDryRunResult fullDryRun(FullDryRunRequest request, BiConsumer<Integer, ActivityDryRunResult> activityProgressCallback) {
         FullDryRunRequest normalized = normalizeFullRequest(request);
         List<String> activityIds = resolveActivityIds(normalized);
         List<ActivityDryRunResult> results = new ArrayList<>();
@@ -71,8 +76,9 @@ public class ProductSyncDryRunProbeService {
         int activitiesIncomplete = 0;
         int activitiesFailed = 0;
         Map<String, Long> stopReasonStats = new LinkedHashMap<>();
-
+        int activityIndex = 0;
         for (String activityId : activityIds) {
+            activityIndex++;
             ComputedActivityDryRun computed = runActivity(
                     activityId,
                     normalized.pageSize(),
@@ -81,6 +87,9 @@ public class ProductSyncDryRunProbeService {
                     true,
                     normalized.dryRun());
             ActivityDryRunResult result = computed.result();
+            if (activityProgressCallback != null) {
+                activityProgressCallback.accept(activityIndex, result);
+            }
             results.add(result);
             globalProductIds.addAll(computed.productIds());
             apiFetchedRows += result.totalFetchedRows();

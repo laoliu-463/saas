@@ -71,7 +71,7 @@ class ProductActivityBackfillServiceTest {
 
     @Test
     void backfill_dryRunShouldDelegateProbeAndWriteJobLogWithoutBusinessWrites() {
-        when(dryRunProbeService.fullDryRun(any()))
+        when(dryRunProbeService.fullDryRun(any(), any()))
                 .thenReturn(fullDryRunResult());
         ArgumentCaptor<ProductSyncJobLog> jobLogCaptor = ArgumentCaptor.forClass(ProductSyncJobLog.class);
 
@@ -106,7 +106,7 @@ class ProductActivityBackfillServiceTest {
 
     @Test
     void backfill_dryRunFailedShouldPersistErrorMessage() {
-        when(dryRunProbeService.fullDryRun(any()))
+        when(dryRunProbeService.fullDryRun(any(), any()))
                 .thenReturn(failedDryRunResult());
         ArgumentCaptor<ProductSyncJobLog> jobLogCaptor = ArgumentCaptor.forClass(ProductSyncJobLog.class);
 
