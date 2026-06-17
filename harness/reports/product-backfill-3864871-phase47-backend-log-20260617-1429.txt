@@ -2,7 +2,7 @@
 generatedAt=2026-06-17 14:29:14
 window=2026-06-17T05:59:00Z..2026-06-17T06:28:30Z
 jobId=product-backfill-b5e983f8-456d-40cb-9940-e30512ac2ea2
-apiSuccessCallCount=3129
+apiSuccessCallCount=3000
 
 ## focused lines
 backend-real-pre-1  | 2026-06-17T05:59:10.278Z  INFO 1 --- [colonel-saas] [nio-8080-exec-6] c.c.saas.common.filter.ApiTimingFilter   : [api timing] method=GET uri=/api/system/health status=200 durationMs=1 error=
