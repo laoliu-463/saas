@@ -149,3 +149,46 @@ dry-run SUCCESS 后才 real backfill
 - D:\Projects\SAAS\runtime\phase46-inspect.py
 - D:\Projects\SAAS\harness\reports\product-library-phase46-single-activity-backfill-20260617-1238.md (第一轮 3667047 报告)
 - D:\Projects\SAAS\harness\reports\product-library-phase46-single-activity-backfill-20260617-1310.md (本总报告)
+
+## 12. 13:32 CST 补充复核
+
+按技术总控口径，本阶段结论调整为：
+
+**Phase 4-6：PARTIAL PASS**
+
+- 11 个单活动中，10 个已真实 backfill SUCCESS。
+- 剩余 `3864871` 已有 dry-run `API_ERROR` 证据，暂标 `UPSTREAM_LIMIT_BLOCKED`，不能强行 real。
+- 当前会话误触发的新 dry-run：`product-backfill-99345c52-c216-449f-b21e-084bafe18e91`，仍为 `RUNNING`，但 `dry_run=true`，未写业务表。
+- 该 dry-run 启动时间：2026-06-17 13:21 CST；默认 stale 阈值 30 分钟，cron 每 15 分钟清理。
+
+13:32 CST 实时复核：
+
+| 指标 | 数值 |
+|---|---:|
+| product_snapshot | 53006 |
+| product_operation_state | 53006 |
+| distinctProduct | 41128 |
+| DISPLAYING | 14636 |
+| HIDDEN | 37993 |
+| PENDING | 377 |
+| /api/products total | 14636 |
+| duplicate(activity_id, product_id) | 0 |
+| Redis backfill lock | 0 |
+| backend health | UP |
+| frontend /login | 200 |
+
+注意：`RUNNING=0` 暂未满足，原因是 `3864871` 的新 dry-run 仍未被任务自身或 stale reconcile 收口。后续不启动 real，等待该 dry-run 自然结束或被 stale job reconcile 标记后，再执行冷却重试策略。
+
+13:15 CST `ProductDisplayRuleJob` 已完成，日志显示 `processedProductIds=14658`。`3859426` 投影后状态为 `DISPLAYING=133, HIDDEN=263, PENDING=100`，说明原 112 PENDING 已下降但未清零；后续应单独排查展示规则残留原因，不手工改状态。
+
+## 13. 13:41 CST 3864871 单活动复跑排查
+
+- 复跑 dry-run job：`product-backfill-99345c52-c216-449f-b21e-084bafe18e91`。
+- 请求：`activityIds=[3864871]`, `pageSize=20`, `maxPagesPerActivity=2000`, `maxRowsPerActivity=100000`, `dryRun=true`。
+- 结果：`PARTIAL`，`api_fetched_rows=40000`，`api_distinct_product_ids=35679`，`failed=0`，`stopReasonStats={"MAX_PAGES_REACHED":1}`。
+- 对比前序失败：`product-backfill-a019d810-938c-4543-874b-d6227c3c1b24` 为 `FAILED/API_ERROR`，日志对应上游 `alliance.colonelActivityProduct` 返回 `code=20000`, `subCode=isp.service-error:256`, `msg=服务打瞌睡了，请稍后再试`。
+- 当前复跑结论：本次未复现 API_ERROR，但 2000 页仍未到 `DONE_NO_MORE`，说明 `3864871` 数据体量超过本轮 dry-run 页上限；不能 real backfill。
+- 安全门禁：`RUNNING=0`，Redis `*backfill*` 锁数 `0`，duplicate `0`，backend health `UP`。
+- dry-run 后数据未写库：`product_snapshot=53006`，`product_operation_state=53006`，`distinctProduct=41128`，`DISPLAYING=14636`，`/api/products total=14636`。
+- Harness limits check：`FAIL`，原因是既有 `harness/reports` 文件数 49、`harness/scripts` 文件数 17 超过 10 文件约束；本轮未做归档清理。
+- 阶段结论保持：`3864871 = UPSTREAM_LIMIT_BLOCKED / MAX_PAGES_LIMIT_BLOCKED`，待用户确认是否以更高页上限低峰 dry-run，仍禁止直接 real。
