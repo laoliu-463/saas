@@ -1,7 +1,8 @@
 param()
 
 $ErrorActionPreference = "Continue"
-$harnessPath = "D:\Projects\SAAS\harness"
+$scriptDir = Split-Path -Parent $PSCommandPath
+$harnessPath = (Resolve-Path (Join-Path $scriptDir "..")).Path
 $reportPath = "$harnessPath\reports\latest-harness-limits-check.md"
 
 $violations = @()
