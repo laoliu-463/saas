@@ -308,8 +308,67 @@ async function resolveProductCandidate(
     }
   }
 
-  const mappings = scanAnyReusableMapping();
   let lastAssignment: JsonMap | null = null;
+  const assignableLibraryCandidates = scanAssignableLibraryCandidates();
+  if (bizLeaderToken && bizStaffUserId) {
+    for (const mapping of assignableLibraryCandidates) {
+      if (!mapping?.activityId || !mapping?.productId) {
+        continue;
+      }
+      const assign = await rawApi(
+        api,
+        'PUT',
+        `/api/colonel/activities/${mapping.activityId}/products/${mapping.productId}/assignee`,
+        bizLeaderToken,
+        { data: { assigneeId: bizStaffUserId } }
+      );
+      const assignBody = safeUnwrap<JsonMap>(assign.body) || assign.body;
+      const assignBusinessOk = assign.ok && Number((assign.body as JsonMap | undefined)?.code) === 200;
+      const assignment = {
+        status: assign.status,
+        ok: assignBusinessOk,
+        targetAssigneeId: bizStaffUserId,
+        mapping,
+        body: assignBody,
+        dbAssigneeId: queryOperationAssignee(mapping.activityId, mapping.productId),
+        mode: 'assignee'
+      };
+      if (!assignBusinessOk) {
+        lastAssignment = assignment;
+        continue;
+      }
+      const detail = await rawApi(
+        api,
+        'GET',
+        `/api/colonel/activities/${mapping.activityId}/products/${mapping.productId}`,
+        bizLeaderToken
+      );
+      const product = safeUnwrap<JsonMap>(detail.body) || null;
+      lastAssignment = {
+        ...assignment,
+        detailStatus: detail.status,
+        detailAssigneeId: String(product?.assigneeId || product?.assignee_id || ''),
+        detailBody: product
+      };
+      if (
+        product
+        && product.id
+        && (
+          String(product.assigneeId || product.assignee_id || '') === bizStaffUserId
+          || queryOperationAssignee(mapping.activityId, mapping.productId) === bizStaffUserId
+        )
+      ) {
+        return {
+          product,
+          source: 'approved-library-assigned-via-assignee',
+          mapping,
+          assignment: lastAssignment
+        };
+      }
+    }
+  }
+
+  const mappings = scanAnyReusableMapping();
   if (bizLeaderToken && bizStaffUserId) {
     for (const mapping of mappings) {
       if (!mapping?.activityId || !mapping?.productId) {
@@ -389,6 +448,38 @@ function scanAssignedLibraryCandidates(assigneeId: string): ReusablePromotionMap
     'join product_snapshot ps on ps.activity_id = pos.activity_id and ps.product_id = pos.product_id',
     `where pos.assignee_id = '${safeAssigneeId}'`,
     '  and pos.selected_to_library = true',
+    '  and coalesce(pos.manual_disabled, false) = false',
+    "  and coalesce(ps.status_text, '') <> ''",
+    'order by pos.update_time desc nulls last',
+    'limit 10;'
+  ].join('\n');
+  const out = execFileSync(
+    'docker',
+    ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-F', '|', '-c', sql],
+    { encoding: 'utf8' }
+  );
+  return String(out || '').split(/\r?\n/).filter(Boolean).map((line) => {
+    const parts = line.split('|');
+    return {
+      productId: parts[0] || '',
+      activityId: parts[1] || '',
+      userId: parts[2] || ''
+    };
+  });
+}
+
+function scanAssignableLibraryCandidates(): ReusablePromotionMapping[] {
+  const { execFileSync } = require('node:child_process');
+  const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
+  const user = process.env.E2E_DB_USER || 'saas';
+  const db = process.env.E2E_DB_NAME || 'saas_real_pre';
+  const sql = [
+    'select pos.product_id, pos.activity_id, pos.assignee_id::text',
+    'from product_operation_state pos',
+    'join product_snapshot ps on ps.activity_id = pos.activity_id and ps.product_id = pos.product_id',
+    'where pos.selected_to_library = true',
+    '  and pos.assignee_id is null',
+    "  and pos.biz_status = 'APPROVED'",
     '  and coalesce(pos.manual_disabled, false) = false',
     "  and coalesce(ps.status_text, '') <> ''",
     'order by pos.update_time desc nulls last',

@@ -1,9 +1,9 @@
 # Evidence Report - 2026-06-18 CI/CD And Real-Pre Deployment
 
-- Time: 2026-06-18 16:34:00 +08:00
+- Time: 2026-06-18 16:50:00 +08:00
 - Env: local real-pre and remote real-pre server
 - Branch: feature/ddd/DDD-VERIFY-001
-- Commit: b0d217f8
+- Commit: c275aa6e
 - Worktree clean: no
 - Worktree note: unrelated local changes remain in auth/login/request files and old harness report archive moves; they were not staged in this task.
 - Remote deployed: yes
@@ -16,6 +16,7 @@
 - Fixed one frontend permission-boundary issue found by roles E2E.
 - Fixed roles E2E to use async activity product sync instead of synchronous refresh GET.
 - Fixed P0 performance-dashboard validation to use current estimate/effective and estimate/settle tracks.
+- Fixed P0 sample-chain candidate setup to use the legal approved-library `/assignee` path before biz_staff sample audit.
 - Validated remote public ingress, roles flow, and real-pre P0 gate.
 
 ## Commits
@@ -28,6 +29,7 @@
 - 96700af8 `test: avoid synchronous activity product refresh in roles e2e`
 - 79fdb499 `docs: record real-pre deployment validation evidence`
 - b0d217f8 `test: validate real-pre performance summary tracks`
+- c275aa6e `docs: update P0 pending evidence`
 
 ## Local Validation
 
@@ -35,16 +37,18 @@
 - `npx --yes pnpm@9 build`: PASS.
 - `npx --yes pnpm@9 exec playwright test tests/e2e/11-real-pre-role-business-flow.spec.ts --list`: PASS, 1 test listed.
 - `npx --yes pnpm@9 exec playwright test tests/e2e/34-real-pre-performance-dashboard.spec.ts --list`: PASS, 1 test listed.
+- `npx playwright test --list --project=real-pre-p0 tests/e2e/33-real-pre-sample-chain.spec.ts`: PASS, 1 test listed.
 - Build warning: Vite still reports chunks larger than 500 kB; this is an existing warning, not a failed gate.
 
 ## Remote Env Update
 
 - Server app dir: `/opt/saas/app`.
-- Remote branch fast-forwarded to b0d217f8 from gitee.
+- Remote branch fast-forwarded to c275aa6e from gitee.
 - Remote `.env.real-pre` non-secret public URL values were updated to public HTTP port 80.
 - Env backup: `/opt/saas/env/.env.real-pre.bak-20260618-150124-before-public80`.
-- Public ingress observed: `http://1.14.108.159` works via Nginx.
-- Public HTTPS/443 observed: not reachable in this validation window.
+- Public HTTP ingress observed: `http://1.14.108.159` works via Nginx.
+- Public HTTPS/443 observed: not production-ready. `ss -ltnp` shows Nginx listening on `0.0.0.0:80` only; `curl -k https://1.14.108.159/healthz` fails TLS handshake.
+- Nginx vhost: `server_name _`, no domain-specific server block observed.
 
 ## Remote Deployment
 
@@ -53,7 +57,7 @@
 - Deployment result: PASS.
 - DB backup: `/opt/saas/backups/saas_real_pre-20260618-160023.dump`.
 - Image tag: 96700af8.
-- Note: b0d217f8 changes E2E verification only; running app containers remain the last deployed application image 96700af8.
+- Note: c275aa6e changes evidence/docs only; running app containers remain the last deployed application image 96700af8.
 - Containers after deployment:
   - `saas-active-frontend-real-pre-1` -> `colonel-saas/frontend:96700af8`, healthy.
   - `saas-active-backend-real-pre-1` -> `colonel-saas/backend:96700af8`, healthy.
@@ -81,7 +85,7 @@
 - First P0 attempt after deployment: FAIL due missing Playwright ffmpeg binary.
 - Runtime dependency fix: `npx playwright install ffmpeg`, installed `/home/deploy/.cache/ms-playwright/ffmpeg-1011`.
 - Re-run: `npm run e2e:real-pre:p0`.
-- Latest P0 evidence dir: `/opt/saas/app/runtime/qa/out/real-pre-p0-20260618-162903`.
+- Latest P0 evidence dir: `/opt/saas/app/runtime/qa/out/real-pre-p0-20260618-164518`.
 - Final P0 status: PENDING.
 
 P0 step status:
@@ -98,14 +102,16 @@ P0 step status:
 PENDING reasons from report:
 
 - `PENDING_NO_UPSTREAM_ORDERS`: current real orders are not attributed, so attribution chain cannot be proven.
-- `PENDING_NO_ASSIGNED_SAMPLE_PRODUCT`: no real in-library product assigned for biz_staff sample audit chain.
+- `PENDING_REAL_ORDER_FOR_HOMEWORK`: sample status machine reaches `PENDING_TASK`, but no real attributed成交 order exists to trigger automatic completion.
 
 Additional database evidence:
 
-- `colonelsettlement_order`: 168231+ real orders observed, 0 attributed, 0 with `pick_source`.
+- `colonelsettlement_order`: 168401+ real orders observed, 0 attributed, 0 with `pick_source`; all observed un-attributed rows use `COLONEL_MAPPING_NOT_FOUND`.
+- `pick_source_mapping`: 4 active `NATIVE` rows, all with `colonel_buyin_id=0`; no mapping for real order `colonel_buyin_id=7351155267604218149`.
+- `/api/orders/replay-attribution` dry-run with `reason=COLONEL_MAPPING_NOT_FOUND`, `limit=200`: `scanned=200`, `attributed=0`, `safeToUpdate=0`, `nativeKeyMatched=0`; real replay was not executed.
 - `performance_records`: 168238+ records observed with fee/profit fields; P0 34 now validates current summary tracks.
-- `product_operation_state`: 2473 selected-to-library products; selected assigned products are assigned to `biz_leader`, not `biz_staff`.
-- Selected library products observed as `APPROVED` or `LINKED`; no selected `PENDING_AUDIT` product was available for biz_staff sample audit assignment.
+- `product_operation_state`: selected-to-library product `activityId=3891192`, `productId=3705666225800609816` was legally assigned to `biz_staff` via `/api/colonel/activities/{activityId}/products/{productId}/assignee`.
+- P0 33 status transitions passed: `PENDING_AUDIT -> PENDING_SHIP -> SHIPPED -> PENDING_TASK`; duplicate 7-day sample guard returned code 462 as expected.
 
 ## Safety And Boundaries
 
@@ -118,7 +124,7 @@ Additional database evidence:
 ## Not Fully Verified
 
 - Live Jenkins controller execution was not available in this workspace.
-- P0 cannot be declared PASS because it is waiting on real attribution and sample-audit prerequisites.
+- P0 cannot be declared PASS because it is waiting on real attributed orders and a real成交 sample-completion trigger.
 - Production-domain HTTPS readiness was not proven; validation used public HTTP IP.
 - Cleanup plan generated by step 36 still needs review/execution before declaring the test window fully cleaned.
 
@@ -126,4 +132,4 @@ Additional database evidence:
 
 PENDING.
 
-The deployment mechanism, public HTTP ingress, container health, roles E2E, Douyin integration, product chain, performance dashboard and RBAC are verified on remote real-pre. This is not yet a full production-applicable PASS because P0 still depends on attributed real orders and a biz_staff-auditable sample product, and HTTPS/domain readiness was not verified.
+The deployment mechanism, public HTTP ingress, container health, roles E2E, Douyin integration, product chain, manual sample state machine, performance dashboard and RBAC are verified on remote real-pre. This is not yet a full production-applicable PASS because P0 still depends on attributed real orders, real成交-driven sample auto-completion, and HTTPS/domain readiness.
