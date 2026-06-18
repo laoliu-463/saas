@@ -336,6 +336,10 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
+import { BarChart, LineChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { init, use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
 import PageHeader from '../../components/PageHeader.vue'
 import { getMetrics } from '../../api/data'
 import { centToYuan, getPerformanceSummary, type PerformanceSummary } from '../../api/performance'
@@ -374,7 +378,7 @@ type EchartsCore = {
 }
 
 let trendChart: TrendChartInstance | null = null
-let echartsCorePromise: Promise<EchartsCore> | null = null
+let echartsRegistered = false
 const showSkeleton = computed(() => delayedLoading.value && !initialized.value)
 const ROLE = ROLE_CODES
 
@@ -707,26 +711,19 @@ const resizeTrendChart = () => {
 }
 
 const loadEchartsCore = async () => {
-  if (!echartsCorePromise) {
-    echartsCorePromise = Promise.all([
-      import('echarts/core'),
-      import('echarts/charts'),
-      import('echarts/components'),
-      import('echarts/renderers')
-    ]).then(([core, charts, components, renderers]) => {
-      core.use([
-        charts.BarChart,
-        charts.LineChart,
-        components.GridComponent,
-        components.LegendComponent,
-        components.TooltipComponent,
-        renderers.CanvasRenderer
-      ])
-      return core as unknown as EchartsCore
-    })
+  if (!echartsRegistered) {
+    use([
+      BarChart,
+      LineChart,
+      GridComponent,
+      LegendComponent,
+      TooltipComponent,
+      CanvasRenderer
+    ])
+    echartsRegistered = true
   }
 
-  return echartsCorePromise
+  return { init, use } as unknown as EchartsCore
 }
 
 const renderTrendChart = async () => {
