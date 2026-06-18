@@ -1,10 +1,11 @@
-# Evidence Report - 2026-06-18 CI/CD Pipeline
+# Evidence Report - 2026-06-18 CI/CD And Deploy Validation
 
 - Time: 2026-06-18 14:40:35 +08:00
-- Env: local real-pre
+- Updated: 2026-06-18 14:54:16 +08:00
+- Env: local real-pre and remote real-pre server
 - Branch: feature/ddd/DDD-VERIFY-001
-- Commit: b0130b8b
-- Remote deploy: no, not requested by user
+- CI/CD commit: fd15f448
+- Remote deploy validation: attempted, blocked by env guard before rebuild
 - Worktree clean: no
 - Worktree note: unrelated existing changes remain in frontend runtime files and harness report archive moves; they were not included as task evidence.
 
@@ -50,20 +51,48 @@
 - real promotion write requires `CONFIRM_REAL_PROMOTION_WRITE=true` when both real promotion write switches are enabled.
 - CI evidence artifact now records pipeline parameters and target ref.
 
+## Remote Deploy Validation
+
+- Pushed `fd15f448` to `gitee/feature/ddd/DDD-VERIFY-001` so the server deployment source can fast-forward to the same CI/CD commit.
+- Remote server `/opt/saas/app` fast-forwarded from `8d1119a` to `fd15f448` during `scripts/deploy-real-pre.sh`.
+- Deployment command used `REAL_PROMOTION_WRITE_CONFIRMED=true` because real promotion write double switches are enabled.
+- Deployment result: BLOCKED before database backup, migrations, image rebuild and container update.
+- Blocker: `LOGISTICS_KD100_CALLBACK_URL` is empty or still a placeholder while `LOGISTICS_KD100_SUBSCRIBE_ENABLED=true`.
+- Current remote running stack after the blocked deploy remains healthy:
+  - Backend health: `http://127.0.0.1:8081/api/system/health` -> UP
+  - Frontend health: `http://127.0.0.1:3001/healthz` -> ok
+  - Docker services: backend, frontend, PostgreSQL and Redis healthy
+- Remote preflight on the current running stack: PASS.
+  - Evidence: `/opt/saas/app/runtime/qa/out/real-pre-preflight-20260618-145305`
+  - Checks passed: frontend, backend health, admin login, env guard, Douyin token readiness, schema readiness, reusable promotion mapping, cleanup plan.
+
+## Script Hardening
+
+- `scripts/deploy-real-pre.sh`: moved real-pre env validation before `git pull --ff-only`; future config failures should stop before mutating server source checkout.
+- `scripts/real-pre-startup-check.sh`: added required checks for `LOGISTICS_KD100_CALLBACK_URL` and `LOGISTICS_KD100_CALLBACK_SALT` when Kuaidi100 subscription is enabled.
+- Local validation:
+  - `bash -n scripts/deploy-real-pre.sh scripts/real-pre-startup-check.sh`: PASS
+  - `bash scripts/real-pre-startup-check.sh .env.real-pre`: PASS
+  - `mvn -f backend/pom.xml -DskipTests package`: PASS
+  - `npx --yes pnpm@9 build`: PASS
+  - Note: JaCoCo reported execution data mismatch for `SysUserService`; current worktree contains unrelated uncommitted changes in that file.
+
 ## Not Executed
 
 - Jenkins controller execution: not executed; no Jenkins controller/runtime was available in this workspace.
-- Remote real-pre deployment: not executed; user did not explicitly request remote deployment.
+- Remote image rebuild/container update: not executed because env guard blocked deployment before build/start.
+- real-pre roles/P0 E2E after candidate rebuild: not executed because candidate rebuild did not happen.
 - `mvn clean test`: BLOCKED locally because Windows Java language service held `backend/target/classes`; full `mvn test` recompiled and passed afterward.
 
 ## Conclusion
 
 PARTIAL
 
-The CI/CD implementation and local equivalent build/test/deploy-gate checks are passing. Final end-to-end PASS requires running the Jenkins job on the target Jenkins controller and preserving its build artifacts.
+The CI/CD implementation and local equivalent build/test/deploy-gate checks are passing. Actual remote deployment verification is blocked by missing Kuaidi100 callback configuration, so this is not yet production-applicable.
 
 ## Remaining Risk
 
 - Jenkins Pipeline syntax has not been validated by a live Jenkins controller.
-- CD behavior is guarded by parameters, but the real deployment stage still needs one controlled Jenkins run before declaring Jenkins CD fully verified.
+- CD behavior is guarded by parameters, but the real deployment stage still needs one successful controlled server run after `LOGISTICS_KD100_CALLBACK_URL` is configured.
+- Remote OAuth callback is still IP/HTTP based in observed env summary; production-domain readiness requires explicit HTTPS domain validation.
 - Existing unrelated worktree changes must be kept out of this task commit unless the user explicitly includes them.

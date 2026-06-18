@@ -85,7 +85,80 @@ compose() {
   docker compose --env-file "${ENV_FILE}" --project-name "${PROJECT_NAME}" -f "${COMPOSE_FILE}" "$@"
 }
 
+validate_real_pre_env() {
+  expect_env COMPOSE_PROJECT_NAME saas-active
+  if [ "${PROJECT_NAME}" != "saas-active" ]; then
+    echo "ERROR: PROJECT_NAME/COMPOSE_PROJECT_NAME must be saas-active, got ${PROJECT_NAME}." >&2
+    exit 1
+  fi
+
+  expect_env SPRING_PROFILES_ACTIVE real-pre
+  expect_env APP_TEST_ENABLED false
+  expect_env DOUYIN_TEST_ENABLED false
+  expect_env DOUYIN_REAL_UPSTREAM_MODE live
+  expect_env DB_NAME saas_real_pre
+  expect_env ORDER_SYNC_ENABLED true
+  expect_env TALENT_COLLECT_MODE api
+  expect_env TALENT_COLLECT_API_ENABLED true
+  expect_env TALENT_PUBLIC_PAGE_CRAWL_ENABLED false
+  expect_env LOGISTICS_PROVIDER kuaidi100
+  expect_env LOGISTICS_KD100_ENABLED true
+  expect_env LOGISTICS_KD100_SUBSCRIBE_ENABLED true
+  expect_env LOGISTICS_SYNC_ENABLED true
+  expect_env EXCLUSIVE_ENABLED false
+
+  promotion_write="$(get_env DOUYIN_REAL_PROMOTION_WRITE_ENABLED false | tr '[:upper:]' '[:lower:]')"
+  allow_promotion_write="$(get_env ALLOW_REAL_PROMOTION_WRITE false | tr '[:upper:]' '[:lower:]')"
+  if [ "${promotion_write}" = "true" ] && [ "${allow_promotion_write}" != "true" ]; then
+    echo "ERROR: DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true requires ALLOW_REAL_PROMOTION_WRITE=true." >&2
+    exit 1
+  fi
+  if [ "${allow_promotion_write}" = "true" ] && [ "${promotion_write}" != "true" ]; then
+    echo "ERROR: ALLOW_REAL_PROMOTION_WRITE=true requires DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true." >&2
+    exit 1
+  fi
+  if [ "${promotion_write}" = "true" ]; then
+    if [ "${REAL_PROMOTION_WRITE_CONFIRMED:-false}" != "true" ]; then
+      echo "ERROR: real promotion write is disabled by default for real-pre controlled deployment. Set REAL_PROMOTION_WRITE_CONFIRMED=true only after manual approval." >&2
+      exit 1
+    fi
+    echo "WARN: real Douyin promotion write is enabled for a manually approved write window."
+  else
+    expect_env DOUYIN_REAL_PROMOTION_WRITE_ENABLED false
+    expect_env ALLOW_REAL_PROMOTION_WRITE false
+  fi
+
+  for key in \
+    DB_PASSWORD \
+    ADMIN_PASSWORD \
+    REDIS_PASSWORD \
+    JWT_SECRET \
+    CORS_ALLOWED_ORIGIN_PATTERNS \
+    DOUYIN_BASE_URL \
+    DOUYIN_APP_ID \
+    DOUYIN_CLIENT_KEY \
+    DOUYIN_CLIENT_SECRET \
+    DOUYIN_OAUTH_REDIRECT_URI \
+    DOUYIN_OAUTH_FRONTEND_SUCCESS_URL \
+    DOUYIN_OAUTH_FRONTEND_FAILURE_URL; do
+    require_env "${key}"
+  done
+
+  if [ "$(get_env LOGISTICS_KD100_ENABLED false | tr '[:upper:]' '[:lower:]')" = "true" ]; then
+    require_env LOGISTICS_KD100_CUSTOMER
+    require_env LOGISTICS_KD100_KEY
+  fi
+
+  if [ "$(get_env LOGISTICS_KD100_SUBSCRIBE_ENABLED false | tr '[:upper:]' '[:lower:]')" = "true" ]; then
+    require_env LOGISTICS_KD100_CALLBACK_URL
+    require_env LOGISTICS_KD100_CALLBACK_SALT
+  fi
+}
+
 echo "Evidence directory: ${EVIDENCE_ROOT}"
+
+echo "Validating real-pre environment before git pull ..."
+validate_real_pre_env
 
 before_commit="$(git rev-parse --short HEAD 2>/dev/null || true)"
 printf '%s\n' "${before_commit:-unknown}" > "${EVIDENCE_ROOT}/commit-before.txt"
@@ -97,74 +170,6 @@ git pull --ff-only
 after_commit="$(git rev-parse --short HEAD 2>/dev/null || true)"
 printf '%s\n' "${after_commit:-unknown}" > "${EVIDENCE_ROOT}/commit-after.txt"
 echo "Commit after deploy: ${after_commit:-unknown}"
-
-expect_env COMPOSE_PROJECT_NAME saas-active
-if [ "${PROJECT_NAME}" != "saas-active" ]; then
-  echo "ERROR: PROJECT_NAME/COMPOSE_PROJECT_NAME must be saas-active, got ${PROJECT_NAME}." >&2
-  exit 1
-fi
-
-expect_env SPRING_PROFILES_ACTIVE real-pre
-expect_env APP_TEST_ENABLED false
-expect_env DOUYIN_TEST_ENABLED false
-expect_env DOUYIN_REAL_UPSTREAM_MODE live
-expect_env DB_NAME saas_real_pre
-expect_env ORDER_SYNC_ENABLED true
-expect_env TALENT_COLLECT_MODE api
-expect_env TALENT_COLLECT_API_ENABLED true
-expect_env TALENT_PUBLIC_PAGE_CRAWL_ENABLED false
-expect_env LOGISTICS_PROVIDER kuaidi100
-expect_env LOGISTICS_KD100_ENABLED true
-expect_env LOGISTICS_KD100_SUBSCRIBE_ENABLED true
-expect_env LOGISTICS_SYNC_ENABLED true
-expect_env EXCLUSIVE_ENABLED false
-
-promotion_write="$(get_env DOUYIN_REAL_PROMOTION_WRITE_ENABLED false | tr '[:upper:]' '[:lower:]')"
-allow_promotion_write="$(get_env ALLOW_REAL_PROMOTION_WRITE false | tr '[:upper:]' '[:lower:]')"
-if [ "${promotion_write}" = "true" ] && [ "${allow_promotion_write}" != "true" ]; then
-  echo "ERROR: DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true requires ALLOW_REAL_PROMOTION_WRITE=true." >&2
-  exit 1
-fi
-if [ "${allow_promotion_write}" = "true" ] && [ "${promotion_write}" != "true" ]; then
-  echo "ERROR: ALLOW_REAL_PROMOTION_WRITE=true requires DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true." >&2
-  exit 1
-fi
-if [ "${promotion_write}" = "true" ]; then
-  if [ "${REAL_PROMOTION_WRITE_CONFIRMED:-false}" != "true" ]; then
-    echo "ERROR: real promotion write is disabled by default for real-pre controlled deployment. Set REAL_PROMOTION_WRITE_CONFIRMED=true only after manual approval." >&2
-    exit 1
-  fi
-  echo "WARN: real Douyin promotion write is enabled for a manually approved write window."
-else
-  expect_env DOUYIN_REAL_PROMOTION_WRITE_ENABLED false
-  expect_env ALLOW_REAL_PROMOTION_WRITE false
-fi
-
-for key in \
-  DB_PASSWORD \
-  ADMIN_PASSWORD \
-  REDIS_PASSWORD \
-  JWT_SECRET \
-  CORS_ALLOWED_ORIGIN_PATTERNS \
-  DOUYIN_BASE_URL \
-  DOUYIN_APP_ID \
-  DOUYIN_CLIENT_KEY \
-  DOUYIN_CLIENT_SECRET \
-  DOUYIN_OAUTH_REDIRECT_URI \
-  DOUYIN_OAUTH_FRONTEND_SUCCESS_URL \
-  DOUYIN_OAUTH_FRONTEND_FAILURE_URL; do
-  require_env "${key}"
-done
-
-if [ "$(get_env LOGISTICS_KD100_ENABLED false | tr '[:upper:]' '[:lower:]')" = "true" ]; then
-  require_env LOGISTICS_KD100_CUSTOMER
-  require_env LOGISTICS_KD100_KEY
-fi
-
-if [ "$(get_env LOGISTICS_KD100_SUBSCRIBE_ENABLED false | tr '[:upper:]' '[:lower:]')" = "true" ]; then
-  require_env LOGISTICS_KD100_CALLBACK_URL
-  require_env LOGISTICS_KD100_CALLBACK_SALT
-fi
 
 export COMPOSE_PROJECT_NAME="${PROJECT_NAME}"
 export REAL_PRE_ENV_FILE="${ENV_FILE}"
