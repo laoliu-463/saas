@@ -684,6 +684,11 @@ const handleBatchAction = (key: string) => {
 }
 
 const loadInstitutionName = async () => {
+  if (!isAdminUser.value) {
+    institutionName.value = ''
+    return
+  }
+
   try {
     const res = await getDouyinInstitutionInfo()
     institutionName.value = extractInstitutionName(res)
