@@ -76,6 +76,10 @@
   - `mvn -f backend/pom.xml -DskipTests package`: PASS
   - `npx --yes pnpm@9 build`: PASS
   - Note: JaCoCo reported execution data mismatch for `SysUserService`; current worktree contains unrelated uncommitted changes in that file.
+- Remote validation after pushing hardening commit:
+  - Server source fast-forwarded to `97a1b7a`.
+  - `bash scripts/real-pre-startup-check.sh /opt/saas/env/.env.real-pre`: FAIL as expected before deploy.
+  - Expected blocker: `LOGISTICS_KD100_CALLBACK_URL` missing while Kuaidi100 subscription is enabled.
 
 ## Not Executed
 
