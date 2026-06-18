@@ -39,6 +39,10 @@ class ProductActivitySyncJobTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(jobLockService.tryAcquire(any(), any(Duration.class)))
+                .thenReturn(true);
+        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class)))
+                .thenReturn(true);
         lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class)))
                 .thenReturn(true);
         lenient().when(productService.refreshActivitySnapshots(any()))
@@ -64,6 +68,7 @@ class ProductActivitySyncJobTest {
         verify(jobLockService).tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class));
         verifyNoInteractions(activityMapper, productService);
         verify(jobLockService, never()).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     @Test
@@ -77,6 +82,7 @@ class ProductActivitySyncJobTest {
         verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-2"), any(LocalDateTime.class));
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     @Test
@@ -92,6 +98,7 @@ class ProductActivitySyncJobTest {
         verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-2"), any(LocalDateTime.class));
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     @Test
@@ -116,6 +123,7 @@ class ProductActivitySyncJobTest {
 
         verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     @Test
@@ -138,6 +146,7 @@ class ProductActivitySyncJobTest {
         verify(activityMapper).touchLastSyncAt(eq("ACT-10"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-20"), any(LocalDateTime.class));
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     private ProductActivitySyncJob job(boolean enabled, String whitelistActivities) {

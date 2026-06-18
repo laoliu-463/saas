@@ -8,9 +8,11 @@
 
 - 根目录存在 `Jenkinsfile`。
 - 当前 `Jenkinsfile` 已对齐 `PROJECT_NAME = 'saas-active'`，与 `docker-compose.real-pre.yml` 和 `.env.real-pre.example` 的 `COMPOSE_PROJECT_NAME=saas-active` 保持一致。
-- 当前 `Jenkinsfile` 已改为调用 `scripts/deploy-real-pre.sh`，Jenkins 不再自行 `docker compose down/up` 重写部署流程。
-- 当前 `Jenkinsfile` 默认只执行拉代码、环境守卫、后端测试、前端测试与构建、后端打包、部署脚本、健康检查和证据归档。
+- 当前 `Jenkinsfile` 默认只执行 CI：拉代码、后端测试、前端测试与构建、后端打包和证据归档。
+- 当前 `Jenkinsfile` 只有在人工开启 `DEPLOY_REAL_PRE=true` 后才调用 `scripts/deploy-real-pre.sh`，Jenkins 不自行重写部署流程。
+- 开启 `DEPLOY_REAL_PRE=true` 时必须填写 `DEPLOY_BRANCH`，避免 detached HEAD 场景下部署脚本执行 `git pull --ff-only` 失败。
 - 当前 `Jenkinsfile` 保留 `RUN_REAL_PRE_E2E` 参数，默认 `false`；只有人工打开后才运行 preflight / roles / p0。
+- 当前 `Jenkinsfile` 保留 `CONFIRM_REAL_PROMOTION_WRITE` 参数；real-pre 环境开启真实推广写双开关时，必须人工确认后才允许部署或 E2E。
 
 ## 前置条件
 
@@ -67,18 +69,29 @@ volumes:
 Checkout
 -> Backend Test
 -> Frontend Test / Build
--> Guard Real-Pre Env
--> Deploy
--> Health Check
+-> Backend Package
 -> Evidence
 ```
 
-第二版再逐步加入：
+人工开启部署或 real-pre E2E 后追加：
+
+```text
+Guard Real-Pre Env
+-> Deploy (DEPLOY_REAL_PRE=true)
+-> Health Check
+-> Real-pre Preflight
+-> Real-pre Roles
+-> Real-pre P0
+```
+
+后续版本再逐步强化：
 
 ```text
 Real-pre Preflight
 -> Real-pre Roles
 -> Real-pre P0
+-> Evidence Summary Parsing
+-> Rollback Drill
 ```
 
 `PENDING` 不应直接让 Jenkins 判定为代码失败，除非报告明确是 `FAIL` 或硬失败。
@@ -104,7 +117,9 @@ Real-pre Preflight
 
 ```groovy
 parameters {
-    string(name: 'DEPLOY_BRANCH', defaultValue: 'feature/auth-system', description: 'real-pre 受控部署分支')
+    string(name: 'DEPLOY_BRANCH', defaultValue: '', description: '留空时使用 Jenkins SCM 当前分支/提交；DEPLOY_REAL_PRE=true 时必填')
+    booleanParam(name: 'DEPLOY_REAL_PRE', defaultValue: false, description: '人工确认后执行 real-pre 受控部署；默认只跑 CI')
+    booleanParam(name: 'CONFIRM_REAL_PROMOTION_WRITE', defaultValue: false, description: 'real-pre 开启真实推广写双开关时，必须人工确认后才允许部署')
     booleanParam(name: 'RUN_REAL_PRE_E2E', defaultValue: false, description: '第二阶段开启：运行 preflight / roles / p0 E2E 门禁')
 }
 
@@ -117,7 +132,7 @@ environment {
 }
 ```
 
-部署阶段固定调用：
+`DEPLOY_REAL_PRE=true` 时，部署阶段固定调用：
 
 ```bash
 APP_DIR="$PWD" \
@@ -126,16 +141,20 @@ COMPOSE_FILE="$COMPOSE_FILE" \
 PROJECT_NAME="$PROJECT_NAME" \
 EVIDENCE_ROOT="/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER}" \
 IMAGE_TAG="$IMAGE_TAG" \
+REAL_PROMOTION_WRITE_CONFIRMED="$CONFIRM_REAL_PROMOTION_WRITE" \
   ./scripts/deploy-real-pre.sh
 ```
 
-说明：Jenkins 仍然是第二阶段入口，不替代第一次手动部署。第一次服务器部署应先用 `scripts/deploy-real-pre.sh` 直接验证端口、健康检查、Token 和真实 API。
+说明：Jenkins 仍然是第二阶段入口，不替代第一次手动部署。第一次服务器部署应先用 `scripts/deploy-real-pre.sh` 直接验证端口、健康检查、Token 和真实 API。默认构建不会部署 real-pre，也不会重启容器。
 
 ## 验收标准
 
 - Jenkins 不参与第一次手动部署。
 - Jenkins 调用同一套 `scripts/deploy-real-pre.sh`。
-- Jenkins 环境守卫能阻断 `APP_TEST_ENABLED=true`、`DOUYIN_TEST_ENABLED=true`、`DOUYIN_REAL_UPSTREAM_MODE` 非 `live`、真实推广双开关未同时为 `true`、快递100或物流同步未开启等上线配置缺口。
+- Jenkins 默认只跑 CI；`DEPLOY_REAL_PRE=true` 才允许执行部署和重启。
+- Jenkins 部署时必须显式填写 `DEPLOY_BRANCH`，确保部署脚本位于可 `git pull --ff-only` 的本地分支。
+- Jenkins 环境守卫能阻断 `APP_TEST_ENABLED=true`、`DOUYIN_TEST_ENABLED=true`、`DOUYIN_REAL_UPSTREAM_MODE` 非 `live`、真实推广双开关不一致、快递100或物流同步未开启等上线配置缺口。
+- Jenkins 在真实推广写双开关为 `true` 时，必须要求 `CONFIRM_REAL_PROMOTION_WRITE=true`，否则阻断部署或 real-pre E2E。
 - Jenkins 归档部署证据和日志。
 - 第一版 Jenkins 不强制接入 P0 E2E，`RUN_REAL_PRE_E2E` 默认关闭。
 - 第二版接入 preflight / roles / p0 时，不能把 `PENDING` 直接当 PASS 或代码失败。

@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.util.Arrays;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -15,11 +14,12 @@ class ProductServicePromotionPortArchitectureTest {
 
     @Test
     void productService_shouldDependOnDouyinConvertPortInsteadOfLegacyGatewayField() {
-        List<Class<?>> fieldTypes = Arrays.stream(ProductService.class.getDeclaredFields())
+        var fieldTypeNames = Arrays.stream(ProductService.class.getDeclaredFields())
                 .map(Field::getType)
+                .map(Class::getName)
                 .toList();
 
-        assertThat(fieldTypes).contains(DouyinConvertPort.class);
-        assertThat(fieldTypes).doesNotContain(DouyinPromotionGateway.class);
+        assertThat(fieldTypeNames).contains(DouyinConvertPort.class.getName());
+        assertThat(fieldTypeNames).doesNotContain(DouyinPromotionGateway.class.getName());
     }
 }

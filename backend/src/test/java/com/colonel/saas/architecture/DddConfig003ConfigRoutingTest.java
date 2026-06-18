@@ -5,6 +5,7 @@ import com.colonel.saas.domain.config.facade.dto.ExclusiveRulesDTO;
 import com.colonel.saas.domain.config.facade.dto.PromotionTemplateDTO;
 import com.colonel.saas.domain.config.facade.dto.SampleDefaultStandardDTO;
 import com.colonel.saas.domain.config.facade.dto.SampleRulesDTO;
+import com.colonel.saas.domain.product.application.port.DouyinConvertPort;
 import com.colonel.saas.domain.event.ConfigChangedEventConsumer;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.CrawlerTalentInfo;
@@ -179,7 +180,7 @@ class DddConfig003ConfigRoutingTest {
 
     private ProductService minimalProductService() {
         return new ProductService(
-                (com.colonel.saas.gateway.douyin.DouyinPromotionGateway) null,
+                (DouyinConvertPort) null,
                 null, null, null, null, null, null, null, null,
                 null, null, null, null, null,
                 new PromotionLinkIdempotencyService(new com.fasterxml.jackson.databind.ObjectMapper()),

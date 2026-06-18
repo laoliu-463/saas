@@ -9,7 +9,9 @@ pipeline {
     }
 
     parameters {
-        string(name: 'DEPLOY_BRANCH', defaultValue: 'feature/auth-system', description: 'real-pre 受控部署分支')
+        string(name: 'DEPLOY_BRANCH', defaultValue: '', description: '留空时使用 Jenkins SCM 当前分支/提交；DEPLOY_REAL_PRE=true 时必填')
+        booleanParam(name: 'DEPLOY_REAL_PRE', defaultValue: false, description: '人工确认后执行 real-pre 受控部署；默认只跑 CI')
+        booleanParam(name: 'CONFIRM_REAL_PROMOTION_WRITE', defaultValue: false, description: 'real-pre 开启真实推广写双开关时，必须人工确认后才允许部署')
         booleanParam(name: 'RUN_REAL_PRE_E2E', defaultValue: false, description: '第二阶段开启：运行 preflight / roles / p0 E2E 门禁')
     }
 
@@ -20,6 +22,7 @@ pipeline {
         REAL_PRE_FRONTEND = 'http://127.0.0.1:3001'
         REAL_PRE_BACKEND = 'http://127.0.0.1:8081'
         IMAGE_TAG = ''
+        TARGET_REF = ''
     }
 
     stages {
@@ -29,11 +32,28 @@ pipeline {
                 sh '''
                 set -eu
                 mkdir -p runtime/qa/out/jenkins
-                git fetch origin "$DEPLOY_BRANCH"
-                git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
-                git branch --set-upstream-to="origin/$DEPLOY_BRANCH" "$DEPLOY_BRANCH" || true
+
+                deploy_real_pre="$(printf '%s' "${DEPLOY_REAL_PRE:-false}" | tr '[:upper:]' '[:lower:]')"
+                if [ "$deploy_real_pre" = "true" ] && [ -z "${DEPLOY_BRANCH:-}" ]; then
+                  echo "DEPLOY_REAL_PRE=true 时必须填写 DEPLOY_BRANCH，避免 detached HEAD 部署和 git pull --ff-only 失败"
+                  exit 1
+                fi
+
+                if [ -n "${DEPLOY_BRANCH:-}" ]; then
+                  git fetch origin "$DEPLOY_BRANCH"
+                  git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+                  git branch --set-upstream-to="origin/$DEPLOY_BRANCH" "$DEPLOY_BRANCH" || true
+                  printf '%s\n' "$DEPLOY_BRANCH" > runtime/qa/out/jenkins/TARGET_REF.txt
+                else
+                  current_ref="$(git rev-parse --abbrev-ref HEAD)"
+                  if [ "$current_ref" = "HEAD" ]; then
+                    current_ref="$(git rev-parse --short HEAD)"
+                  fi
+                  printf '%s\n' "$current_ref" > runtime/qa/out/jenkins/TARGET_REF.txt
+                fi
                 '''
                 script {
+                    env.TARGET_REF = readFile('runtime/qa/out/jenkins/TARGET_REF.txt').trim()
                     env.IMAGE_TAG = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
                 }
                 sh '''
@@ -41,11 +61,18 @@ pipeline {
                 printf '%s\n' "$IMAGE_TAG" > runtime/qa/out/jenkins/IMAGE_TAG.txt
                 git status --short > runtime/qa/out/jenkins/git-status-before-deploy.txt
                 '''
+                echo "TARGET_REF = ${env.TARGET_REF}"
                 echo "IMAGE_TAG = ${env.IMAGE_TAG}"
             }
         }
 
         stage('real-pre 环境守卫') {
+            when {
+                anyOf {
+                    expression { return params.DEPLOY_REAL_PRE }
+                    expression { return params.RUN_REAL_PRE_E2E }
+                }
+            }
             steps {
                 sh '''
                 set -eu
@@ -120,8 +147,12 @@ pipeline {
                   exit 1
                 fi
                 if [ "$promotion_write" = "true" ]; then
-                  echo "Jenkins real-pre 第一版不默认执行真实推广写操作；请先走人工批准的受控写窗口"
-                  exit 1
+                  confirm_write="$(printf '%s' "${CONFIRM_REAL_PROMOTION_WRITE:-false}" | tr '[:upper:]' '[:lower:]')"
+                  if [ "$confirm_write" != "true" ]; then
+                    echo "real-pre 已开启真实推广写双开关；必须勾选 CONFIRM_REAL_PROMOTION_WRITE 后才允许进入受控部署或 E2E"
+                    exit 1
+                  fi
+                  echo "真实推广写双开关已开启，且本次 Jenkins 运行已人工确认。"
                 else
                   expect_env DOUYIN_REAL_PROMOTION_WRITE_ENABLED false
                   expect_env ALLOW_REAL_PROMOTION_WRITE false
@@ -209,6 +240,9 @@ pipeline {
         }
 
         stage('部署 real-pre 受控环境') {
+            when {
+                expression { return params.DEPLOY_REAL_PRE }
+            }
             steps {
                 sh '''
                 set -eu
@@ -219,12 +253,19 @@ pipeline {
                 PROJECT_NAME="$PROJECT_NAME" \
                 EVIDENCE_ROOT="/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER}" \
                 IMAGE_TAG="$IMAGE_TAG" \
+                REAL_PROMOTION_WRITE_CONFIRMED="${CONFIRM_REAL_PROMOTION_WRITE:-false}" \
                   ./scripts/deploy-real-pre.sh
                 '''
             }
         }
 
         stage('端口健康检查') {
+            when {
+                anyOf {
+                    expression { return params.DEPLOY_REAL_PRE }
+                    expression { return params.RUN_REAL_PRE_E2E }
+                }
+            }
             steps {
                 sh '''
                 set -eu
@@ -294,19 +335,31 @@ pipeline {
             sh '''
             set +e
             mkdir -p runtime/qa/out/jenkins
-            docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/docker-compose-ps.txt 2>&1
-            docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 > runtime/qa/out/jenkins/docker-compose.logs.txt 2>&1
-            docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 backend-real-pre > runtime/qa/out/jenkins/backend-real-pre.log 2>&1
-            docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 frontend-real-pre > runtime/qa/out/jenkins/frontend-real-pre.log 2>&1
-            docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 postgres-real-pre > runtime/qa/out/jenkins/postgres-real-pre.log 2>&1
-            docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 redis-real-pre > runtime/qa/out/jenkins/redis-real-pre.log 2>&1
+            {
+              echo "DEPLOY_BRANCH=${DEPLOY_BRANCH:-}"
+              echo "TARGET_REF=${TARGET_REF:-}"
+              echo "IMAGE_TAG=${IMAGE_TAG:-}"
+              echo "DEPLOY_REAL_PRE=${DEPLOY_REAL_PRE:-false}"
+              echo "RUN_REAL_PRE_E2E=${RUN_REAL_PRE_E2E:-false}"
+              echo "CONFIRM_REAL_PROMOTION_WRITE=${CONFIRM_REAL_PROMOTION_WRITE:-false}"
+            } > runtime/qa/out/jenkins/pipeline-params.txt
+            if [ -f "$ENV_FILE" ] && [ -f "$COMPOSE_FILE" ]; then
+              docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/docker-compose-ps.txt 2>&1
+              docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 > runtime/qa/out/jenkins/docker-compose.logs.txt 2>&1
+              docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 backend-real-pre > runtime/qa/out/jenkins/backend-real-pre.log 2>&1
+              docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 frontend-real-pre > runtime/qa/out/jenkins/frontend-real-pre.log 2>&1
+              docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 postgres-real-pre > runtime/qa/out/jenkins/postgres-real-pre.log 2>&1
+              docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 redis-real-pre > runtime/qa/out/jenkins/redis-real-pre.log 2>&1
+            else
+              echo "Skip docker compose evidence: ENV_FILE or COMPOSE_FILE is unavailable for this CI-only run." > runtime/qa/out/jenkins/docker-compose-collection-skipped.txt
+            fi
             git rev-parse --short HEAD > runtime/qa/out/jenkins/commit.txt 2>&1
             '''
             archiveArtifacts artifacts: 'runtime/qa/out/**,playwright-report/**,test-results/playwright/**,backend/target/surefire-reports/**,frontend/coverage/**', allowEmptyArchive: true
         }
 
         success {
-            echo "real-pre 受控部署流水线完成；这不等于正式生产全量上线。IMAGE_TAG=${env.IMAGE_TAG}"
+            echo "流水线完成：CI 已通过；DEPLOY_REAL_PRE=${params.DEPLOY_REAL_PRE}，RUN_REAL_PRE_E2E=${params.RUN_REAL_PRE_E2E}。这不等于正式生产全量上线。IMAGE_TAG=${env.IMAGE_TAG}"
         }
 
         failure {

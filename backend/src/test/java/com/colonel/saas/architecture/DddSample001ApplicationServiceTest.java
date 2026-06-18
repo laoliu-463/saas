@@ -25,12 +25,14 @@ class DddSample001ApplicationServiceTest {
 
         assertThat(constructors).hasSize(1);
         assertThat(constructors[0].getParameterTypes())
-                .containsExactly(SampleApplicationService.class);
+                .extracting(Class::getName)
+                .containsExactly(SampleApplicationService.class.getName());
 
         assertThat(Arrays.stream(SampleController.class.getDeclaredFields())
                 .map(Field::getType)
+                .map(Class::getName)
                 .toList())
-                .containsExactly(SampleApplicationService.class);
+                .containsExactly(SampleApplicationService.class.getName());
     }
 
     @Test

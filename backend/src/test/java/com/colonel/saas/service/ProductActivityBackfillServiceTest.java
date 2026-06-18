@@ -136,7 +136,6 @@ class ProductActivityBackfillServiceTest {
         when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1"))))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
-        when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
         when(douyinProductGateway.queryActivityProducts(any()))
                 .thenThrow(new RuntimeException("upstream 500"));
@@ -155,8 +154,8 @@ class ProductActivityBackfillServiceTest {
         assertThat(state.getLastStatus()).isEqualTo("FAILED");
         assertThat(state.getLastErrorMessage()).isNotBlank();
         assertThat(state.getLastErrorMessage()).contains("rawCause=UPSTREAM_API_ERROR");
-        verify(jobLogMapper).updateById(jobLogCaptor.capture());
-        assertThat(jobLogCaptor.getValue().getErrorMessage()).isNotBlank();
+        verify(jobLogMapper, org.mockito.Mockito.atLeastOnce()).updateById(jobLogCaptor.capture());
+        assertThat(jobLogCaptor.getAllValues().get(jobLogCaptor.getAllValues().size() - 1).getErrorMessage()).isNotBlank();
     }
 
     @Test
@@ -187,7 +186,6 @@ class ProductActivityBackfillServiceTest {
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1", "ACT-2"))).thenReturn(10L);
         // Phase 4-1.5：真实 backfill 改走 batched 路径，直接调 gateway + productService.upsertSnapshotsWithStats。
         // 这里只做最弱 mock 让两条活动至少跑到 page handler，验证锁 + sync state + job log 路径。
-        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
         // gateway 返回空页（DONE_NO_MORE）让 runner 一次循环就退出。
         org.mockito.Mockito.lenient().when(douyinProductGateway.queryActivityProducts(any()))
@@ -222,7 +220,7 @@ class ProductActivityBackfillServiceTest {
                 .extracting(ProductActivitySyncState::getLastStatus)
                 .containsOnly("SUCCESS");
         verify(jobLogMapper).insert(any(ProductSyncJobLog.class));
-        verify(jobLogMapper).updateById(any(ProductSyncJobLog.class));
+        verify(jobLogMapper, org.mockito.Mockito.atLeastOnce()).updateById(any(ProductSyncJobLog.class));
     }
 
     @Test
@@ -230,7 +228,6 @@ class ProductActivityBackfillServiceTest {
         when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1"))))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
-        when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
         when(douyinProductGateway.queryActivityProducts(any()))
                 .thenReturn(new DouyinProductGateway.ActivityProductListResult(
@@ -259,7 +256,6 @@ class ProductActivityBackfillServiceTest {
         when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1"))))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
-        when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
         when(douyinProductGateway.queryActivityProducts(any()))
                 .thenReturn(new DouyinProductGateway.ActivityProductListResult(
