@@ -128,6 +128,10 @@ public abstract class BaseIntegrationTest {
                 )
                 """);
         jdbcTemplate.execute("ALTER TABLE sample_request ADD COLUMN IF NOT EXISTS shipper_code VARCHAR(32)");
+        jdbcTemplate.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS config_version INT NOT NULL DEFAULT 1");
+        jdbcTemplate.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE");
+        jdbcTemplate.execute("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS visible_in_rule_center BOOLEAN NOT NULL DEFAULT TRUE");
+        jdbcTemplate.execute("ALTER TABLE system_config_change_log ADD COLUMN IF NOT EXISTS config_version INT");
         jdbcTemplate.execute(
                 "ALTER TABLE colonelsettlement_order ADD COLUMN IF NOT EXISTS estimate_service_fee_expense BIGINT DEFAULT 0");
         jdbcTemplate.execute(
