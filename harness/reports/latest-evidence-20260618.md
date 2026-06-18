@@ -1,102 +1,118 @@
-# Evidence Report - 2026-06-18 CI/CD And Deploy Validation
+# Evidence Report - 2026-06-18 CI/CD And Real-Pre Deployment
 
-- Time: 2026-06-18 14:40:35 +08:00
-- Updated: 2026-06-18 14:54:16 +08:00
+- Time: 2026-06-18 16:12:00 +08:00
 - Env: local real-pre and remote real-pre server
 - Branch: feature/ddd/DDD-VERIFY-001
-- CI/CD commit: fd15f448
-- Remote deploy validation: attempted, blocked by env guard before rebuild
+- Commit: 96700af8
 - Worktree clean: no
-- Worktree note: unrelated existing changes remain in frontend runtime files and harness report archive moves; they were not included as task evidence.
+- Worktree note: unrelated local changes remain in auth/login/request files and old harness report archive moves; they were not staged in this task.
+- Remote deployed: yes
+- Conclusion: PENDING
 
 ## Scope
 
-- Implemented Jenkins pipeline as CI-first with explicit manual CD gate.
-- Updated Jenkins deployment documentation.
-- Fixed pnpm workspace metadata so Jenkins frontend stages can run.
-- Repaired stale backend tests that blocked full CI test execution.
+- Implemented and pushed CI/CD pipeline work on this branch.
+- Performed controlled remote real-pre deployment with fixed deploy script.
+- Fixed one frontend permission-boundary issue found by roles E2E.
+- Fixed roles E2E to use async activity product sync instead of synchronous refresh GET.
+- Validated remote public ingress, roles flow, and real-pre P0 gate.
 
-## Build And Test
+## Commits
 
-- `git diff --check -- <task files>`: PASS
-- `mvn -f backend/pom.xml test`: PASS, 2225 tests, 0 failures, 0 errors, 3 skipped
-- `mvn -f backend/pom.xml -DskipTests package`: PASS
-- `npx --yes pnpm@9 --version`: PASS, 9.15.9
-- `npx --yes pnpm@9 install --frozen-lockfile`: PASS
-- `npx --yes pnpm@9 test`: PASS, 84 files, 640 tests
-- `npx --yes pnpm@9 build`: PASS
+- fd15f448 `ci: add gated Jenkins pipeline`
+- 97a1b7a8 `deploy: harden real-pre preflight guard`
+- f3089535 `docs: record real-pre deploy blocker`
+- 9e403b34 `test: default playwright to headless`
+- 3066c0b7 `fix: skip admin-only douyin lookup for scoped roles`
+- 96700af8 `test: avoid synchronous activity product refresh in roles e2e`
+
+## Local Validation
+
+- `npx --yes pnpm@9 test -- ActivityList.test.ts`: PASS, 2 tests.
+- `npx --yes pnpm@9 build`: PASS.
+- `npx --yes pnpm@9 exec playwright test tests/e2e/11-real-pre-role-business-flow.spec.ts --list`: PASS, 1 test listed.
 - Build warning: Vite still reports chunks larger than 500 kB; this is an existing warning, not a failed gate.
 
-## Docker And Health
+## Remote Env Update
 
-- `docker compose --env-file .env.real-pre --project-name saas-active -f docker-compose.real-pre.yml config --quiet`: PASS
-- Restarted local services: `backend-real-pre`, `frontend-real-pre`
-- Docker status after restart: backend, frontend, PostgreSQL and Redis all healthy
-- `verify-local.ps1 -Env real-pre -Scope full`: PASS
-  - Backend: `http://127.0.0.1:8081/api/system/health` -> 200, `{"status":"UP"}`
-  - Frontend: `http://127.0.0.1:3001/healthz` -> 200
+- Server app dir: `/opt/saas/app`.
+- Remote branch fast-forwarded to 96700af8 from gitee.
+- Remote `.env.real-pre` non-secret public URL values were updated to public HTTP port 80.
+- Env backup: `/opt/saas/env/.env.real-pre.bak-20260618-150124-before-public80`.
+- Public ingress observed: `http://1.14.108.159` works via Nginx.
+- Public HTTPS/443 observed: not reachable in this validation window.
 
-## Safety And Harness
+## Remote Deployment
 
-- `safety-check.ps1 -Env real-pre -Scope full`: PASS
-- Secret value disclosure: none; safety output only confirmed presence or missing state.
-- `check-harness-limits.ps1`: PASS
-- Harness directory limit after report update: within limits.
+- Deploy script: `scripts/deploy-real-pre.sh`.
+- Latest evidence dir: `/opt/saas/runtime/qa/out/deploy-real-pre-20260618-async-roles-production-validation`.
+- Deployment result: PASS.
+- DB backup: `/opt/saas/backups/saas_real_pre-20260618-160023.dump`.
+- Image tag: 96700af8.
+- Containers after deployment:
+  - `saas-active-frontend-real-pre-1` -> `colonel-saas/frontend:96700af8`, healthy.
+  - `saas-active-backend-real-pre-1` -> `colonel-saas/backend:96700af8`, healthy.
+  - PostgreSQL and Redis healthy.
 
-## CI/CD Verification
+## Health Checks
 
-- Jenkinsfile now defaults to CI-only.
-- real-pre deployment only runs when `DEPLOY_REAL_PRE=true`.
-- `DEPLOY_REAL_PRE=true` requires explicit `DEPLOY_BRANCH`.
-- real promotion write requires `CONFIRM_REAL_PROMOTION_WRITE=true` when both real promotion write switches are enabled.
-- CI evidence artifact now records pipeline parameters and target ref.
+- Public frontend health: `http://1.14.108.159/healthz` -> 200.
+- Public backend health: `http://1.14.108.159/api/system/health` -> 200, `{"status":"UP"}`.
+- Public Kuaidi100 callback reachability: POST `/api/public/logistics/kuaidi100/callback` -> 200 with missing-parameter response, as expected for unsigned probe.
+- Remote preflight before roles: PASS.
+- Roles preflight evidence: `/opt/saas/app/runtime/qa/out/real-pre-preflight-20260618-160231`.
 
-## Remote Deploy Validation
+## E2E Results
 
-- Pushed `fd15f448` to `gitee/feature/ddd/DDD-VERIFY-001` so the server deployment source can fast-forward to the same CI/CD commit.
-- Remote server `/opt/saas/app` fast-forwarded from `8d1119a` to `fd15f448` during `scripts/deploy-real-pre.sh`.
-- Deployment command used `REAL_PROMOTION_WRITE_CONFIRMED=true` because real promotion write double switches are enabled.
-- Deployment result: BLOCKED before database backup, migrations, image rebuild and container update.
-- Blocker: `LOGISTICS_KD100_CALLBACK_URL` is empty or still a placeholder while `LOGISTICS_KD100_SUBSCRIBE_ENABLED=true`.
-- Current remote running stack after the blocked deploy remains healthy:
-  - Backend health: `http://127.0.0.1:8081/api/system/health` -> UP
-  - Frontend health: `http://127.0.0.1:3001/healthz` -> ok
-  - Docker services: backend, frontend, PostgreSQL and Redis healthy
-- Remote preflight on the current running stack: PASS.
-  - Evidence: `/opt/saas/app/runtime/qa/out/real-pre-preflight-20260618-145305`
-  - Checks passed: frontend, backend health, admin login, env guard, Douyin token readiness, schema readiness, reusable promotion mapping, cleanup plan.
+- `npm run e2e:real-pre:roles`: PASS after fixes.
+- Roles validated menus, permissions and business handoffs for admin, biz_leader, merchant, channel, operator and channel_leader.
+- Initial roles blocker fixed:
+  - non-admin `/product/manage` no longer calls admin-only `/api/douyin/institution-info`.
+- Secondary roles blocker fixed in harness:
+  - roles now triggers `POST /products/sync` and polls DB view instead of using long synchronous `GET ...?refresh=true`.
 
-## Script Hardening
+## P0 Result
 
-- `scripts/deploy-real-pre.sh`: moved real-pre env validation before `git pull --ff-only`; future config failures should stop before mutating server source checkout.
-- `scripts/real-pre-startup-check.sh`: added required checks for `LOGISTICS_KD100_CALLBACK_URL` and `LOGISTICS_KD100_CALLBACK_SALT` when Kuaidi100 subscription is enabled.
-- Local validation:
-  - `bash -n scripts/deploy-real-pre.sh scripts/real-pre-startup-check.sh`: PASS
-  - `bash scripts/real-pre-startup-check.sh .env.real-pre`: PASS
-  - `mvn -f backend/pom.xml -DskipTests package`: PASS
-  - `npx --yes pnpm@9 build`: PASS
-  - Note: JaCoCo reported execution data mismatch for `SysUserService`; current worktree contains unrelated uncommitted changes in that file.
-- Remote validation after pushing hardening commit:
-  - Server source fast-forwarded to `97a1b7a`.
-  - `bash scripts/real-pre-startup-check.sh /opt/saas/env/.env.real-pre`: FAIL as expected before deploy.
-  - Expected blocker: `LOGISTICS_KD100_CALLBACK_URL` missing while Kuaidi100 subscription is enabled.
+- First P0 attempt after deployment: FAIL due missing Playwright ffmpeg binary.
+- Runtime dependency fix: `npx playwright install ffmpeg`, installed `/home/deploy/.cache/ms-playwright/ffmpeg-1011`.
+- Re-run: `npm run e2e:real-pre:p0`.
+- P0 evidence dir: `/opt/saas/app/runtime/qa/out/real-pre-p0-20260618-160815`.
+- Final P0 status: PENDING.
 
-## Not Executed
+P0 step status:
 
-- Jenkins controller execution: not executed; no Jenkins controller/runtime was available in this workspace.
-- Remote image rebuild/container update: not executed because env guard blocked deployment before build/start.
-- real-pre roles/P0 E2E after candidate rebuild: not executed because candidate rebuild did not happen.
-- `mvn clean test`: BLOCKED locally because Windows Java language service held `backend/target/classes`; full `mvn test` recompiled and passed afterward.
+- preflight: PASS.
+- 08 Douyin integration: PASS.
+- 31 product chain: PASS.
+- 32 order attribution: PENDING.
+- 33 sample chain: PENDING.
+- 34 performance dashboard: PENDING.
+- 35 RBAC: PASS.
+- 36 cleanup plan: PASS_NEEDS_CLEANUP.
+
+PENDING reasons from report:
+
+- `PENDING_NO_UPSTREAM_ORDERS`: current real orders are not attributed, so attribution chain cannot be proven.
+- `PENDING_NO_ASSIGNED_SAMPLE_PRODUCT`: no real in-library product assigned for biz_staff sample audit chain.
+- `PENDING_NO_PERFORMANCE_SAMPLE`: no readable performance sample for dashboard formula validation.
+
+## Safety And Boundaries
+
+- No secret values were printed or committed.
+- Backend admin-only Douyin endpoint permission was not relaxed.
+- Frontend fix stays in presentation/request boundary: non-admin page skips admin-only institution lookup.
+- Real Douyin upstream mode remained live.
+- `APP_TEST_ENABLED` and `DOUYIN_TEST_ENABLED` remained false in real-pre preflight.
+
+## Not Fully Verified
+
+- Live Jenkins controller execution was not available in this workspace.
+- P0 cannot be declared PASS because it is waiting on real data prerequisites.
+- Production-domain HTTPS readiness was not proven; validation used public HTTP IP.
+- Cleanup plan generated by step 36 still needs review/execution before declaring the test window fully cleaned.
 
 ## Conclusion
 
-PARTIAL
+PENDING.
 
-The CI/CD implementation and local equivalent build/test/deploy-gate checks are passing. Actual remote deployment verification is blocked by missing Kuaidi100 callback configuration, so this is not yet production-applicable.
-
-## Remaining Risk
-
-- Jenkins Pipeline syntax has not been validated by a live Jenkins controller.
-- CD behavior is guarded by parameters, but the real deployment stage still needs one successful controlled server run after `LOGISTICS_KD100_CALLBACK_URL` is configured.
-- Remote OAuth callback is still IP/HTTP based in observed env summary; production-domain readiness requires explicit HTTPS domain validation.
-- Existing unrelated worktree changes must be kept out of this task commit unless the user explicitly includes them.
+The deployment mechanism, public HTTP ingress, container health, roles E2E, Douyin integration, product chain and RBAC are verified on remote real-pre at commit 96700af8. This is not yet a full production-applicable PASS because P0 still depends on missing real order, sample and performance data, and HTTPS/domain readiness was not verified.
