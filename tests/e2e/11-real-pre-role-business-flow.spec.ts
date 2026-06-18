@@ -89,6 +89,8 @@ const DEFAULT_PASSWORD = 'admin123';
 const REAL_PRE_NAV_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NAV_TIMEOUT_MS || 120_000);
 const REAL_PRE_UI_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_UI_TIMEOUT_MS || 120_000);
 const REAL_PRE_NETWORK_IDLE_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NETWORK_IDLE_TIMEOUT_MS || 5_000);
+const ROLE_PRODUCT_SYNC_POLL_TIMEOUT_MS = Number(process.env.E2E_ROLE_PRODUCT_SYNC_POLL_TIMEOUT_MS || 180_000);
+const ROLE_PRODUCT_SYNC_POLL_INTERVAL_MS = Number(process.env.E2E_ROLE_PRODUCT_SYNC_POLL_INTERVAL_MS || 5_000);
 const DOUYIN_ONE_CLICK_REQUIRED_CHECKS = [
   'Token 正常',
   '授权主体正常',
@@ -257,9 +259,7 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       const auth = requireAuth(run, 'biz_leader');
       const ui = await verifyRoleUi(browser, auth, ROLE_CASES[1]);
       const activities = await apiSuccess(api, 'GET', '/api/colonel/activities', auth, { params: { page: 1, size: 10 } });
-      const productList = await apiSuccess(api, 'GET', `/api/colonel/activities/${ACTIVITY_ID}/products`, auth, {
-        params: { count: 20, refresh: true }
-      });
+      const productList = await syncActivityProductsInBackgroundAndPoll(api, auth, ACTIVITY_ID);
       const products = extractRecords(productList.body);
       assertTrue(products.length > 0, 'activity product sync should return products');
       const auditProduct = findProductCandidate(products, 'PENDING_AUDIT');
@@ -866,6 +866,40 @@ async function apiSuccess(
   return result;
 }
 
+async function syncActivityProductsInBackgroundAndPoll(
+  api: APIRequestContext,
+  auth: AuthState,
+  activityId: string
+): Promise<{ status: number; ok: boolean; body: unknown; durationMs: number }> {
+  const trigger = await apiSuccess(api, 'POST', `/api/colonel/activities/${activityId}/products/sync`, auth);
+  const syncStatus = String((unwrap(trigger.body) as JsonMap).syncStatus || '');
+  assertTrue(['ACCEPTED', 'RUNNING'].includes(syncStatus), `unexpected syncStatus=${syncStatus}`);
+
+  const deadline = Date.now() + ROLE_PRODUCT_SYNC_POLL_TIMEOUT_MS;
+  let lastResult: { status: number; ok: boolean; body: unknown; durationMs: number } | undefined;
+  let lastError = '';
+  while (Date.now() <= deadline) {
+    try {
+      lastResult = await apiSuccess(api, 'GET', `/api/colonel/activities/${activityId}/products`, auth, {
+        params: { count: 20, refresh: false }
+      });
+      const data = unwrap(lastResult.body) as JsonMap;
+      const products = extractRecords(lastResult.body);
+      if (products.length > 0 && data.needSync !== true) {
+        return lastResult;
+      }
+      lastError = `products=${products.length}, needSync=${String(data.needSync)}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+    await sleep(ROLE_PRODUCT_SYNC_POLL_INTERVAL_MS);
+  }
+  throw new Error(
+    `activity product async sync did not become ready within ${ROLE_PRODUCT_SYNC_POLL_TIMEOUT_MS}ms, ` +
+    `triggerStatus=${syncStatus}, last=${lastError || JSON.stringify(lastResult?.body || {})}`
+  );
+}
+
 async function rawApi(
   api: APIRequestContext,
   method: 'GET' | 'POST' | 'PUT',
@@ -887,6 +921,10 @@ async function rawApi(
       : await api.put(path, requestOptions);
   const body = await response.json().catch(async () => ({ rawText: await response.text().catch(() => '') }));
   return { status: response.status(), ok: response.ok(), body, durationMs: Date.now() - started };
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function findProductCandidate(items: JsonMap[], status: string): JsonMap {
