@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
@@ -136,7 +137,6 @@ class ProductActivityBackfillServiceTest {
         when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1"))))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
-        when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
         when(douyinProductGateway.queryActivityProducts(any()))
                 .thenThrow(new RuntimeException("upstream 500"));
@@ -155,8 +155,9 @@ class ProductActivityBackfillServiceTest {
         assertThat(state.getLastStatus()).isEqualTo("FAILED");
         assertThat(state.getLastErrorMessage()).isNotBlank();
         assertThat(state.getLastErrorMessage()).contains("rawCause=UPSTREAM_API_ERROR");
-        verify(jobLogMapper).updateById(jobLogCaptor.capture());
-        assertThat(jobLogCaptor.getValue().getErrorMessage()).isNotBlank();
+        verify(jobLogMapper, atLeastOnce()).updateById(jobLogCaptor.capture());
+        ProductSyncJobLog finalLog = jobLogCaptor.getAllValues().get(jobLogCaptor.getAllValues().size() - 1);
+        assertThat(finalLog.getErrorMessage()).isNotBlank();
     }
 
     @Test
@@ -222,7 +223,7 @@ class ProductActivityBackfillServiceTest {
                 .extracting(ProductActivitySyncState::getLastStatus)
                 .containsOnly("SUCCESS");
         verify(jobLogMapper).insert(any(ProductSyncJobLog.class));
-        verify(jobLogMapper).updateById(any(ProductSyncJobLog.class));
+        verify(jobLogMapper, atLeastOnce()).updateById(any(ProductSyncJobLog.class));
     }
 
     @Test
@@ -230,7 +231,6 @@ class ProductActivityBackfillServiceTest {
         when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1"))))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
-        when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
         when(douyinProductGateway.queryActivityProducts(any()))
                 .thenReturn(new DouyinProductGateway.ActivityProductListResult(
@@ -259,7 +259,6 @@ class ProductActivityBackfillServiceTest {
         when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1"))))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
-        when(jobLockService.tryAcquire(any(), any(), any())).thenReturn(true);
         when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
         when(douyinProductGateway.queryActivityProducts(any()))
                 .thenReturn(new DouyinProductGateway.ActivityProductListResult(

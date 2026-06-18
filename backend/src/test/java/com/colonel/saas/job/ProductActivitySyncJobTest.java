@@ -39,6 +39,8 @@ class ProductActivitySyncJobTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(jobLockService.tryAcquire(any(), any(Duration.class)))
+                .thenReturn(true);
         lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class)))
                 .thenReturn(true);
         lenient().when(productService.refreshActivitySnapshots(any()))
@@ -61,9 +63,11 @@ class ProductActivitySyncJobTest {
 
         job.syncAll();
 
+        verify(jobLockService).tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class));
         verify(jobLockService).tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class));
         verifyNoInteractions(activityMapper, productService);
         verify(jobLockService, never()).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     @Test
