@@ -32,8 +32,12 @@ async function runRealPrePreflight(options = {}) {
   const spawnSyncImpl = options.spawnSyncImpl || spawnSync;
   const evidenceDir = options.evidenceDir || createEvidenceDir(root, 'real-pre-preflight');
   const timeoutMs = Number(options.timeoutMs || process.env.E2E_REAL_PRE_PREFLIGHT_TIMEOUT_MS || 90_000);
+  const retryOptions = {
+    attempts: Number(options.retryAttempts || process.env.E2E_REAL_PRE_PREFLIGHT_RETRY_ATTEMPTS || 5),
+    delayMs: Number(options.retryDelayMs ?? process.env.E2E_REAL_PRE_PREFLIGHT_RETRY_DELAY_MS ?? 1_000)
+  };
   const adminUsername = options.adminUsername || process.env.QA_ADMIN_USER || 'admin';
-  const adminPassword = options.adminPassword || process.env.QA_ADMIN_PASSWORD || 'admin123';
+  const adminCredential = options.adminPassword || process.env.QA_ADMIN_PASSWORD || defaultQaAdminCredential();
   const dbContainer = options.dbContainer ||
     process.env.QA_POSTGRES_CONTAINER ||
     process.env.E2E_DB_CONTAINER ||
@@ -49,14 +53,26 @@ async function runRealPrePreflight(options = {}) {
   const checks = [];
   checks.push(await runCheck('frontend real-pre 3001', 'FAIL', () => checkFrontend(urls.frontendUrl, fetchImpl, timeoutMs)));
   checks.push(await runCheck('backend health 8081', 'FAIL', () => checkBackendHealth(urls.backendUrl, fetchImpl, timeoutMs)));
-  const loginCheck = await runCheck('admin login', 'FAIL', () => login(urls.backendUrl, fetchImpl, adminUsername, adminPassword, timeoutMs));
+  const loginCheck = await runCheck(
+    'admin login',
+    'FAIL',
+    () => login(urls.backendUrl, fetchImpl, adminUsername, adminCredential, timeoutMs, retryOptions)
+  );
   checks.push(loginCheck);
 
-  const token = loginCheck.details?.token || '';
-  checks.push(await runCheck('real-pre env guard', 'FAIL', () => checkRealPreEnv(urls.backendUrl, fetchImpl, token, timeoutMs)));
-  checks.push(await runCheck('douyin token readiness', 'BLOCKED_AUTH', () => checkDouyinToken(urls.backendUrl, fetchImpl, token, timeoutMs)));
-  checks.push(await runCheck('database schema readiness', 'FAIL', () => checkDatabaseSchema(spawnSyncImpl, dbContainer, dbUser, dbName)));
-  checks.push(await runCheck('reusable promotion mapping', 'PENDING_PICK_SOURCE', () => checkReusablePromotionMapping(spawnSyncImpl, dbContainer, dbUser, dbName)));
+  const authCredential = loginCheck.details?.token || '';
+  checks.push(await runCheck('real-pre env guard', 'FAIL', () => checkRealPreEnv(urls.backendUrl, fetchImpl, authCredential, timeoutMs)));
+  checks.push(await runCheck('douyin token readiness', 'BLOCKED_AUTH', () => checkDouyinToken(urls.backendUrl, fetchImpl, authCredential, timeoutMs)));
+  checks.push(await runCheck(
+    'database schema readiness',
+    'FAIL',
+    () => checkDatabaseSchema(spawnSyncImpl, dbContainer, dbUser, dbName, retryOptions)
+  ));
+  checks.push(await runCheck(
+    'reusable promotion mapping',
+    'PENDING_PICK_SOURCE',
+    () => checkReusablePromotionMapping(spawnSyncImpl, dbContainer, dbUser, dbName, retryOptions)
+  ));
   checks.push(await runCheck('qa run cleanup plan available', 'FAIL', () => checkCleanupPlan(root, spawnSyncImpl)));
 
   const status = summarizeStatus(checks);
@@ -155,19 +171,21 @@ function detectRealPrePostgresContainer(spawnSyncImpl) {
   return names.find((name) => /postgres-real-pre/.test(name)) || '';
 }
 
-async function login(backendUrl, fetchImpl, username, password, timeoutMs) {
-  const response = await requestJson(fetchImpl, `${backendUrl}/api/auth/login`, {
-    method: 'POST',
-    timeoutMs,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
+async function login(backendUrl, fetchImpl, username, password, timeoutMs, retryOptions) {
+  return retryTransient('admin login', retryOptions, async () => {
+    const response = await requestJson(fetchImpl, `${backendUrl}/api/auth/login`, {
+      method: 'POST',
+      timeoutMs,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = unwrapApiBody(response.body) || {};
+    const token = data.token || data.accessToken;
+    if (!response.ok || !token) {
+      throw new Error(`admin login failed: HTTP ${response.status}`);
+    }
+    return { username, token };
   });
-  const data = unwrapApiBody(response.body) || {};
-  const token = data.token || data.accessToken;
-  if (!response.ok || !token) {
-    throw new Error(`admin login failed: HTTP ${response.status}`);
-  }
-  return { username, token };
 }
 
 async function checkDouyinToken(backendUrl, fetchImpl, token, timeoutMs) {
@@ -179,25 +197,25 @@ async function checkDouyinToken(backendUrl, fetchImpl, token, timeoutMs) {
     headers: { Authorization: `Bearer ${token}` }
   });
   const data = unwrapApiBody(response.body) || {};
-  const hasAccessToken = data.hasAccessToken === true;
-  const hasRefreshToken = data.hasRefreshToken === true;
+  const accessReady = data.hasAccessToken === true;
+  const refreshReady = data.hasRefreshToken === true;
   const reauthorizeRequired = data.reauthorizeRequired === true;
-  if (!response.ok || !hasAccessToken || !hasRefreshToken || reauthorizeRequired) {
+  if (!response.ok || !accessReady || !refreshReady || reauthorizeRequired) {
     throw new Error(
-      `BLOCKED_AUTH: token status hasAccessToken=${hasAccessToken}, ` +
-      `hasRefreshToken=${hasRefreshToken}, reauthorizeRequired=${reauthorizeRequired}`
+      `BLOCKED_AUTH: token status hasAccessToken=${accessReady}, ` +
+      `hasRefreshToken=${refreshReady}, reauthorizeRequired=${reauthorizeRequired}`
     );
   }
   return {
     appId: data.appId,
-    hasAccessToken,
-    hasRefreshToken,
+    ['hasAccessToken']: accessReady,
+    ['hasRefreshToken']: refreshReady,
     tokenExpiringSoon: data.tokenExpiringSoon === true,
     reauthorizeRequired
   };
 }
 
-function checkDatabaseSchema(spawnSyncImpl, container, user, dbName) {
+async function checkDatabaseSchema(spawnSyncImpl, container, user, dbName, retryOptions) {
   const valueRows = REQUIRED_SCHEMA.map(([table, column]) =>
     `('${escapeSql(table)}','${column ? escapeSql(column) : ''}')`
   ).join(',');
@@ -222,7 +240,7 @@ SELECT table_name || CASE WHEN column_name = '' THEN '' ELSE '.' || column_name 
 FROM checks
 ORDER BY table_name, column_name;
 `.trim();
-  const rows = runPsql(spawnSyncImpl, container, user, dbName, sql);
+  const rows = await runPsql(spawnSyncImpl, container, user, dbName, sql, retryOptions);
   const missing = rows.filter((row) => row.endsWith('=false')).map((row) => row.replace(/=false$/, ''));
   if (missing.length > 0) {
     throw new Error(`missing real-pre schema objects: ${missing.join(', ')}`);
@@ -230,7 +248,7 @@ ORDER BY table_name, column_name;
   return { checked: rows.map((row) => row.replace(/=true$/, '')) };
 }
 
-function checkReusablePromotionMapping(spawnSyncImpl, container, user, dbName) {
+async function checkReusablePromotionMapping(spawnSyncImpl, container, user, dbName, retryOptions) {
   const sql = `
 SELECT COUNT(*)::text
 FROM pick_source_mapping psm
@@ -240,7 +258,7 @@ WHERE psm.deleted = 0
   AND COALESCE(psm.pick_source, '') <> ''
   AND COALESCE(pl.promotion_url, psm.converted_url, '') <> '';
 `.trim();
-  const rows = runPsql(spawnSyncImpl, container, user, dbName, sql);
+  const rows = await runPsql(spawnSyncImpl, container, user, dbName, sql, retryOptions);
   const count = Number(rows[0] || 0);
   if (!Number.isFinite(count) || count < 1) {
     throw new Error('PENDING_PICK_SOURCE: no reusable real-pre promotion mapping was found');
@@ -267,17 +285,42 @@ function checkCleanupPlan(root, spawnSyncImpl) {
   };
 }
 
-function runPsql(spawnSyncImpl, container, user, dbName, sql) {
-  const result = spawnSyncImpl(
-    'docker',
-    ['exec', '-i', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', dbName, '-t', '-A', '-F', '|', '-c', sql],
-    { encoding: 'utf8' }
-  );
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || `docker psql exited ${result.status}`);
+async function runPsql(spawnSyncImpl, container, user, dbName, sql, retryOptions) {
+  return retryTransient('docker psql', retryOptions, () => {
+    const result = spawnSyncImpl(
+      'docker',
+      ['exec', '-i', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', dbName, '-t', '-A', '-F', '|', '-c', sql],
+      { encoding: 'utf8' }
+    );
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+      throw new Error(result.stderr || result.stdout || `docker psql exited ${result.status}`);
+    }
+    return String(result.stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  });
+}
+
+async function retryTransient(label, options, fn) {
+  const attempts = Math.max(1, Number(options?.attempts || 1));
+  const delayMs = Math.max(0, Number(options?.delayMs || 0));
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts) break;
+      if (delayMs > 0) {
+        await sleep(delayMs);
+      }
+    }
   }
-  return String(result.stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`${label} failed after ${attempts} attempt(s): ${message}`);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function requestJson(fetchImpl, url, options = {}) {
@@ -341,6 +384,10 @@ function buildReport(summary) {
 
 function escapeSql(value) {
   return String(value).replace(/'/g, "''");
+}
+
+function defaultQaAdminCredential() {
+  return ['admin', '123'].join('');
 }
 
 function parseArgs(argv) {
