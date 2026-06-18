@@ -7,7 +7,7 @@ PARTIAL - backend regression is green; real-pre container restart, health check,
 - Environment: local integration worktree, `real-pre` target not restarted.
 - Branch: `codex/integration-safe-merge-20260618`.
 - Base: `feature/ddd/DDD-VERIFY-001` at `b0130b8b`.
-- Head: pending current test-fix/report commit at report time.
+- Tested integration commit: `6a3902c7` (`test: align product job lock regression coverage`).
 - Merged:
   - `origin/fix/admin-password-reset` -> `3d590f71`.
   - `origin/fix/compose-env-unify` -> `392acdf9`.
