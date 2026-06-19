@@ -2,7 +2,6 @@ package com.colonel.saas.domain.product.policy;
 
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.constant.ProductDisplayStatus;
-import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -18,7 +17,6 @@ import java.util.UUID;
  * 商品库展示去重纯策略（DDD-PRODUCT-002）。
  * <p>同一 {@code productId} 下最多一条 {@link ProductDisplayStatus#DISPLAYING}，其余合格记录隐藏。</p>
  */
-@Component
 public class ProductDisplayPolicy {
 
     public static final int DEFAULT_PROTECTION_MONTHS = 3;

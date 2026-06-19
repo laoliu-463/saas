@@ -1,7 +1,7 @@
 package com.colonel.saas.domain.talent.policy;
 
 import com.colonel.saas.common.exception.BusinessException;
-import org.springframework.util.StringUtils;
+import com.colonel.saas.domain.shared.policy.DomainText;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -47,7 +47,7 @@ public final class TalentTagPolicy {
         List<String> invalidTags = new ArrayList<>();
 
         for (String tag : tags) {
-            if (!StringUtils.hasText(tag)) {
+            if (!DomainText.hasText(tag)) {
                 continue;
             }
             String normalized = tag.trim();

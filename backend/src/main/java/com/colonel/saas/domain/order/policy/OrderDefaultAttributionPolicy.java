@@ -3,7 +3,7 @@ package com.colonel.saas.domain.order.policy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.service.AttributionService;
-import org.springframework.util.StringUtils;
+import com.colonel.saas.domain.shared.policy.DomainText;
 
 import java.util.UUID;
 
@@ -38,7 +38,7 @@ public final class OrderDefaultAttributionPolicy {
             return OrderDefaultAttributionResult.unattributed(
                     null, null, null, null, AttributionService.REASON_SYNC_FAILED);
         }
-        if (!StringUtils.hasText(input.productId())) {
+        if (!DomainText.hasText(input.productId())) {
             return OrderDefaultAttributionResult.unattributed(
                     input.talentId(),
                     input.talentUid(),
@@ -49,7 +49,7 @@ public final class OrderDefaultAttributionPolicy {
 
         UUID defaultRecruiterId = resolveDefaultRecruiter(recruiterLookup);
 
-        if (!StringUtils.hasText(input.pickSource()) && !StringUtils.hasText(input.pickExtra())) {
+        if (!DomainText.hasText(input.pickSource()) && !DomainText.hasText(input.pickExtra())) {
             return OrderDefaultAttributionResult.unattributed(
                     input.talentId(),
                     input.talentUid(),
@@ -194,7 +194,7 @@ public final class OrderDefaultAttributionPolicy {
             return null;
         }
         for (String value : values) {
-            if (StringUtils.hasText(value)) {
+            if (DomainText.hasText(value)) {
                 return value;
             }
         }

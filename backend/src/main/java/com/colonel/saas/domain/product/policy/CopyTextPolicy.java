@@ -1,9 +1,9 @@
 package com.colonel.saas.domain.product.policy;
 
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
+import com.colonel.saas.domain.shared.policy.DomainText;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
-import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +31,7 @@ public final class CopyTextPolicy {
             String promotionLink) {
         var templateConfig = configDomainFacade == null ? null : configDomainFacade.getPromotionTemplate();
         String template = templateConfig == null ? null : templateConfig.copyBriefTemplate();
-        if (StringUtils.hasText(template)) {
+        if (DomainText.hasText(template)) {
             return renderTemplate(template, snapshot, state, promotionLink);
         }
         return renderHardcoded(snapshot, state, promotionLink);
@@ -81,7 +81,7 @@ public final class CopyTextPolicy {
         lines.add("【寄样门槛】销售额≥" + displayText(readString(auditSupplement, "sampleThresholdSales"))
                 + " / 等级≥LV" + displayText(readString(auditSupplement, "sampleThresholdLevel")));
         lines.add("【专属价说明】" + displayText(readString(auditSupplement, "exclusivePriceRemark")));
-        if (StringUtils.hasText(copyPromotionLink)) {
+        if (DomainText.hasText(copyPromotionLink)) {
             lines.add("【链接】" + copyPromotionLink);
         } else {
             lines.add("【推广链接】未生成");
@@ -94,7 +94,7 @@ public final class CopyTextPolicy {
             return "-";
         }
         String text = String.valueOf(value).trim();
-        if (!StringUtils.hasText(text)
+        if (!DomainText.hasText(text)
                 || "null".equalsIgnoreCase(text)
                 || "undefined".equalsIgnoreCase(text)) {
             return "-";
@@ -107,7 +107,7 @@ public final class CopyTextPolicy {
             return null;
         }
         for (String candidate : candidates) {
-            if (StringUtils.hasText(candidate)) {
+            if (DomainText.hasText(candidate)) {
                 return candidate.trim();
             }
         }
@@ -117,7 +117,7 @@ public final class CopyTextPolicy {
     // ---- internal helpers (replicated from ProductService for pure policy) ----
 
     private static Map<String, Object> parseAuditPayload(String raw) {
-        if (!StringUtils.hasText(raw)) {
+        if (!DomainText.hasText(raw)) {
             return Map.of();
         }
         try {

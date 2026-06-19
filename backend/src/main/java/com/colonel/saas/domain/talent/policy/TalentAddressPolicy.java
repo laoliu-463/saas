@@ -1,6 +1,6 @@
 package com.colonel.saas.domain.talent.policy;
 
-import org.springframework.util.StringUtils;
+import com.colonel.saas.domain.shared.policy.DomainText;
 
 /**
  * 达人收货地址归一化 Policy（DDD-TALENT-003）。
@@ -24,7 +24,7 @@ public final class TalentAddressPolicy {
      * 字符串 trim，空白时返回 {@code null}。
      */
     public static String trimToNull(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
+        return DomainText.trimToNull(value);
     }
 
     /**

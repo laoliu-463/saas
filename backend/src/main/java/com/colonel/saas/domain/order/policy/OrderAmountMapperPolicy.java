@@ -1,8 +1,8 @@
 package com.colonel.saas.domain.order.policy;
 
 import com.colonel.saas.common.time.AppZone;
+import com.colonel.saas.domain.shared.policy.DomainText;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -345,7 +345,7 @@ public final class OrderAmountMapperPolicy {
             return true;
         }
         Object settleTime = pick(rawPayload, "settle_time", "settleTime", "settled_time", "settledTime");
-        return settleTime != null && StringUtils.hasText(String.valueOf(settleTime).trim())
+        return settleTime != null && DomainText.hasText(String.valueOf(settleTime).trim())
                 && !"null".equalsIgnoreCase(String.valueOf(settleTime).trim());
     }
 
@@ -675,7 +675,7 @@ public final class OrderAmountMapperPolicy {
             return raw > 9_999_999_999L ? AppZone.fromEpochMilli(raw) : AppZone.fromEpochSecond(raw);
         }
         String text = String.valueOf(value).trim();
-        if (!StringUtils.hasText(text) || "null".equalsIgnoreCase(text)) {
+        if (!DomainText.hasText(text) || "null".equalsIgnoreCase(text)) {
             return null;
         }
         try {
@@ -699,7 +699,7 @@ public final class OrderAmountMapperPolicy {
             return number.longValue();
         }
         String text = String.valueOf(value).trim();
-        if (!StringUtils.hasText(text)) {
+        if (!DomainText.hasText(text)) {
             return null;
         }
         try {
@@ -724,7 +724,7 @@ public final class OrderAmountMapperPolicy {
                 .replace("％", "")
                 .replace(",", "")
                 .replace(" ", "");
-        if (!StringUtils.hasText(text)) {
+        if (!DomainText.hasText(text)) {
             return null;
         }
         try {

@@ -1,7 +1,7 @@
 package com.colonel.saas.domain.order.policy;
 
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import org.springframework.util.StringUtils;
+import com.colonel.saas.domain.shared.policy.DomainText;
 
 import java.util.Map;
 import java.util.UUID;
@@ -34,7 +34,7 @@ public record OrderAttributionInput(
                 rawValue(rawPayload, "author_id", "authorId"),
                 rawValue(rawPayload, "talent_uid", "talentUid"),
                 rawValue(rawPayload, "promotion_talent_uid", "promotionTalentUid"));
-        if (StringUtils.hasText(fromRaw)) {
+        if (DomainText.hasText(fromRaw)) {
             return fromRaw.trim();
         }
         return order == null ? null : order.getTalentName();
@@ -45,11 +45,11 @@ public record OrderAttributionInput(
             return null;
         }
         for (String key : keys) {
-            if (!StringUtils.hasText(key)) {
+            if (!DomainText.hasText(key)) {
                 continue;
             }
             Object value = rawPayload.get(key);
-            if (value != null && StringUtils.hasText(String.valueOf(value))) {
+            if (value != null && DomainText.hasText(String.valueOf(value))) {
                 return String.valueOf(value).trim();
             }
         }
@@ -61,7 +61,7 @@ public record OrderAttributionInput(
             return null;
         }
         for (String value : values) {
-            if (StringUtils.hasText(value)) {
+            if (DomainText.hasText(value)) {
                 return value.trim();
             }
         }

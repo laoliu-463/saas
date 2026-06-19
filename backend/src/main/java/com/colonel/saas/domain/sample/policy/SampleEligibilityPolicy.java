@@ -1,6 +1,6 @@
 package com.colonel.saas.domain.sample.policy;
 
-import org.springframework.util.StringUtils;
+import com.colonel.saas.domain.shared.policy.DomainText;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,7 +52,7 @@ public class SampleEligibilityPolicy {
             }
         }
 
-        if (StringUtils.hasText(minLevel)) {
+        if (DomainText.hasText(minLevel)) {
             if (levelUnsupported) {
                 reasons.add("达人等级未同步，请填写申请原因");
             } else if (compareLevel(level, minLevel) < 0) {
@@ -77,7 +77,7 @@ public class SampleEligibilityPolicy {
         }
         List<String> failedRules = new ArrayList<>();
         for (String reason : reasons) {
-            if (!StringUtils.hasText(reason)) {
+            if (!DomainText.hasText(reason)) {
                 continue;
             }
             if (reason.contains("销售额")) {
@@ -122,7 +122,7 @@ public class SampleEligibilityPolicy {
      * 将达人等级转换为可比较的数值：LV0→0, LV1→1, LV2→2，无效格式返回 0。
      */
     public int levelRank(String level) {
-        if (!StringUtils.hasText(level)) {
+        if (!DomainText.hasText(level)) {
             return 0;
         }
         String normalized = normalizeLevel(level);
