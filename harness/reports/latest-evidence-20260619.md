@@ -1,11 +1,11 @@
-# Evidence Report - 2026-06-19 CI And DDD First Pass
+# Evidence Report - 2026-06-19 CI And DDD Progress
 
-- Time: 2026-06-19 13:17:24 +08:00
+- Time: 2026-06-19 14:03:29 +08:00
 - Env: GitHub Actions, local workspace, remote real-pre server
 - Branch: feature/ddd/DDD-VERIFY-001
-- Latest CI-covered commit: d5952dbb `docs: add DDD first pass validation plan`
+- Latest CI-covered commit: 63c01e20 `refactor: decouple domain policies from Spring`
 - Worktree clean: no
-- Worktree note: pre-existing local changes remain in auth/login/request files and harness report archive moves; they were not staged in the CI commits.
+- Worktree note: pre-existing local changes remain in auth/login/request files, DDD scan output, domain/colonel and infrastructure drafts, and harness report archive moves; they were not staged in the CI commits.
 - Remote deployed: no
 - Remote write/restart: no
 - Conclusion: PARTIAL
@@ -16,19 +16,21 @@
 - Verified CI activation across multiple push runs.
 - Added `paths-ignore: harness/reports/**` so report-only commits do not create an infinite evidence-report CI loop.
 - Added DDD first-pass validation and gap-fill plan at `harness/tasks/ddd-first-pass-validation-plan-20260619.md`.
+- Refactored domain policy layer so policy classes no longer import Spring utilities or declare Spring components.
+- Added `DomainText` as a framework-free shared policy helper and `DomainPolicyConfig` as the Spring composition root for `ProductDisplayPolicy`.
 - Performed read-only remote health checks.
 - Performed DDD structure/status read-only checks.
-- Did not deploy, restart containers, update remote env, or write production data.
+- Did not deploy, restart production containers, update remote env, or write production data.
 
 ## CI/CD Evidence
 
 - GitHub Actions permissions: enabled, `allowed_actions=all`.
 - Workflow registered: `CI`, active, workflow id `298639342`.
-- Current workflow run id: `27806885379`.
-- Current run URL: `https://github.com/laoliu-463/saas/actions/runs/27806885379`.
+- Current workflow run id: `27808457402`.
+- Current run URL: `https://github.com/laoliu-463/saas/actions/runs/27808457402`.
 - Event: push.
 - Head branch: `feature/ddd/DDD-VERIFY-001`.
-- Head sha: `d5952dbb13d9909c873da4fde81b4a6f93be5db4`.
+- Head sha: `63c01e203b3b73900b6f6528890430a0e4c58f61`.
 - Run conclusion: success.
 
 Current run jobs:
@@ -48,11 +50,25 @@ Current run jobs:
 
 Additional CI activation evidence:
 
+- Run `27808457402` on commit `63c01e20`: success.
 - Run `27806885379` on commit `d5952dbb`: success.
 - Run `27803688436` on commit `dfa0954b`: success.
 - Run `27804324203` on commit `0a46c0b6`: success.
 - Run `27804592079` on commit `118ecadb`: success.
 - Commit statuses endpoint can remain `total_count=0`; GitHub Actions reports through check-runs/runs, not legacy statuses.
+
+## DDD Policy Refactor Evidence
+
+- Changed slice: `domain/*/policy` framework dependency cleanup.
+- Production impact: no remote deploy, no production restart, no DB write.
+- Main compile: `mvn -f backend/pom.xml -DskipTests compile` PASS.
+- Clean worktree targeted tests: 86 tests PASS for policy/architecture coverage.
+- Targeted command: `mvn -f backend/pom.xml "-Dtest=DddPolicyLayerNoSpringDependencyTest,DomainTextTest,SampleEligibilityPolicyTest,TalentAddressPolicyTest,TalentTagPolicyTest,OrderDefaultAttributionPolicyTest,OrderAmountMapperPolicyTest,ProductDisplayPolicyTest" test`.
+- Clean worktree backend package: `mvn -f backend/pom.xml -DskipTests package` PASS.
+- Clean worktree full backend test: PARTIAL, 2192 tests reached, 1 error in `SysConfigServiceEventTest` because local Docker/Testcontainers was unavailable.
+- GitHub Actions backend job: PASS, `mvn -B test`.
+- GitHub Actions frontend job: PASS, `pnpm test`, `pnpm typecheck`, `pnpm build`.
+- Policy Spring dependency scan: no matches for `org.springframework.`, `@Component`, `@Service`, or `@Repository` in `domain/*/policy/*.java`.
 
 ## Remote Server Evidence
 
@@ -74,6 +90,7 @@ Additional CI activation evidence:
 - Code-review-graph minimal context: 12204 nodes, 140888 edges, 1522 files.
 - Graph risk score: high, `0.85`, from pre-existing changed files.
 - Latest commit hook after the DDD plan commit reported 31 changed files, 0 changed functions/classes, 0 affected flows, 0 test gaps, and risk score `0.00` for the committed docs change.
+- Latest commit hook after the policy refactor reported 44 changed files, 0 changed functions/classes, 0 affected flows, 0 test gaps, and risk score `0.00` for the committed slice.
 - Architecture overview: 19 communities, 9 community pairs, 6 high-coupling warnings.
 - Knowledge gaps scan still reports 76 gaps, including 20 untested hotspots.
 - DDD package evidence exists under `backend/src/main/java/com/colonel/saas/domain`.
@@ -102,15 +119,16 @@ Additional CI activation evidence:
 - DDD is not a full PASS. The current evidence supports a structural/status check only.
 - The DDD first-pass plan identifies 10 follow-up work items before any full DDD completion claim.
 - Current local worktree remains dirty with pre-existing unrelated changes.
+- Local full backend test remains environment-dependent because `SysConfigServiceEventTest` requires Docker/Testcontainers; GitHub Actions passed the backend job.
 
 ## Retro Summary
 
 - No Harness upgrade is required for this task.
-- The existing `check-harness-limits.ps1` and GitHub Actions CI checks were sufficient for a docs-scope DDD first-pass validation.
+- The existing `check-harness-limits.ps1` and GitHub Actions CI checks were sufficient for this DDD policy cleanup.
 - Next improvement should happen in follow-up DDD task cards, not in the Harness runner itself.
 
 ## Conclusion
 
 PARTIAL.
 
-The CI-only pipeline is effective and verified by successful GitHub Actions runs through commit `d5952dbb`. The DDD first-pass validation plan is committed and CI-verified. The remote real-pre server remained available and healthy after the CI changes. DDD structure and status were checked, but DDD remains a staged architecture effort, not a completed refactor.
+The CI-only pipeline is effective and verified by successful GitHub Actions runs through commit `63c01e20`. The DDD first-pass validation plan is committed and CI-verified. One DDD optimization slice is complete: domain policy classes no longer depend on Spring utilities/stereotypes, and tests were added to guard that boundary. DDD remains a staged architecture effort, not a completed refactor.
