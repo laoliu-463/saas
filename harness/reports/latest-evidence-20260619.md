@@ -1,11 +1,11 @@
 # Evidence Report - 2026-06-19 CI-Only Activation And Read-Only Checks
 
-- Time: 2026-06-19 11:37:00 +08:00
+- Time: 2026-06-19 12:07:00 +08:00
 - Env: GitHub Actions, local workspace, remote real-pre server
 - Branch: feature/ddd/DDD-VERIFY-001
-- Commit: dfa0954b `ci: add GitHub Actions validation workflow`
+- Latest CI-covered commit: 118ecadb `ci: skip report-only workflow runs`
 - Worktree clean: no
-- Worktree note: pre-existing local changes remain in auth/login/request files and harness report archive moves; they were not staged in the CI commit.
+- Worktree note: pre-existing local changes remain in auth/login/request files and harness report archive moves; they were not staged in the CI commits.
 - Remote deployed: no
 - Remote write/restart: no
 - Conclusion: PARTIAL
@@ -13,7 +13,8 @@
 ## Scope
 
 - Added GitHub Actions CI-only workflow at `.github/workflows/ci.yml`.
-- Triggered workflow by pushing commit `dfa0954b` to GitHub.
+- Verified CI activation across multiple push runs.
+- Added `paths-ignore: harness/reports/**` so report-only commits do not create an infinite evidence-report CI loop.
 - Performed read-only remote health checks.
 - Performed DDD structure/status read-only checks.
 - Did not deploy, restart containers, update remote env, or write production data.
@@ -22,14 +23,14 @@
 
 - GitHub Actions permissions: enabled, `allowed_actions=all`.
 - Workflow registered: `CI`, active, workflow id `298639342`.
-- Run id: `27803688436`.
-- Run URL: `https://github.com/laoliu-463/saas/actions/runs/27803688436`.
+- Current workflow run id: `27804592079`.
+- Current run URL: `https://github.com/laoliu-463/saas/actions/runs/27804592079`.
 - Event: push.
 - Head branch: `feature/ddd/DDD-VERIFY-001`.
-- Head sha: `dfa0954b6d2ad0be11f97341430ade139d8f1f5c`.
+- Head sha: `118ecadb14d8644aed2551c3d4234a5ee47b706b`.
 - Run conclusion: success.
 
-Jobs:
+Current run jobs:
 
 - `Frontend tests and build`: success.
   - Checkout: success.
@@ -44,18 +45,18 @@ Jobs:
   - Set up Java 17: success.
   - `mvn -B test`: success.
 
-Commit check-runs:
+Additional CI activation evidence:
 
-- `total_count=2`.
-- Both check-runs completed with `conclusion=success`.
-- Commit statuses endpoint still has `total_count=0`; this is expected because GitHub Actions reports through check-runs, not legacy statuses.
+- Run `27803688436` on commit `dfa0954b`: success.
+- Run `27804324203` on commit `0a46c0b6`: success.
+- Commit statuses endpoint can remain `total_count=0`; GitHub Actions reports through check-runs/runs, not legacy statuses.
 
 ## Remote Server Evidence
 
 - Public frontend health: `http://1.14.108.159/healthz` -> `ok`.
 - Public backend health: `http://1.14.108.159/api/system/health` -> `{"status":"UP"}`.
 - Remote app directory commit: `e96fdb4`.
-- Remote deployment was intentionally not updated to `dfa0954b`.
+- Remote deployment was intentionally not updated to CI commits.
 - Containers:
   - `saas-active-frontend-real-pre-1`: healthy.
   - `saas-active-backend-real-pre-1`: healthy.
@@ -76,7 +77,7 @@ Commit check-runs:
 
 ## Safety
 
-- New workflow has `permissions: contents: read`.
+- CI workflow has `permissions: contents: read`.
 - Workflow does not use secrets.
 - Workflow does not use SSH.
 - Workflow does not deploy.
@@ -87,6 +88,7 @@ Commit check-runs:
 ## Remaining Risks
 
 - CI-only is now effective; CD deployment remains Jenkins/manual-gated and was not activated.
+- Pure evidence-report commits under `harness/reports/**` are intentionally ignored by CI after `118ecadb`.
 - Remote server is available over public HTTP; production-domain HTTPS readiness was not re-proven in this task.
 - DDD is not a full PASS. The current evidence supports a structural/status check only.
 - Current local worktree remains dirty with pre-existing unrelated changes.
@@ -95,4 +97,4 @@ Commit check-runs:
 
 PARTIAL.
 
-The CI-only pipeline is now effective and verified by a successful GitHub Actions run on commit `dfa0954b`. The remote real-pre server remains available and healthy after the push. DDD structure and status were checked, but DDD should remain a staged architecture effort, not a completed refactor.
+The CI-only pipeline is effective and verified by successful GitHub Actions runs through commit `118ecadb`. The remote real-pre server remained available and healthy after the CI changes. DDD structure and status were checked, but DDD remains a staged architecture effort, not a completed refactor.
