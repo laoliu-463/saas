@@ -103,6 +103,12 @@ Additional CI activation evidence:
 - The DDD first-pass plan identifies 10 follow-up work items before any full DDD completion claim.
 - Current local worktree remains dirty with pre-existing unrelated changes.
 
+## Retro Summary
+
+- No Harness upgrade is required for this task.
+- The existing `check-harness-limits.ps1` and GitHub Actions CI checks were sufficient for a docs-scope DDD first-pass validation.
+- Next improvement should happen in follow-up DDD task cards, not in the Harness runner itself.
+
 ## Conclusion
 
 PARTIAL.
