@@ -4,9 +4,13 @@ on:
   push:
     branches:
       - "**"
+    paths-ignore:
+      - "harness/reports/**"
   pull_request:
     branches:
       - "**"
+    paths-ignore:
+      - "harness/reports/**"
   workflow_dispatch:
 
 permissions:
