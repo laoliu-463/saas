@@ -2,7 +2,7 @@
 
 ## 定位
 
-本文件记录 DDD 优化总路线。它是 Harness 执行计划，不代表代码已经完成对应重构；业务事实仍以 `docs/01-V1交付范围与边界.md`、`docs/03-领域架构总览.md`、`docs/领域/*.md` 和当前源码证据为准。
+本文件记录 DDD 优化总路线。它是 Harness 执行计划，不代表代码已经完成对应重构；业务事实仍以 `docs/01-V2交付范围与边界.md`、`docs/03-领域架构总览.md`、`docs/领域/*.md` 和当前源码证据为准。
 
 ## 总原则
 
@@ -44,8 +44,8 @@
 
 | 阶段 | 目标 | 验收标准 |
 | --- | --- | --- |
-| 0 当前状态盘点与 V1 口径冻结 | 确认当前技术栈、V1 范围和旧文档冲突 | `CURRENT_STATE.md`、`FORBIDDEN_SCOPE.md`、ADR 索引一致 |
-| 1 Harness 工程护栏 | 固定读取、执行、验证、证据和反馈入口 | `TASK_ROUTING.md` 能路由 DDD 任务，docs scope 可生成 evidence |
+| 0 当前状态盘点与 V2 口径冻结 | 确认当前技术栈、V2 范围和旧文档冲突 | `harness/rules/state/snapshots/01-当前项目状态.md`、`harness/rules/governance/forbidden-scope.md`、ADR 索引一致 |
+| 1 Harness 工程护栏 | 固定读取、执行、验证、证据和反馈入口 | `harness/rules/governance/task-routing.md` 能路由 DDD 任务，docs scope 可生成 evidence |
 | 2 DDD 架构护栏与包结构 | 建立跨域访问、Controller 业务逻辑和 Repository 穿透检查口径 | `ddd-boundary-check.skill.md` 可执行，禁止项进入 `FORBIDDEN_SCOPE.md` |
 | 3 用户域 | 收口身份、角色、菜单、组织和数据范围 | admin/group/self 权限证据可复现，业务域不复制权限规则 |
 | 4 配置域 | 收口规则参数、模板和审计事实 | 配置变更可审计，业务规则仍由业务域执行 |
@@ -64,7 +64,7 @@
 每个阶段开始前必须：
 
 1. 读取本文件和 `DDD_DOMAIN_TASK_MATRIX.md`。
-2. 读取对应 `harness/instructions/*.md`。
+2. 读取对应 `harness/rules/instructions/domain/*.md`。
 3. 读取对应 `docs/领域/*.md`、相关流程、API、数据和验收文档。
 4. 对照 `FORBIDDEN_SCOPE.md` 排除 V1 不做项。
 
@@ -72,6 +72,6 @@
 
 1. 运行当前 Scope 的固定命令。
 2. 生成或更新 evidence report。
-3. 更新 `harness/state/DOMAIN_STATUS.md`。
-4. 将失败、阻塞、新风险或规则缺口写入 `harness/feedback/`、`harness/state/KNOWN_ISSUES.md` 或任务 evidence。
+3. 更新 `harness/rules/state/snapshots/DOMAIN_STATUS.md`。
+4. 将失败、阻塞、新风险或规则缺口写入 `harness/rules/feedback/`、`harness/rules/state/snapshots/KNOWN_ISSUES.md` 或任务 evidence。
 5. 未验证项只能写 `PENDING` / `BLOCKED` / `PARTIAL`，不能写 `PASS`。

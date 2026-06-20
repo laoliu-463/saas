@@ -26,6 +26,7 @@
 7. `manifests/` — GC / 归档 / 删除清单
 8. `archive/` — 历史日期桶（YYYYMMDD）
 9. `templates/` — 任务 / 报告 / 审计模板
+10. `engineering/` — Matt Pocock engineering skill 项目配置
 
 旧目录（`doc/`、`instructions/`、`prompts/`、`runbooks/`、`skills/`、`state/`、`evals/`、`environment/`、`plans/`、`feedback/`、`agents/`、`core/`、`tools/`、`agent-locks/`、`commands/`、`handovers/`）一律收敛为 `rules/` 或 `templates/` 的子级，不再以业务维度名分目录。
 

@@ -11,7 +11,7 @@
 
 - 本矩阵是后续任务卡索引，不代表任务已经完成。
 - 每次只执行一个任务卡，执行前读取对应领域 instruction 和领域合同。
-- 任务结果必须进入 evidence report 和 `harness/state/DOMAIN_STATUS.md`。
+- 任务结果必须进入 evidence report 和 `harness/rules/state/snapshots/DOMAIN_STATUS.md`。
 
 ## 域优化顺序（固定）
 
@@ -50,4 +50,4 @@
 
 - `DDD_DOMAIN_TASK_MATRIX_core.md`：核心业务域（订单/商品/达人/寄样）
 - `DDD_DOMAIN_TASK_MATRIX_cross.md`：跨域（用户/配置/业绩/分析/Outbox/前端/E2E+GC）
-- `../../manifests/gc/harness-doc-gc-optimize-003-manifest.md`：本拆分所属 manifest
+- `harness/manifests/`：本拆分所属 manifest 目录

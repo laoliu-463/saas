@@ -7,7 +7,7 @@
 ## 前置检查
 
 1. 确认本轮是否修改代码、文档、脚本、配置或生成报告。
-2. 读取 `harness/AGENT_CONTRACT.md`、`harness/feedback/feedback-loop.md`、`harness/feedback/garbage-collection-policy.md`。
+2. 读取 `harness/rules/policies/agent-contract.md`、`harness/rules/feedback/iteration.md`、`harness/rules/feedback/retire.md`。
 3. 确认是否存在用户禁止提交/推送的明确要求。
 
 ## 操作步骤
@@ -16,11 +16,11 @@
 2. 若只需要旧内容候选，执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\retire-content.ps1 -Action Plan
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\retire-content.ps1 -Action Plan
 ```
 
 3. 如需归档或删除，先生成 manifest，再显式执行 `Archive` 或 `Delete`。
-4. 更新必要状态文档：`CURRENT_STATE.md`、`state/*.md`、`HARNESS_CHANGELOG.md`。
+4. 更新必要状态文档：`harness/rules/state/snapshots/01-当前项目状态.md`、`harness/rules/state/*.md`、`harness/rules/changelog.md`。
 5. 最终报告列出已完成验证、未验证项和剩余风险。
 
 ## 验证标准

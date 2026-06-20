@@ -23,7 +23,7 @@
 - 无法执行须写明原因并标 PARTIAL/BLOCKED
 
 ### 3. Progress Recorded
-必须更新：`CURRENT_STATE.md`、`DOMAIN_STATUS.md`、`HARNESS_CHANGELOG.md`
+必须更新：`harness/rules/state/snapshots/01-当前项目状态.md`、`harness/rules/state/snapshots/DOMAIN_STATUS.md`、`harness/rules/changelog.md`
 每次记录：做了什么、改了哪些文件、验证了什么、下一步
 
 ### 4. Artifacts Clean

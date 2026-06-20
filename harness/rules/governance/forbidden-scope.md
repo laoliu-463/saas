@@ -71,7 +71,7 @@
 
 ## Git 工作区治理禁止事项
 
-按 `harness/skills/git-change-control.md` 执行：
+按 `harness/rules/skills/git/git-change-control.md` 执行：
 
 - 禁止 `git add .`。
 - 禁止 `git add -A`。
@@ -159,6 +159,6 @@ Agent 禁止在以下状态退出：
 5. TODO / FIXME 无归属、无计划、无报告。
 6. 修改了启动路径但未更新文档。
 7. 修改了领域状态但未更新 DOMAIN_STATUS。
-8. 修改了 harness 规则但未更新 HARNESS_CHANGELOG。
+8. 修改了 harness 规则但未更新 `harness/rules/changelog.md`。
 9. 没有最终 Session Exit Report。
 10. 让下一个 Agent 需要重新猜测当前状态。

@@ -53,7 +53,7 @@
 | [03-领域边界总表.md](03-领域边界总表.md) | [03-领域架构总览.md](03-领域架构总览.md) 与 [领域/](领域/) |
 | [04-上线验收清单.md](04-上线验收清单.md) | [09-测试验收总览.md](09-测试验收总览.md)、[10-部署运行总览.md](10-部署运行总览.md) |
 | [05-real-pre证据索引.md](05-real-pre证据索引.md) | [验收/验收证据索引.md](验收/验收证据索引.md) |
-| [06-P0-P1问题台账.md](06-P0-P1问题台账.md) | [../harness/state/p0-p1-register.md](../harness/state/p0-p1-register.md) |
+| [06-P0-P1问题台账.md](06-P0-P1问题台账.md) | [../harness/rules/state/snapshots/03-P0-P1问题台账.md](../harness/rules/state/snapshots/03-P0-P1问题台账.md) |
 
 ## 专项目录
 
@@ -68,15 +68,15 @@
 
 ## Harness Engineering
 
-- [V1 必做] [../harness/README.md](../harness/README.md)：AI Agent 固定执行入口、脚本、skills、evals、runbooks、prompts 和 evidence reports。
-- [V1 必做] [../harness/CURRENT_STATE.md](../harness/CURRENT_STATE.md)：当前技术栈、V1 闭环、real-pre 状态和旧文档冲突处理。
-- [V1 必做] [../harness/TASK_ROUTING.md](../harness/TASK_ROUTING.md)：任务分流到领域、验证和执行 Scope。
-- [V1 必做] [../harness/FORBIDDEN_SCOPE.md](../harness/FORBIDDEN_SCOPE.md)：V1、real-pre、Git 密钥和模块边界禁止项。
-- [V1 必做] [../harness/instructions/](../harness/instructions/)：Instructions 指令系统。
-- [V1 必做] [../harness/tools/README.md](../harness/tools/README.md)：Tools 工具系统。
-- [V1 必做] [../harness/environment/](../harness/environment/)：Environment 环境系统。
-- [V1 必做] [../harness/state/](../harness/state/)：State 状态系统。
-- [V1 必做] [../harness/feedback/](../harness/feedback/)：Feedback 反馈系统。
+- [V1 必做] [../harness/README.md](../harness/README.md)：AI Agent 固定执行入口、脚本、skills、runbooks、任务和 evidence reports。
+- [V1 必做] [../harness/rules/state/snapshots/01-当前项目状态.md](../harness/rules/state/snapshots/01-当前项目状态.md)：当前技术栈、V2 闭环、real-pre 状态和旧文档冲突处理。
+- [V1 必做] [../harness/rules/governance/task-routing.md](../harness/rules/governance/task-routing.md)：任务分流到领域、验证和执行 Scope。
+- [V1 必做] [../harness/rules/governance/forbidden-scope.md](../harness/rules/governance/forbidden-scope.md)：real-pre、Git 密钥和模块边界禁止项。
+- [V1 必做] [../harness/rules/instructions/](../harness/rules/instructions/)：Instructions 指令系统。
+- [V1 必做] [../harness/rules/skills/](../harness/rules/skills/)：Skills 工具化规则系统。
+- [V1 必做] [../harness/rules/environment/](../harness/rules/environment/)：Environment 环境系统。
+- [V1 必做] [../harness/rules/state/](../harness/rules/state/)：State 状态系统。
+- [V1 必做] [../harness/rules/feedback/](../harness/rules/feedback/)：Feedback 反馈系统。
 - [V1 必做] Harness 不替代本目录事实主源；涉及业务规则仍以 `docs/*.md` 和当前代码证据为准。
 
 ## 不变量

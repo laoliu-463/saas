@@ -1,10 +1,10 @@
 # Harness Iteration Roadmap
 
-> Harness 自身的迭代路线图。区别于 `harness/plans/DDD_OPTIMIZATION_ROADMAP.md`（业务 DDD 路线图）。
+> Harness 自身的迭代路线图。区别于 `harness/rules/runbooks/ddd/DDD_OPTIMIZATION_ROADMAP.md`（业务 DDD 路线图）。
 
 ## 0. 当前版本
 
-- `HARNESS_CHANGELOG.md` 最新条目见该文件。
+- `harness/rules/changelog.md` 最新条目见该文件。
 - 最近一次 Harness 重大治理：GIT-HARNESS-001（2026-06-03 15:00）。
 
 ## 1. 短期（HARNESS-DEBT-GOVERNANCE-ITERATION 之后 1-2 个迭代）
@@ -35,12 +35,12 @@
 
 | 路线图 | 关注 |
 | --- | --- |
-| `DDD_OPTIMIZATION_ROADMAP.md` | 业务 DDD 优化 |
-| `DDD_DOMAIN_TASK_MATRIX.md` | 业务领域任务矩阵 |
+| `harness/rules/runbooks/ddd/DDD_OPTIMIZATION_ROADMAP.md` | 业务 DDD 优化 |
+| `harness/rules/runbooks/ddd/DDD_DOMAIN_TASK_MATRIX.md` | 业务领域任务矩阵 |
 | `HARNESS_ITERATION_ROADMAP.md`（本文件） | Harness 自身迭代 |
-| `HARNESS_DEBT.md` | 债务登记 |
-| `HARNESS_CHANGELOG.md` | 变更日志 |
-| `CURRENT_STATE.md` | 项目当前状态 |
+| `harness/rules/state/debts/HARNESS_DEBT.md` | 债务登记 |
+| `harness/rules/changelog.md` | 变更日志 |
+| `harness/rules/state/snapshots/01-当前项目状态.md` | 项目当前状态 |
 
 ## 5. 升级触发条件（写新路线图项的判断标准）
 
@@ -49,12 +49,12 @@
 - 出现新 scope 但 `scope-command-matrix.md` 没有覆盖。
 - Agent 重复试探同类命令 3 次以上。
 - 业务 DDD 路线图与本路线图发生依赖变化。
-- `state/HARNESS_DEBT.md` 中某条 DEBT 关闭后衍生新债务。
+- `harness/rules/state/debts/HARNESS_DEBT.md` 中某条 DEBT 关闭后衍生新债务。
 
 ## 6. 关联文档
 
-- `harness/plans/DDD_OPTIMIZATION_ROADMAP.md`
-- `harness/plans/DDD_DOMAIN_TASK_MATRIX.md`
-- `harness/state/HARNESS_DEBT.md`
-- `harness/HARNESS_CHANGELOG.md`
-- `harness/runbooks/debt-governance.md`
+- `harness/rules/runbooks/ddd/DDD_OPTIMIZATION_ROADMAP.md`
+- `harness/rules/runbooks/ddd/DDD_DOMAIN_TASK_MATRIX.md`
+- `harness/rules/state/debts/HARNESS_DEBT.md`
+- `harness/rules/changelog.md`
+- `harness/rules/runbooks/governance/debt-governance.md`

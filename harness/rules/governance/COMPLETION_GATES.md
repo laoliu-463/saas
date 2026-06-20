@@ -47,8 +47,9 @@ Gate X - xxx
 - 没有则写：None
 
 ## State Updates
-- CURRENT_STATE.md: updated / not needed
-- HARNESS_CHANGELOG.md: updated
+- harness/rules/state/snapshots/01-当前项目状态.md: updated / not needed
+- harness/rules/state/snapshots/DOMAIN_STATUS.md: updated / not needed
+- harness/rules/changelog.md: updated / not needed
 
 ## Git
 - branch:
@@ -81,5 +82,5 @@ Gate X - xxx
 4. 涉及订单 / 寄样 / 业绩 / 看板但未跑下游闭环，不得 DONE。
 5. 真实订单样本缺失时必须写 BLOCKED_BY_SAMPLE。
 6. 只允许 docs-only 任务跳过容器重启。
-7. 未更新 DOMAIN_STATUS / CURRENT_STATE 就结束任务，不得 DONE。
+7. 未更新 `harness/rules/state/snapshots/DOMAIN_STATUS.md` / `harness/rules/state/snapshots/01-当前项目状态.md` 就结束任务，不得 DONE。
 8. 未生成 evidence report 就结束任务，不得 DONE。

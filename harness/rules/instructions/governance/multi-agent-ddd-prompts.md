@@ -1,36 +1,36 @@
 # 多 Agent DDD 重构提示词索引
 
-> 各 Agent 独立提示词已拆分到 `harness/prompts/agents/` 目录。本文件仅作索引。
-> 完整历史版本归档于 `harness/reports/archive/20260610/multi-agent-ddd-prompts-full.md`。
+> 旧版独立提示词目录 `harness/prompts/agents/` 当前不存在；执行多 Agent DDD 任务时，以本文件下列现行 Harness 规则和模板拼装提示词。
+> 历史完整版本如需追溯，应优先在 `harness/archive/` 中检索，不得把旧路径当作当前执行入口。
 
-## Agent 提示词列表
+## Agent 输入源列表
 
-| 编号 | Agent | 文件 |
-|---|---|---|
-| 00 | Coordinator | [00-coordinator.md](../prompts/agents/00-coordinator.md) |
-| 01 | Architecture Guard | [01-architecture-guard.md](../prompts/agents/01-architecture-guard.md) |
-| 02 | User | [02-user.md](../prompts/agents/02-user.md) |
-| 03 | Config | [03-config.md](../prompts/agents/03-config.md) |
-| 04 | Product | [04-product.md](../prompts/agents/04-product.md) |
-| 05 | Talent | [05-talent.md](../prompts/agents/05-talent.md) |
-| 06 | Sample | [06-sample.md](../prompts/agents/06-sample.md) |
-| 07 | Order | [07-order.md](../prompts/agents/07-order.md) |
-| 08 | Performance | [08-performance.md](../prompts/agents/08-performance.md) |
-| 09 | Analytics | [09-analytics.md](../prompts/agents/09-analytics.md) |
-| 10 | Frontend | [10-frontend.md](../prompts/agents/10-frontend.md) |
-| 11 | Test | [11-test.md](../prompts/agents/11-test.md) |
-| 12 | Infra | [12-infra.md](../prompts/agents/12-infra.md) |
-| 13 | Integration | [13-integration.md](../prompts/agents/13-integration.md) |
-| 14 | Review | [14-review.md](../prompts/agents/14-review.md) |
+| Agent | 当前输入源 |
+|---|---|
+| Coordinator | [DDD_OPTIMIZATION_ROADMAP.md](../../runbooks/ddd/DDD_OPTIMIZATION_ROADMAP.md)、[DDD_DOMAIN_TASK_MATRIX.md](../../runbooks/ddd/DDD_DOMAIN_TASK_MATRIX.md) |
+| Architecture Guard | [ddd-boundary-check.skill.md](../../skills/ddd/ddd-boundary-check.skill.md)、[domains-map.md](../../governance/domains-map.md) |
+| User | [user-domain.md](../domain/user-domain.md) |
+| Config | [config-domain.md](../domain/config-domain.md) |
+| Product | [product-domain.md](../domain/product-domain.md) |
+| Talent | [talent-domain.md](../domain/talent-domain.md) |
+| Sample | [sample-domain.md](../domain/sample-domain.md) |
+| Order | [order-domain.md](../domain/order-domain.md) |
+| Performance | [performance-domain.md](../domain/performance-domain.md) |
+| Analytics | [analytics-module.md](../domain/analytics-module.md) |
+| Frontend | [frontend-ux.skill.md](../../skills/workflow/frontend-ux.skill.md) |
+| Test | [test-validation.md](../../runbooks/governance/test-validation.md) |
+| Infra | [scope-command-matrix.md](../../runbooks/governance/scope-command-matrix.md)、[docker-compose-operations.md](../../runbooks/governance/docker-compose-operations.md) |
+| Integration | [code-review.skill.md](../../skills/workflow/code-review.skill.md)、[closeout-and-gc.md](../../runbooks/governance/closeout-and-gc.md) |
+| Review | [code-review.skill.md](../../skills/workflow/code-review.skill.md) |
 
 ## 配套文档
 
-- 路线图：[DDD_OPTIMIZATION_ROADMAP.md](../plans/DDD_OPTIMIZATION_ROADMAP.md)
-- 任务矩阵：[DDD_DOMAIN_TASK_MATRIX.md](../plans/DDD_DOMAIN_TASK_MATRIX.md)
-- 领域地图：[DOMAIN_MAP.md](../DOMAIN_MAP.md)
-- 任务看板：[ddd-multi-agent-board.md](../tasks/ddd-multi-agent-board.md)
-- 依赖图：[ddd-task-dependency-graph.md](../tasks/ddd-task-dependency-graph.md)
-- 锁索引：[LOCK_INDEX.md](../agent-locks/LOCK_INDEX.md)
+- 路线图：[DDD_OPTIMIZATION_ROADMAP.md](../../runbooks/ddd/DDD_OPTIMIZATION_ROADMAP.md)
+- 任务矩阵：[DDD_DOMAIN_TASK_MATRIX.md](../../runbooks/ddd/DDD_DOMAIN_TASK_MATRIX.md)
+- 领域地图：[domains-map.md](../../governance/domains-map.md)
+- 任务看板：[ddd-multi-agent-board.md](../../../tasks/ddd-multi-agent-board.md)
+- 依赖图：[ddd-task-dependency-graph.md](../../../tasks/ddd-task-dependency-graph.md)
+- 锁索引：[INDEX.md](../../locks/INDEX.md)
 
 ## 多 Agent 协作核心规则
 

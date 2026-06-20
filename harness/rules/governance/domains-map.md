@@ -46,15 +46,15 @@
 
 | 任务 | Harness skill |
 | --- | --- |
-| real-pre 排障 | `harness/skills/real-pre-debug.skill.md` |
-| 订单归因 | `harness/skills/order-attribution.skill.md` |
-| 寄样状态机 | `harness/skills/sample-lifecycle.skill.md` |
-| 商品库 / 推广中入库 | `harness/skills/product-library.skill.md` |
-| 业绩 / dashboard | `harness/skills/performance-dashboard.skill.md` |
-| 前端体验 | `harness/skills/frontend-ux.skill.md` |
-| 证据报告 | `harness/skills/evidence-report.skill.md` |
-| 领域边界确认 | `harness/skills/domain-alignment.skill.md` |
-| DDD 领域优化任务 | `harness/skills/ddd-domain-optimization.skill.md` |
-| DDD 边界检查 | `harness/skills/ddd-boundary-check.skill.md` |
-| DDD 任务后同步 | `harness/skills/ddd-post-task-sync.skill.md` |
-| 代码审查 | `harness/skills/code-review.skill.md` |
+| real-pre 排障 | `harness/rules/skills/ddd/real-pre-debug.skill.md` |
+| 订单归因 | `harness/rules/skills/ddd/order-attribution.skill.md` |
+| 寄样状态机 | `harness/rules/skills/ddd/sample-lifecycle.skill.md` |
+| 商品库 / 推广中入库 | `harness/rules/skills/ddd/product-library.skill.md` |
+| 业绩 / dashboard | `harness/rules/skills/ddd/performance-dashboard.skill.md` |
+| 前端体验 | `harness/rules/skills/workflow/frontend-ux.skill.md` |
+| 证据报告 | `harness/rules/skills/workflow/evidence-report.skill.md` |
+| 领域边界确认 | `harness/rules/skills/ddd/domain-alignment.skill.md` |
+| DDD 领域优化任务 | `harness/rules/skills/ddd/ddd-domain-optimization.skill.md` |
+| DDD 边界检查 | `harness/rules/skills/ddd/ddd-boundary-check.skill.md` |
+| DDD 任务后同步 | `harness/rules/skills/ddd/ddd-post-task-sync.skill.md` |
+| 代码审查 | `harness/rules/skills/workflow/code-review.skill.md` |

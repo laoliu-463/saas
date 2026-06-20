@@ -2,7 +2,7 @@
 
 ## 1. 项目定位
 
-本仓库是抖音团长内部 SaaS V1 工程，服务商品管理、达人 CRM、寄样、订单归因、业绩统计和看板分析。
+本仓库是抖音团长内部 SaaS V2 工程，服务商品管理、达人 CRM、寄样、订单归因、业绩统计和看板分析。
 
 当前实际技术栈以源码和部署脚本为准：
 
@@ -17,7 +17,7 @@
 
 旧文档中的 FastAPI、Celery、Python 爬虫、旧 V2.2 全量方案只作为历史背景，不作为当前运行事实。
 
-V1 核心闭环以三条主链为准：
+V2 核心闭环以三条主链为准：
 
 - 渠道链：认领达人 -> 商品库选品 -> 复制讲解 / 转链 -> 寄样申请 -> 订单同步 -> 渠道业绩 -> 寄样自动完成。
 - 招商链：同步活动 -> 活动商品入库 -> 商品上架 -> 审核寄样 -> 订单同步 -> 招商业绩。
@@ -150,18 +150,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 
 ## 7. Definition of Done
 
-一个任务只有同时满足以下条件，才允许声明完成：
-
-- 代码或文档已修改。
-- 构建通过，或 `Scope=docs` 明确跳过构建。
-- 对应 Docker 容器已重启，或 `Scope=docs` 明确不需要重启。
-- 健康检查通过，或明确说明阻塞原因。
-- 相关业务验证通过，或明确说明 `BLOCKED` / `PENDING` / `FAIL` 证据。
-- evidence report 已生成。
-- retro summary 已生成，或明确说明本次无需 Harness 升级。
-- Git commit 已生成并 push 到当前分支上游，或用户明确要求本轮不提交 / 不推送。
-- 如果用户要求远端部署，远端部署已完成。
-- 剩余风险已列出。
+任务同时满足以下全部条件，才允许声明完成：代码或文档已修改；构建通过（或 `Scope=docs` 明确跳过）；对应 Docker 容器已重启（或 `Scope=docs` 明确不需要）；健康检查通过（或明确说明阻塞原因）；相关业务验证通过（或明确说明 `BLOCKED` / `PENDING` / `FAIL` 证据）；evidence report 已生成；retro summary 已生成（或明确说明本次无需 Harness 升级）；Git commit 已生成并 push 到当前分支上游（或用户明确要求本轮不提交 / 不推送）；如要求远端部署则已完成；剩余风险已列出。
 
 没有完成这些步骤，不允许声明任务完成。
 
@@ -174,23 +163,9 @@ harness/reports/latest-evidence-YYYYMMDD.md
 ```
 (注意：必须遵循每目录不超过 10 个文件的限制，及时合并或归档旧报告至 `harness/archive/`)
 
-报告必须包含：
+报告必须包含（脚本能采集多少写多少，采集不到必须写"未采集 / 阻塞原因"，不得编造）：
 
-- 时间
-- 环境
-- 分支
-- commit hash
-- 工作区是否干净
-- 构建结果
-- Docker 状态
-- 健康检查结果
-- 业务验证结果
-- 是否部署远端
-- 远端健康检查结果
-- 结论：`PASS` / `PARTIAL` / `FAIL`
-- 剩余风险
-
-脚本能采集多少写多少；采集不到必须写“未采集 / 阻塞原因”，不得编造。
+时间、环境、分支、commit hash、工作区是否干净、构建结果、Docker 状态、健康检查结果、业务验证结果、是否部署远端、远端健康检查结果、结论（`PASS` / `PARTIAL` / `FAIL`）、剩余风险。
 
 ## 9. 当前文档关系
 
@@ -203,11 +178,33 @@ harness/reports/latest-evidence-YYYYMMDD.md
 
 所有 Agent 介入本工程时，对 `harness/` 目录进行任何文件创建与修改，**必须绝对服从以下硬性约束**，并在任务结束时通过合规自检：
 
-1. **结构限制**：`harness/` 仅允许存在 8 个一级目录：`rules/`、`tasks/`、`probes/`、`reports/`、`scripts/`、`manifests/`、`archive/`、`templates/`。
+1. **结构限制**：`harness/` 当前白名单为 9 个一级目录：`rules/`、`tasks/`、`probes/`、`reports/`、`scripts/`、`manifests/`、`archive/`、`templates/`、`engineering/`。
 2. **数量限制**：任何一级目录或子目录，其**文件数量不得超过 10 个**，其**子目录数量不得超过 10 个**。
 3. **行数限制**：除脚本文件（.ps1, .sh, .py, .js, .ts 等）外，所有文本文件（如 .md, .txt, .json）**内容不得超过 200 行**。
 4. **清理职责**：超限时必须主动合并、提炼摘要或归档至 `archive/`（打包旧数据）。禁止在 `reports/` 等日常目录内堆积历史报告。
 5. **合规自检**：在声明修改完成前，推荐执行以下脚本进行检验：
    `powershell -ExecutionPolicy Bypass -File harness/scripts/check-harness-limits.ps1`
 
-如果发现旧文档与当前事实冲突，不要自行拍板，写入 `docs/决策/ADR-002-V1范围优先级.md`。
+如果发现旧文档与当前事实冲突，写入 `docs/决策/ADR-010-仓库阶段口径拍板为V2.md`（阶段口径）或 `docs/决策/ADR-002-V1范围优先级.md`（范围标记），不要自行拍板。
+
+## 11. Agent skills
+
+本仓库接入了 Matt Pocock 18 项 KEEP skills（执行方法，非业务总指挥）。项目级规则优先级：用户当前直接要求 > 本协议 > 当前阶段相关 `docs/*.md` > `CONTEXT.md` > skill 默认流程。
+
+> **变更说明（2026-06-19）**：原 `docs/agents/` 已**合并重构到 `harness/engineering/`**。本节内容相应更新，指向 harness 工程配置目录。
+
+- **Issue tracker**：GitHub Issues（`origin` = `https://github.com/laoliu-463/saas.git`）；`gitee` 为只读镜像，外部 PR 不作为 triage 源；harness 端通过 `harness/engineering/issues-index.md` 维护镜像。详见 `harness/engineering/issue-tracker.md`。
+- **Triage labels**：五项 canonical 标签（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`）按默认同名映射（GitHub Labels 已建立）。详见 `harness/engineering/triage-labels.md`。
+- **Domain docs**：Single-context，主入口 `AGENTS.md` + `CONTEXT.md` + `docs/README.md`；ADR 收口在 `docs/决策/`（已有 ADR-001~010），`docs/adr/` 不启用；harness 工程 Skill 配置全部在 `harness/engineering/`。详见 `harness/engineering/context.md`。
+
+**harness engineering 目录结构**：
+
+```text
+harness/engineering/
+├── issue-tracker.md     ← Issue tracker 配置
+├── triage-labels.md     ← Triage 标签映射
+├── context.md           ← 上下文文档消费规则
+└── issues-index.md      ← GitHub Issues 本地镜像
+```
+
+**历史位置**：原 `docs/agents/{issue-tracker,triage-labels,domain}.md` 已合并重构。后续如再启用新 skill，请在 `harness/engineering/` 下添加对应配置。

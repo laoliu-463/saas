@@ -4,11 +4,11 @@
 
 每次任务结束时，如果涉及的模块质量发生变化（提升或退化），Agent 必须更新本文件对应行。
 
-> **与 `state/DOMAIN_STATUS.md` 的分工**：
+> **与 `harness/rules/state/snapshots/DOMAIN_STATUS.md` 的分工**：
 > - 本文件（`QUALITY_LEDGER.md`）：9 个模块的**质量等级**与下一步指针。
-> - `state/DOMAIN_STATUS.md`：每个领域的**详细状态 / 报告路径 / 风险**。
-> - 业务 DEBT 优先进 `state/p0-p1-register.md` / `state/KNOWN_ISSUES.md`；harness DEBT 必进 `state/HARNESS_DEBT.md`。
-> 本文件不替代 `harness/state/HARNESS_DEBT.md` 的详细债务登记。
+> - `harness/rules/state/snapshots/DOMAIN_STATUS.md`：每个领域的**详细状态 / 报告路径 / 风险**。
+> - 业务 DEBT 优先进 `harness/rules/state/snapshots/03-P0-P1问题台账.md` / `harness/rules/state/snapshots/KNOWN_ISSUES.md`；harness DEBT 必进 `harness/rules/state/debts/HARNESS_DEBT.md`。
+> 本文件不替代 `harness/rules/state/debts/HARNESS_DEBT.md` 的详细债务登记。
 
 ---
 
@@ -46,4 +46,4 @@
 2. 质量等级提升或退化时，必须在"最近验证"列更新日期和阶段标记。
 3. 新发现的风险必须写入"主要风险"列。
 4. "下一步"列必须指向具体的任务标识（如 U-2.5-B、O-1 等）。
-5. 本文件不替代 `harness/state/DOMAIN_STATUS.md` 的详细状态，只作为快速概览。
+5. 本文件不替代 `harness/rules/state/snapshots/DOMAIN_STATUS.md` 的详细状态，只作为快速概览。

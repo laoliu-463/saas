@@ -60,7 +60,7 @@ git push origin feature/<branch>
 ```
 
 ### G. 报告收口
-更新 CURRENT_STATE.md、DOMAIN_STATUS.md、HARNESS_CHANGELOG.md。
+更新 `harness/rules/state/snapshots/01-当前项目状态.md`、`harness/rules/state/snapshots/DOMAIN_STATUS.md`、`harness/rules/changelog.md`。
 
 ## 4. 推送失败处理
 
