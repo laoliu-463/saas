@@ -61,6 +61,14 @@
 - 主题线索：需求 gap analysis、按顺序实现未完成模块、商品库与商品管理拆分、招商组长权限边界、三方联调进度、本地 MCP / pencil、容器端口与 real-pre 启动、远端部署与 GitHub 推送、E2E 验证、商品库前端布局回退。
 - 这些是用户指令历史索引，进入业务文档前必须用当前代码、docs、evidence 复核。
 
+## Claude Session / Compaction 索引
+
+- 来源：`C:\Users\caojianing\.claude\archive\cleanup-20260619-134941\sessions\`。
+- `56452.json`：1 行，命中项目路径 1 次；仅确认 `claude-vscode` 交互 session 曾在 `d:\Projects\SAAS` 启动，sessionId 为 `239c19cb-8bee-4149-b36b-a016e1cee2d6`。
+- `compaction-log.txt`：2292 行，SAAS / DDD / harness / real-pre 关键词命中 0 次；内容是通用 compaction 时间记录，不迁移为项目记忆。
+- `2026-06-17-caojianing-session.tmp`：21 行，项目关键词命中 0 次；不迁移。
+- session / compaction 文件是运行元数据，只作为回溯路由，不作为业务事实。
+
 ## Claude File History 索引
 
 - 来源：`C:\Users\caojianing\.claude\file-history\` 与 `...\archive\cleanup-20260619-134941\file-history\`。
