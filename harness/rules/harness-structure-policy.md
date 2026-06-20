@@ -10,6 +10,7 @@ Harness 目录为工程执行辅助核心，限制在一级目录下仅允许以
 - `manifests/` (清理、归档、删除操作清单)
 - `archive/` (历史归档，只保留必要索引，不堆积当前工作区)
 - `templates/` (任务模板、报告模板、审计模板)
+- `engineering/` (Matt Pocock engineering skills 的项目配置)
 禁止随意新增其他一级目录。
 
 ## 2. 数量限制

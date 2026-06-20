@@ -7,7 +7,17 @@ $reportPath = "$harnessPath\reports\latest-harness-limits-check.md"
 $violations = @()
 
 $rootDirs = Get-ChildItem -Path $harnessPath -Directory
-$allowedDirs = @('rules', 'tasks', 'probes', 'reports', 'scripts', 'manifests', 'archive', 'templates')
+$allowedDirs = @(
+    'rules',
+    'tasks',
+    'probes',
+    'reports',
+    'scripts',
+    'manifests',
+    'archive',
+    'templates',
+    'engineering'
+)
 $extraDirs = @()
 foreach ($d in $rootDirs) {
     if ($allowedDirs -notcontains $d.Name) {
