@@ -48,6 +48,38 @@
 - `.codex-global-state.json`：确认 active workspace root 为 `D:\Projects\SAAS`，远端连接别名存在 `saas`；未迁移鉴权、窗口状态、线程权限和本地 UI 状态。
 - `.codex\memories_1.sqlite`：`jobs` 与 `stage1_outputs` 均为 0 条，未发现可抽取的 Codex 结构化记忆。
 - `.codex\memories\extensions\ad_hoc\instructions.md` 仅为 ad-hoc note 处理规则，不含 SAAS 业务事实。
+- `.codex\logs_2.sqlite`：`logs` 表有 56195 条运行日志，其中 SAAS / 团长 / 项目路径命中 15670 条；仅登记为可回溯证据源，不迁移原始日志。
+
+## 线程主题聚类摘要
+
+> 口径：基于 `state_5.sqlite.threads` 的标题、首条用户消息和分支名做关键词多标签聚类；同一线程可命中多个主题，计数不能相加为总数。
+
+| 主题 | 命中线程数 | 典型用途 |
+| --- | ---: | --- |
+| Git / 分支 / 合并 | 187 | 多分支安全合并、commit / push、工作区清理边界 |
+| 订单 / 归因 / 结算 | 162 | 订单归因、金额双轨、结算看板、官方口径对账 |
+| 商品 / backfill / 转链 | 156 | 商品回补、dry-run、转链、`pick_source` 映射 |
+| real-pre / 真实联调 | 148 | 真实上游、SDK、授权、生产形态验证 |
+| 寄样 / 达人 / 物流 | 148 | 寄样生命周期、达人、物流补证 |
+| Harness / evidence / 报告治理 | 126 | evidence、retro、agent-do、质量门禁 |
+| 文档 / 记忆 / 迁移 | 121 | 文档重构、项目记忆迁移、索引治理 |
+| 环境 / Docker / 部署 | 117 | Docker Compose、单活环境、部署、CI/CD |
+| 审查 / 死代码 / 安全 | 106 | 全面审查、死代码、安全风险 |
+| DDD / 领域重构 | 96 | 用户域、配置域、领域边界、策略 / facade 收口 |
+| 其他未聚类 | 64 | 空标题、短指令或需回读正文的线程 |
+
+## 最新线程线索
+
+| thread id | 主题线索 | 分支 |
+| --- | --- | --- |
+| `019ee373...` | 当前项目记忆迁移目标 | `feature/ddd/DDD-VERIFY-001` |
+| `019edf0c...` | Matt Pocock skills 与 DDD 计划 | `feature/ddd/DDD-VERIFY-001` |
+| `019ede73...` | DDD 小步重构到 100% | `feature/ddd/DDD-VERIFY-001` |
+| `019ed91b...` | CI/CD 流水线目标 | `feature/ddd/DDD-VERIFY-001` |
+| `019ed848...` | 多分支安全合并与回归验证 | `feature/ddd/DDD-VERIFY-001` |
+| `019ed441...` | 文档与数据库对账整理 | `feature/ddd/DDD-VERIFY-001` |
+| `019ece99...` | backfill / dry-run 异步化方向 | `feature/ddd/DDD-VERIFY-001` |
+| `019ec3d1...` | 6 月 12 日结算看板对账问题 | 待回读正文 |
 
 ## Ambient Suggestions 摘要
 
