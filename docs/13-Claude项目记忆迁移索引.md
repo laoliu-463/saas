@@ -61,6 +61,14 @@
 - 主题线索：需求 gap analysis、按顺序实现未完成模块、商品库与商品管理拆分、招商组长权限边界、三方联调进度、本地 MCP / pencil、容器端口与 real-pre 启动、远端部署与 GitHub 推送、E2E 验证、商品库前端布局回退。
 - 这些是用户指令历史索引，进入业务文档前必须用当前代码、docs、evidence 复核。
 
+## Claude File History 索引
+
+- 来源：`C:\Users\caojianing\.claude\file-history\` 与 `...\archive\cleanup-20260619-134941\file-history\`。
+- 当前 file-history：8 个快照文件中 6 个命中 SAAS / DDD / harness / real-pre 关键词。
+- 归档 file-history：541 个快照文件中 474 个命中；其中 5 个文件有类似敏感配置的文本模式，未迁移原文。
+- 主题线索：AGENTS / Harness 规则、Domain Docs、SAAS Project Memory、CI / DDD evidence、EverOS 记忆集成代码、DDD feature flags、Harness GC / 归档。
+- file-history 是编辑快照和历史代码片段，不是当前事实；只能作为“曾经存在过的文档/代码线索”索引。
+
 ## 死代码记忆
 
 - 2026-05-24 曾做前端 API、后端 Controller、Service、前端 View 等多层死代码审计。
