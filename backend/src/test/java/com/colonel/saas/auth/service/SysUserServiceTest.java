@@ -6,6 +6,15 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.auth.dto.SysUserPageRequest;
 import com.colonel.saas.auth.support.AuthTestFixtures;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.domain.user.application.SysUserCRUDApplicationA;
+import com.colonel.saas.domain.user.application.SysUserCRUDApplicationB;
+import com.colonel.saas.domain.user.application.SysUserGroupMembershipApplication;
+import com.colonel.saas.domain.user.application.SysUserRoleAssignmentApplicationService;
+import com.colonel.saas.domain.user.application.UserAssignableApplicationService;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.UserAccessPolicy;
+import com.colonel.saas.domain.user.policy.UserAssignmentPolicy;
+import com.colonel.saas.domain.user.policy.UserChannelCodePolicy;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.SysUserRole;
 import com.colonel.saas.mapper.SysRoleMapper;
@@ -71,6 +80,51 @@ class SysUserServiceTest {
 
     @BeforeEach
     void setUp() {
+        UserAccessPolicy userAccessPolicy = new UserAccessPolicy(userId -> java.util.Optional.ofNullable(sysUserMapper.selectById(userId))
+                .map(SysUser::getDeptId));
+        UserChannelCodePolicy userChannelCodePolicy = new UserChannelCodePolicy(sysUserMapper::existsByChannelCodeIncludingDeleted);
+        SysUserCRUDApplicationA applicationA = new SysUserCRUDApplicationA(
+                sysUserMapper,
+                sysRoleMapper,
+                sysUserRoleMapper,
+                passwordEncoder,
+                operationLogService,
+                userDomainEventPublisher,
+                orgStructureService,
+                userAccessPolicy,
+                userChannelCodePolicy);
+        SysUserCRUDApplicationB applicationB = new SysUserCRUDApplicationB(
+                sysUserMapper,
+                sysUserRoleMapper,
+                passwordEncoder,
+                operationLogService,
+                userDomainEventPublisher,
+                userPermissionCacheService,
+                orgStructureService,
+                userAccessPolicy);
+        SysUserGroupMembershipApplication groupMembershipApplication = new SysUserGroupMembershipApplication(
+                sysUserMapper,
+                operationLogService,
+                userDomainEventPublisher,
+                userPermissionCacheService,
+                orgStructureService);
+        UserAssignmentPolicy userAssignmentPolicy = new UserAssignmentPolicy(
+                sysUserMapper,
+                sysRoleMapper,
+                sysUserRoleMapper);
+        UserAssignableApplicationService userAssignableApplicationService = new UserAssignableApplicationService(
+                sysUserMapper,
+                sysRoleMapper,
+                sysUserRoleMapper,
+                userAssignmentPolicy);
+        SysUserRoleAssignmentApplicationService roleAssignmentApplicationService =
+                new SysUserRoleAssignmentApplicationService(
+                        sysUserMapper,
+                        sysRoleMapper,
+                        sysUserRoleMapper,
+                        operationLogService,
+                        userPermissionCacheService,
+                        userAccessPolicy);
         sysUserService = new SysUserService(
                 sysUserMapper,
                 sysRoleMapper,
@@ -79,7 +133,15 @@ class SysUserServiceTest {
                 operationLogService,
                 userDomainEventPublisher,
                 orgStructureService,
-                userPermissionCacheService
+                userPermissionCacheService,
+                new DataScopePolicy(),
+                userAccessPolicy,
+                userChannelCodePolicy,
+                applicationA,
+                applicationB,
+                groupMembershipApplication,
+                userAssignableApplicationService,
+                roleAssignmentApplicationService
         );
     }
 
@@ -93,8 +155,9 @@ class SysUserServiceTest {
                 UUID.randomUUID(), DataScope.ALL, request);
         String sql = wrapper.getSqlSegment();
 
-        // keyword 模糊匹配 username + real_name
-        assertThat(sql).contains("LIKE '%招商%'");
+        // keyword 模糊匹配 username + real_name，参数必须由 MyBatis-Plus 绑定
+        assertThat(sql).contains("username LIKE").contains("real_name LIKE");
+        assertParameter(wrapper, "%招商%");
         // 关键：不会把 dataScope 注入到 keyword
         assertThat(sql).contains("OR");
     }
@@ -107,7 +170,8 @@ class SysUserServiceTest {
                 UUID.randomUUID(), DataScope.ALL, request);
         String sql = wrapper.getSqlSegment();
 
-        assertThat(sql).contains("status = 0");
+        assertThat(sql).contains("status =");
+        assertParameter(wrapper, 0);
     }
 
     @Test
@@ -120,8 +184,9 @@ class SysUserServiceTest {
                 UUID.randomUUID(), DataScope.ALL, request);
         String sql = wrapper.getSqlSegment();
 
-        // groupId 精确匹配
-        assertThat(sql).contains("dept_id = " + uuidLiteral(groupId));
+        // groupId 精确匹配，参数由 MyBatis-Plus 绑定
+        assertThat(sql).contains("dept_id =");
+        assertParameter(wrapper, groupId);
         // 不应包含 deptId 的 subquery
         assertThat(sql).doesNotContain("SELECT id FROM sys_dept");
     }
@@ -136,7 +201,8 @@ class SysUserServiceTest {
         String sql = wrapper.getSqlSegment();
 
         // deptId 同时支持"= deptId"和"IN (子部门)"两路
-        assertThat(sql).contains("dept_id = " + uuidLiteral(deptId));
+        assertThat(sql).contains("dept_id =");
+        assertParameter(wrapper, deptId);
         assertThat(sql).contains("SELECT id FROM sys_dept WHERE deleted = 0 AND parent_id = " + uuidLiteral(deptId));
     }
 
@@ -150,7 +216,8 @@ class SysUserServiceTest {
         String sql = wrapper.getSqlSegment();
 
         assertThat(sql).contains("EXISTS (SELECT 1 FROM sys_user_role sur");
-        assertThat(sql).contains("sur.role_id = " + uuidLiteral(roleId));
+        assertThat(sql).contains("sur.role_id =");
+        assertParameter(wrapper, roleId);
     }
 
     @Test
@@ -162,7 +229,8 @@ class SysUserServiceTest {
         String sql = wrapper.getSqlSegment();
 
         assertThat(sql).contains("INNER JOIN sys_role sr");
-        assertThat(sql).contains("sr.role_code = 'biz_staff'");
+        assertThat(sql).contains("sr.role_code =");
+        assertParameter(wrapper, "biz_staff");
     }
 
     @Test
@@ -287,9 +355,12 @@ class SysUserServiceTest {
         verify(sysUserMapper).findPage(any(Page.class), eq(request), captor.capture());
         String sql = captor.getValue().getSqlSegment();
         // keyword + status + roleCode(EXISTS JOIN) 拼接正确
-        assertThat(sql).contains("LIKE '%招商%'");
-        assertThat(sql).contains("status = 1");
-        assertThat(sql).contains("sr.role_code = 'biz_staff'");
+        assertThat(sql).contains("LIKE");
+        assertParameter(captor.getValue(), "%招商%");
+        assertThat(sql).contains("status =");
+        assertParameter(captor.getValue(), 1);
+        assertThat(sql).contains("sr.role_code =");
+        assertParameter(captor.getValue(), "biz_staff");
         // ALL 范围不会追加 id/dept_id 条件
         assertThat(sql).doesNotContain("id = " + currentUserId);
         assertThat(sql).doesNotContain("dept_id = ");
@@ -390,5 +461,11 @@ class SysUserServiceTest {
 
     private static String uuidLiteral(UUID value) {
         return "'" + value + "'";
+    }
+
+    private static void assertParameter(QueryWrapper<SysUser> wrapper, Object expected) {
+        assertThat(wrapper.getParamNameValuePairs().values())
+                .as("QueryWrapper parameter values")
+                .contains(expected);
     }
 }

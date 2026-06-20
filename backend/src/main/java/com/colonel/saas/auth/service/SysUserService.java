@@ -12,6 +12,15 @@ import com.colonel.saas.constant.SysUserStatus;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.application.SysUserCRUDApplicationA;
+import com.colonel.saas.domain.user.application.SysUserCRUDApplicationB;
+import com.colonel.saas.domain.user.application.SysUserGroupMembershipApplication;
+import com.colonel.saas.domain.user.application.SysUserRoleAssignmentApplicationService;
+import com.colonel.saas.domain.user.application.UserAssignableApplicationService;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.UserAccessPolicy;
+import com.colonel.saas.domain.user.policy.UserAccessPolicy.AccessibleUser;
+import com.colonel.saas.domain.user.policy.UserChannelCodePolicy;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.SysUserRole;
@@ -83,29 +92,6 @@ import java.util.stream.Collectors;
 @Service
 public class SysUserService {
 
-    /** 渠道编码最大长度限制 */
-    private static final int MAX_CHANNEL_CODE_LEN = 16;
-
-    /**
-     * 可分配的业务角色编码集合。
-     * <p>
-     * 用于负责人分配场景，限定哪些角色的用户可被选为负责人。
-     * 包括：业务组长、业务专员、渠道组长、渠道专员。
-     * </p>
-     */
-    private static final Set<String> ASSIGNABLE_BIZ_ROLE_CODES = Set.of(
-            RoleCodes.BIZ_LEADER,
-            RoleCodes.BIZ_STAFF,
-            RoleCodes.CHANNEL_LEADER,
-            RoleCodes.CHANNEL_STAFF
-    );
-
-    /** 活动级分配可选的招商相关角色（与 /users/master-data/recruiters 一致） */
-    private static final Set<String> RECRUITER_ROLE_CODES = Set.of(
-            RoleCodes.BIZ_LEADER,
-            RoleCodes.BIZ_STAFF
-    );
-
     /** 用户数据访问层 */
     private final SysUserMapper sysUserMapper;
 
@@ -130,6 +116,30 @@ public class SysUserService {
     /** 用户权限缓存服务，用于在角色或组织变更时刷新缓存 */
     private final UserPermissionCacheService userPermissionCacheService;
 
+    /** 用户域数据范围策略，统一 self/group/all 过滤决策 */
+    private final DataScopePolicy dataScopePolicy;
+
+    /** 用户访问权限策略，统一用户详情和写操作的访问边界 */
+    private final UserAccessPolicy userAccessPolicy;
+
+    /** 用户渠道编码策略，统一生成推广链路可追溯短码 */
+    private final UserChannelCodePolicy userChannelCodePolicy;
+
+    /** 用户 CRUD DDD 入口 A：getById / create */
+    private final SysUserCRUDApplicationA sysUserCRUDApplicationA;
+
+    /** 用户 CRUD DDD 入口 B：update / delete / resetPassword */
+    private final SysUserCRUDApplicationB sysUserCRUDApplicationB;
+
+    /** 用户业务组成员 DDD 入口：assignUsersToGroup / removeUsersFromGroup */
+    private final SysUserGroupMembershipApplication sysUserGroupMembershipApplication;
+
+    /** 用户可分配负责人 DDD 入口：findAssignableUsers / assertAssignableUser / assertRecruiterUser */
+    private final UserAssignableApplicationService userAssignableApplicationService;
+
+    /** 用户角色分配 DDD 入口：assignRoles */
+    private final SysUserRoleAssignmentApplicationService sysUserRoleAssignmentApplicationService;
+
     /**
      * 构造注入所有依赖。
      *
@@ -141,6 +151,14 @@ public class SysUserService {
      * @param userDomainEventPublisher   用户域事件发布器
      * @param orgStructureService        组织结构服务
      * @param userPermissionCacheService 用户权限缓存服务
+     * @param dataScopePolicy            数据范围策略
+     * @param userAccessPolicy           用户访问权限策略
+     * @param userChannelCodePolicy      用户渠道编码策略
+     * @param sysUserCRUDApplicationA    用户 CRUD DDD 入口 A
+     * @param sysUserCRUDApplicationB    用户 CRUD DDD 入口 B
+     * @param sysUserGroupMembershipApplication 用户业务组成员 DDD 入口
+     * @param userAssignableApplicationService 用户可分配负责人 DDD 入口
+     * @param sysUserRoleAssignmentApplicationService 用户角色分配 DDD 入口
      */
     public SysUserService(
             SysUserMapper sysUserMapper,
@@ -150,7 +168,15 @@ public class SysUserService {
             OperationLogService operationLogService,
             UserDomainEventPublisher userDomainEventPublisher,
             OrgStructureService orgStructureService,
-            UserPermissionCacheService userPermissionCacheService) {
+            UserPermissionCacheService userPermissionCacheService,
+            DataScopePolicy dataScopePolicy,
+            UserAccessPolicy userAccessPolicy,
+            UserChannelCodePolicy userChannelCodePolicy,
+            SysUserCRUDApplicationA sysUserCRUDApplicationA,
+            SysUserCRUDApplicationB sysUserCRUDApplicationB,
+            SysUserGroupMembershipApplication sysUserGroupMembershipApplication,
+            UserAssignableApplicationService userAssignableApplicationService,
+            SysUserRoleAssignmentApplicationService sysUserRoleAssignmentApplicationService) {
         this.sysUserMapper = sysUserMapper;
         this.sysRoleMapper = sysRoleMapper;
         this.sysUserRoleMapper = sysUserRoleMapper;
@@ -159,6 +185,14 @@ public class SysUserService {
         this.userDomainEventPublisher = userDomainEventPublisher;
         this.orgStructureService = orgStructureService;
         this.userPermissionCacheService = userPermissionCacheService;
+        this.dataScopePolicy = dataScopePolicy;
+        this.userAccessPolicy = userAccessPolicy;
+        this.userChannelCodePolicy = userChannelCodePolicy;
+        this.sysUserCRUDApplicationA = sysUserCRUDApplicationA;
+        this.sysUserCRUDApplicationB = sysUserCRUDApplicationB;
+        this.sysUserGroupMembershipApplication = sysUserGroupMembershipApplication;
+        this.userAssignableApplicationService = userAssignableApplicationService;
+        this.sysUserRoleAssignmentApplicationService = sysUserRoleAssignmentApplicationService;
     }
 
     /**
@@ -229,8 +263,8 @@ public class SysUserService {
      *   <li>status 非空：{@code status = ?}</li>
      *   <li>groupId 非空：{@code dept_id = ?}（精确匹配业务组）</li>
      *   <li>deptId 非空 + groupId 为空：{@code dept_id = ? OR dept_id IN (subquery)}</li>
-     *   <li>roleId 非空：{@code EXISTS (sys_user_role WHERE role_id = ?)}</li>
-     *   <li>roleCode 非空：{@code EXISTS (sys_user_role JOIN sys_role WHERE role_code = ?)}</li>
+     *   <li>roleId 非空：{@code EXISTS (sys_user_role WHERE role_id = {0})}</li>
+     *   <li>roleCode 非空：{@code EXISTS (sys_user_role JOIN sys_role WHERE role_code = {0})}</li>
      * </ul>
      *
      * <h4>dataScope 注入</h4>
@@ -250,36 +284,35 @@ public class SysUserService {
             applyDataScopeFilter(wrapper, currentUserId, currentDeptId, dataScope);
             return wrapper;
         }
-        // 关键词（like 内联 keyword，前后 % 由 MyBatis-Plus 自动加；trim 后已过滤空白）
+        // 关键词（参数化查询，防止 SQL 注入）
         if (request.keyword() != null && !request.keyword().isBlank()) {
             String safe = request.keyword().trim();
-            wrapper.and(q -> q.apply("username LIKE '%" + safe + "%'")
-                    .or().apply("real_name LIKE '%" + safe + "%'"));
+            wrapper.and(q -> q.like("username", safe)
+                    .or().like("real_name", safe));
         }
-        // 状态（Integer 数值内联）
+        // 状态（参数化查询）
         if (request.status() != null) {
-            wrapper.apply("status = " + request.status());
+            wrapper.eq("status", request.status());
         }
-        // 业务组优先于部门（UUID 内联，需加引号避免 PG 误解析）
+        // 业务组优先于部门（参数化查询，防注入）
         if (request.groupId() != null) {
-            wrapper.apply("dept_id = '" + request.groupId() + "'");
+            wrapper.eq("dept_id", request.groupId());
         } else if (request.deptId() != null) {
             UUID parentDeptId = request.deptId();
-            wrapper.and(q -> q.apply("dept_id = '" + parentDeptId + "'")
+            wrapper.and(q -> q.eq("dept_id", parentDeptId)
                     .or().inSql("dept_id",
                             "SELECT id FROM sys_dept WHERE deleted = 0 AND parent_id = '" + parentDeptId + "'"));
         }
-        // 角色筛选（roleId / roleCode 二选一）
+        // 角色筛选（roleId / roleCode 二选一，参数化查询）
         if (request.roleId() != null) {
-            wrapper.exists("SELECT 1 FROM sys_user_role sur WHERE sur.user_id = su.id AND sur.role_id = '"
-                    + request.roleId() + "'");
+            wrapper.exists("SELECT 1 FROM sys_user_role sur WHERE sur.user_id = su.id AND sur.role_id = {0}",
+                    request.roleId());
         } else if (request.roleCode() != null && !request.roleCode().isBlank()) {
             String code = request.roleCode().trim();
-            // roleCode 来自受控角色编码（白名单），安全内联
             wrapper.exists(
                     "SELECT 1 FROM sys_user_role sur INNER JOIN sys_role sr ON sr.id = sur.role_id"
-                            + " AND sr.deleted = 0 WHERE sur.user_id = su.id AND sr.role_code = '"
-                            + code + "'");
+                            + " AND sr.deleted = 0 WHERE sur.user_id = su.id AND sr.role_code = {0}",
+                    code);
         }
         // 数据范围
         applyDataScopeFilter(wrapper, currentUserId, currentDeptId, dataScope);
@@ -331,23 +364,13 @@ public class SysUserService {
             UUID currentUserId,
             UUID currentDeptId,
             DataScope dataScope) {
-        if (dataScope == null || dataScope == DataScope.ALL) {
-            return;
-        }
-        if (dataScope == DataScope.PERSONAL) {
-            if (currentUserId == null) {
-                // 与 AOP 行为对齐：缺少上下文时拒绝追加（由调用方处理 403 或空集）
-                return;
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(currentUserId, currentDeptId, dataScope);
+        switch (decision) {
+            case FILTER_USER -> wrapper.apply("id = '" + currentUserId + "'");
+            case FILTER_DEPT -> wrapper.apply("dept_id = '" + currentDeptId + "'");
+            case NO_FILTER -> {
+                // no-op
             }
-            // UUID 是受控格式（仅 hex + dash），内联避免单测断言参数化占位符
-            wrapper.apply("id = '" + currentUserId + "'");
-            return;
-        }
-        if (dataScope == DataScope.DEPT) {
-            if (currentDeptId == null) {
-                return;
-            }
-            wrapper.apply("dept_id = '" + currentDeptId + "'");
         }
     }
 
@@ -406,46 +429,7 @@ public class SysUserService {
      * @return 可分配的用户 VO 列表，无数据时返回空列表
      */
     public List<SysUserVO> findAssignableUsers(String keyword, List<String> currentRoleCodes, UUID currentDeptId) {
-        QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
-        wrapper.eq("deleted", 0)
-                .eq("status", 1)
-                .orderByAsc("real_name")
-                .orderByAsc("username")
-                .last("limit 20");
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            String safeKeyword = keyword.trim();
-            wrapper.and(query -> query.like("username", safeKeyword).or().like("real_name", safeKeyword));
-        }
-
-        List<SysUser> users = sysUserMapper.selectList(wrapper);
-        if (users.isEmpty()) {
-            return Collections.emptyList();
-        }
-        AssignableScope scope = resolveAssignableScope(currentRoleCodes, currentDeptId);
-        Set<String> allowedRoleCodes = scope.allowedRoleCodes();
-        if (allowedRoleCodes.isEmpty()) {
-            return Collections.emptyList();
-        }
-        Map<UUID, List<SysUserRole>> relationMap = users.stream()
-                .collect(Collectors.toMap(
-                        SysUser::getId,
-                        user -> sysUserRoleMapper.findByUserId(user.getId())
-                ));
-        Set<UUID> roleIds = relationMap.values().stream()
-                .flatMap(List::stream)
-                .map(SysUserRole::getRoleId)
-                .filter(roleId -> roleId != null)
-                .collect(Collectors.toSet());
-        Map<UUID, SysRole> roleMap = roleIds.isEmpty()
-                ? Collections.emptyMap()
-                : sysRoleMapper.selectBatchIds(roleIds).stream()
-                .collect(Collectors.toMap(SysRole::getId, role -> role));
-
-        return users.stream()
-                .filter(user -> scope.deptId() == null || scope.allowCrossDept() || Objects.equals(scope.deptId(), user.getDeptId()))
-                .filter(user -> matchesAssignableRole(user.getId(), relationMap, roleMap, allowedRoleCodes))
-                .map(this::toVO)
-                .toList();
+        return userAssignableApplicationService.findAssignableUsers(keyword, currentRoleCodes, currentDeptId);
     }
 
     /**
@@ -469,61 +453,14 @@ public class SysUserService {
      * @throws BusinessException 目标用户 ID 为空、角色不允许分配、跨部门访问或角色不匹配时抛出
      */
     public void assertAssignableUser(UUID targetUserId, List<String> currentRoleCodes, UUID currentDeptId) {
-        if (targetUserId == null) {
-            throw BusinessException.param("负责人不能为空");
-        }
-        AssignableScope scope = resolveAssignableScope(currentRoleCodes, currentDeptId);
-        if (scope.allowedRoleCodes().isEmpty()) {
-            throw BusinessException.stateInvalid("当前角色不允许分配负责人");
-        }
-        SysUser targetUser = requireUser(targetUserId);
-        if (scope.deptId() != null && !scope.allowCrossDept() && !Objects.equals(scope.deptId(), targetUser.getDeptId())) {
-            throw BusinessException.forbidden("只能分配给本组招商下属");
-        }
-
-        List<SysUserRole> relations = sysUserRoleMapper.findByUserId(targetUserId);
-        if (relations == null || relations.isEmpty()) {
-            throw BusinessException.stateInvalid("目标负责人未配置可分配角色");
-        }
-        Set<UUID> roleIds = relations.stream()
-                .map(SysUserRole::getRoleId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<UUID, SysRole> roleMap = roleIds.isEmpty()
-                ? Collections.emptyMap()
-                : sysRoleMapper.selectBatchIds(roleIds).stream()
-                .collect(Collectors.toMap(SysRole::getId, role -> role));
-        if (!matchesAssignableRole(targetUserId, Map.of(targetUserId, relations), roleMap, scope.allowedRoleCodes())) {
-            throw BusinessException.forbidden("只能分配给符合规则的招商下属");
-        }
+        userAssignableApplicationService.assertAssignableUser(targetUserId, currentRoleCodes, currentDeptId);
     }
 
     /**
      * 校验目标用户可作为活动级招商组长（管理员分配活动专用）。
      */
     public void assertRecruiterUser(UUID targetUserId) {
-        if (targetUserId == null) {
-            throw BusinessException.param("assigneeId 不能为空");
-        }
-        SysUser targetUser = requireUser(targetUserId);
-        if (targetUser.getStatus() == null || targetUser.getStatus() != SysUserStatus.ACTIVE) {
-            throw BusinessException.stateInvalid("目标用户未启用");
-        }
-        List<SysUserRole> relations = sysUserRoleMapper.findByUserId(targetUserId);
-        if (relations == null || relations.isEmpty()) {
-            throw BusinessException.stateInvalid("目标用户未配置招商角色");
-        }
-        Set<UUID> roleIds = relations.stream()
-                .map(SysUserRole::getRoleId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<UUID, SysRole> roleMap = roleIds.isEmpty()
-                ? Collections.emptyMap()
-                : sysRoleMapper.selectBatchIds(roleIds).stream()
-                .collect(Collectors.toMap(SysRole::getId, role -> role));
-        if (!matchesAssignableRole(targetUserId, Map.of(targetUserId, relations), roleMap, RECRUITER_ROLE_CODES)) {
-            throw BusinessException.forbidden("只能分配给招商组长、招商专员或招商组长兼容角色");
-        }
+        userAssignableApplicationService.assertRecruiterUser(targetUserId);
     }
 
     /**
@@ -543,9 +480,7 @@ public class SysUserService {
      * @throws BusinessException 用户不存在或无权访问时抛出
      */
     public SysUserVO getById(UUID id, UUID currentUserId, DataScope dataScope) {
-        SysUser user = requireUser(id);
-        assertCanAccess(user, currentUserId, dataScope);
-        return orgStructureService.enrichUser(toVO(user));
+        return sysUserCRUDApplicationA.getById(id, currentUserId, dataScope);
     }
 
     /**
@@ -572,53 +507,7 @@ public class SysUserService {
      */
     @Transactional(rollbackFor = Exception.class)
     public SysUserVO create(SysUserCreateRequest request, UUID currentUserId) {
-        sysUserMapper.findByUsername(request.username()).ifPresent(existing -> {
-            throw BusinessException.duplicate("用户名已存在");
-        });
-
-        List<UUID> roleIds = normalizeRoleIds(request.roleIds());
-        validateRoleIds(roleIds, null);
-
-        SysUser user = new SysUser();
-        user.setId(UUID.randomUUID());
-        user.setUsername(request.username());
-        user.setPassword(passwordEncoder.encode(request.password()));
-        user.setRealName(request.realName());
-        user.setPhone(request.phone());
-        user.setEmail(request.email());
-        ResolvedAssignment assignment = resolveAssignment(
-                request.parentDeptId(),
-                request.groupId(),
-                request.deptId());
-        user.setDeptId(assignment.effectiveDeptId());
-        user.setStatus(SysUserStatus.PENDING_ACTIVATION);
-        user.setForcePasswordChange(true);
-        user.setChannelCode(generateUniqueChannelCode(request.username()));
-        sysUserMapper.insert(user);
-
-        replaceUserRoles(user.getId(), roleIds);
-        operationLogService.recordSystemAction(
-                currentUserId,
-                "用户管理",
-                "新建用户",
-                "POST",
-                "SysUser",
-                user.getId() == null ? null : user.getId().toString(),
-                user.getUsername(),
-                "新建用户: " + user.getUsername()
-        );
-        SysRole primaryRole = resolvePrimaryRole(roleIds);
-        userDomainEventPublisher.publishUserCreated(
-                user.getId(),
-                user.getUsername(),
-                user.getRealName(),
-                primaryRole == null ? null : primaryRole.getId(),
-                primaryRole == null ? null : primaryRole.getRoleCode(),
-                user.getDeptId(),
-                user.getDeptId(),
-                user.getStatus(),
-                currentUserId);
-        return orgStructureService.enrichUser(toVO(user));
+        return sysUserCRUDApplicationA.create(request, currentUserId);
     }
 
     /**
@@ -652,47 +541,7 @@ public class SysUserService {
             SysUserUpdateRequest request,
             UUID currentUserId,
             DataScope dataScope) {
-        SysUser user = requireUser(id);
-        assertCanAccess(user, currentUserId, dataScope);
-
-        Integer previousStatus = user.getStatus();
-        UUID previousDeptId = user.getDeptId();
-
-        user.setRealName(request.realName());
-        user.setPhone(request.phone());
-        user.setEmail(request.email());
-        if (request.status() != null) {
-            user.setStatus(request.status());
-        }
-        if (request.parentDeptId() != null || request.groupId() != null || request.deptId() != null) {
-            ResolvedAssignment assignment = resolveAssignment(
-                    request.parentDeptId(),
-                    request.groupId(),
-                    request.deptId());
-            user.setDeptId(assignment.effectiveDeptId());
-        }
-        sysUserMapper.updateById(user);
-        recordOrgChangeIfNeeded(user, previousDeptId, user.getDeptId(), currentUserId);
-        operationLogService.recordSystemAction(
-                currentUserId,
-                "用户管理",
-                "更新用户",
-                "PUT",
-                "SysUser",
-                user.getId() == null ? null : user.getId().toString(),
-                user.getUsername(),
-                "更新用户: " + user.getUsername()
-        );
-        if (becameDisabled(previousStatus, user.getStatus())) {
-            userDomainEventPublisher.publishUserDisabled(
-                    user.getId(),
-                    previousStatus,
-                    user.getStatus(),
-                    currentUserId);
-        }
-        userPermissionCacheService.invalidateUser(user.getId());
-        userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, user.getDeptId());
-        return orgStructureService.enrichUser(toVO(user));
+        return sysUserCRUDApplicationB.update(id, request, currentUserId, dataScope);
     }
 
     /**
@@ -717,16 +566,7 @@ public class SysUserService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void assignUsersToGroup(UUID groupId, List<UUID> userIds, UUID currentUserId) {
-        ResolvedAssignment groupAssignment = orgStructureService.resolveAssignment(null, groupId);
-        for (UUID targetUserId : userIds) {
-            SysUser user = requireUser(targetUserId);
-            UUID previousDeptId = user.getDeptId();
-            user.setDeptId(groupAssignment.effectiveDeptId());
-            sysUserMapper.updateById(user);
-            recordOrgChangeIfNeeded(user, previousDeptId, user.getDeptId(), currentUserId);
-            userPermissionCacheService.invalidateUser(user.getId());
-            userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, user.getDeptId());
-        }
+        sysUserGroupMembershipApplication.assignUsersToGroup(groupId, userIds, currentUserId);
     }
 
     /**
@@ -752,18 +592,7 @@ public class SysUserService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void removeUsersFromGroup(UUID groupId, List<UUID> userIds, UUID currentUserId) {
-        for (UUID targetUserId : userIds) {
-            SysUser user = requireUser(targetUserId);
-            if (!Objects.equals(user.getDeptId(), groupId)) {
-                continue;
-            }
-            UUID previousDeptId = user.getDeptId();
-            user.setDeptId(null);
-            sysUserMapper.updateById(user);
-            recordOrgChangeIfNeeded(user, previousDeptId, null, currentUserId);
-            userPermissionCacheService.invalidateUser(user.getId());
-            userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, null);
-        }
+        sysUserGroupMembershipApplication.removeUsersFromGroup(groupId, userIds, currentUserId);
     }
 
     /**
@@ -789,23 +618,7 @@ public class SysUserService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void delete(UUID id, UUID currentUserId, DataScope dataScope) {
-        if (id.equals(currentUserId)) {
-            throw BusinessException.stateInvalid("不能删除当前登录用户");
-        }
-        SysUser user = requireUser(id);
-        assertCanAccess(user, currentUserId, dataScope);
-        sysUserRoleMapper.deleteByUserIdPhysical(id);
-        sysUserMapper.softDeleteById(id);
-        operationLogService.recordSystemAction(
-                currentUserId,
-                "用户管理",
-                "删除用户",
-                "DELETE",
-                "SysUser",
-                user.getId() == null ? null : user.getId().toString(),
-                user.getUsername(),
-                "删除用户: " + user.getUsername()
-        );
+        sysUserCRUDApplicationB.delete(id, currentUserId, dataScope);
     }
 
     /**
@@ -833,23 +646,7 @@ public class SysUserService {
             SysUserResetPasswordRequest request,
             UUID currentUserId,
             DataScope dataScope) {
-        SysUser user = requireUser(id);
-        assertCanAccess(user, currentUserId, dataScope);
-        SysUser update = new SysUser();
-        update.setId(id);
-        update.setPassword(passwordEncoder.encode(request.newPassword()));
-        update.setForcePasswordChange(true);
-        sysUserMapper.updateById(update);
-        operationLogService.recordSystemAction(
-                currentUserId,
-                "用户管理",
-                "重置密码",
-                "PUT",
-                "SysUser",
-                user.getId() == null ? null : user.getId().toString(),
-                user.getUsername(),
-                "重置用户密码: " + user.getUsername()
-        );
+        sysUserCRUDApplicationB.resetPassword(id, request, currentUserId, dataScope);
     }
 
     /**
@@ -880,181 +677,7 @@ public class SysUserService {
             SysUserAssignRolesRequest request,
             UUID currentUserId,
             DataScope dataScope) {
-        SysUser user = requireUser(id);
-        assertCanAccess(user, currentUserId, dataScope);
-        List<UUID> roleIds = normalizeRoleIds(request.roleIds());
-        validateRoleIds(roleIds, id);
-        replaceUserRoles(id, roleIds);
-        userPermissionCacheService.invalidateUser(id);
-        for (UUID roleId : roleIds) {
-            userPermissionCacheService.invalidateRole(roleId);
-        }
-        operationLogService.recordSystemAction(
-                currentUserId,
-                "用户管理",
-                "分配角色",
-                "PUT",
-                "SysUser",
-                user.getId() == null ? null : user.getId().toString(),
-                user.getUsername(),
-                "更新用户角色: " + user.getUsername()
-        );
-    }
-
-    /**
-     * 查询并校验用户存在。
-     *
-     * @param id 用户 ID
-     * @return 有效的 SysUser 实体
-     * @throws BusinessException 用户不存在时抛出
-     */
-    private SysUser requireUser(UUID id) {
-        SysUser user = sysUserMapper.selectById(id);
-        if (user == null) {
-            throw BusinessException.notFound("用户不存在");
-        }
-        return user;
-    }
-
-    /**
-     * 校验当前操作者是否有权访问目标用户。
-     * <p>
-     * 基于数据权限范围进行访问控制：
-     * PERSONAL 模式下只能访问自身，DEPT 模式只能访问同部门用户，ALL 模式允许访问任意用户。
-     * </p>
-     *
-     * @param user          目标用户实体
-     * @param currentUserId 当前操作者 ID
-     * @param dataScope     数据权限范围
-     * @throws BusinessException 数据权限为空或访问超出范围用户时抛出
-     */
-    private void assertCanAccess(SysUser user, UUID currentUserId, DataScope dataScope) {
-        if (dataScope == null) {
-            throw BusinessException.forbidden("无法确认数据权限，拒绝访问");
-        }
-        // PERSONAL 模式下只能访问自身
-        if (dataScope == DataScope.PERSONAL && !user.getId().equals(currentUserId)) {
-            throw BusinessException.forbidden("无权访问该用户");
-        }
-        if (dataScope == DataScope.DEPT) {
-            SysUser currentUser = currentUserId == null ? null : sysUserMapper.selectById(currentUserId);
-            if (currentUser == null || currentUser.getDeptId() == null || user.getDeptId() == null
-                    || !currentUser.getDeptId().equals(user.getDeptId())) {
-                throw BusinessException.forbidden("无权访问该部门外用户");
-            }
-        }
-    }
-
-    /**
-     * 规范化角色 ID 列表：去重并过滤 null 值。
-     *
-     * @param roleIds 原始角色 ID 列表
-     * @return 去重后的角色 ID 列表（保持插入顺序），null 或空输入返回空列表
-     */
-    private List<UUID> normalizeRoleIds(List<UUID> roleIds) {
-        if (roleIds == null || roleIds.isEmpty()) {
-            return Collections.emptyList();
-        }
-        Set<UUID> distinct = new LinkedHashSet<>();
-        for (UUID roleId : roleIds) {
-            if (roleId != null) {
-                distinct.add(roleId);
-            }
-        }
-        return new ArrayList<>(distinct);
-    }
-
-    /**
-     * 校验角色 ID 列表的有效性。
-     * <p>
-     * 校验内容包括：角色是否存在、角色是否已启用、是否违反单一管理员约束。
-     * </p>
-     *
-     * @param roleIds      去重后的角色 ID 列表
-     * @param targetUserId 目标用户 ID（更新/分配时传入，创建时为 null），用于单一管理员校验
-     * @throws BusinessException 角色不存在、已禁用或违反单一管理员约束时抛出
-     */
-    private void validateRoleIds(List<UUID> roleIds, UUID targetUserId) {
-        if (roleIds.isEmpty()) {
-            return;
-        }
-        // 第一步：校验角色存在性
-        List<SysRole> roles = sysRoleMapper.selectBatchIds(roleIds);
-        if (roles.size() != roleIds.size()) {
-            throw BusinessException.notFound("角色不存在或已删除");
-        }
-        // 第二步：校验角色是否已禁用
-        boolean hasDisabledRole = roles.stream()
-                .anyMatch(role -> role.getStatus() == null || role.getStatus() != 1);
-        if (hasDisabledRole) {
-            throw BusinessException.stateInvalid("不能分配已禁用角色");
-        }
-        // 第三步：单一管理员保护
-        assertSingleAdminUser(roles, targetUserId);
-    }
-
-    /**
-     * 校验单一管理员约束：系统全局只允许一个未删除的 ADMIN 角色用户。
-     * <p>
-     * 若待分配的角色列表中包含 ADMIN 角色，且目标用户当前不是管理员，
-     * 则检查数据库中是否已存在其他未删除的管理员用户，存在则拒绝。
-     * </p>
-     *
-     * @param roles         待分配的角色列表
-     * @param targetUserId  目标用户 ID（更新/分配时传入，创建时为 null）
-     * @throws BusinessException 已存在管理员且目标用户不是现有管理员时抛出
-     */
-    private void assertSingleAdminUser(List<SysRole> roles, UUID targetUserId) {
-        // 第一步：检查待分配角色中是否包含 ADMIN
-        SysRole adminRole = roles.stream()
-                .filter(role -> RoleCodes.ADMIN.equals(role.getRoleCode()))
-                .findFirst()
-                .orElse(null);
-        if (adminRole == null || adminRole.getId() == null) {
-            return;
-        }
-        // 第二步：若目标用户已经是管理员，允许重新分配（不抛异常）
-        if (targetUserId != null) {
-            boolean targetAlreadyAdmin = sysUserRoleMapper.findByUserId(targetUserId).stream()
-                    .anyMatch(relation -> adminRole.getId().equals(relation.getRoleId()));
-            if (targetAlreadyAdmin) {
-                return;
-            }
-        }
-        // 第三步：检查数据库中是否已存在其他未删除的管理员
-        List<UUID> adminUserIds = sysUserRoleMapper.findByRoleId(adminRole.getId()).stream()
-                .map(SysUserRole::getUserId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        if (adminUserIds.isEmpty()) {
-            return;
-        }
-        boolean hasExistingAdmin = sysUserMapper.selectBatchIds(adminUserIds).stream()
-                .filter(Objects::nonNull)
-                .anyMatch(user -> user.getDeleted() == null || user.getDeleted() == 0);
-        if (hasExistingAdmin) {
-            throw BusinessException.duplicate("管理员账号已存在，不能新增或转配第二个管理员");
-        }
-    }
-
-    /**
-     * 全量替换用户的角色关联（先删后插）。
-     *
-     * @param userId  用户 ID
-     * @param roleIds 新的角色 ID 列表
-     */
-    private void replaceUserRoles(UUID userId, List<UUID> roleIds) {
-        // 第一步：物理删除旧的角色关联
-        sysUserRoleMapper.deleteByUserIdPhysical(userId);
-        // 第二步：插入新的角色关联
-        for (UUID roleId : roleIds) {
-            SysUserRole relation = new SysUserRole();
-            relation.setId(UUID.randomUUID());
-            relation.setUserId(userId);
-            relation.setRoleId(roleId);
-            sysUserRoleMapper.insert(relation);
-        }
+        sysUserRoleAssignmentApplicationService.assignRoles(id, request, currentUserId, dataScope);
     }
 
     /**
@@ -1120,79 +743,6 @@ public class SysUserService {
     }
 
     /**
-     * 解析当前用户的可分配范围。
-     * <p>
-     * 根据角色编码确定可分配的目标角色集合、部门范围和跨部门权限：
-     * <ul>
-     *   <li>ADMIN：可分配所有业务角色，不限部门，允许跨部门</li>
-     *   <li>BIZ_LEADER：只能分配 BIZ_STAFF，限同部门</li>
-     *   <li>CHANNEL_LEADER：只能分配 CHANNEL_STAFF，限同部门</li>
-     *   <li>其他角色：返回空范围（不允许分配负责人）</li>
-     * </ul>
-     * </p>
-     *
-     * @param currentRoleCodes 当前用户的角色编码列表
-     * @param currentDeptId    当前用户的部门 ID
-     * @return 可分配范围描述对象
-     */
-    private AssignableScope resolveAssignableScope(List<String> currentRoleCodes, UUID currentDeptId) {
-        if (currentRoleCodes == null || currentRoleCodes.isEmpty()) {
-            return AssignableScope.empty();
-        }
-        LinkedHashSet<String> normalized = currentRoleCodes.stream()
-                .filter(code -> code != null && !code.isBlank())
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        // ADMIN：可分配所有业务角色，不限部门
-        if (normalized.contains(RoleCodes.ADMIN)) {
-            return new AssignableScope(ASSIGNABLE_BIZ_ROLE_CODES, null, true);
-        }
-        // 业务组长：只能分配业务专员，限同部门
-        if (normalized.contains(RoleCodes.BIZ_LEADER)) {
-            return new AssignableScope(Set.of(RoleCodes.BIZ_STAFF), currentDeptId, false);
-        }
-        // 渠道组长：只能分配渠道专员，限同部门
-        if (normalized.contains(RoleCodes.CHANNEL_LEADER)) {
-            return new AssignableScope(Set.of(RoleCodes.CHANNEL_STAFF), currentDeptId, false);
-        }
-        return AssignableScope.empty();
-    }
-
-    /**
-     * 判断用户是否拥有可分配角色中的任意一个。
-     * <p>
-     * 遍历用户的角色关联关系，跳过已禁用或不存在的角色，
-     * 只要有一个角色编码在允许列表中即返回 true。
-     * </p>
-     *
-     * @param userId           用户 ID
-     * @param relationMap      用户 ID -> 角色关联列表映射
-     * @param roleMap          角色 ID -> 角色实体映射
-     * @param allowedRoleCodes 允许的角色编码集合
-     * @return 用户拥有可分配角色时返回 true
-     */
-    private boolean matchesAssignableRole(
-            UUID userId,
-            Map<UUID, List<SysUserRole>> relationMap,
-            Map<UUID, SysRole> roleMap,
-            Set<String> allowedRoleCodes) {
-        List<SysUserRole> relations = relationMap.getOrDefault(userId, Collections.emptyList());
-        if (relations.isEmpty()) {
-            return false;
-        }
-        for (SysUserRole relation : relations) {
-            SysRole role = roleMap.get(relation.getRoleId());
-            // 跳过已禁用或不存在的角色
-            if (role == null || role.getStatus() == null || role.getStatus() != 1) {
-                continue;
-            }
-            if (allowedRoleCodes.contains(role.getRoleCode())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * 判断用户是否从非禁用状态变为禁用状态。
      *
      * @param previousStatus 变更前的用户状态
@@ -1235,95 +785,6 @@ public class SysUserService {
             return null;
         }
         return roles.get(0);
-    }
-
-    /**
-     * 可分配范围描述。
-     * <p>
-     * 封装负责人分配场景中的权限约束信息。
-     * </p>
-     *
-     * @param allowedRoleCodes 允许分配的目标角色编码集合
-     * @param deptId           允许的部门 ID（null 表示不限部门）
-     * @param allowCrossDept   是否允许跨部门分配
-     */
-    private record AssignableScope(Set<String> allowedRoleCodes, UUID deptId, boolean allowCrossDept) {
-        /**
-         * 创建空的可分配范围（不允许任何分配）。
-         *
-         * @return 空的 AssignableScope 实例
-         */
-        private static AssignableScope empty() {
-            return new AssignableScope(Collections.emptySet(), null, false);
-        }
-    }
-
-    /**
-     * 生成唯一的渠道编码。
-     * <p>
-     * 基于用户名规范化后生成渠道编码，若发生冲突则追加随机后缀重试（最多 8 次），
-     * 超过重试次数则抛出冲突异常。
-     * </p>
-     *
-     * <ol>
-     *   <li>调用 normalizeChannelCode 将用户名转为小写、仅保留字母数字下划线，并截断至最大长度</li>
-     *   <li>若规范化结果为空，则使用默认值 "user"</li>
-     *   <li>若该编码不存在冲突，直接返回</li>
-     *   <li>否则循环最多 8 次：截取 base 前缀 + 4 位随机 UUID 后缀，校验冲突</li>
-     *   <li>超过重试次数仍未找到唯一编码，抛出 BusinessException.conflict</li>
-     * </ol>
-     *
-     * @param username 用户名（用于生成渠道编码的基础字符串）
-     * @return 唯一的渠道编码
-     * @throws BusinessException 8 次重试后仍无法生成唯一编码时抛出
-     */
-    private String generateUniqueChannelCode(String username) {
-        String base = normalizeChannelCode(username);
-        if (base.isBlank()) {
-            base = "user";
-        }
-        if (!channelCodeExists(base)) {
-            return base;
-        }
-        for (int i = 0; i < 8; i++) {
-            String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 4);
-            int maxBaseLen = MAX_CHANNEL_CODE_LEN - suffix.length();
-            String candidate = (base.length() > maxBaseLen ? base.substring(0, maxBaseLen) : base) + suffix;
-            if (!channelCodeExists(candidate)) {
-                return candidate;
-            }
-        }
-        throw BusinessException.conflict("生成用户渠道编码失败，请重试");
-    }
-
-    /**
-     * 将用户名规范化为合法的渠道编码格式。
-     * <p>
-     * 规则：转小写、去除首尾空格、仅保留字母数字下划线，截断至最大长度 {@link #MAX_CHANNEL_CODE_LEN}。
-     * </p>
-     *
-     * @param username 原始用户名（null 视为空字符串）
-     * @return 规范化后的渠道编码字符串
-     */
-    private String normalizeChannelCode(String username) {
-        String normalized = username == null ? "" : username.trim().toLowerCase().replaceAll("[^a-z0-9_]", "");
-        if (normalized.length() > MAX_CHANNEL_CODE_LEN) {
-            return normalized.substring(0, MAX_CHANNEL_CODE_LEN);
-        }
-        return normalized;
-    }
-
-    /**
-     * 检查渠道编码是否已存在（包含已软删除的记录）。
-     * <p>
-     * 即使用户已被软删除，其渠道编码也不允许重复使用，以保证编码全局唯一。
-     * </p>
-     *
-     * @param channelCode 待校验的渠道编码
-     * @return 编码已存在时返回 true
-     */
-    private boolean channelCodeExists(String channelCode) {
-        return sysUserMapper.existsByChannelCodeIncludingDeleted(channelCode);
     }
 
     /**
@@ -1394,7 +855,7 @@ public class SysUserService {
                 "组织归属变更",
                 "PUT",
                 "SysUser",
-                user.getId() == null ? null : user.getId().toString(),
+                user.getId().toString(),
                 user.getUsername(),
                 orgStructureService.formatOrgChangeRemark(
                         user.getId(),
