@@ -50,6 +50,21 @@
 - `.codex\memories\extensions\ad_hoc\instructions.md` 仅为 ad-hoc note 处理规则，不含 SAAS 业务事实。
 - `.codex\logs_2.sqlite`：`logs` 表有 56195 条运行日志，其中 SAAS / 团长 / 项目路径命中 15670 条；仅登记为可回溯证据源，不迁移原始日志。
 
+## Codex 附件 / 粘贴文本索引
+
+- `C:\Users\caojianing\.codex\attachments\`：发现 77 个 `pasted-text.txt`，其中 76 个命中 SAAS / 团长 / DDD / harness / real-pre 等关键词。
+- `pasted-text-attachments.json` 记录 77 个附件路径和 excerpt 映射；本轮只抽取数量、主题和风险边界，不迁移正文。
+- 主题分布：商品 / backfill / 转链 72、AGENTS / Harness 规则 69、real-pre / 部署 / 环境 69、DDD / 领域重构 65、订单 / 归因 / 结算 57、寄样 / 达人 / 物流 49、项目记忆 / 文档 47。
+- 发现 1 个附件命中敏感值模式；附件正文不得直接进入 docs，后续如需抽取必须先逐条脱敏。
+- 这些附件多数是用户粘贴的任务提示词、阶段边界和执行约束；只能作为“历史指令/计划来源”，不能直接证明任务已完成。
+
+## Codex Session Visibility Backup 索引
+
+- `C:\Users\caojianing\.codex\backup-*-session-visibility-repair\`：共 7 个备份目录，166 个文件，其中 JSONL 165 个。
+- 备份 JSONL 去重后 159 个文件名；与当前 `.codex\sessions\` / `.codex\archived_sessions\` 的 407 个唯一 JSONL 文件名重叠 159 个。
+- 结论：这些备份是会话可见性修复前后的重复快照，不是新的独立记忆源；仅作为原会话丢失时的恢复入口。
+- 未迁移备份正文；如当前 session 缺失或损坏，再按文件名回退到备份验证。
+
 ## 线程主题聚类摘要
 
 > 口径：基于 `state_5.sqlite.threads` 的标题、首条用户消息和分支名做关键词多标签聚类；同一线程可命中多个主题，计数不能相加为总数。
