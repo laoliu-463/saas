@@ -53,6 +53,14 @@
 - 其中分支、commit、测试数量、未提交变更数量、目录结构等均是历史快照，不能作为 2026-06-20 当前事实。
 - 可保留的长期事实：技术栈、test / real-pre 双环境、real-pre 不得 mock、真实 `pick_source` 样本长期是关键阻塞。
 
+## Claude History 用户指令索引
+
+- 来源：`C:\Users\caojianing\.claude\archive\cleanup-20260619-134941\logs\history.jsonl`。
+- 结果：2624 行历史记录中，SAAS / 抖音团长 / 项目路径命中 137 行，分布在 33 个 session。
+- 未迁移原始行和粘贴正文；`[Pasted text ...]` 只记录为存在粘贴来源，不能直接当事实。
+- 主题线索：需求 gap analysis、按顺序实现未完成模块、商品库与商品管理拆分、招商组长权限边界、三方联调进度、本地 MCP / pencil、容器端口与 real-pre 启动、远端部署与 GitHub 推送、E2E 验证、商品库前端布局回退。
+- 这些是用户指令历史索引，进入业务文档前必须用当前代码、docs、evidence 复核。
+
 ## 死代码记忆
 
 - 2026-05-24 曾做前端 API、后端 Controller、Service、前端 View 等多层死代码审计。
