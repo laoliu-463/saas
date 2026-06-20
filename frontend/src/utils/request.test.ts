@@ -4,6 +4,7 @@
  * isAuthLoginRequest、isAuthRefreshRequest、shouldTryRefresh、shouldSuppressErrorNotice
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import axios from 'axios'
 import {
   isValidToken,
@@ -86,6 +87,7 @@ describe('isAuthRefreshRequest', () => {
 
 describe('shouldTryRefresh', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     localStorage.removeItem('refreshToken')
   })
 

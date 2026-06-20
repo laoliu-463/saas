@@ -86,6 +86,7 @@
               placeholder="请输入密码"
               data-testid="login-password"
               show-password-on="click"
+              :maxlength="128"
               :input-props="{ autocomplete: 'current-password' }"
             >
               <template #prefix>

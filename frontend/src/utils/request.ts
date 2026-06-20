@@ -198,7 +198,7 @@ const redirectToLogin = () => {
 };
 
 const performTokenRefresh = async (): Promise<string | null> => {
-  const refreshToken = localStorage.getItem('refreshToken'); // example bypass
+  const refreshToken = useAuthStore().refreshToken;
   if (!isValidToken(refreshToken)) {
     return null;
   }
@@ -234,7 +234,7 @@ export const shouldTryRefresh = (configOrError: any): boolean => {
   if (isAuthLoginRequest(configOrError) || isAuthRefreshRequest(configOrError)) {
     return false;
   }
-  return isValidToken(localStorage.getItem('refreshToken'));
+  return isValidToken(useAuthStore().refreshToken);
 };
 
 refreshClient.interceptors.request.use(
@@ -257,7 +257,7 @@ request.interceptors.request.use(
   (config) => {
     markRequestStarted(config);
     loadingBar.start();
-    const token = localStorage.getItem('token'); // example bypass
+    const token = useAuthStore().token;
     const headers = (config.headers || {}) as any;
     config.headers = headers;
     if (isValidToken(token)) {
