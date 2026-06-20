@@ -1,11 +1,20 @@
 # Harness Changelog（索引）
 
 > 任务 ID：HARNESS-DOC-GC-OPTIMIZE-002
-> 更新时间：2026-06-11
+> 更新时间：2026-06-20
 > 详细历史（含每版修改文件、行为变化、证据）：`archive/20260610/harness-changelog-full.md`
 > 治理政策：`rules/policies/retention-policy.md` 第 2 节（changelog 索引 ≤200 行）
 
 ## 最近版本摘要
+
+### v0.7.2 — 2026-06-21
+- `git-push-safe.ps1` 明文密钥扫描在代码文件中跳过运行时对象属性 / 函数调用表达式，避免把 `useAuthStore().token`、`form.value.password` 误判为硬编码密钥，同时保留配置类文件的未加引号密钥检查。
+- 修正 dry-run 文案，不再输出被规则禁止的 `git add -A` 示例。
+- 范围：Harness 脚本；已用 `git-push-safe.ps1 -DryRun` 和 `agent-do.ps1 -Scope docs -DryRun` 验证。
+
+### v0.7.1 — 2026-06-20
+- Harness/docs 路径口径校正：DDD 路线图、任务矩阵、Gate、Domain Map、multi-agent 提示词索引统一指向 `harness/rules/...` 与 `harness/scripts/commands/...`。
+- 范围：docs / harness 规则；不修改业务代码，不声明 DDD 代码重构完成。
 
 ### v0.7.0 — 2026-06-06
 - 服务费收入双轨公式后端代码对齐（`OrderDualTrackAmountResolver` / `PerformanceCalculationService` 按预估 / 结算分轨）。

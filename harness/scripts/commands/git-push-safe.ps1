@@ -70,6 +70,8 @@ function Assert-NoPlainSecrets {
         if ($name -like "*.md" -or $name -like "*.prompt.md" -or $name -like "*.skill.md") {
             continue
         }
+        $extension = [System.IO.Path]::GetExtension($file).ToLowerInvariant()
+        $isCodeFile = @('.ts', '.tsx', '.js', '.jsx', '.vue', '.java', '.kt', '.py').Contains($extension)
         $hits = Select-String -LiteralPath $path -Pattern $pattern -ErrorAction SilentlyContinue
         foreach ($hit in $hits) {
             $line = $hit.Line
@@ -82,7 +84,9 @@ function Assert-NoPlainSecrets {
                 }
             }
             $hasInterpolation = $line.Contains('$' + '{')
-            if ($hasSkipKeyword -eq $true -or $hasInterpolation -eq $true) {
+            $rhs = ($line -split '[:=]', 2)[1].Trim()
+            $isRuntimeExpression = $isCodeFile -and (-not ($rhs.StartsWith("'") -or $rhs.StartsWith('"'))) -and ($rhs.Contains('.') -or $rhs.Contains('('))
+            if ($hasSkipKeyword -eq $true -or $hasInterpolation -eq $true -or $isRuntimeExpression -eq $true) {
                 continue
             }
             throw "Potential plaintext secret in $file line $($hit.LineNumber)."
@@ -117,7 +121,7 @@ try {
     if ($DryRun) {
         Write-Host "DRY-RUN changed files:"
         $changedFiles | ForEach-Object { Write-Host "- $_" }
-        Write-Host "DRY-RUN would run: git add -A; git commit -m `"$Message`"; git push"
+        Write-Host "DRY-RUN would stage the listed files explicitly, commit with message `"$Message`", then push"
         return
     }
 
