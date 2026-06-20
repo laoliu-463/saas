@@ -49,6 +49,8 @@
 - `.codex\memories_1.sqlite`：`jobs` 与 `stage1_outputs` 均为 0 条，未发现可抽取的 Codex 结构化记忆。
 - `.codex\memories\extensions\ad_hoc\instructions.md` 仅为 ad-hoc note 处理规则，不含 SAAS 业务事实。
 - `.codex\logs_2.sqlite`：`logs` 表有 56195 条运行日志，其中 SAAS / 团长 / 项目路径命中 15670 条；仅登记为可回溯证据源，不迁移原始日志。
+- `.codex\config.toml`：命中 SAAS 配置 12 行，确认存在 `SAAS-business-offline`、`SAAS-sdk-debug-offline`、code-review-graph `cwd=D:\Projects\SAAS` 和 `d:\projects\saas` trusted 配置；备份 config 命中 8 行。
+- `.codex\goals_1.sqlite`：`thread_goals` 有 3 条目标，分别是 DDD 优化重构、逐步推进 DDD 到 100、当前 ChatGPT Project 记忆迁移；只登记 objective / status，不迁移 token 细节为项目事实。
 
 ## Codex 附件 / 粘贴文本索引
 

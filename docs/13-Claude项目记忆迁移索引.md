@@ -69,6 +69,12 @@
 - `2026-06-17-caojianing-session.tmp`：21 行，项目关键词命中 0 次；不迁移。
 - session / compaction 文件是运行元数据，只作为回溯路由，不作为业务事实。
 
+## Claude 全局配置备份索引
+
+- 来源：`C:\Users\caojianing\.claude\backups\.claude.json.backup.*`，共 4 个备份文件。
+- 每个备份均命中 3 行 SAAS 相关配置：`laoliu-463/saas`、`D:\Projects\SAAS`、`D:/Projects/SAAS`。
+- 未发现 ChatGPT Project URL / id 命中；备份只作为 Claude 工作区映射线索，不迁移原始 JSON。
+
 ## Claude File History 索引
 
 - 来源：`C:\Users\caojianing\.claude\file-history\` 与 `...\archive\cleanup-20260619-134941\file-history\`。
