@@ -7,7 +7,8 @@
 
 - 已读取 `session_index.jsonl` 的会话索引结构，并按标题检索 SAAS / 团长 / real-pre / 订单 / 归因相关会话。
 - 已确认部分会话正文文件存在于 `.codex\archived_sessions\` 或 `.codex\sessions\`。
-- 本文只迁移会话索引和导入边界；原始会话全文未直接迁入 docs，避免把未经验证的日志、临时判断或敏感内容写成项目事实。
+- 已读取 Codex App 本地状态库 `state_5.sqlite` 和 `.codex-global-state.json` 的项目级索引字段。
+- 本文只迁移会话 / 状态索引、脱敏摘要和导入边界；原始会话全文、工具输出和本地状态 JSON 未直接迁入 docs，避免把未经验证的日志、临时判断或敏感内容写成项目事实。
 
 ## 高相关会话索引
 
@@ -40,6 +41,20 @@
 - 订单链路：真实订单归因失败、分次结算订单 API、6468 订单源、订单 P0 远端部署、订单明细字段对齐、业绩事件时序。
 - V2.2 / 业务缺陷：需求方案细化、关键业务缺陷修复、业务链路梳理。
 
+## Codex App 本地状态索引
+
+- `C:\Users\caojianing\.codex\state_5.sqlite`：`threads` 表中命中 `D:\Projects\SAAS` / SAAS / 团长关键词的线程共 339 条；本轮只抽取标题、首条用户消息摘要、分支和 thread id，不迁移正文。
+- 最新命中主题包括：项目记忆迁移、DDD 到 100%、CI/CD、分支安全合并、数据库对账、backfill 异步化、结算看板对账、订单金额口径、统一结算主接口、真实订单问题排查。
+- `.codex-global-state.json`：确认 active workspace root 为 `D:\Projects\SAAS`，远端连接别名存在 `saas`；未迁移鉴权、窗口状态、线程权限和本地 UI 状态。
+- `.codex\memories_1.sqlite`：`jobs` 与 `stage1_outputs` 均为 0 条，未发现可抽取的 Codex 结构化记忆。
+- `.codex\memories\extensions\ad_hoc\instructions.md` 仅为 ad-hoc note 处理规则，不含 SAAS 业务事实。
+
+## Ambient Suggestions 摘要
+
+- 本地 `ambient-suggestions` 命中 3 条 SAAS / 团长相关建议，主题均围绕 `buyin.colonelMultiSettlementOrders`。
+- 这些建议只作为“曾被系统建议的下一步”线索，不是已执行事实；其中反复出现的建议是把团长分次结算订单接口做成可落库、可分页、可回归的真实链路。
+- 当前事实仍以代码、docs、evidence 和 real-pre 验证为准；ambient suggestion 不得直接升级为业务结论。
+
 ## 导入边界
 
 - 会话正文只作为证据线索，不能直接替代当前代码、ADR、docs、harness evidence。
@@ -55,6 +70,6 @@
 
 ## 当前状态
 
-- 已迁移会话索引，并完成 8 个高相关会话的首轮脱敏摘要抽取。
+- 已迁移会话索引、Codex App 本地状态索引，并完成 8 个高相关会话的首轮脱敏摘要抽取。
 - 未迁移原始会话全文；工具 stdout、数据库返回、上游响应和可能包含敏感值的片段均未写入 docs。
 - 下一步若要继续，应按主题回读正文和当前代码 / docs / evidence 交叉验证，再决定是否进入领域文档或验收文档。
