@@ -1,6 +1,6 @@
-# 抖音团长 SaaS V1 Context
+# 抖音团长 SaaS Context
 
-This glossary standardizes the current V1 business and environment language used in this repo. `AGENTS.md` and `docs/*.md` remain the source of truth for requirements, milestones, and execution rules. Historical V2.2 terms are reference only and must not override V1 scope.
+This glossary standardizes the current business and environment language used in this repo. `AGENTS.md` and `docs/*.md` remain the source of truth for requirements, milestones, and execution rules. Historical V2.2 terms are reference only and must not override the current SaaS scope.
 
 ## Language
 
@@ -21,6 +21,10 @@ _Avoid_: 活动商品, 候选商品
 **推广链接**:
 面向渠道或达人的可分发商品链接，是后续订单归因的入口线索。
 _Avoid_: 口令, 外链
+
+**渠道编码**:
+系统为渠道用户生成的短码，用于推广链接和归因映射中识别渠道来源。
+_Avoid_: 用户名, 渠道名称
 
 **归因映射**:
 把 `pick_source` 还原到活动、商品、负责人等业务上下文的映射记录。
@@ -50,6 +54,24 @@ _Avoid_: 未分配列表
 当前用户或其团队已认领并持续经营的达人池视图。
 _Avoid_: 个人收藏
 
+### 用户与权限
+
+**组织单元**:
+用户域内承载部门、招商组、渠道组或运营组的组织节点，是数据范围和组织管理的基础事实。
+_Avoid_: sys_dept, 部门表, 业务组表
+
+**数据范围**:
+用户域输出的 `self/group/all` 可见性范围，用于业务查询侧过滤当前用户可访问的数据。
+_Avoid_: 权限规则, 前端菜单权限, 业务归属
+
+**当前用户**:
+已通过认证并触发本次操作的系统用户身份，是审计、权限和数据范围解析的输入。
+_Avoid_: 达人, 客户, 操作人文本
+
+**角色编码**:
+系统用于鉴权和数据范围解析的稳定角色标识，如 `admin`、`biz_leader`、`channel_staff`。
+_Avoid_: 角色名称, 菜单名称
+
 ### 环境与契约
 
 **test 环境**:
@@ -69,10 +91,13 @@ _Avoid_: SDK 直连, 页面直连第三方
 - A **团长活动** contains many **活动商品**
 - An **活动商品** can become one **共享商品库商品**
 - A **共享商品库商品** can generate one or more **推广链接**
-- A **推广链接** produces one or more **归因映射**
+- A **推广链接** can include a **渠道编码** and produces one or more **归因映射**
 - An **联盟订单** is interpreted through **归因映射** during **订单归因**
 - A **寄样单** links one **达人** and one **共享商品库商品**
 - A **达人** can appear in **公海** or **私海**
+- A **当前用户** belongs to zero or one primary **组织单元**
+- A **角色编码** helps resolve one **当前用户** to one **数据范围**
+- A **数据范围** constrains business-domain queries but does not decide business ownership
 - The **test 环境** and **real-pre 环境** share one **Gateway 契约**
 
 ## Example dialogue
