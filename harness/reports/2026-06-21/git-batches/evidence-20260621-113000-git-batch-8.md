@@ -35,13 +35,17 @@
 - Docker build:
   - `docker build -t colonel-saas/backend:real-pre ...\saas-user-boundary-stage-20260621111657\backend`
   - Result: PASS
-  - Image: `sha256:8d7bbc737bae55c29c41f07fe7415173edce01f7865ee3b53bdb1c0013ba75d6`
+  - Initial image: `sha256:8d7bbc737bae55c29c41f07fe7415173edce01f7865ee3b53bdb1c0013ba75d6`
+- Post-push runtime drift correction:
+  - Final runtime was found on a different image (`sha256:420a07867269b4f87e5bbf92643cdd6e73701504e28f21b8c3ae77472a14083a`), so the backend was rebuilt from clean HEAD `fbd9745f`.
+  - Final build source: `...\saas-head-runtime-git-batch-8-20260621113441\backend`
+  - Final image: `sha256:f6882c35e4acf4e3a73341ccf40e97f0d702040940d04d4ee7c76b60fce6fcce`
 - Restart:
   - `docker compose --env-file .env.real-pre -f docker-compose.real-pre.yml -p saas-active up -d --no-build backend-real-pre`
   - Result: PASS
 - Container final state:
-  - `Image=sha256:8d7bbc737bae55c29c41f07fe7415173edce01f7865ee3b53bdb1c0013ba75d6`
-  - `StartedAt=2026-06-21T03:28:43.999128594Z`
+  - `Image=sha256:f6882c35e4acf4e3a73341ccf40e97f0d702040940d04d4ee7c76b60fce6fcce`
+  - `StartedAt=2026-06-21T03:36:30.684306097Z`
   - `Status=running`
   - `Health=healthy`
 
