@@ -7,6 +7,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentBatchImportResult;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
@@ -22,6 +23,7 @@ import com.colonel.saas.domain.talent.policy.TalentClaimPolicy;
 import com.colonel.saas.domain.talent.policy.TalentTagPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
 import com.colonel.saas.service.talent.TalentInputParseResult;
@@ -39,7 +41,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -142,6 +143,8 @@ public class TalentService {
     private final OperationLogService operationLogService;
     /** 系统用户 Mapper（用于归属覆盖时校验目标负责人） */
     private final UserDomainFacade userDomainFacade;
+    /** 当前用户权限策略（用于统一解释角色编码集合） */
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
 
     /**
      * 构造函数，通过依赖注入初始化所有必需的服务和仓储。
@@ -158,7 +161,8 @@ public class TalentService {
      * @param configDomainFacade         配置域门面（DDD-CONFIG-002）
      * @param businessRuleConfigService 业务规则配置服务（预设标签等非门面项）
      * @param operationLogService      操作日志服务
-     * @param sysUserMapper            系统用户 Mapper
+     * @param userDomainFacade         用户域门面
+     * @param currentUserPermissionPolicy 当前用户权限策略
      */
     public TalentService(
             TalentMapper talentMapper,
@@ -173,7 +177,8 @@ public class TalentService {
             com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
             BusinessRuleConfigService businessRuleConfigService,
             OperationLogService operationLogService,
-            UserDomainFacade userDomainFacade) {
+            UserDomainFacade userDomainFacade,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.talentMapper = talentMapper;
         this.talentClaimMapper = talentClaimMapper;
         this.talentEnrichTaskMapper = talentEnrichTaskMapper;
@@ -187,6 +192,7 @@ public class TalentService {
         this.businessRuleConfigService = businessRuleConfigService;
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     /**
@@ -885,7 +891,7 @@ public class TalentService {
         getById(talentId);
 
         List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
-        boolean isAdmin = hasRole(roleCodes, "admin");
+        boolean isAdmin = currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
         TalentClaim releaseTarget = TalentClaimPolicy.selectReleaseTarget(activeClaims, userId, isAdmin);
 
         releaseTarget.setStatus(CLAIM_STATUS_RELEASED);
@@ -1518,28 +1524,6 @@ public class TalentService {
         if (!ownedByCurrentDept) {
             throw new ForbiddenException("无权操作该达人");
         }
-    }
-
-    /**
-     * 判断角色编码集合中是否包含指定角色。
-     * <p>
-     * 比较时忽略大小写。
-     * </p>
-     *
-     * @param roleCodes 角色编码集合（可为 null）
-     * @param role      目标角色编码
-     * @return 包含返回 true
-     */
-    private boolean hasRole(Collection<?> roleCodes, String role) {
-        if (roleCodes == null || roleCodes.isEmpty()) {
-            return false;
-        }
-        String target = role.toLowerCase(Locale.ROOT);
-        return roleCodes.stream()
-                .filter(Objects::nonNull)
-                .map(String::valueOf)
-                .map(code -> code.toLowerCase(Locale.ROOT))
-                .anyMatch(target::equals);
     }
 
     /**

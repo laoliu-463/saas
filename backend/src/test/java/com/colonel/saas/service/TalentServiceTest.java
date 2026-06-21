@@ -8,6 +8,7 @@ import com.colonel.saas.entity.Talent;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -100,7 +101,8 @@ class TalentServiceTest {
                 configDomainFacade,
                 businessRuleConfigService,
                 operationLogService,
-                userDomainFacade
+                userDomainFacade,
+                new CurrentUserPermissionPolicy()
         );
         when(configDomainFacade.getTalentClaimProtectDays()).thenReturn(30);
         when(configDomainFacade.getExclusiveTalentFeeRatio()).thenReturn(new java.math.BigDecimal("70"));
@@ -604,7 +606,7 @@ class TalentServiceTest {
                 .thenReturn(List.of(otherClaim))
                 .thenReturn(List.of());
 
-        Talent released = talentService.release(talentId, adminId, null, List.of("ADMIN"));
+        Talent released = talentService.release(talentId, adminId, null, List.of(" ADMIN "));
 
         assertThat(otherClaim.getStatus()).isEqualTo(3);
         assertThat(released.getOwnerId()).isNull();
@@ -779,7 +781,8 @@ class TalentServiceTest {
                 configDomainFacade,
                 businessRuleConfigService,
                 operationLogService,
-                userDomainFacade
+                userDomainFacade,
+                new CurrentUserPermissionPolicy()
         );
 
         UUID talentId = UUID.randomUUID();
@@ -1197,9 +1200,6 @@ class TalentServiceTest {
         talent.setDouyinUid(null);
         assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputValue", talent)).isNull();
         assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputType", talent)).isEqualTo("UNKNOWN");
-
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "hasRole", null, "admin")).isFalse();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "hasRole", List.of("Channel", "ADMIN"), "admin")).isTrue();
 
         com.colonel.saas.entity.ColonelsettlementOrder order = new com.colonel.saas.entity.ColonelsettlementOrder();
         order.setExtraData(Map.of("author_id", "dy_match"));
