@@ -40,7 +40,10 @@ pipeline {
                 }
                 sh '''#!/usr/bin/env bash
                 set -eu
-                mkdir -p runtime/qa/out/jenkins harness/reports .jenkins-cache/m2 .jenkins-cache/npm .jenkins-cache/pnpm-store
+                mkdir -p runtime/qa/out/jenkins harness/reports \
+                  /var/lib/jenkins/.cache/saas-real-pre-cd/m2 \
+                  /var/lib/jenkins/.cache/saas-real-pre-cd/npm \
+                  /var/lib/jenkins/.cache/saas-real-pre-cd/pnpm-store
                 full_commit="$(git rev-parse HEAD)"
                 image_tag="$(git rev-parse --short=8 HEAD)"
                 build_branch="${DEPLOY_BRANCH:-feature/ddd/DDD-VERIFY-001}"
@@ -205,7 +208,7 @@ pipeline {
                   -e TESTCONTAINERS_RYUK_DISABLED=true \
                   -v /var/run/docker.sock:/var/run/docker.sock \
                   -v "$PWD":/workspace \
-                  -v "$PWD/.jenkins-cache/m2":/tmp/.m2 \
+                  -v /var/lib/jenkins/.cache/saas-real-pre-cd/m2:/tmp/.m2 \
                   -w /workspace/backend \
                   maven:3.9-eclipse-temurin-17 \
                   mvn -B clean test
@@ -224,7 +227,7 @@ pipeline {
                   -e HOME=/tmp \
                   -e MAVEN_CONFIG=/tmp/.m2 \
                   -v "$PWD":/workspace \
-                  -v "$PWD/.jenkins-cache/m2":/tmp/.m2 \
+                  -v /var/lib/jenkins/.cache/saas-real-pre-cd/m2:/tmp/.m2 \
                   -w /workspace/backend \
                   maven:3.9-eclipse-temurin-17 \
                   mvn -B clean package -DskipTests
@@ -238,16 +241,13 @@ pipeline {
                 sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
-                docker run --rm \
-                  --user "$(id -u):$(id -g)" \
-                  -e HOME=/tmp \
-                  -e NPM_CONFIG_CACHE=/tmp/.npm \
-                  -v "$PWD/frontend":/workspace \
-                  -v "$PWD/.jenkins-cache/npm":/tmp/.npm \
-                  -v "$PWD/.jenkins-cache/pnpm-store":/tmp/pnpm-store \
-                  -w /workspace \
-                  node:20-bookworm \
-                  sh -lc 'npx --yes pnpm@9 config set store-dir /tmp/pnpm-store && npx --yes pnpm@9 install --frozen-lockfile && npx --yes pnpm@9 test && npx --yes pnpm@9 typecheck && npx --yes pnpm@9 build'
+                export NPM_CONFIG_CACHE=/var/lib/jenkins/.cache/saas-real-pre-cd/npm
+                npx --yes pnpm@9 config set store-dir /var/lib/jenkins/.cache/saas-real-pre-cd/pnpm-store
+                cd frontend
+                npx --yes pnpm@9 install --frozen-lockfile
+                npx --yes pnpm@9 test
+                npx --yes pnpm@9 typecheck
+                npx --yes pnpm@9 build
                 '''
             }
         }
