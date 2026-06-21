@@ -7,7 +7,7 @@ import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
-import com.colonel.saas.dto.user.UserOptionResponse;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -1116,7 +1116,7 @@ class TalentServiceTest {
     @Test
     void overrideTalentAssignment_shouldThrowWhenUserNotFound() {
         UUID userId = UUID.randomUUID();
-        when(userDomainFacade.getUserById(userId)).thenReturn(null);
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any())).thenReturn(Map.of());
 
         assertThatThrownBy(
                 () -> talentService.overrideTalentAssignment(UUID.randomUUID(), userId, "reason", UUID.randomUUID()))
@@ -1127,7 +1127,7 @@ class TalentServiceTest {
     @Test
     void overrideTalentAssignment_shouldThrowWhenUserDeleted() {
         UUID userId = UUID.randomUUID();
-        when(userDomainFacade.getUserById(userId)).thenReturn(null);
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any())).thenReturn(Map.of());
 
         assertThatThrownBy(
                 () -> talentService.overrideTalentAssignment(UUID.randomUUID(), userId, "reason", UUID.randomUUID()))
@@ -1141,8 +1141,8 @@ class TalentServiceTest {
         UUID newUserId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
 
-        UserOptionResponse user = new UserOptionResponse(newUserId, "owner", "负责人", UUID.randomUUID(), List.of(), null);
-        when(userDomainFacade.getUserById(newUserId)).thenReturn(user);
+        UserOwnershipReference user = new UserOwnershipReference(newUserId, UUID.randomUUID());
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any())).thenReturn(Map.of(newUserId, user));
 
         Talent talent = new Talent();
         talent.setId(talentId);
@@ -1167,6 +1167,7 @@ class TalentServiceTest {
                 eq(currentUserId), eq("达人管理"), eq("归属覆盖"), eq("POST"),
                 eq("talent"), eq(talentId.toString()), eq("test-nickname"),
                 eq(String.format("归属覆盖: 新负责人=%s, 原因=%s", newUserId, "测试覆盖")));
+        verify(userDomainFacade, never()).getUserById(any());
     }
 
     @Test

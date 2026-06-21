@@ -2,6 +2,7 @@ package com.colonel.saas.domain.user.facade;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
 import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.testsupport.BaseIntegrationTest;
@@ -152,6 +153,16 @@ class LegacyUserDomainFacadeTest extends BaseIntegrationTest {
         assertThat(names)
                 .containsEntry(channelLeaderId, "渠道组长")
                 .containsEntry(usernameOnlyId, "username_only_display_name");
+    }
+
+    @Test
+    void loadUserOwnershipReferencesShouldReturnDeptIdWithoutFullUserDto() {
+        Map<UUID, UserOwnershipReference> references =
+                userDomainFacade.loadUserOwnershipReferencesByIds(List.of(channelLeaderId));
+
+        assertThat(references).containsKey(channelLeaderId);
+        assertThat(references.get(channelLeaderId).userId()).isEqualTo(channelLeaderId);
+        assertThat(references.get(channelLeaderId).deptId()).isEqualTo(channelDeptId);
     }
 
     @Test

@@ -1,7 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.dto.user.UserOptionResponse;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.MerchantMapper;
@@ -417,7 +417,7 @@ class MerchantServiceTest {
     @Test
     void overrideMerchantAssignment_shouldThrowWhenUserNotFound() {
         UUID userId = UUID.randomUUID();
-        when(userDomainFacade.getUserById(userId)).thenReturn(null);
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any())).thenReturn(Map.of());
 
         org.assertj.core.api.Assertions.assertThatThrownBy(
                 () -> service.overrideMerchantAssignment("m1", userId, "reason", UUID.randomUUID()))
@@ -428,7 +428,7 @@ class MerchantServiceTest {
     @Test
     void overrideMerchantAssignment_shouldThrowWhenUserDeleted() {
         UUID userId = UUID.randomUUID();
-        when(userDomainFacade.getUserById(userId)).thenReturn(null);
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any())).thenReturn(Map.of());
 
         org.assertj.core.api.Assertions.assertThatThrownBy(
                 () -> service.overrideMerchantAssignment("m1", userId, "reason", UUID.randomUUID()))
@@ -440,8 +440,8 @@ class MerchantServiceTest {
     void overrideMerchantAssignment_shouldUpdateOwnerAndDeptId() {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
-        UserOptionResponse user = new UserOptionResponse(userId, "test", "test", deptId, null, null);
-        when(userDomainFacade.getUserById(userId)).thenReturn(user);
+        UserOwnershipReference user = new UserOwnershipReference(userId, deptId);
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any())).thenReturn(Map.of(userId, user));
 
         Merchant merchant = new Merchant();
         merchant.setMerchantId("m1");
@@ -453,6 +453,7 @@ class MerchantServiceTest {
         assertThat(merchant.getOwnerId()).isEqualTo(userId);
         assertThat(merchant.getOwnerDeptId()).isEqualTo(deptId);
         verify(merchantMapper).updateById(merchant);
+        verify(userDomainFacade, never()).getUserById(any());
     }
 
     private static class OrderBuilder {

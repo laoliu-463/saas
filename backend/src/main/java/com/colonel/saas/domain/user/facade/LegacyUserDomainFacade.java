@@ -2,6 +2,7 @@ package com.colonel.saas.domain.user.facade;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.domain.user.facade.dto.DepartmentOption;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.user.port.DepartmentOptionLookup;
 import com.colonel.saas.domain.user.port.DepartmentOptionLookup.DepartmentEntry;
 import com.colonel.saas.domain.user.port.UserBasicLookup;
@@ -168,6 +169,25 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
                 .map(user -> Map.entry(user.id(), formatDisplayLabel(user)))
                 .filter(entry -> hasText(entry.getValue()))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a));
+    }
+
+    @Override
+    public Map<UUID, UserOwnershipReference> loadUserOwnershipReferencesByIds(Collection<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> distinct = ids.stream().filter(Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, UserOwnershipReference> references = new LinkedHashMap<>();
+        for (BasicUser user : userBasicLookup.findByIds(distinct)) {
+            if (user == null || user.id() == null) {
+                continue;
+            }
+            references.putIfAbsent(user.id(), new UserOwnershipReference(user.id(), user.deptId()));
+        }
+        return references;
     }
 
     @Override

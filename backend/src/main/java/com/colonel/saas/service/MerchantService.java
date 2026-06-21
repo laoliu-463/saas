@@ -8,7 +8,7 @@ import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.dto.user.UserOptionResponse;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.mapper.MerchantMapper;
 import com.colonel.saas.vo.PartnerDetailVO;
 import com.colonel.saas.vo.PartnerProductVO;
@@ -689,7 +689,8 @@ public class MerchantService {
         if (newUserId == null) {
             throw BusinessException.param("新负责人ID不能为空");
         }
-        UserOptionResponse targetUser = userDomainFacade.getUserById(newUserId);
+        UserOwnershipReference targetUser =
+                userDomainFacade.loadUserOwnershipReferencesByIds(List.of(newUserId)).get(newUserId);
         if (targetUser == null) {
             throw BusinessException.notFound("目标负责人不存在");
         }

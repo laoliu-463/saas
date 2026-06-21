@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.user.facade;
 
 import com.colonel.saas.domain.user.facade.dto.DepartmentOption;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
 import com.colonel.saas.dto.user.UserOptionResponse;
 
@@ -88,6 +89,12 @@ public interface UserDomainFacade {
      * 展示标签优先使用 "realName (username)"，再回退到 realName 或 username。
      */
     Map<UUID, String> loadUserDisplayLabelsByIds(Collection<UUID> ids);
+
+    /**
+     * 批量加载用户归属引用，返回 userId -> ownership reference 映射。
+     * 用于跨业务域归属覆盖时确认目标用户存在并读取其主组织单元。
+     */
+    Map<UUID, UserOwnershipReference> loadUserOwnershipReferencesByIds(Collection<UUID> ids);
 
     /**
      * 按类型过滤加载部门/组织单元列表。

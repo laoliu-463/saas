@@ -21,7 +21,7 @@ import com.colonel.saas.domain.talent.policy.TalentAddressPolicy;
 import com.colonel.saas.domain.talent.policy.TalentClaimPolicy;
 import com.colonel.saas.domain.talent.policy.TalentTagPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.dto.user.UserOptionResponse;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
 import com.colonel.saas.service.talent.TalentInputParseResult;
@@ -933,7 +933,8 @@ public class TalentService {
         if (newUserId == null) {
             throw BusinessException.param("新负责人ID不能为空");
         }
-        UserOptionResponse targetUser = userDomainFacade.getUserById(newUserId);
+        UserOwnershipReference targetUser =
+                userDomainFacade.loadUserOwnershipReferencesByIds(List.of(newUserId)).get(newUserId);
         if (targetUser == null) {
             throw BusinessException.notFound("目标负责人不存在");
         }

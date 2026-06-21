@@ -247,6 +247,45 @@ class ColonelActivityControllerTest {
     }
 
     @Test
+    void list_shouldPassDisplayNameResolverWithoutFullUserDto() throws Exception {
+        UUID recruiterId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        when(userDomainFacade.loadUserDisplayNamesByIds(any()))
+                .thenReturn(Map.of(recruiterId, "招商负责人"));
+        when(colonelActivityService.buildAssignmentListPage(
+                eq(1L),
+                eq(20L),
+                eq(0),
+                eq("assigned"),
+                eq(null),
+                eq(null),
+                any()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    java.util.function.Function<UUID, String> resolver =
+                            invocation.getArgument(6, java.util.function.Function.class);
+                    String assigneeName = resolver.apply(recruiterId);
+                    return Map.of(
+                            "total", 1L,
+                            "activityList", List.of(Map.of(
+                                    "activityId", 3916506L,
+                                    "assigneeName", assigneeName
+                            ))
+                    );
+                });
+
+        mockMvc.perform(get("/colonel/activities")
+                        .param("page", "1")
+                        .param("pageSize", "20")
+                        .param("assignmentFilter", "assigned")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.activityList[0].assigneeName").value("招商负责人"));
+
+        verify(userDomainFacade).loadUserDisplayNamesByIds(any());
+        verify(userDomainFacade, never()).getUserById(any());
+    }
+
+    @Test
     void list_shouldFilterMineActivitiesForCurrentUser() throws Exception {
         UUID recruiterId = UUID.fromString("22222222-2222-2222-2222-222222222222");
         Map<String, Object> payload = new LinkedHashMap<>();

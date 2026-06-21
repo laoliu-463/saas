@@ -14,7 +14,6 @@ import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.service.activity.ActivityAccessService;
 import com.colonel.saas.service.ColonelsettlementActivityService;
 import com.colonel.saas.service.ProductActivityManualSyncService;
@@ -312,14 +311,8 @@ public class ColonelActivityController extends BaseController {
         if (userId == null) {
             return "";
         }
-        UserOptionResponse user = userDomainFacade.getUserById(userId);
-        if (user == null) {
-            return "";
-        }
-        if (user.realName() != null && !user.realName().isBlank()) {
-            return user.realName().trim();
-        }
-        return user.username() == null ? "" : user.username();
+        String name = userDomainFacade.loadUserDisplayNamesByIds(List.of(userId)).get(userId);
+        return name == null ? "" : name;
     }
 
     private BusinessException mapActivityError(DouyinApiException e) {
