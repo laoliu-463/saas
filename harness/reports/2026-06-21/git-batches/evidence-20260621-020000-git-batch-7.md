@@ -57,13 +57,20 @@
 - Restart command:
   `docker compose --env-file D:\Projects\SAAS\.env.real-pre -f D:\Projects\SAAS\docker-compose.real-pre.yml -p saas-active up -d --no-build backend-real-pre`
 - Restart result: backend recreated; postgres and redis stayed running.
+- Post-push runtime recheck found the local backend tag had drifted to an older
+  image. A clean HEAD worktree at commit `883a6631` was rebuilt and redeployed.
+- Final package command:
+  `mvn -f backend/pom.xml -DskipTests -Djacoco.skip=true package`
+- Final package result: PASS
+- Final image digest:
+  `sha256:f776f159b0a871974b0ea5288b05f2d96c8a7a0f719e647174ba480289caec5a`
 
 ## Health And Runtime
 
 - Harness health: `verify-local.ps1 -Env real-pre -Scope backend` PASS
 - Backend health response: `{"status":"UP"}`
-- Running container image ID matched built image digest.
-- Container started at `2026-06-20T17:59:44Z`, status running, health healthy.
+- Running container image ID matches final clean HEAD image digest.
+- Container started at `2026-06-21T02:47:34Z`, status running, health healthy.
 
 ## Residual Risks
 
