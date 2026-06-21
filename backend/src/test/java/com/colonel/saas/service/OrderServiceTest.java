@@ -30,7 +30,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -102,6 +104,86 @@ class OrderServiceTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void buildWrapper_fullUuidChannelKeywordShouldUseEqFastPath() {
+        UUID channelUserId = UUID.randomUUID();
+        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = service.buildWrapper(
+                null, null, null, null, null,
+                channelUserId.toString(), null, null,
+                null, null,
+                null, null,
+                List.of(), List.of()
+        );
+
+        String sql = wrapper.getSqlSegment();
+        assertThat(sql).contains("channel_user_id");
+        assertThat(sql).doesNotContain("LIKE");
+        assertThat(wrapper.getParamNameValuePairs().values()).contains(channelUserId);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildWrapper_fullUuidColonelKeywordShouldUseEqFastPath() {
+        UUID colonelUserId = UUID.randomUUID();
+        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = service.buildWrapper(
+                null, null, null, null, null,
+                null, colonelUserId.toString(), null,
+                null, null,
+                null, null,
+                List.of(), List.of()
+        );
+
+        String sql = wrapper.getSqlSegment();
+        assertThat(sql).contains("colonel_user_id");
+        assertThat(sql).doesNotContain("LIKE");
+        assertThat(wrapper.getParamNameValuePairs().values()).contains(colonelUserId);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildWrapper_nonUuidKeywordsShouldKeepNameLikeBehavior() {
+        LambdaQueryWrapper<ColonelsettlementOrder> chineseWrapper = service.buildWrapper(
+                null, null, null, null, null,
+                "渠道甲", null, null,
+                null, null,
+                null, null,
+                List.of(), List.of()
+        );
+        assertThat(chineseWrapper.getSqlSegment())
+                .contains("channel_user_name")
+                .contains("channel_user_id")
+                .contains("LIKE");
+
+        LambdaQueryWrapper<ColonelsettlementOrder> englishWrapper = service.buildWrapper(
+                null, null, null, null, null,
+                null, "colonel-A", null,
+                null, null,
+                null, null,
+                List.of(), List.of()
+        );
+        assertThat(englishWrapper.getSqlSegment())
+                .contains("colonel_user_name")
+                .contains("colonel_user_id")
+                .contains("LIKE");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildWrapper_invalidOrPartialUuidKeywordShouldKeepLikeBehavior() {
+        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = service.buildWrapper(
+                null, null, null, null, null,
+                "aaaaaaaa-aaaa", null, null,
+                null, null,
+                null, null,
+                List.of(), List.of()
+        );
+
+        assertThat(wrapper.getSqlSegment())
+                .contains("channel_user_id")
+                .contains("LIKE");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void buildWrapper_shouldHandleBlankFiltersAsNoOp() {
         LambdaQueryWrapper<ColonelsettlementOrder> wrapper = service.buildWrapper(
                 null, null, null, null, null,
@@ -118,6 +200,74 @@ class OrderServiceTest {
         assertThat(sql).doesNotContain("product_id =");
         assertThat(sql).doesNotContain("attribution_status =");
         assertThat(sql).doesNotContain("LIKE");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildWrapper_defaultWindowDisabledShouldNotAddTimeRange() {
+        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = service.buildWrapper(
+                null, null, null, null, null,
+                null, null, null,
+                null, null,
+                null, null,
+                List.of(), List.of()
+        );
+
+        assertThat(wrapper.getSqlSegment()).doesNotContain("create_time");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildWrapper_defaultWindowEnabledShouldAddRecentCreateTimeWhenNoExplicitRange() {
+        ReflectionTestUtils.setField(service, "defaultWindowEnabled", true);
+        ReflectionTestUtils.setField(service, "defaultWindowDays", 30L);
+
+        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = service.buildWrapper(
+                null, null, null, null, null,
+                null, null, null,
+                null, null,
+                null, null,
+                List.of(), List.of()
+        );
+
+        assertThat(wrapper.getSqlSegment()).contains("create_time");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildWrapper_defaultWindowEnabledShouldNotApplyToOrderIdQuery() {
+        ReflectionTestUtils.setField(service, "defaultWindowEnabled", true);
+        ReflectionTestUtils.setField(service, "defaultWindowDays", 30L);
+
+        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = service.buildWrapper(
+                "ORDER-EXACT", null, null, null, null,
+                null, null, null,
+                null, null,
+                null, null,
+                List.of(), List.of()
+        );
+
+        assertThat(wrapper.getSqlSegment()).contains("order_id");
+        assertThat(wrapper.getSqlSegment()).doesNotContain("create_time");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildWrapper_defaultWindowEnabledShouldNotOverrideExplicitStartTime() {
+        ReflectionTestUtils.setField(service, "defaultWindowEnabled", true);
+        ReflectionTestUtils.setField(service, "defaultWindowDays", 30L);
+
+        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = service.buildWrapper(
+                null, null, null, null, null,
+                null, null, null,
+                "2026-04-01 00:00:00", null,
+                null, null,
+                List.of(), List.of()
+        );
+
+        assertThat(wrapper.getSqlSegment()).contains("create_time");
+        assertThat(wrapper.getParamNameValuePairs().values())
+                .contains(LocalDateTime.of(2026, 4, 1, 0, 0));
     }
 
     // ============================================================
@@ -384,6 +534,91 @@ class OrderServiceTest {
         assertThat(order.getAwemeId()).isEqualTo("AWEME-EXTRA-1");
         assertThat(order.getContentTypeText()).isEqualTo("短视频");
         assertThat(order.getOrderTypeText()).isEqualTo("推广者推广");
+    }
+
+    @Test
+    void enrichOrderList_emptyListShouldNotLoadDisplayInfo() {
+        service.enrichOrderList(List.of());
+
+        verifyNoInteractions(orderMapper, productSnapshotMapper, productMapper);
+    }
+
+    @Test
+    void enrichOrderList_singleOrderShouldLoadDisplayInfoOnce() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORDER-SINGLE");
+
+        when(orderMapper.listDisplayProductInfoByOrderIds(any())).thenReturn(List.of(Map.of(
+                "orderId", "ORDER-SINGLE",
+                "productPic", "https://cdn.example.com/single.jpg"
+        )));
+
+        service.enrichOrderList(List.of(order));
+
+        verify(orderMapper, times(1)).listDisplayProductInfoByOrderIds(any());
+        assertThat(order.getProductImage()).isEqualTo("https://cdn.example.com/single.jpg");
+    }
+
+    @Test
+    void enrichOrderList_multiOrdersShouldLoadDisplayInfoOnceForCurrentPage() {
+        ColonelsettlementOrder first = new ColonelsettlementOrder();
+        first.setOrderId("ORDER-1");
+        ColonelsettlementOrder second = new ColonelsettlementOrder();
+        second.setOrderId("ORDER-2");
+
+        when(orderMapper.listDisplayProductInfoByOrderIds(any())).thenReturn(List.of(
+                Map.of("orderId", "ORDER-1", "productPic", "https://cdn.example.com/1.jpg"),
+                Map.of("orderId", "ORDER-2", "awemeId", "AWEME-2")
+        ));
+
+        service.enrichOrderList(List.of(first, second));
+
+        verify(orderMapper, times(1)).listDisplayProductInfoByOrderIds(any());
+        assertThat(first.getProductImage()).isEqualTo("https://cdn.example.com/1.jpg");
+        assertThat(second.getAwemeId()).isEqualTo("AWEME-2");
+    }
+
+    @Test
+    void enrichOrderList_displayInfoMissingShouldUseSnapshotWhenPresent() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORDER-SNAPSHOT");
+        order.setProductId("P-SNAPSHOT");
+        order.setActivityId("A-SNAPSHOT");
+
+        when(orderMapper.listDisplayProductInfoByOrderIds(any())).thenReturn(List.of());
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId("A-SNAPSHOT");
+        snapshot.setProductId("P-SNAPSHOT");
+        snapshot.setTitle("快照标题");
+        snapshot.setCover("https://cdn.example.com/snapshot.jpg");
+        when(productSnapshotMapper.selectList(any())).thenReturn(List.of(snapshot));
+
+        service.enrichOrderList(List.of(order));
+
+        verify(orderMapper, times(1)).listDisplayProductInfoByOrderIds(any());
+        assertThat(order.getProductTitle()).isEqualTo("快照标题");
+        assertThat(order.getProductImage()).isEqualTo("https://cdn.example.com/snapshot.jpg");
+    }
+
+    @Test
+    void enrichOrderList_snapshotMissingShouldUseProductFallbackWhenPresent() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORDER-PRODUCT");
+        order.setProductId("P-PRODUCT");
+
+        when(orderMapper.listDisplayProductInfoByOrderIds(any())).thenReturn(List.of());
+        when(productSnapshotMapper.selectList(any())).thenReturn(List.of());
+        Product product = new Product();
+        product.setProductId("P-PRODUCT");
+        product.setName("商品标题");
+        product.setCover("https://cdn.example.com/product.jpg");
+        when(productMapper.selectList(any())).thenReturn(List.of(product));
+
+        service.enrichOrderList(List.of(order));
+
+        verify(orderMapper, times(1)).listDisplayProductInfoByOrderIds(any());
+        assertThat(order.getProductTitle()).isEqualTo("商品标题");
+        assertThat(order.getProductImage()).isEqualTo("https://cdn.example.com/product.jpg");
     }
 
     // ============================================================

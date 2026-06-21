@@ -3,7 +3,6 @@ package com.colonel.saas.domain.order.facade;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.controller.OrderController;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
@@ -27,7 +26,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -93,8 +91,9 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
             UUID deptId,
             DataScope dataScope
     ) {
-        Page<ColonelsettlementOrder> query = new Page<>(page, size);
-        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = buildWrapper(
+        IPage<ColonelsettlementOrder> result = orderService.findPage(
+                page,
+                size,
                 orderId,
                 attributionStatus,
                 unattributedReason,
@@ -108,15 +107,11 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
                 timeField,
                 dashboardDiagnosis,
                 parseUuidCsv(recruiterDeptIds),
-                parseUuidCsv(channelDeptIds)
+                parseUuidCsv(channelDeptIds),
+                userId,
+                deptId,
+                dataScope
         );
-        selectOrderListColumns(wrapper);
-        applyDataScope(wrapper, userId, deptId, dataScope);
-        wrapper.orderByDesc(ColonelsettlementOrder::getUpdateTime)
-                .orderByDesc(ColonelsettlementOrder::getCreateTime);
-        IPage<ColonelsettlementOrder> result = orderMapper.selectPage(query, wrapper);
-        result.getRecords().forEach(orderService::normalizeOrderRow);
-        orderService.enrichOrderList(result.getRecords());
         return result.convert(OrderListAssembler::toView);
     }
 
@@ -149,9 +144,7 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
             UUID deptId,
             DataScope dataScope
     ) {
-        List<UUID> parsedRecruiterDeptIds = parseUuidCsv(recruiterDeptIds);
-        List<UUID> parsedChannelDeptIds = parseUuidCsv(channelDeptIds);
-        QueryWrapper<ColonelsettlementOrder> statusWrapper = buildStatsWrapper(
+        OrderService.OrderStatsResult result = orderService.findStats(
                 orderId,
                 attributionStatus,
                 unattributedReason,
@@ -164,77 +157,31 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
                 endTime,
                 timeField,
                 dashboardDiagnosis,
-                parsedRecruiterDeptIds,
-                parsedChannelDeptIds
+                parseUuidCsv(recruiterDeptIds),
+                parseUuidCsv(channelDeptIds),
+                userId,
+                deptId,
+                dataScope,
+                orderSyncService.getLastSyncTime()
         );
-        applyQueryDataScope(statusWrapper, userId, deptId, dataScope);
+        return toOrderStats(result);
+    }
+
+    private OrderController.OrderStats toOrderStats(OrderService.OrderStatsResult result) {
         OrderController.OrderStats stats = new OrderController.OrderStats();
-        stats.setLastSyncTime(orderSyncService.getLastSyncTime());
-        statusWrapper.select("attribution_status AS attributionStatus", "COUNT(*) AS total")
-                .groupBy("attribution_status");
-
-        long totalOrders = 0L;
-        long attributedOrders = 0L;
-        long unattributedOrders = 0L;
-        long partialOrders = 0L;
-        for (Map<String, Object> row : orderMapper.selectMaps(statusWrapper)) {
-            String status = asText(readValue(row, "attributionStatus"));
-            long count = asLong(readValue(row, "total"));
-            totalOrders += count;
-            if (AttributionService.STATUS_ATTRIBUTED.equals(status)) {
-                attributedOrders += count;
-            }
-            if (AttributionService.STATUS_UNATTRIBUTED.equals(status)) {
-                unattributedOrders += count;
-            }
-            if ("PARTIAL".equals(status)) {
-                partialOrders += count;
-            }
+        if (result == null) {
+            return stats;
         }
-
-        QueryWrapper<ColonelsettlementOrder> reasonWrapper = buildStatsWrapper(
-                orderId,
-                attributionStatus,
-                unattributedReason,
-                activityId,
-                productId,
-                channelKeyword,
-                colonelKeyword,
-                orderStatus,
-                startTime,
-                endTime,
-                timeField,
-                dashboardDiagnosis,
-                parsedRecruiterDeptIds,
-                parsedChannelDeptIds
-        );
-        applyQueryDataScope(reasonWrapper, userId, deptId, dataScope);
-        reasonWrapper.eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED)
-                .isNotNull("attribution_remark")
-                .select("attribution_remark AS reason", "COUNT(*) AS total")
-                .groupBy("attribution_remark");
-
-        List<OrderController.ReasonCount> reasonCounts = new ArrayList<>();
-        long syncFailedOrders = 0L;
-        for (Map<String, Object> row : orderMapper.selectMaps(reasonWrapper)) {
-            String reason = asText(readValue(row, "reason"));
-            long count = asLong(readValue(row, "total"));
-            if (!StringUtils.hasText(reason)) {
-                continue;
-            }
-            reasonCounts.add(new OrderController.ReasonCount(reason, count));
-            if (AttributionService.REASON_SYNC_FAILED.equals(reason)) {
-                syncFailedOrders += count;
-            }
-        }
-
-        stats.setTotalOrders(totalOrders);
-        stats.setAttributedOrders(attributedOrders);
-        stats.setUnattributedOrders(unattributedOrders);
-        stats.setPartialOrders(partialOrders);
-        stats.setSyncFailedOrders(syncFailedOrders);
-        stats.setUnattributedReasons(reasonCounts.stream()
-                .sorted(Comparator.comparingLong(OrderController.ReasonCount::count).reversed())
+        stats.setTotalOrders(result.totalOrders());
+        stats.setAttributedOrders(result.attributedOrders());
+        stats.setUnattributedOrders(result.unattributedOrders());
+        stats.setPartialOrders(result.partialOrders());
+        stats.setSyncFailedOrders(result.syncFailedOrders());
+        stats.setLastSyncTime(result.lastSyncTime());
+        stats.setUnattributedReasons(result.unattributedReasons() == null
+                ? List.of()
+                : result.unattributedReasons().stream()
+                .map(reason -> new OrderController.ReasonCount(reason.reason(), reason.count()))
                 .toList());
         return stats;
     }

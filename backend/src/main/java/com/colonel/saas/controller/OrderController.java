@@ -3,11 +3,11 @@ package com.colonel.saas.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
+import com.colonel.saas.config.OrderDerivedCacheKeys;
 import com.colonel.saas.constant.DeptType;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.order.OrderDetailResponse;
@@ -45,6 +45,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.Data;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -61,7 +62,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -120,13 +120,16 @@ public class OrderController extends BaseController {
     private static final Duration FILTER_OPTIONS_CACHE_TTL = Duration.ofSeconds(60);
 
     /** 筛选项缓存键前缀 */
-    private static final String FILTER_OPTIONS_CACHE_PREFIX = "orders:filter-options:";
+    private static final String FILTER_OPTIONS_CACHE_PREFIX = OrderDerivedCacheKeys.FILTER_OPTIONS_PREFIX;
 
     /** Dashboard 汇总缓存键前缀 */
-    private static final String DASHBOARD_SUMMARY_CACHE_PREFIX = "dashboard:summary:";
+    private static final String DASHBOARD_SUMMARY_CACHE_PREFIX = OrderDerivedCacheKeys.DASHBOARD_SUMMARY_PREFIX;
 
     /** Dashboard 指标缓存键前缀 */
-    private static final String DASHBOARD_METRICS_CACHE_PREFIX = "dashboard:metrics:";
+    private static final String DASHBOARD_METRICS_CACHE_PREFIX = OrderDerivedCacheKeys.DASHBOARD_METRICS_PREFIX;
+
+    /** 订单统计缓存键前缀 */
+    private static final String ORDER_STATS_CACHE_PREFIX = OrderDerivedCacheKeys.ORDER_STATS_PREFIX;
 
     /** 订单同步服务：从抖店上游拉取订单数据并落库 */
     private final OrderSyncService orderSyncService;
@@ -178,6 +181,12 @@ public class OrderController extends BaseController {
     private final DddRefactorProperties dddRefactorProperties;
     private final OrderDomainFacade orderDomainFacade;
     private final DataScopePolicy dataScopePolicy;
+
+    @Value("${app.order-query.stats-cache-enabled:false}")
+    private boolean statsCacheEnabled = false;
+
+    @Value("${app.order-query.stats-cache-ttl-seconds:60}")
+    private long statsCacheTtlSeconds = 60L;
 
     public OrderController(
             OrderSyncService orderSyncService,
@@ -692,8 +701,9 @@ public class OrderController extends BaseController {
             );
             return ok(dddResult);
         }
-        Page<ColonelsettlementOrder> query = new Page<>(page, size);
-        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = buildWrapper(
+        IPage<ColonelsettlementOrder> result = orderService.findPage(
+                page,
+                size,
                 orderId,
                 attributionStatus,
                 unattributedReason,
@@ -707,15 +717,11 @@ public class OrderController extends BaseController {
                 timeField,
                 dashboardDiagnosis,
                 parseUuidCsv(recruiterDeptIds),
-                parseUuidCsv(channelDeptIds)
+                parseUuidCsv(channelDeptIds),
+                userId,
+                deptId,
+                dataScope
         );
-        selectOrderListColumns(wrapper);
-        applyDataScope(wrapper, userId, deptId, dataScope);
-        wrapper.orderByDesc(ColonelsettlementOrder::getUpdateTime)
-                .orderByDesc(ColonelsettlementOrder::getCreateTime);
-        IPage<ColonelsettlementOrder> result = orderMapper.selectPage(query, wrapper);
-        result.getRecords().forEach(orderService::normalizeOrderRow);
-        orderService.enrichOrderList(result.getRecords());
         return ok(result.convert(OrderListAssembler::toView));
     }
 
@@ -842,9 +848,7 @@ public class OrderController extends BaseController {
                     dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
             ));
         }
-        List<UUID> parsedRecruiterDeptIds = parseUuidCsv(recruiterDeptIds);
-        List<UUID> parsedChannelDeptIds = parseUuidCsv(channelDeptIds);
-        QueryWrapper<ColonelsettlementOrder> statusWrapper = buildStatsWrapper(
+        return ok(resolveStats(
                 orderId,
                 attributionStatus,
                 unattributedReason,
@@ -857,79 +861,12 @@ public class OrderController extends BaseController {
                 endTime,
                 timeField,
                 dashboardDiagnosis,
-                parsedRecruiterDeptIds,
-                parsedChannelDeptIds
-        );
-        applyQueryDataScope(statusWrapper, userId, deptId, dataScope);
-        OrderStats stats = new OrderStats();
-        stats.setLastSyncTime(orderSyncService.getLastSyncTime());
-        statusWrapper.select("attribution_status AS attributionStatus", "COUNT(*) AS total")
-                .groupBy("attribution_status");
-
-        long totalOrders = 0L;
-        long attributedOrders = 0L;
-        long unattributedOrders = 0L;
-        long partialOrders = 0L;
-        for (Map<String, Object> row : orderMapper.selectMaps(statusWrapper)) {
-            String status = asText(readValue(row, "attributionStatus"));
-            long count = asLong(readValue(row, "total"));
-            totalOrders += count;
-            if (AttributionService.STATUS_ATTRIBUTED.equals(status)) {
-                attributedOrders += count;
-            }
-            if (AttributionService.STATUS_UNATTRIBUTED.equals(status)) {
-                unattributedOrders += count;
-            }
-            if ("PARTIAL".equals(status)) {
-                partialOrders += count;
-            }
-        }
-
-        QueryWrapper<ColonelsettlementOrder> reasonWrapper = buildStatsWrapper(
-                orderId,
-                attributionStatus,
-                unattributedReason,
-                activityId,
-                productId,
-                channelKeyword,
-                colonelKeyword,
-                orderStatus,
-                startTime,
-                endTime,
-                timeField,
-                dashboardDiagnosis,
-                parsedRecruiterDeptIds,
-                parsedChannelDeptIds
-        );
-        applyQueryDataScope(reasonWrapper, userId, deptId, dataScope);
-        reasonWrapper.eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED)
-                .isNotNull("attribution_remark")
-                .select("attribution_remark AS reason", "COUNT(*) AS total")
-                .groupBy("attribution_remark");
-
-        List<ReasonCount> reasonCounts = new ArrayList<>();
-        long syncFailedOrders = 0L;
-        for (Map<String, Object> row : orderMapper.selectMaps(reasonWrapper)) {
-            String reason = asText(readValue(row, "reason"));
-            long count = asLong(readValue(row, "total"));
-            if (!StringUtils.hasText(reason)) {
-                continue;
-            }
-            reasonCounts.add(new ReasonCount(reason, count));
-            if (AttributionService.REASON_SYNC_FAILED.equals(reason)) {
-                syncFailedOrders += count;
-            }
-        }
-
-        stats.setTotalOrders(totalOrders);
-        stats.setAttributedOrders(attributedOrders);
-        stats.setUnattributedOrders(unattributedOrders);
-        stats.setPartialOrders(partialOrders);
-        stats.setSyncFailedOrders(syncFailedOrders);
-        stats.setUnattributedReasons(reasonCounts.stream()
-                .sorted(Comparator.comparingLong(ReasonCount::count).reversed())
-                .toList());
-        return ok(stats);
+                recruiterDeptIds,
+                channelDeptIds,
+                userId,
+                deptId,
+                dataScope
+        ));
     }
 
     @Operation(summary = "获取订单筛选选项", description = "返回订单页所需的筛选项候选值，包括状态、未归因原因、商品、渠道与团长。")
@@ -1128,7 +1065,117 @@ public class OrderController extends BaseController {
     private void evictOrderDerivedCaches() {
         shortTtlCacheService.evictByPrefix(DASHBOARD_SUMMARY_CACHE_PREFIX);
         shortTtlCacheService.evictByPrefix(DASHBOARD_METRICS_CACHE_PREFIX);
+        shortTtlCacheService.evictByPrefix(ORDER_STATS_CACHE_PREFIX);
         shortTtlCacheService.evictByPrefix(FILTER_OPTIONS_CACHE_PREFIX);
+    }
+
+    private OrderStats resolveStats(
+            String orderId,
+            String attributionStatus,
+            String unattributedReason,
+            String activityId,
+            String productId,
+            String channelKeyword,
+            String colonelKeyword,
+            Integer orderStatus,
+            String startTime,
+            String endTime,
+            String timeField,
+            String dashboardDiagnosis,
+            String recruiterDeptIds,
+            String channelDeptIds,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (!statsCacheEnabled) {
+            return loadStats(
+                    orderId, attributionStatus, unattributedReason, activityId, productId,
+                    channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+            );
+        }
+        String cacheKey = ORDER_STATS_CACHE_PREFIX + statsCacheKey(
+                orderId, attributionStatus, unattributedReason, activityId, productId,
+                channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+        );
+        Duration ttl = Duration.ofSeconds(Math.max(statsCacheTtlSeconds, 1L));
+        return shortTtlCacheService.get(cacheKey, ttl, () -> loadStats(
+                orderId, attributionStatus, unattributedReason, activityId, productId,
+                channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+        ));
+    }
+
+    private OrderStats loadStats(
+            String orderId,
+            String attributionStatus,
+            String unattributedReason,
+            String activityId,
+            String productId,
+            String channelKeyword,
+            String colonelKeyword,
+            Integer orderStatus,
+            String startTime,
+            String endTime,
+            String timeField,
+            String dashboardDiagnosis,
+            String recruiterDeptIds,
+            String channelDeptIds,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        OrderService.OrderStatsResult result = orderService.findStats(
+                orderId,
+                attributionStatus,
+                unattributedReason,
+                activityId,
+                productId,
+                channelKeyword,
+                colonelKeyword,
+                orderStatus,
+                startTime,
+                endTime,
+                timeField,
+                dashboardDiagnosis,
+                parseUuidCsv(recruiterDeptIds),
+                parseUuidCsv(channelDeptIds),
+                userId,
+                deptId,
+                dataScope,
+                orderSyncService.getLastSyncTime()
+        );
+        return toOrderStats(result);
+    }
+
+    private String statsCacheKey(Object... values) {
+        int queryHash = Objects.hash(values);
+        Object userId = values.length > 14 ? values[14] : null;
+        Object deptId = values.length > 15 ? values[15] : null;
+        Object dataScope = values.length > 16 ? values[16] : null;
+        return cacheKey(
+                "scope", userId, deptId, dataScope,
+                "query", Integer.toHexString(queryHash)
+        );
+    }
+
+    private OrderStats toOrderStats(OrderService.OrderStatsResult result) {
+        OrderStats stats = new OrderStats();
+        if (result == null) {
+            return stats;
+        }
+        stats.setTotalOrders(result.totalOrders());
+        stats.setAttributedOrders(result.attributedOrders());
+        stats.setUnattributedOrders(result.unattributedOrders());
+        stats.setPartialOrders(result.partialOrders());
+        stats.setSyncFailedOrders(result.syncFailedOrders());
+        stats.setLastSyncTime(result.lastSyncTime());
+        stats.setUnattributedReasons(result.unattributedReasons() == null
+                ? List.of()
+                : result.unattributedReasons().stream()
+                .map(reason -> new ReasonCount(reason.reason(), reason.count()))
+                .toList());
+        return stats;
     }
 
     private QueryWrapper<ColonelsettlementOrder> buildStatsWrapper(

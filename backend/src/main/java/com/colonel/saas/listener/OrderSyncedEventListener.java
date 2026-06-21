@@ -92,6 +92,7 @@ public class OrderSyncedEventListener {
             // 清除仪表盘相关的短 TTL 缓存
             shortTtlCacheService.evictByPrefix(OrderDerivedCacheKeys.DASHBOARD_SUMMARY_PREFIX);
             shortTtlCacheService.evictByPrefix(OrderDerivedCacheKeys.DASHBOARD_METRICS_PREFIX);
+            shortTtlCacheService.evictByPrefix(OrderDerivedCacheKeys.ORDER_STATS_PREFIX);
 
             // T-03: 有效订单自动重置达人保护期（取消/失效订单不重置）
             if (isValidOrder(event)) {

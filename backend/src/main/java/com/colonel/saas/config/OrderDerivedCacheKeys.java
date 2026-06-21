@@ -30,6 +30,8 @@ public final class OrderDerivedCacheKeys {
     public static final String DASHBOARD_METRICS_PREFIX = "dashboard:metrics:";
     /** 订单筛选选项缓存前缀（如下拉列表中的达人、商家、状态选项等） */
     public static final String FILTER_OPTIONS_PREFIX = "orders:filter-options:";
+    /** 订单统计缓存前缀（按筛选条件、数据范围和权限摘要隔离） */
+    public static final String ORDER_STATS_PREFIX = "orders:stats:";
 
     /** 工具类，禁止实例化 */
     private OrderDerivedCacheKeys() {

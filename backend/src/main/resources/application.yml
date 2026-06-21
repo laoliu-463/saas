@@ -115,6 +115,11 @@ product:
 app:
   performance:
     slow-query-threshold-ms: ${APP_SLOW_QUERY_THRESHOLD_MS:500}
+  order-query:
+    stats-cache-enabled: ${APP_ORDER_QUERY_STATS_CACHE_ENABLED:false}
+    stats-cache-ttl-seconds: ${APP_ORDER_QUERY_STATS_CACHE_TTL_SECONDS:60}
+    default-window-enabled: ${APP_ORDER_QUERY_DEFAULT_WINDOW_ENABLED:false}
+    default-window-days: ${APP_ORDER_QUERY_DEFAULT_WINDOW_DAYS:30}
   short-ttl-cache:
     max-entries: ${APP_SHORT_TTL_CACHE_MAX_ENTRIES:1024}
   logistics:

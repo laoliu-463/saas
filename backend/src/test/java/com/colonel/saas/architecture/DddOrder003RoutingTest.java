@@ -111,12 +111,14 @@ class DddOrder003RoutingTest {
     void shouldDelegateGetOrdersWhenSwitchOff() {
         when(dddRefactorProperties.isEnabled()).thenReturn(false);
         IPage<ColonelsettlementOrder> expected = new Page<>();
-        when(orderMapper.selectPage(any(), any())).thenReturn(expected);
+        when(orderService.findPage(anyLong(), anyLong(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(expected);
 
         var response = controller.getOrders(1, 20, "ORD-1", "ATTRIBUTED", null, null, null, null, null, null, null, null, null, null, null, null, userId, deptId, DataScope.ALL);
 
         assertThat(response.getData()).isNotNull();
         assertThat(response.getData().getRecords()).isEmpty();
+        verify(orderService).findPage(eq(1L), eq(20L), eq("ORD-1"), eq("ATTRIBUTED"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(userId), eq(deptId), eq(DataScope.ALL));
         verify(orderDomainFacade, never()).getOrders(anyLong(), anyLong(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -130,7 +132,8 @@ class DddOrder003RoutingTest {
         var response = controller.getOrders(1, 20, "ORD-1", "ATTRIBUTED", null, null, null, null, null, null, null, null, null, null, null, null, userId, deptId, DataScope.ALL);
 
         assertThat(response.getData()).isSameAs(expected);
-        verify(orderMapper, never()).selectPage(any(), any());
+        verify(orderService, never()).findPage(anyLong(), anyLong(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(orderDomainFacade).getOrders(eq(1L), eq(20L), eq("ORD-1"), eq("ATTRIBUTED"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(userId), eq(deptId), eq(DataScope.ALL));
     }
 
@@ -139,12 +142,14 @@ class DddOrder003RoutingTest {
     void shouldDelegateGetUnattributedOrdersWhenSwitchOff() {
         when(dddRefactorProperties.isEnabled()).thenReturn(false);
         IPage<ColonelsettlementOrder> expected = new Page<>();
-        when(orderMapper.selectPage(any(), any())).thenReturn(expected);
+        when(orderService.findPage(anyLong(), anyLong(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(expected);
 
         var response = controller.getUnattributedOrders(1, 20, "ORD-1", null, null, null, null, null, null, null, null, null, null, null, null, userId, deptId, DataScope.ALL);
 
         assertThat(response.getData()).isNotNull();
         assertThat(response.getData().getRecords()).isEmpty();
+        verify(orderService).findPage(eq(1L), eq(20L), eq("ORD-1"), eq(AttributionService.STATUS_UNATTRIBUTED), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(userId), eq(deptId), eq(DataScope.ALL));
         verify(orderDomainFacade, never()).getOrders(anyLong(), anyLong(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -192,12 +197,14 @@ class DddOrder003RoutingTest {
     @DisplayName("开关关闭时，getStats调用原有逻辑")
     void shouldDelegateGetStatsWhenSwitchOff() {
         when(dddRefactorProperties.isEnabled()).thenReturn(false);
-        // 直接模拟orderMapper.selectMaps以避免繁重的初始化
-        when(orderMapper.selectMaps(any())).thenReturn(List.of());
+        when(orderService.findStats(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new OrderService.OrderStatsResult(0, 0, 0, 0, 0, null, List.of()));
 
         var response = controller.getStats("ORD-1", "ATTRIBUTED", null, null, null, null, null, null, null, null, null, null, null, null, userId, deptId, DataScope.ALL);
 
         assertThat(response.getData()).isNotNull();
+        verify(orderService).findStats(eq("ORD-1"), eq("ATTRIBUTED"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(userId), eq(deptId), eq(DataScope.ALL), any());
         verify(orderDomainFacade, never()).getStats(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -211,7 +218,8 @@ class DddOrder003RoutingTest {
         var response = controller.getStats("ORD-1", "ATTRIBUTED", null, null, null, null, null, null, null, null, null, null, null, null, userId, deptId, DataScope.ALL);
 
         assertThat(response.getData()).isSameAs(expected);
-        verify(orderMapper, never()).selectMaps(any());
+        verify(orderService, never()).findStats(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any(), any());
         verify(orderDomainFacade).getStats(eq("ORD-1"), eq("ATTRIBUTED"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(userId), eq(deptId), eq(DataScope.ALL));
     }
 }
