@@ -6,6 +6,7 @@ import com.colonel.saas.dto.user.CheckPermissionRequest;
 import com.colonel.saas.dto.user.CheckPermissionResponse;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -43,7 +44,7 @@ public class CurrentUserPermissionPolicy {
     }
 
     public int resolveDataScopeCode(List<RolePermission> roles, DataScope requestScope, List<String> roleCodes) {
-        if (roleCodes != null && (roleCodes.contains(RoleCodes.ADMIN) || roleCodes.contains(RoleCodes.OPS_STAFF))) {
+        if (hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
             return DataScope.ALL.getCode();
         }
         if (roles != null && !roles.isEmpty()) {
@@ -54,6 +55,42 @@ public class CurrentUserPermissionPolicy {
                     .orElse(requestScope == null ? DataScope.PERSONAL.getCode() : requestScope.getCode());
         }
         return requestScope == null ? DataScope.PERSONAL.getCode() : requestScope.getCode();
+    }
+
+    public boolean hasAnyRole(Object roleCodes, String... expectedRoles) {
+        if (roleCodes == null || expectedRoles == null || expectedRoles.length == 0) {
+            return false;
+        }
+        Set<String> expected = new LinkedHashSet<>(normalizeRoleCodes(Arrays.asList(expectedRoles)));
+        if (expected.isEmpty()) {
+            return false;
+        }
+        return normalizeRoleCodes(roleCodes).stream().anyMatch(expected::contains);
+    }
+
+    public List<String> normalizeRoleCodes(Object roleCodes) {
+        if (roleCodes == null) {
+            return List.of();
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        if (roleCodes instanceof Collection<?> collection) {
+            collection.stream()
+                    .map(item -> normalizeKey(Objects.toString(item, "")))
+                    .filter(CurrentUserPermissionPolicy::hasText)
+                    .forEach(normalized::add);
+            return new ArrayList<>(normalized);
+        }
+        String raw = Objects.toString(roleCodes, "");
+        if (!hasText(raw)) {
+            return List.of();
+        }
+        for (String roleCode : raw.replace("[", "").replace("]", "").split(",")) {
+            String normalizedRole = normalizeKey(roleCode);
+            if (hasText(normalizedRole)) {
+                normalized.add(normalizedRole);
+            }
+        }
+        return new ArrayList<>(normalized);
     }
 
     public Map<String, Object> mergePermissions(List<RolePermission> roles, int dataScopeCode) {
@@ -164,10 +201,7 @@ public class CurrentUserPermissionPolicy {
     }
 
     private boolean hasAdminRole(List<String> roleCodes) {
-        if (roleCodes == null || roleCodes.isEmpty()) {
-            return false;
-        }
-        return roleCodes.stream().anyMatch(RoleCodes.ADMIN::equals);
+        return hasAnyRole(roleCodes, RoleCodes.ADMIN);
     }
 
     private String normalizeKey(String value) {

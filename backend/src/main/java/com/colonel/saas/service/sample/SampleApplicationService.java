@@ -41,6 +41,7 @@ import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.service.ProductService;
@@ -175,6 +176,8 @@ public class SampleApplicationService extends BaseController {
     /** 系统用户门面，用于查询用户信息（创建人姓名、归属部门等） */
     private final UserDomainFacade userDomainFacade;
 
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+
     private final TalentDomainFacade talentDomainFacade;
 
     /** 寄样状态日志业务服务，负责状态流转日志的记录和查询 */
@@ -224,6 +227,7 @@ public class SampleApplicationService extends BaseController {
      * @param sampleRequestMapper                寄样申请单数据访问层
      * @param productDomainFacade                商品域门面
      * @param userDomainFacade                   用户域门面
+     * @param currentUserPermissionPolicy         当前用户权限策略
      * @param talentDomainFacade                 达人域门面
      * @param sampleStatusLogService              寄样状态日志业务服务
      * @param sampleStatusLogMapper               寄样状态日志数据访问层
@@ -241,6 +245,7 @@ public class SampleApplicationService extends BaseController {
             SampleRequestMapper sampleRequestMapper,
             ProductDomainFacade productDomainFacade,
             UserDomainFacade userDomainFacade,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy,
             TalentDomainFacade talentDomainFacade,
             SampleStatusLogService sampleStatusLogService,
             SampleStatusLogMapper sampleStatusLogMapper,
@@ -256,6 +261,7 @@ public class SampleApplicationService extends BaseController {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productDomainFacade = productDomainFacade;
         this.userDomainFacade = userDomainFacade;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
         this.talentDomainFacade = talentDomainFacade;
         this.sampleStatusLogService = sampleStatusLogService;
         this.sampleStatusLogMapper = sampleStatusLogMapper;
@@ -462,7 +468,9 @@ public class SampleApplicationService extends BaseController {
         }
 
         // 招商专员在个人范围下，默认展示待审核单据
-        if (hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) && !hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER) && !StringUtils.hasText(status)) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
+                && !currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)
+                && !StringUtils.hasText(status)) {
             status = "PENDING_AUDIT";
         }
 
@@ -489,7 +497,9 @@ public class SampleApplicationService extends BaseController {
 
         IPage<SampleRequest> samplePage;
         // 招商专员且数据范围为个人：按"我负责的商品"过滤
-        if (dataScope == com.colonel.saas.common.enums.DataScope.PERSONAL && hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) && !hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
+        if (dataScope == com.colonel.saas.common.enums.DataScope.PERSONAL
+                && currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
+                && !currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
             samplePage = recruiterUserId == null
                     ? sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper)
                     : sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper, recruiterUserId);
@@ -1774,10 +1784,11 @@ public class SampleApplicationService extends BaseController {
         if (sample == null || dataScope == null || dataScope == DataScope.ALL) {
             return;
         }
-        if (hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
             return;
         }
-        if (hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) && isSampleProductAssignedToUser(sample, currentUserId)) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
+                && isSampleProductAssignedToUser(sample, currentUserId)) {
             return;
         }
         if (dataScope == DataScope.PERSONAL) {
@@ -1855,7 +1866,7 @@ public class SampleApplicationService extends BaseController {
      * @throws ForbiddenException 用户不满足角色要求时抛出
      */
     private void ensureSampleApplyPermission(Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
+        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
             throw new ForbiddenException("仅渠道角色可以发起寄样申请");
         }
     }
@@ -1870,7 +1881,7 @@ public class SampleApplicationService extends BaseController {
      * @throws ForbiddenException 用户不满足角色要求时抛出
      */
     private void ensureSampleDeletePermission(Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
+        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
             throw new ForbiddenException("仅渠道角色可以删除寄样申请");
         }
     }
@@ -1918,12 +1929,12 @@ public class SampleApplicationService extends BaseController {
     private void ensureActionRolePermission(String action, Object roleCodes) {
         switch (action) {
             case "PENDING_SHIP", "REJECTED" -> {
-                if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_STAFF)) {
+                if (!currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_STAFF)) {
                     throw new ForbiddenException("仅招商角色可以审核寄样");
                 }
             }
             case "SHIPPING", "DELIVERED", "PENDING_HOMEWORK" -> {
-                if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
+                if (!currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
                     throw new ForbiddenException("仅运营角色可以推进物流状态");
                 }
             }
@@ -2092,7 +2103,7 @@ public class SampleApplicationService extends BaseController {
      * @throws ForbiddenException 角色不在允许列表时抛出
      */
     private void ensureLogisticsSyncPermission(Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
+        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
             throw new ForbiddenException("仅运营或管理员可触发物流同步");
         }
     }
@@ -2174,7 +2185,7 @@ public class SampleApplicationService extends BaseController {
      * @throws ForbiddenException 角色不在允许列表时抛出
      */
     private void ensureSampleExportPermission(Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF)) {
+        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF)) {
             throw new ForbiddenException("仅管理员、招商或运营可导出寄样数据");
         }
     }
@@ -2327,8 +2338,8 @@ public class SampleApplicationService extends BaseController {
      * @throws ForbiddenException 达人不在当前用户私海中时抛出
      */
     private void ensureChannelTalentClaim(UUID userId, UUID talentId, Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
-                || hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
+        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
+                || currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
             return;
         }
         if (userId == null || talentId == null) {
@@ -2387,95 +2398,13 @@ public class SampleApplicationService extends BaseController {
      *     <li>CHANNEL_LEADER（渠道主管）—— 管理人员豁免</li>
      * </ul>
      * <p>
-     * 支持多种 roleCodes 参数格式：Collection、逗号分隔字符串、带方括号的字符串。
-     * 内部统一做大小写不敏感比较。
+     * 角色编码集合由用户域权限策略统一解析，本方法只表达寄样域的豁免业务语义。
      *
      * @param roleCodes 当前用户的角色编码集合
      * @return true 表示豁免七天限制，false 表示需要校验
-     * @see #isExemptRoleCode(String)
      */
     private boolean isExemptFromSevenDaysLimit(Object roleCodes) {
-        if (roleCodes == null) {
-            return false;
-        }
-        if (roleCodes instanceof Collection<?> collection) {
-            return collection.stream()
-                    .map(item -> item == null ? "" : item.toString().trim().toLowerCase(Locale.ROOT))
-                    .anyMatch(this::isExemptRoleCode);
-        }
-        String raw = roleCodes.toString();
-        if (!StringUtils.hasText(raw)) {
-            return false;
-        }
-        String normalized = raw.trim().toLowerCase(Locale.ROOT);
-        if (normalized.startsWith("[") && normalized.endsWith("]")) {
-            normalized = normalized.substring(1, normalized.length() - 1);
-        }
-        for (String role : normalized.split(",")) {
-            if (isExemptRoleCode(role.trim())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * 判断指定角色编码是否属于七天重复限制的豁免角色。
-     * <p>
-     * 豁免角色：ADMIN（管理员）、CHANNEL_LEADER（渠道主管）。
-     * 角色编码比较不区分大小写。
-     *
-     * @param roleCode 角色编码（如 "admin"、"channel_leader"）
-     * @return true 表示该角色豁免限制
-     * @see RoleCodes#ADMIN
-     * @see RoleCodes#CHANNEL_LEADER
-     */
-    private boolean isExemptRoleCode(String roleCode) {
-        return RoleCodes.ADMIN.equals(roleCode)
-                || RoleCodes.CHANNEL_LEADER.equals(roleCode);
-    }
-
-    /**
-     * 判断当前用户是否拥有期望角色中的任意一个。
-     * <p>
-     * 该方法是寄样权限校验的核心工具方法，支持多种 roleCodes 参数格式：
-     * <ul>
-     *     <li>{@code Collection} 类型——直接遍历比较</li>
-     *     <li>{@code String} 类型——按逗号拆分，支持带方括号的格式（如 "[admin,ops_staff]"）</li>
-     * </ul>
-     * <p>
-     * 所有角色比较均不区分大小写，忽略首尾空白。
-     *
-     * @param roleCodes     当前用户的角色编码，支持 Collection 或逗号分隔字符串
-     * @param expectedRoles 期望匹配的角色编码数组（至少匹配一个即返回 true）
-     * @return true 表示用户拥有期望角色中的至少一个
-     */
-    private boolean hasAnyRole(Object roleCodes, String... expectedRoles) {
-        if (roleCodes == null || expectedRoles == null || expectedRoles.length == 0) {
-            return false;
-        }
-        Set<String> expected = java.util.Arrays.stream(expectedRoles)
-                .map(role -> role == null ? "" : role.trim().toLowerCase(Locale.ROOT))
-                .collect(Collectors.toSet());
-        if (roleCodes instanceof Collection<?> collection) {
-            return collection.stream()
-                    .map(item -> item == null ? "" : item.toString().trim().toLowerCase(Locale.ROOT))
-                    .anyMatch(expected::contains);
-        }
-        String raw = roleCodes.toString();
-        if (!StringUtils.hasText(raw)) {
-            return false;
-        }
-        String normalized = raw.trim().toLowerCase(Locale.ROOT);
-        if (normalized.startsWith("[") && normalized.endsWith("]")) {
-            normalized = normalized.substring(1, normalized.length() - 1);
-        }
-        for (String role : normalized.split(",")) {
-            if (expected.contains(role.trim())) {
-                return true;
-            }
-        }
-        return false;
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER);
     }
 
     /**
@@ -3371,11 +3300,12 @@ public class SampleApplicationService extends BaseController {
      * ADMIN 拥有全局权限不受运营限制，因此此方法用于区分"纯运营"和"运营+管理员"的场景。
      * 纯运营角色在查询寄样单时需要应用状态可见性过滤。
      *
-     * @param roleCodes 角色编码集合（通过 {@link #hasAnyRole} 解析）
+     * @param roleCodes 角色编码集合（通过用户域权限策略解析）
      * @return true 表示纯运营角色，false 表示有 ADMIN 权限或无运营角色
      */
     private boolean isOpsStaffOnly(Object roleCodes) {
-        return hasAnyRole(roleCodes, RoleCodes.OPS_STAFF) && !hasAnyRole(roleCodes, RoleCodes.ADMIN);
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.OPS_STAFF)
+                && !currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
     }
 
     /**

@@ -35,6 +35,7 @@ import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.service.BusinessRuleConfigService;
@@ -141,6 +142,7 @@ class SampleControllerTest {
                 sampleRequestMapper,
                 productDomainFacade,
                 userDomainFacade,
+                new CurrentUserPermissionPolicy(),
                 talentDomainFacade,
                 sampleStatusLogService,
                 sampleStatusLogMapper,
@@ -2473,12 +2475,6 @@ class SampleControllerTest {
         assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isExemptFromSevenDaysLimit", " "))
                 .isFalse();
 
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "hasAnyRole", null, (Object) new String[]{RoleCodes.ADMIN}))
-                .isFalse();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "hasAnyRole", List.of(RoleCodes.OPS_STAFF), (Object) new String[]{RoleCodes.OPS_STAFF}))
-                .isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "hasAnyRole", "[" + RoleCodes.BIZ_STAFF + "]", (Object) new String[]{RoleCodes.BIZ_STAFF}))
-                .isTrue();
         assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsStaffOnly", List.of(RoleCodes.OPS_STAFF)))
                 .isTrue();
         assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsStaffOnly", List.of(RoleCodes.OPS_STAFF, RoleCodes.ADMIN)))

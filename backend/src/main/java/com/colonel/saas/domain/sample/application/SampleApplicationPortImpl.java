@@ -12,6 +12,7 @@ import com.colonel.saas.domain.sample.api.SampleApplicationPort;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.Talent;
@@ -27,7 +28,6 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -73,6 +73,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
     private final SampleStatusLogService sampleStatusLogService;
     private final DouyinQuickSampleGateway douyinQuickSampleGateway;
     private final SampleDomainEventPublisher sampleDomainEventPublisher;
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
 
     public SampleApplicationPortImpl(
             CrawlerTalentInfoService crawlerTalentInfoService,
@@ -82,7 +83,8 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
             SampleEligibilityService sampleEligibilityService,
             SampleStatusLogService sampleStatusLogService,
             DouyinQuickSampleGateway douyinQuickSampleGateway,
-            SampleDomainEventPublisher sampleDomainEventPublisher) {
+            SampleDomainEventPublisher sampleDomainEventPublisher,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.crawlerTalentInfoService = crawlerTalentInfoService;
         this.talentDomainFacade = talentDomainFacade;
         this.sampleRequestMapper = sampleRequestMapper;
@@ -91,6 +93,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         this.sampleStatusLogService = sampleStatusLogService;
         this.douyinQuickSampleGateway = douyinQuickSampleGateway;
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     @Override
@@ -282,7 +285,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
     }
 
     private void ensureChannelTalentClaim(UUID userId, UUID talentId, Object roleCodes) {
-        if (hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
             return;
         }
         if (userId == null || talentId == null) {
@@ -294,7 +297,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
     }
 
     private void checkSevenDaysLimit(UUID userId, UUID talentId, UUID productId, Object roleCodes) {
-        if (hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER)) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER)) {
             return;
         }
         if (!configDomainFacade.isSampleLimitEnabled()) {
@@ -374,30 +377,6 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
             return null;
         }
         return value.trim();
-    }
-
-    private boolean hasAnyRole(Object roleCodes, String... expectedRoles) {
-        if (roleCodes == null || expectedRoles == null || expectedRoles.length == 0) {
-            return false;
-        }
-        java.util.Set<String> expected = java.util.Arrays.stream(expectedRoles)
-                .map(role -> role == null ? "" : role.trim().toLowerCase(Locale.ROOT))
-                .collect(java.util.stream.Collectors.toSet());
-        if (roleCodes instanceof Collection<?> collection) {
-            return collection.stream()
-                    .map(item -> item == null ? "" : item.toString().trim().toLowerCase(Locale.ROOT))
-                    .anyMatch(expected::contains);
-        }
-        String raw = roleCodes.toString();
-        if (!StringUtils.hasText(raw)) {
-            return false;
-        }
-        for (String role : raw.replace("[", "").replace("]", "").split(",")) {
-            if (expected.contains(role.trim().toLowerCase(Locale.ROOT))) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private String resolveErrorMessage(Exception ex) {

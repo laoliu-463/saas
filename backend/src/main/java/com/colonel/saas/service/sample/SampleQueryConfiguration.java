@@ -4,6 +4,7 @@ import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SampleStatusLogMapper;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
@@ -32,6 +33,7 @@ public class SampleQueryConfiguration {
             SampleRequestMapper sampleRequestMapper,
             ProductDomainFacade productDomainFacade,
             UserDomainFacade userDomainFacade,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy,
             TalentDomainFacade talentDomainFacade,
             SampleStatusLogService sampleStatusLogService,
             SampleStatusLogMapper sampleStatusLogMapper,
@@ -48,6 +50,7 @@ public class SampleQueryConfiguration {
                 sampleRequestMapper,
                 productDomainFacade,
                 userDomainFacade,
+                currentUserPermissionPolicy,
                 talentDomainFacade,
                 sampleStatusLogService,
                 sampleStatusLogMapper,

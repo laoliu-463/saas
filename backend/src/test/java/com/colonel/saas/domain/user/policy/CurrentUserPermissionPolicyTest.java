@@ -103,6 +103,14 @@ class CurrentUserPermissionPolicyTest {
     }
 
     @Test
+    void hasAnyRole_shouldNormalizeRoleCodeCollectionsAndStrings() {
+        assertThat(policy.hasAnyRole(List.of(" CHANNEL_STAFF "), RoleCodes.CHANNEL_STAFF)).isTrue();
+        assertThat(policy.hasAnyRole("[biz_staff, CHANNEL_LEADER]", RoleCodes.CHANNEL_LEADER)).isTrue();
+        assertThat(policy.hasAnyRole("biz_staff, channel_leader", RoleCodes.ADMIN)).isFalse();
+        assertThat(policy.hasAnyRole(null, RoleCodes.ADMIN)).isFalse();
+    }
+
+    @Test
     void source_shouldNotDependOnPersistenceEntity() throws Exception {
         String source = Files.readString(Path.of(
                 "src/main/java/com/colonel/saas/domain/user/policy/CurrentUserPermissionPolicy.java"));
