@@ -34,6 +34,9 @@
 
 ## 用户域
 
+- 最新小切片：DDD-USER-PERMISSION-POLICY-ACTIVITY-ACCESS 已将 `ActivityAccessService` 中活动读取 / 同步入口使用的角色编码归一与 `admin`、招商角色、招商组长判断委托给用户域 `CurrentUserPermissionPolicy`；`ColonelActivityController` 改为通过活动访问服务消费该 policy，旧静态归一入口保留为兼容旁路。本轮不改活动分配、活动商品同步、活动可读业务规则或真实数据。
+- 最新报告路径：`harness/reports/evidence-20260621-211521.md`。
+- 风险变化：活动访问服务不再维护本地角色编码解析规则；`ActivityAccessServiceTest` 与 `ColonelActivityControllerTest` 覆盖 lower-case 既有角色路径、字符串角色归一、admin 直通、招商专员强制 mine、招商组长同部门访问和未分配拒绝。剩余风险是其它业务域仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
 - 最新小切片：DDD-USER-DATASCOPE-DATA-APPLICATION 已将 `DataApplicationService` 订单列表、订单汇总、导出、核心指标和独家达人/商家运营监控的数据范围过滤委托给用户域 `DataScopePolicy.applyTo` / `contextRequirement`，数据页服务不再维护本地 `switch(dataScope)` 分支。
 - 最新报告路径：`harness/reports/2026-06-21/ddd-user/datascope-next/evidence-20260621-192500-data-application-datascope-policy.md`。
 - 风险变化：`OrderAttributionService`、`PerformanceMetricsQueryService`、`DashboardService` 与 `DataApplicationService` 的本地 `switch(dataScope)` 已清零；本轮保留 `DataApplicationService` 缺少 user/dept 上下文时抛 `BusinessException` 的既有行为，未改订单事实、业绩公式、导出列或历史数据。
