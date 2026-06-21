@@ -32,7 +32,7 @@ import java.util.UUID;
  *       由 {@link com.colonel.saas.domain.user.infrastructure.aspect.DataScopeAspect AOP} 从 request attribute 注入
  *       {@code su.id = userId} / {@code dept_id = deptId} 到 wrapper</li>
  *   <li>新方案：{@code @DataScope} 注解已移除（避免 AOP + Service 双重注入）；
- *       dataScope 由 {@link com.colonel.saas.domain.user.application.SysUserQueryApplicationService#buildUserPageWrapper}
+ *       dataScope 由 {@link com.colonel.saas.domain.user.infrastructure.SysUserQueryLookupAdapter}
  *       在 wrapper 中显式组装，与 CLAUDE.md 不变量「用户域统一 self/group/all」保持一致</li>
  * </ul>
  *
@@ -84,7 +84,7 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
      * 带数据权限范围的分页查询用户
      * <p>
      * 字段筛选（keyword/status/deptId/groupId/roleId/roleCode）与数据范围（self/group/all）
-     * 全部由 {@code wrapper} 承载，参见 {@link com.colonel.saas.domain.user.application.SysUserQueryApplicationService#buildUserPageWrapper}。
+     * 全部由 {@code wrapper} 承载，参见 {@link com.colonel.saas.domain.user.infrastructure.SysUserQueryLookupAdapter}。
      * 本方法不再使用 {@code @DataScope} 注解，避免 AOP 与 Service 双重注入导致 SQL 重复条件。
      * </p>
      *

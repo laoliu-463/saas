@@ -4,27 +4,23 @@ import com.colonel.saas.auth.dto.SysUserAssignRolesRequest;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.entity.SysRole;
-import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.entity.SysUserRole;
-import com.colonel.saas.mapper.SysRoleMapper;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.mapper.SysUserRoleMapper;
 import com.colonel.saas.domain.user.policy.UserAccessPolicy;
+import com.colonel.saas.domain.user.port.UserRoleAssignmentStore;
+import com.colonel.saas.domain.user.port.UserRoleAssignmentStore.RoleAssignableRole;
+import com.colonel.saas.domain.user.port.UserRoleAssignmentStore.RoleAssignableUser;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.UserPermissionCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -35,9 +31,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class SysUserRoleAssignmentApplicationServiceTest {
 
-    @Mock private SysUserMapper sysUserMapper;
-    @Mock private SysRoleMapper sysRoleMapper;
-    @Mock private SysUserRoleMapper sysUserRoleMapper;
+    @Mock private UserRoleAssignmentStore roleAssignmentStore;
     @Mock private OperationLogService operationLogService;
     @Mock private UserPermissionCacheService userPermissionCacheService;
     @Mock private UserAccessPolicy userAccessPolicy;
@@ -47,9 +41,7 @@ class SysUserRoleAssignmentApplicationServiceTest {
     @BeforeEach
     void setUp() {
         service = new SysUserRoleAssignmentApplicationService(
-                sysUserMapper,
-                sysRoleMapper,
-                sysUserRoleMapper,
+                roleAssignmentStore,
                 operationLogService,
                 userPermissionCacheService,
                 userAccessPolicy);
@@ -61,10 +53,9 @@ class SysUserRoleAssignmentApplicationServiceTest {
         UUID currentUserId = UUID.randomUUID();
         UUID roleA = UUID.randomUUID();
         UUID roleB = UUID.randomUUID();
-        SysUser target = user(userId, "alice", 0);
 
-        when(sysUserMapper.selectById(userId)).thenReturn(target);
-        when(sysRoleMapper.selectBatchIds(any())).thenReturn(List.of(
+        when(roleAssignmentStore.findUser(userId)).thenReturn(Optional.of(user(userId, "alice", 0)));
+        when(roleAssignmentStore.findRolesByIds(any())).thenReturn(List.of(
                 role(roleA, RoleCodes.BIZ_LEADER, 1),
                 role(roleB, RoleCodes.BIZ_STAFF, 1)));
 
@@ -78,13 +69,7 @@ class SysUserRoleAssignmentApplicationServiceTest {
                 any(UserAccessPolicy.AccessibleUser.class),
                 eq(currentUserId),
                 eq(DataScope.ALL));
-        verify(sysUserRoleMapper).deleteByUserIdPhysical(userId);
-        ArgumentCaptor<SysUserRole> inserted = ArgumentCaptor.forClass(SysUserRole.class);
-        verify(sysUserRoleMapper, org.mockito.Mockito.times(2)).insert(inserted.capture());
-        assertThat(inserted.getAllValues()).extracting(SysUserRole::getUserId)
-                .containsExactly(userId, userId);
-        assertThat(inserted.getAllValues()).extracting(SysUserRole::getRoleId)
-                .containsExactly(roleA, roleB);
+        verify(roleAssignmentStore).replaceUserRoles(userId, List.of(roleA, roleB));
         verify(userPermissionCacheService).invalidateUser(userId);
         verify(userPermissionCacheService).invalidateRole(roleA);
         verify(userPermissionCacheService).invalidateRole(roleB);
@@ -106,14 +91,12 @@ class SysUserRoleAssignmentApplicationServiceTest {
         UUID adminRoleId = UUID.randomUUID();
         UUID existingAdminId = UUID.randomUUID();
 
-        when(sysUserMapper.selectById(userId)).thenReturn(user(userId, "bob", 0));
-        when(sysRoleMapper.selectBatchIds(any())).thenReturn(List.of(role(adminRoleId, RoleCodes.ADMIN, 1)));
-        when(sysUserRoleMapper.findByUserId(userId)).thenReturn(List.of());
-        SysUserRole existingAdminRelation = new SysUserRole();
-        existingAdminRelation.setUserId(existingAdminId);
-        existingAdminRelation.setRoleId(adminRoleId);
-        when(sysUserRoleMapper.findByRoleId(adminRoleId)).thenReturn(List.of(existingAdminRelation));
-        when(sysUserMapper.selectBatchIds(List.of(existingAdminId))).thenReturn(List.of(user(existingAdminId, "admin", 0)));
+        when(roleAssignmentStore.findUser(userId)).thenReturn(Optional.of(user(userId, "bob", 0)));
+        when(roleAssignmentStore.findRolesByIds(any())).thenReturn(List.of(role(adminRoleId, RoleCodes.ADMIN, 1)));
+        when(roleAssignmentStore.findRoleIdsByUserId(userId)).thenReturn(List.of());
+        when(roleAssignmentStore.findUserIdsByRoleId(adminRoleId)).thenReturn(List.of(existingAdminId));
+        when(roleAssignmentStore.findUsersByIds(List.of(existingAdminId)))
+                .thenReturn(List.of(user(existingAdminId, "admin", 0)));
 
         assertThatThrownBy(() -> service.assignRoles(
                 userId,
@@ -123,7 +106,7 @@ class SysUserRoleAssignmentApplicationServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("管理员账号已存在");
 
-        verify(sysUserRoleMapper, never()).deleteByUserIdPhysical(any());
+        verify(roleAssignmentStore, never()).replaceUserRoles(any(), any());
         verify(userPermissionCacheService, never()).invalidateUser(any());
     }
 
@@ -132,13 +115,10 @@ class SysUserRoleAssignmentApplicationServiceTest {
         UUID userId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
         UUID adminRoleId = UUID.randomUUID();
-        SysUserRole currentAdminRelation = new SysUserRole();
-        currentAdminRelation.setUserId(userId);
-        currentAdminRelation.setRoleId(adminRoleId);
 
-        when(sysUserMapper.selectById(userId)).thenReturn(user(userId, "admin", 0));
-        when(sysRoleMapper.selectBatchIds(any())).thenReturn(List.of(role(adminRoleId, RoleCodes.ADMIN, 1)));
-        when(sysUserRoleMapper.findByUserId(userId)).thenReturn(List.of(currentAdminRelation));
+        when(roleAssignmentStore.findUser(userId)).thenReturn(Optional.of(user(userId, "admin", 0)));
+        when(roleAssignmentStore.findRolesByIds(any())).thenReturn(List.of(role(adminRoleId, RoleCodes.ADMIN, 1)));
+        when(roleAssignmentStore.findRoleIdsByUserId(userId)).thenReturn(List.of(adminRoleId));
 
         service.assignRoles(
                 userId,
@@ -146,26 +126,17 @@ class SysUserRoleAssignmentApplicationServiceTest {
                 currentUserId,
                 DataScope.ALL);
 
-        verify(sysUserRoleMapper, never()).findByRoleId(adminRoleId);
-        verify(sysUserRoleMapper).deleteByUserIdPhysical(userId);
+        verify(roleAssignmentStore, never()).findUserIdsByRoleId(adminRoleId);
+        verify(roleAssignmentStore).replaceUserRoles(userId, List.of(adminRoleId));
         verify(userPermissionCacheService).invalidateUser(userId);
         verify(userPermissionCacheService).invalidateRole(adminRoleId);
     }
 
-    private static SysUser user(UUID id, String username, Integer deleted) {
-        SysUser user = new SysUser();
-        user.setId(id);
-        user.setUsername(username);
-        user.setDeptId(UUID.randomUUID());
-        user.setDeleted(deleted);
-        return user;
+    private static RoleAssignableUser user(UUID id, String username, Integer deleted) {
+        return new RoleAssignableUser(id, username, UUID.randomUUID(), deleted);
     }
 
-    private static SysRole role(UUID id, String roleCode, Integer status) {
-        SysRole role = new SysRole();
-        role.setId(id);
-        role.setRoleCode(roleCode);
-        role.setStatus(status);
-        return role;
+    private static RoleAssignableRole role(UUID id, String roleCode, Integer status) {
+        return new RoleAssignableRole(id, roleCode, status);
     }
 }

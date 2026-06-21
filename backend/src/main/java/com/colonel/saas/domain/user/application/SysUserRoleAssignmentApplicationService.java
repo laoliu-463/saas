@@ -6,12 +6,9 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.user.policy.UserAccessPolicy;
 import com.colonel.saas.domain.user.policy.UserAccessPolicy.AccessibleUser;
-import com.colonel.saas.entity.SysRole;
-import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.entity.SysUserRole;
-import com.colonel.saas.mapper.SysRoleMapper;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.mapper.SysUserRoleMapper;
+import com.colonel.saas.domain.user.port.UserRoleAssignmentStore;
+import com.colonel.saas.domain.user.port.UserRoleAssignmentStore.RoleAssignableRole;
+import com.colonel.saas.domain.user.port.UserRoleAssignmentStore.RoleAssignableUser;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.UserPermissionCacheService;
 import org.springframework.stereotype.Service;
@@ -34,23 +31,17 @@ import java.util.UUID;
 @Service
 public class SysUserRoleAssignmentApplicationService {
 
-    private final SysUserMapper sysUserMapper;
-    private final SysRoleMapper sysRoleMapper;
-    private final SysUserRoleMapper sysUserRoleMapper;
+    private final UserRoleAssignmentStore roleAssignmentStore;
     private final OperationLogService operationLogService;
     private final UserPermissionCacheService userPermissionCacheService;
     private final UserAccessPolicy userAccessPolicy;
 
     public SysUserRoleAssignmentApplicationService(
-            SysUserMapper sysUserMapper,
-            SysRoleMapper sysRoleMapper,
-            SysUserRoleMapper sysUserRoleMapper,
+            UserRoleAssignmentStore roleAssignmentStore,
             OperationLogService operationLogService,
             UserPermissionCacheService userPermissionCacheService,
             UserAccessPolicy userAccessPolicy) {
-        this.sysUserMapper = sysUserMapper;
-        this.sysRoleMapper = sysRoleMapper;
-        this.sysUserRoleMapper = sysUserRoleMapper;
+        this.roleAssignmentStore = roleAssignmentStore;
         this.operationLogService = operationLogService;
         this.userPermissionCacheService = userPermissionCacheService;
         this.userAccessPolicy = userAccessPolicy;
@@ -62,11 +53,11 @@ public class SysUserRoleAssignmentApplicationService {
             SysUserAssignRolesRequest request,
             UUID currentUserId,
             DataScope dataScope) {
-        SysUser user = requireUser(id);
+        RoleAssignableUser user = requireUser(id);
         userAccessPolicy.assertCanAccess(accessibleUser(user), currentUserId, dataScope);
         List<UUID> roleIds = normalizeRoleIds(request.roleIds());
         validateRoleIds(roleIds, id);
-        replaceUserRoles(id, roleIds);
+        roleAssignmentStore.replaceUserRoles(id, roleIds);
         userPermissionCacheService.invalidateUser(id);
         for (UUID roleId : roleIds) {
             userPermissionCacheService.invalidateRole(roleId);
@@ -77,22 +68,19 @@ public class SysUserRoleAssignmentApplicationService {
                 "分配角色",
                 "PUT",
                 "SysUser",
-                user.getId().toString(),
-                user.getUsername(),
-                "更新用户角色: " + user.getUsername()
+                user.id().toString(),
+                user.username(),
+                "更新用户角色: " + user.username()
         );
     }
 
-    private SysUser requireUser(UUID id) {
-        SysUser user = sysUserMapper.selectById(id);
-        if (user == null) {
-            throw BusinessException.notFound("用户不存在");
-        }
-        return user;
+    private RoleAssignableUser requireUser(UUID id) {
+        return roleAssignmentStore.findUser(id)
+                .orElseThrow(() -> BusinessException.notFound("用户不存在"));
     }
 
-    private static AccessibleUser accessibleUser(SysUser user) {
-        return new AccessibleUser(user.getId(), user.getDeptId());
+    private static AccessibleUser accessibleUser(RoleAssignableUser user) {
+        return new AccessibleUser(user.id(), user.deptId());
     }
 
     private List<UUID> normalizeRoleIds(List<UUID> roleIds) {
@@ -112,57 +100,42 @@ public class SysUserRoleAssignmentApplicationService {
         if (roleIds.isEmpty()) {
             return;
         }
-        List<SysRole> roles = sysRoleMapper.selectBatchIds(roleIds);
+        List<RoleAssignableRole> roles = roleAssignmentStore.findRolesByIds(roleIds);
         if (roles.size() != roleIds.size()) {
             throw BusinessException.notFound("角色不存在或已删除");
         }
         boolean hasDisabledRole = roles.stream()
-                .anyMatch(role -> role.getStatus() == null || role.getStatus() != 1);
+                .anyMatch(role -> role.status() == null || role.status() != 1);
         if (hasDisabledRole) {
             throw BusinessException.stateInvalid("不能分配已禁用角色");
         }
         assertSingleAdminUser(roles, targetUserId);
     }
 
-    private void assertSingleAdminUser(List<SysRole> roles, UUID targetUserId) {
-        SysRole adminRole = roles.stream()
-                .filter(role -> RoleCodes.ADMIN.equals(role.getRoleCode()))
+    private void assertSingleAdminUser(List<RoleAssignableRole> roles, UUID targetUserId) {
+        RoleAssignableRole adminRole = roles.stream()
+                .filter(role -> RoleCodes.ADMIN.equals(role.roleCode()))
                 .findFirst()
                 .orElse(null);
-        if (adminRole == null || adminRole.getId() == null) {
+        if (adminRole == null || adminRole.id() == null) {
             return;
         }
         if (targetUserId != null) {
-            boolean targetAlreadyAdmin = sysUserRoleMapper.findByUserId(targetUserId).stream()
-                    .anyMatch(relation -> adminRole.getId().equals(relation.getRoleId()));
+            boolean targetAlreadyAdmin = roleAssignmentStore.findRoleIdsByUserId(targetUserId).stream()
+                    .anyMatch(roleId -> adminRole.id().equals(roleId));
             if (targetAlreadyAdmin) {
                 return;
             }
         }
-        List<UUID> adminUserIds = sysUserRoleMapper.findByRoleId(adminRole.getId()).stream()
-                .map(SysUserRole::getUserId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
+        List<UUID> adminUserIds = roleAssignmentStore.findUserIdsByRoleId(adminRole.id());
         if (adminUserIds.isEmpty()) {
             return;
         }
-        boolean hasExistingAdmin = sysUserMapper.selectBatchIds(adminUserIds).stream()
+        boolean hasExistingAdmin = roleAssignmentStore.findUsersByIds(adminUserIds).stream()
                 .filter(Objects::nonNull)
-                .anyMatch(user -> user.getDeleted() == null || user.getDeleted() == 0);
+                .anyMatch(user -> user.deleted() == null || user.deleted() == 0);
         if (hasExistingAdmin) {
             throw BusinessException.duplicate("管理员账号已存在，不能新增或转配第二个管理员");
-        }
-    }
-
-    private void replaceUserRoles(UUID userId, List<UUID> roleIds) {
-        sysUserRoleMapper.deleteByUserIdPhysical(userId);
-        for (UUID roleId : roleIds) {
-            SysUserRole relation = new SysUserRole();
-            relation.setId(UUID.randomUUID());
-            relation.setUserId(userId);
-            relation.setRoleId(roleId);
-            sysUserRoleMapper.insert(relation);
         }
     }
 }
