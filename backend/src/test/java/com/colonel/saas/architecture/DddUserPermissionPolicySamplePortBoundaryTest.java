@@ -29,7 +29,9 @@ class DddUserPermissionPolicySamplePortBoundaryTest {
                 .doesNotContain("private boolean hasAnyRole")
                 .doesNotContain("roleCodes.toString()")
                 .doesNotContain("roleCodes instanceof Collection")
-                .contains("CurrentUserPermissionPolicy")
-                .contains("currentUserPermissionPolicy.hasAnyRole");
+                .doesNotContain("CurrentUserPermissionPolicy")
+                .doesNotContain("currentUserPermissionPolicy.hasAnyRole")
+                .contains("SampleActionPermissionPolicy")
+                .contains("sampleActionPermissionPolicy");
     }
 }

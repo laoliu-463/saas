@@ -37,6 +37,7 @@ import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
+import com.colonel.saas.domain.sample.policy.SampleActionPermissionPolicy;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.service.BusinessRuleConfigService;
 import com.colonel.saas.constant.RoleCodes;
@@ -142,7 +143,7 @@ class SampleControllerTest {
                 sampleRequestMapper,
                 productDomainFacade,
                 userDomainFacade,
-                new CurrentUserPermissionPolicy(),
+                new SampleActionPermissionPolicy(new CurrentUserPermissionPolicy()),
                 talentDomainFacade,
                 sampleStatusLogService,
                 sampleStatusLogMapper,
