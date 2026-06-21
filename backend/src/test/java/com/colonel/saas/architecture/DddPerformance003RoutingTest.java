@@ -14,7 +14,7 @@ import com.colonel.saas.service.PerformanceExportService;
 import com.colonel.saas.service.PerformanceMonthRecalculationService;
 import com.colonel.saas.service.PerformanceQueryService;
 import com.colonel.saas.service.PerformanceSummaryService;
-import com.colonel.saas.service.performance.PerformanceAccessContext;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

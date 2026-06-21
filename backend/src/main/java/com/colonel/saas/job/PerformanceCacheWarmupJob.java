@@ -3,7 +3,7 @@ package com.colonel.saas.job;
 import com.colonel.saas.dto.performance.PerformanceSummaryQuery;
 import com.colonel.saas.service.PerformanceSummaryService;
 import com.colonel.saas.service.DistributedJobLockService;
-import com.colonel.saas.service.performance.PerformanceAccessContext;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import com.colonel.saas.common.enums.DataScope;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;

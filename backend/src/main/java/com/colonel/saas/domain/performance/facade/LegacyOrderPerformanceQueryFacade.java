@@ -10,7 +10,7 @@ import com.colonel.saas.dto.performance.PerformanceSummaryQuery;
 import com.colonel.saas.dto.performance.PerformanceSummaryResponse;
 import com.colonel.saas.service.PerformanceQueryService;
 import com.colonel.saas.service.PerformanceSummaryService;
-import com.colonel.saas.service.performance.PerformanceAccessContext;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

@@ -8,7 +8,7 @@ import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
-import com.colonel.saas.service.performance.PerformanceAccessContext;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

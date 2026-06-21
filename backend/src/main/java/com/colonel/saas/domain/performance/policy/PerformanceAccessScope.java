@@ -1,10 +1,9 @@
-package com.colonel.saas.service.performance;
+package com.colonel.saas.domain.performance.policy;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.PerformanceRecord;
-import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Locale;
@@ -180,7 +179,7 @@ public final class PerformanceAccessScope {
         if (where == null || context == null) {
             return;
         }
-        String pr = StringUtils.hasText(prAlias) ? prAlias.trim() : "pr";
+        String pr = hasText(prAlias) ? prAlias.trim() : "pr";
         if (isAdminLike(context)) {
             return;
         }
@@ -395,7 +394,7 @@ public final class PerformanceAccessScope {
             return false;
         }
         for (String role : roleCodes) {
-            if (!StringUtils.hasText(role)) {
+            if (!hasText(role)) {
                 continue;
             }
             String normalized = role.trim().toLowerCase(Locale.ROOT);
@@ -406,5 +405,9 @@ public final class PerformanceAccessScope {
             }
         }
         return false;
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }

@@ -1,4 +1,4 @@
-package com.colonel.saas.service.performance;
+package com.colonel.saas.domain.performance.policy;
 
 import com.colonel.saas.common.enums.DataScope;
 

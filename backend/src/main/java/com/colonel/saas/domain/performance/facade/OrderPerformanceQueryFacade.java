@@ -5,7 +5,7 @@ import com.colonel.saas.dto.performance.OrderPerformanceDTO;
 import com.colonel.saas.dto.performance.PerformanceListQuery;
 import com.colonel.saas.dto.performance.PerformanceSummaryQuery;
 import com.colonel.saas.dto.performance.PerformanceSummaryResponse;
-import com.colonel.saas.service.performance.PerformanceAccessContext;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 
 import java.util.List;
 

@@ -30,7 +30,7 @@ import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
-import com.colonel.saas.service.performance.PerformanceAccessContext;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import com.colonel.saas.vo.ExclusiveMerchantStatusVO;
 import com.colonel.saas.vo.ExclusiveTalentStatusVO;
 import com.colonel.saas.vo.data.DualTrackMetricsVO;
