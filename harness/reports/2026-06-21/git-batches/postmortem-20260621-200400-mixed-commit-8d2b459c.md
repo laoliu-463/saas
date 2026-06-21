@@ -4,7 +4,7 @@
 2026-06-21 20:26:21 Asia/Shanghai
 
 ## 触发
-在执行 `git restore --staged` 撤销之前误 `git add` 的 colonel 试验田 + harness reports 期间，harness 的 `agent-do.ps1 -Scope docs` 自动运行（详见 `harness/reports/evidence-20260621-195731.md` + `harness/reports/retro-20260621-200043.md`），自动 `git-push-safe.ps1 -Message "docs: update harness folder limits to 50"` 把 51 个文件 commit。
+在执行 `git restore --staged` 撤销之前误 `git add` 的 colonel 试验田 + harness reports 期间，harness 的 `agent-do.ps1 -Scope docs` 自动运行（详见 `harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-1957-2040/evidence-20260621-195731.md` + `harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-1957-2040/retro-20260621-200043.md`），自动 `git-push-safe.ps1 -Message "docs: update harness folder limits to 50"` 把 51 个文件 commit。
 
 ## commit 8d2b459c 内容（51 文件，混合 4 主题）
 - harness 治理规则 6 文件（AGENTS.md + harness/README + harness/rules/* 6 docs）— PASS
