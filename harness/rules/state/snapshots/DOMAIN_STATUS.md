@@ -34,9 +34,12 @@
 
 ## 用户域
 
+- 最新小切片：DDD-USER-PERMISSION-POLICY-PRODUCT-QUICK-SAMPLE 已将 `ProductQuickSampleService` 快速寄样入口的渠道 / 管理员角色编码集合匹配委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，商品域不再维护本地 `hasAnyRole`、`roleCodes.toString()` 或 `Collection` 分支解析。本轮不改快速寄样业务规则、商品展示状态校验、寄样端口委托、外部抖店快速寄样开关或真实数据。
+- 最新报告路径：`harness/reports/evidence-20260621-213011.md`。
+- 风险变化：`QuickSampleApplyTest` 覆盖非渠道拒绝、管理员放行、渠道专员放行、逗号字符串角色输入兼容、商品上下文校验和端口委托；`DddProduct003ProductRoutingTest` 新增源码边界约束，防止快速寄样入口重新引入本地角色 matcher。剩余风险是 `UserMasterDataService`、`TalentService`、`SampleLogisticsImportService`、`SampleFilterOptionsService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
 - 最新小切片：DDD-USER-PERMISSION-POLICY-PERFORMANCE-ACCESS 已将 `PerformanceAccessScope` 中 `admin`、运营、招商 / 渠道组长与专员判断使用的角色编码集合匹配委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，业绩域不再维护本地 `hasAnyRole` 归一化实现。本轮不改业绩访问语义、SQL 数据范围条件、提成/归属/服务费公式或真实数据。
 - 最新报告路径：`harness/reports/evidence-20260621-212247.md`。
-- 风险变化：`PerformanceAccessScopeTest` 继续覆盖 `" ADMIN "` 兼容匹配、导出、月度重算、筛选越权、逐条访问和 SQL 条件拼接；`DddPerformanceAccessPolicyBoundaryTest` 新增约束，防止业绩域重新引入本地 `hasAnyRole` / `toLowerCase(Locale.ROOT)` 角色匹配。剩余风险是 `UserMasterDataService`、`TalentService`、`SampleLogisticsImportService`、`SampleFilterOptionsService`、`ProductQuickSampleService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
+- 风险变化：`PerformanceAccessScopeTest` 继续覆盖 `" ADMIN "` 兼容匹配、导出、月度重算、筛选越权、逐条访问和 SQL 条件拼接；`DddPerformanceAccessPolicyBoundaryTest` 新增约束，防止业绩域重新引入本地 `hasAnyRole` / `toLowerCase(Locale.ROOT)` 角色匹配。剩余风险是 `UserMasterDataService`、`TalentService`、`SampleLogisticsImportService`、`SampleFilterOptionsService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
 - 最新小切片：DDD-USER-PERMISSION-POLICY-ACTIVITY-ACCESS 已将 `ActivityAccessService` 中活动读取 / 同步入口使用的角色编码归一与 `admin`、招商角色、招商组长判断委托给用户域 `CurrentUserPermissionPolicy`；`ColonelActivityController` 改为通过活动访问服务消费该 policy，旧静态归一入口保留为兼容旁路。本轮不改活动分配、活动商品同步、活动可读业务规则或真实数据。
 - 最新报告路径：`harness/reports/evidence-20260621-211521.md`。
 - 风险变化：活动访问服务不再维护本地角色编码解析规则；`ActivityAccessServiceTest` 与 `ColonelActivityControllerTest` 覆盖 lower-case 既有角色路径、字符串角色归一、admin 直通、招商专员强制 mine、招商组长同部门访问和未分配拒绝。剩余风险是其它业务域仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
@@ -140,6 +143,8 @@
 
 ## 商品域
 
+- 最新边界变化：`ProductQuickSampleService` 快速寄样入口继续负责商品存在性、展示中状态、商品库入库状态、商品快照/主表上下文和寄样域端口委托，但角色编码集合匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改商品状态机、转链规则、`pick_source` 归因语义、寄样状态机或真实数据。
+- 最新报告路径：`harness/reports/evidence-20260621-213011.md`。
 - 最新边界变化：活动列表负责人展示已通过用户域 `loadUserDisplayNamesByIds` 出口读取，只消费展示名称标量，不改变活动分配、活动商品同步或商品库展示规则。
 - 最新边界变化：`ProductService` 已通过用户域显示标签、归属引用、渠道编码出口完成负责人展示、分配、转链 `pick_extra` 和跨部门绑定校验，不改变商品状态机、转链规则或 `pick_source` 归因语义。
 - 最新报告路径：`harness/reports/2026-06-21/ddd-user/facade-next/evidence-20260621-145100-product-service-facade.md`。
