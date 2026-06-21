@@ -103,7 +103,7 @@ public class ColonelActivityController extends BaseController {
             @RequestParam(name = "assignmentFilter", defaultValue = "all") String assignmentFilter,
             @RequestAttribute(value = "userId", required = false) UUID userId,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        Collection<String> normalizedRoles = ActivityAccessService.normalizeRoleCodes(roleCodes);
+        Collection<String> normalizedRoles = activityAccessService.normalizeRoles(roleCodes);
         String effectiveFilter = activityAccessService.resolveEffectiveAssignmentFilter(assignmentFilter, normalizedRoles);
         // 改造后路径（504 根因修复）：
         // 永远走本地 DB，admin+all filter 也不调抖音，避免上游超时/慢响应导致 504
@@ -163,7 +163,7 @@ public class ColonelActivityController extends BaseController {
                 activityId,
                 userId,
                 deptId,
-                ActivityAccessService.normalizeRoleCodes(roleCodes));
+                activityAccessService.normalizeRoles(roleCodes));
         ProductActivityManualSyncService.SyncTriggerResult triggerResult =
                 productActivityManualSyncService.trigger(activityId, appId);
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -202,7 +202,7 @@ public class ColonelActivityController extends BaseController {
                 activityId,
                 userId,
                 deptId,
-                ActivityAccessService.normalizeRoleCodes(roleCodes));
+                activityAccessService.normalizeRoles(roleCodes));
         try {
             // 改造后路径（504 根因修复）：
             // 1) refresh=true 强制走抖音同步（用户主动触发，已知耗时）

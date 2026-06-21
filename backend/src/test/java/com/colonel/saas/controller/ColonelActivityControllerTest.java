@@ -10,6 +10,7 @@ import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.activity.ActivityAccessService;
 import com.colonel.saas.service.ColonelsettlementActivityService;
 import com.colonel.saas.service.ProductActivityManualSyncService;
@@ -75,7 +76,7 @@ class ColonelActivityControllerTest {
 
     @BeforeEach
     void setUp() {
-        activityAccessService = new ActivityAccessService(colonelActivityMapper);
+        activityAccessService = new ActivityAccessService(colonelActivityMapper, new CurrentUserPermissionPolicy());
         controller = new ColonelActivityController(
                 douyinActivityGateway,
                 douyinProductGateway,

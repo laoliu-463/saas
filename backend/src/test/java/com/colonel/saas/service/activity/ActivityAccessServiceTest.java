@@ -2,6 +2,7 @@ package com.colonel.saas.service.activity;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,7 +28,7 @@ class ActivityAccessServiceTest {
 
     @BeforeEach
     void setUp() {
-        activityAccessService = new ActivityAccessService(activityMapper);
+        activityAccessService = new ActivityAccessService(activityMapper, new CurrentUserPermissionPolicy());
     }
 
     @Test
@@ -40,6 +41,12 @@ class ActivityAccessServiceTest {
     void resolveEffectiveAssignmentFilter_shouldRespectAdminChoice() {
         assertThat(activityAccessService.resolveEffectiveAssignmentFilter("assigned", List.of(RoleCodes.ADMIN)))
                 .isEqualTo("assigned");
+    }
+
+    @Test
+    void normalizeRoleCodes_shouldUseUserDomainPolicy() {
+        assertThat(ActivityAccessService.normalizeRoleCodes("[ADMIN, biz_staff, ADMIN]"))
+                .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
     }
 
     @Test

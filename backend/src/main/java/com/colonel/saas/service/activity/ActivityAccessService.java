@@ -2,6 +2,7 @@ package com.colonel.saas.service.activity;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import org.springframework.stereotype.Service;
@@ -24,9 +25,13 @@ public class ActivityAccessService {
     );
 
     private final ColonelsettlementActivityMapper activityMapper;
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
 
-    public ActivityAccessService(ColonelsettlementActivityMapper activityMapper) {
+    public ActivityAccessService(
+            ColonelsettlementActivityMapper activityMapper,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.activityMapper = activityMapper;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     /**
@@ -68,18 +73,15 @@ public class ActivityAccessService {
     }
 
     public boolean isAdmin(Collection<String> roleCodes) {
-        return roleCodes != null && roleCodes.contains(RoleCodes.ADMIN);
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
     }
 
     public boolean isRecruiterRole(Collection<String> roleCodes) {
-        if (roleCodes == null || roleCodes.isEmpty()) {
-            return false;
-        }
-        return roleCodes.stream().anyMatch(RECRUITER_ROLES::contains);
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RECRUITER_ROLES.toArray(String[]::new));
     }
 
     public boolean isBizLeader(Collection<String> roleCodes) {
-        return roleCodes != null && roleCodes.contains(RoleCodes.BIZ_LEADER);
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_LEADER);
     }
 
     /**
@@ -113,20 +115,11 @@ public class ActivityAccessService {
         };
     }
 
+    public Collection<String> normalizeRoles(Object roleCodes) {
+        return currentUserPermissionPolicy.normalizeRoleCodes(roleCodes);
+    }
+
     public static Collection<String> normalizeRoleCodes(Object roleCodes) {
-        if (roleCodes == null) {
-            return List.of();
-        }
-        if (roleCodes instanceof Collection<?> collection) {
-            return collection.stream()
-                    .map(String::valueOf)
-                    .map(String::trim)
-                    .filter(StringUtils::hasText)
-                    .toList();
-        }
-        return List.of(String.valueOf(roleCodes).split(",")).stream()
-                .map(String::trim)
-                .filter(StringUtils::hasText)
-                .toList();
+        return new CurrentUserPermissionPolicy().normalizeRoleCodes(roleCodes);
     }
 }
