@@ -37,8 +37,12 @@
 | 17 | [Sprint-2M-W2] DDD-USER-MIGRATION-008 创建 SysUserCRUDApplication | CLOSED | ready-for-agent | 2026-06-19 | https://github.com/laoliu-463/saas/issues/17 |
 | 18 | [Sprint-2M-W2] DDD-USER-MIGRATION-009 创建 SysUserAssignmentApplication | CLOSED | ready-for-agent | 2026-06-19 | https://github.com/laoliu-463/saas/issues/18 |
 | 19 | [Sprint-2M-W2] DDD-USER-MIGRATION-010 创建 SysUserPermissionApplication | CLOSED | ready-for-agent | 2026-06-19 | https://github.com/laoliu-463/saas/issues/19 |
-| 20 | [Sprint-2M-W2] DDD-USER-MIGRATION-011 创建 SysUserRoleAssignmentApplication | OPEN | ready-for-agent | 2026-06-19 | https://github.com/laoliu-463/saas/issues/20 |
+| 20 | [Sprint-2M-W2] DDD-USER-MIGRATION-011 创建 SysUserRoleAssignmentApplication | CLOSED | ready-for-agent | 2026-06-19 | https://github.com/laoliu-463/saas/issues/20 |
 | 21 | [Sprint-2M-W2] DDD-USER-MIGRATION-012 创建 SysUserCRUDApplicationA (getById + create) | CLOSED | ready-for-agent | 2026-06-20 | https://github.com/laoliu-463/saas/issues/21 |
+| 22 | [Sprint-4M-W3] DDD-USER-MIGRATION-013 创建 SysMenuApplication | OPEN | ready-for-agent | 2026-06-21 | https://github.com/laoliu-463/saas/issues/22 |
+| 23 | [Sprint-4M-W3] DDD-USER-MIGRATION-014 创建 SysRoleApplication | OPEN | ready-for-agent | 2026-06-21 | https://github.com/laoliu-463/saas/issues/23 |
+| 24 | [Sprint-4M-W3] DDD-USER-MIGRATION-015 创建 AuthApplication | OPEN | ready-for-agent | 2026-06-21 | https://github.com/laoliu-463/saas/issues/24 |
+| 25 | [P1-URGENT] DDD-DATASCOPE-001 加 Feature Flag + 恢复 OrderController 旧 switch | OPEN | ready-for-agent | 2026-06-21 | https://github.com/laoliu-463/saas/issues/25 |
 
 ## 本地验证补充（2026-06-20）
 
@@ -102,8 +106,8 @@ gh issue close --comment "..."
 
 - **整体迁移率**：23.3% → 目标 70%+
 - **已完成 Phase**：1（DataScope）/ 2 部分（OrgStructure）
-- **本 Sprint 已 CLOSED Issues**：8/24
-- **本 Sprint OPEN Issues**：1（#20 W2 最后）
+- **本 Sprint 已 CLOSED Issues**：9/24
+- **本 Sprint OPEN Issues**：1（#3 PRD 持续 OPEN）
 - **本 Sprint OPEN Issues**：#3、#17、#20（#18 本地已验证；#17 已被 #21/#22 拆分覆盖一部分）
 
 ## 相关文件
