@@ -46,7 +46,7 @@ final class BeanPropertyCopy {
                 Object value = sourceProperty.getReadMethod().invoke(source);
                 writeMethod.invoke(target, value);
             }
-        } catch (IntrospectionException | IllegalAccessException | InvocationTargetException ex) {
+        } catch (IntrospectionException | IllegalAccessException | InvocationTargetException | IllegalArgumentException ex) {
             throw new IllegalStateException("Failed to copy bean properties", ex);
         }
     }
@@ -62,10 +62,10 @@ final class BeanPropertyCopy {
     }
 
     private static boolean isAssignable(Class<?> targetType, Class<?> sourceType) {
-        if (targetType.isAssignableFrom(sourceType)) {
-            return true;
-        }
-        Class<?> wrappedTarget = PRIMITIVE_WRAPPERS.get(targetType);
-        return wrappedTarget != null && wrappedTarget.equals(sourceType);
+        return wrap(targetType).isAssignableFrom(wrap(sourceType));
+    }
+
+    private static Class<?> wrap(Class<?> type) {
+        return PRIMITIVE_WRAPPERS.getOrDefault(type, type);
     }
 }
