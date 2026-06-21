@@ -38,7 +38,7 @@ pipeline {
                     env.IMAGE_TAG = sh(script: 'git rev-parse --short=8 HEAD', returnStdout: true).trim()
                     env.BUILD_BRANCH = params.DEPLOY_BRANCH
                 }
-                sh '''
+                sh '''#!/usr/bin/env bash
                 set -eu
                 mkdir -p runtime/qa/out/jenkins harness/reports .jenkins-cache/m2 .jenkins-cache/npm .jenkins-cache/pnpm-store
                 full_commit="$(git rev-parse HEAD)"
@@ -62,7 +62,7 @@ pipeline {
 
         stage('Preflight Guard') {
             steps {
-                sh '''
+                sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
 
@@ -191,7 +191,7 @@ pipeline {
 
         stage('Backend Test') {
             steps {
-                sh '''
+                sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
                 docker_gid="$(stat -c '%g' /var/run/docker.sock)"
@@ -212,7 +212,7 @@ pipeline {
 
         stage('Backend Package') {
             steps {
-                sh '''
+                sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
                 rm -rf backend/target
@@ -232,7 +232,7 @@ pipeline {
 
         stage('Frontend Build') {
             steps {
-                sh '''
+                sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
                 docker run --rm \
@@ -251,7 +251,7 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                sh '''
+                sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
                 test -f backend/target/*.jar
@@ -266,7 +266,7 @@ pipeline {
 
         stage('docker compose config') {
             steps {
-                sh '''
+                sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
                 IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
@@ -278,7 +278,7 @@ pipeline {
 
         stage('Deploy real-pre') {
             steps {
-                sh '''
+                sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
                 mkdir -p runtime/qa/out/jenkins "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
@@ -301,7 +301,7 @@ pipeline {
 
         stage('Health Check') {
             steps {
-                sh '''
+                sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
                 if ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" bash scripts/health-check.sh; then
@@ -333,7 +333,7 @@ pipeline {
 
         stage('Evidence Report') {
             steps {
-                sh '''
+                sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
                 report="harness/reports/latest-evidence-jenkins-cd.md"
@@ -382,7 +382,7 @@ pipeline {
             script {
                 env.FINAL_BUILD_RESULT = currentBuild.currentResult ?: 'SUCCESS'
             }
-            sh '''
+            sh '''#!/usr/bin/env bash
             set +e
             if [ -f runtime/qa/out/jenkins/cd-env.sh ]; then . runtime/qa/out/jenkins/cd-env.sh; fi
             mkdir -p runtime/qa/out/jenkins harness/reports "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
