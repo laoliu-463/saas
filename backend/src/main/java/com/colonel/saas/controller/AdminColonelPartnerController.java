@@ -3,6 +3,7 @@ package com.colonel.saas.controller;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.colonel.application.ColonelPartnerContactUpdateRouter;
 import com.colonel.saas.dto.colonel.ColonelPartnerContactUpdateRequest;
 import com.colonel.saas.entity.ColonelPartner;
 import com.colonel.saas.service.ColonelPartnerAdminService;
@@ -39,34 +40,39 @@ import java.util.UUID;
 @RequestMapping("/api/admin/colonel-partners")
 public class AdminColonelPartnerController {
 
-    /** 团长主数据管理服务，负责团长联系方式更新等管理操作 */
+    /** 团长主数据管理服务（传统路径，由 ColonelPartnerContactUpdateRouter 灰度切换） */
     private final ColonelPartnerAdminService colonelPartnerAdminService;
 
     /** 团长主数据同步服务，负责从外部数据源同步团长主数据 */
     private final ColonelPartnerSyncService colonelPartnerSyncService;
 
+    /** 团长合作伙伴联系方式更新路由器（DDD-COLONEL-001） */
+    private final ColonelPartnerContactUpdateRouter colonelPartnerContactUpdateRouter;
+
     /**
      * 构造注入团长主数据管理服务和同步服务。
      *
-     * @param colonelPartnerAdminService 团长主数据管理服务实例
-     * @param colonelPartnerSyncService  团长主数据同步服务实例
+     * @param colonelPartnerAdminService            团长主数据管理服务实例（传统路径）
+     * @param colonelPartnerSyncService             团长主数据同步服务实例
+     * @param colonelPartnerContactUpdateRouter     团长联系方式更新路由器（DDD 灰度）
      */
     public AdminColonelPartnerController(
             ColonelPartnerAdminService colonelPartnerAdminService,
-            ColonelPartnerSyncService colonelPartnerSyncService) {
+            ColonelPartnerSyncService colonelPartnerSyncService,
+            ColonelPartnerContactUpdateRouter colonelPartnerContactUpdateRouter) {
         this.colonelPartnerAdminService = colonelPartnerAdminService;
         this.colonelPartnerSyncService = colonelPartnerSyncService;
+        this.colonelPartnerContactUpdateRouter = colonelPartnerContactUpdateRouter;
     }
 
     /**
      * 更新团长联系方式。
      *
-     * <p>处理流程：
+     * <p>处理流程（DDD-COLONEL-001 灰度）：
      * <ol>
-     *   <li>根据 ID 查找目标团长主数据记录</li>
-     *   <li>校验联系方式请求参数的合法性</li>
-     *   <li>更新团长的手机号、微信号和联系人姓名</li>
-     *   <li>返回更新后的团长主数据对象</li>
+     *   <li>调用路由器根据特性开关决定走 DDD 还是传统路径</li>
+     *   <li>DDD 路径：{@link ColonelPartnerContactUpdateApplicationService}</li>
+     *   <li>传统路径：{@link ColonelPartnerAdminService}（兼容兜底）</li>
      * </ol>
      *
      * <p>HTTP 方法与路径：{@code PUT /api/admin/colonel-partners/{id}/contact}
@@ -84,8 +90,8 @@ public class AdminColonelPartnerController {
             @PathVariable UUID id,
             @Valid @RequestBody ColonelPartnerContactUpdateRequest request,
             @RequestAttribute("userId") UUID userId) {
-        // 第一步：更新团长联系方式
-        return ApiResult.ok(colonelPartnerAdminService.updateContactInfo(id, request, userId));
+        // 第一步：通过路由器灰度选择 DDD 或传统路径
+        return ApiResult.ok(colonelPartnerContactUpdateRouter.updateContactInfo(id, request, userId));
     }
 
     /**

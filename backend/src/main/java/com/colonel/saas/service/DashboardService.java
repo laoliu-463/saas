@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import lombok.Data;
@@ -87,6 +88,8 @@ public class DashboardService {
     private final JdbcTemplate jdbcTemplate;
     /** 业绩指标查询服务，用于判断是否可用汇总表以及从汇总表读取聚合数据 */
     private final PerformanceMetricsQueryService performanceMetricsQueryService;
+    /** 数据范围策略，由用户域统一解释 PERSONAL / DEPT / ALL 可见性范围 */
+    private final DataScopePolicy dataScopePolicy;
 
     /** 影子对账服务（可选），开关开启时在后台执行新路径对比并输出 diff 日志 */
     @Autowired(required = false)
@@ -102,10 +105,12 @@ public class DashboardService {
     public DashboardService(
             ColonelsettlementOrderMapper orderMapper,
             JdbcTemplate jdbcTemplate,
-            PerformanceMetricsQueryService performanceMetricsQueryService) {
+            PerformanceMetricsQueryService performanceMetricsQueryService,
+            DataScopePolicy dataScopePolicy) {
         this.orderMapper = orderMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.performanceMetricsQueryService = performanceMetricsQueryService;
+        this.dataScopePolicy = dataScopePolicy;
     }
 
     /**
@@ -399,25 +404,33 @@ public class DashboardService {
             clauses.add("co.settle_time <= ?");
             args.add(endTime);
         }
-        if (dataScope != null) {
-            switch (dataScope) {
-                case PERSONAL -> {
-                    if (userId != null) {
-                        clauses.add("co.user_id = ?");
-                        args.add(userId);
-                    }
-                }
-                case DEPT -> {
-                    if (deptId != null) {
-                        clauses.add("co.dept_id = ?");
-                        args.add(deptId);
-                    }
-                }
-                case ALL -> {
-                }
+        appendScopeClause(clauses, args, userId, deptId, dataScope);
+        return new SqlContext(String.join(" AND ", clauses), args);
+    }
+
+    private void appendScopeClause(
+            List<String> clauses,
+            List<Object> args,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (dataScope == null) {
+            return;
+        }
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        switch (decision) {
+            case FILTER_USER -> {
+                clauses.add("co.user_id = ?");
+                args.add(userId);
+            }
+            case FILTER_DEPT -> {
+                clauses.add("co.dept_id = ?");
+                args.add(deptId);
+            }
+            case NO_FILTER -> {
+                // no filter
             }
         }
-        return new SqlContext(String.join(" AND ", clauses), args);
     }
 
     /**
@@ -868,22 +881,14 @@ public class DashboardService {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq("user_id", userId);
-                } else {
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        switch (decision) {
+            case FILTER_USER -> wrapper.eq("user_id", userId);
+            case FILTER_DEPT -> wrapper.eq("dept_id", deptId);
+            case NO_FILTER -> {
+                if (dataScopePolicy.requiresFilter(dataScope)) {
                     wrapper.apply("1 = 0");
                 }
-            }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq("dept_id", deptId);
-                } else {
-                    wrapper.apply("1 = 0");
-                }
-            }
-            case ALL -> {
             }
         }
     }

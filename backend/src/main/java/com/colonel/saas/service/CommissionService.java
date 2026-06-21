@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.config.SystemConfigKeys;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.performance.policy.PerformanceMoneyPolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
@@ -49,10 +50,6 @@ public class CommissionService {
 
     /** 默认提成比例（兜底值，15%） */
     private static final BigDecimal DEFAULT_RATIO = new BigDecimal("0.15");
-    /** 配置键：招商提成全局默认比例 */
-    private static final String KEY_BIZ_RATIO = "commission.business_default_ratio";
-    /** 配置键：渠道提成全局默认比例 */
-    private static final String KEY_CHANNEL_RATIO = "commission.channel_default_ratio";
     /** 配置键前缀：活动级招商提成比例覆盖 */
     private static final String KEY_BIZ_ACTIVITY_RATIO_PREFIX = "commission.business_activity_ratio.";
     /** 配置键前缀：活动级渠道提成比例覆盖 */
@@ -294,8 +291,8 @@ public class CommissionService {
      * @return 提成计算汇总
      */
     public CommissionSummary calculateByActivityBuckets(List<ActivityCommissionBucket> buckets, LocalDateTime effectiveAt) {
-        BigDecimal defaultBizRatio = loadRatio(KEY_BIZ_RATIO);
-        BigDecimal defaultChannelRatio = loadRatio(KEY_CHANNEL_RATIO);
+        BigDecimal defaultBizRatio = loadDefaultRatio(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO);
+        BigDecimal defaultChannelRatio = loadDefaultRatio(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO);
 
         List<PerformanceMoneyPolicy.BucketInput> inputs = new ArrayList<>();
         for (ActivityCommissionBucket bucket : normalizeBuckets(buckets)) {
@@ -397,9 +394,17 @@ public class CommissionService {
         return defaultRatio;
     }
 
-    private BigDecimal loadRatio(String key) {
-        BigDecimal ratio = queryRatio(key);
-        return ratio == null ? DEFAULT_RATIO : ratio;
+    private BigDecimal loadDefaultRatio(String key) {
+        try {
+            BigDecimal ratio = configDomainFacade.getDecimal(key, DEFAULT_RATIO);
+            if (ratio == null || ratio.compareTo(BigDecimal.ZERO) < 0) {
+                return DEFAULT_RATIO;
+            }
+            return ratio;
+        } catch (Exception ex) {
+            log.warn("Failed to load default commission ratio config, fallback to default: {}", key, ex);
+            return DEFAULT_RATIO;
+        }
     }
 
     private BigDecimal queryRatio(String key) {

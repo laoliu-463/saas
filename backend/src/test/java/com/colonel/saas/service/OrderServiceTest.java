@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -56,7 +57,8 @@ class OrderServiceTest {
     void setUp() {
         initTableInfo(ProductSnapshot.class);
         initTableInfo(Product.class);
-        service = new OrderService(orderMapper, dashboardService, productSnapshotMapper, productMapper);
+        initTableInfo(ColonelsettlementOrder.class);
+        service = new OrderService(orderMapper, dashboardService, productSnapshotMapper, productMapper, new DataScopePolicy(), new com.colonel.saas.config.DddRefactorProperties());
     }
 
     private void initTableInfo(Class<?> entityClass) {

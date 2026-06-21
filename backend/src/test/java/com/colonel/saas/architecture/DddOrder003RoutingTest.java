@@ -24,6 +24,7 @@ import com.colonel.saas.service.OrderSyncService;
 import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.colonel.saas.common.handler.UUIDTypeHandler;
@@ -85,7 +86,8 @@ class DddOrder003RoutingTest {
                 order2704SettlementDryRunService,
                 orderService,
                 dddRefactorProperties,
-                orderDomainFacade
+                orderDomainFacade,
+                new DataScopePolicy()
         );
     }
 

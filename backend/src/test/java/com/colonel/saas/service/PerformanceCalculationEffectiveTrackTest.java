@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.config.SystemConfigKeys;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
@@ -12,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.UUID;
+import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -38,6 +40,10 @@ class PerformanceCalculationEffectiveTrackTest {
                 performanceRecordMapper,
                 new CommissionService(configDomainFacade, commissionRuleService, null));
         lenient().when(commissionRuleService.resolveRatio(any(), any(), any())).thenReturn(null);
+        lenient().when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO, new BigDecimal("0.15")))
+                .thenReturn(new BigDecimal("0.10"));
+        lenient().when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO, new BigDecimal("0.15")))
+                .thenReturn(new BigDecimal("0.20"));
         lenient().when(configDomainFacade.getConfig(anyString()))
                 .thenAnswer(invocation -> {
                     String key = invocation.getArgument(0);

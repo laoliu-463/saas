@@ -212,7 +212,8 @@ class DashboardShadowCompareTest {
                 .thenReturn(java.util.List.of(java.util.Map.of("total_count", 0L)))
                 .thenReturn(java.util.List.of());
 
-        var dashboardService = new DashboardService(orderMapper, jdbc, perf);
+        var dashboardService = new DashboardService(
+                orderMapper, jdbc, perf, new com.colonel.saas.domain.user.policy.DataScopePolicy());
         // shadowCompareService is null by default (field injection not done in unit test)
 
         DashboardService.Summary summary = dashboardService.getSummary(START, END, null, null, DataScope.ALL);

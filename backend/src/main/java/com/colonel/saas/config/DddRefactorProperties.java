@@ -42,7 +42,11 @@ import org.springframework.stereotype.Component;
  *       enabled: false
  *     outbox:
  *       enabled: false
+ *     data-scope-policy:
+ *       enabled: false
  *     sample-homework-event:
+ *       enabled: false
+ *     colonel-partner-contact:
  *       enabled: false
  * </pre>
  */
@@ -80,8 +84,21 @@ public class DddRefactorProperties {
 
     private Switch outbox = new Switch();
 
+    /**
+     * 数据范围过滤（DataScopePolicy）灰度开关（DDD-DATASCOPE-001，P1 修复）。
+     *
+     * <p>控制 OrderController / OrderService / LegacyOrderDomainFacade
+     * 是否走 DataScopePolicy 路径。OFF = 旧 switch 实现，ON = 新 Policy 路径。</p>
+     *
+     * <p>默认 OFF（生产零变化）。</p>
+     */
+    private Switch dataScopePolicy = new Switch();
+
     /** 寄样交作业改由 {@link OrderSyncedEvent} 驱动（DDD-SAMPLE-004）。 */
     private Switch sampleHomeworkEvent = new Switch();
+
+    /** 团长合作伙伴联系方式更新走 DDD Application Service（DDD-COLONEL-001 测试 DDD 化）。 */
+    private Switch colonelPartnerContact = new Switch();
 
     /** A nested switch bound from keys such as {@code ddd.refactor.user-facade.enabled}. */
     @Data

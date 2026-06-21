@@ -20,6 +20,7 @@ import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.facade.OrderDomainFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
@@ -109,7 +110,9 @@ class OrderControllerTest {
         initTableInfo(ProductSnapshot.class);
         initTableInfo(Product.class);
         DashboardService dashboardService = org.mockito.Mockito.mock(DashboardService.class);
-        orderService = new com.colonel.saas.service.OrderService(orderMapper, dashboardService, productSnapshotMapper, productMapper);
+        DataScopePolicy dataScopePolicy = new DataScopePolicy();
+        orderService = new com.colonel.saas.service.OrderService(
+                orderMapper, dashboardService, productSnapshotMapper, productMapper, dataScopePolicy, new com.colonel.saas.config.DddRefactorProperties());
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new OrderController(
                         orderSyncService,
@@ -126,7 +129,8 @@ class OrderControllerTest {
                         order2704SettlementDryRunService,
                         orderService,
                         dddRefactorProperties,
-                        orderDomainFacade))
+                        orderDomainFacade,
+                        dataScopePolicy))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

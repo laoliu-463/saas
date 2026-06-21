@@ -19,6 +19,7 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.vo.data.OrderDetailVO;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
@@ -92,6 +93,7 @@ class DataControllerTest {
                 performanceMetricsQueryService,
                 orderPerformanceQueryFacade,
                 userDomainFacade,
+                new DataScopePolicy(),
                 jdbcTemplate
         );
         org.mockito.Mockito.lenient().when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(false);

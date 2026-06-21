@@ -139,6 +139,12 @@ public class DataScopePolicy {
         NO_FILTER
     }
 
+    public enum ContextRequirement {
+        SATISFIED,
+        MISSING_USER,
+        MISSING_DEPT
+    }
+
     /**
      * 决策数据范围过滤类型（DDD-USER-DATASCOPE-003）。
      *
@@ -172,6 +178,32 @@ public class DataScopePolicy {
             }
         }
         return Decision.NO_FILTER;
+    }
+
+    public boolean requiresFilter(DataScope dataScope) {
+        return dataScope == DataScope.PERSONAL || dataScope == DataScope.DEPT;
+    }
+
+    public ContextRequirement contextRequirement(UUID userId, UUID deptId, DataScope dataScope) {
+        if (dataScope == null) {
+            return ContextRequirement.SATISFIED;
+        }
+        switch (dataScope) {
+            case PERSONAL -> {
+                return userId == null
+                        ? ContextRequirement.MISSING_USER
+                        : ContextRequirement.SATISFIED;
+            }
+            case DEPT -> {
+                return deptId == null
+                        ? ContextRequirement.MISSING_DEPT
+                        : ContextRequirement.SATISFIED;
+            }
+            case ALL -> {
+                return ContextRequirement.SATISFIED;
+            }
+        }
+        return ContextRequirement.SATISFIED;
     }
 
     /**

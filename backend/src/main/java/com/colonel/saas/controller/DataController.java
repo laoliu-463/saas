@@ -21,6 +21,7 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -88,8 +89,9 @@ public class DataController extends DataApplicationService {
             PerformanceMetricsQueryService performanceMetricsQueryService,
             OrderPerformanceQueryFacade orderPerformanceQueryFacade,
             UserDomainFacade userDomainFacade,
+            DataScopePolicy dataScopePolicy,
             org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
-        super(orderMapper, commissionService, exclusiveTalentMapper, exclusiveMerchantMapper, activityMapper, shortTtlCacheService, performanceMetricsQueryService, orderPerformanceQueryFacade, userDomainFacade, jdbcTemplate);
+        super(orderMapper, commissionService, exclusiveTalentMapper, exclusiveMerchantMapper, activityMapper, shortTtlCacheService, performanceMetricsQueryService, orderPerformanceQueryFacade, userDomainFacade, dataScopePolicy, jdbcTemplate);
     }
 
     @GetMapping("/data/orders")

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.controller.OrderController;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.domain.order.query.OrderDetailView;
@@ -43,15 +44,30 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
     private final ColonelsettlementOrderMapper orderMapper;
     private final OrderSyncService orderSyncService;
 
+    /**
+     * 数据范围策略（DDD-USER-DATASCOPE-005）：委托 {@link DataScopePolicy}
+     * 处理 self/group/all 数据范围过滤。详见 issue #7。
+     */
+    private final DataScopePolicy dataScopePolicy;
+
+    /**
+     * DDD 化灰度开关（DDD-DATASCOPE-001）。
+     */
+    private final com.colonel.saas.config.DddRefactorProperties dddRefactorProperties;
+
     public LegacyOrderDomainFacade(
             OrderService orderService,
             OrderQueryService orderQueryService,
             ColonelsettlementOrderMapper orderMapper,
-            OrderSyncService orderSyncService) {
+            OrderSyncService orderSyncService,
+            DataScopePolicy dataScopePolicy,
+            com.colonel.saas.config.DddRefactorProperties dddRefactorProperties) {
         this.orderService = orderService;
         this.orderQueryService = orderQueryService;
         this.orderMapper = orderMapper;
         this.orderSyncService = orderSyncService;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     @Transactional(readOnly = true, timeout = 15)
@@ -442,21 +458,29 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+        // DDD-DATASCOPE-001: Feature Flag 灰度（默认 OFF，旧 switch 路径）
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            // 旧路径（保留作兜底，行为 1:1 等价于 git:0ca1fc44）
+            switch (dataScope) {
+                case PERSONAL -> {
+                    if (userId != null) {
+                        wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+                    }
+                }
+                case DEPT -> {
+                    if (deptId != null) {
+                        wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
+                    }
+                }
+                case ALL -> {
+                    // no filter
                 }
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
-                }
-            }
-            case ALL -> {
-                // no filter
-            }
+            return;
         }
+        // 新路径
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope,
+                ColonelsettlementOrder::getUserId, ColonelsettlementOrder::getDeptId);
     }
 
     private void applyQueryDataScope(
@@ -467,21 +491,28 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq("user_id", userId);
+        // DDD-DATASCOPE-001: Feature Flag 灰度（默认 OFF，旧 switch 路径）
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            // 旧路径（保留作兜底，行为 1:1 等价于 git:0ca1fc44）
+            switch (dataScope) {
+                case PERSONAL -> {
+                    if (userId != null) {
+                        wrapper.eq("user_id", userId);
+                    }
+                }
+                case DEPT -> {
+                    if (deptId != null) {
+                        wrapper.eq("dept_id", deptId);
+                    }
+                }
+                case ALL -> {
+                    // no filter
                 }
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq("dept_id", deptId);
-                }
-            }
-            case ALL -> {
-                // no filter
-            }
+            return;
         }
+        // 新路径
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
     }
 
     private static List<UUID> normalizeUuidList(List<UUID> ids) {

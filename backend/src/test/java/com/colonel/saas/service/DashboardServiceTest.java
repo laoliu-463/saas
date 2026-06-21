@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,7 +42,7 @@ class DashboardServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new DashboardService(orderMapper, jdbcTemplate, performanceMetricsQueryService);
+        service = new DashboardService(orderMapper, jdbcTemplate, performanceMetricsQueryService, new DataScopePolicy());
         lenient().when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(false);
     }
 
@@ -221,6 +222,14 @@ class DashboardServiceTest {
     }
 
     @Test
+    void applyScope_shouldKeepFailClosedBehaviorWhenRestrictedContextIsMissing() {
+        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
+        invokeApplyScope(wrapper, null, UUID.randomUUID(), DataScope.PERSONAL);
+
+        assertThat(wrapper.getSqlSegment()).contains("1 = 0");
+    }
+
+    @Test
     void normalizeDiagnosisCategory_shouldAcceptOnlyKnownCategoriesAndLegacyAlias() {
         assertThat(DashboardService.normalizeDiagnosisCategory(null)).isNull();
         assertThat(DashboardService.normalizeDiagnosisCategory("   ")).isNull();
@@ -377,6 +386,21 @@ class DashboardServiceTest {
             return (String) m.invoke(service, start, end);
         } catch (ReflectiveOperationException ex) {
             throw new AssertionError("Failed to invoke formatRange", ex);
+        }
+    }
+
+    private void invokeApplyScope(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        try {
+            Method m = DashboardService.class.getDeclaredMethod(
+                    "applyScope", QueryWrapper.class, UUID.class, UUID.class, DataScope.class);
+            m.setAccessible(true);
+            m.invoke(service, wrapper, userId, deptId, dataScope);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Failed to invoke applyScope", ex);
         }
     }
 

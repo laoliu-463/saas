@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductSnapshot;
@@ -62,15 +63,30 @@ public class OrderService {
     private final ProductSnapshotMapper productSnapshotMapper;
     private final ProductMapper productMapper;
 
+    /**
+     * 数据范围策略（DDD-USER-DATASCOPE-004）：委托 {@link DataScopePolicy}
+     * 处理 self/group/all 数据范围过滤。详见 issue #6。
+     */
+    private final DataScopePolicy dataScopePolicy;
+
+    /**
+     * DDD 化灰度开关（DDD-DATASCOPE-001）。
+     */
+    private final com.colonel.saas.config.DddRefactorProperties dddRefactorProperties;
+
     public OrderService(
             ColonelsettlementOrderMapper orderMapper,
             DashboardService dashboardService,
             ProductSnapshotMapper productSnapshotMapper,
-            ProductMapper productMapper) {
+            ProductMapper productMapper,
+            DataScopePolicy dataScopePolicy,
+            com.colonel.saas.config.DddRefactorProperties dddRefactorProperties) {
         this.orderMapper = orderMapper;
         this.dashboardService = dashboardService;
         this.productSnapshotMapper = productSnapshotMapper;
         this.productMapper = productMapper;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     // ============================================================
@@ -525,20 +541,32 @@ public class OrderService {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+        // DDD-DATASCOPE-001: Feature Flag 灰度（默认 OFF，旧 switch 路径）
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            // 旧路径（保留作兜底，行为 1:1 等价于 git:0ca1fc44）
+            switch (dataScope) {
+                case PERSONAL -> {
+                    if (userId != null) {
+                        wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+                    }
+                }
+                case DEPT -> {
+                    if (deptId != null) {
+                        wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
+                    }
+                }
+                case ALL -> {
+                    // no filter
                 }
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
-                }
-            }
-            case ALL -> {
-                // no filter
-            }
+            return;
+        }
+        // 新路径（DDD-USER-DATASCOPE-004：委托 DataScopePolicy，行为 1:1 等价于原 switch 实现）
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        switch (decision) {
+            case FILTER_USER -> wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+            case FILTER_DEPT -> wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
+            case NO_FILTER -> { /* no-op */ }
         }
     }
 
@@ -550,20 +578,32 @@ public class OrderService {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq("user_id", userId);
+        // DDD-DATASCOPE-001: Feature Flag 灰度（默认 OFF，旧 switch 路径）
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            // 旧路径（保留作兜底，行为 1:1 等价于 git:0ca1fc44）
+            switch (dataScope) {
+                case PERSONAL -> {
+                    if (userId != null) {
+                        wrapper.eq("user_id", userId);
+                    }
+                }
+                case DEPT -> {
+                    if (deptId != null) {
+                        wrapper.eq("dept_id", deptId);
+                    }
+                }
+                case ALL -> {
+                    // no filter
                 }
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq("dept_id", deptId);
-                }
-            }
-            case ALL -> {
-                // no filter
-            }
+            return;
+        }
+        // 新路径（DDD-USER-DATASCOPE-004：委托 DataScopePolicy，行为 1:1 等价于原 switch 实现）
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        switch (decision) {
+            case FILTER_USER -> wrapper.eq("user_id", userId);
+            case FILTER_DEPT -> wrapper.eq("dept_id", deptId);
+            case NO_FILTER -> { /* no-op */ }
         }
     }
 

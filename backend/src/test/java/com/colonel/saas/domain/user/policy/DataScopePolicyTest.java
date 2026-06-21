@@ -150,6 +150,34 @@ class DataScopePolicyTest {
         assertThat(decision).isEqualTo(DataScopePolicy.Decision.NO_FILTER);
     }
 
+    @Test
+    void requiresFilter_shouldOnlyReturnTrueForRestrictedScopes() {
+        assertThat(policy.requiresFilter(DataScope.PERSONAL)).isTrue();
+        assertThat(policy.requiresFilter(DataScope.DEPT)).isTrue();
+        assertThat(policy.requiresFilter(DataScope.ALL)).isFalse();
+        assertThat(policy.requiresFilter(null)).isFalse();
+    }
+
+    @Test
+    void contextRequirement_shouldExposeMissingUserContext() {
+        assertThat(policy.contextRequirement(null, UUID.randomUUID(), DataScope.PERSONAL))
+                .isEqualTo(DataScopePolicy.ContextRequirement.MISSING_USER);
+    }
+
+    @Test
+    void contextRequirement_shouldExposeMissingDeptContext() {
+        assertThat(policy.contextRequirement(UUID.randomUUID(), null, DataScope.DEPT))
+                .isEqualTo(DataScopePolicy.ContextRequirement.MISSING_DEPT);
+    }
+
+    @Test
+    void contextRequirement_shouldBeSatisfiedForAllOrNullScope() {
+        assertThat(policy.contextRequirement(null, null, DataScope.ALL))
+                .isEqualTo(DataScopePolicy.ContextRequirement.SATISFIED);
+        assertThat(policy.contextRequirement(null, null, null))
+                .isEqualTo(DataScopePolicy.ContextRequirement.SATISFIED);
+    }
+
     // ===== buildFilter() 便捷方法默认列名 =====
 
     @Test

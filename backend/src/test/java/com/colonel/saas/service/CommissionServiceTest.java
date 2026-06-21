@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.config.SystemConfigKeys;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,8 +45,7 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldUseConfigRatios() {
-        when(configDomainFacade.getConfig("commission.business_default_ratio")).thenReturn("0.10");
-        when(configDomainFacade.getConfig("commission.channel_default_ratio")).thenReturn("0.20");
+        stubDefaultRatios("0.10", "0.20");
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setSettleColonelCommission(10000L);
@@ -65,7 +65,7 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldFallbackWhenConfigMissing() {
-        when(configDomainFacade.getConfig(any())).thenReturn(null);
+        when(configDomainFacade.getDecimal(any(), any())).thenReturn(null);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setSettleColonelCommission(10000L);
@@ -79,8 +79,7 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldUseActivitySpecificRatiosWhenConfigured() {
-        when(configDomainFacade.getConfig("commission.business_default_ratio")).thenReturn("0.10");
-        when(configDomainFacade.getConfig("commission.channel_default_ratio")).thenReturn("0.20");
+        stubDefaultRatios("0.10", "0.20");
         when(configDomainFacade.getConfig("commission.business_activity_ratio.ACTIVITY_001")).thenReturn("0.30");
         when(configDomainFacade.getConfig("commission.channel_activity_ratio.ACTIVITY_001")).thenReturn("0.40");
 
@@ -100,8 +99,7 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldMixDefaultAndActivitySpecificRatiosByActivity() {
-        when(configDomainFacade.getConfig("commission.business_default_ratio")).thenReturn("0.10");
-        when(configDomainFacade.getConfig("commission.channel_default_ratio")).thenReturn("0.20");
+        stubDefaultRatios("0.10", "0.20");
         when(configDomainFacade.getConfig("commission.business_activity_ratio.ACTIVITY_001")).thenReturn("0.30");
         when(configDomainFacade.getConfig("commission.channel_activity_ratio.ACTIVITY_001")).thenReturn("0.40");
         when(configDomainFacade.getConfig("commission.business_activity_ratio.ACTIVITY_002")).thenReturn(null);
@@ -129,8 +127,7 @@ class CommissionServiceTest {
 
     @Test
     void calculateByActivityBuckets_shouldUseAggregatedRows() {
-        when(configDomainFacade.getConfig("commission.business_default_ratio")).thenReturn("0.10");
-        when(configDomainFacade.getConfig("commission.channel_default_ratio")).thenReturn("0.20");
+        stubDefaultRatios("0.10", "0.20");
         when(configDomainFacade.getConfig("commission.business_activity_ratio.ACTIVITY_001")).thenReturn("0.30");
         when(configDomainFacade.getConfig("commission.channel_activity_ratio.ACTIVITY_001")).thenReturn("0.40");
 
@@ -146,8 +143,7 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldUseCommissionRuleRatiosBeforeLegacyActivityConfig() {
-        when(configDomainFacade.getConfig("commission.business_default_ratio")).thenReturn("0.10");
-        when(configDomainFacade.getConfig("commission.channel_default_ratio")).thenReturn("0.20");
+        stubDefaultRatios("0.10", "0.20");
         when(commissionRuleService.resolveRatio(eq(CommissionRuleService.TYPE_RECRUITER), any(), any()))
                 .thenReturn(new BigDecimal("0.25"));
         when(commissionRuleService.resolveRatio(eq(CommissionRuleService.TYPE_CHANNEL), any(), any()))
@@ -177,7 +173,7 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldFallbackWhenRatioQueryFails() {
-        when(configDomainFacade.getConfig(any())).thenThrow(new RuntimeException("config offline"));
+        when(configDomainFacade.getDecimal(any(), any())).thenThrow(new RuntimeException("config offline"));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setSettleColonelCommission(10000L);
@@ -188,5 +184,12 @@ class CommissionServiceTest {
         assertThat(summary.channelRatio()).isEqualByComparingTo("0.15");
         assertThat(summary.bizCommission()).isEqualTo(1500L);
         assertThat(summary.channelCommission()).isEqualTo(1500L);
+    }
+
+    private void stubDefaultRatios(String businessRatio, String channelRatio) {
+        when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO, new BigDecimal("0.15")))
+                .thenReturn(new BigDecimal(businessRatio));
+        when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO, new BigDecimal("0.15")))
+                .thenReturn(new BigDecimal(channelRatio));
     }
 }

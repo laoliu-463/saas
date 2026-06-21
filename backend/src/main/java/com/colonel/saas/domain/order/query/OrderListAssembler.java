@@ -1,7 +1,6 @@
 package com.colonel.saas.domain.order.query;
 
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import org.springframework.beans.BeanUtils;
 
 /**
  * 订单列表视图组装器（DDD-ORDER-006）。
@@ -13,7 +12,7 @@ public class OrderListAssembler {
             return null;
         }
         OrderQueryView view = new OrderQueryView();
-        BeanUtils.copyProperties(order, view);
+        BeanPropertyCopy.copy(order, view);
         view.setOrderAmount(zeroIfNull(view.getOrderAmount()));
         view.setPayAmount(view.getOrderAmount());
         view.setActualAmount(zeroIfNull(view.getActualAmount()));

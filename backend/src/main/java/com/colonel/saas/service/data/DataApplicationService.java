@@ -3,6 +3,7 @@ package com.colonel.saas.service.data;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
@@ -26,6 +27,7 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -158,6 +160,9 @@ public class DataApplicationService extends BaseController {
     /** 用户门面，负责查询渠道/招商负责人展示名称 */
     private final UserDomainFacade userDomainFacade;
 
+    /** 用户域数据范围策略，负责解释 PERSONAL / DEPT / ALL 的过滤决策 */
+    private final DataScopePolicy dataScopePolicy;
+
     /**
      * 构造注入所有依赖服务与 Mapper。
      *
@@ -179,6 +184,7 @@ public class DataApplicationService extends BaseController {
             PerformanceMetricsQueryService performanceMetricsQueryService,
             OrderPerformanceQueryFacade orderPerformanceQueryFacade,
             UserDomainFacade userDomainFacade,
+            DataScopePolicy dataScopePolicy,
             JdbcTemplate jdbcTemplate) {
         this.orderMapper = orderMapper;
         this.commissionService = commissionService;
@@ -189,6 +195,7 @@ public class DataApplicationService extends BaseController {
         this.performanceMetricsQueryService = performanceMetricsQueryService;
         this.orderPerformanceQueryFacade = orderPerformanceQueryFacade;
         this.userDomainFacade = userDomainFacade;
+        this.dataScopePolicy = dataScopePolicy;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -2049,16 +2056,13 @@ public class DataApplicationService extends BaseController {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        if (wrapper == null || dataScope == null) {
-            return;
-        }
-        switch (dataScope) {
-            case PERSONAL -> wrapper.eq(column(aliased, "user_id"), requireScopeUser(userId));
-            case DEPT -> wrapper.eq(column(aliased, "dept_id"), requireScopeDept(deptId));
-            case ALL -> {
-                // no filter
-            }
-        }
+        applyQueryDataScope(
+                wrapper,
+                userId,
+                deptId,
+                dataScope,
+                column(aliased, "user_id"),
+                column(aliased, "dept_id"));
     }
 
     private String column(boolean aliased, String column) {
@@ -2223,16 +2227,7 @@ public class DataApplicationService extends BaseController {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        if (wrapper == null || dataScope == null) {
-            return;
-        }
-        switch (dataScope) {
-            case PERSONAL -> wrapper.eq("co.user_id", requireScopeUser(userId));
-            case DEPT -> wrapper.eq("co.dept_id", requireScopeDept(deptId));
-            case ALL -> {
-                // no filter
-            }
-        }
+        applyQueryDataScope(wrapper, userId, deptId, dataScope, "co.user_id", "co.dept_id");
     }
 
     private void applyScopedQueryDataScope(
@@ -2240,16 +2235,7 @@ public class DataApplicationService extends BaseController {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        if (wrapper == null || dataScope == null) {
-            return;
-        }
-        switch (dataScope) {
-            case PERSONAL -> wrapper.eq("user_id", requireScopeUser(userId));
-            case DEPT -> wrapper.eq("dept_id", requireScopeDept(deptId));
-            case ALL -> {
-                // no filter
-            }
-        }
+        applyQueryDataScope(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
     }
 
     private void applyTalentDataScope(
@@ -2257,16 +2243,13 @@ public class DataApplicationService extends BaseController {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        if (wrapper == null || dataScope == null) {
-            return;
-        }
-        switch (dataScope) {
-            case PERSONAL -> wrapper.eq(ExclusiveTalent::getUserId, requireScopeUser(userId));
-            case DEPT -> wrapper.eq(ExclusiveTalent::getDeptId, requireScopeDept(deptId));
-            case ALL -> {
-                // no filter
-            }
-        }
+        applyLambdaDataScope(
+                wrapper,
+                userId,
+                deptId,
+                dataScope,
+                ExclusiveTalent::getUserId,
+                ExclusiveTalent::getDeptId);
     }
 
     private void applyMerchantDataScope(
@@ -2274,30 +2257,53 @@ public class DataApplicationService extends BaseController {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
+        applyLambdaDataScope(
+                wrapper,
+                userId,
+                deptId,
+                dataScope,
+                ExclusiveMerchant::getUserId,
+                ExclusiveMerchant::getDeptId);
+    }
+
+    private <T> void applyQueryDataScope(
+            QueryWrapper<T> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            String userIdColumn,
+            String deptIdColumn) {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> wrapper.eq(ExclusiveMerchant::getUserId, requireScopeUser(userId));
-            case DEPT -> wrapper.eq(ExclusiveMerchant::getDeptId, requireScopeDept(deptId));
-            case ALL -> {
-                // no filter
+        requireDataScopeContext(userId, deptId, dataScope);
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+    }
+
+    private <T> void applyLambdaDataScope(
+            LambdaQueryWrapper<T> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            SFunction<T, ?> userIdColumn,
+            SFunction<T, ?> deptIdColumn) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        requireDataScopeContext(userId, deptId, dataScope);
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+    }
+
+    private void requireDataScopeContext(UUID userId, UUID deptId, DataScope dataScope) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
+        switch (requirement) {
+            case MISSING_USER -> throw BusinessException.forbidden("数据权限异常：缺少用户上下文");
+            case MISSING_DEPT -> throw BusinessException.forbidden("数据权限异常：缺少部门上下文");
+            case SATISFIED -> {
+                // context available
             }
         }
-    }
-
-    private UUID requireScopeUser(UUID userId) {
-        if (userId == null) {
-            throw BusinessException.forbidden("数据权限异常：缺少用户上下文");
-        }
-        return userId;
-    }
-
-    private UUID requireScopeDept(UUID deptId) {
-        if (deptId == null) {
-            throw BusinessException.forbidden("数据权限异常：缺少部门上下文");
-        }
-        return deptId;
     }
 
     private record OrderTrackColumns(

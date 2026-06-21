@@ -1,5 +1,6 @@
 package com.colonel.saas.architecture;
 
+import com.colonel.saas.config.SystemConfigKeys;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.config.facade.dto.ExclusiveRulesDTO;
 import com.colonel.saas.domain.config.facade.dto.PromotionTemplateDTO;
@@ -37,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 /**
@@ -53,8 +55,10 @@ class DddConfig003ConfigRoutingTest {
     @Test
     @DisplayName("业绩提成比例从 ConfigDomainFacade 读取")
     void commissionRates_shouldReadFromConfigDomainFacade() {
-        when(configDomainFacade.getConfig("commission.business_default_ratio")).thenReturn("0.08");
-        when(configDomainFacade.getConfig("commission.channel_default_ratio")).thenReturn("0.12");
+        when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO, new BigDecimal("0.15")))
+                .thenReturn(new BigDecimal("0.08"));
+        when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO, new BigDecimal("0.15")))
+                .thenReturn(new BigDecimal("0.12"));
         when(commissionRuleService.resolveRatio(anyString(), any(), any())).thenReturn(null);
 
         CommissionService service = new CommissionService(configDomainFacade, commissionRuleService, null);
@@ -63,8 +67,10 @@ class DddConfig003ConfigRoutingTest {
 
         CommissionService.CommissionSummary summary = service.calculate(List.of(order));
 
-        verify(configDomainFacade).getConfig("commission.business_default_ratio");
-        verify(configDomainFacade).getConfig("commission.channel_default_ratio");
+        verify(configDomainFacade).getDecimal(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO, new BigDecimal("0.15"));
+        verify(configDomainFacade).getDecimal(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO, new BigDecimal("0.15"));
+        verify(configDomainFacade, never()).getConfig("commission.business_default_ratio");
+        verify(configDomainFacade, never()).getConfig("commission.channel_default_ratio");
         assertThat(summary.bizRatio()).isEqualByComparingTo("0.08");
         assertThat(summary.channelRatio()).isEqualByComparingTo("0.12");
     }
@@ -72,7 +78,7 @@ class DddConfig003ConfigRoutingTest {
     @Test
     @DisplayName("提成比例缺失时 fallback 到 0.15")
     void commissionRates_shouldFallbackWhenConfigMissing() {
-        when(configDomainFacade.getConfig(anyString())).thenReturn(null);
+        when(configDomainFacade.getDecimal(anyString(), any())).thenReturn(null);
         when(commissionRuleService.resolveRatio(anyString(), any(), any())).thenReturn(null);
 
         CommissionService service = new CommissionService(configDomainFacade, commissionRuleService, null);

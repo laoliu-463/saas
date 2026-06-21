@@ -16,6 +16,7 @@ import com.colonel.saas.entity.SysDept;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.DepartmentOption;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.facade.OrderDomainFacade;
 import com.colonel.saas.domain.order.query.OrderDetailView;
@@ -176,6 +177,7 @@ public class OrderController extends BaseController {
 
     private final DddRefactorProperties dddRefactorProperties;
     private final OrderDomainFacade orderDomainFacade;
+    private final DataScopePolicy dataScopePolicy;
 
     public OrderController(
             OrderSyncService orderSyncService,
@@ -192,7 +194,8 @@ public class OrderController extends BaseController {
             Order2704SettlementDryRunService order2704SettlementDryRunService,
             OrderService orderService,
             DddRefactorProperties dddRefactorProperties,
-            OrderDomainFacade orderDomainFacade) {
+            OrderDomainFacade orderDomainFacade,
+            DataScopePolicy dataScopePolicy) {
         this.orderSyncService = orderSyncService;
         this.orderMapper = orderMapper;
         this.orderQueryService = orderQueryService;
@@ -208,6 +211,7 @@ public class OrderController extends BaseController {
         this.orderService = orderService;
         this.dddRefactorProperties = dddRefactorProperties;
         this.orderDomainFacade = orderDomainFacade;
+        this.dataScopePolicy = dataScopePolicy;
     }
 
     /**
@@ -1304,21 +1308,29 @@ public class OrderController extends BaseController {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+        // DDD-DATASCOPE-001: Feature Flag 灰度（默认 OFF，旧 switch 路径）
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            // 旧路径（保留作兜底，行为 1:1 等价于 git:0ca1fc44）
+            switch (dataScope) {
+                case PERSONAL -> {
+                    if (userId != null) {
+                        wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+                    }
+                }
+                case DEPT -> {
+                    if (deptId != null) {
+                        wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
+                    }
+                }
+                case ALL -> {
+                    // no filter
                 }
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
-                }
-            }
-            case ALL -> {
-                // no filter
-            }
+            return;
         }
+        // 新路径（DDD Policy，行为 1:1 等价于旧 switch）
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope,
+                ColonelsettlementOrder::getUserId, ColonelsettlementOrder::getDeptId);
     }
 
     private void applyQueryDataScope(
@@ -1329,21 +1341,28 @@ public class OrderController extends BaseController {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq("user_id", userId);
+        // DDD-DATASCOPE-001: Feature Flag 灰度（默认 OFF，旧 switch 路径）
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            // 旧路径（保留作兜底，行为 1:1 等价于 git:0ca1fc44）
+            switch (dataScope) {
+                case PERSONAL -> {
+                    if (userId != null) {
+                        wrapper.eq("user_id", userId);
+                    }
+                }
+                case DEPT -> {
+                    if (deptId != null) {
+                        wrapper.eq("dept_id", deptId);
+                    }
+                }
+                case ALL -> {
+                    // no filter
                 }
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq("dept_id", deptId);
-                }
-            }
-            case ALL -> {
-                // no filter
-            }
+            return;
         }
+        // 新路径（DDD Policy，行为 1:1 等价于旧 switch）
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
     }
 
     private void normalizeOrderRow(ColonelsettlementOrder order) {

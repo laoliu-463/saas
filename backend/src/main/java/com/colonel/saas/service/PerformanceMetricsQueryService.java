@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -21,9 +22,13 @@ import java.util.UUID;
 public class PerformanceMetricsQueryService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final DataScopePolicy dataScopePolicy;
 
-    public PerformanceMetricsQueryService(JdbcTemplate jdbcTemplate) {
+    public PerformanceMetricsQueryService(
+            JdbcTemplate jdbcTemplate,
+            DataScopePolicy dataScopePolicy) {
         this.jdbcTemplate = jdbcTemplate;
+        this.dataScopePolicy = dataScopePolicy;
     }
 
     public record PerformanceAggregate(
@@ -281,20 +286,17 @@ public class PerformanceMetricsQueryService {
         if (dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    where.append(" AND co.user_id = ?");
-                    args.add(userId);
-                }
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        switch (decision) {
+            case FILTER_USER -> {
+                where.append(" AND co.user_id = ?");
+                args.add(userId);
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    where.append(" AND co.dept_id = ?");
-                    args.add(deptId);
-                }
+            case FILTER_DEPT -> {
+                where.append(" AND co.dept_id = ?");
+                args.add(deptId);
             }
-            case ALL -> {
+            case NO_FILTER -> {
                 // no filter
             }
         }

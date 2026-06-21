@@ -44,4 +44,12 @@ class DddSample001ApplicationServiceTest {
                 .doesNotContain("SampleCommandApplicationService")
                 .doesNotContain("SampleQueryApplicationService");
     }
+
+    @Test
+    @DisplayName("SampleController 不直接导入持久化 Mapper")
+    void sampleControllerSourceShouldNotImportPersistenceMappers() throws Exception {
+        String source = Files.readString(Path.of("src/main/java/com/colonel/saas/controller/SampleController.java"));
+
+        assertThat(source).doesNotContain("com.colonel.saas.mapper.");
+    }
 }

@@ -1,7 +1,6 @@
 package com.colonel.saas.domain.order.query;
 
 import com.colonel.saas.dto.order.OrderDetailResponse;
-import org.springframework.beans.BeanUtils;
 
 /**
  * 订单详情视图组装器（DDD-ORDER-006）。
@@ -13,46 +12,46 @@ public class OrderDetailAssembler {
             return null;
         }
         OrderDetailView view = new OrderDetailView();
-        BeanUtils.copyProperties(response, view);
+        BeanPropertyCopy.copy(response, view);
 
         if (response.getProduct() != null) {
             OrderDetailView.ProductInfo product = new OrderDetailView.ProductInfo();
-            BeanUtils.copyProperties(response.getProduct(), product);
+            BeanPropertyCopy.copy(response.getProduct(), product);
             view.setProduct(product);
         }
         if (response.getChannel() != null) {
             OrderDetailView.ChannelInfo channel = new OrderDetailView.ChannelInfo();
-            BeanUtils.copyProperties(response.getChannel(), channel);
+            BeanPropertyCopy.copy(response.getChannel(), channel);
             view.setChannel(channel);
         }
         if (response.getTalent() != null) {
             OrderDetailView.TalentInfo talent = new OrderDetailView.TalentInfo();
-            BeanUtils.copyProperties(response.getTalent(), talent);
+            BeanPropertyCopy.copy(response.getTalent(), talent);
             view.setTalent(talent);
         }
         if (response.getAmount() != null) {
             OrderDetailView.AmountInfo amount = new OrderDetailView.AmountInfo();
-            BeanUtils.copyProperties(response.getAmount(), amount);
+            BeanPropertyCopy.copy(response.getAmount(), amount);
             view.setAmount(amount);
         }
         if (response.getPromotion() != null) {
             OrderDetailView.PromotionInfo promotion = new OrderDetailView.PromotionInfo();
-            BeanUtils.copyProperties(response.getPromotion(), promotion);
+            BeanPropertyCopy.copy(response.getPromotion(), promotion);
             view.setPromotion(promotion);
         }
         if (response.getSample() != null) {
             OrderDetailView.SampleInfo sample = new OrderDetailView.SampleInfo();
-            BeanUtils.copyProperties(response.getSample(), sample);
+            BeanPropertyCopy.copy(response.getSample(), sample);
             view.setSample(sample);
         }
         if (response.getDiagnosis() != null) {
             OrderDetailView.DiagnosisInfo diagnosis = new OrderDetailView.DiagnosisInfo();
-            BeanUtils.copyProperties(response.getDiagnosis(), diagnosis);
+            BeanPropertyCopy.copy(response.getDiagnosis(), diagnosis);
             view.setDiagnosis(diagnosis);
         }
         if (response.getTime() != null) {
             OrderDetailView.TimeInfo time = new OrderDetailView.TimeInfo();
-            BeanUtils.copyProperties(response.getTime(), time);
+            BeanPropertyCopy.copy(response.getTime(), time);
             view.setTime(time);
         }
 

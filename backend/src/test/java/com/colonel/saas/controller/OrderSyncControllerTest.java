@@ -7,6 +7,7 @@ import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.facade.OrderDomainFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
@@ -81,7 +82,9 @@ class OrderSyncControllerTest {
         // t2-orders 抽 service：OrderController 现在依赖 OrderService（t2 抽 service 后）。
         // 本测试只覆盖 /orders/sync 端点，OrderService 不会被调用，但仍需传入真实实例。
         DashboardService dashboardService = org.mockito.Mockito.mock(DashboardService.class);
-        OrderService orderService = new OrderService(orderMapper, dashboardService, productSnapshotMapper, productMapper);
+        DataScopePolicy dataScopePolicy = new DataScopePolicy();
+        OrderService orderService = new OrderService(
+                orderMapper, dashboardService, productSnapshotMapper, productMapper, dataScopePolicy, new com.colonel.saas.config.DddRefactorProperties());
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new OrderController(
                         orderSyncService,
@@ -98,7 +101,8 @@ class OrderSyncControllerTest {
                         order2704SettlementDryRunService,
                         orderService,
                         dddRefactorProperties,
-                        orderDomainFacade))
+                        orderDomainFacade,
+                        dataScopePolicy))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
