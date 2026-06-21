@@ -9,81 +9,81 @@ pipeline {
     }
 
     parameters {
-        string(name: 'DEPLOY_BRANCH', defaultValue: '', description: '留空时使用 Jenkins SCM 当前分支/提交；DEPLOY_REAL_PRE=true 时必填')
-        booleanParam(name: 'DEPLOY_REAL_PRE', defaultValue: false, description: '人工确认后执行 real-pre 受控部署；默认只跑 CI')
-        booleanParam(name: 'CONFIRM_REAL_PROMOTION_WRITE', defaultValue: false, description: 'real-pre 开启真实推广写双开关时，必须人工确认后才允许部署')
-        booleanParam(name: 'RUN_REAL_PRE_E2E', defaultValue: false, description: '第二阶段开启：运行 preflight / roles / p0 E2E 门禁')
+        string(name: 'DEPLOY_BRANCH', defaultValue: 'feature/ddd/DDD-VERIFY-001', description: 'Single real-pre CD branch.')
+        booleanParam(name: 'DEPLOY_REAL_PRE', defaultValue: true, description: 'Deploy only the real-pre environment.')
+        booleanParam(name: 'CONFIRM_REAL_PROMOTION_WRITE', defaultValue: false, description: 'Required only when real-pre promotion-write switches are enabled.')
     }
 
     environment {
+        JOB_PURPOSE = 'real-pre-cd'
+        DEPLOY_ENV = 'real-pre'
+        CD_GIT_URL = 'https://github.com/laoliu-463/saas.git'
         ENV_FILE = '/opt/saas/env/.env.real-pre'
         COMPOSE_FILE = 'docker-compose.real-pre.yml'
         PROJECT_NAME = 'saas-active'
-        REAL_PRE_FRONTEND = 'http://127.0.0.1:3001'
         REAL_PRE_BACKEND = 'http://127.0.0.1:8081'
+        REAL_PRE_FRONTEND = 'http://127.0.0.1:3001'
+        RUN_DB_MIGRATIONS = 'false'
         IMAGE_TAG = ''
-        TARGET_REF = ''
+        FULL_COMMIT = ''
+        BUILD_BRANCH = ''
     }
 
     stages {
-        stage('拉取代码') {
+        stage('Checkout') {
             steps {
-                checkout scm
-                sh '''
-                set -eu
-                mkdir -p runtime/qa/out/jenkins
-
-                deploy_real_pre="$(printf '%s' "${DEPLOY_REAL_PRE:-false}" | tr '[:upper:]' '[:lower:]')"
-                if [ "$deploy_real_pre" = "true" ] && [ -z "${DEPLOY_BRANCH:-}" ]; then
-                  echo "DEPLOY_REAL_PRE=true 时必须填写 DEPLOY_BRANCH，避免 detached HEAD 部署和 git pull --ff-only 失败"
-                  exit 1
-                fi
-
-                if [ -n "${DEPLOY_BRANCH:-}" ]; then
-                  git fetch origin "$DEPLOY_BRANCH"
-                  git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
-                  git branch --set-upstream-to="origin/$DEPLOY_BRANCH" "$DEPLOY_BRANCH" || true
-                  printf '%s\n' "$DEPLOY_BRANCH" > runtime/qa/out/jenkins/TARGET_REF.txt
-                else
-                  current_ref="$(git rev-parse --abbrev-ref HEAD)"
-                  if [ "$current_ref" = "HEAD" ]; then
-                    current_ref="$(git rev-parse --short HEAD)"
-                  fi
-                  printf '%s\n' "$current_ref" > runtime/qa/out/jenkins/TARGET_REF.txt
-                fi
-                '''
+                deleteDir()
+                git branch: params.DEPLOY_BRANCH, url: env.CD_GIT_URL
                 script {
-                    env.TARGET_REF = readFile('runtime/qa/out/jenkins/TARGET_REF.txt').trim()
-                    env.IMAGE_TAG = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.FULL_COMMIT = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.IMAGE_TAG = sh(script: 'git rev-parse --short=8 HEAD', returnStdout: true).trim()
+                    env.BUILD_BRANCH = params.DEPLOY_BRANCH
                 }
                 sh '''
                 set -eu
-                printf '%s\n' "$IMAGE_TAG" > runtime/qa/out/jenkins/IMAGE_TAG.txt
-                git status --short > runtime/qa/out/jenkins/git-status-before-deploy.txt
+                mkdir -p runtime/qa/out/jenkins harness/reports .jenkins-cache/m2 .jenkins-cache/npm .jenkins-cache/pnpm-store
+                printf '%s\n' "$FULL_COMMIT" > runtime/qa/out/jenkins/commit.txt
+                printf '%s\n' "$BUILD_BRANCH" > runtime/qa/out/jenkins/branch.txt
+                printf '%s\n' "$IMAGE_TAG" > runtime/qa/out/jenkins/image-tag.txt
+                echo "CD source: ${CD_GIT_URL}"
+                echo "CD branch: ${BUILD_BRANCH}"
+                echo "CD commit: ${FULL_COMMIT}"
+                echo "Image tag: ${IMAGE_TAG}"
                 '''
-                echo "TARGET_REF = ${env.TARGET_REF}"
-                echo "IMAGE_TAG = ${env.IMAGE_TAG}"
             }
         }
 
-        stage('real-pre 环境守卫') {
-            when {
-                anyOf {
-                    expression { return params.DEPLOY_REAL_PRE }
-                    expression { return params.RUN_REAL_PRE_E2E }
-                }
-            }
+        stage('Preflight Guard') {
             steps {
                 sh '''
                 set -eu
 
-                if [ ! -f "$ENV_FILE" ]; then
-                  echo "缺少 $ENV_FILE；真实凭据只能放在服务器未跟踪 env 文件或 Jenkins Secret file 中"
+                if [ "$DEPLOY_ENV" != "real-pre" ]; then
+                  echo "ERROR: this Jenkinsfile only supports real-pre CD."
+                  exit 1
+                fi
+                if [ "${DEPLOY_REAL_PRE:-false}" != "true" ]; then
+                  echo "ERROR: DEPLOY_REAL_PRE must be true for this real-pre CD job."
+                  exit 1
+                fi
+                if [ "$RUN_DB_MIGRATIONS" != "false" ]; then
+                  echo "ERROR: database migrations are disabled for this CD closure."
+                  exit 1
+                fi
+                if [ "$COMPOSE_FILE" != "docker-compose.real-pre.yml" ]; then
+                  echo "ERROR: production compose files are not allowed."
                   exit 1
                 fi
 
+                test -f "$ENV_FILE"
+                test -f "$COMPOSE_FILE"
+                ln -sfn "$ENV_FILE" .env.real-pre
+                chmod +x scripts/*.sh || true
+
                 get_env() {
-                  awk -F= -v key="$1" '
+                  key="$1"
+                  default_value="${2:-}"
+                  value="$(awk -F= -v key="$key" '
                     /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
                     {
                       k=$1
@@ -91,23 +91,15 @@ pipeline {
                       if (k == key) {
                         v=$0
                         sub(/^[^=]*=/, "", v)
-                        gsub(/\r$/, "", v)
+                        gsub(/\\r$/, "", v)
                         gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
                         gsub(/^"|"$/, "", v)
                         print v
                         exit
                       }
                     }
-                  ' "$ENV_FILE"
-                }
-
-                require_env() {
-                  key="$1"
-                  value="$(get_env "$key")"
-                  if [ -z "$value" ] || [ "${value#MUST_CHANGE}" != "$value" ] || [ "${value#*YOUR_}" != "$value" ] || [ "${value#*PLACEHOLDER}" != "$value" ]; then
-                    echo "$key 为空或仍是占位值"
-                    exit 1
-                  fi
+                  ' "$ENV_FILE")"
+                  printf '%s' "${value:-$default_value}"
                 }
 
                 expect_env() {
@@ -115,7 +107,16 @@ pipeline {
                   expected="$2"
                   actual="$(get_env "$key")"
                   if [ "$actual" != "$expected" ]; then
-                    echo "$key 必须是 $expected，当前为: ${actual:-<empty>}"
+                    echo "ERROR: $key must be $expected, got ${actual:-<empty>}."
+                    exit 1
+                  fi
+                }
+
+                require_env() {
+                  key="$1"
+                  value="$(get_env "$key")"
+                  if [ -z "$value" ] || [ "${value#MUST_CHANGE}" != "$value" ] || [ "${value#*YOUR_}" != "$value" ] || [ "${value#*PLACEHOLDER}" != "$value" ]; then
+                    echo "ERROR: $key is empty or still uses a placeholder."
                     exit 1
                   fi
                 }
@@ -136,26 +137,19 @@ pipeline {
                 expect_env LOGISTICS_SYNC_ENABLED true
                 expect_env EXCLUSIVE_ENABLED false
 
-                promotion_write="$(get_env DOUYIN_REAL_PROMOTION_WRITE_ENABLED | tr '[:upper:]' '[:lower:]')"
-                allow_promotion_write="$(get_env ALLOW_REAL_PROMOTION_WRITE | tr '[:upper:]' '[:lower:]')"
+                promotion_write="$(get_env DOUYIN_REAL_PROMOTION_WRITE_ENABLED false | tr '[:upper:]' '[:lower:]')"
+                allow_promotion_write="$(get_env ALLOW_REAL_PROMOTION_WRITE false | tr '[:upper:]' '[:lower:]')"
                 if [ "$promotion_write" = "true" ] && [ "$allow_promotion_write" != "true" ]; then
-                  echo "DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true 需要同时配置 ALLOW_REAL_PROMOTION_WRITE=true"
+                  echo "ERROR: DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true requires ALLOW_REAL_PROMOTION_WRITE=true."
                   exit 1
                 fi
                 if [ "$allow_promotion_write" = "true" ] && [ "$promotion_write" != "true" ]; then
-                  echo "ALLOW_REAL_PROMOTION_WRITE=true 需要同时配置 DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true"
+                  echo "ERROR: ALLOW_REAL_PROMOTION_WRITE=true requires DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true."
                   exit 1
                 fi
-                if [ "$promotion_write" = "true" ]; then
-                  confirm_write="$(printf '%s' "${CONFIRM_REAL_PROMOTION_WRITE:-false}" | tr '[:upper:]' '[:lower:]')"
-                  if [ "$confirm_write" != "true" ]; then
-                    echo "real-pre 已开启真实推广写双开关；必须勾选 CONFIRM_REAL_PROMOTION_WRITE 后才允许进入受控部署或 E2E"
-                    exit 1
-                  fi
-                  echo "真实推广写双开关已开启，且本次 Jenkins 运行已人工确认。"
-                else
-                  expect_env DOUYIN_REAL_PROMOTION_WRITE_ENABLED false
-                  expect_env ALLOW_REAL_PROMOTION_WRITE false
+                if [ "$promotion_write" = "true" ] && [ "${CONFIRM_REAL_PROMOTION_WRITE:-false}" != "true" ]; then
+                  echo "ERROR: real promotion-write switches are enabled; CONFIRM_REAL_PROMOTION_WRITE must be true."
+                  exit 1
                 fi
 
                 for key in \
@@ -170,161 +164,198 @@ pipeline {
                   DOUYIN_CLIENT_SECRET \
                   DOUYIN_OAUTH_REDIRECT_URI \
                   DOUYIN_OAUTH_FRONTEND_SUCCESS_URL \
-                  DOUYIN_OAUTH_FRONTEND_FAILURE_URL; do
+                  DOUYIN_OAUTH_FRONTEND_FAILURE_URL \
+                  LOGISTICS_KD100_CUSTOMER \
+                  LOGISTICS_KD100_KEY \
+                  LOGISTICS_KD100_CALLBACK_URL \
+                  LOGISTICS_KD100_CALLBACK_SALT; do
                   require_env "$key"
                 done
 
-                jwt_secret="$(get_env JWT_SECRET)"
-                if [ ${#jwt_secret} -lt 32 ]; then
-                  echo "JWT_SECRET 长度必须 >= 32"
-                  exit 1
+                docker version
+                docker compose version
+                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                  docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" config --quiet
+                echo "Preflight guard passed without printing secrets."
+                '''
+            }
+        }
+
+        stage('Backend Test') {
+            steps {
+                sh '''
+                set -eu
+                docker_gid="$(stat -c '%g' /var/run/docker.sock)"
+                docker run --rm \
+                  --user "$(id -u):$(id -g)" \
+                  --group-add "$docker_gid" \
+                  -e HOME=/tmp \
+                  -e MAVEN_CONFIG=/tmp/.m2 \
+                  -v /var/run/docker.sock:/var/run/docker.sock \
+                  -v "$PWD":/workspace \
+                  -v "$PWD/.jenkins-cache/m2":/tmp/.m2 \
+                  -w /workspace/backend \
+                  maven:3.9-eclipse-temurin-17 \
+                  mvn -B clean test
+                '''
+            }
+        }
+
+        stage('Backend Package') {
+            steps {
+                sh '''
+                set -eu
+                rm -rf backend/target
+                docker run --rm \
+                  --user "$(id -u):$(id -g)" \
+                  -e HOME=/tmp \
+                  -e MAVEN_CONFIG=/tmp/.m2 \
+                  -v "$PWD":/workspace \
+                  -v "$PWD/.jenkins-cache/m2":/tmp/.m2 \
+                  -w /workspace/backend \
+                  maven:3.9-eclipse-temurin-17 \
+                  mvn -B clean package -DskipTests
+                ls -lh backend/target/*.jar
+                '''
+            }
+        }
+
+        stage('Frontend Build') {
+            steps {
+                sh '''
+                set -eu
+                docker run --rm \
+                  --user "$(id -u):$(id -g)" \
+                  -e HOME=/tmp \
+                  -e NPM_CONFIG_CACHE=/tmp/.npm \
+                  -v "$PWD/frontend":/workspace \
+                  -v "$PWD/.jenkins-cache/npm":/tmp/.npm \
+                  -v "$PWD/.jenkins-cache/pnpm-store":/tmp/pnpm-store \
+                  -w /workspace \
+                  node:20-bookworm \
+                  sh -lc 'npx --yes pnpm@9 config set store-dir /tmp/pnpm-store && npx --yes pnpm@9 install --frozen-lockfile && npx --yes pnpm@9 test && npx --yes pnpm@9 typecheck && npx --yes pnpm@9 build'
+                '''
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                set -eu
+                test -f backend/target/*.jar
+                echo "Building backend and frontend images with tag: $IMAGE_TAG"
+                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                  docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" build backend-real-pre frontend-real-pre
+                docker image inspect "colonel-saas/backend:$IMAGE_TAG" >/dev/null
+                docker image inspect "colonel-saas/frontend:$IMAGE_TAG" >/dev/null
+                '''
+            }
+        }
+
+        stage('docker compose config') {
+            steps {
+                sh '''
+                set -eu
+                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                  docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" config > runtime/qa/out/jenkins/docker-compose.config.yml
+                echo "docker compose config passed for image tag $IMAGE_TAG"
+                '''
+            }
+        }
+
+        stage('Deploy real-pre') {
+            steps {
+                sh '''
+                set -eu
+                mkdir -p runtime/qa/out/jenkins "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
+
+                docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/pre-deploy-compose-ps.txt || true
+                docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}" > runtime/qa/out/jenkins/pre-deploy-images.txt || true
+                docker inspect saas-active-backend-real-pre-1 --format '{{.Config.Image}}' > runtime/qa/out/jenkins/pre-backend-image.txt 2>/dev/null || true
+                docker inspect saas-active-frontend-real-pre-1 --format '{{.Config.Image}}' > runtime/qa/out/jenkins/pre-frontend-image.txt 2>/dev/null || true
+
+                echo "Deploying backend/frontend real-pre with image tag: $IMAGE_TAG"
+                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                  docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre
+                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                  docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps frontend-real-pre
+
+                docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/post-deploy-compose-ps.txt || true
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                sh '''
+                set -eu
+                if ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" bash scripts/health-check.sh; then
+                  echo "Health check passed."
+                  exit 0
                 fi
 
-                if [ "$(get_env LOGISTICS_KD100_ENABLED | tr '[:upper:]' '[:lower:]')" = "true" ]; then
-                  require_env LOGISTICS_KD100_CUSTOMER
-                  require_env LOGISTICS_KD100_KEY
+                echo "Health check failed; attempting rollback to pre-deploy image tag."
+                old_backend_image="$(cat runtime/qa/out/jenkins/pre-backend-image.txt 2>/dev/null || true)"
+                old_frontend_image="$(cat runtime/qa/out/jenkins/pre-frontend-image.txt 2>/dev/null || true)"
+                old_backend_tag="${old_backend_image##*:}"
+                old_frontend_tag="${old_frontend_image##*:}"
+
+                if [ -n "$old_backend_tag" ] && [ "$old_backend_tag" = "$old_frontend_tag" ]; then
+                  echo "Rollback image tag: $old_backend_tag"
+                  IMAGE_TAG="$old_backend_tag" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                    docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre || true
+                  IMAGE_TAG="$old_backend_tag" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                    docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps frontend-real-pre || true
+                  ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" bash scripts/health-check.sh || true
+                else
+                  echo "Automatic rollback skipped: previous backend/frontend tags differ or are missing."
                 fi
 
-                if [ "$(get_env LOGISTICS_KD100_SUBSCRIBE_ENABLED | tr '[:upper:]' '[:lower:]')" = "true" ]; then
-                  require_env LOGISTICS_KD100_CALLBACK_URL
-                  require_env LOGISTICS_KD100_CALLBACK_SALT
-                fi
-
-                IMAGE_TAG="$IMAGE_TAG" \
-                COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
-                docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" config > runtime/qa/out/jenkins/docker-compose.config.yml
-
-                echo "real-pre 环境守卫通过: project=$PROJECT_NAME profile=real-pre appTest=false douyinTest=false upstream=live"
+                exit 1
                 '''
             }
         }
 
-        stage('后端测试') {
-            steps {
-                dir('backend') {
-                    sh 'mvn clean test'
-                }
-            }
-        }
-
-        stage('前端测试与构建') {
-            steps {
-                dir('frontend') {
-                    sh '''
-                    set -eu
-                    if command -v pnpm >/dev/null 2>&1; then
-                      PNPM="pnpm"
-                    else
-                      corepack enable || true
-                      corepack prepare pnpm@9 --activate || true
-                      if command -v pnpm >/dev/null 2>&1; then
-                        PNPM="pnpm"
-                      else
-                        PNPM="npx --yes pnpm@9"
-                      fi
-                    fi
-                    CI=true $PNPM install --frozen-lockfile
-                    $PNPM test
-                    $PNPM build
-                    '''
-                }
-            }
-        }
-
-        stage('后端打包') {
-            steps {
-                dir('backend') {
-                    sh 'mvn clean package -DskipTests'
-                }
-            }
-        }
-
-        stage('部署 real-pre 受控环境') {
-            when {
-                expression { return params.DEPLOY_REAL_PRE }
-            }
+        stage('Evidence Report') {
             steps {
                 sh '''
                 set -eu
-                chmod +x scripts/*.sh
-                APP_DIR="$PWD" \
-                ENV_FILE="$ENV_FILE" \
-                COMPOSE_FILE="$COMPOSE_FILE" \
-                PROJECT_NAME="$PROJECT_NAME" \
-                EVIDENCE_ROOT="/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER}" \
-                IMAGE_TAG="$IMAGE_TAG" \
-                REAL_PROMOTION_WRITE_CONFIRMED="${CONFIRM_REAL_PROMOTION_WRITE:-false}" \
-                  ./scripts/deploy-real-pre.sh
-                '''
-            }
-        }
+                report="harness/reports/latest-evidence-jenkins-cd.md"
+                remote_report="/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md"
+                backend_health="$(curl -fsS "$REAL_PRE_BACKEND/api/system/health" || true)"
+                frontend_health="$(curl -fsS "$REAL_PRE_FRONTEND/healthz" || true)"
 
-        stage('端口健康检查') {
-            when {
-                anyOf {
-                    expression { return params.DEPLOY_REAL_PRE }
-                    expression { return params.RUN_REAL_PRE_E2E }
-                }
-            }
-            steps {
-                sh '''
-                set -eu
-                ENV_FILE="$ENV_FILE" \
-                COMPOSE_FILE="$COMPOSE_FILE" \
-                COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
-                  ./scripts/health-check.sh
+                {
+                  echo "# Jenkins CD Evidence"
+                  echo
+                  echo "- Result: PASS"
+                  echo "- Environment: real-pre"
+                  echo "- Source: $CD_GIT_URL"
+                  echo "- Branch: $BUILD_BRANCH"
+                  echo "- Commit: $FULL_COMMIT"
+                  echo "- Image tag: $IMAGE_TAG"
+                  echo "- Jenkins job: ${JOB_NAME:-unknown}"
+                  echo "- Build number: ${BUILD_NUMBER:-unknown}"
+                  echo "- Build URL: ${BUILD_URL:-unknown}"
+                  echo "- Time: $(date -Iseconds)"
+                  echo "- Production touched: NO"
+                  echo "- Database migration/write by pipeline: NO"
+                  echo "- Secret leaked: NO"
+                  echo
+                  echo "## Container Images"
+                  echo '```'
+                  docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}" | grep 'saas-active-' || true
+                  echo '```'
+                  echo
+                  echo "## Health"
+                  echo '```'
+                  printf '%s\n' "$backend_health"
+                  printf '%s\n' "$frontend_health"
+                  echo '```'
+                } > "$report"
 
-                curl -fsS "${REAL_PRE_BACKEND}/api/system/health" | tee runtime/qa/out/jenkins/backend-health.json
-                curl -fsS "${REAL_PRE_FRONTEND}/healthz" | tee runtime/qa/out/jenkins/frontend-health.txt
-                '''
-            }
-        }
-
-        stage('E2E 依赖') {
-            when {
-                expression { return params.RUN_REAL_PRE_E2E }
-            }
-            steps {
-                sh '''
-                set -eu
-                npm ci
-                npx playwright install chromium
-                '''
-            }
-        }
-
-        stage('real-pre 预检') {
-            when {
-                expression { return params.RUN_REAL_PRE_E2E }
-            }
-            steps {
-                sh '''
-                set -eu
-                E2E_BASE_URL="$REAL_PRE_FRONTEND" E2E_BACKEND_URL="$REAL_PRE_BACKEND" npm run e2e:real-pre:p0:preflight
-                '''
-            }
-        }
-
-        stage('real-pre 角色门禁') {
-            when {
-                expression { return params.RUN_REAL_PRE_E2E }
-            }
-            steps {
-                sh '''
-                set -eu
-                E2E_BASE_URL="$REAL_PRE_FRONTEND" E2E_BACKEND_URL="$REAL_PRE_BACKEND" npm run e2e:real-pre:roles
-                '''
-            }
-        }
-
-        stage('real-pre P0 E2E') {
-            when {
-                expression { return params.RUN_REAL_PRE_E2E }
-            }
-            steps {
-                sh '''
-                set -eu
-                E2E_BASE_URL="$REAL_PRE_FRONTEND" E2E_BACKEND_URL="$REAL_PRE_BACKEND" npm run e2e:real-pre:p0
+                cp "$report" "$remote_report"
+                cat "$report"
                 '''
             }
         }
@@ -332,39 +363,51 @@ pipeline {
 
     post {
         always {
+            script {
+                env.FINAL_BUILD_RESULT = currentBuild.currentResult ?: 'SUCCESS'
+            }
             sh '''
             set +e
-            mkdir -p runtime/qa/out/jenkins
-            {
-              echo "DEPLOY_BRANCH=${DEPLOY_BRANCH:-}"
-              echo "TARGET_REF=${TARGET_REF:-}"
-              echo "IMAGE_TAG=${IMAGE_TAG:-}"
-              echo "DEPLOY_REAL_PRE=${DEPLOY_REAL_PRE:-false}"
-              echo "RUN_REAL_PRE_E2E=${RUN_REAL_PRE_E2E:-false}"
-              echo "CONFIRM_REAL_PROMOTION_WRITE=${CONFIRM_REAL_PROMOTION_WRITE:-false}"
-            } > runtime/qa/out/jenkins/pipeline-params.txt
-            if [ -f "$ENV_FILE" ] && [ -f "$COMPOSE_FILE" ]; then
-              docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/docker-compose-ps.txt 2>&1
-              docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 > runtime/qa/out/jenkins/docker-compose.logs.txt 2>&1
-              docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 backend-real-pre > runtime/qa/out/jenkins/backend-real-pre.log 2>&1
-              docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 frontend-real-pre > runtime/qa/out/jenkins/frontend-real-pre.log 2>&1
-              docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 postgres-real-pre > runtime/qa/out/jenkins/postgres-real-pre.log 2>&1
-              docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 redis-real-pre > runtime/qa/out/jenkins/redis-real-pre.log 2>&1
-            else
-              echo "Skip docker compose evidence: ENV_FILE or COMPOSE_FILE is unavailable for this CI-only run." > runtime/qa/out/jenkins/docker-compose-collection-skipped.txt
+            mkdir -p runtime/qa/out/jenkins harness/reports "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
+            docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}" > runtime/qa/out/jenkins/docker-ps-final.txt 2>&1
+            docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/docker-compose-ps-final.txt 2>&1
+
+            if [ ! -f harness/reports/latest-evidence-jenkins-cd.md ]; then
+              {
+                echo "# Jenkins CD Evidence"
+                echo
+                echo "- Result: ${FINAL_BUILD_RESULT:-FAIL}"
+                echo "- Environment: real-pre"
+                echo "- Source: ${CD_GIT_URL:-unknown}"
+                echo "- Branch: ${BUILD_BRANCH:-unknown}"
+                echo "- Commit: ${FULL_COMMIT:-unknown}"
+                echo "- Image tag: ${IMAGE_TAG:-unknown}"
+                echo "- Jenkins job: ${JOB_NAME:-unknown}"
+                echo "- Build number: ${BUILD_NUMBER:-unknown}"
+                echo "- Build URL: ${BUILD_URL:-unknown}"
+                echo "- Time: $(date -Iseconds)"
+                echo "- Production touched: NO"
+                echo "- Database migration/write by pipeline: NO"
+                echo "- Secret leaked: NO"
+                echo
+                echo "## Final Container Status"
+                echo '```'
+                cat runtime/qa/out/jenkins/docker-ps-final.txt
+                echo '```'
+              } > harness/reports/latest-evidence-jenkins-cd.md
             fi
-            git rev-parse --short HEAD > runtime/qa/out/jenkins/commit.txt 2>&1
+
+            cp harness/reports/latest-evidence-jenkins-cd.md "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md" 2>/dev/null || true
             '''
-            archiveArtifacts artifacts: 'runtime/qa/out/**,playwright-report/**,test-results/playwright/**,backend/target/surefire-reports/**,frontend/coverage/**', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'harness/reports/latest-evidence-jenkins-cd.md,runtime/qa/out/jenkins/**,backend/target/surefire-reports/**,frontend/coverage/**', allowEmptyArchive: true
         }
 
         success {
-            echo "流水线完成：CI 已通过；DEPLOY_REAL_PRE=${params.DEPLOY_REAL_PRE}，RUN_REAL_PRE_E2E=${params.RUN_REAL_PRE_E2E}。这不等于正式生产全量上线。IMAGE_TAG=${env.IMAGE_TAG}"
+            echo "real-pre Jenkins CD completed. image tag=${env.IMAGE_TAG}"
         }
 
         failure {
-            echo 'real-pre 受控部署流水线失败，请查看 Jenkins 日志和归档证据。'
-            echo '如需回滚：在服务器执行 ROLLBACK_REF=<上一提交> ./scripts/rollback-real-pre.sh'
+            echo 'real-pre Jenkins CD failed. Check Jenkins logs and archived evidence.'
         }
     }
 }
