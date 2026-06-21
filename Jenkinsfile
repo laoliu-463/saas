@@ -198,8 +198,11 @@ pipeline {
                 docker run --rm \
                   --user "$(id -u):$(id -g)" \
                   --group-add "$docker_gid" \
+                  --network host \
                   -e HOME=/tmp \
                   -e MAVEN_CONFIG=/tmp/.m2 \
+                  -e TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1 \
+                  -e TESTCONTAINERS_RYUK_DISABLED=true \
                   -v /var/run/docker.sock:/var/run/docker.sock \
                   -v "$PWD":/workspace \
                   -v "$PWD/.jenkins-cache/m2":/tmp/.m2 \
