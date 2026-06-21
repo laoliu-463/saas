@@ -30,19 +30,19 @@
 - `P2`：治理、清理、补文档或体验优化。
 
 ## 用户域
-- 最新小切片：DDD-SAMPLE-LOGISTICS-IMPORT-PERMISSION-POLICY 已将 `SampleLogisticsImportService` 物流导入/覆盖动作权限委托给寄样域 `SampleActionPermissionPolicy`；该 policy 继续消费用户域 `CurrentUserPermissionPolicy.hasAnyRole` 解释角色编码集合，服务内本地 `hasAnyRole` / `roleCodes.toString()` / `Collection` 分支解析已清零。本轮不改 Excel 解析、行级校验、状态流转、事件发布、物流订阅或真实数据。报告：`harness/reports/evidence-20260621-220643.md`。风险变化：`SampleActionPermissionPolicyTest`、`SampleLogisticsImportServiceTest` 与 `DddUserPermissionPolicySamplePortBoundaryTest` 覆盖角色归一、越权拒绝、管理员覆盖和源码边界；剩余本地角色 matcher 为 `TalentService`。
-- 上一小切片：DDD-USER-PERMISSION-POLICY-SAMPLE-FILTER 已将 `SampleFilterOptionsService` 寄样筛选下拉个人数据范围角色编码匹配委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，服务内不再维护本地 matcher；报告：`harness/reports/evidence-20260621-215354.md`。
+- 最新小切片：DDD-TALENT-RELEASE-PERMISSION-POLICY 已将 `TalentService.release` 中管理员释放判断委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，达人服务内本地 `hasRole` / `roleCodes.stream()` 角色 matcher 已清零。本轮不改达人认领记录选择、释放状态流转、owner 快照、操作日志、达人池、归属覆盖或真实数据。报告：`harness/reports/evidence-20260621-222220.md`。风险变化：`TalentServiceTest` 覆盖 `" ADMIN "` 归一化管理员释放路径，`DddUserFacadeOwnershipReferenceBoundaryTest` 防止 `TalentService` 重新引入本地角色 matcher；跨业务 service 本地角色 matcher 扫描已清零，用户域内部 `UserMasterDataService` 仍保留角色编码主数据查询处理。
+- 上一小切片：DDD-SAMPLE-LOGISTICS-IMPORT-PERMISSION-POLICY 已将 `SampleLogisticsImportService` 物流导入/覆盖动作权限委托给寄样域 `SampleActionPermissionPolicy`；该 policy 继续消费用户域 `CurrentUserPermissionPolicy.hasAnyRole` 解释角色编码集合，服务内本地 matcher 已清零；报告：`harness/reports/evidence-20260621-220643.md`。
 - 最新小切片：DDD-USER-PERMISSION-POLICY-TALENT-QUERY 已将 `TalentQueryService.assertCanOperate` 中管理员、渠道组长、渠道专员角色编码集合匹配委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，达人查询服务不再维护本地 `hasRole` 归一化实现。本轮不改达人认领归属、达人池可见性、数据范围、列表 / 详情业务筛选、寄样 / 订单补充展示或真实数据。
-- 最新报告路径：`harness/reports/evidence-20260621-214308.md`。
-- 风险变化：`TalentQueryServiceTest` 覆盖渠道专员非本人拒绝、渠道组长同部门放行和 `" CHANNEL_STAFF "` 归一化本人认领路径；`DddUserFacadeTalentQueryBoundaryTest` 防止达人查询服务重新引入本地 `hasRole`，并约束其继续消费用户域 policy。剩余风险是 `UserMasterDataService`、`TalentService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
+- 最新报告路径：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-214308.md`。
+- 风险变化：`TalentQueryServiceTest` 覆盖渠道专员非本人拒绝、渠道组长同部门放行和 `" CHANNEL_STAFF "` 归一化本人认领路径；`DddUserFacadeTalentQueryBoundaryTest` 防止达人查询服务重新引入本地 `hasRole`，并约束其继续消费用户域 policy。`TalentService.release` 已在后续小切片完成角色 matcher 收口。
 - 最新小切片：DDD-USER-PERMISSION-POLICY-PRODUCT-QUICK-SAMPLE 已将 `ProductQuickSampleService` 快速寄样入口的渠道 / 管理员角色编码集合匹配委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，商品域不再维护本地 `hasAnyRole`、`roleCodes.toString()` 或 `Collection` 分支解析。本轮不改快速寄样业务规则、商品展示状态校验、寄样端口委托、外部抖店快速寄样开关或真实数据。
-- 最新报告路径：`harness/reports/evidence-20260621-213011.md`。
-- 风险变化：`QuickSampleApplyTest` 覆盖非渠道拒绝、管理员放行、渠道专员放行、逗号字符串角色输入兼容、商品上下文校验和端口委托；`DddProduct003ProductRoutingTest` 新增源码边界约束，防止快速寄样入口重新引入本地角色 matcher。剩余风险是 `UserMasterDataService`、`TalentService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
+- 最新报告路径：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-213011.md`。
+- 风险变化：`QuickSampleApplyTest` 覆盖非渠道拒绝、管理员放行、渠道专员放行、逗号字符串角色输入兼容、商品上下文校验和端口委托；`DddProduct003ProductRoutingTest` 新增源码边界约束，防止快速寄样入口重新引入本地角色 matcher。`TalentService.release` 已在后续小切片完成角色 matcher 收口。
 - 最新小切片：DDD-USER-PERMISSION-POLICY-PERFORMANCE-ACCESS 已将 `PerformanceAccessScope` 中 `admin`、运营、招商 / 渠道组长与专员判断使用的角色编码集合匹配委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，业绩域不再维护本地 `hasAnyRole` 归一化实现。本轮不改业绩访问语义、SQL 数据范围条件、提成/归属/服务费公式或真实数据。
-- 最新报告路径：`harness/reports/evidence-20260621-212247.md`。
-- 风险变化：`PerformanceAccessScopeTest` 继续覆盖 `" ADMIN "` 兼容匹配、导出、月度重算、筛选越权、逐条访问和 SQL 条件拼接；`DddPerformanceAccessPolicyBoundaryTest` 新增约束，防止业绩域重新引入本地 `hasAnyRole` / `toLowerCase(Locale.ROOT)` 角色匹配。剩余风险是 `UserMasterDataService`、`TalentService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
+- 最新报告路径：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-212247.md`。
+- 风险变化：`PerformanceAccessScopeTest` 继续覆盖 `" ADMIN "` 兼容匹配、导出、月度重算、筛选越权、逐条访问和 SQL 条件拼接；`DddPerformanceAccessPolicyBoundaryTest` 新增约束，防止业绩域重新引入本地 `hasAnyRole` / `toLowerCase(Locale.ROOT)` 角色匹配。`TalentService.release` 已在后续小切片完成角色 matcher 收口。
 - 最新小切片：DDD-USER-PERMISSION-POLICY-ACTIVITY-ACCESS 已将 `ActivityAccessService` 中活动读取 / 同步入口使用的角色编码归一与 `admin`、招商角色、招商组长判断委托给用户域 `CurrentUserPermissionPolicy`；`ColonelActivityController` 改为通过活动访问服务消费该 policy，旧静态归一入口保留为兼容旁路。本轮不改活动分配、活动商品同步、活动可读业务规则或真实数据。
-- 最新报告路径：`harness/reports/evidence-20260621-211521.md`。
+- 最新报告路径：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-211521.md`。
 - 风险变化：活动访问服务不再维护本地角色编码解析规则；`ActivityAccessServiceTest` 与 `ColonelActivityControllerTest` 覆盖 lower-case 既有角色路径、字符串角色归一、admin 直通、招商专员强制 mine、招商组长同部门访问和未分配拒绝。剩余风险是其它业务域仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
 - 最新小切片：DDD-USER-DATASCOPE-DATA-APPLICATION 已将 `DataApplicationService` 订单列表、订单汇总、导出、核心指标和独家达人/商家运营监控的数据范围过滤委托给用户域 `DataScopePolicy.applyTo` / `contextRequirement`，数据页服务不再维护本地 `switch(dataScope)` 分支。
 - 最新报告路径：`harness/reports/2026-06-21/ddd-user/datascope-next/evidence-20260621-192500-data-application-datascope-policy.md`。
@@ -116,7 +116,7 @@
 
 ## 业绩域
 - 最新边界变化：`PerformanceAccessScope` 继续承载业绩域导出、重算、筛选越权、逐条访问和 SQL 范围拼接语义，但角色编码集合匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改业绩归属、提成、冲正、服务费双轨公式、SQL 条件语义或历史数据。
-- 最新报告路径：`harness/reports/evidence-20260621-212247.md`。
+- 最新报告路径：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-212247.md`。
 - 最新边界变化：`PerformanceMetricsQueryService` 汇总、趋势和 dashboard 业绩指标查询的数据范围决策已委托用户域 `DataScopePolicy`，本轮未改业绩归属、提成、冲正、服务费双轨公式或历史数据。
 - 最新报告路径：`harness/reports/2026-06-21/ddd-user/permission-next/evidence-20260621-185200-performance-metrics-datascope-policy.md`。
 - 当前状态：最终归属、提成、冲正和汇总主链路已具备；订单明细 BFF 已按 orderId 批量读取 `performance_records` 补全招商提成、渠道提成、服务费支出和服务费收益展示字段；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已验证新订单事件在提交后发布，业绩 Listener 正常走 `upsertFromOrder`，重复事件仍走 upsert 幂等路径；SERVICE-FEE-INCOME-FORMULA-CODE-001 已按 2026-06-06 用户口径补齐服务费收入公式解析、结算轨不重复扣技术服务费和后端单元验证；`PerformanceAccessScope` / `PerformanceAccessContext` 已从 `service.performance` 迁入 `domain.performance.policy`，业绩访问策略进入业绩域 policy 包；独家商家评估应用服务已通过用户域负责人归属引用获取招商负责人组织单元，不改变独家覆盖规则、订单金额归集或服务费比例计算。
@@ -140,7 +140,7 @@
 
 ## 商品域
 - 最新边界变化：`ProductQuickSampleService` 快速寄样入口继续负责商品存在性、展示中状态、商品库入库状态、商品快照/主表上下文和寄样域端口委托，但角色编码集合匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改商品状态机、转链规则、`pick_source` 归因语义、寄样状态机或真实数据。
-- 最新报告路径：`harness/reports/evidence-20260621-213011.md`。
+- 最新报告路径：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-213011.md`。
 - 最新边界变化：活动列表负责人展示已通过用户域 `loadUserDisplayNamesByIds` 出口读取，只消费展示名称标量，不改变活动分配、活动商品同步或商品库展示规则。
 - 最新边界变化：`ProductService` 已通过用户域显示标签、归属引用、渠道编码出口完成负责人展示、分配、转链 `pick_extra` 和跨部门绑定校验，不改变商品状态机、转链规则或 `pick_source` 归因语义。
 - 最新报告路径：`harness/reports/2026-06-21/ddd-user/facade-next/evidence-20260621-145100-product-service-facade.md`。
@@ -166,8 +166,8 @@
 - 标记：P0。
 
 ## 达人域
-- 最新边界变化：`TalentQueryService` 继续拥有基于有效认领、当前用户和当前部门的达人操作访问语义，但角色编码集合匹配已委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮不改认领规则、达人池、列表 / 详情筛选、补充展示或真实数据。报告：`harness/reports/evidence-20260621-214308.md`。
-- 最新边界变化：达人归属覆盖已通过用户域 `loadUserOwnershipReferencesByIds` 校验目标负责人存在，不再读取完整用户 DTO；本次保持既有达人认领记录 `deptId` 写入行为不变。
+- 最新边界变化：`TalentService.release` 继续拥有达人释放流程、认领记录选择、释放状态流转、owner 快照和操作日志，但管理员角色编码匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮不改达人认领规则、达人池、归属覆盖、补全、独家评估或真实数据。报告：`harness/reports/evidence-20260621-222220.md`。
+- 近期边界变化：`TalentQueryService` 操作访问角色匹配已委托用户域 policy（报告已归档至 `harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-214308.md`）；达人归属覆盖已通过用户域 `loadUserOwnershipReferencesByIds` 校验目标负责人存在，不再读取完整用户 DTO，既有达人认领记录 `deptId` 写入行为不变。
 - 当前状态：达人资料、标签、地址和跟进主链路已具备。
 - 已完成能力：达人列表 / 详情、标签、地址、跟进。
 - 待优化能力：认领、保护期、第三方接口证据、`gender` 筛选缺口和权限负例补齐。
