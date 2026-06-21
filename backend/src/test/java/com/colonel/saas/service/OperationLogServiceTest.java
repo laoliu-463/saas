@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.OperationLog;
-import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.OperationLogMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -101,9 +100,7 @@ class OperationLogServiceTest {
     @Test
     void recordSystemAction_shouldResolveUsernameAndDelegateToRecord() {
         UUID operatorId = UUID.randomUUID();
-        SysUser user = new SysUser();
-        user.setUsername("admin");
-        when(userDomainFacade.getUserById(operatorId)).thenReturn(user == null ? null : new com.colonel.saas.dto.user.UserOptionResponse(user.getId(), user.getUsername(), user.getRealName(), user.getDeptId(), null));
+        when(userDomainFacade.getUsername(operatorId)).thenReturn("admin");
         ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
 
         service.recordSystemAction(
@@ -117,7 +114,7 @@ class OperationLogServiceTest {
                 "更新配置项"
         );
 
-        verify(userDomainFacade).getUserById(operatorId);
+        verify(userDomainFacade).getUsername(operatorId);
         verify(jdbcTemplate).update(anyString(), argsCaptor.capture());
         Object[] args = argsCaptor.getValue();
         assertThat(args[1]).isEqualTo(operatorId);

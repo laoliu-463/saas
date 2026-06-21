@@ -57,6 +57,11 @@ public interface UserDomainFacade {
     String getUserName(UUID userId);
 
     /**
+     * 按用户 ID 查询登录账号，不存在时返回 null。
+     */
+    String getUsername(UUID userId);
+
+    /**
      * 按用户 ID 查询用户基础信息（DDD-USER-002）。
      */
     UserOptionResponse getUserById(UUID userId);
@@ -71,6 +76,12 @@ public interface UserDomainFacade {
      * 自动过滤 null 和重复 ID。
      */
     Map<UUID, String> loadUserNamesByIds(Collection<UUID> ids);
+
+    /**
+     * 批量加载用户展示标签，返回 userId → displayLabel 映射。
+     * 展示标签优先使用 "realName (username)"，再回退到 realName 或 username。
+     */
+    Map<UUID, String> loadUserDisplayLabelsByIds(Collection<UUID> ids);
 
     /**
      * 按类型过滤加载部门/组织单元列表。

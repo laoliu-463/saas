@@ -110,6 +110,16 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
     }
 
     @Override
+    public String getUsername(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        return userBasicLookup.findById(userId)
+                .map(BasicUser::username)
+                .orElse(null);
+    }
+
+    @Override
     public Map<UUID, String> loadUserNamesByIds(Collection<UUID> ids) {
         if (ids == null || ids.isEmpty()) {
             return Map.of();
@@ -120,6 +130,21 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
         }
         return userBasicLookup.findByIds(distinct).stream()
                 .collect(Collectors.toMap(BasicUser::id, BasicUser::realName, (a, b) -> a));
+    }
+
+    @Override
+    public Map<UUID, String> loadUserDisplayLabelsByIds(Collection<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> distinct = ids.stream().filter(Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        return userBasicLookup.findByIds(distinct).stream()
+                .map(user -> Map.entry(user.id(), formatDisplayLabel(user)))
+                .filter(entry -> hasText(entry.getValue()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a));
     }
 
     @Override
@@ -158,6 +183,28 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
                 List.of(), // Roles omitted for cross-domain basic usages
                 user.channelCode()
         );
+    }
+
+    private static String formatDisplayLabel(BasicUser user) {
+        if (user == null) {
+            return "";
+        }
+        String realName = user.realName() == null ? "" : user.realName().trim();
+        String username = user.username() == null ? "" : user.username().trim();
+        if (hasText(realName) && hasText(username)) {
+            return realName + " (" + username + ")";
+        }
+        if (hasText(realName)) {
+            return realName;
+        }
+        if (hasText(username)) {
+            return username;
+        }
+        return "";
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     @Override

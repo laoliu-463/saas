@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -126,6 +127,19 @@ class LegacyUserDomainFacadeTest extends BaseIntegrationTest {
 
         assertThat(depts).isNotEmpty();
         assertThat(depts).anyMatch(d -> "channel".equals(d.deptCode()));
+    }
+
+    @Test
+    void getUsernameShouldReturnLoginAccount() {
+        assertThat(userDomainFacade.getUsername(channelLeaderId)).isEqualTo("channel_leader");
+        assertThat(userDomainFacade.getUserName(channelLeaderId)).isEqualTo("渠道组长");
+    }
+
+    @Test
+    void loadUserDisplayLabelsShouldReturnDisplayTextWithoutFullUserDto() {
+        Map<UUID, String> labels = userDomainFacade.loadUserDisplayLabelsByIds(List.of(channelLeaderId));
+
+        assertThat(labels).containsEntry(channelLeaderId, "渠道组长 (channel_leader)");
     }
 
     @Test

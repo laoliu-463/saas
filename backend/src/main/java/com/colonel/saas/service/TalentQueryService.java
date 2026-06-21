@@ -12,7 +12,6 @@ import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,7 +31,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -52,7 +50,7 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>{@link TalentService} — 委托分页查询与单条查询</li>
  *   <li>{@link TalentClaimMapper} — 读取认领记录</li>
- *   <li>{@link UserDomainFacade} ：查询用户信息</li>
+ *   <li>{@link UserDomainFacade} ：查询认领人显示标签</li>
  *   <li>{@link SampleRequestMapper} — 寄样请求数据访问</li>
  *   <li>{@link org.springframework.jdbc.core.JdbcTemplate} — 原生 SQL 聚合寄样/订单统计</li>
  * </ul>
@@ -87,7 +85,7 @@ public class TalentQueryService {
      *
      * @param talentService        达人服务（基础 CRUD 和分页查询）
      * @param talentClaimMapper    达人认领记录 Mapper
-     * @param userDomainFacade       用户领域门面（查询用户信息）解析认领人姓名）
+     * @param userDomainFacade     用户领域门面（查询认领人显示标签）
      * @param sampleRequestMapper  寄样请求 Mapper（统计寄样次数）
      * @param jdbcTemplate         JDBC 模板（原生 SQL 聚合查询）
      */
@@ -439,7 +437,7 @@ public class TalentQueryService {
         // 第一步：批量加载关联数据
         Set<UUID> talentIds = talents.stream().map(Talent::getId).filter(Objects::nonNull).collect(Collectors.toSet());
         ClaimMaps claimMaps = preloadedClaimMaps == null ? loadClaimMaps(talentIds) : preloadedClaimMaps;
-        Map<UUID, UserOptionResponse> ownerMap = loadOwnerMap(claimMaps.allClaims());
+        Map<UUID, String> ownerLabelMap = loadOwnerLabels(claimMaps.allClaims());
         Map<UUID, Long> sampleCountMap = loadSampleCounts(
                 talentIds
         );
@@ -462,12 +460,12 @@ public class TalentQueryService {
                 talent.setOwnerId(currentClaim.getUserId());
                 talent.setClaimedAt(currentClaim.getClaimedAt());
                 talent.setProtectedUntil(currentClaim.getProtectedUntil());
-                talent.setOwnerName(buildClaimSummary(activeClaims, ownerMap, currentUserId));
+                talent.setOwnerName(buildClaimSummary(activeClaims, ownerLabelMap, currentUserId));
             } else {
                 // 当前用户未认领：标记为公有池，展示公海认领提示
                 talent.setPoolStatus("PUBLIC");
                 talent.setOwnerId(null);
-                applyPublicClaimHint(talent, activeClaims, claimMaps.latestClaims().get(talent.getId()), ownerMap);
+                applyPublicClaimHint(talent, activeClaims, claimMaps.latestClaims().get(talent.getId()), ownerLabelMap);
             }
 
             // 填充寄样统计
@@ -538,12 +536,12 @@ public class TalentQueryService {
     }
 
     /**
-     * 批量加载认领人用户信息映射（userId → SysUser）。
+     * 批量加载认领人显示标签映射（userId → displayLabel）。
      *
      * @param claims 认领记录列表
-     * @return 用户 ID 到用户实体的映射
+     * @return 用户 ID 到显示标签的映射
      */
-    private Map<UUID, UserOptionResponse> loadOwnerMap(Collection<TalentClaim> claims) {
+    private Map<UUID, String> loadOwnerLabels(Collection<TalentClaim> claims) {
         if (claims == null || claims.isEmpty()) {
             return Collections.emptyMap();
         }
@@ -554,9 +552,7 @@ public class TalentQueryService {
         if (userIds.isEmpty()) {
             return Collections.emptyMap();
         }
-        return userDomainFacade.getUsersByIds(userIds).stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toMap(UserOptionResponse::id, Function.identity(), (a, b) -> a));
+        return userDomainFacade.loadUserDisplayLabelsByIds(userIds);
     }
 
     /**
@@ -875,16 +871,6 @@ public class TalentQueryService {
     }
 
     /**
-     * 获取用户显示名称（优先真实姓名 → 用户名 → 用户 ID）。
-     *
-     * @param user 用户实体
-     * @return 显示名称
-     */
-    private String displayName(UserOptionResponse user) {
-        return firstNonBlank(user.realName(), user.username(), user.id() == null ? null : user.id().toString());
-    }
-
-    /**
      * 为公海达人（当前用户未认领）填充认领提示信息。
      * <p>展示逻辑分三种情况：</p>
      * <ul>
@@ -896,15 +882,15 @@ public class TalentQueryService {
      * @param talent      达人实体（结果写入该对象）
      * @param activeClaims 该达人的所有生效认领记录
      * @param latestClaim  该达人的最新认领记录（含已过期）
-     * @param ownerMap     用户 ID 到用户实体的映射
+     * @param ownerLabelMap 用户 ID 到显示标签的映射
      */
     private void applyPublicClaimHint(Talent talent,
                                       List<TalentClaim> activeClaims,
                                       TalentClaim latestClaim,
-                                      Map<UUID, UserOptionResponse> ownerMap) {
+                                      Map<UUID, String> ownerLabelMap) {
         if (activeClaims != null && !activeClaims.isEmpty()) {
             // 有生效认领：展示认领人摘要，保护期取所有认领中的最晚值
-            talent.setOwnerName(buildClaimSummary(activeClaims, ownerMap, null));
+            talent.setOwnerName(buildClaimSummary(activeClaims, ownerLabelMap, null));
             TalentClaim latestActiveClaim = activeClaims.get(0);
             talent.setClaimedAt(latestActiveClaim.getClaimedAt());
             talent.setProtectedUntil(activeClaims.stream()
@@ -925,8 +911,7 @@ public class TalentQueryService {
         talent.setClaimedAt(latestClaim.getClaimedAt());
         talent.setProtectedUntil(latestClaim.getProtectedUntil());
         if (latestClaim.getStatus() != null && latestClaim.getStatus() == CLAIM_STATUS_EXPIRED) {
-            UserOptionResponse owner = ownerMap.get(latestClaim.getUserId());
-            String ownerName = owner == null ? null : displayName(owner);
+            String ownerName = ownerLabelMap.get(latestClaim.getUserId());
             talent.setOwnerName(StringUtils.hasText(ownerName) ? "已过期释放 · 原归属 " + ownerName : "已过期释放");
             return;
         }
@@ -938,11 +923,11 @@ public class TalentQueryService {
      * <p>单人认领显示姓名，多人认领显示「XXX 等 N 人」，当前用户置顶展示。</p>
      *
      * @param claims        生效认领记录列表
-     * @param ownerMap      用户 ID 到用户实体的映射
+     * @param ownerLabelMap 用户 ID 到显示标签的映射
      * @param currentUserId 当前操作用户 ID（可为 null）
      * @return 认领人摘要文本
      */
-    private String buildClaimSummary(List<TalentClaim> claims, Map<UUID, UserOptionResponse> ownerMap, UUID currentUserId) {
+    private String buildClaimSummary(List<TalentClaim> claims, Map<UUID, String> ownerLabelMap, UUID currentUserId) {
         if (claims == null || claims.isEmpty()) {
             return null;
         }
@@ -950,9 +935,7 @@ public class TalentQueryService {
         List<String> names = claims.stream()
                 .map(TalentClaim::getUserId)
                 .filter(Objects::nonNull)
-                .map(ownerMap::get)
-                .filter(Objects::nonNull)
-                .map(this::displayName)
+                .map(ownerLabelMap::get)
                 .filter(StringUtils::hasText)
                 .distinct()
                 .toList();
@@ -962,9 +945,7 @@ public class TalentQueryService {
             primaryName = claims.stream()
                     .filter(claim -> currentUserId.equals(claim.getUserId()))
                     .map(TalentClaim::getUserId)
-                    .map(ownerMap::get)
-                    .filter(Objects::nonNull)
-                    .map(this::displayName)
+                    .map(ownerLabelMap::get)
                     .filter(StringUtils::hasText)
                     .findFirst()
                     .orElse(null);
@@ -986,7 +967,7 @@ public class TalentQueryService {
      * <p>处理流程：</p>
      * <ol>
      *   <li>查询该达人所有生效的认领记录</li>
-     *   <li>批量加载认领人用户信息</li>
+     *   <li>批量加载认领人显示标签</li>
      *   <li>映射为 {@link TalentDetailResponse.ClaimOwnerItem}，当前用户标注「（我）」</li>
      * </ol>
      *
@@ -1002,13 +983,12 @@ public class TalentQueryService {
         if (activeClaims == null || activeClaims.isEmpty()) {
             return List.of();
         }
-        Map<UUID, UserOptionResponse> ownerMap = loadOwnerMap(activeClaims);
+        Map<UUID, String> ownerLabelMap = loadOwnerLabels(activeClaims);
         return activeClaims.stream()
                 .map(claim -> {
                     TalentDetailResponse.ClaimOwnerItem item = new TalentDetailResponse.ClaimOwnerItem();
                     item.setUserId(claim.getUserId() == null ? null : claim.getUserId().toString());
-                    UserOptionResponse owner = claim.getUserId() == null ? null : ownerMap.get(claim.getUserId());
-                    String ownerName = owner == null ? null : displayName(owner);
+                    String ownerName = claim.getUserId() == null ? null : ownerLabelMap.get(claim.getUserId());
                     if (currentUserId != null && currentUserId.equals(claim.getUserId()) && StringUtils.hasText(ownerName)) {
                         ownerName = ownerName + "（我）";
                     }

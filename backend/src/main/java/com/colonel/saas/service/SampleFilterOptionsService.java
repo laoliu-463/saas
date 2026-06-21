@@ -11,7 +11,6 @@ import com.colonel.saas.dto.sample.SampleFilterOptionItem;
 import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -19,6 +18,7 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -71,10 +71,11 @@ public class SampleFilterOptionsService {
 
         Map<UUID, ProductReadDTO> productMap = loadProducts(samples);
         Map<UUID, ProductSnapshotReadDTO> snapshotMap = loadSnapshots(productMap.values());
-        Map<UUID, String> userNameMap = loadUserNames(samples);
+        Map<UUID, UUID> recruiterIdMap = loadRecruiterIds(productMap.values());
+        Map<UUID, String> userLabelMap = loadUserDisplayLabels(samples, recruiterIdMap.values());
 
-        dto.setChannels(buildChannelOptions(samples, userNameMap));
-        dto.setRecruiters(buildRecruiterOptions(samples, productMap));
+        dto.setChannels(buildChannelOptions(samples, userLabelMap));
+        dto.setRecruiters(buildRecruiterOptions(samples, productMap, recruiterIdMap, userLabelMap));
         dto.setProducts(buildProductOptions(samples, productMap));
         dto.setPartners(buildPartnerOptions(snapshotMap));
         dto.setShops(buildShopOptions(snapshotMap));
@@ -153,7 +154,9 @@ public class SampleFilterOptionsService {
 
     private List<SampleFilterOptionItem> buildRecruiterOptions(
             List<SampleRequest> samples,
-            Map<UUID, ProductReadDTO> productMap) {
+            Map<UUID, ProductReadDTO> productMap,
+            Map<UUID, UUID> recruiterIdMap,
+            Map<UUID, String> userLabelMap) {
         LinkedHashMap<String, SampleFilterOptionItem> map = new LinkedHashMap<>();
         for (SampleRequest sample : samples) {
             if (map.size() >= DYNAMIC_LIMIT) {
@@ -163,7 +166,7 @@ public class SampleFilterOptionsService {
             if (product == null) {
                 continue;
             }
-            UUID recruiterId = productDomainFacade.findProductSnapshotAssigneeId(product.id());
+            UUID recruiterId = recruiterIdMap.get(product.id());
             if (recruiterId == null) {
                 continue;
             }
@@ -171,8 +174,7 @@ public class SampleFilterOptionsService {
             if (map.containsKey(value)) {
                 continue;
             }
-            UserOptionResponse user = userDomainFacade.getUserById(recruiterId);
-            String label = formatUserLabel(user, value);
+            String label = userLabelMap.getOrDefault(recruiterId, value);
             map.put(value, item(label, value));
         }
         return new ArrayList<>(map.values());
@@ -265,6 +267,23 @@ public class SampleFilterOptionsService {
         return productDomainFacade.loadProductsByIds(ids);
     }
 
+    private Map<UUID, UUID> loadRecruiterIds(Collection<ProductReadDTO> products) {
+        if (products == null || products.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, UUID> map = new LinkedHashMap<>();
+        for (ProductReadDTO product : products) {
+            if (product == null || product.id() == null) {
+                continue;
+            }
+            UUID recruiterId = productDomainFacade.findProductSnapshotAssigneeId(product.id());
+            if (recruiterId != null) {
+                map.put(product.id(), recruiterId);
+            }
+        }
+        return map;
+    }
+
     private Map<UUID, ProductSnapshotReadDTO> loadSnapshots(Collection<ProductReadDTO> products) {
         if (products == null || products.isEmpty()) {
             return Map.of();
@@ -282,38 +301,21 @@ public class SampleFilterOptionsService {
         return map;
     }
 
-    private Map<UUID, String> loadUserNames(List<SampleRequest> samples) {
-        Set<UUID> userIds = samples.stream()
+    private Map<UUID, String> loadUserDisplayLabels(List<SampleRequest> samples, Collection<UUID> recruiterIds) {
+        Set<UUID> userIds = new LinkedHashSet<>();
+        samples.stream()
                 .map(SampleRequest::getChannelUserId)
                 .filter(id -> id != null)
-                .collect(Collectors.toSet());
+                .forEach(userIds::add);
+        if (recruiterIds != null) {
+            recruiterIds.stream()
+                    .filter(id -> id != null)
+                    .forEach(userIds::add);
+        }
         if (userIds.isEmpty()) {
             return Map.of();
         }
-        return userDomainFacade.getUsersByIds(userIds).stream()
-                .filter(u -> u != null && u.id() != null)
-                .collect(Collectors.toMap(
-                        UserOptionResponse::id,
-                        u -> formatUserLabel(u, u.id().toString()),
-                        (a, b) -> a));
-    }
-
-    private static String formatUserLabel(UserOptionResponse user, String fallback) {
-        if (user == null) {
-            return fallback;
-        }
-        String realName = user.realName() == null ? "" : user.realName().trim();
-        String username = user.username() == null ? "" : user.username().trim();
-        if (StringUtils.hasText(realName) && StringUtils.hasText(username)) {
-            return realName + " (" + username + ")";
-        }
-        if (StringUtils.hasText(realName)) {
-            return realName;
-        }
-        if (StringUtils.hasText(username)) {
-            return username;
-        }
-        return fallback;
+        return userDomainFacade.loadUserDisplayLabelsByIds(userIds);
     }
 
     private static SampleFilterOptionItem item(String label, String value) {

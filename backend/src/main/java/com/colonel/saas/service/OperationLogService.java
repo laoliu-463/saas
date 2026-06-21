@@ -6,7 +6,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.mapper.OperationLogMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -240,8 +239,7 @@ public class OperationLogService {
         if (operatorId == null) {
             return null;
         }
-        UserOptionResponse user = userDomainFacade.getUserById(operatorId);
-        return user == null ? null : user.username();
+        return userDomainFacade.getUsername(operatorId);
     }
 
     /**

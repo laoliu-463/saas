@@ -2,7 +2,6 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.dto.performance.ExclusiveMerchantDetailDTO;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,7 +45,7 @@ class ExclusiveMerchantQueryServiceTest {
         assertThat(dto.getPartnerId()).isEqualTo(" ");
         assertThat(dto.isExclusive()).isFalse();
         verify(exclusiveMerchantMapper, never()).selectOne(any());
-        verify(userDomainFacade, never()).getUserById(any());
+        verify(userDomainFacade, never()).getUsername(any());
     }
 
     @Test
@@ -58,16 +57,15 @@ class ExclusiveMerchantQueryServiceTest {
         assertThat(dto.getPartnerId()).isEqualTo(" P100 ");
         assertThat(dto.isExclusive()).isFalse();
         assertThat(dto.getRecruiterName()).isNull();
-        verify(userDomainFacade, never()).getUserById(any());
+        verify(userDomainFacade, never()).getUsername(any());
     }
 
     @Test
     void getByPartnerId_shouldMapActiveMerchantAndRecruiterName() {
         UUID recruiterId = UUID.randomUUID();
         ExclusiveMerchant merchant = merchant("P100", "品牌旗舰店", recruiterId, currentMonth(), 1);
-        UserOptionResponse recruiter = new UserOptionResponse(recruiterId, "biz-user", "招商员", null, List.of(), null);
         when(exclusiveMerchantMapper.selectOne(any())).thenReturn(merchant);
-        when(userDomainFacade.getUserById(recruiterId)).thenReturn(recruiter);
+        when(userDomainFacade.getUsername(recruiterId)).thenReturn("biz-user");
 
         ExclusiveMerchantDetailDTO dto = service.getByPartnerId("P100");
 
@@ -95,7 +93,7 @@ class ExclusiveMerchantQueryServiceTest {
         ExclusiveMerchant active = merchant("P100", "A 店", recruiterId, currentMonth(), 1);
         ExclusiveMerchant inactive = merchant("P200", "B 店", null, "bad-month", 0);
         when(exclusiveMerchantMapper.selectList(any())).thenReturn(List.of(active, inactive));
-        when(userDomainFacade.getUserById(recruiterId)).thenReturn(null);
+        when(userDomainFacade.getUsername(recruiterId)).thenReturn(null);
 
         List<ExclusiveMerchantDetailDTO> result = service.listMyExclusiveMerchants(recruiterId);
 

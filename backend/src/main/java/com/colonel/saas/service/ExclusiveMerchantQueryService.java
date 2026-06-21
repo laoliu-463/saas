@@ -3,7 +3,6 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.dto.performance.ExclusiveMerchantDetailDTO;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import org.springframework.stereotype.Service;
@@ -29,7 +28,7 @@ import java.util.UUID;
  *
  * <p><b>业务领域：</b>配置域 — 独家商家查询</p>
  * <p><b>协作关系：</b>依赖 {@link ExclusiveMerchantMapper} 查询独家商家记录；
- * 依赖 {@link UserDomainFacade} 解析招商员用户名（DDD-USER-003）</p>
+ * 依赖 {@link UserDomainFacade} 解析招商员登录账号（DDD-USER-003）</p>
  *
  * @see ExclusiveMerchantMapper
  * @see ExclusiveMerchantDetailDTO
@@ -43,7 +42,7 @@ public class ExclusiveMerchantQueryService {
     /** 独家商家 Mapper，查询 exclusive_merchants 表 */
     private final ExclusiveMerchantMapper exclusiveMerchantMapper;
 
-    /** 用户域门面，用于解析招商员用户名（DDD-USER-003） */
+    /** 用户域门面，用于解析招商员登录账号（DDD-USER-003） */
     private final UserDomainFacade userDomainFacade;
 
     public ExclusiveMerchantQueryService(
@@ -154,16 +153,15 @@ public class ExclusiveMerchantQueryService {
     }
 
     /**
-     * 根据用户 ID 查询用户名，用于填充招商员名称。
+     * 根据用户 ID 查询登录账号，用于填充招商员名称。
      *
      * @param userId 用户 ID
-     * @return 用户名，用户不存在时返回 null
+     * @return 登录账号，用户不存在时返回 null
      */
     private String resolveUserName(UUID userId) {
         if (userId == null) {
             return null;
         }
-        UserOptionResponse user = userDomainFacade.getUserById(userId);
-        return user == null ? null : user.username();
+        return userDomainFacade.getUsername(userId);
     }
 }

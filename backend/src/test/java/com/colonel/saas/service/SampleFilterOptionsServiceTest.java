@@ -8,7 +8,6 @@ import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
@@ -25,6 +24,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -87,17 +88,14 @@ class SampleFilterOptionsServiceTest {
         ProductSnapshotReadDTO snapshot = new ProductSnapshotReadDTO(
                 productId, "ACT-001", "10901825", null, null, 123456L, "合作单店铺", null, null, null, null);
 
-        UserOptionResponse channel = new UserOptionResponse(channelUserId, null, "渠道A", null, List.of(), null);
-        UserOptionResponse recruiter = new UserOptionResponse(recruiterUserId, null, "招商A", null, List.of(), null);
-
         Page<SampleRequest> page = new Page<>(1, 200, 1);
         page.setRecords(List.of(sample));
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any())).thenReturn(page);
         when(productDomainFacade.loadProductsByIds(any())).thenReturn(Map.of(productId, product));
         when(productDomainFacade.findSnapshotById(productId)).thenReturn(snapshot);
         when(productDomainFacade.findProductSnapshotAssigneeId(productId)).thenReturn(recruiterUserId);
-        when(userDomainFacade.getUsersByIds(any())).thenReturn(List.of(channel));
-        when(userDomainFacade.getUserById(recruiterUserId)).thenReturn(recruiter);
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(channelUserId, "渠道A", recruiterUserId, "招商A"));
 
         SampleFilterOptionsDTO options = service.buildOptions(
                 UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL, List.of(RoleCodes.ADMIN));
@@ -111,5 +109,7 @@ class SampleFilterOptionsServiceTest {
         assertThat(options.getLogisticsCompanies()).extracting("value").contains("SF");
         assertThat(options.getChannels()).extracting("label").contains("渠道A");
         assertThat(options.getRecruiters()).extracting("label").contains("招商A");
+        verify(userDomainFacade, never()).getUserById(any());
+        verify(userDomainFacade, never()).getUsersByIds(any());
     }
 }

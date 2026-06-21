@@ -6,7 +6,6 @@ import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
 import com.colonel.saas.dto.talent.TalentPageQuery;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.SampleRequestMapper;
@@ -33,6 +32,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -128,11 +129,10 @@ class TalentQueryServiceTest {
         expiredClaim.setClaimedAt(LocalDateTime.now().minusDays(45));
         expiredClaim.setProtectedUntil(LocalDateTime.now().minusDays(15));
 
-        UserOptionResponse owner = userOption(ownerId, "渠道负责人-华东组");
-
         when(talentService.getById(talentId)).thenReturn(talent);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(expiredClaim));
-        when(userDomainFacade.getUsersByIds(any())).thenReturn(List.of(owner));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(ownerId, "渠道负责人-华东组"));
         when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
         when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
@@ -264,13 +264,11 @@ class TalentQueryServiceTest {
         claimB.setClaimedAt(LocalDateTime.now().minusDays(1));
         claimB.setProtectedUntil(LocalDateTime.now().plusDays(29));
 
-        UserOptionResponse userA = userOption(ownerA, "渠道A");
-        UserOptionResponse userB = userOption(ownerB, "渠道B");
-
         when(talentService.getById(talentId)).thenReturn(talent);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(claimB, claimA));
         when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(claimB, claimA));
-        when(userDomainFacade.getUsersByIds(any())).thenReturn(List.of(userA, userB));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(ownerA, "渠道A", ownerB, "渠道B"));
         when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
         when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
@@ -286,6 +284,7 @@ class TalentQueryServiceTest {
         assertThat(response.getClaim().getActiveClaimCount()).isEqualTo(2);
         assertThat(response.getClaim().getOwnerName()).contains("等 2 人");
         assertThat(response.getClaim().getActiveClaimOwners()).hasSize(2);
+        verify(userDomainFacade, never()).getUsersByIds(any());
     }
 
     @Test
@@ -324,8 +323,6 @@ class TalentQueryServiceTest {
         otherActiveClaim.setUserId(otherUserId);
         otherActiveClaim.setStatus(1);
 
-        UserOptionResponse otherUser = userOption(otherUserId, "渠道B");
-
         TalentPageQuery query = new TalentPageQuery();
         query.setView("TEAM_PUBLIC");
         query.setUserId(myUserId);
@@ -336,7 +333,8 @@ class TalentQueryServiceTest {
 
         when(talentService.page(1, 10, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(activeClaim, otherActiveClaim));
-        when(userDomainFacade.getUsersByIds(any())).thenReturn(List.of(otherUser));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(otherUserId, "渠道B"));
         when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
         when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
@@ -377,8 +375,6 @@ class TalentQueryServiceTest {
         otherActiveClaim.setUserId(otherUserId);
         otherActiveClaim.setStatus(1);
 
-        UserOptionResponse otherUser = userOption(otherUserId, "渠道B");
-
         TalentPageQuery query = new TalentPageQuery();
         query.setView("TEAM_PUBLIC");
         query.setUserId(myUserId);
@@ -390,7 +386,8 @@ class TalentQueryServiceTest {
 
         when(talentService.page(1, 10, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(otherActiveClaim));
-        when(userDomainFacade.getUsersByIds(any())).thenReturn(List.of(otherUser));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(otherUserId, "渠道B"));
         when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
         when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
@@ -420,8 +417,6 @@ class TalentQueryServiceTest {
         otherActiveClaim.setUserId(otherUserId);
         otherActiveClaim.setStatus(1);
 
-        UserOptionResponse otherUser = userOption(otherUserId, "渠道同事");
-
         TalentPageQuery query = new TalentPageQuery();
         query.setView("TEAM_PUBLIC");
         query.setUserId(myUserId);
@@ -434,7 +429,8 @@ class TalentQueryServiceTest {
 
         when(talentService.page(1, 10, null, null, null, null, DataScope.ALL, myUserId, myDeptId)).thenReturn(basePage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(otherActiveClaim));
-        when(userDomainFacade.getUsersByIds(any())).thenReturn(List.of(otherUser));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(otherUserId, "渠道同事"));
         when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
         when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
@@ -481,8 +477,6 @@ class TalentQueryServiceTest {
         teammateClaim.setDeptId(myDeptId);
         teammateClaim.setStatus(1);
 
-        UserOptionResponse teammate = userOption(otherUserId, "渠道同事");
-
         TalentPageQuery query = new TalentPageQuery();
         query.setView("TEAM_PRIVATE");
         query.setUserId(myUserId);
@@ -495,7 +489,8 @@ class TalentQueryServiceTest {
 
         when(talentService.page(1, 10, null, null, null, null, DataScope.DEPT, myUserId, myDeptId)).thenReturn(basePage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(myClaim, teammateClaim));
-        when(userDomainFacade.getUsersByIds(any())).thenReturn(List.of(teammate));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(otherUserId, "渠道同事"));
         when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
         when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
@@ -805,9 +800,5 @@ class TalentQueryServiceTest {
         assertThat(page.getTotal()).isEqualTo(2);
         assertThat(page.getRecords()).extracting(Talent::getDouyinUid)
                 .containsExactlyInAnyOrder("batch_1", "batch_2");
-    }
-
-    private static UserOptionResponse userOption(UUID id, String realName) {
-        return new UserOptionResponse(id, "user-" + id, realName, null, List.of(), null);
     }
 }
