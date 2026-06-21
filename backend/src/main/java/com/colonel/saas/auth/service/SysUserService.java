@@ -1,53 +1,25 @@
 package com.colonel.saas.auth.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.auth.dto.DeptMemberPageRequest;
 import com.colonel.saas.auth.dto.SysUserAssignRolesRequest;
 import com.colonel.saas.auth.dto.SysUserCreateRequest;
 import com.colonel.saas.auth.dto.SysUserPageRequest;
 import com.colonel.saas.auth.dto.SysUserResetPasswordRequest;
 import com.colonel.saas.auth.dto.SysUserUpdateRequest;
-import com.colonel.saas.constant.SysUserStatus;
 import com.colonel.saas.common.enums.DataScope;
-import com.colonel.saas.common.exception.BusinessException;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.user.application.SysUserCRUDApplicationA;
 import com.colonel.saas.domain.user.application.SysUserCRUDApplicationB;
 import com.colonel.saas.domain.user.application.SysUserGroupMembershipApplication;
+import com.colonel.saas.domain.user.application.SysUserQueryApplicationService;
 import com.colonel.saas.domain.user.application.SysUserRoleAssignmentApplicationService;
 import com.colonel.saas.domain.user.application.UserAssignableApplicationService;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
-import com.colonel.saas.domain.user.policy.UserAccessPolicy;
-import com.colonel.saas.domain.user.policy.UserAccessPolicy.AccessibleUser;
-import com.colonel.saas.domain.user.policy.UserChannelCodePolicy;
-import com.colonel.saas.entity.SysRole;
-import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.entity.SysUserRole;
-import com.colonel.saas.mapper.SysRoleMapper;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.mapper.SysUserRoleMapper;
-import com.colonel.saas.auth.dto.DeptMemberPageRequest;
-import com.colonel.saas.auth.service.OrgStructureService.ResolvedAssignment;
-import com.colonel.saas.auth.service.OrgStructureService.SplitAssignment;
-import com.colonel.saas.service.OperationLogService;
-import com.colonel.saas.service.UserDomainEventPublisher;
-import com.colonel.saas.service.UserPermissionCacheService;
 import com.colonel.saas.vo.SysUserVO;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 系统用户管理服务。
@@ -74,12 +46,8 @@ import java.util.stream.Collectors;
  *
  * <h3>架构角色</h3>
  * <p>
- * 位于 auth（认证授权）领域服务层，服务于用户域的核心用户管理模块。
- * 通过 {@link SysUserMapper} 管理用户数据，
- * 通过 {@link SysUserRoleMapper} 维护用户-角色关联关系，
- * 通过 {@link OrgStructureService} 解析组织结构和分配关系，
- * 通过 {@link UserDomainEventPublisher} 发布用户生命周期域事件，
- * 通过 {@link UserPermissionCacheService} 管理权限缓存刷新。
+ * 位于 auth（认证授权）兼容服务层，服务于旧 Controller 与现有调用方。
+ * 具体用户查询、CRUD、组织成员、负责人校验和角色分配逻辑委托给用户域应用服务。
  * </p>
  *
  * <h3>业务域</h3>
@@ -92,39 +60,6 @@ import java.util.stream.Collectors;
 @Service
 public class SysUserService {
 
-    /** 用户数据访问层 */
-    private final SysUserMapper sysUserMapper;
-
-    /** 角色数据访问层，用于查询角色信息和批量查询 */
-    private final SysRoleMapper sysRoleMapper;
-
-    /** 用户-角色关联关系数据访问层 */
-    private final SysUserRoleMapper sysUserRoleMapper;
-
-    /** 密码编码器（BCrypt），用于加密存储用户密码 */
-    private final PasswordEncoder passwordEncoder;
-
-    /** 操作日志服务，用于记录审计日志 */
-    private final OperationLogService operationLogService;
-
-    /** 用户域事件发布器，用于发布用户创建、禁用、组织变更等域事件 */
-    private final UserDomainEventPublisher userDomainEventPublisher;
-
-    /** 组织结构服务，用于解析组织归属和分配关系 */
-    private final OrgStructureService orgStructureService;
-
-    /** 用户权限缓存服务，用于在角色或组织变更时刷新缓存 */
-    private final UserPermissionCacheService userPermissionCacheService;
-
-    /** 用户域数据范围策略，统一 self/group/all 过滤决策 */
-    private final DataScopePolicy dataScopePolicy;
-
-    /** 用户访问权限策略，统一用户详情和写操作的访问边界 */
-    private final UserAccessPolicy userAccessPolicy;
-
-    /** 用户渠道编码策略，统一生成推广链路可追溯短码 */
-    private final UserChannelCodePolicy userChannelCodePolicy;
-
     /** 用户 CRUD DDD 入口 A：getById / create */
     private final SysUserCRUDApplicationA sysUserCRUDApplicationA;
 
@@ -133,6 +68,9 @@ public class SysUserService {
 
     /** 用户业务组成员 DDD 入口：assignUsersToGroup / removeUsersFromGroup */
     private final SysUserGroupMembershipApplication sysUserGroupMembershipApplication;
+
+    /** 用户查询 DDD 入口：findPage / findDeptMembers */
+    private final SysUserQueryApplicationService sysUserQueryApplicationService;
 
     /** 用户可分配负责人 DDD 入口：findAssignableUsers / assertAssignableUser / assertRecruiterUser */
     private final UserAssignableApplicationService userAssignableApplicationService;
@@ -143,54 +81,24 @@ public class SysUserService {
     /**
      * 构造注入所有依赖。
      *
-     * @param sysUserMapper              用户 Mapper
-     * @param sysRoleMapper              角色 Mapper
-     * @param sysUserRoleMapper          用户-角色关联 Mapper
-     * @param passwordEncoder            密码编码器（BCrypt）
-     * @param operationLogService        操作日志服务
-     * @param userDomainEventPublisher   用户域事件发布器
-     * @param orgStructureService        组织结构服务
-     * @param userPermissionCacheService 用户权限缓存服务
-     * @param dataScopePolicy            数据范围策略
-     * @param userAccessPolicy           用户访问权限策略
-     * @param userChannelCodePolicy      用户渠道编码策略
      * @param sysUserCRUDApplicationA    用户 CRUD DDD 入口 A
      * @param sysUserCRUDApplicationB    用户 CRUD DDD 入口 B
      * @param sysUserGroupMembershipApplication 用户业务组成员 DDD 入口
+     * @param sysUserQueryApplicationService 用户查询 DDD 入口
      * @param userAssignableApplicationService 用户可分配负责人 DDD 入口
      * @param sysUserRoleAssignmentApplicationService 用户角色分配 DDD 入口
      */
     public SysUserService(
-            SysUserMapper sysUserMapper,
-            SysRoleMapper sysRoleMapper,
-            SysUserRoleMapper sysUserRoleMapper,
-            PasswordEncoder passwordEncoder,
-            OperationLogService operationLogService,
-            UserDomainEventPublisher userDomainEventPublisher,
-            OrgStructureService orgStructureService,
-            UserPermissionCacheService userPermissionCacheService,
-            DataScopePolicy dataScopePolicy,
-            UserAccessPolicy userAccessPolicy,
-            UserChannelCodePolicy userChannelCodePolicy,
             SysUserCRUDApplicationA sysUserCRUDApplicationA,
             SysUserCRUDApplicationB sysUserCRUDApplicationB,
             SysUserGroupMembershipApplication sysUserGroupMembershipApplication,
+            SysUserQueryApplicationService sysUserQueryApplicationService,
             UserAssignableApplicationService userAssignableApplicationService,
             SysUserRoleAssignmentApplicationService sysUserRoleAssignmentApplicationService) {
-        this.sysUserMapper = sysUserMapper;
-        this.sysRoleMapper = sysRoleMapper;
-        this.sysUserRoleMapper = sysUserRoleMapper;
-        this.passwordEncoder = passwordEncoder;
-        this.operationLogService = operationLogService;
-        this.userDomainEventPublisher = userDomainEventPublisher;
-        this.orgStructureService = orgStructureService;
-        this.userPermissionCacheService = userPermissionCacheService;
-        this.dataScopePolicy = dataScopePolicy;
-        this.userAccessPolicy = userAccessPolicy;
-        this.userChannelCodePolicy = userChannelCodePolicy;
         this.sysUserCRUDApplicationA = sysUserCRUDApplicationA;
         this.sysUserCRUDApplicationB = sysUserCRUDApplicationB;
         this.sysUserGroupMembershipApplication = sysUserGroupMembershipApplication;
+        this.sysUserQueryApplicationService = sysUserQueryApplicationService;
         this.userAssignableApplicationService = userAssignableApplicationService;
         this.sysUserRoleAssignmentApplicationService = sysUserRoleAssignmentApplicationService;
     }
@@ -205,13 +113,10 @@ public class SysUserService {
      * <p><b>筛选与数据权限（CLAUDE.md 不变量）：</b></p>
      * <ol>
      *   <li>请求字段筛选：keyword（用户名/姓名模糊）、status（账号状态）、deptId/groupId（部门归属）、
-     *       roleId/roleCode（拥有指定角色）均在 {@code QueryWrapper} 显式组装</li>
+     *       roleId/roleCode（拥有指定角色）由用户域查询应用服务组装</li>
      *   <li>数据范围（{@code dataScope}）：PERSONAL → {@code su.id = currentUserId}，
-     *       DEPT → {@code su.dept_id = currentDeptId}，ALL → 不追加。
-     *       为避免 {@code @DataScope} AOP 双重注入，本方法自行在 wrapper 中实现 dataScope，
-     *       Mapper 上对应的 {@code @DataScope} 注解已移除</li>
-     *   <li>MyBatis Mapper 只保留 {@code deleted = 0} 基线和排序，
-     *       业务条件由本方法的 {@code wrapper} 透传</li>
+     *       DEPT → {@code su.dept_id = currentDeptId}，ALL → 不追加</li>
+     *   <li>本兼容服务只委托，不再直接访问 Mapper / Entity</li>
      * </ol>
      *
      * @param currentUserId 当前操作用户 ID（PERSONAL 范围时必填，其他可空）
@@ -225,19 +130,7 @@ public class SysUserService {
             UUID currentDeptId,
             DataScope dataScope,
             SysUserPageRequest request) {
-        // 第一步：构建分页对象（request 为 null 时退化为默认 1/10，便于无请求上下文调用）
-        long pageNo = request == null ? 1L : request.pageNo();
-        long pageSize = request == null ? 10L : request.pageSize();
-        Page<SysUserVO> page = new Page<>(pageNo, pageSize);
-        // 第二步：构建带筛选 + dataScope 的 QueryWrapper（CLAUDE.md：用户域统一 self / group / all）
-        QueryWrapper<SysUser> wrapper = buildUserPageWrapper(currentUserId, currentDeptId, dataScope, request);
-        // 第三步：执行分页查询
-        IPage<SysUserVO> result = sysUserMapper.findPage(page, request, wrapper);
-        // 第四步：批量填充角色 ID 列表
-        fillRoleIds(result.getRecords());
-        // 第五步：补充组织结构展示信息
-        orgStructureService.enrichUserList(result.getRecords());
-        return result;
+        return sysUserQueryApplicationService.findPage(currentUserId, currentDeptId, dataScope, request);
     }
 
     /**
@@ -248,143 +141,20 @@ public class SysUserService {
             UUID currentUserId,
             DataScope dataScope,
             SysUserPageRequest request) {
-        return findPage(currentUserId, null, dataScope, request);
-    }
-
-    /**
-     * 组装用户分页查询的 {@link QueryWrapper}：包含请求字段筛选 + dataScope 行级权限。
-     * <p>
-     * 拆为独立方法以便单测断言 SQL 片段（与 ColonelPartnerMasterDataServiceTest 风格一致）。
-     * </p>
-     *
-     * <h4>字段筛选</h4>
-     * <ul>
-     *   <li>keyword 非空：{@code (username LIKE %k% OR real_name LIKE %k%)}</li>
-     *   <li>status 非空：{@code status = ?}</li>
-     *   <li>groupId 非空：{@code dept_id = ?}（精确匹配业务组）</li>
-     *   <li>deptId 非空 + groupId 为空：{@code dept_id = ? OR dept_id IN (subquery)}</li>
-     *   <li>roleId 非空：{@code EXISTS (sys_user_role WHERE role_id = {0})}</li>
-     *   <li>roleCode 非空：{@code EXISTS (sys_user_role JOIN sys_role WHERE role_code = {0})}</li>
-     * </ul>
-     *
-     * <h4>dataScope 注入</h4>
-     * <ul>
-     *   <li>PERSONAL：{@code id = currentUserId}（缺 userId 时不追加，由 SQL 兜底为空集）</li>
-     *   <li>DEPT：{@code dept_id = currentDeptId}</li>
-     *   <li>ALL：no-op</li>
-     * </ul>
-     */
-    QueryWrapper<SysUser> buildUserPageWrapper(
-            UUID currentUserId,
-            UUID currentDeptId,
-            DataScope dataScope,
-            SysUserPageRequest request) {
-        QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
-        if (request == null) {
-            applyDataScopeFilter(wrapper, currentUserId, currentDeptId, dataScope);
-            return wrapper;
-        }
-        // 关键词（参数化查询，防止 SQL 注入）
-        if (request.keyword() != null && !request.keyword().isBlank()) {
-            String safe = request.keyword().trim();
-            wrapper.and(q -> q.like("username", safe)
-                    .or().like("real_name", safe));
-        }
-        // 状态（参数化查询）
-        if (request.status() != null) {
-            wrapper.eq("status", request.status());
-        }
-        // 业务组优先于部门（参数化查询，防注入）
-        if (request.groupId() != null) {
-            wrapper.eq("dept_id", request.groupId());
-        } else if (request.deptId() != null) {
-            UUID parentDeptId = request.deptId();
-            wrapper.and(q -> q.eq("dept_id", parentDeptId)
-                    .or().inSql("dept_id",
-                            "SELECT id FROM sys_dept WHERE deleted = 0 AND parent_id = '" + parentDeptId + "'"));
-        }
-        // 角色筛选（roleId / roleCode 二选一，参数化查询）
-        if (request.roleId() != null) {
-            wrapper.exists("SELECT 1 FROM sys_user_role sur WHERE sur.user_id = su.id AND sur.role_id = {0}",
-                    request.roleId());
-        } else if (request.roleCode() != null && !request.roleCode().isBlank()) {
-            String code = request.roleCode().trim();
-            wrapper.exists(
-                    "SELECT 1 FROM sys_user_role sur INNER JOIN sys_role sr ON sr.id = sur.role_id"
-                            + " AND sr.deleted = 0 WHERE sur.user_id = su.id AND sr.role_code = {0}",
-                    code);
-        }
-        // 数据范围
-        applyDataScopeFilter(wrapper, currentUserId, currentDeptId, dataScope);
-        return wrapper;
-    }
-
-    /**
-     * 3-arg 重载：buildUserPageWrapper 不带 deptId 上下文。
-     */
-    QueryWrapper<SysUser> buildUserPageWrapper(
-            UUID currentUserId,
-            DataScope dataScope,
-            SysUserPageRequest request) {
-        return buildUserPageWrapper(currentUserId, null, dataScope, request);
-    }
-
-    /**
-     * 把 dataScope 翻译为 {@link QueryWrapper} 过滤条件并追加。
-     * <p>
-     * 设计要点：
-     * </p>
-     * <ul>
-     *   <li>PERSONAL + userId null：拒绝追加（保留为空集由 Service caller 处理），避免越权</li>
-     *   <li>DEPT + deptId null：不追加（与 ALL 等价，便于兼容老调用）</li>
-     *   <li>ALL / null：no-op</li>
-     * </ul>
-     *
-     * @param wrapper         目标 wrapper（in-place 追加）
-     * @param currentUserId   当前操作用户 ID
-     * @param currentDeptId   当前操作者所属部门 ID（可空）
-     * @param dataScope       数据范围枚举
-     */
-    void applyDataScopeFilter(
-            QueryWrapper<SysUser> wrapper,
-            UUID currentUserId,
-            DataScope dataScope) {
-        applyDataScopeFilter(wrapper, currentUserId, null, dataScope);
-    }
-
-    /**
-     * 把 dataScope 翻译为 {@link QueryWrapper} 过滤条件并追加（带 deptId 上下文）。
-     * <p>
-     * 重载：调用方如果持有 deptId（如 Controller 从请求属性注入），
-     * 可走本方法以确保 DEPT 范围有 dept 上下文。
-     * </p>
-     */
-    void applyDataScopeFilter(
-            QueryWrapper<SysUser> wrapper,
-            UUID currentUserId,
-            UUID currentDeptId,
-            DataScope dataScope) {
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(currentUserId, currentDeptId, dataScope);
-        switch (decision) {
-            case FILTER_USER -> wrapper.apply("id = '" + currentUserId + "'");
-            case FILTER_DEPT -> wrapper.apply("dept_id = '" + currentDeptId + "'");
-            case NO_FILTER -> {
-                // no-op
-            }
-        }
+        return sysUserQueryApplicationService.findPage(currentUserId, dataScope, request);
     }
 
     /**
      * 查询指定部门/业务组的成员列表。
      * <p>
      * 将部门成员查询请求适配为标准分页查询请求，以 DataScope.ALL 模式查询
-     * （部门管理场景不限制数据权限），委托 {@link #findPage} 执行。
+     * （部门管理场景不限制数据权限），委托用户域查询应用服务执行。
      * </p>
      *
      * <ol>
      *   <li>将 DeptMemberPageRequest 转换为 SysUserPageRequest</li>
      *   <li>设置部门 ID 作为过滤条件</li>
-     *   <li>以 DataScope.ALL 模式委托 findPage 执行查询</li>
+     *   <li>以 DataScope.ALL 模式委托用户域查询应用服务执行查询</li>
      *   <li>返回分页结果</li>
      * </ol>
      *
@@ -393,16 +163,7 @@ public class SysUserService {
      * @return 分页结果，包含成员用户 VO 列表和分页元数据
      */
     public IPage<SysUserVO> findDeptMembers(UUID deptId, DeptMemberPageRequest request) {
-        SysUserPageRequest pageRequest = new SysUserPageRequest(
-                (int) request.pageNo(),
-                (int) request.pageSize(),
-                request.keyword(),
-                request.status(),
-                deptId,
-                request.groupId(),
-                request.roleId(),
-                request.roleCode());
-        return findPage(null, DataScope.ALL, pageRequest);
+        return sysUserQueryApplicationService.findDeptMembers(deptId, request);
     }
 
     /**
@@ -680,194 +441,4 @@ public class SysUserService {
         sysUserRoleAssignmentApplicationService.assignRoles(id, request, currentUserId, dataScope);
     }
 
-    /**
-     * 将用户实体转换为视图对象（VO）。
-     * <p>
-     * 同时查询该用户关联的角色 ID 列表填充到 VO 中。
-     * </p>
-     *
-     * @param user 用户实体
-     * @return 用户 VO
-     */
-    private SysUserVO toVO(SysUser user) {
-        SysUserVO vo = new SysUserVO();
-        vo.setId(user.getId());
-        vo.setUsername(user.getUsername());
-        vo.setRealName(user.getRealName());
-        vo.setPhone(user.getPhone());
-        vo.setEmail(user.getEmail());
-        vo.setDeptId(user.getDeptId());
-        vo.setStatus(user.getStatus());
-        vo.setForcePasswordChange(user.getForcePasswordChange());
-        vo.setLastLoginAt(user.getLastLoginAt());
-        vo.setCreateTime(user.getCreateTime());
-        // 查询并填充角色 ID 列表
-        List<UUID> roleIds = sysUserRoleMapper.findByUserId(user.getId()).stream()
-                .map(SysUserRole::getRoleId)
-                .collect(Collectors.toList());
-        vo.setRoleIds(roleIds);
-        return vo;
-    }
-
-    /**
-     * 批量填充用户列表中每个用户的角色 ID 列表。
-     * <p>
-     * 使用批量查询（findByUserIds）避免 N+1 问题，
-     * 然后按用户 ID 分组映射到对应的 VO 列表。
-     * </p>
-     *
-     * @param users 用户 VO 列表
-     */
-    private void fillRoleIds(List<SysUserVO> users) {
-        if (users == null || users.isEmpty()) {
-            return;
-        }
-        // 第一步：提取所有用户 ID（去重）
-        List<UUID> userIds = users.stream()
-                .map(SysUserVO::getId)
-                .filter(id -> id != null)
-                .distinct()
-                .collect(Collectors.toList());
-        if (userIds.isEmpty()) {
-            return;
-        }
-        // 第二步：批量查询用户-角色关联，按用户 ID 分组
-        Map<UUID, List<UUID>> roleMap = new HashMap<>();
-        for (SysUserRole relation : sysUserRoleMapper.findByUserIds(userIds)) {
-            roleMap.computeIfAbsent(relation.getUserId(), key -> new ArrayList<>()).add(relation.getRoleId());
-        }
-        // 第三步：填充每个 VO 的角色 ID 列表
-        for (SysUserVO user : users) {
-            user.setRoleIds(roleMap.getOrDefault(user.getId(), Collections.emptyList()));
-        }
-    }
-
-    /**
-     * 判断用户是否从非禁用状态变为禁用状态。
-     *
-     * @param previousStatus 变更前的用户状态
-     * @param newStatus      变更后的用户状态
-     * @return 若新状态为禁用且原状态不是禁用则返回 true
-     */
-    private boolean becameDisabled(Integer previousStatus, Integer newStatus) {
-        if (newStatus == null || newStatus != SysUserStatus.DISABLED) {
-            return false;
-        }
-        return previousStatus == null || previousStatus != SysUserStatus.DISABLED;
-    }
-
-    /**
-     * 判断部门 ID 是否发生变化。
-     *
-     * @param previousDeptId 变更前的部门 ID
-     * @param newDeptId      变更后的部门 ID
-     * @return 部门 ID 不相等时返回 true
-     */
-    private boolean deptChanged(UUID previousDeptId, UUID newDeptId) {
-        return !Objects.equals(previousDeptId, newDeptId);
-    }
-
-    /**
-     * 从角色 ID 列表中解析主角色（取第一个）。
-     * <p>
-     * 用于用户创建事件中携带主角色信息。
-     * </p>
-     *
-     * @param roleIds 角色 ID 列表
-     * @return 第一个角色实体，列表为空或查询结果为空时返回 null
-     */
-    private SysRole resolvePrimaryRole(List<UUID> roleIds) {
-        if (roleIds == null || roleIds.isEmpty()) {
-            return null;
-        }
-        List<SysRole> roles = sysRoleMapper.selectBatchIds(roleIds);
-        if (roles == null || roles.isEmpty()) {
-            return null;
-        }
-        return roles.get(0);
-    }
-
-    /**
-     * 解析组织归属分配参数，兼容新旧两种入参方式。
-     * <p>
-     * 优先使用新的参数组合（parentDeptId + groupId）；
-     * 若两者均为空但 legacyDeptId 不为空，则从旧版 deptId 拆解出父部门和小组；
-     * 三者均为空时返回全 null 的空分配结果。
-     * </p>
-     *
-     * <ol>
-     *   <li>若 parentDeptId 或 groupId 不为空，使用 OrgStructureService.resolveAssignment 解析</li>
-     *   <li>否则若 legacyDeptId 不为空，使用 OrgStructureService.splitAssignment 拆解旧版 ID</li>
-     *   <li>否则返回 parentDeptId=null, deptId=null, groupId=null 的空结果</li>
-     * </ol>
-     *
-     * @param parentDeptId 新版父部门 ID（可为 null）
-     * @param groupId      新版小组 ID（可为 null）
-     * @param legacyDeptId 旧版部门 ID（兼容字段，可为 null）
-     * @return 解析后的组织归属分配结果
-     */
-    private ResolvedAssignment resolveAssignment(UUID parentDeptId, UUID groupId, UUID legacyDeptId) {
-        if (parentDeptId != null || groupId != null) {
-            return orgStructureService.resolveAssignment(parentDeptId, groupId);
-        }
-        if (legacyDeptId != null) {
-            SplitAssignment split = orgStructureService.splitAssignment(legacyDeptId);
-            return new ResolvedAssignment(
-                    legacyDeptId,
-                    split.parentDeptId() != null ? split.parentDeptId() : legacyDeptId,
-                    split.groupId());
-        }
-        return new ResolvedAssignment(null, null, null);
-    }
-
-    /**
-     * 记录组织归属变更（若发生变更）。
-     * <p>
-     * 当用户的生效部门 ID 发生变化时，记录操作审计日志并发布用户小组变更域事件，
-     * 通知下游系统（如业绩归属缓存刷新）进行响应。
-     * </p>
-     *
-     * <ol>
-     *   <li>调用 deptChanged 判断部门 ID 是否发生变化，未变化则直接返回</li>
-     *   <li>拆解新旧部门 ID 为父部门和小组信息</li>
-     *   <li>记录操作审计日志（包含变更详情）</li>
-     *   <li>发布 UserGroupChanged 域事件</li>
-     * </ol>
-     *
-     * @param user                  用户实体（用于审计日志中的用户信息）
-     * @param previousEffectiveDeptId 变更前的生效部门 ID
-     * @param newEffectiveDeptId      变更后的生效部门 ID
-     * @param operatorId            操作者 ID（用于审计日志和事件）
-     */
-    private void recordOrgChangeIfNeeded(
-            SysUser user,
-            UUID previousEffectiveDeptId,
-            UUID newEffectiveDeptId,
-            UUID operatorId) {
-        if (!deptChanged(previousEffectiveDeptId, newEffectiveDeptId)) {
-            return;
-        }
-        SplitAssignment oldSplit = orgStructureService.splitAssignment(previousEffectiveDeptId);
-        SplitAssignment newSplit = orgStructureService.splitAssignment(newEffectiveDeptId);
-        operationLogService.recordSystemAction(
-                operatorId,
-                "用户管理",
-                "组织归属变更",
-                "PUT",
-                "SysUser",
-                user.getId().toString(),
-                user.getUsername(),
-                orgStructureService.formatOrgChangeRemark(
-                        user.getId(),
-                        previousEffectiveDeptId,
-                        newEffectiveDeptId,
-                        operatorId));
-        userDomainEventPublisher.publishUserGroupChanged(
-                user.getId(),
-                oldSplit.groupId(),
-                newSplit.groupId(),
-                oldSplit.parentDeptId(),
-                newSplit.parentDeptId(),
-                operatorId);
-    }
 }

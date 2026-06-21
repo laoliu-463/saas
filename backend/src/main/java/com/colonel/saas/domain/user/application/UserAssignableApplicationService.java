@@ -1,14 +1,12 @@
 package com.colonel.saas.domain.user.application;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.domain.user.policy.UserAssignmentPolicy;
 import com.colonel.saas.domain.user.policy.UserAssignmentPolicy.AssignableScope;
-import com.colonel.saas.entity.SysRole;
-import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.entity.SysUserRole;
-import com.colonel.saas.mapper.SysRoleMapper;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.mapper.SysUserRoleMapper;
+import com.colonel.saas.domain.user.port.UserAssignmentLookup;
+import com.colonel.saas.domain.user.port.UserAssignmentLookup.AssignableRole;
+import com.colonel.saas.domain.user.port.UserAssignmentLookup.UserRoleAssignment;
+import com.colonel.saas.domain.user.port.UserAssignableCandidateLookup;
+import com.colonel.saas.domain.user.port.UserAssignableCandidateLookup.AssignableCandidate;
 import com.colonel.saas.vo.SysUserVO;
 import org.springframework.stereotype.Service;
 
@@ -29,36 +27,24 @@ import java.util.stream.Collectors;
 @Service
 public class UserAssignableApplicationService {
 
-    private final SysUserMapper sysUserMapper;
-    private final SysRoleMapper sysRoleMapper;
-    private final SysUserRoleMapper sysUserRoleMapper;
+    private static final int CANDIDATE_LIMIT = 20;
+
+    private final UserAssignableCandidateLookup candidateLookup;
+    private final UserAssignmentLookup assignmentLookup;
     private final UserAssignmentPolicy assignmentPolicy;
 
     public UserAssignableApplicationService(
-            SysUserMapper sysUserMapper,
-            SysRoleMapper sysRoleMapper,
-            SysUserRoleMapper sysUserRoleMapper,
+            UserAssignableCandidateLookup candidateLookup,
+            UserAssignmentLookup assignmentLookup,
             UserAssignmentPolicy assignmentPolicy) {
-        this.sysUserMapper = sysUserMapper;
-        this.sysRoleMapper = sysRoleMapper;
-        this.sysUserRoleMapper = sysUserRoleMapper;
+        this.candidateLookup = candidateLookup;
+        this.assignmentLookup = assignmentLookup;
         this.assignmentPolicy = assignmentPolicy;
     }
 
     public List<SysUserVO> findAssignableUsers(String keyword, List<String> currentRoleCodes, UUID currentDeptId) {
-        QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
-        wrapper.eq("deleted", 0)
-                .eq("status", 1)
-                .orderByAsc("real_name")
-                .orderByAsc("username")
-                .last("limit 20");
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            String safeKeyword = keyword.trim();
-            wrapper.and(query -> query.like("username", safeKeyword).or().like("real_name", safeKeyword));
-        }
-
-        List<SysUser> users = sysUserMapper.selectList(wrapper);
-        if (users.isEmpty()) {
+        List<AssignableCandidate> candidates = candidateLookup.findActiveCandidates(keyword, CANDIDATE_LIMIT);
+        if (candidates.isEmpty()) {
             return Collections.emptyList();
         }
         AssignableScope scope = assignmentPolicy.resolveAssignableScope(currentRoleCodes, currentDeptId);
@@ -66,31 +52,29 @@ public class UserAssignableApplicationService {
         if (allowedRoleCodes.isEmpty()) {
             return Collections.emptyList();
         }
-        Map<UUID, List<SysUserRole>> relationMap = users.stream()
+        Map<UUID, List<UserRoleAssignment>> relationMap = candidates.stream()
                 .collect(Collectors.toMap(
-                        SysUser::getId,
-                        user -> sysUserRoleMapper.findByUserId(user.getId())
+                        AssignableCandidate::id,
+                        candidate -> assignmentLookup.findUserRoles(candidate.id())
                 ));
         Set<UUID> roleIds = relationMap.values().stream()
                 .flatMap(List::stream)
-                .map(SysUserRole::getRoleId)
+                .map(UserRoleAssignment::roleId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<UUID, SysRole> roleMap = roleIds.isEmpty()
-                ? Collections.emptyMap()
-                : sysRoleMapper.selectBatchIds(roleIds).stream()
-                .collect(Collectors.toMap(SysRole::getId, role -> role));
+        Map<UUID, AssignableRole> roleMap = assignmentLookup.findRolesByIds(roleIds);
+        Map<UUID, List<UUID>> roleIdsByUserId = roleIdsByUserId(relationMap);
 
-        return users.stream()
-                .filter(user -> scope.deptId() == null
+        return candidates.stream()
+                .filter(candidate -> scope.deptId() == null
                         || scope.allowCrossDept()
-                        || Objects.equals(scope.deptId(), user.getDeptId()))
-                .filter(user -> assignmentPolicy.matchesAssignableRole(
-                        user.getId(),
+                        || Objects.equals(scope.deptId(), candidate.deptId()))
+                .filter(candidate -> assignmentPolicy.matchesAssignableRole(
+                        candidate.id(),
                         relationMap,
                         roleMap,
                         allowedRoleCodes))
-                .map(user -> toVO(user, relationMap))
+                .map(candidate -> candidateLookup.toVO(candidate, roleIdsByUserId))
                 .toList();
     }
 
@@ -102,21 +86,13 @@ public class UserAssignableApplicationService {
         assignmentPolicy.assertRecruiterUser(targetUserId);
     }
 
-    private SysUserVO toVO(SysUser user, Map<UUID, List<SysUserRole>> relationMap) {
-        SysUserVO vo = new SysUserVO();
-        vo.setId(user.getId());
-        vo.setUsername(user.getUsername());
-        vo.setRealName(user.getRealName());
-        vo.setPhone(user.getPhone());
-        vo.setEmail(user.getEmail());
-        vo.setDeptId(user.getDeptId());
-        vo.setStatus(user.getStatus());
-        vo.setForcePasswordChange(user.getForcePasswordChange());
-        vo.setLastLoginAt(user.getLastLoginAt());
-        vo.setCreateTime(user.getCreateTime());
-        vo.setRoleIds(relationMap.getOrDefault(user.getId(), Collections.emptyList()).stream()
-                .map(SysUserRole::getRoleId)
-                .collect(Collectors.toList()));
-        return vo;
+    private Map<UUID, List<UUID>> roleIdsByUserId(Map<UUID, List<UserRoleAssignment>> relationMap) {
+        return relationMap.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> entry.getValue().stream()
+                                .map(UserRoleAssignment::roleId)
+                                .collect(Collectors.toList())
+                ));
     }
 }

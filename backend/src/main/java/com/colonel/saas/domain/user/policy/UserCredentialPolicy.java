@@ -2,7 +2,6 @@ package com.colonel.saas.domain.user.policy;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.SysUserStatus;
-import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
@@ -13,7 +12,6 @@ import java.util.UUID;
  * 旧密码必须匹配、待激活账号改密后转为正常、强制改密标记清除，
  * 并统一操作审计语义。</p>
  */
-@Component
 public class UserCredentialPolicy {
 
     public record CredentialUser(Integer status, String username) {

@@ -2,7 +2,6 @@ package com.colonel.saas.domain.user.policy;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.domain.user.port.UserChannelCodeRegistry;
-import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
@@ -12,7 +11,6 @@ import java.util.UUID;
  * <p>负责把用户名转换为全局唯一的渠道短码。已软删除用户的渠道编码也视为占用，
  * 以保证推广链接和归因映射中的渠道来源稳定可追溯。</p>
  */
-@Component
 public class UserChannelCodePolicy {
 
     private static final int MAX_CHANNEL_CODE_LEN = 16;

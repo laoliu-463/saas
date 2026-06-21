@@ -49,7 +49,7 @@ import static org.mockito.Mockito.when;
  *   <li>create 用户名重复抛 duplicate</li>
  * </ul>
  *
- * <p>SysUserService baseline 26 用例由 SysUserServiceTest 单独保证（不修改）。</p>
+ * <p>SysUserService true-route 兼容入口由委托边界测试保证；本类覆盖 CRUD 应用服务行为。</p>
  */
 @ExtendWith(MockitoExtension.class)
 class SysUserCRUDApplicationATest {

@@ -3,13 +3,10 @@ package com.colonel.saas.domain.user.policy;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.constant.SysUserStatus;
-import com.colonel.saas.entity.SysRole;
-import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.entity.SysUserRole;
-import com.colonel.saas.mapper.SysRoleMapper;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.mapper.SysUserRoleMapper;
-import org.springframework.stereotype.Component;
+import com.colonel.saas.domain.user.port.UserAssignmentLookup;
+import com.colonel.saas.domain.user.port.UserAssignmentLookup.AssignableRole;
+import com.colonel.saas.domain.user.port.UserAssignmentLookup.AssignableUser;
+import com.colonel.saas.domain.user.port.UserAssignmentLookup.UserRoleAssignment;
 
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -35,8 +32,7 @@ import java.util.stream.Collectors;
  * <p>设计要点：</p>
  * <ol>
  *   <li>方法体 1:1 复刻旧 Service 的逻辑（不引入新行为，遵守 parity 纪律）</li>
- *   <li>依赖 3 个 mapper，与旧 Service 一致（{@link SysUserMapper} +
- *       {@link SysRoleMapper} + {@link SysUserRoleMapper}）</li>
+ *   <li>通过 {@link UserAssignmentLookup} 读取目标用户与角色关系，避免 policy 直接依赖持久化类型</li>
  *   <li>内嵌 {@link AssignableScope} record，不复用 Service 私有类型
  *       （与 {@code OrgAssignmentPolicy} 内嵌 record 模式一致）</li>
  *   <li>内嵌角色常量集合，不依赖 Service 私有常量</li>
@@ -45,7 +41,6 @@ import java.util.stream.Collectors;
  * <p>后续 issue（如 #18 SysUserAssignmentApplication）会接入本策略，
  * 旧 Service 的同名方法可改为委派实现。</p>
  */
-@Component
 public class UserAssignmentPolicy {
 
     /** 可分配的业务角色编码集合（业务组长、专员、渠道组长、专员） */
@@ -62,17 +57,10 @@ public class UserAssignmentPolicy {
             RoleCodes.BIZ_STAFF
     );
 
-    private final SysUserMapper sysUserMapper;
-    private final SysRoleMapper sysRoleMapper;
-    private final SysUserRoleMapper sysUserRoleMapper;
+    private final UserAssignmentLookup assignmentLookup;
 
-    public UserAssignmentPolicy(
-            SysUserMapper sysUserMapper,
-            SysRoleMapper sysRoleMapper,
-            SysUserRoleMapper sysUserRoleMapper) {
-        this.sysUserMapper = sysUserMapper;
-        this.sysRoleMapper = sysRoleMapper;
-        this.sysUserRoleMapper = sysUserRoleMapper;
+    public UserAssignmentPolicy(UserAssignmentLookup assignmentLookup) {
+        this.assignmentLookup = assignmentLookup;
     }
 
     /**
@@ -98,23 +86,20 @@ public class UserAssignmentPolicy {
         if (scope.allowedRoleCodes().isEmpty()) {
             throw BusinessException.stateInvalid("当前角色不允许分配负责人");
         }
-        SysUser targetUser = requireUser(targetUserId);
-        if (scope.deptId() != null && !scope.allowCrossDept() && !Objects.equals(scope.deptId(), targetUser.getDeptId())) {
+        AssignableUser targetUser = requireUser(targetUserId);
+        if (scope.deptId() != null && !scope.allowCrossDept() && !Objects.equals(scope.deptId(), targetUser.deptId())) {
             throw BusinessException.forbidden("只能分配给本组招商下属");
         }
 
-        List<SysUserRole> relations = sysUserRoleMapper.findByUserId(targetUserId);
+        List<UserRoleAssignment> relations = assignmentLookup.findUserRoles(targetUserId);
         if (relations == null || relations.isEmpty()) {
             throw BusinessException.stateInvalid("目标负责人未配置可分配角色");
         }
         Set<UUID> roleIds = relations.stream()
-                .map(SysUserRole::getRoleId)
+                .map(UserRoleAssignment::roleId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<UUID, SysRole> roleMap = roleIds.isEmpty()
-                ? Collections.emptyMap()
-                : sysRoleMapper.selectBatchIds(roleIds).stream()
-                .collect(Collectors.toMap(SysRole::getId, role -> role));
+        Map<UUID, AssignableRole> roleMap = assignmentLookup.findRolesByIds(roleIds);
         if (!matchesAssignableRole(targetUserId, Map.of(targetUserId, relations), roleMap, scope.allowedRoleCodes())) {
             throw BusinessException.forbidden("只能分配给符合规则的招商下属");
         }
@@ -136,33 +121,27 @@ public class UserAssignmentPolicy {
         if (targetUserId == null) {
             throw BusinessException.param("assigneeId 不能为空");
         }
-        SysUser targetUser = requireUser(targetUserId);
-        if (targetUser.getStatus() == null || targetUser.getStatus() != SysUserStatus.ACTIVE) {
+        AssignableUser targetUser = requireUser(targetUserId);
+        if (targetUser.status() == null || targetUser.status() != SysUserStatus.ACTIVE) {
             throw BusinessException.stateInvalid("目标用户未启用");
         }
-        List<SysUserRole> relations = sysUserRoleMapper.findByUserId(targetUserId);
+        List<UserRoleAssignment> relations = assignmentLookup.findUserRoles(targetUserId);
         if (relations == null || relations.isEmpty()) {
             throw BusinessException.stateInvalid("目标用户未配置招商角色");
         }
         Set<UUID> roleIds = relations.stream()
-                .map(SysUserRole::getRoleId)
+                .map(UserRoleAssignment::roleId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<UUID, SysRole> roleMap = roleIds.isEmpty()
-                ? Collections.emptyMap()
-                : sysRoleMapper.selectBatchIds(roleIds).stream()
-                .collect(Collectors.toMap(SysRole::getId, role -> role));
+        Map<UUID, AssignableRole> roleMap = assignmentLookup.findRolesByIds(roleIds);
         if (!matchesAssignableRole(targetUserId, Map.of(targetUserId, relations), roleMap, RECRUITER_ROLE_CODES)) {
             throw BusinessException.forbidden("只能分配给招商组长、招商专员或招商组长兼容角色");
         }
     }
 
-    private SysUser requireUser(UUID id) {
-        SysUser user = sysUserMapper.selectById(id);
-        if (user == null) {
-            throw BusinessException.notFound("用户不存在");
-        }
-        return user;
+    private AssignableUser requireUser(UUID id) {
+        return assignmentLookup.findUser(id)
+                .orElseThrow(() -> BusinessException.notFound("用户不存在"));
     }
 
     /**
@@ -200,19 +179,19 @@ public class UserAssignmentPolicy {
      */
     public boolean matchesAssignableRole(
             UUID userId,
-            Map<UUID, List<SysUserRole>> relationMap,
-            Map<UUID, SysRole> roleMap,
+            Map<UUID, List<UserRoleAssignment>> relationMap,
+            Map<UUID, AssignableRole> roleMap,
             Set<String> allowedRoleCodes) {
-        List<SysUserRole> relations = relationMap.getOrDefault(userId, Collections.emptyList());
+        List<UserRoleAssignment> relations = relationMap.getOrDefault(userId, Collections.emptyList());
         if (relations.isEmpty()) {
             return false;
         }
-        for (SysUserRole relation : relations) {
-            SysRole role = roleMap.get(relation.getRoleId());
-            if (role == null || role.getStatus() == null || role.getStatus() != 1) {
+        for (UserRoleAssignment relation : relations) {
+            AssignableRole role = roleMap.get(relation.roleId());
+            if (role == null || role.status() == null || role.status() != 1) {
                 continue;
             }
-            if (allowedRoleCodes.contains(role.getRoleCode())) {
+            if (allowedRoleCodes.contains(role.roleCode())) {
                 return true;
             }
         }

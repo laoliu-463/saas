@@ -6,8 +6,6 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.user.port.OrgDeletionConstraintLookup;
 import com.colonel.saas.domain.user.port.OrgLeaderCandidateLookup;
 import com.colonel.saas.domain.user.port.OrgLeaderCandidateLookup.LeaderCandidate;
-import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 import java.util.Set;
 import java.util.UUID;
@@ -27,7 +25,6 @@ import java.util.stream.Collectors;
  *
  * <p>所属业务领域：用户域 / 组织架构</p>
  */
-@Component
 public class OrgValidationPolicy {
 
     /** 招商组允许的组长角色集合 */
@@ -72,7 +69,7 @@ public class OrgValidationPolicy {
         LeaderCandidate leader = leaderCandidateLookup.findActiveLeaderCandidate(leaderUserId)
                 .orElseThrow(() -> BusinessException.param("组长必须是系统内有效用户"));
         Set<String> roleCodes = leader.roleCodes().stream()
-                .filter(StringUtils::hasText)
+                .filter(OrgValidationPolicy::hasText)
                 .collect(Collectors.toSet());
         String normalizedType = DeptType.normalize(groupType);
         Set<String> allowed = switch (normalizedType) {
@@ -85,10 +82,10 @@ public class OrgValidationPolicy {
         if (roleCodes.stream().noneMatch(allowed::contains)) {
             throw BusinessException.param("组长角色与组别类型不匹配");
         }
-        if (StringUtils.hasText(leader.realName())) {
+        if (hasText(leader.realName())) {
             return leader.realName();
         }
-        if (StringUtils.hasText(leader.username())) {
+        if (hasText(leader.username())) {
             return leader.username();
         }
         return leaderUserId.toString();
@@ -106,5 +103,9 @@ public class OrgValidationPolicy {
         if (childGroups > 0) {
             throw BusinessException.stateInvalid("请先删除下级组别");
         }
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }

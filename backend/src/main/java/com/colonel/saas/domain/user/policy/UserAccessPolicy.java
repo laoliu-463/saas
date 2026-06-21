@@ -3,7 +3,6 @@ package com.colonel.saas.domain.user.policy;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.domain.user.port.UserDepartmentLookup;
-import org.springframework.stereotype.Component;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -14,7 +13,6 @@ import java.util.UUID;
  * <p>负责把用户详情、更新、删除、重置密码和角色分配中的 self/group/all
  * 访问控制收口到用户域策略层。</p>
  */
-@Component
 public class UserAccessPolicy {
 
     private final UserDepartmentLookup userDepartmentLookup;

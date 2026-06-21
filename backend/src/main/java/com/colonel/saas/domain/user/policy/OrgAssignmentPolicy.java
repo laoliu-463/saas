@@ -4,7 +4,6 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.DeptType;
 import com.colonel.saas.domain.user.port.OrgNodeLookup;
 import com.colonel.saas.domain.user.port.OrgNodeLookup.OrgNode;
-import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -26,7 +25,6 @@ import java.util.UUID;
  *
  * @see com.colonel.saas.constant.DeptType
  */
-@Component
 public class OrgAssignmentPolicy {
 
     private final OrgNodeLookup orgNodeLookup;

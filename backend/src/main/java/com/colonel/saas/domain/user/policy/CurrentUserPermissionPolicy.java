@@ -4,8 +4,6 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.user.CheckPermissionRequest;
 import com.colonel.saas.dto.user.CheckPermissionResponse;
-import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -23,7 +21,6 @@ import java.util.Set;
  * <p>负责当前用户上下文中的角色编码解析、self/group/all 数据范围编码、
  * 权限包聚合与操作权限判断。</p>
  */
-@Component
 public class CurrentUserPermissionPolicy {
 
     public record RolePermission(String roleCode, Integer dataScope, Map<String, Object> permissions) {
@@ -34,12 +31,12 @@ public class CurrentUserPermissionPolicy {
         if (roles != null) {
             roles.stream()
                     .map(RolePermission::roleCode)
-                    .filter(StringUtils::hasText)
+                    .filter(CurrentUserPermissionPolicy::hasText)
                     .forEach(codes::add);
         }
         if (codes.isEmpty() && requestRoleCodes != null) {
             requestRoleCodes.stream()
-                    .filter(StringUtils::hasText)
+                    .filter(CurrentUserPermissionPolicy::hasText)
                     .forEach(codes::add);
         }
         return new ArrayList<>(codes);
@@ -134,7 +131,7 @@ public class CurrentUserPermissionPolicy {
     }
 
     private boolean permissionAllows(List<RolePermission> roles, String resource, String action) {
-        if (!StringUtils.hasText(resource) || !StringUtils.hasText(action)) {
+        if (!hasText(resource) || !hasText(action)) {
             return false;
         }
         if (roles == null || roles.isEmpty()) {
@@ -175,5 +172,9 @@ public class CurrentUserPermissionPolicy {
 
     private String normalizeKey(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }

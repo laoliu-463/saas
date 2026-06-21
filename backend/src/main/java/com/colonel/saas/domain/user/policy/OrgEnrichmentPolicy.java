@@ -6,7 +6,6 @@ import com.colonel.saas.domain.user.port.OrgEnrichmentLookup.RoleSummary;
 import com.colonel.saas.domain.user.port.OrgNodeLookup.OrgNode;
 import com.colonel.saas.domain.user.policy.OrgAssignmentPolicy.SplitAssignment;
 import com.colonel.saas.vo.SysUserVO;
-import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -29,7 +28,6 @@ import java.util.UUID;
  *
  * <p>所属业务领域：用户域 / 组织架构</p>
  */
-@Component
 public class OrgEnrichmentPolicy {
 
     private final OrgEnrichmentLookup orgEnrichmentLookup;

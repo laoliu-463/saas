@@ -1,53 +1,38 @@
 package com.colonel.saas.auth.service;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.auth.dto.DeptMemberPageRequest;
+import com.colonel.saas.auth.dto.SysUserPageRequest;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.user.application.SysUserCRUDApplicationA;
 import com.colonel.saas.domain.user.application.SysUserCRUDApplicationB;
 import com.colonel.saas.domain.user.application.SysUserGroupMembershipApplication;
+import com.colonel.saas.domain.user.application.SysUserQueryApplicationService;
 import com.colonel.saas.domain.user.application.SysUserRoleAssignmentApplicationService;
 import com.colonel.saas.domain.user.application.UserAssignableApplicationService;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
-import com.colonel.saas.domain.user.policy.UserAccessPolicy;
-import com.colonel.saas.domain.user.policy.UserChannelCodePolicy;
-import com.colonel.saas.mapper.SysRoleMapper;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.mapper.SysUserRoleMapper;
-import com.colonel.saas.service.OperationLogService;
-import com.colonel.saas.service.UserDomainEventPublisher;
-import com.colonel.saas.service.UserPermissionCacheService;
 import com.colonel.saas.vo.SysUserVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SysUserServiceAssignableBoundaryTest {
 
-    @Mock private SysUserMapper sysUserMapper;
-    @Mock private SysRoleMapper sysRoleMapper;
-    @Mock private SysUserRoleMapper sysUserRoleMapper;
-    @Mock private PasswordEncoder passwordEncoder;
-    @Mock private OperationLogService operationLogService;
-    @Mock private UserDomainEventPublisher userDomainEventPublisher;
-    @Mock private OrgStructureService orgStructureService;
-    @Mock private UserPermissionCacheService userPermissionCacheService;
-    @Mock private UserAccessPolicy userAccessPolicy;
-    @Mock private UserChannelCodePolicy userChannelCodePolicy;
     @Mock private SysUserCRUDApplicationA sysUserCRUDApplicationA;
     @Mock private SysUserCRUDApplicationB sysUserCRUDApplicationB;
     @Mock private SysUserGroupMembershipApplication sysUserGroupMembershipApplication;
+    @Mock private SysUserQueryApplicationService sysUserQueryApplicationService;
     @Mock private UserAssignableApplicationService userAssignableApplicationService;
     @Mock private SysUserRoleAssignmentApplicationService sysUserRoleAssignmentApplicationService;
 
@@ -56,22 +41,40 @@ class SysUserServiceAssignableBoundaryTest {
     @BeforeEach
     void setUp() {
         service = new SysUserService(
-                sysUserMapper,
-                sysRoleMapper,
-                sysUserRoleMapper,
-                passwordEncoder,
-                operationLogService,
-                userDomainEventPublisher,
-                orgStructureService,
-                userPermissionCacheService,
-                new DataScopePolicy(),
-                userAccessPolicy,
-                userChannelCodePolicy,
                 sysUserCRUDApplicationA,
                 sysUserCRUDApplicationB,
                 sysUserGroupMembershipApplication,
+                sysUserQueryApplicationService,
                 userAssignableApplicationService,
                 sysUserRoleAssignmentApplicationService);
+    }
+
+    @Test
+    void findPage_shouldDelegateToUserDomainQueryApplication() {
+        UUID currentUserId = UUID.randomUUID();
+        UUID currentDeptId = UUID.randomUUID();
+        SysUserPageRequest request = new SysUserPageRequest(1, 10, "招商", 1, null, null, null, null);
+        IPage<SysUserVO> page = new Page<>(1, 10);
+        when(sysUserQueryApplicationService.findPage(currentUserId, currentDeptId, DataScope.DEPT, request))
+                .thenReturn(page);
+
+        IPage<SysUserVO> result = service.findPage(currentUserId, currentDeptId, DataScope.DEPT, request);
+
+        assertThat(result).isSameAs(page);
+        verify(sysUserQueryApplicationService).findPage(currentUserId, currentDeptId, DataScope.DEPT, request);
+    }
+
+    @Test
+    void findDeptMembers_shouldDelegateToUserDomainQueryApplication() {
+        UUID deptId = UUID.randomUUID();
+        DeptMemberPageRequest request = new DeptMemberPageRequest(1, 20, "组员", 1, null, null, null);
+        IPage<SysUserVO> page = new Page<>(1, 20);
+        when(sysUserQueryApplicationService.findDeptMembers(deptId, request)).thenReturn(page);
+
+        IPage<SysUserVO> result = service.findDeptMembers(deptId, request);
+
+        assertThat(result).isSameAs(page);
+        verify(sysUserQueryApplicationService).findDeptMembers(deptId, request);
     }
 
     @Test
@@ -94,7 +97,6 @@ class SysUserServiceAssignableBoundaryTest {
                 "招商",
                 List.of(RoleCodes.BIZ_LEADER),
                 deptId);
-        verifyNoInteractions(sysUserMapper, sysRoleMapper, sysUserRoleMapper);
     }
 
     @Test
@@ -108,7 +110,6 @@ class SysUserServiceAssignableBoundaryTest {
                 targetUserId,
                 List.of(RoleCodes.BIZ_LEADER),
                 deptId);
-        verifyNoInteractions(sysUserMapper, sysRoleMapper, sysUserRoleMapper);
     }
 
     @Test
@@ -118,7 +119,6 @@ class SysUserServiceAssignableBoundaryTest {
         service.assertRecruiterUser(targetUserId);
 
         verify(userAssignableApplicationService).assertRecruiterUser(targetUserId);
-        verifyNoInteractions(sysUserMapper, sysRoleMapper, sysUserRoleMapper);
     }
 
     @Test
@@ -135,6 +135,5 @@ class SysUserServiceAssignableBoundaryTest {
                 request,
                 currentUserId,
                 DataScope.ALL);
-        verifyNoInteractions(sysUserMapper, sysRoleMapper, sysUserRoleMapper);
     }
 }
