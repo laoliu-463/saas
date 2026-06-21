@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.OrderAttributionService;
@@ -45,7 +46,7 @@ class OrderAttributionControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new OrderAttributionController(new OrderAttributionService(orderMapper)))
+                .standaloneSetup(new OrderAttributionController(new OrderAttributionService(orderMapper, new DataScopePolicy())))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

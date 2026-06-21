@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,7 +43,7 @@ class OrderAttributionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new OrderAttributionService(orderMapper);
+        service = new OrderAttributionService(orderMapper, new DataScopePolicy());
     }
 
     // ============================================================
