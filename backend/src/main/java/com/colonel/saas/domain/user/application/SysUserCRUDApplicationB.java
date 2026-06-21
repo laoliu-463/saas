@@ -10,9 +10,8 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.SysUserStatus;
 import com.colonel.saas.domain.user.policy.UserAccessPolicy;
 import com.colonel.saas.domain.user.policy.UserAccessPolicy.AccessibleUser;
-import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.mapper.SysUserRoleMapper;
+import com.colonel.saas.domain.user.port.UserCrudMutationStore;
+import com.colonel.saas.domain.user.port.UserCrudMutationStore.ManagedUser;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.UserDomainEventPublisher;
 import com.colonel.saas.service.UserPermissionCacheService;
@@ -24,7 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 系统用户 CRUD 应用服务 B（DDD-USER-MIGRATION-013，Issue #22）。
@@ -35,8 +33,7 @@ import java.util.stream.Collectors;
 @Service
 public class SysUserCRUDApplicationB {
 
-    private final SysUserMapper sysUserMapper;
-    private final SysUserRoleMapper sysUserRoleMapper;
+    private final UserCrudMutationStore userStore;
     private final PasswordEncoder passwordEncoder;
     private final OperationLogService operationLogService;
     private final UserDomainEventPublisher userDomainEventPublisher;
@@ -45,16 +42,14 @@ public class SysUserCRUDApplicationB {
     private final UserAccessPolicy userAccessPolicy;
 
     public SysUserCRUDApplicationB(
-            SysUserMapper sysUserMapper,
-            SysUserRoleMapper sysUserRoleMapper,
+            UserCrudMutationStore userStore,
             PasswordEncoder passwordEncoder,
             OperationLogService operationLogService,
             UserDomainEventPublisher userDomainEventPublisher,
             UserPermissionCacheService userPermissionCacheService,
             OrgStructureService orgStructureService,
             UserAccessPolicy userAccessPolicy) {
-        this.sysUserMapper = sysUserMapper;
-        this.sysUserRoleMapper = sysUserRoleMapper;
+        this.userStore = userStore;
         this.passwordEncoder = passwordEncoder;
         this.operationLogService = operationLogService;
         this.userDomainEventPublisher = userDomainEventPublisher;
@@ -64,46 +59,51 @@ public class SysUserCRUDApplicationB {
     }
 
     public SysUserVO update(UUID id, SysUserUpdateRequest request, UUID currentUserId, DataScope dataScope) {
-        SysUser user = requireUser(id);
+        ManagedUser user = requireUser(id);
         userAccessPolicy.assertCanAccess(accessibleUser(user), currentUserId, dataScope);
 
-        Integer previousStatus = user.getStatus();
-        UUID previousDeptId = user.getDeptId();
+        Integer previousStatus = user.status();
+        UUID previousDeptId = user.deptId();
 
-        user.setRealName(request.realName());
-        user.setPhone(request.phone());
-        user.setEmail(request.email());
+        Integer newStatus = user.status();
         if (request.status() != null) {
-            user.setStatus(request.status());
+            newStatus = request.status();
         }
+        UUID newDeptId = user.deptId();
         if (request.parentDeptId() != null || request.groupId() != null || request.deptId() != null) {
             ResolvedAssignment assignment = resolveAssignment(
                     request.parentDeptId(),
                     request.groupId(),
                     request.deptId());
-            user.setDeptId(assignment.effectiveDeptId());
+            newDeptId = assignment.effectiveDeptId();
         }
-        sysUserMapper.updateById(user);
-        recordOrgChangeIfNeeded(user, previousDeptId, user.getDeptId(), currentUserId);
+        ManagedUser updatedUser = user.withProfile(
+                request.realName(),
+                request.phone(),
+                request.email(),
+                newDeptId,
+                newStatus);
+        userStore.saveUser(updatedUser);
+        recordOrgChangeIfNeeded(updatedUser, previousDeptId, updatedUser.deptId(), currentUserId);
         operationLogService.recordSystemAction(
                 currentUserId,
                 "用户管理",
                 "更新用户",
                 "PUT",
                 "SysUser",
-                user.getId().toString(),
-                user.getUsername(),
-                "更新用户: " + user.getUsername());
-        if (becameDisabled(previousStatus, user.getStatus())) {
+                updatedUser.id().toString(),
+                updatedUser.username(),
+                "更新用户: " + updatedUser.username());
+        if (becameDisabled(previousStatus, updatedUser.status())) {
             userDomainEventPublisher.publishUserDisabled(
-                    user.getId(),
+                    updatedUser.id(),
                     previousStatus,
-                    user.getStatus(),
+                    updatedUser.status(),
                     currentUserId);
         }
-        userPermissionCacheService.invalidateUser(user.getId());
-        userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, user.getDeptId());
-        return orgStructureService.enrichUser(toVO(user));
+        userPermissionCacheService.invalidateUser(updatedUser.id());
+        userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, updatedUser.deptId());
+        return orgStructureService.enrichUser(toVO(updatedUser));
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -111,10 +111,10 @@ public class SysUserCRUDApplicationB {
         if (id.equals(currentUserId)) {
             throw BusinessException.stateInvalid("不能删除当前登录用户");
         }
-        SysUser user = requireUser(id);
+        ManagedUser user = requireUser(id);
         userAccessPolicy.assertCanAccess(accessibleUser(user), currentUserId, dataScope);
-        sysUserRoleMapper.deleteByUserIdPhysical(id);
-        sysUserMapper.softDeleteById(id);
+        userStore.deleteUserRoles(id);
+        userStore.softDeleteUser(id);
         userPermissionCacheService.invalidateUser(id);
         operationLogService.recordSystemAction(
                 currentUserId,
@@ -122,9 +122,9 @@ public class SysUserCRUDApplicationB {
                 "删除用户",
                 "DELETE",
                 "SysUser",
-                user.getId().toString(),
-                user.getUsername(),
-                "删除用户: " + user.getUsername());
+                user.id().toString(),
+                user.username(),
+                "删除用户: " + user.username());
     }
 
     public void resetPassword(
@@ -132,51 +132,42 @@ public class SysUserCRUDApplicationB {
             SysUserResetPasswordRequest request,
             UUID currentUserId,
             DataScope dataScope) {
-        SysUser user = requireUser(id);
+        ManagedUser user = requireUser(id);
         userAccessPolicy.assertCanAccess(accessibleUser(user), currentUserId, dataScope);
-        SysUser update = new SysUser();
-        update.setId(id);
-        update.setPassword(passwordEncoder.encode(request.newPassword()));
-        update.setForcePasswordChange(true);
-        sysUserMapper.updateById(update);
+        userStore.updatePassword(id, passwordEncoder.encode(request.newPassword()), true);
         operationLogService.recordSystemAction(
                 currentUserId,
                 "用户管理",
                 "重置密码",
                 "PUT",
                 "SysUser",
-                user.getId().toString(),
-                user.getUsername(),
-                "重置用户密码: " + user.getUsername());
+                user.id().toString(),
+                user.username(),
+                "重置用户密码: " + user.username());
     }
 
-    private SysUser requireUser(UUID id) {
-        SysUser user = sysUserMapper.selectById(id);
-        if (user == null) {
-            throw BusinessException.notFound("用户不存在");
-        }
-        return user;
+    private ManagedUser requireUser(UUID id) {
+        return userStore.findUser(id)
+                .orElseThrow(() -> BusinessException.notFound("用户不存在"));
     }
 
-    private static AccessibleUser accessibleUser(SysUser user) {
-        return new AccessibleUser(user.getId(), user.getDeptId());
+    private static AccessibleUser accessibleUser(ManagedUser user) {
+        return new AccessibleUser(user.id(), user.deptId());
     }
 
-    private SysUserVO toVO(SysUser user) {
+    private SysUserVO toVO(ManagedUser user) {
         SysUserVO vo = new SysUserVO();
-        vo.setId(user.getId());
-        vo.setUsername(user.getUsername());
-        vo.setRealName(user.getRealName());
-        vo.setPhone(user.getPhone());
-        vo.setEmail(user.getEmail());
-        vo.setDeptId(user.getDeptId());
-        vo.setStatus(user.getStatus());
-        vo.setForcePasswordChange(user.getForcePasswordChange());
-        vo.setLastLoginAt(user.getLastLoginAt());
-        vo.setCreateTime(user.getCreateTime());
-        List<UUID> roleIds = sysUserRoleMapper.findByUserId(user.getId()).stream()
-                .map(relation -> relation.getRoleId())
-                .collect(Collectors.toList());
+        vo.setId(user.id());
+        vo.setUsername(user.username());
+        vo.setRealName(user.realName());
+        vo.setPhone(user.phone());
+        vo.setEmail(user.email());
+        vo.setDeptId(user.deptId());
+        vo.setStatus(user.status());
+        vo.setForcePasswordChange(user.forcePasswordChange());
+        vo.setLastLoginAt(user.lastLoginAt());
+        vo.setCreateTime(user.createTime());
+        List<UUID> roleIds = userStore.findRoleIdsByUserId(user.id());
         vo.setRoleIds(roleIds);
         return vo;
     }
@@ -207,7 +198,7 @@ public class SysUserCRUDApplicationB {
     }
 
     private void recordOrgChangeIfNeeded(
-            SysUser user,
+            ManagedUser user,
             UUID previousEffectiveDeptId,
             UUID newEffectiveDeptId,
             UUID operatorId) {
@@ -222,15 +213,15 @@ public class SysUserCRUDApplicationB {
                 "组织归属变更",
                 "PUT",
                 "SysUser",
-                user.getId().toString(),
-                user.getUsername(),
+                user.id().toString(),
+                user.username(),
                 orgStructureService.formatOrgChangeRemark(
-                        user.getId(),
+                        user.id(),
                         previousEffectiveDeptId,
                         newEffectiveDeptId,
                         operatorId));
         userDomainEventPublisher.publishUserGroupChanged(
-                user.getId(),
+                user.id(),
                 oldSplit.groupId(),
                 newSplit.groupId(),
                 oldSplit.parentDeptId(),

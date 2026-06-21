@@ -11,12 +11,10 @@ import com.colonel.saas.constant.SysUserStatus;
 import com.colonel.saas.domain.user.policy.UserAccessPolicy;
 import com.colonel.saas.domain.user.policy.UserAccessPolicy.AccessibleUser;
 import com.colonel.saas.domain.user.policy.UserChannelCodePolicy;
-import com.colonel.saas.entity.SysRole;
-import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.entity.SysUserRole;
-import com.colonel.saas.mapper.SysRoleMapper;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.mapper.SysUserRoleMapper;
+import com.colonel.saas.domain.user.port.UserCrudMutationStore;
+import com.colonel.saas.domain.user.port.UserCrudMutationStore.ManagedRole;
+import com.colonel.saas.domain.user.port.UserCrudMutationStore.ManagedUser;
+import com.colonel.saas.domain.user.port.UserCrudMutationStore.NewUser;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.UserDomainEventPublisher;
 import com.colonel.saas.vo.SysUserVO;
@@ -31,7 +29,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 系统用户 CRUD 应用服务 A（DDD-USER-MIGRATION-012，Issue #21）。
@@ -42,7 +39,7 @@ import java.util.stream.Collectors;
  * 后续可拆分为独立 Policy。</p>
  *
  * <p><b>行为 1:1 等价</b>于 SysUserService.getById + SysUserService.create
- * （被 SysUserServiceTest baseline + 本测试类覆盖）。</p>
+ * （被本测试类和 true-route 委托测试覆盖）。</p>
  *
  * <p><b>2 个 public 方法</b>：
  * <ul>
@@ -55,9 +52,7 @@ import java.util.stream.Collectors;
 @Service
 public class SysUserCRUDApplicationA {
 
-    private final SysUserMapper sysUserMapper;
-    private final SysRoleMapper sysRoleMapper;
-    private final SysUserRoleMapper sysUserRoleMapper;
+    private final UserCrudMutationStore userStore;
     private final PasswordEncoder passwordEncoder;
     private final OperationLogService operationLogService;
     private final UserDomainEventPublisher userDomainEventPublisher;
@@ -66,18 +61,14 @@ public class SysUserCRUDApplicationA {
     private final UserChannelCodePolicy userChannelCodePolicy;
 
     public SysUserCRUDApplicationA(
-            SysUserMapper sysUserMapper,
-            SysRoleMapper sysRoleMapper,
-            SysUserRoleMapper sysUserRoleMapper,
+            UserCrudMutationStore userStore,
             PasswordEncoder passwordEncoder,
             OperationLogService operationLogService,
             UserDomainEventPublisher userDomainEventPublisher,
             OrgStructureService orgStructureService,
             UserAccessPolicy userAccessPolicy,
             UserChannelCodePolicy userChannelCodePolicy) {
-        this.sysUserMapper = sysUserMapper;
-        this.sysRoleMapper = sysRoleMapper;
-        this.sysUserRoleMapper = sysUserRoleMapper;
+        this.userStore = userStore;
         this.passwordEncoder = passwordEncoder;
         this.operationLogService = operationLogService;
         this.userDomainEventPublisher = userDomainEventPublisher;
@@ -89,7 +80,7 @@ public class SysUserCRUDApplicationA {
     // ===== 查询 =====
 
     public SysUserVO getById(UUID id, UUID currentUserId, DataScope dataScope) {
-        SysUser user = requireUser(id);
+        ManagedUser user = requireUser(id);
         userAccessPolicy.assertCanAccess(accessibleUser(user), currentUserId, dataScope);
         return orgStructureService.enrichUser(toVO(user));
     }
@@ -98,67 +89,64 @@ public class SysUserCRUDApplicationA {
 
     @Transactional(rollbackFor = Exception.class)
     public SysUserVO create(SysUserCreateRequest request, UUID currentUserId) {
-        sysUserMapper.findByUsername(request.username()).ifPresent(existing -> {
+        userStore.findByUsername(request.username()).ifPresent(existing -> {
             throw BusinessException.duplicate("用户名已存在");
         });
 
         List<UUID> roleIds = normalizeRoleIds(request.roleIds());
         validateRoleIds(roleIds, null);
 
-        SysUser user = new SysUser();
-        user.setId(UUID.randomUUID());
-        user.setUsername(request.username());
-        user.setPassword(passwordEncoder.encode(request.password()));
-        user.setRealName(request.realName());
-        user.setPhone(request.phone());
-        user.setEmail(request.email());
         ResolvedAssignment assignment = resolveAssignment(
                 request.parentDeptId(),
                 request.groupId(),
                 request.deptId());
-        user.setDeptId(assignment.effectiveDeptId());
-        user.setStatus(SysUserStatus.PENDING_ACTIVATION);
-        user.setForcePasswordChange(true);
-        user.setChannelCode(userChannelCodePolicy.generateUnique(request.username()));
-        sysUserMapper.insert(user);
+        NewUser user = new NewUser(
+                UUID.randomUUID(),
+                request.username(),
+                passwordEncoder.encode(request.password()),
+                request.realName(),
+                request.phone(),
+                request.email(),
+                assignment.effectiveDeptId(),
+                SysUserStatus.PENDING_ACTIVATION,
+                true,
+                userChannelCodePolicy.generateUnique(request.username()));
+        userStore.insertUser(user);
 
-        replaceUserRoles(user.getId(), roleIds);
+        userStore.replaceUserRoles(user.id(), roleIds);
         operationLogService.recordSystemAction(
                 currentUserId,
                 "用户管理",
                 "新建用户",
                 "POST",
                 "SysUser",
-                user.getId().toString(),
-                user.getUsername(),
-                "新建用户: " + user.getUsername()
+                user.id().toString(),
+                user.username(),
+                "新建用户: " + user.username()
         );
-        SysRole primaryRole = resolvePrimaryRole(roleIds);
+        ManagedRole primaryRole = resolvePrimaryRole(roleIds);
         userDomainEventPublisher.publishUserCreated(
-                user.getId(),
-                user.getUsername(),
-                user.getRealName(),
-                primaryRole == null ? null : primaryRole.getId(),
-                primaryRole == null ? null : primaryRole.getRoleCode(),
-                user.getDeptId(),
-                user.getDeptId(),
-                user.getStatus(),
+                user.id(),
+                user.username(),
+                user.realName(),
+                primaryRole == null ? null : primaryRole.id(),
+                primaryRole == null ? null : primaryRole.roleCode(),
+                user.deptId(),
+                user.deptId(),
+                user.status(),
                 currentUserId);
-        return orgStructureService.enrichUser(toVO(user));
+        return orgStructureService.enrichUser(toVO(user.toManagedUser()));
     }
 
     // ===== private helpers（从 SysUserService 1:1 复制）=====
 
-    private SysUser requireUser(UUID id) {
-        SysUser user = sysUserMapper.selectById(id);
-        if (user == null) {
-            throw BusinessException.notFound("用户不存在");
-        }
-        return user;
+    private ManagedUser requireUser(UUID id) {
+        return userStore.findUser(id)
+                .orElseThrow(() -> BusinessException.notFound("用户不存在"));
     }
 
-    private static AccessibleUser accessibleUser(SysUser user) {
-        return new AccessibleUser(user.getId(), user.getDeptId());
+    private static AccessibleUser accessibleUser(ManagedUser user) {
+        return new AccessibleUser(user.id(), user.deptId());
     }
 
     /**
@@ -185,13 +173,13 @@ public class SysUserCRUDApplicationA {
             return;
         }
         // 第一步：校验角色存在性
-        List<SysRole> roles = sysRoleMapper.selectBatchIds(roleIds);
+        List<ManagedRole> roles = userStore.findRolesByIds(roleIds);
         if (roles.size() != roleIds.size()) {
             throw BusinessException.notFound("角色不存在或已删除");
         }
         // 第二步：校验角色是否已禁用
         boolean hasDisabledRole = roles.stream()
-                .anyMatch(role -> role.getStatus() == null || role.getStatus() != 1);
+                .anyMatch(role -> role.status() == null || role.status() != 1);
         if (hasDisabledRole) {
             throw BusinessException.stateInvalid("不能分配已禁用角色");
         }
@@ -202,75 +190,53 @@ public class SysUserCRUDApplicationA {
     /**
      * 校验单一管理员约束：系统全局只允许一个未删除的 ADMIN 角色用户。
      */
-    private void assertSingleAdminUser(List<SysRole> roles, UUID targetUserId) {
+    private void assertSingleAdminUser(List<ManagedRole> roles, UUID targetUserId) {
         // 第一步：检查待分配角色中是否包含 ADMIN
-        SysRole adminRole = roles.stream()
-                .filter(role -> RoleCodes.ADMIN.equals(role.getRoleCode()))
+        ManagedRole adminRole = roles.stream()
+                .filter(role -> RoleCodes.ADMIN.equals(role.roleCode()))
                 .findFirst()
                 .orElse(null);
-        if (adminRole == null || adminRole.getId() == null) {
+        if (adminRole == null || adminRole.id() == null) {
             return;
         }
         // 第二步：若目标用户已经是管理员，允许重新分配（不抛异常）
         if (targetUserId != null) {
-            boolean targetAlreadyAdmin = sysUserRoleMapper.findByUserId(targetUserId).stream()
-                    .anyMatch(relation -> adminRole.getId().equals(relation.getRoleId()));
+            boolean targetAlreadyAdmin = userStore.findRoleIdsByUserId(targetUserId).stream()
+                    .anyMatch(roleId -> adminRole.id().equals(roleId));
             if (targetAlreadyAdmin) {
                 return;
             }
         }
         // 第三步：检查数据库中是否已存在其他未删除的管理员
-        List<UUID> adminUserIds = sysUserRoleMapper.findByRoleId(adminRole.getId()).stream()
-                .map(SysUserRole::getUserId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
+        List<UUID> adminUserIds = userStore.findUserIdsByRoleId(adminRole.id());
         if (adminUserIds.isEmpty()) {
             return;
         }
-        boolean hasExistingAdmin = sysUserMapper.selectBatchIds(adminUserIds).stream()
+        boolean hasExistingAdmin = userStore.findUsersByIds(adminUserIds).stream()
                 .filter(Objects::nonNull)
-                .anyMatch(user -> user.getDeleted() == null || user.getDeleted() == 0);
+                .anyMatch(user -> user.deleted() == null || user.deleted() == 0);
         if (hasExistingAdmin) {
             throw BusinessException.duplicate("管理员账号已存在，不能新增或转配第二个管理员");
         }
     }
 
     /**
-     * 全量替换用户的角色关联（先删后插）。
-     */
-    private void replaceUserRoles(UUID userId, List<UUID> roleIds) {
-        // 第一步：物理删除旧的角色关联
-        sysUserRoleMapper.deleteByUserIdPhysical(userId);
-        // 第二步：插入新的角色关联
-        for (UUID roleId : roleIds) {
-            SysUserRole relation = new SysUserRole();
-            relation.setId(UUID.randomUUID());
-            relation.setUserId(userId);
-            relation.setRoleId(roleId);
-            sysUserRoleMapper.insert(relation);
-        }
-    }
-
-    /**
      * 将用户实体转换为视图对象（VO），同时查询该用户关联的角色 ID 列表填充。
      */
-    private SysUserVO toVO(SysUser user) {
+    private SysUserVO toVO(ManagedUser user) {
         SysUserVO vo = new SysUserVO();
-        vo.setId(user.getId());
-        vo.setUsername(user.getUsername());
-        vo.setRealName(user.getRealName());
-        vo.setPhone(user.getPhone());
-        vo.setEmail(user.getEmail());
-        vo.setDeptId(user.getDeptId());
-        vo.setStatus(user.getStatus());
-        vo.setForcePasswordChange(user.getForcePasswordChange());
-        vo.setLastLoginAt(user.getLastLoginAt());
-        vo.setCreateTime(user.getCreateTime());
+        vo.setId(user.id());
+        vo.setUsername(user.username());
+        vo.setRealName(user.realName());
+        vo.setPhone(user.phone());
+        vo.setEmail(user.email());
+        vo.setDeptId(user.deptId());
+        vo.setStatus(user.status());
+        vo.setForcePasswordChange(user.forcePasswordChange());
+        vo.setLastLoginAt(user.lastLoginAt());
+        vo.setCreateTime(user.createTime());
         // 查询并填充角色 ID 列表
-        List<UUID> roleIds = sysUserRoleMapper.findByUserId(user.getId()).stream()
-                .map(SysUserRole::getRoleId)
-                .collect(Collectors.toList());
+        List<UUID> roleIds = userStore.findRoleIdsByUserId(user.id());
         vo.setRoleIds(roleIds);
         return vo;
     }
@@ -296,11 +262,11 @@ public class SysUserCRUDApplicationA {
     /**
      * 解析主角色：从角色 ID 列表取第一个角色作为主角色。
      */
-    private SysRole resolvePrimaryRole(List<UUID> roleIds) {
+    private ManagedRole resolvePrimaryRole(List<UUID> roleIds) {
         if (roleIds == null || roleIds.isEmpty()) {
             return null;
         }
-        List<SysRole> roles = sysRoleMapper.selectBatchIds(roleIds);
+        List<ManagedRole> roles = userStore.findRolesByIds(roleIds);
         if (roles == null || roles.isEmpty()) {
             return null;
         }

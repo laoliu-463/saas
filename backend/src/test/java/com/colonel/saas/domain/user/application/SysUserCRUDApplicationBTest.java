@@ -8,9 +8,8 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.constant.SysUserStatus;
 import com.colonel.saas.domain.user.policy.UserAccessPolicy;
-import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.mapper.SysUserRoleMapper;
+import com.colonel.saas.domain.user.port.UserCrudMutationStore;
+import com.colonel.saas.domain.user.port.UserCrudMutationStore.ManagedUser;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.UserDomainEventPublisher;
 import com.colonel.saas.service.UserPermissionCacheService;
@@ -23,7 +22,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,9 +38,7 @@ import static org.mockito.Mockito.when;
 class SysUserCRUDApplicationBTest {
 
     @Mock
-    private SysUserMapper sysUserMapper;
-    @Mock
-    private SysUserRoleMapper sysUserRoleMapper;
+    private UserCrudMutationStore userStore;
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
@@ -59,8 +57,7 @@ class SysUserCRUDApplicationBTest {
     @BeforeEach
     void setUp() {
         applicationB = new SysUserCRUDApplicationB(
-                sysUserMapper,
-                sysUserRoleMapper,
+                userStore,
                 passwordEncoder,
                 operationLogService,
                 userDomainEventPublisher,
@@ -77,9 +74,9 @@ class SysUserCRUDApplicationBTest {
         UUID parentDeptId = UUID.randomUUID();
         UUID newGroupId = UUID.randomUUID();
         UUID newDeptId = UUID.randomUUID();
-        SysUser user = activeUser(userId, oldDeptId);
+        ManagedUser user = activeUser(userId, oldDeptId);
 
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(userStore.findUser(userId)).thenReturn(Optional.of(user));
         when(orgStructureService.resolveAssignment(parentDeptId, newGroupId))
                 .thenReturn(new OrgStructureService.ResolvedAssignment(newDeptId, parentDeptId, newGroupId));
         when(orgStructureService.splitAssignment(oldDeptId))
@@ -88,7 +85,7 @@ class SysUserCRUDApplicationBTest {
                 .thenReturn(new OrgStructureService.SplitAssignment(parentDeptId, newGroupId, "new-parent", "new-group", "biz"));
         when(orgStructureService.formatOrgChangeRemark(userId, oldDeptId, newDeptId, currentUserId))
                 .thenReturn("org changed");
-        when(sysUserRoleMapper.findByUserId(userId)).thenReturn(new ArrayList<>());
+        when(userStore.findRoleIdsByUserId(userId)).thenReturn(List.of());
         when(orgStructureService.enrichUser(any(SysUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
 
         SysUserUpdateRequest request = new SysUserUpdateRequest(
@@ -100,7 +97,14 @@ class SysUserCRUDApplicationBTest {
         assertThat(result.getRealName()).isEqualTo("更新姓名");
         assertThat(result.getDeptId()).isEqualTo(newDeptId);
         verify(userAccessPolicy).assertCanAccess(any(UserAccessPolicy.AccessibleUser.class), eq(currentUserId), eq(DataScope.ALL));
-        verify(sysUserMapper).updateById(user);
+        ArgumentCaptor<ManagedUser> saved = ArgumentCaptor.forClass(ManagedUser.class);
+        verify(userStore).saveUser(saved.capture());
+        assertThat(saved.getValue().id()).isEqualTo(userId);
+        assertThat(saved.getValue().realName()).isEqualTo("更新姓名");
+        assertThat(saved.getValue().phone()).isEqualTo("13800000000");
+        assertThat(saved.getValue().email()).isEqualTo("u@x.com");
+        assertThat(saved.getValue().deptId()).isEqualTo(newDeptId);
+        assertThat(saved.getValue().status()).isEqualTo(SysUserStatus.DISABLED);
         verify(operationLogService).recordSystemAction(
                 eq(currentUserId), eq("用户管理"), eq("组织归属变更"), eq("PUT"),
                 eq("SysUser"), eq(userId.toString()), eq("alice"), eq("org changed"));
@@ -120,10 +124,10 @@ class SysUserCRUDApplicationBTest {
         UUID userId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
-        SysUser user = activeUser(userId, deptId);
+        ManagedUser user = activeUser(userId, deptId);
 
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
-        when(sysUserRoleMapper.findByUserId(userId)).thenReturn(new ArrayList<>());
+        when(userStore.findUser(userId)).thenReturn(Optional.of(user));
+        when(userStore.findRoleIdsByUserId(userId)).thenReturn(List.of());
         when(orgStructureService.enrichUser(any(SysUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
 
         SysUserUpdateRequest request = new SysUserUpdateRequest(
@@ -146,23 +150,23 @@ class SysUserCRUDApplicationBTest {
                 .extracting(t -> ((BusinessException) t).getCode())
                 .isEqualTo(ResultCode.STATE_INVALID.getCode());
 
-        verify(sysUserMapper, never()).selectById(any());
-        verify(sysUserMapper, never()).softDeleteById(any());
+        verify(userStore, never()).findUser(any());
+        verify(userStore, never()).softDeleteUser(any());
     }
 
     @Test
     void delete_normalCase_softDeletesAndInvalidatesCache() {
         UUID userId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
-        SysUser user = activeUser(userId, UUID.randomUUID());
+        ManagedUser user = activeUser(userId, UUID.randomUUID());
 
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(userStore.findUser(userId)).thenReturn(Optional.of(user));
 
         applicationB.delete(userId, currentUserId, DataScope.ALL);
 
         verify(userAccessPolicy).assertCanAccess(any(UserAccessPolicy.AccessibleUser.class), eq(currentUserId), eq(DataScope.ALL));
-        verify(sysUserRoleMapper).deleteByUserIdPhysical(userId);
-        verify(sysUserMapper).softDeleteById(userId);
+        verify(userStore).deleteUserRoles(userId);
+        verify(userStore).softDeleteUser(userId);
         verify(userPermissionCacheService).invalidateUser(userId);
         verify(operationLogService).recordSystemAction(
                 eq(currentUserId), eq("用户管理"), eq("删除用户"), eq("DELETE"),
@@ -173,9 +177,9 @@ class SysUserCRUDApplicationBTest {
     void resetPassword_updatesEncodedPasswordAndForcesPasswordChange() {
         UUID userId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
-        SysUser user = activeUser(userId, UUID.randomUUID());
+        ManagedUser user = activeUser(userId, UUID.randomUUID());
 
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(userStore.findUser(userId)).thenReturn(Optional.of(user));
         when(passwordEncoder.encode("NewPassw0rd!")).thenReturn("encoded");
 
         applicationB.resetPassword(
@@ -184,23 +188,24 @@ class SysUserCRUDApplicationBTest {
                 currentUserId,
                 DataScope.ALL);
 
-        ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
-        verify(sysUserMapper).updateById(captor.capture());
-        assertThat(captor.getValue().getId()).isEqualTo(userId);
-        assertThat(captor.getValue().getPassword()).isEqualTo("encoded");
-        assertThat(captor.getValue().getForcePasswordChange()).isTrue();
+        verify(userStore).updatePassword(userId, "encoded", true);
         verify(operationLogService).recordSystemAction(
                 eq(currentUserId), eq("用户管理"), eq("重置密码"), eq("PUT"),
                 eq("SysUser"), eq(userId.toString()), eq("alice"), eq("重置用户密码: alice"));
     }
 
-    private static SysUser activeUser(UUID id, UUID deptId) {
-        SysUser user = new SysUser();
-        user.setId(id);
-        user.setUsername("alice");
-        user.setRealName("Alice");
-        user.setDeptId(deptId);
-        user.setStatus(SysUserStatus.ACTIVE);
-        return user;
+    private static ManagedUser activeUser(UUID id, UUID deptId) {
+        return new ManagedUser(
+                id,
+                "alice",
+                "Alice",
+                null,
+                null,
+                deptId,
+                SysUserStatus.ACTIVE,
+                false,
+                null,
+                null,
+                0);
     }
 }

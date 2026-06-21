@@ -8,23 +8,21 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.constant.SysUserStatus;
 import com.colonel.saas.domain.user.policy.UserAccessPolicy;
 import com.colonel.saas.domain.user.policy.UserChannelCodePolicy;
-import com.colonel.saas.entity.SysRole;
-import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.entity.SysUserRole;
-import com.colonel.saas.mapper.SysRoleMapper;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.mapper.SysUserRoleMapper;
+import com.colonel.saas.domain.user.port.UserCrudMutationStore;
+import com.colonel.saas.domain.user.port.UserCrudMutationStore.ManagedRole;
+import com.colonel.saas.domain.user.port.UserCrudMutationStore.ManagedUser;
+import com.colonel.saas.domain.user.port.UserCrudMutationStore.NewUser;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.UserDomainEventPublisher;
 import com.colonel.saas.vo.SysUserVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -33,7 +31,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,11 +52,7 @@ import static org.mockito.Mockito.when;
 class SysUserCRUDApplicationATest {
 
     @Mock
-    private SysUserMapper sysUserMapper;
-    @Mock
-    private SysRoleMapper sysRoleMapper;
-    @Mock
-    private SysUserRoleMapper sysUserRoleMapper;
+    private UserCrudMutationStore userStore;
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
@@ -78,9 +71,7 @@ class SysUserCRUDApplicationATest {
     @BeforeEach
     void setUp() {
         applicationA = new SysUserCRUDApplicationA(
-                sysUserMapper,
-                sysRoleMapper,
-                sysUserRoleMapper,
+                userStore,
                 passwordEncoder,
                 operationLogService,
                 userDomainEventPublisher,
@@ -96,14 +87,10 @@ class SysUserCRUDApplicationATest {
         UUID userId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
-        SysUser user = new SysUser();
-        user.setId(userId);
-        user.setUsername("alice");
-        user.setStatus(1);
-        user.setDeptId(deptId);
+        ManagedUser user = managedUser(userId, "alice", deptId, 1);
 
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
-        when(sysUserRoleMapper.findByUserId(userId)).thenReturn(new ArrayList<>());
+        when(userStore.findUser(userId)).thenReturn(Optional.of(user));
+        when(userStore.findRoleIdsByUserId(userId)).thenReturn(List.of());
         SysUserVO enriched = new SysUserVO();
         enriched.setId(userId);
         when(orgStructureService.enrichUser(any(SysUserVO.class))).thenReturn(enriched);
@@ -120,7 +107,7 @@ class SysUserCRUDApplicationATest {
     void getById_userNotFound_throwsNotFound() {
         UUID userId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
-        when(sysUserMapper.selectById(userId)).thenReturn(null);
+        when(userStore.findUser(userId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> applicationA.getById(userId, currentUserId, DataScope.ALL))
                 .isInstanceOf(BusinessException.class)
@@ -143,29 +130,27 @@ class SysUserCRUDApplicationATest {
                 "newuser", "Passw0rd!", "新用户", "13800000000", "u@x.com",
                 null, null, deptId, roleIds);
 
-        SysRole role = new SysRole();
-        role.setId(roleId);
-        role.setRoleCode(RoleCodes.BIZ_STAFF);
-        role.setStatus(1);
+        ManagedRole role = new ManagedRole(roleId, RoleCodes.BIZ_STAFF, 1);
 
-        when(sysUserMapper.findByUsername("newuser")).thenReturn(Optional.empty());
-        when(sysRoleMapper.selectBatchIds(roleIds)).thenReturn(List.of(role));
-        lenient().when(sysUserRoleMapper.findByRoleId(role.getId())).thenReturn(new ArrayList<>());
-        lenient().when(sysUserRoleMapper.deleteByUserIdPhysical(any(UUID.class))).thenReturn(0);
-        lenient().when(sysUserRoleMapper.insert(any(SysUserRole.class))).thenReturn(1);
+        when(userStore.findByUsername("newuser")).thenReturn(Optional.empty());
+        when(userStore.findRolesByIds(roleIds)).thenReturn(List.of(role));
         when(passwordEncoder.encode("Passw0rd!")).thenReturn("encoded-pwd");
         when(userChannelCodePolicy.generateUnique("newuser")).thenReturn("newuser");
         when(orgStructureService.splitAssignment(deptId)).thenReturn(
                 new OrgStructureService.SplitAssignment(deptId, deptId, "D", "G", "biz"));
-        when(sysUserRoleMapper.findByUserId(any(UUID.class))).thenReturn(new ArrayList<>());
+        when(userStore.findRoleIdsByUserId(any(UUID.class))).thenReturn(List.of());
         when(orgStructureService.enrichUser(any(SysUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
 
         SysUserVO result = applicationA.create(request, operatorId);
 
         assertThat(result).isNotNull();
-        verify(sysUserMapper).insert(any(SysUser.class));
-        verify(sysUserRoleMapper).deleteByUserIdPhysical(any(UUID.class));
-        verify(sysUserRoleMapper).insert(any(SysUserRole.class));
+        ArgumentCaptor<NewUser> captor = ArgumentCaptor.forClass(NewUser.class);
+        verify(userStore).insertUser(captor.capture());
+        assertThat(captor.getValue().username()).isEqualTo("newuser");
+        assertThat(captor.getValue().encodedPassword()).isEqualTo("encoded-pwd");
+        assertThat(captor.getValue().deptId()).isEqualTo(deptId);
+        assertThat(captor.getValue().status()).isEqualTo(SysUserStatus.PENDING_ACTIVATION);
+        verify(userStore).replaceUserRoles(captor.getValue().id(), roleIds);
         verify(operationLogService).recordSystemAction(
                 eq(operatorId), eq("用户管理"), eq("新建用户"), eq("POST"),
                 eq("SysUser"), any(String.class), eq("newuser"), any(String.class));
@@ -179,11 +164,9 @@ class SysUserCRUDApplicationATest {
     void create_duplicateUsername_throwsDuplicate() {
         UUID operatorId = UUID.randomUUID();
         UUID existingId = UUID.randomUUID();
-        SysUser existing = new SysUser();
-        existing.setId(existingId);
-        existing.setUsername("alice");
+        ManagedUser existing = managedUser(existingId, "alice", UUID.randomUUID(), 1);
 
-        when(sysUserMapper.findByUsername("alice")).thenReturn(Optional.of(existing));
+        when(userStore.findByUsername("alice")).thenReturn(Optional.of(existing));
 
         SysUserCreateRequest request = new SysUserCreateRequest(
                 "alice", "Passw0rd!", "Alice", "13800000000", "a@x.com",
@@ -194,8 +177,23 @@ class SysUserCRUDApplicationATest {
                 .extracting(t -> ((BusinessException) t).getCode())
                 .isEqualTo(com.colonel.saas.common.result.ResultCode.DUPLICATE.getCode());
 
-        verify(sysUserMapper, never()).insert(any());
+        verify(userStore, never()).insertUser(any());
         verify(userDomainEventPublisher, never()).publishUserCreated(
                 any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    private static ManagedUser managedUser(UUID id, String username, UUID deptId, Integer status) {
+        return new ManagedUser(
+                id,
+                username,
+                username,
+                null,
+                null,
+                deptId,
+                status,
+                false,
+                null,
+                null,
+                0);
     }
 }
