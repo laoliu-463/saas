@@ -3,14 +3,16 @@ package com.colonel.saas.controller;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.application.CurrentUserApplicationService;
+import com.colonel.saas.dto.user.ChangePasswordRequest;
 import com.colonel.saas.dto.user.CheckPermissionResponse;
 import com.colonel.saas.dto.user.CurrentUserResponse;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
-import com.colonel.saas.service.UserDomainService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
@@ -21,9 +23,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -36,7 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class CurrentUserControllerTest {
 
     @Mock
-    private UserDomainService userDomainService;
+    private CurrentUserApplicationService currentUserApplicationService;
 
     private MockMvc mockMvc;
     private ObjectMapper objectMapper;
@@ -47,7 +51,7 @@ class CurrentUserControllerTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        CurrentUserController controller = new CurrentUserController(userDomainService);
+        CurrentUserController controller = new CurrentUserController(currentUserApplicationService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -55,7 +59,7 @@ class CurrentUserControllerTest {
 
     @Test
     void currentUser_returnsUserPermissionsAndScope() throws Exception {
-        when(userDomainService.getCurrentUser(userId, deptId, DataScope.DEPT, List.of(RoleCodes.CHANNEL_LEADER)))
+        when(currentUserApplicationService.currentUser(userId, deptId, DataScope.DEPT, List.of(RoleCodes.CHANNEL_LEADER)))
                 .thenReturn(new CurrentUserResponse(
                         userId,
                         "channel_leader",
@@ -84,8 +88,8 @@ class CurrentUserControllerTest {
     }
 
     @Test
-    void changePassword_usesCurrentUserOnly() throws Exception {
-        doNothing().when(userDomainService).changePassword(eq(userId), any());
+    void changePassword_usesCurrentUserOnlyAndPassesRequestBody() throws Exception {
+        doNothing().when(currentUserApplicationService).changePassword(eq(userId), any());
 
         mockMvc.perform(put("/users/current/password")
                         .requestAttr("userId", userId)
@@ -96,13 +100,32 @@ class CurrentUserControllerTest {
                         ))))
                 .andExpect(status().isOk());
 
-        verify(userDomainService).changePassword(eq(userId), any());
+        ArgumentCaptor<ChangePasswordRequest> captor = ArgumentCaptor.forClass(ChangePasswordRequest.class);
+        verify(currentUserApplicationService).changePassword(eq(userId), captor.capture());
+        assertThat(captor.getValue().oldPassword()).isEqualTo("old-pass");
+        assertThat(captor.getValue().newPassword()).isEqualTo("new-pass-123");
+    }
+
+    @Test
+    void changePassword_shouldRejectInvalidPayloadBeforeService() throws Exception {
+        mockMvc.perform(put("/users/current/password")
+                        .requestAttr("userId", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "oldPassword", "old-pass",
+                                "newPassword", "123"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("新密码长度必须在6到128字符之间"));
+
+        verify(currentUserApplicationService, never()).changePassword(any(), any());
     }
 
     @Test
     void dataScope_returnsResolvedUserIdsForCurrentUser() throws Exception {
         UUID memberId = UUID.randomUUID();
-        when(userDomainService.getUserDataScope(userId, deptId, DataScope.DEPT))
+        when(currentUserApplicationService.dataScope(userId, deptId, DataScope.DEPT))
                 .thenReturn(new UserDataScopeResponse("group", 2, List.of(userId, memberId)));
 
         mockMvc.perform(get("/users/current/data-scope")
@@ -118,7 +141,7 @@ class CurrentUserControllerTest {
 
     @Test
     void checkPermission_returnsAllowedFlag() throws Exception {
-        when(userDomainService.checkPermission(eq(userId), eq(List.of(RoleCodes.BIZ_STAFF)), any()))
+        when(currentUserApplicationService.checkPermission(eq(userId), eq(List.of(RoleCodes.BIZ_STAFF)), any()))
                 .thenReturn(new CheckPermissionResponse("product", "audit", true));
 
         mockMvc.perform(post("/users/current/permissions/check")
@@ -139,7 +162,7 @@ class CurrentUserControllerTest {
 
     @Test
     void currentUser_returnsEmptyPermissionsAndDataScopeWhenServiceReturnsEmpty() throws Exception {
-        when(userDomainService.getCurrentUser(userId, null, null, List.of()))
+        when(currentUserApplicationService.currentUser(userId, null, null, List.of()))
                 .thenReturn(new CurrentUserResponse(
                         userId,
                         "ops_staff",
@@ -166,7 +189,7 @@ class CurrentUserControllerTest {
 
     @Test
     void dataScope_returnsEmptyUserIdsForAllScope() throws Exception {
-        when(userDomainService.getUserDataScope(userId, null, DataScope.ALL))
+        when(currentUserApplicationService.dataScope(userId, null, DataScope.ALL))
                 .thenReturn(new UserDataScopeResponse("all", 3, List.of()));
 
         mockMvc.perform(get("/users/current/data-scope")
@@ -181,7 +204,7 @@ class CurrentUserControllerTest {
 
     @Test
     void checkPermission_returnsNotAllowedFlag() throws Exception {
-        when(userDomainService.checkPermission(eq(userId), eq(List.of(RoleCodes.CHANNEL_STAFF)), any()))
+        when(currentUserApplicationService.checkPermission(eq(userId), eq(List.of(RoleCodes.CHANNEL_STAFF)), any()))
                 .thenReturn(new CheckPermissionResponse("product", "audit", false));
 
         mockMvc.perform(post("/users/current/permissions/check")
@@ -203,7 +226,7 @@ class CurrentUserControllerTest {
 
     @Test
     void currentUser_shouldPassNullAttributesWhenNotProvided() throws Exception {
-        when(userDomainService.getCurrentUser(userId, null, null, List.of()))
+        when(currentUserApplicationService.currentUser(userId, null, null, null))
                 .thenReturn(new CurrentUserResponse(
                         userId, "x", "X", null, 1, "self", List.of(), Map.of(), 1, false));
 
@@ -213,13 +236,13 @@ class CurrentUserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.userId").value(userId.toString()));
 
-        // controller 必须显式回退到空集合（避免 NPE 传到 service）
-        verify(userDomainService).getCurrentUser(userId, null, null, List.of());
+        // controller 只传递 request context，空角色列表归一化由应用服务负责。
+        verify(currentUserApplicationService).currentUser(userId, null, null, null);
     }
 
     @Test
     void dataScope_shouldPassNullsWhenAttributesMissing() throws Exception {
-        when(userDomainService.getUserDataScope(userId, null, null))
+        when(currentUserApplicationService.dataScope(userId, null, null))
                 .thenReturn(new UserDataScopeResponse("self", 1, List.of(userId)));
 
         mockMvc.perform(get("/users/current/data-scope")
@@ -227,6 +250,6 @@ class CurrentUserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.scope").value("self"));
 
-        verify(userDomainService).getUserDataScope(userId, null, null);
+        verify(currentUserApplicationService).dataScope(userId, null, null);
     }
 }

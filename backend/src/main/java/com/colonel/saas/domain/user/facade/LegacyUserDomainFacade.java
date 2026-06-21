@@ -2,14 +2,14 @@ package com.colonel.saas.domain.user.facade;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.domain.user.facade.dto.DepartmentOption;
+import com.colonel.saas.domain.user.port.DepartmentOptionLookup;
+import com.colonel.saas.domain.user.port.DepartmentOptionLookup.DepartmentEntry;
+import com.colonel.saas.domain.user.port.UserBasicLookup;
+import com.colonel.saas.domain.user.port.UserBasicLookup.BasicUser;
 import com.colonel.saas.dto.user.CheckPermissionRequest;
 import com.colonel.saas.dto.user.CurrentUserResponse;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
 import com.colonel.saas.dto.user.UserOptionResponse;
-import com.colonel.saas.entity.SysDept;
-import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.service.SysDeptService;
 import com.colonel.saas.service.UserDomainService;
 import com.colonel.saas.service.UserMasterDataService;
 import org.springframework.stereotype.Service;
@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -31,18 +30,18 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
 
     private final UserDomainService userDomainService;
     private final UserMasterDataService userMasterDataService;
-    private final SysDeptService sysDeptService;
-    private final SysUserMapper sysUserMapper;
+    private final DepartmentOptionLookup departmentOptionLookup;
+    private final UserBasicLookup userBasicLookup;
 
     public LegacyUserDomainFacade(
             UserDomainService userDomainService,
             UserMasterDataService userMasterDataService,
-            SysDeptService sysDeptService,
-            SysUserMapper sysUserMapper) {
+            DepartmentOptionLookup departmentOptionLookup,
+            UserBasicLookup userBasicLookup) {
         this.userDomainService = userDomainService;
         this.userMasterDataService = userMasterDataService;
-        this.sysDeptService = sysDeptService;
-        this.sysUserMapper = sysUserMapper;
+        this.departmentOptionLookup = departmentOptionLookup;
+        this.userBasicLookup = userBasicLookup;
     }
 
     @Override
@@ -64,7 +63,7 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
 
     @Override
     public List<DepartmentOption> listDepartments() {
-        return sysDeptService.listActive().stream()
+        return departmentOptionLookup.listActive().stream()
                 .map(this::toDepartmentOption)
                 .sorted(Comparator.comparing(DepartmentOption::deptName, Comparator.nullsLast(String::compareTo)))
                 .toList();
@@ -91,12 +90,12 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
         ).allowed();
     }
 
-    private DepartmentOption toDepartmentOption(SysDept dept) {
+    private DepartmentOption toDepartmentOption(DepartmentEntry dept) {
         return new DepartmentOption(
-                dept.getId(),
-                dept.getDeptCode(),
-                dept.getDeptName(),
-                dept.getDeptType()
+                dept.id(),
+                dept.deptCode(),
+                dept.deptName(),
+                dept.deptType()
         );
     }
 
@@ -105,8 +104,9 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
         if (userId == null) {
             return null;
         }
-        SysUser user = sysUserMapper.selectById(userId);
-        return user == null ? null : user.getRealName();
+        return userBasicLookup.findById(userId)
+                .map(BasicUser::realName)
+                .orElse(null);
     }
 
     @Override
@@ -118,17 +118,18 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
         if (distinct.isEmpty()) {
             return Map.of();
         }
-        return sysUserMapper.selectBatchIds(distinct).stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toMap(SysUser::getId, SysUser::getRealName, (a, b) -> a));
+        return userBasicLookup.findByIds(distinct).stream()
+                .collect(Collectors.toMap(BasicUser::id, BasicUser::realName, (a, b) -> a));
     }
+
     @Override
     public UserOptionResponse getUserById(UUID userId) {
         if (userId == null) {
             return null;
         }
-        SysUser user = sysUserMapper.selectById(userId);
-        return toUserOptionResponse(user);
+        return userBasicLookup.findById(userId)
+                .map(this::toUserOptionResponse)
+                .orElse(null);
     }
 
     @Override
@@ -140,23 +141,22 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
         if (distinct.isEmpty()) {
             return List.of();
         }
-        return sysUserMapper.selectBatchIds(distinct).stream()
-                .filter(Objects::nonNull)
+        return userBasicLookup.findByIds(distinct).stream()
                 .map(this::toUserOptionResponse)
                 .toList();
     }
 
-    private UserOptionResponse toUserOptionResponse(SysUser user) {
+    private UserOptionResponse toUserOptionResponse(BasicUser user) {
         if (user == null) {
             return null;
         }
         return new UserOptionResponse(
-                user.getId(),
-                user.getUsername(),
-                user.getRealName(),
-                user.getDeptId(),
+                user.id(),
+                user.username(),
+                user.realName(),
+                user.deptId(),
                 List.of(), // Roles omitted for cross-domain basic usages
-                user.getChannelCode()
+                user.channelCode()
         );
     }
 
@@ -165,8 +165,8 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
         if (deptTypes == null || deptTypes.isEmpty()) {
             return listDepartments();
         }
-        return sysDeptService.listActive().stream()
-                .filter(dept -> deptTypes.contains(dept.getDeptType()))
+        return departmentOptionLookup.listActive().stream()
+                .filter(dept -> deptTypes.contains(dept.deptType()))
                 .map(this::toDepartmentOption)
                 .sorted(Comparator.comparing(DepartmentOption::deptName, Comparator.nullsLast(String::compareTo)))
                 .toList();

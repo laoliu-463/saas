@@ -8,7 +8,7 @@ import com.colonel.saas.dto.user.CheckPermissionRequest;
 import com.colonel.saas.dto.user.CheckPermissionResponse;
 import com.colonel.saas.dto.user.CurrentUserResponse;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
-import com.colonel.saas.service.UserDomainService;
+import com.colonel.saas.domain.user.application.CurrentUserApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,23 +33,23 @@ import java.util.UUID;
  *
  * <p>本控制器不设置 {@code @RequireRoles}，所有已认证用户均可访问。</p>
  *
- * @see UserDomainService
+ * @see CurrentUserApplicationService
  */
 @Tag(name = "用户域", description = "当前登录用户、数据范围与操作权限接口。")
 @RestController
 @RequestMapping("/users/current")
 public class CurrentUserController extends BaseController {
 
-    /** 用户域服务，提供用户信息查询、密码修改与权限检查 */
-    private final UserDomainService userDomainService;
+    /** 当前用户应用服务，提供用户上下文、数据范围、密码修改与权限检查 */
+    private final CurrentUserApplicationService currentUserApplicationService;
 
     /**
      * 构造注入.
      *
-     * @param userDomainService 用户域服务
+     * @param currentUserApplicationService 当前用户应用服务
      */
-    public CurrentUserController(UserDomainService userDomainService) {
-        this.userDomainService = userDomainService;
+    public CurrentUserController(CurrentUserApplicationService currentUserApplicationService) {
+        this.currentUserApplicationService = currentUserApplicationService;
     }
 
     /**
@@ -72,12 +71,11 @@ public class CurrentUserController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
-        return ok(userDomainService.getCurrentUser(
+        return ok(currentUserApplicationService.currentUser(
                 userId,
                 deptId,
                 dataScope,
-                // 角色列表为空时降级为空集合，避免 NPE
-                roleCodes == null ? Collections.emptyList() : roleCodes
+                roleCodes
         ));
     }
 
@@ -97,7 +95,7 @@ public class CurrentUserController extends BaseController {
     public ApiResult<Void> changePassword(
             @RequestAttribute("userId") UUID userId,
             @Valid @RequestBody ChangePasswordRequest request) {
-        userDomainService.changePassword(userId, request);
+        currentUserApplicationService.changePassword(userId, request);
         return ok();
     }
 
@@ -118,7 +116,7 @@ public class CurrentUserController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        return ok(userDomainService.getUserDataScope(userId, deptId, dataScope));
+        return ok(currentUserApplicationService.dataScope(userId, deptId, dataScope));
     }
 
     /**
@@ -138,10 +136,9 @@ public class CurrentUserController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes,
             @Valid @RequestBody CheckPermissionRequest request) {
-        return ok(userDomainService.checkPermission(
+        return ok(currentUserApplicationService.checkPermission(
                 userId,
-                // 角色列表为空时降级为空集合
-                roleCodes == null ? Collections.emptyList() : roleCodes,
+                roleCodes,
                 request
         ));
     }

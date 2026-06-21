@@ -2,8 +2,8 @@ package com.colonel.saas.controller;
 
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.application.UserMasterDataApplicationService;
 import com.colonel.saas.dto.user.UserOptionResponse;
-import com.colonel.saas.service.UserMasterDataService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -12,9 +12,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -24,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class UserMasterDataControllerTest {
 
     @Mock
-    private UserMasterDataService userMasterDataService;
+    private UserMasterDataApplicationService userMasterDataApplicationService;
 
     private MockMvc mockMvc;
 
@@ -33,7 +36,7 @@ class UserMasterDataControllerTest {
 
     @BeforeEach
     void setUp() {
-        UserMasterDataController controller = new UserMasterDataController(userMasterDataService);
+        UserMasterDataController controller = new UserMasterDataController(userMasterDataApplicationService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -42,7 +45,7 @@ class UserMasterDataControllerTest {
     @Test
     void channels_returnsChannelUserOptions() throws Exception {
         UUID channelId = UUID.randomUUID();
-        when(userMasterDataService.listChannels("渠", 20)).thenReturn(List.of(
+        when(userMasterDataApplicationService.listChannels("渠", 20)).thenReturn(List.of(
                 new UserOptionResponse(channelId, "channel_staff", "渠道专员", deptId, List.of(RoleCodes.CHANNEL_STAFF))
         ));
 
@@ -57,7 +60,7 @@ class UserMasterDataControllerTest {
     @Test
     void recruiters_returnsRecruiterUserOptions() throws Exception {
         UUID recruiterId = UUID.randomUUID();
-        when(userMasterDataService.listRecruiters("招", 20)).thenReturn(List.of(
+        when(userMasterDataApplicationService.listRecruiters("招", 20)).thenReturn(List.of(
                 new UserOptionResponse(recruiterId, "biz_staff", "招商专员", deptId, List.of(RoleCodes.BIZ_STAFF))
         ));
 
@@ -72,7 +75,7 @@ class UserMasterDataControllerTest {
     @Test
     void groupMembers_usesCurrentDeptWhenDeptNotProvided() throws Exception {
         UUID memberId = UUID.randomUUID();
-        when(userMasterDataService.listGroupMembers(null, deptId, List.of(RoleCodes.CHANNEL_LEADER), "组", 50))
+        when(userMasterDataApplicationService.listGroupMembers(null, deptId, List.of(RoleCodes.CHANNEL_LEADER), "组", 50))
                 .thenReturn(List.of(new UserOptionResponse(
                         memberId,
                         "channel_member",
@@ -88,5 +91,14 @@ class UserMasterDataControllerTest {
                         .requestAttr("roleCodes", List.of(RoleCodes.CHANNEL_LEADER)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].realName").value("组员"));
+    }
+
+    @Test
+    void controllerSource_shouldDependOnUserMasterDataApplicationService() throws Exception {
+        String source = Files.readString(Path.of("src/main/java/com/colonel/saas/controller/UserMasterDataController.java"));
+
+        assertThat(source)
+                .contains("UserMasterDataApplicationService")
+                .doesNotContain("com.colonel.saas.service.UserMasterDataService");
     }
 }
