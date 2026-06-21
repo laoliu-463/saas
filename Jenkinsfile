@@ -17,7 +17,7 @@ pipeline {
     environment {
         JOB_PURPOSE = 'real-pre-cd'
         DEPLOY_ENV = 'real-pre'
-        CD_GIT_URL = 'https://github.com/laoliu-463/saas.git'
+        CD_GIT_URL = 'https://gitee.com/cao-jianing463/saas.git'
         ENV_FILE = '/opt/saas/env/.env.real-pre'
         COMPOSE_FILE = 'docker-compose.real-pre.yml'
         PROJECT_NAME = 'saas-active'
