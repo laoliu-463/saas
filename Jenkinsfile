@@ -41,13 +41,21 @@ pipeline {
                 sh '''
                 set -eu
                 mkdir -p runtime/qa/out/jenkins harness/reports .jenkins-cache/m2 .jenkins-cache/npm .jenkins-cache/pnpm-store
-                printf '%s\n' "$FULL_COMMIT" > runtime/qa/out/jenkins/commit.txt
-                printf '%s\n' "$BUILD_BRANCH" > runtime/qa/out/jenkins/branch.txt
-                printf '%s\n' "$IMAGE_TAG" > runtime/qa/out/jenkins/image-tag.txt
+                full_commit="$(git rev-parse HEAD)"
+                image_tag="$(git rev-parse --short=8 HEAD)"
+                build_branch="${DEPLOY_BRANCH:-feature/ddd/DDD-VERIFY-001}"
+                {
+                  printf 'FULL_COMMIT=%s\n' "$full_commit"
+                  printf 'IMAGE_TAG=%s\n' "$image_tag"
+                  printf 'BUILD_BRANCH=%s\n' "$build_branch"
+                } > runtime/qa/out/jenkins/cd-env.sh
+                printf '%s\n' "$full_commit" > runtime/qa/out/jenkins/commit.txt
+                printf '%s\n' "$build_branch" > runtime/qa/out/jenkins/branch.txt
+                printf '%s\n' "$image_tag" > runtime/qa/out/jenkins/image-tag.txt
                 echo "CD source: ${CD_GIT_URL}"
-                echo "CD branch: ${BUILD_BRANCH}"
-                echo "CD commit: ${FULL_COMMIT}"
-                echo "Image tag: ${IMAGE_TAG}"
+                echo "CD branch: ${build_branch}"
+                echo "CD commit: ${full_commit}"
+                echo "Image tag: ${image_tag}"
                 '''
             }
         }
@@ -56,6 +64,7 @@ pipeline {
             steps {
                 sh '''
                 set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
 
                 if [ "$DEPLOY_ENV" != "real-pre" ]; then
                   echo "ERROR: this Jenkinsfile only supports real-pre CD."
@@ -184,6 +193,7 @@ pipeline {
             steps {
                 sh '''
                 set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
                 docker_gid="$(stat -c '%g' /var/run/docker.sock)"
                 docker run --rm \
                   --user "$(id -u):$(id -g)" \
@@ -204,6 +214,7 @@ pipeline {
             steps {
                 sh '''
                 set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
                 rm -rf backend/target
                 docker run --rm \
                   --user "$(id -u):$(id -g)" \
@@ -223,6 +234,7 @@ pipeline {
             steps {
                 sh '''
                 set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
                 docker run --rm \
                   --user "$(id -u):$(id -g)" \
                   -e HOME=/tmp \
@@ -241,6 +253,7 @@ pipeline {
             steps {
                 sh '''
                 set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
                 test -f backend/target/*.jar
                 echo "Building backend and frontend images with tag: $IMAGE_TAG"
                 IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
@@ -255,6 +268,7 @@ pipeline {
             steps {
                 sh '''
                 set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
                 IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
                   docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" config > runtime/qa/out/jenkins/docker-compose.config.yml
                 echo "docker compose config passed for image tag $IMAGE_TAG"
@@ -266,6 +280,7 @@ pipeline {
             steps {
                 sh '''
                 set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
                 mkdir -p runtime/qa/out/jenkins "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
 
                 docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/pre-deploy-compose-ps.txt || true
@@ -288,6 +303,7 @@ pipeline {
             steps {
                 sh '''
                 set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
                 if ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" bash scripts/health-check.sh; then
                   echo "Health check passed."
                   exit 0
@@ -319,6 +335,7 @@ pipeline {
             steps {
                 sh '''
                 set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
                 report="harness/reports/latest-evidence-jenkins-cd.md"
                 remote_report="/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md"
                 backend_health="$(curl -fsS "$REAL_PRE_BACKEND/api/system/health" || true)"
@@ -367,6 +384,7 @@ pipeline {
             }
             sh '''
             set +e
+            if [ -f runtime/qa/out/jenkins/cd-env.sh ]; then . runtime/qa/out/jenkins/cd-env.sh; fi
             mkdir -p runtime/qa/out/jenkins harness/reports "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
             docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}" > runtime/qa/out/jenkins/docker-ps-final.txt 2>&1
             docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/docker-compose-ps-final.txt 2>&1
