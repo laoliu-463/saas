@@ -1,10 +1,10 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ColonelsettlementActivity;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -79,18 +79,13 @@ class ProductServiceActivityAssignTest {
         UUID operatorId = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
         UUID deptId = UUID.fromString("33333333-3333-3333-3333-333333333333");
-        UserOptionResponse assignee = new UserOptionResponse(
-                assigneeId,
-                null,
-                "招商组长甲",
-                deptId,
-                java.util.List.of(),
-                null);
-
         ColonelsettlementActivity existing = new ColonelsettlementActivity();
         existing.setActivityId(activityId);
         when(colonelActivityMapper.selectByActivityId(activityId)).thenReturn(existing);
-        when(userDomainFacade.getUserById(assigneeId)).thenReturn(assignee);
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any()))
+                .thenReturn(Map.of(assigneeId, new UserOwnershipReference(assigneeId, deptId)));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(assigneeId, "招商组长甲"));
         when(colonelActivityMapper.updateRecruiterAssignment(
                 eq(activityId), eq(assigneeId), eq(deptId), any(), eq(operatorId)))
                 .thenReturn(1);

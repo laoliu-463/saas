@@ -12,7 +12,6 @@ import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipItem;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
@@ -35,6 +34,7 @@ import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.service.BusinessRuleConfigService;
@@ -590,16 +590,14 @@ class SampleControllerTest {
         sample.setDeptId(storedDeptId);
         sample.setStatus(1);
 
-        UserOptionResponse owner = new UserOptionResponse(ownerId, null, null, movedDeptId, List.of(), null);
-
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(productDomainFacade.findProductById(null)).thenReturn(null);
         when(productDomainFacade.findOrMaterializeSampleProduct(null)).thenReturn(null);
-        when(userDomainFacade.getUserById(ownerId)).thenReturn(owner);
 
         var response = sampleController.getSampleById(sampleId, viewerId, storedDeptId, DataScope.DEPT, null);
 
         assertThat(response.getData().getId()).isEqualTo(sampleId);
+        verify(userDomainFacade, never()).loadUserOwnershipReferencesByIds(any());
     }
 
     @Test
@@ -623,8 +621,6 @@ class SampleControllerTest {
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(productDomainFacade.findProductById(null)).thenReturn(null);
         when(productDomainFacade.findOrMaterializeSampleProduct(null)).thenReturn(null);
-        when(userDomainFacade.getUserById(ownerId))
-                .thenReturn(new UserOptionResponse(ownerId, null, null, deptId, List.of(), null));
 
         var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL, null);
 
@@ -753,8 +749,6 @@ class SampleControllerTest {
         talent.setDouyinUid("talent_001");
         talent.setNickname("test talent");
 
-        UserOptionResponse operator = new UserOptionResponse(userId, null, null, deptId, List.of(), null);
-
         SampleApplyRequest request = new SampleApplyRequest();
         request.setProductId(productId);
         request.setTalentId("talent_001");
@@ -765,7 +759,8 @@ class SampleControllerTest {
         when(crawlerTalentInfoService.findByTalentId("talent_001")).thenReturn(crawlerTalentInfo);
         when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
         when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
-        when(userDomainFacade.getUserById(userId)).thenReturn(operator);
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any()))
+                .thenReturn(Map.of(userId, new UserOwnershipReference(userId, deptId)));
 
         sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
 
@@ -1850,11 +1845,10 @@ class SampleControllerTest {
         log.setToStatus(5);
         log.setOperatorId(operatorId);
 
-        UserOptionResponse operator = new UserOptionResponse(operatorId, "ops_staff", "运营测试", null, List.of(), null);
-
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(sampleStatusLogMapper.selectList(any())).thenReturn(List.of(log));
-        when(userDomainFacade.getUserById(operatorId)).thenReturn(operator);
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(operatorId, "运营测试 (ops_staff)"));
 
         var response = sampleController.getStatusLogs(
                 sampleId,
@@ -2097,8 +2091,6 @@ class SampleControllerTest {
         product.setId(productId);
         product.setName("商品\n一");
 
-        UserOptionResponse channelUser = new UserOptionResponse(channelUserId, "zhangsan", "张三", null, List.of(), null);
-
         SampleRequest first = new SampleRequest();
         first.setId(UUID.randomUUID());
         first.setRequestNo("SR-\"1");
@@ -2127,7 +2119,8 @@ class SampleControllerTest {
         secondPage.setRecords(List.of(second));
         when(productDomainFacade.findProductIdsByKeyword(any(), anyLong())).thenReturn(java.util.Set.of(productId));
         when(productDomainFacade.loadProductsByIds(any())).thenReturn(java.util.Map.of(productId, toProductRead(product)));
-        when(userDomainFacade.getUserById(channelUserId)).thenReturn(channelUser);
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(channelUserId, "张三 (zhangsan)"));
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any()))
                 .thenReturn(firstPage)
                 .thenReturn(secondPage);
@@ -2780,12 +2773,12 @@ class SampleControllerTest {
         UUID realNameOnlyId = UUID.randomUUID();
         UUID usernameOnlyId = UUID.randomUUID();
         UUID blankUserId = UUID.randomUUID();
-        UserOptionResponse realNameOnly = new UserOptionResponse(realNameOnlyId, null, "张三", null, List.of(), null);
-        UserOptionResponse usernameOnly = new UserOptionResponse(usernameOnlyId, "zhangsan", null, null, List.of(), null);
-        UserOptionResponse blankUser = new UserOptionResponse(blankUserId, null, null, null, List.of(), null);
-        when(userDomainFacade.getUserById(realNameOnlyId)).thenReturn(realNameOnly);
-        when(userDomainFacade.getUserById(usernameOnlyId)).thenReturn(usernameOnly);
-        when(userDomainFacade.getUserById(blankUserId)).thenReturn(blankUser);
+        when(userDomainFacade.loadUserDisplayLabelsByIds(eq(List.of(realNameOnlyId))))
+                .thenReturn(Map.of(realNameOnlyId, "张三"));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(eq(List.of(usernameOnlyId))))
+                .thenReturn(Map.of(usernameOnlyId, "zhangsan"));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(eq(List.of(blankUserId))))
+                .thenReturn(Map.of());
 
         assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveUserDisplayName", (UUID) null)).isNull();
         assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveUserDisplayName", realNameOnlyId)).isEqualTo("张三");
@@ -2982,13 +2975,12 @@ class SampleControllerTest {
                 "requirementSnapshot", Map.of("minLevel", "LV1", "actualLevel", "LV2")
         ));
 
-        UserOptionResponse owner = new UserOptionResponse(ownerId, "owner_user", "负责人", null, List.of(), null);
-
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
         when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
         when(productDomainFacade.findSnapshotById(productId)).thenReturn(toSnapshotRead(snapshot));
-        when(userDomainFacade.getUserById(ownerId)).thenReturn(owner);
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(ownerId, "负责人 (owner_user)"));
 
         var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL, null);
         var vo = response.getData();
@@ -3047,8 +3039,6 @@ class SampleControllerTest {
         product.setId(productId);
         product.setName("导出测试商品");
 
-        UserOptionResponse channelUser = new UserOptionResponse(channelUserId, "export_user", "导出负责人", null, List.of(), null);
-
         SampleRequest sample = new SampleRequest();
         sample.setId(UUID.randomUUID());
         sample.setRequestNo("SR-EXPORT-001");
@@ -3068,7 +3058,8 @@ class SampleControllerTest {
         exportPage.setRecords(List.of(sample));
 
         when(productDomainFacade.loadProductsByIds(any())).thenReturn(java.util.Map.of(productId, toProductRead(product)));
-        when(userDomainFacade.getUserById(channelUserId)).thenReturn(channelUser);
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(channelUserId, "导出负责人 (export_user)"));
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any())).thenReturn(exportPage);
 
         MockHttpServletResponse response = new MockHttpServletResponse();

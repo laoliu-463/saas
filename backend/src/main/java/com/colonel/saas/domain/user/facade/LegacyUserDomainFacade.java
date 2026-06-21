@@ -172,6 +172,24 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
     }
 
     @Override
+    public Map<UUID, String> loadUserChannelCodesByIds(Collection<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> distinct = ids.stream().filter(Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        return userBasicLookup.findByIds(distinct).stream()
+                .filter(user -> user != null && user.id() != null && hasText(user.channelCode()))
+                .collect(Collectors.toMap(
+                        BasicUser::id,
+                        user -> user.channelCode().trim(),
+                        (left, right) -> left
+                ));
+    }
+
+    @Override
     public Map<UUID, UserOwnershipReference> loadUserOwnershipReferencesByIds(Collection<UUID> ids) {
         if (ids == null || ids.isEmpty()) {
             return Map.of();

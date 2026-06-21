@@ -4,7 +4,7 @@ import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.performance.domain.ExclusiveMerchantRepository;
 import com.colonel.saas.domain.performance.policy.ExclusiveMerchantPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.dto.user.UserOptionResponse;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -171,16 +171,16 @@ public class ExclusiveMerchantApplicationService {
         if (userIds.isEmpty()) {
             return Map.of();
         }
-        List<UserOptionResponse> users = userDomainFacade.getUsersByIds(userIds);
-        if (users == null || users.isEmpty()) {
+        Map<UUID, UserOwnershipReference> references =
+                userDomainFacade.loadUserOwnershipReferencesByIds(userIds);
+        if (references == null || references.isEmpty()) {
             return Map.of();
         }
-        return users.stream()
-                .filter(Objects::nonNull)
-                .filter(user -> user.id() != null && user.deptId() != null)
+        return references.values().stream()
+                .filter(reference -> reference != null && reference.userId() != null && reference.deptId() != null)
                 .collect(Collectors.toMap(
-                        UserOptionResponse::id,
-                        UserOptionResponse::deptId,
+                        UserOwnershipReference::userId,
+                        UserOwnershipReference::deptId,
                         (left, right) -> left
                 ));
     }

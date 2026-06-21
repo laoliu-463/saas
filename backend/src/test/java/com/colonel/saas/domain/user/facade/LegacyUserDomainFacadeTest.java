@@ -166,6 +166,13 @@ class LegacyUserDomainFacadeTest extends BaseIntegrationTest {
     }
 
     @Test
+    void loadUserChannelCodesShouldReturnChannelCodeWithoutFullUserDto() {
+        Map<UUID, String> channelCodes = userDomainFacade.loadUserChannelCodesByIds(List.of(channelLeaderId));
+
+        assertThat(channelCodes).containsEntry(channelLeaderId, "ch_lead");
+    }
+
+    @Test
     void hasPermission_adminAlwaysAllowed() {
         assertThat(userDomainFacade.hasPermission(adminId, "order", "export")).isTrue();
     }

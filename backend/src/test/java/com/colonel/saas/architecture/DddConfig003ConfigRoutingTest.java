@@ -10,7 +10,6 @@ import com.colonel.saas.domain.event.ConfigChangedEventConsumer;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.ProductSnapshot;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
@@ -164,12 +163,11 @@ class DddConfig003ConfigRoutingTest {
                 "channel_{channel_code}_pid_{product_id}",
                 "none"));
 
-        UserOptionResponse user = new UserOptionResponse(null, null, null, null, null, "demo01");
         String pickExtra = ReflectionTestUtils.invokeMethod(
                 productService,
                 "buildPickExtra",
                 UUID.fromString("11111111-1111-1111-1111-111111111111"),
-                user,
+                "demo01",
                 "9",
                 "ACT-1");
 

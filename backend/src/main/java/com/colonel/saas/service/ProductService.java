@@ -39,7 +39,7 @@ import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.PromotionLinkMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.dto.user.UserOptionResponse;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -556,14 +556,8 @@ public class ProductService {
         if (userIds == null || userIds.isEmpty()) {
             return Map.of();
         }
-        return userDomainFacade.getUsersByIds(userIds).stream()
-                .filter(java.util.Objects::nonNull)
-                .collect(Collectors.toMap(
-                        UserOptionResponse::id,
-                        this::formatUserDisplayName,
-                        (left, right) -> left,
-                        LinkedHashMap::new
-                ));
+        Map<UUID, String> displayLabels = userDomainFacade.loadUserDisplayLabelsByIds(userIds);
+        return displayLabels == null ? Map.of() : displayLabels;
     }
 
     /**
@@ -1650,14 +1644,14 @@ public class ProductService {
 
         // 非清除分配时，校验目标用户
         if (assigneeId != null) {
-            UserOptionResponse assignee = userDomainFacade.getUserById(assigneeId);
+            UserOwnershipReference assignee = resolveUserOwnershipReference(assigneeId);
             if (assignee == null) {
                 throw BusinessException.notFound("目标用户不存在");
             }
             recruiterUserId = assigneeId;
             recruiterDeptId = assignee.deptId();
             recruiterUserName = resolveUserDisplayName(assigneeId);
-            recruiterDeptName = resolveDeptName(assignee.deptId());
+            recruiterDeptName = resolveDeptName(recruiterDeptId);
         }
 
         ColonelsettlementActivity existing = colonelActivityMapper.selectByActivityId(normalizedActivityId);
@@ -2780,8 +2774,15 @@ public class ProductService {
                 && !relinkExistingProduct) {
             throw BusinessException.stateInvalid("当前状态不允许执行PROMOTION_LINK，当前状态：" + beforeStatus.name());
         }
-        UserOptionResponse user = userDomainFacade.getUserById(userId);
-        String desiredPickExtra = buildPickExtra(userId, user, snapshot.getProductId(), snapshot.getActivityId());
+        Map<UUID, String> channelCodes = userDomainFacade.loadUserChannelCodesByIds(List.of(userId));
+        String userName = userDomainFacade.getUserName(userId);
+        String channelUserName = StringUtils.hasText(userName) ? userName : "unknown";
+        String operatorName = StringUtils.hasText(userName) ? userName : "system";
+        String desiredPickExtra = buildPickExtra(
+                userId,
+                channelCodes == null ? null : channelCodes.get(userId),
+                snapshot.getProductId(),
+                snapshot.getActivityId());
         String attemptedPickSource = null;
 
         try {
@@ -2816,7 +2817,7 @@ public class ProductService {
             link.setActivityId(snapshot.getActivityId());
             link.setTalentId(talentId);
             link.setChannelUserId(userId);
-            link.setChannelUserName(user != null ? user.realName() : "unknown");
+            link.setChannelUserName(channelUserName);
             link.setOriginalProductUrl(snapshot.getDetailUrl());
             link.setPromotionUrl(result.promoteLink());
             link.setShortUrl(result.shortLink());
@@ -2824,7 +2825,7 @@ public class ProductService {
             link.setPickExtra(result.pickExtra());
             link.setLinkStatus("ACTIVE");
             link.setOperatorId(userId);
-            link.setOperatorName(user != null ? user.realName() : "system");
+            link.setOperatorName(operatorName);
             link.setCreatedAt(LocalDateTime.now());
             link.setUpdatedAt(LocalDateTime.now());
             promotionLinkMapper.insert(link);
@@ -2838,7 +2839,7 @@ public class ProductService {
                         nativeColonelBuyin.source());
                 pickSourceMappingService.saveOrUpdate(
                         userId,
-                        user != null ? user.realName() : "unknown",
+                        channelUserName,
                         deptId,
                         talentId,
                         null,
@@ -2862,7 +2863,7 @@ public class ProductService {
                         nativeColonelBuyin.source());
                 pickSourceMappingService.saveOrUpdate(
                         userId,
-                        user != null ? user.realName() : "unknown",
+                        channelUserName,
                         deptId,
                         talentId,
                         null,
@@ -2960,13 +2961,13 @@ public class ProductService {
         }
     }
 
-    private String buildPickExtra(UUID userId, UserOptionResponse user, String productId, String activityId) {
+    private String buildPickExtra(UUID userId, String channelCodeValue, String productId, String activityId) {
         if (userId == null) {
             return null;
         }
         String compactUserId = userId.toString().replace("-", "");
-        String channelCode = user != null && StringUtils.hasText(user.channelCode())
-                ? user.channelCode().trim().toLowerCase(Locale.ROOT)
+        String channelCode = StringUtils.hasText(channelCodeValue)
+                ? channelCodeValue.trim().toLowerCase(Locale.ROOT)
                 : compactUserId;
         com.colonel.saas.domain.config.facade.dto.PromotionTemplateDTO template =
                 configDomainFacade == null ? null : configDomainFacade.getPromotionTemplate();
@@ -3942,29 +3943,23 @@ public class ProductService {
         if (userDisplayNames != null) {
             return userDisplayNames.get(userId);
         }
-        UserOptionResponse user = userDomainFacade.getUserById(userId);
-        if (user == null) {
+        Map<UUID, String> displayLabels = userDomainFacade.loadUserDisplayLabelsByIds(List.of(userId));
+        if (displayLabels == null || displayLabels.isEmpty()) {
             return null;
         }
-        return formatUserDisplayName(user);
+        return normalizeDisplayText(displayLabels.get(userId));
     }
 
-    private String formatUserDisplayName(UserOptionResponse user) {
-        if (user == null) {
+    private UserOwnershipReference resolveUserOwnershipReference(UUID userId) {
+        if (userId == null) {
             return null;
         }
-        String realName = normalizeDisplayText(user.realName());
-        String username = normalizeDisplayText(user.username());
-        if (StringUtils.hasText(realName) && StringUtils.hasText(username)) {
-            return realName + " (" + username + ")";
+        Map<UUID, UserOwnershipReference> references =
+                userDomainFacade.loadUserOwnershipReferencesByIds(List.of(userId));
+        if (references == null || references.isEmpty()) {
+            return null;
         }
-        if (StringUtils.hasText(realName)) {
-            return realName;
-        }
-        if (StringUtils.hasText(username)) {
-            return username;
-        }
-        return null;
+        return references.get(userId);
     }
 
     private int parseCursor(String cursor) {
@@ -4582,7 +4577,7 @@ public class ProductService {
         if (scopedUserId == null) {
             return;
         }
-        UserOptionResponse scopedUser = userDomainFacade.getUserById(scopedUserId);
+        UserOwnershipReference scopedUser = resolveUserOwnershipReference(scopedUserId);
         UUID scopedDeptId = scopedUser == null ? null : scopedUser.deptId();
         if (scopedDeptId == null) {
             return;

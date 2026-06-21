@@ -91,6 +91,12 @@ public interface UserDomainFacade {
     Map<UUID, String> loadUserDisplayLabelsByIds(Collection<UUID> ids);
 
     /**
+     * 批量加载用户渠道编码，返回 userId -> channelCode 映射。
+     * 用于推广链接归因参数构造，避免业务域读取完整用户 DTO。
+     */
+    Map<UUID, String> loadUserChannelCodesByIds(Collection<UUID> ids);
+
+    /**
      * 批量加载用户归属引用，返回 userId -> ownership reference 映射。
      * 用于跨业务域归属覆盖时确认目标用户存在并读取其主组织单元。
      */

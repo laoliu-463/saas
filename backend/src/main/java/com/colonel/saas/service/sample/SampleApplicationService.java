@@ -40,7 +40,7 @@ import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.dto.user.UserOptionResponse;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.service.ProductService;
@@ -1836,8 +1836,13 @@ public class SampleApplicationService extends BaseController {
         if (userId == null) {
             return null;
         }
-        UserOptionResponse user = userDomainFacade.getUserById(userId);
-        return user == null ? null : user.deptId();
+        Map<UUID, UserOwnershipReference> references =
+                userDomainFacade.loadUserOwnershipReferencesByIds(List.of(userId));
+        if (references == null || references.isEmpty()) {
+            return null;
+        }
+        UserOwnershipReference reference = references.get(userId);
+        return reference == null ? null : reference.deptId();
     }
 
     /**
@@ -3246,22 +3251,11 @@ public class SampleApplicationService extends BaseController {
         if (userId == null) {
             return null;
         }
-        UserOptionResponse user = userDomainFacade.getUserById(userId);
-        if (user == null) {
+        Map<UUID, String> displayLabels = userDomainFacade.loadUserDisplayLabelsByIds(List.of(userId));
+        if (displayLabels == null || displayLabels.isEmpty()) {
             return null;
         }
-        String realName = normalizeDisplayText(user.realName());
-        String username = normalizeDisplayText(user.username());
-        if (StringUtils.hasText(realName) && StringUtils.hasText(username)) {
-            return realName + " (" + username + ")";
-        }
-        if (StringUtils.hasText(realName)) {
-            return realName;
-        }
-        if (StringUtils.hasText(username)) {
-            return username;
-        }
-        return null;
+        return normalizeDisplayText(displayLabels.get(userId));
     }
 
     /**

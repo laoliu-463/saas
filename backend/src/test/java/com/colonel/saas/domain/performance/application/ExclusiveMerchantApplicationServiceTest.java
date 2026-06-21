@@ -4,7 +4,7 @@ import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.config.facade.dto.ExclusiveRulesDTO;
 import com.colonel.saas.domain.performance.domain.ExclusiveMerchantRepository;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.dto.user.UserOptionResponse;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +22,7 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -185,7 +186,7 @@ class ExclusiveMerchantApplicationServiceTest {
                     RowMapper<?> mapper = inv.getArgument(1);
                     return List.of(mapper.mapRow(rs, 1));
                 });
-        when(userDomainFacade.getUsersByIds(any()))
-                .thenReturn(List.of(new UserOptionResponse(userId, "recruiter", "招商", deptId, List.of())));
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any()))
+                .thenReturn(Map.of(userId, new UserOwnershipReference(userId, deptId)));
     }
 }
