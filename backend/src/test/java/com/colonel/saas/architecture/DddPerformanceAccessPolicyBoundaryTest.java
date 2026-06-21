@@ -33,6 +33,18 @@ class DddPerformanceAccessPolicyBoundaryTest {
                 .exists();
     }
 
+    @Test
+    void performanceAccessScope_shouldDelegateRoleCodeMatchingToUserPolicy() throws IOException {
+        String source = Files.readString(Path.of(
+                "src/main/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScope.java"));
+
+        assertThat(source)
+                .doesNotContain("private static boolean hasAnyRole")
+                .doesNotContain("toLowerCase(Locale.ROOT)")
+                .contains("CurrentUserPermissionPolicy")
+                .contains("USER_PERMISSION_POLICY.hasAnyRole");
+    }
+
     private static String readUnchecked(Path path) {
         try {
             return Files.readString(path);
