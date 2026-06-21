@@ -7,6 +7,7 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.mapper.SampleRequestMapper;
@@ -42,7 +43,8 @@ class SampleFilterOptionsServiceTest {
         service = new SampleFilterOptionsService(
                 sampleRequestMapper,
                 productDomainFacade,
-                userDomainFacade);
+                userDomainFacade,
+                new CurrentUserPermissionPolicy());
     }
 
     @Test
@@ -68,6 +70,18 @@ class SampleFilterOptionsServiceTest {
         when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any())).thenReturn(emptyPage);
 
         service.buildOptions(userId, UUID.randomUUID(), DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
+
+        org.mockito.Mockito.verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), any());
+    }
+
+    @Test
+    void buildOptions_bizStaffPersonalScope_shouldNormalizeRoleCodesViaUserPolicy() {
+        UUID userId = UUID.randomUUID();
+        Page<SampleRequest> emptyPage = new Page<>(1, 200);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any())).thenReturn(emptyPage);
+
+        service.buildOptions(userId, UUID.randomUUID(), DataScope.PERSONAL, List.of(" BIZ_STAFF "));
 
         org.mockito.Mockito.verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), any());
     }

@@ -11,6 +11,7 @@ import com.colonel.saas.dto.sample.SampleFilterOptionItem;
 import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -37,14 +38,17 @@ public class SampleFilterOptionsService {
     private final SampleRequestMapper sampleRequestMapper;
     private final ProductDomainFacade productDomainFacade;
     private final UserDomainFacade userDomainFacade;
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
 
     public SampleFilterOptionsService(
             SampleRequestMapper sampleRequestMapper,
             ProductDomainFacade productDomainFacade,
-            UserDomainFacade userDomainFacade) {
+            UserDomainFacade userDomainFacade,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productDomainFacade = productDomainFacade;
         this.userDomainFacade = userDomainFacade;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     public SampleFilterOptionsDTO buildOptions(
@@ -124,8 +128,8 @@ public class SampleFilterOptionsService {
         QueryWrapper<SampleRequest> wrapper = new QueryWrapper<>();
         IPage<SampleRequest> samplePage;
         if (dataScope == com.colonel.saas.common.enums.DataScope.PERSONAL
-                && hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
-                && !hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
+                && currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
+                && !currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
             samplePage = sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper);
         } else {
             samplePage = sampleRequestMapper.findPageWithScope(pageReq, wrapper);
@@ -322,15 +326,4 @@ public class SampleFilterOptionsService {
         return new SampleFilterOptionItem(label, value);
     }
 
-    private static boolean hasAnyRole(Object roleCodes, String... roles) {
-        if (!(roleCodes instanceof Collection<?> collection)) {
-            return false;
-        }
-        for (String role : roles) {
-            if (collection.contains(role)) {
-                return true;
-            }
-        }
-        return false;
-    }
 }
