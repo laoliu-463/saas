@@ -54,6 +54,26 @@ public class SampleActionPermissionPolicy {
         }
     }
 
+    public void ensureCanImportLogistics(Object roleCodes) {
+        if (!canImportLogistics(roleCodes)) {
+            throw new ForbiddenException("仅运营或管理员可导入物流单号");
+        }
+    }
+
+    public boolean canImportLogistics(Object roleCodes) {
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
+    }
+
+    public void ensureCanOverwriteLogisticsImport(Object roleCodes) {
+        if (!canOverwriteLogisticsImport(roleCodes)) {
+            throw new ForbiddenException("仅管理员可覆盖已有物流单号");
+        }
+    }
+
+    public boolean canOverwriteLogisticsImport(Object roleCodes) {
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
+    }
+
     public void ensureCanExport(Object roleCodes) {
         if (!currentUserPermissionPolicy.hasAnyRole(roleCodes,
                 RoleCodes.ADMIN,

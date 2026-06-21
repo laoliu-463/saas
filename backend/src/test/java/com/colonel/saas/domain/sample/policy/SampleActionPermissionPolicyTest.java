@@ -77,6 +77,24 @@ class SampleActionPermissionPolicyTest {
     }
 
     @Test
+    void logisticsImport_shouldKeepImportAndOverwriteRoleGroups() {
+        assertThatCode(() -> policy.ensureCanImportLogistics(List.of(" OPS_STAFF ")))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> policy.ensureCanImportLogistics(List.of(RoleCodes.ADMIN)))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> policy.ensureCanImportLogistics(List.of(RoleCodes.BIZ_STAFF)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("仅运营或管理员可导入物流单号");
+
+        assertThat(policy.canImportLogistics("[ OPS_STAFF ]")).isTrue();
+        assertThat(policy.canOverwriteLogisticsImport("[ ADMIN ]")).isTrue();
+        assertThat(policy.canOverwriteLogisticsImport(List.of(RoleCodes.OPS_STAFF))).isFalse();
+        assertThatThrownBy(() -> policy.ensureCanOverwriteLogisticsImport(List.of(RoleCodes.OPS_STAFF)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("仅管理员可覆盖已有物流单号");
+    }
+
+    @Test
     void predicates_shouldExposeSamplePermissionLanguage() {
         assertThat(policy.isSevenDayLimitExempt(List.of(RoleCodes.ADMIN))).isTrue();
         assertThat(policy.isSevenDayLimitExempt("[" + RoleCodes.CHANNEL_LEADER + "]")).isTrue();
