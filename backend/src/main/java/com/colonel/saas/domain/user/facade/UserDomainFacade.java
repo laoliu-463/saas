@@ -78,6 +78,12 @@ public interface UserDomainFacade {
     Map<UUID, String> loadUserNamesByIds(Collection<UUID> ids);
 
     /**
+     * 批量加载用户展示名称，返回 userId → displayName 映射。
+     * 展示名称优先使用 realName，再回退到 username。
+     */
+    Map<UUID, String> loadUserDisplayNamesByIds(Collection<UUID> ids);
+
+    /**
      * 批量加载用户展示标签，返回 userId → displayLabel 映射。
      * 展示标签优先使用 "realName (username)"，再回退到 realName 或 username。
      */

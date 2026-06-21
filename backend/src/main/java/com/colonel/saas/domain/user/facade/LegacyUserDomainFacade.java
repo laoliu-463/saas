@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -133,6 +134,28 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
     }
 
     @Override
+    public Map<UUID, String> loadUserDisplayNamesByIds(Collection<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> distinct = ids.stream().filter(Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> names = new LinkedHashMap<>();
+        for (BasicUser user : userBasicLookup.findByIds(distinct)) {
+            if (user == null || user.id() == null) {
+                continue;
+            }
+            String name = formatDisplayName(user);
+            if (hasText(name)) {
+                names.putIfAbsent(user.id(), name);
+            }
+        }
+        return names;
+    }
+
+    @Override
     public Map<UUID, String> loadUserDisplayLabelsByIds(Collection<UUID> ids) {
         if (ids == null || ids.isEmpty()) {
             return Map.of();
@@ -201,6 +224,17 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
             return username;
         }
         return "";
+    }
+
+    private static String formatDisplayName(BasicUser user) {
+        if (user == null) {
+            return "";
+        }
+        String realName = user.realName() == null ? "" : user.realName().trim();
+        if (hasText(realName)) {
+            return realName;
+        }
+        return user.username() == null ? "" : user.username().trim();
     }
 
     private static boolean hasText(String value) {

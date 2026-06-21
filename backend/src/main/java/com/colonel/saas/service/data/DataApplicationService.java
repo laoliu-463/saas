@@ -15,7 +15,6 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
 import com.colonel.saas.dto.performance.OrderPerformanceBatchResponse;
 import com.colonel.saas.dto.performance.OrderPerformanceDTO;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ExclusiveMerchant;
@@ -156,7 +155,7 @@ public class DataApplicationService extends BaseController {
     /** JDBC 模板，用于复杂聚合查询（如 service profit 联合查询） */
     private final JdbcTemplate jdbcTemplate;
 
-    /** 用户门面，负责查询渠道/招商负责人姓名 */
+    /** 用户门面，负责查询渠道/招商负责人展示名称 */
     private final UserDomainFacade userDomainFacade;
 
     /**
@@ -428,7 +427,7 @@ public class DataApplicationService extends BaseController {
         // 批量查询活动名称
         Map<String, String> activityNameMap = loadActivityNameMap(orders);
 
-        // 批量查询用户姓名（渠道 + 招商）
+        // 批量查询用户展示名称（渠道 + 招商）
         Map<UUID, String> userNameMap = loadUserNameMap(perfMap.values());
 
         // 组装 VO
@@ -485,7 +484,7 @@ public class DataApplicationService extends BaseController {
     }
 
     /**
-     * 批量加载用户姓名映射 userId → realName。
+     * 批量加载用户展示名称映射 userId → displayName。
      */
     private Map<UUID, String> loadUserNameMap(Collection<OrderPerformanceDTO> records) {
         Set<UUID> userIds = new HashSet<>();
@@ -498,14 +497,7 @@ public class DataApplicationService extends BaseController {
         if (userIds.isEmpty()) {
             return Map.of();
         }
-        List<UserOptionResponse> users = userDomainFacade.getUsersByIds(new java.util.ArrayList<>(userIds));
-        Map<UUID, String> map = new LinkedHashMap<>();
-        for (UserOptionResponse u : users) {
-            if (u.id() != null) {
-                map.put(u.id(), StringUtils.hasText(u.realName()) ? u.realName() : u.username());
-            }
-        }
-        return map;
+        return userDomainFacade.loadUserDisplayNamesByIds(userIds);
     }
 
     private UUID parseUuid(String value) {

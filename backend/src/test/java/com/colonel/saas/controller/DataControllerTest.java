@@ -19,7 +19,6 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.vo.data.OrderDetailVO;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
@@ -1331,9 +1330,8 @@ class DataControllerTest {
         activity.setName("Test Activity");
         when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of(activity));
 
-        UserOptionResponse channelUser = new UserOptionResponse(channelUserId, null, "ChannelZhang", null, List.of());
-        UserOptionResponse recruiterUser = new UserOptionResponse(recruiterUserId, null, "RecruiterLi", null, List.of());
-        when(userDomainFacade.getUsersByIds(any())).thenReturn(List.of(channelUser, recruiterUser));
+        when(userDomainFacade.loadUserDisplayNamesByIds(any()))
+                .thenReturn(Map.of(channelUserId, "ChannelZhang", recruiterUserId, "RecruiterLi"));
 
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
@@ -1364,6 +1362,7 @@ class DataControllerTest {
         assertThat(vo.getEffectiveServiceProfit()).isEqualByComparingTo("4.70");
         assertThat(vo.getEstimateGrossProfit()).isEqualByComparingTo("5.20");
         assertThat(vo.getEffectiveGrossProfit()).isEqualByComparingTo("4.93");
+        verify(userDomainFacade, never()).getUsersByIds(any());
 
         // 双轨金额
         assertThat(vo.getPayAmount()).isNotNull();

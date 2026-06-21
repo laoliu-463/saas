@@ -143,6 +143,18 @@ class LegacyUserDomainFacadeTest extends BaseIntegrationTest {
     }
 
     @Test
+    void loadUserDisplayNamesShouldPreferRealNameThenUsername() {
+        UUID usernameOnlyId = UUID.nameUUIDFromBytes("username_only_display_name".getBytes());
+        insertUser(usernameOnlyId, "username_only_display_name", null, "username_only", channelDeptId);
+
+        Map<UUID, String> names = userDomainFacade.loadUserDisplayNamesByIds(List.of(channelLeaderId, usernameOnlyId));
+
+        assertThat(names)
+                .containsEntry(channelLeaderId, "渠道组长")
+                .containsEntry(usernameOnlyId, "username_only_display_name");
+    }
+
+    @Test
     void hasPermission_adminAlwaysAllowed() {
         assertThat(userDomainFacade.hasPermission(adminId, "order", "export")).isTrue();
     }
