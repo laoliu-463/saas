@@ -1,11 +1,9 @@
 # Domain Status
 
 ## 作用
-
 本文件记录 DDD 领域优化状态。它不替代 `docs/领域/*.md` 的领域合同，也不代表代码已经完成对应重构。
 
 ## 任务结束状态更新规则
-
 每次任务结束前，Agent 必须更新本文件中与本次任务相关的领域状态。更新内容包括：
 
 1. 当前状态摘要（已完成到哪一步）。
@@ -27,16 +25,17 @@
 5. 如果模块质量发生变化，同步更新 `harness/QUALITY_LEDGER.md`。
 
 ## 状态口径
-
 - `P0`：影响 V1 主链路、权限、归因、业绩、寄样或 real-pre 验收。
 - `P1`：影响领域边界、回归风险或主要运维效率。
 - `P2`：治理、清理、补文档或体验优化。
 
 ## 用户域
-
+- 最新小切片：DDD-USER-PERMISSION-POLICY-TALENT-QUERY 已将 `TalentQueryService.assertCanOperate` 中管理员、渠道组长、渠道专员角色编码集合匹配委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，达人查询服务不再维护本地 `hasRole` 归一化实现。本轮不改达人认领归属、达人池可见性、数据范围、列表 / 详情业务筛选、寄样 / 订单补充展示或真实数据。
+- 最新报告路径：`harness/reports/evidence-20260621-214308.md`。
+- 风险变化：`TalentQueryServiceTest` 覆盖渠道专员非本人拒绝、渠道组长同部门放行和 `" CHANNEL_STAFF "` 归一化本人认领路径；`DddUserFacadeTalentQueryBoundaryTest` 防止达人查询服务重新引入本地 `hasRole`，并约束其继续消费用户域 policy。剩余风险是 `UserMasterDataService`、`TalentService`、`SampleLogisticsImportService`、`SampleFilterOptionsService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
 - 最新小切片：DDD-USER-PERMISSION-POLICY-PRODUCT-QUICK-SAMPLE 已将 `ProductQuickSampleService` 快速寄样入口的渠道 / 管理员角色编码集合匹配委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，商品域不再维护本地 `hasAnyRole`、`roleCodes.toString()` 或 `Collection` 分支解析。本轮不改快速寄样业务规则、商品展示状态校验、寄样端口委托、外部抖店快速寄样开关或真实数据。
 - 最新报告路径：`harness/reports/evidence-20260621-213011.md`。
-- 风险变化：`QuickSampleApplyTest` 覆盖非渠道拒绝、管理员放行、渠道专员放行、逗号字符串角色输入兼容、商品上下文校验和端口委托；`DddProduct003ProductRoutingTest` 新增源码边界约束，防止快速寄样入口重新引入本地角色 matcher。剩余风险是 `UserMasterDataService`、`TalentService`、`TalentQueryService`、`SampleLogisticsImportService`、`SampleFilterOptionsService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
+- 风险变化：`QuickSampleApplyTest` 覆盖非渠道拒绝、管理员放行、渠道专员放行、逗号字符串角色输入兼容、商品上下文校验和端口委托；`DddProduct003ProductRoutingTest` 新增源码边界约束，防止快速寄样入口重新引入本地角色 matcher。剩余风险是 `UserMasterDataService`、`TalentService`、`SampleLogisticsImportService`、`SampleFilterOptionsService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
 - 最新小切片：DDD-USER-PERMISSION-POLICY-PERFORMANCE-ACCESS 已将 `PerformanceAccessScope` 中 `admin`、运营、招商 / 渠道组长与专员判断使用的角色编码集合匹配委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，业绩域不再维护本地 `hasAnyRole` 归一化实现。本轮不改业绩访问语义、SQL 数据范围条件、提成/归属/服务费公式或真实数据。
 - 最新报告路径：`harness/reports/evidence-20260621-212247.md`。
 - 风险变化：`PerformanceAccessScopeTest` 继续覆盖 `" ADMIN "` 兼容匹配、导出、月度重算、筛选越权、逐条访问和 SQL 条件拼接；`DddPerformanceAccessPolicyBoundaryTest` 新增约束，防止业绩域重新引入本地 `hasAnyRole` / `toLowerCase(Locale.ROOT)` 角色匹配。剩余风险是 `UserMasterDataService`、`TalentService`、`SampleLogisticsImportService`、`SampleFilterOptionsService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
@@ -89,7 +88,6 @@
 - 标记：P0。
 
 ## 配置域
-
 - 当前状态：配置读取、变更和审计主链路已具备。
 - 已完成能力：配置 API、规则参数、配置变更日志。
 - 待优化能力：配置域只出参数的边界审查、配置消费方梳理、异常分支和审计证据补齐。
@@ -97,7 +95,6 @@
 - 标记：P1。
 
 ## 订单域
-
 - 最新边界变化：`OrderAttributionService` 未归因分页与摘要查询的数据范围过滤已委托用户域 `DataScopePolicy`，本轮未改订单事实、归因规则、订单同步、业绩事件或历史数据。
 - 最新报告路径：`harness/reports/2026-06-21/ddd-user/permission-next/evidence-20260621-175800-order-attribution-datascope-policy.md`。
 - 当前状态：订单事实、退款事实、同步日志和归因输入已具备；P0-ORDER-001 PAY_RECENT 6h 补拉与同步日志增强已完成（2026-06-03，代码 + 运行态）；ORDER-P0-DUAL-SOURCE-SYNC 已在本地 real-pre 接入 1603 事实订单源并验证入库；ORDER-P0-DUAL-SOURCE-REMOTE-VERIFY 已完成远端部署验证，远端 commit 对齐 `77b723b6`，1603 入库与管理员可见通过；订单明细表字段对齐已完成本地 real-pre 验证（2026-06-04，commit `abf3f9eb`）；ORDER-DETAIL-TAB-FIX-001 已完成前端 16 列扩展与“渠道”文案统一（2026-06-05，commit `db934d99`）；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已完成本地 real-pre 修复验证（2026-06-06），订单已同步事件改为事务提交后发布。
@@ -116,7 +113,6 @@
 - 标记：P0。
 
 ## 业绩域
-
 - 最新边界变化：`PerformanceAccessScope` 继续承载业绩域导出、重算、筛选越权、逐条访问和 SQL 范围拼接语义，但角色编码集合匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改业绩归属、提成、冲正、服务费双轨公式、SQL 条件语义或历史数据。
 - 最新报告路径：`harness/reports/evidence-20260621-212247.md`。
 - 最新边界变化：`PerformanceMetricsQueryService` 汇总、趋势和 dashboard 业绩指标查询的数据范围决策已委托用户域 `DataScopePolicy`，本轮未改业绩归属、提成、冲正、服务费双轨公式或历史数据。
@@ -129,7 +125,6 @@
 - 标记：P0。
 
 ## 分析模块
-
 - 最新边界变化：`DataApplicationService` 的数据页订单明细、订单汇总、导出、核心指标和运营监控查询已消费用户域 `DataScopePolicy`；本轮只收口可见性，不改变订单事实、业绩补全、导出列、服务费双轨公式或历史数据。
 - 最新报告路径：`harness/reports/2026-06-21/ddd-user/datascope-next/evidence-20260621-192500-data-application-datascope-policy.md`。
 - 最新边界变化：`DashboardService` 看板 summary fallback 查询、诊断/活动商品下钻 SQL 上下文和 `QueryWrapper` 过滤已消费用户域 `DataScopePolicy.decide` / `requiresFilter`；本轮只收口可见性，不改变指标公式、订单归因或业绩归属。
@@ -142,7 +137,6 @@
 - 标记：P0。
 
 ## 商品域
-
 - 最新边界变化：`ProductQuickSampleService` 快速寄样入口继续负责商品存在性、展示中状态、商品库入库状态、商品快照/主表上下文和寄样域端口委托，但角色编码集合匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改商品状态机、转链规则、`pick_source` 归因语义、寄样状态机或真实数据。
 - 最新报告路径：`harness/reports/evidence-20260621-213011.md`。
 - 最新边界变化：活动列表负责人展示已通过用户域 `loadUserDisplayNamesByIds` 出口读取，只消费展示名称标量，不改变活动分配、活动商品同步或商品库展示规则。
@@ -170,7 +164,7 @@
 - 标记：P0。
 
 ## 达人域
-
+- 最新边界变化：`TalentQueryService` 继续拥有基于有效认领、当前用户和当前部门的达人操作访问语义，但角色编码集合匹配已委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮不改认领规则、达人池、列表 / 详情筛选、补充展示或真实数据。报告：`harness/reports/evidence-20260621-214308.md`。
 - 最新边界变化：达人归属覆盖已通过用户域 `loadUserOwnershipReferencesByIds` 校验目标负责人存在，不再读取完整用户 DTO；本次保持既有达人认领记录 `deptId` 写入行为不变。
 - 当前状态：达人资料、标签、地址和跟进主链路已具备。
 - 已完成能力：达人列表 / 详情、标签、地址、跟进。
@@ -179,7 +173,6 @@
 - 标记：P1。
 
 ## 寄样域
-
 - 当前状态：申请、审批、发货和订单事件自动完成链路已具备。TALENT-ADDRESS-SAMPLE-DEFAULT 达人寄样地址默认保存已完成（2026-06-03）；2026-06-20 已补 `SampleController` 架构测试，防止 HTTP 入口重新直接导入持久化 Mapper；`SampleApplicationService` 已通过用户域归属引用读取创建人部门、通过用户显示标签读取状态日志/导出/详情/看板展示名，并通过寄样域 `SampleActionPermissionPolicy` 承载寄样动作权限；该策略消费用户域 `CurrentUserPermissionPolicy.hasAnyRole` 匹配角色编码集合，不改变寄样状态机或历史数据；`SampleApplicationPortImpl` quick sample 入口已改为消费用户域 `CurrentUserPermissionPolicy.hasAnyRole` 判断角色编码集合，不再本地解析 `roleCodes`；real-pre 仍依赖真实归因订单样本。
 - 已完成能力：寄样申请、审批、发货、状态日志、订单事件消费；**地址默认保存**（寄样成功后回写 `talent_claim`，下次选达人自动带入，修改后更新，历史快照不变，多渠道隔离）。
 - TALENT-ADDRESS-SAMPLE-DEFAULT 报告路径：`harness/reports/talent-address-sample-default-20260603-224000.md`。
@@ -193,7 +186,6 @@
 - 标记：P0。
 
 ## Harness
-
 - 当前状态：GIT-HARNESS-001 工作区治理完成（2026-06-03）。
 - 已完成能力：Completion Gate (G0-G4)、Session Exit Gate、Quality Ledger、Git Intake / Exit Gate、Dirty Classification (10 种分类)、Allowed Change Set、Staged Scope Gate、Commit / Push / Deploy Commit Gate、批次提交流程 (GIT-BATCH-N)、Unknown Dirty Policy、Rollback Policy。
 - 当前风险：需要把所有任务落地到 Git Intake / Exit Gate；P-FIX-002 同步配置残留 (application-real-pre.yml) 仍需独立任务收口。
