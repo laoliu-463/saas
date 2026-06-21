@@ -8,6 +8,7 @@ import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 import com.colonel.saas.domain.product.port.ProductSampleApplicationPort;
 import com.colonel.saas.domain.product.port.QuickSampleApplyPortResult;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationState;
@@ -26,6 +27,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -61,7 +64,8 @@ class DddProduct003ProductRoutingTest {
                 productSampleApplicationPort,
                 false,
                 dddRefactorProperties,
-                productDomainFacade
+                productDomainFacade,
+                new CurrentUserPermissionPolicy()
         );
         lenient().when(douyinQuickSampleGateway.isSupported()).thenReturn(false);
         lenient().when(douyinQuickSampleGateway.supportStatus())
@@ -129,5 +133,19 @@ class DddProduct003ProductRoutingTest {
         verify(productDomainFacade).findSnapshotById(relationId);
         verify(productDomainFacade).findProductByExternalId("9001");
         verify(productSnapshotMapper, never()).selectById(any());
+    }
+
+    @Test
+    @DisplayName("快速寄样角色编码匹配委托用户域权限策略")
+    void productQuickSample_shouldDelegateRoleCodeMatchingToUserPolicy() throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/com/colonel/saas/service/ProductQuickSampleService.java"));
+
+        assertThat(source)
+                .doesNotContain("private boolean hasAnyRole")
+                .doesNotContain("roleCodes.toString()")
+                .doesNotContain("roleCodes instanceof Collection")
+                .contains("CurrentUserPermissionPolicy")
+                .contains("currentUserPermissionPolicy.hasAnyRole");
     }
 }

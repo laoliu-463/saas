@@ -8,6 +8,7 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.product.port.ProductSampleApplicationPort;
 import com.colonel.saas.domain.product.port.QuickSampleApplyCommand;
 import com.colonel.saas.domain.product.port.QuickSampleApplyPortResult;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.dto.product.QuickSampleApplyResponse;
 import com.colonel.saas.entity.Product;
@@ -26,9 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -77,6 +76,8 @@ public class ProductQuickSampleService {
     private final DddRefactorProperties dddRefactorProperties;
     /** 商品只读门面 */
     private final ProductDomainFacade productDomainFacade;
+    /** 用户域权限策略，用于统一角色编码集合解析和匹配 */
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
 
     /**
      * 构造注入。
@@ -90,7 +91,8 @@ public class ProductQuickSampleService {
             ProductSampleApplicationPort productSampleApplicationPort,
             @Value("${app.douyin.quick-sample.enabled:false}") boolean douyinQuickSampleEnabled,
             DddRefactorProperties dddRefactorProperties,
-            ProductDomainFacade productDomainFacade) {
+            ProductDomainFacade productDomainFacade,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.productService = productService;
         this.productMapper = productMapper;
         this.productSnapshotMapper = productSnapshotMapper;
@@ -100,6 +102,7 @@ public class ProductQuickSampleService {
         this.douyinQuickSampleEnabled = douyinQuickSampleEnabled;
         this.dddRefactorProperties = dddRefactorProperties;
         this.productDomainFacade = productDomainFacade;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     /**
@@ -299,8 +302,8 @@ public class ProductQuickSampleService {
     }
 
     private void ensureChannelRole(Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
-                && !hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
+        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
+                && !currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
             throw new ForbiddenException("仅渠道角色可使用快速寄样");
         }
     }
@@ -309,29 +312,5 @@ public class ProductQuickSampleService {
             Product product,
             ProductSnapshot snapshot,
             ProductOperationState state) {
-    }
-
-    private boolean hasAnyRole(Object roleCodes, String... expectedRoles) {
-        if (roleCodes == null || expectedRoles == null || expectedRoles.length == 0) {
-            return false;
-        }
-        java.util.Set<String> expected = java.util.Arrays.stream(expectedRoles)
-                .map(role -> role == null ? "" : role.trim().toLowerCase(Locale.ROOT))
-                .collect(java.util.stream.Collectors.toSet());
-        if (roleCodes instanceof Collection<?> collection) {
-            return collection.stream()
-                    .map(item -> item == null ? "" : item.toString().trim().toLowerCase(Locale.ROOT))
-                    .anyMatch(expected::contains);
-        }
-        String raw = roleCodes.toString();
-        if (!StringUtils.hasText(raw)) {
-            return false;
-        }
-        for (String role : raw.replace("[", "").replace("]", "").split(",")) {
-            if (expected.contains(role.trim().toLowerCase(Locale.ROOT))) {
-                return true;
-            }
-        }
-        return false;
     }
 }

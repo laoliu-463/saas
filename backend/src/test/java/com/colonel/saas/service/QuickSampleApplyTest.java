@@ -7,6 +7,7 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.product.port.ProductSampleApplicationPort;
 import com.colonel.saas.domain.product.port.QuickSampleApplyCommand;
 import com.colonel.saas.domain.product.port.QuickSampleApplyPortResult;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway;
 import com.colonel.saas.config.DddRefactorProperties;
@@ -66,7 +67,8 @@ class QuickSampleApplyTest {
                 productSampleApplicationPort,
                 false,
                 dddRefactorProperties,
-                productDomainFacade
+                productDomainFacade,
+                new CurrentUserPermissionPolicy()
         );
         org.mockito.Mockito.lenient().when(dddRefactorProperties.isEnabled()).thenReturn(false);
         org.mockito.Mockito.lenient().when(douyinQuickSampleGateway.isSupported()).thenReturn(false);
@@ -437,6 +439,22 @@ class QuickSampleApplyTest {
 
         var response = service.applyQuickSample(
                 relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of("admin"));
+
+        assertThat(response.isSuccess()).isTrue();
+    }
+
+    @Test
+    void applyQuickSample_shouldAcceptCommaSeparatedChannelRoleCodes() {
+        UUID relationId = UUID.randomUUID();
+        setupValidProductContext(relationId);
+        when(productSampleApplicationPort.applyQuickSample(any()))
+                .thenReturn(buildSuccessResult("douyin_talent_001", UUID.randomUUID()));
+
+        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
+        request.setTalentIds(List.of("douyin_talent_001"));
+
+        var response = service.applyQuickSample(
+                relationId, request, UUID.randomUUID(), UUID.randomUUID(), " BIZ_STAFF, CHANNEL_STAFF ");
 
         assertThat(response.isSuccess()).isTrue();
     }
