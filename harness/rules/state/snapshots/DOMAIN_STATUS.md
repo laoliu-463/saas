@@ -36,7 +36,7 @@
 
 - 最新小切片：DDD-USER-PERMISSION-POLICY-PRODUCT-QUICK-SAMPLE 已将 `ProductQuickSampleService` 快速寄样入口的渠道 / 管理员角色编码集合匹配委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，商品域不再维护本地 `hasAnyRole`、`roleCodes.toString()` 或 `Collection` 分支解析。本轮不改快速寄样业务规则、商品展示状态校验、寄样端口委托、外部抖店快速寄样开关或真实数据。
 - 最新报告路径：`harness/reports/evidence-20260621-213011.md`。
-- 风险变化：`QuickSampleApplyTest` 覆盖非渠道拒绝、管理员放行、渠道专员放行、逗号字符串角色输入兼容、商品上下文校验和端口委托；`DddProduct003ProductRoutingTest` 新增源码边界约束，防止快速寄样入口重新引入本地角色 matcher。剩余风险是 `UserMasterDataService`、`TalentService`、`SampleLogisticsImportService`、`SampleFilterOptionsService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
+- 风险变化：`QuickSampleApplyTest` 覆盖非渠道拒绝、管理员放行、渠道专员放行、逗号字符串角色输入兼容、商品上下文校验和端口委托；`DddProduct003ProductRoutingTest` 新增源码边界约束，防止快速寄样入口重新引入本地角色 matcher。剩余风险是 `UserMasterDataService`、`TalentService`、`TalentQueryService`、`SampleLogisticsImportService`、`SampleFilterOptionsService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
 - 最新小切片：DDD-USER-PERMISSION-POLICY-PERFORMANCE-ACCESS 已将 `PerformanceAccessScope` 中 `admin`、运营、招商 / 渠道组长与专员判断使用的角色编码集合匹配委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，业绩域不再维护本地 `hasAnyRole` 归一化实现。本轮不改业绩访问语义、SQL 数据范围条件、提成/归属/服务费公式或真实数据。
 - 最新报告路径：`harness/reports/evidence-20260621-212247.md`。
 - 风险变化：`PerformanceAccessScopeTest` 继续覆盖 `" ADMIN "` 兼容匹配、导出、月度重算、筛选越权、逐条访问和 SQL 条件拼接；`DddPerformanceAccessPolicyBoundaryTest` 新增约束，防止业绩域重新引入本地 `hasAnyRole` / `toLowerCase(Locale.ROOT)` 角色匹配。剩余风险是 `UserMasterDataService`、`TalentService`、`SampleLogisticsImportService`、`SampleFilterOptionsService` 等仍存在局部 `roleCodes` 处理，需要按 U-6/U-10~U-13 分批收口。
