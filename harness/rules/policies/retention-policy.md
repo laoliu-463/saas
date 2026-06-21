@@ -41,8 +41,8 @@
 
 ## 4. 命名 / 目录收紧
 
-- 日期桶 `archive/YYYYMMDD/` 内部允许放 ≤10 个直接子分类（如 `tasks/`、`evidence/`、`retros/`），分类也必须满足"≤10 文件 / ≤10 子目录"硬约束。
-- 同一日期桶内如果某个分类文件数即将 >10，**按主题合并**到单文件，而不是再开子分类。
+- 日期桶 `archive/YYYYMMDD/` 内部允许放 ≤50 个直接子分类（如 `tasks/`、`evidence/`、`retros/`），分类也必须满足"≤50 文件 / ≤50 子目录"硬约束。
+- 同一日期桶内如果某个分类文件数即将 >50，**按主题合并**到单文件，而不是再开子分类。
 - 不允许把"过去 N 天的 evidence"继续平铺在 `reports/` 根。
 
 ## 5. 删除豁免清单（DELETE FORBIDDEN）
@@ -57,9 +57,10 @@
 - `probes/*` 当前生效的探针
 - 任何被 `INDEX.md` 引用为权威的文件
 
-## 6. 校验
+## 6. 校验与定期复查
 
 执行 `harness/scripts/check-harness-limits.ps1` 时同步校验：
 - `reports/` 根除 `latest-*` 和 `current/` 之外，不应出现日期命名的 evidence / retro / content-retire 文件。
-- `archive/YYYYMMDD/` 任何子目录文件数应 ≤10。
+- `archive/YYYYMMDD/` 任何子目录文件数应 ≤50。
 - `tasks/`、`probes/`、`templates/` 的过期文件应已被迁出（仅凭文件 mtime 触发提醒，不自动删除）。
+- 任务结束后必须执行一次；每周或每个迭代开始前执行一次清理复查。

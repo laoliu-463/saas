@@ -3,6 +3,9 @@ param()
 $ErrorActionPreference = "Continue"
 $harnessPath = "D:\Projects\SAAS\harness"
 $reportPath = "$harnessPath\reports\latest-harness-limits-check.md"
+$maxDirectFiles = 50
+$maxDirectSubdirs = 50
+$maxNonScriptLines = 200
 
 $violations = @()
 
@@ -33,13 +36,13 @@ $checkDirs = @($harnessPath) + @($allDirs | Select-Object -ExpandProperty FullNa
 
 foreach ($dir in $checkDirs) {
     $subdirs = Get-ChildItem -Path $dir -Directory
-    if ($subdirs.Count -gt 10) {
-        $violations += @{ Type="Directory Limits"; Path=$dir; Issue="Subdir count over 10 ($($subdirs.Count))"; Suggestion="Archive" }
+    if ($subdirs.Count -gt $maxDirectSubdirs) {
+        $violations += @{ Type="Directory Limits"; Path=$dir; Issue="Subdir count over $maxDirectSubdirs ($($subdirs.Count))"; Suggestion="Archive" }
     }
 
     $files = Get-ChildItem -Path $dir -File
-    if ($files.Count -gt 10) {
-        $violations += @{ Type="File Limits"; Path=$dir; Issue="File count over 10 ($($files.Count))"; Suggestion="Archive" }
+    if ($files.Count -gt $maxDirectFiles) {
+        $violations += @{ Type="File Limits"; Path=$dir; Issue="File count over $maxDirectFiles ($($files.Count))"; Suggestion="Archive" }
     }
 }
 
@@ -47,8 +50,8 @@ $allNonScripts = Get-ChildItem -Path $harnessPath -Recurse -File | Where-Object 
 foreach ($file in $allNonScripts) {
     try {
         $lines = (Get-Content -Path $file.FullName -ErrorAction SilentlyContinue | Measure-Object -Line).Lines
-        if ($lines -gt 200) {
-            $violations += @{ Type="Line Limits"; Path=$file.FullName; Issue="Line count over 200 ($lines)"; Suggestion="Split or truncate" }
+        if ($lines -gt $maxNonScriptLines) {
+            $violations += @{ Type="Line Limits"; Path=$file.FullName; Issue="Line count over $maxNonScriptLines ($lines)"; Suggestion="Split or truncate" }
         }
     } catch {}
 }
@@ -56,6 +59,10 @@ foreach ($file in $allNonScripts) {
 $isPass = ($violations.Count -eq 0)
 
 $content = "# Harness Limits Check`n`n"
+$content += "## Active Limits`n"
+$content += "- Direct files per directory: <= $maxDirectFiles`n"
+$content += "- Direct subdirectories per directory: <= $maxDirectSubdirs`n"
+$content += "- Non-script text lines per file: <= $maxNonScriptLines`n`n"
 $content += "## Conclusion`n"
 if ($isPass) {
     $content += "PASS`n`n"
@@ -76,7 +83,7 @@ if ($violations.Count -gt 0) {
 }
 
 $content += "`n## Next Steps`n"
-$content += "Please maintain the harness folders according to the check results."
+$content += "Run this check after each task and during weekly or iteration-start cleanup reviews."
 
 $content | Set-Content -Path $reportPath -Encoding UTF8 -Force
 

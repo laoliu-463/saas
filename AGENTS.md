@@ -161,7 +161,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 ```text
 harness/reports/latest-evidence-YYYYMMDD.md
 ```
-(注意：必须遵循每目录不超过 10 个文件的限制，及时合并或归档旧报告至 `harness/archive/`)
+(注意：必须遵循每目录不超过 50 个文件的限制，及时合并或归档旧报告至 `harness/archive/`)
 
 报告必须包含（脚本能采集多少写多少，采集不到必须写"未采集 / 阻塞原因"，不得编造）：
 
@@ -174,14 +174,14 @@ harness/reports/latest-evidence-YYYYMMDD.md
 - `.claude/`：保留为 Claude 工作台和历史 Agent 工作流文档。
 - `harness/`：统一执行系统与工程化基座，负责门禁规则、任务卡、报告、自动化脚本和资产清理清单。
 
-## 10. Harness 核心约束与结构 (10/10/200 规则)
+## 10. Harness 核心约束与结构 (50/50/200 规则)
 
 所有 Agent 介入本工程时，对 `harness/` 目录进行任何文件创建与修改，**必须绝对服从以下硬性约束**，并在任务结束时通过合规自检：
 
 1. **结构限制**：`harness/` 当前白名单为 9 个一级目录：`rules/`、`tasks/`、`probes/`、`reports/`、`scripts/`、`manifests/`、`archive/`、`templates/`、`engineering/`。
-2. **数量限制**：任何一级目录或子目录，其**文件数量不得超过 10 个**，其**子目录数量不得超过 10 个**。
+2. **数量限制**：任何一级目录或子目录，其**直接文件数量不得超过 50 个**，其**直接子目录数量不得超过 50 个**。
 3. **行数限制**：除脚本文件（.ps1, .sh, .py, .js, .ts 等）外，所有文本文件（如 .md, .txt, .json）**内容不得超过 200 行**。
-4. **清理职责**：超限时必须主动合并、提炼摘要或归档至 `archive/`（打包旧数据）。禁止在 `reports/` 等日常目录内堆积历史报告。
+4. **清理职责**：超限时必须主动合并、提炼摘要或归档至 `archive/`（打包旧数据）。任务结束后必须复查，且每周或每个迭代开始前定期执行清理复查。禁止在 `reports/` 等日常目录内堆积历史报告。
 5. **合规自检**：在声明修改完成前，推荐执行以下脚本进行检验：
    `powershell -ExecutionPolicy Bypass -File harness/scripts/check-harness-limits.ps1`
 

@@ -1,5 +1,10 @@
 ﻿# Harness Limits Check
 
+## Active Limits
+- Direct files per directory: <= 50
+- Direct subdirectories per directory: <= 50
+- Non-script text lines per file: <= 200
+
 ## Conclusion
 PASS
 
@@ -9,4 +14,4 @@ PASS
 | None | None | None |
 
 ## Next Steps
-Please maintain the harness folders according to the check results.
+Run this check after each task and during weekly or iteration-start cleanup reviews.
