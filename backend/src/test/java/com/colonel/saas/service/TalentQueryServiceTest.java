@@ -8,6 +8,7 @@ import com.colonel.saas.dto.talent.TalentDetailResponse;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.mapper.TalentClaimMapper;
@@ -59,7 +60,8 @@ class TalentQueryServiceTest {
                 talentClaimMapper,
                 userDomainFacade,
                 sampleRequestMapper,
-                jdbcTemplate
+                jdbcTemplate,
+                new CurrentUserPermissionPolicy()
         );
     }
 
@@ -109,6 +111,29 @@ class TalentQueryServiceTest {
                 UUID.randomUUID(),
                 deptId,
                 List.of(RoleCodes.CHANNEL_LEADER)
+        );
+    }
+
+    @Test
+    void assertCanOperate_shouldNormalizeRoleCodesViaUserPolicy() {
+        UUID talentId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        when(talentService.getById(talentId)).thenReturn(talent);
+
+        TalentClaim ownClaim = new TalentClaim();
+        ownClaim.setTalentId(talentId);
+        ownClaim.setUserId(currentUserId);
+        ownClaim.setStatus(1);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(ownClaim));
+
+        talentQueryService.assertCanOperate(
+                talentId,
+                currentUserId,
+                null,
+                List.of(" CHANNEL_STAFF ")
         );
     }
 

@@ -21,4 +21,15 @@ class DddUserFacadeTalentQueryBoundaryTest {
         assertThat(source)
                 .contains("userDomainFacade.loadUserDisplayLabelsByIds");
     }
+
+    @Test
+    void talentQuery_shouldDelegateRoleCodeMatchingToUserPolicy() throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/com/colonel/saas/service/TalentQueryService.java"));
+
+        assertThat(source)
+                .doesNotContain("private boolean hasRole")
+                .contains("CurrentUserPermissionPolicy")
+                .contains("currentUserPermissionPolicy.hasAnyRole");
+    }
 }

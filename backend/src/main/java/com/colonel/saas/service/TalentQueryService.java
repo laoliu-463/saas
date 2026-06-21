@@ -12,6 +12,7 @@ import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -79,6 +80,8 @@ public class TalentQueryService {
     private final SampleRequestMapper sampleRequestMapper;
     /** Spring JdbcTemplate，用于原生 SQL 聚合查询（寄样统计、订单统计） */
     private final JdbcTemplate jdbcTemplate;
+    /** 用户域权限策略，用于统一角色编码集合解析和匹配 */
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
 
     /**
      * 构造函数，通过依赖注入初始化所有服务和仓储。
@@ -88,18 +91,21 @@ public class TalentQueryService {
      * @param userDomainFacade     用户领域门面（查询认领人显示标签）
      * @param sampleRequestMapper  寄样请求 Mapper（统计寄样次数）
      * @param jdbcTemplate         JDBC 模板（原生 SQL 聚合查询）
+     * @param currentUserPermissionPolicy 用户域权限策略（角色编码匹配）
      */
     public TalentQueryService(
             TalentService talentService,
             TalentClaimMapper talentClaimMapper,
             UserDomainFacade userDomainFacade,
             SampleRequestMapper sampleRequestMapper,
-            JdbcTemplate jdbcTemplate) {
+            JdbcTemplate jdbcTemplate,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.talentService = talentService;
         this.talentClaimMapper = talentClaimMapper;
         this.userDomainFacade = userDomainFacade;
         this.sampleRequestMapper = sampleRequestMapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     /**
@@ -302,14 +308,14 @@ public class TalentQueryService {
         Talent talent = talentService.getById(talentId);
         UUID resolvedTalentId = talent == null ? null : talent.getId();
         // 注意：达人不存在时放行，由下游业务层处理不存在场景
-        if (resolvedTalentId == null || hasRole(roleCodes, RoleCodes.ADMIN)) {
+        if (resolvedTalentId == null || currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
             return;
         }
         // 查询该达人的所有生效认领记录
         List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(resolvedTalentId);
         List<TalentClaim> safeActiveClaims = activeClaims == null ? List.of() : activeClaims;
         // 渠道主管：所属部门认领了该达人即有权操作
-        if (hasRole(roleCodes, RoleCodes.CHANNEL_LEADER)) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER)) {
             boolean ownedByCurrentDept = currentDeptId != null && safeActiveClaims.stream()
                     .anyMatch(claim -> currentDeptId.equals(claim.getDeptId()));
             if (ownedByCurrentDept) {
@@ -317,7 +323,7 @@ public class TalentQueryService {
             }
         }
         // 渠道专员：个人认领了该达人即有权操作
-        if (hasRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
             boolean ownedByCurrentUser = currentUserId != null && safeActiveClaims.stream()
                     .anyMatch(claim -> currentUserId.equals(claim.getUserId()));
             if (ownedByCurrentUser) {
@@ -385,24 +391,6 @@ public class TalentQueryService {
         if (!ownedByCurrentDept) {
             throw new ForbiddenException("无权查看该达人详情");
         }
-    }
-
-    /**
-     * 判断角色集合中是否包含指定角色（忽略大小写）。
-     *
-     * @param roleCodes     用户角色编码集合
-     * @param expectedRole  待匹配的角色编码
-     * @return 包含则返回 true
-     */
-    private boolean hasRole(Collection<?> roleCodes, String expectedRole) {
-        if (roleCodes == null || roleCodes.isEmpty() || !StringUtils.hasText(expectedRole)) {
-            return false;
-        }
-        String normalizedExpected = expectedRole.trim().toLowerCase(Locale.ROOT);
-        return roleCodes.stream()
-                .filter(Objects::nonNull)
-                .map(value -> value.toString().trim().toLowerCase(Locale.ROOT))
-                .anyMatch(normalizedExpected::equals);
     }
 
     /**
