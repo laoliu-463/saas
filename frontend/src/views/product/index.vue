@@ -36,21 +36,21 @@
         <div>
           <div class="activity-workbench-title">活动商品推进</div>
           <div class="activity-workbench-subtitle">
-            已加载 {{ activityStats.total }} 个商品；{{ activityStats.displayReady }} 个可在商品库列表展示，{{ activityStats.blockedAfterAudit }} 个审核后仍不可展示。
+            已加载 {{ activityStats.total }} 个商品；推广中 {{ activityStats.promoting }} 个，待审核 {{ activityStats.pendingReview }} 个，未通过/终止/到期 {{ blockedUpstreamStatusCount }} 个。
           </div>
         </div>
         <div class="activity-workbench-actions">
           <n-button size="small" secondary data-testid="activity-filter-all" @click="applyActivityQuickFilter('all')">
             全部
           </n-button>
-          <n-button size="small" type="success" secondary data-testid="activity-filter-display-ready" @click="applyActivityQuickFilter('displayReady')">
-            只看可展示
+          <n-button size="small" type="success" secondary data-testid="activity-filter-promoting" @click="applyActivityQuickFilter('promoting')">
+            只看推广中
           </n-button>
-          <n-button size="small" type="warning" secondary data-testid="activity-filter-pending-audit" @click="applyActivityQuickFilter('pendingAudit')">
+          <n-button size="small" type="warning" secondary data-testid="activity-filter-pending-review" @click="applyActivityQuickFilter('pendingReview')">
             只看待审核
           </n-button>
-          <n-button size="small" type="primary" secondary data-testid="activity-filter-ready-assign" @click="applyActivityQuickFilter('readyAssign')">
-            只看待分配
+          <n-button size="small" type="error" secondary data-testid="activity-filter-rejected" @click="applyActivityQuickFilter('rejected')">
+            只看未通过
           </n-button>
         </div>
       </div>
@@ -276,6 +276,15 @@ import {
   shouldShowLibraryEntryAction
 } from './product-library-display'
 import {
+  activityProductStageToAllianceStatus,
+  activityProductStageToOfficialStatus,
+  buildActivityProductStatusStages,
+  countActivityProductStatusGroups,
+  isActivityProductStageMatch,
+  resolveActivityProductOfficialStatusView,
+  type ActivityProductStatusStageKey
+} from './activity-product-status-display'
+import {
   formatBatchResultMessage,
   MAX_BATCH_PRODUCT_IDS,
   normalizeBatchProductIds,
@@ -294,7 +303,6 @@ import type {
 
 type ProductAction = 'audit' | 'assign' | 'auditOwner'
 type AssignDialogMode = 'businessOwner' | 'auditOwner'
-type ActivityStageKey = 'all' | 'pendingAudit' | 'readyAssign' | 'assigned' | 'linked' | 'displayReady'
 
 const PRODUCT_LIST_PAGE_SIZE = 5
 const PRODUCT_TABLE_SCROLL_X = 1968
@@ -323,7 +331,7 @@ const assignedActivityOptionsLoading = ref(false)
 const status = ref<string | null>(null)
 const allianceStatus = ref<string | null>(null)
 const officialStatus = ref<ProductOfficialStatus | null>(null)
-const activeStage = ref<ActivityStageKey>('all')
+const activeStage = ref<ActivityProductStatusStageKey>('all')
 const fallbackActivityId = ref('')
 const currentRow = ref<any | null>(null)
 const showDetail = ref(false)
@@ -425,49 +433,13 @@ const emptyDescription = computed(() => {
     : '当前活动暂无实际商品，可进入活动列表同步或切换活动。'
 })
 
-const activityStats = computed(() => {
-  const rows = products.value
-  const count = (predicate: (row: any) => boolean) => rows.filter(predicate).length
-  return {
-    total: rows.length,
-    pendingAudit: count((row) => row.bizStatus === 'PENDING_AUDIT'),
-    readyAssign: count((row) => row.selectedToLibrary && ['APPROVED', 'BOUND'].includes(String(row.bizStatus || '')) && !row.assigneeName),
-    assigned: count((row) => row.bizStatus === 'ASSIGNED'),
-    linked: count((row) => ['LINKED', 'FOLLOWING'].includes(String(row.bizStatus || ''))),
-    displayReady: count((row) => resolveProductLibraryReadiness(row).canDisplayAfterEntry || resolveProductLibraryDisplay(row).libraryVisible),
-    blockedAfterAudit: count((row) => {
-      const readiness = resolveProductLibraryReadiness(row)
-      return readiness.code === 'PENDING_AUDIT' || readiness.code === 'BLOCKED_AFTER_ENTRY' || readiness.code === 'STORED_HIDDEN'
-    })
-  }
-})
+const activityStats = computed(() => countActivityProductStatusGroups(products.value))
 
-const activityStages = computed(() => [
-  {
-    key: 'pendingAudit' as ActivityStageKey,
-    label: '待审核',
-    count: activityStats.value.pendingAudit,
-    hint: '审核后可加入商品库'
-  },
-  {
-    key: 'readyAssign' as ActivityStageKey,
-    label: '待分配',
-    count: activityStats.value.readyAssign,
-    hint: '组长可指定负责人'
-  },
-  {
-    key: 'assigned' as ActivityStageKey,
-    label: '已分配',
-    count: activityStats.value.assigned,
-    hint: '可按需重新分配'
-  },
-  {
-    key: 'linked' as ActivityStageKey,
-    label: '渠道推进',
-    count: activityStats.value.linked,
-    hint: '已进入转链/达人跟进'
-  }
-])
+const blockedUpstreamStatusCount = computed(() =>
+  activityStats.value.rejected + activityStats.value.terminated + activityStats.value.expired
+)
+
+const activityStages = computed(() => buildActivityProductStatusStages(products.value))
 
 const detailActivityId = computed(() => {
   const rowActivityId = currentRow.value?.sourceActivityId || currentRow.value?.activityId
@@ -682,12 +654,8 @@ const normalizeItem = (item: any) => mergeLibraryDisplayFields({
 
 const applyFilters = (items: any[]) => {
   let result = applyProductFilters(items, filters.value, status.value)
-  if (activeStage.value === 'displayReady') {
-    result = result.filter((item) => {
-      const readiness = resolveProductLibraryReadiness(item)
-      const display = resolveProductLibraryDisplay(item)
-      return readiness.canDisplayAfterEntry || display.libraryVisible
-    })
+  if (activeStage.value !== 'all') {
+    result = result.filter((item) => isActivityProductStageMatch(item, activeStage.value))
   }
   return result
 }
@@ -849,6 +817,14 @@ const officialStatusToAllianceStatus: Record<ProductOfficialStatus, string> = {
   EXPIRED: 'expired'
 }
 
+const officialStatusToActivityStage: Record<ProductOfficialStatus, ActivityProductStatusStageKey> = {
+  PENDING_REVIEW: 'pendingReview',
+  PROMOTING: 'promoting',
+  REJECTED: 'rejected',
+  TERMINATED: 'terminated',
+  EXPIRED: 'expired'
+}
+
 const handleOfficialStatusChange = (value: ProductOfficialStatus | null) => {
   officialStatus.value = value
   allianceStatus.value = value ? officialStatusToAllianceStatus[value] : null
@@ -858,7 +834,7 @@ const handleOfficialStatusChange = (value: ProductOfficialStatus | null) => {
   if (value !== null) {
     status.value = null
   }
-  activeStage.value = 'all'
+  activeStage.value = value ? officialStatusToActivityStage[value] : 'all'
   refreshProducts()
 }
 
@@ -922,29 +898,14 @@ function resetStageExclusiveFilters() {
   }
 }
 
-const applyActivityQuickFilter = (stage: ActivityStageKey) => {
+const applyActivityQuickFilter = (stage: ActivityProductStatusStageKey) => {
   activeStage.value = stage
-  if (stage === 'all') {
-    status.value = null
-    resetStageExclusiveFilters()
-  } else if (stage === 'pendingAudit') {
-    status.value = 'PENDING_AUDIT'
-    resetStageExclusiveFilters()
-  } else if (stage === 'readyAssign') {
-    status.value = 'APPROVED'
-    resetStageExclusiveFilters()
-    filters.value = { ...filters.value, assignee: 'unassigned' }
-  } else if (stage === 'assigned') {
-    status.value = 'ASSIGNED'
-    resetStageExclusiveFilters()
-    filters.value = { ...filters.value, assignee: 'assigned' }
-  } else if (stage === 'linked') {
-    status.value = 'LINKED'
-    resetStageExclusiveFilters()
-  } else if (stage === 'displayReady') {
-    status.value = null
-    resetStageExclusiveFilters()
-  }
+  status.value = null
+  resetStageExclusiveFilters()
+  const nextAllianceStatus = activityProductStageToAllianceStatus(stage)
+  allianceStatus.value = nextAllianceStatus
+  officialStatus.value = activityProductStageToOfficialStatus(stage)
+  filters.value = { ...filters.value, allianceStatus: nextAllianceStatus }
   refreshProducts()
 }
 
@@ -1502,11 +1463,15 @@ const renderProductInfo = (row: any) =>
 
 const renderMetrics = (row: any) => {
   const readiness = resolveProductLibraryReadiness(row)
+  const upstreamStatus = resolveActivityProductOfficialStatusView(row)
+  const upstreamStatusText = normalizeText(row.statusText || row.allianceStatusText)
   const lines = [
     `近30天销量：${formatSales30d(row)}`,
     `近30天 GMV：${formatGmv30d(row)}`,
-    `联盟状态：${normalizeText(row.statusText) || '-'}`,
-    `商品库：${readiness.label}`
+    `上游状态：${upstreamStatusText && upstreamStatusText !== upstreamStatus.label ? `${upstreamStatus.label}（${upstreamStatusText}）` : upstreamStatus.label}`,
+    isSharedLibraryMode.value
+      ? `商品库：${readiness.label}`
+      : `本地进度：${row.bizStatusLabel || getStatusLabel(row.bizStatus)}`
   ]
   if (row.libraryStatusHint) {
     lines.push(`说明：${row.libraryStatusHint}`)
@@ -1524,14 +1489,34 @@ const renderTagList = (row: any) => {
   const secondaryLabel = normalizeText(row.latestDecisionLabel)
   const libraryDisplay = resolveProductLibraryDisplay(row)
   const readiness = resolveProductLibraryReadiness(row)
-  const libraryTags = getLibraryDisplayTags(row, { manageMode: true })
+  const upstreamStatus = resolveActivityProductOfficialStatusView(row)
+  const libraryTags = isSharedLibraryMode.value
+    ? getLibraryDisplayTags(row, { manageMode: true })
+    : []
   const canShowLibraryEntry = shouldShowLibraryEntryAction(row, canDo('audit'))
   return h(
     'div',
     { class: 'table-tag-block' },
     [
+      !isSharedLibraryMode.value
+        ? h(
+            'div',
+            {
+              class: [
+                'table-stack-line',
+                'upstream-status-tag',
+                `upstream-status-tag-${upstreamStatus.tagType}`
+              ],
+              'data-testid': 'activity-product-upstream-status'
+            },
+            upstreamStatus.label
+          )
+        : null,
       h('div', { class: 'table-stack-line' }, firstLabel),
       secondaryLabel ? h('div', { class: 'table-stack-line muted' }, secondaryLabel) : null,
+      !isSharedLibraryMode.value
+        ? h('div', { class: 'table-stack-line muted' }, row.bizStatusLabel || getStatusLabel(row.bizStatus))
+        : null,
       ...libraryTags.map((tag) =>
         h(
           'div',
