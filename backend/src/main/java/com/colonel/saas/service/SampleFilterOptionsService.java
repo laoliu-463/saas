@@ -3,6 +3,8 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
@@ -12,6 +14,7 @@ import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -39,16 +42,22 @@ public class SampleFilterOptionsService {
     private final ProductDomainFacade productDomainFacade;
     private final UserDomainFacade userDomainFacade;
     private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+    private final DataScopePolicy dataScopePolicy;
+    private final DddRefactorProperties dddRefactorProperties;
 
     public SampleFilterOptionsService(
             SampleRequestMapper sampleRequestMapper,
             ProductDomainFacade productDomainFacade,
             UserDomainFacade userDomainFacade,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
+            CurrentUserPermissionPolicy currentUserPermissionPolicy,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productDomainFacade = productDomainFacade;
         this.userDomainFacade = userDomainFacade;
         this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     public SampleFilterOptionsDTO buildOptions(
@@ -122,19 +131,49 @@ public class SampleFilterOptionsService {
     private List<SampleRequest> loadScopedSamples(
             UUID userId,
             UUID deptId,
-            com.colonel.saas.common.enums.DataScope dataScope,
+            DataScope dataScope,
             Object roleCodes) {
         Page<SampleRequest> pageReq = new Page<>(1, PAGE_SIZE);
         QueryWrapper<SampleRequest> wrapper = new QueryWrapper<>();
         IPage<SampleRequest> samplePage;
-        if (dataScope == com.colonel.saas.common.enums.DataScope.PERSONAL
-                && currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
-                && !currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
+        if (shouldUseAuditorQuery(userId, deptId, dataScope, roleCodes)) {
             samplePage = sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper);
         } else {
             samplePage = sampleRequestMapper.findPageWithScope(pageReq, wrapper);
         }
         return samplePage.getRecords() == null ? List.of() : samplePage.getRecords();
+    }
+
+    private boolean shouldUseAuditorQuery(UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            return shouldUseAuditorQueryLegacy(dataScope, roleCodes);
+        }
+        return shouldUseAuditorQueryWithPolicy(userId, deptId, dataScope, roleCodes);
+    }
+
+    private boolean shouldUseAuditorQueryLegacy(DataScope dataScope, Object roleCodes) {
+        return dataScope == DataScope.PERSONAL
+                && isPlainBizStaff(roleCodes);
+    }
+
+    private boolean shouldUseAuditorQueryWithPolicy(UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
+        if (!isPlainBizStaff(roleCodes)) {
+            return false;
+        }
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
+        if (requirement == DataScopePolicy.ContextRequirement.MISSING_USER) {
+            return dataScope == DataScope.PERSONAL;
+        }
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            return false;
+        }
+        return dataScopePolicy.decide(userId, deptId, dataScope) == DataScopePolicy.Decision.FILTER_USER;
+    }
+
+    private boolean isPlainBizStaff(Object roleCodes) {
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
+                && !currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER);
     }
 
     private List<SampleFilterOptionItem> buildChannelOptions(

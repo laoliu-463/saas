@@ -3,11 +3,13 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.mapper.SampleRequestMapper;
@@ -26,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -37,14 +40,20 @@ class SampleFilterOptionsServiceTest {
     @Mock private UserDomainFacade userDomainFacade;
 
     private SampleFilterOptionsService service;
+    private DataScopePolicy dataScopePolicy;
+    private DddRefactorProperties dddRefactorProperties;
 
     @BeforeEach
     void setUp() {
+        dataScopePolicy = spy(new DataScopePolicy());
+        dddRefactorProperties = new DddRefactorProperties();
         service = new SampleFilterOptionsService(
                 sampleRequestMapper,
                 productDomainFacade,
                 userDomainFacade,
-                new CurrentUserPermissionPolicy());
+                new CurrentUserPermissionPolicy(),
+                dataScopePolicy,
+                dddRefactorProperties);
     }
 
     @Test
@@ -72,6 +81,8 @@ class SampleFilterOptionsServiceTest {
         service.buildOptions(userId, UUID.randomUUID(), DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
 
         org.mockito.Mockito.verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), any());
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).decide(any(), any(), any());
     }
 
     @Test
@@ -84,6 +95,38 @@ class SampleFilterOptionsServiceTest {
         service.buildOptions(userId, UUID.randomUUID(), DataScope.PERSONAL, List.of(" BIZ_STAFF "));
 
         org.mockito.Mockito.verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), any());
+    }
+
+    @Test
+    void buildOptions_dataScopePolicyEnabledPath_shouldDelegateAuditorScopeDecisionToUserPolicy() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        Page<SampleRequest> emptyPage = new Page<>(1, 200);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any())).thenReturn(emptyPage);
+
+        service.buildOptions(userId, deptId, DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
+
+        verify(dataScopePolicy).contextRequirement(userId, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
+        verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), any());
+    }
+
+    @Test
+    void buildOptions_dataScopePolicyEnabledPath_shouldKeepLegacyAuditorQueryWhenPersonalScopeMissesUserContext() {
+        UUID deptId = UUID.randomUUID();
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        Page<SampleRequest> emptyPage = new Page<>(1, 200);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(null), any())).thenReturn(emptyPage);
+
+        service.buildOptions(null, deptId, DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
+
+        verify(dataScopePolicy).contextRequirement(null, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy, never()).decide(null, deptId, DataScope.PERSONAL);
+        verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(null), any());
+        verify(sampleRequestMapper, never()).findPageWithScope(any(Page.class), any());
     }
 
     @Test
