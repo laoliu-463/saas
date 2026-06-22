@@ -14,6 +14,7 @@ import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.ValidateException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.sample.LogisticsImportResult;
 import com.colonel.saas.dto.sample.SampleActionRequest;
@@ -42,6 +43,7 @@ import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.service.ProductService;
@@ -213,10 +215,16 @@ public class SampleApplicationService extends BaseController {
     /** 寄样写操作事务服务，封装寄样相关的写操作事务边界，确保数据一致性 */
     private final SampleWriteTransactionService sampleWriteTransactionService;
 
+    /** 用户域数据范围策略，灰度开启后用于解释 PERSONAL / DEPT / ALL。 */
+    private final DataScopePolicy dataScopePolicy;
+
+    /** DDD 重构灰度开关，默认关闭以保持 Legacy 行为。 */
+    private final DddRefactorProperties dddRefactorProperties;
+
     /**
      * 构造寄样管理控制器，通过构造器注入所有必需的依赖。
      *
-     * <p>Spring 框架通过此构造器自动装配以下 18 个依赖组件：
+     * <p>Spring 框架通过此构造器自动装配寄样主流程及灰度旁路所需依赖：
      * <ol>
      *   <li>数据访问层（Mapper）：寄样申请单、商品、商品运营状态、商品快照、系统用户、达人、达人认领、状态日志</li>
      *   <li>业务服务层（Service）：状态日志、爬虫达人查询、业务规则配置、商品服务、资格校验</li>
@@ -240,6 +248,8 @@ public class SampleApplicationService extends BaseController {
      * @param sampleLogisticsSubscriptionService  物流订阅服务
      * @param sampleDomainEventPublisher          寄样领域事件发布器
      * @param sampleWriteTransactionService       寄样写操作事务服务
+     * @param dataScopePolicy                     用户域数据范围策略
+     * @param dddRefactorProperties               DDD 灰度开关配置
      */
     public SampleApplicationService(
             SampleRequestMapper sampleRequestMapper,
@@ -257,7 +267,9 @@ public class SampleApplicationService extends BaseController {
             SampleLogisticsImportService sampleLogisticsImportService,
             SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService,
             SampleDomainEventPublisher sampleDomainEventPublisher,
-            SampleWriteTransactionService sampleWriteTransactionService) {
+            SampleWriteTransactionService sampleWriteTransactionService,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productDomainFacade = productDomainFacade;
         this.userDomainFacade = userDomainFacade;
@@ -274,6 +286,8 @@ public class SampleApplicationService extends BaseController {
         this.sampleLogisticsSubscriptionService = sampleLogisticsSubscriptionService;
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
         this.sampleWriteTransactionService = sampleWriteTransactionService;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     /**
@@ -495,8 +509,7 @@ public class SampleApplicationService extends BaseController {
 
         IPage<SampleRequest> samplePage;
         // 招商专员且数据范围为个人：按"我负责的商品"过滤
-        if (dataScope == com.colonel.saas.common.enums.DataScope.PERSONAL
-                && sampleActionPermissionPolicy.isPlainBizStaff(roleCodes)) {
+        if (shouldUseAuditorQuery(userId, deptId, dataScope, roleCodes)) {
             samplePage = recruiterUserId == null
                     ? sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper)
                     : sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper, recruiterUserId);
@@ -521,6 +534,33 @@ public class SampleApplicationService extends BaseController {
         Page<SampleVO> voPage = new Page<>(samplePage.getCurrent(), samplePage.getSize(), samplePage.getTotal());
         voPage.setRecords(records);
         return okPage(voPage);
+    }
+
+    private boolean shouldUseAuditorQuery(UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            return shouldUseAuditorQueryLegacy(dataScope, roleCodes);
+        }
+        return shouldUseAuditorQueryWithPolicy(userId, deptId, dataScope, roleCodes);
+    }
+
+    private boolean shouldUseAuditorQueryLegacy(DataScope dataScope, Object roleCodes) {
+        return dataScope == DataScope.PERSONAL
+                && sampleActionPermissionPolicy.isPlainBizStaff(roleCodes);
+    }
+
+    private boolean shouldUseAuditorQueryWithPolicy(UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
+        if (!sampleActionPermissionPolicy.isPlainBizStaff(roleCodes)) {
+            return false;
+        }
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
+        if (requirement == DataScopePolicy.ContextRequirement.MISSING_USER) {
+            return dataScope == DataScope.PERSONAL;
+        }
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            return false;
+        }
+        return dataScopePolicy.decide(userId, deptId, dataScope) == DataScopePolicy.Decision.FILTER_USER;
     }
 
     /**

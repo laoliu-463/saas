@@ -1,10 +1,12 @@
 package com.colonel.saas.service.sample;
 
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.domain.sample.policy.SampleActionPermissionPolicy;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SampleStatusLogMapper;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
@@ -45,7 +47,9 @@ public class SampleQueryConfiguration {
             SampleLogisticsImportService sampleLogisticsImportService,
             SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService,
             SampleDomainEventPublisher sampleDomainEventPublisher,
-            SampleWriteTransactionService sampleWriteTransactionService) {
+            SampleWriteTransactionService sampleWriteTransactionService,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         return new SampleApplicationService(
                 sampleRequestMapper,
                 productDomainFacade,
@@ -62,6 +66,8 @@ public class SampleQueryConfiguration {
                 sampleLogisticsImportService,
                 sampleLogisticsSubscriptionService,
                 sampleDomainEventPublisher,
-                sampleWriteTransactionService);
+                sampleWriteTransactionService,
+                dataScopePolicy,
+                dddRefactorProperties);
     }
 }

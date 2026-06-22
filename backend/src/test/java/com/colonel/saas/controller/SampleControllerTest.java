@@ -36,6 +36,7 @@ import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.domain.sample.policy.SampleActionPermissionPolicy;
 import com.colonel.saas.service.CrawlerTalentInfoService;
@@ -97,6 +98,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -136,9 +138,13 @@ class SampleControllerTest {
 
     private SampleController sampleController;
     private SampleApplicationService applicationDelegate;
+    private DataScopePolicy dataScopePolicy;
+    private DddRefactorProperties dddRefactorProperties;
 
     @BeforeEach
     void setUp() {
+        dataScopePolicy = spy(new DataScopePolicy());
+        dddRefactorProperties = new DddRefactorProperties();
         applicationDelegate = new SampleApplicationService(
                 sampleRequestMapper,
                 productDomainFacade,
@@ -155,15 +161,16 @@ class SampleControllerTest {
                 sampleLogisticsImportService,
                 sampleLogisticsSubscriptionService,
                 sampleDomainEventPublisher,
-                new SampleWriteTransactionService());
+                new SampleWriteTransactionService(),
+                dataScopePolicy,
+                dddRefactorProperties);
         LegacySampleQueryService legacyQuery = new LegacySampleQueryService(applicationDelegate);
         LegacySampleCommandService legacyCommand = new LegacySampleCommandService(applicationDelegate);
-        DddRefactorProperties dddProps = new DddRefactorProperties();
         LegacySampleDomainFacade sampleDomainFacade = new LegacySampleDomainFacade(sampleRequestMapper);
         com.colonel.saas.domain.sample.application.SampleQueryApplicationService queryApplicationService =
-                new SampleQueryApplicationService(legacyQuery, sampleDomainFacade, dddProps);
+                new SampleQueryApplicationService(legacyQuery, sampleDomainFacade, dddRefactorProperties);
         com.colonel.saas.domain.sample.application.SampleCommandApplicationService commandApplicationService =
-                new SampleCommandApplicationService(legacyCommand, sampleDomainFacade, dddProps);
+                new SampleCommandApplicationService(legacyCommand, sampleDomainFacade, dddRefactorProperties);
         sampleController = new SampleController(
                 new com.colonel.saas.domain.sample.application.SampleApplicationService(
                         queryApplicationService,
@@ -1400,6 +1407,60 @@ class SampleControllerTest {
         ArgumentCaptor<QueryWrapper<SampleRequest>> wrapperCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), wrapperCaptor.capture());
         assertThat(wrapperCaptor.getValue().getSqlSegment()).contains("sr.status");
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).decide(any(), any(), any());
+    }
+
+    @Test
+    void getSamplePage_dataScopePolicyEnabledPath_shouldDelegateAuditorScopeDecisionToUserPolicy() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        var response = getSamplePageBasic(
+                1,
+                10,
+                null,
+                null,
+                userId,
+                deptId,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getData().getTotal()).isZero();
+        verify(dataScopePolicy).contextRequirement(userId, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
+        verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class));
+    }
+
+    @Test
+    void getSamplePage_dataScopePolicyEnabledPath_shouldKeepLegacyAuditorQueryWhenPersonalScopeMissesUserContext() {
+        UUID deptId = UUID.randomUUID();
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(null), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        var response = getSamplePageBasic(
+                1,
+                10,
+                null,
+                null,
+                null,
+                deptId,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getData().getTotal()).isZero();
+        verify(dataScopePolicy).contextRequirement(null, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy, never()).decide(null, deptId, DataScope.PERSONAL);
+        verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(null), any(QueryWrapper.class));
+        verify(sampleRequestMapper, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
     }
 
     @Test
