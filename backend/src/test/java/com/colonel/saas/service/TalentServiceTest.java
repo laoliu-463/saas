@@ -212,6 +212,19 @@ class TalentServiceTest {
     }
 
     @Test
+    void blacklistDataScope_shouldKeepLegacyDefaultAndDelegateEnabledPathToUserPolicy() throws IOException {
+        String source = Files.readString(sourcePath(
+                "src/main/java/com/colonel/saas/service/TalentService.java"));
+
+        assertThat(source)
+                .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
+                .contains("assertCanOperateBlacklistLegacy")
+                .contains("assertCanOperateBlacklistWithPolicy")
+                .contains("dataScopePolicy.contextRequirement")
+                .contains("dataScopePolicy.decide");
+    }
+
+    @Test
     void pageDataScopePolicyEnabledPath_shouldPreserveClaimScopeSemantics() {
         TalentService enabledService = talentServiceWithDataScopePolicyEnabled();
         UUID userId = UUID.randomUUID();
@@ -1111,6 +1124,84 @@ class TalentServiceTest {
 
         assertThat(result.getBlacklisted()).isTrue();
         assertThat(result.getBlacklistReason()).isEqualTo("手动拉黑");
+        verify(talentMapper).updateById(talent);
+    }
+
+    @Test
+    void blacklistDataScopePolicyEnabledPath_shouldPreserveClaimScopeSemantics() {
+        TalentService enabledService = talentServiceWithDataScopePolicyEnabled();
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        UUID otherDeptId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDeleted(0);
+        TalentClaim activeClaim = new TalentClaim();
+        activeClaim.setTalentId(talentId);
+        activeClaim.setUserId(userId);
+        activeClaim.setDeptId(deptId);
+
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(activeClaim));
+
+        assertThat(enabledService.blacklist(talentId, "同负责人", userId, null, DataScope.PERSONAL)
+                .getBlacklisted()).isTrue();
+        assertThat(enabledService.unblacklist(talentId, userId, deptId, DataScope.DEPT)
+                .getBlacklisted()).isFalse();
+
+        assertThatThrownBy(() -> enabledService.blacklist(
+                talentId,
+                "非负责人",
+                otherUserId,
+                null,
+                DataScope.PERSONAL))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权操作该达人");
+        assertThatThrownBy(() -> enabledService.unblacklist(
+                talentId,
+                otherUserId,
+                otherDeptId,
+                DataScope.DEPT))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权操作该达人");
+        assertThatThrownBy(() -> enabledService.blacklist(
+                talentId,
+                "缺少用户上下文",
+                null,
+                deptId,
+                DataScope.PERSONAL))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权操作该达人");
+        assertThatThrownBy(() -> enabledService.unblacklist(
+                talentId,
+                userId,
+                null,
+                DataScope.DEPT))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权操作该达人");
+    }
+
+    @Test
+    void blacklistDataScopePolicyEnabledPath_shouldAllowScopedOperationWhenNoActiveClaim() {
+        TalentService enabledService = talentServiceWithDataScopePolicyEnabled();
+        UUID talentId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDeleted(0);
+
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of());
+
+        Talent result = enabledService.blacklist(
+                talentId,
+                "无认领记录",
+                null,
+                null,
+                DataScope.PERSONAL);
+
+        assertThat(result.getBlacklisted()).isTrue();
         verify(talentMapper).updateById(talent);
     }
 

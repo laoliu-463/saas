@@ -1578,17 +1578,57 @@ public class TalentService {
         if (activeClaims.isEmpty()) {
             return;
         }
-        if (dataScope == DataScope.PERSONAL) {
-            boolean ownedByCurrentUser = userId != null && activeClaims.stream()
-                    .anyMatch(claim -> userId.equals(claim.getUserId()));
-            if (!ownedByCurrentUser) {
-                throw new ForbiddenException("无权操作该达人");
-            }
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            assertCanOperateBlacklistLegacy(activeClaims, userId, deptId, dataScope);
             return;
         }
-        boolean ownedByCurrentDept = deptId != null && activeClaims.stream()
+        assertCanOperateBlacklistWithPolicy(activeClaims, userId, deptId, dataScope);
+    }
+
+    private void assertCanOperateBlacklistLegacy(
+            List<TalentClaim> activeClaims,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (dataScope == DataScope.PERSONAL) {
+            assertCanOperateBlacklistAllowed(hasActiveClaimForUser(activeClaims, userId));
+            return;
+        }
+        assertCanOperateBlacklistAllowed(hasActiveClaimForDept(activeClaims, deptId));
+    }
+
+    private void assertCanOperateBlacklistWithPolicy(
+            List<TalentClaim> activeClaims,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            throw new ForbiddenException("无权操作该达人");
+        }
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+            assertCanOperateBlacklistAllowed(hasActiveClaimForUser(activeClaims, userId));
+            return;
+        }
+        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+            assertCanOperateBlacklistAllowed(hasActiveClaimForDept(activeClaims, deptId));
+        }
+    }
+
+    private boolean hasActiveClaimForUser(List<TalentClaim> activeClaims, UUID userId) {
+        return userId != null && activeClaims.stream()
+                .anyMatch(claim -> userId.equals(claim.getUserId()));
+    }
+
+    private boolean hasActiveClaimForDept(List<TalentClaim> activeClaims, UUID deptId) {
+        return deptId != null && activeClaims.stream()
                 .anyMatch(claim -> deptId.equals(claim.getDeptId()));
-        if (!ownedByCurrentDept) {
+    }
+
+    private void assertCanOperateBlacklistAllowed(boolean allowed) {
+        if (!allowed) {
             throw new ForbiddenException("无权操作该达人");
         }
     }
