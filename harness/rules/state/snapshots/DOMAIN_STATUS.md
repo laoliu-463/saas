@@ -40,9 +40,9 @@
 - 最新小切片：DDD-USER-DATASCOPE-DASHBOARD 已将 `DashboardService` 看板 summary fallback 查询、诊断/活动商品下钻 SQL 上下文和 `QueryWrapper` 数据范围过滤委托给用户域 `DataScopePolicy.decide` / `requiresFilter`，看板服务不再维护本地 `switch(dataScope)` 分支。
 - 最新报告路径：`harness/reports/2026-06-21/ddd-user/datascope-next/evidence-20260621-190800-dashboard-datascope-policy.md`。
 - 风险变化：`OrderAttributionService`、`PerformanceMetricsQueryService` 与 `DashboardService` 已消费用户域数据范围 policy；`DataApplicationService` 仍有 5 处 `switch(dataScope)` 需继续收口；本轮未改看板指标公式、订单归因、业绩归属或历史数据。
-- 最新小切片：DDD-USER-DATASCOPE-PERFORMANCE-METRICS 已将 `PerformanceMetricsQueryService` 汇总、趋势和 dashboard 业绩指标查询的数据范围过滤委托给用户域 `DataScopePolicy.decide`，业绩查询服务不再维护本地 `switch(dataScope)` 分支。
-- 最新报告路径：`harness/reports/2026-06-21/ddd-user/permission-next/evidence-20260621-185200-performance-metrics-datascope-policy.md`。
-- 风险变化：`PerformanceMetricsQueryService` 已消费用户域数据范围 policy；`DashboardService`、`DataApplicationService`、`TalentQueryService.detail`、`TalentService.page`、`TalentService.blacklist/unblacklist` 与 `TalentService.evaluateExclusive` 已完成子路径收口；后续风险转为跨业务域 `DataScopeResolver` / `PermissionChecker` 消费方式尚未统一。
+- 最新小切片：DDD-USER-DATASCOPE-PERFORMANCE-METRICS 已将 `PerformanceMetricsQueryService` 汇总、趋势和 dashboard 业绩指标查询的数据范围过滤收口为默认关闭双路径：`ddd.refactor.data-scope-policy.enabled=false` 保留 Legacy PERSONAL/DEPT SQL 条件拼接；开启后委托用户域 `DataScopePolicy.decide`。本轮未改业绩归属、提成、冲正、双轨金额公式、dashboard 展示口径、接口契约、默认开关或真实数据。
+- 最新报告路径：`harness/reports/evidence-20260622-193159.md`；retro：`harness/reports/retro-20260622-193221.md`。
+- 风险变化：`PerformanceMetricsQueryService` 已具备灰度开启的用户域数据范围 policy 旁路；红测先失败后转绿，targeted/组合测试 PASS，后端全量 `mvn test` PASS，`agent-do` backend PASS，real-pre preflight PASS。后续风险仍是跨业务域 `DataScopeResolver` / `PermissionChecker` 消费方式尚未统一。
 - 最新小切片：DDD-USER-DATASCOPE-ORDER-ATTRIBUTION 已将 `OrderAttributionService` 未归因分页 `co.user_id/co.dept_id` 与摘要查询 `user_id/dept_id` 数据范围过滤收口为默认关闭双路径：`ddd.refactor.data-scope-policy.enabled=false` 保留 Legacy PERSONAL/DEPT `eq` 条件拼装；开启后委托用户域 `DataScopePolicy.applyTo`。本轮未改订单事实、归因状态、30 天窗口、聚合金额、Mapper SQL、接口契约、默认开关或真实数据。
 - 最新报告路径：`harness/reports/evidence-20260622-191140.md`；retro：`harness/reports/retro-20260622-191156.md`。
 - 风险变化：订单归因查询侧已具备灰度开启的用户域数据范围 policy 旁路；红测先失败后转绿，targeted/组合测试 PASS，后端全量 `mvn test` PASS，`agent-do` backend PASS，real-pre preflight PASS。后续继续推进跨业务域 `DataScopeResolver` / `PermissionChecker` 消费统一。
@@ -109,8 +109,8 @@
 - 最新报告路径：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-afternoon-1430-1722.zip` 内 `evidence-20260622-153707.md` / `retro-20260622-153850.md`。
 - 最新边界变化：`PerformanceAccessScope` 继续承载业绩域导出、重算、筛选越权、逐条访问和 SQL 范围拼接语义，但角色编码集合匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改业绩归属、提成、冲正、服务费双轨公式、SQL 条件语义或历史数据。
 - 最新报告路径：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-212247.md`。
-- 最新边界变化：`PerformanceMetricsQueryService` 汇总、趋势和 dashboard 业绩指标查询的数据范围决策已委托用户域 `DataScopePolicy`，本轮未改业绩归属、提成、冲正、服务费双轨公式或历史数据。
-- 最新报告路径：`harness/reports/2026-06-21/ddd-user/permission-next/evidence-20260621-185200-performance-metrics-datascope-policy.md`。
+- 最新边界变化：`PerformanceMetricsQueryService` 汇总、趋势和 dashboard 业绩指标查询的数据范围过滤新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL/DEPT SQL 条件拼接，开启后才委托 `DataScopePolicy.decide`。本轮未改业绩归属、提成、冲正、服务费双轨公式、接口参数或历史数据。
+- 最新报告路径：`harness/reports/evidence-20260622-193159.md`；retro：`harness/reports/retro-20260622-193221.md`。
 - 当前状态：最终归属、提成、冲正和汇总主链路已具备；订单明细 BFF 已按 orderId 批量读取 `performance_records` 补全招商提成、渠道提成、服务费支出和服务费收益展示字段；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已验证新订单事件在提交后发布，业绩 Listener 正常走 `upsertFromOrder`，重复事件仍走 upsert 幂等路径；SERVICE-FEE-INCOME-FORMULA-CODE-001 已按 2026-06-06 用户口径补齐服务费收入公式解析、结算轨不重复扣技术服务费和后端单元验证；`PerformanceAccessScope` / `PerformanceAccessContext` 已从 `service.performance` 迁入 `domain.performance.policy`，业绩访问策略进入业绩域 policy 包；独家商家评估应用服务已通过用户域负责人归属引用获取招商负责人组织单元，不改变独家覆盖规则、订单金额归集或服务费比例计算。
 - 报告路径：DDD-PERFORMANCE-ACCESS-POLICY `harness/reports/evidence-20260621-121159.md`；DDD-USER-EXCLUSIVE-MERCHANT-APPLICATION-FACADE `harness/reports/2026-06-21/ddd-user/facade-next/evidence-20260621-135500-exclusive-merchant-application-facade.md`。
 - 已完成能力：`performance_records`、最终归属、提成、冲正、汇总刷新。
@@ -119,6 +119,7 @@
 - 标记：P0。
 
 ## 分析模块
+- 最新边界变化：Dashboard 消费的 `PerformanceMetricsQueryService` 汇总读侧数据范围过滤已新增默认关闭旁路；默认关闭保持 Legacy SQL 条件拼接，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域。本轮不改变 dashboard 指标公式、排行 SQL、订单归因或业绩归属。
 - 最新边界变化：`DataApplicationService` 的数据页订单明细、订单汇总、导出、核心指标和运营监控查询已消费用户域 `DataScopePolicy`；本轮只收口可见性，不改变订单事实、业绩补全、导出列、服务费双轨公式或历史数据。
 - 最新报告路径：`harness/reports/2026-06-21/ddd-user/datascope-next/evidence-20260621-192500-data-application-datascope-policy.md`。
 - 最新边界变化：`DashboardService` 看板 summary fallback 查询、诊断/活动商品下钻 SQL 上下文和 `QueryWrapper` 过滤已消费用户域 `DataScopePolicy.decide` / `requiresFilter`；本轮只收口可见性，不改变指标公式、订单归因或业绩归属。
