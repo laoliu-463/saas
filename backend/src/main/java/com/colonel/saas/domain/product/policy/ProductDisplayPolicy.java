@@ -235,7 +235,7 @@ public class ProductDisplayPolicy {
     }
 
     public int normalizeActivityProductStatus(int status) {
-        return status == 4 ? 3 : status;
+        return status;
     }
 
     public Integer normalizeActivityProductStatus(Integer status) {
@@ -331,7 +331,7 @@ public class ProductDisplayPolicy {
         if ("rejected".equals(allianceStatus) && Objects.equals(upstreamStatus, 2)) {
             return true;
         }
-        if ("terminated".equals(allianceStatus) && (Objects.equals(upstreamStatus, 3) || Objects.equals(upstreamStatus, 4))) {
+        if ("terminated".equals(allianceStatus) && Objects.equals(upstreamStatus, 3)) {
             return true;
         }
         if ("expired".equals(allianceStatus) && Objects.equals(upstreamStatus, 6)) {
@@ -341,16 +341,13 @@ public class ProductDisplayPolicy {
             case "pending_audit" -> containsAny(upstreamStatusText, "待审核", "审核中");
             case "promoting" -> containsAny(upstreamStatusText, "推广中", "推广");
             case "rejected" -> containsAny(upstreamStatusText, "未通过", "拒绝", "申请未通过");
-            case "terminated" -> containsAny(upstreamStatusText, "终止", "已终止", "取消");
+            case "terminated" -> containsAny(upstreamStatusText, "终止", "已终止");
             case "expired" -> containsAny(upstreamStatusText, "过期", "已过期", "到期", "已到期");
             default -> true;
         };
     }
 
     public String normalizeActivityProductStatusText(Integer status, String statusText) {
-        if (Integer.valueOf(4).equals(status) && containsAny(statusText, "合作前取消", "取消")) {
-            return "合作已终止";
-        }
         return statusText;
     }
 
@@ -593,7 +590,6 @@ public class ProductDisplayPolicy {
                 case 2:
                     return "REJECTED";
                 case 3:
-                case 4:
                     return "TERMINATED";
                 case 6:
                     return "EXPIRED";
@@ -608,7 +604,7 @@ public class ProductDisplayPolicy {
         if (text.contains("未通过") || text.contains("拒绝")) {
             return "REJECTED";
         }
-        if (text.contains("终止") || text.contains("取消")) {
+        if (text.contains("终止")) {
             return "TERMINATED";
         }
         if (text.contains("到期") || text.contains("过期")) {

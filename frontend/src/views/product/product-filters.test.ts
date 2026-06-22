@@ -253,8 +253,8 @@ describe('product filters', () => {
     expect(matchAllianceStatus({ statusText: '合作已过期' }, 'expired')).toBe(true)
   })
 
-  it('matchAllianceStatus treats legacy status 4 as terminated only for local compatibility', () => {
-    expect(matchAllianceStatus({ status: 4, statusText: '合作前取消' }, 'terminated')).toBe(true)
+  it('matchAllianceStatus does not treat unsupported status 4 as terminated', () => {
+    expect(matchAllianceStatus({ status: 4, statusText: '合作前取消' }, 'terminated')).toBe(false)
     expect(matchAllianceStatus({ status: 4, statusText: '合作前取消' }, 'pending_audit')).toBe(false)
   })
 

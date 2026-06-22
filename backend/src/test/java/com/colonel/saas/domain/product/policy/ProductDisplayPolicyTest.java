@@ -169,7 +169,7 @@ class ProductDisplayPolicyTest {
     }
 
     @Test
-    void legacyStatusFour_shouldNotFallbackToPendingReview() {
+    void unsupportedStatusFour_shouldNotFallbackToTerminated() {
         ProductDisplayPolicy.ActivityProductStatusPresentation presentation =
                 policy.resolveActivityProductStatusPresentation(
                         4,
@@ -183,15 +183,15 @@ class ProductDisplayPolicyTest {
                         null,
                         null);
 
-        assertThat(presentation.officialStatus()).isEqualTo("TERMINATED");
+        assertThat(presentation.officialStatus()).isNotEqualTo("TERMINATED");
     }
 
     @Test
-    void legacyStatusFour_shouldNormalizeToTerminatedStatusForStorageAndFiltering() {
-        assertThat(policy.normalizeActivityProductStatus(4)).isEqualTo(3);
-        assertThat(policy.normalizeActivityProductStatus(Integer.valueOf(4))).isEqualTo(3);
-        assertThat(policy.normalizeActivityProductFilterStatus(4)).isEqualTo(3);
-        assertThat(policy.normalizeActivityProductStatusText(4, "合作前取消")).isEqualTo("合作已终止");
+    void unsupportedStatusFour_shouldNotNormalizeToTerminatedStatusForStorageAndFiltering() {
+        assertThat(policy.normalizeActivityProductStatus(4)).isEqualTo(4);
+        assertThat(policy.normalizeActivityProductStatus(Integer.valueOf(4))).isEqualTo(4);
+        assertThat(policy.normalizeActivityProductFilterStatus(4)).isEqualTo(4);
+        assertThat(policy.normalizeActivityProductStatusText(4, "合作前取消")).isEqualTo("合作前取消");
     }
 
     @Test
@@ -271,18 +271,19 @@ class ProductDisplayPolicyTest {
     }
 
     @Test
-    void selectedLibraryAllianceStatusFilter_shouldKeepLegacyCodeAndTextContract() {
+    void selectedLibraryAllianceStatusFilter_shouldUseSupportedActivityStatusContract() {
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("pending_audit", 0, null)).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("promoting", 1, null)).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("rejected", 2, null)).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("terminated", 3, null)).isTrue();
-        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("terminated", 4, null)).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("terminated", 4, null)).isFalse();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("expired", 6, null)).isTrue();
 
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("pending_audit", null, "审核中")).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("promoting", null, "推广中")).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("rejected", null, "申请未通过")).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("terminated", null, "合作已终止")).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("terminated", null, "合作前取消")).isFalse();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("expired", null, "已到期")).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("unknown", null, "已到期")).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("expired", 1, "推广中")).isFalse();
