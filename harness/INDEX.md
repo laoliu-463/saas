@@ -23,6 +23,7 @@
 - [rules/harness-structure-policy.md](./rules/harness-structure-policy.md)
 - [rules/file-retention-policy.md](./rules/file-retention-policy.md)
 - [rules/report-style-policy.md](./rules/report-style-policy.md)
+- [rules/cicd-real-pre-policy.md](./rules/cicd-real-pre-policy.md)
 
 ## 工程 Skill 配置（engineering/）
 

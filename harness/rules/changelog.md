@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.7.3 — 2026-06-22
+- 新增 Jenkins real-pre CD 规范：固定 job、源码分支、Preflight、后端测试、前端构建、镜像标签、Compose 校验、real-pre 部署、健康检查、回滚和 evidence report。
+- 明确生产环境不由 `saas-real-pre-cd` 自动触碰，后续生产接入必须另建审批型 job。
+- 基线证据：`saas-real-pre-cd #9`，commit `e248b611698e56e1e1e924fc65e79bee0fcb8fac`，Result `SUCCESS`。
+
 ### v0.7.2 — 2026-06-21
 - `git-push-safe.ps1` 明文密钥扫描在代码文件中跳过运行时对象属性 / 函数调用表达式，避免把 `useAuthStore().token`、`form.value.password` 误判为硬编码密钥，同时保留配置类文件的未加引号密钥检查。
 - 修正 dry-run 文案，不再输出被规则禁止的 `git add -A` 示例。
