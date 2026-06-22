@@ -132,10 +132,10 @@
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：`ProductService.SelectedLibraryFilter` 商品库 `published/listed` 过滤解释已委托 `ProductDisplayPolicy.matchesSelectedLibraryPublishedFilter` / `matchesSelectedLibraryListedFilter`；服务层只传入转链字段和上游状态，保持 published=是否存在推广链接、listed=上游 `status=1` 的 Legacy 判定。本轮未改商品同步、转链写入、状态机、真实数据或默认灰度开关。
-- 最新验证：红测先失败后转绿；`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ProductServiceFilterTest` 定向回归 40 tests PASS；`git diff --check` 退出 0；harness limits PASS；`agent-do.ps1 -Env real-pre -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查与 real-pre P0 preflight 均通过。
-- 最新报告路径：`harness/reports/evidence-20260622-233456.md`；retro：`harness/reports/retro-20260622-233528.md`。
-- 上一边界变化：`promotionLink` 过滤解释已委托 `ProductDisplayPolicy.matchesSelectedLibraryPromotionLinkFilter`，保持 `LINKED/PENDING/FAILED/unknown` Legacy 判定。报告：`harness/reports/evidence-20260622-232004.md`；retro：`harness/reports/retro-20260622-232036.md`。
+- 最新边界变化：`ProductService.SelectedLibraryFilter` 商品库 `allianceStatus` 过滤解释已委托 `ProductDisplayPolicy.matchesSelectedLibraryAllianceStatusFilter`；服务层只传入上游状态码和状态文案，保持 pending/promoting/rejected/terminated/expired 的 Legacy 码值与中文文案判定。本轮计划未改转链写库、归因、状态机、真实数据或默认灰度开关。
+- 最新验证：红测先失败后转绿；`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ProductServiceFilterTest` 定向回归 42 tests PASS；`agent-do.ps1 -Env real-pre -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查与 real-pre P0 preflight 均通过；补充包含混入文件的 `ProductServiceActivityStatusIndependenceTest`、`ColonelActivityControllerTest` 组合回归 72 tests PASS。
+- 最新报告路径：`harness/reports/evidence-20260622-235215.md`；retro：`harness/reports/retro-20260622-235256.md`。风险记录：`agent-do` 自动提交 `bd03568d` 同时纳入活动商品刷新 stale-delete、Controller 刷新后再读 DB、mapper 终止状态查询口径和对应测试，应在 review 中与 allianceStatus 策略迁移分开看。
+- 上一边界变化：`published/listed` 过滤解释已委托 `ProductDisplayPolicy.matchesSelectedLibraryPublishedFilter` / `matchesSelectedLibraryListedFilter`，保持 published=是否存在推广链接、listed=上游 `status=1` 的 Legacy 判定。报告：`harness/reports/evidence-20260622-233456.md`；retro：`harness/reports/retro-20260622-233528.md`。
 - 上一边界变化：`ColonelActivityController.listProducts` 活动商品查询 `status` public enum 校验已委托 `ProductDisplayPolicy.isSupportedActivityProductQueryStatus` / `activityProductQueryStatusHint`；Controller 只负责 HTTP 入参转业务异常，保持 `status=4` 请求仍按已提交行为拒绝，`ProductService` 历史数据 `status=4 -> 3` 存储 / 筛选规范化不变。
 - 上一验证：`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest`、`ColonelActivityControllerTest` 定向回归 33 tests PASS；加入 `ProductServiceFilterTest` 组合回归 46 tests PASS。
 - 上一边界变化：活动商品状态码规范化已收口到 `ProductDisplayPolicy`；`ProductService` 仅委派策略处理历史 `status=4 -> 3`、状态文案和筛选入参，Controller 保持当前已提交的 public enum 校验行为。
