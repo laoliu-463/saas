@@ -3,6 +3,7 @@ package com.colonel.saas.controller;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -28,6 +29,7 @@ class SystemEnvControllerTest {
         environment.setActiveProfiles("real-pre");
         SystemEnvController controller = new SystemEnvController(
                 environment,
+                new CurrentUserPermissionPolicy(),
                 " real-pre ",
                 true,
                 false,
@@ -60,6 +62,7 @@ class SystemEnvControllerTest {
         environment.setDefaultProfiles("test");
         SystemEnvController controller = new SystemEnvController(
                 environment,
+                new CurrentUserPermissionPolicy(),
                 "",
                 false,
                 true,
@@ -81,6 +84,7 @@ class SystemEnvControllerTest {
         MockEnvironment environment = new MockEnvironment();
         SystemEnvController controller = new SystemEnvController(
                 environment,
+                new CurrentUserPermissionPolicy(),
                 "",
                 false,
                 false,
@@ -94,7 +98,15 @@ class SystemEnvControllerTest {
     @Test
     void env_returnsUnknownWhenNoDatabaseSignalExists() {
         MockEnvironment environment = new MockEnvironment();
-        SystemEnvController controller = new SystemEnvController(environment, "", false, false, "", "");
+        SystemEnvController controller = new SystemEnvController(
+                environment,
+                new CurrentUserPermissionPolicy(),
+                "",
+                false,
+                false,
+                "",
+                ""
+        );
 
         assertThat(controller.env().getData()).containsEntry("database", "unknown");
     }
@@ -105,6 +117,7 @@ class SystemEnvControllerTest {
         environment.setActiveProfiles("real-pre");
         SystemEnvController controller = new SystemEnvController(
                 environment,
+                new CurrentUserPermissionPolicy(),
                 "real-pre",
                 false,
                 false,
@@ -127,9 +140,41 @@ class SystemEnvControllerTest {
     }
 
     @Test
+    void env_allowsNormalizedAdminRoleStringWhenProtectedProfileIsActive() {
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("real-pre");
+        SystemEnvController controller = new SystemEnvController(
+                environment,
+                new CurrentUserPermissionPolicy(),
+                "real-pre",
+                false,
+                false,
+                "colonel_saas",
+                ""
+        );
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/system/env");
+        request.setAttribute("roleCodes", "[ ADMIN ]");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            assertThat(controller.env().getData()).containsEntry("environmentLabel", "REAL-PRE");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
     void health_returnsOnlyUpStatus() throws Exception {
         MockEnvironment environment = new MockEnvironment();
-        SystemEnvController controller = new SystemEnvController(environment, "test", true, true, "saas_test", "");
+        SystemEnvController controller = new SystemEnvController(
+                environment,
+                new CurrentUserPermissionPolicy(),
+                "test",
+                true,
+                true,
+                "saas_test",
+                ""
+        );
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         mockMvc.perform(get("/system/health"))
