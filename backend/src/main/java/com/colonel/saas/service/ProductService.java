@@ -598,7 +598,12 @@ public class ProductService {
         if (product == null) {
             return false;
         }
-        if (!matchesSelectedLibraryCoreVisibility(snapshot, state)) {
+        if (!productDisplayPolicy.matchesSelectedLibraryCoreVisibility(
+                snapshot == null ? null : snapshot.getStatus(),
+                state != null,
+                state == null ? null : state.getAuditStatus(),
+                state == null ? null : state.getBizStatus(),
+                state == null ? null : state.getManualDisabled())) {
             return false;
         }
         if (StringUtils.hasText(filter.keyword())) {
@@ -728,13 +733,6 @@ public class ProductService {
         return !StringUtils.hasText(filter.decision()) || matchesDecisionFilter(snapshot.getActivityId(), snapshot.getProductId(), filter.decision());
     }
 
-    private boolean matchesSelectedLibraryCoreVisibility(ProductSnapshot snapshot, ProductOperationState state) {
-        return isUpstreamPromoting(snapshot)
-                && state != null
-                && !isLocalRejectedState(state)
-                && !Boolean.TRUE.equals(state.getManualDisabled());
-    }
-
     private Set<String> resolveColonelNameProductScope(SelectedLibraryFilter filter) {
         if (!StringUtils.hasText(filter.colonelName())) {
             return null;
@@ -797,20 +795,6 @@ public class ProductService {
 
     private boolean isUpstreamPromoting(DouyinProductGateway.ActivityProductItem item) {
         return item != null && Integer.valueOf(UPSTREAM_PRODUCT_STATUS_PROMOTING).equals(item.status());
-    }
-
-    private boolean isLocalRejectedState(ProductOperationState state) {
-        if (state == null) {
-            return false;
-        }
-        if (Integer.valueOf(3).equals(state.getAuditStatus())) {
-            return true;
-        }
-        try {
-            return ProductBizStatus.REJECTED == ProductBizStatus.fromCode(state.getBizStatus());
-        } catch (IllegalArgumentException ex) {
-            return false;
-        }
     }
 
     private boolean matchesFreeSampleFilter(ProductOperationState state, String freeSample) {
@@ -1536,7 +1520,9 @@ public class ProductService {
             return new UpstreamProductLibraryDecision(changed, false);
         }
 
-        boolean wasLocalRejected = isLocalRejectedState(state);
+        boolean wasLocalRejected = productDisplayPolicy.isLocalRejectedProductState(
+                state.getAuditStatus(),
+                state.getBizStatus());
         changed = applyUpstreamPromotingLibraryState(state, wasLocalRejected) || changed;
         if (Boolean.TRUE.equals(state.getManualDisabled())) {
             changed = setIfDifferent(state::getDisplayStatus, state::setDisplayStatus, ProductDisplayStatus.HIDDEN.name()) || changed;

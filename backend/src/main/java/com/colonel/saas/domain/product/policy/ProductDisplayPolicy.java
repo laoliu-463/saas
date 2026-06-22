@@ -347,6 +347,29 @@ public class ProductDisplayPolicy {
         };
     }
 
+    public boolean matchesSelectedLibraryCoreVisibility(
+            Integer upstreamStatus,
+            boolean hasOperationState,
+            Integer auditStatus,
+            String bizStatus,
+            Boolean manualDisabled) {
+        return Integer.valueOf(PROMOTING_DOUYIN_STATUS).equals(upstreamStatus)
+                && hasOperationState
+                && !isLocalRejectedProductState(auditStatus, bizStatus)
+                && !Boolean.TRUE.equals(manualDisabled);
+    }
+
+    public boolean isLocalRejectedProductState(Integer auditStatus, String bizStatus) {
+        if (Integer.valueOf(3).equals(auditStatus)) {
+            return true;
+        }
+        try {
+            return ProductBizStatus.REJECTED == ProductBizStatus.fromCode(bizStatus);
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
     public String normalizeActivityProductStatusText(Integer status, String statusText) {
         return statusText;
     }

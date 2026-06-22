@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.product.policy;
 
 import com.colonel.saas.constant.ProductDisplayStatus;
+import com.colonel.saas.common.enums.ProductBizStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -287,6 +288,19 @@ class ProductDisplayPolicyTest {
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("expired", null, "已到期")).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("unknown", null, "已到期")).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("expired", 1, "推广中")).isFalse();
+    }
+
+    @Test
+    void selectedLibraryCoreVisibility_shouldKeepPromotingRejectedPausedContract() {
+        assertThat(policy.matchesSelectedLibraryCoreVisibility(1, true, null, ProductBizStatus.APPROVED.name(), false)).isTrue();
+        assertThat(policy.matchesSelectedLibraryCoreVisibility(0, true, null, ProductBizStatus.APPROVED.name(), false)).isFalse();
+        assertThat(policy.matchesSelectedLibraryCoreVisibility(1, false, null, ProductBizStatus.APPROVED.name(), false)).isFalse();
+        assertThat(policy.matchesSelectedLibraryCoreVisibility(1, true, 3, ProductBizStatus.APPROVED.name(), false)).isFalse();
+        assertThat(policy.matchesSelectedLibraryCoreVisibility(1, true, null, ProductBizStatus.REJECTED.name(), false)).isFalse();
+        assertThat(policy.matchesSelectedLibraryCoreVisibility(1, true, null, ProductBizStatus.APPROVED.name(), true)).isFalse();
+        assertThat(policy.matchesSelectedLibraryCoreVisibility(1, true, null, "UNKNOWN", false)).isTrue();
+        assertThat(policy.isLocalRejectedProductState(3, ProductBizStatus.APPROVED.name())).isTrue();
+        assertThat(policy.isLocalRejectedProductState(null, "UNKNOWN")).isFalse();
     }
 
     private static ProductDisplayRelationInput eligible(

@@ -35,6 +35,8 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "matchesSelectedLibraryPublishedFilter",
                         "matchesSelectedLibraryListedFilter",
                         "matchesSelectedLibraryAllianceStatusFilter",
+                        "matchesSelectedLibraryCoreVisibility",
+                        "isLocalRejectedProductState",
                         "hasPromotionLink",
                         "legacyDisplayMark");
     }
@@ -59,6 +61,8 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "matchesPublishedFilter",
                         "matchesListedFilter",
                         "matchesAllianceStatusFilter",
+                        "matchesSelectedLibraryCoreVisibility",
+                        "isLocalRejectedState",
                         "hasPromotionLink",
                         "hasActivityPromotionLink",
                         "toLegacyDisplayMark");
