@@ -451,13 +451,16 @@ const activityStats = computed(() =>
   activityStatusCounts.value || countActivityProductStatusGroups(products.value)
 )
 
-const officialStatusCounts = computed(() => ({
-  PENDING_REVIEW: activityStats.value.pendingReview,
-  PROMOTING: activityStats.value.promoting,
-  REJECTED: activityStats.value.rejected,
-  TERMINATED: activityStats.value.terminated,
-  EXPIRED: activityStats.value.expired
-}))
+const officialStatusCounts = computed(() => {
+  if (!activityStatusCounts.value) return undefined
+  return {
+    PENDING_REVIEW: activityStatusCounts.value.pendingReview,
+    PROMOTING: activityStatusCounts.value.promoting,
+    REJECTED: activityStatusCounts.value.rejected,
+    TERMINATED: activityStatusCounts.value.terminated,
+    EXPIRED: activityStatusCounts.value.expired
+  }
+})
 
 const activityLoadSummary = computed(() =>
   formatActivityProductLoadSummary(products.value.length, activityQueryTotal.value)
