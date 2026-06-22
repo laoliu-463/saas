@@ -132,9 +132,9 @@
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：`ProductService.buildActivityProductListViewFromDb` 活动商品列表 `sortBy` 归一化已委托 `ProductDisplayPolicy.normalizeActivityProductSortBy`；服务层只根据归一化结果选择 legacy default SQL 分页分支或 latest 分支，保持空值/未知值走 `default`、大小写混合 `latest` 走 `latest` 的既有行为。本轮未改排序比较器、活动商品同步、商品库展示、转链、状态机、真实数据或默认灰度开关。
-- 最新验证：红测先失败后转绿；`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ProductServiceFilterTest` 定向回归 31 tests PASS；`git diff --check` 退出 0；harness limits PASS；`agent-do.ps1 -Env real-pre -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查与 real-pre P0 preflight 均通过。
-- 最新报告路径：`harness/reports/evidence-20260622-223255.md`；retro：`harness/reports/retro-20260622-223319.md`。
+- 最新边界变化：`ProductService` 商品库默认排序与活动商品列表默认排序中的“是否已有推广链接”判断已委托 `ProductDisplayPolicy.hasPromotionLink`；服务层仍只消费 `promoteLink` / `shortLink` / `promotionLink` 文本事实并保持原比较顺序。本轮未改排序权重、活动商品同步、转链写入、商品状态机、真实数据或默认灰度开关。
+- 最新验证：红测先失败后转绿；`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ProductServiceFilterTest` 定向回归 33 tests PASS；`git diff --check` 退出 0；harness limits PASS；`agent-do.ps1 -Env real-pre -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查与 real-pre P0 preflight 均通过。
+- 最新报告路径：`harness/reports/evidence-20260622-224736.md`；retro：`harness/reports/retro-20260622-224758.md`。
 - 上一边界变化：`ColonelActivityController.listProducts` 活动商品查询 `status` public enum 校验已委托 `ProductDisplayPolicy.isSupportedActivityProductQueryStatus` / `activityProductQueryStatusHint`；Controller 只负责 HTTP 入参转业务异常，保持 `status=4` 请求仍按已提交行为拒绝，`ProductService` 历史数据 `status=4 -> 3` 存储 / 筛选规范化不变。
 - 上一验证：`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest`、`ColonelActivityControllerTest` 定向回归 33 tests PASS；加入 `ProductServiceFilterTest` 组合回归 46 tests PASS。
 - 上一边界变化：活动商品状态码规范化已收口到 `ProductDisplayPolicy`；`ProductService` 仅委派策略处理历史 `status=4 -> 3`、状态文案和筛选入参，Controller 保持当前已提交的 public enum 校验行为。
