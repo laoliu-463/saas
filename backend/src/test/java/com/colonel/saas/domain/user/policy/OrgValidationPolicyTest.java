@@ -51,7 +51,10 @@ class OrgValidationPolicyTest {
                 return deletionCounts.getOrDefault(deptId, DeletionCounts.EMPTY).childGroups();
             }
         };
-        policy = new OrgValidationPolicy(leaderCandidateLookup, deletionConstraintLookup);
+        policy = new OrgValidationPolicy(
+                leaderCandidateLookup,
+                deletionConstraintLookup,
+                new CurrentUserPermissionPolicy());
     }
 
     // ===== validateGroupLeader =====
@@ -81,6 +84,15 @@ class OrgValidationPolicyTest {
     void validateGroupLeader_adminForAnyGroup_shouldReturnRealName() {
         UUID userId = UUID.randomUUID();
         registerLeader(userId, "张管理", null, RoleCodes.ADMIN);
+
+        String name = policy.validateGroupLeader(userId, DeptType.RECRUITER_GROUP);
+        assertThat(name).isEqualTo("张管理");
+    }
+
+    @Test
+    void validateGroupLeader_shouldUseUserPermissionPolicyRoleNormalization() {
+        UUID userId = UUID.randomUUID();
+        registerLeader(userId, "张管理", null, " ADMIN ");
 
         String name = policy.validateGroupLeader(userId, DeptType.RECRUITER_GROUP);
         assertThat(name).isEqualTo("张管理");
@@ -170,12 +182,22 @@ class OrgValidationPolicyTest {
 
     @Test
     void policy_shouldDependOnUserDomainPortsNotPersistenceMappers() throws IOException {
-        String source = Files.readString(Path.of(
-                "src/main/java/com/colonel/saas/domain/user/policy/OrgValidationPolicy.java"));
+        String source = Files.readString(sourcePath());
 
         assertThat(source).contains("OrgLeaderCandidateLookup");
         assertThat(source).contains("OrgDeletionConstraintLookup");
+        assertThat(source).contains("CurrentUserPermissionPolicy");
+        assertThat(source).contains("currentUserPermissionPolicy.hasAnyRole");
+        assertThat(source).doesNotContain("roleCodes.stream().noneMatch");
         assertThat(source).doesNotContain("com.colonel.saas.mapper.");
+    }
+
+    private Path sourcePath() {
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/domain/user/policy/OrgValidationPolicy.java");
+        if (!Files.exists(sourcePath)) {
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/domain/user/policy/OrgValidationPolicy.java");
+        }
+        return sourcePath;
     }
 
     private void registerLeader(UUID userId, String realName, String username, String... roleCodes) {

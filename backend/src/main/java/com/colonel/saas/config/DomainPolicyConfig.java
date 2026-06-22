@@ -51,8 +51,12 @@ public class DomainPolicyConfig {
     @Bean
     public OrgValidationPolicy orgValidationPolicy(
             OrgLeaderCandidateLookup leaderCandidateLookup,
-            OrgDeletionConstraintLookup deletionConstraintLookup) {
-        return new OrgValidationPolicy(leaderCandidateLookup, deletionConstraintLookup);
+            OrgDeletionConstraintLookup deletionConstraintLookup,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
+        return new OrgValidationPolicy(
+                leaderCandidateLookup,
+                deletionConstraintLookup,
+                currentUserPermissionPolicy);
     }
 
     @Bean

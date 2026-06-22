@@ -6,6 +6,7 @@ import com.colonel.saas.domain.user.infrastructure.SysOrgDeletionConstraintLooku
 import com.colonel.saas.domain.user.infrastructure.SysOrgEnrichmentLookupAdapter;
 import com.colonel.saas.domain.user.infrastructure.SysOrgLeaderCandidateLookupAdapter;
 import com.colonel.saas.domain.user.infrastructure.SysOrgNodeLookupAdapter;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.OrgAssignmentPolicy;
 import com.colonel.saas.domain.user.policy.OrgEnrichmentPolicy;
 import com.colonel.saas.domain.user.policy.OrgValidationPolicy;
@@ -63,7 +64,8 @@ class OrgStructureApplicationServiceTest {
         OrgAssignmentPolicy assignmentPolicy = new OrgAssignmentPolicy(new SysOrgNodeLookupAdapter(sysDeptMapper));
         OrgValidationPolicy validationPolicy = new OrgValidationPolicy(
                 new SysOrgLeaderCandidateLookupAdapter(sysUserMapper, sysRoleMapper, sysUserRoleMapper),
-                new SysOrgDeletionConstraintLookupAdapter(sysDeptMapper));
+                new SysOrgDeletionConstraintLookupAdapter(sysDeptMapper),
+                new CurrentUserPermissionPolicy());
         OrgEnrichmentPolicy enrichmentPolicy = new OrgEnrichmentPolicy(
                 new SysOrgEnrichmentLookupAdapter(sysDeptMapper, sysRoleMapper),
                 assignmentPolicy);
@@ -73,8 +75,7 @@ class OrgStructureApplicationServiceTest {
 
     @Test
     void applicationServiceShouldDependOnPoliciesInsteadOfPersistenceAdapters() throws IOException {
-        String source = Files.readString(Path.of(
-                "src/main/java/com/colonel/saas/domain/user/application/OrgStructureApplicationService.java"));
+        String source = Files.readString(sourcePath());
 
         assertThat(source).contains("OrgAssignmentPolicy");
         assertThat(source).contains("OrgValidationPolicy");
@@ -82,6 +83,14 @@ class OrgStructureApplicationServiceTest {
         assertThat(source).doesNotContain("com.colonel.saas.mapper.");
         assertThat(source).doesNotContain("com.colonel.saas.entity.");
         assertThat(source).doesNotContain("com.colonel.saas.domain.user.infrastructure.");
+    }
+
+    private Path sourcePath() {
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/domain/user/application/OrgStructureApplicationService.java");
+        if (!Files.exists(sourcePath)) {
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/domain/user/application/OrgStructureApplicationService.java");
+        }
+        return sourcePath;
     }
 
     // ===== resolveAssignment =====

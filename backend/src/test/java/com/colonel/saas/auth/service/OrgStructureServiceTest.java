@@ -7,6 +7,7 @@ import com.colonel.saas.domain.user.infrastructure.SysOrgDeletionConstraintLooku
 import com.colonel.saas.domain.user.infrastructure.SysOrgEnrichmentLookupAdapter;
 import com.colonel.saas.domain.user.infrastructure.SysOrgLeaderCandidateLookupAdapter;
 import com.colonel.saas.domain.user.infrastructure.SysOrgNodeLookupAdapter;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.OrgAssignmentPolicy;
 import com.colonel.saas.domain.user.policy.OrgEnrichmentPolicy;
 import com.colonel.saas.domain.user.policy.OrgValidationPolicy;
@@ -55,7 +56,8 @@ class OrgStructureServiceTest {
         OrgAssignmentPolicy assignmentPolicy = new OrgAssignmentPolicy(new SysOrgNodeLookupAdapter(sysDeptMapper));
         OrgValidationPolicy validationPolicy = new OrgValidationPolicy(
                 new SysOrgLeaderCandidateLookupAdapter(sysUserMapper, sysRoleMapper, sysUserRoleMapper),
-                new SysOrgDeletionConstraintLookupAdapter(sysDeptMapper));
+                new SysOrgDeletionConstraintLookupAdapter(sysDeptMapper),
+                new CurrentUserPermissionPolicy());
         OrgEnrichmentPolicy enrichmentPolicy = new OrgEnrichmentPolicy(
                 new SysOrgEnrichmentLookupAdapter(sysDeptMapper, sysRoleMapper),
                 assignmentPolicy);

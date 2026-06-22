@@ -9,7 +9,6 @@ import com.colonel.saas.domain.user.port.OrgLeaderCandidateLookup.LeaderCandidat
 
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 组织校验策略（DDD-USER-MIGRATION-003）。
@@ -51,12 +50,15 @@ public class OrgValidationPolicy {
 
     private final OrgLeaderCandidateLookup leaderCandidateLookup;
     private final OrgDeletionConstraintLookup deletionConstraintLookup;
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
 
     public OrgValidationPolicy(
             OrgLeaderCandidateLookup leaderCandidateLookup,
-            OrgDeletionConstraintLookup deletionConstraintLookup) {
+            OrgDeletionConstraintLookup deletionConstraintLookup,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.leaderCandidateLookup = leaderCandidateLookup;
         this.deletionConstraintLookup = deletionConstraintLookup;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     /**
@@ -68,9 +70,6 @@ public class OrgValidationPolicy {
         }
         LeaderCandidate leader = leaderCandidateLookup.findActiveLeaderCandidate(leaderUserId)
                 .orElseThrow(() -> BusinessException.param("组长必须是系统内有效用户"));
-        Set<String> roleCodes = leader.roleCodes().stream()
-                .filter(OrgValidationPolicy::hasText)
-                .collect(Collectors.toSet());
         String normalizedType = DeptType.normalize(groupType);
         Set<String> allowed = switch (normalizedType) {
             case DeptType.RECRUITER_GROUP -> RECRUITER_LEADER_ROLES;
@@ -79,7 +78,7 @@ public class OrgValidationPolicy {
             case DeptType.DEPARTMENT -> DEPARTMENT_LEADER_ROLES;
             default -> Set.of(RoleCodes.ADMIN);
         };
-        if (roleCodes.stream().noneMatch(allowed::contains)) {
+        if (!currentUserPermissionPolicy.hasAnyRole(leader.roleCodes(), allowed.toArray(String[]::new))) {
             throw BusinessException.param("组长角色与组别类型不匹配");
         }
         if (hasText(leader.realName())) {

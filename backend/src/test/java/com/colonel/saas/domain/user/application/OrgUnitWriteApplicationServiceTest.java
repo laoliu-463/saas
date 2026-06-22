@@ -51,7 +51,8 @@ class OrgUnitWriteApplicationServiceTest {
         deletionConstraintLookup = new FakeDeletionConstraintLookup();
         OrgValidationPolicy validationPolicy = new OrgValidationPolicy(
                 leaderCandidateLookup,
-                deletionConstraintLookup);
+                deletionConstraintLookup,
+                new CurrentUserPermissionPolicy());
         service = new OrgUnitWriteApplicationService(
                 departmentRepository,
                 validationPolicy,
