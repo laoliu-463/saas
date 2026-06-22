@@ -505,15 +505,15 @@ class ProductServiceFilterTest {
     }
 
     @Test
-    void buildActivityProductListViewFromDb_shouldNormalizeLegacyTerminatedStatusFilter() {
-        ProductSnapshot terminated = snapshot("100018", "9004", "食品饮料", 9900L);
-        terminated.setStatus(3);
-        terminated.setStatusText("合作已终止");
+    void buildActivityProductListViewFromDb_shouldNotNormalizeUnsupportedStatusFourToTerminated() {
+        ProductSnapshot unsupported = snapshot("100018", "9004", "食品饮料", 9900L);
+        unsupported.setStatus(4);
+        unsupported.setStatusText("合作前取消");
 
         when(snapshotMapper.selectCount(any())).thenReturn(1L);
         when(snapshotMapper.selectPageSorted(
                 eq("100018"),
-                eq(3),
+                eq(4),
                 isNull(),
                 eq("NONE"),
                 isNull(),
@@ -522,7 +522,7 @@ class ProductServiceFilterTest {
                 eq(20L),
                 eq(0L),
                 any(LocalDateTime.class)))
-                .thenReturn(List.of(terminated));
+                .thenReturn(List.of(unsupported));
         when(operationStateMapper.selectList(any())).thenReturn(List.of());
         when(operationLogMapper.selectList(any())).thenReturn(List.of());
         when(orderMapper.selectList(any())).thenReturn(List.of());
@@ -534,10 +534,10 @@ class ProductServiceFilterTest {
         assertThat(result.get("total")).isEqualTo(1L);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
-        assertThat(items).singleElement().extracting("officialStatus").isEqualTo("TERMINATED");
+        assertThat(items).singleElement().extracting("officialStatus").isNotEqualTo("TERMINATED");
         verify(snapshotMapper).selectPageSorted(
                 eq("100018"),
-                eq(3),
+                eq(4),
                 isNull(),
                 eq("NONE"),
                 isNull(),
