@@ -20,6 +20,8 @@ class DddUserDataScopePolicySampleApplicationBoundaryTest {
                 .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
                 .contains("shouldUseAuditorQueryLegacy")
                 .contains("shouldUseAuditorQueryWithPolicy")
+                .contains("canAccessSampleByDataScopeLegacy")
+                .contains("canAccessSampleByDataScopeWithPolicy")
                 .contains("dataScopePolicy.contextRequirement")
                 .contains("dataScopePolicy.decide");
     }

@@ -1828,19 +1828,62 @@ public class SampleApplicationService extends BaseController {
                 && isSampleProductAssignedToUser(sample, currentUserId)) {
             return;
         }
-        if (dataScope == DataScope.PERSONAL) {
-            if (currentUserId == null || !currentUserId.equals(sample.getChannelUserId())) {
-                throw new ForbiddenException("无权访问该寄样单");
-            }
+        if (canAccessSampleByDataScope(sample, currentUserId, currentDeptId, dataScope)) {
             return;
         }
+        throw new ForbiddenException("无权访问该寄样单");
+    }
+
+    private boolean canAccessSampleByDataScope(
+            SampleRequest sample,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            return canAccessSampleByDataScopeLegacy(sample, currentUserId, currentDeptId, dataScope);
+        }
+        return canAccessSampleByDataScopeWithPolicy(sample, currentUserId, currentDeptId, dataScope);
+    }
+
+    private boolean canAccessSampleByDataScopeLegacy(
+            SampleRequest sample,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope) {
+        if (dataScope == DataScope.PERSONAL) {
+            return currentUserId != null && currentUserId.equals(sample.getChannelUserId());
+        }
+        UUID ownerDeptId = resolveSampleOwnerDeptId(sample);
+        return currentDeptId != null && ownerDeptId != null && currentDeptId.equals(ownerDeptId);
+    }
+
+    private boolean canAccessSampleByDataScopeWithPolicy(
+            SampleRequest sample,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(currentUserId, currentDeptId, dataScope);
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            return false;
+        }
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(currentUserId, currentDeptId, dataScope);
+        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+            return currentUserId != null && currentUserId.equals(sample.getChannelUserId());
+        }
+        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+            UUID ownerDeptId = resolveSampleOwnerDeptId(sample);
+            return currentDeptId != null && ownerDeptId != null && currentDeptId.equals(ownerDeptId);
+        }
+        return true;
+    }
+
+    private UUID resolveSampleOwnerDeptId(SampleRequest sample) {
         UUID ownerDeptId = sample.getDeptId();
         if (ownerDeptId == null) {
             ownerDeptId = resolveUserDeptId(sample.getChannelUserId());
         }
-        if (currentDeptId == null || ownerDeptId == null || !currentDeptId.equals(ownerDeptId)) {
-            throw new ForbiddenException("无权访问该寄样单");
-        }
+        return ownerDeptId;
     }
 
     /**

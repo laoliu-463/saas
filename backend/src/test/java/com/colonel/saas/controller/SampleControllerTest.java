@@ -584,6 +584,8 @@ class SampleControllerTest {
         assertThatThrownBy(() -> sampleController.getSampleById(sampleId, viewerId, null, DataScope.PERSONAL, null))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("无权访问");
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).decide(any(), any(), any());
     }
 
     @Test
@@ -607,6 +609,53 @@ class SampleControllerTest {
         var response = sampleController.getSampleById(sampleId, viewerId, storedDeptId, DataScope.DEPT, null);
 
         assertThat(response.getData().getId()).isEqualTo(sampleId);
+        verify(userDomainFacade, never()).loadUserOwnershipReferencesByIds(any());
+    }
+
+    @Test
+    void getSampleById_dataScopePolicyEnabledPath_shouldDelegatePersonalAccessDecisionToUserPolicy() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setChannelUserId(ownerId);
+        sample.setStatus(1);
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productDomainFacade.findProductById(null)).thenReturn(null);
+
+        var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL, null);
+
+        assertThat(response.getData().getId()).isEqualTo(sampleId);
+        verify(dataScopePolicy).contextRequirement(ownerId, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(ownerId, deptId, DataScope.PERSONAL);
+    }
+
+    @Test
+    void getSampleById_dataScopePolicyEnabledPath_shouldDelegateDeptAccessDecisionToUserPolicy() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID storedDeptId = UUID.randomUUID();
+
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setChannelUserId(ownerId);
+        sample.setDeptId(storedDeptId);
+        sample.setStatus(1);
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productDomainFacade.findProductById(null)).thenReturn(null);
+
+        var response = sampleController.getSampleById(sampleId, viewerId, storedDeptId, DataScope.DEPT, null);
+
+        assertThat(response.getData().getId()).isEqualTo(sampleId);
+        verify(dataScopePolicy).contextRequirement(viewerId, storedDeptId, DataScope.DEPT);
+        verify(dataScopePolicy).decide(viewerId, storedDeptId, DataScope.DEPT);
         verify(userDomainFacade, never()).loadUserOwnershipReferencesByIds(any());
     }
 
