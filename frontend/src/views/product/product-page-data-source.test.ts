@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildActivityProductListRoute,
   isProductManageProductsPath,
+  normalizeActivityQueryId,
   PRODUCT_MANAGE_PRODUCTS_PATH,
   shouldLoadActivityProducts
 } from './product-page-data-source'
@@ -18,5 +20,13 @@ describe('product-page-data-source', () => {
 
   it('uses activity product source for explicit activity routes', () => {
     expect(shouldLoadActivityProducts('/any/path', true)).toBe(true)
+  })
+
+  it('builds activity product list route with query activity id', () => {
+    expect(normalizeActivityQueryId(['3916506'])).toBe('3916506')
+    expect(buildActivityProductListRoute('3916506')).toEqual({
+      path: PRODUCT_MANAGE_PRODUCTS_PATH,
+      query: { activityId: '3916506' }
+    })
   })
 })

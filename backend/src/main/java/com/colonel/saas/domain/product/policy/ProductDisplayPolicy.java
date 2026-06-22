@@ -293,6 +293,21 @@ public class ProductDisplayPolicy {
         return false;
     }
 
+    public boolean matchesSelectedLibraryPromotionLinkFilter(
+            String promotionLink,
+            String promoteLink,
+            String shortLink,
+            String bizStatus) {
+        boolean linked = hasPromotionLink(promoteLink, shortLink);
+        boolean failed = !linked && containsAny(bizStatus, "LINKED", "FOLLOWING");
+        return switch (promotionLink) {
+            case "LINKED" -> linked;
+            case "PENDING" -> !linked && !failed;
+            case "FAILED" -> failed;
+            default -> true;
+        };
+    }
+
     public String normalizeActivityProductStatusText(Integer status, String statusText) {
         if (Integer.valueOf(4).equals(status) && containsAny(statusText, "合作前取消", "取消")) {
             return "合作已终止";

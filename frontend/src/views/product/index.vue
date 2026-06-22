@@ -253,6 +253,7 @@ import {
   type ProductFilterState
 } from './product-filters'
 import {
+  normalizeActivityQueryId,
   isProductManageProductsPath,
   shouldLoadActivityProducts
 } from './product-page-data-source'
@@ -364,8 +365,11 @@ const canDo = (action: string) => {
   return true
 }
 
+const routeQueryActivityId = computed(() =>
+  normalizeActivityQueryId(route.query.activityId || route.query.recruitActivityId)
+)
 const resolvedActivityId = computed(() =>
-  String(route.params.activityId || filters.value.recruitActivityId || fallbackActivityId.value || '')
+  String(route.params.activityId || filters.value.recruitActivityId || routeQueryActivityId.value || fallbackActivityId.value || '')
 )
 const hasExplicitActivityRoute = computed(() => Boolean(route.params.activityId))
 const isSharedLibraryMode = computed(() => route.path === '/product')
@@ -378,6 +382,18 @@ const showBatchSelection = computed(() => !isSharedLibraryMode.value)
 const productTableScrollX = computed(() =>
   showBatchSelection.value ? PRODUCT_TABLE_SCROLL_X_WITH_SELECTION : PRODUCT_TABLE_SCROLL_X
 )
+
+const syncRouteActivityIdToFilters = () => {
+  const activityId = routeQueryActivityId.value
+  if (!isProductManageProductsMode.value || !activityId) return
+  fallbackActivityId.value = activityId
+  if (filters.value.recruitActivityId === activityId && filters.value.activityId === activityId) return
+  filters.value = {
+    ...filters.value,
+    recruitActivityId: activityId,
+    activityId
+  }
+}
 const showBatchToolbar = computed(() => showBatchSelection.value && (canBatchAssign.value || canBatchLibraryEntry.value || canBatchPin.value))
 const canBatchAssign = computed(() => canDo('assign'))
 const canBatchLibraryEntry = computed(() => hasAccess(authStore.roleCodes, ['biz_staff']))
@@ -583,6 +599,7 @@ const hasDoubleCommission = (item: any) =>
 
 const ensureActivityId = async () => {
   if (isSharedLibraryMode.value) return ''
+  syncRouteActivityIdToFilters()
   const selectedRecruitActivityId = normalizeText(filters.value.recruitActivityId)
   if (selectedRecruitActivityId) {
     fallbackActivityId.value = selectedRecruitActivityId
@@ -1651,6 +1668,7 @@ const columns = computed(() => [
 
 onMounted(async () => {
   try {
+    syncRouteActivityIdToFilters()
     await Promise.all([refreshAssignedActivityOptions(), refreshProducts()])
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '页面初始化失败' })
@@ -1658,9 +1676,10 @@ onMounted(async () => {
 })
 
 watch(
-  () => [route.path, route.params.activityId],
+  () => [route.path, route.params.activityId, route.query.activityId, route.query.recruitActivityId],
   async () => {
     nextCursor.value = ''
+    syncRouteActivityIdToFilters()
     await refreshProducts()
   }
 )

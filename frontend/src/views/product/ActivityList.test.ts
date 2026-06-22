@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { h } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import ActivityList from './ActivityList.vue'
@@ -16,6 +17,7 @@ const messageMock = vi.hoisted(() => ({
   error: vi.fn(),
   info: vi.fn()
 }))
+const routerPushMock = vi.hoisted(() => vi.fn())
 
 vi.mock('../../api/activity', () => ({
   assignColonelActivity: vi.fn(),
@@ -47,7 +49,7 @@ vi.mock('../../composables/useRuntimeEnvironment', () => ({
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({
-    push: vi.fn()
+    push: routerPushMock
   })
 }))
 
@@ -76,7 +78,14 @@ const stubs = {
   NInput: { template: '<input />' },
   NSelect: { template: '<div><slot /></div>' },
   NDropdown: { template: '<div><slot /></div>' },
-  NDataTable: { template: '<table />' },
+  NDataTable: {
+    props: ['columns', 'data'],
+    setup(props: any) {
+      return () => h('div', (props.data || []).flatMap((row: any) =>
+        (props.columns || []).map((column: any) => column.render ? column.render(row) : null)
+      ))
+    }
+  },
   NModal: { template: '<div><slot /><slot name="footer" /></div>' },
   NForm: { template: '<form><slot /></form>' },
   NFormItem: { template: '<label><slot /></label>' },
@@ -124,5 +133,24 @@ describe('ActivityList role scoped requests', () => {
 
     expect(getColonelActivityPage).toHaveBeenCalled()
     expect(getDouyinInstitutionInfo).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens actual activity products instead of product library from activity rows', async () => {
+    vi.mocked(getColonelActivityPage).mockResolvedValue({
+      data: {
+        activityList: [{ activityId: '3916506', activityName: '星链达客-zy' }],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = mountActivityList()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="activity-view-products"]').trigger('click')
+
+    expect(routerPushMock).toHaveBeenCalledWith({
+      path: '/product/manage/products',
+      query: { activityId: '3916506' }
+    })
   })
 })

@@ -238,6 +238,24 @@ class ProductDisplayPolicyTest {
         assertThat(policy.hasPromotionLink(null, null, "https://latest.example")).isTrue();
     }
 
+    @Test
+    void selectedLibraryPromotionLinkFilter_shouldKeepLegacyStatusContract() {
+        assertThat(policy.matchesSelectedLibraryPromotionLinkFilter(
+                "LINKED", "https://promote.example", null, "APPROVED")).isTrue();
+        assertThat(policy.matchesSelectedLibraryPromotionLinkFilter(
+                "LINKED", null, null, "APPROVED")).isFalse();
+
+        assertThat(policy.matchesSelectedLibraryPromotionLinkFilter(
+                "PENDING", null, null, "APPROVED")).isTrue();
+        assertThat(policy.matchesSelectedLibraryPromotionLinkFilter(
+                "PENDING", null, null, "LINKED_FAILED")).isFalse();
+
+        assertThat(policy.matchesSelectedLibraryPromotionLinkFilter(
+                "FAILED", null, null, "FOLLOWING_FAILED")).isTrue();
+        assertThat(policy.matchesSelectedLibraryPromotionLinkFilter(
+                "unknown", null, null, "FOLLOWING_FAILED")).isTrue();
+    }
+
     private static ProductDisplayRelationInput eligible(
             String activityId,
             long commission,

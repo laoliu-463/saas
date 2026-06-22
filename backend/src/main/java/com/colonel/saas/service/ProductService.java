@@ -635,7 +635,11 @@ public class ProductService {
         if (StringUtils.hasText(filter.salesRange()) && !matchesSalesRange(snapshot.getSales(), filter.salesRange())) {
             return false;
         }
-        if (StringUtils.hasText(filter.promotionLink()) && !matchesPromotionLinkFilter(state, filter.promotionLink())) {
+        if (StringUtils.hasText(filter.promotionLink()) && !productDisplayPolicy.matchesSelectedLibraryPromotionLinkFilter(
+                filter.promotionLink(),
+                state == null ? null : state.getPromoteLink(),
+                state == null ? null : state.getShortLink(),
+                state == null ? null : state.getBizStatus())) {
             return false;
         }
         if (StringUtils.hasText(filter.allianceStatus()) && !matchesAllianceStatusFilter(snapshot, filter.allianceStatus())) {
@@ -1061,17 +1065,6 @@ public class ProductService {
             return;
         }
         wrapper.eq(ProductSnapshot::getStatus, normalizedPromotionStatus);
-    }
-
-    private boolean matchesPromotionLinkFilter(ProductOperationState state, String promotionLink) {
-        boolean linked = state != null && (StringUtils.hasText(state.getPromoteLink()) || StringUtils.hasText(state.getShortLink()));
-        boolean failed = !linked && state != null && containsAny(state.getBizStatus(), "LINKED", "FOLLOWING");
-        return switch (promotionLink) {
-            case "LINKED" -> linked;
-            case "PENDING" -> !linked && !failed;
-            case "FAILED" -> failed;
-            default -> true;
-        };
     }
 
     private boolean matchesAllianceStatusFilter(ProductSnapshot snapshot, String allianceStatus) {
