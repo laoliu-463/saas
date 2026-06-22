@@ -36,6 +36,8 @@ public class ProductDisplayPolicy {
     public static final String DECISION_NONE = "NONE";
     public static final String DECISION_DISPLAY = "DISPLAY";
     public static final String DECISION_HIDE_ALL = "HIDE_ALL";
+    private static final String ACTIVITY_PRODUCT_QUERY_STATUS_HINT =
+            "商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、6=合作已到期";
 
     private static final Comparator<ProductDisplayRelationInput> PRIORITY_COMPARATOR = Comparator
             .comparing(ProductDisplayRelationInput::hasTrafficSupport)
@@ -240,6 +242,19 @@ public class ProductDisplayPolicy {
 
     public Integer normalizeActivityProductFilterStatus(Integer status) {
         return normalizeActivityProductStatus(status);
+    }
+
+    public boolean isSupportedActivityProductQueryStatus(Integer status) {
+        return status == null
+                || status == 0
+                || status == 1
+                || status == 2
+                || status == 3
+                || status == 6;
+    }
+
+    public String activityProductQueryStatusHint() {
+        return ACTIVITY_PRODUCT_QUERY_STATUS_HINT;
     }
 
     public String normalizeActivityProductStatusText(Integer status, String statusText) {

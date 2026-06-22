@@ -13,6 +13,7 @@ import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.service.activity.ActivityAccessService;
 import com.colonel.saas.service.ColonelsettlementActivityService;
@@ -67,6 +68,7 @@ public class ColonelActivityController extends BaseController {
     private final ProductActivityManualSyncService productActivityManualSyncService;
     private final UserDomainFacade userDomainFacade;
     private final ActivityAccessService activityAccessService;
+    private final ProductDisplayPolicy productDisplayPolicy;
 
     public ColonelActivityController(
             DouyinActivityGateway douyinActivityGateway,
@@ -77,7 +79,8 @@ public class ColonelActivityController extends BaseController {
             ColonelsettlementActivityService colonelActivityService,
             ProductActivityManualSyncService productActivityManualSyncService,
             UserDomainFacade userDomainFacade,
-            ActivityAccessService activityAccessService) {
+            ActivityAccessService activityAccessService,
+            ProductDisplayPolicy productDisplayPolicy) {
         this.douyinActivityGateway = douyinActivityGateway;
         this.douyinProductGateway = douyinProductGateway;
         this.productService = productService;
@@ -87,6 +90,7 @@ public class ColonelActivityController extends BaseController {
         this.productActivityManualSyncService = productActivityManualSyncService;
         this.userDomainFacade = userDomainFacade;
         this.activityAccessService = activityAccessService;
+        this.productDisplayPolicy = productDisplayPolicy;
     }
 
     @Operation(summary = "团长活动列表", description = "查询机构创建的团长活动列表，并回填本地分配信息。默认仅查本地 DB；DB 为空时返回 needSync=true 提示先同步活动，永不在线调抖音。")
@@ -198,7 +202,9 @@ public class ColonelActivityController extends BaseController {
             @RequestAttribute(value = "userId", required = false) UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        validateActivityProductStatus(status);
+        if (!productDisplayPolicy.isSupportedActivityProductQueryStatus(status)) {
+            throw BusinessException.param(productDisplayPolicy.activityProductQueryStatusHint());
+        }
         activityAccessService.assertActivityReadable(
                 activityId,
                 userId,
@@ -254,18 +260,6 @@ public class ColonelActivityController extends BaseController {
             throw BusinessException.upstream(UpstreamErrorCode.EXTERNAL_GENERIC,
                     "活动商品查询失败: " + e.getMessage(), e);
         }
-    }
-
-    private void validateActivityProductStatus(Integer status) {
-        if (status == null
-                || status == 0
-                || status == 1
-                || status == 2
-                || status == 3
-                || status == 6) {
-            return;
-        }
-        throw BusinessException.param("商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、6=合作已到期");
     }
 
     private Map<String, Object> enrichActivityList(Map<String, Object> raw) {

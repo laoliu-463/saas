@@ -194,6 +194,21 @@ class ProductDisplayPolicyTest {
         assertThat(policy.normalizeActivityProductStatusText(4, "合作前取消")).isEqualTo("合作已终止");
     }
 
+    @Test
+    void activityProductQueryStatusValidation_shouldKeepPublicEnumContract() {
+        assertThat(policy.isSupportedActivityProductQueryStatus(null)).isTrue();
+        assertThat(policy.isSupportedActivityProductQueryStatus(0)).isTrue();
+        assertThat(policy.isSupportedActivityProductQueryStatus(1)).isTrue();
+        assertThat(policy.isSupportedActivityProductQueryStatus(2)).isTrue();
+        assertThat(policy.isSupportedActivityProductQueryStatus(3)).isTrue();
+        assertThat(policy.isSupportedActivityProductQueryStatus(6)).isTrue();
+
+        assertThat(policy.isSupportedActivityProductQueryStatus(4)).isFalse();
+        assertThat(policy.isSupportedActivityProductQueryStatus(9)).isFalse();
+        assertThat(policy.activityProductQueryStatusHint())
+                .isEqualTo("商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、6=合作已到期");
+    }
+
     private static ProductDisplayRelationInput eligible(
             String activityId,
             long commission,

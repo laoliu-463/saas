@@ -1,5 +1,6 @@
 package com.colonel.saas.architecture;
 
+import com.colonel.saas.controller.ColonelActivityController;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,8 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "normalizeActivityProductStatus",
                         "normalizeActivityProductFilterStatus",
                         "normalizeActivityProductStatusText",
+                        "isSupportedActivityProductQueryStatus",
+                        "activityProductQueryStatusHint",
                         "legacyDisplayMark");
     }
 
@@ -44,5 +47,15 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "normalizeActivityProductFilterStatus",
                         "normalizeActivityProductStatusText",
                         "toLegacyDisplayMark");
+    }
+
+    @Test
+    void colonelActivityController_shouldDelegateActivityProductStatusEnumToProductPolicy() {
+        Set<String> controllerMethods = Arrays.stream(ColonelActivityController.class.getDeclaredMethods())
+                .map(Method::getName)
+                .collect(Collectors.toSet());
+
+        assertThat(controllerMethods)
+                .doesNotContain("validateActivityProductStatus");
     }
 }

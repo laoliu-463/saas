@@ -9,6 +9,7 @@ import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
+import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.activity.ActivityAccessService;
@@ -86,7 +87,8 @@ class ColonelActivityControllerTest {
                 colonelActivityService,
                 productActivityManualSyncService,
                 userDomainFacade,
-                activityAccessService
+                activityAccessService,
+                new ProductDisplayPolicy()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -132,7 +134,8 @@ class ColonelActivityControllerTest {
                 colonelActivityService,
                 productActivityManualSyncService,
                 userDomainFacade,
-                activityAccessService);
+                activityAccessService,
+                new ProductDisplayPolicy());
         MockMvc localMvc = MockMvcBuilders.standaloneSetup(localController)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -578,7 +581,8 @@ class ColonelActivityControllerTest {
                     colonelActivityService,
                     productActivityManualSyncService,
                     userDomainFacade,
-                    activityAccessService);
+                    activityAccessService,
+                    new ProductDisplayPolicy());
 
             // refresh=true：触发 syncActivitySummaryFromUpstream + refreshActivitySnapshots
             assertThatThrownBy(() -> errorController.listProducts(
