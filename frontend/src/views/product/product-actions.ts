@@ -64,13 +64,12 @@ export function resolveOfficialStatus(row: ProductManageRow): ProductOfficialSta
   if (statusCode === '1') return 'PROMOTING'
   if (statusCode === '2') return 'REJECTED'
   if (statusCode === '3') return 'TERMINATED'
-  if (statusCode === '4') return 'TERMINATED'
   if (statusCode === '6') return 'EXPIRED'
 
   const statusText = normalizeText(row.statusText || row.allianceStatusText)
   if (statusText.includes('待审核') || statusText.includes('审核中')) return 'PENDING_REVIEW'
   if (statusText.includes('未通过') || statusText.includes('拒绝')) return 'REJECTED'
-  if (statusText.includes('终止') || statusText.includes('取消')) return 'TERMINATED'
+  if (statusText.includes('终止')) return 'TERMINATED'
   if (statusText.includes('到期') || statusText.includes('过期')) return 'EXPIRED'
   if (statusText.includes('推广')) return 'PROMOTING'
 
