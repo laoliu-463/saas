@@ -138,8 +138,7 @@ class DddProduct003ProductRoutingTest {
     @Test
     @DisplayName("快速寄样角色编码匹配委托用户域权限策略")
     void productQuickSample_shouldDelegateRoleCodeMatchingToUserPolicy() throws Exception {
-        String source = Files.readString(Path.of(
-                "src/main/java/com/colonel/saas/service/ProductQuickSampleService.java"));
+        String source = readSource("com/colonel/saas/service/ProductQuickSampleService.java");
 
         assertThat(source)
                 .doesNotContain("private boolean hasAnyRole")
@@ -147,5 +146,27 @@ class DddProduct003ProductRoutingTest {
                 .doesNotContain("roleCodes instanceof Collection")
                 .contains("CurrentUserPermissionPolicy")
                 .contains("currentUserPermissionPolicy.hasAnyRole");
+    }
+
+    @Test
+    @DisplayName("选品分页角色编码匹配委托用户域权限策略")
+    void productPickPage_shouldDelegateRoleCodeMatchingToUserPolicy() throws Exception {
+        String source = readSource("com/colonel/saas/controller/ProductController.java");
+
+        assertThat(source)
+                .doesNotContain("roleCodes.stream()")
+                .doesNotContain(".map(String::toLowerCase)")
+                .doesNotContain("normalized.contains(RoleCodes.ADMIN)")
+                .contains("CurrentUserPermissionPolicy")
+                .contains("currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)")
+                .contains("currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)");
+    }
+
+    private String readSource(String relativePath) throws Exception {
+        Path sourcePath = Path.of("src/main/java", relativePath);
+        if (!Files.exists(sourcePath)) {
+            sourcePath = Path.of("backend/src/main/java", relativePath);
+        }
+        return Files.readString(sourcePath);
     }
 }

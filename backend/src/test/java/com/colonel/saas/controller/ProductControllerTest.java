@@ -10,6 +10,7 @@ import com.colonel.saas.entity.Product;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ColonelPartnerSyncService;
 import com.colonel.saas.domain.product.application.ProductQuickSampleApplicationService;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,7 +49,11 @@ class ProductControllerTest {
 
     @BeforeEach
     void setUp() {
-        productController = new ProductController(productService, productQuickSampleApplicationService, colonelPartnerSyncService);
+        productController = new ProductController(
+                productService,
+                productQuickSampleApplicationService,
+                colonelPartnerSyncService,
+                new CurrentUserPermissionPolicy());
     }
 
     @Test

@@ -15,6 +15,7 @@ import com.colonel.saas.dto.product.QuickSampleApplyResponse;
 import com.colonel.saas.entity.ColonelPartner;
 import com.colonel.saas.service.ColonelPartnerSyncService;
 import com.colonel.saas.domain.product.application.ProductQuickSampleApplicationService;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -95,13 +96,18 @@ public class ProductController extends BaseController {
     /** 团长合作方同步服务，提供团长合作方列表查询（已废弃的筛选项接口使用）。 */
     private final ColonelPartnerSyncService colonelPartnerSyncService;
 
+    /** 当前用户权限策略，统一处理角色编码解析与匹配。 */
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+
     public ProductController(
             ProductService productService,
             ProductQuickSampleApplicationService productQuickSampleApplicationService,
-            ColonelPartnerSyncService colonelPartnerSyncService) {
+            ColonelPartnerSyncService colonelPartnerSyncService,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.productService = productService;
         this.productQuickSampleApplicationService = productQuickSampleApplicationService;
         this.colonelPartnerSyncService = colonelPartnerSyncService;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     /**
@@ -1111,15 +1117,9 @@ public class ProductController extends BaseController {
      * @return {@code true} 表示需要限制为仅查看自己的商品，{@code false} 表示不限制
      */
     private boolean shouldLimitPickPageToSelf(List<String> roleCodes) {
-        if (roleCodes == null || roleCodes.isEmpty()) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
             return false;
         }
-        List<String> normalized = roleCodes.stream()
-                .map(String::toLowerCase)
-                .toList();
-        if (normalized.contains(RoleCodes.ADMIN) || normalized.contains(RoleCodes.BIZ_LEADER)) {
-            return false;
-        }
-        return normalized.contains(RoleCodes.BIZ_STAFF);
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF);
     }
 }
