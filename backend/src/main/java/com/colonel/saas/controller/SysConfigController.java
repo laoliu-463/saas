@@ -122,7 +122,7 @@ public class SysConfigController extends BaseController {
      * 非管理员仅查看授权范围内的配置项。
      * </p>
      *
-     * @param roleCodes 角色代码，可能是集合、数组或逗号分隔字符串
+     * @param roleCodes 角色代码，可能是集合或逗号分隔字符串
      * @return 当前用户包含 ADMIN 角色时返回 true，否则返回 false
      */
     private boolean hasAdminRole(Object roleCodes) {
