@@ -9,9 +9,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.util.StringUtils;
 
 /**
  * 商品库展示去重纯策略（DDD-PRODUCT-002）。
@@ -255,6 +257,14 @@ public class ProductDisplayPolicy {
 
     public String activityProductQueryStatusHint() {
         return ACTIVITY_PRODUCT_QUERY_STATUS_HINT;
+    }
+
+    public String normalizeActivityProductSortBy(String sortBy) {
+        if (!StringUtils.hasText(sortBy)) {
+            return "default";
+        }
+        String normalized = sortBy.trim().toLowerCase(Locale.ROOT);
+        return "latest".equals(normalized) ? "latest" : "default";
     }
 
     public String normalizeActivityProductStatusText(Integer status, String statusText) {

@@ -29,6 +29,7 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "normalizeActivityProductStatusText",
                         "isSupportedActivityProductQueryStatus",
                         "activityProductQueryStatusHint",
+                        "normalizeActivityProductSortBy",
                         "legacyDisplayMark");
     }
 
@@ -46,6 +47,7 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "normalizeActivityProductStatus",
                         "normalizeActivityProductFilterStatus",
                         "normalizeActivityProductStatusText",
+                        "normalizeActivityProductSortBy",
                         "toLegacyDisplayMark");
     }
 

@@ -37,6 +37,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -454,6 +455,43 @@ class ProductServiceFilterTest {
                 isNull(),
                 eq(20L),
                 eq(0L),
+                any(LocalDateTime.class));
+    }
+
+    @Test
+    void buildActivityProductListViewFromDb_shouldNormalizeLatestSortByBeforeChoosingQueryBranch() {
+        ProductSnapshot older = snapshot("100018", "9001", "食品饮料", 9900L);
+        older.setSyncTime(LocalDateTime.now().minusDays(1));
+        ProductSnapshot newer = snapshot("100018", "9002", "食品饮料", 9900L);
+        newer.setSyncTime(LocalDateTime.now());
+
+        Page<ProductSnapshot> snapshotPage = new Page<>(1, 20, 2);
+        snapshotPage.setRecords(List.of(older, newer));
+
+        when(snapshotMapper.selectCount(any())).thenReturn(2L);
+        when(snapshotMapper.selectPage(any(Page.class), any())).thenReturn(snapshotPage);
+        when(operationStateMapper.selectList(any())).thenReturn(List.of());
+        when(operationLogMapper.selectList(any())).thenReturn(List.of());
+        when(orderMapper.selectList(any())).thenReturn(List.of());
+        when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
+
+        var result = service.buildActivityProductListViewFromDb(
+                "100018", 20, null, null, null, null, " LATEST ", null, null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
+        assertThat(items).extracting("productId").containsExactly("9002", "9001");
+        verify(snapshotMapper).selectPage(any(Page.class), any());
+        verify(snapshotMapper, never()).selectPageSorted(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(Long.class),
+                any(Long.class),
                 any(LocalDateTime.class));
     }
 

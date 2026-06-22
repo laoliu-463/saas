@@ -2094,7 +2094,7 @@ public class ProductService {
         applyBizStatusFilter(queryWrapper, bizStatusFilter);
         applyProductIdScope(queryWrapper, auditTagProductScope);
 
-        String normalizedSortBy = normalizeActivityProductSortBy(sortBy);
+        String normalizedSortBy = productDisplayPolicy.normalizeActivityProductSortBy(sortBy);
         List<ProductSnapshot> snapshots;
         List<Map<String, Object>> items;
         int nextOffset;
@@ -4665,14 +4665,6 @@ public class ProductService {
         } catch (Exception ex) {
             throw BusinessException.conflict("审核补充信息保存失败");
         }
-    }
-
-    private String normalizeActivityProductSortBy(String sortBy) {
-        if (!StringUtils.hasText(sortBy)) {
-            return "default";
-        }
-        String normalized = sortBy.trim().toLowerCase(Locale.ROOT);
-        return "latest".equals(normalized) ? "latest" : "default";
     }
 
     private void sortActivityProductItems(List<Map<String, Object>> items, String sortBy) {

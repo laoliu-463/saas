@@ -209,6 +209,16 @@ class ProductDisplayPolicyTest {
                 .isEqualTo("商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、6=合作已到期");
     }
 
+    @Test
+    void activityProductSortBy_shouldKeepLegacyQueryBranchContract() {
+        assertThat(policy.normalizeActivityProductSortBy(null)).isEqualTo("default");
+        assertThat(policy.normalizeActivityProductSortBy("")).isEqualTo("default");
+        assertThat(policy.normalizeActivityProductSortBy(" latest ")).isEqualTo("latest");
+        assertThat(policy.normalizeActivityProductSortBy("LATEST")).isEqualTo("latest");
+        assertThat(policy.normalizeActivityProductSortBy("pinned")).isEqualTo("default");
+        assertThat(policy.normalizeActivityProductSortBy("unknown")).isEqualTo("default");
+    }
+
     private static ProductDisplayRelationInput eligible(
             String activityId,
             long commission,
