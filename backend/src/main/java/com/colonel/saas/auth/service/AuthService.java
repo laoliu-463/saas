@@ -8,7 +8,8 @@ import com.colonel.saas.auth.dto.RefreshResponse;
 import com.colonel.saas.constant.SysUserStatus;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ResultCode;
-import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy.RolePermission;
 import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUser;
@@ -87,6 +88,9 @@ public class AuthService {
     /** 业务规则配置服务，读取登录失败阈值、锁定时长等动态配置 */
     private final BusinessRuleConfigService businessRuleConfigService;
 
+    /** 当前用户权限策略，用于统一登录上下文中的数据范围解析 */
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+
     /**
      * 构造注入所有依赖项。
      *
@@ -97,6 +101,7 @@ public class AuthService {
      * @param redisTemplate          Redis 操作模板
      * @param operationLogService    审计日志服务
      * @param businessRuleConfigService 业务规则配置服务
+     * @param currentUserPermissionPolicy 当前用户权限策略
      */
     public AuthService(
             SysUserMapper sysUserMapper,
@@ -105,7 +110,8 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             RedisTemplate<String, Object> redisTemplate,
             OperationLogService operationLogService,
-            BusinessRuleConfigService businessRuleConfigService) {
+            BusinessRuleConfigService businessRuleConfigService,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.sysUserMapper = sysUserMapper;
         this.sysRoleMapper = sysRoleMapper;
         this.jwtTokenProvider = jwtTokenProvider;
@@ -113,6 +119,7 @@ public class AuthService {
         this.redisTemplate = redisTemplate;
         this.operationLogService = operationLogService;
         this.businessRuleConfigService = businessRuleConfigService;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     /**
@@ -178,25 +185,12 @@ public class AuthService {
         clearLoginFailures(userLockKey);
 
         List<SysRole> roles = sysRoleMapper.findByUserId(user.getId());
-        int dataScope = roles.stream()
-                .map(SysRole::getDataScope)
-                .filter(scope -> scope != null && scope > 0)
-                .max(Integer::compareTo)
-                .orElse(1);
-
         List<String> roleCodes = roles.isEmpty()
                 ? Collections.emptyList()
                 : roles.stream()
                 .map(SysRole::getRoleCode)
                 .collect(Collectors.toList());
-
-        // 运营人员和管理员强制提升为"全部数据"权限范围
-        if (roleCodes.contains(RoleCodes.OPS_STAFF)) {
-            dataScope = 3;
-        }
-        if (roleCodes.contains(RoleCodes.ADMIN)) {
-            dataScope = 3;
-        }
+        int dataScope = resolveDataScope(roles, roleCodes);
 
         // 待激活状态的用户登录后需要在前端完成激活流程
         boolean pendingActivation = SysUserStatus.isPendingActivation(user.getStatus());
@@ -286,24 +280,12 @@ public class AuthService {
         boolean pendingActivation = SysUserStatus.isPendingActivation(user.getStatus());
 
         List<SysRole> roles = sysRoleMapper.findByUserId(userId);
-        int dataScope = roles.stream()
-                .map(SysRole::getDataScope)
-                .filter(scope -> scope != null && scope > 0)
-                .max(Integer::compareTo)
-                .orElse(1);
-
         List<String> roleCodes = roles.isEmpty()
                 ? Collections.emptyList()
                 : roles.stream()
                 .map(SysRole::getRoleCode)
                 .collect(Collectors.toList());
-
-        if (roleCodes.contains(RoleCodes.OPS_STAFF)) {
-            dataScope = 3;
-        }
-        if (roleCodes.contains(RoleCodes.ADMIN)) {
-            dataScope = 3;
-        }
+        int dataScope = resolveDataScope(roles, roleCodes);
 
         String newAccessToken = jwtTokenProvider.generateAccessToken(
                 userId,
@@ -644,6 +626,13 @@ public class AuthService {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private int resolveDataScope(List<SysRole> roles, List<String> roleCodes) {
+        List<RolePermission> rolePermissions = roles.stream()
+                .map(role -> new RolePermission(role.getRoleCode(), role.getDataScope(), Collections.emptyMap()))
+                .toList();
+        return currentUserPermissionPolicy.resolveDataScopeCode(rolePermissions, null, roleCodes);
     }
 
     /**
