@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -90,6 +91,8 @@ public class DashboardService {
     private final PerformanceMetricsQueryService performanceMetricsQueryService;
     /** 数据范围策略，由用户域统一解释 PERSONAL / DEPT / ALL 可见性范围 */
     private final DataScopePolicy dataScopePolicy;
+    /** DDD 重构灰度开关，默认关闭时保持 Legacy 查询路径 */
+    private final DddRefactorProperties dddRefactorProperties;
 
     /** 影子对账服务（可选），开关开启时在后台执行新路径对比并输出 diff 日志 */
     @Autowired(required = false)
@@ -106,11 +109,13 @@ public class DashboardService {
             ColonelsettlementOrderMapper orderMapper,
             JdbcTemplate jdbcTemplate,
             PerformanceMetricsQueryService performanceMetricsQueryService,
-            DataScopePolicy dataScopePolicy) {
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.orderMapper = orderMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.performanceMetricsQueryService = performanceMetricsQueryService;
         this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     /**
@@ -417,6 +422,36 @@ public class DashboardService {
         if (dataScope == null) {
             return;
         }
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            appendScopeClauseLegacy(clauses, args, userId, deptId, dataScope);
+            return;
+        }
+        appendScopeClauseWithPolicy(clauses, args, userId, deptId, dataScope);
+    }
+
+    private void appendScopeClauseLegacy(
+            List<String> clauses,
+            List<Object> args,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (dataScope == DataScope.PERSONAL && userId != null) {
+            clauses.add("co.user_id = ?");
+            args.add(userId);
+            return;
+        }
+        if (dataScope == DataScope.DEPT && deptId != null) {
+            clauses.add("co.dept_id = ?");
+            args.add(deptId);
+        }
+    }
+
+    private void appendScopeClauseWithPolicy(
+            List<String> clauses,
+            List<Object> args,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
         DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
         switch (decision) {
             case FILTER_USER -> {
@@ -881,6 +916,36 @@ public class DashboardService {
         if (wrapper == null || dataScope == null) {
             return;
         }
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            applyScopeLegacy(wrapper, userId, deptId, dataScope);
+            return;
+        }
+        applyScopeWithPolicy(wrapper, userId, deptId, dataScope);
+    }
+
+    private void applyScopeLegacy(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (dataScope == DataScope.PERSONAL && userId != null) {
+            wrapper.eq("user_id", userId);
+            return;
+        }
+        if (dataScope == DataScope.DEPT && deptId != null) {
+            wrapper.eq("dept_id", deptId);
+            return;
+        }
+        if (requiresRestrictedContext(dataScope)) {
+            wrapper.apply("1 = 0");
+        }
+    }
+
+    private void applyScopeWithPolicy(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
         DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
         switch (decision) {
             case FILTER_USER -> wrapper.eq("user_id", userId);
@@ -891,6 +956,10 @@ public class DashboardService {
                 }
             }
         }
+    }
+
+    private boolean requiresRestrictedContext(DataScope dataScope) {
+        return dataScope == DataScope.PERSONAL || dataScope == DataScope.DEPT;
     }
 
     /**

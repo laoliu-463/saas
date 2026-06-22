@@ -213,7 +213,11 @@ class DashboardShadowCompareTest {
                 .thenReturn(java.util.List.of());
 
         var dashboardService = new DashboardService(
-                orderMapper, jdbc, perf, new com.colonel.saas.domain.user.policy.DataScopePolicy());
+                orderMapper,
+                jdbc,
+                perf,
+                new com.colonel.saas.domain.user.policy.DataScopePolicy(),
+                new com.colonel.saas.config.DddRefactorProperties());
         // shadowCompareService is null by default (field injection not done in unit test)
 
         DashboardService.Summary summary = dashboardService.getSummary(START, END, null, null, DataScope.ALL);
