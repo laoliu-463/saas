@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -23,12 +24,15 @@ public class PerformanceMetricsQueryService {
 
     private final JdbcTemplate jdbcTemplate;
     private final DataScopePolicy dataScopePolicy;
+    private final DddRefactorProperties dddRefactorProperties;
 
     public PerformanceMetricsQueryService(
             JdbcTemplate jdbcTemplate,
-            DataScopePolicy dataScopePolicy) {
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.jdbcTemplate = jdbcTemplate;
         this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     public record PerformanceAggregate(
@@ -286,6 +290,36 @@ public class PerformanceMetricsQueryService {
         if (dataScope == null) {
             return;
         }
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            appendScopeLegacy(where, args, userId, deptId, dataScope);
+            return;
+        }
+        appendScopeWithPolicy(where, args, userId, deptId, dataScope);
+    }
+
+    private void appendScopeLegacy(
+            StringBuilder where,
+            List<Object> args,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (dataScope == DataScope.PERSONAL && userId != null) {
+            where.append(" AND co.user_id = ?");
+            args.add(userId);
+            return;
+        }
+        if (dataScope == DataScope.DEPT && deptId != null) {
+            where.append(" AND co.dept_id = ?");
+            args.add(deptId);
+        }
+    }
+
+    private void appendScopeWithPolicy(
+            StringBuilder where,
+            List<Object> args,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
         DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
         switch (decision) {
             case FILTER_USER -> {
