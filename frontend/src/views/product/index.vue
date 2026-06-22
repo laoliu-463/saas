@@ -10,6 +10,13 @@
       </template>
     </PageHeader>
 
+    <CurrentActivityBanner
+      v-if="isProductManageProductsMode"
+      :status="currentActivityContext.status"
+      :activity-id="currentActivityContext.activityId"
+      :activity-name="currentActivityContext.activityName"
+    />
+
     <n-alert v-if="hasExplicitActivityRoute" type="info" class="page-alert app-page-alert">
       当前活动按“组长分配审核人、招商审核、手动入库、分配招商、渠道转链”推进。标签「审核入库后可展示」表示审核通过并入库后可在共享商品库列表看到；「审核后不可展示」表示商品自身联盟状态未达推广中等原因导致列表不可见（详见每行说明）。
       <template #action>
@@ -36,7 +43,7 @@
         <div>
           <div class="activity-workbench-title">活动商品推进</div>
           <div class="activity-workbench-subtitle">
-            已加载 {{ activityStats.total }} 个商品；推广中 {{ activityStats.promoting }} 个，待审核 {{ activityStats.pendingReview }} 个，未通过/终止/到期 {{ blockedUpstreamStatusCount }} 个。
+            {{ activityLoadSummary }}；推广中 {{ activityStats.promoting }} 个，待审核 {{ activityStats.pendingReview }} 个，未通过/终止/到期 {{ blockedUpstreamStatusCount }} 个。
           </div>
         </div>
         <div class="activity-workbench-actions">
@@ -65,7 +72,7 @@
           @click="applyActivityQuickFilter(stage.key)"
         >
           <span class="activity-stage-label">{{ stage.label }}</span>
-          <strong>{{ stage.count }}</strong>
+          <strong>{{ stage.displayCount }}</strong>
           <span class="activity-stage-hint">{{ stage.hint }}</span>
         </button>
       </div>
@@ -73,6 +80,7 @@
 
     <ProductStatusTabs
       :official-status="officialStatus"
+      :status-counts="officialStatusCounts"
       @change-official-status="handleOfficialStatusChange"
     />
 
@@ -86,6 +94,14 @@
       @search-click="refreshProducts"
       @reset="resetFilters"
     />
+
+    <div
+      v-if="isProductManageProductsMode && resolvedActivityId"
+      class="activity-result-summary"
+      data-testid="activity-product-result-summary"
+    >
+      {{ activityLoadSummary }}
+    </div>
 
     <ProductManageTable
       :rows="products"
@@ -255,6 +271,7 @@ import {
 import {
   normalizeActivityQueryId,
   isProductManageProductsPath,
+  resolveActivityContextForManageProductsPath,
   shouldLoadActivityProducts
 } from './product-page-data-source'
 import ProductDetail from './ProductDetail.vue'
@@ -267,6 +284,7 @@ import CooperationSettingModal from './components/CooperationSettingModal.vue'
 import SampleSettingModal from './components/SampleSettingModal.vue'
 import BatchSupplementModal from './components/BatchSupplementModal.vue'
 import ExtendPromotionModal from './components/ExtendPromotionModal.vue'
+import CurrentActivityBanner from './components/CurrentActivityBanner.vue'
 import {
   formatLibraryEntrySuccessMessage,
   getLibraryDisplayTags,
@@ -280,8 +298,11 @@ import {
   activityProductStageToOfficialStatus,
   buildActivityProductStatusStages,
   countActivityProductStatusGroups,
+  formatActivityProductLoadSummary,
   isActivityProductStageMatch,
+  normalizeActivityProductStatusCounts,
   resolveActivityProductOfficialStatusView,
+  type ActivityProductStatusCounts,
   type ActivityProductStatusStageKey
 } from './activity-product-status-display'
 import {
@@ -332,6 +353,8 @@ const status = ref<string | null>(null)
 const allianceStatus = ref<string | null>(null)
 const officialStatus = ref<ProductOfficialStatus | null>(null)
 const activeStage = ref<ActivityProductStatusStageKey>('all')
+const activityQueryTotal = ref(0)
+const activityStatusCounts = ref<ActivityProductStatusCounts | null>(null)
 const fallbackActivityId = ref('')
 const currentRow = ref<any | null>(null)
 const showDetail = ref(false)
@@ -384,6 +407,22 @@ const isSharedLibraryMode = computed(() => route.path === '/product')
 const isActivityProductMode = computed(() => hasExplicitActivityRoute.value)
 const isProductManageProductsMode = computed(() => isProductManageProductsPath(route.path))
 const isPickLibraryMode = computed(() => isProductManageProductsMode.value || (!isSharedLibraryMode.value && !isActivityProductMode.value))
+
+// [PRODUCT-FIX-001] 解析当前活动上下文（替代旧 fallback 逻辑）
+const currentActivityContext = computed(() =>
+  resolveActivityContextForManageProductsPath({
+    routePath: route.path,
+    queryActivityId: routeQueryActivityId.value,
+    assignedOptions: assignedActivityOptions.value,
+    isAdmin: Boolean(authStore.isAdmin),
+    isOptionsLoading: assignedActivityOptionsLoading.value
+  })
+)
+const isActivityContextBlocked = computed(
+  () => isProductManageProductsMode.value
+    && currentActivityContext.value.status !== 'ready'
+    && currentActivityContext.value.status !== 'loading'
+)
 const isBizLeader = computed(() => authStore.roleCodes.includes('biz_leader') || authStore.isAdmin)
 const isBizStaffOnly = computed(() => authStore.roleCodes.includes('biz_staff') && !isBizLeader.value)
 const showBatchSelection = computed(() => !isSharedLibraryMode.value)
@@ -433,13 +472,27 @@ const emptyDescription = computed(() => {
     : '当前活动暂无实际商品，可进入活动列表同步或切换活动。'
 })
 
-const activityStats = computed(() => countActivityProductStatusGroups(products.value))
+const activityStats = computed(() =>
+  activityStatusCounts.value || countActivityProductStatusGroups(products.value)
+)
+
+const officialStatusCounts = computed(() => ({
+  PENDING_REVIEW: activityStats.value.pendingReview,
+  PROMOTING: activityStats.value.promoting,
+  REJECTED: activityStats.value.rejected,
+  TERMINATED: activityStats.value.terminated,
+  EXPIRED: activityStats.value.expired
+}))
+
+const activityLoadSummary = computed(() =>
+  formatActivityProductLoadSummary(products.value.length, activityQueryTotal.value)
+)
 
 const blockedUpstreamStatusCount = computed(() =>
   activityStats.value.rejected + activityStats.value.terminated + activityStats.value.expired
 )
 
-const activityStages = computed(() => buildActivityProductStatusStages(products.value))
+const activityStages = computed(() => buildActivityProductStatusStages(activityStats.value))
 
 const detailActivityId = computed(() => {
   const rowActivityId = currentRow.value?.sourceActivityId || currentRow.value?.activityId
@@ -577,18 +630,10 @@ const ensureActivityId = async () => {
     fallbackActivityId.value = selectedRecruitActivityId
     return selectedRecruitActivityId
   }
-  const firstAssignedActivity = assignedActivityOptions.value[0]?.value
-  if (isProductManageProductsMode.value && firstAssignedActivity) {
-    const firstAssignedName = assignedActivityOptions.value[0]?.label.replace(/\s*\([^)]*\)\s*$/, '').trim()
-    fallbackActivityId.value = firstAssignedActivity
-    filters.value = {
-      ...filters.value,
-      recruitActivityId: firstAssignedActivity,
-      activityId: firstAssignedActivity,
-      recruitActivityName: firstAssignedName || null
-    }
-    return firstAssignedActivity
-  }
+  // [PRODUCT-FIX-001] /product/manage/products 路径不再 fallback 到 assigned[0]。
+  // 移除以下整段:const firstAssignedActivity = assignedActivityOptions.value[0]?.value
+  // + if (isProductManageProductsMode.value && firstAssignedActivity) { ... }
+  // 改由 resolveActivityContextForManageProductsPath + CurrentActivityBanner 显式提示。
   if (route.params.activityId) {
     fallbackActivityId.value = ''
     return String(route.params.activityId)
@@ -682,6 +727,12 @@ const buildActivityProductsQuery = (reset: boolean, forceRemote: boolean) => ({
 const applyActivityProductsPage = (data: any, reset: boolean) => {
   const items = applyFilters((Array.isArray(data.items) ? data.items : []).map(normalizeItem))
   products.value = reset ? items : products.value.concat(items)
+  activityQueryTotal.value = Number(data.total || 0)
+  if (data.statusCounts) {
+    activityStatusCounts.value = normalizeActivityProductStatusCounts(data.statusCounts)
+  } else if (reset) {
+    activityStatusCounts.value = null
+  }
   nextCursor.value = String(data.nextCursor || '')
   hasMore.value = Boolean(data.hasMore || data.nextCursor)
 }
@@ -748,6 +799,15 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
 
     const activityId = selectedActivityId || await ensureActivityId()
     if (shouldLoadActivityProducts(route.path, hasExplicitActivityRoute.value) && activityId) {
+      // [PRODUCT-FIX-001] 显式禁止 /product/manage/products 在 forbidden/empty 状态下发请求
+      if (isProductManageProductsMode.value && isActivityContextBlocked.value) {
+        products.value = reset ? [] : products.value
+        activityQueryTotal.value = 0
+        activityStatusCounts.value = null
+        hasMore.value = false
+        nextCursor.value = ''
+        return true
+      }
       const res: any = await getActivityProducts(activityId, buildActivityProductsQuery(reset, forceRemote))
       applyActivityProductsPage(res?.data || {}, reset)
       return true
@@ -756,6 +816,8 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
     // 商品管理页必须按活动商品实际数据展示；没有可解析活动时只展示空态，不回退商品库口径。
     if (isPickLibraryMode.value) {
       products.value = reset ? [] : products.value
+      activityQueryTotal.value = 0
+      activityStatusCounts.value = null
       hasMore.value = false
       nextCursor.value = ''
       return true
@@ -785,12 +847,16 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
   } catch (error: any) {
     if (hasExplicitActivityRoute.value && !forceRemote) {
       products.value = []
+      activityQueryTotal.value = 0
+      activityStatusCounts.value = null
       nextCursor.value = ''
       hasMore.value = false
     } else {
       notifyApiFailure(error, message, { fallbackMessage: '商品查询失败' })
       if (reset) {
         products.value = []
+        activityQueryTotal.value = 0
+        activityStatusCounts.value = null
         nextCursor.value = ''
         hasMore.value = false
       }
@@ -1677,6 +1743,12 @@ watch(
 
 .page-alert {
   margin-bottom: 16px;
+}
+
+.activity-result-summary {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 .activity-workbench {
