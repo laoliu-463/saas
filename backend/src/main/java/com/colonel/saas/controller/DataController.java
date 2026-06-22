@@ -10,6 +10,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
 import com.colonel.saas.entity.ColonelsettlementActivity;
@@ -90,8 +91,9 @@ public class DataController extends DataApplicationService {
             OrderPerformanceQueryFacade orderPerformanceQueryFacade,
             UserDomainFacade userDomainFacade,
             DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties,
             org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
-        super(orderMapper, commissionService, exclusiveTalentMapper, exclusiveMerchantMapper, activityMapper, shortTtlCacheService, performanceMetricsQueryService, orderPerformanceQueryFacade, userDomainFacade, dataScopePolicy, jdbcTemplate);
+        super(orderMapper, commissionService, exclusiveTalentMapper, exclusiveMerchantMapper, activityMapper, shortTtlCacheService, performanceMetricsQueryService, orderPerformanceQueryFacade, userDomainFacade, dataScopePolicy, dddRefactorProperties, jdbcTemplate);
     }
 
     @GetMapping("/data/orders")

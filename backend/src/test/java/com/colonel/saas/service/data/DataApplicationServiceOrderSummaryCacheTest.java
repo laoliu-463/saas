@@ -2,6 +2,7 @@ package com.colonel.saas.service.data;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -78,6 +79,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
                 orderPerformanceQueryFacade,
                 userDomainFacade,
                 new DataScopePolicy(),
+                new DddRefactorProperties(),
                 jdbcTemplate);
     }
 
@@ -155,7 +157,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
                 orderMapper, commissionService, exclusiveTalentMapper,
                 exclusiveMerchantMapper, activityMapper, zeroTtlCache,
                 performanceMetricsQueryService, orderPerformanceQueryFacade, userDomainFacade,
-                new DataScopePolicy(), jdbcTemplate);
+                new DataScopePolicy(), new DddRefactorProperties(), jdbcTemplate);
 
         UUID userId = UUID.randomUUID();
         for (int i = 0; i < 5; i++) {

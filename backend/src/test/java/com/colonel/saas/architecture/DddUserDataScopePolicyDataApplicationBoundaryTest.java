@@ -16,7 +16,15 @@ class DddUserDataScopePolicyDataApplicationBoundaryTest {
 
         assertThat(source)
                 .contains("DataScopePolicy")
+                .contains("DddRefactorProperties")
+                .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
                 .contains("dataScopePolicy")
+                .contains("applyQueryDataScopeLegacy")
+                .contains("applyQueryDataScopeWithPolicy")
+                .contains("applyLambdaDataScopeLegacy")
+                .contains("applyLambdaDataScopeWithPolicy")
+                .contains("requireDataScopeContextLegacy")
+                .contains("requireDataScopeContextWithPolicy")
                 .doesNotContain("switch (dataScope)");
     }
 }

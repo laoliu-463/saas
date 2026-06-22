@@ -12,6 +12,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.common.time.AppZone;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
 import com.colonel.saas.dto.performance.OrderPerformanceBatchResponse;
@@ -163,6 +164,9 @@ public class DataApplicationService extends BaseController {
     /** 用户域数据范围策略，负责解释 PERSONAL / DEPT / ALL 的过滤决策 */
     private final DataScopePolicy dataScopePolicy;
 
+    /** DDD 重构灰度开关，默认关闭以保持 Legacy 行为。 */
+    private final DddRefactorProperties dddRefactorProperties;
+
     /**
      * 构造注入所有依赖服务与 Mapper。
      *
@@ -185,6 +189,7 @@ public class DataApplicationService extends BaseController {
             OrderPerformanceQueryFacade orderPerformanceQueryFacade,
             UserDomainFacade userDomainFacade,
             DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties,
             JdbcTemplate jdbcTemplate) {
         this.orderMapper = orderMapper;
         this.commissionService = commissionService;
@@ -196,6 +201,7 @@ public class DataApplicationService extends BaseController {
         this.orderPerformanceQueryFacade = orderPerformanceQueryFacade;
         this.userDomainFacade = userDomainFacade;
         this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -2276,7 +2282,38 @@ public class DataApplicationService extends BaseController {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        requireDataScopeContext(userId, deptId, dataScope);
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            applyQueryDataScopeLegacy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+            return;
+        }
+        applyQueryDataScopeWithPolicy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+    }
+
+    private <T> void applyQueryDataScopeLegacy(
+            QueryWrapper<T> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            String userIdColumn,
+            String deptIdColumn) {
+        requireDataScopeContextLegacy(userId, deptId, dataScope);
+        if (dataScope == DataScope.PERSONAL && userId != null && StringUtils.hasText(userIdColumn)) {
+            wrapper.eq(userIdColumn, userId);
+            return;
+        }
+        if (dataScope == DataScope.DEPT && deptId != null && StringUtils.hasText(deptIdColumn)) {
+            wrapper.eq(deptIdColumn, deptId);
+        }
+    }
+
+    private <T> void applyQueryDataScopeWithPolicy(
+            QueryWrapper<T> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            String userIdColumn,
+            String deptIdColumn) {
+        requireDataScopeContextWithPolicy(userId, deptId, dataScope);
         dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
     }
 
@@ -2290,19 +2327,58 @@ public class DataApplicationService extends BaseController {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        requireDataScopeContext(userId, deptId, dataScope);
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            applyLambdaDataScopeLegacy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+            return;
+        }
+        applyLambdaDataScopeWithPolicy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+    }
+
+    private <T> void applyLambdaDataScopeLegacy(
+            LambdaQueryWrapper<T> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            SFunction<T, ?> userIdColumn,
+            SFunction<T, ?> deptIdColumn) {
+        requireDataScopeContextLegacy(userId, deptId, dataScope);
+        if (dataScope == DataScope.PERSONAL && userId != null && userIdColumn != null) {
+            wrapper.eq(userIdColumn, userId);
+            return;
+        }
+        if (dataScope == DataScope.DEPT && deptId != null && deptIdColumn != null) {
+            wrapper.eq(deptIdColumn, deptId);
+        }
+    }
+
+    private <T> void applyLambdaDataScopeWithPolicy(
+            LambdaQueryWrapper<T> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            SFunction<T, ?> userIdColumn,
+            SFunction<T, ?> deptIdColumn) {
+        requireDataScopeContextWithPolicy(userId, deptId, dataScope);
         dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
     }
 
-    private void requireDataScopeContext(UUID userId, UUID deptId, DataScope dataScope) {
+    private void requireDataScopeContextLegacy(UUID userId, UUID deptId, DataScope dataScope) {
+        if (dataScope == DataScope.PERSONAL && userId == null) {
+            throw BusinessException.forbidden("数据权限异常：缺少用户上下文");
+        }
+        if (dataScope == DataScope.DEPT && deptId == null) {
+            throw BusinessException.forbidden("数据权限异常：缺少部门上下文");
+        }
+    }
+
+    private void requireDataScopeContextWithPolicy(UUID userId, UUID deptId, DataScope dataScope) {
         DataScopePolicy.ContextRequirement requirement =
                 dataScopePolicy.contextRequirement(userId, deptId, dataScope);
-        switch (requirement) {
-            case MISSING_USER -> throw BusinessException.forbidden("数据权限异常：缺少用户上下文");
-            case MISSING_DEPT -> throw BusinessException.forbidden("数据权限异常：缺少部门上下文");
-            case SATISFIED -> {
-                // context available
-            }
+        if (requirement == DataScopePolicy.ContextRequirement.MISSING_USER) {
+            throw BusinessException.forbidden("数据权限异常：缺少用户上下文");
+        }
+        if (requirement == DataScopePolicy.ContextRequirement.MISSING_DEPT) {
+            throw BusinessException.forbidden("数据权限异常：缺少部门上下文");
         }
     }
 

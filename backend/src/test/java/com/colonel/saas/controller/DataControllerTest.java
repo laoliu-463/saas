@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
 import com.colonel.saas.dto.performance.OrderPerformanceBatchResponse;
@@ -45,8 +46,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -75,6 +78,8 @@ class DataControllerTest {
     private JdbcTemplate jdbcTemplate;
 
     private DataController dataController;
+    private DataScopePolicy dataScopePolicy;
+    private DddRefactorProperties dddRefactorProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> queryWrapperCaptor() {
@@ -83,6 +88,8 @@ class DataControllerTest {
 
     @BeforeEach
     void setUp() {
+        dataScopePolicy = spy(new DataScopePolicy());
+        dddRefactorProperties = new DddRefactorProperties();
         dataController = new DataController(
                 orderMapper,
                 commissionService,
@@ -93,7 +100,8 @@ class DataControllerTest {
                 performanceMetricsQueryService,
                 orderPerformanceQueryFacade,
                 userDomainFacade,
-                new DataScopePolicy(),
+                dataScopePolicy,
+                dddRefactorProperties,
                 jdbcTemplate
         );
         org.mockito.Mockito.lenient().when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(false);
@@ -350,6 +358,12 @@ class DataControllerTest {
         var response = dataController.getMetrics(userId, UUID.randomUUID(), DataScope.PERSONAL);
 
         assertThat(response.getCode()).isEqualTo(200);
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper, times(8)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues())
+                .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment()).contains("user_id"));
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).applyTo(any(QueryWrapper.class), any(), any(), any(), anyString(), anyString());
     }
 
     @Test
@@ -367,6 +381,33 @@ class DataControllerTest {
         var response = dataController.getMetrics(userId, deptId, DataScope.DEPT);
 
         assertThat(response.getCode()).isEqualTo(200);
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper, times(8)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues())
+                .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment()).contains("dept_id"));
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).applyTo(any(QueryWrapper.class), any(), any(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void getMetrics_withDataScopePolicyEnabled_delegatesToUserPolicy() {
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
+                .thenReturn(List.of())
+                .thenReturn(List.of());
+        when(commissionService.calculateByActivityBuckets(any())).thenReturn(
+                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                        java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
+
+        var response = dataController.getMetrics(userId, deptId, DataScope.DEPT);
+
+        assertThat(response.getCode()).isEqualTo(200);
+        verify(dataScopePolicy, times(8)).contextRequirement(userId, deptId, DataScope.DEPT);
+        verify(dataScopePolicy, times(8)).applyTo(
+                any(QueryWrapper.class), eq(userId), eq(deptId), eq(DataScope.DEPT), eq("user_id"), eq("dept_id"));
     }
 
     @Test
@@ -376,6 +417,8 @@ class DataControllerTest {
                 .hasMessageContaining("缺少用户上下文");
 
         verify(orderMapper, never()).selectMaps(any(QueryWrapper.class));
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).applyTo(any(QueryWrapper.class), any(), any(), any(), anyString(), anyString());
     }
 
     @Test
@@ -385,6 +428,8 @@ class DataControllerTest {
                 .hasMessageContaining("缺少部门上下文");
 
         verify(orderMapper, never()).selectMaps(any(QueryWrapper.class));
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).applyTo(any(QueryWrapper.class), any(), any(), any(), anyString(), anyString());
     }
 
     @Test
