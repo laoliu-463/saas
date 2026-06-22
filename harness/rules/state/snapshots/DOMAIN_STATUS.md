@@ -30,9 +30,9 @@
 - `P2`：治理、清理、补文档或体验优化。
 
 ## 用户域
-- 最新小切片：DDD-USER-SYSCONFIG-GROUPED-ADMIN-PERMISSION-POLICY 已将 `SysConfigController.grouped` 的 admin 角色判断委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，不再维护 `String.valueOf(roleCodes).contains` 或 `roles.stream().anyMatch` 本地 matcher。本轮不改 `/configs/grouped` 访问角色、`SysConfigService.findGrouped(true/false)` 脱敏语义、配置 CRUD、配置事件或真实配置数据。报告：`harness/reports/evidence-20260622-124832.md`。风险变化：`SysConfigControllerTest` 覆盖 `List.of(" ADMIN ")` 归一化识别 admin、字符串角色和缺失角色路径，`DddUserSysConfigAdminRolePolicyBoundaryTest` 防止配置 Controller 重新引入本地 admin matcher。
-- 上一小切片：DDD-USER-ROLE-GUARD-PERMISSION-POLICY 已将 `RoleGuardAspect` 的 `@RequireRoles` 角色编码解析、admin 直通和注解角色匹配委托给用户域 `CurrentUserPermissionPolicy.normalizeRoleCodes` / `hasAnyRole`，不再维护本地 `currentRoles.contains` / `toLowerCase(Locale.ROOT)` matcher。本轮不改 Controller 注解、鉴权异常、HTTP 403 语义、JWT roleCodes 来源或任何业务接口权限配置。报告：`harness/reports/evidence-20260622-123340.md`。风险变化：`RoleGuardAspectTest` 覆盖 class/method 注解、admin 直通、403 和 `"[ BIZ_STAFF ]"` 归一化放行，`DddUserRoleGuardPermissionPolicyBoundaryTest` 防止本地 matcher 回流。
-- 上一小切片：DDD-SAMPLE-LOGISTICS-IMPORT-PERMISSION-POLICY 已将 `SampleLogisticsImportService` 物流导入/覆盖动作权限委托给寄样域 `SampleActionPermissionPolicy`；该 policy 继续消费用户域 `CurrentUserPermissionPolicy.hasAnyRole` 解释角色编码集合，服务内本地 matcher 已清零；报告：`harness/reports/evidence-20260621-220643.md`。
+- 最新小切片：DDD-USER-SYSTEM-ENV-ADMIN-PERMISSION-POLICY 已将 `SystemEnvController` 生产环境 `/system/env` 探针的 admin 角色判断委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，不再维护本地 `currentRoles().stream().anyMatch(RoleCodes.ADMIN::equals)` 或角色字符串归一化解析。本轮不改 `RuntimeExposurePolicy`、`/system/health`、环境标签、测试开关、数据库名解析或 real-pre 探针访问策略。报告：`harness/reports/evidence-20260622-125800.md`。风险变化：`SystemEnvControllerTest` 覆盖 real-pre 下 `"[ ADMIN ]"` 归一化放行和非 admin 拒绝，`DddUserSystemEnvAdminRolePolicyBoundaryTest` 防止本地 matcher 回流。
+- 上一小切片：DDD-USER-SYSCONFIG-GROUPED-ADMIN-PERMISSION-POLICY 已将 `SysConfigController.grouped` 的 admin 角色判断委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，不再维护 `String.valueOf(roleCodes).contains` 或 `roles.stream().anyMatch` 本地 matcher。本轮不改 `/configs/grouped` 访问角色、`SysConfigService.findGrouped(true/false)` 脱敏语义、配置 CRUD、配置事件或真实配置数据。报告：`harness/reports/evidence-20260622-124832.md`。风险变化：`SysConfigControllerTest` 覆盖 `List.of(" ADMIN ")` 归一化识别 admin、字符串角色和缺失角色路径，`DddUserSysConfigAdminRolePolicyBoundaryTest` 防止配置 Controller 重新引入本地 admin matcher。
+- 上一小切片：DDD-SAMPLE-LOGISTICS-IMPORT-PERMISSION-POLICY 已将 `SampleLogisticsImportService` 物流导入/覆盖动作权限委托给寄样域 `SampleActionPermissionPolicy`；该 policy 继续消费用户域 `CurrentUserPermissionPolicy.hasAnyRole` 解释角色编码集合，服务内本地 matcher 已清零；报告：`harness/reports/reports-20260621-2206-20260622-1233.zip.archive` 内 `evidence-20260621-220643.md`。
 - 最新小切片：DDD-USER-PERMISSION-POLICY-TALENT-QUERY 已将 `TalentQueryService.assertCanOperate` 中管理员、渠道组长、渠道专员角色编码集合匹配委托给用户域 `CurrentUserPermissionPolicy.hasAnyRole`，达人查询服务不再维护本地 `hasRole` 归一化实现。本轮不改达人认领归属、达人池可见性、数据范围、列表 / 详情业务筛选、寄样 / 订单补充展示或真实数据。
 - 最新报告路径：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-214308.md`。
 - 风险变化：`TalentQueryServiceTest` 覆盖渠道专员非本人拒绝、渠道组长同部门放行和 `" CHANNEL_STAFF "` 归一化本人认领路径；`DddUserFacadeTalentQueryBoundaryTest` 防止达人查询服务重新引入本地 `hasRole`，并约束其继续消费用户域 policy。`TalentService.release` 已在后续小切片完成角色 matcher 收口。
@@ -167,7 +167,7 @@
 - 标记：P0。
 
 ## 达人域
-- 最新边界变化：`TalentService.release` 继续拥有达人释放流程、认领记录选择、释放状态流转、owner 快照和操作日志，但管理员角色编码匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮不改达人认领规则、达人池、归属覆盖、补全、独家评估或真实数据。报告：`harness/reports/evidence-20260621-222220.md`。
+- 最新边界变化：`TalentService.release` 继续拥有达人释放流程、认领记录选择、释放状态流转、owner 快照和操作日志，但管理员角色编码匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮不改达人认领规则、达人池、归属覆盖、补全、独家评估或真实数据。报告：`harness/reports/reports-20260621-2206-20260622-1233.zip.archive` 内 `evidence-20260621-222220.md`。
 - 近期边界变化：`TalentQueryService` 操作访问角色匹配已委托用户域 policy（报告已归档至 `harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-214308.md`）；达人归属覆盖已通过用户域 `loadUserOwnershipReferencesByIds` 校验目标负责人存在，不再读取完整用户 DTO，既有达人认领记录 `deptId` 写入行为不变。
 - 当前状态：达人资料、标签、地址和跟进主链路已具备。
 - 已完成能力：达人列表 / 详情、标签、地址、跟进。
@@ -176,7 +176,7 @@
 - 标记：P1。
 
 ## 寄样域
-- 最新边界变化：`SampleLogisticsImportService` 继续负责物流 Excel 解析、行级校验、状态流转到已发货、事件发布与物流订阅，但物流导入/覆盖动作权限已委托 `SampleActionPermissionPolicy`，该 policy 消费用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改寄样状态机、物流 API、事件语义或真实数据。报告：`harness/reports/evidence-20260621-220643.md`。
+- 最新边界变化：`SampleLogisticsImportService` 继续负责物流 Excel 解析、行级校验、状态流转到已发货、事件发布与物流订阅，但物流导入/覆盖动作权限已委托 `SampleActionPermissionPolicy`，该 policy 消费用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改寄样状态机、物流 API、事件语义或真实数据。报告：`harness/reports/reports-20260621-2206-20260622-1233.zip.archive` 内 `evidence-20260621-220643.md`。
 - 当前状态：申请、审批、发货和订单事件自动完成链路已具备。TALENT-ADDRESS-SAMPLE-DEFAULT 达人寄样地址默认保存已完成（2026-06-03）；2026-06-20 已补 `SampleController` 架构测试，防止 HTTP 入口重新直接导入持久化 Mapper；`SampleApplicationService` 已通过用户域归属引用读取创建人部门、通过用户显示标签读取状态日志/导出/详情/看板展示名，并通过寄样域 `SampleActionPermissionPolicy` 承载寄样动作权限；该策略消费用户域 `CurrentUserPermissionPolicy.hasAnyRole` 匹配角色编码集合，不改变寄样状态机或历史数据；`SampleApplicationPortImpl` quick sample 入口、`SampleFilterOptionsService` 寄样筛选下拉和 `SampleLogisticsImportService` 物流导入入口均已收口到 policy / 用户域角色解释，不再本地解析 `roleCodes`；real-pre 仍依赖真实归因订单样本。
 - 已完成能力：寄样申请、审批、发货、状态日志、订单事件消费；**地址默认保存**（寄样成功后回写 `talent_claim`，下次选达人自动带入，修改后更新，历史快照不变，多渠道隔离）。
 - TALENT-ADDRESS-SAMPLE-DEFAULT 报告路径：`harness/reports/talent-address-sample-default-20260603-224000.md`。
