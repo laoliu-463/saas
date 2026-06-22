@@ -961,6 +961,63 @@ class SampleControllerTest {
     }
 
     @Test
+    void exportSamples_shouldKeepLegacyScopedQueryWhenDataScopePolicyDisabledForBizStaff() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        Page<SampleRequest> emptyPage = new Page<>(1, 500, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        exportSamplesBasic(
+                null,
+                null,
+                userId,
+                deptId,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF),
+                response);
+
+        assertThat(response.getContentType()).isEqualTo("text/csv; charset=UTF-8");
+        assertThat(response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).startsWith("\ufeff寄样单号");
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).decide(any(), any(), any());
+        verify(sampleRequestMapper).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+        verify(sampleRequestMapper, never()).findPageForAuditor(any(Page.class), any(), any(QueryWrapper.class));
+    }
+
+    @Test
+    void exportSamples_dataScopePolicyEnabledPath_shouldDelegateAuditorScopeDecisionToUserPolicy() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        Page<SampleRequest> emptyPage = new Page<>(1, 500, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        exportSamplesBasic(
+                null,
+                null,
+                userId,
+                deptId,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF),
+                response);
+
+        assertThat(response.getContentType()).isEqualTo("text/csv; charset=UTF-8");
+        assertThat(response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).startsWith("\ufeff寄样单号");
+        verify(dataScopePolicy).contextRequirement(userId, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
+        verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class));
+        verify(sampleRequestMapper, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+    }
+
+    @Test
     void sensitiveSampleBatchAndExportEndpoints_shouldDeclareNarrowMethodRoles() throws Exception {
         RequireRoles batchApprove = SampleController.class
                 .getDeclaredMethod(

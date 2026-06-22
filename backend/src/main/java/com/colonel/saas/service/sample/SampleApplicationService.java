@@ -1607,6 +1607,7 @@ public class SampleApplicationService extends BaseController {
                 homeworkEndTime,
                 logisticsCompany);
 
+        boolean useAuditorQuery = shouldUseExportAuditorQuery(userId, deptId, dataScope, roleCodes);
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"samples.csv\"");
         PrintWriter writer = response.getWriter();
@@ -1618,9 +1619,16 @@ public class SampleApplicationService extends BaseController {
             long current = 1L;
             while (true) {
                 Page<SampleRequest> exportPage = new Page<>(current, EXPORT_BATCH_SIZE);
-                IPage<SampleRequest> pageResult = recruiterUserId == null
-                        ? sampleRequestMapper.findPageWithScope(exportPage, wrapper)
-                        : sampleRequestMapper.findPageWithScope(exportPage, wrapper, recruiterUserId);
+                IPage<SampleRequest> pageResult;
+                if (useAuditorQuery) {
+                    pageResult = recruiterUserId == null
+                            ? sampleRequestMapper.findPageForAuditor(exportPage, userId, wrapper)
+                            : sampleRequestMapper.findPageForAuditor(exportPage, userId, wrapper, recruiterUserId);
+                } else {
+                    pageResult = recruiterUserId == null
+                            ? sampleRequestMapper.findPageWithScope(exportPage, wrapper)
+                            : sampleRequestMapper.findPageWithScope(exportPage, wrapper, recruiterUserId);
+                }
                 List<SampleRequest> records = pageResult.getRecords();
                 if (records == null || records.isEmpty()) {
                     break;
@@ -1661,6 +1669,13 @@ public class SampleApplicationService extends BaseController {
             return;
         }
         writer.flush();
+    }
+
+    private boolean shouldUseExportAuditorQuery(UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            return false;
+        }
+        return shouldUseAuditorQueryWithPolicy(userId, deptId, dataScope, roleCodes);
     }
 
     /**

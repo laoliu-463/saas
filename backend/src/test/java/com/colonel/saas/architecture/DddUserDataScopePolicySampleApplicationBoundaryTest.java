@@ -21,6 +21,7 @@ class DddUserDataScopePolicySampleApplicationBoundaryTest {
                 .contains("shouldUseAuditorQueryLegacy")
                 .contains("shouldUseAuditorQueryWithPolicy")
                 .contains("shouldUseBoardAuditorQuery")
+                .contains("shouldUseExportAuditorQuery")
                 .contains("canAccessSampleByDataScopeLegacy")
                 .contains("canAccessSampleByDataScopeWithPolicy")
                 .contains("dataScopePolicy.contextRequirement")
