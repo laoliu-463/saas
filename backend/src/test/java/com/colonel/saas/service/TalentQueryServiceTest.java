@@ -3,12 +3,14 @@ package com.colonel.saas.service;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.mapper.TalentClaimMapper;
@@ -19,7 +21,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -61,8 +67,31 @@ class TalentQueryServiceTest {
                 userDomainFacade,
                 sampleRequestMapper,
                 jdbcTemplate,
-                new CurrentUserPermissionPolicy()
+                new CurrentUserPermissionPolicy(),
+                new DataScopePolicy(),
+                new DddRefactorProperties()
         );
+    }
+
+    @Test
+    void dataScopeAccess_shouldKeepLegacyDefaultAndDelegateEnabledPathToUserPolicy() throws IOException {
+        String source = Files.readString(talentQueryServiceSourcePath());
+
+        assertThat(source)
+                .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
+                .contains("assertCanAccessLegacy")
+                .contains("assertCanAccessWithPolicy")
+                .contains("DataScopePolicy")
+                .contains("dataScopePolicy.contextRequirement")
+                .contains("dataScopePolicy.decide");
+    }
+
+    private Path talentQueryServiceSourcePath() {
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/service/TalentQueryService.java");
+        if (!Files.exists(sourcePath)) {
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/service/TalentQueryService.java");
+        }
+        return sourcePath;
     }
 
     @Test
@@ -542,6 +571,57 @@ class TalentQueryServiceTest {
         assertThatThrownBy(() -> talentQueryService.detail(talentId, viewer, null, DataScope.PERSONAL))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("无权查看");
+    }
+
+    @Test
+    void detailAccess_dataScopePolicyEnabledPathShouldPreserveClaimScopeSemantics() {
+        DddRefactorProperties properties = new DddRefactorProperties();
+        properties.getDataScopePolicy().setEnabled(true);
+        TalentQueryService enabledService = new TalentQueryService(
+                talentService,
+                talentClaimMapper,
+                userDomainFacade,
+                sampleRequestMapper,
+                jdbcTemplate,
+                new CurrentUserPermissionPolicy(),
+                new DataScopePolicy(),
+                properties
+        );
+        UUID talentId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+
+        TalentClaim claim = new TalentClaim();
+        claim.setTalentId(talentId);
+        claim.setUserId(ownerId);
+        claim.setDeptId(deptId);
+        claim.setStatus(1);
+        List<TalentClaim> activeClaims = List.of(claim);
+
+        ReflectionTestUtils.invokeMethod(enabledService, "assertCanAccess",
+                talent, ownerId, deptId, DataScope.PERSONAL, activeClaims);
+        ReflectionTestUtils.invokeMethod(enabledService, "assertCanAccess",
+                talent, ownerId, deptId, DataScope.DEPT, activeClaims);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(enabledService, "assertCanAccess",
+                talent, UUID.randomUUID(), deptId, DataScope.PERSONAL, activeClaims))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权查看该达人详情");
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(enabledService, "assertCanAccess",
+                talent, null, deptId, DataScope.PERSONAL, activeClaims))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权查看该达人详情");
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(enabledService, "assertCanAccess",
+                talent, ownerId, UUID.randomUUID(), DataScope.DEPT, activeClaims))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权查看该达人详情");
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(enabledService, "assertCanAccess",
+                talent, ownerId, null, DataScope.DEPT, activeClaims))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权查看该达人详情");
     }
 
     @Test
