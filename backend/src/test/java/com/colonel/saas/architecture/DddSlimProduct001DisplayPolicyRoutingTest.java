@@ -32,6 +32,8 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "normalizeActivityProductSortBy",
                         "normalizeSelectedLibrarySortBy",
                         "matchesSelectedLibraryPromotionLinkFilter",
+                        "matchesSelectedLibraryPublishedFilter",
+                        "matchesSelectedLibraryListedFilter",
                         "hasPromotionLink",
                         "legacyDisplayMark");
     }
@@ -53,6 +55,8 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "normalizeActivityProductSortBy",
                         "normalizeSelectedLibrarySortBy",
                         "matchesPromotionLinkFilter",
+                        "matchesPublishedFilter",
+                        "matchesListedFilter",
                         "hasPromotionLink",
                         "hasActivityPromotionLink",
                         "toLegacyDisplayMark");

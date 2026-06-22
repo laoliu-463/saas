@@ -257,6 +257,26 @@ class ProductServiceFilterTest {
     }
 
     @Test
+    void getSelectedLibraryPage_shouldFilterByPublishedPromotionLinkStatus() {
+        ProductOperationState linked = state("10001", "9001");
+        linked.setShortLink("https://short.example");
+        ProductOperationState pending = state("10002", "9002");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
+        statePage.setRecords(List.of(linked, pending));
+
+        ProductSnapshot linkedSnapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        ProductSnapshot pendingSnapshot = snapshot("10002", "9002", "美妆", 8800L);
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(linkedSnapshot, pendingSnapshot));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().published("1").build());
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getRecords()).singleElement().extracting("productId").isEqualTo("9001");
+    }
+
+    @Test
     void getSelectedLibraryPage_shouldFilterFreeSampleListedAndSupplementCheckboxes() {
         ProductOperationState matchedState = state("10001", "9001");
         matchedState.setAuditPayload("""

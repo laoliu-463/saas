@@ -671,10 +671,15 @@ public class ProductService {
         if (StringUtils.hasText(filter.colonelName()) && !StringUtils.hasText(snapshot.getProductId())) {
             return false;
         }
-        if (StringUtils.hasText(filter.published()) && !matchesPublishedFilter(state, filter.published())) {
+        if (StringUtils.hasText(filter.published()) && !productDisplayPolicy.matchesSelectedLibraryPublishedFilter(
+                filter.published(),
+                state == null ? null : state.getPromoteLink(),
+                state == null ? null : state.getShortLink())) {
             return false;
         }
-        if (StringUtils.hasText(filter.listed()) && !matchesListedFilter(snapshot, filter.listed())) {
+        if (StringUtils.hasText(filter.listed()) && !productDisplayPolicy.matchesSelectedLibraryListedFilter(
+                filter.listed(),
+                snapshot == null ? null : snapshot.getStatus())) {
             return false;
         }
         if (StringUtils.hasText(filter.freeSample()) && !matchesFreeSampleFilter(state, filter.freeSample())) {
@@ -780,16 +785,6 @@ public class ProductService {
             return false;
         }
         return value.toLowerCase(Locale.ROOT).contains(keyword.toLowerCase(Locale.ROOT));
-    }
-
-    private boolean matchesPublishedFilter(ProductOperationState state, String published) {
-        boolean linked = state != null && (StringUtils.hasText(state.getPromoteLink()) || StringUtils.hasText(state.getShortLink()));
-        return "1".equals(published) ? linked : !linked;
-    }
-
-    private boolean matchesListedFilter(ProductSnapshot snapshot, String listed) {
-        boolean upstreamListed = isUpstreamPromoting(snapshot);
-        return "1".equals(listed) ? upstreamListed : !upstreamListed;
     }
 
     private boolean isUpstreamPromoting(ProductSnapshot snapshot) {

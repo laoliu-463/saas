@@ -256,6 +256,20 @@ class ProductDisplayPolicyTest {
                 "unknown", null, null, "FOLLOWING_FAILED")).isTrue();
     }
 
+    @Test
+    void selectedLibraryPublishedAndListedFilters_shouldKeepLegacyContracts() {
+        assertThat(policy.matchesSelectedLibraryPublishedFilter("1", "https://promote.example", null)).isTrue();
+        assertThat(policy.matchesSelectedLibraryPublishedFilter("1", null, null)).isFalse();
+        assertThat(policy.matchesSelectedLibraryPublishedFilter("0", null, "   ")).isTrue();
+        assertThat(policy.matchesSelectedLibraryPublishedFilter("0", null, "https://short.example")).isFalse();
+
+        assertThat(policy.matchesSelectedLibraryListedFilter("1", 1)).isTrue();
+        assertThat(policy.matchesSelectedLibraryListedFilter("1", 0)).isFalse();
+        assertThat(policy.matchesSelectedLibraryListedFilter("0", 0)).isTrue();
+        assertThat(policy.matchesSelectedLibraryListedFilter("0", 1)).isFalse();
+        assertThat(policy.matchesSelectedLibraryListedFilter("unexpected", 1)).isFalse();
+    }
+
     private static ProductDisplayRelationInput eligible(
             String activityId,
             long commission,

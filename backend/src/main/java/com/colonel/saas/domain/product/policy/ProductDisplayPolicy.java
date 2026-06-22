@@ -308,6 +308,16 @@ public class ProductDisplayPolicy {
         };
     }
 
+    public boolean matchesSelectedLibraryPublishedFilter(String published, String promoteLink, String shortLink) {
+        boolean linked = hasPromotionLink(promoteLink, shortLink);
+        return "1".equals(published) ? linked : !linked;
+    }
+
+    public boolean matchesSelectedLibraryListedFilter(String listed, Integer upstreamStatus) {
+        boolean upstreamListed = Integer.valueOf(PROMOTING_DOUYIN_STATUS).equals(upstreamStatus);
+        return "1".equals(listed) ? upstreamListed : !upstreamListed;
+    }
+
     public String normalizeActivityProductStatusText(Integer status, String statusText) {
         if (Integer.valueOf(4).equals(status) && containsAny(statusText, "合作前取消", "取消")) {
             return "合作已终止";
