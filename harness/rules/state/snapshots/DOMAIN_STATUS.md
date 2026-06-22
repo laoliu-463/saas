@@ -121,14 +121,14 @@
 ## 分析模块
 - 最新边界变化：`DashboardService` 看板 summary fallback 查询、诊断/活动商品下钻 SQL 上下文和 `QueryWrapper` 数据范围过滤已新增默认关闭旁路；默认关闭保持 Legacy PERSONAL/DEPT 条件拼接与受限上下文 fail-closed，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域 `DataScopePolicy`。本轮不改变 dashboard 指标公式、排行 SQL、订单归因或业绩归属。
 - 最新边界变化：`DataApplicationService` 的数据页订单明细、订单汇总、导出、核心指标和运营监控查询已新增默认关闭旁路；默认关闭保持 Legacy PERSONAL/DEPT 条件与缺上下文 fail-closed，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域 `DataScopePolicy`。本轮只收口可见性，不改变订单事实、业绩补全、导出列、服务费双轨公式或历史数据。
-- 最新报告路径：`harness/reports/evidence-20260622-201249.md`；retro：`harness/reports/retro-20260622-201307.md`。
+- 最新验证变化：新增 `runtime/qa/real-pre-dashboard-reconcile.cjs` 与单测，提供只读 real-pre Dashboard API/SQL 对账入口；已验证 REAL-PRE 门禁、admin/group/self 四角色数据范围、summary 5 项核心指标 diff=0，runtime evidence：`runtime/qa/out/real-pre-dashboard-reconcile-20260622-205417/`。
 - 最新边界变化：`PerformanceMetricsQueryService` 汇总读侧数据范围过滤已具备默认关闭旁路；默认关闭保持 Legacy SQL 条件拼接，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域。本轮不改变 dashboard 指标公式、排行 SQL、订单归因或业绩归属。
 - 最新报告路径：`harness/reports/evidence-20260622-195231.md`；retro：`harness/reports/retro-20260622-195253.md`。
 - 当前状态：dashboard、报表和只读汇总主链路已具备；数据平台订单页已保留汇总模块，并新增/收口订单明细 Tab 与 16 列订单级明细导出；ORDER-DETAIL-TAB-FIX-001 已补齐订单明细 Tab 前端 16 列展示、人民币金额格式与“渠道”文案统一；SERVICE-FEE-INCOME-FORMULA-CODE-001 已更新经营指标矩阵服务费收入 / 收益双轨公式口径与后端展示层单测；`DataApplicationService` 订单明细负责人展示已改为消费用户域 `loadUserDisplayNamesByIds`，分析模块不再为该展示读取完整用户 DTO。
 - 报告路径：DDD-USER-DATA-APPLICATION-FACADE `harness/reports/2026-06-21/ddd-user/evidence-20260621-132400-data-application-facade.md`。
 - 已完成能力：看板汇总、报表查询、导出能力。
-- 待优化能力：只读边界审查、dashboard API/SQL 对账、admin/group/self 差异验证；Dashboard summary 双轨聚合和历史结算轨污染仍需专项处理；补充 dashboard / 前端页面级服务费收入与收益双轨验收。
-- DDD 优化下一步：进入 A-8 dashboard API 与汇总 SQL 对账，并补 A-9 admin/group/self 看板差异验证。
+- 待优化能力：Dashboard summary 双轨聚合和历史结算轨污染仍需专项处理；继续补 dashboard / 前端页面级服务费收入与收益双轨验收。
+- DDD 优化下一步：进入 A-10 页面级 dashboard 验收与服务费收入 / 收益双轨前端证据；A-8/A-9 后续保持脚本复跑。
 - 标记：P0。
 
 ## 商品域
