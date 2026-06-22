@@ -219,6 +219,14 @@ class ProductDisplayPolicyTest {
         assertThat(policy.normalizeActivityProductSortBy("unknown")).isEqualTo("default");
     }
 
+    @Test
+    void promotionLinkPresence_shouldTreatAnyNonBlankLinkAsPromoted() {
+        assertThat(policy.hasPromotionLink(null, "", "   ")).isFalse();
+        assertThat(policy.hasPromotionLink("https://promote.example", null, null)).isTrue();
+        assertThat(policy.hasPromotionLink(null, "https://short.example", null)).isTrue();
+        assertThat(policy.hasPromotionLink(null, null, "https://latest.example")).isTrue();
+    }
+
     private static ProductDisplayRelationInput eligible(
             String activityId,
             long commission,

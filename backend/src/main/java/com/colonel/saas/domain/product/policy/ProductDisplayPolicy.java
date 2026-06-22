@@ -267,6 +267,18 @@ public class ProductDisplayPolicy {
         return "latest".equals(normalized) ? "latest" : "default";
     }
 
+    public boolean hasPromotionLink(String... links) {
+        if (links == null || links.length == 0) {
+            return false;
+        }
+        for (String link : links) {
+            if (StringUtils.hasText(link)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public String normalizeActivityProductStatusText(Integer status, String statusText) {
         if (Integer.valueOf(4).equals(status) && containsAny(statusText, "合作前取消", "取消")) {
             return "合作已终止";

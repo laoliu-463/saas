@@ -496,6 +496,45 @@ class ProductServiceFilterTest {
     }
 
     @Test
+    void buildActivityProductListViewFromDb_shouldPreferPromotionLinkBeforeCommissionInDefaultSort() {
+        ProductSnapshot promoted = snapshot("100018", "9001", "食品饮料", 9900L);
+        promoted.setActivityCosRatioText("1%");
+        promoted.setSyncTime(LocalDateTime.now().minusDays(3));
+        ProductSnapshot highCommission = snapshot("100018", "9002", "食品饮料", 9900L);
+        highCommission.setActivityCosRatioText("90%");
+        highCommission.setSyncTime(LocalDateTime.now());
+
+        ProductOperationState promotedState = state("100018", "9001");
+        promotedState.setPromoteLink("https://promote.example/9001");
+        ProductOperationState highCommissionState = state("100018", "9002");
+
+        when(snapshotMapper.selectCount(any())).thenReturn(2L);
+        when(snapshotMapper.selectPageSorted(
+                eq("100018"),
+                isNull(),
+                isNull(),
+                eq("NONE"),
+                isNull(),
+                isNull(),
+                isNull(),
+                eq(20L),
+                eq(0L),
+                any(LocalDateTime.class)))
+                .thenReturn(List.of(highCommission, promoted));
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(promotedState, highCommissionState));
+        when(operationLogMapper.selectList(any())).thenReturn(List.of());
+        when(orderMapper.selectList(any())).thenReturn(List.of());
+        when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
+
+        var result = service.buildActivityProductListViewFromDb(
+                "100018", 20, null, null, null, null, null, null, null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
+        assertThat(items).extracting("productId").containsExactly("9001", "9002");
+    }
+
+    @Test
     void listLibraryCategories_shouldReturnDistinctSortedNames() {
         when(snapshotMapper.listDisplayingLibraryCategoryNames()).thenReturn(List.of("美妆", "食品饮料", "美妆"));
 

@@ -433,18 +433,13 @@ public class ProductService {
     private int compareByPromotionCommissionTime(Product left, Product right) {
         return productDisplayPolicy.compareLibraryPresentation(
                 new ProductDisplayPolicy.LibraryPresentationKey(
-                        hasPromotionLink(left),
+                        productDisplayPolicy.hasPromotionLink(left.getPromoteLink(), left.getShortLink()),
                         left.getCosRatio(),
                         left.getSelectedAt()),
                 new ProductDisplayPolicy.LibraryPresentationKey(
-                        hasPromotionLink(right),
+                        productDisplayPolicy.hasPromotionLink(right.getPromoteLink(), right.getShortLink()),
                         right.getCosRatio(),
                         right.getSelectedAt()));
-    }
-
-    private boolean hasPromotionLink(Product p) {
-        // 投流 = 有 promoteLink 或 shortLink
-        return StringUtils.hasText(p.getPromoteLink()) || StringUtils.hasText(p.getShortLink());
     }
 
     public PageResult<Map<String, Object>> getPromotionLinkHistory(String productId, long page, long size) {
@@ -4686,8 +4681,14 @@ public class ProductService {
         if (leftPinned != rightPinned) {
             return leftPinned ? -1 : 1;
         }
-        boolean leftPromoted = hasActivityPromotionLink(left);
-        boolean rightPromoted = hasActivityPromotionLink(right);
+        boolean leftPromoted = productDisplayPolicy.hasPromotionLink(
+                asMapText(left.get("promoteLink")),
+                asMapText(left.get("shortLink")),
+                asMapText(left.get("promotionLink")));
+        boolean rightPromoted = productDisplayPolicy.hasPromotionLink(
+                asMapText(right.get("promoteLink")),
+                asMapText(right.get("shortLink")),
+                asMapText(right.get("promotionLink")));
         if (leftPromoted != rightPromoted) {
             return leftPromoted ? -1 : 1;
         }
@@ -4709,12 +4710,6 @@ public class ProductService {
             return -1;
         }
         return rightSync.compareTo(leftSync);
-    }
-
-    private boolean hasActivityPromotionLink(Map<String, Object> item) {
-        return StringUtils.hasText(asMapText(item.get("promoteLink")))
-                || StringUtils.hasText(asMapText(item.get("shortLink")))
-                || StringUtils.hasText(asMapText(item.get("promotionLink")));
     }
 
     private String asMapText(Object value) {
