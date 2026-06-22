@@ -186,6 +186,14 @@ class ProductDisplayPolicyTest {
         assertThat(presentation.officialStatus()).isEqualTo("TERMINATED");
     }
 
+    @Test
+    void legacyStatusFour_shouldNormalizeToTerminatedStatusForStorageAndFiltering() {
+        assertThat(policy.normalizeActivityProductStatus(4)).isEqualTo(3);
+        assertThat(policy.normalizeActivityProductStatus(Integer.valueOf(4))).isEqualTo(3);
+        assertThat(policy.normalizeActivityProductFilterStatus(4)).isEqualTo(3);
+        assertThat(policy.normalizeActivityProductStatusText(4, "合作前取消")).isEqualTo("合作已终止");
+    }
+
     private static ProductDisplayRelationInput eligible(
             String activityId,
             long commission,

@@ -132,6 +132,8 @@
 - 标记：P0。
 
 ## 商品域
+- 最新边界变化：活动商品状态码规范化已收口到 `ProductDisplayPolicy`；`ProductService` 仅委派策略处理历史 `status=4 -> 3`、状态文案和筛选入参，Controller 保持当前已提交的 public enum 校验行为。
+- 最新验证：`ProductDisplayPolicyTest`、`ProductServiceFilterTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ColonelActivityControllerTest` 组合回归 44 tests PASS；最终 full evidence 待 `agent-do` 重新生成。
 - 最新边界变化：`ProductQuickSampleService` 快速寄样入口继续负责商品存在性、展示中状态、商品库入库状态、商品快照/主表上下文和寄样域端口委托，但角色编码集合匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改商品状态机、转链规则、`pick_source` 归因语义、寄样状态机或真实数据。
 - 最新报告路径：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-213011.md`。
 - 最新边界变化：活动列表负责人展示已通过用户域 `loadUserDisplayNamesByIds` 出口读取，只消费展示名称标量，不改变活动分配、活动商品同步或商品库展示规则。

@@ -27,6 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -410,6 +411,50 @@ class ProductServiceFilterTest {
         assertThat(stateCaptor.getValue().getSelectedToLibrary()).isTrue();
         assertThat(result).containsEntry("selectedToLibrary", true);
         verify(productDisplayRuleService).applyForProductId("9001");
+    }
+
+    @Test
+    void buildActivityProductListViewFromDb_shouldNormalizeLegacyTerminatedStatusFilter() {
+        ProductSnapshot terminated = snapshot("100018", "9004", "食品饮料", 9900L);
+        terminated.setStatus(3);
+        terminated.setStatusText("合作已终止");
+
+        when(snapshotMapper.selectCount(any())).thenReturn(1L);
+        when(snapshotMapper.selectPageSorted(
+                eq("100018"),
+                eq(3),
+                isNull(),
+                eq("NONE"),
+                isNull(),
+                isNull(),
+                isNull(),
+                eq(20L),
+                eq(0L),
+                any(LocalDateTime.class)))
+                .thenReturn(List.of(terminated));
+        when(operationStateMapper.selectList(any())).thenReturn(List.of());
+        when(operationLogMapper.selectList(any())).thenReturn(List.of());
+        when(orderMapper.selectList(any())).thenReturn(List.of());
+        when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
+
+        var result = service.buildActivityProductListViewFromDb(
+                "100018", 20, null, null, null, 4, null, null, null);
+
+        assertThat(result.get("total")).isEqualTo(1L);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
+        assertThat(items).singleElement().extracting("officialStatus").isEqualTo("TERMINATED");
+        verify(snapshotMapper).selectPageSorted(
+                eq("100018"),
+                eq(3),
+                isNull(),
+                eq("NONE"),
+                isNull(),
+                isNull(),
+                isNull(),
+                eq(20L),
+                eq(0L),
+                any(LocalDateTime.class));
     }
 
     @Test

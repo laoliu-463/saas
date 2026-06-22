@@ -230,6 +230,25 @@ public class ProductDisplayPolicy {
                 hiddenReason);
     }
 
+    public int normalizeActivityProductStatus(int status) {
+        return status == 4 ? 3 : status;
+    }
+
+    public Integer normalizeActivityProductStatus(Integer status) {
+        return status == null ? null : normalizeActivityProductStatus(status.intValue());
+    }
+
+    public Integer normalizeActivityProductFilterStatus(Integer status) {
+        return normalizeActivityProductStatus(status);
+    }
+
+    public String normalizeActivityProductStatusText(Integer status, String statusText) {
+        if (Integer.valueOf(4).equals(status) && containsAny(statusText, "合作前取消", "取消")) {
+            return "合作已终止";
+        }
+        return statusText;
+    }
+
     public String legacyDisplayMark(ProductDisplayStatus displayStatus) {
         return switch (displayStatus) {
             case DISPLAYING -> "SHOWING";
@@ -539,5 +558,17 @@ public class ProductDisplayPolicy {
         } catch (IllegalArgumentException ex) {
             return ProductBizStatus.PENDING_AUDIT;
         }
+    }
+
+    private boolean containsAny(String text, String... needles) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        for (String needle : needles) {
+            if (needle != null && !needle.isBlank() && text.contains(needle)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -1056,29 +1056,15 @@ public class ProductService {
     private void applyActivityProductPromotionStatusFilter(
             LambdaQueryWrapper<ProductSnapshot> wrapper,
             Integer promotionStatus) {
-        if (promotionStatus == null) {
+        Integer normalizedPromotionStatus = productDisplayPolicy.normalizeActivityProductFilterStatus(promotionStatus);
+        if (normalizedPromotionStatus == null) {
             return;
         }
-        if (Integer.valueOf(3).equals(promotionStatus)) {
+        if (Integer.valueOf(3).equals(normalizedPromotionStatus)) {
             wrapper.in(ProductSnapshot::getStatus, 3, 4);
             return;
         }
-        wrapper.eq(ProductSnapshot::getStatus, promotionStatus);
-    }
-
-    private int normalizeActivityProductStatus(int status) {
-        return status == 4 ? 3 : status;
-    }
-
-    private Integer normalizeActivityProductStatus(Integer status) {
-        return status == null ? null : normalizeActivityProductStatus(status.intValue());
-    }
-
-    private String normalizeActivityProductStatusText(Integer status, String statusText) {
-        if (Integer.valueOf(4).equals(status) && containsAny(statusText, "合作前取消", "取消")) {
-            return "合作已终止";
-        }
-        return statusText;
+        wrapper.eq(ProductSnapshot::getStatus, normalizedPromotionStatus);
     }
 
     private boolean matchesPromotionLinkFilter(ProductOperationState state, String promotionLink) {
@@ -2081,6 +2067,7 @@ public class ProductService {
         if (auditTagProductScope != null && auditTagProductScope.isEmpty()) {
             return emptyActivityProductListView(activityId);
         }
+        Integer normalizedPromotionStatus = productDisplayPolicy.normalizeActivityProductFilterStatus(promotionStatus);
 
         LambdaQueryWrapper<ProductSnapshot> countWrapper = new LambdaQueryWrapper<ProductSnapshot>()
                 .eq(ProductSnapshot::getActivityId, activityId)
@@ -2089,7 +2076,7 @@ public class ProductService {
                         .like(ProductSnapshot::getProductId, productInfo.trim())
                         .or()
                         .like(ProductSnapshot::getShopName, productInfo.trim()));
-        applyActivityProductPromotionStatusFilter(countWrapper, promotionStatus);
+        applyActivityProductPromotionStatusFilter(countWrapper, normalizedPromotionStatus);
         applyBizStatusFilter(countWrapper, bizStatusFilter);
         applyProductIdScope(countWrapper, auditTagProductScope);
         Long total = snapshotMapper.selectCount(countWrapper);
@@ -2103,7 +2090,7 @@ public class ProductService {
                         .like(ProductSnapshot::getShopName, productInfo.trim()))
                 .orderByDesc(ProductSnapshot::getSyncTime)
                 .orderByDesc(ProductSnapshot::getCreateTime);
-        applyActivityProductPromotionStatusFilter(queryWrapper, promotionStatus);
+        applyActivityProductPromotionStatusFilter(queryWrapper, normalizedPromotionStatus);
         applyBizStatusFilter(queryWrapper, bizStatusFilter);
         applyProductIdScope(queryWrapper, auditTagProductScope);
 
@@ -2133,7 +2120,7 @@ public class ProductService {
                     ? null : new ArrayList<>(auditTagProductScope);
             snapshots = snapshotMapper.selectPageSorted(
                     activityId,
-                    promotionStatus,
+                    normalizedPromotionStatus,
                     StringUtils.hasText(productInfo) ? productInfo.trim() : null,
                     bizStatusFilter.mode().name(),
                     includeIds,
@@ -3564,8 +3551,8 @@ public class ProductService {
         snapshot.setPriceText(item.priceText());
         snapshot.setShopId(item.shopId());
         snapshot.setShopName(item.shopName());
-        snapshot.setStatus(normalizeActivityProductStatus(item.status()));
-        snapshot.setStatusText(normalizeActivityProductStatusText(item.status(), item.statusText()));
+        snapshot.setStatus(productDisplayPolicy.normalizeActivityProductStatus(item.status()));
+        snapshot.setStatusText(productDisplayPolicy.normalizeActivityProductStatusText(item.status(), item.statusText()));
         snapshot.setCategoryName(item.categoryName());
         snapshot.setProductStock(item.productStock());
         snapshot.setSales(item.sales());
@@ -3805,8 +3792,9 @@ public class ProductService {
         view.put("priceText", snapshot.getPriceText());
         view.put("shopId", snapshot.getShopId());
         view.put("shopName", snapshot.getShopName());
-        Integer activityProductStatus = normalizeActivityProductStatus(snapshot.getStatus());
-        String activityProductStatusText = normalizeActivityProductStatusText(snapshot.getStatus(), snapshot.getStatusText());
+        Integer activityProductStatus = productDisplayPolicy.normalizeActivityProductStatus(snapshot.getStatus());
+        String activityProductStatusText = productDisplayPolicy.normalizeActivityProductStatusText(
+                snapshot.getStatus(), snapshot.getStatusText());
         view.put("status", activityProductStatus);
         view.put("statusText", activityProductStatusText);
         view.put("categoryName", snapshot.getCategoryName());

@@ -23,6 +23,9 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                 .contains(
                         "resolveDisplayPresentation",
                         "resolveActivityProductStatusPresentation",
+                        "normalizeActivityProductStatus",
+                        "normalizeActivityProductFilterStatus",
+                        "normalizeActivityProductStatusText",
                         "legacyDisplayMark");
     }
 
@@ -37,6 +40,9 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "resolveOfficialStatus",
                         "resolveReviewStatus",
                         "resolvePublishStatus",
+                        "normalizeActivityProductStatus",
+                        "normalizeActivityProductFilterStatus",
+                        "normalizeActivityProductStatusText",
                         "toLegacyDisplayMark");
     }
 }
