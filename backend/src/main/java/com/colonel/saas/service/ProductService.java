@@ -2123,7 +2123,28 @@ public class ProductService {
         result.put("nextCursor", hasMore ? String.valueOf(nextOffset) : "");
         result.put("hasMore", hasMore);
         result.put("items", items);
+        result.put("statusCounts", loadActivityProductStatusCounts(activityId));
         return result;
+    }
+
+    private Map<String, Object> loadActivityProductStatusCounts(String activityId) {
+        Map<String, Object> raw = snapshotMapper.selectActivityStatusCounts(activityId);
+        Map<String, Object> counts = new LinkedHashMap<>();
+        counts.put("total", statusCountValue(raw, "total"));
+        counts.put("pendingReview", statusCountValue(raw, "pendingReview"));
+        counts.put("promoting", statusCountValue(raw, "promoting"));
+        counts.put("rejected", statusCountValue(raw, "rejected"));
+        counts.put("terminated", statusCountValue(raw, "terminated"));
+        counts.put("expired", statusCountValue(raw, "expired"));
+        return counts;
+    }
+
+    private long statusCountValue(Map<String, Object> counts, String key) {
+        if (counts == null) {
+            return 0L;
+        }
+        Object value = counts.get(key);
+        return value instanceof Number number ? Math.max(number.longValue(), 0L) : 0L;
     }
 
     private List<Map<String, Object>> buildActivityProductItems(String activityId, List<ProductSnapshot> snapshots) {
@@ -2198,6 +2219,7 @@ public class ProductService {
         empty.put("nextCursor", "");
         empty.put("hasMore", false);
         empty.put("items", List.of());
+        empty.put("statusCounts", loadActivityProductStatusCounts(activityId));
         return empty;
     }
 

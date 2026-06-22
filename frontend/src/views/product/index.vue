@@ -36,7 +36,7 @@
         <div>
           <div class="activity-workbench-title">活动商品推进</div>
           <div class="activity-workbench-subtitle">
-            已加载 {{ activityStats.total }} 个商品；推广中 {{ activityStats.promoting }} 个，待审核 {{ activityStats.pendingReview }} 个，未通过/终止/到期 {{ blockedUpstreamStatusCount }} 个。
+            {{ activityLoadSummary }}；推广中 {{ activityStats.promoting }} 个，待审核 {{ activityStats.pendingReview }} 个，未通过/终止/到期 {{ blockedUpstreamStatusCount }} 个。
           </div>
         </div>
         <div class="activity-workbench-actions">
@@ -65,7 +65,7 @@
           @click="applyActivityQuickFilter(stage.key)"
         >
           <span class="activity-stage-label">{{ stage.label }}</span>
-          <strong>{{ stage.count }}</strong>
+          <strong>{{ stage.displayCount }}</strong>
           <span class="activity-stage-hint">{{ stage.hint }}</span>
         </button>
       </div>
@@ -73,6 +73,7 @@
 
     <ProductStatusTabs
       :official-status="officialStatus"
+      :status-counts="officialStatusCounts"
       @change-official-status="handleOfficialStatusChange"
     />
 
@@ -86,6 +87,14 @@
       @search-click="refreshProducts"
       @reset="resetFilters"
     />
+
+    <div
+      v-if="isProductManageProductsMode && resolvedActivityId"
+      class="activity-result-summary"
+      data-testid="activity-product-result-summary"
+    >
+      {{ activityLoadSummary }}
+    </div>
 
     <ProductManageTable
       :rows="products"
@@ -280,8 +289,11 @@ import {
   activityProductStageToOfficialStatus,
   buildActivityProductStatusStages,
   countActivityProductStatusGroups,
+  formatActivityProductLoadSummary,
   isActivityProductStageMatch,
+  normalizeActivityProductStatusCounts,
   resolveActivityProductOfficialStatusView,
+  type ActivityProductStatusCounts,
   type ActivityProductStatusStageKey
 } from './activity-product-status-display'
 import {
@@ -332,6 +344,8 @@ const status = ref<string | null>(null)
 const allianceStatus = ref<string | null>(null)
 const officialStatus = ref<ProductOfficialStatus | null>(null)
 const activeStage = ref<ActivityProductStatusStageKey>('all')
+const activityQueryTotal = ref(0)
+const activityStatusCounts = ref<ActivityProductStatusCounts | null>(null)
 const fallbackActivityId = ref('')
 const currentRow = ref<any | null>(null)
 const showDetail = ref(false)
@@ -433,13 +447,27 @@ const emptyDescription = computed(() => {
     : '当前活动暂无实际商品，可进入活动列表同步或切换活动。'
 })
 
-const activityStats = computed(() => countActivityProductStatusGroups(products.value))
+const activityStats = computed(() =>
+  activityStatusCounts.value || countActivityProductStatusGroups(products.value)
+)
+
+const officialStatusCounts = computed(() => ({
+  PENDING_REVIEW: activityStats.value.pendingReview,
+  PROMOTING: activityStats.value.promoting,
+  REJECTED: activityStats.value.rejected,
+  TERMINATED: activityStats.value.terminated,
+  EXPIRED: activityStats.value.expired
+}))
+
+const activityLoadSummary = computed(() =>
+  formatActivityProductLoadSummary(products.value.length, activityQueryTotal.value)
+)
 
 const blockedUpstreamStatusCount = computed(() =>
   activityStats.value.rejected + activityStats.value.terminated + activityStats.value.expired
 )
 
-const activityStages = computed(() => buildActivityProductStatusStages(products.value))
+const activityStages = computed(() => buildActivityProductStatusStages(activityStats.value))
 
 const detailActivityId = computed(() => {
   const rowActivityId = currentRow.value?.sourceActivityId || currentRow.value?.activityId
@@ -682,6 +710,12 @@ const buildActivityProductsQuery = (reset: boolean, forceRemote: boolean) => ({
 const applyActivityProductsPage = (data: any, reset: boolean) => {
   const items = applyFilters((Array.isArray(data.items) ? data.items : []).map(normalizeItem))
   products.value = reset ? items : products.value.concat(items)
+  activityQueryTotal.value = Number(data.total || 0)
+  if (data.statusCounts) {
+    activityStatusCounts.value = normalizeActivityProductStatusCounts(data.statusCounts)
+  } else if (reset) {
+    activityStatusCounts.value = null
+  }
   nextCursor.value = String(data.nextCursor || '')
   hasMore.value = Boolean(data.hasMore || data.nextCursor)
 }
@@ -756,6 +790,8 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
     // 商品管理页必须按活动商品实际数据展示；没有可解析活动时只展示空态，不回退商品库口径。
     if (isPickLibraryMode.value) {
       products.value = reset ? [] : products.value
+      activityQueryTotal.value = 0
+      activityStatusCounts.value = null
       hasMore.value = false
       nextCursor.value = ''
       return true
@@ -785,12 +821,16 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
   } catch (error: any) {
     if (hasExplicitActivityRoute.value && !forceRemote) {
       products.value = []
+      activityQueryTotal.value = 0
+      activityStatusCounts.value = null
       nextCursor.value = ''
       hasMore.value = false
     } else {
       notifyApiFailure(error, message, { fallbackMessage: '商品查询失败' })
       if (reset) {
         products.value = []
+        activityQueryTotal.value = 0
+        activityStatusCounts.value = null
         nextCursor.value = ''
         hasMore.value = false
       }
@@ -1677,6 +1717,12 @@ watch(
 
 .page-alert {
   margin-bottom: 16px;
+}
+
+.activity-result-summary {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 .activity-workbench {

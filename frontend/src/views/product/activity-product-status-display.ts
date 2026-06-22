@@ -33,6 +33,7 @@ export interface ActivityProductStatusStage {
   key: Exclude<ActivityProductStatusStageKey, 'all'>
   label: string
   count: number
+  displayCount: string
   hint: string
   allianceStatus: string
   tagType: ActivityProductStatusTagType
@@ -118,14 +119,46 @@ export function countActivityProductStatusGroups(rows: ProductManageRow[]): Acti
   return counts
 }
 
-export function buildActivityProductStatusStages(rows: ProductManageRow[]): ActivityProductStatusStage[] {
-  const counts = countActivityProductStatusGroups(rows)
+function normalizeCount(value: unknown) {
+  const count = Number(value)
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0
+}
+
+export function normalizeActivityProductStatusCounts(
+  value: Partial<ActivityProductStatusCounts> | null | undefined
+): ActivityProductStatusCounts {
+  return {
+    total: normalizeCount(value?.total),
+    pendingReview: normalizeCount(value?.pendingReview),
+    promoting: normalizeCount(value?.promoting),
+    rejected: normalizeCount(value?.rejected),
+    terminated: normalizeCount(value?.terminated),
+    expired: normalizeCount(value?.expired)
+  }
+}
+
+export function formatActivityProductStatusCount(count: number): string {
+  const normalized = normalizeCount(count)
+  return normalized >= 100 ? '99+' : String(normalized)
+}
+
+export function formatActivityProductLoadSummary(loaded: number, total: number): string {
+  return `已加载 ${normalizeCount(loaded)} / 共 ${normalizeCount(total)} 个商品`
+}
+
+export function buildActivityProductStatusStages(
+  source: ProductManageRow[] | ActivityProductStatusCounts
+): ActivityProductStatusStage[] {
+  const counts = Array.isArray(source)
+    ? countActivityProductStatusGroups(source)
+    : normalizeActivityProductStatusCounts(source)
   return STAGE_ORDER.map((key) => {
     const view = OFFICIAL_STATUS_VIEWS[STAGE_TO_OFFICIAL_STATUS[key]]
     return {
       key,
       label: view.label,
       count: counts[key],
+      displayCount: formatActivityProductStatusCount(counts[key]),
       hint: view.hint,
       allianceStatus: view.allianceStatus,
       tagType: view.tagType
