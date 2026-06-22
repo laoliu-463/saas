@@ -1754,6 +1754,51 @@ class SampleControllerTest {
     }
 
     @Test
+    void getSampleBoard_shouldKeepLegacyScopedQueryWhenDataScopePolicyDisabled() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        IPage<SampleRequest> emptyPage = new Page<>(1, 2000, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        var response = sampleController.getSampleBoard(
+                userId,
+                deptId,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getData().get("PENDING_AUDIT")).isEmpty();
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).decide(any(), any(), any());
+        verify(sampleRequestMapper).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+        verify(sampleRequestMapper, never()).findPageForAuditor(any(Page.class), any(), any(QueryWrapper.class));
+    }
+
+    @Test
+    void getSampleBoard_dataScopePolicyEnabledPath_shouldDelegateAuditorScopeDecisionToUserPolicy() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        IPage<SampleRequest> emptyPage = new Page<>(1, 2000, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        var response = sampleController.getSampleBoard(
+                userId,
+                deptId,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getData().get("PENDING_AUDIT")).isEmpty();
+        verify(dataScopePolicy).contextRequirement(userId, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
+        verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class));
+        verify(sampleRequestMapper, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+    }
+
+    @Test
     void getSampleBoard_shouldTraverseMultiplePages() {
         UUID productId = UUID.randomUUID();
 

@@ -735,7 +735,7 @@ public class SampleApplicationService extends BaseController {
             throw new ForbiddenException("运营角色仅可通过寄样发货台查看待发货及物流数据");
         }
         QueryWrapper<SampleRequest> wrapper = new QueryWrapper<>();
-        List<SampleRequest> allSamples = loadBoardSamples(wrapper);
+        List<SampleRequest> allSamples = loadBoardSamples(wrapper, userId, deptId, dataScope, roleCodes);
 
         Map<UUID, Product> productMap = loadProducts(allSamples.stream()
                 .map(SampleRequest::getProductId)
@@ -803,11 +803,20 @@ public class SampleApplicationService extends BaseController {
      * @param wrapper 查询条件包装器（可附加额外过滤条件）
      * @return 当前用户可见的全部寄样申请单列表
      */
-    private List<SampleRequest> loadBoardSamples(QueryWrapper<SampleRequest> wrapper) {
+    private List<SampleRequest> loadBoardSamples(
+            QueryWrapper<SampleRequest> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
         List<SampleRequest> result = new ArrayList<>();
         long current = 1L;
+        boolean useAuditorQuery = shouldUseBoardAuditorQuery(userId, deptId, dataScope, roleCodes);
         while (true) {
-            IPage<SampleRequest> scopedPage = sampleRequestMapper.findPageWithScope(new Page<>(current, BOARD_BATCH_SIZE), wrapper);
+            Page<SampleRequest> pageReq = new Page<>(current, BOARD_BATCH_SIZE);
+            IPage<SampleRequest> scopedPage = useAuditorQuery
+                    ? sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper)
+                    : sampleRequestMapper.findPageWithScope(pageReq, wrapper);
             List<SampleRequest> records = scopedPage.getRecords();
             if (records == null || records.isEmpty()) {
                 break;
@@ -819,6 +828,13 @@ public class SampleApplicationService extends BaseController {
             current++;
         }
         return result;
+    }
+
+    private boolean shouldUseBoardAuditorQuery(UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            return false;
+        }
+        return shouldUseAuditorQueryWithPolicy(userId, deptId, dataScope, roleCodes);
     }
 
     /**
