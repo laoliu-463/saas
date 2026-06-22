@@ -559,12 +559,8 @@ public class OrderService {
             return;
         }
         // 新路径（DDD-USER-DATASCOPE-004：委托 DataScopePolicy，行为 1:1 等价于原 switch 实现）
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        switch (decision) {
-            case FILTER_USER -> wrapper.eq(ColonelsettlementOrder::getUserId, userId);
-            case FILTER_DEPT -> wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
-            case NO_FILTER -> { /* no-op */ }
-        }
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope,
+                ColonelsettlementOrder::getUserId, ColonelsettlementOrder::getDeptId);
     }
 
     public void applyQueryDataScope(
@@ -596,12 +592,7 @@ public class OrderService {
             return;
         }
         // 新路径（DDD-USER-DATASCOPE-004：委托 DataScopePolicy，行为 1:1 等价于原 switch 实现）
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        switch (decision) {
-            case FILTER_USER -> wrapper.eq("user_id", userId);
-            case FILTER_DEPT -> wrapper.eq("dept_id", deptId);
-            case NO_FILTER -> { /* no-op */ }
-        }
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
     }
 
     public void normalizeOrderRow(ColonelsettlementOrder order) {

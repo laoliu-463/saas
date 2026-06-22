@@ -22,7 +22,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +73,25 @@ class OrderServiceTest {
             MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
             TableInfoHelper.initTableInfo(assistant, entityClass);
         }
+    }
+
+    @Test
+    void dataScopePolicyEnabledPath_shouldDelegateToUserDomainApplyTo() throws IOException {
+        String source = Files.readString(orderServiceSourcePath());
+
+        assertThat(source)
+                .contains("dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope,\n"
+                        + "                ColonelsettlementOrder::getUserId, ColonelsettlementOrder::getDeptId)")
+                .contains("dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, \"user_id\", \"dept_id\")")
+                .doesNotContain("DataScopePolicy.Decision decision = dataScopePolicy.decide");
+    }
+
+    private Path orderServiceSourcePath() {
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/service/OrderService.java");
+        if (!Files.exists(sourcePath)) {
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/service/OrderService.java");
+        }
+        return sourcePath;
     }
 
     // ============================================================
@@ -402,6 +424,42 @@ class OrderServiceTest {
         LambdaQueryWrapper<ColonelsettlementOrder> wrapper = new LambdaQueryWrapper<>();
         service.applyDataScope(wrapper, UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
         assertThat(wrapper.getSqlSegment()).isEmpty();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void applyDataScope_enabledPolicyPathPersonalShouldFilterByUserId() {
+        UUID userId = UUID.randomUUID();
+        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = new LambdaQueryWrapper<>();
+
+        orderServiceWithDataScopePolicyEnabled().applyDataScope(wrapper, userId, null, DataScope.PERSONAL);
+
+        assertThat(wrapper.getSqlSegment()).contains("user_id");
+        assertThat(wrapper.getParamNameValuePairs().values()).contains(userId);
+    }
+
+    @Test
+    void applyQueryDataScope_enabledPolicyPathDeptShouldFilterByDeptId() {
+        UUID deptId = UUID.randomUUID();
+        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
+
+        orderServiceWithDataScopePolicyEnabled().applyQueryDataScope(wrapper, null, deptId, DataScope.DEPT);
+
+        assertThat(wrapper.getSqlSegment()).contains("dept_id");
+        assertThat(wrapper.getParamNameValuePairs().values()).contains(deptId);
+    }
+
+    private OrderService orderServiceWithDataScopePolicyEnabled() {
+        com.colonel.saas.config.DddRefactorProperties properties =
+                new com.colonel.saas.config.DddRefactorProperties();
+        properties.getDataScopePolicy().setEnabled(true);
+        return new OrderService(
+                orderMapper,
+                dashboardService,
+                productSnapshotMapper,
+                productMapper,
+                new DataScopePolicy(),
+                properties);
     }
 
     // ============================================================
