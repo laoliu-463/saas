@@ -198,6 +198,7 @@ public class ColonelActivityController extends BaseController {
             @RequestAttribute(value = "userId", required = false) UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        validateActivityProductStatus(status);
         activityAccessService.assertActivityReadable(
                 activityId,
                 userId,
@@ -253,6 +254,18 @@ public class ColonelActivityController extends BaseController {
             throw BusinessException.upstream(UpstreamErrorCode.EXTERNAL_GENERIC,
                     "活动商品查询失败: " + e.getMessage(), e);
         }
+    }
+
+    private void validateActivityProductStatus(Integer status) {
+        if (status == null
+                || status == 0
+                || status == 1
+                || status == 2
+                || status == 3
+                || status == 6) {
+            return;
+        }
+        throw BusinessException.param("商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、6=合作已到期");
     }
 
     private Map<String, Object> enrichActivityList(Map<String, Object> raw) {

@@ -442,6 +442,21 @@ class ColonelActivityControllerTest {
     }
 
     @Test
+    void listProducts_shouldRejectUnsupportedActivityProductStatus() throws Exception {
+        mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
+                        .param("status", "4")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、6=合作已到期"));
+
+        verify(productService, never()).hasActivitySnapshots("100018");
+        verify(productService, never()).buildActivityProductListViewFromDb(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(douyinProductGateway, never()).queryActivityProducts(any());
+    }
+
+    @Test
     void listProducts_refreshTrueShouldBypassExistingSnapshotsAndRefreshFromGateway() throws Exception {
         DouyinProductGateway.ActivityProductItem item = new DouyinProductGateway.ActivityProductItem(
                 9002L,

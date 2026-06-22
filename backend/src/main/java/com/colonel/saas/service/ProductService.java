@@ -1070,8 +1070,12 @@ public class ProductService {
         return status == 4 ? 3 : status;
     }
 
-    private String normalizeActivityProductStatusText(int status, String statusText) {
-        if (status == 4 && containsAny(statusText, "合作前取消", "取消")) {
+    private Integer normalizeActivityProductStatus(Integer status) {
+        return status == null ? null : normalizeActivityProductStatus(status.intValue());
+    }
+
+    private String normalizeActivityProductStatusText(Integer status, String statusText) {
+        if (Integer.valueOf(4).equals(status) && containsAny(statusText, "合作前取消", "取消")) {
             return "合作已终止";
         }
         return statusText;
@@ -3801,8 +3805,10 @@ public class ProductService {
         view.put("priceText", snapshot.getPriceText());
         view.put("shopId", snapshot.getShopId());
         view.put("shopName", snapshot.getShopName());
-        view.put("status", snapshot.getStatus());
-        view.put("statusText", snapshot.getStatusText());
+        Integer activityProductStatus = normalizeActivityProductStatus(snapshot.getStatus());
+        String activityProductStatusText = normalizeActivityProductStatusText(snapshot.getStatus(), snapshot.getStatusText());
+        view.put("status", activityProductStatus);
+        view.put("statusText", activityProductStatusText);
         view.put("categoryName", snapshot.getCategoryName());
         view.put("productStock", snapshot.getProductStock());
         view.put("shopScore", resolveShopScoreFromSnapshot(snapshot));
@@ -3854,10 +3860,10 @@ public class ProductService {
                 view.put("adsRule", adsRule);
             }
             applyDisplayMark(view, state);
-            applyActivityProductStatusFields(view, snapshot.getStatus(), state);
+            applyActivityProductStatusFields(view, activityProductStatus, state);
         } else {
             applyDisplayMark(view, null);
-            applyActivityProductStatusFields(view, snapshot.getStatus(), null);
+            applyActivityProductStatusFields(view, activityProductStatus, null);
         }
         applyDecisionSummary(view, decisionSummary);
 
