@@ -72,6 +72,29 @@ PARTIAL
 
 阶段性结论：3916506 当前本地 API、`product_snapshot`、上游全量去重结果三者一致，均为 1290 个唯一商品；与用户提供的后台 1027 个不一致。当前证据不支持“本地同步少拉”或“前端状态过滤错误”作为根因；剩余关键差异是后台页面/导出口径与 `alliance.colonelActivityProduct` 全量 API 口径不一致，仍需后台截图筛选条件或后台导出 product_id 明细做集合差异。
 
+## 前端页面核验：/product/manage/products
+
+用户问题：商品管理页 `http://localhost:3001/product/manage/products` 显示与实际商品信息不同步。
+
+页面与接口证据：
+
+- 浏览器打开 `/product/manage/products` 后 Network 实际请求 `/api/products?page=1&size=5`，不是活动商品全量接口。
+- `/api/products?page=1&size=20` 返回 `total=14713`，这是商品推进池 / 商品库展示口径。
+- `/api/products?page=1&size=20&recruitActivityId=3916506` 返回 `total=671`。
+- `/api/colonel/activities/3916506/products?count=20&status=1` 返回 `total=726`。
+- 代码证据：`frontend/src/views/product/index.vue` 在 `/product/manage/products` 且未选择活动时走 `getProducts('/products')`；后端 `ProductController` 标注为旧兼容商品库接口。
+
+SQL 口径：
+
+- 全量 `product_snapshot` 去重活动商品事实：53140。
+- 上游推广中事实：17734。
+- `selected_to_library=true`：17734。
+- `display_status='DISPLAYING'` 且未暂停、未本地拒绝、上游推广中：14713。
+- 3916506 推广中 726，其中商品管理页可见 671。
+- 3916506 被隐藏的 55 条均已同步并入库：`REPLACED_BY_HIGHER_PRIORITY` 42 条，`REPLACED_BY_ADVANTAGE` 13 条。
+
+阶段性结论：前端页面不是未同步，而是页面口径不同。`/product/manage/products` 展示“商品推进池 / 共享商品库可见关系”，只显示上游推广中、已入库、未暂停、未本地拒绝且展示规则选中的关系；活动商品全量事实应以 `/api/colonel/activities/{activityId}/products` 为准。若业务期望该页面展示活动商品全量，需要产品确认页面定位并改接口口径，不能只做前端兜底。
+
 ## 缺失商品明细
 - 未生成。原因：未取得后台 CSV 或可信上游全量 product_id 集合，不能构造 `backend_activity_products` 临时表。
 
