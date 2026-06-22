@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUser;
@@ -48,7 +49,11 @@ class UserMasterDataServiceTest {
 
     @BeforeEach
     void setUp() {
-        userMasterDataService = new UserMasterDataService(sysUserMapper, sysRoleMapper, sysUserRoleMapper);
+        userMasterDataService = new UserMasterDataService(
+                sysUserMapper,
+                sysRoleMapper,
+                sysUserRoleMapper,
+                new CurrentUserPermissionPolicy());
     }
 
     // ========================== 正常返回 ==========================
@@ -141,6 +146,29 @@ class UserMasterDataServiceTest {
                 otherDeptId,
                 deptId,
                 List.of(RoleCodes.ADMIN), // 当前用户是 admin
+                null,
+                50
+        );
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).deptId()).isEqualTo(otherDeptId);
+    }
+
+    @Test
+    void listGroupMembers_shouldNormalizeAdminRoleCodesViaUserPermissionPolicy() {
+        UUID otherDeptId = UUID.randomUUID();
+        SysUser otherDeptMember = user("otherMember", "其他组员", otherDeptId, 1);
+        SysRole channelRole = role(RoleCodes.CHANNEL_STAFF);
+        when(sysUserMapper.selectList(any())).thenReturn(List.of(otherDeptMember));
+        when(sysUserRoleMapper.findByUserIds(List.of(otherDeptMember.getId()))).thenReturn(List.of(
+                relation(otherDeptMember.getId(), channelRole.getId())
+        ));
+        when(sysRoleMapper.selectBatchIds(any())).thenReturn(List.of(channelRole));
+
+        List<UserOptionResponse> result = userMasterDataService.listGroupMembers(
+                otherDeptId,
+                deptId,
+                List.of(" ADMIN "),
                 null,
                 50
         );

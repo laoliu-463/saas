@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUser;
@@ -64,14 +65,18 @@ public class UserMasterDataService {
     private final SysRoleMapper sysRoleMapper;
     /** 用户角色关联数据访问 Mapper */
     private final SysUserRoleMapper sysUserRoleMapper;
+    /** 当前用户权限策略（用于统一角色编码规范化与匹配） */
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
 
     public UserMasterDataService(
             SysUserMapper sysUserMapper,
             SysRoleMapper sysRoleMapper,
-            SysUserRoleMapper sysUserRoleMapper) {
+            SysUserRoleMapper sysUserRoleMapper,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.sysUserMapper = sysUserMapper;
         this.sysRoleMapper = sysRoleMapper;
         this.sysUserRoleMapper = sysUserRoleMapper;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     /**
@@ -153,8 +158,9 @@ public class UserMasterDataService {
      * @return 用户选项列表
      */
     private List<UserOptionResponse> listByRoleCodes(Collection<String> roleCodes, String keyword, Integer limit) {
+        List<String> normalizedRoleCodes = currentUserPermissionPolicy.normalizeRoleCodes(roleCodes);
         // 第一步：查找启用状态的角色
-        List<SysRole> roles = roleCodes.stream()
+        List<SysRole> roles = normalizedRoleCodes.stream()
                 .map(sysRoleMapper::findByRoleCode)
                 .flatMap(optional -> optional.stream())
                 .filter(role -> role.getStatus() == null || role.getStatus() == 1)
@@ -179,7 +185,7 @@ public class UserMasterDataService {
         }
         // 第三步：批量查询用户并转换为选项
         List<SysUser> users = sysUserMapper.selectBatchIds(userIds);
-        return toOptions(users, roleCodes, keyword, limit);
+        return toOptions(users, normalizedRoleCodes, keyword, limit);
     }
 
     /**
@@ -206,7 +212,7 @@ public class UserMasterDataService {
         int safeLimit = safeLimit(limit);
         Set<String> allowed = allowedRoleCodes == null
                 ? Collections.emptySet()
-                : allowedRoleCodes.stream().collect(Collectors.toSet());
+                : currentUserPermissionPolicy.normalizeRoleCodes(allowedRoleCodes).stream().collect(Collectors.toSet());
         return users.stream()
                 .filter(this::isActive)
                 .map(user -> new UserOptionResponse(
@@ -268,6 +274,7 @@ public class UserMasterDataService {
                 .filter(StringUtils::hasText)
                 .distinct()
                 .toList());
+        result.replaceAll((userId, codes) -> currentUserPermissionPolicy.normalizeRoleCodes(codes));
         return result;
     }
 
@@ -307,10 +314,7 @@ public class UserMasterDataService {
      * @return true 表示允许跨部门查看
      */
     private boolean canViewRequestedDept(List<String> roleCodes) {
-        if (roleCodes == null || roleCodes.isEmpty()) {
-            return false;
-        }
-        return roleCodes.contains(RoleCodes.ADMIN);
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
     }
 
     /**
