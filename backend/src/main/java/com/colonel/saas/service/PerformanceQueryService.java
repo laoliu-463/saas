@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.dto.performance.OrderPerformanceDTO;
 import com.colonel.saas.dto.performance.PerformanceBatchItemDTO;
@@ -13,6 +14,8 @@ import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
 import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import com.colonel.saas.domain.performance.policy.PerformanceAccessScope;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -57,14 +60,32 @@ public class PerformanceQueryService {
     private final PerformanceRecordMapper performanceRecordMapper;
     private final OrderReadFacade orderReadFacade;
     private final JdbcTemplate jdbcTemplate;
+    private final DataScopePolicy dataScopePolicy;
+    private final DddRefactorProperties dddRefactorProperties;
 
+    @Autowired
     public PerformanceQueryService(
             PerformanceRecordMapper performanceRecordMapper,
             OrderReadFacade orderReadFacade,
-            JdbcTemplate jdbcTemplate) {
+            JdbcTemplate jdbcTemplate,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.performanceRecordMapper = performanceRecordMapper;
         this.orderReadFacade = orderReadFacade;
         this.jdbcTemplate = jdbcTemplate;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
+    }
+
+    PerformanceQueryService(
+            PerformanceRecordMapper performanceRecordMapper,
+            OrderReadFacade orderReadFacade,
+            JdbcTemplate jdbcTemplate) {
+        this(performanceRecordMapper,
+                orderReadFacade,
+                jdbcTemplate,
+                new DataScopePolicy(),
+                new DddRefactorProperties());
     }
 
     /**
@@ -374,7 +395,7 @@ public class PerformanceQueryService {
             PerformanceAccessContext context,
             List<Object> args) {
         StringBuilder where = new StringBuilder(" WHERE pr.is_valid = TRUE ");
-        PerformanceAccessScope.appendScopeCondition(where, args, context, "pr");
+        appendScopeCondition(where, args, context, "pr");
 
         if (StringUtils.hasText(query.getOrderId())) {
             where.append(" AND pr.order_id = ?");
@@ -566,12 +587,24 @@ public class PerformanceQueryService {
         List<Object> args = new ArrayList<>();
         StringBuilder where = new StringBuilder(" WHERE pr.order_id = ? AND pr.is_valid = TRUE ");
         args.add(orderId);
-        PerformanceAccessScope.appendScopeCondition(where, args, context, "pr");
+        appendScopeCondition(where, args, context, "pr");
         Long count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(1) FROM performance_records pr" + where,
                 Long.class,
                 args.toArray());
         return count != null && count > 0;
+    }
+
+    private void appendScopeCondition(
+            StringBuilder where,
+            List<Object> args,
+            PerformanceAccessContext context,
+            String prAlias) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            PerformanceAccessScope.appendScopeCondition(where, args, context, prAlias);
+            return;
+        }
+        PerformanceAccessScope.appendScopeConditionWithPolicy(where, args, context, prAlias, dataScopePolicy);
     }
 
     /** 批量查询场景的权限校验：先尝试内存级判断，不通过时回退 SQL 级判断。 */

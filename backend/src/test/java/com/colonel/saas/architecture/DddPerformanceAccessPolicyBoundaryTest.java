@@ -12,7 +12,7 @@ class DddPerformanceAccessPolicyBoundaryTest {
 
     @Test
     void performanceAccessPolicy_shouldLiveInDomainPolicyPackage() throws IOException {
-        Path mainSource = Path.of("src/main/java");
+        Path mainSource = sourcePath("src/main/java");
 
         boolean legacyImportExists;
         try (var files = Files.walk(mainSource)) {
@@ -25,18 +25,16 @@ class DddPerformanceAccessPolicyBoundaryTest {
         assertThat(legacyImportExists)
                 .as("performance access policy should not be consumed from service.performance")
                 .isFalse();
-        assertThat(Path.of(
-                "src/main/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScope.java"))
+        assertThat(sourcePath("src/main/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScope.java"))
                 .exists();
-        assertThat(Path.of(
-                "src/main/java/com/colonel/saas/domain/performance/policy/PerformanceAccessContext.java"))
+        assertThat(sourcePath("src/main/java/com/colonel/saas/domain/performance/policy/PerformanceAccessContext.java"))
                 .exists();
     }
 
     @Test
     void performanceAccessScope_shouldDelegateRoleCodeMatchingToUserPolicy() throws IOException {
-        String source = Files.readString(Path.of(
-                "src/main/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScope.java"));
+        String source = Files.readString(
+                sourcePath("src/main/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScope.java"));
 
         assertThat(source)
                 .doesNotContain("private static boolean hasAnyRole")
@@ -45,11 +43,42 @@ class DddPerformanceAccessPolicyBoundaryTest {
                 .contains("USER_PERMISSION_POLICY.hasAnyRole");
     }
 
+    @Test
+    void performanceQueryService_shouldGateDataScopePolicyPathBehindFeatureFlag() throws IOException {
+        String source = Files.readString(
+                sourcePath("src/main/java/com/colonel/saas/service/PerformanceQueryService.java"));
+
+        assertThat(source)
+                .contains("DddRefactorProperties")
+                .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
+                .contains("PerformanceAccessScope.appendScopeConditionWithPolicy")
+                .contains("PerformanceAccessScope.appendScopeCondition");
+    }
+
+    @Test
+    void performanceAccessScope_shouldOfferDataScopePolicySidePath() throws IOException {
+        String source = Files.readString(
+                sourcePath("src/main/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScope.java"));
+
+        assertThat(source)
+                .contains("DataScopePolicy")
+                .contains("dataScopePolicy.contextRequirement")
+                .contains("dataScopePolicy.decide");
+    }
+
     private static String readUnchecked(Path path) {
         try {
             return Files.readString(path);
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    private static Path sourcePath(String relativePath) {
+        Path path = Path.of(relativePath);
+        if (Files.exists(path)) {
+            return path;
+        }
+        return Path.of("backend").resolve(relativePath);
     }
 }

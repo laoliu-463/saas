@@ -3,6 +3,7 @@ package com.colonel.saas.domain.performance.policy;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.PerformanceRecord;
 
@@ -182,33 +183,80 @@ public final class PerformanceAccessScope {
             return;
         }
         String pr = hasText(prAlias) ? prAlias.trim() : "pr";
-        if (isAdminLike(context)) {
+        if (appendRoleScopeCondition(where, args, context, pr)) {
             return;
+        }
+        appendLegacyDataScopeFallback(where, args, context, pr);
+    }
+
+    /**
+     * 向 SQL WHERE 子句追加数据范围条件，数据范围解释委托给用户域 {@link DataScopePolicy}。
+     *
+     * <p>该方法是 DDD 数据范围旁路，供调用方在灰度开关开启后使用。
+     * 角色维度仍由业绩域策略解释，只有 PERSONAL / DEPT / ALL 数据范围决策交给用户域。</p>
+     */
+    public static void appendScopeConditionWithPolicy(
+            StringBuilder where,
+            List<Object> args,
+            PerformanceAccessContext context,
+            String prAlias,
+            DataScopePolicy dataScopePolicy) {
+        if (dataScopePolicy == null) {
+            appendScopeCondition(where, args, context, prAlias);
+            return;
+        }
+        if (where == null || context == null) {
+            return;
+        }
+        String pr = hasText(prAlias) ? prAlias.trim() : "pr";
+        if (appendRoleScopeCondition(where, args, context, pr)) {
+            return;
+        }
+        appendPolicyDataScopeFallback(where, args, context, pr, dataScopePolicy);
+    }
+
+    private static boolean appendRoleScopeCondition(
+            StringBuilder where,
+            List<Object> args,
+            PerformanceAccessContext context,
+            String pr) {
+        if (isAdminLike(context)) {
+            return true;
         }
         UUID userId = context.userId();
         UUID deptId = context.deptId();
         if (isChannelStaffOnly(context)) {
             where.append(" AND ").append(pr).append(".final_channel_user_id = ?");
             args.add(requireScopeUser(userId));
-            return;
+            return true;
         }
         if (isRecruiterStaffOnly(context)) {
             where.append(" AND ").append(pr).append(".final_recruiter_user_id = ?");
             args.add(requireScopeUser(userId));
-            return;
+            return true;
         }
         if (isChannelLeader(context)) {
             where.append(" AND ").append(pr).append(".final_channel_user_id IN (")
                     .append(deptUserSubquery()).append(")");
             args.add(requireScopeDept(deptId));
-            return;
+            return true;
         }
         if (isRecruiterLeader(context)) {
             where.append(" AND ").append(pr).append(".final_recruiter_user_id IN (")
                     .append(deptUserSubquery()).append(")");
             args.add(requireScopeDept(deptId));
-            return;
+            return true;
         }
+        return false;
+    }
+
+    private static void appendLegacyDataScopeFallback(
+            StringBuilder where,
+            List<Object> args,
+            PerformanceAccessContext context,
+            String pr) {
+        UUID userId = context.userId();
+        UUID deptId = context.deptId();
         if (context.dataScope() == DataScope.DEPT) {
             where.append(" AND (").append(pr).append(".final_channel_user_id IN (")
                     .append(deptUserSubquery()).append(")")
@@ -225,6 +273,42 @@ public final class PerformanceAccessScope {
             UUID requiredUserId = requireScopeUser(userId);
             args.add(requiredUserId);
             args.add(requiredUserId);
+        }
+    }
+
+    private static void appendPolicyDataScopeFallback(
+            StringBuilder where,
+            List<Object> args,
+            PerformanceAccessContext context,
+            String pr,
+            DataScopePolicy dataScopePolicy) {
+        UUID userId = context.userId();
+        UUID deptId = context.deptId();
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, context.dataScope());
+        if (requirement == DataScopePolicy.ContextRequirement.MISSING_USER) {
+            requireScopeUser(userId);
+            return;
+        }
+        if (requirement == DataScopePolicy.ContextRequirement.MISSING_DEPT) {
+            requireScopeDept(deptId);
+            return;
+        }
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, context.dataScope());
+        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+            where.append(" AND (").append(pr).append(".final_channel_user_id IN (")
+                    .append(deptUserSubquery()).append(")")
+                    .append(" OR ").append(pr).append(".final_recruiter_user_id IN (")
+                    .append(deptUserSubquery()).append("))");
+            args.add(deptId);
+            args.add(deptId);
+            return;
+        }
+        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+            where.append(" AND (").append(pr).append(".final_channel_user_id = ? OR ")
+                    .append(pr).append(".final_recruiter_user_id = ?)");
+            args.add(userId);
+            args.add(userId);
         }
     }
 

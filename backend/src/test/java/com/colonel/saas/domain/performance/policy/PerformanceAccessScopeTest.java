@@ -3,6 +3,7 @@ package com.colonel.saas.domain.performance.policy;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.PerformanceRecord;
 import org.junit.jupiter.api.Test;
 
@@ -172,6 +173,18 @@ class PerformanceAccessScopeTest {
     }
 
     @Test
+    void appendScopeConditionWithPolicy_shouldPreserveDeptAndPersonalFallbackSql() {
+        DataScopePolicy dataScopePolicy = new DataScopePolicy();
+        PerformanceAccessContext deptContext = context(List.of(), DataScope.DEPT);
+        PerformanceAccessContext personalContext = context(List.of(), DataScope.PERSONAL);
+
+        assertThat(appendWithPolicy(deptContext, "pr", dataScopePolicy))
+                .isEqualTo(append(deptContext, "pr"));
+        assertThat(appendWithPolicy(personalContext, "", dataScopePolicy))
+                .isEqualTo(append(personalContext, ""));
+    }
+
+    @Test
     void appendScopeCondition_shouldFailClosedWhenUserOrDeptMissing() {
         PerformanceAccessContext noUser = PerformanceAccessContext.of(null, DEPT, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
         PerformanceAccessContext noDept = PerformanceAccessContext.of(USER, null, DataScope.DEPT, List.of(RoleCodes.CHANNEL_LEADER));
@@ -199,6 +212,13 @@ class PerformanceAccessScopeTest {
         StringBuilder where = new StringBuilder("WHERE 1=1");
         ArrayList<Object> args = new ArrayList<>();
         PerformanceAccessScope.appendScopeCondition(where, args, context, alias);
+        return new ScopeResult(where.toString(), args);
+    }
+
+    private ScopeResult appendWithPolicy(PerformanceAccessContext context, String alias, DataScopePolicy dataScopePolicy) {
+        StringBuilder where = new StringBuilder("WHERE 1=1");
+        ArrayList<Object> args = new ArrayList<>();
+        PerformanceAccessScope.appendScopeConditionWithPolicy(where, args, context, alias, dataScopePolicy);
         return new ScopeResult(where.toString(), args);
     }
 
