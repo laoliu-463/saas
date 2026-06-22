@@ -284,7 +284,8 @@ public class ProductService {
     }
 
     public IPage<Product> getSelectedLibraryPage(long page, long size, SelectedLibraryFilter filter) {
-        SelectedLibraryFilter safeFilter = filter == null ? SelectedLibraryFilter.empty() : filter.normalized();
+        SelectedLibraryFilter rawFilter = filter == null ? SelectedLibraryFilter.empty() : filter;
+        SelectedLibraryFilter safeFilter = rawFilter.normalized(productDisplayPolicy);
         long currentPage = Math.max(page, 1);
         long pageSize = Math.max(size, 1);
         if (StringUtils.hasText(safeFilter.assigneeId()) && parseAssigneeFilterId(safeFilter.assigneeId()) == null) {
@@ -5423,7 +5424,7 @@ public class ProductService {
                     empty.productId());
         }
 
-        public SelectedLibraryFilter normalized() {
+        private SelectedLibraryFilter normalized(ProductDisplayPolicy displayPolicy) {
             return new SelectedLibraryFilter(
                     trimToNull(keyword),
                     status,
@@ -5444,7 +5445,7 @@ public class ProductService {
                     normalizeToken(decision),
                     trimToNull(partnerId),
                     normalizePartnerType(partnerType),
-                    normalizeSortBy(sortBy),
+                    displayPolicy.normalizeSelectedLibrarySortBy(sortBy),
                     normalizeToken(goodsTags),
                     normalizeToken(productTags),
                     trimToNull(colonelName),
@@ -5484,17 +5485,6 @@ public class ProductService {
                 return "MERCHANT";
             }
             return upper;
-        }
-
-        private static String normalizeSortBy(String sortBy) {
-            String trimmed = normalizeToken(sortBy);
-            if (trimmed == null || "default".equals(trimmed) || "pinned".equals(trimmed)) {
-                return "default";
-            }
-            if ("latest".equals(trimmed)) {
-                return "latest";
-            }
-            return trimmed;
         }
 
         private static String trimToNull(String value) {

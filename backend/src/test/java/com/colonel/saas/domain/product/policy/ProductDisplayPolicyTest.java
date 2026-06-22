@@ -220,6 +220,17 @@ class ProductDisplayPolicyTest {
     }
 
     @Test
+    void selectedLibrarySortBy_shouldKeepLegacyQueryBranchContract() {
+        assertThat(policy.normalizeSelectedLibrarySortBy(null)).isEqualTo("default");
+        assertThat(policy.normalizeSelectedLibrarySortBy("")).isEqualTo("default");
+        assertThat(policy.normalizeSelectedLibrarySortBy(" default ")).isEqualTo("default");
+        assertThat(policy.normalizeSelectedLibrarySortBy("pinned")).isEqualTo("default");
+        assertThat(policy.normalizeSelectedLibrarySortBy(" latest ")).isEqualTo("latest");
+        assertThat(policy.normalizeSelectedLibrarySortBy(" LATEST ")).isEqualTo("LATEST");
+        assertThat(policy.normalizeSelectedLibrarySortBy("unknown")).isEqualTo("unknown");
+    }
+
+    @Test
     void promotionLinkPresence_shouldTreatAnyNonBlankLinkAsPromoted() {
         assertThat(policy.hasPromotionLink(null, "", "   ")).isFalse();
         assertThat(policy.hasPromotionLink("https://promote.example", null, null)).isTrue();

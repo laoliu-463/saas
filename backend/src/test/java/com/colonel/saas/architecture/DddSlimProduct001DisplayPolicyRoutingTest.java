@@ -30,6 +30,7 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "isSupportedActivityProductQueryStatus",
                         "activityProductQueryStatusHint",
                         "normalizeActivityProductSortBy",
+                        "normalizeSelectedLibrarySortBy",
                         "hasPromotionLink",
                         "legacyDisplayMark");
     }
@@ -49,9 +50,20 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "normalizeActivityProductFilterStatus",
                         "normalizeActivityProductStatusText",
                         "normalizeActivityProductSortBy",
+                        "normalizeSelectedLibrarySortBy",
                         "hasPromotionLink",
                         "hasActivityPromotionLink",
                         "toLegacyDisplayMark");
+    }
+
+    @Test
+    void selectedLibraryFilter_shouldNotOwnSortNormalization() {
+        Set<String> filterMethods = Arrays.stream(ProductService.SelectedLibraryFilter.class.getDeclaredMethods())
+                .map(Method::getName)
+                .collect(Collectors.toSet());
+
+        assertThat(filterMethods)
+                .doesNotContain("normalizeSortBy");
     }
 
     @Test

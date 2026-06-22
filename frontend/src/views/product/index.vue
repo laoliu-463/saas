@@ -252,6 +252,10 @@ import {
   formatSales30d,
   type ProductFilterState
 } from './product-filters'
+import {
+  isProductManageProductsPath,
+  shouldLoadActivityProducts
+} from './product-page-data-source'
 import ProductDetail from './ProductDetail.vue'
 import ProductAuditDialog from './components/ProductAuditDialog.vue'
 import ProductAssignDialog from './components/ProductAssignDialog.vue'
@@ -366,7 +370,8 @@ const resolvedActivityId = computed(() =>
 const hasExplicitActivityRoute = computed(() => Boolean(route.params.activityId))
 const isSharedLibraryMode = computed(() => route.path === '/product')
 const isActivityProductMode = computed(() => hasExplicitActivityRoute.value)
-const isPickLibraryMode = computed(() => route.path === '/product/manage/products' || (!isSharedLibraryMode.value && !isActivityProductMode.value))
+const isProductManageProductsMode = computed(() => isProductManageProductsPath(route.path))
+const isPickLibraryMode = computed(() => isProductManageProductsMode.value || (!isSharedLibraryMode.value && !isActivityProductMode.value))
 const isBizLeader = computed(() => authStore.roleCodes.includes('biz_leader') || authStore.isAdmin)
 const isBizStaffOnly = computed(() => authStore.roleCodes.includes('biz_staff') && !isBizLeader.value)
 const showBatchSelection = computed(() => !isSharedLibraryMode.value)
@@ -381,16 +386,16 @@ const selectedBatchProductIds = computed(() => normalizeBatchProductIds(checkedR
 
 const pageTitle = computed(() => {
   if (isActivityProductMode.value) return '活动商品推进'
-  if (route.path === '/product/manage/products') return isBizStaffOnly.value ? '我负责的商品' : '商品推进池'
+  if (isProductManageProductsMode.value) return isBizStaffOnly.value ? '我负责的活动商品' : '活动商品列表'
   return '商品库'
 })
 
 const pageDescription = computed(() => {
   if (isActivityProductMode.value) return '围绕当前活动处理审核人分配、商品审核、入库分配与协作推进。'
-  if (route.path === '/product/manage/products') {
+  if (isProductManageProductsMode.value) {
     return isBizStaffOnly.value
-      ? '管理我负责的商品，补全推广资料并完成审核。'
-      : '统一查看活动商品，给待审核商品分配审核人，并在入库后分配招商组长。'
+      ? '按活动查看我负责的实际同步商品，补全推广资料并完成审核。'
+      : '按活动查看实际同步商品，给待审核商品分配审核人，并在入库后分配招商组长。'
   }
   if (isSharedLibraryMode.value) return '沉淀完成的共享商品库，对全员可见，可直接复用历史商品结果。'
   return '支持候选商品浏览、审核、转链和入库沉淀，作为商品协同的统一工作台。'
@@ -400,8 +405,8 @@ const emptyDescription = computed(() => {
   if (isSharedLibraryMode.value) return '当前还没有加入商品库的商品，可先在商品管理里进入活动并将商品沉淀到商品库。'
   if (isActivityProductMode.value) return '当前活动暂无商品数据，可先同步活动商品，或返回活动列表切换活动。'
   return isBizStaffOnly.value
-    ? '当前暂无我负责的待审商品，如有疑问请联系组长分配。'
-    : '当前暂无可推进商品，可进入活动列表同步或切换活动。'
+    ? '当前活动暂无我负责的实际商品，如有疑问请联系组长分配或切换活动。'
+    : '当前活动暂无实际商品，可进入活动列表同步或切换活动。'
 })
 
 const activityStats = computed(() => {
@@ -578,7 +583,23 @@ const hasDoubleCommission = (item: any) =>
 
 const ensureActivityId = async () => {
   if (isSharedLibraryMode.value) return ''
-  if (isPickLibraryMode.value) return ''
+  const selectedRecruitActivityId = normalizeText(filters.value.recruitActivityId)
+  if (selectedRecruitActivityId) {
+    fallbackActivityId.value = selectedRecruitActivityId
+    return selectedRecruitActivityId
+  }
+  const firstAssignedActivity = assignedActivityOptions.value[0]?.value
+  if (isProductManageProductsMode.value && firstAssignedActivity) {
+    const firstAssignedName = assignedActivityOptions.value[0]?.label.replace(/\s*\([^)]*\)\s*$/, '').trim()
+    fallbackActivityId.value = firstAssignedActivity
+    filters.value = {
+      ...filters.value,
+      recruitActivityId: firstAssignedActivity,
+      activityId: firstAssignedActivity,
+      recruitActivityName: firstAssignedName || null
+    }
+    return firstAssignedActivity
+  }
   if (route.params.activityId) {
     fallbackActivityId.value = ''
     return String(route.params.activityId)
@@ -595,7 +616,16 @@ const ensureActivityId = async () => {
     })
     const activity = res?.data?.activityList?.[0]
     if (activity?.activityId) {
-      fallbackActivityId.value = String(activity.activityId)
+      const activityId = String(activity.activityId)
+      fallbackActivityId.value = activityId
+      if (isProductManageProductsMode.value) {
+        filters.value = {
+          ...filters.value,
+          recruitActivityId: activityId,
+          activityId,
+          recruitActivityName: normalizeText(activity.activityName || activity.name) || null
+        }
+      }
       return fallbackActivityId.value
     }
   } catch {
@@ -732,38 +762,16 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
     }
 
     const activityId = selectedActivityId || await ensureActivityId()
-    if (!isPickLibraryMode.value && activityId) {
+    if (shouldLoadActivityProducts(route.path, hasExplicitActivityRoute.value) && activityId) {
       const res: any = await getActivityProducts(activityId, buildActivityProductsQuery(reset, forceRemote))
       applyActivityProductsPage(res?.data || {}, reset)
       return true
     }
 
-    // 兜底路径:
-    // - isPickLibraryMode 但 recruitActivityId 为空:走 T2 共享商品库 `/products` 接口,
-    //   把 40+ 筛选条件全发到服务端,避免 `getProductPickPage` 拉 200 条后纯本地过滤造成的
-    //   远端窄化失效/数据截断问题(详见 audit §2.3)。
-    // - 否则(无活动上下文/无任何路径活动):保留旧的 `getProductPickPage` 兜底,适用于
-    //   Token 缺失场景下的本地选品候选列表。
+    // 商品管理页必须按活动商品实际数据展示；没有可解析活动时只展示空态，不回退商品库口径。
     if (isPickLibraryMode.value) {
-      const page = reset ? 1 : Math.floor(products.value.length / PRODUCT_LIST_PAGE_SIZE) + 1
-      const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
-        page,
-        size: PRODUCT_LIST_PAGE_SIZE,
-        keyword: filters.value.productId || filters.value.productName || undefined,
-        productIdMode: 'keyword'
-      }))
-      const data = res?.data || {}
-      const records = Array.isArray(data.records) ? data.records : []
-      const items = records.map((p: any) => normalizeItem({
-        ...p,
-        title: p.title || p.name || '未命名商品',
-        productId: String(p.productId || '')
-      }))
-      products.value = reset ? items : products.value.concat(items)
-      const currentPage = Number(data.page || page || 1)
-      const pageSize = Number(data.size || PRODUCT_LIST_PAGE_SIZE)
-      const total = Number(data.total || 0)
-      hasMore.value = currentPage * pageSize < total
+      products.value = reset ? [] : products.value
+      hasMore.value = false
       nextCursor.value = ''
       return true
     }

@@ -267,6 +267,20 @@ public class ProductDisplayPolicy {
         return "latest".equals(normalized) ? "latest" : "default";
     }
 
+    public String normalizeSelectedLibrarySortBy(String sortBy) {
+        if (!StringUtils.hasText(sortBy)) {
+            return "default";
+        }
+        String normalized = sortBy.trim();
+        if ("default".equals(normalized) || "pinned".equals(normalized)) {
+            return "default";
+        }
+        if ("latest".equals(normalized)) {
+            return "latest";
+        }
+        return normalized;
+    }
+
     public boolean hasPromotionLink(String... links) {
         if (links == null || links.length == 0) {
             return false;

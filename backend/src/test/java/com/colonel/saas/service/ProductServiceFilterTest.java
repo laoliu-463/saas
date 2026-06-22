@@ -210,6 +210,30 @@ class ProductServiceFilterTest {
     }
 
     @Test
+    void getSelectedLibraryPage_shouldNormalizeLatestSortByBeforeSorting() {
+        ProductOperationState olderHighCommission = state("10001", "9001");
+        olderHighCommission.setSelectedAt(LocalDateTime.now().minusDays(2));
+        ProductOperationState newerLowCommission = state("10002", "9002");
+        newerLowCommission.setSelectedAt(LocalDateTime.now().minusHours(1));
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
+        statePage.setRecords(List.of(olderHighCommission, newerLowCommission));
+
+        ProductSnapshot older = snapshot("10001", "9001", "玩具乐器", 9900L);
+        older.setActivityCosRatio(5000L);
+        ProductSnapshot newer = snapshot("10002", "9002", "美妆", 8800L);
+        newer.setActivityCosRatio(100L);
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(older, newer));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().sortBy(" latest ").build());
+
+        assertThat(result.getRecords())
+                .extracting("productId")
+                .containsExactly("9002", "9001");
+    }
+
+    @Test
     void getSelectedLibraryPage_shouldFilterFreeSampleListedAndSupplementCheckboxes() {
         ProductOperationState matchedState = state("10001", "9001");
         matchedState.setAuditPayload("""
@@ -607,6 +631,7 @@ class ProductServiceFilterTest {
         FilterBuilder notInLibrary(String value) { this.notInLibrary = value; return this; }
         FilterBuilder dedup(String value) { this.dedup = value; return this; }
         FilterBuilder productId(String value) { this.productId = value; return this; }
+        FilterBuilder sortBy(String value) { this.sortBy = value; return this; }
 
         ProductService.SelectedLibraryFilter build() {
             return new ProductService.SelectedLibraryFilter(
