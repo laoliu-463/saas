@@ -30,6 +30,7 @@
 - `P2`：治理、清理、补文档或体验优化。
 
 ## 用户域
+- 最新小切片：DDD-USER-PERFORMANCE-QUERY-DATASCOPE-POLICY 已将 `PerformanceQueryService` 业绩列表与 SQL 回退权限校验的数据范围拼接按灰度双路径收口：`ddd.refactor.data-scope-policy.enabled=false` 默认关闭时保留 `PerformanceAccessScope.appendScopeCondition` Legacy 路径，开启后通过用户域 `DataScopePolicy.contextRequirement` / `decide` 解释 PERSONAL / DEPT / ALL，再由业绩域继续拼接 `final_channel_user_id` / `final_recruiter_user_id` 范围 SQL。本轮不改业绩归属、提成、冲正、服务费双轨公式、接口参数、默认开关或真实数据。报告：`harness/reports/evidence-20260622-153707.md`。风险变化：28 个定向测试与 70 个组合测试 PASS，`agent-do` backend PASS；后续继续推进跨业务域 `DataScopeResolver` / `PermissionChecker` 命名与消费统一。
 - 最新小切片：DDD-USER-TALENT-EXCLUSIVE-DATASCOPE-POLICY 已将 `TalentService.evaluateExclusive` 独家达人评估订单查询的数据范围过滤按灰度双路径收口：`ddd.refactor.data-scope-policy.enabled=false` 默认关闭时保留 Legacy PERSONAL user / DEPT dept 过滤，开启后通过用户域 `DataScopePolicy.contextRequirement` / `decide` 解释数据范围。本轮不改独家评估公式、订单佣金读取、寄样次数统计、默认开关或真实数据。报告：`harness/reports/evidence-20260622-151700.md`。风险变化：`TalentServiceTest` 覆盖源码边界、灰度开启委托用户域 policy、缺 user/dept 上下文 Legacy no-op；103 个相关组合测试 PASS，`agent-do` backend PASS。
 - 上一小切片：DDD-USER-TALENT-BLACKLIST-DATASCOPE-POLICY 已将 `TalentService.blacklist/unblacklist` 黑名单操作数据范围校验按灰度双路径收口：`ddd.refactor.data-scope-policy.enabled=false` 默认关闭时保留 Legacy active claim 的 PERSONAL / DEPT 判断，开启后通过用户域 `DataScopePolicy.contextRequirement` / `decide` 解释数据范围，再由达人域继续用 active claim 判断可操作性。本轮不改黑名单状态语义、达人认领、保护期、列表/详情、独家评估、默认开关或真实数据。报告：`harness/reports/evidence-20260622-150007.md`。风险变化：`TalentServiceTest` 覆盖源码边界、灰度开启 claim parity、缺 user/dept 上下文拒绝和无 active claim 放行；101 个相关组合测试 PASS，`agent-do` backend PASS。
 - 上一小切片：DDD-USER-TALENT-SERVICE-PAGE-DATASCOPE-POLICY 已将 `TalentService.page` 达人列表数据范围过滤按灰度双路径收口：`ddd.refactor.data-scope-policy.enabled=false` 默认关闭时保留 Legacy 通过 `talent_claim` 按 user/dept 取达人 ID 集合，开启后通过用户域 `DataScopePolicy.contextRequirement` / `decide` 判定 PERSONAL / DEPT 分支，再由达人域继续查询认领事实。本轮不改达人认领、保护期、列表筛选、详情、黑名单、独家评估、默认开关或真实数据。报告：`harness/reports/evidence-20260622-144728.md`。风险变化：`TalentServiceTest` 覆盖源码边界、默认关闭路径、灰度开启 claim parity 和缺上下文 Legacy no-op；98 个相关组合测试 PASS，`agent-do` backend PASS。
@@ -122,6 +123,8 @@
 - 标记：P0。
 
 ## 业绩域
+- 最新边界变化：`PerformanceQueryService` 业绩列表 `buildFilterWhere` 与单笔 / 批量 SQL 回退校验已新增默认关闭的用户域 `DataScopePolicy` 旁路；默认路径仍走 `PerformanceAccessScope.appendScopeCondition`，开启后仅把 PERSONAL / DEPT / ALL 数据范围决策委托给用户域，角色语义和业绩域 SQL 字段仍留在 `PerformanceAccessScope`。本轮未改业绩归属、提成、冲正、服务费双轨公式、导出列、接口参数或历史数据。
+- 最新报告路径：`harness/reports/evidence-20260622-153707.md`；retro：`harness/reports/retro-20260622-153850.md`。
 - 最新边界变化：`PerformanceAccessScope` 继续承载业绩域导出、重算、筛选越权、逐条访问和 SQL 范围拼接语义，但角色编码集合匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改业绩归属、提成、冲正、服务费双轨公式、SQL 条件语义或历史数据。
 - 最新报告路径：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-212247.md`。
 - 最新边界变化：`PerformanceMetricsQueryService` 汇总、趋势和 dashboard 业绩指标查询的数据范围决策已委托用户域 `DataScopePolicy`，本轮未改业绩归属、提成、冲正、服务费双轨公式或历史数据。
