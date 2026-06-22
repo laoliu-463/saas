@@ -3,6 +3,8 @@ package com.colonel.saas.service;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -19,9 +21,16 @@ import java.util.UUID;
 public class OrderQueryService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final DataScopePolicy dataScopePolicy;
+    private final DddRefactorProperties dddRefactorProperties;
 
-    public OrderQueryService(JdbcTemplate jdbcTemplate) {
+    public OrderQueryService(
+            JdbcTemplate jdbcTemplate,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.jdbcTemplate = jdbcTemplate;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     public OrderDetailResponse getOrderDetail(String orderId, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
@@ -165,7 +174,18 @@ public class OrderQueryService {
     }
 
     private void assertCanAccess(Map<String, Object> row, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
-        if (row == null || dataScope == null || dataScope == DataScope.ALL) {
+        if (row == null) {
+            return;
+        }
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            assertCanAccessLegacy(row, currentUserId, currentDeptId, dataScope);
+            return;
+        }
+        assertCanAccessWithPolicy(row, currentUserId, currentDeptId, dataScope);
+    }
+
+    private void assertCanAccessLegacy(Map<String, Object> row, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
+        if (dataScope == null || dataScope == DataScope.ALL) {
             return;
         }
         UUID orderUserId = uuidValue(asText(row.get("order_user_id")));
@@ -178,6 +198,37 @@ public class OrderQueryService {
         }
         if (currentDeptId == null || !currentDeptId.equals(orderDeptId)) {
             throw new ForbiddenException("无权查看该订单详情");
+        }
+    }
+
+    private void assertCanAccessWithPolicy(Map<String, Object> row, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(currentUserId, currentDeptId, dataScope);
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            throw new ForbiddenException("无权查看该订单详情");
+        }
+
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(currentUserId, currentDeptId, dataScope);
+        if (decision == DataScopePolicy.Decision.NO_FILTER) {
+            return;
+        }
+
+        UUID orderUserId = uuidValue(asText(row.get("order_user_id")));
+        UUID orderDeptId = uuidValue(asText(row.get("order_dept_id")));
+        switch (decision) {
+            case FILTER_USER -> {
+                if (!currentUserId.equals(orderUserId)) {
+                    throw new ForbiddenException("无权查看该订单详情");
+                }
+            }
+            case FILTER_DEPT -> {
+                if (!currentDeptId.equals(orderDeptId)) {
+                    throw new ForbiddenException("无权查看该订单详情");
+                }
+            }
+            case NO_FILTER -> {
+                // handled above
+            }
         }
     }
 

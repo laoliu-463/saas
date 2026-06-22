@@ -3,6 +3,8 @@ package com.colonel.saas.service;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -35,7 +40,28 @@ class OrderQueryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new OrderQueryService(jdbcTemplate);
+        service = new OrderQueryService(jdbcTemplate, new DataScopePolicy(), new DddRefactorProperties());
+    }
+
+    @Test
+    void dataScopeAccess_shouldDelegateToUserDomainPolicy() throws IOException {
+        String source = Files.readString(orderQueryServiceSourcePath());
+
+        assertThat(source)
+                .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
+                .contains("assertCanAccessLegacy")
+                .contains("assertCanAccessWithPolicy")
+                .contains("DataScopePolicy")
+                .contains("dataScopePolicy.contextRequirement")
+                .contains("dataScopePolicy.decide");
+    }
+
+    private Path orderQueryServiceSourcePath() {
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/service/OrderQueryService.java");
+        if (!Files.exists(sourcePath)) {
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/service/OrderQueryService.java");
+        }
+        return sourcePath;
     }
 
     @Test
@@ -246,7 +272,47 @@ class OrderQueryServiceTest {
         assertThatThrownBy(() -> service.getOrderDetail("scoped-order", UUID.randomUUID(), orderDeptId, DataScope.PERSONAL))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("无权查看该订单详情");
+        assertThatThrownBy(() -> service.getOrderDetail("scoped-order", null, orderDeptId, DataScope.PERSONAL))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权查看该订单详情");
         assertThatThrownBy(() -> service.getOrderDetail("scoped-order", orderUserId, UUID.randomUUID(), DataScope.DEPT))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权查看该订单详情");
+        assertThatThrownBy(() -> service.getOrderDetail("scoped-order", orderUserId, null, DataScope.DEPT))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权查看该订单详情");
+    }
+
+    @Test
+    void getOrderDetail_dataScopePolicyEnabledPathShouldPreserveRejectSemantics() {
+        DddRefactorProperties properties = new DddRefactorProperties();
+        properties.getDataScopePolicy().setEnabled(true);
+        OrderQueryService enabledService = new OrderQueryService(jdbcTemplate, new DataScopePolicy(), properties);
+        UUID orderUserId = UUID.randomUUID();
+        UUID orderDeptId = UUID.randomUUID();
+        when(jdbcTemplate.queryForList(anyString(), eq("policy-scoped-order")))
+                .thenReturn(List.of(Map.ofEntries(
+                        Map.entry("order_id", "policy-scoped-order"),
+                        Map.entry("order_status", 1),
+                        Map.entry("product_id", "10901830"),
+                        Map.entry("order_user_id", orderUserId),
+                        Map.entry("order_dept_id", orderDeptId)
+                )));
+
+        assertThatThrownBy(() -> enabledService.getOrderDetail("policy-scoped-order",
+                UUID.randomUUID(), orderDeptId, DataScope.PERSONAL))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权查看该订单详情");
+        assertThatThrownBy(() -> enabledService.getOrderDetail("policy-scoped-order",
+                null, orderDeptId, DataScope.PERSONAL))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权查看该订单详情");
+        assertThatThrownBy(() -> enabledService.getOrderDetail("policy-scoped-order",
+                orderUserId, UUID.randomUUID(), DataScope.DEPT))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("无权查看该订单详情");
+        assertThatThrownBy(() -> enabledService.getOrderDetail("policy-scoped-order",
+                orderUserId, null, DataScope.DEPT))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("无权查看该订单详情");
     }
