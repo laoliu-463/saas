@@ -37,9 +37,9 @@
 - 最新小切片：DDD-USER-DATASCOPE-DATA-APPLICATION 已将 `DataApplicationService` 订单列表、订单汇总、导出、核心指标和独家达人/商家运营监控的数据范围过滤委托给用户域 `DataScopePolicy.applyTo` / `contextRequirement`，数据页服务不再维护本地 `switch(dataScope)` 分支。
 - 最新报告路径：`harness/reports/2026-06-21/ddd-user/datascope-next/evidence-20260621-192500-data-application-datascope-policy.md`。
 - 风险变化：`OrderAttributionService`、`PerformanceMetricsQueryService`、`DashboardService` 与 `DataApplicationService` 的本地 `switch(dataScope)` 已清零；本轮保留 `DataApplicationService` 缺少 user/dept 上下文时抛 `BusinessException` 的既有行为，未改订单事实、业绩公式、导出列或历史数据。
-- 最新小切片：DDD-USER-DATASCOPE-DASHBOARD 已将 `DashboardService` 看板 summary fallback 查询、诊断/活动商品下钻 SQL 上下文和 `QueryWrapper` 数据范围过滤委托给用户域 `DataScopePolicy.decide` / `requiresFilter`，看板服务不再维护本地 `switch(dataScope)` 分支。
-- 最新报告路径：`harness/reports/2026-06-21/ddd-user/datascope-next/evidence-20260621-190800-dashboard-datascope-policy.md`。
-- 风险变化：`OrderAttributionService`、`PerformanceMetricsQueryService` 与 `DashboardService` 已消费用户域数据范围 policy；`DataApplicationService` 仍有 5 处 `switch(dataScope)` 需继续收口；本轮未改看板指标公式、订单归因、业绩归属或历史数据。
+- 最新小切片：DDD-USER-DATASCOPE-DASHBOARD-GATED 已将 `DashboardService` 看板 summary fallback 查询、诊断/活动商品下钻 SQL 上下文和 `QueryWrapper` 数据范围过滤收口为默认关闭双路径：`ddd.refactor.data-scope-policy.enabled=false` 保留 Legacy PERSONAL/DEPT 条件拼接与受限上下文 fail-closed；开启后才委托用户域 `DataScopePolicy.decide` / `requiresFilter`。本轮未改 dashboard 指标公式、订单归因、业绩归属、接口契约、默认开关或真实数据。
+- 最新报告路径：`harness/reports/evidence-20260622-195231.md`；retro：`harness/reports/retro-20260622-195253.md`。
+- 风险变化：红测先失败后转绿，Dashboard targeted 测试 PASS，Dashboard+PerformanceMetrics 组合测试 PASS，后端全量 `mvn test` PASS（2569 run / 0 failures / 0 errors / 3 skipped），`agent-do` backend PASS，real-pre preflight PASS。后续风险仍是跨业务域 `DataScopeResolver` / `PermissionChecker` 消费方式尚未统一。
 - 最新小切片：DDD-USER-DATASCOPE-PERFORMANCE-METRICS 已将 `PerformanceMetricsQueryService` 汇总、趋势和 dashboard 业绩指标查询的数据范围过滤收口为默认关闭双路径：`ddd.refactor.data-scope-policy.enabled=false` 保留 Legacy PERSONAL/DEPT SQL 条件拼接；开启后委托用户域 `DataScopePolicy.decide`。本轮未改业绩归属、提成、冲正、双轨金额公式、dashboard 展示口径、接口契约、默认开关或真实数据。
 - 最新报告路径：`harness/reports/evidence-20260622-193159.md`；retro：`harness/reports/retro-20260622-193221.md`。
 - 风险变化：`PerformanceMetricsQueryService` 已具备灰度开启的用户域数据范围 policy 旁路；红测先失败后转绿，targeted/组合测试 PASS，后端全量 `mvn test` PASS，`agent-do` backend PASS，real-pre preflight PASS。后续风险仍是跨业务域 `DataScopeResolver` / `PermissionChecker` 消费方式尚未统一。
@@ -119,16 +119,16 @@
 - 标记：P0。
 
 ## 分析模块
-- 最新边界变化：Dashboard 消费的 `PerformanceMetricsQueryService` 汇总读侧数据范围过滤已新增默认关闭旁路；默认关闭保持 Legacy SQL 条件拼接，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域。本轮不改变 dashboard 指标公式、排行 SQL、订单归因或业绩归属。
+- 最新边界变化：`DashboardService` 看板 summary fallback 查询、诊断/活动商品下钻 SQL 上下文和 `QueryWrapper` 数据范围过滤已新增默认关闭旁路；默认关闭保持 Legacy PERSONAL/DEPT 条件拼接与受限上下文 fail-closed，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域 `DataScopePolicy`。本轮不改变 dashboard 指标公式、排行 SQL、订单归因或业绩归属。
 - 最新边界变化：`DataApplicationService` 的数据页订单明细、订单汇总、导出、核心指标和运营监控查询已消费用户域 `DataScopePolicy`；本轮只收口可见性，不改变订单事实、业绩补全、导出列、服务费双轨公式或历史数据。
 - 最新报告路径：`harness/reports/2026-06-21/ddd-user/datascope-next/evidence-20260621-192500-data-application-datascope-policy.md`。
-- 最新边界变化：`DashboardService` 看板 summary fallback 查询、诊断/活动商品下钻 SQL 上下文和 `QueryWrapper` 过滤已消费用户域 `DataScopePolicy.decide` / `requiresFilter`；本轮只收口可见性，不改变指标公式、订单归因或业绩归属。
-- 最新报告路径：`harness/reports/2026-06-21/ddd-user/datascope-next/evidence-20260621-190800-dashboard-datascope-policy.md`。
+- 最新边界变化：`PerformanceMetricsQueryService` 汇总读侧数据范围过滤已具备默认关闭旁路；默认关闭保持 Legacy SQL 条件拼接，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域。本轮不改变 dashboard 指标公式、排行 SQL、订单归因或业绩归属。
+- 最新报告路径：`harness/reports/evidence-20260622-195231.md`；retro：`harness/reports/retro-20260622-195253.md`。
 - 当前状态：dashboard、报表和只读汇总主链路已具备；数据平台订单页已保留汇总模块，并新增/收口订单明细 Tab 与 16 列订单级明细导出；ORDER-DETAIL-TAB-FIX-001 已补齐订单明细 Tab 前端 16 列展示、人民币金额格式与“渠道”文案统一；SERVICE-FEE-INCOME-FORMULA-CODE-001 已更新经营指标矩阵服务费收入 / 收益双轨公式口径与后端展示层单测；`DataApplicationService` 订单明细负责人展示已改为消费用户域 `loadUserDisplayNamesByIds`，分析模块不再为该展示读取完整用户 DTO。
 - 报告路径：DDD-USER-DATA-APPLICATION-FACADE `harness/reports/2026-06-21/ddd-user/evidence-20260621-132400-data-application-facade.md`。
 - 已完成能力：看板汇总、报表查询、导出能力。
 - 待优化能力：只读边界审查、dashboard API/SQL 对账、admin/group/self 差异验证；Dashboard summary 双轨聚合和历史结算轨污染仍需专项处理；补充 dashboard / 前端页面级服务费收入与收益双轨验收。
-- DDD 优化下一步：进入 A-1 盘点分析模块代码、接口、表和测试。
+- DDD 优化下一步：进入 A-8 dashboard API 与汇总 SQL 对账，并补 A-9 admin/group/self 看板差异验证。
 - 标记：P0。
 
 ## 商品域
