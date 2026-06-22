@@ -6,6 +6,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.DeptType;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.OrgValidationPolicy;
 import com.colonel.saas.domain.user.port.OrgDepartmentRepository;
 import com.colonel.saas.domain.user.port.OrgDepartmentRepository.DepartmentRecord;
@@ -16,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.Collection;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -28,14 +28,17 @@ public class OrgUnitWriteApplicationService {
 
     private final OrgDepartmentRepository orgDepartmentRepository;
     private final OrgValidationPolicy orgValidationPolicy;
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
     private final OperationLogService operationLogService;
 
     public OrgUnitWriteApplicationService(
             OrgDepartmentRepository orgDepartmentRepository,
             OrgValidationPolicy orgValidationPolicy,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy,
             OperationLogService operationLogService) {
         this.orgDepartmentRepository = orgDepartmentRepository;
         this.orgValidationPolicy = orgValidationPolicy;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
         this.operationLogService = operationLogService;
     }
 
@@ -130,34 +133,14 @@ public class OrgUnitWriteApplicationService {
     }
 
     private void assertCanModify(DepartmentRecord dept, UUID currentUserId, Collection<?> roleCodes) {
-        if (hasAdminRole(roleCodes)) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
             return;
         }
-        if (hasChannelLeaderRole(roleCodes) && Objects.equals(dept.leaderUserId(), currentUserId)) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER)
+                && Objects.equals(dept.leaderUserId(), currentUserId)) {
             return;
         }
         throw new ForbiddenException("无权修改该部门");
-    }
-
-    private boolean hasAdminRole(Collection<?> roleCodes) {
-        return containsNormalized(roleCodes, RoleCodes.ADMIN);
-    }
-
-    private boolean hasChannelLeaderRole(Collection<?> roleCodes) {
-        return containsNormalized(roleCodes, RoleCodes.CHANNEL_LEADER);
-    }
-
-    private boolean containsNormalized(Collection<?> roleCodes, String target) {
-        if (roleCodes == null) {
-            return false;
-        }
-        String normalized = target.trim().toLowerCase(Locale.ROOT);
-        for (Object roleCode : roleCodes) {
-            if (normalized.equals(roleCode.toString().trim().toLowerCase(Locale.ROOT))) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private String resolveLeaderName(UUID leaderUserId, String deptType, String fallbackLeader) {

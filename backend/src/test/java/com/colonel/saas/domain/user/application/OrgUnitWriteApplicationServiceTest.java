@@ -6,6 +6,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.DeptType;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.OrgValidationPolicy;
 import com.colonel.saas.domain.user.port.OrgDeletionConstraintLookup;
 import com.colonel.saas.domain.user.port.OrgDepartmentRepository;
@@ -54,19 +55,39 @@ class OrgUnitWriteApplicationServiceTest {
         service = new OrgUnitWriteApplicationService(
                 departmentRepository,
                 validationPolicy,
+                new CurrentUserPermissionPolicy(),
                 operationLogService);
     }
 
     @Test
     void applicationServiceShouldUsePortsOnly() throws IOException {
-        String source = Files.readString(Path.of(
-                "src/main/java/com/colonel/saas/domain/user/application/OrgUnitWriteApplicationService.java"));
+        String source = readApplicationServiceSource();
 
         assertThat(source).contains("OrgDepartmentRepository");
         assertThat(source).contains("OrgValidationPolicy");
         assertThat(source).doesNotContain("com.colonel.saas.mapper.");
         assertThat(source).doesNotContain("com.colonel.saas.entity.");
         assertThat(source).doesNotContain("com.colonel.saas.domain.user.infrastructure.");
+    }
+
+    @Test
+    void applicationServiceShouldDelegateRoleMatchingToUserPermissionPolicy() throws IOException {
+        String source = readApplicationServiceSource();
+
+        assertThat(source)
+                .contains("CurrentUserPermissionPolicy")
+                .contains("currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN)")
+                .contains("currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER)")
+                .doesNotContain("containsNormalized")
+                .doesNotContain("toLowerCase(Locale.ROOT)");
+    }
+
+    private static String readApplicationServiceSource() throws IOException {
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/domain/user/application/OrgUnitWriteApplicationService.java");
+        if (!Files.exists(sourcePath)) {
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/domain/user/application/OrgUnitWriteApplicationService.java");
+        }
+        return Files.readString(sourcePath);
     }
 
     @Test
@@ -131,6 +152,35 @@ class OrgUnitWriteApplicationServiceTest {
         assertThat(result.getSortOrder()).isEqualTo(0);
         assertThat(result.getStatus()).isEqualTo(1);
         assertThat(departmentRepository.updated.deptCode()).isEqualTo("NEW_CODE");
+    }
+
+    @Test
+    void update_shouldKeepNormalizedChannelLeaderRoleCompatibilityForOwnOrgUnit() {
+        UUID deptId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        departmentRepository.records.put(deptId, record(
+                deptId,
+                "CHANNEL",
+                "渠道组",
+                DeptType.CHANNEL_GROUP,
+                currentUserId));
+        SysDeptUpdateRequest request = new SysDeptUpdateRequest(
+                null,
+                "CHANNEL",
+                "渠道组",
+                null,
+                null,
+                null,
+                0,
+                1,
+                null,
+                DeptType.CHANNEL_GROUP,
+                null);
+
+        var result = service.update(deptId, request, currentUserId, List.of(" CHANNEL_LEADER "));
+
+        assertThat(result.getDeptCode()).isEqualTo("CHANNEL");
+        assertThat(departmentRepository.updated.id()).isEqualTo(deptId);
     }
 
     @Test
