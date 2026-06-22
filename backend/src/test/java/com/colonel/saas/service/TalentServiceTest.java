@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
@@ -9,6 +10,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -32,6 +34,9 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -102,7 +107,9 @@ class TalentServiceTest {
                 businessRuleConfigService,
                 operationLogService,
                 userDomainFacade,
-                new CurrentUserPermissionPolicy()
+                new CurrentUserPermissionPolicy(),
+                new DataScopePolicy(),
+                new DddRefactorProperties()
         );
         when(configDomainFacade.getTalentClaimProtectDays()).thenReturn(30);
         when(configDomainFacade.getExclusiveTalentFeeRatio()).thenReturn(new java.math.BigDecimal("70"));
@@ -188,6 +195,49 @@ class TalentServiceTest {
         when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
 
         assertThat(talentService.getPrivatePool(userId)).containsExactly(talent);
+    }
+
+    @Test
+    void pageDataScope_shouldKeepLegacyDefaultAndDelegateEnabledPathToUserPolicy() throws IOException {
+        String source = Files.readString(sourcePath(
+                "src/main/java/com/colonel/saas/service/TalentService.java"));
+
+        assertThat(source)
+                .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
+                .contains("applyPageDataScopeLegacy")
+                .contains("applyPageDataScopeWithPolicy")
+                .contains("DataScopePolicy")
+                .contains("dataScopePolicy.contextRequirement")
+                .contains("dataScopePolicy.decide");
+    }
+
+    @Test
+    void pageDataScopePolicyEnabledPath_shouldPreserveClaimScopeSemantics() {
+        TalentService enabledService = talentServiceWithDataScopePolicyEnabled();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        TalentClaim userClaim = new TalentClaim();
+        userClaim.setTalentId(talentId);
+        when(talentClaimMapper.findActiveByUserId(userId)).thenReturn(List.of(userClaim));
+        when(talentClaimMapper.findActiveByDeptId(deptId)).thenReturn(List.of());
+        Page<Talent> mapperPage = new Page<>(1, 10, 1);
+        mapperPage.setRecords(List.of(talent("dy_policy_page", 100L)));
+        when(talentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(mapperPage);
+
+        assertThat(enabledService.page(1, 10, null, null, null, null,
+                DataScope.PERSONAL, userId, null).getRecords())
+                .hasSize(1);
+        assertThat(enabledService.page(1, 10, null, null, null, null,
+                DataScope.DEPT, null, deptId).getTotal())
+                .isZero();
+        assertThat(enabledService.page(1, 10, null, null, null, null,
+                DataScope.PERSONAL, null, null).getRecords())
+                .hasSize(1);
+
+        verify(talentClaimMapper).findActiveByUserId(userId);
+        verify(talentClaimMapper).findActiveByDeptId(deptId);
+        verify(talentClaimMapper, never()).findActiveByUserId(null);
     }
 
     @Test
@@ -782,7 +832,9 @@ class TalentServiceTest {
                 businessRuleConfigService,
                 operationLogService,
                 userDomainFacade,
-                new CurrentUserPermissionPolicy()
+                new CurrentUserPermissionPolicy(),
+                new DataScopePolicy(),
+                new DddRefactorProperties()
         );
 
         UUID talentId = UUID.randomUUID();
@@ -1125,6 +1177,37 @@ class TalentServiceTest {
                 () -> talentService.overrideTalentAssignment(UUID.randomUUID(), userId, "reason", UUID.randomUUID()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("目标负责人不存在");
+    }
+
+    private TalentService talentServiceWithDataScopePolicyEnabled() {
+        DddRefactorProperties properties = new DddRefactorProperties();
+        properties.getDataScopePolicy().setEnabled(true);
+        return new TalentService(
+                talentMapper,
+                talentClaimMapper,
+                talentEnrichTaskMapper,
+                talentEnrichOrchestrator,
+                orderMapper,
+                sampleRequestMapper,
+                redisTemplate,
+                crawlerTalentInfoService,
+                true,
+                configDomainFacade,
+                businessRuleConfigService,
+                operationLogService,
+                userDomainFacade,
+                new CurrentUserPermissionPolicy(),
+                new DataScopePolicy(),
+                properties
+        );
+    }
+
+    private Path sourcePath(String backendRelativePath) {
+        Path fromBackend = Path.of(backendRelativePath);
+        if (Files.exists(fromBackend)) {
+            return fromBackend;
+        }
+        return Path.of("backend").resolve(backendRelativePath);
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
@@ -24,6 +25,7 @@ import com.colonel.saas.domain.talent.policy.TalentTagPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
 import com.colonel.saas.service.talent.TalentInputParseResult;
@@ -145,6 +147,10 @@ public class TalentService {
     private final UserDomainFacade userDomainFacade;
     /** 当前用户权限策略（用于统一解释角色编码集合） */
     private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+    /** 用户域数据范围策略（灰度开启时消费，默认关闭保留 Legacy 路径） */
+    private final DataScopePolicy dataScopePolicy;
+    /** DDD 重构灰度开关配置 */
+    private final DddRefactorProperties dddRefactorProperties;
 
     /**
      * 构造函数，通过依赖注入初始化所有必需的服务和仓储。
@@ -163,6 +169,8 @@ public class TalentService {
      * @param operationLogService      操作日志服务
      * @param userDomainFacade         用户域门面
      * @param currentUserPermissionPolicy 当前用户权限策略
+     * @param dataScopePolicy             用户域数据范围策略
+     * @param dddRefactorProperties       DDD 重构灰度开关配置
      */
     public TalentService(
             TalentMapper talentMapper,
@@ -178,7 +186,9 @@ public class TalentService {
             BusinessRuleConfigService businessRuleConfigService,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
+            CurrentUserPermissionPolicy currentUserPermissionPolicy,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.talentMapper = talentMapper;
         this.talentClaimMapper = talentClaimMapper;
         this.talentEnrichTaskMapper = talentEnrichTaskMapper;
@@ -193,6 +203,8 @@ public class TalentService {
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
         this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     /**
@@ -303,22 +315,77 @@ public class TalentService {
             wrapper.le(Talent::getFans, maxFans);
         }
 
-        if (dataScope == DataScope.PERSONAL && userId != null) {
-            List<TalentClaim> claims = talentClaimMapper.findActiveByUserId(userId);
-            Set<UUID> ids = claims.stream().map(TalentClaim::getTalentId).collect(Collectors.toSet());
-            if (ids.isEmpty()) {
-                return new Page<>(page, size, 0L);
-            }
-            wrapper.in(Talent::getId, ids);
-        } else if (dataScope == DataScope.DEPT && deptId != null) {
-            List<TalentClaim> claims = talentClaimMapper.findActiveByDeptId(deptId);
-            Set<UUID> ids = claims.stream().map(TalentClaim::getTalentId).collect(Collectors.toSet());
-            if (ids.isEmpty()) {
-                return new Page<>(page, size, 0L);
-            }
-            wrapper.in(Talent::getId, ids);
+        boolean hasScopedClaims = applyPageDataScope(wrapper, dataScope, userId, deptId);
+        if (!hasScopedClaims) {
+            return new Page<>(page, size, 0L);
         }
         return talentMapper.selectPage(new Page<>(page, size), wrapper);
+    }
+
+    private boolean applyPageDataScope(
+            LambdaQueryWrapper<Talent> wrapper,
+            DataScope dataScope,
+            UUID userId,
+            UUID deptId) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            return applyPageDataScopeLegacy(wrapper, dataScope, userId, deptId);
+        }
+        return applyPageDataScopeWithPolicy(wrapper, dataScope, userId, deptId);
+    }
+
+    private boolean applyPageDataScopeLegacy(
+            LambdaQueryWrapper<Talent> wrapper,
+            DataScope dataScope,
+            UUID userId,
+            UUID deptId) {
+        if (dataScope == DataScope.PERSONAL && userId != null) {
+            return applyClaimedTalentFilter(
+                    wrapper,
+                    talentClaimMapper.findActiveByUserId(userId));
+        }
+        if (dataScope == DataScope.DEPT && deptId != null) {
+            return applyClaimedTalentFilter(
+                    wrapper,
+                    talentClaimMapper.findActiveByDeptId(deptId));
+        }
+        return true;
+    }
+
+    private boolean applyPageDataScopeWithPolicy(
+            LambdaQueryWrapper<Talent> wrapper,
+            DataScope dataScope,
+            UUID userId,
+            UUID deptId) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            return true;
+        }
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+            return applyClaimedTalentFilter(
+                    wrapper,
+                    talentClaimMapper.findActiveByUserId(userId));
+        }
+        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+            return applyClaimedTalentFilter(
+                    wrapper,
+                    talentClaimMapper.findActiveByDeptId(deptId));
+        }
+        return true;
+    }
+
+    private boolean applyClaimedTalentFilter(
+            LambdaQueryWrapper<Talent> wrapper,
+            List<TalentClaim> claims) {
+        Set<UUID> ids = claims.stream()
+                .map(TalentClaim::getTalentId)
+                .collect(Collectors.toSet());
+        if (ids.isEmpty()) {
+            return false;
+        }
+        wrapper.in(Talent::getId, ids);
+        return true;
     }
 
     /**

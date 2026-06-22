@@ -87,8 +87,8 @@ public class DddRefactorProperties {
     /**
      * 数据范围过滤（DataScopePolicy）灰度开关（DDD-DATASCOPE-001，P1 修复）。
      *
-     * <p>控制 OrderController / OrderService / LegacyOrderDomainFacade
-     * 是否走 DataScopePolicy 路径。OFF = 旧 switch 实现，ON = 新 Policy 路径。</p>
+     * <p>控制业务域数据范围调用点是否走 DataScopePolicy 路径。
+     * OFF = 旧实现，ON = 新 Policy 路径。</p>
      *
      * <p>默认 OFF（生产零变化）。</p>
      */
