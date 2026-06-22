@@ -118,8 +118,4 @@ public class ActivityAccessService {
     public Collection<String> normalizeRoles(Object roleCodes) {
         return currentUserPermissionPolicy.normalizeRoleCodes(roleCodes);
     }
-
-    public static Collection<String> normalizeRoleCodes(Object roleCodes) {
-        return new CurrentUserPermissionPolicy().normalizeRoleCodes(roleCodes);
-    }
 }

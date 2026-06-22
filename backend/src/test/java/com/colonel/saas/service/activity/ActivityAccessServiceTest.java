@@ -11,6 +11,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -45,8 +47,22 @@ class ActivityAccessServiceTest {
 
     @Test
     void normalizeRoleCodes_shouldUseUserDomainPolicy() {
-        assertThat(ActivityAccessService.normalizeRoleCodes("[ADMIN, biz_staff, ADMIN]"))
+        assertThat(activityAccessService.normalizeRoles("[ADMIN, biz_staff, ADMIN]"))
                 .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
+    }
+
+    @Test
+    void activityAccessService_shouldNotCreateUserPermissionPolicyDirectly() throws Exception {
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/service/activity/ActivityAccessService.java");
+        if (!Files.exists(sourcePath)) {
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/service/activity/ActivityAccessService.java");
+        }
+        String source = Files.readString(sourcePath);
+
+        assertThat(source)
+                .doesNotContain("new CurrentUserPermissionPolicy()")
+                .doesNotContain("public static Collection<String> normalizeRoleCodes")
+                .contains("CurrentUserPermissionPolicy currentUserPermissionPolicy");
     }
 
     @Test
