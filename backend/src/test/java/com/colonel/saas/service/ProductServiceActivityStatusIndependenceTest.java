@@ -28,7 +28,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -462,6 +464,36 @@ class ProductServiceActivityStatusIndependenceTest {
         InOrder inOrder = inOrder(productDisplayRuleService);
         inOrder.verify(productDisplayRuleService).repairLibraryStateForActivity(activityId, false, 10000);
         inOrder.verify(productDisplayRuleService).applyForActivityId(activityId);
+    }
+
+    @Test
+    void refreshActivitySnapshots_shouldMarkMissingSnapshotsDeletedForCompletedStatusRefresh() {
+        String activityId = "ACT010";
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenReturn(new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        10L,
+                        30001L,
+                        1L,
+                        null,
+                        List.of(item(8L, "当前终止商品", 3, "合作已终止"))));
+        when(operationStateMapper.selectOne(any())).thenReturn(null);
+        when(productBizStatusService.initStateIfAbsent(any(), eq(activityId), eq("8"), any(), any(), any()))
+                .thenReturn(state(activityId, "8"));
+        when(snapshotMapper.update(isNull(), any())).thenReturn(2);
+
+        ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshots(
+                new DouyinProductGateway.ActivityProductQueryRequest(
+                        null, activityId, 4L, 1L, 20, null, null, null, 3, 1L, null, null));
+
+        assertThat(result.syncedProductCount()).isEqualTo(1);
+        verify(snapshotMapper).update(isNull(), argThat(wrapper -> {
+            String sql = wrapper.getSqlSegment();
+            return sql.contains("activity_id")
+                    && sql.contains("deleted")
+                    && sql.contains("status")
+                    && sql.contains("product_id NOT IN");
+        }));
     }
 
     private DouyinProductGateway.ActivityProductItem item(long productId, String title) {

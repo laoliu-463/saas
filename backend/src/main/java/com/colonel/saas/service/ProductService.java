@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.ProductBizStatus;
@@ -642,7 +643,10 @@ public class ProductService {
                 state == null ? null : state.getBizStatus())) {
             return false;
         }
-        if (StringUtils.hasText(filter.allianceStatus()) && !matchesAllianceStatusFilter(snapshot, filter.allianceStatus())) {
+        if (StringUtils.hasText(filter.allianceStatus()) && !productDisplayPolicy.matchesSelectedLibraryAllianceStatusFilter(
+                filter.allianceStatus(),
+                snapshot == null ? null : snapshot.getStatus(),
+                snapshot == null ? null : snapshot.getStatusText())) {
             return false;
         }
         if (StringUtils.hasText(filter.commission()) && !matchesCommissionFilter(snapshot, filter.commission())) {
@@ -1060,35 +1064,6 @@ public class ProductService {
             return;
         }
         wrapper.eq(ProductSnapshot::getStatus, normalizedPromotionStatus);
-    }
-
-    private boolean matchesAllianceStatusFilter(ProductSnapshot snapshot, String allianceStatus) {
-        Integer status = snapshot.getStatus();
-        if ("pending_audit".equals(allianceStatus) && java.util.Objects.equals(status, 0)) {
-            return true;
-        }
-        if ("promoting".equals(allianceStatus) && java.util.Objects.equals(status, 1)) {
-            return true;
-        }
-        if ("rejected".equals(allianceStatus) && java.util.Objects.equals(status, 2)) {
-            return true;
-        }
-        if ("terminated".equals(allianceStatus)
-                && (java.util.Objects.equals(status, 3) || java.util.Objects.equals(status, 4))) {
-            return true;
-        }
-        if ("expired".equals(allianceStatus) && java.util.Objects.equals(status, 6)) {
-            return true;
-        }
-        String text = snapshot.getStatusText();
-        return switch (allianceStatus) {
-            case "pending_audit" -> containsAny(text, "待审核", "审核中");
-            case "promoting" -> containsAny(text, "推广中", "推广");
-            case "rejected" -> containsAny(text, "未通过", "拒绝", "申请未通过");
-            case "terminated" -> containsAny(text, "终止", "已终止", "取消");
-            case "expired" -> containsAny(text, "过期", "已过期", "到期", "已到期");
-            default -> true;
-        };
     }
 
     private boolean containsAny(String value, String... keywords) {
@@ -1780,6 +1755,12 @@ public class ProductService {
         int skippedCount = pageResult.skippedCount();
         int libraryEntryCount = pageResult.libraryEntryCount();
 
+        int staleDeletedCount = reconcileActivitySnapshotsAfterCompleteRefresh(request, pageResult);
+        if (staleDeletedCount > 0) {
+            log.info("Activity product stale snapshots marked deleted, activityId={}, status={}, staleDeletedCount={}",
+                    request.activityId(), request.status(), staleDeletedCount);
+        }
+
         ProductDisplayRuleService.LibraryRepairResult repairResult =
                 productDisplayRuleService.repairLibraryStateForActivity(request.activityId(), false, 10000);
         log.info("Activity product library state repair after refresh, activityId={}, scanned={}, promoting={}, willSelectToLibrary={}, willDisplay={}, unchanged={}",
@@ -1827,6 +1808,31 @@ public class ProductService {
                 pageResult.stopReason().name(),
                 pageResult.stillHasNextWhenStopped(),
                 pageResult.complete());
+    }
+
+    private int reconcileActivitySnapshotsAfterCompleteRefresh(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            ActivityProductPaginationRunner.Result pageResult) {
+        if (request == null
+                || pageResult == null
+                || !pageResult.complete()
+                || !StringUtils.hasText(request.activityId())) {
+            return 0;
+        }
+        Set<String> currentProductIds = pageResult.productIds() == null ? Set.of() : pageResult.productIds();
+        UpdateWrapper<ProductSnapshot> wrapper = new UpdateWrapper<>();
+        wrapper.eq("activity_id", request.activityId())
+                .eq("deleted", 0)
+                .set("deleted", 1)
+                .set("update_time", LocalDateTime.now());
+        Integer status = productDisplayPolicy.normalizeActivityProductFilterStatus(request.status());
+        if (status != null) {
+            wrapper.eq("status", status);
+        }
+        if (!currentProductIds.isEmpty()) {
+            wrapper.notIn("product_id", currentProductIds);
+        }
+        return snapshotMapper.update(null, wrapper);
     }
 
     private String syncStatusForStopReason(ActivityProductPaginationRunner.StopReason stopReason) {

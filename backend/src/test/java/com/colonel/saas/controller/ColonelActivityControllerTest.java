@@ -21,6 +21,7 @@ import org.springframework.http.MediaType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -40,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -528,6 +530,9 @@ class ColonelActivityControllerTest {
         verify(douyinProductGateway, never()).queryActivityProducts(any());
         verify(productService, never()).upsertSnapshots(eq("100018"), any());
         verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
+        InOrder inOrder = inOrder(productService);
+        inOrder.verify(productService).refreshActivitySnapshots(any());
+        inOrder.verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
     }
 
     @Test

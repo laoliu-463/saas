@@ -270,6 +270,24 @@ class ProductDisplayPolicyTest {
         assertThat(policy.matchesSelectedLibraryListedFilter("unexpected", 1)).isFalse();
     }
 
+    @Test
+    void selectedLibraryAllianceStatusFilter_shouldKeepLegacyCodeAndTextContract() {
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("pending_audit", 0, null)).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("promoting", 1, null)).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("rejected", 2, null)).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("terminated", 3, null)).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("terminated", 4, null)).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("expired", 6, null)).isTrue();
+
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("pending_audit", null, "审核中")).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("promoting", null, "推广中")).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("rejected", null, "申请未通过")).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("terminated", null, "合作已终止")).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("expired", null, "已到期")).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("unknown", null, "已到期")).isTrue();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("expired", 1, "推广中")).isFalse();
+    }
+
     private static ProductDisplayRelationInput eligible(
             String activityId,
             long commission,

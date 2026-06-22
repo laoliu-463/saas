@@ -318,6 +318,35 @@ public class ProductDisplayPolicy {
         return "1".equals(listed) ? upstreamListed : !upstreamListed;
     }
 
+    public boolean matchesSelectedLibraryAllianceStatusFilter(
+            String allianceStatus,
+            Integer upstreamStatus,
+            String upstreamStatusText) {
+        if ("pending_audit".equals(allianceStatus) && Objects.equals(upstreamStatus, 0)) {
+            return true;
+        }
+        if ("promoting".equals(allianceStatus) && Objects.equals(upstreamStatus, 1)) {
+            return true;
+        }
+        if ("rejected".equals(allianceStatus) && Objects.equals(upstreamStatus, 2)) {
+            return true;
+        }
+        if ("terminated".equals(allianceStatus) && (Objects.equals(upstreamStatus, 3) || Objects.equals(upstreamStatus, 4))) {
+            return true;
+        }
+        if ("expired".equals(allianceStatus) && Objects.equals(upstreamStatus, 6)) {
+            return true;
+        }
+        return switch (allianceStatus) {
+            case "pending_audit" -> containsAny(upstreamStatusText, "待审核", "审核中");
+            case "promoting" -> containsAny(upstreamStatusText, "推广中", "推广");
+            case "rejected" -> containsAny(upstreamStatusText, "未通过", "拒绝", "申请未通过");
+            case "terminated" -> containsAny(upstreamStatusText, "终止", "已终止", "取消");
+            case "expired" -> containsAny(upstreamStatusText, "过期", "已过期", "到期", "已到期");
+            default -> true;
+        };
+    }
+
     public String normalizeActivityProductStatusText(Integer status, String statusText) {
         if (Integer.valueOf(4).equals(status) && containsAny(statusText, "合作前取消", "取消")) {
             return "合作已终止";

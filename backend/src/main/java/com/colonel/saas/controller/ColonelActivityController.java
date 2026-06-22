@@ -221,11 +221,11 @@ public class ColonelActivityController extends BaseController {
                         new DouyinProductGateway.ActivityProductQueryRequest(
                                 appId, activityId, searchType, sortType, count, cooperationInfo, cooperationType,
                                 productInfo, status, retrieveMode, cursor, page);
-                Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
-                        activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags);
                 colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
                 ProductService.ActivityProductRefreshResult refreshResult =
                         productService.refreshActivitySnapshots(queryRequest);
+                Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
+                        activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags);
                 Map<String, Object> syncStats = new LinkedHashMap<>();
                 syncStats.put("syncedProductCount", refreshResult.syncedProductCount());
                 syncStats.put("libraryEntryCount", refreshResult.libraryEntryCount());

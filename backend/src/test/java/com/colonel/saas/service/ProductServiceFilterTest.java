@@ -277,6 +277,29 @@ class ProductServiceFilterTest {
     }
 
     @Test
+    void getSelectedLibraryPage_shouldFilterByAllianceStatusTextWhenCoreVisible() {
+        ProductOperationState terminatedState = state("10001", "9001");
+        ProductOperationState promotingState = state("10002", "9002");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
+        statePage.setRecords(List.of(terminatedState, promotingState));
+
+        ProductSnapshot terminated = snapshot("10001", "9001", "玩具乐器", 9900L);
+        terminated.setStatus(1);
+        terminated.setStatusText("合作已终止");
+        ProductSnapshot promoting = snapshot("10002", "9002", "美妆", 8800L);
+        promoting.setStatus(1);
+        promoting.setStatusText("推广中");
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(terminated, promoting));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().allianceStatus("terminated").build());
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getRecords()).singleElement().extracting("productId").isEqualTo("9001");
+    }
+
+    @Test
     void getSelectedLibraryPage_shouldFilterFreeSampleListedAndSupplementCheckboxes() {
         ProductOperationState matchedState = state("10001", "9001");
         matchedState.setAuditPayload("""
@@ -676,6 +699,7 @@ class ProductServiceFilterTest {
         FilterBuilder productId(String value) { this.productId = value; return this; }
         FilterBuilder sortBy(String value) { this.sortBy = value; return this; }
         FilterBuilder promotionLink(String value) { this.promotionLink = value; return this; }
+        FilterBuilder allianceStatus(String value) { this.allianceStatus = value; return this; }
 
         ProductService.SelectedLibraryFilter build() {
             return new ProductService.SelectedLibraryFilter(
