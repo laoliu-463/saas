@@ -51,6 +51,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
@@ -220,6 +221,19 @@ class TalentServiceTest {
                 .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
                 .contains("assertCanOperateBlacklistLegacy")
                 .contains("assertCanOperateBlacklistWithPolicy")
+                .contains("dataScopePolicy.contextRequirement")
+                .contains("dataScopePolicy.decide");
+    }
+
+    @Test
+    void evaluateExclusiveDataScope_shouldKeepLegacyDefaultAndDelegateEnabledPathToUserPolicy() throws IOException {
+        String source = Files.readString(sourcePath(
+                "src/main/java/com/colonel/saas/service/TalentService.java"));
+
+        assertThat(source)
+                .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
+                .contains("applyExclusiveDataScopeLegacy")
+                .contains("applyExclusiveDataScopeWithPolicy")
                 .contains("dataScopePolicy.contextRequirement")
                 .contains("dataScopePolicy.decide");
     }
@@ -1004,6 +1018,36 @@ class TalentServiceTest {
     }
 
     @Test
+    void evaluateExclusiveDataScopePolicyEnabledPath_shouldDelegateOrderScopeDecisionToUserPolicy() {
+        DataScopePolicy dataScopePolicy = spy(new DataScopePolicy());
+        TalentService enabledService = talentServiceWithDataScopePolicyEnabled(dataScopePolicy);
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        Talent talent = talent("dy_scope", 10L);
+        talent.setId(talentId);
+        talent.setDeleted(0);
+
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+        Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 0);
+        orderPage.setRecords(List.of());
+        when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
+        when(sampleRequestMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+
+        enabledService.evaluateExclusive(talentId, DataScope.PERSONAL, userId, null);
+        enabledService.evaluateExclusive(talentId, DataScope.DEPT, null, deptId);
+        enabledService.evaluateExclusive(talentId, DataScope.PERSONAL, null, null);
+
+        verify(dataScopePolicy).contextRequirement(userId, null, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(userId, null, DataScope.PERSONAL);
+        verify(dataScopePolicy).contextRequirement(null, deptId, DataScope.DEPT);
+        verify(dataScopePolicy).decide(null, deptId, DataScope.DEPT);
+        verify(dataScopePolicy).contextRequirement(null, null, DataScope.PERSONAL);
+        verify(dataScopePolicy, never()).decide(null, null, DataScope.PERSONAL);
+        verify(orderMapper, times(3)).selectPage(any(Page.class), any(LambdaQueryWrapper.class));
+    }
+
+    @Test
     void getLatestEnrichTask_shouldQueryMapper() {
         UUID talentId = UUID.randomUUID();
         TalentEnrichTask task = new TalentEnrichTask();
@@ -1271,6 +1315,10 @@ class TalentServiceTest {
     }
 
     private TalentService talentServiceWithDataScopePolicyEnabled() {
+        return talentServiceWithDataScopePolicyEnabled(new DataScopePolicy());
+    }
+
+    private TalentService talentServiceWithDataScopePolicyEnabled(DataScopePolicy dataScopePolicy) {
         DddRefactorProperties properties = new DddRefactorProperties();
         properties.getDataScopePolicy().setEnabled(true);
         return new TalentService(
@@ -1288,7 +1336,7 @@ class TalentServiceTest {
                 operationLogService,
                 userDomainFacade,
                 new CurrentUserPermissionPolicy(),
-                new DataScopePolicy(),
+                dataScopePolicy,
                 properties
         );
     }

@@ -1334,11 +1334,7 @@ public class TalentService {
         LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper =
                 new LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder>()
                         .ge(com.colonel.saas.entity.ColonelsettlementOrder::getSettleTime, start);
-        if (dataScope == DataScope.PERSONAL && userId != null) {
-            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getUserId, userId);
-        } else if (dataScope == DataScope.DEPT && deptId != null) {
-            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getDeptId, deptId);
-        }
+        applyExclusiveDataScope(wrapper, dataScope, userId, deptId);
         List<com.colonel.saas.entity.ColonelsettlementOrder> monthOrders = loadOrdersInBatches(wrapper);
 
         long totalServiceFee = 0L;
@@ -1359,6 +1355,50 @@ public class TalentService {
         boolean eligible = serviceRatio >= configDomainFacade.getExclusiveTalentFeeRatio().longValue()
                 && monthlySamples >= configDomainFacade.getExclusiveTalentMonthlySamples();
         return new ExclusiveCheckResult(eligible, serviceRatio, monthlySamples);
+    }
+
+    private void applyExclusiveDataScope(
+            LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper,
+            DataScope dataScope,
+            UUID userId,
+            UUID deptId) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            applyExclusiveDataScopeLegacy(wrapper, dataScope, userId, deptId);
+            return;
+        }
+        applyExclusiveDataScopeWithPolicy(wrapper, dataScope, userId, deptId);
+    }
+
+    private void applyExclusiveDataScopeLegacy(
+            LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper,
+            DataScope dataScope,
+            UUID userId,
+            UUID deptId) {
+        if (dataScope == DataScope.PERSONAL && userId != null) {
+            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getUserId, userId);
+        } else if (dataScope == DataScope.DEPT && deptId != null) {
+            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getDeptId, deptId);
+        }
+    }
+
+    private void applyExclusiveDataScopeWithPolicy(
+            LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper,
+            DataScope dataScope,
+            UUID userId,
+            UUID deptId) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            return;
+        }
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getUserId, userId);
+            return;
+        }
+        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getDeptId, deptId);
+        }
     }
 
     /**
