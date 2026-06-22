@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -24,6 +25,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -40,10 +44,14 @@ class OrderAttributionServiceTest {
     private ColonelsettlementOrderMapper orderMapper;
 
     private OrderAttributionService service;
+    private DataScopePolicy dataScopePolicy;
+    private DddRefactorProperties dddRefactorProperties;
 
     @BeforeEach
     void setUp() {
-        service = new OrderAttributionService(orderMapper, new DataScopePolicy());
+        dataScopePolicy = spy(new DataScopePolicy());
+        dddRefactorProperties = new DddRefactorProperties();
+        service = new OrderAttributionService(orderMapper, dataScopePolicy, dddRefactorProperties);
     }
 
     // ============================================================
@@ -89,6 +97,88 @@ class OrderAttributionServiceTest {
         verify(orderMapper).findPageWithScope(any(Page.class), captor.capture());
         String sql = captor.getValue().getSqlSegment();
         assertThat(sql).contains("co.user_id");
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void findUnattributedPage_shouldKeepLegacyDataScopeWhenPolicyDisabled() {
+        UUID userId = UUID.randomUUID();
+        when(orderMapper.findPageWithScope(any(Page.class), any())).thenReturn(new Page<>(1, 10, 0));
+
+        service.findUnattributedPage(1L, 10L, null, null, userId, null, DataScope.PERSONAL);
+
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> captor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(orderMapper).findPageWithScope(any(Page.class), captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("co.user_id");
+        verify(dataScopePolicy, never()).applyTo(
+                any(QueryWrapper.class),
+                any(),
+                any(),
+                any(),
+                any(String.class),
+                any(String.class));
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void findUnattributedPage_dataScopePolicyEnabledPathShouldDelegateToUserPolicy() {
+        UUID userId = UUID.randomUUID();
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        when(orderMapper.findPageWithScope(any(Page.class), any())).thenReturn(new Page<>(1, 10, 0));
+
+        service.findUnattributedPage(1L, 10L, null, null, userId, null, DataScope.PERSONAL);
+
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> captor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(orderMapper).findPageWithScope(any(Page.class), captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("co.user_id");
+        verify(dataScopePolicy).applyTo(
+                any(QueryWrapper.class),
+                eq(userId),
+                eq(null),
+                eq(DataScope.PERSONAL),
+                eq("co.user_id"),
+                eq("co.dept_id"));
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void buildScopedQuery_shouldKeepLegacyDataScopeWhenPolicyDisabled() {
+        UUID deptId = UUID.randomUUID();
+
+        QueryWrapper<ColonelsettlementOrder> wrapper = service.buildScopedQuery(
+                null,
+                deptId,
+                DataScope.DEPT);
+
+        assertThat(wrapper.getSqlSegment()).contains("dept_id");
+        verify(dataScopePolicy, never()).applyTo(
+                any(QueryWrapper.class),
+                any(),
+                any(),
+                any(),
+                any(String.class),
+                any(String.class));
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void buildScopedQuery_dataScopePolicyEnabledPathShouldDelegateToUserPolicy() {
+        UUID deptId = UUID.randomUUID();
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+
+        QueryWrapper<ColonelsettlementOrder> wrapper = service.buildScopedQuery(
+                null,
+                deptId,
+                DataScope.DEPT);
+
+        assertThat(wrapper.getSqlSegment()).contains("dept_id");
+        verify(dataScopePolicy).applyTo(
+                any(QueryWrapper.class),
+                eq(null),
+                eq(deptId),
+                eq(DataScope.DEPT),
+                eq("user_id"),
+                eq("dept_id"));
     }
 
     @Test

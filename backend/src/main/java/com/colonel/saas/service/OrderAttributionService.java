@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -49,12 +50,15 @@ public class OrderAttributionService {
 
     private final ColonelsettlementOrderMapper orderMapper;
     private final DataScopePolicy dataScopePolicy;
+    private final DddRefactorProperties dddRefactorProperties;
 
     public OrderAttributionService(
             ColonelsettlementOrderMapper orderMapper,
-            DataScopePolicy dataScopePolicy) {
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.orderMapper = orderMapper;
         this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     // ============================================================
@@ -211,10 +215,7 @@ public class OrderAttributionService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        if (wrapper == null || dataScope == null) {
-            return;
-        }
-        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, "co.user_id", "co.dept_id");
+        applyDataScope(wrapper, userId, deptId, dataScope, "co.user_id", "co.dept_id");
     }
 
     public void applyScopedQueryDataScope(
@@ -225,7 +226,50 @@ public class OrderAttributionService {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
+        applyDataScope(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
+    }
+
+    private void applyDataScope(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            String userIdColumn,
+            String deptIdColumn) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            applyDataScopeLegacy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+            return;
+        }
+        applyDataScopeWithPolicy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+    }
+
+    private void applyDataScopeLegacy(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            String userIdColumn,
+            String deptIdColumn) {
+        if (dataScope == DataScope.PERSONAL && userId != null && StringUtils.hasText(userIdColumn)) {
+            wrapper.eq(userIdColumn, userId);
+            return;
+        }
+        if (dataScope == DataScope.DEPT && deptId != null && StringUtils.hasText(deptIdColumn)) {
+            wrapper.eq(deptIdColumn, deptId);
+        }
+    }
+
+    private void applyDataScopeWithPolicy(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            String userIdColumn,
+            String deptIdColumn) {
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
     }
 
     public Map<String, Object> getSingleAggregate(QueryWrapper<ColonelsettlementOrder> wrapper) {
