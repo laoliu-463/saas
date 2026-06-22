@@ -61,21 +61,20 @@ final class TestMockActivityProductSupport {
      * <p>处理流程：</p>
      * <ol>
      *   <li>仅使用商品排名构造稳定分布</li>
-     *   <li>同一活动下可同时出现待审核、推广中、申请未通过、合作已终止、合作前取消、合作已到期</li>
+     *   <li>同一活动下可同时出现待审核、推广中、申请未通过、合作已终止、合作已到期</li>
      * </ol>
      *
      * @param activitySeed 活动 ID 种子值，仅用于保持方法签名兼容
      * @param rank         商品在列表中的排名（从 1 开始）
-     * @return 商品状态码（0=待审核, 1=推广中, 2=申请未通过, 3=合作已终止, 4=合作前取消, 6=合作已到期）
+     * @return 商品状态码（0=待审核, 1=推广中, 2=申请未通过, 3=合作已终止, 6=合作已到期）
      */
     static int resolveMockProductStatus(long activitySeed, int rank) {
-        return switch (Math.floorMod(rank, 6)) {
+        return switch (Math.floorMod(rank, 5)) {
             case 0 -> 0;
             case 1 -> 1;
             case 2 -> 2;
             case 3 -> 3;
-            case 4 -> 6;
-            default -> 4;
+            default -> 6;
         };
     }
 
@@ -118,7 +117,7 @@ final class TestMockActivityProductSupport {
     /**
      * 将商品状态码转换为中文状态文本。
      *
-     * @param status 商品状态码（0=待审核, 1=推广中, 2=申请未通过, 3=合作已终止, 4=合作前取消, 6=合作已到期）
+     * @param status 商品状态码（0=待审核, 1=推广中, 2=申请未通过, 3=合作已终止, 6=合作已到期；4 为历史兼容，按合作已终止展示）
      * @return 对应的中文状态描述，未知状态返回 "未知状态"
      */
     static String productStatusText(int status) {
@@ -127,7 +126,7 @@ final class TestMockActivityProductSupport {
             case 1 -> "推广中";
             case 2 -> "申请未通过";
             case 3 -> "合作已终止";
-            case 4 -> "合作前取消";
+            case 4 -> "合作已终止";
             case 6 -> "合作已到期";
             default -> "未知状态";
         };

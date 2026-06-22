@@ -395,7 +395,7 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
      * @return 标准化的 ActivityProductItem 实例
      */
     private ActivityProductItem normalizeProductItem(Map<String, Object> raw) {
-        int status = (int) asLong(pick(raw, "status"), 0L);
+        int status = normalizeProductStatus((int) asLong(pick(raw, "status"), 0L));
         int cosType = (int) asLong(pick(raw, "cos_type", "cosType"), 0L);
         long price = asLong(pick(raw, "price"), 0L);
         long activityCosRatio = asLong(pick(raw, "activity_cos_ratio"), 0L);
@@ -439,7 +439,7 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
     /**
      * 将商品状态码转为中文描述。
      *
-     * @param status 商品状态码（0=待审核, 1=推广中, 2=申请未通过, 3=合作已终止, 4=合作前取消, 6=合作已到期）
+     * @param status 商品状态码（0=待审核, 1=推广中, 2=申请未通过, 3=合作已终止, 6=合作已到期；4 为历史兼容，按合作已终止展示）
      * @return 状态中文描述，未知状态返回 "未知状态"
      */
     private String productStatusText(int status) {
@@ -448,10 +448,14 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
             case 1 -> "推广中";
             case 2 -> "申请未通过";
             case 3 -> "合作已终止";
-            case 4 -> "合作前取消";
+            case 4 -> "合作已终止";
             case 6 -> "合作已到期";
             default -> "未知状态";
         };
+    }
+
+    private int normalizeProductStatus(int status) {
+        return status == 4 ? 3 : status;
     }
 
     /**

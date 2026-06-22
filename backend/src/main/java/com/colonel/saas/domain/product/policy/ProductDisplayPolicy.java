@@ -469,6 +469,7 @@ public class ProductDisplayPolicy {
                 case 2:
                     return "REJECTED";
                 case 3:
+                case 4:
                     return "TERMINATED";
                 case 6:
                     return "EXPIRED";
@@ -483,7 +484,7 @@ public class ProductDisplayPolicy {
         if (text.contains("未通过") || text.contains("拒绝")) {
             return "REJECTED";
         }
-        if (text.contains("终止")) {
+        if (text.contains("终止") || text.contains("取消")) {
             return "TERMINATED";
         }
         if (text.contains("到期") || text.contains("过期")) {

@@ -86,7 +86,14 @@
          WHERE ps.activity_id = #{activityId}
            AND ps.deleted = 0
            <if test="promotionStatus != null">
+               <choose>
+                   <when test="promotionStatus == 3">
+           AND ps.status IN (3, 4)
+                   </when>
+                   <otherwise>
            AND ps.status = #{promotionStatus}
+                   </otherwise>
+               </choose>
            </if>
            <if test="productInfo != null and productInfo != ''">
            AND (

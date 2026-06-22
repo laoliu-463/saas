@@ -134,6 +134,11 @@ describe('product action rules', () => {
     expect(keys({ officialStatus: 'TERMINATED', hasOrders: true })).toEqual(['detail', 'viewOrders'])
   })
 
+  it('treats legacy upstream status 4 as terminated instead of pending review', () => {
+    expect(keys({ status: 4, statusText: '合作前取消', hasOrders: true } as ProductManageRow))
+      .toEqual(['detail', 'viewOrders'])
+  })
+
   it('keeps expired rows eligible for extension but not link or sample actions', () => {
     expect(keys({ officialStatus: 'EXPIRED', hasOrders: true })).toEqual(['detail', 'extendPromotion', 'viewOrders'])
   })

@@ -168,6 +168,24 @@ class ProductDisplayPolicyTest {
                 .isEqualTo(ProductDisplayPolicy.DISPLAY_REASON_RULE);
     }
 
+    @Test
+    void legacyStatusFour_shouldNotFallbackToPendingReview() {
+        ProductDisplayPolicy.ActivityProductStatusPresentation presentation =
+                policy.resolveActivityProductStatusPresentation(
+                        4,
+                        "合作前取消",
+                        null,
+                        null,
+                        false,
+                        false,
+                        false,
+                        false,
+                        null,
+                        null);
+
+        assertThat(presentation.officialStatus()).isEqualTo("TERMINATED");
+    }
+
     private static ProductDisplayRelationInput eligible(
             String activityId,
             long commission,

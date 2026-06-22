@@ -249,7 +249,13 @@ describe('product filters', () => {
   })
 
   it('matchAllianceStatus matches expired status', () => {
+    expect(matchAllianceStatus({ statusText: '合作已到期' }, 'expired')).toBe(true)
     expect(matchAllianceStatus({ statusText: '合作已过期' }, 'expired')).toBe(true)
+  })
+
+  it('matchAllianceStatus treats legacy status 4 as terminated only for local compatibility', () => {
+    expect(matchAllianceStatus({ status: 4, statusText: '合作前取消' }, 'terminated')).toBe(true)
+    expect(matchAllianceStatus({ status: 4, statusText: '合作前取消' }, 'pending_audit')).toBe(false)
   })
 
   it('applyProductFilters filters items correctly', () => {

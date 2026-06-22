@@ -1053,6 +1053,30 @@ public class ProductService {
         };
     }
 
+    private void applyActivityProductPromotionStatusFilter(
+            LambdaQueryWrapper<ProductSnapshot> wrapper,
+            Integer promotionStatus) {
+        if (promotionStatus == null) {
+            return;
+        }
+        if (Integer.valueOf(3).equals(promotionStatus)) {
+            wrapper.in(ProductSnapshot::getStatus, 3, 4);
+            return;
+        }
+        wrapper.eq(ProductSnapshot::getStatus, promotionStatus);
+    }
+
+    private int normalizeActivityProductStatus(int status) {
+        return status == 4 ? 3 : status;
+    }
+
+    private String normalizeActivityProductStatusText(int status, String statusText) {
+        if (status == 4 && containsAny(statusText, "合作前取消", "取消")) {
+            return "合作已终止";
+        }
+        return statusText;
+    }
+
     private boolean matchesPromotionLinkFilter(ProductOperationState state, String promotionLink) {
         boolean linked = state != null && (StringUtils.hasText(state.getPromoteLink()) || StringUtils.hasText(state.getShortLink()));
         boolean failed = !linked && state != null && containsAny(state.getBizStatus(), "LINKED", "FOLLOWING");
@@ -1075,7 +1099,8 @@ public class ProductService {
         if ("rejected".equals(allianceStatus) && java.util.Objects.equals(status, 2)) {
             return true;
         }
-        if ("terminated".equals(allianceStatus) && java.util.Objects.equals(status, 3)) {
+        if ("terminated".equals(allianceStatus)
+                && (java.util.Objects.equals(status, 3) || java.util.Objects.equals(status, 4))) {
             return true;
         }
         if ("expired".equals(allianceStatus) && java.util.Objects.equals(status, 6)) {
@@ -1086,8 +1111,8 @@ public class ProductService {
             case "pending_audit" -> containsAny(text, "待审核", "审核中");
             case "promoting" -> containsAny(text, "推广中", "推广");
             case "rejected" -> containsAny(text, "未通过", "拒绝", "申请未通过");
-            case "terminated" -> containsAny(text, "终止", "已终止");
-            case "expired" -> containsAny(text, "过期", "已过期");
+            case "terminated" -> containsAny(text, "终止", "已终止", "取消");
+            case "expired" -> containsAny(text, "过期", "已过期", "到期", "已到期");
             default -> true;
         };
     }
@@ -2055,19 +2080,18 @@ public class ProductService {
 
         LambdaQueryWrapper<ProductSnapshot> countWrapper = new LambdaQueryWrapper<ProductSnapshot>()
                 .eq(ProductSnapshot::getActivityId, activityId)
-                .eq(promotionStatus != null, ProductSnapshot::getStatus, promotionStatus)
                 .and(StringUtils.hasText(productInfo), w -> w.like(ProductSnapshot::getTitle, productInfo.trim())
                         .or()
                         .like(ProductSnapshot::getProductId, productInfo.trim())
                         .or()
                         .like(ProductSnapshot::getShopName, productInfo.trim()));
+        applyActivityProductPromotionStatusFilter(countWrapper, promotionStatus);
         applyBizStatusFilter(countWrapper, bizStatusFilter);
         applyProductIdScope(countWrapper, auditTagProductScope);
         Long total = snapshotMapper.selectCount(countWrapper);
 
         LambdaQueryWrapper<ProductSnapshot> queryWrapper = new LambdaQueryWrapper<ProductSnapshot>()
                 .eq(ProductSnapshot::getActivityId, activityId)
-                .eq(promotionStatus != null, ProductSnapshot::getStatus, promotionStatus)
                 .and(StringUtils.hasText(productInfo), w -> w.like(ProductSnapshot::getTitle, productInfo.trim())
                         .or()
                         .like(ProductSnapshot::getProductId, productInfo.trim())
@@ -2075,6 +2099,7 @@ public class ProductService {
                         .like(ProductSnapshot::getShopName, productInfo.trim()))
                 .orderByDesc(ProductSnapshot::getSyncTime)
                 .orderByDesc(ProductSnapshot::getCreateTime);
+        applyActivityProductPromotionStatusFilter(queryWrapper, promotionStatus);
         applyBizStatusFilter(queryWrapper, bizStatusFilter);
         applyProductIdScope(queryWrapper, auditTagProductScope);
 
@@ -3535,8 +3560,8 @@ public class ProductService {
         snapshot.setPriceText(item.priceText());
         snapshot.setShopId(item.shopId());
         snapshot.setShopName(item.shopName());
-        snapshot.setStatus(item.status());
-        snapshot.setStatusText(item.statusText());
+        snapshot.setStatus(normalizeActivityProductStatus(item.status()));
+        snapshot.setStatusText(normalizeActivityProductStatusText(item.status(), item.statusText()));
         snapshot.setCategoryName(item.categoryName());
         snapshot.setProductStock(item.productStock());
         snapshot.setSales(item.sales());

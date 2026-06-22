@@ -273,7 +273,7 @@ export const allianceStatusOptions = [
   { label: '待审核', value: 'pending_audit' },
   { label: '申请未通过', value: 'rejected' },
   { label: '合作已终止', value: 'terminated' },
-  { label: '合作已过期', value: 'expired' }
+  { label: '合作已到期', value: 'expired' }
 ]
 
 const parsePercent = (value?: string | number | null) =>
@@ -378,8 +378,8 @@ const allianceStatusKeywords: Record<string, string[]> = {
   promoting: ['推广中', '推广'],
   pending_audit: ['待审核', '审核中'],
   rejected: ['未通过', '拒绝', '申请未通过'],
-  terminated: ['终止', '已终止'],
-  expired: ['过期', '已过期']
+  terminated: ['终止', '已终止', '取消'],
+  expired: ['到期', '已到期', '过期', '已过期']
 }
 
 export function matchAllianceStatus(item: any, allianceStatus: string | null) {
@@ -389,6 +389,7 @@ export function matchAllianceStatus(item: any, allianceStatus: string | null) {
   if (rawStatus) {
     const statusCode = Number(rawStatus)
     if (Number.isFinite(statusCode)) {
+      if (allianceStatus === 'terminated' && statusCode === 4) return true
       return statusCode === expectedStatus
     }
   }
