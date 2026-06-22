@@ -505,7 +505,7 @@ class ProductServiceFilterTest {
     }
 
     @Test
-    void buildActivityProductListViewFromDb_shouldNotNormalizeUnsupportedStatusFourToTerminated() {
+    void buildActivityProductListViewFromDb_shouldNormalizeUnsupportedStatusFourToTerminated() {
         ProductSnapshot unsupported = snapshot("100018", "9004", "食品饮料", 9900L);
         unsupported.setStatus(4);
         unsupported.setStatusText("合作前取消");
@@ -534,7 +534,7 @@ class ProductServiceFilterTest {
         assertThat(result.get("total")).isEqualTo(1L);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
-        assertThat(items).singleElement().extracting("officialStatus").isNotEqualTo("TERMINATED");
+        assertThat(items).singleElement().extracting("officialStatus").isEqualTo("TERMINATED");
         verify(snapshotMapper).selectPageSorted(
                 eq("100018"),
                 eq(4),

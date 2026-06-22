@@ -613,6 +613,7 @@ public class ProductDisplayPolicy {
                 case 2:
                     return "REJECTED";
                 case 3:
+                case 4:
                     return "TERMINATED";
                 case 6:
                     return "EXPIRED";

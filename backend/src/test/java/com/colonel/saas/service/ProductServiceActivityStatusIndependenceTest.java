@@ -317,6 +317,43 @@ class ProductServiceActivityStatusIndependenceTest {
     }
 
     @Test
+    void buildActivityProductListViewFromDb_shouldExposeFullActivityStatusCounts() {
+        String activityId = "3916506";
+        when(snapshotMapper.selectCount(any())).thenReturn(1274L);
+        when(snapshotMapper.selectPageSorted(
+                eq(activityId),
+                isNull(),
+                isNull(),
+                eq("NONE"),
+                isNull(),
+                isNull(),
+                isNull(),
+                eq(20L),
+                eq(0L),
+                any(LocalDateTime.class)))
+                .thenReturn(List.of());
+        when(snapshotMapper.selectActivityStatusCounts(activityId)).thenReturn(Map.of(
+                "total", 1274L,
+                "pendingReview", 10L,
+                "promoting", 726L,
+                "rejected", 486L,
+                "terminated", 46L,
+                "expired", 6L));
+
+        Map<String, Object> view = productService.buildActivityProductListViewFromDb(
+                activityId, 20, null, null, null, null, null, null, null);
+
+        assertThat(view.get("total")).isEqualTo(1274L);
+        assertThat(view.get("statusCounts")).isEqualTo(Map.of(
+                "total", 1274L,
+                "pendingReview", 10L,
+                "promoting", 726L,
+                "rejected", 486L,
+                "terminated", 46L,
+                "expired", 6L));
+    }
+
+    @Test
     void buildActivityProductListView_realtimeRowsShouldExposeSnapshotRelationId() {
         String activityId = "12345";
         long productId = 12L;

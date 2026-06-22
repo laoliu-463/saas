@@ -5,7 +5,9 @@ import {
   activityProductStageToOfficialStatus,
   buildActivityProductStatusStages,
   countActivityProductStatusGroups,
+  formatActivityProductStatusCount,
   isActivityProductStageMatch,
+  normalizeActivityProductStatusCounts,
   resolveActivityProductOfficialStatusView
 } from './activity-product-status-display'
 
@@ -48,6 +50,28 @@ describe('activity-product-status-display', () => {
     expect(activityProductStageToAllianceStatus('all')).toBeNull()
     expect(activityProductStageToOfficialStatus('terminated')).toBe('TERMINATED')
     expect(activityProductStageToOfficialStatus('all')).toBeNull()
+  })
+
+  it('uses backend full status counts and caps status labels at 99+', () => {
+    const counts = normalizeActivityProductStatusCounts({
+      total: 1274,
+      pendingReview: 10,
+      promoting: 726,
+      rejected: 486,
+      terminated: 46,
+      expired: 6
+    })
+    const stages = buildActivityProductStatusStages(counts)
+
+    expect(stages.map((stage) => [stage.key, stage.count, stage.displayCount])).toEqual([
+      ['pendingReview', 10, '10'],
+      ['promoting', 726, '99+'],
+      ['rejected', 486, '99+'],
+      ['terminated', 46, '46'],
+      ['expired', 6, '6']
+    ])
+    expect(formatActivityProductStatusCount(99)).toBe('99')
+    expect(formatActivityProductStatusCount(100)).toBe('99+')
   })
 
   it('matches rows by upstream status stage and exposes display labels', () => {
