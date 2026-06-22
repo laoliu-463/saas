@@ -132,9 +132,9 @@
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：`ProductService.SelectedLibraryFilter` 商品库 `sortBy` 归一化已委托 `ProductDisplayPolicy.normalizeSelectedLibrarySortBy`；服务层只消费归一化结果选择默认排序或 `latest` 上架时间排序，保持 `pinned/default -> default`、`latest -> latest`、未知值原样保留的 Legacy 行为。本轮未改排序权重、活动商品同步、转链写入、商品状态机、真实数据或默认灰度开关。
-- 最新验证：红测先失败后转绿；`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ProductServiceFilterTest` 定向回归 36 tests PASS；`git diff --check` 退出 0；harness limits PASS；`agent-do.ps1 -Env real-pre -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查与 real-pre P0 preflight 均通过。风险记录：代码变更被外部 `agent-do` 混入提交 `e440f5ca` 的 frontend 修复，本轮用 `511d57d7` 补 full evidence 收口。
-- 最新报告路径：`harness/reports/evidence-20260622-230414.md`；retro：`harness/reports/retro-20260622-230435.md`。
+- 最新边界变化：`ProductService.SelectedLibraryFilter` 商品库 `promotionLink` 过滤解释已委托 `ProductDisplayPolicy.matchesSelectedLibraryPromotionLinkFilter`；服务层只传入 filter、promoteLink、shortLink、bizStatus，保持 `LINKED/PENDING/FAILED/unknown` Legacy 判定。本轮未改商品同步、转链写入、状态机、真实数据或默认灰度开关。
+- 最新验证：红测先失败后转绿；`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ProductServiceFilterTest` 定向回归 38 tests PASS；`git diff --check` 退出 0；harness limits PASS；`agent-do.ps1 -Env real-pre -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查与 real-pre P0 preflight 均通过。风险记录：`agent-do` 自动提交 `6601b048` 混入已有前端路由相关改动，需在 review 中与本后端 DDD 切片分开看。
+- 最新报告路径：`harness/reports/evidence-20260622-232004.md`；retro：`harness/reports/retro-20260622-232036.md`。
 - 上一边界变化：`ColonelActivityController.listProducts` 活动商品查询 `status` public enum 校验已委托 `ProductDisplayPolicy.isSupportedActivityProductQueryStatus` / `activityProductQueryStatusHint`；Controller 只负责 HTTP 入参转业务异常，保持 `status=4` 请求仍按已提交行为拒绝，`ProductService` 历史数据 `status=4 -> 3` 存储 / 筛选规范化不变。
 - 上一验证：`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest`、`ColonelActivityControllerTest` 定向回归 33 tests PASS；加入 `ProductServiceFilterTest` 组合回归 46 tests PASS。
 - 上一边界变化：活动商品状态码规范化已收口到 `ProductDisplayPolicy`；`ProductService` 仅委派策略处理历史 `status=4 -> 3`、状态文案和筛选入参，Controller 保持当前已提交的 public enum 校验行为。
