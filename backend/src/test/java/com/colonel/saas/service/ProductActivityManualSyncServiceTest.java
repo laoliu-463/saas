@@ -2,7 +2,6 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -13,6 +12,8 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,14 +32,14 @@ class ProductActivityManualSyncServiceTest {
     @Mock
     private ColonelsettlementActivityMapper activityMapper;
 
-    @BeforeEach
-    void setUp() {
+    private void stubCompleteRefresh() {
         when(productService.refreshActivitySnapshots(any()))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
     }
 
     @Test
     void trigger_shouldReturnAcceptedAndRunRefreshInBackgroundExecutor() {
+        stubCompleteRefresh();
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
                 productService,
                 colonelActivityService,
@@ -60,6 +61,7 @@ class ProductActivityManualSyncServiceTest {
 
     @Test
     void trigger_shouldReturnRunningWhenSameActivityAlreadyQueued() {
+        stubCompleteRefresh();
         List<Runnable> queuedTasks = new ArrayList<>();
         Executor queuedExecutor = queuedTasks::add;
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
@@ -79,6 +81,35 @@ class ProductActivityManualSyncServiceTest {
         ProductActivityManualSyncService.SyncTriggerResult third = service.trigger("ACT-1", null);
         assertThat(third.syncStatus()).isEqualTo("ACCEPTED");
         assertThat(queuedTasks).hasSize(2);
+    }
+
+    @Test
+    void trigger_shouldReturnBusyWithoutCallingUpstreamWhenExecutorRejects() {
+        AtomicBoolean reject = new AtomicBoolean(true);
+        List<Runnable> queuedTasks = new ArrayList<>();
+        Executor executor = task -> {
+            if (reject.get()) {
+                throw new RejectedExecutionException("queue full");
+            }
+            queuedTasks.add(task);
+        };
+        ProductActivityManualSyncService service = new ProductActivityManualSyncService(
+                productService,
+                colonelActivityService,
+                activityMapper,
+                executor);
+
+        ProductActivityManualSyncService.SyncTriggerResult busy = service.trigger("ACT-1", null);
+
+        assertThat(busy.activityId()).isEqualTo("ACT-1");
+        assertThat(busy.syncStatus()).isEqualTo("BUSY");
+        verify(colonelActivityService, never()).syncActivitySummaryFromUpstream(any(), any());
+        verify(productService, never()).refreshActivitySnapshots(any());
+
+        reject.set(false);
+        ProductActivityManualSyncService.SyncTriggerResult accepted = service.trigger("ACT-1", null);
+        assertThat(accepted.syncStatus()).isEqualTo("ACCEPTED");
+        assertThat(queuedTasks).hasSize(1);
     }
 
     @Test

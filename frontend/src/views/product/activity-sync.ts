@@ -15,6 +15,7 @@ export type ActivityProductSyncBatchSummary = {
   succeeded: number
   failed: number
   running: number
+  busy: number
   totalSyncedProducts: number
   totalLibraryEntries: number
 }
@@ -93,10 +94,15 @@ export function summarizeActivityProductSyncResults(
   let succeeded = 0
   let failed = 0
   let running = 0
+  let busy = 0
   let totalSyncedProducts = 0
   let totalLibraryEntries = 0
   results.forEach((item) => {
     if (item.ok) {
+      if (item.syncStatus === 'BUSY') {
+        busy += 1
+        return
+      }
       succeeded += 1
       if (item.syncStatus === 'RUNNING') {
         running += 1
@@ -112,6 +118,7 @@ export function summarizeActivityProductSyncResults(
     succeeded,
     failed,
     running,
+    busy,
     totalSyncedProducts,
     totalLibraryEntries
   }
@@ -120,6 +127,9 @@ export function summarizeActivityProductSyncResults(
 export function formatActivityProductSyncMessage(summary: ActivityProductSyncBatchSummary): string {
   if (!summary.results.length) {
     return '请先选择活动'
+  }
+  if (summary.succeeded === 0 && summary.busy > 0) {
+    return `商品同步队列繁忙，${summary.busy} 个活动未提交，请稍后重试`
   }
   if (summary.succeeded === 0) {
     return '活动商品同步失败，请稍后重试'
@@ -133,6 +143,9 @@ export function formatActivityProductSyncMessage(summary: ActivityProductSyncBat
   }
   if (summary.totalLibraryEntries > 0) {
     parts.push(`其中 ${summary.totalLibraryEntries} 个已进入商品库`)
+  }
+  if (summary.busy > 0) {
+    parts.push(`${summary.busy} 个活动同步队列繁忙`)
   }
   if (summary.failed > 0) {
     parts.push(`${summary.failed} 个活动同步失败`)

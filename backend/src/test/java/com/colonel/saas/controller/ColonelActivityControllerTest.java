@@ -553,6 +553,23 @@ class ColonelActivityControllerTest {
     }
 
     @Test
+    void syncProducts_shouldReturnBusyImmediatelyWhenSyncQueueIsFull() throws Exception {
+        when(productActivityManualSyncService.trigger("100018", null)).thenReturn(
+                new ProductActivityManualSyncService.SyncTriggerResult("100018", "BUSY"));
+
+        mockMvc.perform(post("/colonel/activities/{activityId}/products/sync", "100018")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.activityId").value("100018"))
+                .andExpect(jsonPath("$.data.syncStatus").value("BUSY"))
+                .andExpect(jsonPath("$.data.message").value("商品同步队列繁忙，请稍后重试"));
+
+        verify(productActivityManualSyncService).trigger("100018", null);
+        verify(productService, never()).refreshActivitySnapshots(any());
+    }
+
+    @Test
     void listProducts_shouldMapProductGatewayErrorsToBusinessMessagesOnRefresh() {
         // 改造后：refresh=true 仍调抖音（用户主动触发），错误映射测试保留
         // 默认 refresh=false 已不再调抖音（见 listProducts_shouldNeverCallUpstreamByDefaultAndReturnNeedSyncWhenNoSnapshots）

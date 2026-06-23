@@ -52,7 +52,7 @@
 - [V1 必做] `GET /api/colonel/activities/{activityId}/products`：非 admin 仅可访问 `recruiter_user_id = 当前用户` 的活动。
 - [V1 必做] 活动分配成功后驱逐 `activities:list:` 短缓存，避免前端刷新活动行时读取旧分配人。
 - [V1 必做] 活动状态只描述活动自身，用于活动列表展示、活动筛选和活动数据范围判断；不得驱动商品入库、审核状态或展示状态。
-- [V1 必做] `POST /api/colonel/activities/{activityId}/products/sync` 用于前端手动触发活动商品后台同步；接口只提交后台任务并立即返回 `syncStatus=ACCEPTED/RUNNING`，前端提示“后台同步中”，不得阻塞列表查询等待上游完成。
+- [V1 必做] `POST /api/colonel/activities/{activityId}/products/sync` 用于前端手动触发活动商品后台同步；接口只提交后台任务并立即返回 `syncStatus=ACCEPTED/RUNNING/BUSY`，前端提示“后台同步中”或“队列繁忙”，不得阻塞列表查询等待上游完成；当同步执行器饱和时必须返回 `BUSY`，不得在 HTTP 请求线程内改为同步调用上游。
 - [V1 必做] `GET /api/colonel/activities/{activityId}/products` 活动商品列表行需透出 `relationId`（`product_snapshot.id`，UUID）以及规范状态字段：`officialStatus`、`reviewStatus`、`publishStatus`、`manualDisabled`、`selectedToLibrary`、`displayStatus`、`hiddenReason`。前端审核、暂停/恢复等商品关系写操作必须使用 `relationId`，不能用平台 `productId` 代替；前端筛选和操作按钮优先使用上游数字状态与这些规范字段，不依赖 `statusText` 文案漂移。
 - [V1 必做] `GET /api/colonel/activities/{activityId}/products` 返回 `statusCounts`，按活动全部有效快照统计 `total`、`pendingReview`、`promoting`、`rejected`、`terminated`、`expired`；该聚合不受当前状态筛选分页影响。前端必须区分“已加载行数”和接口 `total`，精选联盟状态筛选栏使用 `statusCounts`，单个状态数量达到 100 时显示 `99+`。
 - [V1 必做] `GET /api/colonel/activities/{activityId}/products?refresh=true` 继续兼容返回 `syncStats`；`libraryEntryCount` 表示本次因上游商品自身 `status=1/推广中` 新进入商品库的数量，`autoLibraryEligible` 表示本次存在自动入库商品。商品是否入库和活动商品页是否可操作以商品自身上游状态为主：`status=1` 自动补齐 `selectedToLibrary=true`、`auditStatus=2` 和可操作业务状态，历史本地拒绝不得阻断；本地暂停仅表示发布控制，不使活动商品行退化为只读。

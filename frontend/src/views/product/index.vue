@@ -306,6 +306,7 @@ import {
 import { copyProductBriefWithLink } from './product-copy'
 import { resolveProductRelationId } from './product-relation-id'
 import { createEmptyManualCopyDialogState, resolveManualCopyDialogState } from './manual-copy'
+import { resolveProductSyncNotice } from './product-sync-status'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 import { tryCopyText } from '../../utils/clipboard'
 import type {
@@ -1016,11 +1017,8 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
     const res: any = await syncActivityProducts(selectedActivityId)
     const data = res?.data || {}
     dialogs.value.syncActivityProducts = false
-    if (data.syncStatus === 'RUNNING') {
-      message.info(data.message || '商品同步已在后台执行，请稍后刷新列表')
-    } else {
-      message.success(data.message || '商品同步已转入后台执行，请稍后刷新列表查看结果')
-    }
+    const notice = resolveProductSyncNotice(data)
+    message[notice.type](notice.message)
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '发起商品同步失败' })
   } finally {

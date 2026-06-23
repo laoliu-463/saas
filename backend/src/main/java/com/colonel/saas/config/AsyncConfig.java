@@ -39,4 +39,26 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * 手动活动商品同步专用执行器。
+     * <p>
+     * 与通用 {@code applicationTaskExecutor} 分离，拒绝策略使用 {@link ThreadPoolExecutor.AbortPolicy}：
+     * 当同步队列饱和时，HTTP 请求线程只返回 BUSY，不在请求线程内执行上游同步，保证前端触发接口不被抖音接口耗时拖慢。
+     * </p>
+     */
+    @Bean("productActivitySyncExecutor")
+    public Executor productActivitySyncExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(100);
+        executor.setKeepAliveSeconds(60);
+        executor.setThreadNamePrefix("product-activity-sync-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(60);
+        executor.initialize();
+        return executor;
+    }
 }

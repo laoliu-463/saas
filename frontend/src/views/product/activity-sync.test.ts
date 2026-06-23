@@ -60,4 +60,14 @@ describe('activity-sync', () => {
     expect(summary.running).toBe(1)
     expect(formatActivityProductSyncMessage(summary)).toContain('1 个活动已在同步中')
   })
+
+  it('mentions activities rejected by a busy sync queue', () => {
+    const summary = summarizeActivityProductSyncResults([
+      { activityId: '1', ok: true, syncStatus: 'BUSY' },
+      { activityId: '2', ok: true, syncStatus: 'ACCEPTED' }
+    ])
+    expect(summary.succeeded).toBe(1)
+    expect(summary.busy).toBe(1)
+    expect(formatActivityProductSyncMessage(summary)).toContain('1 个活动同步队列繁忙')
+  })
 })

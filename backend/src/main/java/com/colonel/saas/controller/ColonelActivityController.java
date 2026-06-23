@@ -173,9 +173,11 @@ public class ColonelActivityController extends BaseController {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("activityId", triggerResult.activityId());
         payload.put("syncStatus", triggerResult.syncStatus());
-        payload.put("message", "RUNNING".equals(triggerResult.syncStatus())
-                ? "商品同步已在后台执行，请稍后刷新列表"
-                : "商品同步已转入后台执行");
+        payload.put("message", switch (triggerResult.syncStatus()) {
+            case "RUNNING" -> "商品同步已在后台执行，请稍后刷新列表";
+            case "BUSY" -> "商品同步队列繁忙，请稍后重试";
+            default -> "商品同步已转入后台执行";
+        });
         return ok(payload);
     }
 

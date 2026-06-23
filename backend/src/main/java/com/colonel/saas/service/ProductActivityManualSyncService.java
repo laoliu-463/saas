@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * 手动触发的活动商品后台同步服务。
@@ -35,7 +36,7 @@ public class ProductActivityManualSyncService {
             ProductService productService,
             ColonelsettlementActivityService colonelActivityService,
             ColonelsettlementActivityMapper activityMapper,
-            @Qualifier("applicationTaskExecutor") Executor syncExecutor) {
+            @Qualifier("productActivitySyncExecutor") Executor syncExecutor) {
         this.productService = productService;
         this.colonelActivityService = colonelActivityService;
         this.activityMapper = activityMapper;
@@ -52,6 +53,11 @@ public class ProductActivityManualSyncService {
         }
         try {
             CompletableFuture.runAsync(() -> runSync(normalizedActivityId, appId), syncExecutor);
+        } catch (RejectedExecutionException ex) {
+            runningActivityIds.remove(normalizedActivityId);
+            log.warn("ProductActivityManualSync rejected, activityId={}, reason={}",
+                    normalizedActivityId, ex.getMessage());
+            return new SyncTriggerResult(normalizedActivityId, "BUSY");
         } catch (RuntimeException ex) {
             runningActivityIds.remove(normalizedActivityId);
             throw ex;
