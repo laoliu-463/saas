@@ -90,7 +90,9 @@ This report treats status=4 -> TERMINATED as the current branch's pre-existing p
 - Health check: not run.
 - Business API/browser validation: not run.
 - Git commit: PASS for code batch `50de3f6d`.
-- Git push: pending at this report generation.
+- Git push: PASS for branch `feature/product-manage-fallback-fix-20260623`.
+  - gitee: `e34cc92c..3a0a0bd5`
+  - origin: `e34cc92c..3a0a0bd5`
 
 ## Residual Risk
 

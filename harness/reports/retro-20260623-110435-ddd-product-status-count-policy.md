@@ -30,7 +30,8 @@
 
 - The branch has unrelated dirty changes in backend mapper, frontend, docs, and report cleanup.
 - `agent-do.ps1` was not run because it could mix unrelated dirty work into the same evidence/commit path.
-- Docker restart, health check, business validation, and push were not performed during this evidence run.
+- Docker restart, health check, and business validation were not performed during this evidence run.
+- Code and initial evidence commits were pushed to both gitee and origin through `3a0a0bd5`.
 
 ## 5. Harness Lessons
 
