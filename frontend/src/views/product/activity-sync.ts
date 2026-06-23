@@ -1,6 +1,12 @@
 import { syncActivityProducts } from '../../api/activityProduct'
 import { type ActivityRow } from './activity-list-display'
 
+export const POST_SYNC_REFRESH_DELAYS_MS = [1500, 4000, 8000, 15000]
+
+export function shouldSchedulePostSyncRefresh(syncStatus?: string): boolean {
+  return syncStatus === 'ACCEPTED' || syncStatus === 'RUNNING'
+}
+
 export type ActivityProductSyncItemResult = {
   activityId: string
   ok: boolean

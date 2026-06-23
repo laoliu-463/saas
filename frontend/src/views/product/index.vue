@@ -231,7 +231,7 @@
 
 <script setup lang="ts">
 import { notifyApiFailure } from '../../utils/requestError'
-import { computed, h, onMounted, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
@@ -316,6 +316,7 @@ import { resolveProductRelationId } from './product-relation-id'
 import { createEmptyManualCopyDialogState, resolveManualCopyDialogState } from './manual-copy'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 import { tryCopyText } from '../../utils/clipboard'
+import { POST_SYNC_REFRESH_DELAYS_MS, shouldSchedulePostSyncRefresh } from './activity-sync'
 import type {
   ProductActionKey,
   ProductManageRow,
@@ -336,6 +337,7 @@ const authStore = useAuthStore()
 
 const loading = ref(false)
 const syncing = ref(false)
+const postSyncRefreshTimers: ReturnType<typeof window.setTimeout>[] = []
 const loadingMore = ref(false)
 const showSlowLoading = ref(false)
 const showInitialLoading = useDelayedFlag(loading, 300)
@@ -989,6 +991,26 @@ const refreshProducts = async () => {
   await fetchProducts(true)
 }
 
+const clearPostSyncRefreshTimers = () => {
+  postSyncRefreshTimers.splice(0).forEach((timer) => window.clearTimeout(timer))
+}
+
+const refreshProductsAfterActivitySync = async (activityId: string) => {
+  if (normalizeText(fallbackActivityId.value) !== activityId) return
+  await refreshProducts()
+}
+
+const schedulePostSyncRefreshes = (activityId: string, syncStatus?: string) => {
+  clearPostSyncRefreshTimers()
+  if (!shouldSchedulePostSyncRefresh(syncStatus)) return
+  POST_SYNC_REFRESH_DELAYS_MS.forEach((delay) => {
+    const timer = window.setTimeout(() => {
+      void refreshProductsAfterActivitySync(activityId)
+    }, delay)
+    postSyncRefreshTimers.push(timer)
+  })
+}
+
 const openSyncActivityProductsDialog = () => {
   dialogs.value.syncActivityProducts = true
   if (!assignedActivityOptions.value.length && !assignedActivityOptionsLoading.value) {
@@ -1024,10 +1046,12 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
     const data = res?.data || {}
     dialogs.value.syncActivityProducts = false
     if (data.syncStatus === 'RUNNING') {
-      message.info(data.message || '商品同步已在后台执行，请稍后刷新列表')
+      message.info('商品同步已在后台执行，正在自动刷新列表')
     } else {
-      message.success(data.message || '商品同步已转入后台执行，请稍后刷新列表查看结果')
+      message.success('商品同步已提交，正在自动刷新列表')
     }
+    await refreshProductsAfterActivitySync(selectedActivityId)
+    schedulePostSyncRefreshes(selectedActivityId, data.syncStatus)
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '发起商品同步失败' })
   } finally {
@@ -1724,6 +1748,10 @@ onMounted(async () => {
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '页面初始化失败' })
   }
+})
+
+onBeforeUnmount(() => {
+  clearPostSyncRefreshTimers()
 })
 
 watch(

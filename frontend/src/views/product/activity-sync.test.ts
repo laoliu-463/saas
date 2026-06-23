@@ -2,6 +2,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import {
   batchSyncActivityProducts,
   formatActivityProductSyncMessage,
+  POST_SYNC_REFRESH_DELAYS_MS,
+  shouldSchedulePostSyncRefresh,
   summarizeActivityProductSyncResults
 } from './activity-sync'
 
@@ -59,5 +61,14 @@ describe('activity-sync', () => {
     ])
     expect(summary.running).toBe(1)
     expect(formatActivityProductSyncMessage(summary)).toContain('1 个活动已在同步中')
+  })
+
+  it('schedules short polling refreshes only while background sync can still update data', () => {
+    expect(POST_SYNC_REFRESH_DELAYS_MS).toEqual([1500, 4000, 8000, 15000])
+    expect(shouldSchedulePostSyncRefresh('ACCEPTED')).toBe(true)
+    expect(shouldSchedulePostSyncRefresh('RUNNING')).toBe(true)
+    expect(shouldSchedulePostSyncRefresh('SUCCESS')).toBe(false)
+    expect(shouldSchedulePostSyncRefresh('FAILED')).toBe(false)
+    expect(shouldSchedulePostSyncRefresh()).toBe(false)
   })
 })

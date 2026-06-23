@@ -54,6 +54,11 @@ if [ ! -f "`$activity_migration" ]; then
   echo "Required activity schema migration not found: `$activity_migration"
   exit 1
 fi
+backfill_migration="backend/src/main/resources/db/migrate/V20260615_001__product_activity_backfill_state.sql"
+if [ ! -f "`$backfill_migration" ]; then
+  echo "Required product backfill schema migration not found: `$backfill_migration"
+  exit 1
+fi
 pg_container="`$(compose ps -q postgres-real-pre)"
 if [ -z "`$pg_container" ]; then
   echo "postgres-real-pre container id not found"
@@ -68,6 +73,15 @@ if [ "`$schema_count" != "6" ]; then
   exit 1
 fi
 echo "Activity schema guard passed."
+echo "Applying required product backfill schema migration ..."
+docker cp "`$backfill_migration" "`$pg_container:/tmp/V20260615_001__product_activity_backfill_state.sql"
+compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/V20260615_001__product_activity_backfill_state.sql' </dev/null
+backfill_table_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = '"'"'public'"'"' AND table_name IN ('"'"'product_sync_job_log'"'"','"'"'product_activity_sync_state'"'"')"' </dev/null | tr -d '[:space:]')"
+if [ "`$backfill_table_count" != "2" ]; then
+  echo "product backfill schema guard failed: expected 2 tables, got `$backfill_table_count"
+  exit 1
+fi
+echo "Product backfill schema guard passed."
 mkdir -p "`$HOME/.m2"
 docker run --rm \
   -v "`$PWD:/workspace" \
