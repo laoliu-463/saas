@@ -76,6 +76,14 @@ public class ProductDomainEventPublisher {
             UUID operatorId,
             int displayRuleVersion,
             String displayReason) {
+        publishSpringEvent(new ProductListedEvent(
+                UUID.randomUUID(),
+                activityId,
+                productId,
+                operationStateId,
+                operatorId,
+                LocalDateTime.now(),
+                null));
         Map<String, Object> payload = basePayload(activityId, productId, operationStateId);
         payload.put("displayRuleVersion", displayRuleVersion);
         payload.put("displayReason", displayReason);
@@ -105,6 +113,14 @@ public class ProductDomainEventPublisher {
             UUID operationStateId,
             String reason,
             int displayRuleVersion) {
+        publishSpringEvent(new ProductHiddenEvent(
+                UUID.randomUUID(),
+                activityId,
+                productId,
+                operationStateId,
+                reason,
+                LocalDateTime.now(),
+                null));
         Map<String, Object> payload = basePayload(activityId, productId, operationStateId);
         payload.put("hiddenReason", reason);
         payload.put("displayRuleVersion", displayRuleVersion);
@@ -134,6 +150,15 @@ public class ProductDomainEventPublisher {
             UUID oldAssigneeId,
             UUID newAssigneeId,
             UUID operatorId) {
+        publishSpringEvent(new ProductOwnerChangedEvent(
+                UUID.randomUUID(),
+                activityId,
+                productId,
+                oldAssigneeId,
+                newAssigneeId,
+                operatorId,
+                LocalDateTime.now(),
+                null));
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("activityId", activityId);
         payload.put("productId", productId);

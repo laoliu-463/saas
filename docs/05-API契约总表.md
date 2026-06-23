@@ -24,6 +24,7 @@
 | 业绩 | `/api/performance/**`、`/api/commission/**` | 归属、提成、冲正、经营毛利、汇总 | 业绩明细、汇总 API | V1 必做 |
 | 分析 | `/api/dashboard/**`、`/api/analytics/**`、`/api/reports/**` | dashboard、经营指标矩阵、只读汇总、导出 | 看板 API、导出文件 | V1 必做 |
 | 运维 | `/api/operations/**`、`/actuator/**` | 操作日志、健康检查 | 健康检查、操作审计 | V1 简化 |
+| 实时通知 | `/api/realtime/updates` | 商品 / 订单列表数据失效通知；前端收到后重新调用既有列表 API | SSE 连接、列表刷新单测、健康检查 | V1 简化 |
 | 抖音授权 | `/api/douyin/auth/**`、`/api/douyin/token/**` | 授权、Token、刷新 | real-pre Token 证据 | V1 必做 |
 | 抖音物流 | `/api/douyin/logistics/**` | 物流接口适配 | real-pre 响应或阻塞证据 | V1 简化 |
 | 主数据 | `/api/master-data/**`、`/api/current-user/**`、`/api/colonel-partners` | 前端下拉、当前用户上下文、团长主数据 | Network 响应、单测 | V1 必做 |

@@ -5,6 +5,8 @@ import com.colonel.saas.domain.event.OutboxEventAppender;
 import com.colonel.saas.domain.product.event.ActivitySyncCompletedEvent;
 import com.colonel.saas.domain.product.event.PartnerSyncCompletedEvent;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.colonel.saas.domain.product.event.ProductHiddenEvent;
+import com.colonel.saas.domain.product.event.ProductListedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -54,6 +56,23 @@ class ProductDomainEventPublisherTest {
     }
 
     @Test
+    void publishProductListed_shouldEmitSpringEventForRealtimeConsumers() {
+        UUID stateId = UUID.randomUUID();
+        UUID operatorId = UUID.randomUUID();
+
+        publisher.publishProductListed("10001", "9001", stateId, operatorId, 3, "RULE_ENGINE");
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(applicationEventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue()).isInstanceOf(ProductListedEvent.class);
+        ProductListedEvent event = (ProductListedEvent) captor.getValue();
+        assertThat(event.activityId()).isEqualTo("10001");
+        assertThat(event.productId()).isEqualTo("9001");
+        assertThat(event.operationStateId()).isEqualTo(stateId);
+        assertThat(event.operatorId()).isEqualTo(operatorId);
+    }
+
+    @Test
     void publishProductHidden_shouldAppendOutboxWithReason() {
         UUID stateId = UUID.randomUUID();
         publisher.publishProductHidden("10001", "9001", stateId, "ACTIVITY_EXPIRED", 3);
@@ -69,6 +88,22 @@ class ProductDomainEventPublisherTest {
                 eq(null),
                 eq(null));
         assertThat(keyCaptor.getValue()).contains("ACTIVITY_EXPIRED");
+    }
+
+    @Test
+    void publishProductHidden_shouldEmitSpringEventForRealtimeConsumers() {
+        UUID stateId = UUID.randomUUID();
+
+        publisher.publishProductHidden("10001", "9001", stateId, "ACTIVITY_EXPIRED", 3);
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(applicationEventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue()).isInstanceOf(ProductHiddenEvent.class);
+        ProductHiddenEvent event = (ProductHiddenEvent) captor.getValue();
+        assertThat(event.activityId()).isEqualTo("10001");
+        assertThat(event.productId()).isEqualTo("9001");
+        assertThat(event.operationStateId()).isEqualTo(stateId);
+        assertThat(event.reason()).isEqualTo("ACTIVITY_EXPIRED");
     }
 
     @Test
@@ -117,7 +152,7 @@ class ProductDomainEventPublisherTest {
     @Test
     void publishActivitySyncCompleted_shouldSwallowSpringPublisherFailure() {
         doThrow(new IllegalStateException("listener down"))
-                .when(applicationEventPublisher).publishEvent(any());
+                .when(applicationEventPublisher).publishEvent(any(Object.class));
 
         publisher.publishActivitySyncCompleted("10001", "活动", "FULL", 1, 0, 0, "SUCCESS", null);
     }

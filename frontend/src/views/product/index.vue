@@ -224,13 +224,14 @@
 
 <script setup lang="ts">
 import { notifyApiFailure } from '../../utils/requestError'
-import { computed, h, onMounted, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import ManualCopyDialog from '../../components/common/ManualCopyDialog.vue'
 import { useAuthStore } from '../../stores/auth'
 import { hasAccess } from '../../constants/rbac'
+import { useRealtimeListInvalidation } from '../../composables/useRealtimeListInvalidation'
 import {
   batchPinActivityProducts,
   batchPutActivityProductsIntoLibrary,
@@ -965,6 +966,21 @@ const refreshProducts = async () => {
   clearBatchSelection()
   await fetchProducts(true)
 }
+
+const REALTIME_REFRESH_DEBOUNCE_MS = 100
+let realtimeProductRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+const scheduleRealtimeProductRefresh = () => {
+  if (realtimeProductRefreshTimer) return
+  realtimeProductRefreshTimer = setTimeout(() => {
+    realtimeProductRefreshTimer = null
+    void refreshProducts()
+  }, REALTIME_REFRESH_DEBOUNCE_MS)
+}
+
+const stopRealtimeUpdates = useRealtimeListInvalidation(['products'], () => {
+  scheduleRealtimeProductRefresh()
+})
 
 const openSyncActivityProductsDialog = () => {
   dialogs.value.syncActivityProducts = true
@@ -1701,6 +1717,14 @@ onMounted(async () => {
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '页面初始化失败' })
   }
+})
+
+onBeforeUnmount(() => {
+  if (realtimeProductRefreshTimer) {
+    clearTimeout(realtimeProductRefreshTimer)
+    realtimeProductRefreshTimer = null
+  }
+  stopRealtimeUpdates()
 })
 
 watch(

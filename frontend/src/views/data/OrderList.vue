@@ -258,7 +258,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { NText, useMessage } from 'naive-ui'
 import { exportOrders, exportOrderDetail, getOrderSummary } from '../../api/data'
@@ -266,6 +266,7 @@ import { getOrderFilterOptions } from '../../api/order'
 import { loadOrderRecruiterOptions, loadOrderChannelOptions } from '../orders/order-user-filter-options'
 import { useAuthStore } from '../../stores/auth'
 import { notifyApiFailure, notifyClientPermission } from '../../utils/requestError'
+import { useRealtimeListInvalidation } from '../../composables/useRealtimeListInvalidation'
 import { buildOrderExportParams, type OrderTimeField } from './order-list-query'
 import {
   buildMonthRange,
@@ -720,6 +721,25 @@ const fetchData = async () => {
   }
 }
 
+const REALTIME_REFRESH_DEBOUNCE_MS = 100
+let realtimeRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+const scheduleRealtimeRefresh = () => {
+  if (realtimeRefreshTimer) return
+  realtimeRefreshTimer = setTimeout(() => {
+    realtimeRefreshTimer = null
+    if (activeTab.value === 'summary') {
+      void fetchData()
+    } else {
+      detailTabRef.value?.refresh()
+    }
+  }, REALTIME_REFRESH_DEBOUNCE_MS)
+}
+
+const stopRealtimeUpdates = useRealtimeListInvalidation(['orders'], () => {
+  scheduleRealtimeRefresh()
+})
+
 const resetFilters = () => {
   searchParams.orderId = ''
   searchParams.status = null
@@ -815,6 +835,14 @@ onMounted(async () => {
   } catch {
     // silent — dept filters stay empty if unavailable
   }
+})
+
+onBeforeUnmount(() => {
+  if (realtimeRefreshTimer) {
+    clearTimeout(realtimeRefreshTimer)
+    realtimeRefreshTimer = null
+  }
+  stopRealtimeUpdates()
 })
 </script>
 

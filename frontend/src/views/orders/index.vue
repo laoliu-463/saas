@@ -112,7 +112,7 @@
 
 <script setup lang="ts">
 import { notifyApiFailure } from '../../utils/requestError'
-import { h, computed, onMounted, reactive, ref, watch } from 'vue'
+import { h, computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NSpace, NTag, useMessage } from 'naive-ui'
 import { useRoute } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
@@ -122,6 +122,7 @@ import { createPaginationState, normalizePageSize } from '../../utils/pagination
 import { useDelayedFlag } from '../../utils/delayedFlag'
 import { useDebouncedFn } from '../../utils/debounce'
 import { loadOrderChannelOptions, loadOrderRecruiterOptions } from './order-user-filter-options'
+import { useRealtimeListInvalidation } from '../../composables/useRealtimeListInvalidation'
 
 const message = useMessage()
 const route = useRoute()
@@ -633,6 +634,20 @@ const handlePageSizeChange = (pageSize: number) => {
 //   - 命中"lastSyncTime 变化"立即拉列表，体感比固定 1s setTimeout 更准
 const SYNC_POLL_INTERVAL_MS = 2000
 const SYNC_POLL_TIMEOUT_MS = 12000
+const REALTIME_REFRESH_DEBOUNCE_MS = 100
+let realtimeRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+const scheduleRealtimeRefresh = () => {
+  if (realtimeRefreshTimer) return
+  realtimeRefreshTimer = setTimeout(() => {
+    realtimeRefreshTimer = null
+    void fetchData()
+  }, REALTIME_REFRESH_DEBOUNCE_MS)
+}
+
+const stopRealtimeUpdates = useRealtimeListInvalidation(['orders'], () => {
+  scheduleRealtimeRefresh()
+})
 
 const handleSync = async () => {
   syncLoading.value = true
@@ -737,6 +752,14 @@ onMounted(() => {
   void fetchRecruiterOptions('')
   void fetchDeptFilterOptions()
   fetchData()
+})
+
+onBeforeUnmount(() => {
+  if (realtimeRefreshTimer) {
+    clearTimeout(realtimeRefreshTimer)
+    realtimeRefreshTimer = null
+  }
+  stopRealtimeUpdates()
 })
 </script>
 
