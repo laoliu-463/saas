@@ -61,6 +61,33 @@ Result: PASS, with CRLF/LF warning for latest-harness-limits-check.md
 Harness limits:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\check-harness-limits.ps1
 Result: PASS
+
+real-pre safety check:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\safety-check.ps1 -Env real-pre -Scope backend
+Result: PASS
+Env guard: APP_TEST_ENABLED=false, DOUYIN_TEST_ENABLED=false, DOUYIN_REAL_UPSTREAM_MODE=live
+
+real-pre backend restart:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\restart-compose.ps1 -Env real-pre -Scope backend
+Result: PASS
+Backend image rebuilt and backend container restarted; no volume deletion was performed.
+
+real-pre health check:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\verify-local.ps1 -Env real-pre -Scope backend
+Result: PASS
+Health URL: http://127.0.0.1:8081/api/system/health
+Body: {"status":"UP"}
+
+real-pre P0 preflight:
+npm run e2e:real-pre:p0:preflight
+Result: PASS
+Output: runtime/qa/out/real-pre-preflight-20260623-122649
+
+real-pre read-only API probe:
+GET /api/colonel/activities/3916506/products?count=20
+Result: PASS, HTTP 200
+statusCounts: total=1296, pendingReview=10, promoting=732, rejected=502, terminated=46, expired=6
+Output: runtime/qa/out/activity-status-counts-probe-20260623-124330
 ```
 
 ## Resolved Conflict Evidence
@@ -86,17 +113,15 @@ This report treats status=4 -> TERMINATED as the current branch's pre-existing p
 
 - code-review-graph MCP: unavailable in this session; `tool_search` only exposed Codex thread/automation tools.
 - `agent-do.ps1 -Scope backend`: not run because the current worktree already contains unrelated frontend, docs, mapper, report cleanup, and product-status changes.
-- Docker restart: not run.
-- Health check: not run.
-- Business API/browser validation: not run.
 - Git commit: PASS for code batch `50de3f6d`.
 - Git push: PASS for branch `feature/product-manage-fallback-fix-20260623`.
-  - gitee: `e34cc92c..3a0a0bd5`
-  - origin: `e34cc92c..3a0a0bd5`
+  - gitee: through `e25399f2`
+  - origin: through `e25399f2`
+- Remote deploy: not requested, not run.
 
 ## Residual Risk
 
 - This remains a PARTIAL report.
 - Current worktree remains dirty with multiple pre-existing changes.
 - `harness/rules/state/snapshots/DOMAIN_STATUS.md` is already 201 lines, so this slice was not appended there to avoid increasing a known 200-line limit breach.
-- Full completion requires isolating/staging the dirty batches and running the normal backend/full Harness gate.
+- Full completion still requires isolating/staging the dirty batches or running the integrated Harness gate from a batch-clean worktree.
