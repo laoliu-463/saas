@@ -10,7 +10,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * 前端实时更新通知入口。
  */
 @RestController
-@RequestMapping("/api/realtime")
+@RequestMapping({"/api/realtime", "/realtime"})
 public class RealtimeUpdateController {
 
     private final RealtimeUpdateService realtimeUpdateService;

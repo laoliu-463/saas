@@ -969,7 +969,9 @@ const refreshProducts = async () => {
 }
 
 const REALTIME_REFRESH_DEBOUNCE_MS = 100
+const PRODUCT_SYNC_FOLLOW_UP_REFRESH_DELAYS_MS = [1000, 5000, 15000] as const
 let realtimeProductRefreshTimer: ReturnType<typeof setTimeout> | null = null
+const productSyncFollowUpRefreshTimers: ReturnType<typeof setTimeout>[] = []
 
 const scheduleRealtimeProductRefresh = () => {
   if (realtimeProductRefreshTimer) return
@@ -977,6 +979,26 @@ const scheduleRealtimeProductRefresh = () => {
     realtimeProductRefreshTimer = null
     void refreshProducts()
   }, REALTIME_REFRESH_DEBOUNCE_MS)
+}
+
+const clearProductSyncFollowUpRefreshTimers = () => {
+  while (productSyncFollowUpRefreshTimers.length) {
+    const timer = productSyncFollowUpRefreshTimers.pop()
+    if (timer) clearTimeout(timer)
+  }
+}
+
+const scheduleProductSyncFollowUpRefresh = (activityId: string) => {
+  clearProductSyncFollowUpRefreshTimers()
+  PRODUCT_SYNC_FOLLOW_UP_REFRESH_DELAYS_MS.forEach((delayMs) => {
+    const timer = setTimeout(() => {
+      const normalizedActivityId = normalizeText(activityId)
+      if (normalizedActivityId) {
+        void fetchProducts(true, false, normalizedActivityId)
+      }
+    }, delayMs)
+    productSyncFollowUpRefreshTimers.push(timer)
+  })
 }
 
 const stopRealtimeUpdates = useRealtimeListInvalidation(['products'], () => {
@@ -1019,6 +1041,8 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
     dialogs.value.syncActivityProducts = false
     const notice = resolveProductSyncNotice(data)
     message[notice.type](notice.message)
+    await fetchProducts(true, false, selectedActivityId)
+    scheduleProductSyncFollowUpRefresh(selectedActivityId)
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '发起商品同步失败' })
   } finally {
@@ -1722,6 +1746,7 @@ onBeforeUnmount(() => {
     clearTimeout(realtimeProductRefreshTimer)
     realtimeProductRefreshTimer = null
   }
+  clearProductSyncFollowUpRefreshTimers()
   stopRealtimeUpdates()
 })
 

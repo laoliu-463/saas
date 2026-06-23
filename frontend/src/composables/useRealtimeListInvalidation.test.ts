@@ -23,6 +23,42 @@ async function waitUntil(predicate: () => boolean) {
 }
 
 describe('startRealtimeListInvalidation', () => {
+  it('retries connecting when auth token is not ready yet', async () => {
+    vi.useFakeTimers()
+    let token = ''
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      body: streamFromChunks([
+        'data: {"topic":"products","reason":"ACTIVITY_SYNC_COMPLETED","entityId":"ACT-001"}\n\n'
+      ])
+    })
+
+    let stop: (() => void) | null = null
+    try {
+      stop = startRealtimeListInvalidation({
+        topics: ['products'],
+        getToken: () => token,
+        fetchImpl: fetchImpl as any,
+        reconnectDelayMs: 50,
+        onInvalidate: vi.fn()
+      })
+
+      expect(fetchImpl).not.toHaveBeenCalled()
+
+      token = 'TOKEN-001'
+      await vi.advanceTimersByTimeAsync(50)
+
+      expect(fetchImpl).toHaveBeenCalledWith('/api/realtime/updates', expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer TOKEN-001'
+        })
+      }))
+    } finally {
+      stop?.()
+      vi.useRealTimers()
+    }
+  })
+
   it('uses bearer token and calls callback for subscribed topic from SSE stream', async () => {
     const received: unknown[] = []
     const fetchImpl = vi.fn().mockResolvedValue({

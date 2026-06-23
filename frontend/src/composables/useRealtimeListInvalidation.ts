@@ -82,7 +82,10 @@ export function startRealtimeListInvalidation(options: StartRealtimeListInvalida
   const connect = async () => {
     if (stopped || !fetchImpl) return
     const token = String(options.getToken?.() || '').trim()
-    if (!token) return
+    if (!token) {
+      scheduleReconnect()
+      return
+    }
 
     abortController = new AbortController()
     try {
