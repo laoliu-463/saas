@@ -182,14 +182,19 @@ describe('DataDashboard business metric matrix', () => {
       expect(text).toContain(label)
     }
 
-    expect(text).toContain('成交：2')
-    expect(text).toContain('结算：0')
-    expect(text).toContain('成交：¥300.00')
-    expect(text).toContain('预估：¥10.00')
-    expect(text).toContain('预估：¥9.00')
-    expect(text).toContain('预估：¥1.00')
-    expect(text).toContain('预估：¥2.00')
-    expect(text).toContain('预估：¥6.00')
+    expect(text).toContain('成交/预估 · 结算 · 差额')
+    expect(text).toContain('成交')
+    expect(text).toContain('2 单')
+    expect(text).toContain('结算')
+    expect(text).toContain('0 单')
+    expect(text).toContain('¥300.00')
+    expect(text).toContain('-¥300.00')
+    expect(text).toContain('预估')
+    expect(text).toContain('¥10.00')
+    expect(text).toContain('¥9.00')
+    expect(text).toContain('¥1.00')
+    expect(text).toContain('¥2.00')
+    expect(text).toContain('¥6.00')
   })
 
   it('uses explicit zero service fee expense instead of deriving fallback money', async () => {
@@ -217,7 +222,9 @@ describe('DataDashboard business metric matrix', () => {
     await flushPromises()
 
     const text = wrapper.find('[data-testid="dashboard-business-metrics"]').text()
-    expect(text).toContain('服务费支出预估：¥0.00')
+    expect(text).toContain('服务费支出')
+    expect(text).toContain('预估')
+    expect(text).toContain('¥0.00')
   })
 
   it('labels top cards as create-track estimate metrics instead of paid net metrics', async () => {
