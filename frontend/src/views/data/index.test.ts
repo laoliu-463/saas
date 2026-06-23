@@ -107,6 +107,9 @@ const metricsPayload = {
       bizCommission: '1.00',
       channelCommission: '2.00',
       grossProfit: '6.00',
+      refundOrderCount: 3,
+      refundOrderAmount: '120.00',
+      refundServiceFee: '4.50',
       amountTrack: 'estimate',
       trend7d: [{ date: '2026-06-04', orderCount: 2, gmv: 300 }]
     },
@@ -123,6 +126,9 @@ const metricsPayload = {
       bizCommission: '0.00',
       channelCommission: '0.00',
       grossProfit: '0.00',
+      refundOrderCount: 0,
+      refundOrderAmount: '0.00',
+      refundServiceFee: '0.00',
       amountTrack: 'effective',
       trend7d: []
     }
@@ -234,5 +240,25 @@ describe('DataDashboard business metric matrix', () => {
     expect(text).toContain('¥9.00')
     expect(text).toContain('¥3.00')
     expect(text).not.toContain('今日付款净额')
+  })
+
+  it('renders refund metrics on dashboard visualization', async () => {
+    const wrapper = mount(DataDashboard, {
+      global: {
+        plugins: [createPinia()],
+        stubs
+      }
+    })
+
+    await flushPromises()
+
+    const text = wrapper.find('[data-testid="dashboard-refund-metrics"]').text()
+    expect(text).toContain('退款指标')
+    expect(text).toContain('退款订单数')
+    expect(text).toContain('3 单')
+    expect(text).toContain('订单退款服务费')
+    expect(text).toContain('¥4.50')
+    expect(text).toContain('退款订单额')
+    expect(text).toContain('¥120.00')
   })
 })

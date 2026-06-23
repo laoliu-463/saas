@@ -265,6 +265,11 @@ class DataControllerTest {
         UUID userId = UUID.randomUUID();
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of(Map.of(
+                        "refund_order_count", 1L,
+                        "refund_order_amount_cent", 3000L,
+                        "refund_service_fee_cent", 150L
+                )))
                 .thenReturn(List.of(Map.of("order_count", 2L, "order_amount_cent", 3000L)))
                 .thenReturn(List.of(Map.of(
                         "activity_id", "ACT-1",
@@ -278,6 +283,11 @@ class DataControllerTest {
                         "order_amount_cent", 3000L
                 )))
                 .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of(Map.of(
+                        "refund_order_count", 2L,
+                        "refund_order_amount_cent", 4500L,
+                        "refund_service_fee_cent", 220L
+                )))
                 .thenReturn(List.of(Map.of("order_count", 2L, "order_amount_cent", 3000L)))
                 .thenReturn(List.of(Map.of(
                         "activity_id", "ACT-1",
@@ -303,19 +313,24 @@ class DataControllerTest {
         assertThat(response.getData().getEstimate().getTrend7d()).hasSize(7);
         assertThat(response.getData().getEstimate().getTodayGmv()).isNotNull();
         assertThat(response.getData().getEstimate().getServiceFee()).isNotNull();
+        assertThat(response.getData().getEstimate().getRefundOrderCount()).isEqualTo(2L);
+        assertThat(response.getData().getEstimate().getRefundOrderAmount()).isEqualByComparingTo("45.00");
+        assertThat(response.getData().getEstimate().getRefundServiceFee()).isEqualByComparingTo("2.20");
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(8)).selectMaps(wrapperCaptor.capture());
-        assertThat(wrapperCaptor.getAllValues().get(1).getSqlSelect()).contains("settle_amount");
-        assertThat(wrapperCaptor.getAllValues().get(2).getSqlSelect())
+        verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues().get(1).getSqlSelect()).contains("refund_order_count");
+        assertThat(wrapperCaptor.getAllValues().get(2).getSqlSelect()).contains("settle_amount");
+        assertThat(wrapperCaptor.getAllValues().get(3).getSqlSelect())
                 .contains("effective_service_fee")
                 .contains("effective_tech_service_fee");
-        assertThat(wrapperCaptor.getAllValues().get(3).getSqlSelect()).contains("settle_amount");
-        assertThat(wrapperCaptor.getAllValues().get(4).getSqlSegment()).contains("create_time");
-        assertThat(wrapperCaptor.getAllValues().get(5).getSqlSelect()).contains("order_amount");
-        assertThat(wrapperCaptor.getAllValues().get(6).getSqlSelect())
+        assertThat(wrapperCaptor.getAllValues().get(4).getSqlSelect()).contains("settle_amount");
+        assertThat(wrapperCaptor.getAllValues().get(5).getSqlSegment()).contains("create_time");
+        assertThat(wrapperCaptor.getAllValues().get(6).getSqlSelect()).contains("refund_order_count");
+        assertThat(wrapperCaptor.getAllValues().get(7).getSqlSelect()).contains("order_amount");
+        assertThat(wrapperCaptor.getAllValues().get(8).getSqlSelect())
                 .contains("estimate_service_fee")
                 .contains("estimate_tech_service_fee");
-        assertThat(wrapperCaptor.getAllValues().get(7).getSqlSelect()).contains("order_amount");
+        assertThat(wrapperCaptor.getAllValues().get(9).getSqlSelect()).contains("order_amount");
     }
 
     @Test
@@ -324,12 +339,14 @@ class DataControllerTest {
         UUID secondUser = UUID.randomUUID();
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of(Map.of("refund_order_count", 0L, "refund_order_amount_cent", 0L, "refund_service_fee_cent", 0L)))
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
-                .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of())
                 .thenReturn(List.of())
                 .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of(Map.of("refund_order_count", 0L, "refund_order_amount_cent", 0L, "refund_service_fee_cent", 0L)))
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
-                .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of())
                 .thenReturn(List.of());
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
                 new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
@@ -340,7 +357,7 @@ class DataControllerTest {
 
         assertThat(first.getCode()).isEqualTo(200);
         assertThat(second.getCode()).isEqualTo(200);
-        verify(orderMapper, times(8)).selectMaps(any(QueryWrapper.class));
+        verify(orderMapper, times(10)).selectMaps(any(QueryWrapper.class));
         verify(commissionService, times(2)).calculateByActivityBuckets(any());
     }
 
@@ -359,7 +376,7 @@ class DataControllerTest {
 
         assertThat(response.getCode()).isEqualTo(200);
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(8)).selectMaps(wrapperCaptor.capture());
+        verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues())
                 .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment()).contains("user_id"));
         verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
@@ -382,7 +399,7 @@ class DataControllerTest {
 
         assertThat(response.getCode()).isEqualTo(200);
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(8)).selectMaps(wrapperCaptor.capture());
+        verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues())
                 .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment()).contains("dept_id"));
         verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
@@ -405,8 +422,8 @@ class DataControllerTest {
         var response = dataController.getMetrics(userId, deptId, DataScope.DEPT);
 
         assertThat(response.getCode()).isEqualTo(200);
-        verify(dataScopePolicy, times(8)).contextRequirement(userId, deptId, DataScope.DEPT);
-        verify(dataScopePolicy, times(8)).applyTo(
+        verify(dataScopePolicy, times(10)).contextRequirement(userId, deptId, DataScope.DEPT);
+        verify(dataScopePolicy, times(10)).applyTo(
                 any(QueryWrapper.class), eq(userId), eq(deptId), eq(DataScope.DEPT), eq("user_id"), eq("dept_id"));
     }
 
@@ -452,6 +469,11 @@ class DataControllerTest {
     void getMetrics_withNoScopeAndSettleAlias_handlesEmptyAndInvalidAggregates() {
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(null)
+                .thenReturn(List.of(Map.of(
+                        "refund_order_count", "not-a-number",
+                        "refund_order_amount_cent", "bad-number",
+                        "refund_service_fee_cent", 100L
+                )))
                 .thenReturn(List.of(Map.of("order_count", "not-a-number")))
                 .thenReturn(List.of(Map.of(
                         "ACTIVITY_ID", "ACT-1",
@@ -465,6 +487,11 @@ class DataControllerTest {
                         "ORDER_AMOUNT_CENT", 100L
                 )))
                 .thenReturn(null)
+                .thenReturn(List.of(Map.of(
+                        "refund_order_count", "not-a-number",
+                        "refund_order_amount_cent", "bad-number",
+                        "refund_service_fee_cent", 100L
+                )))
                 .thenReturn(List.of(Map.of("order_count", "not-a-number")))
                 .thenReturn(List.of(Map.of(
                         "ACTIVITY_ID", "ACT-1",
@@ -486,9 +513,11 @@ class DataControllerTest {
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData().getSettle().getTodayOrderCount()).isZero();
         assertThat(response.getData().getSettle().getPendingShipCount()).isZero();
+        assertThat(response.getData().getSettle().getRefundOrderCount()).isZero();
+        assertThat(response.getData().getSettle().getRefundOrderAmount()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getSettle().getTrend7d().get(6).getOrderCount()).isZero();
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(8)).selectMaps(wrapperCaptor.capture());
+        verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues().get(0).getSqlSegment()).contains("settle_time");
     }
 

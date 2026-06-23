@@ -227,6 +227,25 @@
         ></div>
       </div>
 
+      <!-- 退款指标：按当前看板时间轨展示退款订单、退款服务费与退款订单额 -->
+      <div class="refund-metrics-section app-section-panel" data-testid="dashboard-refund-metrics">
+        <div class="refund-metrics-header">
+          <h3 class="section-title">退款指标</h3>
+          <span class="refund-metrics-scope">{{ activeTrackBadge }}</span>
+        </div>
+        <div class="refund-metric-grid">
+          <div
+            v-for="item in refundMetricCards"
+            :key="item.key"
+            class="refund-metric-item"
+          >
+            <span class="refund-metric-label">{{ item.label }}</span>
+            <strong class="refund-metric-value">{{ item.value }}</strong>
+            <span class="refund-metric-hint">{{ item.hint }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- 业绩域双轨汇总：展示 performance_records 表的预估轨和结算轨订单数及订单额 -->
       <div v-if="performanceSummary" class="breakdown-section app-section-panel" data-testid="dashboard-performance-summary">
         <h3 class="section-title">业绩双轨汇总</h3>
@@ -488,6 +507,8 @@ const firstMetricNumber = (track: Record<string, any>, keys: string[]) => {
 
 const metricAmountAny = (track: Record<string, any>, keys: string[]) => formatMoney(firstMetricNumber(track, keys))
 
+const formatCount = (value: unknown) => `${Math.trunc(toNumber(value))} 单`
+
 const serviceFeeExpense = (track: Record<string, any>) => {
   // 直接展示后端返回的服务费支出字段，不使用前端反推公式
   const explicit = track?.serviceFeeExpense
@@ -557,6 +578,32 @@ const businessMetricRows = computed(() => {
       primaryLabel: '预估',
       primaryValue: metricAmount(createTrack, 'grossProfit'),
       settleValue: metricAmount(settleTrack, 'grossProfit')
+    }
+  ]
+})
+
+const refundMetricCards = computed(() => {
+  const trackHint = timeField.value === 'createTime'
+    ? '按订单创建时间轨统计'
+    : '按订单结算时间轨统计'
+  return [
+    {
+      key: 'refundOrderCount',
+      label: '退款订单数',
+      value: formatCount(metrics.value?.refundOrderCount),
+      hint: trackHint
+    },
+    {
+      key: 'refundServiceFee',
+      label: '订单退款服务费',
+      value: formatMoney(toNumber(metrics.value?.refundServiceFee)),
+      hint: '按退款订单服务费字段汇总'
+    },
+    {
+      key: 'refundOrderAmount',
+      label: '退款订单额',
+      value: formatMoney(toNumber(metrics.value?.refundOrderAmount)),
+      hint: '按退款订单金额字段汇总'
     }
   ]
 })
@@ -1167,6 +1214,57 @@ watch(timeField, () => {
   margin-bottom: var(--content-gap);
 }
 
+.refund-metrics-section {
+  margin-bottom: var(--content-gap);
+}
+
+.refund-metrics-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.refund-metrics-scope {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.refund-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.refund-metric-item {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-page);
+}
+
+.refund-metric-label {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.refund-metric-value {
+  font-size: var(--text-xl);
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.refund-metric-hint {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
 .business-metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -1294,6 +1392,14 @@ watch(timeField, () => {
   }
 
   .trend-summary-list {
+    grid-template-columns: 1fr;
+  }
+
+  .refund-metrics-header {
+    display: grid;
+  }
+
+  .refund-metric-grid {
     grid-template-columns: 1fr;
   }
 

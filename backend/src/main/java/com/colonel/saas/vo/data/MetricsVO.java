@@ -47,6 +47,12 @@ public class MetricsVO {
     private BigDecimal channelCommission;
     /** 毛利润（收入 - 成本），单位：元 */
     private BigDecimal grossProfit;
+    /** 退款订单数 */
+    private Long refundOrderCount;
+    /** 退款订单额，单位：元 */
+    private BigDecimal refundOrderAmount;
+    /** 订单退款服务费，单位：元 */
+    private BigDecimal refundServiceFee;
     /** 金额口径标识（如 settle / estimate） */
     private String amountTrack;
     /** 指标数据来源说明（如数据库聚合、缓存、实时计算等） */
