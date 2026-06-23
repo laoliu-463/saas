@@ -259,6 +259,17 @@ public class ProductDisplayPolicy {
         return ACTIVITY_PRODUCT_QUERY_STATUS_HINT;
     }
 
+    public Map<String, Object> normalizeActivityProductStatusCounts(Map<String, Object> rawCounts) {
+        Map<String, Object> counts = new LinkedHashMap<>();
+        counts.put("total", statusCountValue(rawCounts, "total"));
+        counts.put("pendingReview", statusCountValue(rawCounts, "pendingReview"));
+        counts.put("promoting", statusCountValue(rawCounts, "promoting"));
+        counts.put("rejected", statusCountValue(rawCounts, "rejected"));
+        counts.put("terminated", statusCountValue(rawCounts, "terminated"));
+        counts.put("expired", statusCountValue(rawCounts, "expired"));
+        return counts;
+    }
+
     public String normalizeActivityProductSortBy(String sortBy) {
         if (!StringUtils.hasText(sortBy)) {
             return "default";
@@ -368,6 +379,14 @@ public class ProductDisplayPolicy {
         } catch (IllegalArgumentException ex) {
             return false;
         }
+    }
+
+    private long statusCountValue(Map<String, Object> counts, String key) {
+        if (counts == null) {
+            return 0L;
+        }
+        Object value = counts.get(key);
+        return value instanceof Number number ? Math.max(number.longValue(), 0L) : 0L;
     }
 
     public String normalizeActivityProductStatusText(Integer status, String statusText) {

@@ -2123,7 +2123,13 @@ public class ProductService {
         result.put("nextCursor", hasMore ? String.valueOf(nextOffset) : "");
         result.put("hasMore", hasMore);
         result.put("items", items);
+        result.put("statusCounts", loadActivityProductStatusCounts(activityId));
         return result;
+    }
+
+    private Map<String, Object> loadActivityProductStatusCounts(String activityId) {
+        Map<String, Object> raw = snapshotMapper.selectActivityStatusCounts(activityId);
+        return productDisplayPolicy.normalizeActivityProductStatusCounts(raw);
     }
 
     private List<Map<String, Object>> buildActivityProductItems(String activityId, List<ProductSnapshot> snapshots) {
@@ -2198,6 +2204,7 @@ public class ProductService {
         empty.put("nextCursor", "");
         empty.put("hasMore", false);
         empty.put("items", List.of());
+        empty.put("statusCounts", loadActivityProductStatusCounts(activityId));
         return empty;
     }
 

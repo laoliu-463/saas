@@ -35,6 +35,25 @@ public interface ProductSnapshotMapper extends BaseMapper<ProductSnapshot> {
     int upsert(@Param("snapshot") ProductSnapshot snapshot);
 
     /**
+     * 按活动统计有效商品快照的上游状态分布。
+     *
+     * @param activityId 活动 ID
+     * @return total / pendingReview / promoting / rejected / terminated / expired
+     */
+    @Select("""
+            SELECT COUNT(*) AS "total",
+                   COUNT(*) FILTER (WHERE status = 0) AS "pendingReview",
+                   COUNT(*) FILTER (WHERE status = 1) AS "promoting",
+                   COUNT(*) FILTER (WHERE status = 2) AS "rejected",
+                   COUNT(*) FILTER (WHERE status IN (3, 4)) AS "terminated",
+                   COUNT(*) FILTER (WHERE status = 6) AS "expired"
+              FROM product_snapshot
+             WHERE activity_id = #{activityId}
+               AND deleted = 0
+            """)
+    Map<String, Object> selectActivityStatusCounts(@Param("activityId") String activityId);
+
+    /**
      * 查询已上架且已选入精选库商品的品类名称列表
      * <p>
      * 关联 product_operation_state 表，筛选条件：

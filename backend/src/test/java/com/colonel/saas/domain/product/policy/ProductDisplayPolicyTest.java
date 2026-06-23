@@ -7,10 +7,13 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 
 class ProductDisplayPolicyTest {
 
@@ -170,7 +173,7 @@ class ProductDisplayPolicyTest {
     }
 
     @Test
-    void unsupportedStatusFour_shouldNotFallbackToTerminated() {
+    void statusFourPresentation_shouldMapToTerminatedByUpstreamCode() {
         ProductDisplayPolicy.ActivityProductStatusPresentation presentation =
                 policy.resolveActivityProductStatusPresentation(
                         4,
@@ -184,7 +187,22 @@ class ProductDisplayPolicyTest {
                         null,
                         null);
 
-        assertThat(presentation.officialStatus()).isNotEqualTo("TERMINATED");
+        assertThat(presentation.officialStatus()).isEqualTo("TERMINATED");
+
+        ProductDisplayPolicy.ActivityProductStatusPresentation textOnlyPresentation =
+                policy.resolveActivityProductStatusPresentation(
+                        null,
+                        "合作前取消",
+                        null,
+                        null,
+                        false,
+                        false,
+                        false,
+                        false,
+                        null,
+                        null);
+
+        assertThat(textOnlyPresentation.officialStatus()).isNotEqualTo("TERMINATED");
     }
 
     @Test
@@ -301,6 +319,34 @@ class ProductDisplayPolicyTest {
         assertThat(policy.matchesSelectedLibraryCoreVisibility(1, true, null, "UNKNOWN", false)).isTrue();
         assertThat(policy.isLocalRejectedProductState(3, ProductBizStatus.APPROVED.name())).isTrue();
         assertThat(policy.isLocalRejectedProductState(null, "UNKNOWN")).isFalse();
+    }
+
+    @Test
+    void activityProductStatusCounts_shouldNormalizeRawAggregateContract() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("total", 12);
+        raw.put("pendingReview", 1L);
+        raw.put("promoting", new BigDecimal("2"));
+        raw.put("rejected", -3);
+        raw.put("terminated", null);
+        raw.put("expired", "6");
+
+        Map<String, Object> counts = policy.normalizeActivityProductStatusCounts(raw);
+
+        assertThat(counts).containsExactly(
+                entry("total", 12L),
+                entry("pendingReview", 1L),
+                entry("promoting", 2L),
+                entry("rejected", 0L),
+                entry("terminated", 0L),
+                entry("expired", 0L));
+        assertThat(policy.normalizeActivityProductStatusCounts(null)).containsExactly(
+                entry("total", 0L),
+                entry("pendingReview", 0L),
+                entry("promoting", 0L),
+                entry("rejected", 0L),
+                entry("terminated", 0L),
+                entry("expired", 0L));
     }
 
     private static ProductDisplayRelationInput eligible(
