@@ -26,6 +26,7 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "resolveActivityProductStatusPresentation",
                         "normalizeActivityProductStatus",
                         "normalizeActivityProductFilterStatus",
+                        "activityProductFilterStatuses",
                         "normalizeActivityProductStatusText",
                         "normalizeActivityProductStatusCounts",
                         "isSupportedActivityProductQueryStatus",

@@ -1701,6 +1701,10 @@ public class DataApplicationService extends BaseController {
         selects.add("COUNT(DISTINCT CASE WHEN extra_data->>'colonel_type' = '2' THEN second_colonel_buyin_id END) AS colonel_promoter_count");
         selects.add("COUNT(DISTINCT product_id) AS product_count");
         selects.add("COALESCE(SUM(" + columns.amountColumn() + "), 0) AS order_amount_cent");
+        String refundPredicate = "(order_status = 5 OR UPPER(COALESCE(flow_point, '')) = 'REFUND')";
+        selects.add("COUNT(CASE WHEN " + refundPredicate + " THEN 1 END) AS refund_order_count");
+        selects.add("COALESCE(SUM(CASE WHEN " + refundPredicate + " THEN order_amount ELSE 0 END), 0) AS refund_order_amount_cent");
+        selects.add("COALESCE(SUM(CASE WHEN " + refundPredicate + " THEN COALESCE(effective_service_fee, estimate_service_fee, 0) ELSE 0 END), 0) AS refund_service_fee_cent");
         selects.add("COALESCE(SUM(actual_amount), 0) AS actual_amount_cent");
         selects.add("COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income_cent");
         selects.add("COALESCE(SUM(" + columns.techFeeColumn() + "), 0) AS tech_service_fee_cent");
@@ -2112,6 +2116,9 @@ public class DataApplicationService extends BaseController {
         vo.setProductCount(asLong(row, "product_count"));
         vo.setOrderCount(asLong(row, "order_count"));
         vo.setOrderAmount(centToYuan(orderAmount));
+        vo.setRefundOrderCount(asLong(row, "refund_order_count"));
+        vo.setRefundOrderAmount(centToYuan(asLong(row, "refund_order_amount_cent")));
+        vo.setRefundServiceFee(centToYuan(asLong(row, "refund_service_fee_cent")));
 
         long serviceFeeExpenseCent = asLong(row, "service_fee_expense_cent");
         long serviceProfitCent = CommissionService.serviceFeeNetCent(

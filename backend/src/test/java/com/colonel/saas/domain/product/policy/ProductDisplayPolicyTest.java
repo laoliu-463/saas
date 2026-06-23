@@ -229,6 +229,17 @@ class ProductDisplayPolicyTest {
     }
 
     @Test
+    void activityProductFilterStatuses_shouldKeepLegacyTerminatedQueryExpansion() {
+        assertThat(policy.activityProductFilterStatuses(null)).isEmpty();
+        assertThat(policy.activityProductFilterStatuses(0)).containsExactly(0);
+        assertThat(policy.activityProductFilterStatuses(1)).containsExactly(1);
+        assertThat(policy.activityProductFilterStatuses(2)).containsExactly(2);
+        assertThat(policy.activityProductFilterStatuses(3)).containsExactly(3, 4);
+        assertThat(policy.activityProductFilterStatuses(4)).containsExactly(4);
+        assertThat(policy.activityProductFilterStatuses(6)).containsExactly(6);
+    }
+
+    @Test
     void activityProductSortBy_shouldKeepLegacyQueryBranchContract() {
         assertThat(policy.normalizeActivityProductSortBy(null)).isEqualTo("default");
         assertThat(policy.normalizeActivityProductSortBy("")).isEqualTo("default");

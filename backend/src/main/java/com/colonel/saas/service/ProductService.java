@@ -165,6 +165,10 @@ public class ProductService {
     private boolean realPromotionWriteEnabled;
     @Value("${douyin.real.allow-promotion-write:false}")
     private boolean allowRealPromotionWrite;
+    @Value("${ddd.refactor.enabled:false}")
+    private boolean dddRefactorEnabled;
+    @Value("${ddd.refactor.product-display-policy.enabled:false}")
+    private boolean dddProductDisplayPolicyEnabled;
     @Value("${product.activity.sync.page-interval-ms:500}")
     private long productActivitySyncPageIntervalMs;
     @Value("${product.activity.sync.max-retries:3}")
@@ -1043,11 +1047,27 @@ public class ProductService {
         if (normalizedPromotionStatus == null) {
             return;
         }
+        if (isDddProductDisplayPolicyEnabled()) {
+            List<Integer> statuses = productDisplayPolicy.activityProductFilterStatuses(normalizedPromotionStatus);
+            if (statuses.isEmpty()) {
+                return;
+            }
+            if (statuses.size() == 1) {
+                wrapper.eq(ProductSnapshot::getStatus, statuses.get(0));
+                return;
+            }
+            wrapper.in(ProductSnapshot::getStatus, statuses);
+            return;
+        }
         if (Integer.valueOf(3).equals(normalizedPromotionStatus)) {
             wrapper.in(ProductSnapshot::getStatus, 3, 4);
             return;
         }
         wrapper.eq(ProductSnapshot::getStatus, normalizedPromotionStatus);
+    }
+
+    private boolean isDddProductDisplayPolicyEnabled() {
+        return dddRefactorEnabled && dddProductDisplayPolicyEnabled;
     }
 
     private boolean containsAny(String value, String... keywords) {

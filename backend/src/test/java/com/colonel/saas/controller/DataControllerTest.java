@@ -730,28 +730,34 @@ class DataControllerTest {
     void getOrderSummary_returnsTotalsAndDailyRowsWithSupportedFilters() {
         UUID recruiterId = UUID.randomUUID();
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
-                .thenReturn(List.of(Map.of(
-                        "order_count", 2L,
-                        "talent_promoter_count", 1L,
-                        "colonel_promoter_count", 1L,
-                        "product_count", 1L,
-                        "order_amount_cent", 10000L,
-                        "actual_amount_cent", 8000L,
-                        "service_fee_income_cent", 500L,
-                        "tech_service_fee_cent", 100L,
-                        "talent_commission_cent", 0L
+                .thenReturn(List.of(Map.ofEntries(
+                        Map.entry("order_count", 2L),
+                        Map.entry("talent_promoter_count", 1L),
+                        Map.entry("colonel_promoter_count", 1L),
+                        Map.entry("product_count", 1L),
+                        Map.entry("order_amount_cent", 10000L),
+                        Map.entry("refund_order_count", 1L),
+                        Map.entry("refund_order_amount_cent", 3000L),
+                        Map.entry("refund_service_fee_cent", 150L),
+                        Map.entry("actual_amount_cent", 8000L),
+                        Map.entry("service_fee_income_cent", 500L),
+                        Map.entry("tech_service_fee_cent", 100L),
+                        Map.entry("talent_commission_cent", 0L)
                 )))
-                .thenReturn(List.of(Map.of(
-                        "stat_date", "2026-05-25",
-                        "order_count", 2L,
-                        "talent_promoter_count", 1L,
-                        "colonel_promoter_count", 1L,
-                        "product_count", 1L,
-                        "order_amount_cent", 10000L,
-                        "actual_amount_cent", 8000L,
-                        "service_fee_income_cent", 500L,
-                        "tech_service_fee_cent", 100L,
-                        "talent_commission_cent", 0L
+                .thenReturn(List.of(Map.ofEntries(
+                        Map.entry("stat_date", "2026-05-25"),
+                        Map.entry("order_count", 2L),
+                        Map.entry("talent_promoter_count", 1L),
+                        Map.entry("colonel_promoter_count", 1L),
+                        Map.entry("product_count", 1L),
+                        Map.entry("order_amount_cent", 10000L),
+                        Map.entry("refund_order_count", 1L),
+                        Map.entry("refund_order_amount_cent", 3000L),
+                        Map.entry("refund_service_fee_cent", 150L),
+                        Map.entry("actual_amount_cent", 8000L),
+                        Map.entry("service_fee_income_cent", 500L),
+                        Map.entry("tech_service_fee_cent", 100L),
+                        Map.entry("talent_commission_cent", 0L)
                 )))
                 .thenReturn(List.of(Map.of(
                         "activity_id", "ACT-1",
@@ -798,6 +804,9 @@ class DataControllerTest {
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData().getTotal().getOrderCount()).isEqualTo(2L);
         assertThat(response.getData().getTotal().getOrderAmount()).isEqualByComparingTo("100.00");
+        assertThat(response.getData().getTotal().getRefundOrderCount()).isEqualTo(1L);
+        assertThat(response.getData().getTotal().getRefundOrderAmount()).isEqualByComparingTo("30.00");
+        assertThat(response.getData().getTotal().getRefundServiceFee()).isEqualByComparingTo("1.50");
         assertThat(response.getData().getTotal().getProductAverageServiceFeeRate()).isEqualByComparingTo("6.25");
         assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("4.00");
         assertThat(response.getData().getTotal().getServiceFeeExpense()).isEqualByComparingTo("0.00");
@@ -850,6 +859,9 @@ class DataControllerTest {
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData().getTotal().getOrderCount()).isZero();
         assertThat(response.getData().getTotal().getOrderAmount()).isEqualByComparingTo("0.00");
+        assertThat(response.getData().getTotal().getRefundOrderCount()).isZero();
+        assertThat(response.getData().getTotal().getRefundOrderAmount()).isEqualByComparingTo("0.00");
+        assertThat(response.getData().getTotal().getRefundServiceFee()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getTotal().getProductAverageServiceFeeRate()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getTotal().getServiceFeeIncome()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getRecords()).isEmpty();

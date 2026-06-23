@@ -25,6 +25,7 @@ class DddRefactorPropertiesTest {
                 .withProperty("ddd.refactor.user-facade.enabled", "true")
                 .withProperty("ddd.refactor.config-facade.enabled", "true")
                 .withProperty("ddd.refactor.product-facade.enabled", "true")
+                .withProperty("ddd.refactor.product-display-policy.enabled", "true")
                 .withProperty("ddd.refactor.talent-facade.enabled", "true")
                 .withProperty("ddd.refactor.sample-application.enabled", "true")
                 .withProperty("ddd.refactor.order-application.enabled", "true")
@@ -46,6 +47,7 @@ class DddRefactorPropertiesTest {
         assertThat(properties.getUserFacade().isEnabled()).isTrue();
         assertThat(properties.getConfigFacade().isEnabled()).isTrue();
         assertThat(properties.getProductFacade().isEnabled()).isTrue();
+        assertThat(properties.getProductDisplayPolicy().isEnabled()).isTrue();
         assertThat(properties.getTalentFacade().isEnabled()).isTrue();
         assertThat(properties.getSampleApplication().isEnabled()).isTrue();
         assertThat(properties.getOrderApplication().isEnabled()).isTrue();
@@ -68,6 +70,8 @@ class DddRefactorPropertiesTest {
         assertThat(properties.getConfigFacade().isEnabled()).isFalse();
         assertThat(properties.getProductFacade()).isNotNull();
         assertThat(properties.getProductFacade().isEnabled()).isFalse();
+        assertThat(properties.getProductDisplayPolicy()).isNotNull();
+        assertThat(properties.getProductDisplayPolicy().isEnabled()).isFalse();
         assertThat(properties.getTalentFacade()).isNotNull();
         assertThat(properties.getTalentFacade().isEnabled()).isFalse();
         assertThat(properties.getSampleApplication()).isNotNull();

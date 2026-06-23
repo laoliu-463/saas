@@ -5,6 +5,7 @@ import {
   activityProductStageToOfficialStatus,
   buildActivityProductStatusStages,
   countActivityProductStatusGroups,
+  formatActivityProductLoadSummary,
   formatActivityProductStatusCount,
   isActivityProductStageMatch,
   normalizeActivityProductStatusCounts,
@@ -74,6 +75,11 @@ describe('activity-product-status-display', () => {
     expect(formatActivityProductStatusCount(100)).toBe('99+')
   })
 
+  it('shows loaded rows against the backend filtered total', () => {
+    expect(formatActivityProductLoadSummary(20, 1274)).toBe('已加载 20 / 共 1274 个商品')
+    expect(formatActivityProductLoadSummary(0, 0)).toBe('已加载 0 / 共 0 个商品')
+  })
+
   it('matches rows by upstream status stage and exposes display labels', () => {
     expect(isActivityProductStageMatch({ status: 1, bizStatus: 'PENDING_AUDIT' }, 'promoting')).toBe(true)
     expect(isActivityProductStageMatch({ status: 0, statusText: '待审核', bizStatus: 'APPROVED' }, 'promoting')).toBe(false)
@@ -87,9 +93,9 @@ describe('activity-product-status-display', () => {
     })
   })
 
-  it('does not map unsupported status 4 into terminated activity status', () => {
-    expect(isActivityProductStageMatch({ status: 4, statusText: '合作前取消' }, 'terminated')).toBe(false)
-    expect(resolveActivityProductOfficialStatusView({ status: 4, statusText: '合作前取消' })).not.toMatchObject({
+  it('maps upstream status 4 into terminated activity status', () => {
+    expect(isActivityProductStageMatch({ status: 4, statusText: '合作前取消' }, 'terminated')).toBe(true)
+    expect(resolveActivityProductOfficialStatusView({ status: 4, statusText: '合作前取消' })).toMatchObject({
       status: 'TERMINATED'
     })
   })

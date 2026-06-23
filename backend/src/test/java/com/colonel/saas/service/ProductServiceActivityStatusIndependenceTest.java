@@ -1,7 +1,9 @@
 package com.colonel.saas.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.constant.ProductDisplayStatus;
+import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
@@ -18,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -33,6 +36,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -66,10 +70,12 @@ class ProductServiceActivityStatusIndependenceTest {
     @Mock private com.colonel.saas.domain.product.event.ProductDomainEventPublisher productDomainEventPublisher;
     @Mock private com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
 
+    private ProductDisplayPolicy productDisplayPolicy;
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
+        productDisplayPolicy = spy(new ProductDisplayPolicy());
         productService = new ProductService(
                 douyinConvertPort,
                 douyinProductGateway,
@@ -90,12 +96,42 @@ class ProductServiceActivityStatusIndependenceTest {
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher,
-                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
+                productDisplayPolicy,
                 copyPromotionApplicationService);
         when(snapshotMapper.upsert(any(ProductSnapshot.class))).thenReturn(1);
         when(operationStateMapper.updateById(any(ProductOperationState.class))).thenReturn(1);
         when(productDisplayRuleService.repairLibraryStateForActivity(any(), eq(false), anyInt()))
                 .thenReturn(ProductDisplayRuleService.LibraryRepairResult.empty(null, false));
+    }
+
+    @Test
+    void applyActivityProductPromotionStatusFilter_defaultOffShouldKeepLegacyExpansion() {
+        LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<>();
+
+        ReflectionTestUtils.invokeMethod(
+                productService,
+                "applyActivityProductPromotionStatusFilter",
+                wrapper,
+                3);
+
+        verify(productDisplayPolicy, never()).activityProductFilterStatuses(any());
+        assertThat(wrapper.getParamNameValuePairs().values()).containsExactly(3, 4);
+    }
+
+    @Test
+    void applyActivityProductPromotionStatusFilter_dddSwitchOnShouldDelegateToDisplayPolicy() {
+        ReflectionTestUtils.setField(productService, "dddRefactorEnabled", true);
+        ReflectionTestUtils.setField(productService, "dddProductDisplayPolicyEnabled", true);
+        LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<>();
+
+        ReflectionTestUtils.invokeMethod(
+                productService,
+                "applyActivityProductPromotionStatusFilter",
+                wrapper,
+                3);
+
+        verify(productDisplayPolicy).activityProductFilterStatuses(3);
+        assertThat(wrapper.getParamNameValuePairs().values()).containsExactly(3, 4);
     }
 
     @Test

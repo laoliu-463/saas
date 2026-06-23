@@ -246,6 +246,16 @@ public class ProductDisplayPolicy {
         return normalizeActivityProductStatus(status);
     }
 
+    public List<Integer> activityProductFilterStatuses(Integer status) {
+        if (status == null) {
+            return List.of();
+        }
+        if (Integer.valueOf(3).equals(status)) {
+            return List.of(3, 4);
+        }
+        return List.of(status);
+    }
+
     public boolean isSupportedActivityProductQueryStatus(Integer status) {
         return status == null
                 || status == 0

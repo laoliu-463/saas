@@ -32,6 +32,8 @@ class DddRefactorPropertiesIntegrationTest {
         assertThat(properties.getConfigFacade().isEnabled()).isFalse();
         assertThat(properties.getProductFacade()).isNotNull();
         assertThat(properties.getProductFacade().isEnabled()).isFalse();
+        assertThat(properties.getProductDisplayPolicy()).isNotNull();
+        assertThat(properties.getProductDisplayPolicy().isEnabled()).isFalse();
         assertThat(properties.getTalentFacade()).isNotNull();
         assertThat(properties.getTalentFacade().isEnabled()).isFalse();
         assertThat(properties.getSampleApplication()).isNotNull();
