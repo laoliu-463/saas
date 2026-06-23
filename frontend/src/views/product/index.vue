@@ -236,6 +236,7 @@ import {
   batchPinActivityProducts,
   batchPutActivityProductsIntoLibrary,
   convertActivityProductLink,
+  getActivityProductSyncStatus,
   getActivityProducts,
   pinActivityProduct,
   putActivityProductIntoLibrary,
@@ -969,9 +970,12 @@ const refreshProducts = async () => {
 }
 
 const REALTIME_REFRESH_DEBOUNCE_MS = 100
-const PRODUCT_SYNC_FOLLOW_UP_REFRESH_DELAYS_MS = [1000, 5000, 15000] as const
+const PRODUCT_SYNC_STATUS_POLL_INTERVAL_MS = 2000
+const PRODUCT_SYNC_STATUS_POLL_TIMEOUT_MS = 180000
 let realtimeProductRefreshTimer: ReturnType<typeof setTimeout> | null = null
-const productSyncFollowUpRefreshTimers: ReturnType<typeof setTimeout>[] = []
+let productSyncStatusPollTimer: ReturnType<typeof setTimeout> | null = null
+let productSyncStatusPollStartedAt = 0
+let productSyncStatusActivityId = ''
 
 const scheduleRealtimeProductRefresh = () => {
   if (realtimeProductRefreshTimer) return
@@ -981,28 +985,71 @@ const scheduleRealtimeProductRefresh = () => {
   }, REALTIME_REFRESH_DEBOUNCE_MS)
 }
 
-const clearProductSyncFollowUpRefreshTimers = () => {
-  while (productSyncFollowUpRefreshTimers.length) {
-    const timer = productSyncFollowUpRefreshTimers.pop()
-    if (timer) clearTimeout(timer)
+const clearProductSyncStatusPollTimer = () => {
+  if (productSyncStatusPollTimer) {
+    clearTimeout(productSyncStatusPollTimer)
+    productSyncStatusPollTimer = null
   }
 }
 
-const scheduleProductSyncFollowUpRefresh = (activityId: string) => {
-  clearProductSyncFollowUpRefreshTimers()
-  PRODUCT_SYNC_FOLLOW_UP_REFRESH_DELAYS_MS.forEach((delayMs) => {
-    const timer = setTimeout(() => {
-      const normalizedActivityId = normalizeText(activityId)
-      if (normalizedActivityId) {
-        void fetchProducts(true, false, normalizedActivityId)
-      }
-    }, delayMs)
-    productSyncFollowUpRefreshTimers.push(timer)
-  })
+const stopProductSyncStatusPolling = () => {
+  clearProductSyncStatusPollTimer()
+  productSyncStatusPollStartedAt = 0
+  productSyncStatusActivityId = ''
 }
 
-const stopRealtimeUpdates = useRealtimeListInvalidation(['products'], () => {
+const scheduleProductSyncStatusPoll = (activityId: string, delayMs = PRODUCT_SYNC_STATUS_POLL_INTERVAL_MS) => {
+  clearProductSyncStatusPollTimer()
+  productSyncStatusPollTimer = setTimeout(() => {
+    productSyncStatusPollTimer = null
+    void pollProductSyncStatus(activityId)
+  }, delayMs)
+}
+
+const pollProductSyncStatus = async (activityId: string) => {
+  const normalizedActivityId = normalizeText(activityId)
+  if (!normalizedActivityId || normalizedActivityId !== productSyncStatusActivityId) return
+  const elapsedMs = Date.now() - productSyncStatusPollStartedAt
+  try {
+    const res: any = await getActivityProductSyncStatus(normalizedActivityId)
+    const data = res?.data || {}
+    await fetchProducts(true, false, normalizedActivityId)
+    if (data.running !== true && data.syncStatus !== 'RUNNING') {
+      stopProductSyncStatusPolling()
+      syncing.value = false
+      message.success('商品同步已结束，列表已刷新')
+      return
+    }
+  } catch (error) {
+    console.warn('[product-sync] poll status failed', error)
+  }
+  if (elapsedMs >= PRODUCT_SYNC_STATUS_POLL_TIMEOUT_MS) {
+    stopProductSyncStatusPolling()
+    syncing.value = false
+    message.warning('商品同步仍在后台执行，完成事件到达后页面会继续刷新')
+    return
+  }
+  scheduleProductSyncStatusPoll(normalizedActivityId)
+}
+
+const startProductSyncStatusPolling = (activityId: string) => {
+  const normalizedActivityId = normalizeText(activityId)
+  if (!normalizedActivityId) return
+  stopProductSyncStatusPolling()
+  productSyncStatusActivityId = normalizedActivityId
+  productSyncStatusPollStartedAt = Date.now()
+  syncing.value = true
+  scheduleProductSyncStatusPoll(normalizedActivityId)
+}
+
+const stopRealtimeUpdates = useRealtimeListInvalidation(['products'], (realtimeMessage) => {
   scheduleRealtimeProductRefresh()
+  const eventActivityId = normalizeText(realtimeMessage.entityId || '')
+  if (productSyncStatusActivityId && eventActivityId === productSyncStatusActivityId) {
+    stopProductSyncStatusPolling()
+    syncing.value = false
+    message.success('商品同步已结束，列表已刷新')
+  }
 })
 
 const openSyncActivityProductsDialog = () => {
@@ -1035,6 +1082,7 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
   fallbackActivityId.value = selectedActivityId
   clearBatchSelection()
   syncing.value = true
+  let keepSyncingAfterRequest = false
   try {
     const res: any = await syncActivityProducts(selectedActivityId)
     const data = res?.data || {}
@@ -1042,11 +1090,17 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
     const notice = resolveProductSyncNotice(data)
     message[notice.type](notice.message)
     await fetchProducts(true, false, selectedActivityId)
-    scheduleProductSyncFollowUpRefresh(selectedActivityId)
+    const syncStatus = String(data.syncStatus || '')
+    if (syncStatus === 'ACCEPTED' || syncStatus === 'RUNNING') {
+      keepSyncingAfterRequest = true
+      startProductSyncStatusPolling(selectedActivityId)
+    }
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '发起商品同步失败' })
   } finally {
-    syncing.value = false
+    if (!keepSyncingAfterRequest) {
+      syncing.value = false
+    }
   }
 }
 
@@ -1746,7 +1800,7 @@ onBeforeUnmount(() => {
     clearTimeout(realtimeProductRefreshTimer)
     realtimeProductRefreshTimer = null
   }
-  clearProductSyncFollowUpRefreshTimers()
+  stopProductSyncStatusPolling()
   stopRealtimeUpdates()
 })
 

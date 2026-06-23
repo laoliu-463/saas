@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -65,6 +66,19 @@ public class ProductActivityManualSyncService {
         return new SyncTriggerResult(normalizedActivityId, "ACCEPTED");
     }
 
+    public SyncStatusResult status(String activityId) {
+        String normalizedActivityId = activityId == null ? "" : activityId.trim();
+        if (!StringUtils.hasText(normalizedActivityId)) {
+            return new SyncStatusResult("", false, null);
+        }
+        ColonelsettlementActivity activity = activityMapper.selectByActivityId(normalizedActivityId);
+        LocalDateTime lastSyncAt = activity == null ? null : activity.getLastSyncAt();
+        return new SyncStatusResult(
+                normalizedActivityId,
+                runningActivityIds.contains(normalizedActivityId),
+                lastSyncAt);
+    }
+
     private void runSync(String activityId, String appId) {
         try {
             colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
@@ -114,5 +128,8 @@ public class ProductActivityManualSyncService {
     }
 
     public record SyncTriggerResult(String activityId, String syncStatus) {
+    }
+
+    public record SyncStatusResult(String activityId, boolean running, LocalDateTime lastSyncAt) {
     }
 }

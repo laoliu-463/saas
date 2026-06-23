@@ -570,6 +570,24 @@ class ColonelActivityControllerTest {
     }
 
     @Test
+    void syncProductsStatus_shouldReturnRunningStateAndLastSyncAt() throws Exception {
+        LocalDateTime lastSyncAt = LocalDateTime.of(2026, 6, 23, 13, 55, 24);
+        when(productActivityManualSyncService.status("100018")).thenReturn(
+                new ProductActivityManualSyncService.SyncStatusResult("100018", true, lastSyncAt));
+
+        mockMvc.perform(get("/colonel/activities/{activityId}/products/sync/status", "100018")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.activityId").value("100018"))
+                .andExpect(jsonPath("$.data.running").value(true))
+                .andExpect(jsonPath("$.data.syncStatus").value("RUNNING"))
+                .andExpect(jsonPath("$.data.lastSyncAt").exists());
+
+        verify(productActivityManualSyncService).status("100018");
+    }
+
+    @Test
     void listProducts_shouldMapProductGatewayErrorsToBusinessMessagesOnRefresh() {
         // 改造后：refresh=true 仍调抖音（用户主动触发），错误映射测试保留
         // 默认 refresh=false 已不再调抖音（见 listProducts_shouldNeverCallUpstreamByDefaultAndReturnNeedSyncWhenNoSnapshots）

@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import org.junit.jupiter.api.Test;
@@ -81,6 +82,30 @@ class ProductActivityManualSyncServiceTest {
         ProductActivityManualSyncService.SyncTriggerResult third = service.trigger("ACT-1", null);
         assertThat(third.syncStatus()).isEqualTo("ACCEPTED");
         assertThat(queuedTasks).hasSize(2);
+    }
+
+    @Test
+    void status_shouldExposeRunningStateAndLastSyncAt() {
+        List<Runnable> queuedTasks = new ArrayList<>();
+        Executor queuedExecutor = queuedTasks::add;
+        ProductActivityManualSyncService service = new ProductActivityManualSyncService(
+                productService,
+                colonelActivityService,
+                activityMapper,
+                queuedExecutor);
+        LocalDateTime lastSyncAt = LocalDateTime.of(2026, 6, 23, 13, 55, 24);
+        ColonelsettlementActivity activity = new ColonelsettlementActivity();
+        activity.setActivityId("ACT-1");
+        activity.setLastSyncAt(lastSyncAt);
+        when(activityMapper.selectByActivityId("ACT-1")).thenReturn(activity);
+
+        service.trigger("ACT-1", null);
+
+        ProductActivityManualSyncService.SyncStatusResult status = service.status("ACT-1");
+
+        assertThat(status.activityId()).isEqualTo("ACT-1");
+        assertThat(status.running()).isTrue();
+        assertThat(status.lastSyncAt()).isEqualTo(lastSyncAt);
     }
 
     @Test

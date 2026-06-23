@@ -305,3 +305,14 @@ export const getActivityProductOperationLogs = (
  */
 export const syncActivityProducts = (activityId: string | number) =>
   request.post(`/colonel/activities/${activityId}/products/sync`);
+
+/**
+ * 查询活动商品后台同步状态。
+ *
+ * 用于一键同步后保持前端刷新，直到后台同步完成并落库。
+ *
+ * @param activityId - 活动 ID
+ * @returns 同步运行状态
+ */
+export const getActivityProductSyncStatus = (activityId: string | number) =>
+  request.get(`/colonel/activities/${activityId}/products/sync/status`);

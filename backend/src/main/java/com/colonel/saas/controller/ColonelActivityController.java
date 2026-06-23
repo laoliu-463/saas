@@ -181,6 +181,28 @@ public class ColonelActivityController extends BaseController {
         return ok(payload);
     }
 
+    @Operation(summary = "查询活动商品同步状态", description = "读取当前活动商品后台同步是否仍在运行，用于前端同步后自动刷新。")
+    @GetMapping("/{activityId}/products/sync/status")
+    public ApiResult<Map<String, Object>> syncProductsStatus(
+            @Parameter(description = "团长活动 ID。") @PathVariable("activityId") String activityId,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        activityAccessService.assertActivityReadable(
+                activityId,
+                userId,
+                deptId,
+                activityAccessService.normalizeRoles(roleCodes));
+        ProductActivityManualSyncService.SyncStatusResult statusResult =
+                productActivityManualSyncService.status(activityId);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("activityId", statusResult.activityId());
+        payload.put("running", statusResult.running());
+        payload.put("syncStatus", statusResult.running() ? "RUNNING" : "IDLE");
+        payload.put("lastSyncAt", statusResult.lastSyncAt());
+        return ok(payload);
+    }
+
     @Operation(summary = "活动商品列表", description = "查询团长活动下的商品列表。优先使用本地快照构造业务视图；本地无快照且未要求 refresh 时返回 needSync=true 提示先同步，永不在线调抖音。")
     @GetMapping("/{activityId}/products")
     public ApiResult<Map<String, Object>> listProducts(
