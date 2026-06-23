@@ -318,14 +318,18 @@ class DataControllerTest {
         assertThat(response.getData().getEstimate().getRefundServiceFee()).isEqualByComparingTo("2.20");
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
         verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
-        assertThat(wrapperCaptor.getAllValues().get(1).getSqlSelect()).contains("refund_order_count");
+        assertThat(wrapperCaptor.getAllValues().get(1).getSqlSelect())
+                .contains("refund_order_count")
+                .contains("NULLIF(effective_service_fee, 0)");
         assertThat(wrapperCaptor.getAllValues().get(2).getSqlSelect()).contains("settle_amount");
         assertThat(wrapperCaptor.getAllValues().get(3).getSqlSelect())
                 .contains("effective_service_fee")
                 .contains("effective_tech_service_fee");
         assertThat(wrapperCaptor.getAllValues().get(4).getSqlSelect()).contains("settle_amount");
         assertThat(wrapperCaptor.getAllValues().get(5).getSqlSegment()).contains("create_time");
-        assertThat(wrapperCaptor.getAllValues().get(6).getSqlSelect()).contains("refund_order_count");
+        assertThat(wrapperCaptor.getAllValues().get(6).getSqlSelect())
+                .contains("refund_order_count")
+                .contains("NULLIF(effective_service_fee, 0)");
         assertThat(wrapperCaptor.getAllValues().get(7).getSqlSelect()).contains("order_amount");
         assertThat(wrapperCaptor.getAllValues().get(8).getSqlSelect())
                 .contains("estimate_service_fee")
@@ -846,6 +850,9 @@ class DataControllerTest {
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
         verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues().get(0).getSqlSelect())
+                .contains("refund_service_fee_cent")
+                .contains("NULLIF(effective_service_fee, 0)");
         String segment = wrapperCaptor.getAllValues().get(0).getSqlSegment();
         assertThat(segment).contains("product_id");
         assertThat(segment).contains("product_name");

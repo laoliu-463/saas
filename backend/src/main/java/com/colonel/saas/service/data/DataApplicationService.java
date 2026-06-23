@@ -131,6 +131,9 @@ public class DataApplicationService extends BaseController {
     /** 退款订单识别条件：抖店退款状态或退款流转节点。 */
     private static final String REFUND_ORDER_PREDICATE = "(order_status = 5 OR UPPER(COALESCE(flow_point, '')) = 'REFUND')";
 
+    /** 退款服务费口径：结算服务费为 0/null 时回退预估服务费。 */
+    private static final String REFUND_SERVICE_FEE_EXPRESSION = "COALESCE(NULLIF(effective_service_fee, 0), estimate_service_fee, 0)";
+
     /** 上游订单时间字符串常见格式。 */
     private static final DateTimeFormatter UPSTREAM_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -1088,7 +1091,7 @@ public class DataApplicationService extends BaseController {
                 .select(
                         "COUNT(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN 1 END) AS refund_order_count",
                         "COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN order_amount ELSE 0 END), 0) AS refund_order_amount_cent",
-                        "COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN COALESCE(effective_service_fee, estimate_service_fee, 0) ELSE 0 END), 0) AS refund_service_fee_cent"
+                        "COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN " + REFUND_SERVICE_FEE_EXPRESSION + " ELSE 0 END), 0) AS refund_service_fee_cent"
                 )
                 .ge(timeColumn, start)
                 .lt(timeColumn, end);
@@ -1742,7 +1745,7 @@ public class DataApplicationService extends BaseController {
         selects.add("COALESCE(SUM(" + columns.amountColumn() + "), 0) AS order_amount_cent");
         selects.add("COUNT(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN 1 END) AS refund_order_count");
         selects.add("COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN order_amount ELSE 0 END), 0) AS refund_order_amount_cent");
-        selects.add("COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN COALESCE(effective_service_fee, estimate_service_fee, 0) ELSE 0 END), 0) AS refund_service_fee_cent");
+        selects.add("COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN " + REFUND_SERVICE_FEE_EXPRESSION + " ELSE 0 END), 0) AS refund_service_fee_cent");
         selects.add("COALESCE(SUM(actual_amount), 0) AS actual_amount_cent");
         selects.add("COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income_cent");
         selects.add("COALESCE(SUM(" + columns.techFeeColumn() + "), 0) AS tech_service_fee_cent");
