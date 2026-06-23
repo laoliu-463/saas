@@ -26,12 +26,18 @@ class DouyinWebhookEventServiceTest {
     private DouyinWebhookEventMapper eventMapper;
     @Mock
     private OrderSyncService orderSyncService;
+    @Mock
+    private ProductActivityManualSyncService productActivityManualSyncService;
 
     private DouyinWebhookEventService service;
 
     @BeforeEach
     void setUp() {
-        service = new DouyinWebhookEventService(eventMapper, new ObjectMapper(), orderSyncService);
+        service = new DouyinWebhookEventService(
+                eventMapper,
+                new ObjectMapper(),
+                orderSyncService,
+                productActivityManualSyncService);
     }
 
     @Test
@@ -71,6 +77,46 @@ class DouyinWebhookEventServiceTest {
         assertThat(captor.getValue().getConsumeResult())
                 .isEqualTo("COLONEL_OPEN_EVENT_SYNCED:fetched=2,created=1,updated=1,failed=0");
         verify(orderSyncService).syncByOrderIds(List.of("ORDER_1", "ORDER_2"));
+    }
+
+    @Test
+    void captureColonelOpenEvent_shouldTriggerActivityProductSyncWhenPayloadContainsActivityIds() {
+        String body = "{\"event\":\"doudian_alliance_colonelOpenEvent\",\"event_id\":\"evt-activity-001\",\"data\":{\"app_id\":\"APP-1\",\"activity_ids\":[\"ACT_1\",\"ACT_2\",\"ACT_1\"]}}";
+        when(eventMapper.selectOne(any())).thenReturn(null);
+        when(productActivityManualSyncService.trigger("ACT_1", "APP-1"))
+                .thenReturn(new ProductActivityManualSyncService.SyncTriggerResult("ACT_1", "ACCEPTED"));
+        when(productActivityManualSyncService.trigger("ACT_2", "APP-1"))
+                .thenReturn(new ProductActivityManualSyncService.SyncTriggerResult("ACT_2", "RUNNING"));
+
+        DouyinWebhookEventService.CaptureResult result = service.captureColonelOpenEvent(body);
+
+        assertThat(result.duplicate()).isFalse();
+        assertThat(result.status()).isEqualTo(DouyinWebhookEventService.STATUS_CONSUMED);
+        ArgumentCaptor<DouyinWebhookEvent> captor = ArgumentCaptor.forClass(DouyinWebhookEvent.class);
+        verify(eventMapper).insert(captor.capture());
+        verify(eventMapper).updateById(captor.getValue());
+        assertThat(captor.getValue().getConsumeResult())
+                .isEqualTo("COLONEL_OPEN_EVENT_PRODUCT_SYNC_TRIGGERED:accepted=1,running=1,busy=0,invalid=0,failed=0");
+        verify(productActivityManualSyncService).trigger("ACT_1", "APP-1");
+        verify(productActivityManualSyncService).trigger("ACT_2", "APP-1");
+    }
+
+    @Test
+    void captureColonelOpenEvent_shouldMarkFailedForReplayWhenActivitySyncQueueIsBusy() {
+        String body = "{\"event\":\"doudian_alliance_colonelOpenEvent\",\"event_id\":\"evt-activity-busy\",\"data\":{\"activity_id\":\"ACT_BUSY\"}}";
+        when(eventMapper.selectOne(any())).thenReturn(null);
+        when(productActivityManualSyncService.trigger("ACT_BUSY", null))
+                .thenReturn(new ProductActivityManualSyncService.SyncTriggerResult("ACT_BUSY", "BUSY"));
+
+        DouyinWebhookEventService.CaptureResult result = service.captureColonelOpenEvent(body);
+
+        assertThat(result.duplicate()).isFalse();
+        assertThat(result.status()).isEqualTo(DouyinWebhookEventService.STATUS_FAILED);
+        ArgumentCaptor<DouyinWebhookEvent> captor = ArgumentCaptor.forClass(DouyinWebhookEvent.class);
+        verify(eventMapper).insert(captor.capture());
+        verify(eventMapper).updateById(captor.getValue());
+        assertThat(captor.getValue().getConsumeResult())
+                .isEqualTo("COLONEL_OPEN_EVENT_PRODUCT_SYNC_TRIGGERED:accepted=0,running=0,busy=1,invalid=0,failed=0");
     }
 
     @Test

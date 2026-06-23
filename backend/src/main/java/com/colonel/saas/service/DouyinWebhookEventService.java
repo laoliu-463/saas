@@ -33,12 +33,14 @@ import java.util.UUID;
  *   <li>提供 {@link #captureColonelOpenEvent} 捕获并去重单条 Webhook 事件，支持 DuplicateKeyException 并发兜底</li>
  *   <li>提供 {@link #replayUnfinished} 重放未完成（RECEIVED / FAILED）的事件</li>
  *   <li>事件生命周期：RECEIVED → CONSUMED / IGNORED / FAILED</li>
- *   <li>消费逻辑仅处理 colonelOpenEvent 类型，提取订单 ID 列表后调用订单同步服务</li>
+ *   <li>消费逻辑处理 colonelOpenEvent 类型，提取订单 ID 列表后调用订单同步服务；
+ *       若报文携带活动 ID，则提交活动商品后台同步任务</li>
  * </ul>
  *
- * <p><b>业务领域：</b>订单域 — Webhook 事件捕获与消费</p>
+ * <p><b>业务领域：</b>基础设施 — Webhook 事件捕获；订单域与商品域按载荷字段消费</p>
  * <p><b>协作关系：</b>依赖 {@link DouyinWebhookEventMapper} 持久化事件记录；
  * 依赖 {@link OrderSyncService} 对 colonelOpenEvent 提取的订单 ID 执行订单同步；
+ * 依赖 {@link ProductActivityManualSyncService} 对 colonelOpenEvent 提取的活动 ID 提交活动商品同步；
  * 依赖 {@link ObjectMapper} 解析 JSON 报文</p>
  *
  * @see DouyinWebhookEventMapper
@@ -75,13 +77,18 @@ public class DouyinWebhookEventService {
     /** 订单同步服务，消费 colonelOpenEvent 时提取订单 ID 并触发同步 */
     private final OrderSyncService orderSyncService;
 
+    /** 活动商品后台同步服务，消费 colonelOpenEvent 时提取活动 ID 并触发同步 */
+    private final ProductActivityManualSyncService productActivityManualSyncService;
+
     public DouyinWebhookEventService(
             DouyinWebhookEventMapper eventMapper,
             ObjectMapper objectMapper,
-            OrderSyncService orderSyncService) {
+            OrderSyncService orderSyncService,
+            ProductActivityManualSyncService productActivityManualSyncService) {
         this.eventMapper = eventMapper;
         this.objectMapper = objectMapper;
         this.orderSyncService = orderSyncService;
+        this.productActivityManualSyncService = productActivityManualSyncService;
     }
 
     /**
@@ -181,13 +188,28 @@ public class DouyinWebhookEventService {
                 return;
             }
             if (COLONEL_OPEN_EVENT.equals(parsed.eventType())) {
+                List<String> consumeResults = new ArrayList<>();
+                boolean retryableProductSyncFailure = false;
                 List<String> orderIds = extractOrderIds(parsed.payload());
-                if (orderIds.isEmpty()) {
-                    mark(event, STATUS_CONSUMED, "COLONEL_OPEN_EVENT_CAPTURED");
+                if (!orderIds.isEmpty()) {
+                    OrderSyncService.SyncResult result = orderSyncService.syncByOrderIds(orderIds);
+                    consumeResults.add(buildSyncConsumeResult(result));
+                }
+                List<String> activityIds = extractActivityIds(parsed.payload());
+                if (!activityIds.isEmpty()) {
+                    ActivityProductSyncTriggerSummary summary =
+                            triggerActivityProductSyncs(activityIds, extractAppId(parsed.payload()));
+                    consumeResults.add(buildActivityProductSyncConsumeResult(summary));
+                    retryableProductSyncFailure = summary.retryableFailure();
+                }
+                if (retryableProductSyncFailure) {
+                    mark(event, STATUS_FAILED, String.join(";", consumeResults));
                     return;
                 }
-                OrderSyncService.SyncResult result = orderSyncService.syncByOrderIds(orderIds);
-                mark(event, STATUS_CONSUMED, buildSyncConsumeResult(result));
+                mark(event, STATUS_CONSUMED,
+                        consumeResults.isEmpty()
+                                ? "COLONEL_OPEN_EVENT_CAPTURED"
+                                : String.join(";", consumeResults));
                 return;
             }
             mark(event, STATUS_IGNORED, "UNSUPPORTED_EVENT");
@@ -279,15 +301,52 @@ public class DouyinWebhookEventService {
     }
 
     /**
+     * 从 payload 中提取活动 ID 列表，支持顶层和 data 嵌套中的常见字段名。
+     *
+     * <p>该方法不把 activityId 用作 Webhook 幂等键，避免同一活动的多次上游状态变更被误判重复。</p>
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> extractActivityIds(Map<String, Object> payload) {
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        addActivityIds(result, payload.get("activity_id"));
+        addActivityIds(result, payload.get("activityId"));
+        addActivityIds(result, payload.get("activity_ids"));
+        addActivityIds(result, payload.get("activityIds"));
+        Object data = payload.get("data");
+        if (data instanceof Map<?, ?> nested) {
+            Map<String, Object> nestedMap = (Map<String, Object>) nested;
+            addActivityIds(result, nestedMap.get("activity_id"));
+            addActivityIds(result, nestedMap.get("activityId"));
+            addActivityIds(result, nestedMap.get("activity_ids"));
+            addActivityIds(result, nestedMap.get("activityIds"));
+        }
+        return List.copyOf(result);
+    }
+
+    /**
      * 递归解析原始值中的订单 ID：支持 List 递归展开、逗号分隔字符串拆分，最终将非空白字符串加入目标集合。
      */
     private void addOrderIds(LinkedHashSet<String> target, Object rawValue) {
+        addDelimitedStrings(target, rawValue);
+    }
+
+    /**
+     * 递归解析原始值中的活动 ID：支持 List 递归展开、逗号分隔字符串拆分，最终将非空白字符串加入目标集合。
+     */
+    private void addActivityIds(LinkedHashSet<String> target, Object rawValue) {
+        addDelimitedStrings(target, rawValue);
+    }
+
+    /**
+     * 递归解析原始值中的字符串列表：支持 List 递归展开、逗号分隔字符串拆分。
+     */
+    private void addDelimitedStrings(LinkedHashSet<String> target, Object rawValue) {
         if (rawValue == null) {
             return;
         }
         if (rawValue instanceof List<?> list) {
             for (Object item : list) {
-                addOrderIds(target, item);
+                addDelimitedStrings(target, item);
             }
             return;
         }
@@ -297,7 +356,7 @@ public class DouyinWebhookEventService {
         }
         if (text.contains(",")) {
             for (String part : text.split(",")) {
-                addOrderIds(target, part);
+                addDelimitedStrings(target, part);
             }
             return;
         }
@@ -314,6 +373,63 @@ public class DouyinWebhookEventService {
         parts.add("updated=" + result.updated());
         parts.add("failed=" + result.failed());
         return "COLONEL_OPEN_EVENT_SYNCED:" + String.join(",", parts);
+    }
+
+    /**
+     * 从 Webhook 负载中提取可选 appId，优先兼容 app_id / appId。
+     */
+    private String extractAppId(Map<String, Object> payload) {
+        return firstNonBlank(
+                asString(payload.get("app_id")),
+                asString(payload.get("appId")),
+                nestedString(payload.get("data"), "app_id"),
+                nestedString(payload.get("data"), "appId")
+        );
+    }
+
+    /**
+     * 将活动商品同步提交到后台执行器。这里不等待上游同步完成，避免阻塞 Webhook 响应线程；
+     * 同步完成后由 ProductService 发布 ActivitySyncCompletedEvent，并经 SSE 让前端列表失效刷新。
+     */
+    private ActivityProductSyncTriggerSummary triggerActivityProductSyncs(List<String> activityIds, String appId) {
+        int accepted = 0;
+        int running = 0;
+        int busy = 0;
+        int invalid = 0;
+        int failed = 0;
+        for (String activityId : activityIds) {
+            try {
+                ProductActivityManualSyncService.SyncTriggerResult result =
+                        productActivityManualSyncService.trigger(activityId, appId);
+                String status = result == null ? "" : result.syncStatus();
+                if ("ACCEPTED".equals(status)) {
+                    accepted++;
+                } else if ("RUNNING".equals(status)) {
+                    running++;
+                } else if ("BUSY".equals(status)) {
+                    busy++;
+                } else {
+                    invalid++;
+                }
+            } catch (Exception ex) {
+                failed++;
+                log.warn("Douyin webhook activity product sync trigger failed, activityId={}, exception={}",
+                        activityId, ex.getClass().getSimpleName());
+            }
+        }
+        return new ActivityProductSyncTriggerSummary(accepted, running, busy, invalid, failed);
+    }
+
+    /**
+     * 将活动商品后台同步提交结果格式化为可审计字符串。
+     */
+    private String buildActivityProductSyncConsumeResult(ActivityProductSyncTriggerSummary summary) {
+        return "COLONEL_OPEN_EVENT_PRODUCT_SYNC_TRIGGERED:"
+                + "accepted=" + summary.accepted()
+                + ",running=" + summary.running()
+                + ",busy=" + summary.busy()
+                + ",invalid=" + summary.invalid()
+                + ",failed=" + summary.failed();
     }
 
     /**
@@ -396,5 +512,12 @@ public class DouyinWebhookEventService {
      * @param failed   消费失败数
      */
     public record ReplayResult(int scanned, int consumed, int failed) {
+    }
+
+    /** 活动商品后台同步触发汇总。 */
+    private record ActivityProductSyncTriggerSummary(int accepted, int running, int busy, int invalid, int failed) {
+        private boolean retryableFailure() {
+            return busy > 0 || failed > 0;
+        }
     }
 }
