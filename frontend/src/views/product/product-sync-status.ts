@@ -12,7 +12,7 @@ export function resolveProductSyncNotice(payload: Record<string, unknown> = {}):
   if (syncStatus === 'RUNNING') {
     return {
       type: 'info',
-      message: customMessage || '商品同步已在后台执行，请稍后刷新列表'
+      message: '商品同步进行中，列表将自动刷新'
     }
   }
   if (syncStatus === 'BUSY') {
@@ -23,6 +23,6 @@ export function resolveProductSyncNotice(payload: Record<string, unknown> = {}):
   }
   return {
     type: 'success',
-    message: customMessage || '商品同步已转入后台执行，请稍后刷新列表查看结果'
+    message: '商品同步已开始，列表将自动刷新'
   }
 }

@@ -6,7 +6,7 @@ describe('resolveProductSyncNotice', () => {
   it('returns info notice for already running sync', () => {
     expect(resolveProductSyncNotice({ syncStatus: 'RUNNING' })).toEqual({
       type: 'info',
-      message: '商品同步已在后台执行，请稍后刷新列表'
+      message: '商品同步进行中，列表将自动刷新'
     })
   })
 
@@ -20,7 +20,7 @@ describe('resolveProductSyncNotice', () => {
   it('returns success notice for accepted sync', () => {
     expect(resolveProductSyncNotice({ syncStatus: 'ACCEPTED' })).toEqual({
       type: 'success',
-      message: '商品同步已转入后台执行，请稍后刷新列表查看结果'
+      message: '商品同步已开始，列表将自动刷新'
     })
   })
 
