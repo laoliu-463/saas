@@ -65,19 +65,20 @@ public class ProductActivityManualSyncService {
             return new SyncTriggerResult("", null, "INVALID");
         }
         String jobId = "activity-product-sync-" + UUID.randomUUID();
-        String existingJobId = runningJobIdsByActivity.putIfAbsent(normalizedActivityId, jobId);
-        if (existingJobId != null) {
-            return new SyncTriggerResult(normalizedActivityId, existingJobId, "RUNNING");
-        }
-        ProductSyncJobLog jobLog = null;
-        try {
+        ProductSyncJobLog jobLog;
+        synchronized (runningJobIdsByActivity) {
+            String existingJobId = runningJobIdsByActivity.get(normalizedActivityId);
+            if (existingJobId != null) {
+                return new SyncTriggerResult(normalizedActivityId, existingJobId, "RUNNING");
+            }
             jobLog = startJob(jobId, normalizedActivityId, requestedBy);
+            runningJobIdsByActivity.put(normalizedActivityId, jobId);
+        }
+        try {
             ProductSyncJobLog asyncJobLog = jobLog;
             CompletableFuture.runAsync(() -> runSync(normalizedActivityId, appId, asyncJobLog), syncExecutor);
         } catch (RuntimeException ex) {
-            if (jobLog != null) {
-                finishFailedJob(jobLog, ex);
-            }
+            finishFailedJob(jobLog, ex);
             runningJobIdsByActivity.remove(normalizedActivityId, jobId);
             throw ex;
         }
