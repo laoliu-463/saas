@@ -64,7 +64,6 @@ export function resolveOfficialStatus(row: ProductManageRow): ProductOfficialSta
   if (statusCode === '1') return 'PROMOTING'
   if (statusCode === '2') return 'REJECTED'
   if (statusCode === '3') return 'TERMINATED'
-  if (statusCode === '4') return 'TERMINATED'
   if (statusCode === '6') return 'EXPIRED'
 
   const statusText = normalizeText(row.statusText || row.allianceStatusText)

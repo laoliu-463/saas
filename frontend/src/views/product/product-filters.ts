@@ -389,9 +389,6 @@ export function matchAllianceStatus(item: any, allianceStatus: string | null) {
   if (rawStatus) {
     const statusCode = Number(rawStatus)
     if (Number.isFinite(statusCode)) {
-      if (allianceStatus === 'terminated') {
-        return statusCode === 3 || statusCode === 4
-      }
       return statusCode === expectedStatus
     }
   }

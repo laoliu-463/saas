@@ -248,10 +248,10 @@ public class ProductDisplayPolicy {
 
     public List<Integer> activityProductFilterStatuses(Integer status) {
         if (status == null) {
-            return List.of();
+            return List.of(0, 1, 2, 3, 6);
         }
-        if (Integer.valueOf(3).equals(status)) {
-            return List.of(3, 4);
+        if (!isSupportedActivityProductQueryStatus(status)) {
+            return List.of();
         }
         return List.of(status);
     }
@@ -642,7 +642,6 @@ public class ProductDisplayPolicy {
                 case 2:
                     return "REJECTED";
                 case 3:
-                case 4:
                     return "TERMINATED";
                 case 6:
                     return "EXPIRED";

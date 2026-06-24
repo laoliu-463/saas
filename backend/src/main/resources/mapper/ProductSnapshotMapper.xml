@@ -85,9 +85,14 @@
            AND pos.deleted = 0
          WHERE ps.activity_id = #{activityId}
            AND ps.deleted = 0
-           <if test="promotionStatus != null">
+           <choose>
+               <when test="promotionStatus != null">
            AND ps.status = #{promotionStatus}
-           </if>
+               </when>
+               <otherwise>
+           AND ps.status IN (0, 1, 2, 3, 6)
+               </otherwise>
+           </choose>
            <if test="productInfo != null and productInfo != ''">
            AND (
                ps.title LIKE CONCAT('%', #{productInfo}, '%')

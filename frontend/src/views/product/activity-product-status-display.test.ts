@@ -93,10 +93,7 @@ describe('activity-product-status-display', () => {
     })
   })
 
-  it('maps upstream status 4 into terminated activity status', () => {
-    expect(isActivityProductStageMatch({ status: 4, statusText: '合作前取消' }, 'terminated')).toBe(true)
-    expect(resolveActivityProductOfficialStatusView({ status: 4, statusText: '合作前取消' })).toMatchObject({
-      status: 'TERMINATED'
-    })
+  it('does not map unsupported upstream status 4 into a public activity status', () => {
+    expect(isActivityProductStageMatch({ status: 4, statusText: '合作前取消' }, 'terminated')).toBe(false)
   })
 })

@@ -1,7 +1,10 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.colonel.saas.common.enums.ProductBizStatus;
+import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.entity.ColonelsettlementActivity;
@@ -11,6 +14,7 @@ import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -75,6 +79,7 @@ class ProductServiceActivityStatusIndependenceTest {
 
     @BeforeEach
     void setUp() {
+        initTableInfo(ProductSnapshot.class);
         productDisplayPolicy = spy(new ProductDisplayPolicy());
         productService = new ProductService(
                 douyinConvertPort,
@@ -104,8 +109,17 @@ class ProductServiceActivityStatusIndependenceTest {
                 .thenReturn(ProductDisplayRuleService.LibraryRepairResult.empty(null, false));
     }
 
+    private void initTableInfo(Class<?> entityClass) {
+        if (TableInfoHelper.getTableInfo(entityClass) == null) {
+            MybatisConfiguration configuration = new MybatisConfiguration();
+            configuration.getTypeHandlerRegistry().register(java.util.UUID.class, UUIDTypeHandler.class);
+            MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
+            TableInfoHelper.initTableInfo(assistant, entityClass);
+        }
+    }
+
     @Test
-    void applyActivityProductPromotionStatusFilter_defaultOffShouldKeepLegacyExpansion() {
+    void applyActivityProductPromotionStatusFilter_defaultOffShouldKeepPublicTerminatedOnly() {
         LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<>();
 
         ReflectionTestUtils.invokeMethod(
@@ -115,7 +129,7 @@ class ProductServiceActivityStatusIndependenceTest {
                 3);
 
         verify(productDisplayPolicy, never()).activityProductFilterStatuses(any());
-        assertThat(wrapper.getParamNameValuePairs().values()).containsExactly(3, 4);
+        assertTerminatedStatusFilter(wrapper);
     }
 
     @Test
@@ -131,7 +145,7 @@ class ProductServiceActivityStatusIndependenceTest {
                 3);
 
         verify(productDisplayPolicy).activityProductFilterStatuses(3);
-        assertThat(wrapper.getParamNameValuePairs().values()).containsExactly(3, 4);
+        assertTerminatedStatusFilter(wrapper);
     }
 
     @Test
@@ -571,6 +585,12 @@ class ProductServiceActivityStatusIndependenceTest {
 
     private DouyinProductGateway.ActivityProductItem item(long productId, String title) {
         return item(productId, title, 1, "推广中");
+    }
+
+    private void assertTerminatedStatusFilter(LambdaQueryWrapper<ProductSnapshot> wrapper) {
+        assertThat(wrapper.getSqlSegment())
+                .contains("status")
+                .doesNotContain("IN");
     }
 
     private DouyinProductGateway.ActivityProductItem item(long productId, String title, int status, String statusText) {

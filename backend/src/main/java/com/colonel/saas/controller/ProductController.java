@@ -138,7 +138,7 @@ public class ProductController extends BaseController {
      * @param decision          推进判断：MAIN/SECONDARY/PAUSE/DROP/NONE（可选）
      * @param partnerId         合作方 ID；商家型为 shop_id，团长型为 colonel_buyin_id（可选）
      * @param partnerType       合作方类型：MERCHANT/COLONEL（可选）
-     * @param sortBy            排序方式：default（置顶优先）/ latest（晚上架优先）（可选）
+     * @param sortBy            排序方式：default（置顶优先）/ latest（上游同步时间倒序）（可选）
      * @param goodsTags         货品标签，多选时用英文逗号分隔（可选）
      * @param productTags       商品标签，多选时用英文逗号分隔（可选）
      * @param colonelName       团长名称关键字（可选）
@@ -189,7 +189,7 @@ public class ProductController extends BaseController {
             @Parameter(description = "推进判断：MAIN/SECONDARY/PAUSE/DROP/NONE。") @RequestParam(required = false) String decision,
             @Parameter(description = "合作方 ID；商家型为 shop_id，团长型为 colonel_buyin_id。") @RequestParam(required = false) String partnerId,
             @Parameter(description = "合作方类型：MERCHANT/COLONEL。") @RequestParam(name = "partnerType", required = false) String partnerType,
-            @Parameter(description = "排序：default（置顶优先）/ latest（晚上架优先）。") @RequestParam(name = "sortBy", required = false) String sortBy,
+            @Parameter(description = "排序：default（置顶优先）/ latest（上游同步时间倒序）。") @RequestParam(name = "sortBy", required = false) String sortBy,
             @Parameter(description = "货品标签，多选时用英文逗号分隔。") @RequestParam(required = false) String goodsTags,
             @Parameter(description = "商品标签，多选时用英文逗号分隔。") @RequestParam(required = false) String productTags,
             @Parameter(description = "团长名称关键字。") @RequestParam(required = false) String colonelName,

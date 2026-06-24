@@ -394,8 +394,11 @@ public class ProductService {
         }
         if ("latest".equals(sortBy)) {
             products.sort(Comparator.comparing(
-                    Product::getSelectedAt,
-                    Comparator.nullsLast(Comparator.reverseOrder())));
+                    (Product p) -> p == null ? null : p.getSyncTime(),
+                    Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(
+                            Product::getSelectedAt,
+                            Comparator.nullsLast(Comparator.reverseOrder())));
             return;
         }
         products.sort(this::compareLibraryProducts);
@@ -1053,12 +1056,12 @@ public class ProductService {
             LambdaQueryWrapper<ProductSnapshot> wrapper,
             Integer promotionStatus) {
         Integer normalizedPromotionStatus = productDisplayPolicy.normalizeActivityProductFilterStatus(promotionStatus);
-        if (normalizedPromotionStatus == null) {
-            return;
-        }
         if (isDddProductDisplayPolicyEnabled()) {
             List<Integer> statuses = productDisplayPolicy.activityProductFilterStatuses(normalizedPromotionStatus);
             if (statuses.isEmpty()) {
+                if (normalizedPromotionStatus != null) {
+                    wrapper.eq(ProductSnapshot::getStatus, Integer.MIN_VALUE);
+                }
                 return;
             }
             if (statuses.size() == 1) {
@@ -1068,8 +1071,16 @@ public class ProductService {
             wrapper.in(ProductSnapshot::getStatus, statuses);
             return;
         }
+        if (normalizedPromotionStatus == null) {
+            wrapper.in(ProductSnapshot::getStatus, 0, 1, 2, 3, 6);
+            return;
+        }
+        if (!productDisplayPolicy.isSupportedActivityProductQueryStatus(normalizedPromotionStatus)) {
+            wrapper.eq(ProductSnapshot::getStatus, Integer.MIN_VALUE);
+            return;
+        }
         if (Integer.valueOf(3).equals(normalizedPromotionStatus)) {
-            wrapper.in(ProductSnapshot::getStatus, 3, 4);
+            wrapper.eq(ProductSnapshot::getStatus, 3);
             return;
         }
         wrapper.eq(ProductSnapshot::getStatus, normalizedPromotionStatus);
@@ -2127,6 +2138,10 @@ public class ProductService {
             return emptyActivityProductListView(activityId);
         }
         Integer normalizedPromotionStatus = productDisplayPolicy.normalizeActivityProductFilterStatus(promotionStatus);
+        if (normalizedPromotionStatus != null
+                && !productDisplayPolicy.isSupportedActivityProductQueryStatus(normalizedPromotionStatus)) {
+            return emptyActivityProductListView(activityId);
+        }
 
         LambdaQueryWrapper<ProductSnapshot> countWrapper = new LambdaQueryWrapper<ProductSnapshot>()
                 .eq(ProductSnapshot::getActivityId, activityId)

@@ -33,7 +33,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
@@ -211,17 +213,20 @@ class ProductServiceFilterTest {
 
     @Test
     void getSelectedLibraryPage_shouldNormalizeLatestSortByBeforeSorting() {
+        LocalDateTime now = LocalDateTime.now();
         ProductOperationState olderHighCommission = state("10001", "9001");
-        olderHighCommission.setSelectedAt(LocalDateTime.now().minusDays(2));
+        olderHighCommission.setSelectedAt(now.minusHours(1));
         ProductOperationState newerLowCommission = state("10002", "9002");
-        newerLowCommission.setSelectedAt(LocalDateTime.now().minusHours(1));
+        newerLowCommission.setSelectedAt(now.minusDays(2));
         Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
         statePage.setRecords(List.of(olderHighCommission, newerLowCommission));
 
         ProductSnapshot older = snapshot("10001", "9001", "玩具乐器", 9900L);
         older.setActivityCosRatio(5000L);
+        older.setSyncTime(now.minusDays(2));
         ProductSnapshot newer = snapshot("10002", "9002", "美妆", 8800L);
         newer.setActivityCosRatio(100L);
+        newer.setSyncTime(now.minusHours(1));
 
         when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
         when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(older, newer));
@@ -505,46 +510,25 @@ class ProductServiceFilterTest {
     }
 
     @Test
-    void buildActivityProductListViewFromDb_shouldNormalizeUnsupportedStatusFourToTerminated() {
-        ProductSnapshot unsupported = snapshot("100018", "9004", "食品饮料", 9900L);
-        unsupported.setStatus(4);
-        unsupported.setStatusText("合作前取消");
-
-        when(snapshotMapper.selectCount(any())).thenReturn(1L);
-        when(snapshotMapper.selectPageSorted(
-                eq("100018"),
-                eq(4),
-                isNull(),
-                eq("NONE"),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(20L),
-                eq(0L),
-                any(LocalDateTime.class)))
-                .thenReturn(List.of(unsupported));
-        when(operationStateMapper.selectList(any())).thenReturn(List.of());
-        when(operationLogMapper.selectList(any())).thenReturn(List.of());
-        when(orderMapper.selectList(any())).thenReturn(List.of());
-        when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
-
+    void buildActivityProductListViewFromDb_shouldReturnEmptyForUnsupportedPromotionStatusFour() {
         var result = service.buildActivityProductListViewFromDb(
                 "100018", 20, null, null, null, 4, null, null, null);
 
-        assertThat(result.get("total")).isEqualTo(1L);
+        assertThat(result.get("total")).isEqualTo(0L);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
-        assertThat(items).singleElement().extracting("officialStatus").isEqualTo("TERMINATED");
-        verify(snapshotMapper).selectPageSorted(
-                eq("100018"),
-                eq(4),
-                isNull(),
-                eq("NONE"),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(20L),
-                eq(0L),
+        assertThat(items).isEmpty();
+        verify(snapshotMapper, never()).selectCount(any());
+        verify(snapshotMapper, never()).selectPageSorted(
+                anyString(),
+                any(),
+                any(),
+                anyString(),
+                any(),
+                any(),
+                any(),
+                anyLong(),
+                anyLong(),
                 any(LocalDateTime.class));
     }
 

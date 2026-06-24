@@ -173,7 +173,7 @@ class ProductDisplayPolicyTest {
     }
 
     @Test
-    void statusFourPresentation_shouldMapToTerminatedByUpstreamCode() {
+    void statusFourPresentation_shouldNotMapToPublicTerminatedStatus() {
         ProductDisplayPolicy.ActivityProductStatusPresentation presentation =
                 policy.resolveActivityProductStatusPresentation(
                         4,
@@ -187,7 +187,7 @@ class ProductDisplayPolicyTest {
                         null,
                         null);
 
-        assertThat(presentation.officialStatus()).isEqualTo("TERMINATED");
+        assertThat(presentation.officialStatus()).isNotEqualTo("TERMINATED");
 
         ProductDisplayPolicy.ActivityProductStatusPresentation textOnlyPresentation =
                 policy.resolveActivityProductStatusPresentation(
@@ -229,13 +229,13 @@ class ProductDisplayPolicyTest {
     }
 
     @Test
-    void activityProductFilterStatuses_shouldKeepLegacyTerminatedQueryExpansion() {
-        assertThat(policy.activityProductFilterStatuses(null)).isEmpty();
+    void activityProductFilterStatuses_shouldUseOnlyPublicActivityProductStatuses() {
+        assertThat(policy.activityProductFilterStatuses(null)).containsExactly(0, 1, 2, 3, 6);
         assertThat(policy.activityProductFilterStatuses(0)).containsExactly(0);
         assertThat(policy.activityProductFilterStatuses(1)).containsExactly(1);
         assertThat(policy.activityProductFilterStatuses(2)).containsExactly(2);
-        assertThat(policy.activityProductFilterStatuses(3)).containsExactly(3, 4);
-        assertThat(policy.activityProductFilterStatuses(4)).containsExactly(4);
+        assertThat(policy.activityProductFilterStatuses(3)).containsExactly(3);
+        assertThat(policy.activityProductFilterStatuses(4)).isEmpty();
         assertThat(policy.activityProductFilterStatuses(6)).containsExactly(6);
     }
 

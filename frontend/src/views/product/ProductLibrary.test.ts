@@ -115,6 +115,24 @@ function mountLibrary() {
         },
         NSpace: {
           template: '<div><slot /></div>'
+        },
+        NSelect: {
+          props: ['value', 'options'],
+          template: `
+            <select
+              data-testid="product-library-sort"
+              :value="value"
+              @change="$emit('update:value', $event.target.value)"
+            >
+              <option
+                v-for="item in options"
+                :key="item.value"
+                :value="item.value"
+              >
+                {{ item.label }}
+              </option>
+            </select>
+          `
         }
       }
     }
@@ -161,7 +179,8 @@ describe('ProductLibrary pagination weakening', () => {
 
     expect(vi.mocked(getProducts).mock.calls[0][0]).toMatchObject({
       page: 1,
-      size: 100
+      size: 100,
+      sortBy: 'default'
     })
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(100)
 
@@ -181,6 +200,18 @@ describe('ProductLibrary pagination weakening', () => {
       page: 1,
       size: 100,
       productTags: '主推'
+    })
+
+    await wrapper.get('[data-testid="product-library-sort"]').setValue('latest')
+    await flushPromises()
+
+    expect(replaceMock).toHaveBeenCalledWith({
+      path: '/product',
+      query: { sortBy: 'latest' }
+    })
+    expect(vi.mocked(getProducts).mock.calls[3][0]).toMatchObject({
+      page: 1,
+      sortBy: 'latest'
     })
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1)
     expect(wrapper.text()).toContain('已全部加载')
