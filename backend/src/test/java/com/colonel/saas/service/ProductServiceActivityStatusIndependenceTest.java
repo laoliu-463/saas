@@ -133,6 +133,21 @@ class ProductServiceActivityStatusIndependenceTest {
     }
 
     @Test
+    void applyActivityProductPromotionStatusFilter_defaultOffShouldIncludeCanceledWhenNoStatusSelected() {
+        LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<>();
+
+        ReflectionTestUtils.invokeMethod(
+                productService,
+                "applyActivityProductPromotionStatusFilter",
+                wrapper,
+                null);
+
+        verify(productDisplayPolicy, never()).activityProductFilterStatuses(any());
+        assertThat(wrapper.getSqlSegment()).contains("status", "IN");
+        assertThat(wrapper.getParamNameValuePairs().values()).containsExactlyInAnyOrder(0, 1, 2, 3, 4, 6);
+    }
+
+    @Test
     void applyActivityProductPromotionStatusFilter_dddSwitchOnShouldDelegateToDisplayPolicy() {
         ReflectionTestUtils.setField(productService, "dddRefactorEnabled", true);
         ReflectionTestUtils.setField(productService, "dddProductDisplayPolicyEnabled", true);

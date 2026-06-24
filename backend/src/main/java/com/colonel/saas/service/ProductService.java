@@ -1072,7 +1072,7 @@ public class ProductService {
             return;
         }
         if (normalizedPromotionStatus == null) {
-            wrapper.in(ProductSnapshot::getStatus, 0, 1, 2, 3, 6);
+            wrapper.in(ProductSnapshot::getStatus, 0, 1, 2, 3, 4, 6);
             return;
         }
         if (!productDisplayPolicy.isSupportedActivityProductQueryStatus(normalizedPromotionStatus)) {
