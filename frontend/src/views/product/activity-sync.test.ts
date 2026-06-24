@@ -2,7 +2,12 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import {
   batchSyncActivityProducts,
   formatActivityProductSyncMessage,
+  ACTIVITY_PRODUCT_SYNC_MAX_POLLS,
+  ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS,
   POST_SYNC_REFRESH_DELAYS_MS,
+  isActivityProductSyncSuccess,
+  isActivityProductSyncTerminal,
+  shouldPollActivityProductSyncJob,
   shouldSchedulePostSyncRefresh,
   summarizeActivityProductSyncResults
 } from './activity-sync'
@@ -70,5 +75,19 @@ describe('activity-sync', () => {
     expect(shouldSchedulePostSyncRefresh('SUCCESS')).toBe(false)
     expect(shouldSchedulePostSyncRefresh('FAILED')).toBe(false)
     expect(shouldSchedulePostSyncRefresh()).toBe(false)
+  })
+
+  it('classifies manual sync job statuses for completion polling', () => {
+    expect(ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS).toBe(1000)
+    expect(ACTIVITY_PRODUCT_SYNC_MAX_POLLS).toBe(300)
+    expect(shouldPollActivityProductSyncJob('ACCEPTED')).toBe(true)
+    expect(shouldPollActivityProductSyncJob('RUNNING')).toBe(true)
+    expect(shouldPollActivityProductSyncJob('SUCCESS')).toBe(false)
+    expect(isActivityProductSyncSuccess('SUCCESS')).toBe(true)
+    expect(isActivityProductSyncTerminal('SUCCESS')).toBe(true)
+    expect(isActivityProductSyncTerminal('PARTIAL')).toBe(true)
+    expect(isActivityProductSyncTerminal('FAILED')).toBe(true)
+    expect(isActivityProductSyncTerminal('ABANDONED')).toBe(true)
+    expect(isActivityProductSyncTerminal('RUNNING')).toBe(false)
   })
 })

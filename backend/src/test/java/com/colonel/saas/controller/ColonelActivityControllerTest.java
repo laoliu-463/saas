@@ -537,19 +537,54 @@ class ColonelActivityControllerTest {
 
     @Test
     void syncProducts_shouldTriggerBackgroundSyncAndReturnAcceptedImmediately() throws Exception {
-        when(productActivityManualSyncService.trigger("100018", null)).thenReturn(
-                new ProductActivityManualSyncService.SyncTriggerResult("100018", "ACCEPTED"));
+        when(productActivityManualSyncService.trigger("100018", null, null)).thenReturn(
+                new ProductActivityManualSyncService.SyncTriggerResult(
+                        "100018",
+                        "activity-product-sync-1",
+                        "ACCEPTED"));
 
         mockMvc.perform(post("/colonel/activities/{activityId}/products/sync", "100018")
                         .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.activityId").value("100018"))
+                .andExpect(jsonPath("$.data.jobId").value("activity-product-sync-1"))
                 .andExpect(jsonPath("$.data.syncStatus").value("ACCEPTED"))
                 .andExpect(jsonPath("$.data.message").value("商品同步已转入后台执行"));
 
-        verify(productActivityManualSyncService).trigger("100018", null);
+        verify(productActivityManualSyncService).trigger("100018", null, null);
         verify(productService, never()).refreshActivitySnapshots(any());
+    }
+
+    @Test
+    void getProductSyncJob_shouldReturnManualSyncJobStatus() throws Exception {
+        when(productActivityManualSyncService.getJobStatus("activity-product-sync-1")).thenReturn(
+                new ProductActivityManualSyncService.SyncJobStatus(
+                        "activity-product-sync-1",
+                        "100018",
+                        "SUCCESS",
+                        3L,
+                        3L,
+                        1,
+                        2,
+                        0,
+                        0,
+                        "2026-06-24T10:00:00",
+                        "2026-06-24T10:00:01",
+                        null));
+
+        mockMvc.perform(get("/colonel/activities/{activityId}/products/sync-jobs/{jobId}",
+                        "100018",
+                        "activity-product-sync-1")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.activityId").value("100018"))
+                .andExpect(jsonPath("$.data.jobId").value("activity-product-sync-1"))
+                .andExpect(jsonPath("$.data.syncStatus").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.fetchedRows").value(3))
+                .andExpect(jsonPath("$.data.createdCount").value(1))
+                .andExpect(jsonPath("$.data.finishedAt").value("2026-06-24T10:00:01"));
     }
 
     @Test

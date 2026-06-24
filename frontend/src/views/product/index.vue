@@ -242,6 +242,7 @@ import {
   batchPinActivityProducts,
   batchPutActivityProductsIntoLibrary,
   convertActivityProductLink,
+  getActivityProductSyncJob,
   getActivityProducts,
   pinActivityProduct,
   putActivityProductIntoLibrary,
@@ -316,7 +317,15 @@ import { resolveProductRelationId } from './product-relation-id'
 import { createEmptyManualCopyDialogState, resolveManualCopyDialogState } from './manual-copy'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 import { tryCopyText } from '../../utils/clipboard'
-import { POST_SYNC_REFRESH_DELAYS_MS, shouldSchedulePostSyncRefresh } from './activity-sync'
+import {
+  ACTIVITY_PRODUCT_SYNC_MAX_POLLS,
+  ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS,
+  POST_SYNC_REFRESH_DELAYS_MS,
+  isActivityProductSyncSuccess,
+  isActivityProductSyncTerminal,
+  shouldPollActivityProductSyncJob,
+  shouldSchedulePostSyncRefresh
+} from './activity-sync'
 import type {
   ProductActionKey,
   ProductManageRow,
@@ -338,6 +347,7 @@ const authStore = useAuthStore()
 const loading = ref(false)
 const syncing = ref(false)
 const postSyncRefreshTimers: ReturnType<typeof window.setTimeout>[] = []
+let postSyncPollTimer: ReturnType<typeof window.setTimeout> | null = null
 const loadingMore = ref(false)
 const showSlowLoading = ref(false)
 const showInitialLoading = useDelayedFlag(loading, 300)
@@ -993,6 +1003,10 @@ const refreshProducts = async () => {
 
 const clearPostSyncRefreshTimers = () => {
   postSyncRefreshTimers.splice(0).forEach((timer) => window.clearTimeout(timer))
+  if (postSyncPollTimer) {
+    window.clearTimeout(postSyncPollTimer)
+    postSyncPollTimer = null
+  }
 }
 
 const refreshProductsAfterActivitySync = async (activityId: string) => {
@@ -1009,6 +1023,55 @@ const schedulePostSyncRefreshes = (activityId: string, syncStatus?: string) => {
     }, delay)
     postSyncRefreshTimers.push(timer)
   })
+}
+
+const pollActivityProductSyncJob = async (
+  activityId: string,
+  jobId: string,
+  attempt = 0
+) => {
+  if (normalizeText(fallbackActivityId.value) !== activityId) return
+  try {
+    const res: any = await getActivityProductSyncJob(activityId, jobId, {
+      suppressErrorNotice: true
+    })
+    const data = res?.data || {}
+    const syncStatus = String(data.syncStatus || '')
+    if (isActivityProductSyncSuccess(syncStatus)) {
+      message.success('商品同步完成，已更新商品列表')
+      await refreshProductsAfterActivitySync(activityId)
+      return
+    }
+    if (isActivityProductSyncTerminal(syncStatus)) {
+      const warning = syncStatus === 'PARTIAL'
+        ? '商品同步部分完成，已刷新当前可用数据'
+        : '商品同步失败，请稍后重试或查看后台日志'
+      message.warning(warning)
+      await refreshProductsAfterActivitySync(activityId)
+      return
+    }
+    if (attempt >= ACTIVITY_PRODUCT_SYNC_MAX_POLLS) {
+      message.warning('商品同步仍在后台执行，可稍后手动刷新列表')
+      return
+    }
+  } catch (_error: any) {
+    if (attempt >= ACTIVITY_PRODUCT_SYNC_MAX_POLLS) {
+      message.warning('暂时无法确认商品同步结果，请稍后手动刷新列表')
+      return
+    }
+  }
+  postSyncPollTimer = window.setTimeout(() => {
+    postSyncPollTimer = null
+    void pollActivityProductSyncJob(activityId, jobId, attempt + 1)
+  }, ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS)
+}
+
+const scheduleActivityProductSyncJobPolling = (activityId: string, jobId: string) => {
+  clearPostSyncRefreshTimers()
+  postSyncPollTimer = window.setTimeout(() => {
+    postSyncPollTimer = null
+    void pollActivityProductSyncJob(activityId, jobId)
+  }, ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS)
 }
 
 const openSyncActivityProductsDialog = () => {
@@ -1044,12 +1107,19 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
   try {
     const res: any = await syncActivityProducts(selectedActivityId)
     const data = res?.data || {}
+    const jobId = normalizeText(data.jobId)
     dialogs.value.syncActivityProducts = false
-    if (data.syncStatus === 'RUNNING') {
-      message.info('商品同步已在后台执行，正在自动刷新列表')
-    } else {
-      message.success('商品同步已提交，正在自动刷新列表')
+    if (jobId && shouldPollActivityProductSyncJob(data.syncStatus)) {
+      message.info('商品同步已提交，完成后自动刷新列表')
+      scheduleActivityProductSyncJobPolling(selectedActivityId, jobId)
+      return
     }
+    if (isActivityProductSyncSuccess(data.syncStatus)) {
+      message.success('商品同步完成，已更新商品列表')
+      await refreshProductsAfterActivitySync(selectedActivityId)
+      return
+    }
+    message.success('商品同步已提交，正在自动刷新列表')
     await refreshProductsAfterActivitySync(selectedActivityId)
     schedulePostSyncRefreshes(selectedActivityId, data.syncStatus)
   } catch (error: any) {

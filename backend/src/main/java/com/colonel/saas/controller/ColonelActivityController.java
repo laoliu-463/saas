@@ -169,13 +169,48 @@ public class ColonelActivityController extends BaseController {
                 deptId,
                 activityAccessService.normalizeRoles(roleCodes));
         ProductActivityManualSyncService.SyncTriggerResult triggerResult =
-                productActivityManualSyncService.trigger(activityId, appId);
+                productActivityManualSyncService.trigger(activityId, appId, userId);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("activityId", triggerResult.activityId());
+        payload.put("jobId", triggerResult.jobId());
         payload.put("syncStatus", triggerResult.syncStatus());
         payload.put("message", "RUNNING".equals(triggerResult.syncStatus())
                 ? "商品同步已在后台执行，请稍后刷新列表"
                 : "商品同步已转入后台执行");
+        return ok(payload);
+    }
+
+    @Operation(summary = "查询活动商品同步任务状态", description = "查询一键同步商品后台任务状态，前端用于在 SUCCESS/PARTIAL/FAILED 终态后刷新活动商品列表。")
+    @GetMapping("/{activityId}/products/sync-jobs/{jobId}")
+    public ApiResult<Map<String, Object>> getProductSyncJob(
+            @Parameter(description = "团长活动 ID。") @PathVariable("activityId") String activityId,
+            @Parameter(description = "同步任务 ID。") @PathVariable("jobId") String jobId,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        activityAccessService.assertActivityReadable(
+                activityId,
+                userId,
+                deptId,
+                activityAccessService.normalizeRoles(roleCodes));
+        ProductActivityManualSyncService.SyncJobStatus status =
+                productActivityManualSyncService.getJobStatus(jobId);
+        if (!String.valueOf(activityId).trim().equals(status.activityId())) {
+            throw BusinessException.notFound("未找到对应的活动商品同步任务");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("activityId", status.activityId());
+        payload.put("jobId", status.jobId());
+        payload.put("syncStatus", status.syncStatus());
+        payload.put("fetchedRows", status.fetchedRows());
+        payload.put("distinctProductIds", status.distinctProductIds());
+        payload.put("createdCount", status.createdCount());
+        payload.put("updatedCount", status.updatedCount());
+        payload.put("skippedCount", status.skippedCount());
+        payload.put("failedCount", status.failedCount());
+        payload.put("startedAt", status.startedAt());
+        payload.put("finishedAt", status.finishedAt());
+        payload.put("errorMessage", status.errorMessage());
         return ok(payload);
     }
 
